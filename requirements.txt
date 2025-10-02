@@ -1,0 +1,16 @@
+# Core dependencies
+numpy==2.0.2
+pandas==2.3.3
+
+# Data validation
+pydantic==2.11.9
+
+# Testing
+pytest==8.4.2
+pytest-cov==7.0.0
+
+# Linting and formatting
+ruff==0.13.2
+
+# Type checking
+mypy==1.18.2
