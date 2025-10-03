@@ -31,7 +31,17 @@ class FuzzyTriangleNumber:
             lower_bound: Minimum value (A)
             peak: Most likely value (C)
             upper_bound: Maximum value (B)
+
+        Raises:
+            ValueError: If the constraint lower_bound <= peak <= upper_bound is violated
         """
+        if not (lower_bound <= peak <= upper_bound):
+            raise ValueError(
+                f"Invalid fuzzy triangular number: must satisfy "
+                f"lower_bound <= peak <= upper_bound. "
+                f"Got: lower_bound={lower_bound}, peak={peak}, upper_bound={upper_bound}"
+            )
+
         self.lower_bound: float = lower_bound
         self.peak: float = peak
         self.upper_bound: float = upper_bound
