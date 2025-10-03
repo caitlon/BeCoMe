@@ -58,3 +58,23 @@ class FuzzyTriangleNumber:
     def __str__(self) -> str:
         """Return human-readable string representation."""
         return f"({self.lower_bound}, {self.peak}, {self.upper_bound})"
+
+    def get_centroid(self) -> float:
+        """
+        Calculate the centroid (center of gravity) of the fuzzy triangular number.
+
+        The centroid is the x-coordinate of the center of mass of the triangle,
+        calculated as the arithmetic mean of the three characteristic values.
+
+        Formula (from article, equation 9):
+            Gx = (A + C + B) / 3
+
+        Returns:
+            The centroid value as a float
+
+        Example:
+            >>> fuzzy = FuzzyTriangleNumber(lower_bound=5.0, peak=10.0, upper_bound=15.0)
+            >>> fuzzy.get_centroid()
+            10.0
+        """
+        return (self.lower_bound + self.peak + self.upper_bound) / 3.0
