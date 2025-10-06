@@ -8,4 +8,3 @@ from expert opinions represented as fuzzy triangular numbers.
 from .become_calculator import BeCoMeCalculator
 
 __all__ = ["BeCoMeCalculator"]
-

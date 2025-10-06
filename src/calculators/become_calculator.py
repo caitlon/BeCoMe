@@ -8,9 +8,10 @@ represented as fuzzy triangular numbers, as described in the article by Vrana et
 from __future__ import annotations
 from typing import TYPE_CHECKING
 
+from src.models.fuzzy_number import FuzzyTriangleNumber
+
 if TYPE_CHECKING:
     from src.models.expert_opinion import ExpertOpinion
-    from src.models.fuzzy_number import FuzzyTriangleNumber
 
 
 class BeCoMeCalculator:
@@ -46,7 +47,22 @@ class BeCoMeCalculator:
         Raises:
             ValueError: If opinions list is empty
         """
-        raise NotImplementedError("Arithmetic mean calculation not yet implemented")
+        if not opinions:
+            raise ValueError("Cannot calculate arithmetic mean of empty opinions list")
+
+        m: int = len(opinions)
+
+        # Calculate sum of each component across all expert opinions
+        sum_lower: float = sum(op.opinion.lower_bound for op in opinions)
+        sum_peak: float = sum(op.opinion.peak for op in opinions)
+        sum_upper: float = sum(op.opinion.upper_bound for op in opinions)
+
+        # Calculate arithmetic mean for each component
+        alpha: float = sum_lower / m
+        gamma: float = sum_peak / m
+        beta: float = sum_upper / m
+
+        return FuzzyTriangleNumber(lower_bound=alpha, peak=gamma, upper_bound=beta)
 
     def calculate_median(self, opinions: list[ExpertOpinion]) -> FuzzyTriangleNumber:
         """
@@ -67,9 +83,7 @@ class BeCoMeCalculator:
         """
         raise NotImplementedError("Median calculation not yet implemented")
 
-    def calculate_compromise(
-        self, opinions: list[ExpertOpinion]
-    ) -> "BeCoMeResult":  # type: ignore
+    def calculate_compromise(self, opinions: list[ExpertOpinion]) -> "BeCoMeResult":  # type: ignore
         """
         Calculate the best compromise (GammaOmegaMean) from expert opinions.
 
@@ -90,9 +104,7 @@ class BeCoMeCalculator:
         """
         raise NotImplementedError("Compromise calculation not yet implemented")
 
-    def _sort_by_centroid(
-        self, opinions: list[ExpertOpinion]
-    ) -> list[ExpertOpinion]:
+    def _sort_by_centroid(self, opinions: list[ExpertOpinion]) -> list[ExpertOpinion]:
         """
         Sort expert opinions by their centroid values.
 
@@ -106,4 +118,3 @@ class BeCoMeCalculator:
             Sorted list of expert opinions (by ascending centroid)
         """
         raise NotImplementedError("Sorting by centroid not yet implemented")
-
