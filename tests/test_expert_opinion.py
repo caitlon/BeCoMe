@@ -140,9 +140,7 @@ class TestExpertOpinionSorting:
         opinions = [
             ExpertOpinion(
                 expert_id="E3",
-                opinion=FuzzyTriangleNumber(
-                    lower_bound=9.0, peak=12.0, upper_bound=15.0
-                ),
+                opinion=FuzzyTriangleNumber(lower_bound=9.0, peak=12.0, upper_bound=15.0),
             ),
             ExpertOpinion(
                 expert_id="E1",
@@ -150,9 +148,7 @@ class TestExpertOpinionSorting:
             ),
             ExpertOpinion(
                 expert_id="E2",
-                opinion=FuzzyTriangleNumber(
-                    lower_bound=6.0, peak=9.0, upper_bound=12.0
-                ),
+                opinion=FuzzyTriangleNumber(lower_bound=6.0, peak=9.0, upper_bound=12.0),
             ),
         ]
 
@@ -168,21 +164,15 @@ class TestExpertOpinionSorting:
         opinions = [
             ExpertOpinion(
                 expert_id="Project manager",
-                opinion=FuzzyTriangleNumber(
-                    lower_bound=10.0, peak=15.0, upper_bound=15.0
-                ),
+                opinion=FuzzyTriangleNumber(lower_bound=10.0, peak=15.0, upper_bound=15.0),
             ),
             ExpertOpinion(
                 expert_id="Product owner",
-                opinion=FuzzyTriangleNumber(
-                    lower_bound=8.0, peak=11.0, upper_bound=14.0
-                ),
+                opinion=FuzzyTriangleNumber(lower_bound=8.0, peak=11.0, upper_bound=14.0),
             ),
             ExpertOpinion(
                 expert_id="Software architect",
-                opinion=FuzzyTriangleNumber(
-                    lower_bound=7.0, peak=10.0, upper_bound=13.0
-                ),
+                opinion=FuzzyTriangleNumber(lower_bound=7.0, peak=10.0, upper_bound=13.0),
             ),
         ]
 

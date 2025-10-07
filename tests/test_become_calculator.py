@@ -3,9 +3,10 @@ Unit tests for BeCoMeCalculator class.
 """
 
 import pytest
-from src.models.fuzzy_number import FuzzyTriangleNumber
-from src.models.expert_opinion import ExpertOpinion
+
 from src.calculators.become_calculator import BeCoMeCalculator
+from src.models.expert_opinion import ExpertOpinion
+from src.models.fuzzy_number import FuzzyTriangleNumber
 
 
 class TestBeCoMeCalculatorArithmeticMean:
@@ -20,15 +21,11 @@ class TestBeCoMeCalculatorArithmeticMean:
             ),
             ExpertOpinion(
                 expert_id="E2",
-                opinion=FuzzyTriangleNumber(
-                    lower_bound=6.0, peak=9.0, upper_bound=12.0
-                ),
+                opinion=FuzzyTriangleNumber(lower_bound=6.0, peak=9.0, upper_bound=12.0),
             ),
             ExpertOpinion(
                 expert_id="E3",
-                opinion=FuzzyTriangleNumber(
-                    lower_bound=9.0, peak=12.0, upper_bound=15.0
-                ),
+                opinion=FuzzyTriangleNumber(lower_bound=9.0, peak=12.0, upper_bound=15.0),
             ),
         ]
 
@@ -60,13 +57,8 @@ class TestBeCoMeCalculatorArithmeticMean:
 
     def test_arithmetic_mean_with_identical_opinions(self):
         """Test arithmetic mean when all experts have identical opinions."""
-        identical_opinion = FuzzyTriangleNumber(
-            lower_bound=7.0, peak=10.0, upper_bound=13.0
-        )
-        opinions = [
-            ExpertOpinion(expert_id=f"E{i}", opinion=identical_opinion)
-            for i in range(5)
-        ]
+        identical_opinion = FuzzyTriangleNumber(lower_bound=7.0, peak=10.0, upper_bound=13.0)
+        opinions = [ExpertOpinion(expert_id=f"E{i}", opinion=identical_opinion) for i in range(5)]
 
         calculator = BeCoMeCalculator()
         result = calculator.calculate_arithmetic_mean(opinions)
@@ -104,21 +96,15 @@ class TestBeCoMeCalculatorArithmeticMean:
         opinions = [
             ExpertOpinion(
                 expert_id="E1",
-                opinion=FuzzyTriangleNumber(
-                    lower_bound=1.0, peak=5.0, upper_bound=10.0
-                ),
+                opinion=FuzzyTriangleNumber(lower_bound=1.0, peak=5.0, upper_bound=10.0),
             ),
             ExpertOpinion(
                 expert_id="E2",
-                opinion=FuzzyTriangleNumber(
-                    lower_bound=2.0, peak=6.0, upper_bound=12.0
-                ),
+                opinion=FuzzyTriangleNumber(lower_bound=2.0, peak=6.0, upper_bound=12.0),
             ),
             ExpertOpinion(
                 expert_id="E3",
-                opinion=FuzzyTriangleNumber(
-                    lower_bound=3.0, peak=7.0, upper_bound=14.0
-                ),
+                opinion=FuzzyTriangleNumber(lower_bound=3.0, peak=7.0, upper_bound=14.0),
             ),
         ]
 
@@ -143,33 +129,23 @@ class TestBeCoMeCalculatorArithmeticMean:
         opinions = [
             ExpertOpinion(
                 expert_id="E1",
-                opinion=FuzzyTriangleNumber(
-                    lower_bound=5.0, peak=8.0, upper_bound=11.0
-                ),
+                opinion=FuzzyTriangleNumber(lower_bound=5.0, peak=8.0, upper_bound=11.0),
             ),
             ExpertOpinion(
                 expert_id="E2",
-                opinion=FuzzyTriangleNumber(
-                    lower_bound=6.0, peak=9.0, upper_bound=12.0
-                ),
+                opinion=FuzzyTriangleNumber(lower_bound=6.0, peak=9.0, upper_bound=12.0),
             ),
             ExpertOpinion(
                 expert_id="E3",
-                opinion=FuzzyTriangleNumber(
-                    lower_bound=7.0, peak=10.0, upper_bound=13.0
-                ),
+                opinion=FuzzyTriangleNumber(lower_bound=7.0, peak=10.0, upper_bound=13.0),
             ),
             ExpertOpinion(
                 expert_id="E4",
-                opinion=FuzzyTriangleNumber(
-                    lower_bound=8.0, peak=11.0, upper_bound=14.0
-                ),
+                opinion=FuzzyTriangleNumber(lower_bound=8.0, peak=11.0, upper_bound=14.0),
             ),
             ExpertOpinion(
                 expert_id="E5",
-                opinion=FuzzyTriangleNumber(
-                    lower_bound=9.0, peak=12.0, upper_bound=15.0
-                ),
+                opinion=FuzzyTriangleNumber(lower_bound=9.0, peak=12.0, upper_bound=15.0),
             ),
         ]
 
@@ -188,15 +164,11 @@ class TestBeCoMeCalculatorArithmeticMean:
         opinions = [
             ExpertOpinion(
                 expert_id="E1",
-                opinion=FuzzyTriangleNumber(
-                    lower_bound=10.0, peak=10.0, upper_bound=10.0
-                ),
+                opinion=FuzzyTriangleNumber(lower_bound=10.0, peak=10.0, upper_bound=10.0),
             ),
             ExpertOpinion(
                 expert_id="E2",
-                opinion=FuzzyTriangleNumber(
-                    lower_bound=20.0, peak=30.0, upper_bound=40.0
-                ),
+                opinion=FuzzyTriangleNumber(lower_bound=20.0, peak=30.0, upper_bound=40.0),
             ),
         ]
 
