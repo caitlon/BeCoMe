@@ -2,8 +2,8 @@
 Unit tests for ExpertOpinion class.
 """
 
-from src.models.fuzzy_number import FuzzyTriangleNumber
 from src.models.expert_opinion import ExpertOpinion
+from src.models.fuzzy_number import FuzzyTriangleNumber
 
 
 class TestExpertOpinionCreation:
@@ -105,7 +105,7 @@ class TestExpertOpinionComparison:
         )
 
         assert opinion1 == opinion2
-        assert not opinion1 == opinion3  # Different expert_id
+        assert opinion1 != opinion3  # Different expert_id
 
     def test_equality_with_different_opinion(self):
         """Test equality with different fuzzy numbers."""
@@ -118,7 +118,7 @@ class TestExpertOpinionComparison:
             opinion=FuzzyTriangleNumber(lower_bound=6.0, peak=10.0, upper_bound=15.0),
         )
 
-        assert not opinion1 == opinion2
+        assert opinion1 != opinion2
 
     def test_equality_with_non_expert_opinion(self):
         """Test equality comparison with non-ExpertOpinion object."""

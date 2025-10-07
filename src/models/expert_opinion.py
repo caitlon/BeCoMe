@@ -6,7 +6,9 @@ an expert's assessment in the BeCoMe method.
 """
 
 from __future__ import annotations
+
 from dataclasses import dataclass
+
 from .fuzzy_number import FuzzyTriangleNumber
 
 
