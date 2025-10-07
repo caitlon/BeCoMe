@@ -3,6 +3,7 @@ Unit tests for FuzzyTriangleNumber class.
 """
 
 import pytest
+
 from src.models.fuzzy_number import FuzzyTriangleNumber
 
 

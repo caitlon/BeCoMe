@@ -6,6 +6,7 @@ represented as fuzzy triangular numbers, as described in the article by Vrana et
 """
 
 from __future__ import annotations
+
 from typing import TYPE_CHECKING
 
 from src.models.fuzzy_number import FuzzyTriangleNumber
@@ -27,9 +28,7 @@ class BeCoMeCalculator:
         - Best compromise: GammaOmegaMean(pi, phi, xi) = (Gamma + Omega) / 2
     """
 
-    def calculate_arithmetic_mean(
-        self, opinions: list[ExpertOpinion]
-    ) -> FuzzyTriangleNumber:
+    def calculate_arithmetic_mean(self, opinions: list[ExpertOpinion]) -> FuzzyTriangleNumber:
         """
         Calculate the arithmetic mean (Gamma) of all expert opinions.
 
@@ -83,7 +82,7 @@ class BeCoMeCalculator:
         """
         raise NotImplementedError("Median calculation not yet implemented")
 
-    def calculate_compromise(self, opinions: list[ExpertOpinion]) -> "BeCoMeResult":  # type: ignore
+    def calculate_compromise(self, opinions: list[ExpertOpinion]) -> BeCoMeResult:
         """
         Calculate the best compromise (GammaOmegaMean) from expert opinions.
 
