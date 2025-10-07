@@ -80,7 +80,30 @@ class BeCoMeCalculator:
         Raises:
             ValueError: If opinions list is empty
         """
-        raise NotImplementedError("Median calculation not yet implemented")
+        if not opinions:
+            raise ValueError("Cannot calculate median of empty opinions list")
+
+        # Sort opinions by centroid
+        sorted_opinions: list[ExpertOpinion] = self._sort_by_centroid(opinions)
+        m: int = len(sorted_opinions)
+
+        # Odd number of experts: M = 2n + 1
+        if m % 2 == 1:
+            # Find middle element
+            middle_index: int = m // 2
+            middle_opinion = sorted_opinions[middle_index].opinion
+
+            # Median is the middle fuzzy number
+            rho: float = middle_opinion.lower_bound
+            omega: float = middle_opinion.peak
+            sigma: float = middle_opinion.upper_bound
+
+            return FuzzyTriangleNumber(lower_bound=rho, peak=omega, upper_bound=sigma)
+
+        # Even number of experts: not yet implemented
+        raise NotImplementedError(
+            "Median calculation for even number of experts not yet implemented"
+        )
 
     def calculate_compromise(self, opinions: list[ExpertOpinion]) -> BeCoMeResult:  # type: ignore
         """
