@@ -82,7 +82,7 @@ class BeCoMeCalculator:
         """
         raise NotImplementedError("Median calculation not yet implemented")
 
-    def calculate_compromise(self, opinions: list[ExpertOpinion]) -> BeCoMeResult:
+    def calculate_compromise(self, opinions: list[ExpertOpinion]) -> BeCoMeResult:  # type: ignore
         """
         Calculate the best compromise (GammaOmegaMean) from expert opinions.
 
@@ -116,4 +116,4 @@ class BeCoMeCalculator:
         Returns:
             Sorted list of expert opinions (by ascending centroid)
         """
-        raise NotImplementedError("Sorting by centroid not yet implemented")
+        return sorted(opinions, key=lambda op: op.get_centroid())
