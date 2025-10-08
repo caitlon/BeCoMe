@@ -117,7 +117,7 @@ class BeCoMeCalculator:
 
             return FuzzyTriangleNumber(lower_bound=rho, peak=omega, upper_bound=sigma)
 
-    def calculate_compromise(self, opinions: list[ExpertOpinion]) -> BeCoMeResult:  # type: ignore
+    def calculate_compromise(self, opinions: list[ExpertOpinion]) -> "BeCoMeResult":  # type: ignore
         """
         Calculate the best compromise (GammaOmegaMean) from expert opinions.
 
