@@ -100,10 +100,22 @@ class BeCoMeCalculator:
 
             return FuzzyTriangleNumber(lower_bound=rho, peak=omega, upper_bound=sigma)
 
-        # Even number of experts: not yet implemented
-        raise NotImplementedError(
-            "Median calculation for even number of experts not yet implemented"
-        )
+        # Even number of experts: M = 2n
+        else:
+            # Find two middle elements at indices n-1 and n
+            n: int = m // 2
+            left_index: int = n - 1
+            right_index: int = n
+
+            left_opinion = sorted_opinions[left_index].opinion
+            right_opinion = sorted_opinions[right_index].opinion
+
+            # Average the two middle fuzzy numbers
+            rho = (left_opinion.lower_bound + right_opinion.lower_bound) / 2
+            omega = (left_opinion.peak + right_opinion.peak) / 2
+            sigma = (left_opinion.upper_bound + right_opinion.upper_bound) / 2
+
+            return FuzzyTriangleNumber(lower_bound=rho, peak=omega, upper_bound=sigma)
 
     def calculate_compromise(self, opinions: list[ExpertOpinion]) -> BeCoMeResult:  # type: ignore
         """
