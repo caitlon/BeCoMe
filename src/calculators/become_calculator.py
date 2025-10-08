@@ -4,11 +4,14 @@ BeCoMe (Best Compromise Mean) calculator.
 This module implements the BeCoMe method for aggregating expert opinions
 represented as fuzzy triangular numbers, as described in the article by Vrana et al.
 """
+# ignore ruff rule for mathematical symbols
+# ruff: noqa: RUF003
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from src.models.become_result import BeCoMeResult
 from src.models.fuzzy_number import FuzzyTriangleNumber
 
 if TYPE_CHECKING:
@@ -117,7 +120,7 @@ class BeCoMeCalculator:
 
             return FuzzyTriangleNumber(lower_bound=rho, peak=omega, upper_bound=sigma)
 
-    def calculate_compromise(self, opinions: list[ExpertOpinion]) -> "BeCoMeResult":  # type: ignore
+    def calculate_compromise(self, opinions: list[ExpertOpinion]) -> BeCoMeResult:
         """
         Calculate the best compromise (GammaOmegaMean) from expert opinions.
 
@@ -136,7 +139,47 @@ class BeCoMeCalculator:
         Raises:
             ValueError: If opinions list is empty
         """
-        raise NotImplementedError("Compromise calculation not yet implemented")
+        if not opinions:
+            raise ValueError("Cannot calculate compromise of empty opinions list")
+
+        # Step 1: Calculate arithmetic mean (Gamma)
+        arithmetic_mean: FuzzyTriangleNumber = self.calculate_arithmetic_mean(opinions)
+
+        # Step 2: Calculate statistical median (Omega)
+        median: FuzzyTriangleNumber = self.calculate_median(opinions)
+
+        # Step 3: Calculate best compromise (ΓΩMean)
+        # Formula from article (equations 11): π = (α + ρ)/2, φ = (γ + ω)/2, ξ = (β + σ)/2
+        pi: float = (arithmetic_mean.lower_bound + median.lower_bound) / 2
+        phi: float = (arithmetic_mean.peak + median.peak) / 2
+        xi: float = (arithmetic_mean.upper_bound + median.upper_bound) / 2
+
+        best_compromise: FuzzyTriangleNumber = FuzzyTriangleNumber(
+            lower_bound=pi, peak=phi, upper_bound=xi
+        )
+
+        # Step 4: Calculate maximum error (Δmax)
+        # Formula from article (equation 12): Δmax = |Γ - Ω| / 2
+        delta_max_lower: float = abs(arithmetic_mean.lower_bound - median.lower_bound) / 2
+        delta_max_peak: float = abs(arithmetic_mean.peak - median.peak) / 2
+        delta_max_upper: float = abs(arithmetic_mean.upper_bound - median.upper_bound) / 2
+
+        max_error: FuzzyTriangleNumber = FuzzyTriangleNumber(
+            lower_bound=delta_max_lower, peak=delta_max_peak, upper_bound=delta_max_upper
+        )
+
+        # Step 5: Create and return result
+        m: int = len(opinions)
+        is_even: bool = m % 2 == 0
+
+        return BeCoMeResult(
+            best_compromise=best_compromise,
+            arithmetic_mean=arithmetic_mean,
+            median=median,
+            max_error=max_error,
+            num_experts=m,
+            is_even=is_even,
+        )
 
     def _sort_by_centroid(self, opinions: list[ExpertOpinion]) -> list[ExpertOpinion]:
         """

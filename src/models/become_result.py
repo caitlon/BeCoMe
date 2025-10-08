@@ -5,7 +5,7 @@ This module provides the BeCoMeResult class for storing the complete
 results of a BeCoMe (Best Compromise Mean) calculation.
 """
 # ignore ruff rule for mathematical symbols
-# ruff: noqa: RUF001 
+# ruff: noqa: RUF001
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -71,4 +71,3 @@ class BeCoMeResult(BaseModel):
             f"  Median: {self.median}\n"
             f"  Max Error: {self.max_error}"
         )
-
