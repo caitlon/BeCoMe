@@ -7,16 +7,33 @@ on:
     branches: [main]
 
 jobs:
-  lint-and-test:
-    runs-on: ubuntu-latest
+  lint:
+    runs-on: ubuntu-24.04
     
     steps:
-      - uses: actions/checkout@v4
+      - name: Debug runner info
+        run: |
+          echo "Runner OS: $RUNNER_OS"
+          echo "Runner architecture: $(uname -m)"
+          echo "Available disk space:"
+          df -h
+          echo "Memory info:"
+          free -h
+      
+      - uses: actions/checkout@v5
       
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.13"
+      
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('pyproject.toml', 'uv.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
       
       - name: Install dependencies
         run: |
@@ -27,6 +44,36 @@ jobs:
       
       - name: Run mypy
         run: mypy src/
+
+  tests:
+    runs-on: ubuntu-24.04
+    needs: lint
+    
+    steps:
+      - uses: actions/checkout@v5
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('pyproject.toml', 'uv.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+      
+      - name: Install dependencies
+        run: |
+          pip install -e ".[dev]"
+      
+      - name: Debug Python environment
+        run: |
+          python --version
+          pip --version
+          pip list
       
       - name: Run tests
         run: pytest
