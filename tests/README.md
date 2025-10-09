@@ -71,23 +71,23 @@ pytest --cov=src --cov-report=term-missing --cov-branch tests/
 
 ## Current Coverage Status
 
-As of the last check, the project has **99% code coverage**!
+As of the last check, the project has **100% code coverage**! 🎉
 
 ```
-Name                                   Stmts   Miss  Cover
-----------------------------------------------------------
-src/__init__.py                            1      0   100%
-src/calculators/__init__.py                2      0   100%
-src/calculators/become_calculator.py      54      0   100%
-src/models/__init__.py                     4      0   100%
-src/models/become_result.py               12      1    92%
-src/models/expert_opinion.py              19      0   100%
-src/models/fuzzy_number.py                13      0   100%
-----------------------------------------------------------
-TOTAL                                    105      1    99%
+Name                                   Stmts   Miss Branch BrPart  Cover
+------------------------------------------------------------------------
+src/__init__.py                            1      0      0      0   100%
+src/calculators/__init__.py                2      0      0      0   100%
+src/calculators/become_calculator.py      54      0      8      0   100%
+src/models/__init__.py                     4      0      0      0   100%
+src/models/become_result.py               12      0      0      0   100%
+src/models/expert_opinion.py              19      0      2      0   100%
+src/models/fuzzy_number.py                13      0      2      0   100%
+------------------------------------------------------------------------
+TOTAL                                    105      0     12      0   100%
 ```
 
-All **61 tests** passing 
+All **67 tests** passing ✅ 
 
 ## Test Structure
 
@@ -96,7 +96,8 @@ Tests are organized into logical categories:
 ### Models (`tests/models/`)
 Unit tests for data models:
 - `test_fuzzy_number.py` - Tests for `FuzzyTriangleNumber` class 
-- `test_expert_opinion.py` - Tests for `ExpertOpinion` class 
+- `test_expert_opinion.py` - Tests for `ExpertOpinion` class
+- `test_become_result.py` - Tests for `BeCoMeResult` model 
 
 ### Calculators (`tests/calculators/`)
 Unit tests for calculation logic:
