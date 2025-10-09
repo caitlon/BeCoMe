@@ -21,15 +21,24 @@ pytest
 Run tests from a specific file:
 
 ```bash
-pytest tests/test_fuzzy_number.py
-pytest tests/test_expert_opinion.py
+pytest tests/models/test_fuzzy_number.py
+pytest tests/calculators/test_arithmetic_mean.py
+pytest tests/integration/test_excel_reference.py
+```
+
+Run all tests from a specific category:
+
+```bash
+pytest tests/models/
+pytest tests/calculators/
+pytest tests/integration/
 ```
 
 Run a specific test class or function:
 
 ```bash
-pytest tests/test_fuzzy_number.py::TestFuzzyTriangleNumberCreation
-pytest tests/test_expert_opinion.py::TestExpertOpinionComparison::test_less_than_comparison
+pytest tests/models/test_fuzzy_number.py::TestFuzzyTriangleNumberCreation
+pytest tests/models/test_expert_opinion.py::TestExpertOpinionComparison::test_less_than_comparison
 ```
 
 ### Verbose output
@@ -62,22 +71,45 @@ pytest --cov=src --cov-report=term-missing --cov-branch tests/
 
 ## Current Coverage Status
 
-As of the last check, the project has **100% code coverage** including branch coverage! 🎉
+As of the last check, the project has **99% code coverage**!
 
 ```
-Name                           Stmts   Miss Branch BrPart  Cover
-------------------------------------------------------------------
-src/__init__.py                    1      0      0      0   100%
-src/models/__init__.py             3      0      0      0   100%
-src/models/expert_opinion.py      19      0      2      0   100%
-src/models/fuzzy_number.py        13      0      2      0   100%
-------------------------------------------------------------------
-TOTAL                             36      0      4      0   100%
+Name                                   Stmts   Miss  Cover
+----------------------------------------------------------
+src/__init__.py                            1      0   100%
+src/calculators/__init__.py                2      0   100%
+src/calculators/become_calculator.py      54      0   100%
+src/models/__init__.py                     4      0   100%
+src/models/become_result.py               12      1    92%
+src/models/expert_opinion.py              19      0   100%
+src/models/fuzzy_number.py                13      0   100%
+----------------------------------------------------------
+TOTAL                                    105      1    99%
 ```
+
+All **61 tests** passing 
 
 ## Test Structure
 
-Tests are organized by module:
+Tests are organized into logical categories:
 
-- `test_fuzzy_number.py` - Tests for `FuzzyTriangleNumber` class
-- `test_expert_opinion.py` - Tests for `ExpertOpinion` class
+### Models (`tests/models/`)
+Unit tests for data models:
+- `test_fuzzy_number.py` - Tests for `FuzzyTriangleNumber` class 
+- `test_expert_opinion.py` - Tests for `ExpertOpinion` class 
+
+### Calculators (`tests/calculators/`)
+Unit tests for calculation logic:
+- `test_arithmetic_mean.py` - Tests for arithmetic mean calculation
+- `test_median.py` - Tests for median calculation
+- `test_compromise.py` - Tests for full BeCoMe compromise calculation
+
+### Integration (`tests/integration/`)
+Integration tests with reference data:
+- `test_excel_reference.py` - Tests against Excel reference implementation 
+
+### Reference Data (`tests/reference/`)
+Test case data from Excel reference:
+- `budget_case.py` - Budget allocation case
+- `pendlers_case.py` - Pendlers case (Likert scale)
+- `floods_case.py` - Floods case (13 experts)
