@@ -52,7 +52,7 @@ BeCoMe/
 │   │   └── become_result.py     # Result model
 │   └── calculators/         # Calculation logic
 │       └── become_calculator.py # Main BeCoMe calculator
-├── tests/                   # Test suite (99% coverage)
+├── tests/                   # Test suite (100% coverage)
 │   ├── models/             # Model tests
 │   ├── calculators/        # Calculator tests
 │   ├── integration/        # Integration tests
@@ -77,7 +77,7 @@ pytest tests/calculators/
 pytest tests/integration/
 ```
 
-Current test coverage: **99%** (61 tests passing)
+Current test coverage: **100%** (67 tests passing)
 
 ## Development
 
