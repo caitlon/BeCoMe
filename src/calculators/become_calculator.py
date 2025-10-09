@@ -160,13 +160,10 @@ class BeCoMeCalculator:
 
         # Step 4: Calculate maximum error (Δmax)
         # Formula from article (equation 12): Δmax = |Γ - Ω| / 2
-        delta_max_lower: float = abs(arithmetic_mean.lower_bound - median.lower_bound) / 2
-        delta_max_peak: float = abs(arithmetic_mean.peak - median.peak) / 2
-        delta_max_upper: float = abs(arithmetic_mean.upper_bound - median.upper_bound) / 2
-
-        max_error: FuzzyTriangleNumber = FuzzyTriangleNumber(
-            lower_bound=delta_max_lower, peak=delta_max_peak, upper_bound=delta_max_upper
-        )
+        # This is the distance between centroids of arithmetic mean and median
+        mean_centroid: float = arithmetic_mean.get_centroid()
+        median_centroid: float = median.get_centroid()
+        max_error: float = abs(mean_centroid - median_centroid) / 2
 
         # Step 5: Create and return result
         m: int = len(opinions)

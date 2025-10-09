@@ -24,7 +24,7 @@ class BeCoMeResult(BaseModel):
         best_compromise: Final result (ΓΩMean) - average of arithmetic mean and median
         arithmetic_mean: Arithmetic mean (Γ) of all expert opinions
         median: Statistical median (Ω) of all expert opinions
-        max_error: Maximum error (Δmax) - half the difference between mean and median
+        max_error: Maximum error (Δmax) - half the distance between centroids of mean and median
         num_experts: Number of expert opinions used in calculation
         is_even: Whether the number of experts was even (affects median calculation)
     """
@@ -41,9 +41,10 @@ class BeCoMeResult(BaseModel):
         ...,
         description="Statistical median (Ω): ρ, ω, σ",
     )
-    max_error: FuzzyTriangleNumber = Field(
+    max_error: float = Field(
         ...,
-        description="Maximum error (Δmax): |Γ - Ω| / 2 for each component",
+        ge=0.0,
+        description="Maximum error (Δmax): |centroid(Γ) - centroid(Ω)| / 2",
     )
     num_experts: int = Field(
         ...,
