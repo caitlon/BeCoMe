@@ -22,8 +22,16 @@ Run tests from a specific file:
 
 ```bash
 pytest tests/models/test_fuzzy_number.py
-pytest tests/calculators/test_become_calculator.py
+pytest tests/calculators/test_arithmetic_mean.py
 pytest tests/integration/test_excel_reference.py
+```
+
+Run all tests from a specific category:
+
+```bash
+pytest tests/models/
+pytest tests/calculators/
+pytest tests/integration/
 ```
 
 Run a specific test class or function:
@@ -92,7 +100,9 @@ Unit tests for data models:
 
 ### Calculators (`tests/calculators/`)
 Unit tests for calculation logic:
-- `test_become_calculator.py` - Tests for `BeCoMeCalculator` class
+- `test_arithmetic_mean.py` - Tests for arithmetic mean calculation
+- `test_median.py` - Tests for median calculation
+- `test_compromise.py` - Tests for full BeCoMe compromise calculation
 
 ### Integration (`tests/integration/`)
 Integration tests with reference data:
