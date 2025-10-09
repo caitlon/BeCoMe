@@ -6,6 +6,7 @@ dependencies = [
     "numpy==2.3.3",
     "pandas==2.3.3",
     "pydantic==2.11.9",
+    "openpyxl==3.1.5",
 ]
 
 [project.optional-dependencies]
@@ -32,6 +33,9 @@ select = [
     "B",      # flake8-bugbear
     "SIM",    # flake8-simplify
     "RUF",    # ruff-specific rules
+]
+ignore = [
+    "E501",   # line too long (handled by formatter)
 ]
 
 [tool.ruff.format]
