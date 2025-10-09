@@ -264,4 +264,3 @@ class TestBeCoMeCalculatorMedian:
         assert result.lower_bound == 7.0
         assert result.peak == 8.0
         assert result.upper_bound == 9.0
-

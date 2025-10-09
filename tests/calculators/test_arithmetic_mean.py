@@ -179,4 +179,3 @@ class TestBeCoMeCalculatorArithmeticMean:
         assert result.lower_bound == 15.0  # (10 + 20) / 2
         assert result.peak == 20.0  # (10 + 30) / 2
         assert result.upper_bound == 25.0  # (10 + 40) / 2
-
