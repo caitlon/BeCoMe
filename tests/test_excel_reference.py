@@ -8,7 +8,7 @@ the Excel reference implementation within acceptable tolerance.
 import pytest
 
 from src.calculators.become_calculator import BeCoMeCalculator
-from tests.data.excel_cases import BUDGET_CASE, PENDLERS_CASE
+from tests.data.excel_cases import BUDGET_CASE, FLOODS_CASE, PENDLERS_CASE
 
 
 class TestExcelIntegration:
@@ -111,8 +111,68 @@ class TestExcelIntegration:
         # Check that number of experts matches
         assert result.num_experts == expected["num_experts"]
 
+    def test_floods_case(self):
+        """Test BeCoMe with the Floods case from Excel (real case with 13 experts)."""
+        # Arrange
+        calculator = BeCoMeCalculator()
+        expected = FLOODS_CASE["expected_result"]
+
+        # Act
+        result = calculator.calculate_compromise(FLOODS_CASE["opinions"])
+
+        # Assert - Best compromise fuzzy number components
+        assert (
+            abs(result.best_compromise.lower_bound - expected["best_compromise_lower"]) < 0.001
+        ), (
+            f"Best compromise lower mismatch: got {result.best_compromise.lower_bound}, "
+            f"expected {expected['best_compromise_lower']}"
+        )
+        assert abs(result.best_compromise.peak - expected["best_compromise_peak"]) < 0.001, (
+            f"Best compromise peak mismatch: got {result.best_compromise.peak}, "
+            f"expected {expected['best_compromise_peak']}"
+        )
+        assert (
+            abs(result.best_compromise.upper_bound - expected["best_compromise_upper"]) < 0.001
+        ), (
+            f"Best compromise upper mismatch: got {result.best_compromise.upper_bound}, "
+            f"expected {expected['best_compromise_upper']}"
+        )
+
+        # Check centroid matches Excel display value
+        result_centroid = result.best_compromise.get_centroid()
+        assert abs(result_centroid - expected["best_compromise_centroid"]) < 0.01, (
+            f"Best compromise centroid mismatch: got {result_centroid}, "
+            f"expected {expected['best_compromise_centroid']}"
+        )
+
+        # Arithmetic mean fuzzy number
+        assert abs(result.arithmetic_mean.lower_bound - expected["mean_lower"]) < 0.001
+        assert abs(result.arithmetic_mean.peak - expected["mean_peak"]) < 0.001
+        assert abs(result.arithmetic_mean.upper_bound - expected["mean_upper"]) < 0.001
+
+        # Median fuzzy number
+        assert abs(result.median.lower_bound - expected["median_lower"]) < 0.001
+        assert abs(result.median.peak - expected["median_peak"]) < 0.001
+        assert abs(result.median.upper_bound - expected["median_upper"]) < 0.001
+
+        # Max error (scalar)
+        assert abs(result.max_error - expected["max_error"]) < 0.01, (
+            f"Max error mismatch: got {result.max_error}, expected {expected['max_error']}"
+        )
+
+        # Expert count should match exactly
+        assert result.num_experts == expected["num_experts"]
+
+        # This is an odd number case (13 experts)
+        assert result.is_even is False
+
     @pytest.mark.parametrize(
-        "case_name,case_data", [("BUDGET_CASE", BUDGET_CASE), ("PENDLERS_CASE", PENDLERS_CASE)]
+        "case_name,case_data",
+        [
+            ("BUDGET_CASE", BUDGET_CASE),
+            ("PENDLERS_CASE", PENDLERS_CASE),
+            ("FLOODS_CASE", FLOODS_CASE),
+        ],
     )
     def test_all_excel_cases(self, case_name, case_data):
         """Test all Excel cases with parametrized test."""
