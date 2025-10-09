@@ -269,4 +269,3 @@ class TestBeCoMeCalculatorCompromise:
         expected_error = abs(mean_centroid - median_centroid) / 2
 
         assert abs(result.max_error - expected_error) < 1e-10
-
