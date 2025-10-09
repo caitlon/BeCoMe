@@ -8,7 +8,7 @@ the Excel reference implementation within acceptable tolerance.
 import pytest
 
 from src.calculators.become_calculator import BeCoMeCalculator
-from tests.data import BUDGET_CASE, FLOODS_CASE, PENDLERS_CASE
+from tests.reference import BUDGET_CASE, FLOODS_CASE, PENDLERS_CASE
 
 
 class TestExcelIntegration:
