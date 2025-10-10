@@ -1,5 +1,11 @@
 # BeCoMe Method Implementation
 
+![Python](https://img.shields.io/badge/python-3.13+-blue.svg)
+![Tests](https://img.shields.io/badge/tests-77%20passed-brightgreen)
+![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)
+![Type Safety](https://img.shields.io/badge/mypy-100%25-blue)
+![Code Style](https://img.shields.io/badge/code%20style-ruff-black)
+
 Python implementation of the BeCoMe (Best Compromise Mean) method for group decision-making support under fuzzy uncertainty.
 
 ## Project Status
@@ -17,11 +23,25 @@ Python implementation of the BeCoMe (Best Compromise Mean) method for group deci
 
 BeCoMe is a method for aggregating expert opinions expressed as fuzzy triangular numbers to find the optimal compromise solution. The method combines arithmetic mean and statistical median to produce a robust consensus estimate.
 
+### Fuzzy Triangular Number Representation
+
+```
+  μ(x)
+    1 |        /\
+      |       /  \
+      |      /    \
+      |     /      \
+    0 |____/________\____
+         A    C    B      x
+```
+
+Where **A** = lower bound, **C** = peak (most likely), **B** = upper bound
+
 **Key features:**
-- Arithmetic mean calculation (Gamma)
-- Statistical median calculation (Omega)
-- Best compromise calculation (GammaOmegaMean)
-- Maximum error estimation
+- Arithmetic mean calculation (Gamma Γ)
+- Statistical median calculation (Omega Ω)
+- Best compromise calculation (ΓΩMean)
+- Maximum error estimation (Δmax)
 - Support for both odd and even number of experts
 
 ## Installation
@@ -89,6 +109,14 @@ print(f"Best Compromise: {result.best_compromise}")
 print(f"Max Error: {result.max_error}")
 ```
 
+## Architecture
+
+### Class Diagram
+
+![Class Diagram](docs/uml-diagrams/class-diagram.png)
+
+*Complete architecture with sequence and activity diagrams available in [UML Documentation](docs/uml-diagrams.md)*
+
 ## Project Structure
 
 ```
@@ -111,8 +139,12 @@ BeCoMe/
 │   ├── analyze_budget_case.py    # Budget support analysis
 │   ├── analyze_floods_case.py    # Flood prevention analysis
 │   └── analyze_pendlers_case.py  # Cross-border travel analysis
-├── scripts/                # Utility scripts
-├── docs/                   # Documentation
+├── docs/                   # Comprehensive documentation
+│   ├── method-description.md    # Mathematical foundation
+│   ├── api-reference.md         # Complete API docs
+│   ├── architecture.md          # Design decisions
+│   ├── uml-diagrams.md          # Visual architecture
+│   └── quality-report.md        # Quality metrics
 └── supplementary/          # Reference materials and Excel implementation
 ```
 
