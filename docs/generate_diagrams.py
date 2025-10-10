@@ -23,7 +23,7 @@ def generate_diagram(puml_file: Path, output_file: Path) -> None:
     print(f"Generating {output_file.name} from {puml_file.name}...")
 
     # Create PlantUML server connection
-    server = plantuml.PlantUML(url='http://www.plantuml.com/plantuml/img/')
+    server = plantuml.PlantUML(url="http://www.plantuml.com/plantuml/img/")
 
     # Generate PNG
     server.processes_file(filename=str(puml_file), outfile=str(output_file))
@@ -64,4 +64,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
