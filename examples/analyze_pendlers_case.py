@@ -129,7 +129,7 @@ def main() -> None:
 
     print(f"\nMean centroid (Gx): {mean_centroid:.2f}")
     print(f"Median centroid (Gx): {median_centroid:.2f}")
-    print(f"Δmax = |{mean_centroid:.2f} - {median_centroid:.2f}| / 2 = {max_error:.4f}")
+    print(f"Δmax = |{mean_centroid:.2f} - {median_centroid:.2f}| / 2 = {max_error:.2f}")
 
     # STEP 5: Final Result
     print_section("FINAL RESULT")
@@ -143,7 +143,7 @@ def main() -> None:
 
     print(f"\nBest compromise estimate: {best_compromise_centroid:.2f} (centroid)")
     print(f"Fuzzy number: ({pi:.2f}, {phi:.2f}, {xi:.2f})")
-    print(f"Precision indicator (Δmax): {max_error:.4f}")
+    print(f"Precision indicator (Δmax): {max_error:.2f}")
 
     if max_error < 5.0:
         agreement: str = "good"
