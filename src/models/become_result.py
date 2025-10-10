@@ -70,5 +70,5 @@ class BeCoMeResult(BaseModel):
             f"  Best Compromise: {self.best_compromise}\n"
             f"  Arithmetic Mean: {self.arithmetic_mean}\n"
             f"  Median: {self.median}\n"
-            f"  Max Error: {self.max_error}"
+            f"  Max Error: {self.max_error:.2f}"
         )

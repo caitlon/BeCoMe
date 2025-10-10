@@ -116,7 +116,7 @@ class TestFuzzyTriangleNumberStringRepresentation:
         """Test __str__ method."""
         fuzzy = FuzzyTriangleNumber(lower_bound=5.0, peak=10.0, upper_bound=15.0)
 
-        assert str(fuzzy) == "(5.0, 10.0, 15.0)"
+        assert str(fuzzy) == "(5.00, 10.00, 15.00)"
 
     def test_repr_representation(self):
         """Test __repr__ method."""

@@ -57,7 +57,7 @@ class FuzzyTriangleNumber:
 
     def __str__(self) -> str:
         """Return human-readable string representation."""
-        return f"({self.lower_bound}, {self.peak}, {self.upper_bound})"
+        return f"({self.lower_bound:.2f}, {self.peak:.2f}, {self.upper_bound:.2f})"
 
     def get_centroid(self) -> float:
         """
