@@ -31,10 +31,6 @@ def main() -> None:
     print(f"Description: {metadata['description']}")
     print(f"Number of experts: {len(opinions)} ({'even' if len(opinions) % 2 == 0 else 'odd'})")
 
-    print("\nAll expert opinions:")
-    for i, opinion in enumerate(opinions, 1):
-        print(f"  {i}. {opinion.expert_id}: {opinion.opinion}")
-
     # Create calculator
     calculator = BeCoMeCalculator()
 
@@ -68,13 +64,8 @@ def main() -> None:
     # STEP 2: Calculate Median (Omega)
     print_section("STEP 2: Median (Omega)")
 
-    print("\nSorting experts by centroid:")
+    print("\nSorting experts by centroid...")
     sorted_opinions: list[ExpertOpinion] = calculator._sort_by_centroid(opinions)
-
-    print("\nAll experts sorted by centroid:")
-    for i, op in enumerate(sorted_opinions, 1):
-        centroid: float = op.opinion.get_centroid()
-        print(f"  {i}. {op.expert_id}: {op.opinion} → centroid: {centroid:.2f}")
 
     # Show median calculation
     print(f"\nNumber of experts is {'EVEN' if m % 2 == 0 else 'ODD'} (M={m})")
@@ -161,9 +152,9 @@ def main() -> None:
     print(
         f"\n✓ Best compromise estimate: {best_compromise_centroid:.2f}% reduction of arable land (centroid)"
     )
-    print(f"✓ Fuzzy number: ({pi:.2f}, {phi:.2f}, {xi:.2f})")
-    print(f"✓ Range: [{pi:.2f}%, {xi:.2f}%]")
-    print(f"✓ Precision indicator (Δmax): {max_error:.4f}")
+    print(f"Fuzzy number: ({pi:.2f}, {phi:.2f}, {xi:.2f})")
+    print(f"Range: [{pi:.2f}%, {xi:.2f}%]")
+    print(f"Precision indicator (Δmax): {max_error:.4f}")
 
     if max_error < 1.0:
         agreement: str = "good"
@@ -172,7 +163,7 @@ def main() -> None:
     else:
         agreement = "low"
 
-    print(f"✓ Expert agreement: {agreement.upper()}")
+    print(f"Expert agreement: {agreement.upper()}")
 
     print("\nNOTE: This case shows highly polarized opinions:")
     print("  - Land owners prefer minimal reduction (0-4%)")
