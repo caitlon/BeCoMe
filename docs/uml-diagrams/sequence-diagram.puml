@@ -1,0 +1,158 @@
+@startuml BeCoMe-Sequence-Diagram
+
+' Style configuration
+skinparam sequenceMessageAlign center
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontSize 12
+
+' Title
+title BeCoMe Calculation - Sequence Diagram
+
+' Actors and participants
+actor User
+participant "BeCoMeCalculator" as Calculator
+participant "ExpertOpinion" as Opinion
+participant "FuzzyTriangleNumber" as Fuzzy
+participant "BeCoMeResult" as Result
+
+' Main flow
+User -> Calculator: calculate_compromise(opinions)
+activate Calculator
+
+' Step 1: Calculate Arithmetic Mean
+Calculator -> Calculator: calculate_arithmetic_mean(opinions)
+activate Calculator #FFBBBB
+
+loop for each opinion in opinions
+    Calculator -> Opinion: get opinion.lower_bound
+    activate Opinion
+    Opinion -> Fuzzy: lower_bound
+    activate Fuzzy
+    return value
+    return value
+    
+    Calculator -> Opinion: get opinion.peak
+    activate Opinion
+    Opinion -> Fuzzy: peak
+    activate Fuzzy
+    return value
+    return value
+    
+    Calculator -> Opinion: get opinion.upper_bound
+    activate Opinion
+    Opinion -> Fuzzy: upper_bound
+    activate Fuzzy
+    return value
+    return value
+end
+
+Calculator -> Calculator: α = sum(lower_bounds) / M\nγ = sum(peaks) / M\nβ = sum(upper_bounds) / M
+
+Calculator -> Fuzzy: new FuzzyTriangleNumber(α, γ, β)
+activate Fuzzy
+return arithmetic_mean (Γ)
+
+deactivate Calculator
+
+' Step 2: Calculate Median
+Calculator -> Calculator: calculate_median(opinions)
+activate Calculator #BBFFBB
+
+Calculator -> Calculator: _sort_by_centroid(opinions)
+activate Calculator #DDFFDD
+
+loop for each opinion in opinions
+    Calculator -> Opinion: get_centroid()
+    activate Opinion
+    Opinion -> Fuzzy: get_centroid()
+    activate Fuzzy
+    Fuzzy -> Fuzzy: (lower + peak + upper) / 3
+    return centroid
+    return centroid
+end
+
+Calculator -> Calculator: sorted_opinions = sorted(opinions)
+deactivate Calculator
+
+alt M is odd (M = 2n + 1)
+    Calculator -> Calculator: middle_index = M // 2
+    Calculator -> Opinion: get sorted_opinions[middle_index]
+    activate Opinion
+    Opinion -> Fuzzy: get opinion
+    activate Fuzzy
+    return fuzzy_number
+    return fuzzy_number
+    
+    Calculator -> Fuzzy: new FuzzyTriangleNumber(ρ, ω, σ)
+    activate Fuzzy
+    return median (Ω)
+    
+else M is even (M = 2n)
+    Calculator -> Calculator: left_index = n - 1\nright_index = n
+    
+    Calculator -> Opinion: get sorted_opinions[left_index]
+    activate Opinion
+    Opinion -> Fuzzy: get opinion
+    activate Fuzzy
+    return left_fuzzy
+    return left_fuzzy
+    
+    Calculator -> Opinion: get sorted_opinions[right_index]
+    activate Opinion
+    Opinion -> Fuzzy: get opinion
+    activate Fuzzy
+    return right_fuzzy
+    return right_fuzzy
+    
+    Calculator -> Calculator: ρ = (left.lower + right.lower) / 2\nω = (left.peak + right.peak) / 2\nσ = (left.upper + right.upper) / 2
+    
+    Calculator -> Fuzzy: new FuzzyTriangleNumber(ρ, ω, σ)
+    activate Fuzzy
+    return median (Ω)
+end
+
+deactivate Calculator
+
+' Step 3: Calculate Best Compromise
+Calculator -> Calculator: π = (α + ρ) / 2\nφ = (γ + ω) / 2\nξ = (β + σ) / 2
+
+Calculator -> Fuzzy: new FuzzyTriangleNumber(π, φ, ξ)
+activate Fuzzy
+return best_compromise (ΓΩMean)
+
+' Step 4: Calculate Maximum Error
+Calculator -> Fuzzy: arithmetic_mean.get_centroid()
+activate Fuzzy
+return mean_centroid
+
+Calculator -> Fuzzy: median.get_centroid()
+activate Fuzzy
+return median_centroid
+
+Calculator -> Calculator: max_error = |mean_centroid - median_centroid| / 2
+
+' Step 5: Create Result
+Calculator -> Result: new BeCoMeResult(\n    best_compromise,\n    arithmetic_mean,\n    median,\n    max_error,\n    num_experts,\n    is_even\n)
+activate Result
+return result
+
+Calculator --> User: return BeCoMeResult
+deactivate Calculator
+
+' Legend
+legend bottom right
+    **Steps:**
+    1. Calculate Arithmetic Mean (Γ)
+    2. Calculate Median (Ω)
+    3. Calculate Best Compromise (ΓΩMean)
+    4. Calculate Maximum Error (Δmax)
+    5. Create Result Object
+    
+    **Colors:**
+    Red: Arithmetic Mean calculation
+    Green: Median calculation
+endlegend
+
+@enduml
+

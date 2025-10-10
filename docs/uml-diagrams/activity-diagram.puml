@@ -1,0 +1,125 @@
+@startuml BeCoMe-Activity-Diagram
+
+' Style configuration
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontSize 12
+skinparam activityBorderColor #333333
+skinparam activityBackgroundColor #F0F0F0
+
+' Title
+title BeCoMe Algorithm - Activity Diagram
+
+start
+
+:Receive list of expert opinions;
+note right
+    Input: List[ExpertOpinion]
+    Each opinion contains:
+    - expert_id
+    - FuzzyTriangleNumber(lower, peak, upper)
+end note
+
+' Validation
+if (opinions list is empty?) then (yes)
+    :Raise ValueError;
+    stop
+else (no)
+    :M = number of experts;
+endif
+
+' === STEP 1: Arithmetic Mean ===
+partition "**Step 1: Calculate Arithmetic Mean (Γ)**" #FFDDDD {
+    :Initialize sums:\n- sum_lower = 0\n- sum_peak = 0\n- sum_upper = 0;
+    
+    repeat :For each opinion in opinions;
+        :sum_lower += opinion.lower_bound;
+        :sum_peak += opinion.peak;
+        :sum_upper += opinion.upper_bound;
+    repeat while (more opinions?) is (yes)
+    ->no;
+    
+    :Calculate averages:\n- α = sum_lower / M\n- γ = sum_peak / M\n- β = sum_upper / M;
+    
+    :Create Gamma (Γ):\nFuzzyTriangleNumber(α, γ, β);
+}
+
+' === STEP 2: Median ===
+partition "**Step 2: Calculate Median (Ω)**" #DDFFDD {
+    ' Sort by centroid
+    :Calculate centroid for each opinion:\nGx = (lower + peak + upper) / 3;
+    
+    :Sort opinions by centroid values\n(ascending order);
+    
+    ' Check if odd or even
+    if (M is odd?\nM = 2n + 1) then (yes)
+        :Find middle index:\nmiddle_index = M // 2;
+        
+        :Get middle opinion:\nopinion_middle = sorted_opinions[middle_index];
+        
+        :Extract components:\n- ρ = opinion_middle.lower_bound\n- ω = opinion_middle.peak\n- σ = opinion_middle.upper_bound;
+        
+    else (no, M is even\nM = 2n)
+        :Find two middle indices:\n- left_index = n - 1\n- right_index = n;
+        
+        :Get two middle opinions:\n- opinion_left = sorted_opinions[left_index]\n- opinion_right = sorted_opinions[right_index];
+        
+        :Average the two opinions:\n- ρ = (left.lower + right.lower) / 2\n- ω = (left.peak + right.peak) / 2\n- σ = (left.upper + right.upper) / 2;
+    endif
+    
+    :Create Omega (Ω):\nFuzzyTriangleNumber(ρ, ω, σ);
+}
+
+' === STEP 3: Best Compromise ===
+partition "**Step 3: Calculate Best Compromise (ΓΩMean)**" #DDDDFF {
+    :Calculate compromise:\n- π = (α + ρ) / 2\n- φ = (γ + ω) / 2\n- ξ = (β + σ) / 2;
+    
+    :Create ΓΩMean:\nFuzzyTriangleNumber(π, φ, ξ);
+}
+
+' === STEP 4: Maximum Error ===
+partition "**Step 4: Calculate Maximum Error (Δmax)**" #FFFFDD {
+    :Calculate centroids:\n- mean_centroid = Γ.get_centroid()\n- median_centroid = Ω.get_centroid();
+    
+    :Calculate max error:\nΔmax = |mean_centroid - median_centroid| / 2;
+    
+    note right
+        Δmax is the precision indicator.
+        Smaller values indicate
+        higher agreement among experts.
+    end note
+}
+
+' === STEP 5: Create Result ===
+:Create BeCoMeResult:\n- best_compromise = ΓΩMean\n- arithmetic_mean = Γ\n- median = Ω\n- max_error = Δmax\n- num_experts = M\n- is_even = (M % 2 == 0);
+
+:Return BeCoMeResult;
+
+stop
+
+' Legend
+legend bottom right
+    **Key Formulas:**
+    
+    **Arithmetic Mean (Γ):**
+    α = (1/M) × Σ(Aₖ)
+    γ = (1/M) × Σ(Cₖ)
+    β = (1/M) × Σ(Bₖ)
+    
+    **Best Compromise (ΓΩMean):**
+    π = (α + ρ) / 2
+    φ = (γ + ω) / 2
+    ξ = (β + σ) / 2
+    
+    **Maximum Error:**
+    Δmax = |centroid(Γ) - centroid(Ω)| / 2
+    
+    **Colors:**
+    Red: Arithmetic Mean
+    Green: Median
+    Blue: Best Compromise
+    Yellow: Error Calculation
+endlegend
+
+@enduml
+
