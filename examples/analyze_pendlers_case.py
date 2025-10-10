@@ -38,23 +38,6 @@ def main() -> None:
     print("  75  = Rather agree")
     print("  100 = Strongly agree")
 
-    print("\nAll expert opinions (Likert scale values):")
-    for i, opinion in enumerate(opinions, 1):
-        # For Likert scale, all three values are the same (crisp)
-        value: float = opinion.opinion.peak
-        print(f"  {i}. {opinion.expert_id}: {int(value)}")
-
-    # Count distribution
-    likert_counts: dict[int, int] = {}
-    for op in opinions:
-        value = int(op.opinion.peak)
-        likert_counts[value] = likert_counts.get(value, 0) + 1
-
-    print("\nDistribution of responses:")
-    for value in sorted(likert_counts.keys()):
-        count: int = likert_counts[value]
-        print(f"  {value:3d}: {'█' * count} ({count} experts)")
-
     # Create calculator
     calculator = BeCoMeCalculator()
 
@@ -80,14 +63,8 @@ def main() -> None:
     # STEP 2: Calculate Median (Omega)
     print_section("STEP 2: Median (Omega)")
 
-    print("\nSorting experts by value (centroid):")
+    print("\nSorting experts by value (centroid)...")
     sorted_opinions: list[ExpertOpinion] = calculator._sort_by_centroid(opinions)
-
-    # Show sorted values grouped
-    print("\nSorted Likert values:")
-    for i, op in enumerate(sorted_opinions, 1):
-        value = int(op.opinion.peak)
-        print(f"  {i:2d}. {value:3d} - {op.expert_id}")
 
     # Show median calculation
     print(f"\nNumber of experts is {'EVEN' if m % 2 == 0 else 'ODD'} (M={m})")
@@ -164,9 +141,9 @@ def main() -> None:
     # Interpretation
     print_header("INTERPRETATION")
 
-    print(f"\n✓ Best compromise estimate: {best_compromise_centroid:.2f} (centroid)")
-    print(f"✓ Fuzzy number: ({pi:.2f}, {phi:.2f}, {xi:.2f})")
-    print(f"✓ Precision indicator (Δmax): {max_error:.4f}")
+    print(f"\nBest compromise estimate: {best_compromise_centroid:.2f} (centroid)")
+    print(f"Fuzzy number: ({pi:.2f}, {phi:.2f}, {xi:.2f})")
+    print(f"Precision indicator (Δmax): {max_error:.4f}")
 
     if max_error < 5.0:
         agreement: str = "good"
@@ -175,14 +152,14 @@ def main() -> None:
     else:
         agreement = "low"
 
-    print(f"✓ Expert agreement: {agreement.upper()}")
+    print(f"Expert agreement: {agreement.upper()}")
 
     # Decision interpretation (based on centroid, not peak)
     closest_likert_centroid: int = min(
         likert_values, key=lambda x: abs(x - best_compromise_centroid)
     )
 
-    print(f"✓ Closest Likert value: {closest_likert_centroid}")
+    print(f"Closest Likert value: {closest_likert_centroid}")
 
     if closest_likert_centroid == 0:
         decision = "STRONGLY DISAGREE - Cross-border travel should NOT be allowed"
@@ -195,7 +172,7 @@ def main() -> None:
     else:  # 100
         decision = "STRONGLY AGREE - Cross-border travel should be allowed"
 
-    print(f"\n✓ DECISION (based on centroid {best_compromise_centroid:.2f}): {decision}")
+    print(f"\nDECISION (based on centroid {best_compromise_centroid:.2f}): {decision}")
 
     print(f"\nThe consensus among experts is '{decision.split('-')[0].strip()}'.")
     print("Based on the Likert scale interpretation, the recommendation is:")
