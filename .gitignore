@@ -11,32 +11,22 @@ dist/
 .eggs/
 *.egg
 
-# Virtual environments
+# Virtual environment
 .venv/
-venv/
-env/
-ENV/
 
 # Testing and coverage
 .pytest_cache/
 .coverage
-.coverage.*
 htmlcov/
-.hypothesis/
 
 # Type checking
 .mypy_cache/
-.dmypy.json
-dmypy.json
 
 # Linting
 .ruff_cache/
 
 # macOS system files
 .DS_Store
-.AppleDouble
-.LSOverride
-._*
 
 # Thesis workspace (excluded from main repo)
 /supplementary/
