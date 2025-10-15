@@ -14,6 +14,7 @@ from pathlib import Path
 from examples.utils import load_data_from_txt, print_header, print_section
 from src.calculators.become_calculator import BeCoMeCalculator
 from src.models.expert_opinion import ExpertOpinion
+from src.models.fuzzy_number import FuzzyTriangleNumber
 
 
 def main() -> None:
@@ -40,22 +41,25 @@ def main() -> None:
     print("\nFormula: α = (1/M) × Σ(Ak), γ = (1/M) × Σ(Ck), β = (1/M) × Σ(Bk)")
     print("Where: α = lower bound, γ = peak, β = upper bound")
 
-    sum_lower: float = sum(op.opinion.lower_bound for op in opinions)
-    sum_peak: float = sum(op.opinion.peak for op in opinions)
-    sum_upper: float = sum(op.opinion.upper_bound for op in opinions)
+    # Use calculator method instead of manual calculation
+    mean = calculator.calculate_arithmetic_mean(opinions)
     m: int = len(opinions)
+
+    # Calculate sums for display purposes (derived from mean)
+    sum_lower: float = mean.lower_bound * m
+    sum_peak: float = mean.peak * m
+    sum_upper: float = mean.upper_bound * m
 
     print(f"\nSum of lower bounds: {sum_lower}")
     print(f"Sum of peaks: {sum_peak}")
     print(f"Sum of upper bounds: {sum_upper}")
-
-    mean = calculator.calculate_arithmetic_mean(opinions)
 
     print(f"\nArithmetic Mean: Γ({mean.lower_bound:.2f}, {mean.peak:.2f}, {mean.upper_bound:.2f})")
     print(f"  α (lower) = {sum_lower} / {m} = {mean.lower_bound:.2f}")
     print(f"  γ (peak) = {sum_peak} / {m} = {mean.peak:.2f}")
     print(f"  β (upper) = {sum_upper} / {m} = {mean.upper_bound:.2f}")
 
+    # Use the built-in centroid method
     mean_centroid: float = mean.get_centroid()
     print(
         f"\nMean centroid: ({mean.lower_bound:.2f} + {mean.peak:.2f} + {mean.upper_bound:.2f}) / 3 = {mean_centroid:.2f}"
@@ -109,6 +113,7 @@ def main() -> None:
             f"  σ (upper) = ({left_op.opinion.upper_bound} + {right_op.opinion.upper_bound}) / 2 = {median.upper_bound:.2f}"
         )
 
+    # Use the built-in centroid method
     median_centroid: float = median.get_centroid()
     print(
         f"\nMedian centroid: ({median.lower_bound:.2f} + {median.peak:.2f} + {median.upper_bound:.2f}) / 3 = {median_centroid:.2f}"
@@ -127,7 +132,11 @@ def main() -> None:
     print(f"φ (peak) = ({mean.peak:.2f} + {median.peak:.2f}) / 2 = {phi:.2f}")
     print(f"ξ (upper) = ({mean.upper_bound:.2f} + {median.upper_bound:.2f}) / 2 = {xi:.2f}")
 
-    best_compromise_centroid: float = (pi + phi + xi) / 3
+    # Create best compromise object
+    best_compromise = FuzzyTriangleNumber(lower_bound=pi, peak=phi, upper_bound=xi)
+
+    # Use the built-in centroid method
+    best_compromise_centroid: float = best_compromise.get_centroid()
     print(f"\nBest Compromise: ΓΩMean({pi:.2f}, {phi:.2f}, {xi:.2f})")
     print(
         f"Best compromise centroid: ({pi:.2f} + {phi:.2f} + {xi:.2f}) / 3 = {best_compromise_centroid:.2f}"
@@ -160,12 +169,9 @@ def main() -> None:
     print(f"Range: [{pi:.2f}, {xi:.2f}] billion CZK")
     print(f"Precision indicator (Δmax): {max_error:.2f}")
 
-    if max_error < 1.0:
-        agreement: str = "good"
-    elif max_error < 3.0:
-        agreement = "moderate"
-    else:
-        agreement = "low"
+    # Determine agreement level based on max_error thresholds
+    agreement_levels = [(1.0, "good"), (3.0, "moderate"), (float("inf"), "low")]
+    agreement: str = next(level for threshold, level in agreement_levels if max_error < threshold)
 
     print(f"Expert agreement: {agreement.upper()}")
     print(
