@@ -9,6 +9,7 @@ represented as fuzzy triangular numbers, as described in the article by Vrana et
 
 from __future__ import annotations
 
+import statistics
 from typing import TYPE_CHECKING
 
 from src.models.become_result import BeCoMeResult
@@ -52,17 +53,10 @@ class BeCoMeCalculator:
         if not opinions:
             raise ValueError("Cannot calculate arithmetic mean of empty opinions list")
 
-        m: int = len(opinions)
-
-        # Calculate sum of each component across all expert opinions
-        sum_lower: float = sum(op.opinion.lower_bound for op in opinions)
-        sum_peak: float = sum(op.opinion.peak for op in opinions)
-        sum_upper: float = sum(op.opinion.upper_bound for op in opinions)
-
         # Calculate arithmetic mean for each component
-        alpha: float = sum_lower / m
-        gamma: float = sum_peak / m
-        beta: float = sum_upper / m
+        alpha: float = statistics.mean(op.opinion.lower_bound for op in opinions)
+        gamma: float = statistics.mean(op.opinion.peak for op in opinions)
+        beta: float = statistics.mean(op.opinion.upper_bound for op in opinions)
 
         return FuzzyTriangleNumber(lower_bound=alpha, peak=gamma, upper_bound=beta)
 
@@ -90,35 +84,36 @@ class BeCoMeCalculator:
         sorted_opinions: list[ExpertOpinion] = self._sort_by_centroid(opinions)
         m: int = len(sorted_opinions)
 
-        # Odd number of experts: M = 2n + 1
-        if m % 2 == 1:
-            # Find middle element
-            middle_index: int = m // 2
-            middle_opinion = sorted_opinions[middle_index].opinion
+        # Use statistics.median for centroid values
+        centroids = [op.get_centroid() for op in sorted_opinions]
+        median_centroid = statistics.median(centroids)
 
-            # Median is the middle fuzzy number
-            rho: float = middle_opinion.lower_bound
-            omega: float = middle_opinion.peak
-            sigma: float = middle_opinion.upper_bound
+        # Find the opinion with median centroid
+        median_opinion = min(
+            sorted_opinions, key=lambda op: abs(op.get_centroid() - median_centroid)
+        )
+
+        # For even number of experts, average with the next closest opinion
+        if m % 2 == 0:
+            # Find the second closest opinion to median centroid
+            remaining_opinions = [op for op in sorted_opinions if op != median_opinion]
+            second_median_opinion = min(
+                remaining_opinions, key=lambda op: abs(op.get_centroid() - median_centroid)
+            )
+
+            # Average the two median opinions
+            rho = (
+                median_opinion.opinion.lower_bound + second_median_opinion.opinion.lower_bound
+            ) / 2
+            omega = (median_opinion.opinion.peak + second_median_opinion.opinion.peak) / 2
+            sigma = (
+                median_opinion.opinion.upper_bound + second_median_opinion.opinion.upper_bound
+            ) / 2
 
             return FuzzyTriangleNumber(lower_bound=rho, peak=omega, upper_bound=sigma)
-
-        # Even number of experts: M = 2n
         else:
-            # Find two middle elements at indices n-1 and n
-            n: int = m // 2
-            left_index: int = n - 1
-            right_index: int = n
-
-            left_opinion = sorted_opinions[left_index].opinion
-            right_opinion = sorted_opinions[right_index].opinion
-
-            # Average the two middle fuzzy numbers
-            rho = (left_opinion.lower_bound + right_opinion.lower_bound) / 2
-            omega = (left_opinion.peak + right_opinion.peak) / 2
-            sigma = (left_opinion.upper_bound + right_opinion.upper_bound) / 2
-
-            return FuzzyTriangleNumber(lower_bound=rho, peak=omega, upper_bound=sigma)
+            # For odd number, use the median opinion directly
+            return median_opinion.opinion
 
     def calculate_compromise(self, opinions: list[ExpertOpinion]) -> BeCoMeResult:
         """
