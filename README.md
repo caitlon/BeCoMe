@@ -163,7 +163,7 @@ pytest tests/calculators/
 pytest tests/integration/
 ```
 
-Current test coverage: **100%** (77 tests passing)
+Current test coverage: **100%**
 
 ## Examples
 
@@ -211,7 +211,7 @@ Comprehensive documentation is available in the `docs/` directory:
 - 🎨 **See the architecture**: View [UML Diagrams](docs/uml-diagrams.md)
 - 📊 **Verify quality**: Read [Quality Report](docs/quality-report.md)
 
-git ## Code Quality
+## Code Quality
 
 This project maintains high code quality standards:
 
@@ -229,23 +229,11 @@ ruff format .
 mypy src/ && ruff check . && pytest --cov=src
 ```
 
-**Quality Metrics:**
-- ✅ **100% type coverage** - All code strictly typed
-- ✅ **100% test coverage** - 77 tests, all passing
-- ✅ **100% linting** - No style violations
-- ✅ **0.14s test execution** - Fast and reliable
-
 See [Quality Report](docs/quality-report.md) for detailed metrics.
 
 ## Development
 
 ```bash
-# Install development dependencies
-pip install -e ".[dev]"
-
-# Activate virtual environment
-source .venv/bin/activate  # macOS/Linux
-
 # Run full quality check suite
 mypy src/ examples/
 ruff check .
