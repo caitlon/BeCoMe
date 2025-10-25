@@ -119,14 +119,14 @@ class TestFuzzyTriangleNumberStringRepresentation:
         assert str(fuzzy) == "(5.00, 10.00, 15.00)"
 
     def test_repr_representation(self):
-        """Test __repr__ method."""
+        """Test __repr__ method (dataclass auto-generated)."""
         fuzzy = FuzzyTriangleNumber(lower_bound=5.0, peak=10.0, upper_bound=15.0)
 
         repr_str = repr(fuzzy)
         assert "FuzzyTriangleNumber" in repr_str
-        assert "lower=5.0" in repr_str
+        assert "lower_bound=5.0" in repr_str
         assert "peak=10.0" in repr_str
-        assert "upper=15.0" in repr_str
+        assert "upper_bound=15.0" in repr_str
 
     def test_repr_can_recreate_object(self):
         """Test that repr contains enough information to understand the object."""
@@ -138,3 +138,48 @@ class TestFuzzyTriangleNumberStringRepresentation:
         assert "5.0" in repr_str
         assert "10.0" in repr_str
         assert "15.0" in repr_str
+
+
+class TestFuzzyTriangleNumberImmutability:
+    """Test cases for immutability (frozen dataclass)."""
+
+    def test_frozen_lower_bound(self):
+        """Test that lower_bound cannot be modified after creation."""
+        fuzzy = FuzzyTriangleNumber(lower_bound=5.0, peak=10.0, upper_bound=15.0)
+
+        with pytest.raises((AttributeError, TypeError)):
+            fuzzy.lower_bound = 20.0
+
+    def test_frozen_peak(self):
+        """Test that peak cannot be modified after creation."""
+        fuzzy = FuzzyTriangleNumber(lower_bound=5.0, peak=10.0, upper_bound=15.0)
+
+        with pytest.raises((AttributeError, TypeError)):
+            fuzzy.peak = 20.0
+
+    def test_frozen_upper_bound(self):
+        """Test that upper_bound cannot be modified after creation."""
+        fuzzy = FuzzyTriangleNumber(lower_bound=5.0, peak=10.0, upper_bound=15.0)
+
+        with pytest.raises((AttributeError, TypeError)):
+            fuzzy.upper_bound = 20.0
+
+    def test_immutable_value_object(self):
+        """Test that FuzzyTriangleNumber behaves as immutable value object."""
+        fuzzy1 = FuzzyTriangleNumber(lower_bound=5.0, peak=10.0, upper_bound=15.0)
+        fuzzy2 = FuzzyTriangleNumber(lower_bound=5.0, peak=10.0, upper_bound=15.0)
+
+        # Same values should create equal objects
+        assert fuzzy1 == fuzzy2
+        # But they are different instances
+        assert fuzzy1 is not fuzzy2
+
+    def test_hashable_for_use_in_sets(self):
+        """Test that frozen FuzzyTriangleNumber is hashable."""
+        fuzzy1 = FuzzyTriangleNumber(lower_bound=5.0, peak=10.0, upper_bound=15.0)
+        fuzzy2 = FuzzyTriangleNumber(lower_bound=5.0, peak=10.0, upper_bound=15.0)
+        fuzzy3 = FuzzyTriangleNumber(lower_bound=6.0, peak=11.0, upper_bound=16.0)
+
+        # Can be used in sets
+        fuzzy_set = {fuzzy1, fuzzy2, fuzzy3}
+        assert len(fuzzy_set) == 2  # fuzzy1 and fuzzy2 are equal

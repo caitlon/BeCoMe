@@ -2,6 +2,8 @@
 Unit tests for ExpertOpinion class.
 """
 
+import pytest
+
 from src.models.expert_opinion import ExpertOpinion
 from src.models.fuzzy_number import FuzzyTriangleNumber
 
@@ -209,3 +211,52 @@ class TestExpertOpinionStringRepresentation:
         assert "7.0" in repr_str
         assert "14.0" in repr_str
         assert "21.0" in repr_str
+
+
+class TestExpertOpinionImmutability:
+    """Test cases for immutability (frozen dataclass)."""
+
+    def test_frozen_expert_id(self):
+        """Test that expert_id cannot be modified after creation."""
+        opinion = ExpertOpinion(
+            expert_id="E1",
+            opinion=FuzzyTriangleNumber(lower_bound=5.0, peak=10.0, upper_bound=15.0),
+        )
+
+        with pytest.raises((AttributeError, TypeError)):
+            opinion.expert_id = "E2"
+
+    def test_frozen_opinion(self):
+        """Test that opinion cannot be replaced after creation."""
+        opinion = ExpertOpinion(
+            expert_id="E1",
+            opinion=FuzzyTriangleNumber(lower_bound=5.0, peak=10.0, upper_bound=15.0),
+        )
+
+        new_fuzzy = FuzzyTriangleNumber(lower_bound=10.0, peak=20.0, upper_bound=30.0)
+        with pytest.raises((AttributeError, TypeError)):
+            opinion.opinion = new_fuzzy
+
+    def test_immutable_value_object(self):
+        """Test that ExpertOpinion behaves as immutable value object."""
+        fuzzy = FuzzyTriangleNumber(lower_bound=5.0, peak=10.0, upper_bound=15.0)
+        opinion1 = ExpertOpinion(expert_id="E1", opinion=fuzzy)
+        opinion2 = ExpertOpinion(expert_id="E1", opinion=fuzzy)
+
+        # Same values should create equal objects
+        assert opinion1 == opinion2
+        # But they are different instances
+        assert opinion1 is not opinion2
+
+    def test_hashable_for_use_in_sets(self):
+        """Test that frozen ExpertOpinion is hashable."""
+        fuzzy1 = FuzzyTriangleNumber(lower_bound=5.0, peak=10.0, upper_bound=15.0)
+        fuzzy2 = FuzzyTriangleNumber(lower_bound=6.0, peak=11.0, upper_bound=16.0)
+
+        opinion1 = ExpertOpinion(expert_id="E1", opinion=fuzzy1)
+        opinion2 = ExpertOpinion(expert_id="E1", opinion=fuzzy1)
+        opinion3 = ExpertOpinion(expert_id="E2", opinion=fuzzy2)
+
+        # Can be used in sets
+        opinion_set = {opinion1, opinion2, opinion3}
+        assert len(opinion_set) == 2  # opinion1 and opinion2 are equal

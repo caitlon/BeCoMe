@@ -2,6 +2,11 @@
 Unit tests for BeCoMeResult model.
 """
 
+import contextlib
+
+import pytest
+from pydantic import ValidationError
+
 from src.models.become_result import BeCoMeResult
 from src.models.fuzzy_number import FuzzyTriangleNumber
 
@@ -120,3 +125,73 @@ class TestBeCoMeResultStringRepresentation:
         assert "12.3" in str_repr
         assert "18.9" in str_repr
         assert "2.7" in str_repr
+
+
+class TestBeCoMeResultImmutability:
+    """Test cases for immutability (frozen Pydantic model)."""
+
+    def test_frozen_best_compromise(self):
+        """Test that best_compromise cannot be modified after creation."""
+        result = BeCoMeResult(
+            best_compromise=FuzzyTriangleNumber(7.0, 10.5, 14.0),
+            arithmetic_mean=FuzzyTriangleNumber(6.0, 10.0, 14.0),
+            median=FuzzyTriangleNumber(8.0, 11.0, 14.0),
+            max_error=1.0,
+            num_experts=5,
+            is_even=False,
+        )
+
+        new_fuzzy = FuzzyTriangleNumber(10.0, 20.0, 30.0)
+        with pytest.raises(ValidationError):
+            result.best_compromise = new_fuzzy
+
+    def test_frozen_num_experts(self):
+        """Test that num_experts cannot be modified after creation."""
+        result = BeCoMeResult(
+            best_compromise=FuzzyTriangleNumber(7.0, 10.5, 14.0),
+            arithmetic_mean=FuzzyTriangleNumber(6.0, 10.0, 14.0),
+            median=FuzzyTriangleNumber(8.0, 11.0, 14.0),
+            max_error=1.0,
+            num_experts=5,
+            is_even=False,
+        )
+
+        with pytest.raises(ValidationError):
+            result.num_experts = 10
+
+    def test_frozen_max_error(self):
+        """Test that max_error cannot be modified after creation."""
+        result = BeCoMeResult(
+            best_compromise=FuzzyTriangleNumber(7.0, 10.5, 14.0),
+            arithmetic_mean=FuzzyTriangleNumber(6.0, 10.0, 14.0),
+            median=FuzzyTriangleNumber(8.0, 11.0, 14.0),
+            max_error=1.0,
+            num_experts=5,
+            is_even=False,
+        )
+
+        with pytest.raises(ValidationError):
+            result.max_error = 2.0
+
+    def test_immutable_result_integrity(self):
+        """Test that BeCoMeResult maintains data integrity through immutability."""
+        result = BeCoMeResult(
+            best_compromise=FuzzyTriangleNumber(7.0, 10.5, 14.0),
+            arithmetic_mean=FuzzyTriangleNumber(6.0, 10.0, 14.0),
+            median=FuzzyTriangleNumber(8.0, 11.0, 14.0),
+            max_error=1.0,
+            num_experts=5,
+            is_even=False,
+        )
+
+        # Store original values
+        original_num_experts = result.num_experts
+        original_max_error = result.max_error
+
+        # Try to modify (should fail with ValidationError)
+        with contextlib.suppress(ValidationError):
+            result.num_experts = 100
+
+        # Values should remain unchanged
+        assert result.num_experts == original_num_experts
+        assert result.max_error == original_max_error
