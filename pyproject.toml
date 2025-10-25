@@ -1,13 +1,13 @@
 [project]
 name = "BeCoMe"
 version = "0.1.0"
-requires-python = ">=3.13"
+requires-python = "==3.13.8"
 dependencies = [
     "numpy==2.3.3",
     "pandas==2.3.3",
     "pydantic==2.11.9",
     "openpyxl==3.1.5",
-    "plantuml>=0.3.0",
+    "plantuml==0.3.0",
 ]
 
 [project.optional-dependencies]

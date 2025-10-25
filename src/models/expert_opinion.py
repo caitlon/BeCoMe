@@ -12,14 +12,17 @@ from dataclasses import dataclass
 from .fuzzy_number import FuzzyTriangleNumber
 
 
-@dataclass
+@dataclass(frozen=True)
 class ExpertOpinion:
     """
-    Represents a single expert's opinion as a fuzzy triangular number.
+    Immutable representation of a single expert's opinion.
 
     This class uses composition to combine an expert identifier with
     their fuzzy opinion. It supports comparison operations based on
     the centroid of the fuzzy number for sorting purposes.
+
+    The class is immutable (frozen) to ensure value object semantics
+    and prevent accidental modification after creation.
 
     Attributes:
         expert_id: Unique identifier for the expert (e.g., name or ID)

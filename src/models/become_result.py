@@ -14,11 +14,14 @@ from .fuzzy_number import FuzzyTriangleNumber
 
 class BeCoMeResult(BaseModel):
     """
-    Complete result of a BeCoMe calculation.
+    Immutable result of a BeCoMe calculation.
 
     The BeCoMe method calculates a best compromise between the arithmetic mean
     and statistical median of expert opinions. This class stores all intermediate
     and final results.
+
+    This class is immutable (frozen) to ensure that calculation results
+    cannot be accidentally modified after creation, maintaining data integrity.
 
     Attributes:
         best_compromise: Final result (ΓΩMean) - average of arithmetic mean and median
@@ -58,8 +61,8 @@ class BeCoMeResult(BaseModel):
 
     # Pydantic configuration
     model_config = ConfigDict(
-        # Allow arbitrary types (for FuzzyTriangleNumber)
         arbitrary_types_allowed=True,
+        frozen=True,
     )
 
     def __str__(self) -> str:
