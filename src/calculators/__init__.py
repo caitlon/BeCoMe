@@ -5,6 +5,10 @@ This module contains calculators for computing the Best Compromise Mean
 from expert opinions represented as fuzzy triangular numbers.
 """
 
+from .base_calculator import BaseAggregationCalculator
 from .become_calculator import BeCoMeCalculator
 
-__all__ = ["BeCoMeCalculator"]
+__all__ = [
+    "BaseAggregationCalculator",
+    "BeCoMeCalculator",
+]
