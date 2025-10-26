@@ -30,6 +30,9 @@ class ExpertOpinion:
         centroid: Centroid of the expert's opinion (computed property)
     """
 
+    _expert_id: str
+    _opinion: FuzzyTriangleNumber
+
     __slots__ = ("_expert_id", "_opinion")
 
     def __init__(self, expert_id: str, opinion: FuzzyTriangleNumber) -> None:
@@ -132,7 +135,7 @@ class ExpertOpinion:
             True if both objects are ExpertOpinion with same values
         """
         if not isinstance(other, ExpertOpinion):
-            return NotImplemented
+            return False
         return self._expert_id == other._expert_id and self._opinion == other._opinion
 
     def __hash__(self) -> int:

@@ -61,7 +61,7 @@ class BeCoMeResult(BaseModel):
         frozen=True,
     )
 
-    @computed_field  # type: ignore[misc]
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def is_even(self) -> bool:
         """

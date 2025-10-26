@@ -29,6 +29,10 @@ class FuzzyTriangleNumber:
         centroid: Center of gravity of the fuzzy number (computed property)
     """
 
+    _lower_bound: float
+    _peak: float
+    _upper_bound: float
+
     __slots__ = ("_lower_bound", "_peak", "_upper_bound")
 
     def __init__(self, lower_bound: float, peak: float, upper_bound: float) -> None:
@@ -135,7 +139,7 @@ class FuzzyTriangleNumber:
             True if both objects are FuzzyTriangleNumber with same values
         """
         if not isinstance(other, FuzzyTriangleNumber):
-            return NotImplemented
+            return False
         return (
             self._lower_bound == other._lower_bound
             and self._peak == other._peak
