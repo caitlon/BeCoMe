@@ -7,42 +7,97 @@ an expert's assessment in the BeCoMe method.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 from .fuzzy_number import FuzzyTriangleNumber
 
 
-@dataclass(frozen=True)
 class ExpertOpinion:
     """
-    Immutable representation of a single expert's opinion.
+    Immutable representation of a single expert's opinion with strict encapsulation.
 
     This class uses composition to combine an expert identifier with
     their fuzzy opinion. It supports comparison operations based on
     the centroid of the fuzzy number for sorting purposes.
 
-    The class is immutable (frozen) to ensure value object semantics
-    and prevent accidental modification after creation.
+    This class demonstrates strict OOP principles:
+    - Encapsulation: All attributes are private (prefixed with _)
+    - Immutability: Attributes are read-only via @property decorators
+    - Composition: Contains a FuzzyTriangleNumber (has-a relationship)
+    - Value Object: Compared by value, not identity
 
     Attributes:
-        expert_id: Unique identifier for the expert (e.g., name or ID)
-        opinion: The expert's assessment as a FuzzyTriangleNumber
+        expert_id: Unique identifier for the expert (read-only property)
+        opinion: The expert's assessment as a FuzzyTriangleNumber (read-only property)
+        centroid: Centroid of the expert's opinion (computed property)
     """
 
-    expert_id: str
-    opinion: FuzzyTriangleNumber
+    __slots__ = ("_expert_id", "_opinion")
 
-    def get_centroid(self) -> float:
+    def __init__(self, expert_id: str, opinion: FuzzyTriangleNumber) -> None:
         """
-        Get the centroid of the expert's opinion.
+        Initialize an expert opinion.
 
-        This is a convenience method that delegates to the
-        FuzzyTriangleNumber's get_centroid method.
+        Args:
+            expert_id: Unique identifier for the expert (e.g., name or ID)
+            opinion: The expert's assessment as a FuzzyTriangleNumber
+        """
+        object.__setattr__(self, "_expert_id", expert_id)
+        object.__setattr__(self, "_opinion", opinion)
+
+    @property
+    def expert_id(self) -> str:
+        """
+        Unique identifier for the expert.
+
+        Returns:
+            The expert's identifier
+        """
+        return self._expert_id
+
+    @property
+    def opinion(self) -> FuzzyTriangleNumber:
+        """
+        The expert's fuzzy opinion.
+
+        Returns:
+            The fuzzy triangular number representing the expert's assessment
+        """
+        return self._opinion
+
+    @property
+    def centroid(self) -> float:
+        """
+        Centroid (center of gravity) of the expert's opinion.
+
+        This property delegates to the FuzzyTriangleNumber's centroid property,
+        providing convenient access to the centroid value.
 
         Returns:
             The centroid value of the opinion
+
+        Example:
+            >>> opinion = ExpertOpinion("E1", FuzzyTriangleNumber(5.0, 10.0, 15.0))
+            >>> opinion.centroid
+            10.0
         """
-        return self.opinion.get_centroid()
+        return self._opinion.centroid
+
+    def __setattr__(self, name: str, value: object) -> None:
+        """
+        Prevent attribute modification to ensure immutability.
+
+        Raises:
+            AttributeError: Always, as this object is immutable
+        """
+        raise AttributeError(f"Cannot modify immutable ExpertOpinion attribute '{name}'")
+
+    def __delattr__(self, name: str) -> None:
+        """
+        Prevent attribute deletion to ensure immutability.
+
+        Raises:
+            AttributeError: Always, as this object is immutable
+        """
+        raise AttributeError(f"Cannot delete immutable ExpertOpinion attribute '{name}'")
 
     def __lt__(self, other: ExpertOpinion) -> bool:
         """
@@ -57,11 +112,11 @@ class ExpertOpinion:
         Returns:
             True if this opinion's centroid is less than the other's
         """
-        return self.get_centroid() < other.get_centroid()
+        return self.centroid < other.centroid
 
     def __le__(self, other: ExpertOpinion) -> bool:
         """Less than or equal comparison based on centroid."""
-        return self.get_centroid() <= other.get_centroid()
+        return self.centroid <= other.centroid
 
     def __eq__(self, other: object) -> bool:
         """
@@ -69,16 +124,30 @@ class ExpertOpinion:
 
         Two expert opinions are equal if they have the same expert_id
         and the same opinion values.
+
+        Args:
+            other: Another object to compare with
+
+        Returns:
+            True if both objects are ExpertOpinion with same values
         """
         if not isinstance(other, ExpertOpinion):
             return NotImplemented
-        return (
-            self.expert_id == other.expert_id
-            and self.opinion.lower_bound == other.opinion.lower_bound
-            and self.opinion.peak == other.opinion.peak
-            and self.opinion.upper_bound == other.opinion.upper_bound
-        )
+        return self._expert_id == other._expert_id and self._opinion == other._opinion
+
+    def __hash__(self) -> int:
+        """
+        Return hash for use in sets and dicts.
+
+        Returns:
+            Hash value based on expert_id and opinion
+        """
+        return hash((self._expert_id, self._opinion))
 
     def __repr__(self) -> str:
         """Return string representation of the expert opinion."""
-        return f"ExpertOpinion(expert_id='{self.expert_id}', opinion={self.opinion})"
+        return f"ExpertOpinion(expert_id='{self._expert_id}', opinion={self._opinion})"
+
+    def __str__(self) -> str:
+        """Return human-readable string representation."""
+        return f"{self._expert_id}: {self._opinion}"

@@ -42,7 +42,7 @@ class TestExcelIntegration:
         )
 
         # Check centroid matches Excel display value
-        result_centroid = result.best_compromise.get_centroid()
+        result_centroid = result.best_compromise.centroid
         assert abs(result_centroid - expected["best_compromise_centroid"]) < 0.01, (
             f"Best compromise centroid mismatch: got {result_centroid}, "
             f"expected {expected['best_compromise_centroid']}"
@@ -139,7 +139,7 @@ class TestExcelIntegration:
         )
 
         # Check centroid matches Excel display value
-        result_centroid = result.best_compromise.get_centroid()
+        result_centroid = result.best_compromise.centroid
         assert abs(result_centroid - expected["best_compromise_centroid"]) < 0.01, (
             f"Best compromise centroid mismatch: got {result_centroid}, "
             f"expected {expected['best_compromise_centroid']}"

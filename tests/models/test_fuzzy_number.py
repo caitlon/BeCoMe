@@ -83,21 +83,21 @@ class TestFuzzyTriangleNumberCentroid:
         fuzzy = FuzzyTriangleNumber(lower_bound=5.0, peak=10.0, upper_bound=15.0)
 
         expected_centroid = (5.0 + 10.0 + 15.0) / 3.0
-        assert fuzzy.get_centroid() == expected_centroid
-        assert fuzzy.get_centroid() == 10.0
+        assert fuzzy.centroid == expected_centroid
+        assert fuzzy.centroid == 10.0
 
     def test_centroid_with_equal_values(self):
         """Test centroid when all values are equal."""
         fuzzy = FuzzyTriangleNumber(lower_bound=7.0, peak=7.0, upper_bound=7.0)
 
-        assert fuzzy.get_centroid() == 7.0
+        assert fuzzy.centroid == 7.0
 
     def test_centroid_with_decimals(self):
         """Test centroid calculation with decimal values."""
         fuzzy = FuzzyTriangleNumber(lower_bound=6.5, peak=8.3, upper_bound=11.2)
 
         expected_centroid = (6.5 + 8.3 + 11.2) / 3.0
-        assert abs(fuzzy.get_centroid() - expected_centroid) < 1e-10
+        assert abs(fuzzy.centroid - expected_centroid) < 1e-10
 
     def test_centroid_from_excel_example(self):
         """Test centroid with values from Excel reference."""
@@ -105,8 +105,8 @@ class TestFuzzyTriangleNumberCentroid:
         fuzzy = FuzzyTriangleNumber(lower_bound=10.0, peak=15.0, upper_bound=15.0)
 
         expected_centroid = (10.0 + 15.0 + 15.0) / 3.0
-        assert abs(fuzzy.get_centroid() - expected_centroid) < 1e-10
-        assert abs(fuzzy.get_centroid() - 13.333333333333334) < 1e-10
+        assert abs(fuzzy.centroid - expected_centroid) < 1e-10
+        assert abs(fuzzy.centroid - 13.333333333333334) < 1e-10
 
 
 class TestFuzzyTriangleNumberStringRepresentation:

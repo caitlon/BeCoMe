@@ -35,13 +35,13 @@ class TestExpertOpinionCentroid:
     """Test cases for centroid delegation."""
 
     def test_get_centroid(self):
-        """Test that get_centroid delegates to fuzzy number."""
+        """Test that centroid property delegates to fuzzy number."""
         fuzzy = FuzzyTriangleNumber(lower_bound=6.0, peak=9.0, upper_bound=12.0)
         opinion = ExpertOpinion(expert_id="Expert A", opinion=fuzzy)
 
         expected_centroid = (6.0 + 9.0 + 12.0) / 3.0
-        assert opinion.get_centroid() == expected_centroid
-        assert opinion.get_centroid() == fuzzy.get_centroid()
+        assert opinion.centroid == expected_centroid
+        assert opinion.centroid == fuzzy.centroid
 
     def test_centroid_from_excel_example(self):
         """Test centroid with Excel data example."""
@@ -50,8 +50,8 @@ class TestExpertOpinionCentroid:
         opinion = ExpertOpinion(expert_id="Product owner", opinion=fuzzy)
 
         expected_centroid = (8.0 + 11.0 + 14.0) / 3.0
-        assert abs(opinion.get_centroid() - expected_centroid) < 1e-10
-        assert abs(opinion.get_centroid() - 11.0) < 1e-10
+        assert abs(opinion.centroid - expected_centroid) < 1e-10
+        assert abs(opinion.centroid - 11.0) < 1e-10
 
 
 class TestExpertOpinionComparison:
