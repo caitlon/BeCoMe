@@ -195,3 +195,98 @@ class TestBeCoMeResultImmutability:
         # Values should remain unchanged
         assert result.num_experts == original_num_experts
         assert result.max_error == original_max_error
+
+
+class TestBeCoMeResultFactoryMethod:
+    """Test cases for BeCoMeResult.from_calculations() factory method."""
+
+    def test_from_calculations_creates_valid_result(self):
+        """Test that factory method creates a valid BeCoMeResult."""
+        mean = FuzzyTriangleNumber(lower_bound=10.0, peak=15.0, upper_bound=20.0)
+        median = FuzzyTriangleNumber(lower_bound=12.0, peak=16.0, upper_bound=22.0)
+
+        result = BeCoMeResult.from_calculations(arithmetic_mean=mean, median=median, num_experts=5)
+
+        # Check that result is created
+        assert isinstance(result, BeCoMeResult)
+        assert result.arithmetic_mean == mean
+        assert result.median == median
+        assert result.num_experts == 5
+
+    def test_from_calculations_calculates_best_compromise_correctly(self):
+        """Test that best compromise is calculated as (mean + median) / 2."""
+        mean = FuzzyTriangleNumber(lower_bound=10.0, peak=15.0, upper_bound=20.0)
+        median = FuzzyTriangleNumber(lower_bound=12.0, peak=16.0, upper_bound=22.0)
+
+        result = BeCoMeResult.from_calculations(arithmetic_mean=mean, median=median, num_experts=5)
+
+        # Best compromise should be (mean + median) / 2
+        # π = (10 + 12) / 2 = 11.0
+        # φ = (15 + 16) / 2 = 15.5
+        # ξ = (20 + 22) / 2 = 21.0
+        assert result.best_compromise.lower_bound == 11.0
+        assert result.best_compromise.peak == 15.5
+        assert result.best_compromise.upper_bound == 21.0
+
+    def test_from_calculations_calculates_max_error_correctly(self):
+        """Test that max error is calculated as |centroid(mean) - centroid(median)| / 2."""
+        mean = FuzzyTriangleNumber(lower_bound=10.0, peak=15.0, upper_bound=20.0)
+        median = FuzzyTriangleNumber(lower_bound=12.0, peak=16.0, upper_bound=22.0)
+
+        result = BeCoMeResult.from_calculations(arithmetic_mean=mean, median=median, num_experts=5)
+
+        # Mean centroid: (10 + 15 + 20) / 3 = 15.0
+        # Median centroid: (12 + 16 + 22) / 3 = 16.666...
+        # Max error: |15.0 - 16.666...| / 2 = 0.833...
+        expected_max_error = abs(mean.centroid - median.centroid) / 2
+        assert abs(result.max_error - expected_max_error) < 0.001
+
+    def test_from_calculations_determines_is_even_correctly(self):
+        """Test that is_even flag is set correctly based on num_experts."""
+        mean = FuzzyTriangleNumber(lower_bound=10.0, peak=15.0, upper_bound=20.0)
+        median = FuzzyTriangleNumber(lower_bound=12.0, peak=16.0, upper_bound=22.0)
+
+        # Test with odd number of experts
+        result_odd = BeCoMeResult.from_calculations(
+            arithmetic_mean=mean, median=median, num_experts=5
+        )
+        assert result_odd.is_even is False
+
+        # Test with even number of experts
+        result_even = BeCoMeResult.from_calculations(
+            arithmetic_mean=mean, median=median, num_experts=6
+        )
+        assert result_even.is_even is True
+
+    def test_from_calculations_with_identical_mean_and_median(self):
+        """Test factory method when mean and median are identical."""
+        fuzzy = FuzzyTriangleNumber(lower_bound=10.0, peak=15.0, upper_bound=20.0)
+
+        result = BeCoMeResult.from_calculations(arithmetic_mean=fuzzy, median=fuzzy, num_experts=1)
+
+        # Best compromise should equal mean and median
+        assert result.best_compromise == fuzzy
+        # Max error should be 0 when mean and median are identical
+        assert result.max_error == 0.0
+
+    def test_from_calculations_raises_error_for_invalid_num_experts(self):
+        """Test that factory method raises ValueError for num_experts < 1."""
+        mean = FuzzyTriangleNumber(lower_bound=10.0, peak=15.0, upper_bound=20.0)
+        median = FuzzyTriangleNumber(lower_bound=12.0, peak=16.0, upper_bound=22.0)
+
+        with pytest.raises(ValueError) as exc_info:
+            BeCoMeResult.from_calculations(arithmetic_mean=mean, median=median, num_experts=0)
+
+        assert "num_experts must be >= 1" in str(exc_info.value)
+
+    def test_from_calculations_preserves_fuzzy_constraint(self):
+        """Test that best compromise preserves fuzzy number constraint."""
+        mean = FuzzyTriangleNumber(lower_bound=5.0, peak=10.0, upper_bound=15.0)
+        median = FuzzyTriangleNumber(lower_bound=7.0, peak=12.0, upper_bound=17.0)
+
+        result = BeCoMeResult.from_calculations(arithmetic_mean=mean, median=median, num_experts=3)
+
+        # Best compromise must satisfy: lower <= peak <= upper
+        bc = result.best_compromise
+        assert bc.lower_bound <= bc.peak
+        assert bc.peak <= bc.upper_bound

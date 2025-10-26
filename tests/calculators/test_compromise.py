@@ -265,8 +265,8 @@ class TestBeCoMeCalculatorCompromise:
         # Error: |10 - 10| / 2 = 0
 
         # Verify error is half the distance between centroids
-        mean_centroid = result.arithmetic_mean.get_centroid()
-        median_centroid = result.median.get_centroid()
+        mean_centroid = result.arithmetic_mean.centroid
+        median_centroid = result.median.centroid
         expected_error = abs(mean_centroid - median_centroid) / 2
 
         assert abs(result.max_error - expected_error) < 1e-10

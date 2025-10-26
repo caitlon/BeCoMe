@@ -59,7 +59,7 @@ def main() -> None:
     print(f"  γ (peak) = {sum_peak} / {m} = {mean.peak:.2f}")
     print(f"  β (upper) = {sum_upper} / {m} = {mean.upper_bound:.2f}")
 
-    mean_centroid: float = mean.get_centroid()
+    mean_centroid: float = mean.centroid
     print(
         f"\nMean centroid: ({mean.lower_bound:.2f} + {mean.peak:.2f} + {mean.upper_bound:.2f}) / 3 = {mean_centroid:.2f}"
     )
@@ -84,10 +84,10 @@ def main() -> None:
 
         print(f"Median = average of {left_idx + 1}th and {right_idx + 1}th experts:")
         print(
-            f"  {left_idx + 1}th: {left_op.expert_id} → {left_op.opinion} (centroid: {left_op.opinion.get_centroid():.2f})"
+            f"  {left_idx + 1}th: {left_op.expert_id} → {left_op.opinion} (centroid: {left_op.opinion.centroid:.2f})"
         )
         print(
-            f"  {right_idx + 1}th: {right_op.expert_id} → {right_op.opinion} (centroid: {right_op.opinion.get_centroid():.2f})"
+            f"  {right_idx + 1}th: {right_op.expert_id} → {right_op.opinion} (centroid: {right_op.opinion.centroid:.2f})"
         )
     else:
         # Odd case
@@ -95,7 +95,7 @@ def main() -> None:
         middle_op = sorted_opinions[middle_idx]
         print(f"Median = middle expert (position {middle_idx + 1}):")
         print(
-            f"  {middle_op.expert_id} → {middle_op.opinion} (centroid: {middle_op.opinion.get_centroid():.2f})"
+            f"  {middle_op.expert_id} → {middle_op.opinion} (centroid: {middle_op.opinion.centroid:.2f})"
         )
 
     median = calculator.calculate_median(opinions)
@@ -106,7 +106,7 @@ def main() -> None:
         print(f"  ω (peak) = {median.peak:.2f} (from middle expert)")
         print(f"  σ (upper) = {median.upper_bound:.2f} (from middle expert)")
 
-    median_centroid: float = median.get_centroid()
+    median_centroid: float = median.centroid
     print(
         f"\nMedian centroid: ({median.lower_bound:.2f} + {median.peak:.2f} + {median.upper_bound:.2f}) / 3 = {median_centroid:.2f}"
     )
@@ -128,7 +128,7 @@ def main() -> None:
     best_compromise = FuzzyTriangleNumber(lower_bound=pi, peak=phi, upper_bound=xi)
 
     # Use the built-in centroid method
-    best_compromise_centroid: float = best_compromise.get_centroid()
+    best_compromise_centroid: float = best_compromise.centroid
     print(f"\nBest Compromise: ΓΩMean({pi:.2f}, {phi:.2f}, {xi:.2f})")
     print(
         f"Best compromise centroid: ({pi:.2f} + {phi:.2f} + {xi:.2f}) / 3 = {best_compromise_centroid:.2f}"
