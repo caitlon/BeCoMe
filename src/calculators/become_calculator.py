@@ -12,6 +12,8 @@ from __future__ import annotations
 import statistics
 from typing import TYPE_CHECKING
 
+from src.calculators.base_calculator import BaseAggregationCalculator
+from src.exceptions import EmptyOpinionsError
 from src.models.become_result import BeCoMeResult
 from src.models.fuzzy_number import FuzzyTriangleNumber
 
@@ -19,7 +21,7 @@ if TYPE_CHECKING:
     from src.models.expert_opinion import ExpertOpinion
 
 
-class BeCoMeCalculator:
+class BeCoMeCalculator(BaseAggregationCalculator):
     """
     Calculator for the BeCoMe (Best Compromise Mean) method.
 
@@ -48,10 +50,10 @@ class BeCoMeCalculator:
             Arithmetic mean as FuzzyTriangleNumber(alpha, gamma, beta)
 
         Raises:
-            ValueError: If opinions list is empty
+            EmptyOpinionsError: If opinions list is empty
         """
         if not opinions:
-            raise ValueError("Cannot calculate arithmetic mean of empty opinions list")
+            raise EmptyOpinionsError("Cannot calculate arithmetic mean of empty opinions list")
 
         # Calculate arithmetic mean for each component
         alpha: float = statistics.mean(op.opinion.lower_bound for op in opinions)
@@ -75,13 +77,13 @@ class BeCoMeCalculator:
             Median as FuzzyTriangleNumber(rho, omega, sigma)
 
         Raises:
-            ValueError: If opinions list is empty
+            EmptyOpinionsError: If opinions list is empty
         """
         if not opinions:
-            raise ValueError("Cannot calculate median of empty opinions list")
+            raise EmptyOpinionsError("Cannot calculate median of empty opinions list")
 
         # Sort opinions by centroid
-        sorted_opinions: list[ExpertOpinion] = self._sort_by_centroid(opinions)
+        sorted_opinions: list[ExpertOpinion] = self.sort_by_centroid(opinions)
         m: int = len(sorted_opinions)
 
         # Use statistics.median for centroid values
@@ -132,10 +134,10 @@ class BeCoMeCalculator:
             BeCoMeResult containing best compromise and all intermediate results
 
         Raises:
-            ValueError: If opinions list is empty
+            EmptyOpinionsError: If opinions list is empty
         """
         if not opinions:
-            raise ValueError("Cannot calculate compromise of empty opinions list")
+            raise EmptyOpinionsError("Cannot calculate compromise of empty opinions list")
 
         # Step 1: Calculate arithmetic mean (Gamma)
         arithmetic_mean: FuzzyTriangleNumber = self.calculate_arithmetic_mean(opinions)
@@ -173,11 +175,12 @@ class BeCoMeCalculator:
             is_even=is_even,
         )
 
-    def _sort_by_centroid(self, opinions: list[ExpertOpinion]) -> list[ExpertOpinion]:
+    def sort_by_centroid(self, opinions: list[ExpertOpinion]) -> list[ExpertOpinion]:
         """
         Sort expert opinions by their centroid values.
 
-        This is a helper method used for median calculation.
+        This is a public method that can be used for sorting opinions by centroid,
+        primarily used internally for median calculation but available for analysis.
         Sorting is stable and maintains original order for equal centroids.
 
         Args:
