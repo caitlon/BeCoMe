@@ -68,7 +68,7 @@ def main() -> None:
     print_section("STEP 2: Median (Omega)")
 
     print("\nSorting experts by centroid...")
-    sorted_opinions: list[ExpertOpinion] = calculator._sort_by_centroid(opinions)
+    sorted_opinions: list[ExpertOpinion] = calculator.sort_by_centroid(opinions)
 
     # Show median calculation
     print(f"\nNumber of experts is {'EVEN' if m % 2 == 0 else 'ODD'} (M={m})")

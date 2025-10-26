@@ -5,6 +5,7 @@ Unit tests for BeCoMeCalculator.calculate_arithmetic_mean() method.
 import pytest
 
 from src.calculators.become_calculator import BeCoMeCalculator
+from src.exceptions import EmptyOpinionsError
 from src.models.expert_opinion import ExpertOpinion
 from src.models.fuzzy_number import FuzzyTriangleNumber
 
@@ -116,10 +117,10 @@ class TestBeCoMeCalculatorArithmeticMean:
         assert result.peak <= result.upper_bound
 
     def test_arithmetic_mean_empty_list_raises_error(self):
-        """Test that empty opinions list raises ValueError."""
+        """Test that empty opinions list raises EmptyOpinionsError."""
         calculator = BeCoMeCalculator()
 
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(EmptyOpinionsError) as exc_info:
             calculator.calculate_arithmetic_mean([])
 
         assert "empty" in str(exc_info.value).lower()
