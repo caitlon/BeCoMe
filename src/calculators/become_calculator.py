@@ -5,8 +5,6 @@ This module implements the BeCoMe method for aggregating expert opinions
 represented as fuzzy triangular numbers, as described in the article by Vrana et al.
 """
 # ignore ruff rule for mathematical symbols
-# ruff: noqa: RUF003
-
 from __future__ import annotations
 
 import statistics
@@ -124,8 +122,11 @@ class BeCoMeCalculator(BaseAggregationCalculator):
         This is the main method that:
         1. Calculates arithmetic mean (Gamma)
         2. Calculates statistical median (Omega)
-        3. Computes best compromise: (Gamma + Omega) / 2
-        4. Calculates maximum error: |Gamma - Omega| / 2
+        3. Uses factory method to create result with best compromise and error
+
+        The calculation logic for best compromise and max error is encapsulated
+        in BeCoMeResult.from_calculations() factory method, demonstrating the
+        Factory Method pattern for clean separation of concerns.
 
         Args:
             opinions: List of expert opinions as fuzzy triangular numbers
@@ -145,34 +146,15 @@ class BeCoMeCalculator(BaseAggregationCalculator):
         # Step 2: Calculate statistical median (Omega)
         median: FuzzyTriangleNumber = self.calculate_median(opinions)
 
-        # Step 3: Calculate best compromise (ΓΩMean)
-        # Formula from article (equations 11): π = (α + ρ)/2, φ = (γ + ω)/2, ξ = (β + σ)/2
-        pi: float = (arithmetic_mean.lower_bound + median.lower_bound) / 2
-        phi: float = (arithmetic_mean.peak + median.peak) / 2
-        xi: float = (arithmetic_mean.upper_bound + median.upper_bound) / 2
-
-        best_compromise: FuzzyTriangleNumber = FuzzyTriangleNumber(
-            lower_bound=pi, peak=phi, upper_bound=xi
-        )
-
-        # Step 4: Calculate maximum error (Δmax)
-        # Formula from article (equation 12): Δmax = |Γ - Ω| / 2
-        # This is the distance between centroids of arithmetic mean and median
-        mean_centroid: float = arithmetic_mean.get_centroid()
-        median_centroid: float = median.get_centroid()
-        max_error: float = abs(mean_centroid - median_centroid) / 2
-
-        # Step 5: Create and return result
-        m: int = len(opinions)
-        is_even: bool = m % 2 == 0
-
-        return BeCoMeResult(
-            best_compromise=best_compromise,
+        # Step 3: Use factory method to create result
+        # The factory encapsulates the logic for:
+        # - Best compromise calculation: (Gamma + Omega) / 2
+        # - Maximum error calculation: |Gamma - Omega| / 2
+        # - is_even flag determination
+        return BeCoMeResult.from_calculations(
             arithmetic_mean=arithmetic_mean,
             median=median,
-            max_error=max_error,
-            num_experts=m,
-            is_even=is_even,
+            num_experts=len(opinions),
         )
 
     def sort_by_centroid(self, opinions: list[ExpertOpinion]) -> list[ExpertOpinion]:
