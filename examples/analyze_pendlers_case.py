@@ -60,7 +60,7 @@ def main() -> None:
     print(f"\nArithmetic Mean: Γ({mean.lower_bound:.2f}, {mean.peak:.2f}, {mean.upper_bound:.2f})")
     print(f"  All components = {sum_values} / {m} = {mean.peak:.2f}")
 
-    mean_centroid: float = mean.get_centroid()
+    mean_centroid: float = mean.centroid
     print(f"\nMean centroid: {mean_centroid:.2f} (same as peak for crisp values)")
 
     # STEP 2: Calculate Median (Omega)
@@ -99,7 +99,7 @@ def main() -> None:
             f"  All components = ({int(left_op.opinion.peak)} + {int(right_op.opinion.peak)}) / 2 = {median.peak:.2f}"
         )
 
-    median_centroid: float = median.get_centroid()
+    median_centroid: float = median.centroid
     print(f"\nMedian centroid: {median_centroid:.2f}")
 
     # STEP 3: Calculate Best Compromise (ΓΩMean)
@@ -119,7 +119,7 @@ def main() -> None:
     best_compromise = FuzzyTriangleNumber(lower_bound=pi, peak=phi, upper_bound=xi)
 
     # Use the built-in centroid method
-    best_compromise_centroid: float = best_compromise.get_centroid()
+    best_compromise_centroid: float = best_compromise.centroid
     print(f"\nBest Compromise: ΓΩMean({pi:.2f}, {phi:.2f}, {xi:.2f})")
     print(f"Best compromise centroid: {best_compromise_centroid:.2f}")
 

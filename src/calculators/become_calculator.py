@@ -4,6 +4,7 @@ BeCoMe (Best Compromise Mean) calculator.
 This module implements the BeCoMe method for aggregating expert opinions
 represented as fuzzy triangular numbers, as described in the article by Vrana et al.
 """
+
 # ignore ruff rule for mathematical symbols
 from __future__ import annotations
 
@@ -85,20 +86,18 @@ class BeCoMeCalculator(BaseAggregationCalculator):
         m: int = len(sorted_opinions)
 
         # Use statistics.median for centroid values
-        centroids = [op.get_centroid() for op in sorted_opinions]
+        centroids = [op.centroid for op in sorted_opinions]
         median_centroid = statistics.median(centroids)
 
         # Find the opinion with median centroid
-        median_opinion = min(
-            sorted_opinions, key=lambda op: abs(op.get_centroid() - median_centroid)
-        )
+        median_opinion = min(sorted_opinions, key=lambda op: abs(op.centroid - median_centroid))
 
         # For even number of experts, average with the next closest opinion
         if m % 2 == 0:
             # Find the second closest opinion to median centroid
             remaining_opinions = [op for op in sorted_opinions if op != median_opinion]
             second_median_opinion = min(
-                remaining_opinions, key=lambda op: abs(op.get_centroid() - median_centroid)
+                remaining_opinions, key=lambda op: abs(op.centroid - median_centroid)
             )
 
             # Average the two median opinions
@@ -171,4 +170,4 @@ class BeCoMeCalculator(BaseAggregationCalculator):
         Returns:
             Sorted list of expert opinions (by ascending centroid)
         """
-        return sorted(opinions, key=lambda op: op.get_centroid())
+        return sorted(opinions, key=lambda op: op.centroid)

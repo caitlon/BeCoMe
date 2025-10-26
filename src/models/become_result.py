@@ -7,7 +7,7 @@ results of a BeCoMe (Best Compromise Mean) calculation.
 # ignore ruff rule for mathematical symbols
 # ruff: noqa: RUF001, RUF003
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from .fuzzy_number import FuzzyTriangleNumber
 
@@ -54,16 +54,34 @@ class BeCoMeResult(BaseModel):
         ge=1,
         description="Number of expert opinions",
     )
-    is_even: bool = Field(
-        ...,
-        description="True if number of experts is even, False if odd",
-    )
 
     # Pydantic configuration
     model_config = ConfigDict(
         arbitrary_types_allowed=True,
         frozen=True,
     )
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def is_even(self) -> bool:
+        """
+        Computed property indicating if the number of experts is even.
+
+        This is a derived property based on num_experts, demonstrating
+        the DRY (Don't Repeat Yourself) principle by avoiding storage
+        of redundant data.
+
+        Returns:
+            True if number of experts is even, False if odd
+
+        Example:
+            >>> result = BeCoMeResult(...)
+            >>> result.num_experts
+            5
+            >>> result.is_even
+            False
+        """
+        return self.num_experts % 2 == 0
 
     @classmethod
     def from_calculations(
@@ -111,25 +129,20 @@ class BeCoMeResult(BaseModel):
         phi = (arithmetic_mean.peak + median.peak) / 2
         xi = (arithmetic_mean.upper_bound + median.upper_bound) / 2
 
-        best_compromise = FuzzyTriangleNumber(
-            lower_bound=pi, peak=phi, upper_bound=xi
-        )
+        best_compromise = FuzzyTriangleNumber(lower_bound=pi, peak=phi, upper_bound=xi)
 
         # Calculate maximum error: |centroid(Γ) - centroid(Ω)| / 2
-        mean_centroid = arithmetic_mean.get_centroid()
-        median_centroid = median.get_centroid()
+        mean_centroid = arithmetic_mean.centroid
+        median_centroid = median.centroid
         max_error = abs(mean_centroid - median_centroid) / 2
 
-        # Determine if number of experts is even
-        is_even = num_experts % 2 == 0
-
+        # Note: is_even is now a computed property, not stored
         return cls(
             best_compromise=best_compromise,
             arithmetic_mean=arithmetic_mean,
             median=median,
             max_error=max_error,
             num_experts=num_experts,
-            is_even=is_even,
         )
 
     def __str__(self) -> str:

@@ -59,12 +59,8 @@ class TestBaseAggregationCalculatorABC:
 
         # Create test data
         opinions = [
-            ExpertOpinion(
-                expert_id="E1", opinion=FuzzyTriangleNumber(5.0, 10.0, 15.0)
-            ),
-            ExpertOpinion(
-                expert_id="E2", opinion=FuzzyTriangleNumber(7.0, 12.0, 17.0)
-            ),
+            ExpertOpinion(expert_id="E1", opinion=FuzzyTriangleNumber(5.0, 10.0, 15.0)),
+            ExpertOpinion(expert_id="E2", opinion=FuzzyTriangleNumber(7.0, 12.0, 17.0)),
         ]
 
         # Test that polymorphic call works
@@ -82,9 +78,7 @@ class TestBaseAggregationCalculatorABC:
         from inspect import signature
 
         # Get method signatures from ABC
-        abc_mean_sig = signature(
-            BaseAggregationCalculator.calculate_arithmetic_mean
-        )
+        abc_mean_sig = signature(BaseAggregationCalculator.calculate_arithmetic_mean)
         abc_median_sig = signature(BaseAggregationCalculator.calculate_median)
         abc_compromise_sig = signature(BaseAggregationCalculator.calculate_compromise)
 
@@ -137,7 +131,7 @@ class TestBeCoMeCalculatorPublicInterface:
         assert sorted_opinions[2].expert_id == "E3"  # centroid: 15.0
 
         # Check that centroids are in ascending order
-        centroids = [op.get_centroid() for op in sorted_opinions]
+        centroids = [op.centroid for op in sorted_opinions]
         assert centroids == sorted(centroids)
 
     def test_sort_by_centroid_preserves_original_list(self):
@@ -145,12 +139,8 @@ class TestBeCoMeCalculatorPublicInterface:
         calculator = BeCoMeCalculator()
 
         original_opinions = [
-            ExpertOpinion(
-                expert_id="E2", opinion=FuzzyTriangleNumber(10.0, 15.0, 20.0)
-            ),
-            ExpertOpinion(
-                expert_id="E1", opinion=FuzzyTriangleNumber(1.0, 2.0, 3.0)
-            ),
+            ExpertOpinion(expert_id="E2", opinion=FuzzyTriangleNumber(10.0, 15.0, 20.0)),
+            ExpertOpinion(expert_id="E1", opinion=FuzzyTriangleNumber(1.0, 2.0, 3.0)),
         ]
 
         # Get original order
