@@ -12,6 +12,11 @@ import statistics
 from typing import TYPE_CHECKING
 
 from src.calculators.base_calculator import BaseAggregationCalculator
+from src.calculators.median_strategies import (
+    EvenMedianStrategy,
+    MedianCalculationStrategy,
+    OddMedianStrategy,
+)
 from src.exceptions import EmptyOpinionsError
 from src.models.become_result import BeCoMeResult
 from src.models.fuzzy_number import FuzzyTriangleNumber
@@ -65,6 +70,12 @@ class BeCoMeCalculator(BaseAggregationCalculator):
         """
         Calculate the statistical median (Omega) of all expert opinions.
 
+        This method uses the Strategy Pattern to delegate the actual median
+        calculation to either OddMedianStrategy or EvenMedianStrategy,
+        depending on the number of expert opinions. This demonstrates the
+        Open/Closed Principle (OCP) from SOLID - the method is closed for
+        modification but open for extension through strategies.
+
         The median is calculated differently for odd and even number of experts:
         - Odd (M = 2n + 1): middle element after sorting by centroid
         - Even (M = 2n): average of two middle elements after sorting
@@ -85,34 +96,17 @@ class BeCoMeCalculator(BaseAggregationCalculator):
         sorted_opinions: list[ExpertOpinion] = self.sort_by_centroid(opinions)
         m: int = len(sorted_opinions)
 
-        # Use statistics.median for centroid values
+        # Calculate median centroid for strategy
         centroids = [op.centroid for op in sorted_opinions]
         median_centroid = statistics.median(centroids)
 
-        # Find the opinion with median centroid
-        median_opinion = min(sorted_opinions, key=lambda op: abs(op.centroid - median_centroid))
+        # Strategy Pattern: select strategy based on number of experts
+        # This eliminates if-else logic and adheres to OCP
+        strategy: MedianCalculationStrategy = (
+            OddMedianStrategy() if m % 2 == 1 else EvenMedianStrategy()
+        )
 
-        # For even number of experts, average with the next closest opinion
-        if m % 2 == 0:
-            # Find the second closest opinion to median centroid
-            remaining_opinions = [op for op in sorted_opinions if op != median_opinion]
-            second_median_opinion = min(
-                remaining_opinions, key=lambda op: abs(op.centroid - median_centroid)
-            )
-
-            # Average the two median opinions
-            rho = (
-                median_opinion.opinion.lower_bound + second_median_opinion.opinion.lower_bound
-            ) / 2
-            omega = (median_opinion.opinion.peak + second_median_opinion.opinion.peak) / 2
-            sigma = (
-                median_opinion.opinion.upper_bound + second_median_opinion.opinion.upper_bound
-            ) / 2
-
-            return FuzzyTriangleNumber(lower_bound=rho, peak=omega, upper_bound=sigma)
-        else:
-            # For odd number, use the median opinion directly
-            return median_opinion.opinion
+        return strategy.calculate(sorted_opinions, median_centroid)
 
     def calculate_compromise(self, opinions: list[ExpertOpinion]) -> BeCoMeResult:
         """
