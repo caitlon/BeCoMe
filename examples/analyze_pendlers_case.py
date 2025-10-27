@@ -12,13 +12,38 @@ for cross-border travel policy.
 from pathlib import Path
 
 from examples.utils import load_data_from_txt, print_header, print_section
+from src.calculators.base_calculator import BaseAggregationCalculator
 from src.calculators.become_calculator import BeCoMeCalculator
 from src.models.expert_opinion import ExpertOpinion
 from src.models.fuzzy_number import FuzzyTriangleNumber
 
 
-def main() -> None:
-    """Run detailed analysis of Pendlers case."""
+def main(calculator: BaseAggregationCalculator | None = None) -> None:
+    """
+    Run detailed analysis of Pendlers case.
+
+    This function demonstrates Dependency Injection (DI) pattern from SOLID
+    principles. Instead of creating a calculator directly, it accepts one as
+    a parameter, depending on the abstraction (BaseAggregationCalculator)
+    rather than the concrete implementation (BeCoMeCalculator).
+
+    Args:
+        calculator: Aggregation calculator to use for analysis.
+                   If None, defaults to BeCoMeCalculator().
+                   This allows for easy testing and flexibility.
+
+    Example:
+        >>> # Use default calculator
+        >>> main()
+        >>>
+        >>> # Inject custom calculator for testing
+        >>> custom_calc = BeCoMeCalculator()
+        >>> main(calculator=custom_calc)
+    """
+    # Dependency Injection: use provided calculator or create default
+    if calculator is None:
+        calculator = BeCoMeCalculator()
+
     # Load data from text file
     data_file: str = str(Path(__file__).parent / "data" / "pendlers_case.txt")
     opinions: list[ExpertOpinion]
@@ -38,9 +63,6 @@ def main() -> None:
     print("  50  = Neutral")
     print("  75  = Rather agree")
     print("  100 = Strongly agree")
-
-    # Create calculator
-    calculator = BeCoMeCalculator()
 
     # STEP 1: Calculate Arithmetic Mean (Gamma)
     print_section("STEP 1: Arithmetic Mean (Gamma)")
