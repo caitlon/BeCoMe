@@ -33,7 +33,8 @@ class TestBaseAggregationCalculatorABC:
         assert "calculate_arithmetic_mean" in abstract_methods
         assert "calculate_median" in abstract_methods
         assert "calculate_compromise" in abstract_methods
-        assert len(abstract_methods) == 3
+        assert "sort_by_centroid" in abstract_methods
+        assert len(abstract_methods) == 4
 
     def test_become_calculator_inherits_from_abc(self):
         """Test that BeCoMeCalculator properly inherits from BaseAggregationCalculator."""
@@ -47,6 +48,7 @@ class TestBaseAggregationCalculatorABC:
         assert hasattr(calculator, "calculate_arithmetic_mean")
         assert hasattr(calculator, "calculate_median")
         assert hasattr(calculator, "calculate_compromise")
+        assert hasattr(calculator, "sort_by_centroid")
 
         # Check that they are callable
         assert callable(calculator.calculate_arithmetic_mean)
