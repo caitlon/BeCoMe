@@ -146,22 +146,32 @@ def main(calculator: BaseAggregationCalculator | None = None) -> None:
 
     print("\nFormula: π = (α + ρ)/2, φ = (γ + ω)/2, ξ = (β + σ)/2")
 
-    pi: float = (mean.lower_bound + median.lower_bound) / 2
-    phi: float = (mean.peak + median.peak) / 2
-    xi: float = (mean.upper_bound + median.upper_bound) / 2
+    # Use consolidated result object to avoid duplicating calculation logic
+    result = calculator.calculate_compromise(opinions)
+    best_compromise: FuzzyTriangleNumber = result.best_compromise
 
-    print(f"\nπ (lower) = ({mean.lower_bound:.2f} + {median.lower_bound:.2f}) / 2 = {pi:.2f}")
-    print(f"φ (peak) = ({mean.peak:.2f} + {median.peak:.2f}) / 2 = {phi:.2f}")
-    print(f"ξ (upper) = ({mean.upper_bound:.2f} + {median.upper_bound:.2f}) / 2 = {xi:.2f}")
-
-    # Create best compromise object
-    best_compromise = FuzzyTriangleNumber(lower_bound=pi, peak=phi, upper_bound=xi)
+    print(
+        f"\nπ (lower) = ({mean.lower_bound:.2f} + {median.lower_bound:.2f}) / 2 = "
+        f"{best_compromise.lower_bound:.2f}"
+    )
+    print(
+        f"φ (peak) = ({mean.peak:.2f} + {median.peak:.2f}) / 2 = {best_compromise.peak:.2f}"
+    )
+    print(
+        f"ξ (upper) = ({mean.upper_bound:.2f} + {median.upper_bound:.2f}) / 2 = "
+        f"{best_compromise.upper_bound:.2f}"
+    )
 
     # Use the built-in centroid method
     best_compromise_centroid: float = best_compromise.centroid
-    print(f"\nBest Compromise: ΓΩMean({pi:.2f}, {phi:.2f}, {xi:.2f})")
     print(
-        f"Best compromise centroid: ({pi:.2f} + {phi:.2f} + {xi:.2f}) / 3 = {best_compromise_centroid:.2f}"
+        f"\nBest Compromise: ΓΩMean({best_compromise.lower_bound:.2f}, "
+        f"{best_compromise.peak:.2f}, {best_compromise.upper_bound:.2f})"
+    )
+    print(
+        "Best compromise centroid: "
+        f"({best_compromise.lower_bound:.2f} + {best_compromise.peak:.2f} + "
+        f"{best_compromise.upper_bound:.2f}) / 3 = {best_compromise_centroid:.2f}"
     )
 
     # STEP 4: Calculate Maximum Error (Δmax)
@@ -170,7 +180,7 @@ def main(calculator: BaseAggregationCalculator | None = None) -> None:
     print("\nFormula: Δmax = |centroid(Γ) - centroid(Ω)| / 2")
     print("This is the precision indicator (lower is better)")
 
-    max_error: float = abs(mean_centroid - median_centroid) / 2
+    max_error: float = result.max_error
 
     print(f"\nMean centroid (Gx): {mean_centroid:.2f}")
     print(f"Median centroid (Gx): {median_centroid:.2f}")
@@ -179,16 +189,20 @@ def main(calculator: BaseAggregationCalculator | None = None) -> None:
     # STEP 5: Final Result
     print_section("FINAL RESULT")
 
-    result = calculator.calculate_compromise(opinions)
-
     print(f"\n{result}")
 
     # Interpretation
     print_header("INTERPRETATION")
 
     print(f"\nBest compromise estimate: {best_compromise_centroid:.2f} billion CZK (centroid)")
-    print(f"Fuzzy number: ({pi:.2f}, {phi:.2f}, {xi:.2f})")
-    print(f"Range: [{pi:.2f}, {xi:.2f}] billion CZK")
+    print(
+        "Fuzzy number: "
+        f"({best_compromise.lower_bound:.2f}, {best_compromise.peak:.2f}, "
+        f"{best_compromise.upper_bound:.2f})"
+    )
+    print(
+        f"Range: [{best_compromise.lower_bound:.2f}, {best_compromise.upper_bound:.2f}] billion CZK"
+    )
     print(f"Precision indicator (Δmax): {max_error:.2f}")
 
     # Determine agreement level based on max_error thresholds
