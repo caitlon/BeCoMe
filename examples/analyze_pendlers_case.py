@@ -14,6 +14,7 @@ from pathlib import Path
 from examples.utils import load_data_from_txt, print_header, print_section
 from src.calculators.base_calculator import BaseAggregationCalculator
 from src.calculators.become_calculator import BeCoMeCalculator
+from src.interpreters.likert_interpreter import LikertDecisionInterpreter
 from src.models.expert_opinion import ExpertOpinion
 from src.models.fuzzy_number import FuzzyTriangleNumber
 
@@ -145,9 +146,6 @@ def main(calculator: BaseAggregationCalculator | None = None) -> None:
     print(f"\nBest Compromise: ΓΩMean({pi:.2f}, {phi:.2f}, {xi:.2f})")
     print(f"Best compromise centroid: {best_compromise_centroid:.2f}")
 
-    # Likert values for later interpretation
-    likert_values: list[int] = [0, 25, 50, 75, 100]
-
     # STEP 4: Calculate Maximum Error (Δmax)
     print_section("STEP 4: Maximum Error (Δmax)")
 
@@ -180,34 +178,16 @@ def main(calculator: BaseAggregationCalculator | None = None) -> None:
 
     print(f"Expert agreement: {agreement.upper()}")
 
-    # Decision interpretation (based on centroid, not peak)
-    closest_likert_centroid: int = min(
-        likert_values, key=lambda x: abs(x - best_compromise_centroid)
-    )
+    # Use LikertDecisionInterpreter for clean, OOP-based interpretation
+    # This demonstrates Single Responsibility Principle: interpretation
+    # logic is encapsulated in a dedicated class
+    interpreter = LikertDecisionInterpreter()
+    decision = interpreter.interpret(best_compromise)
 
-    print(f"Closest Likert value: {closest_likert_centroid}")
-
-    if closest_likert_centroid == 0:
-        decision = "STRONGLY DISAGREE - Cross-border travel should NOT be allowed"
-    elif closest_likert_centroid == 25:
-        decision = "RATHER DISAGREE - Cross-border travel is NOT recommended"
-    elif closest_likert_centroid == 50:
-        decision = "NEUTRAL - No clear consensus"
-    elif closest_likert_centroid == 75:
-        decision = "RATHER AGREE - Cross-border travel is recommended"
-    else:  # 100
-        decision = "STRONGLY AGREE - Cross-border travel should be allowed"
-
-    print(f"\nDECISION (based on centroid {best_compromise_centroid:.2f}): {decision}")
-
-    print(f"\nThe consensus among experts is '{decision.split('-')[0].strip()}'.")
-    print("Based on the Likert scale interpretation, the recommendation is:")
-    if closest_likert_centroid < 50:
-        print("  - Cross-border travel should NOT be allowed at this time.")
-    elif closest_likert_centroid == 50:
-        print("  - No clear recommendation (neutral position).")
-    else:
-        print("  - Cross-border travel could be considered for regular commuters.")
+    print(f"Closest Likert value: {decision.likert_value}")
+    print(f"\nDECISION (based on centroid {best_compromise_centroid:.2f}):")
+    print(f"  {decision.decision_text.upper()}")
+    print(f"\nRecommendation: {decision.recommendation}")
 
 
 if __name__ == "__main__":
