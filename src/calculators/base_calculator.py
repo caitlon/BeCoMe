@@ -22,10 +22,12 @@ class BaseAggregationCalculator(ABC):
 
     This class defines the contract for all calculators that aggregate
     expert opinions represented as fuzzy triangular numbers. Any concrete
-    implementation must provide all three calculation methods.
+    implementation must provide all four required methods.
 
     The class enforces the Open/Closed Principle: open for extension
     (new calculator types), closed for modification (interface is stable).
+    It also adheres to Interface Segregation Principle by including all
+    public methods that are part of the calculator's interface.
     """
 
     @abstractmethod
@@ -76,5 +78,33 @@ class BaseAggregationCalculator(ABC):
 
         Raises:
             EmptyOpinionsError: If opinions list is empty
+        """
+        pass
+
+    @abstractmethod
+    def sort_by_centroid(self, opinions: list[ExpertOpinion]) -> list[ExpertOpinion]:
+        """
+        Sort expert opinions by their centroid values in ascending order.
+
+        This method is part of the public interface and is used by aggregation
+        strategies (particularly median calculation) to order opinions.
+        Including it in the ABC ensures that all calculator implementations
+        provide consistent sorting behavior.
+
+        This demonstrates Interface Segregation Principle (ISP) from SOLID:
+        all public methods that clients may use are part of the interface.
+
+        Args:
+            opinions: List of expert opinions to sort
+
+        Returns:
+            New list of opinions sorted by centroid (ascending order)
+            The original list is not modified (immutability principle)
+
+        Example:
+            >>> calculator = BeCoMeCalculator()
+            >>> opinions = [op1, op2, op3]  # Unordered
+            >>> sorted_ops = calculator.sort_by_centroid(opinions)
+            >>> # sorted_ops[0] has lowest centroid, sorted_ops[-1] has highest
         """
         pass
