@@ -16,6 +16,33 @@ if TYPE_CHECKING:
     from src.models.fuzzy_number import FuzzyTriangleNumber
 
 
+def _find_closest_opinion(
+    opinions: list[ExpertOpinion],
+    target_centroid: float,
+) -> ExpertOpinion:
+    """
+    Find the opinion with centroid closest to the target centroid.
+
+    This is a private helper function used by median calculation strategies
+    to locate the expert opinion(s) whose centroid is nearest to the
+    median centroid value.
+
+    Args:
+        opinions: List of expert opinions to search
+        target_centroid: Target centroid value to match
+
+    Returns:
+        ExpertOpinion with centroid closest to target_centroid
+
+    Example:
+        >>> opinions = [op1, op2, op3]  # centroids: 5.0, 8.0, 12.0
+        >>> target = 7.5
+        >>> closest = _find_closest_opinion(opinions, target)
+        >>> # Returns op2 (centroid 8.0 is closest to 7.5)
+    """
+    return min(opinions, key=lambda op: abs(op.centroid - target_centroid))
+
+
 class MedianCalculationStrategy(ABC):
     """
     Abstract base class for median calculation strategies.
@@ -84,8 +111,8 @@ class OddMedianStrategy(MedianCalculationStrategy):
             >>> median = strategy.calculate(sorted_ops, median_centroid)
             >>> # median will be op3.opinion
         """
-        # Find the opinion with median centroid
-        median_opinion = min(sorted_opinions, key=lambda op: abs(op.centroid - median_centroid))
+        # Find the opinion with median centroid using helper function
+        median_opinion = _find_closest_opinion(sorted_opinions, median_centroid)
 
         return median_opinion.opinion
 
@@ -135,16 +162,12 @@ class EvenMedianStrategy(MedianCalculationStrategy):
         """
         from src.models.fuzzy_number import FuzzyTriangleNumber
 
-        # Find the first opinion with median centroid
-        first_median_opinion = min(
-            sorted_opinions, key=lambda op: abs(op.centroid - median_centroid)
-        )
+        # Find the first opinion with median centroid using helper function
+        first_median_opinion = _find_closest_opinion(sorted_opinions, median_centroid)
 
         # Find the second closest opinion to median centroid
         remaining_opinions = [op for op in sorted_opinions if op != first_median_opinion]
-        second_median_opinion = min(
-            remaining_opinions, key=lambda op: abs(op.centroid - median_centroid)
-        )
+        second_median_opinion = _find_closest_opinion(remaining_opinions, median_centroid)
 
         # Average the two median opinions
         rho = (
