@@ -38,6 +38,23 @@ class BeCoMeCalculator(BaseAggregationCalculator):
         - Best compromise: GammaOmegaMean(pi, phi, xi) = (Gamma + Omega) / 2
     """
 
+    def _validate_opinions_not_empty(self, opinions: list[ExpertOpinion], operation: str) -> None:
+        """
+        Validate that opinions list is not empty.
+
+        This private method centralizes validation logic to avoid duplication
+        across multiple calculation methods.
+
+        Args:
+            opinions: List of expert opinions to validate
+            operation: Name of the operation (for error message)
+
+        Raises:
+            EmptyOpinionsError: If opinions list is empty
+        """
+        if not opinions:
+            raise EmptyOpinionsError(f"Cannot calculate {operation} of empty opinions list")
+
     def calculate_arithmetic_mean(self, opinions: list[ExpertOpinion]) -> FuzzyTriangleNumber:
         """
         Calculate the arithmetic mean (Gamma) of all expert opinions.
@@ -56,8 +73,7 @@ class BeCoMeCalculator(BaseAggregationCalculator):
         Raises:
             EmptyOpinionsError: If opinions list is empty
         """
-        if not opinions:
-            raise EmptyOpinionsError("Cannot calculate arithmetic mean of empty opinions list")
+        self._validate_opinions_not_empty(opinions, "arithmetic mean")
 
         # Calculate arithmetic mean for each component
         alpha: float = statistics.mean(op.opinion.lower_bound for op in opinions)
@@ -89,8 +105,7 @@ class BeCoMeCalculator(BaseAggregationCalculator):
         Raises:
             EmptyOpinionsError: If opinions list is empty
         """
-        if not opinions:
-            raise EmptyOpinionsError("Cannot calculate median of empty opinions list")
+        self._validate_opinions_not_empty(opinions, "median")
 
         # Sort opinions by centroid
         sorted_opinions: list[ExpertOpinion] = self.sort_by_centroid(opinions)
@@ -130,8 +145,7 @@ class BeCoMeCalculator(BaseAggregationCalculator):
         Raises:
             EmptyOpinionsError: If opinions list is empty
         """
-        if not opinions:
-            raise EmptyOpinionsError("Cannot calculate compromise of empty opinions list")
+        self._validate_opinions_not_empty(opinions, "compromise")
 
         # Step 1: Calculate arithmetic mean (Gamma)
         arithmetic_mean: FuzzyTriangleNumber = self.calculate_arithmetic_mean(opinions)
