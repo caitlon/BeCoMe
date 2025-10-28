@@ -107,9 +107,7 @@ class LikertDecisionInterpreter:
         """
         # Calculate centroid and find closest Likert value
         centroid: float = fuzzy_number.centroid
-        closest_value: int = min(
-            self._likert_values, key=lambda x: abs(x - centroid)
-        )
+        closest_value: int = min(self._likert_values, key=lambda x: abs(x - centroid))
 
         # Get interpretation texts
         decision_text: str = self._get_decision_text(closest_value)

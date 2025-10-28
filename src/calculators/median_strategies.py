@@ -85,9 +85,7 @@ class OddMedianStrategy(MedianCalculationStrategy):
             >>> # median will be op3.opinion
         """
         # Find the opinion with median centroid
-        median_opinion = min(
-            sorted_opinions, key=lambda op: abs(op.centroid - median_centroid)
-        )
+        median_opinion = min(sorted_opinions, key=lambda op: abs(op.centroid - median_centroid))
 
         return median_opinion.opinion
 
@@ -150,13 +148,11 @@ class EvenMedianStrategy(MedianCalculationStrategy):
 
         # Average the two median opinions
         rho = (
-            first_median_opinion.opinion.lower_bound
-            + second_median_opinion.opinion.lower_bound
+            first_median_opinion.opinion.lower_bound + second_median_opinion.opinion.lower_bound
         ) / 2
         omega = (first_median_opinion.opinion.peak + second_median_opinion.opinion.peak) / 2
         sigma = (
-            first_median_opinion.opinion.upper_bound
-            + second_median_opinion.opinion.upper_bound
+            first_median_opinion.opinion.upper_bound + second_median_opinion.opinion.upper_bound
         ) / 2
 
         return FuzzyTriangleNumber(lower_bound=rho, peak=omega, upper_bound=sigma)

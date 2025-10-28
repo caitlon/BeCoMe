@@ -3,42 +3,25 @@ Floods case study from Excel reference implementation.
 
 This case study contains data from the "CASE STUDY 3 - FLOODS" sheet
 with 13 experts providing interval estimates for flood prevention measures.
+
+IMPORTANT: Expert opinions are loaded from examples/data/floods_case.txt
+to avoid duplication. This file is the single source of truth for opinion data.
+Only expected results are stored here as they are unique to testing.
 """
 # ignore ruff rule for mathematical symbols
 # ruff: noqa: RUF003
 
-from src.models.expert_opinion import ExpertOpinion
-from src.models.fuzzy_number import FuzzyTriangleNumber
+from pathlib import Path
+
+from examples.utils import load_data_from_txt
+
+# Load opinions from txt file (single source of truth)
+_txt_file = Path(__file__).parent.parent.parent / "examples" / "data" / "floods_case.txt"
+_opinions, _metadata = load_data_from_txt(str(_txt_file))
 
 FLOODS_CASE = {
-    # Expert opinions data
-    "opinions": [
-        ExpertOpinion(
-            "Hydrologist 1", FuzzyTriangleNumber(lower_bound=37, peak=42, upper_bound=47)
-        ),
-        ExpertOpinion(
-            "Hydrologist 2", FuzzyTriangleNumber(lower_bound=42, peak=50, upper_bound=50)
-        ),
-        ExpertOpinion(
-            "Nature protection", FuzzyTriangleNumber(lower_bound=5, peak=7, upper_bound=9)
-        ),
-        ExpertOpinion(
-            "Risk management", FuzzyTriangleNumber(lower_bound=37, peak=40, upper_bound=48)
-        ),
-        ExpertOpinion("Land use", FuzzyTriangleNumber(lower_bound=6, peak=8, upper_bound=11)),
-        ExpertOpinion("Civil service", FuzzyTriangleNumber(lower_bound=5, peak=8, upper_bound=9)),
-        ExpertOpinion(
-            "Municipality 1", FuzzyTriangleNumber(lower_bound=33, peak=38, upper_bound=43)
-        ),
-        ExpertOpinion("Municipality 2", FuzzyTriangleNumber(lower_bound=5, peak=8, upper_bound=8)),
-        ExpertOpinion("Economist", FuzzyTriangleNumber(lower_bound=10, peak=14, upper_bound=20)),
-        ExpertOpinion(
-            "Rescue coordinator", FuzzyTriangleNumber(lower_bound=40, peak=45, upper_bound=50)
-        ),
-        ExpertOpinion("Land owner 1", FuzzyTriangleNumber(lower_bound=2, peak=3, upper_bound=4)),
-        ExpertOpinion("Land owner 2", FuzzyTriangleNumber(lower_bound=0, peak=0, upper_bound=2)),
-        ExpertOpinion("Land owner 3", FuzzyTriangleNumber(lower_bound=0, peak=2, upper_bound=3)),
-    ],
+    # Expert opinions data loaded from txt file
+    "opinions": _opinions,
     # Expected results from Excel
     "expected_result": {
         # Best compromise fuzzy number: (π, φ, ψ) = (lower, peak, upper)
@@ -60,16 +43,6 @@ FLOODS_CASE = {
         "max_error": 5.974358974358974,  # |mean_centroid - median_centroid|/2
         "num_experts": 13,
     },
-    # Description for documentation and examples
-    "description": """
-    Case Study - Floods:
-    Real case study about flood prevention. Experts have expressed their standpoint
-    as a numerical interval or a number regarding the question:
-    "What percentage reduction of arable land in flood areas is recommended
-    to prevent floods?"
-
-    This case demonstrates BeCoMe with 13 experts (odd number) where opinions
-    are highly polarized between land owners (low percentages) and hydrologists/
-    rescue services (high percentages).
-    """,
+    # Description from txt file metadata
+    "description": _metadata.get("description", "Floods case study"),
 }
