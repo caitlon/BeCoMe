@@ -3,84 +3,25 @@ Budget case study from Excel reference implementation.
 
 This case study contains data from the "CASE STUDY - BUDGET" sheet
 with 22 experts providing interval estimates for COVID-19 pandemic budget support.
+
+IMPORTANT: Expert opinions are loaded from examples/data/budget_case.txt
+to avoid duplication. This file is the single source of truth for opinion data.
+Only expected results are stored here as they are unique to testing.
 """
 # ignore ruff rule for mathematical symbols
 # ruff: noqa: RUF003
 
-from src.models.expert_opinion import ExpertOpinion
-from src.models.fuzzy_number import FuzzyTriangleNumber
+from pathlib import Path
+
+from examples.utils import load_data_from_txt
+
+# Load opinions from txt file (single source of truth)
+_txt_file = Path(__file__).parent.parent.parent / "examples" / "data" / "budget_case.txt"
+_opinions, _metadata = load_data_from_txt(str(_txt_file))
 
 BUDGET_CASE = {
-    # Expert opinions data
-    "opinions": [
-        ExpertOpinion("Chairman", FuzzyTriangleNumber(lower_bound=40, peak=70, upper_bound=90)),
-        ExpertOpinion(
-            "Deputy chairman", FuzzyTriangleNumber(lower_bound=60, peak=80, upper_bound=90)
-        ),
-        ExpertOpinion(
-            "Deputy Minister of MI", FuzzyTriangleNumber(lower_bound=60, peak=90, upper_bound=90)
-        ),
-        ExpertOpinion(
-            "Deputy Minister of MD", FuzzyTriangleNumber(lower_bound=30, peak=40, upper_bound=40)
-        ),
-        ExpertOpinion(
-            "Deputy Minister of MFA", FuzzyTriangleNumber(lower_bound=40, peak=70, upper_bound=90)
-        ),
-        ExpertOpinion(
-            "Deputy Minister of MF", FuzzyTriangleNumber(lower_bound=30, peak=45, upper_bound=70)
-        ),
-        ExpertOpinion(
-            "Deputy Minister of MH", FuzzyTriangleNumber(lower_bound=40, peak=60, upper_bound=85)
-        ),
-        ExpertOpinion(
-            "Deputy Minister of MIT", FuzzyTriangleNumber(lower_bound=40, peak=90, upper_bound=90)
-        ),
-        ExpertOpinion(
-            "Deputy Minister of MT", FuzzyTriangleNumber(lower_bound=40, peak=50, upper_bound=50)
-        ),
-        ExpertOpinion(
-            "Deputy Minister of MEYS", FuzzyTriangleNumber(lower_bound=15, peak=40, upper_bound=60)
-        ),
-        ExpertOpinion(
-            "Deputy Minister of MA", FuzzyTriangleNumber(lower_bound=40, peak=50, upper_bound=70)
-        ),
-        ExpertOpinion(
-            "Deputy Minister of MoLSA", FuzzyTriangleNumber(lower_bound=10, peak=50, upper_bound=50)
-        ),
-        ExpertOpinion(
-            "Deputy Minister of MC", FuzzyTriangleNumber(lower_bound=10, peak=30, upper_bound=40)
-        ),
-        ExpertOpinion(
-            "Deputy Minister of MJ", FuzzyTriangleNumber(lower_bound=10, peak=40, upper_bound=50)
-        ),
-        ExpertOpinion(
-            "Chairman of the SSHR", FuzzyTriangleNumber(lower_bound=40, peak=40, upper_bound=40)
-        ),
-        ExpertOpinion(
-            "Police President", FuzzyTriangleNumber(lower_bound=50, peak=50, upper_bound=50)
-        ),
-        ExpertOpinion(
-            "Director of Fire Rescue Service",
-            FuzzyTriangleNumber(lower_bound=30, peak=40, upper_bound=50),
-        ),
-        ExpertOpinion(
-            "Chief of General Staff of the ACR",
-            FuzzyTriangleNumber(lower_bound=10, peak=40, upper_bound=45),
-        ),
-        ExpertOpinion(
-            "Director of NÚKIB", FuzzyTriangleNumber(lower_bound=10, peak=40, upper_bound=80)
-        ),
-        ExpertOpinion(
-            "Chief hygienist", FuzzyTriangleNumber(lower_bound=10, peak=30, upper_bound=80)
-        ),
-        ExpertOpinion(
-            "Director of SZÚ", FuzzyTriangleNumber(lower_bound=30, peak=50, upper_bound=55)
-        ),
-        ExpertOpinion(
-            "Director of the Office of the Government",
-            FuzzyTriangleNumber(lower_bound=60, peak=60, upper_bound=90),
-        ),
-    ],
+    # Expert opinions data loaded from txt file
+    "opinions": _opinions,
     # Expected results from Excel
     "expected_result": {
         # Best compromise fuzzy number: (π, φ, ψ) = (lower, peak, upper)
@@ -102,11 +43,6 @@ BUDGET_CASE = {
         "max_error": 2.20,  # |mean_centroid - median_centroid|/2
         "num_experts": 22,
     },
-    # Description for documentation and examples
-    "description": """
-    Case Study - Budget:
-    Experts have expressed their standpoint as a numerical interval or a number
-    regarding the state budget of the Czech Republic and the total financial
-    support in the range CZK 0-100 billion for entrepreneurs affected by the COVID-19 pandemic.
-    """,
+    # Description from txt file metadata
+    "description": _metadata.get("description", "Budget case study"),
 }

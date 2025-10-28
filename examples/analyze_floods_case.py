@@ -145,9 +145,7 @@ def main(calculator: BaseAggregationCalculator | None = None) -> None:
         f"\nπ (lower) = ({mean.lower_bound:.2f} + {median.lower_bound:.2f}) / 2 = "
         f"{best_compromise.lower_bound:.2f}"
     )
-    print(
-        f"φ (peak) = ({mean.peak:.2f} + {median.peak:.2f}) / 2 = {best_compromise.peak:.2f}"
-    )
+    print(f"φ (peak) = ({mean.peak:.2f} + {median.peak:.2f}) / 2 = {best_compromise.peak:.2f}")
     print(
         f"ξ (upper) = ({mean.upper_bound:.2f} + {median.upper_bound:.2f}) / 2 = "
         f"{best_compromise.upper_bound:.2f}"
@@ -193,10 +191,7 @@ def main(calculator: BaseAggregationCalculator | None = None) -> None:
         f"({best_compromise.lower_bound:.2f}, {best_compromise.peak:.2f}, "
         f"{best_compromise.upper_bound:.2f})"
     )
-    print(
-        "Range: "
-        f"[{best_compromise.lower_bound:.2f}%, {best_compromise.upper_bound:.2f}%]"
-    )
+    print(f"Range: [{best_compromise.lower_bound:.2f}%, {best_compromise.upper_bound:.2f}%]")
     print(f"Precision indicator (Δmax): {max_error:.2f}")
 
     # Determine agreement level based on max_error thresholds
