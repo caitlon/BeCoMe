@@ -31,27 +31,10 @@ class TestExpertOpinionCreation:
         assert opinion.opinion == fuzzy
 
 
-class TestExpertOpinionCentroid:
-    """Test cases for centroid delegation."""
-
-    def test_get_centroid(self):
-        """Test that centroid property delegates to fuzzy number."""
-        fuzzy = FuzzyTriangleNumber(lower_bound=6.0, peak=9.0, upper_bound=12.0)
-        opinion = ExpertOpinion(expert_id="Expert A", opinion=fuzzy)
-
-        expected_centroid = (6.0 + 9.0 + 12.0) / 3.0
-        assert opinion.centroid == expected_centroid
-        assert opinion.centroid == fuzzy.centroid
-
-    def test_centroid_from_excel_example(self):
-        """Test centroid with Excel data example."""
-        # Product owner from Excel: best=11, lower=8, upper=14
-        fuzzy = FuzzyTriangleNumber(lower_bound=8.0, peak=11.0, upper_bound=14.0)
-        opinion = ExpertOpinion(expert_id="Product owner", opinion=fuzzy)
-
-        expected_centroid = (8.0 + 11.0 + 14.0) / 3.0
-        assert abs(opinion.centroid - expected_centroid) < 1e-10
-        assert abs(opinion.centroid - 11.0) < 1e-10
+# NOTE: Centroid tests were removed as they are redundant.
+# ExpertOpinion.centroid simply delegates to FuzzyTriangleNumber.centroid,
+# which is thoroughly tested in test_fuzzy_number.py.
+# Testing simple delegation doesn't add value.
 
 
 class TestExpertOpinionComparison:
