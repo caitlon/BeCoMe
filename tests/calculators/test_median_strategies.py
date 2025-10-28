@@ -99,9 +99,7 @@ class TestOddMedianStrategy:
             ),  # centroid = 11.0
             ExpertOpinion(
                 expert_id="E5",
-                opinion=FuzzyTriangleNumber(
-                    lower_bound=9.0, peak=14.0, upper_bound=19.0
-                ),
+                opinion=FuzzyTriangleNumber(lower_bound=9.0, peak=14.0, upper_bound=19.0),
             ),  # centroid = 14.0
         ]
 
@@ -181,9 +179,7 @@ class TestEvenMedianStrategy:
             ),  # centroid = 10.0
             ExpertOpinion(
                 expert_id="E4",
-                opinion=FuzzyTriangleNumber(
-                    lower_bound=8.0, peak=13.0, upper_bound=18.0
-                ),
+                opinion=FuzzyTriangleNumber(lower_bound=8.0, peak=13.0, upper_bound=18.0),
             ),  # centroid = 13.0
         ]
 
@@ -220,15 +216,11 @@ class TestEvenMedianStrategy:
             ),
             ExpertOpinion(
                 expert_id="E5",
-                opinion=FuzzyTriangleNumber(
-                    lower_bound=9.0, peak=14.0, upper_bound=19.0
-                ),
+                opinion=FuzzyTriangleNumber(lower_bound=9.0, peak=14.0, upper_bound=19.0),
             ),
             ExpertOpinion(
                 expert_id="E6",
-                opinion=FuzzyTriangleNumber(
-                    lower_bound=11.0, peak=17.0, upper_bound=23.0
-                ),
+                opinion=FuzzyTriangleNumber(lower_bound=11.0, peak=17.0, upper_bound=23.0),
             ),
         ]
 

@@ -16,7 +16,7 @@ from .median_strategies import (
 __all__ = [
     "BaseAggregationCalculator",
     "BeCoMeCalculator",
+    "EvenMedianStrategy",
     "MedianCalculationStrategy",
     "OddMedianStrategy",
-    "EvenMedianStrategy",
 ]
