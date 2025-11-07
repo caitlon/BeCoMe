@@ -197,3 +197,211 @@ class TestExamplesDataFormat:
         expected_count = int(metadata["num_experts"])
         actual_count = len(opinions)
         assert actual_count == expected_count == 13
+
+
+class TestDataLoadingErrorHandling:
+    """Test error handling in data loading."""
+
+    def test_file_not_found_raises_error(self, tmp_path):
+        """Test that FileNotFoundError is raised for non-existent files."""
+        # Arrange
+        non_existent_file: str = str(tmp_path / "does_not_exist.txt")
+
+        # Act & Assert
+        with pytest.raises(FileNotFoundError) as exc_info:
+            load_data_from_txt(non_existent_file)
+
+        assert "Data file not found" in str(exc_info.value)
+        assert non_existent_file in str(exc_info.value)
+
+    def test_invalid_line_format_too_few_parts(self, tmp_path):
+        """Test that ValueError is raised for lines with less than 4 parts."""
+        # Arrange
+        test_file = tmp_path / "invalid_format.txt"
+        test_file.write_text(
+            """CASE: Test
+DESCRIPTION: Invalid format test
+EXPERTS: 1
+
+E1 | 10 | 20
+""",
+            encoding="utf-8",
+        )
+
+        # Act & Assert
+        with pytest.raises(ValueError) as exc_info:
+            load_data_from_txt(str(test_file))
+
+        assert "Invalid line format" in str(exc_info.value)
+        assert "expected 4 parts" in str(exc_info.value)
+
+    def test_invalid_line_format_too_many_parts(self, tmp_path):
+        """Test that ValueError is raised for lines with more than 4 parts."""
+        # Arrange
+        test_file = tmp_path / "invalid_format.txt"
+        test_file.write_text(
+            """CASE: Test
+DESCRIPTION: Invalid format test
+EXPERTS: 1
+
+E1 | 10 | 20 | 30 | 40
+""",
+            encoding="utf-8",
+        )
+
+        # Act & Assert
+        with pytest.raises(ValueError) as exc_info:
+            load_data_from_txt(str(test_file))
+
+        assert "Invalid line format" in str(exc_info.value)
+        assert "expected 4 parts" in str(exc_info.value)
+
+    def test_invalid_numeric_values_non_float_lower(self, tmp_path):
+        """Test that ValueError is raised for non-numeric lower bound."""
+        # Arrange
+        test_file = tmp_path / "invalid_numbers.txt"
+        test_file.write_text(
+            """CASE: Test
+DESCRIPTION: Invalid numbers test
+EXPERTS: 1
+
+E1 | abc | 20 | 30
+""",
+            encoding="utf-8",
+        )
+
+        # Act & Assert
+        with pytest.raises(ValueError) as exc_info:
+            load_data_from_txt(str(test_file))
+
+        assert "Invalid numeric values" in str(exc_info.value)
+
+    def test_invalid_numeric_values_non_float_peak(self, tmp_path):
+        """Test that ValueError is raised for non-numeric peak."""
+        # Arrange
+        test_file = tmp_path / "invalid_numbers.txt"
+        test_file.write_text(
+            """CASE: Test
+DESCRIPTION: Invalid numbers test
+EXPERTS: 1
+
+E1 | 10 | xyz | 30
+""",
+            encoding="utf-8",
+        )
+
+        # Act & Assert
+        with pytest.raises(ValueError) as exc_info:
+            load_data_from_txt(str(test_file))
+
+        assert "Invalid numeric values" in str(exc_info.value)
+
+    def test_invalid_numeric_values_non_float_upper(self, tmp_path):
+        """Test that ValueError is raised for non-numeric upper bound."""
+        # Arrange
+        test_file = tmp_path / "invalid_numbers.txt"
+        test_file.write_text(
+            """CASE: Test
+DESCRIPTION: Invalid numbers test
+EXPERTS: 1
+
+E1 | 10 | 20 | invalid
+""",
+            encoding="utf-8",
+        )
+
+        # Act & Assert
+        with pytest.raises(ValueError) as exc_info:
+            load_data_from_txt(str(test_file))
+
+        assert "Invalid numeric values" in str(exc_info.value)
+
+    def test_expert_count_mismatch_too_few(self, tmp_path):
+        """Test that ValueError is raised when fewer experts than expected."""
+        # Arrange
+        test_file = tmp_path / "count_mismatch.txt"
+        test_file.write_text(
+            """CASE: Test
+DESCRIPTION: Count mismatch test
+EXPERTS: 3
+
+E1 | 10 | 20 | 30
+E2 | 15 | 25 | 35
+""",
+            encoding="utf-8",
+        )
+
+        # Act & Assert
+        with pytest.raises(ValueError) as exc_info:
+            load_data_from_txt(str(test_file))
+
+        assert "Expected 3 experts but loaded 2" in str(exc_info.value)
+
+    def test_expert_count_mismatch_too_many(self, tmp_path):
+        """Test that ValueError is raised when more experts than expected."""
+        # Arrange
+        test_file = tmp_path / "count_mismatch.txt"
+        test_file.write_text(
+            """CASE: Test
+DESCRIPTION: Count mismatch test
+EXPERTS: 2
+
+E1 | 10 | 20 | 30
+E2 | 15 | 25 | 35
+E3 | 20 | 30 | 40
+""",
+            encoding="utf-8",
+        )
+
+        # Act & Assert
+        with pytest.raises(ValueError) as exc_info:
+            load_data_from_txt(str(test_file))
+
+        assert "Expected 2 experts but loaded 3" in str(exc_info.value)
+
+    def test_empty_lines_and_comments_are_skipped(self, tmp_path):
+        """Test that empty lines and comments don't affect parsing."""
+        # Arrange
+        test_file = tmp_path / "with_comments.txt"
+        test_file.write_text(
+            """CASE: Test
+DESCRIPTION: Test with comments
+EXPERTS: 2
+
+# This is a comment
+E1 | 10 | 20 | 30
+
+# Another comment
+E2 | 15 | 25 | 35
+
+""",
+            encoding="utf-8",
+        )
+
+        # Act
+        opinions, metadata = load_data_from_txt(str(test_file))
+
+        # Assert
+        assert len(opinions) == 2
+        assert metadata["case"] == "Test"
+
+    def test_valid_file_with_no_expert_count_metadata(self, tmp_path):
+        """Test that files without EXPERTS metadata are loaded without validation."""
+        # Arrange
+        test_file = tmp_path / "no_count.txt"
+        test_file.write_text(
+            """CASE: Test
+DESCRIPTION: No expert count specified
+
+E1 | 10 | 20 | 30
+E2 | 15 | 25 | 35
+""",
+            encoding="utf-8",
+        )
+
+        # Act
+        opinions, metadata = load_data_from_txt(str(test_file))
+
+        # Assert
+        assert len(opinions) == 2
+        assert "num_experts" not in metadata
