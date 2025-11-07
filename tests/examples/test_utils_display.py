@@ -383,4 +383,3 @@ class TestDisplayIntegration:
         assert isinstance(median, FuzzyTriangleNumber)
         assert isinstance(best_compromise, FuzzyTriangleNumber)
         assert isinstance(max_error, float)
-
