@@ -162,7 +162,9 @@ class TestExcelIntegration:
             ("examples/data/pendlers_case.txt", PENDLERS_CASE, "Pendlers"),
         ],
     )
-    def test_full_pipeline_calculation(self, calculator, data_file: str, reference_case: dict, case_name: str):
+    def test_full_pipeline_calculation(
+        self, calculator, data_file: str, reference_case: dict, case_name: str
+    ):
         """Test end-to-end pipeline: parse file and calculate results.
 
         This test verifies the complete integration flow from text file
