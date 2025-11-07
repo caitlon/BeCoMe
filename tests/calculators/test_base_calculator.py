@@ -16,7 +16,59 @@ import pytest
 
 from src.calculators.base_calculator import BaseAggregationCalculator
 from src.calculators.become_calculator import BeCoMeCalculator
+from src.models.expert_opinion import ExpertOpinion
 from src.models.fuzzy_number import FuzzyTriangleNumber
+
+# Local fixtures (used only in this file)
+
+
+@pytest.fixture
+def two_experts_for_polymorphism():
+    """Provide 2 experts for testing polymorphic ABC implementation."""
+    return [
+        ExpertOpinion(
+            expert_id="E1",
+            opinion=FuzzyTriangleNumber(lower_bound=5.0, peak=10.0, upper_bound=15.0),
+        ),
+        ExpertOpinion(
+            expert_id="E2",
+            opinion=FuzzyTriangleNumber(lower_bound=7.0, peak=12.0, upper_bound=17.0),
+        ),
+    ]
+
+
+@pytest.fixture
+def three_experts_for_sorting():
+    """Provide 3 unsorted experts for testing sort_by_centroid."""
+    return [
+        ExpertOpinion(
+            expert_id="E3",
+            opinion=FuzzyTriangleNumber(lower_bound=10.0, peak=15.0, upper_bound=20.0),
+        ),  # centroid: 15.0
+        ExpertOpinion(
+            expert_id="E1",
+            opinion=FuzzyTriangleNumber(lower_bound=1.0, peak=2.0, upper_bound=3.0),
+        ),  # centroid: 2.0
+        ExpertOpinion(
+            expert_id="E2",
+            opinion=FuzzyTriangleNumber(lower_bound=5.0, peak=10.0, upper_bound=15.0),
+        ),  # centroid: 10.0
+    ]
+
+
+@pytest.fixture
+def two_experts_for_immutability_test():
+    """Provide 2 experts for testing that sort_by_centroid preserves original list."""
+    return [
+        ExpertOpinion(
+            expert_id="E2",
+            opinion=FuzzyTriangleNumber(lower_bound=10.0, peak=15.0, upper_bound=20.0),
+        ),
+        ExpertOpinion(
+            expert_id="E1",
+            opinion=FuzzyTriangleNumber(lower_bound=1.0, peak=2.0, upper_bound=3.0),
+        ),
+    ]
 
 
 class TestBaseAggregationCalculatorABC:
@@ -101,6 +153,7 @@ class TestAbstractMethodEnforcement:
         WHEN: Attempting to instantiate it
         THEN: TypeError is raised mentioning "abstract"
         """
+
         # GIVEN: Create a class that doesn't implement all abstract methods
         class IncompleteCalculator(BaseAggregationCalculator):
             def calculate_arithmetic_mean(self, opinions):

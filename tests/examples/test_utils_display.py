@@ -3,6 +3,8 @@ Unit tests for examples.utils.display module.
 
 Tests the step-by-step display functions for BeCoMe calculations.
 """
+# ignore ruff rule for mathematical symbols
+# ruff: noqa: RUF001
 
 from examples.utils.display import (
     display_median_calculation_details,
@@ -67,7 +69,7 @@ class TestDisplayStep1ArithmeticMean:
         ]
         calculator: BeCoMeCalculator = BeCoMeCalculator()
 
-        mean, mean_centroid = display_step_1_arithmetic_mean(opinions, calculator)
+        mean, _ = display_step_1_arithmetic_mean(opinions, calculator)
         captured = capsys.readouterr()
 
         output: str = captured.out
@@ -201,7 +203,7 @@ class TestDisplayStep2Median:
         ]
         calculator: BeCoMeCalculator = BeCoMeCalculator()
 
-        median, median_centroid = display_step_2_median(opinions, calculator, is_likert=False)
+        _, _ = display_step_2_median(opinions, calculator, is_likert=False)
         captured = capsys.readouterr()
 
         output: str = captured.out
@@ -222,7 +224,7 @@ class TestDisplayStep2Median:
         ]
         calculator: BeCoMeCalculator = BeCoMeCalculator()
 
-        median, median_centroid = display_step_2_median(opinions, calculator, is_likert=True)
+        _, _ = display_step_2_median(opinions, calculator, is_likert=True)
         captured = capsys.readouterr()
 
         output: str = captured.out
@@ -274,7 +276,7 @@ class TestDisplayStep3BestCompromise:
         """Test best compromise when mean equals median."""
         fuzzy_num: FuzzyTriangleNumber = FuzzyTriangleNumber(20.0, 30.0, 40.0)
 
-        best_compromise, best_centroid = display_step_3_best_compromise(fuzzy_num, fuzzy_num)
+        best_compromise, _ = display_step_3_best_compromise(fuzzy_num, fuzzy_num)
         captured = capsys.readouterr()
 
         output: str = captured.out
@@ -364,7 +366,7 @@ class TestDisplayIntegration:
         median, median_centroid = display_step_2_median(opinions, calculator)
 
         # Step 3
-        best_compromise, best_centroid = display_step_3_best_compromise(mean, median)
+        best_compromise, _ = display_step_3_best_compromise(mean, median)
 
         # Step 4
         max_error: float = display_step_4_max_error(mean_centroid, median_centroid)
