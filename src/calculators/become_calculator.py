@@ -75,12 +75,9 @@ class BeCoMeCalculator(BaseAggregationCalculator):
         """
         self._validate_opinions_not_empty(opinions, "arithmetic mean")
 
-        # Calculate arithmetic mean for each component
-        alpha: float = statistics.mean(op.opinion.lower_bound for op in opinions)
-        gamma: float = statistics.mean(op.opinion.peak for op in opinions)
-        beta: float = statistics.mean(op.opinion.upper_bound for op in opinions)
-
-        return FuzzyTriangleNumber(lower_bound=alpha, peak=gamma, upper_bound=beta)
+        # Extract fuzzy numbers and calculate their average
+        fuzzy_numbers = [op.opinion for op in opinions]
+        return FuzzyTriangleNumber.average(fuzzy_numbers)
 
     def calculate_median(self, opinions: list[ExpertOpinion]) -> FuzzyTriangleNumber:
         """
