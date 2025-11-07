@@ -14,168 +14,16 @@ from tests.reference import BUDGET_CASE, FLOODS_CASE, PENDLERS_CASE
 class TestExcelIntegration:
     """Integration tests comparing BeCoMe calculations with Excel reference data."""
 
-    def test_budget_case(self):
-        """Test BeCoMe with the Budget case from Excel."""
-        # Arrange
-        calculator = BeCoMeCalculator()
-        expected = BUDGET_CASE["expected_result"]
-
-        # Act
-        result = calculator.calculate_compromise(BUDGET_CASE["opinions"])
-
-        # Assert - Best compromise fuzzy number components
-        assert (
-            abs(result.best_compromise.lower_bound - expected["best_compromise_lower"]) < 0.001
-        ), (
-            f"Best compromise lower mismatch: got {result.best_compromise.lower_bound}, "
-            f"expected {expected['best_compromise_lower']}"
-        )
-        assert abs(result.best_compromise.peak - expected["best_compromise_peak"]) < 0.001, (
-            f"Best compromise peak mismatch: got {result.best_compromise.peak}, "
-            f"expected {expected['best_compromise_peak']}"
-        )
-        assert (
-            abs(result.best_compromise.upper_bound - expected["best_compromise_upper"]) < 0.001
-        ), (
-            f"Best compromise upper mismatch: got {result.best_compromise.upper_bound}, "
-            f"expected {expected['best_compromise_upper']}"
-        )
-
-        # Check centroid matches Excel display value
-        result_centroid = result.best_compromise.centroid
-        assert abs(result_centroid - expected["best_compromise_centroid"]) < 0.01, (
-            f"Best compromise centroid mismatch: got {result_centroid}, "
-            f"expected {expected['best_compromise_centroid']}"
-        )
-
-        # Arithmetic mean fuzzy number
-        assert abs(result.arithmetic_mean.lower_bound - expected["mean_lower"]) < 0.001
-        assert abs(result.arithmetic_mean.peak - expected["mean_peak"]) < 0.001
-        assert abs(result.arithmetic_mean.upper_bound - expected["mean_upper"]) < 0.001
-
-        # Median fuzzy number
-        assert abs(result.median.lower_bound - expected["median_lower"]) < 0.001
-        assert abs(result.median.peak - expected["median_peak"]) < 0.001
-        assert abs(result.median.upper_bound - expected["median_upper"]) < 0.001
-
-        # Max error (now a scalar, not fuzzy number)
-        assert abs(result.max_error - expected["max_error"]) < 0.01, (
-            f"Max error mismatch: got {result.max_error}, expected {expected['max_error']}"
-        )
-
-        # Expert count should match exactly
-        assert result.num_experts == expected["num_experts"]
-
-    def test_pendlers_case(self):
-        """Test BeCoMe with the Pendlers case from Excel (Likert scale data)."""
-        # Arrange
-        calculator = BeCoMeCalculator()
-        expected = PENDLERS_CASE["expected_result"]
-
-        # Act
-        result = calculator.calculate_compromise(PENDLERS_CASE["opinions"])
-
-        # Assert
-        # Best compromise peak should match with precision < 0.001
-        assert abs(result.best_compromise.peak - expected["best_compromise_peak"]) < 0.001, (
-            f"Best compromise peak mismatch: got {result.best_compromise.peak}, "
-            f"expected {expected['best_compromise_peak']}"
-        )
-
-        # Max error is now a scalar (float), not fuzzy number
-        assert abs(result.max_error - expected["max_error"]) < 0.01, (
-            f"Max error mismatch: got {result.max_error}, expected {expected['max_error']}"
-        )
-
-        # Verify mean and median
-        assert abs(result.arithmetic_mean.peak - expected["mean_peak"]) < 0.001, (
-            f"Arithmetic mean peak mismatch: got {result.arithmetic_mean.peak}, "
-            f"expected {expected['mean_peak']}"
-        )
-
-        assert abs(result.median.peak - expected["median_peak"]) < 0.001, (
-            f"Median peak mismatch: got {result.median.peak}, expected {expected['median_peak']}"
-        )
-
-        # Verify median bounds for Likert (should be same as peak)
-        assert abs(result.median.lower_bound - expected["median_lower"]) < 0.001, (
-            f"Median lower bound mismatch: got {result.median.lower_bound}, "
-            f"expected {expected['median_lower']}"
-        )
-
-        assert abs(result.median.upper_bound - expected["median_upper"]) < 0.001, (
-            f"Median upper bound mismatch: got {result.median.upper_bound}, "
-            f"expected {expected['median_upper']}"
-        )
-
-        # Check that number of experts matches
-        assert result.num_experts == expected["num_experts"]
-
-    def test_floods_case(self):
-        """Test BeCoMe with the Floods case from Excel (real case with 13 experts)."""
-        # Arrange
-        calculator = BeCoMeCalculator()
-        expected = FLOODS_CASE["expected_result"]
-
-        # Act
-        result = calculator.calculate_compromise(FLOODS_CASE["opinions"])
-
-        # Assert - Best compromise fuzzy number components
-        assert (
-            abs(result.best_compromise.lower_bound - expected["best_compromise_lower"]) < 0.001
-        ), (
-            f"Best compromise lower mismatch: got {result.best_compromise.lower_bound}, "
-            f"expected {expected['best_compromise_lower']}"
-        )
-        assert abs(result.best_compromise.peak - expected["best_compromise_peak"]) < 0.001, (
-            f"Best compromise peak mismatch: got {result.best_compromise.peak}, "
-            f"expected {expected['best_compromise_peak']}"
-        )
-        assert (
-            abs(result.best_compromise.upper_bound - expected["best_compromise_upper"]) < 0.001
-        ), (
-            f"Best compromise upper mismatch: got {result.best_compromise.upper_bound}, "
-            f"expected {expected['best_compromise_upper']}"
-        )
-
-        # Check centroid matches Excel display value
-        result_centroid = result.best_compromise.centroid
-        assert abs(result_centroid - expected["best_compromise_centroid"]) < 0.01, (
-            f"Best compromise centroid mismatch: got {result_centroid}, "
-            f"expected {expected['best_compromise_centroid']}"
-        )
-
-        # Arithmetic mean fuzzy number
-        assert abs(result.arithmetic_mean.lower_bound - expected["mean_lower"]) < 0.001
-        assert abs(result.arithmetic_mean.peak - expected["mean_peak"]) < 0.001
-        assert abs(result.arithmetic_mean.upper_bound - expected["mean_upper"]) < 0.001
-
-        # Median fuzzy number
-        assert abs(result.median.lower_bound - expected["median_lower"]) < 0.001
-        assert abs(result.median.peak - expected["median_peak"]) < 0.001
-        assert abs(result.median.upper_bound - expected["median_upper"]) < 0.001
-
-        # Max error (scalar)
-        assert abs(result.max_error - expected["max_error"]) < 0.01, (
-            f"Max error mismatch: got {result.max_error}, expected {expected['max_error']}"
-        )
-
-        # Expert count should match exactly
-        assert result.num_experts == expected["num_experts"]
-
-        # This is an odd number case (13 experts)
-        assert result.is_even is False
-
     @pytest.mark.parametrize(
         "case_name,case_data",
         [
-            ("BUDGET_CASE", BUDGET_CASE),
-            ("PENDLERS_CASE", PENDLERS_CASE),
-            ("FLOODS_CASE", FLOODS_CASE),
+            ("BUDGET", BUDGET_CASE),
+            ("FLOODS", FLOODS_CASE),
+            ("PENDLERS", PENDLERS_CASE),
         ],
     )
-    def test_all_excel_cases(self, case_name, case_data):
-        """Test all Excel cases with parametrized test."""
+    def test_excel_reference_cases(self, case_name: str, case_data: dict):
+        """Test all Excel reference cases with full validation."""
         # Arrange
         calculator = BeCoMeCalculator()
         expected = case_data["expected_result"]
@@ -183,20 +31,84 @@ class TestExcelIntegration:
         # Act
         result = calculator.calculate_compromise(case_data["opinions"])
 
-        # Assert
-        # Basic validation for all cases
+        # Assert - Best compromise peak (always present)
         assert abs(result.best_compromise.peak - expected["best_compromise_peak"]) < 0.001, (
-            f"{case_name} best compromise peak mismatch: got {result.best_compromise.peak}, "
+            f"{case_name}: Best compromise peak mismatch: "
+            f"got {result.best_compromise.peak}, "
             f"expected {expected['best_compromise_peak']}"
         )
 
-        # Max error is now a scalar (float), not fuzzy number
+        # Assert - Best compromise bounds (if present in expected)
+        if "best_compromise_lower" in expected:
+            assert (
+                abs(result.best_compromise.lower_bound - expected["best_compromise_lower"]) < 0.001
+            ), (
+                f"{case_name}: Best compromise lower mismatch: "
+                f"got {result.best_compromise.lower_bound}, "
+                f"expected {expected['best_compromise_lower']}"
+            )
+
+        if "best_compromise_upper" in expected:
+            assert (
+                abs(result.best_compromise.upper_bound - expected["best_compromise_upper"]) < 0.001
+            ), (
+                f"{case_name}: Best compromise upper mismatch: "
+                f"got {result.best_compromise.upper_bound}, "
+                f"expected {expected['best_compromise_upper']}"
+            )
+
+        # Assert - Best compromise centroid (if present)
+        if "best_compromise_centroid" in expected:
+            result_centroid = result.best_compromise.centroid
+            assert abs(result_centroid - expected["best_compromise_centroid"]) < 0.01, (
+                f"{case_name}: Best compromise centroid mismatch: "
+                f"got {result_centroid}, "
+                f"expected {expected['best_compromise_centroid']}"
+            )
+
+        # Assert - Arithmetic mean peak (always present)
+        assert abs(result.arithmetic_mean.peak - expected["mean_peak"]) < 0.001, (
+            f"{case_name}: Mean peak mismatch"
+        )
+
+        # Assert - Arithmetic mean bounds (if present)
+        if "mean_lower" in expected:
+            assert abs(result.arithmetic_mean.lower_bound - expected["mean_lower"]) < 0.001, (
+                f"{case_name}: Mean lower bound mismatch"
+            )
+
+        if "mean_upper" in expected:
+            assert abs(result.arithmetic_mean.upper_bound - expected["mean_upper"]) < 0.001, (
+                f"{case_name}: Mean upper bound mismatch"
+            )
+
+        # Assert - Median fuzzy number
+        assert abs(result.median.lower_bound - expected["median_lower"]) < 0.001, (
+            f"{case_name}: Median lower bound mismatch"
+        )
+        assert abs(result.median.peak - expected["median_peak"]) < 0.001, (
+            f"{case_name}: Median peak mismatch"
+        )
+        assert abs(result.median.upper_bound - expected["median_upper"]) < 0.001, (
+            f"{case_name}: Median upper bound mismatch"
+        )
+
+        # Assert - Max error (scalar)
         assert abs(result.max_error - expected["max_error"]) < 0.01, (
-            f"{case_name} max error mismatch: got {result.max_error}, "
+            f"{case_name}: Max error mismatch: "
+            f"got {result.max_error}, "
             f"expected {expected['max_error']}"
         )
 
+        # Assert - Expert count
         assert result.num_experts == expected["num_experts"], (
-            f"{case_name} expert count mismatch: got {result.num_experts}, "
+            f"{case_name}: Expert count mismatch: "
+            f"got {result.num_experts}, "
             f"expected {expected['num_experts']}"
         )
+
+        # Assert - Even/odd validation for specific cases
+        if case_name == "FLOODS":
+            assert result.is_even is False, f"{case_name}: Should be odd (13 experts)"
+        elif case_name in ["BUDGET", "PENDLERS"]:
+            assert result.is_even is True, f"{case_name}: Should be even (22 experts)"
