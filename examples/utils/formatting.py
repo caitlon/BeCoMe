@@ -3,7 +3,6 @@ Display formatting utilities for BeCoMe examples.
 
 This module provides functions for formatting console output.
 """
-# ignore ruff rule for mathematical symbols
 
 from src.models.expert_opinion import ExpertOpinion
 from src.models.fuzzy_number import FuzzyTriangleNumber
