@@ -171,13 +171,7 @@ class EvenMedianStrategy(MedianCalculationStrategy):
         remaining_opinions = [op for op in sorted_opinions if op != first_median_opinion]
         second_median_opinion = self._find_closest_opinion(remaining_opinions, median_centroid)
 
-        # Average the two median opinions
-        rho = (
-            first_median_opinion.opinion.lower_bound + second_median_opinion.opinion.lower_bound
-        ) / 2
-        omega = (first_median_opinion.opinion.peak + second_median_opinion.opinion.peak) / 2
-        sigma = (
-            first_median_opinion.opinion.upper_bound + second_median_opinion.opinion.upper_bound
-        ) / 2
-
-        return FuzzyTriangleNumber(lower_bound=rho, peak=omega, upper_bound=sigma)
+        # Average the two median opinions using centralized method
+        return FuzzyTriangleNumber.average(
+            [first_median_opinion.opinion, second_median_opinion.opinion]
+        )
