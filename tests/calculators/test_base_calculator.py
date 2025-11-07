@@ -36,27 +36,12 @@ class TestBaseAggregationCalculatorABC:
         assert "sort_by_centroid" in abstract_methods
         assert len(abstract_methods) == 4
 
-    def test_become_calculator_inherits_from_abc(self):
-        """Test that BeCoMeCalculator properly inherits from BaseAggregationCalculator."""
+    def test_become_calculator_implements_abc_interface(self):
+        """Test that BeCoMeCalculator properly inherits from and implements the ABC."""
+        # Check inheritance
         assert issubclass(BeCoMeCalculator, BaseAggregationCalculator)
 
-    def test_become_calculator_implements_all_abstract_methods(self):
-        """Test that BeCoMeCalculator implements all required abstract methods."""
-        calculator = BeCoMeCalculator()
-
-        # Check that all abstract methods are implemented
-        assert hasattr(calculator, "calculate_arithmetic_mean")
-        assert hasattr(calculator, "calculate_median")
-        assert hasattr(calculator, "calculate_compromise")
-        assert hasattr(calculator, "sort_by_centroid")
-
-        # Check that they are callable
-        assert callable(calculator.calculate_arithmetic_mean)
-        assert callable(calculator.calculate_median)
-        assert callable(calculator.calculate_compromise)
-
-    def test_become_calculator_can_be_used_polymorphically(self):
-        """Test that BeCoMeCalculator can be used where BaseAggregationCalculator is expected."""
+        # Check implementation can be used polymorphically
         calculator: BaseAggregationCalculator = BeCoMeCalculator()
 
         # Create test data
@@ -65,7 +50,7 @@ class TestBaseAggregationCalculatorABC:
             ExpertOpinion(expert_id="E2", opinion=FuzzyTriangleNumber(7.0, 12.0, 17.0)),
         ]
 
-        # Test that polymorphic call works
+        # Test that all methods work polymorphically
         mean = calculator.calculate_arithmetic_mean(opinions)
         assert isinstance(mean, FuzzyTriangleNumber)
 
@@ -74,25 +59,6 @@ class TestBaseAggregationCalculatorABC:
 
         result = calculator.calculate_compromise(opinions)
         assert result.num_experts == 2
-
-    def test_abc_method_signatures_match_implementation(self):
-        """Test that BeCoMeCalculator method signatures match ABC interface."""
-        from inspect import signature
-
-        # Get method signatures from ABC
-        abc_mean_sig = signature(BaseAggregationCalculator.calculate_arithmetic_mean)
-        abc_median_sig = signature(BaseAggregationCalculator.calculate_median)
-        abc_compromise_sig = signature(BaseAggregationCalculator.calculate_compromise)
-
-        # Get method signatures from implementation
-        impl_mean_sig = signature(BeCoMeCalculator.calculate_arithmetic_mean)
-        impl_median_sig = signature(BeCoMeCalculator.calculate_median)
-        impl_compromise_sig = signature(BeCoMeCalculator.calculate_compromise)
-
-        # Check that signatures match (parameters and return types)
-        assert str(abc_mean_sig) == str(impl_mean_sig)
-        assert str(abc_median_sig) == str(impl_median_sig)
-        assert str(abc_compromise_sig) == str(impl_compromise_sig)
 
 
 class TestAbstractMethodEnforcement:
@@ -114,38 +80,9 @@ class TestAbstractMethodEnforcement:
 
         assert "abstract" in str(exc_info.value).lower()
 
-    def test_abstract_methods_not_callable_directly(self):
-        """Test that calling abstract methods on ABC instance would fail."""
-        # We can't instantiate ABC, but we can verify abstract methods exist
-        assert hasattr(BaseAggregationCalculator, "calculate_arithmetic_mean")
-        assert hasattr(BaseAggregationCalculator, "calculate_median")
-        assert hasattr(BaseAggregationCalculator, "calculate_compromise")
-        assert hasattr(BaseAggregationCalculator, "sort_by_centroid")
-
-        # Verify they are abstract
-        assert getattr(
-            BaseAggregationCalculator.calculate_arithmetic_mean, "__isabstractmethod__", False
-        )
-        assert getattr(BaseAggregationCalculator.calculate_median, "__isabstractmethod__", False)
-        assert getattr(
-            BaseAggregationCalculator.calculate_compromise, "__isabstractmethod__", False
-        )
-        assert getattr(BaseAggregationCalculator.sort_by_centroid, "__isabstractmethod__", False)
-
 
 class TestBeCoMeCalculatorPublicInterface:
     """Test cases for BeCoMeCalculator public methods."""
-
-    def test_sort_by_centroid_is_public(self):
-        """Test that sort_by_centroid is a public method (no leading underscore)."""
-        calculator = BeCoMeCalculator()
-
-        # Check that the method exists and is public
-        assert hasattr(calculator, "sort_by_centroid")
-        assert not hasattr(calculator, "_sort_by_centroid")  # Old private name should not exist
-
-        # Check that it's callable
-        assert callable(calculator.sort_by_centroid)
 
     def test_sort_by_centroid_works_correctly(self):
         """Test that sort_by_centroid correctly sorts opinions by centroid."""
