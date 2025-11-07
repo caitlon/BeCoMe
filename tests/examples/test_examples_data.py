@@ -5,7 +5,6 @@ These tests verify that the text data files in examples/data/ load correctly
 and produce the same results as the reference test data.
 """
 
-
 import pytest
 
 from examples.utils import load_data_from_txt
@@ -181,7 +180,11 @@ EXPERTS: 1
         "expected_count,data_lines,expected_message",
         [
             (3, "E1 | 10 | 20 | 30\nE2 | 15 | 25 | 35", "Expected 3 experts but loaded 2"),
-            (2, "E1 | 10 | 20 | 30\nE2 | 15 | 25 | 35\nE3 | 20 | 30 | 40", "Expected 2 experts but loaded 3"),
+            (
+                2,
+                "E1 | 10 | 20 | 30\nE2 | 15 | 25 | 35\nE3 | 20 | 30 | 40",
+                "Expected 2 experts but loaded 3",
+            ),
         ],
     )
     def test_expert_count_mismatch(
