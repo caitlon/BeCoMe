@@ -10,6 +10,40 @@ Following Lott's "Python Object-Oriented Programming" (Chapter 13):
 import pytest
 
 from src.exceptions import EmptyOpinionsError
+from src.models.expert_opinion import ExpertOpinion
+from src.models.fuzzy_number import FuzzyTriangleNumber
+
+# Local fixtures (used only in this file)
+
+
+@pytest.fixture
+def two_experts_decimal_opinions():
+    """Provide opinions from 2 experts with decimal values."""
+    return [
+        ExpertOpinion(
+            expert_id="E1",
+            opinion=FuzzyTriangleNumber(lower_bound=2.5, peak=5.5, upper_bound=8.5),
+        ),
+        ExpertOpinion(
+            expert_id="E2",
+            opinion=FuzzyTriangleNumber(lower_bound=3.5, peak=6.5, upper_bound=9.5),
+        ),
+    ]
+
+
+@pytest.fixture
+def two_experts_independent_components():
+    """Provide opinions to test component independence."""
+    return [
+        ExpertOpinion(
+            expert_id="E1",
+            opinion=FuzzyTriangleNumber(lower_bound=10.0, peak=10.0, upper_bound=10.0),
+        ),
+        ExpertOpinion(
+            expert_id="E2",
+            opinion=FuzzyTriangleNumber(lower_bound=20.0, peak=30.0, upper_bound=40.0),
+        ),
+    ]
 
 
 class TestBeCoMeCalculatorArithmeticMean:
