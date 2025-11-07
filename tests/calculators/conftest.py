@@ -413,3 +413,55 @@ def six_experts_for_even_strategy():
             opinion=FuzzyTriangleNumber(lower_bound=11.0, peak=17.0, upper_bound=23.0),
         ),
     ]
+
+
+# Fixtures for base calculator tests
+
+
+@pytest.fixture
+def two_experts_for_polymorphism():
+    """Provide 2 experts for testing polymorphic ABC implementation."""
+    return [
+        ExpertOpinion(
+            expert_id="E1",
+            opinion=FuzzyTriangleNumber(lower_bound=5.0, peak=10.0, upper_bound=15.0),
+        ),
+        ExpertOpinion(
+            expert_id="E2",
+            opinion=FuzzyTriangleNumber(lower_bound=7.0, peak=12.0, upper_bound=17.0),
+        ),
+    ]
+
+
+@pytest.fixture
+def three_experts_for_sorting():
+    """Provide 3 unsorted experts for testing sort_by_centroid."""
+    return [
+        ExpertOpinion(
+            expert_id="E3",
+            opinion=FuzzyTriangleNumber(lower_bound=10.0, peak=15.0, upper_bound=20.0),
+        ),  # centroid: 15.0
+        ExpertOpinion(
+            expert_id="E1",
+            opinion=FuzzyTriangleNumber(lower_bound=1.0, peak=2.0, upper_bound=3.0),
+        ),  # centroid: 2.0
+        ExpertOpinion(
+            expert_id="E2",
+            opinion=FuzzyTriangleNumber(lower_bound=5.0, peak=10.0, upper_bound=15.0),
+        ),  # centroid: 10.0
+    ]
+
+
+@pytest.fixture
+def two_experts_for_immutability_test():
+    """Provide 2 experts for testing that sort_by_centroid preserves original list."""
+    return [
+        ExpertOpinion(
+            expert_id="E2",
+            opinion=FuzzyTriangleNumber(lower_bound=10.0, peak=15.0, upper_bound=20.0),
+        ),
+        ExpertOpinion(
+            expert_id="E1",
+            opinion=FuzzyTriangleNumber(lower_bound=1.0, peak=2.0, upper_bound=3.0),
+        ),
+    ]
