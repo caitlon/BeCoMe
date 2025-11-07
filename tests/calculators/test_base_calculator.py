@@ -95,6 +95,44 @@ class TestBaseAggregationCalculatorABC:
         assert str(abc_compromise_sig) == str(impl_compromise_sig)
 
 
+class TestAbstractMethodEnforcement:
+    """Test that abstract methods properly enforce implementation."""
+
+    def test_incomplete_implementation_raises_error(self):
+        """Test that partial implementation of ABC raises TypeError."""
+
+        # Create a class that doesn't implement all abstract methods
+        class IncompleteCalculator(BaseAggregationCalculator):
+            def calculate_arithmetic_mean(self, opinions):
+                return opinions[0].opinion
+
+            # Missing: calculate_median, calculate_compromise, sort_by_centroid
+
+        # Should not be able to instantiate
+        with pytest.raises(TypeError) as exc_info:
+            IncompleteCalculator()  # type: ignore
+
+        assert "abstract" in str(exc_info.value).lower()
+
+    def test_abstract_methods_not_callable_directly(self):
+        """Test that calling abstract methods on ABC instance would fail."""
+        # We can't instantiate ABC, but we can verify abstract methods exist
+        assert hasattr(BaseAggregationCalculator, "calculate_arithmetic_mean")
+        assert hasattr(BaseAggregationCalculator, "calculate_median")
+        assert hasattr(BaseAggregationCalculator, "calculate_compromise")
+        assert hasattr(BaseAggregationCalculator, "sort_by_centroid")
+
+        # Verify they are abstract
+        assert getattr(
+            BaseAggregationCalculator.calculate_arithmetic_mean, "__isabstractmethod__", False
+        )
+        assert getattr(BaseAggregationCalculator.calculate_median, "__isabstractmethod__", False)
+        assert getattr(
+            BaseAggregationCalculator.calculate_compromise, "__isabstractmethod__", False
+        )
+        assert getattr(BaseAggregationCalculator.sort_by_centroid, "__isabstractmethod__", False)
+
+
 class TestBeCoMeCalculatorPublicInterface:
     """Test cases for BeCoMeCalculator public methods."""
 

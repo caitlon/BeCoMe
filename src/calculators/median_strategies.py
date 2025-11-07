@@ -73,7 +73,7 @@ class MedianCalculationStrategy(ABC):
         Returns:
             Median as FuzzyTriangleNumber(rho, omega, sigma)
         """
-        pass
+        pass  # pragma: no cover
 
 
 class OddMedianStrategy(MedianCalculationStrategy):
