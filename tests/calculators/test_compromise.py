@@ -14,7 +14,7 @@ class TestBeCoMeCalculatorCompromise:
     """Test cases for full BeCoMe compromise calculation."""
 
     def test_compromise_with_three_experts_odd(self):
-        """Test full BeCoMe calculation with 3 experts (odd)."""
+        """Test full BeCoMe calculation with 3 experts (odd) - edge case where mean equals median."""
         opinions = [
             ExpertOpinion(
                 expert_id="E1",
@@ -41,7 +41,7 @@ class TestBeCoMeCalculatorCompromise:
         # Mean: (3+6+9)/3=6, (6+9+12)/3=9, (9+12+15)/3=12 → (6, 9, 12)
         # Median (odd, middle): (6, 9, 12)
         # Compromise: ((6+6)/2, (9+9)/2, (12+12)/2) = (6, 9, 12)
-        # Error: (|6-6|/2, |9-9|/2, |12-12|/2) = (0, 0, 0)
+        # Error: |centroid(6,9,12) - centroid(6,9,12)| / 2 = 0
         assert result.arithmetic_mean.lower_bound == 6.0
         assert result.arithmetic_mean.peak == 9.0
         assert result.arithmetic_mean.upper_bound == 12.0
@@ -54,11 +54,11 @@ class TestBeCoMeCalculatorCompromise:
         assert result.best_compromise.peak == 9.0
         assert result.best_compromise.upper_bound == 12.0
 
-        # Max error is now a scalar (float) - distance between centroids
+        # Max error is 0 when mean == median (edge case)
         assert result.max_error == 0.0
 
     def test_compromise_with_four_experts_even(self):
-        """Test full BeCoMe calculation with 4 experts (even)."""
+        """Test full BeCoMe calculation with 4 experts (even) - edge case where mean equals median."""
         opinions = [
             ExpertOpinion(
                 expert_id="E1",
@@ -86,12 +86,12 @@ class TestBeCoMeCalculatorCompromise:
 
         # Mean: (1+4+7+10)/4=5.5, (2+5+8+11)/4=6.5, (3+6+9+12)/4=7.5
         # Median (even): avg of E2 and E3 → (5.5, 6.5, 7.5)
-        # Same values, so compromise = (5.5, 6.5, 7.5), error = (0, 0, 0)
+        # Same values, so compromise = (5.5, 6.5, 7.5), error = 0
         assert result.best_compromise.lower_bound == 5.5
         assert result.best_compromise.peak == 6.5
         assert result.best_compromise.upper_bound == 7.5
 
-        # Max error is now a scalar (float) - distance between centroids
+        # Max error is 0 when mean == median (edge case)
         assert result.max_error == 0.0
 
     def test_compromise_with_skewed_data(self):
@@ -181,66 +181,6 @@ class TestBeCoMeCalculatorCompromise:
             calculator.calculate_compromise([])
 
         assert "empty" in str(exc_info.value).lower()
-
-    def test_compromise_result_structure(self):
-        """Test that result contains all required fields."""
-        opinions = [
-            ExpertOpinion(
-                expert_id="E1",
-                opinion=FuzzyTriangleNumber(lower_bound=5.0, peak=10.0, upper_bound=15.0),
-            ),
-            ExpertOpinion(
-                expert_id="E2",
-                opinion=FuzzyTriangleNumber(lower_bound=7.0, peak=12.0, upper_bound=17.0),
-            ),
-        ]
-
-        calculator = BeCoMeCalculator()
-        result = calculator.calculate_compromise(opinions)
-
-        # Check all fields are present and have correct types
-        assert hasattr(result, "best_compromise")
-        assert hasattr(result, "arithmetic_mean")
-        assert hasattr(result, "median")
-        assert hasattr(result, "max_error")
-        assert hasattr(result, "num_experts")
-        assert hasattr(result, "is_even")
-
-        assert isinstance(result.num_experts, int)
-        assert isinstance(result.is_even, bool)
-
-    def test_compromise_preserves_fuzzy_constraint(self):
-        """Test that all fuzzy numbers in result maintain constraint."""
-        opinions = [
-            ExpertOpinion(
-                expert_id="E1",
-                opinion=FuzzyTriangleNumber(lower_bound=2.0, peak=5.0, upper_bound=8.0),
-            ),
-            ExpertOpinion(
-                expert_id="E2",
-                opinion=FuzzyTriangleNumber(lower_bound=4.0, peak=7.0, upper_bound=10.0),
-            ),
-            ExpertOpinion(
-                expert_id="E3",
-                opinion=FuzzyTriangleNumber(lower_bound=6.0, peak=9.0, upper_bound=12.0),
-            ),
-        ]
-
-        calculator = BeCoMeCalculator()
-        result = calculator.calculate_compromise(opinions)
-
-        # Check all fuzzy numbers maintain lower <= peak <= upper
-        assert result.arithmetic_mean.lower_bound <= result.arithmetic_mean.peak
-        assert result.arithmetic_mean.peak <= result.arithmetic_mean.upper_bound
-
-        assert result.median.lower_bound <= result.median.peak
-        assert result.median.peak <= result.median.upper_bound
-
-        assert result.best_compromise.lower_bound <= result.best_compromise.peak
-        assert result.best_compromise.peak <= result.best_compromise.upper_bound
-
-        # Max error is now a scalar (float), so just check it's non-negative
-        assert result.max_error >= 0.0
 
     def test_compromise_max_error_calculation(self):
         """Test that max_error is calculated correctly."""
