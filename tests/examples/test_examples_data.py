@@ -5,7 +5,6 @@ These tests verify that the text data files in examples/data/ load correctly
 and produce the same results as the reference test data.
 """
 
-from pathlib import Path
 
 import pytest
 
