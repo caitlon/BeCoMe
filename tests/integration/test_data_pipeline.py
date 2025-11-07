@@ -8,8 +8,6 @@ This ensures that data files in examples/data/ can be successfully
 loaded and processed through the entire pipeline.
 """
 
-from pathlib import Path
-
 import pytest
 
 from examples.utils import load_data_from_txt
@@ -28,9 +26,7 @@ class TestDataPipeline:
             ("examples/data/pendlers_case.txt", PENDLERS_CASE, "Pendlers"),
         ],
     )
-    def test_txt_to_result_pipeline(
-        self, data_file: str, reference_case: dict, case_name: str
-    ):
+    def test_txt_to_result_pipeline(self, data_file: str, reference_case: dict, case_name: str):
         """Test complete pipeline: load txt → parse → calculate → validate."""
         # Arrange
         expected = reference_case["expected_result"]
@@ -65,4 +61,3 @@ class TestDataPipeline:
         assert result.num_experts == expected["num_experts"], (
             f"{case_name}: Expert count mismatch after full pipeline"
         )
-
