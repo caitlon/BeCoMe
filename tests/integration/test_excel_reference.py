@@ -12,6 +12,16 @@ from src.calculators.become_calculator import BeCoMeCalculator
 from tests.reference import BUDGET_CASE, FLOODS_CASE, PENDLERS_CASE
 
 
+@pytest.fixture
+def calculator():
+    """Fixture providing BeCoMeCalculator instance for tests.
+
+    This fixture implements the GIVEN step by preparing a calculator
+    instance that can be injected into any test via Dependency Injection.
+    """
+    return BeCoMeCalculator()
+
+
 class TestExcelIntegration:
     """Integration tests comparing BeCoMe calculations with Excel reference data."""
 
@@ -23,16 +33,16 @@ class TestExcelIntegration:
             ("PENDLERS", PENDLERS_CASE),
         ],
     )
-    def test_excel_reference_cases(self, case_name: str, case_data: dict):
+    def test_excel_reference_cases(self, calculator, case_name: str, case_data: dict):
         """Test all Excel reference cases with full validation."""
-        # Arrange
-        calculator = BeCoMeCalculator()
+        # GIVEN - Fixture provides calculator, extract expected data
         expected = case_data["expected_result"]
 
-        # Act
+        # WHEN - Calculate compromise using BeCoMe algorithm
         result = calculator.calculate_compromise(case_data["opinions"])
 
-        # Assert - Best compromise peak (always present)
+        # THEN - Verify all calculated values match Excel reference
+        # Best compromise peak (always present)
         assert abs(result.best_compromise.peak - expected["best_compromise_peak"]) < 0.001, (
             f"{case_name}: Best compromise peak mismatch: "
             f"got {result.best_compromise.peak}, "
@@ -108,7 +118,7 @@ class TestExcelIntegration:
             f"expected {expected['num_experts']}"
         )
 
-        # Assert - Even/odd validation for specific cases
+        # Even/odd validation for specific cases
         if case_name == "FLOODS":
             assert result.is_even is False, f"{case_name}: Should be odd (13 experts)"
         elif case_name in ["BUDGET", "PENDLERS"]:
@@ -122,31 +132,53 @@ class TestExcelIntegration:
             ("examples/data/pendlers_case.txt", PENDLERS_CASE, "Pendlers"),
         ],
     )
-    def test_txt_to_result_pipeline(self, data_file: str, reference_case: dict, case_name: str):
-        """Test complete pipeline: load txt → parse → calculate → validate.
+    def test_txt_file_parsing(self, data_file: str, reference_case: dict, case_name: str):
+        """Test text file parsing extracts correct metadata and opinions.
 
-        This test verifies the end-to-end flow from text files to results,
-        ensuring that data files in examples/data/ can be successfully
-        loaded and processed through the entire pipeline.
+        This test focuses solely on the file parsing step of the pipeline,
+        verifying that load_data_from_txt() correctly reads and parses
+        the text file format.
+
+        Follows Single Responsibility: One test, one action (parsing).
         """
-        # Arrange
+        # GIVEN - Expected data from reference case
         expected = reference_case["expected_result"]
 
-        # Act - Load data from text file
+        # WHEN - Load and parse data from text file
         opinions, metadata = load_data_from_txt(data_file)
 
-        # Assert - Parsing worked correctly
+        # THEN - Verify parsing extracted correct information
         assert metadata["case"] == case_name, f"Case name mismatch in {data_file}"
         assert len(opinions) == expected["num_experts"], (
             f"Expert count mismatch in {data_file}: "
             f"got {len(opinions)}, expected {expected['num_experts']}"
         )
 
-        # Act - Calculate results
-        calculator = BeCoMeCalculator()
+    @pytest.mark.parametrize(
+        "data_file,reference_case,case_name",
+        [
+            ("examples/data/budget_case.txt", BUDGET_CASE, "Budget"),
+            ("examples/data/floods_case.txt", FLOODS_CASE, "Floods"),
+            ("examples/data/pendlers_case.txt", PENDLERS_CASE, "Pendlers"),
+        ],
+    )
+    def test_full_pipeline_calculation(self, calculator, data_file: str, reference_case: dict, case_name: str):
+        """Test end-to-end pipeline: parse file and calculate results.
+
+        This test verifies the complete integration flow from text file
+        to calculation results, ensuring parsed data produces correct
+        BeCoMe calculations.
+
+        Follows Single Responsibility: One test, one action (calculation).
+        """
+        # GIVEN - Load opinions from file, fixture provides calculator
+        opinions, _ = load_data_from_txt(data_file)
+        expected = reference_case["expected_result"]
+
+        # WHEN - Calculate compromise with parsed data
         result = calculator.calculate_compromise(opinions)
 
-        # Assert - Results match reference data
+        # THEN - Verify calculation results match reference
         assert abs(result.best_compromise.peak - expected["best_compromise_peak"]) < 0.001, (
             f"{case_name}: Best compromise peak mismatch after full pipeline: "
             f"got {result.best_compromise.peak}, "
