@@ -37,6 +37,7 @@ select = [
 ]
 ignore = [
     "E501",   # line too long (handled by formatter)
+    "RUF022"  # `__all__` is not sorted
 ]
 
 [tool.ruff.format]
