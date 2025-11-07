@@ -213,7 +213,7 @@ class TestFuzzyTriangleNumberEquality:
         assert fuzzy != [5.0, 10.0, 15.0]  # list
         assert fuzzy != "5.0, 10.0, 15.0"  # string
         assert fuzzy != 10.0  # float
-        assert fuzzy != None  # None
+        assert fuzzy is not None  # None
 
 
 class TestFuzzyTriangleNumberAverage:
