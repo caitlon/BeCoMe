@@ -6,8 +6,6 @@ expert opinions and metadata from .txt files without testing
 calculation logic (which belongs in integration tests).
 """
 
-from pathlib import Path
-
 import pytest
 
 from examples.utils import load_data_from_txt
@@ -135,7 +133,11 @@ EXPERTS: 1
         "expected_count,data_lines,expected_message",
         [
             (3, "E1 | 10 | 20 | 30\nE2 | 15 | 25 | 35", "Expected 3 experts but loaded 2"),
-            (2, "E1 | 10 | 20 | 30\nE2 | 15 | 25 | 35\nE3 | 20 | 30 | 40", "Expected 2 experts but loaded 3"),
+            (
+                2,
+                "E1 | 10 | 20 | 30\nE2 | 15 | 25 | 35\nE3 | 20 | 30 | 40",
+                "Expected 2 experts but loaded 3",
+            ),
         ],
     )
     def test_expert_count_mismatch(
@@ -206,4 +208,3 @@ E2 | 15 | 25 | 35
         # Assert
         assert len(opinions) == 2
         assert "num_experts" not in metadata
-
