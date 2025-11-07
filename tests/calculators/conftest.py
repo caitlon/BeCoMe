@@ -284,3 +284,132 @@ def three_experts_unsorted():
             opinion=FuzzyTriangleNumber(lower_bound=9.0, peak=12.0, upper_bound=15.0),
         ),  # centroid = 12.0
     ]
+
+
+# Fixtures for median strategy tests
+
+
+@pytest.fixture
+def one_expert_for_odd_strategy():
+    """Provide single expert for OddMedianStrategy test."""
+    return [
+        ExpertOpinion(
+            expert_id="E1",
+            opinion=FuzzyTriangleNumber(lower_bound=5.0, peak=10.0, upper_bound=15.0),
+        ),
+    ]
+
+
+@pytest.fixture
+def three_experts_for_odd_strategy():
+    """Provide 3 experts for OddMedianStrategy test."""
+    return [
+        ExpertOpinion(
+            expert_id="E1",
+            opinion=FuzzyTriangleNumber(lower_bound=3.0, peak=6.0, upper_bound=9.0),
+        ),
+        ExpertOpinion(
+            expert_id="E2",
+            opinion=FuzzyTriangleNumber(lower_bound=6.0, peak=9.0, upper_bound=12.0),
+        ),
+        ExpertOpinion(
+            expert_id="E3",
+            opinion=FuzzyTriangleNumber(lower_bound=9.0, peak=12.0, upper_bound=15.0),
+        ),
+    ]
+
+
+@pytest.fixture
+def five_experts_for_odd_strategy():
+    """Provide 5 experts for OddMedianStrategy test."""
+    return [
+        ExpertOpinion(
+            expert_id="E1",
+            opinion=FuzzyTriangleNumber(lower_bound=1.0, peak=2.0, upper_bound=3.0),
+        ),
+        ExpertOpinion(
+            expert_id="E2",
+            opinion=FuzzyTriangleNumber(lower_bound=3.0, peak=5.0, upper_bound=7.0),
+        ),
+        ExpertOpinion(
+            expert_id="E3",
+            opinion=FuzzyTriangleNumber(lower_bound=5.0, peak=8.0, upper_bound=11.0),
+        ),
+        ExpertOpinion(
+            expert_id="E4",
+            opinion=FuzzyTriangleNumber(lower_bound=7.0, peak=11.0, upper_bound=15.0),
+        ),
+        ExpertOpinion(
+            expert_id="E5",
+            opinion=FuzzyTriangleNumber(lower_bound=9.0, peak=14.0, upper_bound=19.0),
+        ),
+    ]
+
+
+@pytest.fixture
+def two_experts_for_even_strategy():
+    """Provide 2 experts for EvenMedianStrategy test."""
+    return [
+        ExpertOpinion(
+            expert_id="E1",
+            opinion=FuzzyTriangleNumber(lower_bound=3.0, peak=6.0, upper_bound=9.0),
+        ),
+        ExpertOpinion(
+            expert_id="E2",
+            opinion=FuzzyTriangleNumber(lower_bound=9.0, peak=12.0, upper_bound=15.0),
+        ),
+    ]
+
+
+@pytest.fixture
+def four_experts_for_even_strategy():
+    """Provide 4 experts for EvenMedianStrategy test."""
+    return [
+        ExpertOpinion(
+            expert_id="E1",
+            opinion=FuzzyTriangleNumber(lower_bound=2.0, peak=4.0, upper_bound=6.0),
+        ),
+        ExpertOpinion(
+            expert_id="E2",
+            opinion=FuzzyTriangleNumber(lower_bound=4.0, peak=7.0, upper_bound=10.0),
+        ),
+        ExpertOpinion(
+            expert_id="E3",
+            opinion=FuzzyTriangleNumber(lower_bound=6.0, peak=10.0, upper_bound=14.0),
+        ),
+        ExpertOpinion(
+            expert_id="E4",
+            opinion=FuzzyTriangleNumber(lower_bound=8.0, peak=13.0, upper_bound=18.0),
+        ),
+    ]
+
+
+@pytest.fixture
+def six_experts_for_even_strategy():
+    """Provide 6 experts for EvenMedianStrategy test."""
+    return [
+        ExpertOpinion(
+            expert_id="E1",
+            opinion=FuzzyTriangleNumber(lower_bound=1.0, peak=2.0, upper_bound=3.0),
+        ),
+        ExpertOpinion(
+            expert_id="E2",
+            opinion=FuzzyTriangleNumber(lower_bound=3.0, peak=5.0, upper_bound=7.0),
+        ),
+        ExpertOpinion(
+            expert_id="E3",
+            opinion=FuzzyTriangleNumber(lower_bound=5.0, peak=8.0, upper_bound=11.0),
+        ),
+        ExpertOpinion(
+            expert_id="E4",
+            opinion=FuzzyTriangleNumber(lower_bound=7.0, peak=11.0, upper_bound=15.0),
+        ),
+        ExpertOpinion(
+            expert_id="E5",
+            opinion=FuzzyTriangleNumber(lower_bound=9.0, peak=14.0, upper_bound=19.0),
+        ),
+        ExpertOpinion(
+            expert_id="E6",
+            opinion=FuzzyTriangleNumber(lower_bound=11.0, peak=17.0, upper_bound=23.0),
+        ),
+    ]
