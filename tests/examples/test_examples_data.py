@@ -17,98 +17,6 @@ from tests.reference import BUDGET_CASE, FLOODS_CASE, PENDLERS_CASE
 class TestExamplesDataLoading:
     """Test that example data files load correctly and match reference data."""
 
-    def test_budget_case_loads_correctly(self):
-        """Test that budget_case.txt loads and produces correct results."""
-        # Arrange
-        data_file = Path("examples/data/budget_case.txt")
-        expected = BUDGET_CASE["expected_result"]
-
-        # Act - Load data from text file
-        opinions, metadata = load_data_from_txt(str(data_file))
-
-        # Assert - Metadata is correct
-        assert metadata["case"] == "Budget"
-        assert int(metadata["num_experts"]) == 22
-        assert len(opinions) == 22
-
-        # Calculate and verify results match reference
-        calculator = BeCoMeCalculator()
-        result = calculator.calculate_compromise(opinions)
-
-        # Best compromise should match
-        assert abs(result.best_compromise.lower_bound - expected["best_compromise_lower"]) < 0.001
-        assert abs(result.best_compromise.peak - expected["best_compromise_peak"]) < 0.001
-        assert abs(result.best_compromise.upper_bound - expected["best_compromise_upper"]) < 0.001
-
-        # Max error should match
-        assert abs(result.max_error - expected["max_error"]) < 0.01
-
-        # Number of experts should match
-        assert result.num_experts == expected["num_experts"]
-        assert result.is_even is True
-
-    def test_floods_case_loads_correctly(self):
-        """Test that floods_case.txt loads and produces correct results."""
-        # Arrange
-        data_file = Path("examples/data/floods_case.txt")
-        expected = FLOODS_CASE["expected_result"]
-
-        # Act - Load data from text file
-        opinions, metadata = load_data_from_txt(str(data_file))
-
-        # Assert - Metadata is correct
-        assert metadata["case"] == "Floods"
-        assert int(metadata["num_experts"]) == 13
-        assert len(opinions) == 13
-
-        # Calculate and verify results match reference
-        calculator = BeCoMeCalculator()
-        result = calculator.calculate_compromise(opinions)
-
-        # Best compromise should match
-        assert abs(result.best_compromise.lower_bound - expected["best_compromise_lower"]) < 0.001
-        assert abs(result.best_compromise.peak - expected["best_compromise_peak"]) < 0.001
-        assert abs(result.best_compromise.upper_bound - expected["best_compromise_upper"]) < 0.001
-
-        # Max error should match
-        assert abs(result.max_error - expected["max_error"]) < 0.01
-
-        # Number of experts should match
-        assert result.num_experts == expected["num_experts"]
-        assert result.is_even is False  # Odd number of experts
-
-    def test_pendlers_case_loads_correctly(self):
-        """Test that pendlers_case.txt loads and produces correct results."""
-        # Arrange
-        data_file = Path("examples/data/pendlers_case.txt")
-        expected = PENDLERS_CASE["expected_result"]
-
-        # Act - Load data from text file
-        opinions, metadata = load_data_from_txt(str(data_file))
-
-        # Assert - Metadata is correct
-        assert metadata["case"] == "Pendlers"
-        assert int(metadata["num_experts"]) == 22
-        assert len(opinions) == 22
-
-        # Calculate and verify results match reference
-        calculator = BeCoMeCalculator()
-        result = calculator.calculate_compromise(opinions)
-
-        # Best compromise should match
-        assert abs(result.best_compromise.peak - expected["best_compromise_peak"]) < 0.001
-
-        # Max error should match
-        assert abs(result.max_error - expected["max_error"]) < 0.01
-
-        # Mean and median should match
-        assert abs(result.arithmetic_mean.peak - expected["mean_peak"]) < 0.001
-        assert abs(result.median.peak - expected["median_peak"]) < 0.001
-
-        # Number of experts should match
-        assert result.num_experts == expected["num_experts"]
-        assert result.is_even is True
-
     @pytest.mark.parametrize(
         "data_file,reference_case,case_name",
         [
@@ -214,16 +122,23 @@ class TestDataLoadingErrorHandling:
         assert "Data file not found" in str(exc_info.value)
         assert non_existent_file in str(exc_info.value)
 
-    def test_invalid_line_format_too_few_parts(self, tmp_path):
-        """Test that ValueError is raised for lines with less than 4 parts."""
+    @pytest.mark.parametrize(
+        "data_line,expected_error",
+        [
+            ("E1 | 10 | 20", "Invalid line format"),  # Too few parts
+            ("E1 | 10 | 20 | 30 | 40", "Invalid line format"),  # Too many parts
+        ],
+    )
+    def test_invalid_line_format(self, tmp_path, data_line: str, expected_error: str):
+        """Test that ValueError is raised for invalid line formats."""
         # Arrange
         test_file = tmp_path / "invalid_format.txt"
         test_file.write_text(
-            """CASE: Test
+            f"""CASE: Test
 DESCRIPTION: Invalid format test
 EXPERTS: 1
 
-E1 | 10 | 20
+{data_line}
 """,
             encoding="utf-8",
         )
@@ -232,40 +147,27 @@ E1 | 10 | 20
         with pytest.raises(ValueError) as exc_info:
             load_data_from_txt(str(test_file))
 
-        assert "Invalid line format" in str(exc_info.value)
+        assert expected_error in str(exc_info.value)
         assert "expected 4 parts" in str(exc_info.value)
 
-    def test_invalid_line_format_too_many_parts(self, tmp_path):
-        """Test that ValueError is raised for lines with more than 4 parts."""
-        # Arrange
-        test_file = tmp_path / "invalid_format.txt"
-        test_file.write_text(
-            """CASE: Test
-DESCRIPTION: Invalid format test
-EXPERTS: 1
-
-E1 | 10 | 20 | 30 | 40
-""",
-            encoding="utf-8",
-        )
-
-        # Act & Assert
-        with pytest.raises(ValueError) as exc_info:
-            load_data_from_txt(str(test_file))
-
-        assert "Invalid line format" in str(exc_info.value)
-        assert "expected 4 parts" in str(exc_info.value)
-
-    def test_invalid_numeric_values_non_float_lower(self, tmp_path):
-        """Test that ValueError is raised for non-numeric lower bound."""
+    @pytest.mark.parametrize(
+        "data_line",
+        [
+            "E1 | abc | 20 | 30",  # Invalid lower bound
+            "E1 | 10 | xyz | 30",  # Invalid peak
+            "E1 | 10 | 20 | invalid",  # Invalid upper bound
+        ],
+    )
+    def test_invalid_numeric_values(self, tmp_path, data_line: str):
+        """Test that ValueError is raised for non-numeric values."""
         # Arrange
         test_file = tmp_path / "invalid_numbers.txt"
         test_file.write_text(
-            """CASE: Test
+            f"""CASE: Test
 DESCRIPTION: Invalid numbers test
 EXPERTS: 1
 
-E1 | abc | 20 | 30
+{data_line}
 """,
             encoding="utf-8",
         )
@@ -276,57 +178,25 @@ E1 | abc | 20 | 30
 
         assert "Invalid numeric values" in str(exc_info.value)
 
-    def test_invalid_numeric_values_non_float_peak(self, tmp_path):
-        """Test that ValueError is raised for non-numeric peak."""
-        # Arrange
-        test_file = tmp_path / "invalid_numbers.txt"
-        test_file.write_text(
-            """CASE: Test
-DESCRIPTION: Invalid numbers test
-EXPERTS: 1
-
-E1 | 10 | xyz | 30
-""",
-            encoding="utf-8",
-        )
-
-        # Act & Assert
-        with pytest.raises(ValueError) as exc_info:
-            load_data_from_txt(str(test_file))
-
-        assert "Invalid numeric values" in str(exc_info.value)
-
-    def test_invalid_numeric_values_non_float_upper(self, tmp_path):
-        """Test that ValueError is raised for non-numeric upper bound."""
-        # Arrange
-        test_file = tmp_path / "invalid_numbers.txt"
-        test_file.write_text(
-            """CASE: Test
-DESCRIPTION: Invalid numbers test
-EXPERTS: 1
-
-E1 | 10 | 20 | invalid
-""",
-            encoding="utf-8",
-        )
-
-        # Act & Assert
-        with pytest.raises(ValueError) as exc_info:
-            load_data_from_txt(str(test_file))
-
-        assert "Invalid numeric values" in str(exc_info.value)
-
-    def test_expert_count_mismatch_too_few(self, tmp_path):
-        """Test that ValueError is raised when fewer experts than expected."""
+    @pytest.mark.parametrize(
+        "expected_count,data_lines,expected_message",
+        [
+            (3, "E1 | 10 | 20 | 30\nE2 | 15 | 25 | 35", "Expected 3 experts but loaded 2"),
+            (2, "E1 | 10 | 20 | 30\nE2 | 15 | 25 | 35\nE3 | 20 | 30 | 40", "Expected 2 experts but loaded 3"),
+        ],
+    )
+    def test_expert_count_mismatch(
+        self, tmp_path, expected_count: int, data_lines: str, expected_message: str
+    ):
+        """Test that ValueError is raised when expert count doesn't match metadata."""
         # Arrange
         test_file = tmp_path / "count_mismatch.txt"
         test_file.write_text(
-            """CASE: Test
+            f"""CASE: Test
 DESCRIPTION: Count mismatch test
-EXPERTS: 3
+EXPERTS: {expected_count}
 
-E1 | 10 | 20 | 30
-E2 | 15 | 25 | 35
+{data_lines}
 """,
             encoding="utf-8",
         )
@@ -335,29 +205,7 @@ E2 | 15 | 25 | 35
         with pytest.raises(ValueError) as exc_info:
             load_data_from_txt(str(test_file))
 
-        assert "Expected 3 experts but loaded 2" in str(exc_info.value)
-
-    def test_expert_count_mismatch_too_many(self, tmp_path):
-        """Test that ValueError is raised when more experts than expected."""
-        # Arrange
-        test_file = tmp_path / "count_mismatch.txt"
-        test_file.write_text(
-            """CASE: Test
-DESCRIPTION: Count mismatch test
-EXPERTS: 2
-
-E1 | 10 | 20 | 30
-E2 | 15 | 25 | 35
-E3 | 20 | 30 | 40
-""",
-            encoding="utf-8",
-        )
-
-        # Act & Assert
-        with pytest.raises(ValueError) as exc_info:
-            load_data_from_txt(str(test_file))
-
-        assert "Expected 2 experts but loaded 3" in str(exc_info.value)
+        assert expected_message in str(exc_info.value)
 
     def test_empty_lines_and_comments_are_skipped(self, tmp_path):
         """Test that empty lines and comments don't affect parsing."""
