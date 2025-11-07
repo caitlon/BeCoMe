@@ -31,9 +31,7 @@ class TestCalculateAgreementLevel:
             (10.0, "low"),
         ],
     )
-    def test_agreement_levels_with_default_thresholds(
-        self, max_error: float, expected_level: str
-    ):
+    def test_agreement_levels_with_default_thresholds(self, max_error: float, expected_level: str):
         """Test agreement level calculation with default thresholds (1.0, 3.0)."""
         assert calculate_agreement_level(max_error) == expected_level
 
@@ -53,9 +51,7 @@ class TestCalculateAgreementLevel:
             (15.0, "low"),
         ],
     )
-    def test_agreement_levels_with_custom_thresholds(
-        self, max_error: float, expected_level: str
-    ):
+    def test_agreement_levels_with_custom_thresholds(self, max_error: float, expected_level: str):
         """Test agreement level calculation with custom thresholds (5.0, 10.0) for Likert scale."""
         assert calculate_agreement_level(max_error, thresholds=(5.0, 10.0)) == expected_level
 

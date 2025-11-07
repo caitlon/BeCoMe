@@ -71,13 +71,13 @@ class TestDisplayMedianCalculationDetails:
         if is_likert:
             values = [25.0 * (i + 1) for i in range(num_experts)]
             opinions: list[ExpertOpinion] = [
-                ExpertOpinion(expert_id=f"E{i+1}", opinion=FuzzyTriangleNumber(v, v, v))
+                ExpertOpinion(expert_id=f"E{i + 1}", opinion=FuzzyTriangleNumber(v, v, v))
                 for i, v in enumerate(values)
             ]
         else:
             opinions: list[ExpertOpinion] = [
                 ExpertOpinion(
-                    expert_id=f"E{i+1}",
+                    expert_id=f"E{i + 1}",
                     opinion=FuzzyTriangleNumber(10.0 * (i + 1), 20.0 * (i + 1), 30.0 * (i + 1)),
                 )
                 for i in range(num_experts)
@@ -112,13 +112,13 @@ class TestDisplayStep2Median:
         if is_likert:
             values = [25.0 * (i + 1) for i in range(num_experts)]
             opinions: list[ExpertOpinion] = [
-                ExpertOpinion(expert_id=f"E{i+1}", opinion=FuzzyTriangleNumber(v, v, v))
+                ExpertOpinion(expert_id=f"E{i + 1}", opinion=FuzzyTriangleNumber(v, v, v))
                 for i, v in enumerate(values)
             ]
         else:
             opinions: list[ExpertOpinion] = [
                 ExpertOpinion(
-                    expert_id=f"E{i+1}",
+                    expert_id=f"E{i + 1}",
                     opinion=FuzzyTriangleNumber(10.0 * (i + 1), 20.0 * (i + 1), 30.0 * (i + 1)),
                 )
                 for i in range(num_experts)
