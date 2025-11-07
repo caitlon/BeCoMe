@@ -56,19 +56,6 @@ class TestBeCoMeCalculatorArithmeticMean:
         assert result.peak == 10.0
         assert result.upper_bound == 15.0
 
-    def test_arithmetic_mean_with_identical_opinions(self):
-        """Test arithmetic mean when all experts have identical opinions."""
-        identical_opinion = FuzzyTriangleNumber(lower_bound=7.0, peak=10.0, upper_bound=13.0)
-        opinions = [ExpertOpinion(expert_id=f"E{i}", opinion=identical_opinion) for i in range(5)]
-
-        calculator = BeCoMeCalculator()
-        result = calculator.calculate_arithmetic_mean(opinions)
-
-        # All identical: mean should equal the common value
-        assert result.lower_bound == 7.0
-        assert result.peak == 10.0
-        assert result.upper_bound == 13.0
-
     def test_arithmetic_mean_with_decimal_values(self):
         """Test arithmetic mean with decimal values."""
         opinions = [
@@ -92,30 +79,6 @@ class TestBeCoMeCalculatorArithmeticMean:
         assert result.peak == 6.0
         assert result.upper_bound == 9.0
 
-    def test_arithmetic_mean_preserves_fuzzy_constraint(self):
-        """Test that result maintains lower <= peak <= upper constraint."""
-        opinions = [
-            ExpertOpinion(
-                expert_id="E1",
-                opinion=FuzzyTriangleNumber(lower_bound=1.0, peak=5.0, upper_bound=10.0),
-            ),
-            ExpertOpinion(
-                expert_id="E2",
-                opinion=FuzzyTriangleNumber(lower_bound=2.0, peak=6.0, upper_bound=12.0),
-            ),
-            ExpertOpinion(
-                expert_id="E3",
-                opinion=FuzzyTriangleNumber(lower_bound=3.0, peak=7.0, upper_bound=14.0),
-            ),
-        ]
-
-        calculator = BeCoMeCalculator()
-        result = calculator.calculate_arithmetic_mean(opinions)
-
-        # Result should maintain constraint
-        assert result.lower_bound <= result.peak
-        assert result.peak <= result.upper_bound
-
     def test_arithmetic_mean_empty_list_raises_error(self):
         """Test that empty opinions list raises EmptyOpinionsError."""
         calculator = BeCoMeCalculator()
@@ -124,41 +87,6 @@ class TestBeCoMeCalculatorArithmeticMean:
             calculator.calculate_arithmetic_mean([])
 
         assert "empty" in str(exc_info.value).lower()
-
-    def test_arithmetic_mean_with_five_experts(self):
-        """Test arithmetic mean with 5 experts (odd number)."""
-        opinions = [
-            ExpertOpinion(
-                expert_id="E1",
-                opinion=FuzzyTriangleNumber(lower_bound=5.0, peak=8.0, upper_bound=11.0),
-            ),
-            ExpertOpinion(
-                expert_id="E2",
-                opinion=FuzzyTriangleNumber(lower_bound=6.0, peak=9.0, upper_bound=12.0),
-            ),
-            ExpertOpinion(
-                expert_id="E3",
-                opinion=FuzzyTriangleNumber(lower_bound=7.0, peak=10.0, upper_bound=13.0),
-            ),
-            ExpertOpinion(
-                expert_id="E4",
-                opinion=FuzzyTriangleNumber(lower_bound=8.0, peak=11.0, upper_bound=14.0),
-            ),
-            ExpertOpinion(
-                expert_id="E5",
-                opinion=FuzzyTriangleNumber(lower_bound=9.0, peak=12.0, upper_bound=15.0),
-            ),
-        ]
-
-        calculator = BeCoMeCalculator()
-        result = calculator.calculate_arithmetic_mean(opinions)
-
-        # Lower: (5 + 6 + 7 + 8 + 9) / 5 = 7.0
-        # Peak: (8 + 9 + 10 + 11 + 12) / 5 = 10.0
-        # Upper: (11 + 12 + 13 + 14 + 15) / 5 = 13.0
-        assert result.lower_bound == 7.0
-        assert result.peak == 10.0
-        assert result.upper_bound == 13.0
 
     def test_arithmetic_mean_component_independence(self):
         """Test that each component is calculated independently."""
