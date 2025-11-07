@@ -123,13 +123,9 @@ class BeCoMeResult(BaseModel):
         if num_experts < 1:
             raise ValueError(f"num_experts must be >= 1, got {num_experts}")
 
-        # Calculate best compromise: (mean + median) / 2
+        # Calculate best compromise: (mean + median) / 2 using centralized method
         # Formula from article: π = (α + ρ)/2, φ = (γ + ω)/2, ξ = (β + σ)/2
-        pi = (arithmetic_mean.lower_bound + median.lower_bound) / 2
-        phi = (arithmetic_mean.peak + median.peak) / 2
-        xi = (arithmetic_mean.upper_bound + median.upper_bound) / 2
-
-        best_compromise = FuzzyTriangleNumber(lower_bound=pi, peak=phi, upper_bound=xi)
+        best_compromise = FuzzyTriangleNumber.average([arithmetic_mean, median])
 
         # Calculate maximum error: |centroid(Γ) - centroid(Ω)| / 2
         mean_centroid = arithmetic_mean.centroid

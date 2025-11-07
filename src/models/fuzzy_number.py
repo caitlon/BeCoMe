@@ -5,6 +5,8 @@ This module provides the FuzzyTriangleNumber class for representing
 and working with fuzzy triangular numbers in the BeCoMe method.
 """
 
+import statistics
+
 
 class FuzzyTriangleNumber:
     """
@@ -109,6 +111,43 @@ class FuzzyTriangleNumber:
             10.0
         """
         return (self._lower_bound + self._peak + self._upper_bound) / 3.0
+
+    @staticmethod
+    def average(fuzzy_numbers: list["FuzzyTriangleNumber"]) -> "FuzzyTriangleNumber":
+        """
+        Calculate average of multiple fuzzy triangular numbers.
+
+        Each component (lower_bound, peak, upper_bound) is averaged independently.
+        This eliminates code duplication for averaging fuzzy numbers across the codebase.
+
+        Args:
+            fuzzy_numbers: List of fuzzy numbers to average (must not be empty)
+
+        Returns:
+            New FuzzyTriangleNumber with averaged components
+
+        Raises:
+            ValueError: If fuzzy_numbers list is empty
+
+        Example:
+            >>> fn1 = FuzzyTriangleNumber(10, 15, 20)
+            >>> fn2 = FuzzyTriangleNumber(12, 18, 22)
+            >>> avg = FuzzyTriangleNumber.average([fn1, fn2])
+            >>> print(avg)
+            (11.00, 16.50, 21.00)
+        """
+        if not fuzzy_numbers:
+            raise ValueError("Cannot average empty list of fuzzy numbers")
+
+        avg_lower = statistics.mean(fn.lower_bound for fn in fuzzy_numbers)
+        avg_peak = statistics.mean(fn.peak for fn in fuzzy_numbers)
+        avg_upper = statistics.mean(fn.upper_bound for fn in fuzzy_numbers)
+
+        return FuzzyTriangleNumber(
+            lower_bound=avg_lower,
+            peak=avg_peak,
+            upper_bound=avg_upper,
+        )
 
     def __setattr__(self, name: str, value: object) -> None:
         """
