@@ -11,19 +11,11 @@ Only expected results are stored here as they are unique to testing.
 # ignore ruff rule for mathematical symbols
 # ruff: noqa: RUF003
 
-from pathlib import Path
+from tests.reference._case_factory import create_case
 
-from examples.utils import load_data_from_txt
-
-# Load opinions from txt file (single source of truth)
-_txt_file = Path(__file__).parent.parent.parent / "examples" / "data" / "budget_case.txt"
-_opinions, _metadata = load_data_from_txt(str(_txt_file))
-
-BUDGET_CASE = {
-    # Expert opinions data loaded from txt file
-    "opinions": _opinions,
-    # Expected results from Excel
-    "expected_result": {
+BUDGET_CASE = create_case(
+    case_name="Budget",
+    expected_result={
         # Best compromise fuzzy number: (π, φ, ψ) = (lower, peak, upper)
         "best_compromise_lower": 33.52272727272727,  # π = (α + ρ)/2
         "best_compromise_peak": 51.25,  # φ = (γ + ω)/2
@@ -43,6 +35,4 @@ BUDGET_CASE = {
         "max_error": 2.20,  # |mean_centroid - median_centroid|/2
         "num_experts": 22,
     },
-    # Description from txt file metadata
-    "description": _metadata.get("description", "Budget case study"),
-}
+)
