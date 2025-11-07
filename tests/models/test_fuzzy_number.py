@@ -164,6 +164,15 @@ class TestFuzzyTriangleNumberImmutability:
         with pytest.raises((AttributeError, TypeError)):
             fuzzy.upper_bound = 20.0
 
+    def test_delattr_raises_error(self):
+        """Test that deleting attributes is prevented."""
+        fuzzy = FuzzyTriangleNumber(lower_bound=5.0, peak=10.0, upper_bound=15.0)
+
+        with pytest.raises(AttributeError) as exc_info:
+            del fuzzy.lower_bound
+
+        assert "Cannot delete immutable FuzzyTriangleNumber attribute" in str(exc_info.value)
+
     def test_immutable_value_object(self):
         """Test that FuzzyTriangleNumber behaves as immutable value object."""
         fuzzy1 = FuzzyTriangleNumber(lower_bound=5.0, peak=10.0, upper_bound=15.0)
@@ -183,3 +192,47 @@ class TestFuzzyTriangleNumberImmutability:
         # Can be used in sets
         fuzzy_set = {fuzzy1, fuzzy2, fuzzy3}
         assert len(fuzzy_set) == 2  # fuzzy1 and fuzzy2 are equal
+
+
+class TestFuzzyTriangleNumberEquality:
+    """Test cases for equality comparison."""
+
+    def test_equality_with_same_values(self):
+        """Test that two fuzzy numbers with same values are equal."""
+        fuzzy1 = FuzzyTriangleNumber(lower_bound=5.0, peak=10.0, upper_bound=15.0)
+        fuzzy2 = FuzzyTriangleNumber(lower_bound=5.0, peak=10.0, upper_bound=15.0)
+
+        assert fuzzy1 == fuzzy2
+
+    def test_equality_with_non_fuzzy_number_returns_false(self):
+        """Test that comparison with non-FuzzyTriangleNumber returns False."""
+        fuzzy = FuzzyTriangleNumber(lower_bound=5.0, peak=10.0, upper_bound=15.0)
+
+        # Compare with different types
+        assert fuzzy != (5.0, 10.0, 15.0)  # tuple
+        assert fuzzy != [5.0, 10.0, 15.0]  # list
+        assert fuzzy != "5.0, 10.0, 15.0"  # string
+        assert fuzzy != 10.0  # float
+        assert fuzzy != None  # None
+
+
+class TestFuzzyTriangleNumberAverage:
+    """Test cases for static average method."""
+
+    def test_average_two_fuzzy_numbers(self):
+        """Test averaging two fuzzy numbers."""
+        fn1 = FuzzyTriangleNumber(lower_bound=10.0, peak=15.0, upper_bound=20.0)
+        fn2 = FuzzyTriangleNumber(lower_bound=12.0, peak=18.0, upper_bound=22.0)
+
+        result = FuzzyTriangleNumber.average([fn1, fn2])
+
+        assert result.lower_bound == 11.0
+        assert result.peak == 16.5
+        assert result.upper_bound == 21.0
+
+    def test_average_empty_list_raises_error(self):
+        """Test that averaging empty list raises ValueError."""
+        with pytest.raises(ValueError) as exc_info:
+            FuzzyTriangleNumber.average([])
+
+        assert "Cannot average empty list of fuzzy numbers" in str(exc_info.value)

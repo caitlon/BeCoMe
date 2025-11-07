@@ -195,6 +195,14 @@ class TestExpertOpinionStringRepresentation:
         assert "14.0" in repr_str
         assert "21.0" in repr_str
 
+    def test_str_representation(self):
+        """Test __str__ method for human-readable output."""
+        fuzzy = FuzzyTriangleNumber(lower_bound=5.0, peak=10.0, upper_bound=15.0)
+        opinion = ExpertOpinion(expert_id="Expert 1", opinion=fuzzy)
+
+        str_repr = str(opinion)
+        assert str_repr == "Expert 1: (5.00, 10.00, 15.00)"
+
 
 class TestExpertOpinionImmutability:
     """Test cases for immutability (frozen dataclass)."""
@@ -219,6 +227,18 @@ class TestExpertOpinionImmutability:
         new_fuzzy = FuzzyTriangleNumber(lower_bound=10.0, peak=20.0, upper_bound=30.0)
         with pytest.raises((AttributeError, TypeError)):
             opinion.opinion = new_fuzzy
+
+    def test_delattr_raises_error(self):
+        """Test that deleting attributes is prevented."""
+        opinion = ExpertOpinion(
+            expert_id="E1",
+            opinion=FuzzyTriangleNumber(lower_bound=5.0, peak=10.0, upper_bound=15.0),
+        )
+
+        with pytest.raises(AttributeError) as exc_info:
+            del opinion.expert_id
+
+        assert "Cannot delete immutable ExpertOpinion attribute" in str(exc_info.value)
 
     def test_immutable_value_object(self):
         """Test that ExpertOpinion behaves as immutable value object."""
