@@ -9,6 +9,7 @@ data for BeCoMe examples.
 
 from pathlib import Path
 
+from src.calculators.base_calculator import BaseAggregationCalculator
 from src.models.expert_opinion import ExpertOpinion
 from src.models.fuzzy_number import FuzzyTriangleNumber
 
@@ -138,7 +139,7 @@ def display_case_header(
     print(f"Number of experts: {len(opinions)} ({'even' if len(opinions) % 2 == 0 else 'odd'})")
 
 
-def display_centroid(fuzzy_number, name: str = "Centroid") -> None:
+def display_centroid(fuzzy_number: FuzzyTriangleNumber, name: str = "Centroid") -> None:
     """
     Display centroid calculation in standard format.
 
@@ -155,7 +156,9 @@ def display_centroid(fuzzy_number, name: str = "Centroid") -> None:
     )
 
 
-def display_step_1_arithmetic_mean(opinions, calculator) -> tuple:
+def display_step_1_arithmetic_mean(
+    opinions: list[ExpertOpinion], calculator: BaseAggregationCalculator
+) -> tuple[FuzzyTriangleNumber, float]:
     """
     Display STEP 1: Arithmetic Mean calculation with detailed output.
 
@@ -195,7 +198,9 @@ def display_step_1_arithmetic_mean(opinions, calculator) -> tuple:
     return mean, mean_centroid
 
 
-def display_median_calculation_details(sorted_opinions, m: int, is_likert: bool = False) -> None:
+def display_median_calculation_details(
+    sorted_opinions: list[ExpertOpinion], m: int, is_likert: bool = False
+) -> None:
     """
     Display median calculation details for odd or even number of experts.
 
@@ -242,7 +247,9 @@ def display_median_calculation_details(sorted_opinions, m: int, is_likert: bool 
             )
 
 
-def display_step_2_median(opinions, calculator, is_likert: bool = False) -> tuple:
+def display_step_2_median(
+    opinions: list[ExpertOpinion], calculator: BaseAggregationCalculator, is_likert: bool = False
+) -> tuple[FuzzyTriangleNumber, float]:
     """
     Display STEP 2: Median calculation with detailed output.
 
@@ -309,14 +316,15 @@ def display_step_2_median(opinions, calculator, is_likert: bool = False) -> tupl
     return median, median_centroid
 
 
-def display_step_3_best_compromise(mean, median, calculator) -> tuple:
+def display_step_3_best_compromise(
+    mean: FuzzyTriangleNumber, median: FuzzyTriangleNumber
+) -> tuple[FuzzyTriangleNumber, float]:
     """
     Display STEP 3: Best Compromise calculation.
 
     Args:
         mean: Arithmetic mean fuzzy number
         median: Median fuzzy number
-        calculator: Calculator instance (not used, kept for consistency)
 
     Returns:
         Tuple of (best_compromise, best_compromise_centroid)

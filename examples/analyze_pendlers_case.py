@@ -73,9 +73,7 @@ def main(calculator: BaseAggregationCalculator | None = None) -> None:
     median, median_centroid = display_step_2_median(opinions, calculator, is_likert=True)
 
     # STEP 3: Best Compromise
-    best_compromise, best_compromise_centroid = display_step_3_best_compromise(
-        mean, median, calculator
-    )
+    best_compromise, best_compromise_centroid = display_step_3_best_compromise(mean, median)
 
     # STEP 4: Maximum Error
     max_error = display_step_4_max_error(mean_centroid, median_centroid)
