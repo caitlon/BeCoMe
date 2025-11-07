@@ -44,7 +44,7 @@ class BaseAggregationCalculator(ABC):
         Raises:
             EmptyOpinionsError: If opinions list is empty
         """
-        pass
+        pass  # pragma: no cover
 
     @abstractmethod
     def calculate_median(self, opinions: list[ExpertOpinion]) -> FuzzyTriangleNumber:
@@ -60,7 +60,7 @@ class BaseAggregationCalculator(ABC):
         Raises:
             EmptyOpinionsError: If opinions list is empty
         """
-        pass
+        pass  # pragma: no cover
 
     @abstractmethod
     def calculate_compromise(self, opinions: list[ExpertOpinion]) -> BeCoMeResult:
@@ -79,7 +79,7 @@ class BaseAggregationCalculator(ABC):
         Raises:
             EmptyOpinionsError: If opinions list is empty
         """
-        pass
+        pass  # pragma: no cover
 
     @abstractmethod
     def sort_by_centroid(self, opinions: list[ExpertOpinion]) -> list[ExpertOpinion]:
@@ -107,4 +107,4 @@ class BaseAggregationCalculator(ABC):
             >>> sorted_ops = calculator.sort_by_centroid(opinions)
             >>> # sorted_ops[0] has lowest centroid, sorted_ops[-1] has highest
         """
-        pass
+        pass  # pragma: no cover
