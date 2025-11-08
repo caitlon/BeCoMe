@@ -42,6 +42,29 @@ python examples/analyze_pendlers_case.py
 
 ---
 
+## 📊 Visualizations
+
+The `visualizations/` directory contains interactive Jupyter notebooks with comprehensive visualizations:
+
+#### Interactive Visualizations (`visualizations/visualize_become.py`)
+- **Triangular Membership Functions** - Display expert opinions as fuzzy triangular numbers
+- **Centroid Charts** - Compare expert centroids with aggregated metrics
+- **Range Comparison Heatmaps** - Visual representation of opinion ranges
+- **Interactive Sensitivity Analysis** - Dynamic exploration of expert inclusion/exclusion impact
+- **Scenario Dashboard** - Comparative overview of all case studies
+- **Accuracy Gauge Indicators** - Visual quality assessment of expert agreement
+
+**Run visualizations:**
+```bash
+jupyter notebook examples/visualizations/visualize_become.py
+# or
+jupyter lab examples/visualizations/visualize_become.py
+```
+
+All visualizations are automatically saved to `examples/visualizations/output/`.
+
+---
+
 ## 📁 Data Files
 
 The `data/` directory contains case study data in simple text format:
