@@ -579,19 +579,26 @@ def plot_accuracy_gauge(result, title, case_name, thresholds=(5.0, 15.0)):
     agreement = calculate_agreement_level(delta_max, thresholds)
 
     # Determine color and range
+    # Zones: [0, 1/3] = Low, [1/3, 2/3] = Moderate, [2/3, 1] = Good
     if agreement == "good":
         color = "#2ECC71"  # Green
-        gauge_value = min(delta_max / thresholds[0], 1.0)
+        # Good zone: gauge_value between 2/3 and 1
+        # delta_max=0 → gauge_value=1, delta_max=5 → gauge_value=2/3
+        gauge_value = 2 / 3 + (1 / 3) * (1 - delta_max / thresholds[0])
         zone = "EXCELLENT AGREEMENT"
     elif agreement == "moderate":
         color = "#F39C12"  # Orange
-        gauge_value = 0.5 + 0.5 * min(
-            (delta_max - thresholds[0]) / (thresholds[1] - thresholds[0]), 1.0
-        )
+        # Moderate zone: gauge_value between 1/3 and 2/3
+        # delta_max=5 → gauge_value=2/3, delta_max=15 → gauge_value=1/3
+        normalized = (delta_max - thresholds[0]) / (thresholds[1] - thresholds[0])
+        gauge_value = 2 / 3 - (1 / 3) * normalized
         zone = "MODERATE AGREEMENT"
     else:
         color = "#E74C3C"  # Red
-        gauge_value = min(delta_max / (thresholds[1] * 1.5), 1.0)
+        # Low zone: gauge_value between 0 and 1/3
+        # delta_max=15 → gauge_value=1/3, delta_max→∞ → gauge_value=0
+        normalized = min((delta_max - thresholds[1]) / thresholds[1], 1.0)
+        gauge_value = (1 / 3) * (1 - normalized)
         zone = "LOW AGREEMENT"
 
     # Create figure with two plots
@@ -602,11 +609,11 @@ def plot_accuracy_gauge(result, title, case_name, thresholds=(5.0, 15.0)):
     ax1 = fig.add_subplot(gs[0])
 
     # Draw semicircle with zones
-    # Zones: good (0-pi/3), moderate (pi/3-2pi/3), low (2pi/3-pi)
+    # Zones: low (0-pi/3), moderate (pi/3-2pi/3), good (2pi/3-pi)
     zone_ranges = [
-        (0, np.pi / 3, "#2ECC71", "Good"),
+        (0, np.pi / 3, "#E74C3C", "Low"),
         (np.pi / 3, 2 * np.pi / 3, "#F39C12", "Moderate"),
-        (2 * np.pi / 3, np.pi, "#E74C3C", "Low"),
+        (2 * np.pi / 3, np.pi, "#2ECC71", "Good"),
     ]
 
     # Draw outer zones
@@ -621,7 +628,7 @@ def plot_accuracy_gauge(result, title, case_name, thresholds=(5.0, 15.0)):
         vertices = list(zip(x_outer, y_outer, strict=False)) + list(
             zip(x_inner[::-1], y_inner[::-1], strict=False)
         )
-        poly = plt.Polygon(vertices, color=col, alpha=0.3, edgecolor=col, linewidth=0)
+        poly = plt.Polygon(vertices, facecolor=col, alpha=0.3, edgecolor=col, linewidth=0)
         ax1.add_patch(poly)
 
     # Draw white inner circle once
@@ -636,7 +643,7 @@ def plot_accuracy_gauge(result, title, case_name, thresholds=(5.0, 15.0)):
     )
 
     # Arrow (indicator)
-    angle = np.pi * (1 - gauge_value)
+    angle = np.pi * gauge_value
     arrow_length = 0.85
     ax1.arrow(
         0,
@@ -664,19 +671,19 @@ def plot_accuracy_gauge(result, title, case_name, thresholds=(5.0, 15.0)):
         va="top",
         fontsize=18,
         fontweight="bold",
-        color=color,
+        color="black",
     )
-    ax1.text(0, -0.45, zone, ha="center", va="top", fontsize=12, fontweight="bold", color=color)
+    ax1.text(0, -0.45, zone, ha="center", va="top", fontsize=12, fontweight="bold", color="black")
 
     # Zone labels
     ax1.text(
-        -0.85, 0.5, "Good\n(< 5.0)", ha="center", fontsize=9, color="#2ECC71", fontweight="bold"
+        -0.85, 0.5, "High\n(< 5.0)", ha="center", fontsize=9, color="black", fontweight="bold"
     )
     ax1.text(
-        0, 1.05, "Moderate\n(5.0-15.0)", ha="center", fontsize=9, color="#F39C12", fontweight="bold"
+        0, 1.05, "Moderate\n(5.0-15.0)", ha="center", fontsize=9, color="black", fontweight="bold"
     )
     ax1.text(
-        0.85, 0.5, "Low\n(> 15.0)", ha="center", fontsize=9, color="#E74C3C", fontweight="bold"
+        0.85, 0.5, "Low\n(> 15.0)", ha="center", fontsize=9, color="black", fontweight="bold"
     )
 
     ax1.set_xlim(-1.2, 1.2)
@@ -721,7 +728,7 @@ def plot_accuracy_gauge(result, title, case_name, thresholds=(5.0, 15.0)):
         va="center",
         fontsize=12,
         fontweight="bold",
-        color=color,
+        color="black",
     )
 
     plt.tight_layout()
