@@ -2,6 +2,7 @@
 name = "BeCoMe"
 version = "0.1.0"
 requires-python = "==3.13.7"
+
 dependencies = [
     "numpy==2.3.3",
     "pandas==2.3.3",
@@ -12,6 +13,9 @@ dependencies = [
     "plotly>=6.4.0",
     "ipywidgets>=8.1.8",
     "seaborn>=0.13.2",
+    "ipykernel>=7.1.0",
+    "notebook>=7.4.7",
+    "jupyter>=1.1.1",
 ]
 
 [project.optional-dependencies]
@@ -41,7 +45,8 @@ select = [
 ]
 ignore = [
     "E501",   # line too long (handled by formatter)
-    "RUF022"  # `__all__` is not sorted
+    "RUF022", # `__all__` is not sorted
+    "N999"    # invalid module name (BeCoMe has capitals)
 ]
 
 [tool.ruff.format]
@@ -49,7 +54,7 @@ quote-style = "double"
 indent-style = "space"
 
 [tool.mypy]
-python_version = "3.13"
+python_version = "3.13.7"
 strict = true
 show_error_codes = true
 
