@@ -199,7 +199,7 @@ def plot_centroid_chart(opinions, result, title, case_name):
         color="#FF6B6B",
         linestyle="--",
         linewidth=2.5,
-        label=f"Mean (Gamma): {mean_centroid:.2f}",
+        label=f"Arithmetic Mean (Γ): {mean_centroid:.2f}",
         zorder=5,
     )
     ax.axhline(
@@ -207,7 +207,7 @@ def plot_centroid_chart(opinions, result, title, case_name):
         color="#4ECDC4",
         linestyle="--",
         linewidth=2.5,
-        label=f"Median (Omega): {median_centroid:.2f}",
+        label=f"Median (Ω): {median_centroid:.2f}",
         zorder=5,
     )
     ax.axhline(
@@ -215,34 +215,22 @@ def plot_centroid_chart(opinions, result, title, case_name):
         color="#FFD93D",
         linestyle="--",
         linewidth=2.5,
-        label=f"Compromise (GammaOmegaMean): {compromise_centroid:.2f}",
+        label=f"Best Compromise (ΓΩMean): {compromise_centroid:.2f}",
         zorder=5,
     )
 
-    # Display delta_max as distance
+    # Add delta_max as invisible line for legend
     delta_max = result.max_error
-
-    # Add annotation for delta_max
-    mid_point = (mean_centroid + median_centroid) / 2
-    ax.annotate(
-        "",
-        xy=(len(df) * 0.95, mean_centroid),
-        xytext=(len(df) * 0.95, median_centroid),
-        arrowprops=dict(arrowstyle="<->", color="red", lw=2),
-    )
-    ax.text(
-        len(df) * 0.97,
-        mid_point,
-        f"delta_max = {delta_max:.2f}",
-        fontsize=11,
-        color="red",
-        fontweight="bold",
-        verticalalignment="center",
-    )
-
+    ax.plot([], [], ' ', label=f"δ_max = {delta_max:.2f} (distance between Γ and Ω)")
+    
     ax.set_xlabel("Experts (sorted by centroid)", fontsize=12, fontweight="bold")
     ax.set_ylabel("Centroid Value", fontsize=12, fontweight="bold")
-    ax.set_title(f"{title}\nExpert Centroids and Aggregated Values", fontsize=14, fontweight="bold")
+    ax.set_title(
+        f"{title}\nExpert Centroids and Aggregated Values",
+        fontsize=14,
+        fontweight="bold",
+    )
+    
     ax.set_xticks(range(len(df)))
     ax.set_xticklabels(df["expert_id"], rotation=45, ha="right")
     ax.legend(fontsize=11, loc="upper left")
