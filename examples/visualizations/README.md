@@ -10,7 +10,7 @@ This directory contains visualization scripts for the BeCoMe (Best Compromise Me
 
 1. **Triangular Membership Functions** - Display of expert opinions as fuzzy triangular numbers
 2. **Centroid Charts** - Comparison of expert centroids with aggregated metrics
-3. **Range Comparison Heatmaps** - Visual representation of opinion ranges (lower-peak-upper)
+3. **Opinion Range Bars** - Horizontal bars showing opinion ranges (lower-peak-upper), color-coded by distance from consensus
 4. **Interactive Sensitivity Analysis** - Dynamic exploration of expert inclusion/exclusion impact
 5. **Scenario Dashboard** - Comparative overview of all three case studies
 6. **Accuracy Gauge Indicators** - Visual quality assessment of expert agreement
