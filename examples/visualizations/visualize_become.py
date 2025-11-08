@@ -264,9 +264,195 @@ plot_triangular_membership_functions(
 # %% [markdown]
 # ## 3. Visualization #2: Centroid Chart
 #
-# Bar chart with experts sorted by centroids.
-# Centroids of mean and median values are highlighted.
-# Delta_max is displayed as half the distance between these points.
+# ### Purpose and Overview
+# The Centroid Chart provides a complementary view to the triangular membership functions by
+# reducing each expert's fuzzy opinion to a single representative value: its **centroid**.
+# This visualization sorts experts from lowest to highest centroid and overlays the three
+# aggregated centroid values (Gamma, Omega, GammaOmegaMean), making it easy to see the
+# distribution of expert opinions along a single dimension and measure the degree of consensus.
+#
+# ### What is a Centroid?
+# The **centroid** (also called the center of gravity) of a triangular fuzzy number is a single
+# crisp value that represents the "weighted center" of the triangle. For a TFN with lower bound (a),
+# peak (b), and upper bound (c), the centroid is calculated as:
+#
+# **Centroid = (a + b + c) / 3**
+#
+# This is the arithmetic mean of the three defining points. The centroid provides a useful
+# defuzzification of the expert's opinion - a single number that captures where their opinion
+# is "centered" on the scale, taking into account both their most preferred value and their
+# uncertainty range.
+#
+# **Why centroids matter:**
+# - Simplifies comparison: Reduces complex triangular opinions to single comparable values
+# - Preserves information: Unlike just using the peak, the centroid accounts for the full range
+# - Enables sorting: Allows us to order experts from most pessimistic to most optimistic
+# - Facilitates analysis: Makes it easier to spot clusters, outliers, and the overall distribution
+#
+# ### Visualization Components
+#
+# **Blue Bars (Individual Expert Centroids):**
+# - Each vertical bar represents one expert's centroid value
+# - Bar height = centroid value (the average of lower, peak, and upper bounds)
+# - Bars are sorted from smallest to largest centroid (left to right)
+# - Expert IDs are labeled on the x-axis (rotated for readability)
+# - The bar chart creates a "skyline" showing the overall distribution of opinions
+#
+# **Horizontal Dashed Lines (Aggregated Centroids):**
+# Three key reference lines show the aggregated consensus values:
+#
+# 1. **Red Dashed Line - Arithmetic Mean (Γ)**
+#    - The centroid of the arithmetic mean fuzzy number
+#    - Computed as: centroid(Gamma) = centroid(average of all TFNs)
+#    - Shows where the "average expert" opinion is centered
+#    - Sensitive to extreme values - can be pulled up or down by outliers
+#
+# 2. **Teal Dashed Line - Median (Ω)**
+#    - The centroid of the median fuzzy number
+#    - Computed as: centroid(Omega) = centroid(median of all TFNs)
+#    - Shows where the "middle expert" opinion is centered
+#    - More robust to outliers - represents the 50th percentile
+#
+# 3. **Yellow Dashed Line - Best Compromise (ΓΩMean)**
+#    - The centroid of the best compromise fuzzy number
+#    - Computed as: centroid((Gamma + Omega)/2)
+#    - This is the BeCoMe method's final recommended consensus value
+#    - Balances between the mean and median properties
+#
+# **Legend Information - Delta Max (δ_max):**
+# The legend displays a critical metric: **δ_max = distance between Γ and Ω**
+#
+# This is the key quality indicator in the BeCoMe method:
+# - **δ_max = |centroid(Gamma) - centroid(Omega)|**
+# - Measures the **distance** between arithmetic mean and median centroids
+# - Small δ_max (< 5) = **High agreement** - experts are closely aligned
+# - Medium δ_max (5-15) = **Moderate agreement** - some divergence in opinions
+# - Large δ_max (> 15) = **Low agreement** - experts fundamentally disagree
+#
+# The Best Compromise centroid always falls exactly halfway between Gamma and Omega,
+# so δ_max also represents the maximum deviation from the compromise to either aggregate.
+#
+# ### How to Read This Visualization
+#
+# **Assessing Consensus:**
+# - Look at the vertical spread of bars: Wide range = diverse opinions, narrow range = agreement
+# - Check if bars are evenly distributed or clustered in groups
+# - Compare the three horizontal lines:
+#   - Lines close together = good agreement (low δ_max)
+#   - Lines far apart = poor agreement (high δ_max)
+#
+# **Identifying Patterns:**
+# - **Gradual slope**: Smooth increase from left to right indicates continuous opinion spectrum
+# - **Clusters**: Groups of similar-height bars indicate expert subgroups with aligned views
+# - **Gaps**: Large jumps between adjacent bars suggest polarization
+# - **Outliers**: Bars far from the main distribution indicate experts with extreme views
+#
+# **Understanding Position of Aggregates:**
+# - If Gamma (red) is **above** Omega (teal): High-value outliers are pulling the mean up
+# - If Gamma (red) is **below** Omega (teal): Low-value outliers are pulling the mean down
+# - If Gamma ≈ Omega: Distribution is relatively symmetric, few extreme outliers
+# - The Best Compromise (yellow) is always between them, providing a balanced view
+#
+# ### Interpreting the Three Cases
+#
+# **Budget Case (COVID-19 budget in billion CZK, 22 experts):**
+# - Expert centroids range from ~26 to ~80 billion CZK (roughly 3x spread)
+# - Relatively smooth, gradual increase from left to right (no major gaps or clusters)
+# - Most experts concentrated in the 40-55 billion CZK range
+# - Aggregated values:
+#   - Arithmetic Mean (Γ): 50.23 billion CZK
+#   - Median (Ω): 45.83 billion CZK
+#   - Best Compromise (ΓΩMean): 48.03 billion CZK
+#   - **δ_max = 2.20** (EXCELLENT - very low disagreement)
+# - The three lines are very close together, indicating strong consensus
+# - Gamma slightly above Omega suggests a few higher estimates are gently pulling the mean up
+# - The small δ_max indicates this is a reliable consensus despite the range of estimates
+# - **Interpretation**: Experts generally agree, with the consensus around 48 billion CZK
+#
+# **Floods Case (Arable land reduction in %, 13 experts):**
+# - Expert centroids range from ~0.5% to ~47% (nearly 100x spread!)
+# - Clear **bimodal distribution**: Two distinct clusters
+#   - Low cluster: 5 experts with centroids 0.5-8% (pessimistic about land loss)
+#   - High cluster: 5 experts with centroids 37-47% (optimistic about land loss)
+#   - Middle zone: 3 experts around 14-42% (bridge the gap)
+# - Large gap between clusters around 8-14% reveals fundamental disagreement
+# - Aggregated values:
+#   - Arithmetic Mean (Γ): 20.28%
+#   - Median (Ω): 8.33%
+#   - Best Compromise (ΓΩMean): 14.31%
+#   - **δ_max = 5.97** (MODERATE - notable disagreement)
+# - Wide separation between Gamma and Omega shows the impact of the high-value cluster
+# - Gamma (20.28%) is pulled significantly upward by the experts predicting high land reduction
+# - Omega (8.33%) is more conservative, staying closer to the lower cluster
+# - **Interpretation**: Experts are divided - some expect minimal impact, others expect severe impact
+# - The moderate δ_max suggests caution: consensus is weak, further discussion needed
+#
+# **Pendlers Case (Likert scale 0-100, 22 experts):**
+# - Most expert centroids tightly clustered around 24-26 (extremely narrow range!)
+# - 18 out of 22 experts have centroids in the 24-30 range (strong main cluster)
+# - A few experts provided mid-range estimates around 48-50
+# - One clear outlier at ~100 (maximum Likert value)
+# - Aggregated values:
+#   - Arithmetic Mean (Γ): 36.36
+#   - Median (Ω): 25.00
+#   - Best Compromise (ΓΩMean): 30.68
+#   - **δ_max = 5.68** (MODERATE - but misleading due to outlier)
+# - Despite the tight main cluster, δ_max is elevated due to the single high outlier
+# - The outlier pulls Gamma (36.36) significantly higher than Omega (25.00)
+# - Omega (25.00) better represents the majority consensus by being robust to the outlier
+# - **Interpretation**: Strong core agreement around 25, but one outlier inflates the mean
+# - This demonstrates the value of using median: it captures the true consensus despite outliers
+# - The Best Compromise (30.68) falls between, but may over-weight the outlier
+#
+# ### Key Insights from This Visualization
+#
+# 1. **Quick Consensus Check**: The distance between red and teal lines (δ_max) immediately
+#    reveals agreement quality - closer lines mean better consensus
+#
+# 2. **Distribution Patterns**: The bar "skyline" shows whether opinions are:
+#    - Uniformly distributed (gradual slope)
+#    - Clustered (groups of similar bars)
+#    - Polarized (gaps and separate clusters)
+#
+# 3. **Outlier Impact**: By comparing Gamma and Omega positions:
+#    - If far apart: outliers are significantly influencing the mean
+#    - If close: distribution is balanced and symmetric
+#
+# 4. **Individual Expert Positioning**: Each expert can see where they stand relative to:
+#    - Other experts (their bar height vs others)
+#    - The consensus (how close their bar is to the yellow line)
+#    - The overall distribution (percentile within the group)
+#
+# 5. **Complement to Triangle View**: While triangular membership functions show the full
+#    fuzzy structure, centroid charts provide a simplified, sortable view that's easier
+#    for comparing many experts at once
+#
+# 6. **Robustness Demonstration**: When Gamma and Omega diverge significantly, it signals
+#    that the median-based approach (Omega) may be more reliable than the mean (Gamma)
+#
+# ### Practical Applications
+#
+# **For Decision Makers:**
+# - Use the Best Compromise (yellow line) as the recommended consensus value
+# - Check δ_max to assess confidence in the consensus (lower is better)
+# - Identify experts far from consensus for follow-up discussion
+#
+# **For Facilitators:**
+# - Clusters and gaps reveal subgroups that may need targeted dialogue
+# - Outliers may represent important minority perspectives or misunderstandings
+# - The visualization can guide iterative consensus-building by showing progress
+#
+# **For Researchers:**
+# - Centroid distribution patterns can reveal cognitive biases or information asymmetries
+# - Comparing before/after centroid charts shows the impact of deliberation
+# - δ_max serves as a quantitative measure for statistical analysis of agreement
+#
+# ### Technical Notes
+# - X-axis shows experts sorted by ascending centroid value (leftmost = most pessimistic)
+# - Y-axis shows the centroid value in the problem's units (CZK, %, or Likert points)
+# - Expert labels are rotated 45° for readability when there are many participants
+# - The legend displays exact numerical values for all three aggregates plus δ_max
+# - Grid lines on the y-axis facilitate reading approximate values from the chart
 
 
 # %%
