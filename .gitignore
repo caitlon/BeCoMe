@@ -3,6 +3,7 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.so
+*.ipynb_checkpoints/
 
 # Distribution / packaging
 build/
@@ -28,5 +29,5 @@ htmlcov/
 # macOS system files
 .DS_Store
 
-# Thesis workspace (excluded from main repo)
+# Thesis workspace
 /supplementary/
