@@ -70,9 +70,115 @@ print(f"  Pendlers: {len(pendlers_opinions)} experts, delta_max = {pendlers_resu
 # %% [markdown]
 # ## 2. Visualization #1: Triangular Membership Functions
 #
-# Display triangular membership functions for all experts
-# with overlaid curves for arithmetic mean, median, and "best compromise".
-# Shows how aggregation compresses the distribution of opinions.
+# ### Purpose and Overview
+# This visualization displays triangular membership functions (TMFs) for all expert opinions
+# and overlays three key aggregation methods: arithmetic mean (Gamma), median (Omega),
+# and the "best compromise" (GammaOmegaMean). It provides a complete picture of how
+# individual expert opinions are distributed and how they aggregate into consensus values.
+#
+# ### What Are Triangular Fuzzy Numbers?
+# Each expert provides their opinion as a **triangular fuzzy number** (TFN), which represents
+# uncertainty and flexibility in their estimate. A TFN has three parameters:
+# - **Lower bound (a)**: The minimum plausible value
+# - **Peak (b)**: The most likely or preferred value
+# - **Upper bound (c)**: The maximum plausible value
+#
+# The triangular shape means the expert is most confident about the peak value (membership = 1.0),
+# with confidence decreasing linearly toward the bounds (membership = 0.0). This captures
+# the inherent vagueness in expert judgment better than single-point estimates.
+#
+# ### Visualization Components
+#
+# **Individual Expert Opinions (Light Blue Triangles):**
+# - Each light blue triangle represents one expert's opinion
+# - The base of the triangle spans from lower bound to upper bound on the x-axis
+# - The peak of the triangle (height = 1.0) occurs at the expert's most preferred value
+# - Wider triangles indicate greater uncertainty; narrower ones show more confidence
+# - Overlapping triangles reveal areas of consensus; separated ones show disagreement
+#
+# **Aggregated Results (Colored Lines with Shaded Regions):**
+# Three aggregation methods are visualized as bold colored lines:
+#
+# 1. **Arithmetic Mean - Gamma (Red)**
+#    - Computed by averaging the lower bounds, peaks, and upper bounds separately
+#    - Formula: Gamma = (1/n) * Σ(TFNᵢ) where n = number of experts
+#    - Represents the "average opinion" across all experts
+#    - Sensitive to extreme values and outliers
+#    - Tends to be wider (more uncertain) when opinions vary greatly
+#
+# 2. **Median - Omega (Teal/Cyan)**
+#    - Computed by taking the median of lower bounds, peaks, and upper bounds separately
+#    - More robust to outliers than the arithmetic mean
+#    - Represents the "middle ground" opinion
+#    - Better reflects the central tendency when there are extreme opinions
+#
+# 3. **Best Compromise - GammaOmegaMean (Yellow)**
+#    - Computed as the average of Gamma and Omega: (Gamma + Omega) / 2
+#    - Balances the properties of both mean and median
+#    - Provides a compromise between sensitivity to all opinions (mean) and robustness (median)
+#    - This is the final recommended consensus value from the BeCoMe method
+#    - The light shaded regions under each line show the "support" area for that aggregate
+#
+# ### How Aggregation Compresses Opinion Distribution
+# The visualization demonstrates a key property of fuzzy aggregation: **compression of uncertainty**.
+# When individual experts have wide, overlapping triangular opinions, the aggregated results
+# (especially the Best Compromise) tend to be:
+# - Narrower than most individual opinions (reduced uncertainty through consensus)
+# - Positioned in areas of highest overlap (capturing collective agreement)
+# - More reliable than any single expert's estimate
+#
+# ### Interpreting the Three Cases
+#
+# **Budget Case (COVID-19 budget in billion CZK, 22 experts):**
+# - Shows moderate spread of opinions clustered around 45-60 billion CZK
+# - Most triangular opinions overlap significantly in the 50-55 range
+# - Some experts have wider triangles (more uncertainty), others narrower (more confident)
+# - All three aggregation methods (Gamma, Omega, Compromise) are relatively close together
+# - This indicates good overall agreement with minor differences in how extreme the estimates are
+# - The Best Compromise (yellow) sits between the mean and median, providing a balanced estimate
+#
+# **Floods Case (Arable land reduction in %, 13 experts):**
+# - Shows the greatest spread among all three scenarios
+# - Expert opinions range from near 0% to over 40% reduction
+# - Clear separation into distinct opinion clusters: pessimistic (0-10%), moderate (10-25%), optimistic (25-40+%)
+# - The arithmetic mean (red) is pulled toward higher values by outliers
+# - The median (teal) is more conservative, sitting in the middle cluster
+# - Large distance between Gamma and Omega indicates **high disagreement** (high delta_max)
+# - The Best Compromise attempts to balance these divergent views
+# - This visualization reveals that experts fundamentally disagree, suggesting need for further discussion
+#
+# **Pendlers Case (Likert scale 0-100, 22 experts):**
+# - Shows extremely tight agreement - all triangular opinions are nearly identical
+# - Almost all experts chose similar lower bounds, peaks, and upper bounds
+# - The triangles cluster very tightly around 30-35 on the scale
+# - All three aggregation methods (Gamma, Omega, Compromise) are virtually identical
+# - This indicates **exceptionally strong consensus** (very low delta_max)
+# - The narrow, overlapping triangles suggest experts are both confident and aligned
+# - Such agreement makes the Best Compromise highly reliable
+#
+# ### Key Insights from This Visualization
+# 1. **Visual Consensus Assessment**: You can immediately see whether experts agree (tight clustering)
+#    or disagree (wide spread) without looking at numerical metrics
+#
+# 2. **Outlier Detection**: Individual triangles that don't overlap with others are easily spotted
+#    and may warrant investigation or discussion
+#
+# 3. **Uncertainty Patterns**: Wide triangles indicate uncertain experts; narrow ones show confidence
+#
+# 4. **Aggregation Behavior**: By comparing the three colored aggregates, you can see:
+#    - Whether outliers are influencing the mean (red) significantly
+#    - Where the robust median (teal) sits relative to the mean
+#    - How the compromise (yellow) balances between the two
+#
+# 5. **Decision Support**: The Best Compromise (yellow) provides a defensible consensus value
+#    that accounts for all expert input while being robust to extreme opinions
+#
+# ### Technical Notes
+# - The y-axis "Membership Degree mu(x)" ranges from 0 to 1, representing degree of membership
+#   in the fuzzy set defined by each opinion
+# - The x-axis shows the actual values being estimated (budget in CZK, percentage, Likert score)
+# - The shaded areas under aggregated curves indicate the "support" of those fuzzy numbers
+# - All visualizations use consistent color coding for easy cross-case comparison
 
 
 # %%
