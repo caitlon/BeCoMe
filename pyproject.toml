@@ -44,9 +44,10 @@ select = [
     "RUF",    # ruff-specific rules
 ]
 ignore = [
-    "E501",   # line too long (handled by formatter)
-    "RUF022", # `__all__` is not sorted
-    "N999"    # invalid module name (BeCoMe has capitals)
+    "E501",     # line too long (handled by formatter)
+    "RUF022",   # `__all__` is not sorted
+    "N999",     # invalid module name (BeCoMe has capitals)
+    "E402"      # Module level import not at top of cell
 ]
 
 [tool.ruff.format]
@@ -54,9 +55,12 @@ quote-style = "double"
 indent-style = "space"
 
 [tool.mypy]
-python_version = "3.13.7"
+python_version = "3.13"
 strict = true
 show_error_codes = true
+exclude = [
+    "examples/visualizations/"
+]
 
 [[tool.mypy.overrides]]
 module = "tests.*"
