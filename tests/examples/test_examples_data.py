@@ -21,7 +21,7 @@ from tests.reference import BUDGET_CASE, FLOODS_CASE, PENDLERS_CASE
 
 
 class TestExamplesDataLoading:
-    """Test that example data files load correctly and match reference data."""
+    """Test that example data files load correctly."""
 
     @pytest.mark.parametrize(
         "data_file,reference_case,case_name",
@@ -31,28 +31,56 @@ class TestExamplesDataLoading:
             ("examples/data/pendlers_case.txt", PENDLERS_CASE, "Pendlers"),
         ],
     )
-    def test_all_example_cases(
+    def test_file_loading(
         self, data_file: str, reference_case: dict[str, Any], case_name: str
     ) -> None:
         """
-        Parametrized test for all example data files.
+        Test loading data from example text files.
 
-        GIVEN: Valid example data files and reference test data
-        WHEN: Loading data from text files and calculating compromise
-        THEN: Results match reference values from Excel implementation
+        GIVEN: Valid example data file path
+        WHEN: Loading data from the file
+        THEN: Opinions and metadata are correctly loaded
         """
-        # GIVEN: Reference data for validation
+        # GIVEN: data_file path provided by parametrize
         expected = reference_case["expected_result"]
 
         # WHEN: Load data from text file
         opinions, metadata = load_data_from_txt(data_file)
 
         # THEN: Metadata matches expected case name
-        assert metadata["case"] == case_name
-        assert len(opinions) == expected["num_experts"]
+        assert metadata["case"] == case_name, (
+            f"{case_name} case name mismatch in metadata"
+        )
+
+        # THEN: Number of loaded opinions matches expected count
+        assert len(opinions) == expected["num_experts"], (
+            f"{case_name} expert count mismatch: got {len(opinions)}, "
+            f"expected {expected['num_experts']}"
+        )
+
+    @pytest.mark.parametrize(
+        "data_file,reference_case,case_name",
+        [
+            ("examples/data/budget_case.txt", BUDGET_CASE, "Budget"),
+            ("examples/data/floods_case.txt", FLOODS_CASE, "Floods"),
+            ("examples/data/pendlers_case.txt", PENDLERS_CASE, "Pendlers"),
+        ],
+    )
+    def test_calculation_with_loaded_data(
+        self, data_file: str, reference_case: dict[str, Any], case_name: str, calculator: BeCoMeCalculator
+    ) -> None:
+        """
+        Test BeCoMe calculations with data loaded from example files.
+
+        GIVEN: Opinions loaded from example data files
+        WHEN: Calculating compromise with BeCoMeCalculator
+        THEN: Results match reference values from Excel implementation
+        """
+        # GIVEN: Load opinions from data file
+        expected = reference_case["expected_result"]
+        opinions, _ = load_data_from_txt(data_file)
 
         # WHEN: Calculate compromise with loaded data
-        calculator = BeCoMeCalculator()
         result = calculator.calculate_compromise(opinions)
 
         # THEN: Best compromise peak matches reference

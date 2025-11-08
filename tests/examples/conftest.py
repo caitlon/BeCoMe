@@ -237,3 +237,54 @@ def expected_metadata_keys() -> list[str]:
         List of metadata keys that should be present after loading
     """
     return ["case", "description", "num_experts"]
+
+
+# ============================================================================
+# Factory Fixtures for Parametrized Tests
+# ============================================================================
+
+
+@pytest.fixture
+def opinions_factory():
+    """
+    Factory fixture to create opinions with varying counts and types.
+
+    This factory allows parametrized tests to generate test data dynamically
+    while maintaining the DRY principle.
+
+    Returns:
+        Callable that creates list of ExpertOpinion based on parameters
+    """
+    def _create_opinions(num_experts: int, is_likert: bool = False) -> list[ExpertOpinion]:
+        """
+        Create expert opinions with specified count and type.
+
+        Args:
+            num_experts: Number of expert opinions to create
+            is_likert: If True, create Likert scale (crisp) opinions
+
+        Returns:
+            List of ExpertOpinion objects
+        """
+        if is_likert:
+            # Likert scale: crisp values (lower = peak = upper)
+            values = [25.0 * (i + 1) for i in range(num_experts)]
+            return [
+                ExpertOpinion(expert_id=f"E{i + 1}", opinion=FuzzyTriangleNumber(v, v, v))
+                for i, v in enumerate(values)
+            ]
+        else:
+            # Fuzzy triangular numbers with scaled values
+            return [
+                ExpertOpinion(
+                    expert_id=f"E{i + 1}",
+                    opinion=FuzzyTriangleNumber(
+                        lower_bound=10.0 * (i + 1),
+                        peak=20.0 * (i + 1),
+                        upper_bound=30.0 * (i + 1)
+                    ),
+                )
+                for i in range(num_experts)
+            ]
+
+    return _create_opinions

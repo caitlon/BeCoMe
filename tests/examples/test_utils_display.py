@@ -74,7 +74,7 @@ class TestDisplayMedianCalculationDetails:
         ],
     )
     def test_display_median_calculation_details(
-        self, capsys, num_experts: int, is_likert: bool, expected_in_output: list[str]
+        self, capsys, opinions_factory, num_experts: int, is_likert: bool, expected_in_output: list[str]
     ) -> None:
         """
         Test median calculation details for different expert counts and data types.
@@ -83,21 +83,8 @@ class TestDisplayMedianCalculationDetails:
         WHEN: Displaying median calculation details
         THEN: Output shows correct formula and calculation based on expert count parity
         """
-        # GIVEN: Create opinions based on is_likert and num_experts
-        if is_likert:
-            values = [25.0 * (i + 1) for i in range(num_experts)]
-            opinions: list[ExpertOpinion] = [
-                ExpertOpinion(expert_id=f"E{i + 1}", opinion=FuzzyTriangleNumber(v, v, v))
-                for i, v in enumerate(values)
-            ]
-        else:
-            opinions: list[ExpertOpinion] = [
-                ExpertOpinion(
-                    expert_id=f"E{i + 1}",
-                    opinion=FuzzyTriangleNumber(10.0 * (i + 1), 20.0 * (i + 1), 30.0 * (i + 1)),
-                )
-                for i in range(num_experts)
-            ]
+        # GIVEN: Create opinions using factory fixture
+        opinions: list[ExpertOpinion] = opinions_factory(num_experts, is_likert)
 
         # WHEN: Display median calculation details
         display_median_calculation_details(opinions, num_experts, is_likert=is_likert)
@@ -122,7 +109,8 @@ class TestDisplayStep2Median:
         ],
     )
     def test_display_step_2_output(
-        self, capsys, num_experts: int, is_likert: bool, expected_in_output: list[str]
+        self, capsys, opinions_factory, calculator: BeCoMeCalculator,
+        num_experts: int, is_likert: bool, expected_in_output: list[str]
     ) -> None:
         """
         Test median display with different expert counts and data types.
@@ -131,23 +119,8 @@ class TestDisplayStep2Median:
         WHEN: Displaying step 2 median calculation
         THEN: Output shows correct sorting and median calculation method
         """
-        # GIVEN: Create opinions based on is_likert and num_experts
-        if is_likert:
-            values = [25.0 * (i + 1) for i in range(num_experts)]
-            opinions: list[ExpertOpinion] = [
-                ExpertOpinion(expert_id=f"E{i + 1}", opinion=FuzzyTriangleNumber(v, v, v))
-                for i, v in enumerate(values)
-            ]
-        else:
-            opinions: list[ExpertOpinion] = [
-                ExpertOpinion(
-                    expert_id=f"E{i + 1}",
-                    opinion=FuzzyTriangleNumber(10.0 * (i + 1), 20.0 * (i + 1), 30.0 * (i + 1)),
-                )
-                for i in range(num_experts)
-            ]
-
-        calculator: BeCoMeCalculator = BeCoMeCalculator()
+        # GIVEN: Create opinions using factory fixture
+        opinions: list[ExpertOpinion] = opinions_factory(num_experts, is_likert)
 
         # WHEN: Display step 2 median
         median, median_centroid = display_step_2_median(opinions, calculator, is_likert=is_likert)
@@ -236,3 +209,86 @@ class TestDisplayStep4MaxError:
 
         # THEN: Max error is calculated correctly as |mean - median| / 2
         assert max_error == expected_max_error
+
+
+class TestDisplayErrorHandling:
+    """Test error handling in display functions."""
+
+    def test_display_step_1_with_none_opinions_raises_error(
+        self, calculator: BeCoMeCalculator
+    ) -> None:
+        """
+        Test that None opinions raise EmptyOpinionsError.
+
+        GIVEN: None instead of opinions list
+        WHEN: Attempting to display step 1
+        THEN: EmptyOpinionsError is raised
+        """
+        # GIVEN: None opinions
+
+        # WHEN/THEN: Calling display should raise EmptyOpinionsError
+        from src.exceptions import EmptyOpinionsError
+        with pytest.raises(EmptyOpinionsError):
+            display_step_1_arithmetic_mean(None, calculator)  # type: ignore
+
+    def test_display_step_1_with_none_calculator_raises_error(
+        self, sample_three_opinions: list[ExpertOpinion]
+    ) -> None:
+        """
+        Test that None calculator raises AttributeError.
+
+        GIVEN: Valid opinions but None calculator
+        WHEN: Attempting to display step 1
+        THEN: AttributeError is raised
+        """
+        # GIVEN: Valid opinions, None calculator
+
+        # WHEN/THEN: Calling display should raise AttributeError
+        with pytest.raises(AttributeError):
+            display_step_1_arithmetic_mean(sample_three_opinions, None)  # type: ignore
+
+    def test_display_step_2_with_none_opinions_raises_error(
+        self, calculator: BeCoMeCalculator
+    ) -> None:
+        """
+        Test that None opinions raise TypeError in step 2.
+
+        GIVEN: None instead of opinions list
+        WHEN: Attempting to display step 2
+        THEN: TypeError is raised
+        """
+        # GIVEN: None opinions
+
+        # WHEN/THEN: Calling display should raise TypeError
+        with pytest.raises(TypeError):
+            display_step_2_median(None, calculator)  # type: ignore
+
+    def test_display_step_3_with_none_mean_raises_error(self) -> None:
+        """
+        Test that None mean raises AttributeError in step 3.
+
+        GIVEN: None instead of mean fuzzy number
+        WHEN: Attempting to display step 3
+        THEN: AttributeError is raised
+        """
+        # GIVEN: None mean, valid median
+        median: FuzzyTriangleNumber = FuzzyTriangleNumber(15.0, 25.0, 35.0)
+
+        # WHEN/THEN: Calling display should raise AttributeError
+        with pytest.raises(AttributeError):
+            display_step_3_best_compromise(None, median)  # type: ignore
+
+    def test_display_step_3_with_none_median_raises_error(self) -> None:
+        """
+        Test that None median raises AttributeError in step 3.
+
+        GIVEN: Valid mean but None median
+        WHEN: Attempting to display step 3
+        THEN: AttributeError is raised
+        """
+        # GIVEN: Valid mean, None median
+        mean: FuzzyTriangleNumber = FuzzyTriangleNumber(10.0, 20.0, 30.0)
+
+        # WHEN/THEN: Calling display should raise AttributeError
+        with pytest.raises(AttributeError):
+            display_step_3_best_compromise(mean, None)  # type: ignore
