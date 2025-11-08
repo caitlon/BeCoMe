@@ -74,7 +74,12 @@ class TestDisplayMedianCalculationDetails:
         ],
     )
     def test_display_median_calculation_details(
-        self, capsys, opinions_factory, num_experts: int, is_likert: bool, expected_in_output: list[str]
+        self,
+        capsys,
+        opinions_factory,
+        num_experts: int,
+        is_likert: bool,
+        expected_in_output: list[str],
     ) -> None:
         """
         Test median calculation details for different expert counts and data types.
@@ -109,8 +114,13 @@ class TestDisplayStep2Median:
         ],
     )
     def test_display_step_2_output(
-        self, capsys, opinions_factory, calculator: BeCoMeCalculator,
-        num_experts: int, is_likert: bool, expected_in_output: list[str]
+        self,
+        capsys,
+        opinions_factory,
+        calculator: BeCoMeCalculator,
+        num_experts: int,
+        is_likert: bool,
+        expected_in_output: list[str],
     ) -> None:
         """
         Test median display with different expert counts and data types.
@@ -228,6 +238,7 @@ class TestDisplayErrorHandling:
 
         # WHEN/THEN: Calling display should raise EmptyOpinionsError
         from src.exceptions import EmptyOpinionsError
+
         with pytest.raises(EmptyOpinionsError):
             display_step_1_arithmetic_mean(None, calculator)  # type: ignore
 
