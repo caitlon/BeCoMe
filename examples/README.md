@@ -49,7 +49,7 @@ The `visualizations/` directory contains interactive Jupyter notebooks with comp
 #### Interactive Visualizations (`visualizations/visualize_become.py`)
 - **Triangular Membership Functions** - Display expert opinions as fuzzy triangular numbers
 - **Centroid Charts** - Compare expert centroids with aggregated metrics
-- **Range Comparison Heatmaps** - Visual representation of opinion ranges
+- **Opinion Range Bars** - Horizontal bars showing opinion ranges, color-coded by distance from consensus
 - **Interactive Sensitivity Analysis** - Dynamic exploration of expert inclusion/exclusion impact
 - **Scenario Dashboard** - Comparative overview of all case studies
 - **Accuracy Gauge Indicators** - Visual quality assessment of expert agreement
