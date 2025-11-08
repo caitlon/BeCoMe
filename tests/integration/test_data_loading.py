@@ -48,9 +48,7 @@ class TestExamplesDataLoading:
         opinions, metadata = load_data_from_txt(data_file)
 
         # THEN: Metadata matches expected case name
-        assert metadata["case"] == case_name, (
-            f"{case_name} case name mismatch in metadata"
-        )
+        assert metadata["case"] == case_name, f"{case_name} case name mismatch in metadata"
 
         # THEN: Number of loaded opinions matches expected count
         assert len(opinions) == expected["num_experts"], (
@@ -67,7 +65,11 @@ class TestExamplesDataLoading:
         ],
     )
     def test_calculation_with_loaded_data(
-        self, data_file: str, reference_case: dict[str, Any], case_name: str, calculator: BeCoMeCalculator
+        self,
+        data_file: str,
+        reference_case: dict[str, Any],
+        case_name: str,
+        calculator: BeCoMeCalculator,
     ) -> None:
         """
         Test BeCoMe calculations with data loaded from example files.
@@ -222,11 +224,11 @@ class TestDataLoadingErrorHandling:
         test_file = tmp_path / "invalid_format.txt"
         test_file.write_text(
             f"""CASE: Test
-DESCRIPTION: Invalid format test
-EXPERTS: 1
+            DESCRIPTION: Invalid format test
+            EXPERTS: 1
 
-{data_line}
-""",
+            {data_line}
+            """,
             encoding="utf-8",
         )
 
@@ -258,11 +260,11 @@ EXPERTS: 1
         test_file = tmp_path / "invalid_numbers.txt"
         test_file.write_text(
             f"""CASE: Test
-DESCRIPTION: Invalid numbers test
-EXPERTS: 1
+            DESCRIPTION: Invalid numbers test
+            EXPERTS: 1
 
-{data_line}
-""",
+            {data_line}
+            """,
             encoding="utf-8",
         )
 
@@ -298,11 +300,11 @@ EXPERTS: 1
         test_file = tmp_path / "count_mismatch.txt"
         test_file.write_text(
             f"""CASE: Test
-DESCRIPTION: Count mismatch test
-EXPERTS: {expected_count}
+            DESCRIPTION: Count mismatch test
+            EXPERTS: {expected_count}
 
-{data_lines}
-""",
+            {data_lines}
+            """,
             encoding="utf-8",
         )
 
@@ -325,16 +327,16 @@ EXPERTS: {expected_count}
         test_file = tmp_path / "with_comments.txt"
         test_file.write_text(
             """CASE: Test
-DESCRIPTION: Test with comments
-EXPERTS: 2
+            DESCRIPTION: Test with comments
+            EXPERTS: 2
 
-# This is a comment
-E1 | 10 | 20 | 30
+            # This is a comment
+            E1 | 10 | 20 | 30
 
-# Another comment
-E2 | 15 | 25 | 35
+            # Another comment
+            E2 | 15 | 25 | 35
 
-""",
+            """,
             encoding="utf-8",
         )
 
@@ -357,11 +359,11 @@ E2 | 15 | 25 | 35
         test_file = tmp_path / "no_count.txt"
         test_file.write_text(
             """CASE: Test
-DESCRIPTION: No expert count specified
+            DESCRIPTION: No expert count specified
 
-E1 | 10 | 20 | 30
-E2 | 15 | 25 | 35
-""",
+            E1 | 10 | 20 | 30
+            E2 | 15 | 25 | 35
+            """,
             encoding="utf-8",
         )
 

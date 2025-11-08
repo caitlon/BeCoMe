@@ -1,6 +1,6 @@
 # Tests
 
-This directory contains unit tests for the BeCoMe library.
+This directory contains comprehensive tests for the BeCoMe library, organized by test type.
 
 ## Running Tests
 
@@ -21,24 +21,26 @@ pytest
 Run tests from a specific file:
 
 ```bash
-pytest tests/models/test_fuzzy_number.py
-pytest tests/calculators/test_arithmetic_mean.py
+pytest tests/unit/models/test_fuzzy_number.py
+pytest tests/unit/calculators/test_arithmetic_mean.py
 pytest tests/integration/test_excel_reference.py
 ```
 
 Run all tests from a specific category:
 
 ```bash
-pytest tests/models/
-pytest tests/calculators/
-pytest tests/integration/
+pytest tests/unit/             # All unit tests
+pytest tests/unit/models/      # Only model tests
+pytest tests/unit/calculators/ # Only calculator tests
+pytest tests/integration/      # Only integration tests
+pytest tests/performance/      # Performance/benchmark tests (when available)
 ```
 
 Run a specific test class or function:
 
 ```bash
-pytest tests/models/test_fuzzy_number.py::TestFuzzyTriangleNumberCreation
-pytest tests/models/test_expert_opinion.py::TestExpertOpinionComparison::test_less_than_comparison
+pytest tests/unit/models/test_fuzzy_number.py::TestFuzzyTriangleNumberCreation
+pytest tests/unit/models/test_expert_opinion.py::TestExpertOpinionComparison::test_less_than_comparison
 ```
 
 ### Verbose output
@@ -87,30 +89,50 @@ src/models/fuzzy_number.py                13      0      2      0   100%
 TOTAL                                    105      0     12      0   100%
 ```
 
-All **67 tests** passing ✅ 
+All **202 tests** passing ✅
 
 ## Test Structure
 
-Tests are organized into logical categories:
+Tests are organized by test type for better clarity and maintainability:
 
-### Models (`tests/models/`)
+### Unit Tests (`tests/unit/`)
+Fast, isolated tests for individual components.
+
+#### Models (`tests/unit/models/`)
 Unit tests for data models:
-- `test_fuzzy_number.py` - Tests for `FuzzyTriangleNumber` class 
-- `test_expert_opinion.py` - Tests for `ExpertOpinion` class
-- `test_become_result.py` - Tests for `BeCoMeResult` model 
+- `test_fuzzy_number.py` - Tests for `FuzzyTriangleNumber` value object (27 tests)
+- `test_expert_opinion.py` - Tests for `ExpertOpinion` dataclass (19 tests)
+- `test_become_result.py` - Tests for `BeCoMeResult` Pydantic model (18 tests)
 
-### Calculators (`tests/calculators/`)
+#### Calculators (`tests/unit/calculators/`)
 Unit tests for calculation logic:
-- `test_arithmetic_mean.py` - Tests for arithmetic mean calculation
-- `test_median.py` - Tests for median calculation
-- `test_compromise.py` - Tests for full BeCoMe compromise calculation
+- `test_arithmetic_mean.py` - Tests for arithmetic mean calculation (5 tests)
+- `test_median.py` - Tests for median calculation (9 tests)
+- `test_median_strategies.py` - Tests for median strategy pattern (7 tests)
+- `test_compromise.py` - Tests for full BeCoMe compromise calculation (6 tests)
+- `test_base_calculator.py` - Tests for abstract base calculator (7 tests)
 
-### Integration (`tests/integration/`)
-Integration tests with reference data:
-- `test_excel_reference.py` - Tests against Excel reference implementation 
+#### Interpreters (`tests/unit/interpreters/`)
+Unit tests for interpretation logic:
+- `test_likert_interpreter.py` - Tests for Likert scale decision interpreter (15 tests)
+
+#### Utilities (`tests/unit/utilities/`)
+Unit tests for helper utilities (examples module):
+- `test_utils_analysis.py` - Tests for agreement level calculation (3 tests)
+- `test_utils_display.py` - Tests for step-by-step display functions (8 tests)
+- `test_utils_formatting.py` - Tests for console formatting utilities (11 tests)
+
+### Integration Tests (`tests/integration/`)
+End-to-end tests validating the full pipeline:
+- `test_excel_reference.py` - Validation against Excel reference implementation (9 tests)
+- `test_data_loading.py` - Data loading and parsing pipeline (13 tests)
+
+### Performance Tests (`tests/performance/`)
+Placeholder directory for future performance benchmarks.
 
 ### Reference Data (`tests/reference/`)
-Test case data from Excel reference:
+Test case data from Excel reference implementation:
 - `budget_case.py` - Budget allocation case
 - `pendlers_case.py` - Pendlers case (Likert scale)
 - `floods_case.py` - Floods case (13 experts)
+- `_case_factory.py` - Factory for creating test case dictionaries
