@@ -262,7 +262,7 @@ plot_triangular_membership_functions(
 )
 
 # %% [markdown]
-# ## 3. Visualization #2: Centroid Chart
+# ## 2. Visualization #2: Centroid Chart
 #
 # ### Purpose and Overview
 # The Centroid Chart provides a complementary view to the triangular membership functions by
@@ -543,12 +543,282 @@ plot_centroid_chart(floods_opinions, floods_result, "Floods Case: Land reduction
 plot_centroid_chart(pendlers_opinions, pendlers_result, "Pendlers Case: Likert scale", "pendlers")
 
 # %% [markdown]
-# ## 5. Visualization #4: Interactive Sensitivity Analysis
+# ## 2. Visualization #3: Interactive Sensitivity Analysis
 #
-# ipywidgets for including/excluding individual experts.
-# Upon each change, aggregates are recalculated and plots are updated,
-# demonstrating method robustness.
-
+# ### Purpose and Overview
+# The Interactive Sensitivity Analysis is a powerful tool for exploring how the consensus
+# results change when individual experts are included or excluded from the aggregation.
+# By providing real-time recalculation and visualization updates, this interactive widget
+# demonstrates the **robustness** of the BeCoMe method and helps identify which expert
+# opinions have the greatest influence on the final consensus. This is crucial for
+# understanding the stability of the results and for identifying potentially problematic
+# outliers or influential experts.
+#
+# ### What is Sensitivity Analysis?
+# **Sensitivity analysis** is a technique used to determine how different values of input
+# variables affect output variables. In the context of expert consensus:
+#
+# - **Input variables**: Which experts are included in the aggregation
+# - **Output variables**: The aggregated fuzzy numbers (Gamma, Omega, Best Compromise) and δ_max
+# - **Goal**: Assess whether removing one or more experts significantly changes the consensus
+#
+# **Why sensitivity analysis matters:**
+# - **Robustness testing**: A robust consensus should not dramatically change when a single
+#   expert is removed (especially if there are many experts)
+# - **Outlier identification**: If removing one expert causes δ_max to drop significantly,
+#   that expert may be an outlier whose opinion differs from the group
+# - **Influential expert detection**: Some experts may have disproportionate impact on the
+#   consensus due to extreme positions
+# - **Quality assurance**: Ensures the final recommendation is not overly dependent on any
+#   single opinion
+# - **Stakeholder confidence**: Demonstrates that the method produces stable results even
+#   with slight variations in expert panel composition
+#
+# ### Visualization Components
+#
+# **Interactive Controls (Checkboxes):**
+# - Each expert has an associated checkbox labeled with their ID and centroid value
+# - Format: "Expert_ID (c=XX.X)" where c is the centroid
+# - Checkboxes are initially all checked (all experts included)
+# - Clicking a checkbox immediately toggles that expert in/out of the calculation
+# - Multiple experts can be deselected simultaneously
+# - Checkboxes are organized in columns for easy scanning
+# - The interface requires at least 2 experts to remain selected for valid calculations
+#
+# **Dynamic Visualization Panel:**
+# The widget displays two side-by-side plots that update in real-time:
+#
+# **Left Plot - Triangular Membership Functions:**
+# - Shows the triangular fuzzy numbers for all currently selected experts
+# - Light blue filled triangles for individual expert opinions
+# - Three bold colored lines for aggregates:
+#   - Red: Arithmetic Mean (Gamma)
+#   - Teal: Median (Omega)
+#   - Yellow: Best Compromise
+# - Title updates to show the current number of selected experts
+# - Provides visual feedback on how the fuzzy number distribution changes
+#
+# **Right Plot - Centroid Bar Chart:**
+# - Displays bars for currently selected experts sorted by centroid
+# - Three horizontal dashed lines for aggregated centroids
+# - Title shows the current δ_max value
+# - Expert labels on x-axis (may rotate for readability)
+# - Provides quantitative view of how centroids shift
+#
+# **Metrics Display (Below Plots):**
+# After each recalculation, key metrics are printed:
+# - Number of experts currently selected
+# - δ_max value with agreement level (good/moderate/low)
+# - Best Compromise bounds: [lower, peak, upper]
+# - Best Compromise centroid value
+#
+# ### How to Use This Interactive Tool
+#
+# **Basic Exploration:**
+# 1. Start with all experts selected (default state)
+# 2. Note the initial δ_max and Best Compromise values
+# 3. Deselect one expert at a time and observe changes
+# 4. Watch both plots update and read the new metrics
+# 5. Reselect the expert to return to previous state
+#
+# **Outlier Testing:**
+# 1. Identify experts with extreme centroids (far left or far right in the centroid chart)
+# 2. Deselect these experts one by one
+# 3. Observe whether δ_max decreases significantly (suggests they were outliers)
+# 4. Check if the Best Compromise shifts noticeably (indicates influence)
+#
+# **Robustness Assessment:**
+# 1. Try removing different combinations of 1-3 experts
+# 2. Check if δ_max remains relatively stable
+# 3. Verify that Best Compromise doesn't change dramatically
+# 4. A robust consensus will show minimal variation across different expert subsets
+#
+# **Cluster Analysis:**
+# 1. If you identified clusters in the centroid chart, test them
+# 2. Try removing an entire cluster (e.g., all low-value experts)
+# 3. Observe how this affects the balance between Gamma and Omega
+# 4. This reveals the impact of different opinion groups
+#
+# **Minimum Viable Panel:**
+# 1. Gradually remove experts to find the minimum number needed for stable consensus
+# 2. Watch when δ_max starts to increase significantly
+# 3. This identifies the threshold for reliable consensus
+#
+# ### What Patterns to Look For
+#
+# **Stable Consensus (Robust Method):**
+# - Removing individual experts causes only small changes in δ_max (< 10-20% variation)
+# - Best Compromise centroid shifts by less than 5-10% when removing single experts
+# - Gamma and Omega remain relatively close together regardless of who's excluded
+# - The triangular membership functions' aggregate shapes remain similar
+# - **Interpretation**: The consensus is reliable and not overly dependent on any individual
+#
+# **Unstable Consensus (Sensitive to Composition):**
+# - Removing one expert causes δ_max to change dramatically (> 50%)
+# - Best Compromise shifts significantly with single expert removal
+# - Aggregated triangular shapes change noticeably
+# - **Interpretation**: Results are sensitive to panel composition; may need more experts
+#   or further discussion to reach stable consensus
+#
+# **Influential Outliers:**
+# - Removing a specific expert causes δ_max to **decrease** substantially
+# - The Best Compromise moves closer to the remaining majority
+# - Gamma shifts more than Omega (mean is more affected than median)
+# - **Interpretation**: That expert holds an extreme position; consider whether their
+#   perspective is valid or based on different assumptions
+#
+# **Symmetric Impact:**
+# - Removing low-centroid experts shifts consensus upward proportionally to removing
+#   high-centroid experts shifts it downward
+# - δ_max increases when removing experts from either extreme
+# - **Interpretation**: Opinions are evenly distributed; both ends contribute to balance
+#
+# **Clustered Opinions:**
+# - Removing experts from one cluster causes large shifts in Gamma
+# - Removing experts from another cluster causes offsetting shifts
+# - Omega remains more stable than Gamma
+# - **Interpretation**: Expert panel has distinct subgroups with different perspectives
+#
+# ### Interpreting Results for the Three Cases
+#
+# **Budget Case (22 experts, δ_max = 2.20):**
+# - **Expected behavior**: Very robust to individual expert removal
+# - Removing any single expert should cause δ_max to change by less than 0.5
+# - Best Compromise should remain in the 46-50 billion CZK range
+# - Removing the lowest centroid expert (~26 CZK) should slightly increase the consensus
+# - Removing the highest centroid expert (~80 CZK) should slightly decrease the consensus
+# - Even removing 3-4 experts simultaneously should maintain δ_max < 5.0
+# - **What this demonstrates**: The low initial δ_max indicates strong consensus that
+#   doesn't rely on any particular expert; the method is highly robust
+#
+# **Floods Case (13 experts, δ_max = 5.97):**
+# - **Expected behavior**: Moderate sensitivity due to bimodal distribution
+# - Removing experts from the low cluster (0.5-8%) should:
+#   - Increase Gamma (mean shifts toward high cluster)
+#   - Keep Omega relatively stable or shift it up
+#   - Potentially increase δ_max (less balance between clusters)
+# - Removing experts from the high cluster (37-47%) should:
+#   - Decrease Gamma significantly
+#   - Omega may shift down slightly
+#   - δ_max should decrease (removing outliers reduces disagreement)
+# - Removing the middle-range experts (14-42%) should:
+#   - Increase δ_max (removes the "bridge" between clusters)
+#   - Emphasize the bimodal nature
+# - **What this demonstrates**: The moderate δ_max reflects real disagreement; removing
+#   high-cluster experts improves apparent consensus but may lose important perspectives
+#
+# **Pendlers Case (22 experts, δ_max = 5.68):**
+# - **Expected behavior**: Main cluster is robust; outlier has significant impact
+# - Removing experts from the main cluster (24-30 centroids) should:
+#   - Cause minimal changes in δ_max (maybe ±0.5)
+#   - Keep Best Compromise around 30-31
+# - Removing the high outlier (~100) should:
+#   - Decrease δ_max dramatically (potentially to < 2.0)
+#   - Decrease Gamma significantly (was pulled up by outlier)
+#   - Keep Omega nearly unchanged (median is robust)
+#   - Shift Best Compromise down toward the main cluster consensus
+# - Removing mid-range experts (48-50) should have moderate impact
+# - **What this demonstrates**: The moderate δ_max is misleading; it's caused by one
+#   outlier rather than genuine disagreement. Sensitivity analysis reveals the true
+#   consensus lies with the main cluster, and the outlier disproportionately affects
+#   the arithmetic mean
+#
+# ### Key Insights from This Visualization
+#
+# 1. **Robustness Validation**: Real-time recalculation proves the BeCoMe method's
+#    stability by showing minimal changes when individual experts are excluded
+#
+# 2. **Outlier Impact Quantification**: You can measure exactly how much each expert
+#    influences the consensus by comparing δ_max before and after their removal
+#
+# 3. **Median Superiority**: When outliers are present, you'll observe that Omega (median)
+#    remains much more stable than Gamma (mean) during sensitivity testing, demonstrating
+#    the value of the median-based approach
+#
+# 4. **Transparent Decision-Making**: Stakeholders can see that removing or adding any
+#    single expert doesn't fundamentally change the consensus, building confidence
+#
+# 5. **Interactive Learning**: The immediate visual feedback helps users understand how
+#    fuzzy aggregation works and how different experts contribute to the final result
+#
+# 6. **Cluster Validation**: Testing different combinations helps confirm whether
+#    apparent clusters in the centroid chart represent real opinion groups
+#
+# 7. **Minimum Panel Size**: By progressively removing experts, you can identify the
+#    minimum number needed to maintain a stable consensus for future similar studies
+#
+# ### Practical Applications
+#
+# **For Decision Makers:**
+# - Verify that the consensus is not overly dependent on controversial experts
+# - Test "what-if" scenarios: "What if this stakeholder had not participated?"
+# - Build confidence in the recommendation by demonstrating robustness
+# - Identify which experts are close to the consensus (aligned) vs. outliers (divergent)
+#
+# **For Facilitators:**
+# - Use during deliberation to show participants their influence on the group consensus
+# - Identify experts whose removal improves consensus (potential for targeted follow-up)
+# - Demonstrate the value of diverse perspectives or the cost of polarization
+# - Guide discussion by showing which opinions are "pulling" the consensus in certain directions
+#
+# **For Researchers:**
+# - Perform systematic robustness analysis by testing all possible single-expert removals
+# - Quantify the influence of each expert (e.g., Δδ_max when removed)
+# - Identify cognitive or informational biases by seeing which experts cluster together
+# - Validate the statistical properties of fuzzy aggregation methods
+# - Generate data for meta-analysis on consensus quality
+#
+# **For Quality Assurance:**
+# - Ensure that data entry errors (e.g., one expert's values recorded incorrectly) can
+#   be detected by their disproportionate impact on δ_max
+# - Verify that no single expert can "veto" or dominate the consensus
+# - Document the sensitivity analysis as part of the methodological rigor
+#
+# ### Advantages of Interactive vs. Static Analysis
+#
+# **Immediate Feedback:**
+# - No need to run separate scripts or wait for recalculation
+# - Changes are visualized instantly, facilitating exploration
+#
+# **Visual Learning:**
+# - Seeing the triangles and bars move in real-time builds intuition
+# - Easier to understand fuzzy aggregation dynamics than reading tables of numbers
+#
+# **Flexible Exploration:**
+# - Users can test any combination they're curious about
+# - Not limited to pre-computed scenarios
+#
+# **Stakeholder Engagement:**
+# - Interactive tools are more engaging in presentations and workshops
+# - Participants can "play with" the data and develop ownership of the results
+#
+# ### Limitations and Considerations
+#
+# **Computational Load:**
+# - With very large expert panels (>50), recalculation may be slower
+# - Consider using a non-interactive batch analysis for very large datasets
+#
+# **Interpretation Complexity:**
+# - Users need training to correctly interpret sensitivity patterns
+# - Risk of over-interpreting small fluctuations as meaningful
+#
+# **Selection Bias:**
+# - Manually choosing which experts to exclude could introduce bias
+# - For rigorous analysis, test all possible combinations systematically
+#
+# **Minimum Requirements:**
+# - Requires at least 2 experts; removing too many invalidates the consensus
+# - Small residual panels may not be representative
+#
+# ### Technical Notes
+# - Built using ipywidgets for Jupyter notebook environments
+# - Requires interactive backend (not available in static HTML exports)
+# - Recalculation triggered by checkbox state change events
+# - BeCoMeCalculator is re-instantiated for each recalculation
+# - Checkboxes display expert IDs and centroids for easy reference
+# - Both plots use consistent styling with the static visualizations
+# - Metrics are printed below plots after each update
+# - Error handling prevents calculation with fewer than 2 experts
 
 # %%
 def create_sensitivity_analysis_widget(opinions, title, case_name):
@@ -709,7 +979,7 @@ print("\nPendlers Case - Interactive Analysis:")
 create_sensitivity_analysis_widget(pendlers_opinions, "Pendlers Case: Likert scale", "pendlers")
 
 # %% [markdown]
-# ## 6. Visualization #5: Scenario Dashboard
+# ## 2. Visualization #4: Scenario Dashboard
 #
 # Table with key metrics (centroids, delta_max, ranges)
 # and mini-charts for Budget, Floods, Pendlers cases.
@@ -856,7 +1126,7 @@ def create_scenario_dashboard():
 create_scenario_dashboard()
 
 # %% [markdown]
-# ## 7. Visualization #6: Accuracy Gauge Indicator
+# ## 2. Visualization #5: Accuracy Gauge Indicator
 #
 # "Speedometer" or bar chart with quality thresholds (good / moderate / low)
 # for delta_max, allowing instant assessment of expert agreement level.
@@ -1038,7 +1308,7 @@ plot_accuracy_gauge(floods_result, "Floods Case: Land reduction", "floods")
 plot_accuracy_gauge(pendlers_result, "Pendlers Case: Likert scale", "pendlers")
 
 # %% [markdown]
-# ## 8. Conclusions and Results Interpretation
+# ## 3. Conclusions and Results Interpretation
 #
 # ### Budget Case
 # - Experts demonstrate relatively high agreement
