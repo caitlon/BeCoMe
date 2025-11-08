@@ -128,7 +128,7 @@ def plot_triangular_membership_functions(opinions, result, title, case_name):
 
     # Add patch for individual expert opinions in legend
     expert_patch = mpatches.Patch(
-        color=expert_color, alpha=expert_alpha, edgecolor="gray", label="Expert Opinions"
+        facecolor=expert_color, alpha=expert_alpha, edgecolor="gray", label="Expert Opinions"
     )
     handles, labels = ax.get_legend_handles_labels()
     handles.insert(0, expert_patch)
