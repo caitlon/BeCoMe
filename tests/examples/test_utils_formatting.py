@@ -104,6 +104,7 @@ class TestDisplayCaseHeader:
     def test_display_case_header_format(
         self,
         capsys,
+        opinions_factory,
         case_name: str,
         num_experts: int,
         metadata_case: str,
@@ -117,11 +118,11 @@ class TestDisplayCaseHeader:
         WHEN: Displaying case header
         THEN: Output contains case info and expert count with parity
         """
-        # GIVEN: Create opinions and metadata for the case
-        opinions: list[ExpertOpinion] = [
-            ExpertOpinion(expert_id=f"E{i}", opinion=FuzzyTriangleNumber(1.0, 2.0, 3.0))
-            for i in range(1, num_experts + 1)
-        ]
+        # GIVEN: Create simple opinions using factory (all with same fuzzy number)
+        # For header display, the actual fuzzy values don't matter
+        all_opinions = opinions_factory(num_experts if num_experts > 0 else 1, is_likert=False)
+        opinions: list[ExpertOpinion] = all_opinions[:num_experts] if num_experts > 0 else []
+
         metadata: dict[str, str] = {
             "case": metadata_case,
             "description": description,
@@ -205,3 +206,99 @@ class TestDisplayCentroid:
         assert "3.89" in output
         # THEN: Centroid = (1.234 + 2.567 + 3.891) / 3 = 2.564 → 2.56
         assert "2.56" in output
+
+
+class TestFormattingErrorHandling:
+    """Test error handling in formatting functions."""
+
+    def test_print_header_with_none_title_raises_error(self) -> None:
+        """
+        Test that None title raises AttributeError.
+
+        GIVEN: None instead of title string
+        WHEN: Attempting to print header
+        THEN: AttributeError is raised
+        """
+        # GIVEN: None title
+
+        # WHEN/THEN: Calling print_header should raise AttributeError
+        with pytest.raises(AttributeError):
+            print_header(None)  # type: ignore
+
+    def test_print_section_with_none_title_raises_error(self) -> None:
+        """
+        Test that None title raises TypeError in print_section.
+
+        GIVEN: None instead of title string
+        WHEN: Attempting to print section
+        THEN: TypeError is raised
+        """
+        # GIVEN: None title
+
+        # WHEN/THEN: Calling print_section should raise TypeError
+        with pytest.raises(TypeError):
+            print_section(None)  # type: ignore
+
+    def test_display_case_header_with_none_opinions_raises_error(self) -> None:
+        """
+        Test that None opinions raise TypeError in display_case_header.
+
+        GIVEN: Valid case name and metadata but None opinions
+        WHEN: Attempting to display case header
+        THEN: TypeError is raised
+        """
+        # GIVEN: Valid case name and metadata, None opinions
+        metadata: dict[str, str] = {"case": "Test", "description": "Test case"}
+
+        # WHEN/THEN: Calling display_case_header should raise TypeError
+        with pytest.raises(TypeError):
+            display_case_header("TEST CASE", None, metadata)  # type: ignore
+
+    def test_display_case_header_with_none_metadata_raises_error(self) -> None:
+        """
+        Test that None metadata raises TypeError in display_case_header.
+
+        GIVEN: Valid case name and opinions but None metadata
+        WHEN: Attempting to display case header
+        THEN: TypeError is raised
+        """
+        # GIVEN: Valid case name and opinions, None metadata
+        opinions: list[ExpertOpinion] = [
+            ExpertOpinion(expert_id="E1", opinion=FuzzyTriangleNumber(1.0, 2.0, 3.0))
+        ]
+
+        # WHEN/THEN: Calling display_case_header should raise TypeError
+        with pytest.raises(TypeError):
+            display_case_header("TEST CASE", opinions, None)  # type: ignore
+
+    def test_display_case_header_with_empty_opinions_list(self) -> None:
+        """
+        Test that empty opinions list displays correctly.
+
+        GIVEN: Empty opinions list
+        WHEN: Displaying case header
+        THEN: Header displays with 0 experts (even)
+        """
+        # GIVEN: Empty opinions list
+        opinions: list[ExpertOpinion] = []
+        metadata: dict[str, str] = {"case": "Empty", "description": "No experts"}
+
+        # WHEN: Display case header (should not raise)
+        # This is actually valid - might represent a case with no opinions yet
+        display_case_header("EMPTY CASE", opinions, metadata)
+
+        # THEN: No error raised (function handles gracefully)
+
+    def test_display_centroid_with_none_fuzzy_number_raises_error(self) -> None:
+        """
+        Test that None fuzzy number raises AttributeError.
+
+        GIVEN: None instead of FuzzyTriangleNumber
+        WHEN: Attempting to display centroid
+        THEN: AttributeError is raised
+        """
+        # GIVEN: None fuzzy number
+
+        # WHEN/THEN: Calling display_centroid should raise AttributeError
+        with pytest.raises(AttributeError):
+            display_centroid(None, name="Test")  # type: ignore
