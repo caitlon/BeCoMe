@@ -1906,10 +1906,10 @@ def plot_accuracy_gauge(result, title, case_name, thresholds=(5.0, 15.0)):
 
     # Threshold lines
     ax2.axvline(
-        x=thresholds[0], color="#2ECC71", linestyle="--", linewidth=2, label="Good Threshold"
+        x=thresholds[0], color="#2ECC71", linestyle="--", linewidth=2, label="High Consensus (δ_max < 5.0)"
     )
     ax2.axvline(
-        x=thresholds[1], color="#E74C3C", linestyle="--", linewidth=2, label="Low Threshold"
+        x=thresholds[1], color="#E74C3C", linestyle="--", linewidth=2, label="Low Consensus (δ_max > 15.0)"
     )
 
     # Background zones
