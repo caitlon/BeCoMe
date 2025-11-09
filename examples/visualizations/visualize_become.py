@@ -1458,13 +1458,16 @@ def create_scenario_dashboard():
             result.best_compromise.lower_bound,
         ]
         y = [0, 1, 0, 0]
-        ax2.plot(x, y, color="#FFD93D", linewidth=2.5, label="Compromise")
+
+        # Create informative legend label
+        compromise_label = f"Best Compromise (yellow)\nCentroid: {result.best_compromise.centroid:.2f} {unit}".strip()
+        ax2.plot(x, y, color="#FFD93D", linewidth=2.5, label=compromise_label)
 
         ax2.set_title("Membership Functions", fontsize=10, fontweight="bold")
         ax2.set_xlabel("Value", fontsize=8)
         ax2.set_ylabel("mu(x)", fontsize=8)
         ax2.tick_params(labelsize=7)
-        ax2.legend(fontsize=7)
+        ax2.legend(fontsize=7, loc="upper left")
         ax2.grid(True, alpha=0.3)
         ax2.set_ylim(-0.05, 1.1)
 
