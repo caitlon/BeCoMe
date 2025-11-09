@@ -26,6 +26,7 @@ import pandas as pd
 import seaborn as sns
 from IPython.display import display
 from matplotlib.gridspec import GridSpec
+from tabulate import tabulate
 
 from examples.utils import calculate_agreement_level, load_data_from_txt
 from src.calculators.become_calculator import BeCoMeCalculator
@@ -1471,12 +1472,12 @@ def create_scenario_dashboard():
     )
     plt.show()
 
-    # Additionally print table to console
-    print("\n" + "=" * 100)
-    print("SCENARIO METRICS SUMMARY")
-    print("=" * 100)
-    print(df_metrics.to_string(index=False))
-    print("=" * 100)
+    # Additionally print table to console with beautiful formatting
+    print("\n" + "=" * 120)
+    print("SCENARIO METRICS SUMMARY".center(120))
+    print("=" * 120)
+    print(tabulate(df_metrics, headers="keys", tablefmt="grid", showindex=False))
+    print("=" * 120)
 
 
 create_scenario_dashboard()
