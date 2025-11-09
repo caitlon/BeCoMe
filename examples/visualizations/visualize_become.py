@@ -842,7 +842,7 @@ def create_sensitivity_analysis_widget(opinions, title, case_name):
             value=True,
             description=f"{op.expert_id} (c={op.centroid:.1f})",
             style={"description_width": "initial"},
-            layout=widgets.Layout(width="200px"),
+            layout=widgets.Layout(width="350px"),
         )
 
     # Output widget for plots
@@ -880,8 +880,8 @@ def create_sensitivity_analysis_widget(opinions, title, case_name):
                 y = [0, 1, 0, 0]
                 ax1.fill(x, y, color=expert_color, alpha=0.3, edgecolor="gray", linewidth=0.5)
 
-            # Aggregates
-            for fuzzy_num, color, label in [
+            # Aggregates with full TFN values in legend
+            for fuzzy_num, color, base_label in [
                 (result.arithmetic_mean, "#FF6B6B", "Mean"),
                 (result.median, "#4ECDC4", "Median"),
                 (result.best_compromise, "#FFD93D", "Compromise"),
@@ -893,14 +893,15 @@ def create_sensitivity_analysis_widget(opinions, title, case_name):
                     fuzzy_num.lower_bound,
                 ]
                 y = [0, 1, 0, 0]
-                ax1.plot(x, y, color=color, linewidth=2.5, label=label)
+                label_with_value = f"{base_label}: [{fuzzy_num.lower_bound:.2f}, {fuzzy_num.peak:.2f}, {fuzzy_num.upper_bound:.2f}]"
+                ax1.plot(x, y, color=color, linewidth=2.5, label=label_with_value)
 
             ax1.set_xlabel("Value", fontweight="bold")
             ax1.set_ylabel("Membership Degree mu(x)", fontweight="bold")
             ax1.set_title(
                 f"Membership Functions ({len(selected_opinions)} experts)", fontweight="bold"
             )
-            ax1.legend()
+            ax1.legend(loc="upper left")
             ax1.grid(True, alpha=0.3)
             ax1.set_ylim(-0.05, 1.1)
 
@@ -910,26 +911,31 @@ def create_sensitivity_analysis_widget(opinions, title, case_name):
             expert_ids = [op.expert_id for op in sorted_ops]
 
             ax2.bar(range(len(centroids)), centroids, color="steelblue", alpha=0.7)
+
+            mean_centroid = result.arithmetic_mean.centroid
+            median_centroid = result.median.centroid
+            compromise_centroid = result.best_compromise.centroid
+
             ax2.axhline(
-                y=result.arithmetic_mean.centroid,
+                y=mean_centroid,
                 color="#FF6B6B",
                 linestyle="--",
                 linewidth=2,
-                label="Mean",
+                label=f"Mean: {mean_centroid:.2f}",
             )
             ax2.axhline(
-                y=result.median.centroid,
+                y=median_centroid,
                 color="#4ECDC4",
                 linestyle="--",
                 linewidth=2,
-                label="Median",
+                label=f"Median: {median_centroid:.2f}",
             )
             ax2.axhline(
-                y=result.best_compromise.centroid,
+                y=compromise_centroid,
                 color="#FFD93D",
                 linestyle="--",
                 linewidth=2,
-                label="Compromise",
+                label=f"Compromise: {compromise_centroid:.2f}",
             )
 
             ax2.set_xlabel("Experts", fontweight="bold")
@@ -942,16 +948,6 @@ def create_sensitivity_analysis_widget(opinions, title, case_name):
 
             plt.tight_layout()
             plt.show()
-
-            # Display metrics
-            agreement = calculate_agreement_level(result.max_error, (5.0, 15.0))
-            print(f"\nMetrics ({len(selected_opinions)} experts):")
-            print(f"   delta_max = {result.max_error:.2f} ({agreement})")
-            print(
-                f"   Compromise: [{result.best_compromise.lower_bound:.2f}, "
-                f"{result.best_compromise.peak:.2f}, {result.best_compromise.upper_bound:.2f}]"
-            )
-            print(f"   Compromise centroid: {result.best_compromise.centroid:.2f}")
 
     # Bind event handlers
     for checkbox in checkboxes.values():
@@ -979,13 +975,10 @@ def create_sensitivity_analysis_widget(opinions, title, case_name):
 
 
 # Create widgets for each case
-print("Budget Case - Interactive Analysis:")
 create_sensitivity_analysis_widget(budget_opinions, "Budget Case: COVID-19 budget", "budget")
 
-print("\nFloods Case - Interactive Analysis:")
 create_sensitivity_analysis_widget(floods_opinions, "Floods Case: Land reduction", "floods")
 
-print("\nPendlers Case - Interactive Analysis:")
 create_sensitivity_analysis_widget(pendlers_opinions, "Pendlers Case: Likert scale", "pendlers")
 
 # %% [markdown]
