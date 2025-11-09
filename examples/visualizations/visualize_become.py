@@ -1472,13 +1472,6 @@ def create_scenario_dashboard():
     )
     plt.show()
 
-    # Additionally print table to console with beautiful formatting
-    print("\n" + "=" * 145)
-    print("SCENARIO METRICS SUMMARY".center(120))
-    print("=" * 145)
-    print(tabulate(df_metrics, headers="keys", tablefmt="grid", showindex=False))
-
-
 create_scenario_dashboard()
 
 
