@@ -1375,10 +1375,10 @@ def create_scenario_dashboard():
 
     # Create figure with subplots
     fig = plt.figure(figsize=(18, 12))
-    gs = GridSpec(3, 3, figure=fig, hspace=0.4, wspace=0.3)
+    gs = GridSpec(3, 3, figure=fig, hspace=0.3, wspace=0.3)
 
     # Title
-    fig.suptitle("BeCoMe Scenario Comparison Dashboard", fontsize=16, fontweight="bold", y=0.98)
+    fig.suptitle("BeCoMe Scenario Comparison Dashboard", fontsize=16, fontweight="bold", y=0.88)
 
     # Metrics table (occupies entire first row)
     ax_table = fig.add_subplot(gs[0, :])
@@ -1473,11 +1473,10 @@ def create_scenario_dashboard():
     plt.show()
 
     # Additionally print table to console with beautiful formatting
-    print("\n" + "=" * 120)
+    print("\n" + "=" * 145)
     print("SCENARIO METRICS SUMMARY".center(120))
-    print("=" * 120)
+    print("=" * 145)
     print(tabulate(df_metrics, headers="keys", tablefmt="grid", showindex=False))
-    print("=" * 120)
 
 
 create_scenario_dashboard()
