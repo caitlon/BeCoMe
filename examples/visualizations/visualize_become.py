@@ -151,13 +151,17 @@ print(f"  Pendlers: {len(pendlers_opinions)} experts, delta_max = {pendlers_resu
 # - This visualization reveals that experts fundamentally disagree, suggesting need for further discussion
 #
 # **Pendlers Case (Likert scale 0-100, 22 experts):**
-# - Shows extremely tight agreement - all triangular opinions are nearly identical
-# - Almost all experts chose similar lower bounds, peaks, and upper bounds
-# - The triangles cluster very tightly around 30-35 on the scale
-# - All three aggregation methods (Gamma, Omega, Compromise) are virtually identical
-# - This indicates **exceptionally strong consensus** (very low delta_max)
-# - The narrow, overlapping triangles suggest experts are both confident and aligned
-# - Such agreement makes the Best Compromise highly reliable
+# - Shows **strong core agreement** with most triangular opinions tightly clustered around 24-26
+# - Approximately 18 out of 22 experts (82%) have very similar triangles in the low range
+# - However, there is **one clear outlier** at the maximum Likert value (100)
+# - A few additional experts provided mid-range estimates around 50
+# - The arithmetic mean (Gamma, red) is **pulled significantly higher** (36.36) by the high outlier
+# - The median (Omega, teal) remains **robust at 25.00**, better representing the majority view
+# - The Best Compromise (yellow) falls at 30.68, between the two aggregates
+# - **δ_max = 5.68** (MODERATE - but misleading, as it's inflated by the single outlier)
+# - **Interpretation**: Despite moderate δ_max, the true consensus is strong among the core group
+# - This case demonstrates the value of comparing Gamma and Omega: when they diverge significantly,
+#   it signals the presence of outliers, and Omega (median) provides a more reliable consensus estimate
 #
 # ### Key Insights from This Visualization
 # 1. **Visual Consensus Assessment**: You can immediately see whether experts agree (tight clustering)
@@ -452,7 +456,7 @@ plot_triangular_membership_functions(
 #
 # ### Technical Notes
 # - X-axis shows experts sorted by ascending centroid value (leftmost = most pessimistic)
-# - Y-axis shows the centroid value in the problem's units (CZK, %, or Likert points)
+# - Y-axis shows the centroid value in the problem's units (CZK, %, or Likert value)
 # - Expert labels are rotated 45° for readability when there are many participants
 # - The legend displays exact numerical values for all three aggregates plus δ_max
 # - Grid lines on the y-axis facilitate reading approximate values from the chart
@@ -1137,7 +1141,7 @@ create_sensitivity_analysis_widget(pendlers_opinions, "Pendlers Case: Likert sca
 #
 # **Pendlers Case Row:**
 # - **Metrics**: 22 experts, δ_max = 5.68, Agreement = "moderate" (yellow/gold)
-# - **Compromise**: [27.08, 31.67, 33.29] points, Centroid = 30.68
+# - **Compromise**: [27.08, 31.67, 33.29] Likert value, Centroid = 30.68
 # - **Centroid chart**: Tight main cluster 24-30, then jump to outlier at ~100
 # - **Membership chart**: Massive overlap of triangles around 30-35, one distant triangle at 100
 # - **Interpretation**: Misleading moderate rating - actually strong core consensus + outlier
@@ -1173,7 +1177,7 @@ create_sensitivity_analysis_widget(pendlers_opinions, "Pendlers Case: Likert sca
 # 5. **Uncertainty Ranges Vary**:
 #    - Budget: Range = 49.50 - 45.93 = 3.57 billion CZK (~7.7% of centroid)
 #    - Floods: Range = 18.25 - 10.00 = 8.25% (~57.7% of centroid)
-#    - Pendlers: Range = 33.29 - 27.08 = 6.21 points (~20.2% of centroid)
+#    - Pendlers: Range = 33.29 - 27.08 = 6.21 Likert value (~20.2% of centroid)
 #    - Relative uncertainty varies significantly across domains
 #
 # ### Practical Applications
@@ -1347,7 +1351,7 @@ def create_scenario_dashboard():
     scenarios = [
         ("Budget Case", budget_result, len(budget_opinions), "billion CZK"),
         ("Floods Case", floods_result, len(floods_opinions), "%"),
-        ("Pendlers Case", pendlers_result, len(pendlers_opinions), "points"),
+        ("Pendlers Case", pendlers_result, len(pendlers_opinions), ""),
     ]
 
     metrics_data = []
@@ -1360,7 +1364,7 @@ def create_scenario_dashboard():
                 "Compromise (Lower)": f"{result.best_compromise.lower_bound:.2f} {unit}",
                 "Compromise (Peak)": f"{result.best_compromise.peak:.2f} {unit}",
                 "Compromise (Upper)": f"{result.best_compromise.upper_bound:.2f} {unit}",
-                "Centroid": f"{result.best_compromise.centroid:.2f} {unit}",
+                "Best Compromise": f"{result.best_compromise.centroid:.2f} {unit}",
                 "delta_max": f"{result.max_error:.2f}",
                 "Agreement": agreement,
             }
@@ -2336,7 +2340,7 @@ plot_accuracy_gauge(pendlers_result, "Pendlers Case: Likert scale", "pendlers")
 # | **δ_max** | 2.20 | 5.97 | 5.68 |
 # | **Status** | Excellent | Moderate | Moderate* |
 # | **Pattern** | Smooth distribution | Bimodal clusters | Tight cluster + outlier |
-# | **Γ - Ω spread** | 4.40 CZK | 11.95% | 11.36 points |
+# | **Γ - Ω spread** | 4.40 CZK | 11.95% | 11.36 Likert value |
 # | **True consensus** | Very strong | Weak/divided | Strong (hidden) |
 # | **Recommended action** | Proceed confidently | Further deliberation | Use median, verify outlier |
 # | **Best aggregate** | Best Compromise | Best Compromise (with caution) | **Omega (Median)** |
@@ -2388,7 +2392,7 @@ plot_accuracy_gauge(pendlers_result, "Pendlers Case: Likert scale", "pendlers")
 # 7. **Uncertainty Quantification**
 #    - Budget: Range = 3.57 billion (~7.7% of centroid) - **low uncertainty**
 #    - Floods: Range = 8.25% (~57.7% of centroid) - **high uncertainty**
-#    - Pendlers: Range = 6.21 points (~20.2% of centroid) - **moderate uncertainty** (inflated by outlier)
+#    - Pendlers: Range = 6.21 Likert value (~20.2% of centroid) - **moderate uncertainty** (inflated by outlier)
 #    - The fuzzy range [lower, peak, upper] captures collective uncertainty better than confidence intervals
 #
 # **General Observations About the BeCoMe Method:**
