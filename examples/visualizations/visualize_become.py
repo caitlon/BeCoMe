@@ -1,3 +1,6 @@
+# ignore ruff rule for mathematical symbols
+# ruff: noqa: RUF003
+
 # %% [markdown]
 # # BeCoMe Visualizations -  Results Analysis
 #
