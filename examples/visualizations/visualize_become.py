@@ -189,7 +189,7 @@ print(f"  Pendlers: {len(pendlers_opinions)} experts, delta_max = {pendlers_resu
 
 
 # %%
-def plot_triangular_membership_functions(opinions, result, title, case_name):
+def plot_triangular_membership_functions(opinions, result, title, case_name, unit=""):
     """
     Plot triangular membership functions for all experts
     with overlaid aggregated results
@@ -221,12 +221,14 @@ def plot_triangular_membership_functions(opinions, result, title, case_name):
         ax.plot(x, y, color=color, linewidth=linewidth, label=label, zorder=5)
         ax.fill(x, y, color=color, alpha=0.15, zorder=4)
 
-    # Draw aggregated results
-    draw_aggregate_triangle(result.arithmetic_mean, mean_color, "Arithmetic Mean (Gamma)")
-    draw_aggregate_triangle(result.median, median_color, "Median (Omega)")
-    draw_aggregate_triangle(
-        result.best_compromise, compromise_color, "Best Compromise (GammaOmegaMean)"
-    )
+    # Draw aggregated results with centroid values in legend
+    mean_label = f"Arithmetic Mean (Γ)\nCentroid: {result.arithmetic_mean.centroid:.2f} {unit}".strip()
+    median_label = f"Median (Ω)\nCentroid: {result.median.centroid:.2f} {unit}".strip()
+    compromise_label = f"Best Compromise (ΓΩMean)\nCentroid: {result.best_compromise.centroid:.2f} {unit}".strip()
+
+    draw_aggregate_triangle(result.arithmetic_mean, mean_color, mean_label)
+    draw_aggregate_triangle(result.median, median_color, median_label)
+    draw_aggregate_triangle(result.best_compromise, compromise_color, compromise_label)
 
     ax.set_xlabel("Value", fontsize=12, fontweight="bold")
     ax.set_ylabel("Membership Degree mu(x)", fontsize=12, fontweight="bold")
@@ -259,13 +261,13 @@ def plot_triangular_membership_functions(opinions, result, title, case_name):
 
 # Plot for all three cases
 plot_triangular_membership_functions(
-    budget_opinions, budget_result, "Budget Case: COVID-19 budget (billion CZK)", "budget"
+    budget_opinions, budget_result, "Budget Case: COVID-19 budget (billion CZK)", "budget", "billion CZK"
 )
 plot_triangular_membership_functions(
-    floods_opinions, floods_result, "Floods Case: Arable land reduction (%)", "floods"
+    floods_opinions, floods_result, "Floods Case: Arable land reduction (%)", "floods", "%"
 )
 plot_triangular_membership_functions(
-    pendlers_opinions, pendlers_result, "Pendlers Case: Likert scale (0-100)", "pendlers"
+    pendlers_opinions, pendlers_result, "Pendlers Case: Likert scale (0-100)", "pendlers", ""
 )
 
 # %% [markdown]
