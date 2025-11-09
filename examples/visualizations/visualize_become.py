@@ -1414,24 +1414,28 @@ def create_scenario_dashboard():
 
     # Mini-charts for each scenario
     scenarios_data = [
-        (budget_opinions, budget_result, "Budget Case", 0),
-        (floods_opinions, floods_result, "Floods Case", 1),
-        (pendlers_opinions, pendlers_result, "Pendlers Case", 2),
+        (budget_opinions, budget_result, "Budget Case", 0, "billion CZK"),
+        (floods_opinions, floods_result, "Floods Case", 1, "%"),
+        (pendlers_opinions, pendlers_result, "Pendlers Case", 2, ""),
     ]
 
-    for opinions, result, name, col_idx in scenarios_data:
+    for opinions, result, name, col_idx, unit in scenarios_data:
         # Centroid chart (upper row)
         ax1 = fig.add_subplot(gs[1, col_idx])
         sorted_ops = sorted(opinions, key=lambda x: x.centroid)
         centroids = [op.centroid for op in sorted_ops]
 
+        centroid_value = result.best_compromise.centroid
+        label_text = f"Best Compromise: {centroid_value:.2f} {unit}".strip()
+
         ax1.bar(range(len(centroids)), centroids, color="steelblue", alpha=0.7, width=0.6)
-        ax1.axhline(y=result.best_compromise.centroid, color="#FFD93D", linestyle="--", linewidth=2)
+        ax1.axhline(y=centroid_value, color="#FFD93D", linestyle="--", linewidth=2, label=label_text)
         ax1.set_title(f"{name}\nCentroids", fontsize=10, fontweight="bold")
         ax1.set_xlabel("Experts", fontsize=8)
         ax1.set_ylabel("Value", fontsize=8)
         ax1.tick_params(labelsize=7)
         ax1.grid(True, alpha=0.3, axis="y")
+        ax1.legend(fontsize=7, loc="upper left")
 
         # Triangular functions chart (lower row)
         ax2 = fig.add_subplot(gs[2, col_idx])
