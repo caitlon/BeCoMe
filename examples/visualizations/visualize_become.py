@@ -26,7 +26,6 @@ import pandas as pd
 import seaborn as sns
 from IPython.display import display
 from matplotlib.gridspec import GridSpec
-from tabulate import tabulate
 
 from examples.utils import calculate_agreement_level, load_data_from_txt
 from src.calculators.become_calculator import BeCoMeCalculator
@@ -1471,6 +1470,7 @@ def create_scenario_dashboard():
         bbox_inches="tight",
     )
     plt.show()
+
 
 create_scenario_dashboard()
 
