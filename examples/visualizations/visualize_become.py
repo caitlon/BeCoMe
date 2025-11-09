@@ -222,9 +222,13 @@ def plot_triangular_membership_functions(opinions, result, title, case_name, uni
         ax.fill(x, y, color=color, alpha=0.15, zorder=4)
 
     # Draw aggregated results with centroid values in legend
-    mean_label = f"Arithmetic Mean (Γ)\nCentroid: {result.arithmetic_mean.centroid:.2f} {unit}".strip()
+    mean_label = (
+        f"Arithmetic Mean (Γ)\nCentroid: {result.arithmetic_mean.centroid:.2f} {unit}".strip()
+    )
     median_label = f"Median (Ω)\nCentroid: {result.median.centroid:.2f} {unit}".strip()
-    compromise_label = f"Best Compromise (ΓΩMean)\nCentroid: {result.best_compromise.centroid:.2f} {unit}".strip()
+    compromise_label = (
+        f"Best Compromise (ΓΩMean)\nCentroid: {result.best_compromise.centroid:.2f} {unit}".strip()
+    )
 
     draw_aggregate_triangle(result.arithmetic_mean, mean_color, mean_label)
     draw_aggregate_triangle(result.median, median_color, median_label)
@@ -261,7 +265,11 @@ def plot_triangular_membership_functions(opinions, result, title, case_name, uni
 
 # Plot for all three cases
 plot_triangular_membership_functions(
-    budget_opinions, budget_result, "Budget Case: COVID-19 budget (billion CZK)", "budget", "billion CZK"
+    budget_opinions,
+    budget_result,
+    "Budget Case: COVID-19 budget (billion CZK)",
+    "budget",
+    "billion CZK",
 )
 plot_triangular_membership_functions(
     floods_opinions, floods_result, "Floods Case: Arable land reduction (%)", "floods", "%"
@@ -1424,7 +1432,9 @@ def create_scenario_dashboard():
         label_text = f"Best Compromise: {centroid_value:.2f} {unit}".strip()
 
         ax1.bar(range(len(centroids)), centroids, color="steelblue", alpha=0.7, width=0.6)
-        ax1.axhline(y=centroid_value, color="#FFD93D", linestyle="--", linewidth=2, label=label_text)
+        ax1.axhline(
+            y=centroid_value, color="#FFD93D", linestyle="--", linewidth=2, label=label_text
+        )
         ax1.set_title(f"{name}\nCentroids", fontsize=10, fontweight="bold")
         ax1.set_xlabel("Experts", fontsize=8)
         ax1.set_ylabel("Value", fontsize=8)
@@ -1899,10 +1909,18 @@ def plot_accuracy_gauge(result, title, case_name, thresholds=(5.0, 15.0)):
 
     # Threshold lines
     ax2.axvline(
-        x=thresholds[0], color="#2ECC71", linestyle="--", linewidth=2, label="High Consensus (δ_max < 5.0)"
+        x=thresholds[0],
+        color="#2ECC71",
+        linestyle="--",
+        linewidth=2,
+        label="High Consensus (δ_max < 5.0)",
     )
     ax2.axvline(
-        x=thresholds[1], color="#E74C3C", linestyle="--", linewidth=2, label="Low Consensus (δ_max > 15.0)"
+        x=thresholds[1],
+        color="#E74C3C",
+        linestyle="--",
+        linewidth=2,
+        label="Low Consensus (δ_max > 15.0)",
     )
 
     # Background zones
