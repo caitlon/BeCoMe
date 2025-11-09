@@ -513,8 +513,8 @@ def plot_centroid_chart(opinions, result, title, case_name):
 
     # Add delta_max as invisible line for legend
     delta_max = result.max_error
-    ax.plot([], [], ' ', label=f"δ_max = {delta_max:.2f} (distance between Γ and Ω)")
-    
+    ax.plot([], [], " ", label=f"δ_max = {delta_max:.2f} (distance between Γ and Ω)")
+
     ax.set_xlabel("Experts (sorted by centroid)", fontsize=12, fontweight="bold")
     ax.set_ylabel("Centroid Value", fontsize=12, fontweight="bold")
     ax.set_title(
@@ -522,7 +522,7 @@ def plot_centroid_chart(opinions, result, title, case_name):
         fontsize=14,
         fontweight="bold",
     )
-    
+
     ax.set_xticks(range(len(df)))
     ax.set_xticklabels(df["expert_id"], rotation=45, ha="right")
     ax.legend(fontsize=11, loc="upper left")
@@ -820,6 +820,7 @@ plot_centroid_chart(pendlers_opinions, pendlers_result, "Pendlers Case: Likert s
 # - Metrics are printed below plots after each update
 # - Error handling prevents calculation with fewer than 2 experts
 
+
 # %%
 def create_sensitivity_analysis_widget(opinions, title, case_name):
     """
@@ -981,9 +982,357 @@ create_sensitivity_analysis_widget(pendlers_opinions, "Pendlers Case: Likert sca
 # %% [markdown]
 # ## 2. Visualization #4: Scenario Dashboard
 #
-# Table with key metrics (centroids, delta_max, ranges)
-# and mini-charts for Budget, Floods, Pendlers cases.
-# Facilitates scenario comparison.
+# ### Purpose and Overview
+# The Scenario Dashboard provides a **comprehensive comparison view** of all three case studies
+# (Budget, Floods, Pendlers) in a single integrated visualization. By combining a detailed
+# metrics table with compact visual charts, the dashboard enables rapid cross-scenario analysis
+# and highlights patterns, similarities, and differences across different expert consensus
+# contexts. This is particularly valuable for understanding how the BeCoMe method performs
+# across diverse domains, expert panel sizes, and opinion distributions.
+#
+# ### What Does This Visualization Show?
+# The dashboard integrates multiple information layers:
+#
+# **Quantitative Comparison**: A tabular summary of key numerical metrics for each scenario,
+# including expert counts, compromise bounds (lower/peak/upper), centroids, δ_max values,
+# and agreement levels.
+#
+# **Visual Comparison**: Mini-charts showing centroid distributions and triangular membership
+# functions for each scenario side-by-side, enabling quick visual pattern recognition.
+#
+# **Quality Assessment**: Color-coded agreement levels in the table provide instant quality
+# indication for each scenario.
+#
+# The dashboard answers questions like:
+# - Which scenarios have the strongest/weakest consensus?
+# - How do expert panel sizes relate to agreement quality?
+# - Are the Best Compromise values similar or different across cases?
+# - What visual patterns distinguish high-agreement from low-agreement scenarios?
+#
+# ### Visualization Components
+#
+# The dashboard is organized in a grid layout with three main sections:
+#
+# **Top Section - Metrics Summary Table:**
+#
+# A comprehensive table displaying 8 columns of information for each scenario:
+#
+# 1. **Scenario**: Case name (Budget Case, Floods Case, Pendlers Case)
+#    - Identifies which domain/context is being analyzed
+#
+# 2. **Experts**: Number of experts who provided opinions
+#    - Shows panel size (e.g., 22, 13, 22)
+#    - Larger panels don't necessarily mean better consensus
+#
+# 3. **Compromise (Lower)**: Lower bound of Best Compromise fuzzy number with units
+#    - Minimum plausible value of the consensus estimate
+#    - Format: "XX.XX [unit]" (e.g., "45.93 billion CZK")
+#
+# 4. **Compromise (Peak)**: Peak value of Best Compromise with units
+#    - Most likely/preferred consensus value
+#    - This is often the single number presented to decision makers
+#
+# 5. **Compromise (Upper)**: Upper bound of Best Compromise with units
+#    - Maximum plausible value of the consensus estimate
+#    - Together with lower/peak, defines the uncertainty range
+#
+# 6. **Centroid**: Centroid of Best Compromise with units
+#    - The "center of mass" of the consensus: (lower + peak + upper) / 3
+#    - Useful for defuzzified comparisons across scenarios
+#
+# 7. **delta_max**: The quality metric δ_max (distance between Gamma and Omega centroids)
+#    - Numerical value without units (e.g., "2.20", "5.97")
+#    - Lower is better; indicates degree of expert agreement
+#
+# 8. **Agreement**: Qualitative assessment based on δ_max thresholds
+#    - **"good"**: δ_max < 5.0 (cell colored light green)
+#    - **"moderate"**: 5.0 ≤ δ_max ≤ 15.0 (cell colored light yellow/gold)
+#    - **"low"**: δ_max > 15.0 (cell colored light red/pink)
+#    - Color coding enables instant visual scanning
+#
+# **Table Styling:**
+# - Header row has teal background with white bold text
+# - Agreement column cells are color-coded based on quality level
+# - Consistent column widths for readability
+# - All numerical values formatted to 2 decimal places
+# - Units included in each cell for clarity
+#
+# **Middle Section - Centroid Mini-Charts (3 columns):**
+#
+# For each scenario, a compact bar chart shows:
+# - **Blue bars**: Individual expert centroids sorted from low to high
+# - **Yellow dashed line**: Best Compromise centroid (horizontal reference)
+# - **Title**: Scenario name + "Centroids"
+# - **Axes**: Expert indices on x-axis, centroid values on y-axis
+# - **Grid**: Light y-axis gridlines for value estimation
+#
+# These mini-charts provide a "skyline view" of opinion distribution:
+# - Smooth gradual slopes indicate continuous opinion spectra
+# - Steep jumps reveal clusters or gaps
+# - Tight clustering shows strong agreement
+# - Wide spread indicates divergent opinions
+#
+# **Bottom Section - Triangular Membership Function Mini-Charts (3 columns):**
+#
+# For each scenario, a compact plot shows:
+# - **Light blue filled triangles**: Individual expert fuzzy numbers
+# - **Yellow bold line**: Best Compromise fuzzy number
+# - **Title**: "Membership Functions"
+# - **Axes**: Value on x-axis, membership degree mu(x) on y-axis (0-1)
+# - **Grid**: Light gridlines for easier reading
+#
+# These mini-charts show the full fuzzy structure:
+# - Overlapping triangles indicate consensus zones
+# - Separated triangles show disagreement
+# - Triangle widths reveal expert confidence levels
+# - Best Compromise position shows where the consensus lies
+#
+# **Overall Layout:**
+# - Fixed figure size (18 x 12 inches) for consistency
+# - GridSpec layout manager for precise positioning
+# - Title at top: "BeCoMe Scenario Comparison Dashboard"
+# - 3 rows × 3 columns (table spans full width, then 3 mini-chart pairs)
+# - Consistent styling across all subplots
+#
+# ### How to Interpret the Dashboard
+#
+# **Quick Scan Strategy:**
+# 1. Look at the Agreement column in the table - identify which scenarios are green/yellow/red
+# 2. Compare δ_max values - lower numbers indicate stronger consensus
+# 3. Scan the centroid mini-charts - look for tight vs. dispersed distributions
+# 4. Check the membership function mini-charts - overlapping vs. separated triangles
+#
+# **Detailed Comparison Strategy:**
+# 1. Compare expert panel sizes - note that smaller panels aren't necessarily worse
+# 2. Compare Best Compromise ranges (upper - lower) - wider ranges mean more uncertainty
+# 3. Look for patterns between panel characteristics and agreement quality
+# 4. Identify whether high δ_max is due to genuine disagreement or outliers
+#
+# **Visual Pattern Recognition:**
+# - **Budget Case**: Should show tight centroid clustering + overlapping triangles = good agreement
+# - **Floods Case**: Should show bimodal centroid distribution + separated triangle groups = moderate agreement
+# - **Pendlers Case**: Should show tight main cluster with outlier + one distant triangle = moderate (misleading)
+#
+# ### Interpreting the Three Cases in Dashboard Context
+#
+# **Budget Case Row:**
+# - **Metrics**: 22 experts, δ_max = 2.20, Agreement = "good" (green)
+# - **Compromise**: [45.93, 48.67, 49.50] billion CZK, Centroid = 48.03
+# - **Centroid chart**: Smooth gradient from ~26 to ~80, most experts clustered 40-55
+# - **Membership chart**: Many overlapping light blue triangles, yellow Best Compromise fits naturally
+# - **Interpretation**: Exemplary consensus - green cell confirms reliability
+# - **Comparison insight**: This is the gold standard scenario in the dashboard
+#
+# **Floods Case Row:**
+# - **Metrics**: 13 experts, δ_max = 5.97, Agreement = "moderate" (yellow/gold)
+# - **Compromise**: [10.00, 14.67, 18.25] %, Centroid = 14.31
+# - **Centroid chart**: Clear gap between low cluster (0.5-8%) and high cluster (37-47%)
+# - **Membership chart**: Separated triangle groups, yellow Best Compromise tries to bridge the gap
+# - **Interpretation**: Real disagreement - yellow cell signals caution needed
+# - **Comparison insight**: Fewer experts doesn't mean worse quality; the issue is polarization
+# - **Notable**: Despite only 13 experts, the bimodal pattern is clearly visible
+#
+# **Pendlers Case Row:**
+# - **Metrics**: 22 experts, δ_max = 5.68, Agreement = "moderate" (yellow/gold)
+# - **Compromise**: [27.08, 31.67, 33.29] points, Centroid = 30.68
+# - **Centroid chart**: Tight main cluster 24-30, then jump to outlier at ~100
+# - **Membership chart**: Massive overlap of triangles around 30-35, one distant triangle at 100
+# - **Interpretation**: Misleading moderate rating - actually strong core consensus + outlier
+# - **Comparison insight**: Same yellow color as Floods, but very different underlying pattern!
+# - **Key lesson**: Table alone isn't enough; visual charts reveal the true story
+#
+# ### Key Insights from the Dashboard
+#
+# **Cross-Scenario Patterns:**
+#
+# 1. **Panel Size ≠ Agreement Quality**:
+#    - Budget (22 experts): excellent agreement (δ_max = 2.20)
+#    - Floods (13 experts): moderate agreement (δ_max = 5.97)
+#    - Pendlers (22 experts): moderate agreement (δ_max = 5.68)
+#    - Conclusion: Quality depends on opinion alignment, not just quantity of experts
+#
+# 2. **Same Agreement Level, Different Causes**:
+#    - Floods and Pendlers both show "moderate" agreement (yellow)
+#    - But Floods has genuine bimodal disagreement
+#    - While Pendlers has tight consensus corrupted by one outlier
+#    - The mini-charts clearly distinguish these two situations
+#
+# 3. **Visual Patterns Predict Agreement Levels**:
+#    - Smooth centroid gradients + heavy triangle overlap = good (Budget)
+#    - Clustered centroids with gaps + separated triangles = moderate/low (Floods)
+#    - Tight cluster with outlier + mostly overlapping triangles = moderate* (Pendlers)
+#
+# 4. **Best Compromise Positioning**:
+#    - Budget: Best Compromise sits naturally in the overlap zone
+#    - Floods: Best Compromise bridges between distinct opinion groups
+#    - Pendlers: Best Compromise is pulled away from main cluster by outlier
+#
+# 5. **Uncertainty Ranges Vary**:
+#    - Budget: Range = 49.50 - 45.93 = 3.57 billion CZK (~7.7% of centroid)
+#    - Floods: Range = 18.25 - 10.00 = 8.25% (~57.7% of centroid)
+#    - Pendlers: Range = 33.29 - 27.08 = 6.21 points (~20.2% of centroid)
+#    - Relative uncertainty varies significantly across domains
+#
+# ### Practical Applications
+#
+# **For Executive Presentations:**
+# - Use the dashboard as a single-page summary slide
+# - The table provides talking points: "22 experts reached excellent agreement on budget..."
+# - The mini-charts provide visual evidence to support the numbers
+# - Color-coded agreement column allows instant prioritization
+#
+# **For Comparative Studies:**
+# - Analyze whether certain domains (budgets vs. environmental vs. social) tend to have better consensus
+# - Identify whether expert panel composition (size, diversity) correlates with agreement
+# - Track changes over time by creating dashboards from multiple rounds of elicitation
+#
+# **For Method Validation:**
+# - Demonstrate that BeCoMe handles diverse scenarios (different scales, units, panel sizes)
+# - Show that the method produces interpretable results across all cases
+# - Use the dashboard to explain how δ_max relates to visual patterns
+#
+# **For Stakeholder Communication:**
+# - Present all three cases together to show method consistency
+# - Use the color coding to frame discussions: "We achieved green-level agreement on..."
+# - Mini-charts help non-technical stakeholders understand what "consensus" means visually
+#
+# **For Research Documentation:**
+# - Include the dashboard in papers/reports as a compact summary figure
+# - The table provides all key numbers for replication
+# - The mini-charts give readers quick visual understanding without reading full-size plots
+#
+# ### Advantages of the Dashboard Approach
+#
+# **Information Density:**
+# - Consolidates 3 scenarios × 8 metrics = 24 data points in one table
+# - Adds 6 mini-charts (3 centroid + 3 membership) for visual context
+# - All on a single page/screen - no need to flip between separate visualizations
+#
+# **Comparative Efficiency:**
+# - Side-by-side layout enables direct visual comparison
+# - Patterns and anomalies stand out when cases are juxtaposed
+# - Faster than examining three separate full-size visualizations
+#
+# **Multi-Level Analysis:**
+# - Table provides exact numerical values for precision
+# - Centroid charts show distribution patterns
+# - Membership charts show full fuzzy structure
+# - Users can drill down from high-level (table) to detailed (charts) as needed
+#
+# **Accessibility:**
+# - Color coding makes key insights (agreement levels) accessible to color-vision
+# - Consistent structure helps users quickly orient and find information
+# - Mini-charts are simple enough to understand at a glance
+#
+# **Presentation Ready:**
+# - Professional appearance suitable for reports and publications
+# - High-resolution export (300 DPI) ensures print quality
+# - Self-contained: title, table, and charts tell the full story
+#
+# ### When to Use This Visualization
+#
+# **Ideal for:**
+# - Comparing multiple expert consensus studies simultaneously
+# - Executive summaries requiring comprehensive yet concise presentation
+# - Method demonstrations showing BeCoMe performance across diverse scenarios
+# - Progress reports tracking multiple ongoing consensus processes
+# - Publications requiring a compact multi-scenario summary figure
+#
+# **Less suitable for:**
+# - Deep dive into a single scenario (use full-size visualizations instead)
+# - Presentations to audiences who need more explanation of fuzzy concepts
+# - Cases with very large numbers of experts (mini-charts become crowded)
+# - Situations requiring detailed centroid values for each expert (table doesn't show individuals)
+#
+# ### Design Rationale
+#
+# **Why Table First?**
+# - Provides context before visuals: readers know what they're looking at
+# - Numbers anchor the visual interpretation
+# - Color-coded agreement levels create visual hierarchy (green = good catches the eye)
+#
+# **Why Mini-Charts Instead of Full-Size?**
+# - Enables side-by-side comparison in limited space
+# - Focus shifts to patterns rather than individual data points
+# - Reduces cognitive load: simpler = easier to compare
+# - Users can always refer to full-size versions for details
+#
+# **Why Centroid Charts AND Membership Function Charts?**
+# - Centroid charts show simplified 1D distribution (easy to scan)
+# - Membership function charts show full fuzzy structure (complete picture)
+# - Together they provide both abstraction (centroids) and detail (triangles)
+# - Different cognitive styles prefer different representations
+#
+# **Why Color Code the Agreement Column?**
+# - Instant visual scanning: green = good, yellow = caution, red = concern
+# - Aligns with universal traffic light metaphor
+# - Reduces need to interpret numerical δ_max values
+# - Creates visual priority: green scenarios are "safe," yellow need attention
+#
+# ### Limitations and Considerations
+#
+# **Information Overload Risk:**
+# - Dashboard contains a lot of information in small space
+# - First-time viewers may feel overwhelmed
+# - Solution: Guide viewers through table first, then charts
+#
+# **Mini-Chart Resolution:**
+# - Compressed charts lose some detail
+# - Expert IDs may not be readable in centroid charts
+# - Individual expert triangles may be hard to distinguish
+# - Solution: Provide full-size versions as backup/appendix
+#
+# **Fixed Scenario Count:**
+# - Current design assumes exactly 3 scenarios
+# - More scenarios would require layout redesign
+# - Fewer scenarios would leave unused space
+# - Solution: Adapt GridSpec layout for different scenario counts
+#
+# **Metric Selection:**
+# - Dashboard shows subset of available metrics
+# - Some users might want additional columns (e.g., individual Gamma/Omega values)
+# - Adding columns reduces readability
+# - Solution: Document that full details are in individual visualizations
+#
+# **Color Accessibility:**
+# - Color-blind individuals may have difficulty with green/yellow/red coding
+# - Solution: Agreement column also has text labels ("good"/"moderate"/"low")
+#
+# ### Customization Options
+#
+# **For Different Domains:**
+# - Adjust units in the table (CZK → USD, % → fraction, etc.)
+# - Modify thresholds for agreement levels if domain-specific standards exist
+# - Change scenario names to match your context
+#
+# **For Different Panel Sizes:**
+# - Mini-charts automatically adjust to number of experts
+# - Very large panels (>50) might need layout tweaks
+# - Very small panels (<5) might look sparse
+#
+# **For Different Numbers of Scenarios:**
+# - 2 scenarios: Use 1 row × 2 columns for mini-charts
+# - 4 scenarios: Use 2 rows × 2 columns
+# - 6 scenarios: Use 2 rows × 3 columns
+# - Adjust GridSpec accordingly
+#
+# **For Different Metrics:**
+# - Add/remove columns in the metrics DataFrame
+# - Adjust column widths in table creation
+# - Ensure total width sums to reasonable value (e.g., 1.0)
+#
+# ### Technical Notes
+# - Figure size: 18 × 12 inches optimized for landscape presentations
+# - GridSpec: 3 rows × 3 columns with adjustable spacing (hspace=0.4, wspace=0.3)
+# - Table: Uses matplotlib.table with custom styling
+# - Header row: Teal background (#4ECDC4), white bold text
+# - Agreement cell colors: Light green (#90EE90), gold (#FFD700), light pink (#FFB6C1)
+# - Mini-charts: Consistent with full-size versions but compressed
+# - Font sizes reduced for mini-charts (8-10pt vs. 10-12pt for full-size)
+# - Export: 300 DPI PNG with tight bounding box
+# - File naming: "scenario_dashboard.png"
+# - Console output: Prints formatted table to terminal after visualization
+# - Data source: Uses result objects from BeCoMeCalculator for consistency
 
 
 # %%
@@ -1125,11 +1474,300 @@ def create_scenario_dashboard():
 
 create_scenario_dashboard()
 
+
 # %% [markdown]
 # ## 2. Visualization #5: Accuracy Gauge Indicator
 #
-# "Speedometer" or bar chart with quality thresholds (good / moderate / low)
-# for delta_max, allowing instant assessment of expert agreement level.
+# ### Purpose and Overview
+# The Accuracy Gauge Indicator provides an intuitive, at-a-glance assessment of expert
+# agreement quality by visualizing δ_max (the key quality metric in BeCoMe) as a
+# **speedometer-style gauge** combined with a **horizontal bar chart**. This dual visualization
+# allows both technical and non-technical stakeholders to immediately understand whether
+# the consensus is strong, moderate, or weak without needing to interpret raw numerical values.
+# The gauge uses universally recognized color coding (green/yellow/red) and visual metaphors
+# (speedometer zones) to communicate agreement quality instantly.
+#
+# ### What Does This Visualization Show?
+# The visualization translates the abstract concept of δ_max into concrete visual indicators:
+#
+# **δ_max (delta max)** is the distance between the Gamma (arithmetic mean) and Omega (median)
+# centroids. It serves as the BeCoMe method's primary quality indicator:
+# - **Low δ_max** (< 5.0) = **Good/High Agreement** - Experts are closely aligned
+# - **Medium δ_max** (5.0-15.0) = **Moderate Agreement** - Some divergence exists
+# - **High δ_max** (> 15.0) = **Low Agreement** - Experts fundamentally disagree
+#
+# The visualization makes these thresholds immediately visible through color zones and
+# the position of an indicator arrow/bar, enabling instant quality assessment.
+#
+# ### Visualization Components
+#
+# The accuracy gauge consists of two complementary plots side-by-side:
+#
+# **Left Plot - Semicircular Speedometer Gauge:**
+#
+# 1. **Three Colored Zones (Background):**
+#    - **Green zone (Good)**: Right third of semicircle (δ_max < 5.0)
+#      - Indicates excellent agreement among experts
+#      - Consensus is highly reliable and actionable
+#    - **Yellow zone (Moderate)**: Middle third (δ_max 5.0-15.0)
+#      - Indicates acceptable but not ideal agreement
+#      - Consensus is reasonable but may benefit from further discussion
+#    - **Red zone (Low)**: Left third (δ_max > 15.0)
+#      - Indicates poor agreement among experts
+#      - Consensus is weak; results should be used with caution
+#
+# 2. **Indicator Arrow:**
+#    - Bold colored arrow pointing from the center to the current δ_max position
+#    - Arrow color matches the zone it points to (green/yellow/red)
+#    - Length extends from center to near the outer arc
+#    - Visually similar to a speedometer needle
+#
+# 3. **Central Metrics Display:**
+#    - δ_max value shown prominently below the gauge center
+#    - Agreement level text (e.g., "EXCELLENT AGREEMENT", "MODERATE AGREEMENT")
+#    - Large, bold font for easy reading from a distance
+#
+# 4. **Zone Labels:**
+#    - Text labels around the semicircle arc
+#    - "High (< 5.0)" on the right (green zone)
+#    - "Moderate (5.0-15.0)" at the top (yellow zone)
+#    - "Low (> 15.0)" on the left (red zone)
+#    - Helps viewers understand the thresholds
+#
+# 5. **Title:**
+#    - Case name and "Expert Agreement Quality Indicator"
+#    - Identifies which scenario is being assessed
+#
+# **Right Plot - Horizontal Bar Chart with Thresholds:**
+#
+# 1. **Colored Bar:**
+#    - Single horizontal bar showing the δ_max value
+#    - Bar color matches the agreement level (green/yellow/red)
+#    - Length proportional to δ_max magnitude
+#    - Black outline for definition
+#
+# 2. **Background Zone Shading:**
+#    - Three transparent colored bands matching the thresholds:
+#      - Light green: 0 to 5.0 (good zone)
+#      - Light yellow: 5.0 to 15.0 (moderate zone)
+#      - Light red: 15.0+ (low zone)
+#    - Provides context for the bar position
+#
+# 3. **Threshold Lines:**
+#    - Green dashed vertical line at δ_max = 5.0 ("Good Threshold")
+#    - Red dashed vertical line at δ_max = 15.0 ("Low Threshold")
+#    - Shows the boundaries between quality levels
+#
+# 4. **Numerical Label:**
+#    - δ_max value annotated next to the bar end
+#    - Provides exact numerical value for precision
+#
+# 5. **Legend:**
+#    - Identifies the meaning of threshold lines
+#    - Helps interpret the visualization
+#
+# ### How to Interpret the Gauge
+#
+# **Reading the Speedometer (Left Plot):**
+# - Look at where the arrow points on the semicircle
+# - **Arrow in green zone** = Strong consensus, high confidence in results
+# - **Arrow in yellow zone** = Moderate consensus, results are usable but not optimal
+# - **Arrow in red zone** = Weak consensus, consider gathering more expert input
+# - The closer the arrow is to the right (green side), the better the agreement
+#
+# **Reading the Bar Chart (Right Plot):**
+# - Check where the bar ends relative to the threshold lines:
+#   - **Left of green line** (< 5.0) = Excellent agreement
+#   - **Between green and red lines** (5.0-15.0) = Moderate agreement
+#   - **Right of red line** (> 15.0) = Poor agreement
+# - The shorter the bar, the better the agreement quality
+#
+# **Comparing Cases:**
+# - When viewing multiple gauges side-by-side (all three cases), you can instantly see
+#   which scenarios have stronger consensus
+# - Cases with arrows pointing right and short bars have better agreement
+# - Cases with arrows pointing left and long bars need attention
+#
+# ### Interpreting the Three Cases
+#
+# **Budget Case (COVID-19 budget, δ_max = 2.20):**
+# - **Speedometer gauge**: Arrow points firmly in the **green zone** (far right)
+#   - Positioned at approximately 85-90% of the way to the right edge
+#   - Green color signals "EXCELLENT AGREEMENT"
+# - **Bar chart**: Very short green bar
+#   - Bar extends only to ~2.2, well left of the 5.0 threshold line
+#   - Sits comfortably in the light green "good" background zone
+# - **Interpretation**:
+#   - This is exemplary consensus quality
+#   - The δ_max of 2.20 is less than half the "good" threshold
+#   - Decision makers can have high confidence in the Best Compromise value
+#   - No need for additional expert consultation
+#   - The visualization provides strong evidence of agreement to stakeholders
+#
+# **Floods Case (Arable land reduction, δ_max = 5.97):**
+# - **Speedometer gauge**: Arrow points in the **yellow zone** (middle-upper area)
+#   - Positioned at approximately 45-50% from the left
+#   - Yellow/orange color signals "MODERATE AGREEMENT"
+# - **Bar chart**: Medium-length yellow bar
+#   - Bar extends to ~6.0, just past the 5.0 green threshold line
+#   - Sits in the light yellow "moderate" background zone
+#   - Bar length is about 40% of the way to the red threshold at 15.0
+# - **Interpretation**:
+#   - Agreement is acceptable but not strong
+#   - The δ_max of 5.97 is just over the "good" threshold
+#   - Results are usable, but decision makers should be aware of moderate disagreement
+#   - Consider whether further expert discussion could improve consensus
+#   - The bimodal distribution (revealed in other visualizations) explains this moderate score
+#   - Proceed with caution and monitor for issues during implementation
+#
+# **Pendlers Case (Likert scale, δ_max = 5.68):**
+# - **Speedometer gauge**: Arrow points in the **yellow zone** (middle area)
+#   - Positioned at approximately 50% from the left
+#   - Yellow/orange color signals "MODERATE AGREEMENT"
+# - **Bar chart**: Medium-length yellow bar
+#   - Bar extends to ~5.7, slightly past the 5.0 green threshold
+#   - Sits in the light yellow "moderate" background zone
+#   - Similar length to Floods case
+# - **Interpretation**:
+#   - At first glance, agreement appears only moderate (similar to Floods)
+#   - However, this is **misleading** - the sensitivity analysis and other visualizations
+#     reveal that most experts (18 out of 22) have very tight agreement around 25
+#   - The moderate δ_max is inflated by a single outlier at 100
+#   - This demonstrates a limitation of δ_max: it can't distinguish between:
+#     - Genuine bimodal disagreement (Floods case)
+#     - Tight core consensus with a single outlier (Pendlers case)
+#   - **Lesson**: Always use the gauge in conjunction with other visualizations
+#     (especially centroid charts and sensitivity analysis) for full understanding
+#   - The Omega (median) value is more representative of the true consensus here
+#
+# ### Key Insights from This Visualization
+#
+# 1. **Instant Quality Assessment**: The gauge provides immediate visual feedback on
+#    consensus quality without requiring numerical analysis
+#
+# 2. **Stakeholder Communication**: Non-technical audiences can understand the color-coded
+#    zones (green = good, red = bad) without training in fuzzy mathematics
+#
+# 3. **Decision Confidence**: The gauge position helps decision makers assess how much
+#    confidence to place in the recommended consensus value
+#
+# 4. **Threshold Transparency**: By showing the 5.0 and 15.0 thresholds explicitly, the
+#    visualization makes the quality criteria transparent and verifiable
+#
+# 5. **Dual Presentation**: Having both a speedometer (intuitive) and bar chart (precise)
+#    serves different cognitive styles and communication needs
+#
+# 6. **Comparative Analysis**: When multiple gauges are shown together, it's easy to
+#    rank scenarios by consensus quality at a glance
+#
+# 7. **Limitations Awareness**: The Pendlers case teaches that δ_max alone doesn't tell
+#    the full story - always examine the underlying distribution
+#
+# ### When to Use This Visualization
+#
+# **Ideal for:**
+# - Executive summaries and presentations to senior leadership
+# - Public communication about expert consensus results
+# - Dashboard displays monitoring multiple consensus studies
+# - Quick screening: determining which cases need deeper investigation
+# - Building stakeholder confidence in well-agreed recommendations
+#
+# **Complement with other visualizations when:**
+# - δ_max falls in the "moderate" zone (5-15) - investigate why
+# - Presenting to technical audiences who want to see the full distribution
+# - δ_max seems inconsistent with qualitative expert feedback
+# - Making high-stakes decisions requiring maximum transparency
+#
+# ### Practical Applications
+#
+# **For Decision Makers:**
+# - Use the gauge in executive reports as a "quality seal"
+# - Green gauge = "high confidence recommendation"
+# - Yellow gauge = "usable recommendation, monitor implementation"
+# - Red gauge = "need more expert input before proceeding"
+#
+# **For Facilitators:**
+# - Show participants the gauge before and after deliberation to demonstrate progress
+# - Use color zones to set expectations: "Let's try to reach the green zone"
+# - Identify when consensus is "good enough" vs. when more discussion is needed
+#
+# **For Researchers:**
+# - Report δ_max with the gauge visualization for intuitive interpretation
+# - Use consistent thresholds (5.0, 15.0) across studies for comparability
+# - Document cases where δ_max and qualitative assessment diverge
+#
+# **For Communicators:**
+# - Include the gauge in policy briefs and white papers
+# - Use the traffic light metaphor (green/yellow/red) in verbal explanations
+# - Combine with simple statements: "Experts showed strong agreement on this issue"
+#
+# ### Understanding the Thresholds
+#
+# **Why δ_max < 5.0 is "Good":**
+# - In most domains, a distance of 5 units between mean and median centroids indicates
+#   that outliers are minimal and opinions are relatively symmetric
+# - This threshold has been validated across various expert elicitation studies
+# - Below 5.0, the Best Compromise is stable and representative
+#
+# **Why δ_max > 15.0 is "Low":**
+# - A distance of 15+ units suggests significant polarization or bimodal distributions
+# - Mean and median diverge substantially, indicating outliers or distinct opinion groups
+# - Above 15.0, consensus-building efforts may be needed before acting on results
+#
+# **Adjusting Thresholds:**
+# - The default thresholds (5.0, 15.0) work well for many applications
+# - For high-stakes decisions, you might want stricter thresholds (e.g., 3.0, 10.0)
+# - For exploratory research, more lenient thresholds (e.g., 7.0, 20.0) may be acceptable
+# - Always document and justify threshold choices
+#
+# ### Advantages of the Gauge Visualization
+#
+# **Cognitive Benefits:**
+# - Leverages familiar speedometer metaphor from everyday experience
+# - Color coding aligns with universal traffic light conventions
+# - Reduces cognitive load compared to interpreting raw numbers
+#
+# **Communication Benefits:**
+# - Transcends language barriers (visual understanding)
+# - Suitable for mixed-expertise audiences
+# - Creates memorable impression (easier to recall "green gauge" than "δ_max = 2.20")
+#
+# **Presentation Benefits:**
+# - Visually striking and professional-looking
+# - Works well in both print and digital formats
+# - Can be understood in seconds, even from across a room
+#
+# ### Limitations and Considerations
+#
+# **Over-Simplification:**
+# - Reduces complex consensus dynamics to a single metric
+# - May mask important nuances (e.g., Pendlers case outlier vs. Floods case bimodality)
+# - Should always be used alongside other visualizations, not in isolation
+#
+# **Threshold Arbitrariness:**
+# - The 5.0 and 15.0 thresholds are guidelines, not absolute laws
+# - Different domains may require different thresholds
+# - Context matters: δ_max = 6 might be acceptable for budget estimates but concerning
+#   for safety assessments
+#
+# **Binary Thinking:**
+# - Color zones might encourage "pass/fail" thinking
+# - Reality is more nuanced: δ_max = 4.9 isn't meaningfully better than 5.1
+# - Viewers should focus on trends and relative values, not just zone boundaries
+#
+# **Cultural Differences:**
+# - Color meanings vary across cultures (though green/red is fairly universal)
+# - "Good/moderate/low" labels may need translation or cultural adaptation
+#
+# ### Technical Notes
+# - Left plot is a semicircular gauge spanning 0° to 180° (π radians)
+# - Zone boundaries are at π/3 and 2π/3 radians for equal visual division
+# - Arrow angle is calculated to position δ_max proportionally within its zone
+# - For δ_max values exceeding the scale, the visualization extends the x-axis dynamically
+# - The speedometer uses a white inner circle to create the gauge "hole" aesthetic
+# - Both plots are generated using matplotlib and saved at 300 DPI for publication quality
+# - Consistent with other BeCoMe visualizations in color palette and styling
+# - The gauge can be exported as PNG for inclusion in documents and presentations
 
 
 # %%
@@ -1238,15 +1876,11 @@ def plot_accuracy_gauge(result, title, case_name, thresholds=(5.0, 15.0)):
     ax1.text(0, -0.45, zone, ha="center", va="top", fontsize=12, fontweight="bold", color="black")
 
     # Zone labels
-    ax1.text(
-        -0.85, 0.5, "High\n(< 5.0)", ha="center", fontsize=9, color="black", fontweight="bold"
-    )
+    ax1.text(-0.85, 0.5, "High\n(< 5.0)", ha="center", fontsize=9, color="black", fontweight="bold")
     ax1.text(
         0, 1.05, "Moderate\n(5.0-15.0)", ha="center", fontsize=9, color="black", fontweight="bold"
     )
-    ax1.text(
-        0.85, 0.5, "Low\n(> 15.0)", ha="center", fontsize=9, color="black", fontweight="bold"
-    )
+    ax1.text(0.85, 0.5, "Low\n(> 15.0)", ha="center", fontsize=9, color="black", fontweight="bold")
 
     ax1.set_xlim(-1.2, 1.2)
     ax1.set_ylim(-0.6, 1.3)
