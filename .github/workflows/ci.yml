@@ -40,7 +40,7 @@ jobs:
           pip install -e ".[dev]"
       
       - name: Run ruff
-        run: ruff check src/
+        run: ruff check .
       
       - name: Run mypy
         run: mypy src/
