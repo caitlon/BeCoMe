@@ -1,4 +1,9 @@
-"""Integration tests for BeCoMe with Excel reference data."""
+"""
+Integration tests for BeCoMe with Excel reference data.
+
+These tests verify that our implementation produces results matching
+the Excel reference implementation within acceptable tolerance.
+"""
 
 import pytest
 
@@ -9,10 +14,10 @@ from tests.reference import BUDGET_CASE, FLOODS_CASE, PENDLERS_CASE
 
 @pytest.fixture
 def calculator():
-    """
-    BeCoMeCalculator instance for tests.
+    """Fixture providing BeCoMeCalculator instance for tests.
 
-    :return: BeCoMeCalculator instance
+    This fixture implements the GIVEN step by preparing a calculator
+    instance that can be injected into any test via Dependency Injection.
     """
     return BeCoMeCalculator()
 
@@ -30,19 +35,21 @@ class TestExcelIntegration:
     )
     def test_excel_reference_cases(self, calculator, case_name: str, case_data: dict):
         """Test all Excel reference cases with full validation."""
-        # GIVEN
+        # GIVEN - Fixture provides calculator, extract expected data
         expected = case_data["expected_result"]
 
-        # WHEN
+        # WHEN - Calculate compromise using BeCoMe algorithm
         result = calculator.calculate_compromise(case_data["opinions"])
 
-        # THEN
+        # THEN - Verify all calculated values match Excel reference
+        # Best compromise peak (always present)
         assert abs(result.best_compromise.peak - expected["best_compromise_peak"]) < 0.001, (
             f"{case_name}: Best compromise peak mismatch: "
             f"got {result.best_compromise.peak}, "
             f"expected {expected['best_compromise_peak']}"
         )
 
+        # Assert - Best compromise bounds (if present in expected)
         if "best_compromise_lower" in expected:
             assert (
                 abs(result.best_compromise.lower_bound - expected["best_compromise_lower"]) < 0.001
@@ -61,6 +68,7 @@ class TestExcelIntegration:
                 f"expected {expected['best_compromise_upper']}"
             )
 
+        # Assert - Best compromise centroid (if present)
         if "best_compromise_centroid" in expected:
             result_centroid = result.best_compromise.centroid
             assert abs(result_centroid - expected["best_compromise_centroid"]) < 0.01, (
@@ -69,10 +77,12 @@ class TestExcelIntegration:
                 f"expected {expected['best_compromise_centroid']}"
             )
 
+        # Assert - Arithmetic mean peak (always present)
         assert abs(result.arithmetic_mean.peak - expected["mean_peak"]) < 0.001, (
             f"{case_name}: Mean peak mismatch"
         )
 
+        # Assert - Arithmetic mean bounds (if present)
         if "mean_lower" in expected:
             assert abs(result.arithmetic_mean.lower_bound - expected["mean_lower"]) < 0.001, (
                 f"{case_name}: Mean lower bound mismatch"
@@ -83,6 +93,7 @@ class TestExcelIntegration:
                 f"{case_name}: Mean upper bound mismatch"
             )
 
+        # Assert - Median fuzzy number
         assert abs(result.median.lower_bound - expected["median_lower"]) < 0.001, (
             f"{case_name}: Median lower bound mismatch"
         )
@@ -93,18 +104,21 @@ class TestExcelIntegration:
             f"{case_name}: Median upper bound mismatch"
         )
 
+        # Assert - Max error (scalar)
         assert abs(result.max_error - expected["max_error"]) < 0.01, (
             f"{case_name}: Max error mismatch: "
             f"got {result.max_error}, "
             f"expected {expected['max_error']}"
         )
 
+        # Assert - Expert count
         assert result.num_experts == expected["num_experts"], (
             f"{case_name}: Expert count mismatch: "
             f"got {result.num_experts}, "
             f"expected {expected['num_experts']}"
         )
 
+        # Even/odd validation for specific cases
         if case_name == "FLOODS":
             assert result.is_even is False, f"{case_name}: Should be odd (13 experts)"
         elif case_name in ["BUDGET", "PENDLERS"]:
@@ -119,14 +133,21 @@ class TestExcelIntegration:
         ],
     )
     def test_txt_file_parsing(self, data_file: str, reference_case: dict, case_name: str):
-        """Test text file parsing extracts correct metadata and opinions."""
-        # GIVEN
+        """Test text file parsing extracts correct metadata and opinions.
+
+        This test focuses solely on the file parsing step of the pipeline,
+        verifying that load_data_from_txt() correctly reads and parses
+        the text file format.
+
+        Follows Single Responsibility: One test, one action (parsing).
+        """
+        # GIVEN - Expected data from reference case
         expected = reference_case["expected_result"]
 
-        # WHEN
+        # WHEN - Load and parse data from text file
         opinions, metadata = load_data_from_txt(data_file)
 
-        # THEN
+        # THEN - Verify parsing extracted correct information
         assert metadata["case"] == case_name, f"Case name mismatch in {data_file}"
         assert len(opinions) == expected["num_experts"], (
             f"Expert count mismatch in {data_file}: "
@@ -144,15 +165,22 @@ class TestExcelIntegration:
     def test_full_pipeline_calculation(
         self, calculator, data_file: str, reference_case: dict, case_name: str
     ):
-        """Test end-to-end pipeline: parse file and calculate results."""
-        # GIVEN
+        """Test end-to-end pipeline: parse file and calculate results.
+
+        This test verifies the complete integration flow from text file
+        to calculation results, ensuring parsed data produces correct
+        BeCoMe calculations.
+
+        Follows Single Responsibility: One test, one action (calculation).
+        """
+        # GIVEN - Load opinions from file, fixture provides calculator
         opinions, _ = load_data_from_txt(data_file)
         expected = reference_case["expected_result"]
 
-        # WHEN
+        # WHEN - Calculate compromise with parsed data
         result = calculator.calculate_compromise(opinions)
 
-        # THEN
+        # THEN - Verify calculation results match reference
         assert abs(result.best_compromise.peak - expected["best_compromise_peak"]) < 0.001, (
             f"{case_name}: Best compromise peak mismatch after full pipeline: "
             f"got {result.best_compromise.peak}, "
