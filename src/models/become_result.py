@@ -1,6 +1,6 @@
 """BeCoMe calculation result representation."""
 # ignore ruff rule for mathematical symbols
-# ruff: noqa: RUF001, RUF003
+# ruff: noqa: RUF001
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
