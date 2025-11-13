@@ -42,13 +42,17 @@ jobs:
       
       - name: Install dependencies
         run: |
-          uv sync --dev
+          uv sync --dev --python 3.13.7
       
       - name: Run ruff
-        run: uv run ruff check .
+        run: |
+          source .venv/bin/activate
+          ruff check .
       
       - name: Run mypy
-        run: uv run mypy src/
+        run: |
+          source .venv/bin/activate
+          mypy src/
 
   tests:
     runs-on: ubuntu-24.04
@@ -77,14 +81,17 @@ jobs:
       
       - name: Install dependencies
         run: |
-          uv sync --dev
+          uv sync --dev --python 3.13.7
       
       - name: Debug Python environment
         run: |
+          source .venv/bin/activate
           python --version
           uv --version
-          uv pip list
+          pip list
       
       - name: Run tests
-        run: uv run pytest
+        run: |
+          source .venv/bin/activate
+          pytest
 
