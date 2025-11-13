@@ -1,6 +1,4 @@
-"""
-Data models for BeCoMe method implementation.
-"""
+"""BeCoMe data models."""
 
 from .become_result import BeCoMeResult
 from .expert_opinion import ExpertOpinion
