@@ -45,7 +45,7 @@ jobs:
           uv sync --dev
       
       - name: Run ruff
-        run: uv run ruff check src/
+        run: uv run ruff check .
       
       - name: Run mypy
         run: uv run mypy src/
