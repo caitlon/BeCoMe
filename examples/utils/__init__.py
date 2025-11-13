@@ -1,8 +1,7 @@
 """
 Utility functions for BeCoMe examples.
 
-This package provides helper functions for loading data, formatting output,
-displaying calculation steps, and analyzing results.
+This package provides helper functions for loading data, formatting output, displaying calculation steps, and analyzing results.
 """
 
 # Re-export all public functions for backward compatibility
