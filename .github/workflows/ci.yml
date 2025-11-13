@@ -45,14 +45,10 @@ jobs:
           uv sync --dev --python 3.13.7
       
       - name: Run ruff
-        run: |
-          source .venv/bin/activate
-          ruff check .
+        run: source .venv/bin/activate && ruff check .
       
       - name: Run mypy
-        run: |
-          source .venv/bin/activate
-          mypy src/
+        run: source .venv/bin/activate && mypy src/
 
   tests:
     runs-on: ubuntu-24.04
@@ -85,13 +81,10 @@ jobs:
       
       - name: Debug Python environment
         run: |
-          source .venv/bin/activate
-          python --version
-          uv --version
-          pip list
+          source .venv/bin/activate && python --version
+          source .venv/bin/activate && uv --version
+          source .venv/bin/activate && pip list
       
       - name: Run tests
-        run: |
-          source .venv/bin/activate
-          pytest
+        run: source .venv/bin/activate && pytest
 
