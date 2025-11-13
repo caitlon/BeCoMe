@@ -43,12 +43,13 @@ jobs:
       - name: Install dependencies
         run: |
           uv sync --dev --python 3.13.7
+          ls -la .venv/bin/ || echo "No .venv/bin found"
       
       - name: Run ruff
-        run: source .venv/bin/activate && ruff check .
+        run: .venv/bin/ruff check .
       
       - name: Run mypy
-        run: source .venv/bin/activate && mypy src/
+        run: .venv/bin/mypy src/
 
   tests:
     runs-on: ubuntu-24.04
@@ -78,13 +79,14 @@ jobs:
       - name: Install dependencies
         run: |
           uv sync --dev --python 3.13.7
+          ls -la .venv/bin/ || echo "No .venv/bin found"
       
       - name: Debug Python environment
         run: |
-          source .venv/bin/activate && python --version
-          source .venv/bin/activate && uv --version
-          source .venv/bin/activate && pip list
+          .venv/bin/python --version
+          uv --version
+          .venv/bin/pip list
       
       - name: Run tests
-        run: source .venv/bin/activate && pytest
+        run: .venv/bin/pytest
 
