@@ -1,8 +1,4 @@
-"""
-BeCoMe step display utilities.
-
-This module provides functions for displaying BeCoMe calculation steps.
-"""
+"""BeCoMe step display utilities."""
 # ignore ruff rule for mathematical symbols
 # ruff: noqa: RUF001
 
@@ -19,12 +15,9 @@ def display_step_1_arithmetic_mean(
     """
     Display STEP 1: Arithmetic Mean calculation with detailed output.
 
-    Args:
-        opinions: List of expert opinions
-        calculator: Calculator instance to use
-
-    Returns:
-        Tuple of (mean, mean_centroid)
+    :param opinions: List of expert opinions
+    :param calculator: Calculator instance to use
+    :return: Tuple of (mean fuzzy number, mean centroid)
     """
 
     print_section("STEP 1: Arithmetic Mean (Gamma)")
@@ -35,7 +28,6 @@ def display_step_1_arithmetic_mean(
     mean = calculator.calculate_arithmetic_mean(opinions)
     m = len(opinions)
 
-    # Calculate sums for display purposes
     sum_lower = mean.lower_bound * m
     sum_peak = mean.peak * m
     sum_upper = mean.upper_bound * m
@@ -61,15 +53,13 @@ def display_median_calculation_details(
     """
     Display median calculation details for odd or even number of experts.
 
-    Args:
-        sorted_opinions: Opinions sorted by centroid
-        m: Number of experts
-        is_likert: Whether to display as Likert scale values
+    :param sorted_opinions: Opinions sorted by centroid
+    :param m: Number of experts
+    :param is_likert: Whether to display as Likert scale values
     """
     print(f"\nNumber of experts is {'EVEN' if m % 2 == 0 else 'ODD'} (M={m})")
 
     if m % 2 == 0:
-        # Even case
         n = m // 2
         left_idx = n - 1
         right_idx = n
@@ -91,7 +81,6 @@ def display_median_calculation_details(
                 f"(centroid: {right_op.opinion.centroid:.2f})"
             )
     else:
-        # Odd case
         middle_idx = m // 2
         middle_op = sorted_opinions[middle_idx]
         print(f"Median = middle expert (position {middle_idx + 1}):")
@@ -110,13 +99,10 @@ def display_step_2_median(
     """
     Display STEP 2: Median calculation with detailed output.
 
-    Args:
-        opinions: List of expert opinions
-        calculator: Calculator instance to use
-        is_likert: Whether this is Likert scale data
-
-    Returns:
-        Tuple of (median, median_centroid)
+    :param opinions: List of expert opinions
+    :param calculator: Calculator instance to use
+    :param is_likert: Whether this is Likert scale data
+    :return: Tuple of (median fuzzy number, median centroid)
     """
     print_section("STEP 2: Median (Omega)")
 
@@ -134,7 +120,6 @@ def display_step_2_median(
 
     print(f"\nMedian: Ω({median.lower_bound:.2f}, {median.peak:.2f}, {median.upper_bound:.2f})")
 
-    # Display component calculation based on odd/even
     if m % 2 == 0:
         n = m // 2
         left_op = sorted_opinions[n - 1]
@@ -179,18 +164,14 @@ def display_step_3_best_compromise(
     """
     Display STEP 3: Best Compromise calculation.
 
-    Args:
-        mean: Arithmetic mean fuzzy number
-        median: Median fuzzy number
-
-    Returns:
-        Tuple of (best_compromise, best_compromise_centroid)
+    :param mean: Arithmetic mean fuzzy number
+    :param median: Median fuzzy number
+    :return: Tuple of (best compromise fuzzy number, best compromise centroid)
     """
     print_section("STEP 3: Best Compromise (ΓΩMean)")
 
     print("\nFormula: π = (α + ρ)/2, φ = (γ + ω)/2, ξ = (β + σ)/2")
 
-    # Use the average method
     best_compromise = FuzzyTriangleNumber.average([mean, median])
 
     print(
@@ -221,12 +202,9 @@ def display_step_4_max_error(mean_centroid: float, median_centroid: float) -> fl
     """
     Display STEP 4: Maximum Error calculation.
 
-    Args:
-        mean_centroid: Centroid of arithmetic mean
-        median_centroid: Centroid of median
-
-    Returns:
-        Maximum error value
+    :param mean_centroid: Centroid of arithmetic mean
+    :param median_centroid: Centroid of median
+    :return: Maximum error value (precision indicator)
     """
     print_section("STEP 4: Maximum Error (Δmax)")
 
