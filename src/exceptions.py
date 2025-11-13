@@ -1,9 +1,4 @@
-"""
-Custom exceptions for BeCoMe calculations.
-
-This module provides a hierarchy of domain-specific exceptions
-for clear error handling in BeCoMe method calculations.
-"""
+"""Custom exceptions for BeCoMe calculations."""
 
 
 class BeCoMeError(Exception):
@@ -13,18 +8,18 @@ class BeCoMeError(Exception):
 
 
 class EmptyOpinionsError(BeCoMeError):
-    """Raised when an empty list of opinions is provided to a calculation."""
+    """Raised when empty list of opinions is provided."""
 
     pass
 
 
 class InvalidOpinionError(BeCoMeError):
-    """Raised when opinion data is invalid or malformed."""
+    """Raised when opinion data is invalid."""
 
     pass
 
 
 class CalculationError(BeCoMeError):
-    """Raised when a calculation cannot be completed."""
+    """Raised when calculation fails."""
 
     pass
