@@ -1,9 +1,4 @@
-"""
-BeCoMe calculation result representation.
-
-This module provides the BeCoMeResult class for storing the complete
-results of a BeCoMe (Best Compromise Mean) calculation.
-"""
+"""BeCoMe calculation result representation."""
 # ignore ruff rule for mathematical symbols
 # ruff: noqa: RUF001, RUF003
 
@@ -14,22 +9,16 @@ from .fuzzy_number import FuzzyTriangleNumber
 
 class BeCoMeResult(BaseModel):
     """
-    Immutable result of a BeCoMe calculation.
+    Immutable result of BeCoMe calculation.
 
-    The BeCoMe method calculates a best compromise between the arithmetic mean
-    and statistical median of expert opinions. This class stores all intermediate
-    and final results.
+    Stores best compromise, arithmetic mean, median, and error metrics.
 
-    This class is immutable (frozen) to ensure that calculation results
-    cannot be accidentally modified after creation, maintaining data integrity.
-
-    Attributes:
-        best_compromise: Final result (ΓΩMean) - average of arithmetic mean and median
-        arithmetic_mean: Arithmetic mean (Γ) of all expert opinions
-        median: Statistical median (Ω) of all expert opinions
-        max_error: Maximum error (Δmax) - half the distance between centroids of mean and median
-        num_experts: Number of expert opinions used in calculation
-        is_even: Whether the number of experts was even (affects median calculation)
+    :ivar best_compromise: Final result (ΓΩMean) - average of mean and median
+    :ivar arithmetic_mean: Arithmetic mean (Γ) of expert opinions
+    :ivar median: Statistical median (Ω) of expert opinions
+    :ivar max_error: Maximum error (Δmax) between mean and median centroids
+    :ivar num_experts: Number of expert opinions
+    :ivar is_even: Whether number of experts is even (computed property)
     """
 
     best_compromise: FuzzyTriangleNumber = Field(
@@ -55,7 +44,6 @@ class BeCoMeResult(BaseModel):
         description="Number of expert opinions",
     )
 
-    # Pydantic configuration
     model_config = ConfigDict(
         arbitrary_types_allowed=True,
         frozen=True,
@@ -65,21 +53,9 @@ class BeCoMeResult(BaseModel):
     @property
     def is_even(self) -> bool:
         """
-        Computed property indicating if the number of experts is even.
+        Check if number of experts is even.
 
-        This is a derived property based on num_experts, demonstrating
-        the DRY (Don't Repeat Yourself) principle by avoiding storage
-        of redundant data.
-
-        Returns:
-            True if number of experts is even, False if odd
-
-        Example:
-            >>> result = BeCoMeResult(...)
-            >>> result.num_experts
-            5
-            >>> result.is_even
-            False
+        :return: True if number of experts is even, False if odd
         """
         return self.num_experts % 2 == 0
 
@@ -91,48 +67,25 @@ class BeCoMeResult(BaseModel):
         num_experts: int,
     ) -> "BeCoMeResult":
         """
-        Factory method to create BeCoMeResult from mean and median calculations.
+        Create BeCoMeResult from mean and median calculations.
 
-        This factory method encapsulates the logic for calculating the best compromise
-        and maximum error from the arithmetic mean and median. It demonstrates the
-        Factory Method pattern and provides a clean interface for creating results.
+        Calculates best compromise and maximum error automatically.
 
-        The method automatically calculates:
-        - Best compromise: (mean + median) / 2 for each component
-        - Max error: |centroid(mean) - centroid(median)| / 2
-        - is_even flag: whether num_experts is even
-
-        Args:
-            arithmetic_mean: The arithmetic mean (Γ) of expert opinions
-            median: The statistical median (Ω) of expert opinions
-            num_experts: Number of expert opinions (must be >= 1)
-
-        Returns:
-            BeCoMeResult instance with all fields calculated
-
-        Raises:
-            ValueError: If num_experts < 1
-
-        Example:
-            >>> mean = FuzzyTriangleNumber(10.0, 15.0, 20.0)
-            >>> median = FuzzyTriangleNumber(12.0, 16.0, 22.0)
-            >>> result = BeCoMeResult.from_calculations(mean, median, 5)
-            >>> print(result.best_compromise)
-            (11.00, 15.50, 21.00)
+        :param arithmetic_mean: Arithmetic mean (Γ) of expert opinions
+        :param median: Statistical median (Ω) of expert opinions
+        :param num_experts: Number of expert opinions (must be >= 1)
+        :return: BeCoMeResult instance with all fields calculated
+        :raises ValueError: If num_experts < 1
         """
         if num_experts < 1:
             raise ValueError(f"num_experts must be >= 1, got {num_experts}")
 
-        # Calculate best compromise: (mean + median) / 2 using centralized method
-        # Formula from article: π = (α + ρ)/2, φ = (γ + ω)/2, ξ = (β + σ)/2
         best_compromise = FuzzyTriangleNumber.average([arithmetic_mean, median])
 
-        # Calculate maximum error: |centroid(Γ) - centroid(Ω)| / 2
         mean_centroid = arithmetic_mean.centroid
         median_centroid = median.centroid
         max_error = abs(mean_centroid - median_centroid) / 2
 
-        # Note: is_even is now a computed property, not stored
         return cls(
             best_compromise=best_compromise,
             arithmetic_mean=arithmetic_mean,
