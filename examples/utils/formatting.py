@@ -1,8 +1,4 @@
-"""
-Display formatting utilities for BeCoMe examples.
-
-This module provides functions for formatting console output.
-"""
+"""Display formatting utilities for BeCoMe examples."""
 
 from src.models.expert_opinion import ExpertOpinion
 from src.models.fuzzy_number import FuzzyTriangleNumber
@@ -10,11 +6,10 @@ from src.models.fuzzy_number import FuzzyTriangleNumber
 
 def print_header(title: str, width: int = 60) -> None:
     """
-    Print a formatted header.
+    Print formatted header with title.
 
-    Args:
-        title: Title text to display
-        width: Total width of the header
+    :param title: Title text to display
+    :param width: Total width of the header in characters
     """
     print("\n" + "=" * width)
     print(title.center(width))
@@ -23,11 +18,10 @@ def print_header(title: str, width: int = 60) -> None:
 
 def print_section(title: str, width: int = 60) -> None:
     """
-    Print a formatted section divider.
+    Print formatted section divider with title.
 
-    Args:
-        title: Section title
-        width: Total width of the divider
+    :param title: Section title
+    :param width: Total width of the divider in characters
     """
     padding: int = (width - len(title) - 2) // 2
     print("\n" + "-" * padding + f" {title} " + "-" * padding)
@@ -41,10 +35,9 @@ def display_case_header(
     """
     Display case study header with metadata.
 
-    Args:
-        case_name: Name of the case study (e.g., "BUDGET CASE")
-        opinions: List of expert opinions
-        metadata: Metadata dictionary with case info
+    :param case_name: Name of the case study (e.g., "BUDGET CASE")
+    :param opinions: List of expert opinions
+    :param metadata: Metadata dictionary with case info
     """
     print_header(f"{case_name} - DETAILED ANALYSIS")
     print(f"\nCase: {metadata['case']}")
@@ -56,9 +49,8 @@ def display_centroid(fuzzy_number: FuzzyTriangleNumber, name: str = "Centroid") 
     """
     Display centroid calculation in standard format.
 
-    Args:
-        fuzzy_number: The fuzzy number to display centroid for
-        name: Label for the centroid (e.g., "Mean centroid")
+    :param fuzzy_number: Fuzzy number to display centroid for
+    :param name: Label for the centroid (e.g., "Mean centroid")
     """
 
     centroid = fuzzy_number.centroid
