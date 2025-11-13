@@ -1,9 +1,4 @@
-"""
-Calculators for the BeCoMe method.
-
-This module contains calculators for computing the Best Compromise Mean
-from expert opinions represented as fuzzy triangular numbers.
-"""
+"""Calculators for the BeCoMe method."""
 
 from .base_calculator import BaseAggregationCalculator
 from .become_calculator import BeCoMeCalculator
