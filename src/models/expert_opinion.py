@@ -1,9 +1,4 @@
-"""
-Expert opinion representation.
-
-This module provides the ExpertOpinion class for representing
-an expert's assessment in the BeCoMe method.
-"""
+"""Expert opinion representation."""
 
 from __future__ import annotations
 
@@ -12,22 +7,14 @@ from .fuzzy_number import FuzzyTriangleNumber
 
 class ExpertOpinion:
     """
-    Immutable representation of a single expert's opinion with strict encapsulation.
+    Immutable representation of single expert's opinion.
 
-    This class uses composition to combine an expert identifier with
-    their fuzzy opinion. It supports comparison operations based on
-    the centroid of the fuzzy number for sorting purposes.
+    Combines expert identifier with their fuzzy triangular number opinion.
+    Supports comparison operations based on centroid for sorting.
 
-    This class demonstrates strict OOP principles:
-    - Encapsulation: All attributes are private (prefixed with _)
-    - Immutability: Attributes are read-only via @property decorators
-    - Composition: Contains a FuzzyTriangleNumber (has-a relationship)
-    - Value Object: Compared by value, not identity
-
-    Attributes:
-        expert_id: Unique identifier for the expert (read-only property)
-        opinion: The expert's assessment as a FuzzyTriangleNumber (read-only property)
-        centroid: Centroid of the expert's opinion (computed property)
+    :ivar expert_id: Unique identifier for the expert (read-only property)
+    :ivar opinion: Expert's assessment as FuzzyTriangleNumber (read-only property)
+    :ivar centroid: Centroid of the opinion (computed property)
     """
 
     _expert_id: str
@@ -37,11 +24,10 @@ class ExpertOpinion:
 
     def __init__(self, expert_id: str, opinion: FuzzyTriangleNumber) -> None:
         """
-        Initialize an expert opinion.
+        Initialize expert opinion.
 
-        Args:
-            expert_id: Unique identifier for the expert (e.g., name or ID)
-            opinion: The expert's assessment as a FuzzyTriangleNumber
+        :param expert_id: Unique identifier for the expert
+        :param opinion: Expert's assessment as FuzzyTriangleNumber
         """
         object.__setattr__(self, "_expert_id", expert_id)
         object.__setattr__(self, "_opinion", opinion)
@@ -51,36 +37,25 @@ class ExpertOpinion:
         """
         Unique identifier for the expert.
 
-        Returns:
-            The expert's identifier
+        :return: Expert's identifier
         """
         return self._expert_id
 
     @property
     def opinion(self) -> FuzzyTriangleNumber:
         """
-        The expert's fuzzy opinion.
+        Expert's fuzzy opinion.
 
-        Returns:
-            The fuzzy triangular number representing the expert's assessment
+        :return: Fuzzy triangular number representing expert's assessment
         """
         return self._opinion
 
     @property
     def centroid(self) -> float:
         """
-        Centroid (center of gravity) of the expert's opinion.
+        Centroid of the expert's opinion.
 
-        This property delegates to the FuzzyTriangleNumber's centroid property,
-        providing convenient access to the centroid value.
-
-        Returns:
-            The centroid value of the opinion
-
-        Example:
-            >>> opinion = ExpertOpinion("E1", FuzzyTriangleNumber(5.0, 10.0, 15.0))
-            >>> opinion.centroid
-            10.0
+        :return: Centroid value of the opinion
         """
         return self._opinion.centroid
 
@@ -88,8 +63,7 @@ class ExpertOpinion:
         """
         Prevent attribute modification to ensure immutability.
 
-        Raises:
-            AttributeError: Always, as this object is immutable
+        :raises AttributeError: Always, as object is immutable
         """
         raise AttributeError(f"Cannot modify immutable ExpertOpinion attribute '{name}'")
 
@@ -97,23 +71,16 @@ class ExpertOpinion:
         """
         Prevent attribute deletion to ensure immutability.
 
-        Raises:
-            AttributeError: Always, as this object is immutable
+        :raises AttributeError: Always, as object is immutable
         """
         raise AttributeError(f"Cannot delete immutable ExpertOpinion attribute '{name}'")
 
     def __lt__(self, other: ExpertOpinion) -> bool:
         """
-        Compare two expert opinions based on their centroids.
+        Compare expert opinions based on centroids.
 
-        This enables sorting of expert opinions by their centroid values,
-        which is required for median calculation in the BeCoMe method.
-
-        Args:
-            other: Another ExpertOpinion to compare with
-
-        Returns:
-            True if this opinion's centroid is less than the other's
+        :param other: Another ExpertOpinion to compare with
+        :return: True if this opinion's centroid is less than the other's
         """
         return self.centroid < other.centroid
 
@@ -125,14 +92,8 @@ class ExpertOpinion:
         """
         Equality comparison.
 
-        Two expert opinions are equal if they have the same expert_id
-        and the same opinion values.
-
-        Args:
-            other: Another object to compare with
-
-        Returns:
-            True if both objects are ExpertOpinion with same values
+        :param other: Another object to compare with
+        :return: True if both are ExpertOpinion with same expert_id and opinion
         """
         if not isinstance(other, ExpertOpinion):
             return False
@@ -142,8 +103,7 @@ class ExpertOpinion:
         """
         Return hash for use in sets and dicts.
 
-        Returns:
-            Hash value based on expert_id and opinion
+        :return: Hash value based on expert_id and opinion
         """
         return hash((self._expert_id, self._opinion))
 

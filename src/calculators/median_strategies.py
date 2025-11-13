@@ -91,9 +91,9 @@ class EvenMedianStrategy(MedianCalculationStrategy):
         Averages the two middle opinions (those closest to median centroid).
 
         Formula:
-            rho = (A1 + A2) / 2    # average of lower bounds
-            omega = (C1 + C2) / 2  # average of peaks
-            sigma = (B1 + B2) / 2  # average of upper bounds
+            rho = (A1 + A2) / 2
+            omega = (C1 + C2) / 2
+            sigma = (B1 + B2) / 2
 
         :param sorted_opinions: Expert opinions sorted by centroid
         :param median_centroid: Median centroid value
