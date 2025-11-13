@@ -1,9 +1,4 @@
-"""
-Interpreters for BeCoMe results.
-
-This module contains classes for interpreting fuzzy numbers in various
-contexts, such as Likert scale interpretation for decision-making.
-"""
+"""Interpreters for BeCoMe results."""
 
 from .likert_interpreter import LikertDecision, LikertDecisionInterpreter
 
