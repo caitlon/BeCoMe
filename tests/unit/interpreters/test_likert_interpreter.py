@@ -1,9 +1,4 @@
-"""
-Unit tests for Likert scale interpretation classes.
-
-This module tests the LikertDecisionInterpreter and LikertDecision classes,
-ensuring proper interpretation of fuzzy numbers using the Likert scale.
-"""
+"""Unit tests for Likert scale interpretation classes."""
 
 import pytest
 
@@ -15,8 +10,7 @@ from src.models.fuzzy_number import FuzzyTriangleNumber
 def interpreter():
     """Fixture providing LikertDecisionInterpreter instance for tests.
 
-    This fixture implements the GIVEN step by preparing an interpreter
-    instance that can be injected into any test via Dependency Injection.
+    :return: LikertDecisionInterpreter instance
     """
     return LikertDecisionInterpreter()
 
@@ -26,61 +20,52 @@ class TestLikertDecision:
 
     def test_valid_creation(self):
         """Test that LikertDecision can be created with valid data."""
-        # GIVEN - Valid Likert decision parameters
+        # GIVEN
         likert_value = 75
         decision_text = "Rather agree"
         recommendation = "Policy is recommended"
 
-        # WHEN - Create LikertDecision instance
+        # WHEN
         decision = LikertDecision(
             likert_value=likert_value,
             decision_text=decision_text,
             recommendation=recommendation,
         )
 
-        # THEN - Verify all attributes are set correctly
-        assert decision.likert_value == 75, (
-            f"Expected likert_value to be 75, got {decision.likert_value}"
-        )
-        assert decision.decision_text == "Rather agree", (
-            f"Expected decision_text to be 'Rather agree', got '{decision.decision_text}'"
-        )
-        assert decision.recommendation == "Policy is recommended", (
-            f"Expected recommendation to be 'Policy is recommended', "
-            f"got '{decision.recommendation}'"
-        )
+        # THEN
+        assert decision.likert_value == 75
+        assert decision.decision_text == "Rather agree"
+        assert decision.recommendation == "Policy is recommended"
 
     def test_immutability(self):
         """Test that LikertDecision is immutable (frozen dataclass)."""
-        # GIVEN - A LikertDecision instance
+        # GIVEN
         decision = LikertDecision(
             likert_value=50,
             decision_text="Neutral",
             recommendation="Requires analysis",
         )
 
-        # WHEN/THEN - Attempt to modify attribute should raise AttributeError
+        # WHEN / THEN
         with pytest.raises(AttributeError):
             decision.likert_value = 75  # type: ignore
 
     @pytest.mark.parametrize("value", [0, 25, 50, 75, 100])
     def test_different_likert_values(self, value):
         """Test LikertDecision with various Likert scale values."""
-        # GIVEN - Likert scale value and corresponding texts
+        # GIVEN
         decision_text = f"Text for {value}"
         recommendation = f"Recommendation for {value}"
 
-        # WHEN - Create LikertDecision with the value
+        # WHEN
         decision = LikertDecision(
             likert_value=value,
             decision_text=decision_text,
             recommendation=recommendation,
         )
 
-        # THEN - Verify the value was set correctly
-        assert decision.likert_value == value, (
-            f"Expected likert_value to be {value}, got {decision.likert_value}"
-        )
+        # THEN
+        assert decision.likert_value == value
 
 
 class TestLikertDecisionInterpreter:
@@ -88,34 +73,28 @@ class TestLikertDecisionInterpreter:
 
     def test_default_initialization(self, interpreter):
         """Test interpreter with default Likert scale values."""
-        # GIVEN - Fuzzy number centered around 50, fixture provides interpreter
+        # GIVEN
         fuzzy = FuzzyTriangleNumber(45, 50, 55)
 
-        # WHEN - Interpret the fuzzy number
+        # WHEN
         decision = interpreter.interpret(fuzzy)
 
-        # THEN - Verify correct Likert value and decision text
-        assert decision.likert_value == 50, (
-            f"Expected likert_value to be 50, got {decision.likert_value}"
-        )
-        assert decision.decision_text == "Neutral", (
-            f"Expected decision_text to be 'Neutral', got '{decision.decision_text}'"
-        )
+        # THEN
+        assert decision.likert_value == 50
+        assert decision.decision_text == "Neutral"
 
     def test_custom_likert_values(self):
         """Test interpreter with custom Likert scale values."""
-        # GIVEN - Custom Likert scale (0, 50, 100) and interpreter configured with it
+        # GIVEN
         custom_values = (0, 50, 100)
         interpreter = LikertDecisionInterpreter(likert_values=custom_values)
         fuzzy = FuzzyTriangleNumber(60, 70, 80)
 
-        # WHEN - Interpret fuzzy number with centroid around 70
+        # WHEN
         decision = interpreter.interpret(fuzzy)
 
-        # THEN - Verify decision uses one of the custom values (should be 50, closest to 70)
-        assert decision.likert_value in custom_values, (
-            f"Expected likert_value to be in {custom_values}, got {decision.likert_value}"
-        )
+        # THEN
+        assert decision.likert_value in custom_values
 
     @pytest.mark.parametrize(
         "lower,peak,upper,expected_value,expected_text,recommendation_keyword",
@@ -138,96 +117,66 @@ class TestLikertDecisionInterpreter:
         expected_text,
         recommendation_keyword,
     ):
-        """Test interpretation for all standard Likert scale values.
-
-        This parametrized test verifies that fuzzy numbers near each
-        standard Likert value (0, 25, 50, 75, 100) are correctly
-        interpreted with appropriate decision text and recommendations.
-
-        Follows DRY principle: One test instead of five duplicate tests.
-        """
-        # GIVEN - Fuzzy number centered around a Likert value, fixture provides interpreter
+        """Test interpretation for all standard Likert scale values."""
+        # GIVEN
         fuzzy = FuzzyTriangleNumber(lower, peak, upper)
 
-        # WHEN - Interpret the fuzzy number
+        # WHEN
         decision = interpreter.interpret(fuzzy)
 
-        # THEN - Verify correct Likert value assignment
-        assert decision.likert_value == expected_value, (
-            f"Expected likert_value to be {expected_value}, got {decision.likert_value}"
-        )
-
-        # THEN - Verify correct decision text
-        assert decision.decision_text == expected_text, (
-            f"Expected decision_text to be '{expected_text}', got '{decision.decision_text}'"
-        )
-
-        # THEN - Verify recommendation contains expected keyword
-        assert recommendation_keyword in decision.recommendation.lower(), (
-            f"Expected recommendation to contain '{recommendation_keyword}', "
-            f"got '{decision.recommendation}'"
-        )
+        # THEN
+        assert decision.likert_value == expected_value
+        assert decision.decision_text == expected_text
+        assert recommendation_keyword in decision.recommendation.lower()
 
     def test_interpret_boundary_case_between_25_and_50(self, interpreter):
         """Test interpretation at boundary between two Likert values."""
-        # GIVEN - Fuzzy number with centroid exactly between 25 and 50 (37.5)
+        # GIVEN
         fuzzy = FuzzyTriangleNumber(35, 37.5, 40)
 
-        # WHEN - Interpret the boundary value
+        # WHEN
         decision = interpreter.interpret(fuzzy)
 
-        # THEN - Should choose the closest Likert value (either 25 or 50)
-        assert decision.likert_value in [25, 50], (
-            f"Expected likert_value to be 25 or 50, got {decision.likert_value}"
-        )
+        # THEN
+        assert decision.likert_value in [25, 50]
 
     def test_interpret_extreme_low_value(self, interpreter):
         """Test interpretation with very low fuzzy number."""
-        # GIVEN - Very low fuzzy number (0, 0, 5)
+        # GIVEN
         fuzzy = FuzzyTriangleNumber(0, 0, 5)
 
-        # WHEN - Interpret the extreme low value
+        # WHEN
         decision = interpreter.interpret(fuzzy)
 
-        # THEN - Verify it maps to lowest Likert value
-        assert decision.likert_value == 0, (
-            f"Expected likert_value to be 0, got {decision.likert_value}"
-        )
-        assert decision.decision_text == "Strongly disagree", (
-            f"Expected decision_text 'Strongly disagree', got '{decision.decision_text}'"
-        )
+        # THEN
+        assert decision.likert_value == 0
+        assert decision.decision_text == "Strongly disagree"
 
     def test_interpret_extreme_high_value(self, interpreter):
         """Test interpretation with very high fuzzy number."""
-        # GIVEN - Very high fuzzy number (95, 100, 100)
+        # GIVEN
         fuzzy = FuzzyTriangleNumber(95, 100, 100)
 
-        # WHEN - Interpret the extreme high value
+        # WHEN
         decision = interpreter.interpret(fuzzy)
 
-        # THEN - Verify it maps to highest Likert value
-        assert decision.likert_value == 100, (
-            f"Expected likert_value to be 100, got {decision.likert_value}"
-        )
-        assert decision.decision_text == "Strongly agree", (
-            f"Expected decision_text 'Strongly agree', got '{decision.decision_text}'"
-        )
+        # THEN
+        assert decision.likert_value == 100
+        assert decision.decision_text == "Strongly agree"
 
     def test_interpret_returns_likert_decision_object(self, interpreter):
         """Test that interpret() returns a LikertDecision instance."""
-        # GIVEN - Any fuzzy number
+        # GIVEN
         fuzzy = FuzzyTriangleNumber(50, 60, 70)
 
-        # WHEN - Interpret the fuzzy number
+        # WHEN
         decision = interpreter.interpret(fuzzy)
 
-        # THEN - Verify correct type and attributes
-        assert isinstance(decision, LikertDecision), (
-            f"Expected LikertDecision instance, got {type(decision)}"
-        )
-        assert hasattr(decision, "likert_value"), "Missing attribute: likert_value"
-        assert hasattr(decision, "decision_text"), "Missing attribute: decision_text"
-        assert hasattr(decision, "recommendation"), "Missing attribute: recommendation"
+        # THEN
+        assert isinstance(decision, LikertDecision)
+        assert hasattr(decision, "likert_value")
+        assert hasattr(decision, "decision_text")
+        assert hasattr(decision, "recommendation")
 
     @pytest.mark.parametrize(
         "lower,peak,upper,expected_value",
@@ -238,66 +187,43 @@ class TestLikertDecisionInterpreter:
         ids=["low_value_interpretation", "high_value_interpretation"],
     )
     def test_interpretations_are_independent(self, interpreter, lower, peak, upper, expected_value):
-        """Test that interpreter produces correct results for different inputs.
-
-        Follows Single Responsibility: One test, one action (interpretation).
-        Previously this was one test with two WHEN blocks - now parametrized.
-        """
-        # GIVEN - Fuzzy number, fixture provides interpreter
+        """Test that interpreter produces correct results for different inputs."""
+        # GIVEN
         fuzzy = FuzzyTriangleNumber(lower, peak, upper)
 
-        # WHEN - Interpret the fuzzy number
+        # WHEN
         decision = interpreter.interpret(fuzzy)
 
-        # THEN - Verify correct Likert value
-        assert decision.likert_value == expected_value, (
-            f"Expected likert_value to be {expected_value}, got {decision.likert_value}"
-        )
+        # THEN
+        assert decision.likert_value == expected_value
 
 
 class TestLikertInterpreterIntegration:
     """Integration tests for LikertDecisionInterpreter."""
 
     def test_interpret_pendlers_case_scenario(self, interpreter):
-        """Test interpretation similar to Pendlers case (around 65-70)."""
-        # GIVEN - Fuzzy number similar to Pendlers case result (centroid = 67.5)
+        """Test interpretation similar to Pendlers case."""
+        # GIVEN
         fuzzy = FuzzyTriangleNumber(60, 67.5, 75)
 
-        # WHEN - Interpret the fuzzy number
+        # WHEN
         decision = interpreter.interpret(fuzzy)
 
-        # THEN - Verify it maps to either 50 or 75 (likely 75)
-        assert decision.likert_value in [50, 75], (
-            f"Expected likert_value to be 50 or 75, got {decision.likert_value}"
-        )
-        assert isinstance(decision.decision_text, str), (
-            f"Expected decision_text to be string, got {type(decision.decision_text)}"
-        )
-        assert isinstance(decision.recommendation, str), (
-            f"Expected recommendation to be string, got {type(decision.recommendation)}"
-        )
+        # THEN
+        assert decision.likert_value in [50, 75]
+        assert isinstance(decision.decision_text, str)
+        assert isinstance(decision.recommendation, str)
 
     @pytest.mark.parametrize("value", [0, 25, 50, 75, 100])
     def test_all_standard_likert_values_covered(self, interpreter, value):
-        """Test that all standard Likert values have proper interpretations.
-
-        This test verifies that fuzzy numbers centered exactly on each
-        standard Likert value are correctly interpreted with non-empty
-        decision text and recommendations.
-        """
-        # GIVEN - Fuzzy number centered on a standard Likert value
+        """Test that all standard Likert values have proper interpretations."""
+        # GIVEN
         fuzzy = FuzzyTriangleNumber(value - 2, value, value + 2)
 
-        # WHEN - Interpret the fuzzy number
+        # WHEN
         decision = interpreter.interpret(fuzzy)
 
-        # THEN - Verify correct mapping and non-empty strings
-        assert decision.likert_value == value, (
-            f"Expected likert_value to be {value}, got {decision.likert_value}"
-        )
-        assert len(decision.decision_text) > 0, (
-            f"Expected non-empty decision_text for value {value}"
-        )
-        assert len(decision.recommendation) > 0, (
-            f"Expected non-empty recommendation for value {value}"
-        )
+        # THEN
+        assert decision.likert_value == value
+        assert len(decision.decision_text) > 0
+        assert len(decision.recommendation) > 0
