@@ -1,10 +1,18 @@
-"""
-Reference test cases module from Excel implementation.
+"""Reference test cases from Excel implementation.
 
-This module exports all case studies from the Excel reference implementation:
-- BUDGET_CASE: 22 experts (even), COVID-19 budget support
-- PENDLERS_CASE: 22 experts (even), Likert scale cross-border travel
-- FLOODS_CASE: 13 experts (odd), flood prevention measures
+This module exports three case studies used for validation against Excel calculations:
+
+BUDGET_CASE:
+    22 experts (even), interval estimates for COVID-19 pandemic budget support
+
+PENDLERS_CASE:
+    22 experts (even), Likert scale ratings for cross-border travel
+
+FLOODS_CASE:
+    13 experts (odd), interval estimates for flood prevention measures
+
+Each case contains expert opinions loaded from examples/data/ and expected results
+from Excel calculations for verification of BeCoMe algorithm implementation.
 """
 
 from tests.reference.budget_case import BUDGET_CASE
