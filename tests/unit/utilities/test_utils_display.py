@@ -1,15 +1,4 @@
-"""
-Unit tests for examples.utils.display module.
-
-Tests the step-by-step display functions for BeCoMe calculations.
-
-Following Lott's "Python Object-Oriented Programming" (Chapter 13):
-- Tests structured as GIVEN-WHEN-THEN
-- Fixtures provide test data (Dependency Injection)
-- Each test validates a single behavior
-- capsys fixture used to test console output
-"""
-# ignore ruff rule for mathematical symbols
+"""Unit tests for examples.utils.display module."""
 # ruff: noqa: RUF001
 
 import pytest
@@ -32,29 +21,20 @@ class TestDisplayStep1ArithmeticMean:
     def test_display_step_1_output_and_calculation(
         self, capsys, sample_three_opinions: list[ExpertOpinion], calculator: BeCoMeCalculator
     ) -> None:
-        """
-        Test arithmetic mean display output format and calculation correctness.
-
-        GIVEN: Three expert opinions and calculator
-        WHEN: Displaying step 1 arithmetic mean calculation
-        THEN: Output contains expected sections and calculation is correct
-        """
-        # GIVEN: sample_three_opinions and calculator fixtures provide test data
-
-        # WHEN: Display step 1 arithmetic mean
+        """Test arithmetic mean display output format and calculation correctness."""
+        # WHEN
         mean, mean_centroid = display_step_1_arithmetic_mean(sample_three_opinions, calculator)
         captured = capsys.readouterr()
 
         output: str = captured.out
 
-        # THEN: Output contains all expected sections
+        # THEN
         assert "STEP 1: Arithmetic Mean" in output
         assert "Formula:" in output
         assert "α = (1/M)" in output
         assert "Arithmetic Mean:" in output
         assert "Mean centroid:" in output
 
-        # THEN: Calculation is correct (mean of 10-20-30, 15-25-35, 20-30-40)
         assert mean.lower_bound == 15.0
         assert mean.peak == 25.0
         assert mean.upper_bound == 35.0
@@ -81,23 +61,17 @@ class TestDisplayMedianCalculationDetails:
         is_likert: bool,
         expected_in_output: list[str],
     ) -> None:
-        """
-        Test median calculation details for different expert counts and data types.
-
-        GIVEN: Expert opinions (fuzzy or Likert scale) with odd or even count
-        WHEN: Displaying median calculation details
-        THEN: Output shows correct formula and calculation based on expert count parity
-        """
-        # GIVEN: Create opinions using factory fixture
+        """Test median calculation details for different expert counts and data types."""
+        # GIVEN
         opinions: list[ExpertOpinion] = opinions_factory(num_experts, is_likert)
 
-        # WHEN: Display median calculation details
+        # WHEN
         display_median_calculation_details(opinions, num_experts, is_likert=is_likert)
         captured = capsys.readouterr()
 
         output: str = captured.out
 
-        # THEN: All expected strings appear in output
+        # THEN
         for expected in expected_in_output:
             assert expected in output
 
@@ -122,27 +96,20 @@ class TestDisplayStep2Median:
         is_likert: bool,
         expected_in_output: list[str],
     ) -> None:
-        """
-        Test median display with different expert counts and data types.
-
-        GIVEN: Expert opinions (fuzzy or Likert scale) with various counts
-        WHEN: Displaying step 2 median calculation
-        THEN: Output shows correct sorting and median calculation method
-        """
-        # GIVEN: Create opinions using factory fixture
+        """Test median display with different expert counts and data types."""
+        # GIVEN
         opinions: list[ExpertOpinion] = opinions_factory(num_experts, is_likert)
 
-        # WHEN: Display step 2 median
+        # WHEN
         median, median_centroid = display_step_2_median(opinions, calculator, is_likert=is_likert)
         captured = capsys.readouterr()
 
         output: str = captured.out
 
-        # THEN: Expected output strings appear
+        # THEN
         for expected in expected_in_output:
             assert expected in output
 
-        # THEN: Returned values are correct types
         assert isinstance(median, FuzzyTriangleNumber)
         assert isinstance(median_centroid, float)
 
@@ -151,31 +118,24 @@ class TestDisplayStep3BestCompromise:
     """Test cases for display_step_3_best_compromise function."""
 
     def test_display_step_3_output_and_calculation(self, capsys) -> None:
-        """
-        Test best compromise display output format and calculation correctness.
-
-        GIVEN: Arithmetic mean and median fuzzy numbers
-        WHEN: Displaying step 3 best compromise calculation
-        THEN: Output shows formula and best compromise is average of mean and median
-        """
-        # GIVEN: Arithmetic mean and median fuzzy numbers
+        """Test best compromise display output format and calculation correctness."""
+        # GIVEN
         mean: FuzzyTriangleNumber = FuzzyTriangleNumber(10.0, 20.0, 30.0)
         median: FuzzyTriangleNumber = FuzzyTriangleNumber(15.0, 25.0, 35.0)
 
-        # WHEN: Display step 3 best compromise
+        # WHEN
         best_compromise, best_centroid = display_step_3_best_compromise(mean, median)
         captured = capsys.readouterr()
 
         output: str = captured.out
 
-        # THEN: Output contains expected sections
+        # THEN
         assert "STEP 3: Best Compromise" in output
         assert "Formula:" in output
         assert "π = (α + ρ)/2" in output
         assert "Best Compromise: ΓΩMean" in output
         assert "Best compromise centroid:" in output
 
-        # THEN: Best compromise is average of mean and median
         assert best_compromise.lower_bound == 12.5
         assert best_compromise.peak == 22.5
         assert best_compromise.upper_bound == 32.5
@@ -196,28 +156,19 @@ class TestDisplayStep4MaxError:
     def test_display_step_4_calculation(
         self, capsys, mean_centroid: float, median_centroid: float, expected_max_error: float
     ) -> None:
-        """
-        Test max error display and calculation for various centroid pairs.
-
-        GIVEN: Mean and median centroid values
-        WHEN: Displaying step 4 maximum error calculation
-        THEN: Output shows formula and max error is calculated correctly
-        """
-        # GIVEN: mean_centroid and median_centroid provided by parametrize
-
-        # WHEN: Display step 4 max error
+        """Test max error display and calculation for various centroid pairs."""
+        # WHEN
         max_error: float = display_step_4_max_error(mean_centroid, median_centroid)
         captured = capsys.readouterr()
 
         output: str = captured.out
 
-        # THEN: Output contains expected sections
+        # THEN
         assert "STEP 4: Maximum Error" in output
         assert "Formula:" in output
         assert "Δmax = |centroid(Γ) - centroid(Ω)| / 2" in output
         assert "precision indicator" in output
 
-        # THEN: Max error is calculated correctly as |mean - median| / 2
         assert max_error == expected_max_error
 
 
@@ -227,16 +178,8 @@ class TestDisplayErrorHandling:
     def test_display_step_1_with_none_opinions_raises_error(
         self, calculator: BeCoMeCalculator
     ) -> None:
-        """
-        Test that None opinions raise EmptyOpinionsError.
-
-        GIVEN: None instead of opinions list
-        WHEN: Attempting to display step 1
-        THEN: EmptyOpinionsError is raised
-        """
-        # GIVEN: None opinions
-
-        # WHEN/THEN: Calling display should raise EmptyOpinionsError
+        """Test that None opinions raise EmptyOpinionsError."""
+        # WHEN/THEN
         from src.exceptions import EmptyOpinionsError
 
         with pytest.raises(EmptyOpinionsError):
@@ -245,61 +188,33 @@ class TestDisplayErrorHandling:
     def test_display_step_1_with_none_calculator_raises_error(
         self, sample_three_opinions: list[ExpertOpinion]
     ) -> None:
-        """
-        Test that None calculator raises AttributeError.
-
-        GIVEN: Valid opinions but None calculator
-        WHEN: Attempting to display step 1
-        THEN: AttributeError is raised
-        """
-        # GIVEN: Valid opinions, None calculator
-
-        # WHEN/THEN: Calling display should raise AttributeError
+        """Test that None calculator raises AttributeError."""
+        # WHEN/THEN
         with pytest.raises(AttributeError):
             display_step_1_arithmetic_mean(sample_three_opinions, None)  # type: ignore
 
     def test_display_step_2_with_none_opinions_raises_error(
         self, calculator: BeCoMeCalculator
     ) -> None:
-        """
-        Test that None opinions raise TypeError in step 2.
-
-        GIVEN: None instead of opinions list
-        WHEN: Attempting to display step 2
-        THEN: TypeError is raised
-        """
-        # GIVEN: None opinions
-
-        # WHEN/THEN: Calling display should raise TypeError
+        """Test that None opinions raise TypeError in step 2."""
+        # WHEN/THEN
         with pytest.raises(TypeError):
             display_step_2_median(None, calculator)  # type: ignore
 
     def test_display_step_3_with_none_mean_raises_error(self) -> None:
-        """
-        Test that None mean raises AttributeError in step 3.
-
-        GIVEN: None instead of mean fuzzy number
-        WHEN: Attempting to display step 3
-        THEN: AttributeError is raised
-        """
-        # GIVEN: None mean, valid median
+        """Test that None mean raises AttributeError in step 3."""
+        # GIVEN
         median: FuzzyTriangleNumber = FuzzyTriangleNumber(15.0, 25.0, 35.0)
 
-        # WHEN/THEN: Calling display should raise AttributeError
+        # WHEN/THEN
         with pytest.raises(AttributeError):
             display_step_3_best_compromise(None, median)  # type: ignore
 
     def test_display_step_3_with_none_median_raises_error(self) -> None:
-        """
-        Test that None median raises AttributeError in step 3.
-
-        GIVEN: Valid mean but None median
-        WHEN: Attempting to display step 3
-        THEN: AttributeError is raised
-        """
-        # GIVEN: Valid mean, None median
+        """Test that None median raises AttributeError in step 3."""
+        # GIVEN
         mean: FuzzyTriangleNumber = FuzzyTriangleNumber(10.0, 20.0, 30.0)
 
-        # WHEN/THEN: Calling display should raise AttributeError
+        # WHEN/THEN
         with pytest.raises(AttributeError):
             display_step_3_best_compromise(mean, None)  # type: ignore
