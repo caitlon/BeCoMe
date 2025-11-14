@@ -32,6 +32,8 @@ Error metric:
 
 For detailed explanation see BeCoMe algorithm documentation.
 """
+# ignore ruff rule for mathematical symbols
+# ruff: noqa: RUF002
 
 from tests.reference._case_factory import create_case
 

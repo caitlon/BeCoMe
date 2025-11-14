@@ -1,12 +1,8 @@
-"""
-Shared fixtures for calculator tests.
+"""Shared pytest fixtures for calculator unit tests.
 
-Following pytest best practices:
-- Only fixtures shared across MULTIPLE test modules are here
-- Single-use fixtures are defined in their respective test files
-- Fixtures provide test data (GIVEN phase)
-- scope parameter optimizes resource usage
-- Fixtures enable Dependency Injection in tests
+This module contains fixtures used across multiple test modules in the
+calculators test suite. Each fixture provides test data or configured
+objects for the GIVEN phase of test cases.
 """
 
 import pytest
@@ -15,29 +11,21 @@ from src.calculators.become_calculator import BeCoMeCalculator
 from src.models.expert_opinion import ExpertOpinion
 from src.models.fuzzy_number import FuzzyTriangleNumber
 
-# Core fixtures used across all test files
-
 
 @pytest.fixture(scope="class")
 def calculator():
-    """
-    Provide a BeCoMeCalculator instance for all tests in a class.
+    """Provide BeCoMeCalculator instance for test classes.
 
-    Using scope="class" as recommended by Lott: creates the calculator
-    once per test class, reducing object creation overhead.
-
-    Used in: test_arithmetic_mean, test_median, test_compromise,
-             test_median_strategies, test_base_calculator
+    :return: Configured BeCoMeCalculator instance
     """
     return BeCoMeCalculator()
 
 
 @pytest.fixture
 def three_experts_opinions():
-    """
-    Provide opinions from 3 experts with sequential values.
+    """Provide opinions from three experts with sequential fuzzy values.
 
-    Used in: test_arithmetic_mean, test_median, test_compromise
+    :return: List of 3 ExpertOpinion instances with sequential triangular fuzzy numbers
     """
     return [
         ExpertOpinion(
@@ -57,10 +45,9 @@ def three_experts_opinions():
 
 @pytest.fixture
 def single_expert_opinion():
-    """
-    Provide opinion from a single expert.
+    """Provide opinion from a single expert.
 
-    Used in: test_arithmetic_mean, test_median, test_compromise
+    :return: List containing one ExpertOpinion instance
     """
     return [
         ExpertOpinion(
@@ -72,10 +59,9 @@ def single_expert_opinion():
 
 @pytest.fixture
 def four_experts_even_opinions():
-    """
-    Provide opinions from 4 experts (even number).
+    """Provide opinions from four experts for even-count median tests.
 
-    Used in: test_median, test_compromise
+    :return: List of 4 ExpertOpinion instances with sequential triangular fuzzy numbers
     """
     return [
         ExpertOpinion(
