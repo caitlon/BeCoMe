@@ -491,10 +491,12 @@ The code uses Greek letters in comments to match the mathematical notation from 
 For additional information about the BeCoMe implementation:
 
 - **Main README**: [../README.md](../README.md) - Project overview and installation
+- **Documentation index**: [../docs/README.md](../docs/README.md) - Complete documentation navigation
 - **Method description**: [../docs/method-description.md](../docs/method-description.md) - Mathematical foundation
 - **API reference**: [../docs/api-reference.md](../docs/api-reference.md) - Complete API documentation
 - **Architecture**: [../docs/architecture.md](../docs/architecture.md) - Design decisions and rationale
 - **UML diagrams**: [../docs/uml-diagrams.md](../docs/uml-diagrams.md) - Visual architecture
+- **References**: [../docs/references.md](../docs/references.md) - Bibliography and cited sources
 - **Tests**: [../tests/README.md](../tests/README.md) - Testing methodology and coverage
 - **Examples**: [../examples/README.md](../examples/README.md) - Usage examples and case studies
 
