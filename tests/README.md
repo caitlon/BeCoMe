@@ -291,9 +291,12 @@ uv run mypy src/ examples/ && uv run ruff check . && uv run pytest --cov=src
 For implementation details and theoretical foundation:
 
 - **Main documentation**: [../README.md](../README.md) - Project overview and installation
+- **Documentation index**: [../docs/README.md](../docs/README.md) - Complete documentation navigation
 - **Method description**: [../docs/method-description.md](../docs/method-description.md) - Mathematical foundation
 - **API reference**: [../docs/api-reference.md](../docs/api-reference.md) - Complete API documentation
-- **Excel reference**: `../supplementary/` - Original Excel implementation (to be added)
+- **References**: [../docs/references.md](../docs/references.md) - Bibliography and cited sources
+- **Source code**: [../src/README.md](../src/README.md) - Implementation architecture
+- **Examples**: [../examples/README.md](../examples/README.md) - Case studies and usage examples
 
 ## Notes
 

@@ -121,9 +121,10 @@ All visualizations are optimized for local execution:
 ## References
 
 For more information:
-- **Mathematical foundation**: See `../../docs/method-description.md`
-- **Example case studies**: See `../README.md`
-- **Implementation details**: See source code in `visualize_become.py`
+- **Mathematical foundation**: See [../../docs/method-description.md](../../docs/method-description.md)
+- **Example case studies**: See [../README.md](../README.md)
+- **Dataset documentation**: See [../data/README.md](../data/README.md)
+- **Implementation details**: See source code in [visualize_become.py](visualize_become.py)
 
 ## Notes
 
