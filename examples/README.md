@@ -76,10 +76,18 @@ The `data/` directory contains case study data in simple text format:
 
 ```
 data/
+├── README.md            # Complete dataset documentation
 ├── budget_case.txt      # Budget support case (22 experts)
 ├── floods_case.txt      # Flood prevention case (13 experts)
 └── pendlers_case.txt    # Cross-border travel case (22 experts)
 ```
+
+**For complete dataset documentation**, see [data/README.md](data/README.md), which includes:
+- Detailed descriptions of all three case studies
+- File format specification and field descriptions
+- Data provenance and collection methodology
+- Validation procedures and quality assurance
+- Ethical considerations and limitations
 
 ### Text File Format
 

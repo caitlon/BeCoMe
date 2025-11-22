@@ -237,9 +237,10 @@ BeCoMe/
 │       └── pendlers_case.py      # Pendlers case expected results
 ├── examples/              # Practical examples
 │   ├── data/             # Case study data files
-│   │   ├── budget_case.txt
-│   │   ├── floods_case.txt
-│   │   └── pendlers_case.txt
+│   │   ├── README.md            # Dataset documentation
+│   │   ├── budget_case.txt      # COVID-19 budget case
+│   │   ├── floods_case.txt      # Flood prevention case
+│   │   └── pendlers_case.txt    # Cross-border travel case
 │   ├── utils/            # Example utilities
 │   │   ├── data_loading.py     # Data file parser
 │   │   ├── display.py          # Step-by-step display
@@ -249,11 +250,14 @@ BeCoMe/
 │   ├── analyze_floods_case.py    # Floods case analysis
 │   └── analyze_pendlers_case.py  # Pendlers case analysis
 ├── docs/                  # Documentation
+│   ├── README.md                # Documentation navigation
 │   ├── method-description.md    # Mathematical foundation
 │   ├── api-reference.md         # Complete API documentation
 │   ├── architecture.md          # Design decisions
 │   ├── uml-diagrams.md          # Visual architecture
-│   └── quality-report.md        # Quality metrics
+│   ├── quality-report.md        # Quality metrics
+│   ├── references.md            # Bibliography
+│   └── uml-diagrams/            # UML diagram sources and images
 ├── supplementary/         # Reference materials
 └── README.md             # This file
 ```
@@ -324,6 +328,9 @@ Comprehensive documentation is available in the `docs/` directory:
 | [UML Diagrams](docs/uml-diagrams.md) | Visual architecture (class, sequence, activity diagrams) |
 | [Architecture](docs/architecture.md) | Design decisions, patterns, and trade-offs |
 | [Quality Report](docs/quality-report.md) | Code quality metrics and test coverage details |
+| [References](docs/references.md) | Bibliography and academic sources cited in thesis |
+
+See [docs/README.md](docs/README.md) for complete documentation navigation and recommended reading order.
 
 **Recommended reading order**:
 1. [Method Description](docs/method-description.md) - Understand the mathematical foundation
@@ -401,16 +408,21 @@ Full thesis text will be available after publication and defense.
 
 ### Related Research
 
-- Original BeCoMe method description and mathematical foundation
-- Excel reference implementation used for validation
-- UML diagrams and architecture documentation in `docs/uml-diagrams.md`
+The BeCoMe method was developed by I. Vrana, J. Tyrychtr, and M. Pelikán at the Faculty of Economics and Management, Czech University of Life Sciences Prague.
+
+**Key reference:**
+- Vrana, I., Tyrychtr, J., & Pelikán, M. (2021). BeCoMe: Easy-to-implement optimized method for best-compromise group decision making: Flood-prevention and COVID-19 case studies. *Environmental Modelling & Software*, 136, 104953. https://doi.org/10.1016/j.envsoft.2020.104953
+
+See [docs/references.md](docs/references.md) for complete bibliography including fuzzy logic foundations (Zadeh 1965, Bellman & Zadeh 1970), software engineering references, and all sources cited in the thesis.
 
 ### Datasets
 
 All case study datasets are included in this repository under `examples/data/`:
-- `budget_case.txt` - COVID-19 budget allocation scenario
-- `floods_case.txt` - Flood prevention planning scenario
-- `pendlers_case.txt` - Cross-border travel policy scenario
+- `budget_case.txt` - COVID-19 budget allocation scenario (22 experts, even)
+- `floods_case.txt` - Flood prevention planning scenario (13 experts, odd, polarized)
+- `pendlers_case.txt` - Cross-border travel policy (22 experts, Likert scale)
+
+See [examples/data/README.md](examples/data/README.md) for complete dataset documentation, including file format specifications, data provenance, and ethical considerations.
 
 ## Acknowledgments
 
