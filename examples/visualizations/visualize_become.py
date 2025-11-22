@@ -27,7 +27,8 @@ import seaborn as sns
 from IPython.display import display
 from matplotlib.gridspec import GridSpec
 
-from examples.utils import calculate_agreement_level, load_data_from_txt
+from examples.utils.analysis import calculate_agreement_level
+from examples.utils.data_loading import load_data_from_txt
 from src.calculators.become_calculator import BeCoMeCalculator
 
 # Plot settings

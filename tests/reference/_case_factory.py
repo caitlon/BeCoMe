@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from examples.utils import load_data_from_txt
+from examples.utils.data_loading import load_data_from_txt
 
 
 def create_case(

@@ -2,9 +2,11 @@
 
 import pytest
 
-from examples.utils import load_data_from_txt
+from examples.utils.data_loading import load_data_from_txt
 from src.calculators.become_calculator import BeCoMeCalculator
-from tests.reference import BUDGET_CASE, FLOODS_CASE, PENDLERS_CASE
+from tests.reference.budget_case import BUDGET_CASE
+from tests.reference.floods_case import FLOODS_CASE
+from tests.reference.pendlers_case import PENDLERS_CASE
 
 
 @pytest.fixture
