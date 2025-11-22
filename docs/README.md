@@ -289,7 +289,7 @@ Contains both source (.puml) and rendered (.png) versions of all UML diagrams.
   - `floods_case.txt` - Flood prevention planning (13 experts)
   - `pendlers_case.txt` - Cross-border travel policy (22 experts)
 
-**Note:** For detailed data documentation, see [../examples/README.md](../examples/README.md#data-files)
+**Note:** For detailed data documentation, see [../examples/data/README.md](../examples/data/README.md)
 
 ### Installation and Setup
 
