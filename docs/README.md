@@ -11,6 +11,7 @@ The documentation covers all aspects of the BeCoMe method implementation:
 - **API reference** - Complete implementation documentation
 - **Visual architecture** - UML diagrams and workflows
 - **Quality metrics** - Validation and testing results
+- **Bibliography** - Academic references and cited sources
 
 All documentation follows academic standards for reproducibility and clarity.
 
@@ -136,6 +137,32 @@ Comprehensive quality assurance report demonstrating implementation reliability.
 
 ---
 
+#### [references.md](references.md) (550 lines)
+
+**Bibliography and Academic References**
+
+Comprehensive bibliography for the BeCoMe implementation project, covering all sources cited in the bachelor thesis.
+
+**Contents:**
+- Core BeCoMe method references (Vrana2021, Prokopova2023)
+- Fuzzy logic foundations (Zadeh1965, Bellman1970, Klir1995)
+- Software engineering and architecture (Lott2021, Newman2021, Fielding2000, Kane2018)
+- Czech academic sources (Subrt2011, Merunka2005)
+- Complete BibTeX entries for reproducibility
+- Citation context and usage in thesis chapters
+- DOI links for peer-reviewed sources
+
+**Reference categories:**
+- 11 total references across 4 categories
+- 3 journal articles (BeCoMe, fuzzy sets, decision-making)
+- 6 books (software engineering, fuzzy logic, economic methods)
+- 1 doctoral dissertation (REST architecture)
+- 1 online article (BeCoMe public communication)
+
+**Target audience:** Academic reviewers, thesis committee, researchers citing this work
+
+---
+
 ### Supporting Files
 
 #### [generate_diagrams.py](generate_diagrams.py) (66 lines)
@@ -188,9 +215,10 @@ Contains both source (.puml) and rendered (.png) versions of all UML diagrams.
 ### For Thesis Reviewers (Academic Assessment)
 
 1. **[method-description.md](method-description.md)** - Mathematical foundation
-2. **[quality-report.md](quality-report.md)** - Implementation quality (100% coverage)
-3. **[architecture.md](architecture.md)** - Design rationale
-4. **[uml-diagrams.md](uml-diagrams.md)** - Visual architecture
+2. **[references.md](references.md)** - Bibliography and cited sources
+3. **[quality-report.md](quality-report.md)** - Implementation quality (100% coverage)
+4. **[architecture.md](architecture.md)** - Design rationale
+5. **[uml-diagrams.md](uml-diagrams.md)** - Visual architecture
 
 ### For Developers (Using or Extending the Code)
 
@@ -206,6 +234,7 @@ Contains both source (.puml) and rendered (.png) versions of all UML diagrams.
 - **Design patterns** → [architecture.md](architecture.md)
 - **Test coverage** → [quality-report.md](quality-report.md)
 - **Class relationships** → [uml-diagrams.md](uml-diagrams.md)
+- **Bibliography** → [references.md](references.md)
 
 ---
 
@@ -327,7 +356,8 @@ python docs/generate_diagrams.py
 | api-reference.md | 875 | 20 KB | 2025-10-12 |
 | uml-diagrams.md | 300 | 10 KB | 2025-10-12 |
 | quality-report.md | 456 | 10 KB | 2025-10-12 |
-| **Total** | **2,808** | **70 KB** | - |
+| references.md | 605 | 22 KB | 2025-11-22 |
+| **Total** | **3,413** | **92 KB** | - |
 
 ---
 
