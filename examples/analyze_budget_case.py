@@ -7,17 +7,15 @@ of COVID-19 pandemic budget support.
 
 from pathlib import Path
 
-from examples.utils import (
-    calculate_agreement_level,
-    display_case_header,
+from examples.utils.analysis import calculate_agreement_level
+from examples.utils.data_loading import load_data_from_txt
+from examples.utils.display import (
     display_step_1_arithmetic_mean,
     display_step_2_median,
     display_step_3_best_compromise,
     display_step_4_max_error,
-    load_data_from_txt,
-    print_header,
-    print_section,
 )
+from examples.utils.formatting import display_case_header, print_header, print_section
 from src.calculators.base_calculator import BaseAggregationCalculator
 from src.calculators.become_calculator import BeCoMeCalculator
 
