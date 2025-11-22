@@ -10,7 +10,7 @@ The visualization module provides interactive charts and dashboards for analyzin
 
 ![BeCoMe Interactive Visualizations Demo](demo.gif)
 
-*Note: Add a GIF demonstrating the interactive visualizations. The demo should show the main dashboard with expert opinions, centroid comparisons, and sensitivity analysis features.*
+*Interactive demonstration of BeCoMe visualizations showing expert opinions, centroid comparisons, and sensitivity analysis features.*
 
 ## Available Visualizations
 
