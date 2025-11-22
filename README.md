@@ -255,7 +255,6 @@ BeCoMe/
 │   ├── uml-diagrams.md          # Visual architecture
 │   └── quality-report.md        # Quality metrics
 ├── supplementary/         # Reference materials
-│   └── [To be added: Excel implementation and research materials]
 └── README.md             # This file
 ```
 
@@ -402,8 +401,8 @@ Full thesis text will be available after publication and defense.
 
 ### Related Research
 
-- Original BeCoMe method description and mathematical foundation (to be added to `supplementary/` directory)
-- Excel reference implementation used for validation (to be added to `supplementary/` directory)
+- Original BeCoMe method description and mathematical foundation
+- Excel reference implementation used for validation
 - UML diagrams and architecture documentation in `docs/uml-diagrams.md`
 
 ### Datasets
