@@ -65,12 +65,8 @@ jobs:
       - name: Install dependencies
         run: pip install -e ".[dev]"
 
-      - name: Run tests with 100% coverage requirement
-        run: pytest --cov=src --cov-report=term-missing --cov-fail-under=100
-
-      - name: Generate coverage report
-        if: always()
-        run: pytest --cov=src --cov-report=html
+      - name: Run tests with coverage
+        run: pytest --cov=src --cov-report=term-missing --cov-report=html --cov-fail-under=100
 
       - name: Upload coverage HTML report
         if: always()
