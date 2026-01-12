@@ -1,0 +1,274 @@
+\documentclass[twocolumn]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{geometry}
+\usepackage{booktabs}
+\usepackage{caption}
+\usepackage{authblk}
+\usepackage{hyperref}
+
+\geometry{a4paper, margin=1in}
+
+\title{BeCoMe: Easy-to-implement optimized method for best-compromise group decision making: Flood-prevention and COVID-19 case studies}
+\author[1]{Ivan Vrana\thanks{Corresponding author. E-mail address: \href{mailto:vrana@pef.czu.cz}{vrana@pef.czu.cz} (I. Vrana).}}
+\author[1]{Jan Tyrychtr}
+\author[1]{Martin Pelikán}
+\affil[1]{Department of Information Engineering, Faculty of Economics and Management, Czech University of Life Sciences in Prague, Kamýcká 129, 16500, Prague, Czech Republic}
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+\noindent \textbf{Keywords:} \\
+Agreement \\
+Averaging operator \\
+Environmental decision making \\
+Multi-expert decisions \\
+Best-compromise result \\
+COVID-19
+
+\vspace{1em}
+\noindent Vrana et al. (2012a) presented the maximum-agreement-mean (MaxAgM) method, which aggregates expert opinions while focusing on points of agreement. Although MaxAgM can minimize Shannon entropy to optimize results, it has a high level of computational and conceptual complexity, yields difficult-to-interpret results, has no indicator of accuracy, and requires specialized software that is not widely available. In this paper, we present the best-compromise-mean (BeCoMe) method as a modified MaxAgM method. BeCoMe preserves the advantages of MaxAgM, but overcomes its limitations. To enable direct comparison, we applied the BeCoMe method to the same flood-prevention case study that was used to validate the original MaxAgM method. BeCoMe is a universal method, as it can be applied to evaluate environmental and educational measures, about pandemics, industries and resource issues. Here, we demonstrate the applicability of BeCoMe in real-life COVID-19 case study decisions which needed to be rapidly and efficiently made by the Czech government.
+\end{abstract}
+
+\section{Introduction}
+
+Environmental decision-making problems are usually complex, ill structured, multi-dimensional, multi-aspect, vague, and uncertain. Theoretical models cannot, as a rule, adequately describe real events or processes. Therefore, it is often appropriate to rely on the intuition and judgment of multiple experts, based on their personal experience and intuitive understanding of the problem.
+
+Common averaging operators like arithmetic mean, weighted mean, or median can be used to aggregate or average multiple recommendations when experts’ opinions are quantitative, coherent and non-conflicting. Unfortunately, experts’ opinions are seldom in harmony, and may be quite different from each other. In such cases, common averaging operators can give incorrect results and may not adequately represent all experts’ combined opinion. Statistical methods often fail too because of a lack of relevant data, such as probability distributions of variables in formal models. It is vital in such situations to have an averaging operator, which represents a compromise of all individual opinions.
+
+During the last three decades, fuzzy set theory in environmental decision-making has increasingly been applied to manipulate pure judgments and the vagueness of experts’ opinions; see, e.g., Nasiri and Huang (2008); Barreto-Neto and Filho (2008); Paterson et al. (2008); Li et al. (2009), and Pelikán et al. (2017a,b). The need to resolve conflicts and find compromises in individual expert judgments has also been reported; e.g., in Kangas and Leskinen (2005); Tastle and Wierman (2007a); Nasiri and Huang (2008); Paterson et al. (2008); Barreto-Neto and Filho (2008); and Ritzema et al. (2010).
+
+However, in these types of decision making problem, apparent disparity/disagreement in expert opinion is not necessarily spurious: it may be a really important part of any decision (particularly as often needs to be done in a risk-based way). Averaging and aggregation methods which obscure the full breadth of expert opinion may also lead to less informed decisions (i.e. a loss of information) and this should be highlighted. There is a fundamental difference in averaging and combining in a robust way depending upon the application.
+
+In water management, researchers have considered the poor structure and fuzziness of the decision-making process, and utilized fuzzy experts’ opinions with a consensus-seeking approach; e.g., Vrana et al. (2012a), Vrana et al. (2012b), and Kovář et al. (2018). Barreto-Neto and Filho (2008) for example introduced a fuzzy rule-based model to estimate the runoff in a tropical watershed by evaluating the runoff derived from fuzzy and Boolean methods. Li et al. (2009) developed a multistage fuzzy-stochastic programming (MFSP) model for tackling uncertainties presented as fuzzy sets and probability distributions. Relatively few researchers in environmental decision-making have considered the expert consensus.
+
+\section{Fuzzy-agreement approach}
+
+Vrana et al. (2012a) presented the MaxAgM optimum aggregation operator, which provides a best-compromise solution for multi-expert decision-making under fuzzy conditions. Based on the Shannon theory of entropy, it presents a metric for the level of agreement between experts’ judgments. Depending on the specific decision problem, the method addresses two basic decision-making situations:
+a) When experts provide a binary YES/NO response to the research question, along with its associated uncertainty, and
+b) When individual experts assess the value of a certain parameter of the solution as a real number, a fuzzy number, or a fuzzy interval.
+
+The method enables the comparison and aggregation of expert opinions, even though these opinions might be diverse or even opposing. An application of the MaxAgM method was demonstrated in a flood risk management case study (Vrana, 2012a).
+
+The experts assess a value for a certain parameter of the decision problem, where X is a vector of M individual experts’ opinions, $X_i \in [X_{\min}, X_{\max}]$, $i = 1, 2, ..., M$. For each finally adopted conclusion, where $\tau$ is a common opinion from X, the consensus (agreement) of this conclusion is a value in interval $[0, 1]$ that determines the level of agreement for the M expert opinions. Consensus is equal to 1 when the opinions of all experts coincide and is equal to zero when half of the experts have one opinion and the other half have the opposite (extreme) opinion.
+
+For each $\tau$, its $\tau$-agreement $Agr(X|\tau)$ is given by the formula
+\begin{equation}
+Agr(X|\tau) = 1 + \frac{1}{\sum w_i} \sum_{i=1}^{M} w_i \log_2 \left(1 - \frac{|x_i - \tau|}{2d_x}\right)
+\end{equation}
+where $w_i$ are the weight coefficients, which can eventually express the different degrees of importance of the individual experts’ standpoints.
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=\columnwidth]{figure1.png}
+    \caption{Example of course of summands $\log_2(1 - \frac{|x_i - \tau|}{2d_x})$ in formula (1). Source Vrana (2012a).}
+    \label{fig:1}
+\end{figure}
+
+Formula (1) represents the averaging operator $\tau$-agreement $Agr(X|\tau)$, which places the value $\tau$ into a relationship with M individual experts’ opinions, $X_i, i = 1, 2, ..., M$. $Agr(X|\tau)$ is a continuous concave function in the interval $[X_{\min}, X_{\max}]$ and is smooth except for n points, $X_1, X_2, ..., X_n$, where its first derivative does not exist. Such a function reaches its maximum in the interval $[X_{\min}, X_{\max}]$. The best-compromise aggregation of n individual experts’ opinions, $X_i$, is that value of $\tau$ for which $Agr(X|\tau)$ reaches its maximum. Therefore, the Vrana optimum averaging operator defined the best-compromise collective opinion MaxAgM as the value of $\tau$ for which $\tau$-agreement $Agr(X|\tau)$ reaches its maximum.
+
+\section{Improved fuzzy-agreement approach}
+
+Let us assume a vector X of M individual experts' opinions $\in [X_{\min}, X_{\max}]$, $i=1, 2, ...M$, to assess a value for a certain model parameter of the decision task. Individual $X_i$ quantities are crisp or fuzzy numbers with triangular membership functions ACB.
+
+According to Vrana et al. (2012a), the best-compromise aggregation of M individual experts’ opinions $X_i$ is the value $\tau$ for which $Agr(X|\tau)$ reaches its maximum MaxAgM, whilst MaxAgM is from the closed interval between the median $\Omega(X)$ and the arithmetic mean $\Gamma(X)$.
+
+The optimum value of MaxAgM is situated between the arithmetic mean $\Gamma$ of all expert opinions and their statistic median $\Omega$. These two quantities create boundaries for the optimum decision. Therefore, let us introduce a new approximation, $\Gamma\Omega$Mean, of the optimum value MaxAgM as the arithmetic mean of these two bounds.
+\begin{equation}
+\Gamma\Omega\text{Mean} = (\Gamma + \Omega)/2
+\end{equation}
+
+Now, we shall describe how to obtain the arithmetic mean and the statistical median of a set of triangular fuzzy numbers. For easier interpretation and calculations, we shall place the base of the triangles on the axis x.
+
+According to Vaníček et al. (2009), the arithmetic mean $\Gamma:(\alpha\gamma\beta)$ of M experts’ judgments is again a fuzzy number with a triangular membership function, where individual vertices $\alpha, \gamma,$ and $\beta$ of the resulting membership function are the arithmetic means of the vertices of partial membership functions $A_i, C_i, B_i$. Thus,
+\begin{gather}
+\alpha = 1/M \sum_{k=1}^{M} A_k \\
+\beta = 1/M \sum_{k=1}^{M} B_k \\
+\gamma = 1/M \sum_{k=1}^{M} C_k
+\end{gather}
+
+The statistical median $\Omega:(\rho\omega\sigma)$ of M experts’ fuzzy judgments is again a fuzzy number with a triangular membership function with vertices $\rho, \omega,$ and $\sigma$.
+
+If the number M of experts is odd, i.e., $M = 2n + 1$, the center of our set of triangular fuzzy numbers $A_iC_iB_i$ belongs to that i where $z_i = n + 1$. We denote this central i as q. In this case, the statistical median $\Omega:(\rho\omega\sigma)$ of our set of M fuzzy numbers $\{A_iC_iB_i\}$, $i = 1 ... M$, is the fuzzy number $A_qC_qB_q$, where
+\begin{equation}
+\rho = A_q, \omega = C_q, \text{ and } \sigma = B_q.
+\end{equation}
+
+When $M = 2n$ is an even number, the center of our set of triangular fuzzy numbers $A_iC_iB_i$ lies between fuzzy numbers $A_pC_pB_p$ and $A_rC_rB_r$, where p refers to $z_i = n$ and r refers to $z_i = n + 1$. The median is the arithmetic mean of fuzzy numbers $A_pC_pB_p$ and $A_rC_rB_r$. In this case:
+\begin{gather}
+\rho = (A_p + A_r) / 2 \\
+\sigma = (B_p + B_r) / 2 \\
+\omega = (C_p + C_r) / 2.
+\end{gather}
+
+The centroid G is particularly useful for finding the real number $y_i$ that determines the center of a triangle. Its projection on the x axis is
+\begin{equation}
+G_x = (A + B + C) / 3.
+\end{equation}
+To select a statistical median $\rho\omega\sigma$ from the set of membership functions from all experts, we select the membership function of the expert whose center of mass (centroid) is situated in the middle of the centroids from all experts. Therefore, it has a very simple and suitable physical interpretation:
+\begin{equation}
+G_{x \text{ median}} = (\rho + \omega + \sigma) / 3.
+\end{equation}
+
+
+\section{BeCoMe - improved approximation of the optimum group decision-making method}
+According to Vrana et al. (2012a), the optimum value of the group decision MaxAgM is situated between the arithmetic mean, $\Gamma:(\alpha\gamma\beta)$, of all expert decisions and their statistical median $\Omega:(\rho\omega\sigma)$. Thus, we define the arithmetic mean of these two bounds $\Gamma\Omega$Mean as the enhanced approximation $\Gamma\Omega\text{Mean}:(\pi\phi\xi) = (\Gamma + \Omega)/2$ of the optimum decision MaxAgM; i.e.:
+\begin{gather}
+\pi = (\alpha + \rho) / 2 = 1/2M \sum_{k=1}^{M} A_k + \rho/2 \\
+\phi = (\gamma + \omega) / 2 = 1/2M \sum_{k=1}^{M} C_k + \omega/2 \\
+\xi = (\beta + \sigma) / 2 = 1/2M \sum_{k=1}^{M} B_k + \sigma/2
+\end{gather}
+It is easy to estimate the possible accuracy of this approximation: The maximum error $\Delta_{\max}$ of our approximation $\Gamma\Omega$Mean cannot exceed one half of the difference between both borders. Thus,
+\begin{equation}
+\Delta_{\max} = \text{Abs}(\alpha\gamma\beta - \rho\omega\sigma) / 2.
+\end{equation}
+Because this new averaging operator brings results representing the best possible compromise of experts’ standpoints, we shall denote this method the BeCoMe - the Best Compromise Mean. The result of the BeCoMe method: $(\pi\phi\xi)$ can be calculated in the following steps, as depicted by the flowchart in Fig. \ref{fig:flowchart}.
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=\columnwidth]{figure4.png}
+    \caption{Flowchart for the BeCoMe methodology.}
+    \label{fig:flowchart}
+\end{figure}
+
+\section{Flood-impact mitigation case study}
+As mentioned in Section 1, we apply this enhanced method to the same flood-prevention case study that was used for the original MaxAgM method, to enable an easy comparison of the results. The downstream part of the Nemcicky catchment, situated in central Moravia, Czech Republic, was frequently exposed to floods.
+
+Two types of flood prevention measures have been identified: non-structural and structural. The CN crucially depends on the arable-land reduction. However, opinions about the size of the arable-land reduction are very “point-of-view” sensitive and may vary with respect to different stakeholder categories. Therefore, a team of 13 experts was established to negotiate this topic.
+
+\subsection{Original MaxAgM method}
+In the original method, the proposed numbers were aggregated by having the MaxAgr software to apply the aggregating MaxAgM method. This software calculated the value of arable-land reduction for which the agreement reached its maximum: MaxAgM = 13. If the expert proposals were considered as crisp values, then MaxAgM = 14. In all considered decision situations, the maximum agreement was achieved for a reduction of arable land in the range of 13\%-15\%, which rests between the median (= 8) and the arithmetic mean (= 20.38).
+
+\subsection{BeCoMe method}
+Following the flowchart in Fig. \ref{fig:flowchart}, we apply the new enhanced method to the previous case study.
+\begin{enumerate}
+    \item The collected triangular experts’ judgments $A_iC_iB_i$ are the same as in the previous case study; see Table \ref{tab:proposals1}.
+    \item The arithmetic mean $\Gamma:(\alpha\gamma\beta)$ was calculated according to (3) with the following results: $\alpha = 17.8, \beta = 23.38,$ and $\gamma = 20.38$.
+    \item The center of mass $G_x$ (centroid) for each triangle $A_iC_iB_i$ was calculated according to (6). The results of Steps 1 through 3 are shown in Table \ref{tab:proposals2}.
+    \item We ranked the experts with respect to the values of their centroids $G_x$.
+    \item As a median $\Omega:(\rho\omega\sigma)$, we selected the triangle with ranking 7, which is in the middle of all triangles. Thus, $\rho = 6, \sigma = 11$, and $\omega = 8$.
+    \item We calculated the final decision $\Gamma\Omega\text{Mean}:(\pi\phi\xi)$, according to (8), with the following results: $\pi = 11.54, \xi = 17.19$, and $\phi = 14.19$.
+    \item We calculated that the maximum error $\Delta_{\max} = 5.97$, according to (9).
+\end{enumerate}
+
+\begin{table}[h!]
+\centering
+\caption{Proposals of experts about the reduction of arable land.}
+\label{tab:proposals1}
+\begin{tabular}{lccc}
+\toprule
+Expert & \begin{tabular}[c]{@{}c@{}}Reduction of \\ arable land (\%)\end{tabular} & - \% & + \% \\
+\midrule
+Hydrologist 1 & 42 & 5 & 5 \\
+Hydrologist 2 & 50 & 8 & 0 \\
+Nature protection & 7 & 2 & 2 \\
+Risk management & 40 & 3 & 8 \\
+Land use & 8 & 2 & 3 \\
+Civil service & 8 & 3 & 1 \\
+Municipality 1 & 38 & 5 & 5 \\
+Municipality 2 & 8 & 3 & 0 \\
+Economist & 14 & 4 & 6 \\
+Rescue coordinator & 45 & 5 & 5 \\
+Land owner 1 & 3 & 1 & 1 \\
+Land owner 2 & 0 & 0 & 2 \\
+Land owner 3 & 2 & 2 & 1 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table*}[t!]
+\centering
+\caption{Reduction of arable land (\%). Experts’ proposals with calculated arithmetic mean $\Gamma:(\alpha\gamma\beta)$, centroids $G_x$, ranking, and median $\Omega$.}
+\label{tab:proposals2}
+\begin{tabular}{lcccccc}
+\toprule
+Expert & C & A & B & Gx & Rank & Median \\
+\midrule
+Hydrologist 1 & 42 & 37 & 47 & 42 & 11 & \\
+Hydrologist 2 & 50 & 42 & 50 & 43.7 & 13 & \\
+Nature protection & 7 & 5 & 9 & 7 & 5 & \\
+Risk management & 40 & 37 & 48 & 41.7 & 10 & \\
+Land use & 8 & 6 & 11 & 8.33 & 7 & $\Omega$ \\
+Civil service & 8 & 5 & 9 & 7.33 & 6 & \\
+Municipality 1 & 38 & 33 & 43 & 38 & 9 & \\
+Municipality 2 & 8 & 5 & 8 & 7 & 4 & \\
+Economist & 14 & 10 & 20 & 14.7 & 8 & \\
+Rescue coordinator & 45 & 40 & 50 & 45 & 12 & \\
+Land owner 1 & 3 & 2 & 4 & 3 & 3 & \\
+Land owner 2 & 0 & 0 & 2 & 0.67 & 1 & \\
+Land owner 3 & 2 & 0 & 3 & 1.67 & 2 & \\
+\midrule
+$\gamma = 20.38$ & $\alpha = 17.8$ & $\beta = 23.38$ & & & & \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\section{COVID-19 case study}
+Crisis situations that necessitate the skill of quick decision making amid uncertainty are not limited to floods, droughts, earthquakes, and other environmental disasters. The COVID-19 pandemic requires the adoption of numerous measures in various fields. Because there is a lack of general experience and relevant empirical experience, decision makers are often required to rely on expert opinions, which should be collectively evaluated to establish a consensus.
+
+Through a COVID-19 case study, we shall illustrate how the BeCoMe method can be utilized to make decisions under very complex and ambiguous conditions. We demonstrate the application of the BeCoMe method in the following three typical COVID-19 crisis management situations:
+\begin{itemize}
+    \item Case a) Selection of a desirable parameter value under the condition that suggested values are in the form of fuzzy numbers;
+    \item Case b) Selection of the most convenient option among several possibilities;
+    \item Case c) Establishment of binary yes/no decisions from linguistic term expert proposals.
+\end{itemize}
+
+\subsection{Case a): Selection of desirable value for the reproduction number R}
+Because there is no direct way to calculate or determine the value of a viral reproduction number R, a team of experts had to propose a certain strategy. The propagation of COVID-19 can be described by the epidemiological Susceptible-Exposed-Infected-Removed/Recovered (SEIR) model. The SEIR model is based on the following differential equations:
+\begin{equation}
+\begin{aligned}
+\frac{dS}{dt} &= -\beta IS, \\
+\frac{dE}{dt} &= \beta IS – \alpha E, \\
+\frac{dI}{dt} &= \alpha E – \gamma I, \\
+\frac{dR}{dt} &= \gamma I,
+\end{aligned}
+\end{equation}
+where $N$ is the size of the population, and $S(t) + E(t) + I(t) + R(t) = N$.
+
+Given all of the above information, the experts S1-S15 had to suggest the most reasonable R value that will lead to the adoption of the necessary corresponding measures. Table 6 presents the suggested values of R in the form of fuzzy numbers. These R values were implemented in the BeCoMe method; the following results were obtained:
+\begin{itemize}
+    \item Best-compromise R: 1.23.
+    \item Accuracy of estimate: 0.03
+\end{itemize}
+The experts suggested that R = 1.23 will lead to the adoption of adequate measures.
+
+\section{Discussion}
+Theoretical models often cannot adequately describe real events for actual environmental decision-making processes, because such problems are typically ambiguous, multifaceted, complex, and ill-structured. Vrana et al. (2012a) developed the MaxAgM method; this method included an optimized aggregation operator $\tau$-agreement, i.e., $Agr(X|\tau)$, which was used to determine the best-compromise solution for multi-expert decision-making under fuzzy conditions.
+
+In this paper, we introduced the BeCoMe method as an alternative version of the MaxAgM method which preserves its advantages and overcomes, or minimizes, its limitations. In difference to the MaxAgM method, the BeCoMe has a low level of computational complexity, is conceptually clear and easy to interpret. It includes indicators of the agreement accuracy and it does not require any specialized software.
+
+\section{Conclusions}
+The BeCoMe method is a general and broadly applicable method which has been proven to be an effective tool for solving ill-structured, ambiguous, and multi-dimensional decision-making problems related to the environment. The BeCoMe method is superior to methods that use generalized averaging operators; in particular, it has the following advantages:
+\begin{enumerate}
+    \item It can yield the best possible theoretical compromise.
+    \item In addition to providing quantitative results, it can be used to qualitatively assess the aspects of the problem that cannot be quantified.
+    \item The experts can express their opinions by using real numbers, fuzzy numbers, or by using Likert linguistic terms.
+    \item The time cost is minimized, as a final solution can be immediately obtained following input of the variables.
+    \item The most important advantage of the BeCoMe method over the original, optimized MaxAgM method is its simplicity.
+    \item The BeCoMe method software is open-source and can be downloaded from \url{https://covid19-become.pef.czu.cz/en/}.
+\end{enumerate}
+
+\section*{Funding}
+This work was conducted within the project “Ambient Intelligence in Decision-Making Problems in Uncertain Conditions” (2019B0008) funded through the IGA Foundation of the Faculty of Economics and Management, Czech University of Life Sciences Prague, Czech Republic.
+
+\section*{Declaration of competing interest}
+The authors declare that they have no known competing financial interests or personal relationships that could have appeared to influence the work reported in this paper.
+
+\section*{Acknowledgment}
+Authors thank to Mudr. Pavel Lindovský, Ph.D. from the MEDLIN Prague and to Ing. Jan Borák, Ph.D. from the Czech University of Life Sciences in Prague for their introduction to a work style of crisis-management teams.
+
+% References section would be here. Due to the length, it is omitted from this example.
+% You would format it like this:
+\begin{thebibliography}{99}
+\bibitem{ref1} Bardossy, A., Duckstein, L., Bogardi, J., 1993. Combination of fuzzy numbers representing expert opinions. Fuzzy Set Syst. 57, 173-181.
+\bibitem{ref2} Barreto-Neto, A.A., Filho, C.R., 2008. Application of fuzzy logic to the evaluation of runoff in a tropical watershed. Environ. Model. Software 23 (2), 244-253.
+% ... and so on for all references
+\end{thebibliography}
+
+\end{document}
