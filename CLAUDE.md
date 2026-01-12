@@ -22,12 +22,14 @@ This file provides guidance to Claude Code when working with code in this reposi
 - Types: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`
 - Examples: `feat: add kennard-stone splitting`, `fix: correct median calculation`, `docs: update API reference`
 
-## Writing Style for Comments, Documentation, and README
+## Supplementary Guidelines
 
-**Follow the writing guidelines in `supplementary/rules.md`** when writing:
-- Code comments and docstrings
-- README files and documentation
-- Any user-facing text or explanations
+**Follow the guidelines in these files:**
+- `supplementary/writing-rules.md` — writing style (burstiness, avoiding AI patterns)
+- `supplementary/SOLID.md` — SOLID principles for code design
+- `supplementary/OOP.md` — OOP principles and patterns
+
+### Writing Style Summary
 
 **Key principles:**
 1. **Vary sentence length** — mix short, medium, and long sentences (burstiness)
