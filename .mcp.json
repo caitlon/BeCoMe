@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "sequential-thinking": {
+      "command": "npx",
+      "args": ["-y", "sequential-thinking-mcp"],
+      "env": {}
+    },
+    "ide": {
+      "command": "ide"
+    },
+    "context7": {
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp", "--api-key", "ctx7sk-95ea6774-fdab-4fd9-981d-4e5d9e400087"]
+    }
+  }
+}
