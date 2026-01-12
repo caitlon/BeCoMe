@@ -1,0 +1,82 @@
+{
+  "env": {
+    "PYTHONDONTWRITEBYTECODE": "1"
+  },
+  "permissions": {
+    "allow": [
+      "Read",
+      "Edit",
+      "Write",
+      "Bash",
+      "WebSearch",
+      "WebFetch",
+      "Glob",
+      "Grep",
+      "Task",
+      "Bash(uv *)",
+      "Bash(pytest *)",
+      "Bash(ruff *)",
+      "Bash(git status)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "mcp__ide__getDiagnostics",
+      "mcp__sequential-thinking__problem_breakdown",
+      "mcp__ide__executeCode"
+    ],
+    "deny": [
+      "Bash(git add*)",
+      "Bash(git commit*)",
+      "Bash(git push*)",
+      "Bash(git pull*)",
+      "Bash(git merge*)",
+      "Bash(git rebase*)",
+      "Bash(git reset*)",
+      "Bash(git cherry-pick*)",
+      "Bash(git stash*)"
+    ],
+    "defaultMode": "plan"
+  },
+  "model": "opus",
+  "enabledMcpjsonServers": [
+    "sequential-thinking",
+    "ide",
+    "context7"
+  ],
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[[ \"$CLAUDE_FILE_PATH\" == *.py || \"$CLAUDE_FILE_PATH\" == *.ipynb ]] && uv run ruff check \"$CLAUDE_FILE_PATH\" --fix && uv run ruff format \"$CLAUDE_FILE_PATH\" || true",
+            "statusMessage": "Running ruff check & format..."
+          }
+        ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[[ \"$CLAUDE_FILE_PATH\" == *.py || \"$CLAUDE_FILE_PATH\" == *.ipynb ]] && uv run ruff check \"$CLAUDE_FILE_PATH\" --fix && uv run ruff format \"$CLAUDE_FILE_PATH\" || true",
+            "statusMessage": "Running ruff check & format..."
+          }
+        ]
+      },
+      {
+        "matcher": "Bash(pytest*)",
+        "hooks": [
+          {
+            "type": "agent",
+            "prompt": "Analyze the test output. If all tests passed, confirm success. If any failed, summarize which tests failed and why.",
+            "model": "sonnet",
+            "statusMessage": "Analyzing test results..."
+          }
+        ]
+      }
+    ]
+  },
+  "language": "russian",
+  "alwaysThinkingEnabled": true
+}
