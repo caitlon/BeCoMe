@@ -1,0 +1,66 @@
+V této kapitole nejprve vymezím stěžejní cíl práce a dílčí kroky vedoucí k jeho naplnění. Následně představím zvolenou metodiku, která definuje jak architektonický návrh a~technologický stack, tak i~postupy pro vývoj, algoritmizaci a~ověření výsledného řešení.
+
+\section{Cíle práce}
+Stěžejním cílem této bakalářské práce je vytvoření moderní softwarové implementace metody BeCoMe v~jazyce Python. Na rozdíl od stávajícího řešení jsem aplikaci navrhla jako webovou službu založenou na mikroservisní architektuře. Tento přístup jsem zvolila strategicky, abych zajistila vysokou dostupnost, snadnou budoucí rozšiřitelnost a~moderní uživatelský komfort.
+
+Pro dosažení tohoto hlavního cíle jsem stanovila následující dílčí cíle:
+\begin{itemize}
+    \item \textbf{Analýza a rešerše:} Prostudovat odbornou literaturu týkající se metody BeCoMe, teorie fuzzy množin a~souvisejících softwarových architektur.
+    \item \textbf{Návrh architektury:} Navrhnout softwarovou architekturu založenou na mikroservisním vzoru, která odděluje výpočetní jádro (backend) od uživatelského rozhraní (frontend).
+    \item \textbf{Implementace backendové služby:} Vytvořit v~prostředí Python/Flask backendovou službu, která bude obsahovat logiku metody BeCoMe a~poskytovat ji prostřednictvím rozhraní REST API (\textit{Representational State Transfer Application Programming Interface}).
+    \item \textbf{Implementace frontendové služby:} Vytvořit moderní uživatelské rozhraní v~technologii React pro interakci s~backendovou službou, s~využitím umělé inteligence (AI) v nástroji Lovable pro urychlení návrhu.
+    \item \textbf{Kontejnerizace:} Zabalit frontendovou a~backendovou službu do samostatných Docker kontejnerů a~zajistit jejich spolehlivé spuštění pomocí Docker Compose.
+    \item \textbf{Testování a~ověření:} Implementovat modulové testy (\textit{unit tests}) pro klíčové funkce backendu a~provést systémové ověření správnosti výpočtů porovnáním s~referenčním řešením v~MS Excel.
+    \item \textbf{Vyhodnocení přínosu:} Zhodnotit výhody vytvořeného řešení oproti stávající implementaci v~MS Excel z~hlediska platformové nezávislosti, rozšiřitelnosti a~potenciálu pro automatizaci.
+\end{itemize}
+
+\section{Metodika řešení}
+Zvolená metodika vychází ze standardů moderního softwarového inženýrství. V~celém procesu jsem kladla důraz na flexibilitu, modularitu a~kvalitu výsledného produktu, aby vznikla robustní a udržitelná aplikace.
+
+\subsection{Model vývoje softwaru}
+Pro řízení vývoje aplikace jsem zvolila iterační model který, inspirován principy agilních metodik, klade důraz na flexibilitu a postupné dodávání funkčního softwaru. Projekt tak nebyl realizován jako monolitický celek, ale byl rozdělen do několika navazujících iterací (sprintů). Tento model mi umožnil průběžně reagovat na změny a upřesňovat dílčí cíle na základě získaných poznatků a konzultací s vedoucím práce.
+
+Vývoj probíhal v následujících hlavních fázích:
+\begin{enumerate}
+    \item \textbf{Implementace výpočetního jádra a~backendu:} Cílem této fáze bylo vytvořit minimální životaschopný produkt (MVP --- \textit{Minimum Viable Product}) v~podobě funkčního REST API, které zapouzdřuje klíčové algoritmy BeCoMe.
+    \item \textbf{Vývoj frontendové služby:} Vytvoření uživatelského rozhraní v~technologii React, které komunikuje s~backendovým API.
+    \item \textbf{Kontejnerizace a~integrace:} Zabalení obou služeb do Docker kontejnerů a~zajištění jejich společného spuštění a~komunikace pomocí Docker Compose.
+    \item \textbf{Testování a~finalizace:} Důkladné otestování funkčnosti celého systému, sepsání dokumentace a~kompletace práce.
+\end{enumerate}
+
+\subsection{Analýza a návrh architektury}
+Jako klíčový architektonický vzor pro aplikaci jsem záměrně zvolila mikroservisní architekturu. Tento přístup striktně odděluje zodpovědnosti jednotlivých částí systému. Pro vizualizaci navržené struktury a způsobu komunikace bude v~praktické části práce využit architektonický diagram. V rámci backendové služby jsem aplikovala objektově orientovaný přístup (OOP), který zajišťuje vysokou modularitu a~znovupoužitelnost logiky metody BeCoMe.
+
+\subsection{Implementační nástroje a~prostředí}
+Pro realizaci praktické části práce jsem využila následující technologie a~nástroje, které jsem vybrala s ohledem na jejich relevanci a robustnost v moderním webovém vývoji:
+\begin{itemize}
+    \item \textbf{Backend:} Python 3.10 a webový mikro-framework Flask pro tvorbu REST API.
+    \item \textbf{Frontend:} JavaScript s~knihovnou React. Pro urychlení návrhu UI byl využit AI nástroj Lovable s~následným exportem kódu.
+    \item \textbf{Kontejnerizace:} Docker pro vytvoření izolovaných běhových prostředí a~Docker Compose pro orchestraci aplikace.
+    \item \textbf{Vývojové prostředí (IDE):} Visual Studio Code.
+    \item \textbf{Správa verzí:} Git a~platforma GitHub.
+\end{itemize}
+
+\subsection{Algoritmizace a~datové struktury backendu}
+Jádrem backendové služby je převod matematických vzorců metody BeCoMe do podoby efektivních algoritmů. Zvláštní pozornost jsem věnovala algoritmu pro výpočet statistického mediánu, který vyžaduje seřazení expertních odhadů. Tento krok zahrnuje:
+\begin{enumerate}
+    \item Výpočet těžiště (centroidu) pro každé fuzzy trojúhelníkové číslo.
+    \item Seřazení expertních odhadů podle hodnoty jejich těžišť s~využitím efektivního řadicího algoritmu \textit{Timsort}, integrovaného v~Pythonu.
+\end{enumerate}
+Expertní stanoviska jsou v~paměti aplikace reprezentována pomocí seznamu (list) objektů, což je datová struktura, která přirozeně podporuje potřebné operace.
+
+\subsection{Testování a~ověření funkčnosti}
+Kvalitu a~správnost implementace jsem zajistila pomocí dvoustupňového procesu testování:
+\begin{itemize}
+    \item \textbf{Modulové testování (\textit{Unit Testing}):} Vytvořila jsem automatizované testy s~využitím Python frameworku \texttt{unittest} pro ověření správnosti všech klíčových výpočetních funkcí v~backendové službě.
+    \item \textbf{Systémové ověření:} Výsledky celé aplikace jsem systematicky porovnávala s~výsledky z~referenční implementace v~MS Excel na základě definované testovací sady dat.
+    \item \textbf{Testování robustnosti:} Otestovala jsem odolnost backendového API vůči nekorektním vstupním datům.
+\end{itemize}
+
+\subsection{Vyhodnocení přínosu pro uživatele}
+Závěrečné zhodnocení přínosu nového řešení oproti původnímu (Excel) jsem provedla na základě kvalitativního srovnání podle následujících kritérií:
+\begin{itemize}
+    \item Platformová nezávislost a dostupnost, zajištěná webovým rozhraním.
+    \item Rozšiřitelnost a údržba, plynoucí z mikroservisní architektury.
+    \item Potenciál pro automatizaci a integraci prostřednictvím REST API.
+\end{itemize}
