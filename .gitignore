@@ -30,4 +30,8 @@ htmlcov/
 .DS_Store
 
 # Thesis workspace
-#/supplementary/
+supplementary/
+
+.mcp.json
+CLAUDE.md
+.claude
