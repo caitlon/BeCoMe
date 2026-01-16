@@ -367,125 +367,18 @@ Gx(Ω) = (5.5 + 8.5 + 13.0) / 3 = 9.00
 
 ---
 
-## Key Properties of BeCoMe
+## Why Combine Mean and Median?
 
-### 1. Robustness
+Arithmetic mean uses all data points but gets skewed by outliers. One extreme opinion can pull the result away from the group consensus. Median ignores everything except the central value — robust to outliers, but throws away information from non-central experts.
 
-**Combination of mean and median provides:**
-- Sensitivity to all data (via arithmetic mean)
-- Resistance to outliers (via median)
-- Balanced compromise between both approaches
+BeCoMe splits the difference. The mean component ensures every opinion contributes; the median component prevents extremes from dominating. When experts largely agree, Γ and Ω are close, and ΓΩMean lands near both. When opinions diverge, the compromise falls between the pulled-mean and the stable-median.
 
-### 2. Mathematical Soundness
-
-**Properties preserved:**
-- If all experts agree, BeCoMe returns the consensus value
-- Result always satisfies triangular constraint: π ≤ φ ≤ ξ
-- Commutative: order of experts doesn't affect the result (except for numerical precision)
-
-### 3. Interpretability
-
-**All components have clear meaning:**
-- **Γ** - what experts say on average
-- **Ω** - what the central expert says
-- **ΓΩMean** - balanced compromise
-- **Δmax** - level of disagreement
-
-### 4. Precision Indicator
-
-**Δmax provides decision confidence:**
-```
-Δmax ≈ 0     → High consensus, confident decision
-Δmax << φ    → Acceptable agreement
-Δmax ≥ φ     → Low consensus, need more discussion
-```
-
----
-
-## Comparison with Classical Methods
-
-| Method | Strengths | Weaknesses |
-|--------|-----------|------------|
-| **Arithmetic Mean only** | Simple, uses all data | Sensitive to outliers |
-| **Median only** | Robust to outliers | Ignores non-central opinions |
-| **BeCoMe** | Combines both advantages | Slightly more complex |
-
----
-
-## When to Use BeCoMe
-
-### Ideal Scenarios
-
-1. **Expert panel decision-making** - multiple experts provide estimates
-2. **Uncertain information** - precise values unknown, ranges given
-3. **Risk assessment** - optimistic, realistic, pessimistic scenarios
-4. **Budget estimation** - min, most likely, max costs
-5. **Time estimation** - project duration with uncertainty
-
-### Requirements
-
-- At least 1 expert opinion (though 3+ recommended)
-- Opinions expressible as triangular fuzzy numbers
-- Need for robust aggregation resistant to outliers
-
----
-
-## Advantages
-
-✓ **Mathematically sound** - based on established statistical principles  
-✓ **Robust** - resistant to outliers through median component  
-✓ **Interpretable** - all results have clear meaning  
-✓ **Flexible** - works with any number of experts (odd or even)  
-✓ **Provides confidence** - Δmax indicates level of agreement  
-✓ **Preserves uncertainty** - maintains fuzzy nature of input  
-
----
+The error metric Δmax quantifies this divergence. Near-zero Δmax means the mean and median nearly coincide — strong consensus. Large Δmax signals polarization or outliers, suggesting the group should discuss further before deciding.
 
 ## Limitations
 
-- Assumes opinions can be represented as triangular fuzzy numbers
-- Requires expert judgment to convert verbal assessments to fuzzy numbers
-- More complex than simple averaging (but worth the added robustness)
-- Centroid-based sorting may group opinions differently than peak-based sorting
+BeCoMe assumes opinions fit the triangular fuzzy format. Not all expert judgments naturally decompose into (min, likely, max). Converting verbal assessments like "probably around 50, maybe up to 80" requires interpretation. The centroid-based sorting can also produce different orderings than peak-based sorting would, though in practice this rarely changes the median significantly.
 
----
+## Reference
 
-## Implementation Notes
-
-This Python implementation follows the original algorithm exactly:
-
-- Component-wise operations on fuzzy triangular numbers
-- Centroid-based sorting for median calculation
-- Separate handling for odd/even number of experts
-- Validation of triangular constraint (A ≤ C ≤ B)
-
-For code examples and usage, see:
-- `README.md` - Quick start guide
-- `examples/` - Real-world case studies
-- `docs/api-reference.md` - Complete API documentation
-
----
-
-## References
-
-**Primary source:**
-> Vrana, I., Tyrychtr, J., & Pelikan, M. (2021). BeCoMe – A new approach for fuzzy group decision making. *Expert Systems with Applications*, Volume 177, Article 114936.
-
-**Related topics:**
-- Fuzzy set theory (Zadeh, 1965)
-- Fuzzy numbers and arithmetic
-- Group decision-making under uncertainty
-- Aggregation operators
-
----
-
-## Further Reading
-
-- **Fuzzy Set Theory**: Zadeh, L.A. (1965). "Fuzzy sets". *Information and Control*, 8(3), 338-353.
-- **Fuzzy Numbers**: Dubois, D., & Prade, H. (1978). "Operations on fuzzy numbers". *International Journal of Systems Science*, 9(6), 613-626.
-- **Group Decision Making**: Kacprzyk, J., & Fedrizzi, M. (1988). "A 'soft' measure of consensus in the setting of partial (fuzzy) preferences". *European Journal of Operational Research*, 34(3), 316-325.
-
----
-
-*Last updated: 2025-10-10*  
-*Based on original BeCoMe paper by Vrana et al. (2021)*
+Vrana, I., Tyrychtr, J., & Pelikan, M. (2021). BeCoMe – A new approach for fuzzy group decision making. *Expert Systems with Applications*, 177, 114936.
