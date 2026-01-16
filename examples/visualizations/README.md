@@ -67,30 +67,6 @@ All visualizations support:
 
 These features run entirely in the local browser environment without requiring external services.
 
-## Output
-
-### Automatic Saving
-
-All generated visualizations are automatically saved to:
-
-```
-examples/visualizations/output/
-```
-
-Output files include:
-- PNG images for static inclusion in reports
-- Interactive HTML files for web-based exploration
-- Data exports in CSV format (when applicable)
-
-### File Naming Convention
-
-Files are named according to the pattern:
-```
-{case_name}_{visualization_type}_{timestamp}.{extension}
-```
-
-Example: `budget_triangular_functions_20250122.png`
-
 ## Case Studies
 
 The visualizations support all three case studies included in the thesis:
