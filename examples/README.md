@@ -68,8 +68,6 @@ jupyter notebook examples/visualizations/visualize_become.py
 jupyter lab examples/visualizations/visualize_become.py
 ```
 
-All visualizations are automatically saved to `examples/visualizations/output/`.
-
 ## Data Files
 
 The `data/` directory contains case study data in simple text format:

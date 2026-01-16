@@ -5,6 +5,29 @@ Python implementation of the BeCoMe (Best Compromise Mean) method for group deci
 ![Python](https://img.shields.io/badge/python-3.13+-blue.svg)
 ![License](https://img.shields.io/badge/license-Academic-blue)
 ![Tests](https://img.shields.io/badge/tests-passing-brightgreen)
+![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)
+
+## Table of Contents
+
+- [Project Information](#project-information)
+- [Abstract](#abstract)
+- [Motivation](#motivation)
+- [Features](#features)
+- [Methodology](#methodology)
+- [Data](#data)
+- [Quick Start](#quick-start)
+- [Installation](#installation)
+- [Usage](#usage)
+- [Project Structure](#project-structure)
+- [Testing](#testing)
+- [Code Quality](#code-quality)
+- [Documentation](#documentation)
+- [Architecture](#architecture)
+- [Examples](#examples)
+- [License](#license)
+- [Contact](#contact)
+- [References](#references)
+- [Acknowledgments](#acknowledgments)
 
 ## Project Information
 
@@ -19,27 +42,28 @@ Python implementation of the BeCoMe (Best Compromise Mean) method for group deci
 
 ## Abstract
 
-Group decision-making under uncertainty is a critical challenge in many domains, including public policy, emergency management, and resource allocation. Traditional aggregation methods often fail to capture the inherent fuzziness and disagreement among expert opinions, particularly when dealing with interval estimates or subjective assessments.
+**BeCoMe** (Best Compromise Mean) is a group decision-making method that aggregates expert opinions expressed as fuzzy triangular numbers. This Python implementation combines arithmetic mean and median approaches to produce consensus estimates balancing central tendency with outlier resistance.
 
-This thesis presents a Python implementation of the BeCoMe (Best Compromise Mean) method, which addresses these limitations by combining arithmetic mean and statistical median approaches within a fuzzy triangular number framework. The method provides a robust mechanism for aggregating expert opinions expressed as fuzzy triangular numbers, producing a consensus estimate that balances central tendency with distributional robustness.
-
-The implementation is validated against three real-world case studies from public policy domain: COVID-19 budget allocation (22 experts), flood prevention planning (13 experts with polarized views), and cross-border travel policy assessment (22 experts using Likert scale). Complete test coverage and comprehensive documentation ensure reproducibility and facilitate future research applications.
+Validated on three Czech case studies (COVID-19 budget allocation, flood prevention, cross-border travel policy). Results verified against original Excel implementation with 100% test coverage.
 
 ## Motivation
 
-Expert-based decision-making faces several challenges:
+Expert opinions are ranges, not points. Traditional aggregation methods either lose information about uncertainty or fail to handle outliers well. Most existing tools are difficult to use in practice.
 
-1. **Uncertainty representation**: Experts often express opinions as ranges or intervals rather than point estimates, reflecting inherent uncertainty in their assessments.
+BeCoMe addresses these problems. Arithmetic mean preserves distributional information; median provides robustness to outliers. Combining both in a fuzzy triangular number framework gives better consensus estimates. This library includes three worked examples from Czech policy decisions.
 
-2. **Opinion aggregation**: Combining multiple expert opinions requires methods that preserve information about uncertainty while producing actionable consensus estimates.
+## Features
 
-3. **Robustness to outliers**: Traditional mean-based aggregation is sensitive to extreme opinions, while median-based approaches may lose information about the overall distribution.
-
-4. **Practical applicability**: Decision support tools must be accessible to practitioners without requiring deep mathematical expertise.
-
-The BeCoMe method addresses these challenges by combining the strengths of arithmetic mean (preserving distributional information) and statistical median (providing robustness), while working within a fuzzy triangular number framework that naturally represents expert uncertainty.
-
-This implementation makes the method accessible through a well-documented Python library with practical examples from public policy applications.
+- **Fuzzy Triangular Number Operations**: Addition, averaging, and centroid calculation for TFN
+- **Arithmetic Mean Aggregation**: Component-wise averaging of expert opinions
+- **Median Aggregation**: Centroid-based sorting with odd/even handling via Strategy pattern
+- **Best Compromise Calculation**: Combined mean-median approach for robust consensus
+- **Error Estimation**: Maximum deviation metric for result quality assessment
+- **Likert Scale Support**: Handle ordinal scale data as special case of fuzzy numbers
+- **Three Real-World Case Studies**: COVID-19 budget, flood prevention, cross-border travel
+- **100% Test Coverage**: Unit and integration tests for all modules
+- **Type Safety**: Full mypy strict mode compliance
+- **Excel Validation**: Results verified against original Excel implementation
 
 ## Methodology
 
@@ -62,23 +86,20 @@ The algorithm proceeds through four steps:
 **Programming Language**: Python 3.13+
 
 **Key Design Decisions**:
-- Object-oriented architecture with clear separation between data models and calculation logic
+- Object-oriented architecture separating data models from calculation logic
 - Strategy pattern for median calculation (odd vs. even number of experts)
 - Immutable value objects for fuzzy numbers using `dataclasses`
 - Type safety enforced through `mypy` in strict mode
-- Comprehensive unit and integration testing with 100% code coverage
+- Unit and integration testing with 100% code coverage
 
 **Dependencies**:
 - Core: Python standard library only (no external dependencies for calculation logic)
 - Development: `pytest` for testing, `mypy` for type checking, `ruff` for linting
 - Visualization: `matplotlib`, `seaborn`, `jupyter` (optional, for examples)
 
-**Validation**:
-- Implementation validated against Excel reference calculations from original research
-- Three case studies with known expected results
-- Numerical precision verified to 0.001 tolerance for all test cases
+**Validation**: Results match Excel reference calculations from the original research. All three case studies produce expected values within 0.001 tolerance.
 
-See [Architecture Documentation](docs/architecture.md) for detailed design rationale.
+See [Architecture Documentation](docs/architecture.md) for design rationale.
 
 ## Data
 
@@ -87,25 +108,16 @@ See [Architecture Documentation](docs/architecture.md) for detailed design ratio
 The implementation includes three real-world datasets from Czech public policy domain:
 
 #### 1. Budget Case (budget_case.txt)
-- **Domain**: COVID-19 pandemic budget support
-- **Experts**: 22 (government officials, emergency service leaders)
-- **Data Type**: Interval estimates (0-100 billion CZK)
-- **Format**: Fuzzy triangular numbers
-- **Characteristics**: Even number of experts, moderate agreement
+
+COVID-19 pandemic budget support estimation. 22 experts (government officials, emergency service leaders) provided interval estimates in billions of CZK. Demonstrates median calculation with an even number of experts.
 
 #### 2. Floods Case (floods_case.txt)
-- **Domain**: Flood prevention - arable land reduction
-- **Experts**: 13 (land owners, hydrologists, rescue services)
-- **Data Type**: Percentage estimates (0-100%)
-- **Format**: Fuzzy triangular numbers
-- **Characteristics**: Odd number of experts, highly polarized opinions
+
+Flood prevention planning — what percentage of arable land should be converted? 13 experts from different backgrounds (land owners, hydrologists, rescue services) show highly polarized opinions. This case demonstrates median calculation with an odd expert count.
 
 #### 3. Pendlers Case (pendlers_case.txt)
-- **Domain**: Cross-border travel policy during pandemic
-- **Experts**: 22 (public health officials, border services)
-- **Data Type**: Likert scale ratings (0, 25, 50, 75, 100)
-- **Format**: Crisp values (special case of fuzzy numbers where a = c = b)
-- **Characteristics**: Even number of experts, ordinal scale data
+
+Cross-border travel policy during pandemic. 22 public health officials and border service representatives rated policy options on a Likert scale (0, 25, 50, 75, 100). Uses crisp values — a special case where a = c = b in fuzzy number notation.
 
 ### Data Format
 
@@ -127,6 +139,17 @@ Expert2 | 12.0 | 18.0 | 25.0
 - **Location**: `examples/data/` directory in this repository
 - **License**: Academic use only (part of bachelor thesis)
 - **Access**: Public (GitHub repository)
+
+## Quick Start
+
+Get results in under 3 minutes:
+
+```bash
+git clone <repository-url>
+cd BeCoMe
+uv sync
+uv run python -m examples.analyze_budget_case
+```
 
 ## Installation
 
@@ -264,7 +287,7 @@ BeCoMe/
 
 ## Testing
 
-The implementation includes comprehensive test coverage:
+The implementation includes full test coverage:
 
 ### Running Tests
 
@@ -283,15 +306,11 @@ uv run pytest tests/unit/models/       # Model tests only
 
 ### Test Coverage
 
-Current test coverage: **100%** (all source code lines covered)
+Current test coverage: **100%** (all source code lines covered).
 
-Test suite includes:
-- 173 unit tests covering all models, calculators, and interpreters
-- 29 integration tests validating against Excel reference implementation
-- Property-based tests for fuzzy number operations
-- Edge case coverage (single expert, identical opinions, extreme values)
+The test suite contains 173 unit tests for models, calculators, and interpreters. Another 29 integration tests validate results against the original Excel implementation. Edge cases like single expert, identical opinions, and extreme values are covered. Property-based tests verify fuzzy number arithmetic.
 
-See [Quality Report](docs/quality-report.md) for detailed test coverage metrics.
+See [Quality Report](docs/quality-report.md) for detailed metrics.
 
 ## Code Quality
 
@@ -311,15 +330,11 @@ uv run ruff format .
 uv run mypy src/ examples/ && uv run ruff check . && uv run pytest --cov=src
 ```
 
-Quality metrics:
-- Type safety: 100% (mypy strict mode, no type: ignore comments)
-- Code style: 100% (ruff compliance)
-- Test coverage: 100%
-- Documentation: Complete docstrings for all public APIs
+All code passes mypy in strict mode without `type: ignore` comments. Ruff enforces consistent style. Every public API has docstrings.
 
 ## Documentation
 
-Comprehensive documentation is available in the `docs/` directory:
+Documentation is available in the `docs/` directory:
 
 | Document | Description |
 |----------|-------------|
@@ -332,15 +347,11 @@ Comprehensive documentation is available in the `docs/` directory:
 
 See [docs/README.md](docs/README.md) for complete documentation navigation and recommended reading order.
 
-**Recommended reading order**:
-1. [Method Description](docs/method-description.md) - Understand the mathematical foundation
-2. [Architecture](docs/architecture.md) - Learn the design decisions
-3. [API Reference](docs/api-reference.md) - Explore the implementation
-4. [UML Diagrams](docs/uml-diagrams.md) - Visualize the structure
+Start with [Method Description](docs/method-description.md) for the mathematical foundation, then [Architecture](docs/architecture.md) for design decisions. The [API Reference](docs/api-reference.md) covers implementation details, and [UML Diagrams](docs/uml-diagrams.md) visualize the structure.
 
 ## Architecture
 
-The implementation follows object-oriented design principles with clear separation of concerns:
+The implementation follows object-oriented design principles:
 
 ### Class Diagram
 
@@ -348,41 +359,31 @@ The implementation follows object-oriented design principles with clear separati
 
 *Complete architecture with sequence and activity diagrams available in [UML Documentation](docs/uml-diagrams.md)*
 
-### Key Design Patterns
+### Design Patterns
 
-- **Value Object**: `FuzzyTriangleNumber` is immutable and validated on construction
-- **Strategy Pattern**: Different median calculation strategies for odd/even expert counts
-- **Template Method**: `BaseAggregationCalculator` defines calculation skeleton
-- **Data Transfer Object**: `BeCoMeResult` encapsulates all calculation outputs
+`FuzzyTriangleNumber` is a value object — immutable and validated on construction. The median calculation uses Strategy pattern to handle odd and even expert counts differently. `BaseAggregationCalculator` applies Template Method for the calculation skeleton, while `BeCoMeResult` serves as a DTO encapsulating all outputs.
 
-See [Architecture Documentation](docs/architecture.md) for detailed design rationale.
+See [Architecture Documentation](docs/architecture.md) for design rationale.
 
 ## Examples
 
 The `examples/` directory contains three real-world case studies demonstrating the method:
 
-### Budget Case (22 experts, even)
-**Scenario**: COVID-19 pandemic budget support estimation (0-100 billion CZK)
-**Participants**: Government officials and emergency service leaders
-**Key Feature**: Demonstrates median calculation with even number of experts
+### Budget Case (22 experts)
 
-### Floods Case (13 experts, odd)
-**Scenario**: Flood prevention - recommended percentage of arable land reduction
-**Participants**: Land owners, hydrologists, rescue service coordinators
-**Key Feature**: Demonstrates median calculation with odd number of experts and highly polarized opinions
+Government officials and emergency service leaders estimated COVID-19 budget support needs (0-100 billion CZK). With an even number of experts, this case shows how the median is calculated by averaging two middle values.
 
-### Pendlers Case (22 experts, even)
-**Scenario**: Cross-border travel policy during pandemic
-**Participants**: Public health officials and border service representatives
-**Key Feature**: Demonstrates handling of Likert scale data (crisp values as special case of fuzzy numbers)
+### Floods Case (13 experts)
 
-Each example:
-- Loads data from text files in `examples/data/`
-- Shows all calculation steps with mathematical formulas
-- Displays intermediate results (arithmetic mean, median, sorting process)
-- Provides interpretation of final consensus estimate
+Land owners, hydrologists, and rescue coordinators disagreed strongly on flood prevention measures. The polarized opinions make this case interesting — it demonstrates how BeCoMe handles outliers when expert count is odd.
 
-See [examples/README.md](examples/README.md) for detailed documentation of example structure and usage.
+### Pendlers Case (22 experts)
+
+Public health officials rated cross-border travel policies on a Likert scale. Unlike other cases, this one uses crisp values (where a = c = b), showing that fuzzy numbers generalize ordinal scales.
+
+Running any example loads data from `examples/data/`, walks through the calculation step by step, and shows intermediate results (arithmetic mean, median, sorting process). The output includes interpretation of the final consensus estimate.
+
+See [examples/README.md](examples/README.md) for details.
 
 ## License
 
@@ -417,12 +418,9 @@ See [docs/references.md](docs/references.md) for complete bibliography including
 
 ### Datasets
 
-All case study datasets are included in this repository under `examples/data/`:
-- `budget_case.txt` - COVID-19 budget allocation scenario (22 experts, even)
-- `floods_case.txt` - Flood prevention planning scenario (13 experts, odd, polarized)
-- `pendlers_case.txt` - Cross-border travel policy (22 experts, Likert scale)
+All case study data is in `examples/data/`. The budget case has 22 experts estimating COVID-19 support. Floods case involves 13 experts with polarized views on land reduction. Pendlers case uses Likert scale ratings from 22 officials on cross-border travel policy.
 
-See [examples/data/README.md](examples/data/README.md) for complete dataset documentation, including file format specifications, data provenance, and ethical considerations.
+See [examples/data/README.md](examples/data/README.md) for format specifications and data provenance.
 
 ## Acknowledgments
 
