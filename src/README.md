@@ -207,7 +207,6 @@ The `examples/` directory shows how to use this code with real case studies. Eac
 
 - [Main README](../README.md) — project overview
 - [Method description](../docs/method-description.md) — mathematical foundation
-- [Method description](../docs/method-description.md) — mathematical foundation
 - [UML diagrams](../docs/uml-diagrams/README.md) — visual architecture
 - [Tests](../tests/README.md) — test organization
 - [Examples](../examples/README.md) — case studies
