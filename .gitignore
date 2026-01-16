@@ -35,3 +35,6 @@ supplementary/
 .mcp.json
 CLAUDE.md
 .claude
+
+# Generated visualizations
+examples/visualizations/output/
