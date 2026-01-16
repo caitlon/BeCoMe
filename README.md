@@ -99,8 +99,6 @@ The algorithm proceeds through four steps:
 
 **Validation**: Results match Excel reference calculations from the original research. All three case studies produce expected values within 0.001 tolerance.
 
-See [Architecture Documentation](docs/architecture.md) for design rationale.
-
 ## Data
 
 ### Case Study Datasets
@@ -227,7 +225,7 @@ print(f"Max Error: {result.max_error}")
 print(f"Number of Experts: {result.num_experts}")
 ```
 
-See [API Reference](docs/api-reference.md) for complete documentation of all classes and methods.
+See [src/README.md](src/README.md) for API documentation.
 
 ## Project Structure
 
@@ -273,14 +271,9 @@ BeCoMe/
 │   ├── analyze_floods_case.py    # Floods case analysis
 │   └── analyze_pendlers_case.py  # Pendlers case analysis
 ├── docs/                  # Documentation
-│   ├── README.md                # Documentation navigation
 │   ├── method-description.md    # Mathematical foundation
-│   ├── api-reference.md         # Complete API documentation
-│   ├── architecture.md          # Design decisions
-│   ├── uml-diagrams.md          # Visual architecture
 │   ├── quality-report.md        # Quality metrics
-│   ├── references.md            # Bibliography
-│   └── uml-diagrams/            # UML diagram sources and images
+│   └── uml-diagrams/            # UML diagrams (PNG, PUML, README)
 ├── supplementary/         # Reference materials
 └── README.md             # This file
 ```
@@ -339,15 +332,9 @@ Documentation is available in the `docs/` directory:
 | Document | Description |
 |----------|-------------|
 | [Method Description](docs/method-description.md) | Mathematical foundation with formulas and worked examples |
-| [API Reference](docs/api-reference.md) | Complete API documentation for all classes and methods |
-| [UML Diagrams](docs/uml-diagrams.md) | Visual architecture (class, sequence, activity diagrams) |
-| [Architecture](docs/architecture.md) | Design decisions, patterns, and trade-offs |
+| [UML Diagrams](docs/uml-diagrams/README.md) | Visual architecture (class, sequence, activity diagrams) |
 | [Quality Report](docs/quality-report.md) | Code quality metrics and test coverage details |
-| [References](docs/references.md) | Bibliography and academic sources cited in thesis |
-
-See [docs/README.md](docs/README.md) for complete documentation navigation and recommended reading order.
-
-Start with [Method Description](docs/method-description.md) for the mathematical foundation, then [Architecture](docs/architecture.md) for design decisions. The [API Reference](docs/api-reference.md) covers implementation details, and [UML Diagrams](docs/uml-diagrams.md) visualize the structure.
+| [Source Code](src/README.md) | API documentation and module descriptions |
 
 ## Architecture
 
@@ -355,15 +342,13 @@ The implementation follows object-oriented design principles:
 
 ### Class Diagram
 
-![Class Diagram](docs/uml-diagrams/class-diagram.png)
+![Class Diagram](docs/uml-diagrams/diagrams/png/class-diagram.png)
 
-*Complete architecture with sequence and activity diagrams available in [UML Documentation](docs/uml-diagrams.md)*
+*Complete architecture with sequence and activity diagrams available in [UML Documentation](docs/uml-diagrams/README.md)*
 
 ### Design Patterns
 
 `FuzzyTriangleNumber` is a value object — immutable and validated on construction. The median calculation uses Strategy pattern to handle odd and even expert counts differently. `BaseAggregationCalculator` applies Template Method for the calculation skeleton, while `BeCoMeResult` serves as a DTO encapsulating all outputs.
-
-See [Architecture Documentation](docs/architecture.md) for design rationale.
 
 ## Examples
 
@@ -414,7 +399,7 @@ The BeCoMe method was developed by I. Vrana, J. Tyrychtr, and M. Pelikán at the
 **Key reference:**
 - Vrana, I., Tyrychtr, J., & Pelikán, M. (2021). BeCoMe: Easy-to-implement optimized method for best-compromise group decision making: Flood-prevention and COVID-19 case studies. *Environmental Modelling & Software*, 136, 104953. https://doi.org/10.1016/j.envsoft.2020.104953
 
-See [docs/references.md](docs/references.md) for complete bibliography including fuzzy logic foundations (Zadeh 1965, Bellman & Zadeh 1970), software engineering references, and all sources cited in the thesis.
+The thesis bibliography includes fuzzy logic foundations (Zadeh 1965, Bellman & Zadeh 1970), software engineering references, and all sources cited in the research.
 
 ### Datasets
 

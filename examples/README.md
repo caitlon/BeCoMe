@@ -1,28 +1,26 @@
 # BeCoMe Examples
 
-This directory contains practical examples demonstrating the BeCoMe (Best Compromise Mean) method for aggregating expert opinions. These examples are part of a bachelor thesis at the Faculty of Economics and Management, Czech University of Life Sciences Prague.
+Three case studies from Czech public policy show the BeCoMe method in action. Each loads real expert data, walks through the calculation, and displays intermediate results.
 
-## Available Examples
+## Directory Structure
 
-Three comprehensive case studies demonstrate step-by-step calculations with real-world scenarios from Czech public policy domain:
+```
+examples/
+├── analyze_budget_case.py      # COVID-19 budget (22 experts, even)
+├── analyze_floods_case.py      # Flood prevention (13 experts, odd)
+├── analyze_pendlers_case.py    # Cross-border travel (22 experts, Likert)
+├── data/                       # Case study datasets
+├── utils/                      # Data loading, display, formatting
+└── visualizations/             # Interactive Jupyter charts
+```
 
-### Budget Case (`analyze_budget_case.py`)
-- **Scenario**: COVID-19 pandemic budget support estimation
-- **Experts**: 22 (even number)
-- **Data source**: `data/budget_case.txt`
-- **Key feature**: Demonstrates median calculation with even number of experts
+## Case Studies
 
-### Floods Case (`analyze_floods_case.py`)
-- **Scenario**: Flood prevention - arable land reduction percentage
-- **Experts**: 13 (odd number)
-- **Data source**: `data/floods_case.txt`
-- **Key feature**: Demonstrates median calculation with odd number of experts and polarized opinions
+**Budget Case** (`analyze_budget_case.py`) — 22 government officials estimated COVID-19 budget support needs in billions of CZK. With an even expert count, this case shows how the median averages two middle values.
 
-### Pendlers Case (`analyze_pendlers_case.py`)
-- **Scenario**: Cross-border travel policy during pandemic
-- **Experts**: 22 (even number)
-- **Data source**: `data/pendlers_case.txt`
-- **Key feature**: Demonstrates Likert scale data (crisp values as special case of fuzzy numbers)
+**Floods Case** (`analyze_floods_case.py`) — Land owners, hydrologists, and rescue coordinators disagreed sharply on flood prevention measures. The 13 experts produced highly polarized opinions, making this case useful for understanding how BeCoMe handles outliers when expert count is odd.
+
+**Pendlers Case** (`analyze_pendlers_case.py`) — Public health officials rated cross-border travel policies on a Likert scale (0, 25, 50, 75, 100). Unlike other cases, this one uses crisp values where lower bound equals peak equals upper bound.
 
 ### Running Examples
 
@@ -37,36 +35,17 @@ uv run python -m examples.analyze_floods_case
 uv run python -m examples.analyze_pendlers_case
 ```
 
-Each example provides:
-- Loading data from text files
-- Step-by-step calculation process
-- Arithmetic mean (Gamma) calculation
-- Median (Omega) calculation with sorting by centroids
-- Best compromise (GammaOmegaMean) calculation
-- Maximum error estimation
-- Detailed formulas and intermediate results
+Each script loads data from text files, calculates arithmetic mean (Γ), median (Ω), and best compromise (ΓΩMean), then displays formulas and intermediate results at every step.
 
 ## Visualizations
 
-The `visualizations/` directory contains interactive Jupyter notebooks with comprehensive visualizations for exploring BeCoMe results.
-
-### Interactive Visualizations (`visualizations/visualize_become.py`)
-
-Available visualization types:
-- **Triangular Membership Functions** - Display expert opinions as fuzzy triangular numbers
-- **Centroid Charts** - Compare expert centroids with aggregated metrics
-- **Opinion Range Bars** - Horizontal bars showing opinion ranges, color-coded by distance from consensus
-- **Interactive Sensitivity Analysis** - Dynamic exploration of expert inclusion/exclusion impact
-- **Scenario Dashboard** - Comparative overview of all case studies
-- **Accuracy Gauge Indicators** - Visual quality assessment of expert agreement
-
-### Running Visualizations
+The `visualizations/` directory contains interactive Jupyter notebooks for exploring BeCoMe results. Available charts include triangular membership functions, centroid comparisons, sensitivity analysis (toggle experts on/off to see impact), and a scenario dashboard comparing all three cases side-by-side.
 
 ```bash
 jupyter notebook examples/visualizations/visualize_become.py
-# or
-jupyter lab examples/visualizations/visualize_become.py
 ```
+
+See [visualizations/README.md](visualizations/README.md) for details.
 
 ## Data Files
 
@@ -80,12 +59,7 @@ data/
 └── pendlers_case.txt    # Cross-border travel case (22 experts)
 ```
 
-**For complete dataset documentation**, see [data/README.md](data/README.md), which includes:
-- Detailed descriptions of all three case studies
-- File format specification and field descriptions
-- Data provenance and collection methodology
-- Validation procedures and quality assurance
-- Ethical considerations and limitations
+See [data/README.md](data/README.md) for dataset documentation, provenance, and validation details.
 
 ### Text File Format
 
@@ -102,41 +76,11 @@ Expert2 | 12 | 18 | 25
 ...
 ```
 
-Where:
-- **Lower** - Pessimistic estimate (lower bound of fuzzy triangular number)
-- **Peak** - Most likely value (peak of fuzzy triangular number)
-- **Upper** - Optimistic estimate (upper bound of fuzzy triangular number)
+Lower, Peak, Upper represent the fuzzy triangular number (pessimistic, most likely, optimistic estimates).
 
-## Usage
+## Custom Data
 
-### Installation
-
-Ensure dependencies are installed:
-
-```bash
-uv sync
-# or
-pip install -e ".[dev]"
-```
-
-### Running Case Analysis
-
-```bash
-uv run python -m examples.analyze_budget_case
-uv run python -m examples.analyze_floods_case
-uv run python -m examples.analyze_pendlers_case
-```
-
-### Using Custom Data
-
-To analyze custom expert opinions:
-
-1. Create a text file in `data/` directory following the format above
-2. Copy an existing analysis script (e.g., `analyze_budget_case.py`)
-3. Modify the script to load your data file
-4. Run the analysis
-
-Example code:
+To analyze your own expert opinions, create a text file in `data/` following the format above:
 
 ```python
 from examples.utils.data_loading import load_data_from_txt
@@ -154,78 +98,12 @@ print(f"Best Compromise: {result.best_compromise}")
 print(f"Max Error: {result.max_error}")
 ```
 
-## Learning Path
-
-### Beginner Level
-
-1. Start with `analyze_budget_case.py` to see a complete example
-2. Study the step-by-step calculations and formulas displayed in the output
-3. Read the source code to understand how data is loaded from text files
-
-### Intermediate Level
-
-1. Run `analyze_floods_case.py` to see odd number of experts scenario
-2. Compare output with `analyze_budget_case.py` (even number scenario)
-3. Understand the differences in median calculation for odd vs. even expert counts
-
-### Advanced Level
-
-1. Run `analyze_pendlers_case.py` to see Likert scale handling
-2. Compare all three analysis scripts to understand code patterns
-3. Understand how crisp values (Likert scale) are special cases of fuzzy numbers
-4. Create custom data files and run analysis on new scenarios
-
 ## Understanding the Output
 
-Each analysis script displays the following calculation steps:
+Each script displays four calculation steps: arithmetic mean (Γ), median (Ω), best compromise (ΓΩMean), and maximum error (Δmax). The output shows formulas, intermediate values, and sorted expert opinions at each stage. For the mathematical foundation behind these calculations, see [docs/method-description.md](../docs/method-description.md).
 
-### Step 1: Arithmetic Mean (Γ)
+## Related Documentation
 
-Formula: α = (1/M) × Σ(Aₖ), γ = (1/M) × Σ(Cₖ), β = (1/M) × Σ(Bₖ)
-
-Calculates the component-wise average of all expert opinions:
-- Average of lower bounds
-- Average of peaks
-- Average of upper bounds
-
-### Step 2: Median (Ω)
-
-Expert opinions are sorted by centroid values, then:
-- For odd M: median is the middle element
-- For even M: median is the average of two middle elements
-
-### Step 3: Best Compromise (ΓΩMean)
-
-Formula: π = (α + ρ)/2, φ = (γ + ω)/2, ξ = (β + σ)/2
-
-Calculates the average of arithmetic mean and median, combining:
-- Central tendency preservation (from arithmetic mean)
-- Robustness to outliers (from median)
-
-### Step 4: Maximum Error (Δmax)
-
-Formula: Δmax = |centroid(Γ) - centroid(Ω)| / 2
-
-Provides a precision indicator:
-- Lower values indicate better agreement between mean and median
-- Higher values suggest more dispersion in expert opinions
-
-## References
-
-For detailed information about the BeCoMe method:
-
-- **Mathematical foundation**: See `../docs/method-description.md` for complete formulas and theoretical background
-- **Project overview**: See `../README.md` for installation and general information
-- **API documentation**: See `../docs/api-reference.md` for programmatic usage
-
-## Example Output Structure
-
-Each analysis script produces:
-
-1. **Case header** with scenario description and expert count
-2. **Step-by-step calculations** with intermediate values
-3. **Visual representation** of expert opinions (when applicable)
-4. **Final results** with best compromise and quality metrics
-5. **Interpretation** of results in context of the scenario
-
-All outputs are designed to be reproducible and facilitate understanding of the BeCoMe method's operation.
+- [Main README](../README.md) — project overview and installation
+- [Method description](../docs/method-description.md) — mathematical foundation
+- [Source code](../src/README.md) — API documentation

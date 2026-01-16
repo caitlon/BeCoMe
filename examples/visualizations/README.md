@@ -1,109 +1,45 @@
 # BeCoMe Visualizations
 
-This directory contains interactive visualization tools for exploring BeCoMe (Best Compromise Method) results. These visualizations are part of a bachelor thesis at the Faculty of Economics and Management, Czech University of Life Sciences Prague.
-
-## Overview
-
-The visualization module provides interactive charts and dashboards for analyzing expert opinions and BeCoMe calculation results. All visualizations run locally in Jupyter environment, allowing dynamic exploration of the data.
+Interactive Jupyter charts for exploring expert opinions and BeCoMe calculation results. All visualizations run locally — no external services required.
 
 ## Interactive Demo
 
 ![BeCoMe Interactive Visualizations Demo](demo.gif)
 
-*Interactive demonstration of BeCoMe visualizations showing expert opinions, centroid comparisons, and sensitivity analysis features.*
+*Expert opinions, centroid comparisons, and sensitivity analysis in action.*
 
 ## Available Visualizations
 
-The `visualize_become.py` script provides five types of interactive visualizations:
+**Triangular Membership Functions** — Expert opinions displayed as overlapping triangular fuzzy numbers with arithmetic mean (Γ), median (Ω), and best compromise (ΓΩMean) highlighted on top.
 
-### 1. Triangular Membership Functions
-Display expert opinions as fuzzy triangular numbers with membership functions showing the degree of membership for each value in the triangular fuzzy number representation. This visualization overlays the arithmetic mean (Gamma), median (Omega), and best compromise (GammaOmegaMean) on top of all expert triangular opinions.
+**Centroid Charts** — Each expert's fuzzy opinion reduced to a single centroid value, sorted and compared against aggregated metrics. Useful for spotting outliers.
 
-### 2. Centroid Charts
-Comparative visualization of expert centroids alongside aggregated metrics (arithmetic mean, median, and best compromise), facilitating assessment of consensus and outliers. Each expert's fuzzy opinion is reduced to a single representative centroid value and sorted for easy comparison.
+**Sensitivity Analysis** — Toggle individual experts on/off with checkboxes to see how their inclusion affects the final compromise. Recalculates in real time.
 
-### 3. Interactive Sensitivity Analysis
-Dynamic tool for exploring the impact of including or excluding specific experts on the final best compromise result. Allows real-time recalculation and visualization of changes through interactive checkboxes. This widget provides immediate feedback on how removing outliers affects the consensus estimate.
+**Scenario Dashboard** — All three case studies (Budget, Floods, Pendlers) side-by-side with metrics table and compact charts for cross-case comparison.
 
-### 4. Scenario Dashboard
-Comparative overview displaying all three case studies (Budget, Floods, Pendlers) side-by-side in a single integrated view. Combines a detailed metrics table with compact visual charts, enabling rapid cross-scenario analysis and pattern identification across different expert opinion structures.
+**Accuracy Gauge** — Speedometer-style indicator showing agreement level among experts. Color-coded green/yellow/red based on maximum error metric.
 
-### 5. Accuracy Gauge Indicator
-Visual quality assessment showing the agreement level among experts and the precision of the consensus estimate (based on maximum error metric). Displays results as a speedometer-style gauge combined with a horizontal bar chart, using color coding (green/yellow/red) for instant quality assessment.
-
-## Usage
-
-### Requirements
-
-Ensure Jupyter environment is installed:
-
-```bash
-uv sync
-# or
-pip install -e ".[dev]"
-```
-
-### Running Visualizations
-
-Open the visualization script in Jupyter Notebook:
+## Running
 
 ```bash
 jupyter notebook examples/visualizations/visualize_become.py
-```
-
-Or use JupyterLab for enhanced interface:
-
-```bash
+# or
 jupyter lab examples/visualizations/visualize_become.py
 ```
 
-### Interactive Features
+Requires Jupyter environment (`uv sync` installs all dependencies).
 
-All visualizations support:
-- **Zoom and pan** - Explore specific regions of the charts
-- **Hover tooltips** - Display detailed information for each data point
-- **Dynamic filtering** - Select/deselect experts to see impact on results
-- **Real-time recalculation** - Interactive sensitivity analysis updates immediately
+## Interactive Features
 
-These features run entirely in the local browser environment without requiring external services.
-
-## Case Studies
-
-The visualizations support all three case studies included in the thesis:
-
-1. **Budget Case** - COVID-19 budget allocation (22 experts, even)
-2. **Floods Case** - Flood prevention planning (13 experts, odd)
-3. **Pendlers Case** - Cross-border travel policy (22 experts, Likert scale)
-
-Each case demonstrates different characteristics of expert opinion aggregation under fuzzy uncertainty.
+Charts support zoom, pan, and hover tooltips. Sensitivity analysis updates immediately when toggling experts. Works entirely in browser — no server calls.
 
 ## Technical Details
 
-### Visualization Libraries
+Built with Matplotlib, Seaborn, and ipywidgets. Tested with 100+ expert datasets. Color schemes optimized for both screen and print.
 
-The implementation uses:
-- **Matplotlib** - Base plotting functionality
-- **Seaborn** - Statistical visualizations and styling
-- **ipywidgets** - Interactive controls for Jupyter environment
-- **NumPy/Pandas** - Data processing and manipulation
+## Related Documentation
 
-### Performance
-
-All visualizations are optimized for local execution:
-- Efficient rendering of large expert datasets (tested up to 100+ experts)
-- Responsive interactive controls with minimal latency
-- Memory-efficient handling of multiple simultaneous visualizations
-
-## References
-
-For more information:
-- **Mathematical foundation**: See [../../docs/method-description.md](../../docs/method-description.md)
-- **Example case studies**: See [../README.md](../README.md)
-- **Dataset documentation**: See [../data/README.md](../data/README.md)
-- **Implementation details**: See source code in [visualize_become.py](visualize_become.py)
-
-## Notes
-
-- All visualizations are designed for academic presentation and thesis documentation
-- Color schemes are optimized for both screen display and print reproduction
-- Interactive features require Jupyter environment; static exports available for offline use
+- [examples/README.md](../README.md) — case study analyses
+- [data/README.md](../data/README.md) — dataset documentation
+- [docs/method-description.md](../../docs/method-description.md) — mathematical foundation
