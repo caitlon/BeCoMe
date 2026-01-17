@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from api.config import get_settings
 from src.calculators.become_calculator import BeCoMeCalculator
+from src.exceptions import BeCoMeError
 from src.models.expert_opinion import ExpertOpinion
 from src.models.fuzzy_number import FuzzyTriangleNumber
 
@@ -106,7 +107,7 @@ def create_app() -> FastAPI:
 
         Response::
 
-            {"status": "ok", "version": "1.0.0"}
+            {"status": "ok", "version": "0.1.0"}
         """
         return HealthResponse(status="ok", version=settings.api_version)
 
@@ -156,7 +157,7 @@ def create_app() -> FastAPI:
         try:
             calculator = BeCoMeCalculator()
             result = calculator.calculate_compromise(opinions)
-        except Exception as e:
+        except BeCoMeError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
 
         # Convert to response
