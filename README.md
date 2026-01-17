@@ -93,9 +93,10 @@ The algorithm proceeds through four steps:
 - Unit and integration testing with 100% code coverage
 
 **Dependencies**:
-- Core: Python standard library only (no external dependencies for calculation logic)
-- Development: `pytest` for testing, `mypy` for type checking, `ruff` for linting
-- Visualization: `matplotlib`, `seaborn`, `jupyter` (optional, for examples)
+- Core: `pydantic` for data validation (the only runtime dependency)
+- Development: `pytest`, `mypy`, `ruff` (optional, via `--extra dev`)
+- Visualization: `matplotlib`, `plotly`, `seaborn` (optional, via `--extra viz`)
+- Notebooks: `jupyter`, `ipykernel` (optional, via `--extra notebook`)
 
 **Validation**: Results match Excel reference calculations from the original research. All three case studies produce expected values within 0.001 tolerance.
 
@@ -145,7 +146,7 @@ Get results in under 3 minutes:
 ```bash
 git clone <repository-url>
 cd BeCoMe
-uv sync
+uv sync --extra dev
 uv run python -m examples.analyze_budget_case
 ```
 
@@ -165,8 +166,20 @@ This project uses `uv` for dependency management:
 git clone <repository-url>
 cd BeCoMe
 
-# Install dependencies using uv
+# Install core dependencies only
 uv sync
+
+# Install with development tools (testing, linting, type checking)
+uv sync --extra dev
+
+# Install with visualization libraries (matplotlib, plotly, seaborn)
+uv sync --extra viz
+
+# Install with Jupyter notebook support
+uv sync --extra notebook
+
+# Install everything
+uv sync --all-extras
 
 # Activate virtual environment
 source .venv/bin/activate  # On macOS/Linux
@@ -174,10 +187,20 @@ source .venv/bin/activate  # On macOS/Linux
 .venv\Scripts\activate     # On Windows
 ```
 
+### Dependency Groups
+
+| Group | Contents | Use Case |
+|-------|----------|----------|
+| (core) | pydantic | Minimal installation for using the library |
+| `dev` | pytest, mypy, ruff, pytest-cov | Development and testing |
+| `viz` | numpy, pandas, matplotlib, plotly, seaborn | Visualization and data analysis |
+| `notebook` | jupyter, ipykernel, ipywidgets | Interactive notebooks |
+| `docs` | plantuml | UML diagram generation |
+
 Alternatively, with pip:
 
 ```bash
-pip install -e ".[dev]"
+pip install -e ".[dev,viz,notebook]"
 ```
 
 ## Usage
