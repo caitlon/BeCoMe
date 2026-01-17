@@ -92,7 +92,7 @@ disallow_untyped_defs = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = ["-v", "--cov=src"]
+addopts = ["-v", "--cov=src", "--cov=api"]
 
 [tool.coverage.run]
 data_file = ".coverage"
