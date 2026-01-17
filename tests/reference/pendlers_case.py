@@ -40,12 +40,17 @@ from tests.reference._case_factory import create_case
 PENDLERS_CASE = create_case(
     case_name="Pendlers",
     expected_result={
+        "best_compromise_lower": 30.68181818,
         "best_compromise_peak": 30.68181818,
+        "best_compromise_upper": 30.68181818,
+        "best_compromise_centroid": 30.68181818,
+        "mean_lower": 36.36363636,
+        "mean_peak": 36.36363636,
+        "mean_upper": 36.36363636,
+        "median_lower": 25.0,
+        "median_peak": 25.0,
+        "median_upper": 25.0,
         "max_error": 5.68181818,
         "num_experts": 22,
-        "median_peak": 25.0,
-        "median_lower": 25.0,
-        "median_upper": 25.0,
-        "mean_peak": 36.36363636,
     },
 )
