@@ -35,6 +35,11 @@ notebook = [
 docs = [
     "plantuml>=0.3",
 ]
+api = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.34",
+    "pydantic-settings>=2.7",
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -65,6 +70,7 @@ ignore = [
     "RUF022",   # `__all__` is not sorted
     "N999",     # invalid module name (BeCoMe has capitals)
     "E402",     # module level import not at top of cell
+    "B008",     # function call in default argument (FastAPI Depends pattern)
 ]
 
 [tool.ruff.format]
