@@ -72,15 +72,9 @@ class TestBudgetCase:
         assert response.status_code == 200
         data = response.json()
 
-        assert data["arithmetic_mean"]["lower"] == pytest.approx(
-            expected["mean_lower"], rel=1e-6
-        )
-        assert data["arithmetic_mean"]["peak"] == pytest.approx(
-            expected["mean_peak"], rel=1e-6
-        )
-        assert data["arithmetic_mean"]["upper"] == pytest.approx(
-            expected["mean_upper"], rel=1e-6
-        )
+        assert data["arithmetic_mean"]["lower"] == pytest.approx(expected["mean_lower"], rel=1e-6)
+        assert data["arithmetic_mean"]["peak"] == pytest.approx(expected["mean_peak"], rel=1e-6)
+        assert data["arithmetic_mean"]["upper"] == pytest.approx(expected["mean_upper"], rel=1e-6)
 
     def test_budget_case_returns_correct_median(self, client: TestClient):
         """
