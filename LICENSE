@@ -20,29 +20,29 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
----
+================================================================================
 
-## Academic Attribution
+ACADEMIC ATTRIBUTION
 
-This software was developed as part of a bachelor thesis at
-Czech University of Life Sciences Prague, Faculty of Economics and Management.
+This software was developed as part of a bachelor thesis at Czech University
+of Life Sciences Prague, Faculty of Economics and Management.
 
-**Author:** Ekaterina Kuzmina
-**Supervisor:** doc. Ing. Jan Tyrychtr, Ph.D.
-**Year:** 2025/2026
+Author: Ekaterina Kuzmina
+Supervisor: doc. Ing. Jan Tyrychtr, Ph.D.
+Year: 2025/2026
 
-### Citation
+CITATION
 
 If you use this software in academic work, please cite:
 
-Kuzmina, E. (2026). *Implementation of the BeCoMe method in Python*.
+Kuzmina, E. (2026). Implementation of the BeCoMe method in Python.
 Bachelor thesis, Czech University of Life Sciences Prague.
 
-### Original Method
+ORIGINAL METHOD
 
 This implementation is based on the BeCoMe method:
 
 Vrana, I., Tyrychtr, J., & Pelikán, M. (2021). BeCoMe: Easy-to-implement
 optimized method for best-compromise group decision making: Flood-prevention
-and COVID-19 case studies. *Environmental Modelling & Software*, 136, 104953.
+and COVID-19 case studies. Environmental Modelling & Software, 136, 104953.
 https://doi.org/10.1016/j.envsoft.2020.104953
