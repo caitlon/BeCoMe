@@ -1,5 +1,6 @@
 """FastAPI application entry point."""
 
+import math
 from typing import Self
 
 from fastapi import FastAPI, HTTPException
@@ -24,7 +25,11 @@ class ExpertInput(BaseModel):
 
     @model_validator(mode="after")
     def validate_fuzzy_constraints(self) -> Self:
-        """Validate: lower <= peak <= upper."""
+        """Validate: finite values and lower <= peak <= upper."""
+        values = [self.lower, self.peak, self.upper]
+        if not all(math.isfinite(v) for v in values):
+            msg = "Values must be finite (no NaN or infinity)"
+            raise ValueError(msg)
         if not (self.lower <= self.peak <= self.upper):
             msg = f"Must satisfy: lower <= peak <= upper. Got: {self.lower}, {self.peak}, {self.upper}"
             raise ValueError(msg)
