@@ -1,12 +1,4 @@
-"""FastAPI application entry point.
-
-Run the server::
-
-    uv run uvicorn api.main:app --reload
-
-API will be available at http://localhost:8000
-Interactive docs at http://localhost:8000/docs
-"""
+"""FastAPI application entry point."""
 
 from typing import Self
 
@@ -99,47 +91,12 @@ def create_app() -> FastAPI:
 
     @app.get("/api/v1/health", response_model=HealthResponse, tags=["health"])
     def health_check() -> HealthResponse:
-        """Check API health status.
-
-        Example::
-
-            curl http://localhost:8000/api/v1/health
-
-        Response::
-
-            {"status": "ok", "version": "0.1.0"}
-        """
+        """Check API health status."""
         return HealthResponse(status="ok", version=settings.api_version)
 
     @app.post("/api/v1/calculate", response_model=CalculateResponse, tags=["calculation"])
     def calculate(request: CalculateRequest) -> CalculateResponse:
-        """Calculate BeCoMe result from expert opinions.
-
-        Accepts a list of expert opinions as fuzzy triangular numbers
-        and returns the best compromise along with intermediate results.
-
-        Example::
-
-            curl -X POST http://localhost:8000/api/v1/calculate \\
-                -H "Content-Type: application/json" \\
-                -d '{
-                    "experts": [
-                        {"name": "Expert1", "lower": 5, "peak": 10, "upper": 15},
-                        {"name": "Expert2", "lower": 8, "peak": 12, "upper": 18},
-                        {"name": "Expert3", "lower": 6, "peak": 11, "upper": 16}
-                    ]
-                }'
-
-        Response::
-
-            {
-                "best_compromise": {"lower": 6.5, "peak": 11.0, "upper": 16.0, "centroid": 11.17},
-                "arithmetic_mean": {"lower": 6.33, "peak": 11.0, "upper": 16.33, "centroid": 11.22},
-                "median": {"lower": 6.0, "peak": 11.0, "upper": 16.0, "centroid": 11.0},
-                "max_error": 0.22,
-                "num_experts": 3
-            }
-        """
+        """Calculate BeCoMe result from expert opinions."""
         # Convert input to domain models
         opinions = [
             ExpertOpinion(
