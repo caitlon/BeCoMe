@@ -1,6 +1,6 @@
 MIT License
 
-Copyright (c) 2025 Katya Biser
+Copyright (c) 2025 Ekaterina Kuzmina
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,3 +19,30 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+---
+
+## Academic Attribution
+
+This software was developed as part of a bachelor thesis at
+Czech University of Life Sciences Prague, Faculty of Economics and Management.
+
+**Author:** Ekaterina Kuzmina
+**Supervisor:** doc. Ing. Jan Tyrychtr, Ph.D.
+**Year:** 2025/2026
+
+### Citation
+
+If you use this software in academic work, please cite:
+
+Kuzmina, E. (2026). *Implementation of the BeCoMe method in Python*.
+Bachelor thesis, Czech University of Life Sciences Prague.
+
+### Original Method
+
+This implementation is based on the BeCoMe method:
+
+Vrana, I., Tyrychtr, J., & Pelikán, M. (2021). BeCoMe: Easy-to-implement
+optimized method for best-compromise group decision making: Flood-prevention
+and COVID-19 case studies. *Environmental Modelling & Software*, 136, 104953.
+https://doi.org/10.1016/j.envsoft.2020.104953
