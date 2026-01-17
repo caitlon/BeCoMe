@@ -4,9 +4,12 @@ These tests verify that the API returns the same results as the core
 BeCoMeCalculator when given the same expert opinion data.
 """
 
+from unittest.mock import patch
+
 import pytest
 from fastapi.testclient import TestClient
 
+from src.exceptions import BeCoMeError
 from tests.reference.budget_case import BUDGET_CASE
 from tests.reference.floods_case import FLOODS_CASE
 from tests.reference.pendlers_case import PENDLERS_CASE
@@ -264,3 +267,24 @@ class TestValidation:
 
         # THEN
         assert response.status_code == 422
+
+    def test_become_error_returns_400(self, client: TestClient):
+        """
+        GIVEN calculator raises BeCoMeError
+        WHEN POST /api/v1/calculate is called
+        THEN response status is 400 with error message
+        """
+        # GIVEN
+        experts = [{"name": "Test", "lower": 5.0, "peak": 10.0, "upper": 15.0}]
+        error_message = "Calculation failed"
+
+        # WHEN
+        with patch(
+            "api.main.BeCoMeCalculator.calculate_compromise",
+            side_effect=BeCoMeError(error_message),
+        ):
+            response = client.post("/api/v1/calculate", json={"experts": experts})
+
+        # THEN
+        assert response.status_code == 400
+        assert response.json()["detail"] == error_message
