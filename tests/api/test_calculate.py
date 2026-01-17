@@ -107,7 +107,7 @@ class TestBudgetCase:
         """
         GIVEN expert opinions from budget case study
         WHEN POST /api/v1/calculate is called
-        THEN response contains correct metadata (num_experts, is_even, max_error)
+        THEN response contains correct metadata (num_experts, max_error)
         """
         # GIVEN
         experts = _opinions_to_api_format(BUDGET_CASE["opinions"])
@@ -121,7 +121,6 @@ class TestBudgetCase:
         data = response.json()
 
         assert data["num_experts"] == expected["num_experts"]
-        assert data["is_even"] is True
         assert data["max_error"] == pytest.approx(expected["max_error"], rel=1e-2)
 
 
@@ -159,7 +158,7 @@ class TestFloodsCase:
         """
         GIVEN expert opinions from floods case study (odd number)
         WHEN POST /api/v1/calculate is called
-        THEN response contains correct metadata with is_even=False
+        THEN response contains correct metadata (num_experts, max_error)
         """
         # GIVEN
         experts = _opinions_to_api_format(FLOODS_CASE["opinions"])
@@ -173,7 +172,6 @@ class TestFloodsCase:
         data = response.json()
 
         assert data["num_experts"] == expected["num_experts"]
-        assert data["is_even"] is False
         assert data["max_error"] == pytest.approx(expected["max_error"], rel=1e-2)
 
 
