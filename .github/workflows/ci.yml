@@ -12,33 +12,30 @@ jobs:
     runs-on: ubuntu-24.04
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v5
+      - uses: actions/checkout@v5
 
-      - name: Set up Python 3.13
-        uses: actions/setup-python@v5
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
         with:
-          python-version: "3.13.7"
+          enable-cache: true
 
-      - name: Cache pip dependencies
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('pyproject.toml', 'uv.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-
+      - name: Set up Python
+        run: uv python install 3.13.7
 
       - name: Install dependencies
-        run: pip install -e ".[dev]"
+        run: uv sync --frozen --extra dev
 
-      - name: Check code formatting with ruff
-        run: ruff format --check .
+      - name: Check code formatting
+        run: uv run ruff format --check .
 
-      - name: Run ruff linting
-        run: ruff check .
+      - name: Run linting
+        run: uv run ruff check .
 
-      - name: Run mypy type checking
-        run: mypy src/
+      - name: Run type checking
+        run: uv run mypy src/
+
+      - name: Minimize uv cache
+        run: uv cache prune --ci
 
   tests:
     name: Tests with Coverage
@@ -46,32 +43,29 @@ jobs:
     needs: lint
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v5
+      - uses: actions/checkout@v5
 
-      - name: Set up Python 3.13
-        uses: actions/setup-python@v5
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
         with:
-          python-version: "3.13.7"
+          enable-cache: true
 
-      - name: Cache pip dependencies
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('pyproject.toml', 'uv.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-
+      - name: Set up Python
+        run: uv python install 3.13.7
 
       - name: Install dependencies
-        run: pip install -e ".[dev]"
+        run: uv sync --frozen --extra dev
 
-      - name: Run tests with coverage
-        run: pytest --cov=src --cov-report=term-missing --cov-report=html --cov-fail-under=100
+      - name: Run tests
+        run: uv run pytest --cov=src --cov-report=term-missing --cov-report=html --cov-fail-under=100
 
-      - name: Upload coverage HTML report
+      - name: Upload coverage report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: coverage-report
           path: htmlcov/
           retention-days: 30
+
+      - name: Minimize uv cache
+        run: uv cache prune --ci
