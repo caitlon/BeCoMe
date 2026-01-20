@@ -14,8 +14,22 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
+    # Database
+    database_url: str = "sqlite:///./become.db"
+
+    # Auth
+    secret_key: str = "change-me-in-production"
+    access_token_expire_hours: int = 24
+
+    # API
     debug: bool = False
     api_version: str = "0.1.0"
+
+    # CORS
+    cors_origins: list[str] = [
+        "https://*.lovable.app",
+        "http://localhost:3000",
+    ]
 
 
 @lru_cache

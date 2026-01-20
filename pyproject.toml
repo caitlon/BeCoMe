@@ -40,6 +40,12 @@ api = [
     "uvicorn[standard]>=0.34",
     "pydantic-settings>=2.7",
     "httpx>=0.28",
+    "sqlmodel>=0.0.24",
+    "alembic>=1.14",
+    "asyncpg>=0.30",
+    "python-jose[cryptography]>=3.3",
+    "passlib[bcrypt]>=1.7",
+    "python-multipart>=0.0.9",
 ]
 
 [build-system]
