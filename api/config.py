@@ -27,7 +27,6 @@ class Settings(BaseSettings):
 
     # CORS
     cors_origins: list[str] = [
-        "https://*.lovable.app",
         "http://localhost:3000",
     ]
 

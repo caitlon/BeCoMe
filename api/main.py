@@ -88,7 +88,7 @@ def fuzzy_to_output(fuzzy: FuzzyTriangleNumber) -> FuzzyNumberOutput:
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     """Initialize database tables on startup."""
     create_db_and_tables()
     yield

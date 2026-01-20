@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
-from sqlmodel import select
+from sqlalchemy.exc import IntegrityError
 
 from api.db.models import (
     CalculationResult,
@@ -59,7 +59,7 @@ class TestUserModel:
 
         # WHEN/THEN
         session.add(user2)
-        with pytest.raises(Exception):
+        with pytest.raises(IntegrityError):
             session.commit()
 
 
@@ -171,7 +171,7 @@ class TestProjectMemberModel:
             role=MemberRole.EXPERT,
         )
         session.add(member2)
-        with pytest.raises(Exception):
+        with pytest.raises(IntegrityError):
             session.commit()
 
     def test_user_can_be_member_of_multiple_projects(self, session):
@@ -232,7 +232,6 @@ class TestInvitationModel:
         assert invitation.token is not None
         assert invitation.used_by_id is None
 
-
     def test_invitation_token_unique(self, session):
         # GIVEN
         admin = User(
@@ -249,7 +248,6 @@ class TestInvitationModel:
         session.commit()
 
         # Create invitation with specific token
-        from uuid import uuid4
         shared_token = uuid4()
 
         inv1 = Invitation(
@@ -267,7 +265,7 @@ class TestInvitationModel:
             expires_at=datetime.now(UTC) + timedelta(days=7),
         )
         session.add(inv2)
-        with pytest.raises(Exception):
+        with pytest.raises(IntegrityError):
             session.commit()
 
     def test_invitation_can_be_marked_as_used(self, session):
@@ -343,7 +341,6 @@ class TestExpertOpinionModel:
         assert opinion.peak == 10.0
         assert opinion.upper_bound == 15.0
 
-
     def test_one_opinion_per_expert_per_project(self, session):
         # GIVEN
         user = User(
@@ -378,7 +375,7 @@ class TestExpertOpinionModel:
             upper_bound=16.0,
         )
         session.add(opinion2)
-        with pytest.raises(Exception):
+        with pytest.raises(IntegrityError):
             session.commit()
 
     def test_expert_can_have_opinions_in_different_projects(self, session):
@@ -508,7 +505,7 @@ class TestCalculationResultModel:
             num_experts=4,
         )
         session.add(result2)
-        with pytest.raises(Exception):
+        with pytest.raises(IntegrityError):
             session.commit()
 
 
@@ -551,7 +548,6 @@ class TestPasswordResetTokenModel:
         session.add(user)
         session.commit()
 
-        from uuid import uuid4
         shared_token = uuid4()
 
         token1 = PasswordResetToken(
@@ -569,7 +565,7 @@ class TestPasswordResetTokenModel:
             expires_at=datetime.now(UTC) + timedelta(hours=1),
         )
         session.add(token2)
-        with pytest.raises(Exception):
+        with pytest.raises(IntegrityError):
             session.commit()
 
     def test_user_can_have_multiple_reset_tokens(self, session):
