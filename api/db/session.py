@@ -7,7 +7,7 @@ from sqlmodel import Session
 from api.db.engine import engine
 
 
-def get_session() -> Generator[Session, None, None]:
+def get_session() -> Generator[Session]:
     """Yield a database session for request handling.
 
     Usage in FastAPI endpoints:
