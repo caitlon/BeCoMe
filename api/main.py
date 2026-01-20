@@ -1,12 +1,15 @@
 """FastAPI application entry point."""
 
 import math
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from typing import Self
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field, model_validator
 
 from api.config import get_settings
+from api.db.engine import create_db_and_tables
 from src.calculators.become_calculator import BeCoMeCalculator
 from src.exceptions import BeCoMeError
 from src.models.expert_opinion import ExpertOpinion
@@ -84,6 +87,13 @@ def fuzzy_to_output(fuzzy: FuzzyTriangleNumber) -> FuzzyNumberOutput:
 # --- Application ---
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    """Initialize database tables on startup."""
+    create_db_and_tables()
+    yield
+
+
 def create_app() -> FastAPI:
     """Create and configure FastAPI application."""
     settings = get_settings()
@@ -92,6 +102,7 @@ def create_app() -> FastAPI:
         title="BeCoMe API",
         description="Best Compromise Mean — Group Decision Making under Fuzzy Uncertainty",
         version=settings.api_version,
+        lifespan=lifespan,
     )
 
     @app.get("/api/v1/health", response_model=HealthResponse, tags=["health"])
