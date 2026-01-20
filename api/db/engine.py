@@ -33,6 +33,6 @@ def create_db_and_tables() -> None:
 
     Call this on application startup to ensure database schema exists.
     """
-    from api.db import models  # noqa: F401
+    from api.db import models  # noqa: F401 — registers models with SQLModel.metadata
 
     SQLModel.metadata.create_all(engine)

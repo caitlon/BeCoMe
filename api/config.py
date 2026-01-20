@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./become.db"
 
     # Auth
-    secret_key: str = "change-me-in-production"
+    secret_key: str  # Required, load from .env
     access_token_expire_hours: int = 24
 
     # API
