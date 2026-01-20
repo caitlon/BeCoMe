@@ -7,7 +7,7 @@ from sqlalchemy import Engine
 from sqlmodel import Session
 
 from api.db.engine import create_db_and_tables, create_db_engine, engine
-from api.db.session import get_session
+from api.dependencies import get_session
 
 
 class TestDatabaseEngine:

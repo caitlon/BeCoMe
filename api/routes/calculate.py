@@ -1,7 +1,8 @@
 """BeCoMe calculation endpoint."""
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
+from api.dependencies import get_calculator
 from api.schemas import (
     CalculateRequest,
     CalculateResponse,
@@ -16,7 +17,10 @@ router = APIRouter(prefix="/api/v1", tags=["calculation"])
 
 
 @router.post("/calculate", response_model=CalculateResponse)
-def calculate(request: CalculateRequest) -> CalculateResponse:
+def calculate(
+    request: CalculateRequest,
+    calculator: BeCoMeCalculator = Depends(get_calculator),
+) -> CalculateResponse:
     """Calculate BeCoMe result from expert opinions."""
     # Convert input to domain models
     opinions = [
@@ -33,7 +37,6 @@ def calculate(request: CalculateRequest) -> CalculateResponse:
 
     # Run calculation
     try:
-        calculator = BeCoMeCalculator()
         result = calculator.calculate_compromise(opinions)
     except BeCoMeError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
