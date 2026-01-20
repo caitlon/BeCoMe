@@ -29,6 +29,12 @@ htmlcov/
 # macOS system files
 .DS_Store
 
+# Environment variables
+.env
+
+# SQLite database
+*.db
+
 # Thesis workspace
 supplementary/
 
