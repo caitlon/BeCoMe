@@ -5,7 +5,7 @@ import math
 import pytest
 from pydantic import ValidationError
 
-from api.main import ExpertInput
+from api.schemas import ExpertInput
 
 
 class TestExpertInputValidation:
