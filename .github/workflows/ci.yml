@@ -41,6 +41,8 @@ jobs:
     name: Tests with Coverage
     runs-on: ubuntu-24.04
     needs: lint
+    env:
+      SECRET_KEY: test-secret-key-for-ci
 
     steps:
       - uses: actions/checkout@v5
