@@ -1,8 +1,8 @@
 """Tests for database infrastructure (engine, session, lifespan)."""
 
+from contextlib import suppress
 from unittest.mock import patch
 
-import pytest
 from sqlalchemy import Engine
 from sqlmodel import Session
 
@@ -50,10 +50,8 @@ class TestDatabaseSession:
         assert isinstance(session, Session)
 
         # Cleanup
-        try:
+        with suppress(StopIteration):
             next(session_gen)
-        except StopIteration:
-            pass
 
     def test_get_session_context_manager_works(self) -> None:
         """Session should work as context manager via generator."""
@@ -65,10 +63,8 @@ class TestDatabaseSession:
         assert session.is_active
 
         # Cleanup: exhaust generator to trigger context exit
-        try:
+        with suppress(StopIteration):
             next(session_gen)
-        except StopIteration:
-            pass
 
 
 class TestCreateDbAndTables:

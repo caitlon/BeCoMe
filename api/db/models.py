@@ -201,8 +201,18 @@ class CalculationResult(SQLModel, table=True):
     def validate_fuzzy_constraints(self) -> Self:
         """Validate lower <= peak <= upper for all fuzzy numbers."""
         fuzzy_sets = [
-            ("best_compromise", self.best_compromise_lower, self.best_compromise_peak, self.best_compromise_upper),
-            ("arithmetic_mean", self.arithmetic_mean_lower, self.arithmetic_mean_peak, self.arithmetic_mean_upper),
+            (
+                "best_compromise",
+                self.best_compromise_lower,
+                self.best_compromise_peak,
+                self.best_compromise_upper,
+            ),
+            (
+                "arithmetic_mean",
+                self.arithmetic_mean_lower,
+                self.arithmetic_mean_peak,
+                self.arithmetic_mean_upper,
+            ),
             ("median", self.median_lower, self.median_peak, self.median_upper),
         ]
         for name, lower, peak, upper in fuzzy_sets:

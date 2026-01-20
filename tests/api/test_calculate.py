@@ -280,7 +280,7 @@ class TestValidation:
 
         # WHEN
         with patch(
-            "api.main.BeCoMeCalculator.calculate_compromise",
+            "api.routes.calculate.BeCoMeCalculator.calculate_compromise",
             side_effect=BeCoMeError(error_message),
         ):
             response = client.post("/api/v1/calculate", json={"experts": experts})
