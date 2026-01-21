@@ -7,7 +7,8 @@ from uuid import uuid4
 import pytest
 
 from api.db.models import ExpertOpinion, User
-from api.services.opinion_service import OpinionNotFoundError, OpinionService
+from api.exceptions import OpinionNotFoundError
+from api.services.opinion_service import OpinionService
 
 
 class TestOpinionServiceGetOpinionsForProject:

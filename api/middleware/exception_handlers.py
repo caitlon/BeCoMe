@@ -31,8 +31,14 @@ from api.exceptions import (
 EXCEPTION_MAP: dict[type[BeCoMeAPIError], tuple[int, str | None]] = {
     # 404 Not Found
     ProjectNotFoundError: (status.HTTP_404_NOT_FOUND, "Project not found"),
-    MemberNotFoundError: (status.HTTP_404_NOT_FOUND, "Member not found"),
-    OpinionNotFoundError: (status.HTTP_404_NOT_FOUND, "Opinion not found"),
+    MemberNotFoundError: (
+        status.HTTP_404_NOT_FOUND,
+        "User is not a member of this project",
+    ),
+    OpinionNotFoundError: (
+        status.HTTP_404_NOT_FOUND,
+        "You have not submitted an opinion for this project",
+    ),
     InvitationNotFoundError: (status.HTTP_404_NOT_FOUND, "Invitation not found"),
     # 400 Bad Request
     InvitationExpiredError: (status.HTTP_400_BAD_REQUEST, "Invitation has expired"),
@@ -49,7 +55,7 @@ EXCEPTION_MAP: dict[type[BeCoMeAPIError], tuple[int, str | None]] = {
     UserExistsError: (status.HTTP_409_CONFLICT, "Email already registered"),
     UserAlreadyMemberError: (
         status.HTTP_409_CONFLICT,
-        "User is already a member of this project",
+        "You are already a member of this project",
     ),
     # 422 Unprocessable Entity
     ValuesOutOfRangeError: (status.HTTP_422_UNPROCESSABLE_ENTITY, None),  # Use exception message
