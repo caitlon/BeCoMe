@@ -128,7 +128,11 @@ def submit_opinion(
     _check_membership(project_id, current_user, project_service)
 
     project = project_service.get_project(project_id)
-    assert project is not None  # _check_membership ensures project exists
+    if project is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Project not found after membership check",
+        )
 
     values_in_range = (
         project.scale_min <= request.lower_bound <= project.scale_max
