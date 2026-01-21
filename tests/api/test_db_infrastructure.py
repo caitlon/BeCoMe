@@ -6,32 +6,35 @@ from unittest.mock import patch
 from sqlalchemy import Engine
 from sqlmodel import Session
 
-from api.db.engine import create_db_and_tables, create_db_engine, engine
+from api.db.engine import create_db_and_tables, get_engine
 from api.db.session import get_session
 
 
 class TestDatabaseEngine:
     """Tests for database engine creation."""
 
-    def test_engine_is_created(self) -> None:
-        """Engine should be created on module import."""
-        # GIVEN/WHEN: engine is imported
-        # THEN: it should be an Engine instance
-        assert isinstance(engine, Engine)
-
-    def test_create_db_engine_returns_engine(self) -> None:
-        """create_db_engine should return an Engine instance."""
+    def test_get_engine_returns_engine(self) -> None:
+        """get_engine should return an Engine instance (lazy initialization)."""
         # WHEN
-        result = create_db_engine()
+        result = get_engine()
 
         # THEN
         assert isinstance(result, Engine)
+
+    def test_get_engine_returns_same_instance(self) -> None:
+        """get_engine should return cached singleton instance."""
+        # WHEN
+        engine1 = get_engine()
+        engine2 = get_engine()
+
+        # THEN: same instance (cached)
+        assert engine1 is engine2
 
     def test_sqlite_engine_has_check_same_thread_false(self) -> None:
         """SQLite engine should have check_same_thread=False for FastAPI."""
         # GIVEN: default settings use SQLite
         # WHEN
-        test_engine = create_db_engine()
+        test_engine = get_engine()
 
         # THEN: engine URL should be SQLite
         assert "sqlite" in str(test_engine.url)

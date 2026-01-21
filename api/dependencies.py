@@ -1,4 +1,9 @@
-"""Centralized FastAPI dependencies for service factories and authorization."""
+"""Centralized FastAPI dependencies for service factories and authorization.
+
+This module provides dependency injection factories following the
+Dependency Inversion Principle (DIP). All services and calculators
+are created through factory functions for testability.
+"""
 
 from typing import Annotated
 from uuid import UUID
@@ -14,6 +19,21 @@ from api.services.invitation_service import InvitationService
 from api.services.opinion_service import OpinionService
 from api.services.project_service import ProjectService
 from api.services.user_service import UserService
+from src.calculators.become_calculator import BeCoMeCalculator
+
+# --- Calculator Factories ---
+
+
+def get_calculator() -> BeCoMeCalculator:
+    """Create BeCoMeCalculator instance.
+
+    Factory function for dependency injection, allowing easy
+    substitution in tests.
+
+    :return: BeCoMeCalculator instance
+    """
+    return BeCoMeCalculator()
+
 
 # --- Service Factories ---
 

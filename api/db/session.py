@@ -1,26 +1,22 @@
-"""Database session management for FastAPI dependency injection."""
+"""Database session management for FastAPI dependency injection.
+
+This module provides session factory for dependency injection,
+following the Dependency Inversion Principle (DIP).
+"""
 
 from collections.abc import Generator
 
-from sqlalchemy import Engine
 from sqlmodel import Session
 
-
-def get_engine() -> Engine:
-    """Get database engine instance.
-
-    Lazy import to avoid circular dependencies.
-    """
-    from api.db.engine import engine
-
-    return engine
+from api.db.engine import get_engine
 
 
 def get_session() -> Generator[Session]:
     """Yield a database session for request handling.
 
+    Uses lazy-loaded engine from engine module.
+
     :yields: SQLModel Session instance
     """
-    engine = get_engine()
-    with Session(engine) as session:
+    with Session(get_engine()) as session:
         yield session
