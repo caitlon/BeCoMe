@@ -11,7 +11,7 @@
 #   POSTGRES_PASSWORD - Database password (default: become, CHANGE for production)
 #   UVICORN_WORKERS  - Number of API workers (default: 4)
 #   DEBUG            - Enable debug mode (default: false)
-#   CORS_ORIGINS     - JSON list of allowed origins
+#   CORS_ORIGINS     - JSON array of allowed origins, e.g. '["http://localhost:3000"]'
 #
 # Production considerations:
 #   - Always set SECRET_KEY via environment variable
@@ -60,9 +60,10 @@ services:
       - "8000:8000"
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-become}:${POSTGRES_PASSWORD:-become}@db:5432/${POSTGRES_DB:-become}
-      # SECRET_KEY is REQUIRED - no default value for security
-      SECRET_KEY: "${SECRET_KEY:?SECRET_KEY is required. Generate with openssl rand -hex 32}"
+      # SECRET_KEY is REQUIRED - generate with: openssl rand -hex 32
+      SECRET_KEY: "${SECRET_KEY:?Set SECRET_KEY env var}"
       DEBUG: ${DEBUG:-false}
+      # CORS_ORIGINS must be a valid JSON array string
       CORS_ORIGINS: '["http://localhost:3000"]'
       UVICORN_WORKERS: ${UVICORN_WORKERS:-4}
     depends_on:
