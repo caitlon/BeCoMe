@@ -54,3 +54,7 @@ class UserAlreadyMemberError(ValidationError):
 # Opinion-related exceptions
 class OpinionNotFoundError(NotFoundError):
     """Raised when opinion is not found."""
+
+
+class ValuesOutOfRangeError(ValidationError):
+    """Raised when opinion values are outside project scale."""

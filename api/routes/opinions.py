@@ -10,7 +10,7 @@ from api.dependencies import (
     get_calculation_service,
     get_opinion_service,
 )
-from api.exceptions import OpinionNotFoundError
+from api.exceptions import OpinionNotFoundError, ValuesOutOfRangeError
 from api.schemas import (
     CalculationResultResponse,
     FuzzyNumberOutput,
@@ -18,7 +18,7 @@ from api.schemas import (
     OpinionResponse,
 )
 from api.services.calculation_service import CalculationService
-from api.services.opinion_service import OpinionService, ValuesOutOfRangeError
+from api.services.opinion_service import OpinionService
 
 router = APIRouter(prefix="/api/v1/projects", tags=["opinions"])
 

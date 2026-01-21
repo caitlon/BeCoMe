@@ -6,11 +6,7 @@ from sqlalchemy import func
 from sqlmodel import Session, col, select
 
 from api.db.models import ExpertOpinion, Project, User
-from api.exceptions import OpinionNotFoundError
-
-
-class ValuesOutOfRangeError(ValueError):
-    """Raised when opinion values are outside project scale."""
+from api.exceptions import OpinionNotFoundError, ValuesOutOfRangeError
 
 
 class OpinionService:
