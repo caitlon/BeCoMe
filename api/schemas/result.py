@@ -6,16 +6,13 @@ from pydantic import BaseModel
 
 from api.schemas.calculation import FuzzyNumberOutput
 
-# Alias for backward compatibility
-FuzzyNumberResult = FuzzyNumberOutput
-
 
 class CalculationResultResponse(BaseModel):
     """BeCoMe calculation result for a project."""
 
-    best_compromise: FuzzyNumberResult
-    arithmetic_mean: FuzzyNumberResult
-    median: FuzzyNumberResult
+    best_compromise: FuzzyNumberOutput
+    arithmetic_mean: FuzzyNumberOutput
+    median: FuzzyNumberOutput
     max_error: float
     num_experts: int
     likert_value: int | None

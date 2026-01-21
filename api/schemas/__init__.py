@@ -1,6 +1,6 @@
 """Pydantic schemas for API request/response validation.
 
-All schemas are re-exported here for backward compatibility.
+All schemas are re-exported here for convenient imports.
 """
 
 from api.schemas.auth import RegisterRequest, TokenResponse, UserResponse
@@ -14,7 +14,7 @@ from api.schemas.health import HealthResponse
 from api.schemas.invitation import InvitationCreate, InvitationInfoResponse, InvitationResponse
 from api.schemas.opinion import OpinionCreate, OpinionResponse
 from api.schemas.project import MemberResponse, ProjectCreate, ProjectResponse, ProjectUpdate
-from api.schemas.result import CalculationResultResponse, FuzzyNumberResult
+from api.schemas.result import CalculationResultResponse
 
 __all__ = [
     # Auth
@@ -41,6 +41,5 @@ __all__ = [
     "ProjectResponse",
     "MemberResponse",
     # Result
-    "FuzzyNumberResult",
     "CalculationResultResponse",
 ]
