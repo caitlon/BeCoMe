@@ -142,6 +142,21 @@ class TestCreateProject:
         # THEN
         assert response.status_code == 422
 
+    def test_create_project_equal_scale_fails(self, client):
+        """Project creation fails when scale_min equals scale_max."""
+        # GIVEN
+        token = _register_and_login(client)
+
+        # WHEN
+        response = client.post(
+            "/api/v1/projects",
+            json={"name": "Equal Scale", "scale_min": 50, "scale_max": 50},
+            headers=_auth_header(token),
+        )
+
+        # THEN
+        assert response.status_code == 422
+
     def test_create_project_without_auth(self, client):
         """Project creation fails without authentication."""
         # WHEN
@@ -365,6 +380,27 @@ class TestUpdateProject:
         response = client.patch(
             f"/api/v1/projects/{project_id}",
             json={"scale_min": 200},
+            headers=_auth_header(token),
+        )
+
+        # THEN
+        assert response.status_code == 422
+
+    def test_update_project_equal_scale_fails(self, client):
+        """Update fails when scale_min equals scale_max."""
+        # GIVEN
+        token = _register_and_login(client)
+        create_resp = client.post(
+            "/api/v1/projects",
+            json={"name": "Test", "scale_min": 0, "scale_max": 100},
+            headers=_auth_header(token),
+        )
+        project_id = create_resp.json()["id"]
+
+        # WHEN - update scale_max to equal scale_min
+        response = client.patch(
+            f"/api/v1/projects/{project_id}",
+            json={"scale_max": 0},
             headers=_auth_header(token),
         )
 

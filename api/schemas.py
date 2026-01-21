@@ -128,7 +128,7 @@ class ProjectUpdate(BaseModel):
     """Request to update a project (partial update)."""
 
     name: str | None = Field(None, min_length=1, max_length=255)
-    description: str | None = None
+    description: str | None = Field(None, max_length=2000)
     scale_min: float | None = None
     scale_max: float | None = None
     scale_unit: str | None = Field(None, max_length=50)
