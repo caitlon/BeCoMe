@@ -3,114 +3,10 @@
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-import pytest
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
-from sqlalchemy.pool import StaticPool
-from sqlmodel import Session, SQLModel, create_engine, select
+from sqlmodel import select
 
-from api.config import get_settings
-from api.db.models import (  # noqa: F401 - models required for SQLModel.metadata.create_all
-    CalculationResult,
-    ExpertOpinion,
-    Invitation,
-    PasswordResetToken,
-    Project,
-    ProjectMember,
-    User,
-)
-from api.dependencies import get_session
-from api.routes import auth, calculate, health, invitations, projects
-
-
-def _create_test_app() -> FastAPI:
-    """Create FastAPI app without lifespan for testing."""
-    settings = get_settings()
-    app = FastAPI(
-        title="BeCoMe API Test",
-        version=settings.api_version,
-    )
-    app.include_router(health.router)
-    app.include_router(calculate.router)
-    app.include_router(auth.router)
-    app.include_router(projects.router)
-    app.include_router(invitations.router)
-    return app
-
-
-@pytest.fixture
-def test_engine():
-    """Create in-memory SQLite engine for testing."""
-    engine = create_engine(
-        "sqlite:///:memory:",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    SQLModel.metadata.create_all(engine)
-    return engine
-
-
-@pytest.fixture
-def client(test_engine):
-    """Create test client with in-memory database."""
-    test_app = _create_test_app()
-
-    def override_get_session():
-        with Session(test_engine) as session:
-            yield session
-
-    test_app.dependency_overrides[get_session] = override_get_session
-
-    with TestClient(test_app) as test_client:
-        yield test_client
-
-
-@pytest.fixture
-def client_with_session(test_engine):
-    """Create test client with access to database session for direct manipulation."""
-    test_app = _create_test_app()
-
-    def override_get_session():
-        with Session(test_engine) as session:
-            yield session
-
-    test_app.dependency_overrides[get_session] = override_get_session
-
-    with TestClient(test_app) as test_client, Session(test_engine) as session:
-        yield test_client, session
-
-
-def _register_and_login(client: TestClient, email: str = "test@example.com") -> str:
-    """Helper to register a user and return their token."""
-    client.post(
-        "/api/v1/auth/register",
-        json={
-            "email": email,
-            "password": "password123",
-            "first_name": "Test",
-            "last_name": "User",
-        },
-    )
-    response = client.post(
-        "/api/v1/auth/login",
-        data={"username": email, "password": "password123"},
-    )
-    return response.json()["access_token"]
-
-
-def _auth_header(token: str) -> dict[str, str]:
-    """Create authorization header."""
-    return {"Authorization": f"Bearer {token}"}
-
-
-def _create_project(client: TestClient, token: str, name: str = "Test Project") -> dict:
-    """Helper to create a project and return its data."""
-    response = client.post(
-        "/api/v1/projects",
-        json={"name": name},
-        headers=_auth_header(token),
-    )
-    return response.json()
+from api.db.models import Invitation
+from tests.api.conftest import auth_header, create_project, register_and_login
 
 
 class TestCreateInvitation:
@@ -119,14 +15,14 @@ class TestCreateInvitation:
     def test_create_invitation_success(self, client):
         """Admin can create invitation."""
         # GIVEN
-        token = _register_and_login(client)
-        project = _create_project(client, token)
+        token = register_and_login(client)
+        project = create_project(client, token)
 
         # WHEN
         response = client.post(
             f"/api/v1/projects/{project['id']}/invite",
             json={"expires_in_days": 7},
-            headers=_auth_header(token),
+            headers=auth_header(token),
         )
 
         # THEN
@@ -140,14 +36,14 @@ class TestCreateInvitation:
     def test_create_invitation_with_custom_expiration(self, client):
         """Invitation is created with custom expiration."""
         # GIVEN
-        token = _register_and_login(client)
-        project = _create_project(client, token)
+        token = register_and_login(client)
+        project = create_project(client, token)
 
         # WHEN
         response = client.post(
             f"/api/v1/projects/{project['id']}/invite",
             json={"expires_in_days": 30},
-            headers=_auth_header(token),
+            headers=auth_header(token),
         )
 
         # THEN
@@ -156,14 +52,14 @@ class TestCreateInvitation:
     def test_create_invitation_default_expiration(self, client):
         """Invitation uses default expiration when not specified."""
         # GIVEN
-        token = _register_and_login(client)
-        project = _create_project(client, token)
+        token = register_and_login(client)
+        project = create_project(client, token)
 
         # WHEN
         response = client.post(
             f"/api/v1/projects/{project['id']}/invite",
             json={},
-            headers=_auth_header(token),
+            headers=auth_header(token),
         )
 
         # THEN
@@ -172,14 +68,14 @@ class TestCreateInvitation:
     def test_create_invitation_project_not_found(self, client):
         """404 returned for non-existent project."""
         # GIVEN
-        token = _register_and_login(client)
+        token = register_and_login(client)
         fake_id = "00000000-0000-0000-0000-000000000000"
 
         # WHEN
         response = client.post(
             f"/api/v1/projects/{fake_id}/invite",
             json={},
-            headers=_auth_header(token),
+            headers=auth_header(token),
         )
 
         # THEN
@@ -188,15 +84,15 @@ class TestCreateInvitation:
     def test_create_invitation_not_admin(self, client):
         """Non-admin cannot create invitation."""
         # GIVEN
-        admin_token = _register_and_login(client, "admin@example.com")
-        other_token = _register_and_login(client, "other@example.com")
-        project = _create_project(client, admin_token)
+        admin_token = register_and_login(client, "admin@example.com")
+        other_token = register_and_login(client, "other@example.com")
+        project = create_project(client, admin_token)
 
         # WHEN
         response = client.post(
             f"/api/v1/projects/{project['id']}/invite",
             json={},
-            headers=_auth_header(other_token),
+            headers=auth_header(other_token),
         )
 
         # THEN
@@ -205,8 +101,8 @@ class TestCreateInvitation:
     def test_create_invitation_without_auth(self, client):
         """Invitation creation fails without authentication."""
         # GIVEN
-        token = _register_and_login(client)
-        project = _create_project(client, token)
+        token = register_and_login(client)
+        project = create_project(client, token)
 
         # WHEN
         response = client.post(
@@ -220,14 +116,14 @@ class TestCreateInvitation:
     def test_create_invitation_invalid_expiration(self, client):
         """Invitation creation fails with invalid expiration days."""
         # GIVEN
-        token = _register_and_login(client)
-        project = _create_project(client, token)
+        token = register_and_login(client)
+        project = create_project(client, token)
 
         # WHEN
         response = client.post(
             f"/api/v1/projects/{project['id']}/invite",
             json={"expires_in_days": 0},  # Below minimum
-            headers=_auth_header(token),
+            headers=auth_header(token),
         )
 
         # THEN
@@ -240,12 +136,12 @@ class TestGetInvitationInfo:
     def test_get_invitation_info_success(self, client):
         """Invitation info is returned for valid token."""
         # GIVEN
-        token = _register_and_login(client, "admin@example.com")
-        project = _create_project(client, token, "My Project")
+        token = register_and_login(client, "admin@example.com")
+        project = create_project(client, token, "My Project")
         invite_resp = client.post(
             f"/api/v1/projects/{project['id']}/invite",
             json={},
-            headers=_auth_header(token),
+            headers=auth_header(token),
         )
         invite_token = invite_resp.json()["token"]
 
@@ -274,20 +170,20 @@ class TestGetInvitationInfo:
     def test_get_invitation_info_shows_invalid_when_used(self, client):
         """Invitation info shows is_valid=False when already used."""
         # GIVEN
-        admin_token = _register_and_login(client, "admin@example.com")
-        expert_token = _register_and_login(client, "expert@example.com")
-        project = _create_project(client, admin_token)
+        admin_token = register_and_login(client, "admin@example.com")
+        expert_token = register_and_login(client, "expert@example.com")
+        project = create_project(client, admin_token)
         invite_resp = client.post(
             f"/api/v1/projects/{project['id']}/invite",
             json={},
-            headers=_auth_header(admin_token),
+            headers=auth_header(admin_token),
         )
         invite_token = invite_resp.json()["token"]
 
         # Accept the invitation
         client.post(
             f"/api/v1/invitations/{invite_token}/accept",
-            headers=_auth_header(expert_token),
+            headers=auth_header(expert_token),
         )
 
         # WHEN
@@ -301,12 +197,12 @@ class TestGetInvitationInfo:
         """Invitation info shows is_valid=False when invitation has expired."""
         # GIVEN
         test_client, session = client_with_session
-        admin_token = _register_and_login(test_client, "admin@example.com")
-        project = _create_project(test_client, admin_token)
+        admin_token = register_and_login(test_client, "admin@example.com")
+        project = create_project(test_client, admin_token)
         invite_resp = test_client.post(
             f"/api/v1/projects/{project['id']}/invite",
             json={},
-            headers=_auth_header(admin_token),
+            headers=auth_header(admin_token),
         )
         invite_token = invite_resp.json()["token"]
 
@@ -332,20 +228,20 @@ class TestAcceptInvitation:
     def test_accept_invitation_success(self, client):
         """User joins project as expert when accepting invitation."""
         # GIVEN
-        admin_token = _register_and_login(client, "admin@example.com")
-        expert_token = _register_and_login(client, "expert@example.com")
-        project = _create_project(client, admin_token)
+        admin_token = register_and_login(client, "admin@example.com")
+        expert_token = register_and_login(client, "expert@example.com")
+        project = create_project(client, admin_token)
         invite_resp = client.post(
             f"/api/v1/projects/{project['id']}/invite",
             json={},
-            headers=_auth_header(admin_token),
+            headers=auth_header(admin_token),
         )
         invite_token = invite_resp.json()["token"]
 
         # WHEN
         response = client.post(
             f"/api/v1/invitations/{invite_token}/accept",
-            headers=_auth_header(expert_token),
+            headers=auth_header(expert_token),
         )
 
         # THEN
@@ -357,65 +253,65 @@ class TestAcceptInvitation:
     def test_accept_invitation_user_can_see_project(self, client):
         """User can access project after accepting invitation."""
         # GIVEN
-        admin_token = _register_and_login(client, "admin@example.com")
-        expert_token = _register_and_login(client, "expert@example.com")
-        project = _create_project(client, admin_token)
+        admin_token = register_and_login(client, "admin@example.com")
+        expert_token = register_and_login(client, "expert@example.com")
+        project = create_project(client, admin_token)
         invite_resp = client.post(
             f"/api/v1/projects/{project['id']}/invite",
             json={},
-            headers=_auth_header(admin_token),
+            headers=auth_header(admin_token),
         )
         invite_token = invite_resp.json()["token"]
 
         # WHEN
         client.post(
             f"/api/v1/invitations/{invite_token}/accept",
-            headers=_auth_header(expert_token),
+            headers=auth_header(expert_token),
         )
 
         # THEN - expert can now access project
         get_resp = client.get(
             f"/api/v1/projects/{project['id']}",
-            headers=_auth_header(expert_token),
+            headers=auth_header(expert_token),
         )
         assert get_resp.status_code == 200
 
     def test_accept_invitation_increases_member_count(self, client):
         """Member count increases after accepting invitation."""
         # GIVEN
-        admin_token = _register_and_login(client, "admin@example.com")
-        expert_token = _register_and_login(client, "expert@example.com")
-        project = _create_project(client, admin_token)
+        admin_token = register_and_login(client, "admin@example.com")
+        expert_token = register_and_login(client, "expert@example.com")
+        project = create_project(client, admin_token)
         invite_resp = client.post(
             f"/api/v1/projects/{project['id']}/invite",
             json={},
-            headers=_auth_header(admin_token),
+            headers=auth_header(admin_token),
         )
         invite_token = invite_resp.json()["token"]
 
         # WHEN
         client.post(
             f"/api/v1/invitations/{invite_token}/accept",
-            headers=_auth_header(expert_token),
+            headers=auth_header(expert_token),
         )
 
         # THEN
         get_resp = client.get(
             f"/api/v1/projects/{project['id']}",
-            headers=_auth_header(admin_token),
+            headers=auth_header(admin_token),
         )
         assert get_resp.json()["member_count"] == 2
 
     def test_accept_invitation_not_found(self, client):
         """404 returned for non-existent invitation."""
         # GIVEN
-        token = _register_and_login(client)
+        token = register_and_login(client)
         fake_invite = "00000000-0000-0000-0000-000000000000"
 
         # WHEN
         response = client.post(
             f"/api/v1/invitations/{fake_invite}/accept",
-            headers=_auth_header(token),
+            headers=auth_header(token),
         )
 
         # THEN
@@ -424,27 +320,27 @@ class TestAcceptInvitation:
     def test_accept_invitation_already_used(self, client):
         """400 returned when invitation was already used."""
         # GIVEN
-        admin_token = _register_and_login(client, "admin@example.com")
-        expert1_token = _register_and_login(client, "expert1@example.com")
-        expert2_token = _register_and_login(client, "expert2@example.com")
-        project = _create_project(client, admin_token)
+        admin_token = register_and_login(client, "admin@example.com")
+        expert1_token = register_and_login(client, "expert1@example.com")
+        expert2_token = register_and_login(client, "expert2@example.com")
+        project = create_project(client, admin_token)
         invite_resp = client.post(
             f"/api/v1/projects/{project['id']}/invite",
             json={},
-            headers=_auth_header(admin_token),
+            headers=auth_header(admin_token),
         )
         invite_token = invite_resp.json()["token"]
 
         # First expert accepts
         client.post(
             f"/api/v1/invitations/{invite_token}/accept",
-            headers=_auth_header(expert1_token),
+            headers=auth_header(expert1_token),
         )
 
         # WHEN - second expert tries to accept same invitation
         response = client.post(
             f"/api/v1/invitations/{invite_token}/accept",
-            headers=_auth_header(expert2_token),
+            headers=auth_header(expert2_token),
         )
 
         # THEN
@@ -454,19 +350,19 @@ class TestAcceptInvitation:
     def test_accept_invitation_already_member(self, client):
         """409 returned when user is already a member."""
         # GIVEN
-        admin_token = _register_and_login(client, "admin@example.com")
-        project = _create_project(client, admin_token)
+        admin_token = register_and_login(client, "admin@example.com")
+        project = create_project(client, admin_token)
         invite_resp = client.post(
             f"/api/v1/projects/{project['id']}/invite",
             json={},
-            headers=_auth_header(admin_token),
+            headers=auth_header(admin_token),
         )
         invite_token = invite_resp.json()["token"]
 
         # WHEN - admin tries to accept (already a member)
         response = client.post(
             f"/api/v1/invitations/{invite_token}/accept",
-            headers=_auth_header(admin_token),
+            headers=auth_header(admin_token),
         )
 
         # THEN
@@ -476,12 +372,12 @@ class TestAcceptInvitation:
     def test_accept_invitation_without_auth(self, client):
         """401 returned when not authenticated."""
         # GIVEN
-        token = _register_and_login(client)
-        project = _create_project(client, token)
+        token = register_and_login(client)
+        project = create_project(client, token)
         invite_resp = client.post(
             f"/api/v1/projects/{project['id']}/invite",
             json={},
-            headers=_auth_header(token),
+            headers=auth_header(token),
         )
         invite_token = invite_resp.json()["token"]
 
@@ -495,13 +391,13 @@ class TestAcceptInvitation:
         """400 returned when invitation has expired."""
         # GIVEN
         test_client, session = client_with_session
-        admin_token = _register_and_login(test_client, "admin@example.com")
-        expert_token = _register_and_login(test_client, "expert@example.com")
-        project = _create_project(test_client, admin_token)
+        admin_token = register_and_login(test_client, "admin@example.com")
+        expert_token = register_and_login(test_client, "expert@example.com")
+        project = create_project(test_client, admin_token)
         invite_resp = test_client.post(
             f"/api/v1/projects/{project['id']}/invite",
             json={},
-            headers=_auth_header(admin_token),
+            headers=auth_header(admin_token),
         )
         invite_token = invite_resp.json()["token"]
 
@@ -516,7 +412,7 @@ class TestAcceptInvitation:
         # WHEN
         response = test_client.post(
             f"/api/v1/invitations/{invite_token}/accept",
-            headers=_auth_header(expert_token),
+            headers=auth_header(expert_token),
         )
 
         # THEN
@@ -530,15 +426,15 @@ class TestInvitationFlow:
     def test_full_invitation_flow(self, client):
         """Complete flow: create invitation -> get info -> accept."""
         # GIVEN
-        admin_token = _register_and_login(client, "admin@example.com")
-        expert_token = _register_and_login(client, "expert@example.com")
-        project = _create_project(client, admin_token, "Decision Project")
+        admin_token = register_and_login(client, "admin@example.com")
+        expert_token = register_and_login(client, "expert@example.com")
+        project = create_project(client, admin_token, "Decision Project")
 
         # Step 1: Admin creates invitation
         invite_resp = client.post(
             f"/api/v1/projects/{project['id']}/invite",
             json={"expires_in_days": 14},
-            headers=_auth_header(admin_token),
+            headers=auth_header(admin_token),
         )
         assert invite_resp.status_code == 201
         invite_token = invite_resp.json()["token"]
@@ -553,7 +449,7 @@ class TestInvitationFlow:
         # Step 3: Expert accepts invitation
         accept_resp = client.post(
             f"/api/v1/invitations/{invite_token}/accept",
-            headers=_auth_header(expert_token),
+            headers=auth_header(expert_token),
         )
         assert accept_resp.status_code == 201
         assert accept_resp.json()["role"] == "expert"
@@ -561,7 +457,7 @@ class TestInvitationFlow:
         # Step 4: Verify expert is now a member
         members_resp = client.get(
             f"/api/v1/projects/{project['id']}/members",
-            headers=_auth_header(admin_token),
+            headers=auth_header(admin_token),
         )
         assert members_resp.status_code == 200
         members = members_resp.json()
@@ -577,21 +473,21 @@ class TestInvitationFlow:
     def test_multiple_invitations_same_project(self, client):
         """Multiple invitations can be created for same project."""
         # GIVEN
-        admin_token = _register_and_login(client, "admin@example.com")
-        expert1_token = _register_and_login(client, "expert1@example.com")
-        expert2_token = _register_and_login(client, "expert2@example.com")
-        project = _create_project(client, admin_token)
+        admin_token = register_and_login(client, "admin@example.com")
+        expert1_token = register_and_login(client, "expert1@example.com")
+        expert2_token = register_and_login(client, "expert2@example.com")
+        project = create_project(client, admin_token)
 
         # Create two invitations
         invite1_resp = client.post(
             f"/api/v1/projects/{project['id']}/invite",
             json={},
-            headers=_auth_header(admin_token),
+            headers=auth_header(admin_token),
         )
         invite2_resp = client.post(
             f"/api/v1/projects/{project['id']}/invite",
             json={},
-            headers=_auth_header(admin_token),
+            headers=auth_header(admin_token),
         )
         token1 = invite1_resp.json()["token"]
         token2 = invite2_resp.json()["token"]
@@ -600,11 +496,11 @@ class TestInvitationFlow:
         # Both experts can accept their respective invitations
         accept1 = client.post(
             f"/api/v1/invitations/{token1}/accept",
-            headers=_auth_header(expert1_token),
+            headers=auth_header(expert1_token),
         )
         accept2 = client.post(
             f"/api/v1/invitations/{token2}/accept",
-            headers=_auth_header(expert2_token),
+            headers=auth_header(expert2_token),
         )
         assert accept1.status_code == 201
         assert accept2.status_code == 201
@@ -612,6 +508,6 @@ class TestInvitationFlow:
         # Project now has 3 members
         get_resp = client.get(
             f"/api/v1/projects/{project['id']}",
-            headers=_auth_header(admin_token),
+            headers=auth_header(admin_token),
         )
         assert get_resp.json()["member_count"] == 3

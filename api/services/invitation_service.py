@@ -24,8 +24,12 @@ class UserAlreadyMemberError(Exception):
     """Raised when user is already a member of the project."""
 
 
-def _ensure_utc(dt: datetime) -> datetime:
-    """Ensure datetime has UTC timezone (handle SQLite naive datetimes)."""
+def ensure_utc(dt: datetime) -> datetime:
+    """Ensure datetime has UTC timezone (handle SQLite naive datetimes).
+
+    :param dt: datetime object (may be naive or aware)
+    :return: timezone-aware datetime with UTC
+    """
     if dt.tzinfo is None:
         return dt.replace(tzinfo=UTC)
     return dt
@@ -77,16 +81,6 @@ class InvitationService:
         statement = select(Invitation).where(Invitation.token == token)
         return self._session.exec(statement).first()
 
-    def get_invitation_with_project(self, token: UUID) -> tuple[Invitation, Project] | None:
-        """Get invitation with its associated project.
-
-        :param token: Invitation token
-        :return: Tuple of (Invitation, Project) if found, None otherwise
-        """
-        statement = select(Invitation, Project).join(Project).where(Invitation.token == token)
-        result = self._session.exec(statement).first()
-        return result if result else None
-
     def get_invitation_details(self, token: UUID) -> tuple[Invitation, Project, User] | None:
         """Get invitation with project and admin details.
 
@@ -115,12 +109,12 @@ class InvitationService:
         """
         invitation = self.get_invitation_by_token(token)
         if not invitation:
-            raise InvitationNotFoundError(f"Invitation with token {token} not found")
+            raise InvitationNotFoundError("Invitation not found")
 
         if invitation.used_by_id is not None:
             raise InvitationAlreadyUsedError("Invitation has already been used")
 
-        if datetime.now(UTC) > _ensure_utc(invitation.expires_at):
+        if datetime.now(UTC) > ensure_utc(invitation.expires_at):
             raise InvitationExpiredError("Invitation has expired")
 
         # Check if user is already a member
@@ -132,9 +126,7 @@ class InvitationService:
         ).first()
 
         if existing_membership:
-            raise UserAlreadyMemberError(
-                f"User {user_id} is already a member of project {invitation.project_id}"
-            )
+            raise UserAlreadyMemberError("User is already a member of this project")
 
         # Mark invitation as used
         invitation.used_by_id = user_id
@@ -162,4 +154,4 @@ class InvitationService:
             return False
         if invitation.used_by_id is not None:
             return False
-        return datetime.now(UTC) <= _ensure_utc(invitation.expires_at)
+        return datetime.now(UTC) <= ensure_utc(invitation.expires_at)
