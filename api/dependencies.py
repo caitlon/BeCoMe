@@ -33,7 +33,9 @@ def get_opinion_service(session: Annotated[Session, Depends(get_session)]) -> Op
     return OpinionService(session)
 
 
-def get_calculation_service(session: Annotated[Session, Depends(get_session)]) -> CalculationService:
+def get_calculation_service(
+    session: Annotated[Session, Depends(get_session)],
+) -> CalculationService:
     """Create CalculationService instance."""
     return CalculationService(session)
 
