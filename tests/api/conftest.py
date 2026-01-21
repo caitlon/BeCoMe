@@ -127,14 +127,19 @@ def submit_opinion(
 
 @pytest.fixture
 def test_engine():
-    """Create in-memory SQLite engine for testing."""
+    """Create in-memory SQLite engine for testing.
+
+    Uses yield to ensure proper cleanup with engine.dispose()
+    to avoid ResourceWarning about unclosed database connections.
+    """
     engine = create_engine(
         "sqlite:///:memory:",
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
     SQLModel.metadata.create_all(engine)
-    return engine
+    yield engine
+    engine.dispose()
 
 
 @pytest.fixture
