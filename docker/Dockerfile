@@ -15,7 +15,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv for fast dependency management
-# Pinned to specific digest for supply-chain security
+# Pinned to specific digest for supply-chain security.
+# To update uv:
+#   1. docker pull ghcr.io/astral-sh/uv:latest
+#   2. docker inspect --format='{{index .RepoDigests 0}}' ghcr.io/astral-sh/uv:latest
+#   3. Replace the sha256 digest below
 COPY --from=ghcr.io/astral-sh/uv@sha256:9a23023be68b2ed09750ae636228e903a54a05ea56ed03a934d00fe9fbeded4b /uv /uvx /bin/
 
 # uv optimization settings
@@ -69,6 +73,7 @@ USER appuser
 # Environment variables
 ENV PATH="/app/.venv/bin:$PATH"
 ENV PYTHONUNBUFFERED=1
+# Prevent runtime .pyc creation (uv precompiles via UV_COMPILE_BYTECODE=1 at build time)
 ENV PYTHONDONTWRITEBYTECODE=1
 
 # Default worker count (can be overridden via environment)
@@ -77,8 +82,8 @@ ENV UVICORN_WORKERS=4
 # Expose port
 EXPOSE 8000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+# Health check (start_period matches docker-compose.yml)
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')" || exit 1
 
 # Run with uvicorn (worker count configurable via UVICORN_WORKERS env var)
