@@ -58,3 +58,7 @@ class OpinionNotFoundError(NotFoundError):
 
 class ValuesOutOfRangeError(ValidationError):
     """Raised when opinion values are outside project scale."""
+
+
+class ScaleRangeError(ValidationError):
+    """Raised when scale_min >= scale_max."""
