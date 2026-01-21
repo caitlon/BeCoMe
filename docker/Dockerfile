@@ -25,6 +25,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # Copy application code
 COPY src/ ./src/
 COPY api/ ./api/
+COPY README.md ./
 
 # Install project with dependencies
 RUN --mount=type=cache,target=/root/.cache/uv \
