@@ -7,6 +7,7 @@ from sqlmodel import Session, col, func, select
 from api.db.models import MemberRole, Project, ProjectMember, User
 from api.exceptions import MemberNotFoundError, ProjectNotFoundError, ScaleRangeError
 from api.schemas import ProjectCreate, ProjectUpdate
+from api.schemas.internal import MemberWithUser, ProjectWithMemberCount
 
 
 class ProjectService:
@@ -47,13 +48,13 @@ class ProjectService:
         self._session.refresh(project)
         return project
 
-    def get_user_projects_with_counts(self, user_id: UUID) -> list[tuple[Project, int]]:
+    def get_user_projects_with_counts(self, user_id: UUID) -> list[ProjectWithMemberCount]:
         """Get all projects where user is a member, with member counts.
 
         Uses a single query with subquery to avoid N+1 problem.
 
         :param user_id: User ID
-        :return: List of (project, member_count) tuples
+        :return: List of ProjectWithMemberCount instances
         """
         member_count_subquery = (
             select(ProjectMember.project_id, func.count().label("member_count"))
@@ -71,7 +72,11 @@ class ProjectService:
             .where(ProjectMember.user_id == user_id)
             .order_by(col(Project.created_at).desc())
         )
-        return list(self._session.exec(statement).all())
+        results = self._session.exec(statement).all()
+        return [
+            ProjectWithMemberCount(project=project, member_count=count)
+            for project, count in results
+        ]
 
     def get_project(self, project_id: UUID) -> Project | None:
         """Get project by ID.
@@ -132,11 +137,11 @@ class ProjectService:
         self._session.delete(project)
         self._session.commit()
 
-    def get_members(self, project_id: UUID) -> list[tuple[ProjectMember, User]]:
+    def get_members(self, project_id: UUID) -> list[MemberWithUser]:
         """Get all members of a project with user details.
 
         :param project_id: Project ID
-        :return: List of (membership, user) tuples
+        :return: List of MemberWithUser instances
         """
         statement = (
             select(ProjectMember, User)
@@ -144,7 +149,8 @@ class ProjectService:
             .where(ProjectMember.project_id == project_id)
             .order_by(col(ProjectMember.joined_at))
         )
-        return list(self._session.exec(statement).all())
+        results = self._session.exec(statement).all()
+        return [MemberWithUser(membership=membership, user=user) for membership, user in results]
 
     def get_member_count(self, project_id: UUID) -> int:
         """Get number of members in a project.

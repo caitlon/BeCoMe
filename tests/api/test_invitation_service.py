@@ -316,14 +316,13 @@ class TestInvitationServiceGetInvitationDetails:
         service = InvitationService(mock_session)
 
         # WHEN
-        result = service.get_invitation_details(token)
+        details = service.get_invitation_details(token)
 
         # THEN
-        assert result is not None
-        inv, proj, adm = result
-        assert inv == invitation
-        assert proj == project
-        assert adm == admin
+        assert details is not None
+        assert details.invitation == invitation
+        assert details.project == project
+        assert details.admin == admin
 
     def test_returns_none_when_not_found(self):
         """Returns None when invitation doesn't exist."""
