@@ -3,22 +3,16 @@
 from uuid import UUID
 
 from sqlalchemy import func
-from sqlmodel import Session, col, select
+from sqlmodel import col, select
 
 from api.db.models import ExpertOpinion, Project, User
 from api.exceptions import OpinionNotFoundError, ValuesOutOfRangeError
 from api.schemas.internal import OpinionWithUser, UpsertResult
+from api.services.base import BaseService
 
 
-class OpinionService:
+class OpinionService(BaseService):
     """Service for expert opinion operations."""
-
-    def __init__(self, session: Session) -> None:
-        """Initialize with database session.
-
-        :param session: SQLModel session for database operations
-        """
-        self._session = session
 
     def get_opinions_for_project(self, project_id: UUID) -> list[OpinionWithUser]:
         """Get all opinions for a project with user details.

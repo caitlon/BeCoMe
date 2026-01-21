@@ -5,6 +5,8 @@ from uuid import UUID
 from sqlmodel import Session, select
 
 from api.db.models import CalculationResult, ExpertOpinion, Project
+from api.services.base import BaseService
+from api.services.protocols import CalculatorProtocol, LikertInterpreterProtocol
 from src.calculators.become_calculator import BeCoMeCalculator
 from src.interpreters.likert_interpreter import LikertDecisionInterpreter
 from src.models.become_result import BeCoMeResult
@@ -12,28 +14,30 @@ from src.models.expert_opinion import ExpertOpinion as DomainExpertOpinion
 from src.models.fuzzy_number import FuzzyTriangleNumber
 
 
-class CalculationService:
+class CalculationService(BaseService):
     """Service for BeCoMe calculation operations."""
 
     def __init__(
         self,
         session: Session,
-        calculator: BeCoMeCalculator | None = None,
-        likert_interpreter: LikertDecisionInterpreter | None = None,
+        calculator: CalculatorProtocol | None = None,
+        likert_interpreter: LikertInterpreterProtocol | None = None,
         likert_scale_min: float = 0.0,
         likert_scale_max: float = 100.0,
     ) -> None:
         """Initialize with database session and optional dependencies.
 
         :param session: SQLModel session for database operations
-        :param calculator: BeCoMe calculator instance (default: new instance)
-        :param likert_interpreter: Likert interpreter instance (default: new instance)
+        :param calculator: Calculator implementing CalculatorProtocol (default: BeCoMeCalculator)
+        :param likert_interpreter: Interpreter implementing LikertInterpreterProtocol (default: LikertDecisionInterpreter)
         :param likert_scale_min: Minimum value for Likert scale (default: 0.0)
         :param likert_scale_max: Maximum value for Likert scale (default: 100.0)
         """
-        self._session = session
-        self._calculator = calculator or BeCoMeCalculator()
-        self._likert_interpreter = likert_interpreter or LikertDecisionInterpreter()
+        super().__init__(session)
+        self._calculator: CalculatorProtocol = calculator or BeCoMeCalculator()
+        self._likert_interpreter: LikertInterpreterProtocol = (
+            likert_interpreter or LikertDecisionInterpreter()
+        )
         self._likert_scale_min = likert_scale_min
         self._likert_scale_max = likert_scale_max
 

@@ -2,23 +2,17 @@
 
 from uuid import UUID
 
-from sqlmodel import Session, col, func, select
+from sqlmodel import col, func, select
 
 from api.db.models import MemberRole, Project, ProjectMember, User
 from api.exceptions import MemberNotFoundError, ProjectNotFoundError, ScaleRangeError
 from api.schemas import ProjectCreate, ProjectUpdate
 from api.schemas.internal import MemberWithUser, ProjectWithMemberCount
+from api.services.base import BaseService
 
 
-class ProjectService:
+class ProjectService(BaseService):
     """Service for project-related operations."""
-
-    def __init__(self, session: Session) -> None:
-        """Initialize with database session.
-
-        :param session: SQLModel session for database operations
-        """
-        self._session = session
 
     def create_project(self, user_id: UUID, data: ProjectCreate) -> Project:
         """Create a new project and add creator as admin.
