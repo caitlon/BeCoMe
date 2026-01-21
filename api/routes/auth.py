@@ -8,9 +8,10 @@ from sqlmodel import Session
 
 from api.auth.dependencies import CurrentUser
 from api.auth.jwt import create_access_token
-from api.dependencies import get_session
+from api.db.session import get_session
+from api.exceptions import InvalidCredentialsError, UserExistsError
 from api.schemas import RegisterRequest, TokenResponse, UserResponse
-from api.services.user_service import InvalidCredentialsError, UserExistsError, UserService
+from api.services.user_service import UserService
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 

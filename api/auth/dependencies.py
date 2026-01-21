@@ -8,7 +8,7 @@ from sqlmodel import Session
 
 from api.auth.jwt import TokenError, decode_access_token
 from api.db.models import User
-from api.dependencies import get_session
+from api.db.session import get_session
 from api.services.user_service import UserService
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")

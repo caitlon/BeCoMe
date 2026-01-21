@@ -7,7 +7,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session
 
 from api.auth.dependencies import CurrentUser
-from api.dependencies import get_session
+from api.db.session import get_session
+from api.exceptions import OpinionNotFoundError
 from api.schemas import (
     CalculationResultResponse,
     FuzzyNumberResult,
@@ -15,7 +16,7 @@ from api.schemas import (
     OpinionResponse,
 )
 from api.services.calculation_service import CalculationService
-from api.services.opinion_service import OpinionNotFoundError, OpinionService
+from api.services.opinion_service import OpinionService
 from api.services.project_service import ProjectService
 
 router = APIRouter(prefix="/api/v1/projects", tags=["opinions"])

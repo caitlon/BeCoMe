@@ -6,10 +6,7 @@ from sqlalchemy import func
 from sqlmodel import Session, col, select
 
 from api.db.models import ExpertOpinion, User
-
-
-class OpinionNotFoundError(Exception):
-    """Raised when opinion is not found."""
+from api.exceptions import OpinionNotFoundError
 
 
 class OpinionService:

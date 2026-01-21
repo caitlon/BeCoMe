@@ -7,9 +7,10 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session
 
 from api.auth.dependencies import CurrentUser
-from api.dependencies import get_session
+from api.db.session import get_session
+from api.exceptions import MemberNotFoundError
 from api.schemas import MemberResponse, ProjectCreate, ProjectResponse, ProjectUpdate
-from api.services.project_service import MemberNotFoundError, ProjectService
+from api.services.project_service import ProjectService
 
 router = APIRouter(prefix="/api/v1/projects", tags=["projects"])
 

@@ -5,15 +5,8 @@ from uuid import UUID
 from sqlmodel import Session, col, func, select
 
 from api.db.models import MemberRole, Project, ProjectMember, User
+from api.exceptions import MemberNotFoundError, ProjectNotFoundError
 from api.schemas import ProjectCreate, ProjectUpdate
-
-
-class ProjectNotFoundError(Exception):
-    """Raised when project is not found."""
-
-
-class MemberNotFoundError(Exception):
-    """Raised when member is not found in project."""
 
 
 class ProjectService:

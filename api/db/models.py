@@ -1,8 +1,7 @@
 """SQLModel table definitions for BeCoMe database."""
 
 import enum
-import re
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Optional, Self
 from uuid import UUID, uuid4
 
@@ -10,12 +9,7 @@ from pydantic import model_validator
 from sqlalchemy import UniqueConstraint
 from sqlmodel import Field, Relationship, SQLModel
 
-EMAIL_REGEX = re.compile(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$")
-
-
-def _utc_now() -> datetime:
-    """Get current UTC time (timezone-aware)."""
-    return datetime.now(UTC)
+from api.db.utils import EMAIL_REGEX, utc_now
 
 
 class MemberRole(str, enum.Enum):
@@ -36,7 +30,7 @@ class User(SQLModel, table=True):
     first_name: str = Field(max_length=100)
     last_name: str | None = Field(default=None, max_length=100)
     photo_url: str | None = Field(default=None, max_length=500)
-    created_at: datetime = Field(default_factory=_utc_now)
+    created_at: datetime = Field(default_factory=utc_now)
 
     owned_projects: list["Project"] = Relationship(back_populates="admin")
     memberships: list["ProjectMember"] = Relationship(back_populates="user")
@@ -65,10 +59,10 @@ class Project(SQLModel, table=True):
     scale_min: float = Field(default=0.0)
     scale_max: float = Field(default=100.0)
     scale_unit: str = Field(default="", max_length=50)
-    created_at: datetime = Field(default_factory=_utc_now)
+    created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(
-        default_factory=_utc_now,
-        sa_column_kwargs={"onupdate": _utc_now},
+        default_factory=utc_now,
+        sa_column_kwargs={"onupdate": utc_now},
     )
 
     admin: User = Relationship(back_populates="owned_projects")
@@ -111,7 +105,7 @@ class ProjectMember(SQLModel, table=True):
     project_id: UUID = Field(foreign_key="projects.id", index=True, ondelete="CASCADE")
     user_id: UUID = Field(foreign_key="users.id", index=True, ondelete="CASCADE")
     role: MemberRole = Field(default=MemberRole.EXPERT)
-    joined_at: datetime = Field(default_factory=_utc_now)
+    joined_at: datetime = Field(default_factory=utc_now)
 
     project: Project = Relationship(back_populates="members")
     user: User = Relationship(back_populates="memberships")
@@ -125,7 +119,7 @@ class Invitation(SQLModel, table=True):
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     project_id: UUID = Field(foreign_key="projects.id", index=True, ondelete="CASCADE")
     token: UUID = Field(default_factory=uuid4, unique=True, index=True)
-    created_at: datetime = Field(default_factory=_utc_now)
+    created_at: datetime = Field(default_factory=utc_now)
     expires_at: datetime
     used_by_id: UUID | None = Field(default=None, foreign_key="users.id", ondelete="SET NULL")
 
@@ -149,10 +143,10 @@ class ExpertOpinion(SQLModel, table=True):
     lower_bound: float
     peak: float
     upper_bound: float
-    created_at: datetime = Field(default_factory=_utc_now)
+    created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(
-        default_factory=_utc_now,
-        sa_column_kwargs={"onupdate": _utc_now},
+        default_factory=utc_now,
+        sa_column_kwargs={"onupdate": utc_now},
     )
 
     project: Project = Relationship(back_populates="opinions")
@@ -175,7 +169,7 @@ class PasswordResetToken(SQLModel, table=True):
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     user_id: UUID = Field(foreign_key="users.id", index=True, ondelete="CASCADE")
     token: UUID = Field(default_factory=uuid4, unique=True, index=True)
-    created_at: datetime = Field(default_factory=_utc_now)
+    created_at: datetime = Field(default_factory=utc_now)
     expires_at: datetime
     used_at: datetime | None = Field(default=None)
 
@@ -202,7 +196,7 @@ class CalculationResult(SQLModel, table=True):
     num_experts: int
     likert_value: int | None = Field(default=None)
     likert_decision: str | None = Field(default=None, max_length=100)
-    calculated_at: datetime = Field(default_factory=_utc_now)
+    calculated_at: datetime = Field(default_factory=utc_now)
 
     project: Project = Relationship(back_populates="result")
 

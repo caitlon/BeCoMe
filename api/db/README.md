@@ -48,7 +48,7 @@ Tables are created automatically on application startup via FastAPI lifespan.
 from fastapi import Depends
 from sqlmodel import Session
 
-from api.dependencies import get_session
+from api.db.session import get_session
 
 @app.get("/users/{user_id}")
 def get_user(user_id: UUID, session: Session = Depends(get_session)):
@@ -109,5 +109,7 @@ api/db/
 ├── __init__.py     # Package marker
 ├── engine.py       # Database engine and table creation
 ├── models.py       # SQLModel table definitions
+├── session.py      # Database session management (get_session)
+├── utils.py        # Utilities (utc_now, ensure_utc, EMAIL_REGEX)
 └── README.md       # This file
 ```

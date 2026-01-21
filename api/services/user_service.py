@@ -6,14 +6,7 @@ from sqlmodel import Session, select
 
 from api.auth.password import hash_password, verify_password
 from api.db.models import User
-
-
-class UserExistsError(Exception):
-    """Raised when trying to create a user with existing email."""
-
-
-class InvalidCredentialsError(Exception):
-    """Raised when authentication fails."""
+from api.exceptions import InvalidCredentialsError, UserExistsError
 
 
 class UserService:

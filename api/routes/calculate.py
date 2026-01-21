@@ -1,8 +1,7 @@
 """BeCoMe calculation endpoint."""
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 
-from api.dependencies import get_calculator
 from api.schemas import (
     CalculateRequest,
     CalculateResponse,
@@ -17,11 +16,10 @@ router = APIRouter(prefix="/api/v1", tags=["calculation"])
 
 
 @router.post("/calculate", response_model=CalculateResponse)
-def calculate(
-    request: CalculateRequest,
-    calculator: BeCoMeCalculator = Depends(get_calculator),
-) -> CalculateResponse:
+def calculate(request: CalculateRequest) -> CalculateResponse:
     """Calculate BeCoMe result from expert opinions."""
+    calculator = BeCoMeCalculator()
+
     # Convert input to domain models
     opinions = [
         ExpertOpinion(

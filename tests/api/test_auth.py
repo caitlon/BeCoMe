@@ -16,7 +16,7 @@ from api.db.models import (  # noqa: F401 - import all models to register in met
     ProjectMember,
     User,
 )
-from api.dependencies import get_session
+from api.db.session import get_session
 from api.routes import auth, calculate, health
 
 

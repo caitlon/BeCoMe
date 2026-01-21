@@ -8,16 +8,16 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session
 
 from api.auth.dependencies import CurrentUser
-from api.dependencies import get_session
-from api.schemas import InvitationCreate, InvitationInfoResponse, InvitationResponse, MemberResponse
-from api.services.invitation_service import (
+from api.db.session import get_session
+from api.db.utils import ensure_utc
+from api.exceptions import (
     InvitationAlreadyUsedError,
     InvitationExpiredError,
     InvitationNotFoundError,
-    InvitationService,
     UserAlreadyMemberError,
-    ensure_utc,
 )
+from api.schemas import InvitationCreate, InvitationInfoResponse, InvitationResponse, MemberResponse
+from api.services.invitation_service import InvitationService
 from api.services.project_service import ProjectService
 
 router = APIRouter(prefix="/api/v1", tags=["invitations"])
