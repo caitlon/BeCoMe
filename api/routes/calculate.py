@@ -1,7 +1,14 @@
-"""BeCoMe calculation endpoint."""
+"""BeCoMe calculation endpoint.
 
-from fastapi import APIRouter, HTTPException
+This module provides direct calculation endpoint without project context.
+Uses dependency injection for calculator following DIP.
+"""
 
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException
+
+from api.dependencies import get_calculator
 from api.schemas import (
     CalculateRequest,
     CalculateResponse,
@@ -16,11 +23,16 @@ router = APIRouter(prefix="/api/v1", tags=["calculation"])
 
 
 @router.post("/calculate", response_model=CalculateResponse)
-def calculate(request: CalculateRequest) -> CalculateResponse:
-    """Calculate BeCoMe result from expert opinions."""
-    calculator = BeCoMeCalculator()
+def calculate(
+    request: CalculateRequest,
+    calculator: Annotated[BeCoMeCalculator, Depends(get_calculator)],
+) -> CalculateResponse:
+    """Calculate BeCoMe result from expert opinions.
 
-    # Convert input to domain models
+    :param request: Expert opinions to aggregate
+    :param calculator: Injected BeCoMeCalculator instance
+    :return: Calculation result with fuzzy numbers
+    """
     opinions = [
         ExpertOpinion(
             expert_id=expert.name,
@@ -33,13 +45,11 @@ def calculate(request: CalculateRequest) -> CalculateResponse:
         for expert in request.experts
     ]
 
-    # Run calculation
     try:
         result = calculator.calculate_compromise(opinions)
     except BeCoMeError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
-    # Convert to response
     return CalculateResponse(
         best_compromise=FuzzyNumberOutput.from_domain(result.best_compromise),
         arithmetic_mean=FuzzyNumberOutput.from_domain(result.arithmetic_mean),

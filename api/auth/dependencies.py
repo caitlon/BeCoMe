@@ -1,4 +1,9 @@
-"""Authentication dependencies for FastAPI."""
+"""Authentication dependencies for FastAPI.
+
+This module provides authentication-related dependencies following
+the Dependency Inversion Principle (DIP). The Session dependency is
+injected, and UserService is created with this injected dependency.
+"""
 
 from typing import Annotated
 
@@ -20,8 +25,11 @@ def get_current_user(
 ) -> User:
     """Extract and validate current user from JWT token.
 
+    Session is injected via DI, UserService is created with
+    the injected session (following DIP).
+
     :param token: JWT access token from Authorization header
-    :param session: Database session
+    :param session: Injected database session
     :return: Authenticated User
     :raises HTTPException: 401 if token invalid or user not found
     """
@@ -35,8 +43,8 @@ def get_current_user(
     except TokenError as e:
         raise credentials_exception from e
 
-    service = UserService(session)
-    user = service.get_by_id(user_id)
+    user_service = UserService(session)
+    user = user_service.get_by_id(user_id)
     if user is None:
         raise credentials_exception
     return user
