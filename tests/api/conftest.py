@@ -125,14 +125,17 @@ def client_with_session(test_engine):
     """Create test client with access to database session for direct manipulation.
 
     Useful for tests that need to modify database state directly.
+    Uses the same session instance for both app and test code to avoid
+    transaction isolation issues.
     """
     test_app = create_test_app()
 
-    def override_get_session():
-        with Session(test_engine) as session:
+    with Session(test_engine) as session:
+
+        def override_get_session():
             yield session
 
-    test_app.dependency_overrides[get_session] = override_get_session
+        test_app.dependency_overrides[get_session] = override_get_session
 
-    with TestClient(test_app) as test_client, Session(test_engine) as session:
-        yield test_client, session
+        with TestClient(test_app) as test_client:
+            yield test_client, session
