@@ -2,9 +2,12 @@
 
 import math
 from datetime import datetime
-from typing import Self
+from typing import TYPE_CHECKING, Self
 
 from pydantic import BaseModel, Field, model_validator
+
+if TYPE_CHECKING:
+    from api.db.models import ExpertOpinion, User
 
 
 class OpinionCreate(BaseModel):
@@ -46,3 +49,26 @@ class OpinionResponse(BaseModel):
     centroid: float
     created_at: datetime
     updated_at: datetime
+
+    @classmethod
+    def from_model(cls, opinion: "ExpertOpinion", user: "User") -> "OpinionResponse":
+        """Create response from database models.
+
+        :param opinion: ExpertOpinion database model
+        :param user: User database model
+        :return: OpinionResponse instance
+        """
+        return cls(
+            id=str(opinion.id),
+            user_id=str(opinion.user_id),
+            user_email=user.email,
+            user_first_name=user.first_name,
+            user_last_name=user.last_name,
+            position=opinion.position,
+            lower_bound=opinion.lower_bound,
+            peak=opinion.peak,
+            upper_bound=opinion.upper_bound,
+            centroid=(opinion.lower_bound + opinion.peak + opinion.upper_bound) / 3,
+            created_at=opinion.created_at,
+            updated_at=opinion.updated_at,
+        )

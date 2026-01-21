@@ -18,14 +18,18 @@ from api.exceptions import (
 class InvitationService:
     """Service for invitation-related operations."""
 
-    DEFAULT_EXPIRATION_DAYS = 7
-
-    def __init__(self, session: Session) -> None:
+    def __init__(
+        self,
+        session: Session,
+        default_expiration_days: int = 7,
+    ) -> None:
         """Initialize with database session.
 
         :param session: SQLModel session for database operations
+        :param default_expiration_days: Default expiration in days (default: 7)
         """
         self._session = session
+        self._default_expiration_days = default_expiration_days
 
     def create_invitation(
         self,
@@ -39,7 +43,7 @@ class InvitationService:
         :return: Created Invitation instance
         """
         if expires_in_days is None:
-            expires_in_days = self.DEFAULT_EXPIRATION_DAYS
+            expires_in_days = self._default_expiration_days
 
         expires_at = datetime.now(UTC) + timedelta(days=expires_in_days)
 

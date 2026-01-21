@@ -4,20 +4,18 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlmodel import Session
 
 from api.auth.dependencies import CurrentUser
-from api.db.session import get_session
+from api.dependencies import (
+    ProjectAdmin,
+    ProjectMember,
+    get_project_service,
+)
 from api.exceptions import MemberNotFoundError
 from api.schemas import MemberResponse, ProjectCreate, ProjectResponse, ProjectUpdate
 from api.services.project_service import ProjectService
 
 router = APIRouter(prefix="/api/v1/projects", tags=["projects"])
-
-
-def _get_project_service(session: Annotated[Session, Depends(get_session)]) -> ProjectService:
-    """Dependency to get ProjectService instance."""
-    return ProjectService(session)
 
 
 @router.get(
@@ -27,7 +25,7 @@ def _get_project_service(session: Annotated[Session, Depends(get_session)]) -> P
 )
 def list_projects(
     current_user: CurrentUser,
-    service: Annotated[ProjectService, Depends(_get_project_service)],
+    service: Annotated[ProjectService, Depends(get_project_service)],
 ) -> list[ProjectResponse]:
     """Get all projects where the current user is a member.
 
@@ -37,17 +35,7 @@ def list_projects(
     """
     projects_with_counts = service.get_user_projects_with_counts(current_user.id)
     return [
-        ProjectResponse(
-            id=str(project.id),
-            name=project.name,
-            description=project.description,
-            scale_min=project.scale_min,
-            scale_max=project.scale_max,
-            scale_unit=project.scale_unit,
-            admin_id=str(project.admin_id),
-            created_at=project.created_at,
-            member_count=member_count,
-        )
+        ProjectResponse.from_model(project, member_count)
         for project, member_count in projects_with_counts
     ]
 
@@ -61,7 +49,7 @@ def list_projects(
 def create_project(
     request: ProjectCreate,
     current_user: CurrentUser,
-    service: Annotated[ProjectService, Depends(_get_project_service)],
+    service: Annotated[ProjectService, Depends(get_project_service)],
 ) -> ProjectResponse:
     """Create a new project. The creator becomes the admin.
 
@@ -71,17 +59,7 @@ def create_project(
     :return: Created project
     """
     project = service.create_project(current_user.id, request)
-    return ProjectResponse(
-        id=str(project.id),
-        name=project.name,
-        description=project.description,
-        scale_min=project.scale_min,
-        scale_max=project.scale_max,
-        scale_unit=project.scale_unit,
-        admin_id=str(project.admin_id),
-        created_at=project.created_at,
-        member_count=1,
-    )
+    return ProjectResponse.from_model(project, member_count=1)
 
 
 @router.get(
@@ -90,42 +68,16 @@ def create_project(
     summary="Get project details",
 )
 def get_project(
-    project_id: UUID,
-    current_user: CurrentUser,
-    service: Annotated[ProjectService, Depends(_get_project_service)],
+    project: ProjectMember,
+    service: Annotated[ProjectService, Depends(get_project_service)],
 ) -> ProjectResponse:
     """Get project details. Only members can access.
 
-    :param project_id: Project UUID
-    :param current_user: Authenticated user
+    :param project: Project (verified membership)
     :param service: Project service
     :return: Project details
-    :raises HTTPException: 404 if not found, 403 if not a member
     """
-    project = service.get_project(project_id)
-    if not project:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Project not found",
-        )
-
-    if not service.is_member(project_id, current_user.id):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not a member of this project",
-        )
-
-    return ProjectResponse(
-        id=str(project.id),
-        name=project.name,
-        description=project.description,
-        scale_min=project.scale_min,
-        scale_max=project.scale_max,
-        scale_unit=project.scale_unit,
-        admin_id=str(project.admin_id),
-        created_at=project.created_at,
-        member_count=service.get_member_count(project_id),
-    )
+    return ProjectResponse.from_model(project, service.get_member_count(project.id))
 
 
 @router.patch(
@@ -134,52 +86,26 @@ def get_project(
     summary="Update project",
 )
 def update_project(
-    project_id: UUID,
+    project: ProjectAdmin,
     request: ProjectUpdate,
-    current_user: CurrentUser,
-    service: Annotated[ProjectService, Depends(_get_project_service)],
+    service: Annotated[ProjectService, Depends(get_project_service)],
 ) -> ProjectResponse:
     """Update project. Only admin can update.
 
-    :param project_id: Project UUID
+    :param project: Project (verified admin)
     :param request: Fields to update
-    :param current_user: Authenticated user
     :param service: Project service
     :return: Updated project
-    :raises HTTPException: 404 if not found, 403 if not admin
     """
-    project = service.get_project(project_id)
-    if not project:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Project not found",
-        )
-
-    if not service.is_admin(project_id, current_user.id):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only project admin can update",
-        )
-
     try:
-        project = service.update_project(project_id, request)
+        updated = service.update_project(project.id, request)
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(e),
         ) from e
 
-    return ProjectResponse(
-        id=str(project.id),
-        name=project.name,
-        description=project.description,
-        scale_min=project.scale_min,
-        scale_max=project.scale_max,
-        scale_unit=project.scale_unit,
-        admin_id=str(project.admin_id),
-        created_at=project.created_at,
-        member_count=service.get_member_count(project_id),
-    )
+    return ProjectResponse.from_model(updated, service.get_member_count(project.id))
 
 
 @router.delete(
@@ -188,31 +114,15 @@ def update_project(
     summary="Delete project",
 )
 def delete_project(
-    project_id: UUID,
-    current_user: CurrentUser,
-    service: Annotated[ProjectService, Depends(_get_project_service)],
+    project: ProjectAdmin,
+    service: Annotated[ProjectService, Depends(get_project_service)],
 ) -> None:
     """Delete project and all related data. Only admin can delete.
 
-    :param project_id: Project UUID
-    :param current_user: Authenticated user
+    :param project: Project (verified admin)
     :param service: Project service
-    :raises HTTPException: 404 if not found, 403 if not admin
     """
-    project = service.get_project(project_id)
-    if not project:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Project not found",
-        )
-
-    if not service.is_admin(project_id, current_user.id):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only project admin can delete",
-        )
-
-    service.delete_project(project_id)
+    service.delete_project(project.id)
 
 
 @router.get(
@@ -221,43 +131,17 @@ def delete_project(
     summary="List project members",
 )
 def list_members(
-    project_id: UUID,
-    current_user: CurrentUser,
-    service: Annotated[ProjectService, Depends(_get_project_service)],
+    project: ProjectMember,
+    service: Annotated[ProjectService, Depends(get_project_service)],
 ) -> list[MemberResponse]:
     """List all members of a project. Only members can access.
 
-    :param project_id: Project UUID
-    :param current_user: Authenticated user
+    :param project: Project (verified membership)
     :param service: Project service
     :return: List of members with their roles
-    :raises HTTPException: 404 if not found, 403 if not a member
     """
-    project = service.get_project(project_id)
-    if not project:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Project not found",
-        )
-
-    if not service.is_member(project_id, current_user.id):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not a member of this project",
-        )
-
-    members = service.get_members(project_id)
-    return [
-        MemberResponse(
-            user_id=str(membership.user_id),
-            email=user.email,
-            first_name=user.first_name,
-            last_name=user.last_name,
-            role=membership.role.value,
-            joined_at=membership.joined_at,
-        )
-        for membership, user in members
-    ]
+    members = service.get_members(project.id)
+    return [MemberResponse.from_model(membership, user) for membership, user in members]
 
 
 @router.delete(
@@ -266,34 +150,21 @@ def list_members(
     summary="Remove member from project",
 )
 def remove_member(
-    project_id: UUID,
+    project: ProjectAdmin,
     user_id: UUID,
     current_user: CurrentUser,
-    service: Annotated[ProjectService, Depends(_get_project_service)],
+    service: Annotated[ProjectService, Depends(get_project_service)],
 ) -> None:
     """Remove a member from project. Only admin can remove members.
 
     Admin cannot remove themselves (use delete project instead).
 
-    :param project_id: Project UUID
+    :param project: Project (verified admin)
     :param user_id: User UUID to remove
     :param current_user: Authenticated user
     :param service: Project service
-    :raises HTTPException: 404 if not found, 403 if not admin, 400 if removing self
+    :raises HTTPException: 400 if removing self, 404 if user not member
     """
-    project = service.get_project(project_id)
-    if not project:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Project not found",
-        )
-
-    if not service.is_admin(project_id, current_user.id):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only project admin can remove members",
-        )
-
     if user_id == current_user.id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -301,7 +172,7 @@ def remove_member(
         )
 
     try:
-        service.remove_member(project_id, user_id)
+        service.remove_member(project.id, user_id)
     except MemberNotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
