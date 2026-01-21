@@ -16,6 +16,7 @@ from api.services.invitation_service import (
     InvitationNotFoundError,
     InvitationService,
     UserAlreadyMemberError,
+    ensure_utc,
 )
 from api.services.project_service import ProjectService
 
@@ -106,11 +107,7 @@ def get_invitation_info(
 
     invitation, project, admin = result
 
-    # Handle timezone-naive datetime from SQLite
-    expires_at = invitation.expires_at
-    if expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=UTC)
-
+    expires_at = ensure_utc(invitation.expires_at)
     is_valid = invitation.used_by_id is None and datetime.now(UTC) <= expires_at
 
     admin_name = admin.first_name
