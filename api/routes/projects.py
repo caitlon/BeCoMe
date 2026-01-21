@@ -9,7 +9,7 @@ from sqlmodel import Session
 from api.auth.dependencies import CurrentUser
 from api.dependencies import get_session
 from api.schemas import MemberResponse, ProjectCreate, ProjectResponse, ProjectUpdate
-from api.services.project_service import ProjectNotFoundError, ProjectService
+from api.services.project_service import MemberNotFoundError, ProjectService
 
 router = APIRouter(prefix="/api/v1/projects", tags=["projects"])
 
@@ -34,7 +34,7 @@ def list_projects(
     :param service: Project service
     :return: List of projects with member counts
     """
-    projects = service.get_user_projects(current_user.id)
+    projects_with_counts = service.get_user_projects_with_counts(current_user.id)
     return [
         ProjectResponse(
             id=str(project.id),
@@ -45,9 +45,9 @@ def list_projects(
             scale_unit=project.scale_unit,
             admin_id=str(project.admin_id),
             created_at=project.created_at,
-            member_count=service.get_member_count(project.id),
+            member_count=member_count,
         )
-        for project in projects
+        for project, member_count in projects_with_counts
     ]
 
 
@@ -301,7 +301,7 @@ def remove_member(
 
     try:
         service.remove_member(project_id, user_id)
-    except ProjectNotFoundError as e:
+    except MemberNotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User is not a member of this project",

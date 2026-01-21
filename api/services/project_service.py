@@ -12,6 +12,10 @@ class ProjectNotFoundError(Exception):
     """Raised when project is not found."""
 
 
+class MemberNotFoundError(Exception):
+    """Raised when member is not found in project."""
+
+
 class NotProjectMemberError(Exception):
     """Raised when user is not a member of the project."""
 
@@ -58,15 +62,27 @@ class ProjectService:
         self._session.refresh(project)
         return project
 
-    def get_user_projects(self, user_id: UUID) -> list[Project]:
-        """Get all projects where user is a member.
+    def get_user_projects_with_counts(self, user_id: UUID) -> list[tuple[Project, int]]:
+        """Get all projects where user is a member, with member counts.
+
+        Uses a single query with subquery to avoid N+1 problem.
 
         :param user_id: User ID
-        :return: List of projects
+        :return: List of (project, member_count) tuples
         """
+        member_count_subquery = (
+            select(ProjectMember.project_id, func.count().label("member_count"))
+            .group_by(col(ProjectMember.project_id))
+            .subquery()
+        )
+
         statement = (
-            select(Project)
-            .join(ProjectMember)
+            select(Project, member_count_subquery.c.member_count)
+            .join(ProjectMember, col(ProjectMember.project_id) == Project.id)
+            .join(
+                member_count_subquery,
+                member_count_subquery.c.project_id == Project.id,
+            )
             .where(ProjectMember.user_id == user_id)
             .order_by(col(Project.created_at).desc())
         )
@@ -155,7 +171,7 @@ class ProjectService:
 
         :param project_id: Project ID
         :param user_id: User ID to remove
-        :raises ProjectNotFoundError: If membership doesn't exist
+        :raises MemberNotFoundError: If user is not a member of the project
         """
         statement = select(ProjectMember).where(
             ProjectMember.project_id == project_id,
@@ -163,7 +179,7 @@ class ProjectService:
         )
         membership = self._session.exec(statement).first()
         if not membership:
-            raise ProjectNotFoundError(f"User {user_id} is not a member of project {project_id}")
+            raise MemberNotFoundError(f"User {user_id} is not a member of project {project_id}")
 
         self._session.delete(membership)
         self._session.commit()
