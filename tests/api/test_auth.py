@@ -39,7 +39,10 @@ def _create_test_app() -> FastAPI:
 
 @pytest.fixture
 def client():
-    """Create test client with in-memory database."""
+    """Create test client with in-memory database.
+
+    Uses yield pattern with engine.dispose() for proper resource cleanup.
+    """
     # Create engine with StaticPool to share in-memory DB across connections
     test_engine = create_engine(
         "sqlite:///:memory:",
@@ -60,6 +63,8 @@ def client():
 
     with TestClient(test_app) as test_client:
         yield test_client
+
+    test_engine.dispose()
 
 
 class TestRegister:
