@@ -2,22 +2,16 @@
 
 from uuid import UUID
 
-from sqlmodel import Session, select
+from sqlmodel import select
 
 from api.auth.password import hash_password, verify_password
 from api.db.models import User
 from api.exceptions import InvalidCredentialsError, UserExistsError
+from api.services.base import BaseService
 
 
-class UserService:
+class UserService(BaseService):
     """Service for user-related operations."""
-
-    def __init__(self, session: Session) -> None:
-        """Initialize with database session.
-
-        :param session: SQLModel session for database operations
-        """
-        self._session = session
 
     def create_user(
         self,

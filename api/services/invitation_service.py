@@ -14,9 +14,10 @@ from api.exceptions import (
     UserAlreadyMemberError,
 )
 from api.schemas.internal import InvitationDetails
+from api.services.base import BaseService
 
 
-class InvitationService:
+class InvitationService(BaseService):
     """Service for invitation-related operations."""
 
     def __init__(
@@ -29,7 +30,7 @@ class InvitationService:
         :param session: SQLModel session for database operations
         :param default_expiration_days: Default expiration in days (default: 7)
         """
-        self._session = session
+        super().__init__(session)
         self._default_expiration_days = default_expiration_days
 
     def create_invitation(
