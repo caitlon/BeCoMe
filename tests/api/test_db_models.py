@@ -21,6 +21,42 @@ from api.db.models import (
 class TestUserModel:
     """Tests for User model."""
 
+    def test_invalid_email_format_raises_error(self):
+        """
+        GIVEN invalid email format
+        WHEN User is validated
+        THEN ValidationError is raised
+        """
+        from pydantic import ValidationError
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="Invalid email format"):
+            User.model_validate(
+                {
+                    "email": "not-an-email",
+                    "hashed_password": "hash",
+                    "first_name": "Test",
+                }
+            )
+
+    def test_valid_email_passes_validation(self):
+        """
+        GIVEN valid email format
+        WHEN User is validated
+        THEN User is created successfully
+        """
+        # WHEN
+        user = User.model_validate(
+            {
+                "email": "valid@example.com",
+                "hashed_password": "hash",
+                "first_name": "Test",
+            }
+        )
+
+        # THEN
+        assert user.email == "valid@example.com"
+
     def test_create_user(self, session):
         # GIVEN
         user = User(
@@ -65,6 +101,64 @@ class TestUserModel:
 
 class TestProjectModel:
     """Tests for Project model."""
+
+    def test_scale_min_greater_than_scale_max_raises_error(self):
+        """
+        GIVEN scale_min >= scale_max
+        WHEN Project is validated
+        THEN ValidationError is raised
+        """
+        from pydantic import ValidationError
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match=r"scale_min .* must be less than scale_max"):
+            Project.model_validate(
+                {
+                    "name": "Test Project",
+                    "admin_id": uuid4(),
+                    "scale_min": 100.0,
+                    "scale_max": 50.0,
+                }
+            )
+
+    def test_scale_min_equals_scale_max_raises_error(self):
+        """
+        GIVEN scale_min == scale_max
+        WHEN Project is validated
+        THEN ValidationError is raised
+        """
+        from pydantic import ValidationError
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match=r"scale_min .* must be less than scale_max"):
+            Project.model_validate(
+                {
+                    "name": "Test Project",
+                    "admin_id": uuid4(),
+                    "scale_min": 50.0,
+                    "scale_max": 50.0,
+                }
+            )
+
+    def test_valid_scale_range_passes_validation(self):
+        """
+        GIVEN valid scale range (min < max)
+        WHEN Project is validated
+        THEN Project is created successfully
+        """
+        # WHEN
+        project = Project.model_validate(
+            {
+                "name": "Test Project",
+                "admin_id": uuid4(),
+                "scale_min": 0.0,
+                "scale_max": 100.0,
+            }
+        )
+
+        # THEN
+        assert project.scale_min == 0.0
+        assert project.scale_max == 100.0
 
     def test_create_project_with_admin(self, session):
         # GIVEN
@@ -309,6 +403,68 @@ class TestInvitationModel:
 class TestExpertOpinionModel:
     """Tests for ExpertOpinion model."""
 
+    def test_invalid_fuzzy_constraints_raises_error(self):
+        """
+        GIVEN lower > peak
+        WHEN ExpertOpinion is validated
+        THEN ValidationError is raised
+        """
+        from pydantic import ValidationError
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="lower <= peak <= upper"):
+            ExpertOpinion.model_validate(
+                {
+                    "project_id": uuid4(),
+                    "user_id": uuid4(),
+                    "lower_bound": 15.0,
+                    "peak": 10.0,
+                    "upper_bound": 20.0,
+                }
+            )
+
+    def test_peak_greater_than_upper_raises_error(self):
+        """
+        GIVEN peak > upper
+        WHEN ExpertOpinion is validated
+        THEN ValidationError is raised
+        """
+        from pydantic import ValidationError
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="lower <= peak <= upper"):
+            ExpertOpinion.model_validate(
+                {
+                    "project_id": uuid4(),
+                    "user_id": uuid4(),
+                    "lower_bound": 5.0,
+                    "peak": 25.0,
+                    "upper_bound": 20.0,
+                }
+            )
+
+    def test_valid_fuzzy_constraints_passes_validation(self):
+        """
+        GIVEN valid fuzzy constraints (lower <= peak <= upper)
+        WHEN ExpertOpinion is validated
+        THEN ExpertOpinion is created successfully
+        """
+        # WHEN
+        opinion = ExpertOpinion.model_validate(
+            {
+                "project_id": uuid4(),
+                "user_id": uuid4(),
+                "lower_bound": 5.0,
+                "peak": 10.0,
+                "upper_bound": 15.0,
+            }
+        )
+
+        # THEN
+        assert opinion.lower_bound == 5.0
+        assert opinion.peak == 10.0
+        assert opinion.upper_bound == 15.0
+
     def test_create_expert_opinion(self, session):
         # GIVEN
         user = User(
@@ -419,6 +575,116 @@ class TestExpertOpinionModel:
 
 class TestCalculationResultModel:
     """Tests for CalculationResult model."""
+
+    def test_invalid_best_compromise_raises_error(self):
+        """
+        GIVEN invalid best_compromise fuzzy constraints
+        WHEN CalculationResult is validated
+        THEN ValidationError is raised
+        """
+        from pydantic import ValidationError
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match=r"best_compromise.*lower <= peak <= upper"):
+            CalculationResult.model_validate(
+                {
+                    "project_id": uuid4(),
+                    "best_compromise_lower": 15.0,  # Invalid: lower > peak
+                    "best_compromise_peak": 10.0,
+                    "best_compromise_upper": 20.0,
+                    "arithmetic_mean_lower": 5.0,
+                    "arithmetic_mean_peak": 10.0,
+                    "arithmetic_mean_upper": 15.0,
+                    "median_lower": 5.0,
+                    "median_peak": 10.0,
+                    "median_upper": 15.0,
+                    "max_error": 0.5,
+                    "num_experts": 3,
+                }
+            )
+
+    def test_invalid_arithmetic_mean_raises_error(self):
+        """
+        GIVEN invalid arithmetic_mean fuzzy constraints
+        WHEN CalculationResult is validated
+        THEN ValidationError is raised
+        """
+        from pydantic import ValidationError
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match=r"arithmetic_mean.*lower <= peak <= upper"):
+            CalculationResult.model_validate(
+                {
+                    "project_id": uuid4(),
+                    "best_compromise_lower": 5.0,
+                    "best_compromise_peak": 10.0,
+                    "best_compromise_upper": 15.0,
+                    "arithmetic_mean_lower": 5.0,
+                    "arithmetic_mean_peak": 20.0,  # Invalid: peak > upper
+                    "arithmetic_mean_upper": 15.0,
+                    "median_lower": 5.0,
+                    "median_peak": 10.0,
+                    "median_upper": 15.0,
+                    "max_error": 0.5,
+                    "num_experts": 3,
+                }
+            )
+
+    def test_invalid_median_raises_error(self):
+        """
+        GIVEN invalid median fuzzy constraints
+        WHEN CalculationResult is validated
+        THEN ValidationError is raised
+        """
+        from pydantic import ValidationError
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match=r"median.*lower <= peak <= upper"):
+            CalculationResult.model_validate(
+                {
+                    "project_id": uuid4(),
+                    "best_compromise_lower": 5.0,
+                    "best_compromise_peak": 10.0,
+                    "best_compromise_upper": 15.0,
+                    "arithmetic_mean_lower": 5.0,
+                    "arithmetic_mean_peak": 10.0,
+                    "arithmetic_mean_upper": 15.0,
+                    "median_lower": 20.0,  # Invalid: lower > peak
+                    "median_peak": 10.0,
+                    "median_upper": 15.0,
+                    "max_error": 0.5,
+                    "num_experts": 3,
+                }
+            )
+
+    def test_valid_fuzzy_constraints_passes_validation(self):
+        """
+        GIVEN valid fuzzy constraints for all fuzzy numbers
+        WHEN CalculationResult is validated
+        THEN CalculationResult is created successfully
+        """
+        # WHEN
+        result = CalculationResult.model_validate(
+            {
+                "project_id": uuid4(),
+                "best_compromise_lower": 5.0,
+                "best_compromise_peak": 10.0,
+                "best_compromise_upper": 15.0,
+                "arithmetic_mean_lower": 4.0,
+                "arithmetic_mean_peak": 9.0,
+                "arithmetic_mean_upper": 14.0,
+                "median_lower": 6.0,
+                "median_peak": 11.0,
+                "median_upper": 16.0,
+                "max_error": 0.5,
+                "num_experts": 3,
+            }
+        )
+
+        # THEN
+        assert result.best_compromise_peak == 10.0
+        assert result.arithmetic_mean_peak == 9.0
+        assert result.median_peak == 11.0
 
     def test_create_calculation_result(self, session):
         # GIVEN

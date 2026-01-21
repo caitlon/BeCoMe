@@ -8,7 +8,24 @@ import pytest
 from api.db.models import MemberRole, Project, ProjectMember
 from api.exceptions import MemberNotFoundError, ProjectNotFoundError, ScaleRangeError
 from api.schemas import ProjectCreate, ProjectUpdate
+from api.services.base import BaseService
 from api.services.project_service import ProjectService
+
+
+class TestBaseService:
+    """Tests for BaseService base class."""
+
+    def test_session_property_returns_session(self):
+        """Session property returns the injected session."""
+        # GIVEN
+        mock_session = MagicMock()
+        service = BaseService(mock_session)
+
+        # WHEN
+        result = service.session
+
+        # THEN
+        assert result is mock_session
 
 
 class TestProjectServiceCreateProject:
@@ -176,6 +193,75 @@ class TestProjectServiceUpdateProject:
         # WHEN / THEN
         with pytest.raises(ScaleRangeError, match="scale_min"):
             service.update_project(project_id, data)
+
+    def test_updates_scale_min_only(self):
+        """Only scale_min is updated when provided."""
+        # GIVEN
+        project_id = uuid4()
+        project = Project(
+            id=project_id,
+            name="Test",
+            admin_id=uuid4(),
+            scale_min=0,
+            scale_max=100,
+        )
+        mock_session = MagicMock()
+        mock_session.get.return_value = project
+        service = ProjectService(mock_session)
+        data = ProjectUpdate(scale_min=10)  # Valid: 10 < 100
+
+        # WHEN
+        result = service.update_project(project_id, data)
+
+        # THEN
+        assert result.scale_min == 10
+        assert result.scale_max == 100  # Unchanged
+
+    def test_updates_scale_max_only(self):
+        """Only scale_max is updated when provided."""
+        # GIVEN
+        project_id = uuid4()
+        project = Project(
+            id=project_id,
+            name="Test",
+            admin_id=uuid4(),
+            scale_min=0,
+            scale_max=100,
+        )
+        mock_session = MagicMock()
+        mock_session.get.return_value = project
+        service = ProjectService(mock_session)
+        data = ProjectUpdate(scale_max=200)  # Valid: 0 < 200
+
+        # WHEN
+        result = service.update_project(project_id, data)
+
+        # THEN
+        assert result.scale_min == 0  # Unchanged
+        assert result.scale_max == 200
+
+    def test_updates_scale_unit_only(self):
+        """Only scale_unit is updated when provided."""
+        # GIVEN
+        project_id = uuid4()
+        project = Project(
+            id=project_id,
+            name="Test",
+            admin_id=uuid4(),
+            scale_min=0,
+            scale_max=100,
+            scale_unit="",
+        )
+        mock_session = MagicMock()
+        mock_session.get.return_value = project
+        service = ProjectService(mock_session)
+        data = ProjectUpdate(scale_unit="points")
+
+        # WHEN
+        result = service.update_project(project_id, data)
+
+        # THEN
+        assert result.scale_unit == "points"
 
 
 class TestProjectServiceDeleteProject:

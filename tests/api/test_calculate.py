@@ -407,9 +407,7 @@ class TestCalculateEdgeCases:
         THEN max_error is zero
         """
         # GIVEN
-        experts = [
-            {"name": f"E{i}", "lower": 10.0, "peak": 20.0, "upper": 30.0} for i in range(5)
-        ]
+        experts = [{"name": f"E{i}", "lower": 10.0, "peak": 20.0, "upper": 30.0} for i in range(5)]
 
         # WHEN
         response = client.post("/api/v1/calculate", json={"experts": experts})
