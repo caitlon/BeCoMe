@@ -78,7 +78,7 @@ class TestDecodeAccessToken:
         # Create token that expired in the past
         with patch("api.auth.jwt.datetime") as mock_datetime:
             mock_datetime.now.return_value = datetime.now(UTC) - timedelta(hours=48)
-            mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
+            mock_datetime.side_effect = datetime
             token = create_access_token(user_id)
 
         # WHEN / THEN
