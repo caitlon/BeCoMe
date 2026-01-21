@@ -1,10 +1,6 @@
 # BeCoMe API - Production Dockerfile
 # Multi-stage build with uv package manager
 
-# Pin uv image to specific digest for supply-chain security
-# Update this digest when upgrading uv version
-ARG UV_VERSION=ghcr.io/astral-sh/uv@sha256:9a23023be68b2ed09750ae636228e903a54a05ea56ed03a934d00fe9fbeded4b
-
 # ============================================
 # Stage 1: Builder
 # ============================================
@@ -12,7 +8,14 @@ FROM python:3.13 AS builder
 
 WORKDIR /app
 
-# Install uv for fast dependency management (pinned to specific digest)
+# Install build dependencies for psycopg2 (PostgreSQL adapter)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq-dev \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv for fast dependency management
+# Pinned to specific digest for supply-chain security
 COPY --from=ghcr.io/astral-sh/uv@sha256:9a23023be68b2ed09750ae636228e903a54a05ea56ed03a934d00fe9fbeded4b /uv /uvx /bin/
 
 # uv optimization settings
@@ -41,6 +44,11 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 FROM python:3.13 AS runtime
 
 WORKDIR /app
+
+# Install runtime dependencies for psycopg2
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq5 \
+    && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user for security
 # Using high UID/GID (10001) to avoid conflicts with host system users

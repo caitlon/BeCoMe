@@ -5,8 +5,14 @@ FROM python:3.13
 
 WORKDIR /app
 
-# Install uv for fast dependency management (pinned to specific digest for security)
-# Update this digest when upgrading uv version
+# Install build dependencies for psycopg2 (PostgreSQL adapter)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq-dev \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv for fast dependency management
+# Pinned to specific digest for supply-chain security
 COPY --from=ghcr.io/astral-sh/uv@sha256:9a23023be68b2ed09750ae636228e903a54a05ea56ed03a934d00fe9fbeded4b /uv /uvx /bin/
 
 # Copy dependency files
