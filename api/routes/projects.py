@@ -1,4 +1,8 @@
-"""Project management routes."""
+"""Project management routes.
+
+Exception handling follows OCP: all exceptions are handled
+by centralized middleware, routes focus on business logic only.
+"""
 
 from typing import Annotated
 from uuid import UUID
@@ -11,7 +15,6 @@ from api.dependencies import (
     ProjectMember,
     get_project_service,
 )
-from api.exceptions import MemberNotFoundError
 from api.schemas import MemberResponse, ProjectCreate, ProjectResponse, ProjectUpdate
 from api.services.project_service import ProjectService
 
@@ -92,19 +95,14 @@ def update_project(
 ) -> ProjectResponse:
     """Update project. Only admin can update.
 
+    ScaleRangeError is handled by centralized exception middleware.
+
     :param project: Project (verified admin)
     :param request: Fields to update
     :param service: Project service
     :return: Updated project
     """
-    try:
-        updated = service.update_project(project.id, request)
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=str(e),
-        ) from e
-
+    updated = service.update_project(project.id, request)
     return ProjectResponse.from_model(updated, service.get_member_count(project.id))
 
 
@@ -158,12 +156,13 @@ def remove_member(
     """Remove a member from project. Only admin can remove members.
 
     Admin cannot remove themselves (use delete project instead).
+    MemberNotFoundError is handled by centralized exception middleware.
 
     :param project: Project (verified admin)
     :param user_id: User UUID to remove
     :param current_user: Authenticated user
     :param service: Project service
-    :raises HTTPException: 400 if removing self, 404 if user not member
+    :raises HTTPException: 400 if removing self
     """
     if user_id == current_user.id:
         raise HTTPException(
@@ -171,10 +170,4 @@ def remove_member(
             detail="Admin cannot remove themselves. Delete the project instead.",
         )
 
-    try:
-        service.remove_member(project.id, user_id)
-    except MemberNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User is not a member of this project",
-        ) from e
+    service.remove_member(project.id, user_id)

@@ -1,10 +1,11 @@
 """Centralized FastAPI dependencies for service factories and authorization.
 
-This module provides dependency injection factories following the
-Dependency Inversion Principle (DIP). All services and calculators
-are created through factory functions for testability.
+This module provides:
+- Dependency injection factories following DIP
+- Authorization dependencies following DRY (single parameterized class)
 """
 
+from enum import Enum
 from typing import Annotated
 from uuid import UUID
 
@@ -68,8 +69,31 @@ def get_invitation_service(session: Annotated[Session, Depends(get_session)]) ->
 # --- Authorization Dependencies ---
 
 
-class RequireProjectMember:
-    """Dependency that verifies user is a project member and returns the project."""
+class AccessLevel(str, Enum):
+    """Access level for project authorization.
+
+    Following DRY: single enum instead of multiple classes.
+    """
+
+    MEMBER = "member"
+    ADMIN = "admin"
+
+
+class RequireProjectAccess:
+    """Dependency that verifies user has required access level to a project.
+
+    Following DRY: single parameterized class replaces multiple duplicate classes.
+    Following OCP: extend by adding new AccessLevel values, not new classes.
+
+    :param access_level: Required access level (MEMBER or ADMIN)
+    """
+
+    def __init__(self, access_level: AccessLevel) -> None:
+        """Initialize with required access level.
+
+        :param access_level: Minimum access level required
+        """
+        self._access_level = access_level
 
     def __call__(
         self,
@@ -77,13 +101,13 @@ class RequireProjectMember:
         current_user: CurrentUser,
         service: Annotated[ProjectService, Depends(get_project_service)],
     ) -> Project:
-        """Verify membership and return project.
+        """Verify access level and return project.
 
         :param project_id: Project UUID from path
         :param current_user: Authenticated user
         :param service: Project service
-        :return: Project if user is member
-        :raises HTTPException: 404 if not found, 403 if not member
+        :return: Project if user has required access
+        :raises HTTPException: 404 if not found, 403 if insufficient access
         """
         project = service.get_project(project_id)
         if not project:
@@ -91,47 +115,41 @@ class RequireProjectMember:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Project not found",
             )
-        if not service.is_member(project_id, current_user.id):
+
+        has_access = self._check_access(service, project_id, current_user.id)
+        if not has_access:
+            detail = self._get_error_detail()
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Not a member of this project",
+                detail=detail,
             )
         return project
 
+    def _check_access(self, service: ProjectService, project_id: UUID, user_id: UUID) -> bool:
+        """Check if user has required access level.
 
-class RequireProjectAdmin:
-    """Dependency that verifies user is project admin and returns the project."""
-
-    def __call__(
-        self,
-        project_id: UUID,
-        current_user: CurrentUser,
-        service: Annotated[ProjectService, Depends(get_project_service)],
-    ) -> Project:
-        """Verify admin rights and return project.
-
-        :param project_id: Project UUID from path
-        :param current_user: Authenticated user
         :param service: Project service
-        :return: Project if user is admin
-        :raises HTTPException: 404 if not found, 403 if not admin
+        :param project_id: Project ID
+        :param user_id: User ID
+        :return: True if user has required access
         """
-        project = service.get_project(project_id)
-        if not project:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Project not found",
-            )
-        if not service.is_admin(project_id, current_user.id):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Only project admin can perform this action",
-            )
-        return project
+        if self._access_level == AccessLevel.ADMIN:
+            return service.is_admin(project_id, user_id)
+        return service.is_member(project_id, user_id)
+
+    def _get_error_detail(self) -> str:
+        """Get error message for insufficient access.
+
+        :return: Error detail string
+        """
+        if self._access_level == AccessLevel.ADMIN:
+            return "Only project admin can perform this action"
+        return "Not a member of this project"
 
 
-require_project_member = RequireProjectMember()
-require_project_admin = RequireProjectAdmin()
+# Pre-configured instances for common use cases
+require_project_member = RequireProjectAccess(AccessLevel.MEMBER)
+require_project_admin = RequireProjectAccess(AccessLevel.ADMIN)
 
 # Type aliases for cleaner route signatures
 ProjectMember = Annotated[Project, Depends(require_project_member)]

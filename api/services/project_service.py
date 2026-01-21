@@ -5,7 +5,7 @@ from uuid import UUID
 from sqlmodel import Session, col, func, select
 
 from api.db.models import MemberRole, Project, ProjectMember, User
-from api.exceptions import MemberNotFoundError, ProjectNotFoundError
+from api.exceptions import MemberNotFoundError, ProjectNotFoundError, ScaleRangeError
 from api.schemas import ProjectCreate, ProjectUpdate
 
 
@@ -100,7 +100,7 @@ class ProjectService:
             new_max = update_data.get("scale_max", project.scale_max)
             if new_min >= new_max:
                 msg = f"scale_min ({new_min}) must be less than scale_max ({new_max})"
-                raise ValueError(msg)
+                raise ScaleRangeError(msg)
 
         # Explicit field assignment (safer than setattr)
         if "name" in update_data:

@@ -17,19 +17,24 @@ from api.db.models import (  # noqa: F401 - models required for SQLModel.metadat
     User,
 )
 from api.db.session import get_session
+from api.middleware.exception_handlers import register_exception_handlers
 from api.routes import auth, calculate, health, invitations, opinions, projects
 
 
 def create_test_app() -> FastAPI:
     """Create FastAPI app without lifespan for testing.
 
-    Includes all API routers for integration testing.
+    Includes all API routers and exception handlers for integration testing.
     """
     settings = get_settings()
     app = FastAPI(
         title="BeCoMe API Test",
         version=settings.api_version,
     )
+
+    # Register exception handlers (OCP: centralized error handling)
+    register_exception_handlers(app)
+
     app.include_router(health.router)
     app.include_router(calculate.router)
     app.include_router(auth.router)

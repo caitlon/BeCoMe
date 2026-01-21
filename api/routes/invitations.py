@@ -1,4 +1,8 @@
-"""Invitation management routes."""
+"""Invitation management routes.
+
+Exception handling follows OCP: all exceptions are handled
+by centralized middleware, routes focus on business logic only.
+"""
 
 from typing import Annotated
 from uuid import UUID
@@ -7,12 +11,6 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from api.auth.dependencies import CurrentUser
 from api.dependencies import ProjectAdmin, get_invitation_service
-from api.exceptions import (
-    InvitationAlreadyUsedError,
-    InvitationExpiredError,
-    InvitationNotFoundError,
-    UserAlreadyMemberError,
-)
 from api.schemas import (
     InvitationCreate,
     InvitationInfoResponse,
@@ -90,34 +88,15 @@ def accept_invitation(
 ) -> MemberResponse:
     """Accept an invitation and join the project as expert.
 
+    All invitation exceptions (NotFound, Expired, AlreadyUsed, UserAlreadyMember)
+    are handled by centralized exception middleware.
+
     :param token: Invitation token (UUID)
     :param current_user: Authenticated user
     :param invitation_service: Invitation service
     :return: Created membership details
-    :raises HTTPException: 404 if not found, 400 if invalid/expired/used, 409 if already member
     """
-    try:
-        membership = invitation_service.accept_invitation(token, current_user.id)
-    except InvitationNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Invitation not found",
-        ) from e
-    except InvitationExpiredError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invitation has expired",
-        ) from e
-    except InvitationAlreadyUsedError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invitation has already been used",
-        ) from e
-    except UserAlreadyMemberError as e:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="You are already a member of this project",
-        ) from e
+    membership = invitation_service.accept_invitation(token, current_user.id)
 
     return MemberResponse(
         user_id=str(current_user.id),

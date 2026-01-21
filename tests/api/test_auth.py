@@ -17,6 +17,7 @@ from api.db.models import (  # noqa: F401 - import all models to register in met
     User,
 )
 from api.db.session import get_session
+from api.middleware.exception_handlers import register_exception_handlers
 from api.routes import auth, calculate, health
 
 
@@ -27,6 +28,9 @@ def _create_test_app() -> FastAPI:
         title="BeCoMe API Test",
         version=settings.api_version,
     )
+    # Register exception handlers (OCP: centralized error handling)
+    register_exception_handlers(app)
+
     app.include_router(health.router)
     app.include_router(calculate.router)
     app.include_router(auth.router)

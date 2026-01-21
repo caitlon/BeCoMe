@@ -6,6 +6,7 @@ from uuid import uuid4
 import pytest
 
 from api.db.models import MemberRole, Project, ProjectMember
+from api.exceptions import ScaleRangeError
 from api.schemas import ProjectCreate, ProjectUpdate
 from api.services.project_service import (
     MemberNotFoundError,
@@ -141,7 +142,7 @@ class TestProjectServiceUpdateProject:
             service.update_project(uuid4(), data)
 
     def test_validates_scale_range_on_update(self):
-        """ValueError is raised when scale range becomes invalid."""
+        """ScaleRangeError is raised when scale range becomes invalid."""
         # GIVEN
         project_id = uuid4()
         project = Project(
@@ -157,11 +158,11 @@ class TestProjectServiceUpdateProject:
         data = ProjectUpdate(scale_min=150)  # Greater than scale_max
 
         # WHEN / THEN
-        with pytest.raises(ValueError, match="scale_min"):
+        with pytest.raises(ScaleRangeError, match="scale_min"):
             service.update_project(project_id, data)
 
     def test_validates_equal_scale_values(self):
-        """ValueError is raised when scale_min equals scale_max."""
+        """ScaleRangeError is raised when scale_min equals scale_max."""
         # GIVEN
         project_id = uuid4()
         project = Project(
@@ -177,7 +178,7 @@ class TestProjectServiceUpdateProject:
         data = ProjectUpdate(scale_max=0)  # Equal to scale_min
 
         # WHEN / THEN
-        with pytest.raises(ValueError, match="scale_min"):
+        with pytest.raises(ScaleRangeError, match="scale_min"):
             service.update_project(project_id, data)
 
 

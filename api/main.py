@@ -7,6 +7,7 @@ from fastapi import FastAPI
 
 from api.config import get_settings
 from api.db.engine import create_db_and_tables
+from api.middleware.exception_handlers import register_exception_handlers
 from api.routes import auth, calculate, health, invitations, opinions, projects
 
 
@@ -18,7 +19,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
 
 
 def create_app() -> FastAPI:
-    """Create and configure FastAPI application."""
+    """Create and configure FastAPI application.
+
+    Exception handling follows OCP: all API exceptions are handled
+    centrally in middleware, routes don't need try-except blocks.
+    """
     settings = get_settings()
 
     app = FastAPI(
@@ -27,6 +32,9 @@ def create_app() -> FastAPI:
         version=settings.api_version,
         lifespan=lifespan,
     )
+
+    # Register exception handlers (OCP: centralized error handling)
+    register_exception_handlers(app)
 
     # Register routers
     app.include_router(health.router)

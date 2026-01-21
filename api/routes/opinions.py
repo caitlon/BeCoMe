@@ -1,8 +1,12 @@
-"""Expert opinion management routes."""
+"""Expert opinion management routes.
+
+Exception handling follows OCP: all exceptions are handled
+by centralized middleware, routes focus on business logic only.
+"""
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 
 from api.auth.dependencies import CurrentUser
 from api.dependencies import (
@@ -10,7 +14,6 @@ from api.dependencies import (
     get_calculation_service,
     get_opinion_service,
 )
-from api.exceptions import OpinionNotFoundError, ValuesOutOfRangeError
 from api.schemas import (
     CalculationResultResponse,
     FuzzyNumberOutput,
@@ -58,6 +61,7 @@ def submit_opinion(
     """Submit or update own opinion for a project.
 
     If opinion already exists, it will be updated. Auto-triggers recalculation.
+    ValuesOutOfRangeError is handled by centralized exception middleware.
 
     :param project: Project (verified membership)
     :param request: Opinion data
@@ -66,15 +70,9 @@ def submit_opinion(
     :param calculation_service: Calculation service
     :return: Created or updated opinion
     """
-    try:
-        opinion_service.validate_values_in_range(
-            project, request.lower_bound, request.peak, request.upper_bound
-        )
-    except ValuesOutOfRangeError as e:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=str(e),
-        ) from e
+    opinion_service.validate_values_in_range(
+        project, request.lower_bound, request.peak, request.upper_bound
+    )
 
     opinion, _is_new = opinion_service.upsert_opinion(
         project_id=project.id,
@@ -103,19 +101,14 @@ def delete_opinion(
 ) -> None:
     """Delete own opinion from a project. Auto-triggers recalculation.
 
+    OpinionNotFoundError is handled by centralized exception middleware.
+
     :param project: Project (verified membership)
     :param current_user: Authenticated user
     :param opinion_service: Opinion service
     :param calculation_service: Calculation service
     """
-    try:
-        opinion_service.delete_opinion(project.id, current_user.id)
-    except OpinionNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="You have not submitted an opinion for this project",
-        ) from e
-
+    opinion_service.delete_opinion(project.id, current_user.id)
     calculation_service.recalculate(project.id)
 
 

@@ -1,14 +1,17 @@
-"""Authentication routes: register, login, profile."""
+"""Authentication routes: register, login, profile.
+
+Exception handling follows OCP: all exceptions are handled
+by centralized middleware, routes focus on business logic only.
+"""
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from fastapi.security import OAuth2PasswordRequestForm
 
 from api.auth.dependencies import CurrentUser
 from api.auth.jwt import create_access_token
 from api.dependencies import get_user_service
-from api.exceptions import InvalidCredentialsError, UserExistsError
 from api.schemas import RegisterRequest, TokenResponse, UserResponse
 from api.services.user_service import UserService
 
@@ -27,23 +30,18 @@ def register(
 ) -> UserResponse:
     """Create a new user account.
 
+    UserExistsError is handled by centralized exception middleware.
+
     :param request: Registration data (email, password, name)
     :param service: User service
     :return: Created user profile
-    :raises HTTPException: 409 if email already registered
     """
-    try:
-        user = service.create_user(
-            email=request.email,
-            password=request.password,
-            first_name=request.first_name,
-            last_name=request.last_name,
-        )
-    except UserExistsError as e:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Email already registered",
-        ) from e
+    user = service.create_user(
+        email=request.email,
+        password=request.password,
+        first_name=request.first_name,
+        last_name=request.last_name,
+    )
 
     return UserResponse(
         id=str(user.id),
@@ -66,21 +64,13 @@ def login(
     """Authenticate user and return JWT token.
 
     Uses OAuth2 password flow: username field contains email.
+    InvalidCredentialsError is handled by centralized exception middleware.
 
     :param form_data: OAuth2 form with username (email) and password
     :param service: User service
     :return: JWT access token
-    :raises HTTPException: 401 if credentials invalid
     """
-    try:
-        user = service.authenticate(form_data.username, form_data.password)
-    except InvalidCredentialsError as e:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        ) from e
-
+    user = service.authenticate(form_data.username, form_data.password)
     token = create_access_token(user.id)
     return TokenResponse(access_token=token)
 
