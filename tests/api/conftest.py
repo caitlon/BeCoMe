@@ -17,7 +17,7 @@ from api.db.models import (  # noqa: F401 - models required for SQLModel.metadat
     User,
 )
 from api.dependencies import get_session
-from api.routes import auth, calculate, health, invitations, projects
+from api.routes import auth, calculate, health, invitations, opinions, projects
 
 
 def create_test_app() -> FastAPI:
@@ -35,6 +35,7 @@ def create_test_app() -> FastAPI:
     app.include_router(auth.router)
     app.include_router(projects.router)
     app.include_router(invitations.router)
+    app.include_router(opinions.router)
     return app
 
 
@@ -81,6 +82,39 @@ def create_project(client: TestClient, token: str, name: str = "Test Project") -
     response = client.post(
         "/api/v1/projects",
         json={"name": name},
+        headers=auth_header(token),
+    )
+    return response.json()
+
+
+def submit_opinion(
+    client: TestClient,
+    token: str,
+    project_id: str,
+    lower_bound: float = 40.0,
+    peak: float = 60.0,
+    upper_bound: float = 80.0,
+    position: str = "Expert",
+) -> dict:
+    """Submit an opinion and return response data.
+
+    :param client: Test client instance
+    :param token: User's access token
+    :param project_id: Project UUID string
+    :param lower_bound: Fuzzy number lower bound
+    :param peak: Fuzzy number peak
+    :param upper_bound: Fuzzy number upper bound
+    :param position: Expert's position
+    :return: Opinion response data
+    """
+    response = client.post(
+        f"/api/v1/projects/{project_id}/opinions",
+        json={
+            "position": position,
+            "lower_bound": lower_bound,
+            "peak": peak,
+            "upper_bound": upper_bound,
+        },
         headers=auth_header(token),
     )
     return response.json()
