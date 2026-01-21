@@ -287,3 +287,120 @@ class TestFuzzyTriangleNumberAverage:
             FuzzyTriangleNumber.average([])
 
         assert "Cannot average empty list of fuzzy numbers" in str(exc_info.value)
+
+
+class TestFuzzyTriangleNumberEdgeCases:
+    """Edge cases for extreme and boundary values."""
+
+    def test_negative_values_allowed(self):
+        """Negative values should be valid for FuzzyTriangleNumber."""
+        # GIVEN
+        lower = -15.0
+        peak = -10.0
+        upper = -5.0
+
+        # WHEN
+        fuzzy = FuzzyTriangleNumber(lower_bound=lower, peak=peak, upper_bound=upper)
+
+        # THEN
+        assert fuzzy.lower_bound == -15.0
+        assert fuzzy.peak == -10.0
+        assert fuzzy.upper_bound == -5.0
+        assert fuzzy.centroid == -10.0
+
+    def test_zero_values_create_degenerate_triangle(self):
+        """All zeros should create valid degenerate triangle."""
+        # WHEN
+        fuzzy = FuzzyTriangleNumber(lower_bound=0.0, peak=0.0, upper_bound=0.0)
+
+        # THEN
+        assert fuzzy.centroid == 0.0
+
+    def test_very_small_values_preserve_precision(self):
+        """Very small values should not cause precision issues."""
+        # GIVEN
+        lower = 1e-10
+        peak = 2e-10
+        upper = 3e-10
+
+        # WHEN
+        fuzzy = FuzzyTriangleNumber(lower_bound=lower, peak=peak, upper_bound=upper)
+
+        # THEN
+        assert fuzzy.centroid == pytest.approx(2e-10, rel=1e-6)
+
+    def test_very_large_values_no_overflow(self):
+        """Large values should not cause overflow."""
+        # GIVEN
+        lower = 1e100
+        peak = 2e100
+        upper = 3e100
+
+        # WHEN
+        fuzzy = FuzzyTriangleNumber(lower_bound=lower, peak=peak, upper_bound=upper)
+
+        # THEN
+        assert fuzzy.centroid == pytest.approx(2e100, rel=1e-6)
+
+    def test_mixed_sign_values(self):
+        """Mixed positive and negative values should work correctly."""
+        # GIVEN
+        lower = -10.0
+        peak = 0.0
+        upper = 10.0
+
+        # WHEN
+        fuzzy = FuzzyTriangleNumber(lower_bound=lower, peak=peak, upper_bound=upper)
+
+        # THEN
+        assert fuzzy.centroid == 0.0
+
+    def test_nan_rejected_at_model_level(self):
+        """NaN is rejected by model validation (comparison with NaN fails)."""
+        import math
+
+        # WHEN / THEN - NaN comparison fails constraint check
+        with pytest.raises(ValueError) as exc_info:
+            FuzzyTriangleNumber(lower_bound=5.0, peak=math.nan, upper_bound=15.0)
+
+        assert "lower_bound <= peak <= upper_bound" in str(exc_info.value)
+
+    def test_infinity_not_validated_at_model_level(self):
+        """Infinity passes model validation (only API schema catches it)."""
+        import math
+
+        # WHEN
+        fuzzy = FuzzyTriangleNumber(lower_bound=5.0, peak=10.0, upper_bound=math.inf)
+
+        # THEN - documents current behavior: infinity is allowed at model level
+        assert fuzzy.upper_bound == math.inf
+        assert fuzzy.centroid == math.inf
+
+    def test_average_with_single_element(self):
+        """Averaging single element returns that element's values."""
+        # GIVEN
+        fuzzy = FuzzyTriangleNumber(lower_bound=5.0, peak=10.0, upper_bound=15.0)
+
+        # WHEN
+        result = FuzzyTriangleNumber.average([fuzzy])
+
+        # THEN
+        assert result.lower_bound == 5.0
+        assert result.peak == 10.0
+        assert result.upper_bound == 15.0
+
+    def test_average_many_elements(self):
+        """Averaging many elements produces correct arithmetic mean."""
+        # GIVEN
+        numbers = [
+            FuzzyTriangleNumber(lower_bound=float(i), peak=float(i + 5), upper_bound=float(i + 10))
+            for i in range(100)
+        ]
+
+        # WHEN
+        result = FuzzyTriangleNumber.average(numbers)
+
+        # THEN - mean of 0..99 is 49.5
+        assert result.lower_bound == pytest.approx(49.5, rel=1e-10)
+        assert result.peak == pytest.approx(54.5, rel=1e-10)
+        assert result.upper_bound == pytest.approx(59.5, rel=1e-10)
