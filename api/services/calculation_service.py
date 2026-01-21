@@ -15,24 +15,27 @@ from src.models.fuzzy_number import FuzzyTriangleNumber
 class CalculationService:
     """Service for BeCoMe calculation operations."""
 
-    LIKERT_SCALE_MIN = 0.0
-    LIKERT_SCALE_MAX = 100.0
-
     def __init__(
         self,
         session: Session,
         calculator: BeCoMeCalculator | None = None,
         likert_interpreter: LikertDecisionInterpreter | None = None,
+        likert_scale_min: float = 0.0,
+        likert_scale_max: float = 100.0,
     ) -> None:
         """Initialize with database session and optional dependencies.
 
         :param session: SQLModel session for database operations
         :param calculator: BeCoMe calculator instance (default: new instance)
         :param likert_interpreter: Likert interpreter instance (default: new instance)
+        :param likert_scale_min: Minimum value for Likert scale (default: 0.0)
+        :param likert_scale_max: Maximum value for Likert scale (default: 100.0)
         """
         self._session = session
         self._calculator = calculator or BeCoMeCalculator()
         self._likert_interpreter = likert_interpreter or LikertDecisionInterpreter()
+        self._likert_scale_min = likert_scale_min
+        self._likert_scale_max = likert_scale_max
 
     def get_result(self, project_id: UUID) -> CalculationResult | None:
         """Get calculation result for a project.
@@ -96,8 +99,8 @@ class CalculationService:
     def _is_likert_scale(self, project: Project) -> bool:
         """Check if project uses standard Likert scale (0-100)."""
         return (
-            project.scale_min == self.LIKERT_SCALE_MIN
-            and project.scale_max == self.LIKERT_SCALE_MAX
+            project.scale_min == self._likert_scale_min
+            and project.scale_max == self._likert_scale_max
         )
 
     def _save_result(

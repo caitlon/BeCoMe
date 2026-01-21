@@ -5,8 +5,12 @@ from uuid import UUID
 from sqlalchemy import func
 from sqlmodel import Session, col, select
 
-from api.db.models import ExpertOpinion, User
+from api.db.models import ExpertOpinion, Project, User
 from api.exceptions import OpinionNotFoundError
+
+
+class ValuesOutOfRangeError(ValueError):
+    """Raised when opinion values are outside project scale."""
 
 
 class OpinionService:
@@ -116,3 +120,26 @@ class OpinionService:
             .where(ExpertOpinion.project_id == project_id)
         )
         return self._session.exec(statement).one()
+
+    def validate_values_in_range(
+        self,
+        project: Project,
+        lower_bound: float,
+        peak: float,
+        upper_bound: float,
+    ) -> None:
+        """Validate that all values are within project scale.
+
+        :param project: Project with scale configuration
+        :param lower_bound: Lower bound value
+        :param peak: Peak value
+        :param upper_bound: Upper bound value
+        :raises ValuesOutOfRangeError: If any value is outside project scale
+        """
+        values = [lower_bound, peak, upper_bound]
+        for value in values:
+            if not (project.scale_min <= value <= project.scale_max):
+                raise ValuesOutOfRangeError(
+                    f"All values must be within project scale "
+                    f"[{project.scale_min}, {project.scale_max}]"
+                )

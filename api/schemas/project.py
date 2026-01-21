@@ -1,9 +1,12 @@
 """Project management schemas."""
 
 from datetime import datetime
-from typing import Self
+from typing import TYPE_CHECKING, Self
 
 from pydantic import BaseModel, Field, model_validator
+
+if TYPE_CHECKING:
+    from api.db.models import Project, ProjectMember, User
 
 
 class ProjectCreate(BaseModel):
@@ -49,6 +52,26 @@ class ProjectResponse(BaseModel):
     created_at: datetime
     member_count: int
 
+    @classmethod
+    def from_model(cls, project: "Project", member_count: int) -> "ProjectResponse":
+        """Create response from database model.
+
+        :param project: Project database model
+        :param member_count: Number of project members
+        :return: ProjectResponse instance
+        """
+        return cls(
+            id=str(project.id),
+            name=project.name,
+            description=project.description,
+            scale_min=project.scale_min,
+            scale_max=project.scale_max,
+            scale_unit=project.scale_unit,
+            admin_id=str(project.admin_id),
+            created_at=project.created_at,
+            member_count=member_count,
+        )
+
 
 class MemberResponse(BaseModel):
     """Project member details."""
@@ -59,3 +82,20 @@ class MemberResponse(BaseModel):
     last_name: str | None
     role: str
     joined_at: datetime
+
+    @classmethod
+    def from_model(cls, member: "ProjectMember", user: "User") -> "MemberResponse":
+        """Create response from database models.
+
+        :param member: ProjectMember database model
+        :param user: User database model
+        :return: MemberResponse instance
+        """
+        return cls(
+            user_id=str(user.id),
+            email=user.email,
+            first_name=user.first_name,
+            last_name=user.last_name,
+            role=member.role.value,
+            joined_at=member.joined_at,
+        )

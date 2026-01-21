@@ -4,11 +4,10 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
-from sqlmodel import Session
 
 from api.auth.dependencies import CurrentUser
 from api.auth.jwt import create_access_token
-from api.db.session import get_session
+from api.dependencies import get_user_service
 from api.exceptions import InvalidCredentialsError, UserExistsError
 from api.schemas import RegisterRequest, TokenResponse, UserResponse
 from api.services.user_service import UserService
@@ -24,16 +23,15 @@ router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 )
 def register(
     request: RegisterRequest,
-    session: Annotated[Session, Depends(get_session)],
+    service: Annotated[UserService, Depends(get_user_service)],
 ) -> UserResponse:
     """Create a new user account.
 
     :param request: Registration data (email, password, name)
-    :param session: Database session
+    :param service: User service
     :return: Created user profile
     :raises HTTPException: 409 if email already registered
     """
-    service = UserService(session)
     try:
         user = service.create_user(
             email=request.email,
@@ -63,18 +61,17 @@ def register(
 )
 def login(
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
-    session: Annotated[Session, Depends(get_session)],
+    service: Annotated[UserService, Depends(get_user_service)],
 ) -> TokenResponse:
     """Authenticate user and return JWT token.
 
     Uses OAuth2 password flow: username field contains email.
 
     :param form_data: OAuth2 form with username (email) and password
-    :param session: Database session
+    :param service: User service
     :return: JWT access token
     :raises HTTPException: 401 if credentials invalid
     """
-    service = UserService(session)
     try:
         user = service.authenticate(form_data.username, form_data.password)
     except InvalidCredentialsError as e:

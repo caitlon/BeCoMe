@@ -102,8 +102,17 @@ class ProjectService:
                 msg = f"scale_min ({new_min}) must be less than scale_max ({new_max})"
                 raise ValueError(msg)
 
-        for field, value in update_data.items():
-            setattr(project, field, value)
+        # Explicit field assignment (safer than setattr)
+        if "name" in update_data:
+            project.name = update_data["name"]
+        if "description" in update_data:
+            project.description = update_data["description"]
+        if "scale_min" in update_data:
+            project.scale_min = update_data["scale_min"]
+        if "scale_max" in update_data:
+            project.scale_max = update_data["scale_max"]
+        if "scale_unit" in update_data:
+            project.scale_unit = update_data["scale_unit"]
 
         self._session.add(project)
         self._session.commit()
