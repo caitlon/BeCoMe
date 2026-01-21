@@ -1,0 +1,78 @@
+# BeCoMe API - Docker Compose Configuration
+# Usage: docker-compose up --build
+
+services:
+  # ============================================
+  # PostgreSQL Database
+  # ============================================
+  db:
+    image: postgres:16-alpine
+    container_name: become-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: become
+      POSTGRES_PASSWORD: become
+      POSTGRES_DB: become
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U become -d become"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ============================================
+  # BeCoMe API (Production)
+  # ============================================
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: become-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://become:become@db:5432/become
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-production-use-openssl-rand-hex-32}
+      DEBUG: "false"
+      CORS_ORIGINS: '["http://localhost:3000"]'
+    depends_on:
+      db:
+        condition: service_healthy
+        restart: true
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # ============================================
+  # BeCoMe API (Development) - uncomment to use
+  # ============================================
+  # api-dev:
+  #   build:
+  #     context: ..
+  #     dockerfile: docker/Dockerfile.dev
+  #   container_name: become-api-dev
+  #   ports:
+  #     - "8000:8000"
+  #   environment:
+  #     DATABASE_URL: postgresql://become:become@db:5432/become
+  #     SECRET_KEY: dev-secret-key-not-for-production
+  #     DEBUG: "true"
+  #     CORS_ORIGINS: '["http://localhost:3000"]'
+  #   volumes:
+  #     - ../src:/app/src:ro
+  #     - ../api:/app/api:ro
+  #   depends_on:
+  #     db:
+  #       condition: service_healthy
+
+volumes:
+  postgres_data:
+    name: become-postgres-data
