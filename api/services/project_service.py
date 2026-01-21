@@ -16,14 +16,6 @@ class MemberNotFoundError(Exception):
     """Raised when member is not found in project."""
 
 
-class NotProjectMemberError(Exception):
-    """Raised when user is not a member of the project."""
-
-
-class NotProjectAdminError(Exception):
-    """Raised when user is not an admin of the project."""
-
-
 class ProjectService:
     """Service for project-related operations."""
 
