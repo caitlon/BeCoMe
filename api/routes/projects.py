@@ -38,8 +38,7 @@ def list_projects(
     """
     projects_with_counts = service.get_user_projects_with_counts(current_user.id)
     return [
-        ProjectResponse.from_model(project, member_count)
-        for project, member_count in projects_with_counts
+        ProjectResponse.from_model(item.project, item.member_count) for item in projects_with_counts
     ]
 
 
@@ -139,7 +138,7 @@ def list_members(
     :return: List of members with their roles
     """
     members = service.get_members(project.id)
-    return [MemberResponse.from_model(membership, user) for membership, user in members]
+    return [MemberResponse.from_model(member.membership, member.user) for member in members]
 
 
 @router.delete(

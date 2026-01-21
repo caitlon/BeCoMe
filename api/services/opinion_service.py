@@ -7,6 +7,7 @@ from sqlmodel import Session, col, select
 
 from api.db.models import ExpertOpinion, Project, User
 from api.exceptions import OpinionNotFoundError, ValuesOutOfRangeError
+from api.schemas.internal import OpinionWithUser, UpsertResult
 
 
 class OpinionService:
@@ -19,11 +20,11 @@ class OpinionService:
         """
         self._session = session
 
-    def get_opinions_for_project(self, project_id: UUID) -> list[tuple[ExpertOpinion, User]]:
+    def get_opinions_for_project(self, project_id: UUID) -> list[OpinionWithUser]:
         """Get all opinions for a project with user details.
 
         :param project_id: Project UUID
-        :return: List of (opinion, user) tuples ordered by creation date
+        :return: List of OpinionWithUser instances ordered by creation date
         """
         statement = (
             select(ExpertOpinion, User)
@@ -31,7 +32,8 @@ class OpinionService:
             .where(ExpertOpinion.project_id == project_id)
             .order_by(col(ExpertOpinion.created_at))
         )
-        return list(self._session.exec(statement).all())
+        results = self._session.exec(statement).all()
+        return [OpinionWithUser(opinion=opinion, user=user) for opinion, user in results]
 
     def get_user_opinion(self, project_id: UUID, user_id: UUID) -> ExpertOpinion | None:
         """Get user's opinion for a project.
@@ -54,7 +56,7 @@ class OpinionService:
         lower_bound: float,
         peak: float,
         upper_bound: float,
-    ) -> tuple[ExpertOpinion, bool]:
+    ) -> UpsertResult:
         """Create or update user's opinion for a project.
 
         :param project_id: Project UUID
@@ -63,7 +65,7 @@ class OpinionService:
         :param lower_bound: Fuzzy number lower bound
         :param peak: Fuzzy number peak
         :param upper_bound: Fuzzy number upper bound
-        :return: Tuple of (opinion, is_new) where is_new indicates creation
+        :return: UpsertResult with opinion and creation flag
         """
         existing = self.get_user_opinion(project_id, user_id)
 
@@ -75,7 +77,7 @@ class OpinionService:
             self._session.add(existing)
             self._session.commit()
             self._session.refresh(existing)
-            return existing, False
+            return UpsertResult(opinion=existing, is_new=False)
 
         opinion = ExpertOpinion(
             project_id=project_id,
@@ -88,7 +90,7 @@ class OpinionService:
         self._session.add(opinion)
         self._session.commit()
         self._session.refresh(opinion)
-        return opinion, True
+        return UpsertResult(opinion=opinion, is_new=True)
 
     def delete_opinion(self, project_id: UUID, user_id: UUID) -> None:
         """Delete user's opinion for a project.

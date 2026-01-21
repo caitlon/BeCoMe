@@ -28,7 +28,7 @@ class TestOpinionServiceGetOpinionsForProject:
         assert result == []
 
     def test_returns_opinions_with_users(self):
-        """Returns list of (opinion, user) tuples."""
+        """Returns list of OpinionWithUser instances."""
         # GIVEN
         project_id = uuid4()
         user = User(
@@ -57,8 +57,8 @@ class TestOpinionServiceGetOpinionsForProject:
 
         # THEN
         assert len(result) == 1
-        assert result[0][0] == opinion
-        assert result[0][1] == user
+        assert result[0].opinion == opinion
+        assert result[0].user == user
 
 
 class TestOpinionServiceGetUserOpinion:
@@ -117,7 +117,7 @@ class TestOpinionServiceUpsertOpinion:
         user_id = uuid4()
 
         # WHEN
-        opinion, is_new = service.upsert_opinion(
+        result = service.upsert_opinion(
             project_id=project_id,
             user_id=user_id,
             position="Chairman",
@@ -127,13 +127,13 @@ class TestOpinionServiceUpsertOpinion:
         )
 
         # THEN
-        assert is_new is True
-        assert opinion.project_id == project_id
-        assert opinion.user_id == user_id
-        assert opinion.position == "Chairman"
-        assert opinion.lower_bound == 30.0
-        assert opinion.peak == 60.0
-        assert opinion.upper_bound == 90.0
+        assert result.is_new is True
+        assert result.opinion.project_id == project_id
+        assert result.opinion.user_id == user_id
+        assert result.opinion.position == "Chairman"
+        assert result.opinion.lower_bound == 30.0
+        assert result.opinion.peak == 60.0
+        assert result.opinion.upper_bound == 90.0
         mock_session.add.assert_called_once()
         mock_session.commit.assert_called_once()
         mock_session.refresh.assert_called_once()
@@ -159,7 +159,7 @@ class TestOpinionServiceUpsertOpinion:
         service = OpinionService(mock_session)
 
         # WHEN
-        opinion, is_new = service.upsert_opinion(
+        result = service.upsert_opinion(
             project_id=project_id,
             user_id=user_id,
             position="Senior Expert",
@@ -169,11 +169,11 @@ class TestOpinionServiceUpsertOpinion:
         )
 
         # THEN
-        assert is_new is False
-        assert opinion.position == "Senior Expert"
-        assert opinion.lower_bound == 40.0
-        assert opinion.peak == 70.0
-        assert opinion.upper_bound == 95.0
+        assert result.is_new is False
+        assert result.opinion.position == "Senior Expert"
+        assert result.opinion.lower_bound == 40.0
+        assert result.opinion.peak == 70.0
+        assert result.opinion.upper_bound == 95.0
         mock_session.add.assert_called_once()
         mock_session.commit.assert_called_once()
 

@@ -13,6 +13,7 @@ from api.exceptions import (
     InvitationNotFoundError,
     UserAlreadyMemberError,
 )
+from api.schemas.internal import InvitationDetails
 
 
 class InvitationService:
@@ -65,11 +66,11 @@ class InvitationService:
         statement = select(Invitation).where(Invitation.token == token)
         return self._session.exec(statement).first()
 
-    def get_invitation_details(self, token: UUID) -> tuple[Invitation, Project, User] | None:
+    def get_invitation_details(self, token: UUID) -> InvitationDetails | None:
         """Get invitation with project and admin details.
 
         :param token: Invitation token
-        :return: Tuple of (Invitation, Project, Admin User) if found, None otherwise
+        :return: InvitationDetails if found, None otherwise
         """
         statement = (
             select(Invitation, Project, User)
@@ -78,7 +79,10 @@ class InvitationService:
             .where(Invitation.token == token)
         )
         result = self._session.exec(statement).first()
-        return result if result else None
+        if not result:
+            return None
+        invitation, project, admin = result
+        return InvitationDetails(invitation=invitation, project=project, admin=admin)
 
     def accept_invitation(self, token: UUID, user_id: UUID) -> ProjectMember:
         """Accept an invitation and add user to project.

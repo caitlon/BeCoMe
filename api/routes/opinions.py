@@ -42,7 +42,7 @@ def list_opinions(
     :return: List of opinions with user details
     """
     opinions = opinion_service.get_opinions_for_project(project.id)
-    return [OpinionResponse.from_model(opinion, user) for opinion, user in opinions]
+    return [OpinionResponse.from_model(item.opinion, item.user) for item in opinions]
 
 
 @router.post(
@@ -74,7 +74,7 @@ def submit_opinion(
         project, request.lower_bound, request.peak, request.upper_bound
     )
 
-    opinion, _is_new = opinion_service.upsert_opinion(
+    result = opinion_service.upsert_opinion(
         project_id=project.id,
         user_id=current_user.id,
         position=request.position,
@@ -85,7 +85,7 @@ def submit_opinion(
 
     calculation_service.recalculate(project.id)
 
-    return OpinionResponse.from_model(opinion, current_user)
+    return OpinionResponse.from_model(result.opinion, current_user)
 
 
 @router.delete(

@@ -64,15 +64,18 @@ def get_invitation_info(
     :return: Invitation details
     :raises HTTPException: 404 if invitation not found
     """
-    result = invitation_service.get_invitation_details(token)
-    if not result:
+    details = invitation_service.get_invitation_details(token)
+    if not details:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Invitation not found",
         )
 
-    invitation, project, admin = result
-    return InvitationInfoResponse.from_model(invitation, project, admin)
+    return InvitationInfoResponse.from_model(
+        details.invitation,
+        details.project,
+        details.admin,
+    )
 
 
 @router.post(
