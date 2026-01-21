@@ -13,7 +13,7 @@ from api.dependencies import (
 from api.exceptions import OpinionNotFoundError
 from api.schemas import (
     CalculationResultResponse,
-    FuzzyNumberResult,
+    FuzzyNumberOutput,
     OpinionCreate,
     OpinionResponse,
 )
@@ -141,7 +141,7 @@ def get_result(
         return None
 
     return CalculationResultResponse(
-        best_compromise=FuzzyNumberResult(
+        best_compromise=FuzzyNumberOutput(
             lower=result.best_compromise_lower,
             peak=result.best_compromise_peak,
             upper=result.best_compromise_upper,
@@ -152,7 +152,7 @@ def get_result(
             )
             / 3,
         ),
-        arithmetic_mean=FuzzyNumberResult(
+        arithmetic_mean=FuzzyNumberOutput(
             lower=result.arithmetic_mean_lower,
             peak=result.arithmetic_mean_peak,
             upper=result.arithmetic_mean_upper,
@@ -163,7 +163,7 @@ def get_result(
             )
             / 3,
         ),
-        median=FuzzyNumberResult(
+        median=FuzzyNumberOutput(
             lower=result.median_lower,
             peak=result.median_peak,
             upper=result.median_upper,
