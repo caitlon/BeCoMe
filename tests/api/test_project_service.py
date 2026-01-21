@@ -6,13 +6,9 @@ from uuid import uuid4
 import pytest
 
 from api.db.models import MemberRole, Project, ProjectMember
-from api.exceptions import ScaleRangeError
+from api.exceptions import MemberNotFoundError, ProjectNotFoundError, ScaleRangeError
 from api.schemas import ProjectCreate, ProjectUpdate
-from api.services.project_service import (
-    MemberNotFoundError,
-    ProjectNotFoundError,
-    ProjectService,
-)
+from api.services.project_service import ProjectService
 
 
 class TestProjectServiceCreateProject:

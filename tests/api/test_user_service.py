@@ -6,7 +6,8 @@ from uuid import uuid4
 import pytest
 
 from api.db.models import User
-from api.services.user_service import InvalidCredentialsError, UserExistsError, UserService
+from api.exceptions import InvalidCredentialsError, UserExistsError
+from api.services.user_service import UserService
 
 
 class TestUserServiceCreateUser:

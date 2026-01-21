@@ -7,13 +7,13 @@ from uuid import uuid4
 import pytest
 
 from api.db.models import Invitation, MemberRole, Project, ProjectMember, User
-from api.services.invitation_service import (
+from api.exceptions import (
     InvitationAlreadyUsedError,
     InvitationExpiredError,
     InvitationNotFoundError,
-    InvitationService,
     UserAlreadyMemberError,
 )
+from api.services.invitation_service import InvitationService
 
 
 class TestInvitationServiceCreateInvitation:
