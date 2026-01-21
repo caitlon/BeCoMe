@@ -271,3 +271,40 @@ class TestMe:
 
         # THEN
         assert response.status_code == 401
+
+    def test_me_with_deleted_user_fails(self, client):
+        """Request with valid token but deleted user returns 401."""
+        # GIVEN - register, login, then delete user
+        client.post(
+            "/api/v1/auth/register",
+            json={
+                "email": "deleted@example.com",
+                "password": "securepassword123",
+                "first_name": "Deleted",
+            },
+        )
+        login_response = client.post(
+            "/api/v1/auth/login",
+            data={"username": "deleted@example.com", "password": "securepassword123"},
+        )
+        token = login_response.json()["access_token"]
+
+        # Delete user directly from database
+        from api.db.session import get_session
+
+        session = next(client.app.dependency_overrides[get_session]())
+        user = session.exec(
+            __import__("sqlmodel").select(User).where(User.email == "deleted@example.com")
+        ).first()
+        session.delete(user)
+        session.commit()
+
+        # WHEN - try to use token for deleted user
+        response = client.get(
+            "/api/v1/auth/me",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        # THEN
+        assert response.status_code == 401
+        assert "Could not validate credentials" in response.json()["detail"]

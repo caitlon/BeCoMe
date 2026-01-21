@@ -89,8 +89,8 @@ def _get_status_and_detail(exc: BeCoMeAPIError) -> tuple[int, str]:
         if isinstance(exc, base_class):
             return default_status, str(exc)
 
-    # Ultimate fallback
-    return status.HTTP_400_BAD_REQUEST, str(exc)
+    # Ultimate fallback (unreachable: BeCoMeAPIError is in DEFAULT_STATUS_CODES)
+    return status.HTTP_400_BAD_REQUEST, str(exc)  # pragma: no cover
 
 
 async def become_api_error_handler(request: Request, exc: BeCoMeAPIError) -> JSONResponse:
