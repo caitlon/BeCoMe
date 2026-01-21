@@ -288,3 +288,163 @@ class TestValidation:
         # THEN
         assert response.status_code == 400
         assert response.json()["detail"] == error_message
+
+
+class TestCalculateEdgeCases:
+    """Edge case tests for /calculate endpoint."""
+
+    def test_single_expert_returns_same_values_everywhere(self, client: TestClient):
+        """
+        GIVEN single expert
+        WHEN POST /api/v1/calculate is called
+        THEN all aggregations return same values and error is zero
+        """
+        # GIVEN
+        experts = [{"name": "Solo", "lower": 10.0, "peak": 20.0, "upper": 30.0}]
+
+        # WHEN
+        response = client.post("/api/v1/calculate", json={"experts": experts})
+
+        # THEN
+        assert response.status_code == 200
+        data = response.json()
+
+        assert data["best_compromise"] == data["arithmetic_mean"]
+        assert data["best_compromise"] == data["median"]
+        assert data["max_error"] == 0.0
+        assert data["num_experts"] == 1
+
+    def test_two_experts_uses_even_strategy(self, client: TestClient):
+        """
+        GIVEN two experts (minimum for even strategy)
+        WHEN POST /api/v1/calculate is called
+        THEN calculation completes with even number flag
+        """
+        # GIVEN
+        experts = [
+            {"name": "E1", "lower": 0.0, "peak": 10.0, "upper": 20.0},
+            {"name": "E2", "lower": 20.0, "peak": 30.0, "upper": 40.0},
+        ]
+
+        # WHEN
+        response = client.post("/api/v1/calculate", json={"experts": experts})
+
+        # THEN
+        assert response.status_code == 200
+        data = response.json()
+        assert data["num_experts"] == 2
+
+    def test_negative_values_accepted(self, client: TestClient):
+        """
+        GIVEN negative fuzzy values
+        WHEN POST /api/v1/calculate is called
+        THEN calculation completes successfully
+        """
+        # GIVEN
+        experts = [
+            {"name": "E1", "lower": -30.0, "peak": -20.0, "upper": -10.0},
+            {"name": "E2", "lower": -20.0, "peak": -10.0, "upper": 0.0},
+        ]
+
+        # WHEN
+        response = client.post("/api/v1/calculate", json={"experts": experts})
+
+        # THEN
+        assert response.status_code == 200
+        data = response.json()
+        assert data["best_compromise"]["peak"] < 0
+
+    def test_zero_values_accepted(self, client: TestClient):
+        """
+        GIVEN all zero values (degenerate triangle)
+        WHEN POST /api/v1/calculate is called
+        THEN calculation completes successfully
+        """
+        # GIVEN
+        experts = [
+            {"name": "E1", "lower": 0.0, "peak": 0.0, "upper": 0.0},
+            {"name": "E2", "lower": 0.0, "peak": 0.0, "upper": 0.0},
+        ]
+
+        # WHEN
+        response = client.post("/api/v1/calculate", json={"experts": experts})
+
+        # THEN
+        assert response.status_code == 200
+        data = response.json()
+        assert data["best_compromise"]["peak"] == 0.0
+        assert data["best_compromise"]["lower"] == 0.0
+        assert data["best_compromise"]["upper"] == 0.0
+
+    def test_many_experts_completes_successfully(self, client: TestClient):
+        """
+        GIVEN 100 experts
+        WHEN POST /api/v1/calculate is called
+        THEN calculation completes successfully
+        """
+        # GIVEN
+        experts = [
+            {
+                "name": f"E{i}",
+                "lower": float(i),
+                "peak": float(i + 5),
+                "upper": float(i + 10),
+            }
+            for i in range(100)
+        ]
+
+        # WHEN
+        response = client.post("/api/v1/calculate", json={"experts": experts})
+
+        # THEN
+        assert response.status_code == 200
+        assert response.json()["num_experts"] == 100
+
+    def test_identical_opinions_zero_error(self, client: TestClient):
+        """
+        GIVEN all identical expert opinions
+        WHEN POST /api/v1/calculate is called
+        THEN max_error is zero
+        """
+        # GIVEN
+        experts = [
+            {"name": f"E{i}", "lower": 10.0, "peak": 20.0, "upper": 30.0} for i in range(5)
+        ]
+
+        # WHEN
+        response = client.post("/api/v1/calculate", json={"experts": experts})
+
+        # THEN
+        assert response.status_code == 200
+        data = response.json()
+        assert data["max_error"] == 0.0
+
+    def test_peak_greater_than_upper_returns_422(self, client: TestClient):
+        """
+        GIVEN expert data where peak > upper
+        WHEN POST /api/v1/calculate is called
+        THEN response status is 422 (validation error)
+        """
+        # GIVEN
+        experts = [{"name": "Test", "lower": 5.0, "peak": 20.0, "upper": 15.0}]
+
+        # WHEN
+        response = client.post("/api/v1/calculate", json={"experts": experts})
+
+        # THEN
+        assert response.status_code == 422
+
+    def test_all_constraints_violated_returns_422(self, client: TestClient):
+        """
+        GIVEN expert data where all constraints violated (lower > peak > upper)
+        WHEN POST /api/v1/calculate is called
+        THEN response status is 422 (validation error)
+        """
+        # GIVEN
+        experts = [{"name": "Test", "lower": 20.0, "peak": 15.0, "upper": 10.0}]
+
+        # WHEN
+        response = client.post("/api/v1/calculate", json={"experts": experts})
+
+        # THEN
+        assert response.status_code == 422

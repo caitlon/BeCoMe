@@ -267,3 +267,159 @@ class TestEvenMedianStrategy:
         assert result.lower_bound == 6.0
         assert result.peak == 9.5
         assert result.upper_bound == 13.0
+
+
+class TestEvenMedianStrategyEdgeCases:
+    """Edge cases for even median strategy with identical or clustered centroids."""
+
+    def test_two_experts_identical_centroids(self):
+        """Two experts with identical centroids should average both opinions."""
+        # GIVEN - both have centroid = 10.0
+        opinions = [
+            ExpertOpinion(
+                expert_id="E1",
+                opinion=FuzzyTriangleNumber(lower_bound=5.0, peak=10.0, upper_bound=15.0),
+            ),
+            ExpertOpinion(
+                expert_id="E2",
+                opinion=FuzzyTriangleNumber(lower_bound=8.0, peak=10.0, upper_bound=12.0),
+            ),
+        ]
+        strategy = EvenMedianStrategy()
+
+        # WHEN
+        result = strategy.calculate(opinions, median_centroid=10.0)
+
+        # THEN - average of (5,10,15) and (8,10,12) = (6.5, 10, 13.5)
+        assert result.lower_bound == 6.5
+        assert result.peak == 10.0
+        assert result.upper_bound == 13.5
+
+    def test_four_experts_middle_two_same_centroid(self):
+        """Four experts where middle two have same centroid."""
+        # GIVEN - E2 and E3 both have centroid = 10.0
+        opinions = [
+            ExpertOpinion(
+                expert_id="E1",
+                opinion=FuzzyTriangleNumber(lower_bound=1.0, peak=2.0, upper_bound=3.0),
+            ),
+            ExpertOpinion(
+                expert_id="E2",
+                opinion=FuzzyTriangleNumber(lower_bound=5.0, peak=10.0, upper_bound=15.0),
+            ),
+            ExpertOpinion(
+                expert_id="E3",
+                opinion=FuzzyTriangleNumber(lower_bound=8.0, peak=10.0, upper_bound=12.0),
+            ),
+            ExpertOpinion(
+                expert_id="E4",
+                opinion=FuzzyTriangleNumber(lower_bound=18.0, peak=19.0, upper_bound=20.0),
+            ),
+        ]
+        strategy = EvenMedianStrategy()
+
+        # WHEN
+        result = strategy.calculate(opinions, median_centroid=10.0)
+
+        # THEN - both middle elements have centroid=10, averages E2 and E3
+        assert result.lower_bound == 6.5
+        assert result.peak == 10.0
+        assert result.upper_bound == 13.5
+
+    def test_all_centroids_identical(self):
+        """All experts have identical centroids."""
+        # GIVEN - all have centroid = 10.0
+        opinions = [
+            ExpertOpinion(
+                expert_id="E1",
+                opinion=FuzzyTriangleNumber(lower_bound=5.0, peak=10.0, upper_bound=15.0),
+            ),
+            ExpertOpinion(
+                expert_id="E2",
+                opinion=FuzzyTriangleNumber(lower_bound=7.0, peak=10.0, upper_bound=13.0),
+            ),
+            ExpertOpinion(
+                expert_id="E3",
+                opinion=FuzzyTriangleNumber(lower_bound=8.0, peak=10.0, upper_bound=12.0),
+            ),
+            ExpertOpinion(
+                expert_id="E4",
+                opinion=FuzzyTriangleNumber(lower_bound=9.0, peak=10.0, upper_bound=11.0),
+            ),
+        ]
+        strategy = EvenMedianStrategy()
+
+        # WHEN
+        result = strategy.calculate(opinions, median_centroid=10.0)
+
+        # THEN - strategy picks first two closest (E1 and E2 due to list order)
+        # Result is average of two opinions picked by _find_closest_opinion
+        assert result.peak == 10.0
+
+    def test_clustered_centroids_near_median(self):
+        """Multiple opinions clustered near median centroid."""
+        # GIVEN - 6 experts: E1(centroid=2), E2-E5(centroid=10), E6(centroid=19)
+        opinions = [
+            ExpertOpinion(
+                expert_id="E1",
+                opinion=FuzzyTriangleNumber(lower_bound=1.0, peak=2.0, upper_bound=3.0),
+            ),
+            ExpertOpinion(
+                expert_id="E2",
+                opinion=FuzzyTriangleNumber(lower_bound=9.0, peak=10.0, upper_bound=11.0),
+            ),
+            ExpertOpinion(
+                expert_id="E3",
+                opinion=FuzzyTriangleNumber(lower_bound=9.5, peak=10.0, upper_bound=10.5),
+            ),
+            ExpertOpinion(
+                expert_id="E4",
+                opinion=FuzzyTriangleNumber(lower_bound=9.8, peak=10.0, upper_bound=10.2),
+            ),
+            ExpertOpinion(
+                expert_id="E5",
+                opinion=FuzzyTriangleNumber(lower_bound=10.0, peak=10.0, upper_bound=10.0),
+            ),
+            ExpertOpinion(
+                expert_id="E6",
+                opinion=FuzzyTriangleNumber(lower_bound=18.0, peak=19.0, upper_bound=20.0),
+            ),
+        ]
+        strategy = EvenMedianStrategy()
+
+        # WHEN
+        result = strategy.calculate(opinions, median_centroid=10.0)
+
+        # THEN - peak is always 10.0 since all middle opinions have centroid=10
+        assert result.peak == 10.0
+
+
+class TestOddMedianStrategyEdgeCases:
+    """Edge cases for odd median strategy."""
+
+    def test_three_experts_all_same_centroid(self):
+        """Three experts all with identical centroids."""
+        # GIVEN - all have centroid = 10.0
+        opinions = [
+            ExpertOpinion(
+                expert_id="E1",
+                opinion=FuzzyTriangleNumber(lower_bound=5.0, peak=10.0, upper_bound=15.0),
+            ),
+            ExpertOpinion(
+                expert_id="E2",
+                opinion=FuzzyTriangleNumber(lower_bound=7.0, peak=10.0, upper_bound=13.0),
+            ),
+            ExpertOpinion(
+                expert_id="E3",
+                opinion=FuzzyTriangleNumber(lower_bound=9.0, peak=10.0, upper_bound=11.0),
+            ),
+        ]
+        strategy = OddMedianStrategy()
+
+        # WHEN
+        result = strategy.calculate(opinions, median_centroid=10.0)
+
+        # THEN - _find_closest_opinion returns first match (E1)
+        assert result.peak == 10.0
+        assert result.lower_bound == 5.0
+        assert result.upper_bound == 15.0
