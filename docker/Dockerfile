@@ -1,6 +1,10 @@
 # BeCoMe API - Production Dockerfile
 # Multi-stage build with uv package manager
 
+# Pin uv image to specific digest for supply-chain security
+# Update this digest when upgrading uv version
+ARG UV_VERSION=ghcr.io/astral-sh/uv@sha256:9a23023be68b2ed09750ae636228e903a54a05ea56ed03a934d00fe9fbeded4b
+
 # ============================================
 # Stage 1: Builder
 # ============================================
@@ -8,8 +12,8 @@ FROM python:3.13 AS builder
 
 WORKDIR /app
 
-# Install uv for fast dependency management
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+# Install uv for fast dependency management (pinned to specific digest)
+COPY --from=ghcr.io/astral-sh/uv@sha256:9a23023be68b2ed09750ae636228e903a54a05ea56ed03a934d00fe9fbeded4b /uv /uvx /bin/
 
 # uv optimization settings
 ENV UV_COMPILE_BYTECODE=1
@@ -39,8 +43,9 @@ FROM python:3.13 AS runtime
 WORKDIR /app
 
 # Create non-root user for security
-RUN groupadd --system --gid 999 appgroup && \
-    useradd --system --gid 999 --uid 999 --create-home appuser
+# Using high UID/GID (10001) to avoid conflicts with host system users
+RUN groupadd --system --gid 10001 appgroup && \
+    useradd --system --gid 10001 --uid 10001 --create-home appuser
 
 # Copy virtual environment from builder
 COPY --from=builder --chown=appuser:appgroup /app/.venv /app/.venv
@@ -58,6 +63,9 @@ ENV PATH="/app/.venv/bin:$PATH"
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 
+# Default worker count (can be overridden via environment)
+ENV UVICORN_WORKERS=4
+
 # Expose port
 EXPOSE 8000
 
@@ -65,5 +73,5 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')" || exit 1
 
-# Run with uvicorn (4 workers for production)
-CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
+# Run with uvicorn (worker count configurable via UVICORN_WORKERS env var)
+CMD uvicorn api.main:app --host 0.0.0.0 --port 8000 --workers ${UVICORN_WORKERS}

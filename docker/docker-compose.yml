@@ -1,5 +1,24 @@
 # BeCoMe API - Docker Compose Configuration
-# Usage: docker-compose up --build
+#
+# Usage (development):
+#   docker compose up --build
+#
+# Usage (production-like with custom secret):
+#   SECRET_KEY=$(openssl rand -hex 32) docker compose up --build
+#
+# Environment variables:
+#   SECRET_KEY       - REQUIRED for production. Generate with: openssl rand -hex 32
+#   POSTGRES_PASSWORD - Database password (default: become, CHANGE for production)
+#   UVICORN_WORKERS  - Number of API workers (default: 4)
+#   DEBUG            - Enable debug mode (default: false)
+#   CORS_ORIGINS     - JSON list of allowed origins
+#
+# Production considerations:
+#   - Always set SECRET_KEY via environment variable
+#   - Change default database credentials
+#   - Use managed PostgreSQL instead of bundled db service
+#   - Remove or restrict exposed ports (5432)
+#   - Run behind a reverse proxy (Nginx, Traefik)
 
 services:
   # ============================================
@@ -9,16 +28,20 @@ services:
     image: postgres:16-alpine
     container_name: become-db
     restart: unless-stopped
+    # WARNING: Default credentials for LOCAL DEVELOPMENT ONLY
+    # For production: use environment variables or secrets management
     environment:
-      POSTGRES_USER: become
-      POSTGRES_PASSWORD: become
-      POSTGRES_DB: become
+      POSTGRES_USER: ${POSTGRES_USER:-become}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-become}
+      POSTGRES_DB: ${POSTGRES_DB:-become}
+    # WARNING: Port exposed for local development/debugging only
+    # For production: remove this mapping or bind to 127.0.0.1:5432
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U become -d become"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-become} -d ${POSTGRES_DB:-become}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -36,10 +59,12 @@ services:
     ports:
       - "8000:8000"
     environment:
-      DATABASE_URL: postgresql://become:become@db:5432/become
-      SECRET_KEY: ${SECRET_KEY:-change-me-in-production-use-openssl-rand-hex-32}
-      DEBUG: "false"
+      DATABASE_URL: postgresql://${POSTGRES_USER:-become}:${POSTGRES_PASSWORD:-become}@db:5432/${POSTGRES_DB:-become}
+      # SECRET_KEY is REQUIRED - no default value for security
+      SECRET_KEY: "${SECRET_KEY:?SECRET_KEY is required. Generate with openssl rand -hex 32}"
+      DEBUG: ${DEBUG:-false}
       CORS_ORIGINS: '["http://localhost:3000"]'
+      UVICORN_WORKERS: ${UVICORN_WORKERS:-4}
     depends_on:
       db:
         condition: service_healthy
@@ -62,13 +87,14 @@ services:
   #   ports:
   #     - "8000:8000"
   #   environment:
-  #     DATABASE_URL: postgresql://become:become@db:5432/become
-  #     SECRET_KEY: dev-secret-key-not-for-production
+  #     DATABASE_URL: postgresql://${POSTGRES_USER:-become}:${POSTGRES_PASSWORD:-become}@db:5432/${POSTGRES_DB:-become}
+  #     SECRET_KEY: "${SECRET_KEY:?SECRET_KEY is required}"
   #     DEBUG: "true"
   #     CORS_ORIGINS: '["http://localhost:3000"]'
+  #   # Volume mounts without :ro to allow file generation (migrations, etc.)
   #   volumes:
-  #     - ../src:/app/src:ro
-  #     - ../api:/app/api:ro
+  #     - ../src:/app/src
+  #     - ../api:/app/api
   #   depends_on:
   #     db:
   #       condition: service_healthy
