@@ -196,6 +196,32 @@ class TestSubmitOpinion:
         # THEN
         assert response.status_code == 422
 
+    def test_validates_all_values_within_scale(self, client):
+        """Returns 422 when lower_bound is below scale_min."""
+        # GIVEN
+        token = register_and_login(client)
+        project_resp = client.post(
+            "/api/v1/projects",
+            json={"name": "Test", "scale_min": 20, "scale_max": 80},
+            headers=auth_header(token),
+        )
+        project = project_resp.json()
+
+        # WHEN - lower_bound (10) is below scale_min (20)
+        response = client.post(
+            f"/api/v1/projects/{project['id']}/opinions",
+            json={
+                "lower_bound": 10.0,  # Below scale_min!
+                "peak": 50.0,
+                "upper_bound": 70.0,
+            },
+            headers=auth_header(token),
+        )
+
+        # THEN
+        assert response.status_code == 422
+        assert "within project scale" in response.json()["detail"]
+
     def test_requires_membership(self, client):
         """Returns 403 for non-members."""
         # GIVEN

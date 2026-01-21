@@ -35,7 +35,7 @@ class TestOpinionServiceGetOpinionsForProject:
             id=uuid4(),
             email="expert@example.com",
             first_name="Test",
-            password_hash="hash",
+            hashed_password="hash",
         )
         opinion = ExpertOpinion(
             id=uuid4(),

@@ -129,10 +129,16 @@ def submit_opinion(
 
     project = project_service.get_project(project_id)
     assert project is not None  # _check_membership ensures project exists
-    if request.lower_bound < project.scale_min or request.upper_bound > project.scale_max:
+
+    values_in_range = (
+        project.scale_min <= request.lower_bound <= project.scale_max
+        and project.scale_min <= request.peak <= project.scale_max
+        and project.scale_min <= request.upper_bound <= project.scale_max
+    )
+    if not values_in_range:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Values must be within project scale [{project.scale_min}, {project.scale_max}]",
+            detail=f"All values must be within project scale [{project.scale_min}, {project.scale_max}]",
         )
 
     opinion, _is_new = opinion_service.upsert_opinion(
