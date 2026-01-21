@@ -121,7 +121,7 @@ def get_invitation_info(
         project_name=project.name,
         project_description=project.description,
         admin_name=admin_name,
-        expires_at=invitation.expires_at,
+        expires_at=expires_at,
         is_valid=is_valid,
     )
 

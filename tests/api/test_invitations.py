@@ -1,13 +1,16 @@
 """Tests for invitation management endpoints."""
 
+from datetime import UTC, datetime, timedelta
+from uuid import UUID
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy.pool import StaticPool
-from sqlmodel import Session, SQLModel, create_engine
+from sqlmodel import Session, SQLModel, create_engine, select
 
 from api.config import get_settings
-from api.db.models import (  # noqa: F401 - import all models to register in metadata
+from api.db.models import (  # noqa: F401 - models required for SQLModel.metadata.create_all
     CalculationResult,
     ExpertOpinion,
     Invitation,
@@ -36,15 +39,20 @@ def _create_test_app() -> FastAPI:
 
 
 @pytest.fixture
-def client():
-    """Create test client with in-memory database."""
-    test_engine = create_engine(
+def test_engine():
+    """Create in-memory SQLite engine for testing."""
+    engine = create_engine(
         "sqlite:///:memory:",
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
-    SQLModel.metadata.create_all(test_engine)
+    SQLModel.metadata.create_all(engine)
+    return engine
 
+
+@pytest.fixture
+def client(test_engine):
+    """Create test client with in-memory database."""
     test_app = _create_test_app()
 
     def override_get_session():
@@ -55,6 +63,21 @@ def client():
 
     with TestClient(test_app) as test_client:
         yield test_client
+
+
+@pytest.fixture
+def client_with_session(test_engine):
+    """Create test client with access to database session for direct manipulation."""
+    test_app = _create_test_app()
+
+    def override_get_session():
+        with Session(test_engine) as session:
+            yield session
+
+    test_app.dependency_overrides[get_session] = override_get_session
+
+    with TestClient(test_app) as test_client, Session(test_engine) as session:
+        yield test_client, session
 
 
 def _register_and_login(client: TestClient, email: str = "test@example.com") -> str:
@@ -274,6 +297,34 @@ class TestGetInvitationInfo:
         assert response.status_code == 200
         assert response.json()["is_valid"] is False
 
+    def test_get_invitation_info_shows_invalid_when_expired(self, client_with_session):
+        """Invitation info shows is_valid=False when invitation has expired."""
+        # GIVEN
+        test_client, session = client_with_session
+        admin_token = _register_and_login(test_client, "admin@example.com")
+        project = _create_project(test_client, admin_token)
+        invite_resp = test_client.post(
+            f"/api/v1/projects/{project['id']}/invite",
+            json={},
+            headers=_auth_header(admin_token),
+        )
+        invite_token = invite_resp.json()["token"]
+
+        # Manually expire the invitation in database
+        invitation = session.exec(
+            select(Invitation).where(Invitation.token == UUID(invite_token))
+        ).first()
+        invitation.expires_at = datetime.now(UTC) - timedelta(days=1)
+        session.add(invitation)
+        session.commit()
+
+        # WHEN
+        response = test_client.get(f"/api/v1/invitations/{invite_token}")
+
+        # THEN
+        assert response.status_code == 200
+        assert response.json()["is_valid"] is False
+
 
 class TestAcceptInvitation:
     """Tests for POST /api/v1/invitations/{token}/accept."""
@@ -439,6 +490,38 @@ class TestAcceptInvitation:
 
         # THEN
         assert response.status_code == 401
+
+    def test_accept_invitation_expired(self, client_with_session):
+        """400 returned when invitation has expired."""
+        # GIVEN
+        test_client, session = client_with_session
+        admin_token = _register_and_login(test_client, "admin@example.com")
+        expert_token = _register_and_login(test_client, "expert@example.com")
+        project = _create_project(test_client, admin_token)
+        invite_resp = test_client.post(
+            f"/api/v1/projects/{project['id']}/invite",
+            json={},
+            headers=_auth_header(admin_token),
+        )
+        invite_token = invite_resp.json()["token"]
+
+        # Manually expire the invitation in database
+        invitation = session.exec(
+            select(Invitation).where(Invitation.token == UUID(invite_token))
+        ).first()
+        invitation.expires_at = datetime.now(UTC) - timedelta(days=1)
+        session.add(invitation)
+        session.commit()
+
+        # WHEN
+        response = test_client.post(
+            f"/api/v1/invitations/{invite_token}/accept",
+            headers=_auth_header(expert_token),
+        )
+
+        # THEN
+        assert response.status_code == 400
+        assert "expired" in response.json()["detail"]
 
 
 class TestInvitationFlow:
