@@ -72,12 +72,21 @@ class Project(SQLModel, table=True):
     )
 
     admin: User = Relationship(back_populates="owned_projects")
-    members: list["ProjectMember"] = Relationship(back_populates="project")
-    invitations: list["Invitation"] = Relationship(back_populates="project")
-    opinions: list["ExpertOpinion"] = Relationship(back_populates="project")
+    members: list["ProjectMember"] = Relationship(
+        back_populates="project",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+    )
+    invitations: list["Invitation"] = Relationship(
+        back_populates="project",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+    )
+    opinions: list["ExpertOpinion"] = Relationship(
+        back_populates="project",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+    )
     result: Optional["CalculationResult"] = Relationship(
         back_populates="project",
-        sa_relationship_kwargs={"uselist": False},
+        sa_relationship_kwargs={"uselist": False, "cascade": "all, delete-orphan"},
     )
 
     @model_validator(mode="after")
