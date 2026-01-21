@@ -58,14 +58,14 @@ EXCEPTION_MAP: dict[type[BeCoMeAPIError], tuple[int, str | None]] = {
         "You are already a member of this project",
     ),
     # 422 Unprocessable Entity
-    ValuesOutOfRangeError: (status.HTTP_422_UNPROCESSABLE_ENTITY, None),  # Use exception message
-    ScaleRangeError: (status.HTTP_422_UNPROCESSABLE_ENTITY, None),  # Use exception message
+    ValuesOutOfRangeError: (status.HTTP_422_UNPROCESSABLE_CONTENT, None),  # Use exception message
+    ScaleRangeError: (status.HTTP_422_UNPROCESSABLE_CONTENT, None),  # Use exception message
 }
 
 # Default mappings for base exception classes
 DEFAULT_STATUS_CODES: dict[type[BeCoMeAPIError], int] = {
     NotFoundError: status.HTTP_404_NOT_FOUND,
-    ValidationError: status.HTTP_422_UNPROCESSABLE_ENTITY,
+    ValidationError: status.HTTP_422_UNPROCESSABLE_CONTENT,
     BeCoMeAPIError: status.HTTP_400_BAD_REQUEST,
 }
 
