@@ -57,7 +57,7 @@ EXCEPTION_MAP: dict[type[BeCoMeAPIError], tuple[int, str | None]] = {
         status.HTTP_409_CONFLICT,
         "You are already a member of this project",
     ),
-    # 422 Unprocessable Entity
+    # 422 Unprocessable Content
     ValuesOutOfRangeError: (status.HTTP_422_UNPROCESSABLE_CONTENT, None),  # Use exception message
     ScaleRangeError: (status.HTTP_422_UNPROCESSABLE_CONTENT, None),  # Use exception message
 }
