@@ -7,7 +7,7 @@ from fastapi import FastAPI
 
 from api.config import get_settings
 from api.db.engine import create_db_and_tables
-from api.routes import calculate, health
+from api.routes import auth, calculate, health
 
 
 @asynccontextmanager
@@ -31,6 +31,7 @@ def create_app() -> FastAPI:
     # Register routers
     app.include_router(health.router)
     app.include_router(calculate.router)
+    app.include_router(auth.router)
 
     return app
 
