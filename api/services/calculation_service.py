@@ -18,14 +18,21 @@ class CalculationService:
     LIKERT_SCALE_MIN = 0.0
     LIKERT_SCALE_MAX = 100.0
 
-    def __init__(self, session: Session) -> None:
-        """Initialize with database session.
+    def __init__(
+        self,
+        session: Session,
+        calculator: BeCoMeCalculator | None = None,
+        likert_interpreter: LikertDecisionInterpreter | None = None,
+    ) -> None:
+        """Initialize with database session and optional dependencies.
 
         :param session: SQLModel session for database operations
+        :param calculator: BeCoMe calculator instance (default: new instance)
+        :param likert_interpreter: Likert interpreter instance (default: new instance)
         """
         self._session = session
-        self._calculator = BeCoMeCalculator()
-        self._likert_interpreter = LikertDecisionInterpreter()
+        self._calculator = calculator or BeCoMeCalculator()
+        self._likert_interpreter = likert_interpreter or LikertDecisionInterpreter()
 
     def get_result(self, project_id: UUID) -> CalculationResult | None:
         """Get calculation result for a project.

@@ -16,7 +16,7 @@ from api.db.models import (  # noqa: F401 - models required for SQLModel.metadat
     ProjectMember,
     User,
 )
-from api.dependencies import get_session
+from api.db.session import get_session
 from api.routes import auth, calculate, health, invitations, opinions, projects
 
 

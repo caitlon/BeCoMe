@@ -6,33 +6,13 @@ from uuid import UUID
 from sqlmodel import Session, select
 
 from api.db.models import Invitation, MemberRole, Project, ProjectMember, User
-
-
-class InvitationNotFoundError(Exception):
-    """Raised when invitation is not found."""
-
-
-class InvitationExpiredError(Exception):
-    """Raised when invitation has expired."""
-
-
-class InvitationAlreadyUsedError(Exception):
-    """Raised when invitation has already been used."""
-
-
-class UserAlreadyMemberError(Exception):
-    """Raised when user is already a member of the project."""
-
-
-def ensure_utc(dt: datetime) -> datetime:
-    """Ensure datetime has UTC timezone (handle SQLite naive datetimes).
-
-    :param dt: datetime object (may be naive or aware)
-    :return: timezone-aware datetime with UTC
-    """
-    if dt.tzinfo is None:
-        return dt.replace(tzinfo=UTC)
-    return dt
+from api.db.utils import ensure_utc
+from api.exceptions import (
+    InvitationAlreadyUsedError,
+    InvitationExpiredError,
+    InvitationNotFoundError,
+    UserAlreadyMemberError,
+)
 
 
 class InvitationService:

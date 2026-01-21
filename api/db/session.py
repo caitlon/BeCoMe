@@ -1,11 +1,9 @@
-"""FastAPI dependencies for dependency injection."""
+"""Database session management for FastAPI dependency injection."""
 
 from collections.abc import Generator
 
 from sqlalchemy import Engine
 from sqlmodel import Session
-
-from src.calculators.become_calculator import BeCoMeCalculator
 
 
 def get_engine() -> Engine:
@@ -26,11 +24,3 @@ def get_session() -> Generator[Session]:
     engine = get_engine()
     with Session(engine) as session:
         yield session
-
-
-def get_calculator() -> BeCoMeCalculator:
-    """Get BeCoMe calculator instance.
-
-    :return: Calculator for fuzzy aggregation
-    """
-    return BeCoMeCalculator()
