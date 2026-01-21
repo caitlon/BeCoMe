@@ -50,7 +50,7 @@ def register(
         id=str(user.id),
         email=user.email,
         first_name=user.first_name,
-        last_name=user.last_name or None,
+        last_name=user.last_name,
         photo_url=user.photo_url,
     )
 
@@ -102,6 +102,6 @@ def get_me(current_user: CurrentUser) -> UserResponse:
         id=str(current_user.id),
         email=current_user.email,
         first_name=current_user.first_name,
-        last_name=current_user.last_name or None,
+        last_name=current_user.last_name,
         photo_url=current_user.photo_url,
     )

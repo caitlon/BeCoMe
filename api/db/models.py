@@ -34,7 +34,7 @@ class User(SQLModel, table=True):
     email: str = Field(index=True, unique=True, max_length=255)
     hashed_password: str = Field(max_length=255)
     first_name: str = Field(max_length=100)
-    last_name: str = Field(max_length=100)
+    last_name: str | None = Field(default=None, max_length=100)
     photo_url: str | None = Field(default=None, max_length=500)
     created_at: datetime = Field(default_factory=_utc_now)
 
