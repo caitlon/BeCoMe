@@ -5,8 +5,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { FuzzyTriangleSVG } from "@/components/visualizations/FuzzyTriangleSVG";
-import { ArrowRight, Users, Calculator, Target, FileText, Droplets, Globe } from "lucide-react";
+import { ArrowRight, Users, Calculator, Target } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { caseStudies } from "@/data/caseStudies";
 
 const fadeInUp = {
   initial: { opacity: 0, y: 20 },
@@ -158,54 +159,37 @@ const Landing = () => {
           </motion.div>
           
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
-            {[
-              {
-                icon: FileText,
-                title: "COVID-19 Budget Support",
-                experts: 22,
-                description: "Budget allocation for pandemic response measures"
-              },
-              {
-                icon: Droplets,
-                title: "Flood Prevention Planning",
-                experts: 13,
-                description: "Risk assessment for flood prevention infrastructure"
-              },
-              {
-                icon: Globe,
-                title: "Cross-border Cooperation",
-                experts: 22,
-                description: "Policy evaluation for international collaboration"
-              }
-            ].map((study, index) => (
+            {caseStudies.map((study, index) => (
               <motion.div
-                key={study.title}
+                key={study.id}
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ delay: index * 0.1, duration: 0.5 }}
               >
-                <Card className="h-full group hover:shadow-md transition-all duration-200 cursor-default">
-                  <CardContent className="pt-6 pb-6">
-                    <div className="flex items-start gap-4">
-                      <div className="w-10 h-10 rounded-lg bg-secondary flex items-center justify-center shrink-0">
-                        <study.icon className="h-5 w-5 text-muted-foreground" />
-                      </div>
-                      <div>
-                        <h3 className="font-medium text-base mb-1">
-                          {study.title}
-                        </h3>
-                        <p className="text-sm text-muted-foreground mb-3">
-                          {study.description}
-                        </p>
-                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                          <Users className="h-3 w-3" />
-                          <span className="font-mono">{study.experts} experts</span>
+                <Link to={`/case-study/${study.id}`}>
+                  <Card className="h-full group hover:shadow-md hover:border-primary/30 transition-all duration-200 cursor-pointer">
+                    <CardContent className="pt-6 pb-6">
+                      <div className="flex items-start gap-4">
+                        <div className="w-10 h-10 rounded-lg bg-secondary flex items-center justify-center shrink-0 group-hover:bg-primary/10 transition-colors">
+                          <study.icon className="h-5 w-5 text-muted-foreground group-hover:text-primary transition-colors" />
+                        </div>
+                        <div>
+                          <h3 className="font-medium text-base mb-1 group-hover:text-primary transition-colors">
+                            {study.title}
+                          </h3>
+                          <p className="text-sm text-muted-foreground mb-3">
+                            {study.description}
+                          </p>
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <Users className="h-3 w-3" />
+                            <span className="font-mono">{study.experts} experts</span>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  </CardContent>
-                </Card>
+                    </CardContent>
+                  </Card>
+                </Link>
               </motion.div>
             ))}
           </div>
