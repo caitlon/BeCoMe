@@ -318,21 +318,20 @@ const About = () => {
             Explore real-world case studies or start your own project.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Link to="/">
-              <Button variant="secondary" size="lg">
-                View Case Studies
-              </Button>
-            </Link>
-            <Link to="/register">
-              <Button
-                variant="outline"
-                size="lg"
-                className="gap-2 bg-transparent border-primary-foreground/30 text-primary-foreground hover:bg-primary-foreground/10"
-              >
+            <Button variant="secondary" size="lg" asChild>
+              <Link to="/">View Case Studies</Link>
+            </Button>
+            <Button
+              variant="outline"
+              size="lg"
+              className="gap-2 bg-transparent border-primary-foreground/30 text-primary-foreground hover:bg-primary-foreground/10"
+              asChild
+            >
+              <Link to="/register">
                 Start Your Project
                 <ArrowRight className="h-4 w-4" />
-              </Button>
-            </Link>
+              </Link>
+            </Button>
           </div>
         </div>
       </section>

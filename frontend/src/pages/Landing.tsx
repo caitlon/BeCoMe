@@ -57,12 +57,12 @@ const Landing = () => {
             </motion.p>
             
             <motion.div variants={fadeInUp}>
-              <Link to={isAuthenticated ? "/projects" : "/register"}>
-                <Button size="lg" className="gap-2">
+              <Button size="lg" className="gap-2" asChild>
+                <Link to={isAuthenticated ? "/projects" : "/register"}>
                   {isAuthenticated ? "Go to Projects" : "Start Your Project"}
                   <ArrowRight className="h-4 w-4" />
-                </Button>
-              </Link>
+                </Link>
+              </Button>
             </motion.div>
           </motion.div>
           
@@ -224,16 +224,17 @@ const Landing = () => {
             <p className="text-primary-foreground/80 mb-8">
               Create your first project and start collecting expert opinions today.
             </p>
-            <Link to={isAuthenticated ? "/projects" : "/register"}>
-              <Button 
-                variant="secondary" 
-                size="lg" 
-                className="gap-2"
-              >
+            <Button
+              variant="secondary"
+              size="lg"
+              className="gap-2"
+              asChild
+            >
+              <Link to={isAuthenticated ? "/projects" : "/register"}>
                 Get Started Free
                 <ArrowRight className="h-4 w-4" />
-              </Button>
-            </Link>
+              </Link>
+            </Button>
           </motion.div>
         </div>
       </section>

@@ -24,12 +24,12 @@ const CaseStudy = () => {
         <Navbar />
         <div className="container mx-auto px-6 py-20 text-center">
           <h1 className="text-2xl font-medium mb-4">Case Study Not Found</h1>
-          <Link to="/">
-            <Button variant="outline">
+          <Button variant="outline" asChild>
+            <Link to="/">
               <ArrowLeft className="mr-2 h-4 w-4" />
               Back to Home
-            </Button>
-          </Link>
+            </Link>
+          </Button>
         </div>
       </div>
     );
@@ -368,9 +368,9 @@ const CaseStudy = () => {
             Aggregate expert opinions and find the best compromise for your
             decision-making challenges.
           </p>
-          <Link to="/register">
-            <Button size="lg">Get Started Free</Button>
-          </Link>
+          <Button size="lg" asChild>
+            <Link to="/register">Get Started Free</Link>
+          </Button>
         </div>
       </section>
     </div>
