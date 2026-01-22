@@ -1,8 +1,15 @@
 """Pytest fixtures and helpers for API tests."""
 
+import os
+
+# Disable rate limiting during tests (must be set before importing api modules)
+os.environ["TESTING"] = "1"
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine
 
@@ -18,7 +25,8 @@ from api.db.models import (  # noqa: F401 - models required for SQLModel.metadat
 )
 from api.db.session import get_session
 from api.middleware.exception_handlers import register_exception_handlers
-from api.routes import auth, calculate, health, invitations, opinions, projects
+from api.middleware.rate_limit import limiter
+from api.routes import auth, calculate, health, invitations, opinions, projects, users
 
 
 def create_test_app() -> FastAPI:
@@ -32,12 +40,17 @@ def create_test_app() -> FastAPI:
         version=settings.api_version,
     )
 
+    # Rate limiting setup (required for auth routes)
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
+
     # Register exception handlers (OCP: centralized error handling)
     register_exception_handlers(app)
 
     app.include_router(health.router)
     app.include_router(calculate.router)
     app.include_router(auth.router)
+    app.include_router(users.router)
     app.include_router(projects.router)
     app.include_router(invitations.router)
     app.include_router(opinions.router)
