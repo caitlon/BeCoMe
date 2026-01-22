@@ -6,12 +6,14 @@ by centralized middleware, routes focus on business logic only.
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 
 from api.auth.dependencies import CurrentUser
 from api.auth.jwt import create_access_token
+from api.auth.logging import log_login_success, log_registration
 from api.dependencies import get_user_service
+from api.middleware.rate_limit import RATE_LIMIT_AUTH, limiter
 from api.schemas import RegisterRequest, TokenResponse, UserResponse
 from api.services.user_service import UserService
 
@@ -24,24 +26,30 @@ router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
     status_code=status.HTTP_201_CREATED,
     summary="Register a new user",
 )
+@limiter.limit(RATE_LIMIT_AUTH)
 def register(
-    request: RegisterRequest,
+    request: Request,
+    data: RegisterRequest,
     service: Annotated[UserService, Depends(get_user_service)],
 ) -> UserResponse:
     """Create a new user account.
 
     UserExistsError is handled by centralized exception middleware.
+    Rate limited to prevent mass registration attacks.
 
-    :param request: Registration data (email, password, name)
+    :param request: FastAPI request (for rate limiting)
+    :param data: Registration data (email, password, name)
     :param service: User service
     :return: Created user profile
     """
     user = service.create_user(
-        email=request.email,
-        password=request.password,
-        first_name=request.first_name,
-        last_name=request.last_name,
+        email=data.email,
+        password=data.password,
+        first_name=data.first_name,
+        last_name=data.last_name,
     )
+
+    log_registration(user.id, user.email, request)
 
     return UserResponse(
         id=str(user.id),
@@ -56,7 +64,9 @@ def register(
     response_model=TokenResponse,
     summary="Login and get access token",
 )
+@limiter.limit(RATE_LIMIT_AUTH)
 def login(
+    request: Request,
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
     service: Annotated[UserService, Depends(get_user_service)],
 ) -> TokenResponse:
@@ -64,13 +74,18 @@ def login(
 
     Uses OAuth2 password flow: username field contains email.
     InvalidCredentialsError is handled by centralized exception middleware.
+    Rate limited to prevent brute-force password attacks.
 
+    :param request: FastAPI request (for rate limiting)
     :param form_data: OAuth2 form with username (email) and password
     :param service: User service
     :return: JWT access token
     """
     user = service.authenticate(form_data.username, form_data.password)
     token = create_access_token(user.id)
+
+    log_login_success(user.id, user.email, request)
+
     return TokenResponse(access_token=token)
 
 

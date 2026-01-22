@@ -96,6 +96,7 @@ class TestDecodeAccessToken:
         payload = {
             "sub": "not-a-valid-uuid",
             "exp": datetime.now(UTC) + timedelta(hours=1),
+            "iat": datetime.now(UTC),
             "type": "access",
         }
         token = jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM)
@@ -116,12 +117,13 @@ class TestDecodeAccessToken:
         payload = {
             "sub": str(user_id),
             "exp": datetime.now(UTC) + timedelta(hours=1),
+            "iat": datetime.now(UTC),
             "type": "refresh",  # Wrong type
         }
         token = jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM)
 
         # WHEN / THEN
-        with pytest.raises(TokenError, match="Invalid token payload"):
+        with pytest.raises(TokenError, match="Invalid token type"):
             decode_access_token(token)
 
     def test_token_without_sub_raises_error(self):
@@ -134,10 +136,11 @@ class TestDecodeAccessToken:
         settings = get_settings()
         payload = {
             "exp": datetime.now(UTC) + timedelta(hours=1),
+            "iat": datetime.now(UTC),
             "type": "access",
         }
         token = jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM)
 
         # WHEN / THEN
-        with pytest.raises(TokenError, match="Invalid token payload"):
+        with pytest.raises(TokenError, match="Missing user ID in token"):
             decode_access_token(token)
