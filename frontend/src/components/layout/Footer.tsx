@@ -33,18 +33,23 @@ export function Footer() {
             </ul>
           </div>
 
-          {/* Legal */}
+          {/* Authors */}
           <div>
-            <h4 className="font-medium text-sm mb-4">Research</h4>
+            <h4 className="font-medium text-sm mb-4">Method Authors</h4>
             <ul className="space-y-2">
               <li>
                 <span className="text-sm text-muted-foreground">
-                  VSB-TU Ostrava
+                  Prof. Ing. Ivan Vrana, DrSc.
                 </span>
               </li>
               <li>
                 <span className="text-sm text-muted-foreground">
-                  Faculty of Economics
+                  Ing. Jan Tyrychtr, PhD.
+                </span>
+              </li>
+              <li>
+                <span className="text-sm text-muted-foreground mt-2 block">
+                  CZU Prague
                 </span>
               </li>
             </ul>
@@ -56,7 +61,7 @@ export function Footer() {
             © {new Date().getFullYear()} BeCoMe. All rights reserved.
           </p>
           <p className="text-sm text-muted-foreground">
-            Research project by VSB-Technical University of Ostrava
+            BeCoMe method by Czech University of Life Sciences Prague
           </p>
         </div>
       </div>

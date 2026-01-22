@@ -33,6 +33,7 @@ export interface CaseStudy {
     maxError: number;
     interpretation: string;
   };
+  note?: string;
 }
 
 export const caseStudies: CaseStudy[] = [
@@ -125,6 +126,7 @@ export const caseStudies: CaseStudy[] = [
       maxError: 12.5,
       interpretation: "The best compromise of 43.2% corresponds to 'Rather Disagree' on the Likert scale. The decision indicates that cross-border travel should NOT be generally allowed, though the high error margin (12.5%) reflects significant polarization among experts.",
     },
+    note: "This case study uses illustrative fictional data for demonstration purposes and is not the result of actual research.",
   },
   {
     id: "floods",
