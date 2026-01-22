@@ -21,16 +21,37 @@ type RegisterFormData = {
   lastName?: string;
 };
 
-type PasswordRequirement = {
+type ValidationRequirement = {
   key: string;
   label: string;
   met: boolean;
 };
 
+const getEmailRequirements = (
+  email: string,
+  t: (key: string) => string
+): ValidationRequirement[] => [
+  {
+    key: "hasAt",
+    label: t("emailRequirements.hasAt"),
+    met: email.includes("@"),
+  },
+  {
+    key: "hasDomain",
+    label: t("emailRequirements.hasDomain"),
+    met: /@.+\..+/.test(email),
+  },
+  {
+    key: "noSpaces",
+    label: t("emailRequirements.noSpaces"),
+    met: !email.includes(" "),
+  },
+];
+
 const getPasswordRequirements = (
   password: string,
   t: (key: string) => string
-): PasswordRequirement[] => [
+): ValidationRequirement[] => [
   {
     key: "minLength",
     label: t("passwordRequirements.minLength"),
@@ -87,8 +108,11 @@ const Register = () => {
     mode: "onTouched",
   });
 
+  const email = watch("email", "");
   const password = watch("password", "");
+  const emailRequirements = getEmailRequirements(email, t);
   const passwordRequirements = getPasswordRequirements(password, t);
+  const allEmailRequirementsMet = emailRequirements.every((req) => req.met);
 
   const onSubmit = async (data: RegisterFormData) => {
     setIsLoading(true);
@@ -143,10 +167,27 @@ const Register = () => {
                     {...register("email")}
                     className={errors.email ? "border-destructive" : ""}
                   />
-                  {errors.email && (
-                    <p className="text-sm text-destructive">
-                      {errors.email.message}
-                    </p>
+                  {email && !allEmailRequirementsMet && (
+                    <div className="mt-3 space-y-1.5">
+                      <p className="text-xs text-muted-foreground font-medium">
+                        {t("emailRequirements.title")}
+                      </p>
+                      {emailRequirements.map((req) => (
+                        <div
+                          key={req.key}
+                          className={`flex items-center gap-2 text-xs ${
+                            req.met ? "text-success" : "text-muted-foreground"
+                          }`}
+                        >
+                          {req.met ? (
+                            <Check className="h-3.5 w-3.5" />
+                          ) : (
+                            <X className="h-3.5 w-3.5" />
+                          )}
+                          <span>{req.label}</span>
+                        </div>
+                      ))}
+                    </div>
                   )}
                 </div>
 
