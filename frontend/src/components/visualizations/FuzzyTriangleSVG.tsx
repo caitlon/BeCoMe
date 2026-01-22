@@ -28,7 +28,7 @@ export function FuzzyTriangleSVG() {
   return (
     <svg 
       viewBox="0 0 400 200" 
-      className="w-full max-w-md mx-auto"
+      className="w-full max-w-4xl mx-auto"
       aria-label="Fuzzy triangular number visualization"
     >
       {/* Grid lines */}
