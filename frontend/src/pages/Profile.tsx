@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
-import { Loader2, AlertTriangle } from "lucide-react";
+import { Loader2, AlertTriangle, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -16,6 +16,38 @@ import { useNavigate } from "react-router-dom";
 
 const NAME_REGEX = /^[\p{L}\s'-]+$/u;
 const isValidName = (name: string) => !name || NAME_REGEX.test(name);
+
+type PasswordRequirement = {
+  key: string;
+  label: string;
+  met: boolean;
+};
+
+const getPasswordRequirements = (
+  password: string,
+  t: (key: string) => string
+): PasswordRequirement[] => [
+  {
+    key: "minLength",
+    label: t("passwordRequirements.minLength"),
+    met: password.length >= 8,
+  },
+  {
+    key: "uppercase",
+    label: t("passwordRequirements.uppercase"),
+    met: /[A-Z]/.test(password),
+  },
+  {
+    key: "lowercase",
+    label: t("passwordRequirements.lowercase"),
+    met: /[a-z]/.test(password),
+  },
+  {
+    key: "number",
+    label: t("passwordRequirements.number"),
+    met: /\d/.test(password),
+  },
+];
 
 const Profile = () => {
   const { t } = useTranslation("profile");
@@ -58,6 +90,9 @@ const Profile = () => {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [isChangingPassword, setIsChangingPassword] = useState(false);
 
+  const passwordRequirements = getPasswordRequirements(newPassword, tAuth);
+  const allPasswordRequirementsMet = passwordRequirements.every((req) => req.met);
+
   // Delete account
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
 
@@ -96,7 +131,7 @@ const Profile = () => {
       return;
     }
 
-    if (newPassword.length < 8) {
+    if (!allPasswordRequirementsMet) {
       toast({
         title: t("toast.error"),
         description: t("toast.passwordMin"),
@@ -248,7 +283,7 @@ const Profile = () => {
                 />
               </div>
 
-              <div>
+              <div className="space-y-2">
                 <Label htmlFor="newPassword">{t("changePassword.newPassword")}</Label>
                 <Input
                   id="newPassword"
@@ -256,6 +291,28 @@ const Profile = () => {
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                 />
+                {newPassword && !allPasswordRequirementsMet && (
+                  <div className="mt-3 space-y-1.5">
+                    <p className="text-xs text-muted-foreground font-medium">
+                      {tAuth("passwordRequirements.title")}
+                    </p>
+                    {passwordRequirements.map((req) => (
+                      <div
+                        key={req.key}
+                        className={`flex items-center gap-2 text-xs ${
+                          req.met ? "text-success" : "text-muted-foreground"
+                        }`}
+                      >
+                        {req.met ? (
+                          <Check className="h-3.5 w-3.5" />
+                        ) : (
+                          <X className="h-3.5 w-3.5" />
+                        )}
+                        <span>{req.label}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div>
@@ -274,7 +331,8 @@ const Profile = () => {
                   isChangingPassword ||
                   !currentPassword ||
                   !newPassword ||
-                  !confirmPassword
+                  !confirmPassword ||
+                  !allPasswordRequirementsMet
                 }
                 className="w-full"
               >
