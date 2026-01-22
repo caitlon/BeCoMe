@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
+import { useTranslation } from "react-i18next";
 import { Loader2, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,6 +15,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 
 const Profile = () => {
+  const { t } = useTranslation("profile");
   const { user, refreshUser, logout } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -46,11 +48,11 @@ const Profile = () => {
         photo_url: photoUrl || undefined,
       });
       await refreshUser();
-      toast({ title: "Profile updated" });
+      toast({ title: t("toast.profileUpdated") });
     } catch (error) {
       toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to update",
+        title: t("toast.error"),
+        description: error instanceof Error ? error.message : t("toast.updateFailed"),
         variant: "destructive",
       });
     } finally {
@@ -61,8 +63,8 @@ const Profile = () => {
   const handleChangePassword = async () => {
     if (newPassword !== confirmPassword) {
       toast({
-        title: "Error",
-        description: "Passwords do not match",
+        title: t("toast.error"),
+        description: t("toast.passwordsNoMatch"),
         variant: "destructive",
       });
       return;
@@ -70,8 +72,8 @@ const Profile = () => {
 
     if (newPassword.length < 8) {
       toast({
-        title: "Error",
-        description: "Password must be at least 8 characters",
+        title: t("toast.error"),
+        description: t("toast.passwordMin"),
         variant: "destructive",
       });
       return;
@@ -86,11 +88,11 @@ const Profile = () => {
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
-      toast({ title: "Password updated" });
+      toast({ title: t("toast.passwordUpdated") });
     } catch (error) {
       toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to change password",
+        title: t("toast.error"),
+        description: error instanceof Error ? error.message : t("toast.passwordFailed"),
         variant: "destructive",
       });
     } finally {
@@ -103,11 +105,11 @@ const Profile = () => {
       await api.deleteAccount();
       logout();
       navigate("/");
-      toast({ title: "Account deleted" });
+      toast({ title: t("toast.accountDeleted") });
     } catch (error) {
       toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to delete account",
+        title: t("toast.error"),
+        description: error instanceof Error ? error.message : t("toast.deleteFailed"),
         variant: "destructive",
       });
     }
@@ -149,12 +151,12 @@ const Profile = () => {
           {/* Edit Profile */}
           <Card>
             <CardHeader>
-              <CardTitle>Edit Profile</CardTitle>
+              <CardTitle>{t("editProfile.title")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label htmlFor="firstName">First Name</Label>
+                  <Label htmlFor="firstName">{t("editProfile.firstName")}</Label>
                   <Input
                     id="firstName"
                     value={firstName}
@@ -162,7 +164,7 @@ const Profile = () => {
                   />
                 </div>
                 <div>
-                  <Label htmlFor="lastName">Last Name</Label>
+                  <Label htmlFor="lastName">{t("editProfile.lastName")}</Label>
                   <Input
                     id="lastName"
                     value={lastName}
@@ -172,7 +174,7 @@ const Profile = () => {
               </div>
 
               <div>
-                <Label htmlFor="photoUrl">Photo URL</Label>
+                <Label htmlFor="photoUrl">{t("editProfile.photoUrl")}</Label>
                 <Input
                   id="photoUrl"
                   type="url"
@@ -190,7 +192,7 @@ const Profile = () => {
                 {isSavingProfile ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
-                  "Save Changes"
+                  t("editProfile.save")
                 )}
               </Button>
             </CardContent>
@@ -199,11 +201,11 @@ const Profile = () => {
           {/* Change Password */}
           <Card>
             <CardHeader>
-              <CardTitle>Change Password</CardTitle>
+              <CardTitle>{t("changePassword.title")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <Label htmlFor="currentPassword">Current Password</Label>
+                <Label htmlFor="currentPassword">{t("changePassword.currentPassword")}</Label>
                 <Input
                   id="currentPassword"
                   type="password"
@@ -213,7 +215,7 @@ const Profile = () => {
               </div>
 
               <div>
-                <Label htmlFor="newPassword">New Password</Label>
+                <Label htmlFor="newPassword">{t("changePassword.newPassword")}</Label>
                 <Input
                   id="newPassword"
                   type="password"
@@ -223,7 +225,7 @@ const Profile = () => {
               </div>
 
               <div>
-                <Label htmlFor="confirmPassword">Confirm New Password</Label>
+                <Label htmlFor="confirmPassword">{t("changePassword.confirmPassword")}</Label>
                 <Input
                   id="confirmPassword"
                   type="password"
@@ -245,7 +247,7 @@ const Profile = () => {
                 {isChangingPassword ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
-                  "Update Password"
+                  t("changePassword.update")
                 )}
               </Button>
             </CardContent>
@@ -256,19 +258,18 @@ const Profile = () => {
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-destructive">
                 <AlertTriangle className="h-5 w-5" />
-                Danger Zone
+                {t("dangerZone.title")}
               </CardTitle>
             </CardHeader>
             <CardContent>
               <p className="text-sm text-muted-foreground mb-4">
-                Once you delete your account, there is no going back. Please be
-                certain.
+                {t("dangerZone.warning")}
               </p>
               <Button
                 variant="destructive"
                 onClick={() => setDeleteModalOpen(true)}
               >
-                Delete Account
+                {t("dangerZone.deleteButton")}
               </Button>
             </CardContent>
           </Card>
@@ -278,15 +279,15 @@ const Profile = () => {
       <DeleteConfirmModal
         open={deleteModalOpen}
         onOpenChange={setDeleteModalOpen}
-        title="Delete Account?"
-        description="Are you sure you want to delete your account?"
+        title={t("deleteModal.title")}
+        description={t("deleteModal.description")}
         details={[
-          "All your projects will be deleted",
-          "All your opinions will be removed",
-          "This action cannot be undone",
+          t("deleteModal.details.projects"),
+          t("deleteModal.details.opinions"),
+          t("deleteModal.details.noUndo"),
         ]}
         onConfirm={handleDeleteAccount}
-        confirmText="Delete My Account"
+        confirmText={t("deleteModal.confirm")}
       />
     </div>
   );

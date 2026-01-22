@@ -1,0 +1,42 @@
+{
+  "editProfile": {
+    "title": "Upravit profil",
+    "firstName": "Jméno",
+    "lastName": "Příjmení",
+    "photoUrl": "URL fotky",
+    "save": "Uložit změny"
+  },
+  "changePassword": {
+    "title": "Změnit heslo",
+    "currentPassword": "Současné heslo",
+    "newPassword": "Nové heslo",
+    "confirmPassword": "Potvrdit nové heslo",
+    "update": "Aktualizovat heslo"
+  },
+  "dangerZone": {
+    "title": "Nebezpečná zóna",
+    "warning": "Po smazání účtu již není cesty zpět. Buďte si prosím jisti.",
+    "deleteButton": "Smazat účet"
+  },
+  "deleteModal": {
+    "title": "Smazat účet?",
+    "description": "Opravdu chcete smazat svůj účet?",
+    "details": {
+      "projects": "Všechny vaše projekty budou smazány",
+      "opinions": "Všechny vaše názory budou odstraněny",
+      "noUndo": "Tuto akci nelze vrátit zpět"
+    },
+    "confirm": "Smazat můj účet"
+  },
+  "toast": {
+    "error": "Chyba",
+    "profileUpdated": "Profil aktualizován",
+    "updateFailed": "Nepodařilo se aktualizovat profil",
+    "passwordsNoMatch": "Hesla se neshodují",
+    "passwordMin": "Heslo musí mít alespoň 8 znaků",
+    "passwordUpdated": "Heslo aktualizováno",
+    "passwordFailed": "Nepodařilo se změnit heslo",
+    "accountDeleted": "Účet smazán",
+    "deleteFailed": "Nepodařilo se smazat účet"
+  }
+}

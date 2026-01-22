@@ -1,6 +1,9 @@
 import { Link } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 
 export function Footer() {
+  const { t } = useTranslation();
+
   return (
     <footer className="border-t border-border bg-card">
       <div className="container mx-auto px-6 py-12">
@@ -11,23 +14,28 @@ export function Footer() {
               BeCoMe
             </Link>
             <p className="mt-3 text-sm text-muted-foreground max-w-md">
-              Best Compromise Mean — a scientific approach to aggregating expert 
-              opinions using fuzzy triangular numbers.
+              {t("footer.description")}
             </p>
           </div>
 
           {/* Links */}
           <div>
-            <h4 className="font-medium text-sm mb-4">Product</h4>
+            <h4 className="font-medium text-sm mb-4">{t("footer.product")}</h4>
             <ul className="space-y-2">
               <li>
-                <Link to="/register" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                  Get Started
+                <Link
+                  to="/register"
+                  className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {t("nav.getStarted")}
                 </Link>
               </li>
               <li>
-                <Link to="/login" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                  Sign In
+                <Link
+                  to="/login"
+                  className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {t("nav.signIn")}
                 </Link>
               </li>
             </ul>
@@ -35,7 +43,9 @@ export function Footer() {
 
           {/* Authors */}
           <div>
-            <h4 className="font-medium text-sm mb-4">Method Authors</h4>
+            <h4 className="font-medium text-sm mb-4">
+              {t("footer.methodAuthors")}
+            </h4>
             <ul className="space-y-2">
               <li>
                 <span className="text-sm text-muted-foreground">
@@ -58,11 +68,9 @@ export function Footer() {
 
         <div className="mt-12 pt-8 border-t border-border flex flex-col md:flex-row justify-between items-center gap-4">
           <p className="text-sm text-muted-foreground">
-            © {new Date().getFullYear()} BeCoMe. All rights reserved.
+            © {new Date().getFullYear()} BeCoMe. {t("footer.copyright")}
           </p>
-          <p className="text-sm text-muted-foreground">
-            BeCoMe method by Czech University of Life Sciences Prague
-          </p>
+          <p className="text-sm text-muted-foreground">{t("footer.methodBy")}</p>
         </div>
       </div>
     </footer>

@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { motion } from "framer-motion";
+import { useTranslation } from "react-i18next";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,19 +14,27 @@ import { Navbar } from "@/components/layout/Navbar";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 
-const loginSchema = z.object({
-  email: z.string().email("Invalid email address"),
-  password: z.string().min(1, "Password is required"),
-});
-
-type LoginFormData = z.infer<typeof loginSchema>;
+type LoginFormData = {
+  email: string;
+  password: string;
+};
 
 const Login = () => {
+  const { t } = useTranslation("auth");
   const navigate = useNavigate();
   const { login } = useAuth();
   const { toast } = useToast();
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+
+  const loginSchema = useMemo(
+    () =>
+      z.object({
+        email: z.string().email(t("validation.emailInvalid")),
+        password: z.string().min(1, t("validation.passwordRequired")),
+      }),
+    [t]
+  );
 
   const {
     register,
@@ -40,14 +49,15 @@ const Login = () => {
     try {
       await login(data.email, data.password);
       toast({
-        title: "Welcome back!",
-        description: "You have successfully signed in.",
+        title: t("login.successTitle"),
+        description: t("login.successMessage"),
       });
       navigate("/projects");
     } catch (error) {
       toast({
-        title: "Sign in failed",
-        description: error instanceof Error ? error.message : "Invalid credentials",
+        title: t("login.errorTitle"),
+        description:
+          error instanceof Error ? error.message : t("login.errorMessage"),
         variant: "destructive",
       });
     } finally {
@@ -69,45 +79,55 @@ const Login = () => {
           <Card className="border-border/50">
             <CardHeader className="text-center pb-2">
               <CardTitle className="font-display text-2xl font-normal">
-                Welcome Back
+                {t("login.title")}
               </CardTitle>
             </CardHeader>
             <CardContent className="pt-6">
               <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
+                  <Label htmlFor="email">{t("login.email")}</Label>
                   <Input
                     id="email"
                     type="email"
-                    placeholder="you@example.com"
+                    placeholder={t("login.emailPlaceholder")}
                     {...register("email")}
                     className={errors.email ? "border-destructive" : ""}
                   />
                   {errors.email && (
-                    <p className="text-sm text-destructive">{errors.email.message}</p>
+                    <p className="text-sm text-destructive">
+                      {errors.email.message}
+                    </p>
                   )}
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="password">Password</Label>
+                  <Label htmlFor="password">{t("login.password")}</Label>
                   <div className="relative">
                     <Input
                       id="password"
                       type={showPassword ? "text" : "password"}
-                      placeholder="Enter your password"
+                      placeholder={t("login.passwordPlaceholder")}
                       {...register("password")}
-                      className={errors.password ? "border-destructive pr-10" : "pr-10"}
+                      className={
+                        errors.password ? "border-destructive pr-10" : "pr-10"
+                      }
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                     >
-                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      {showPassword ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
                     </button>
                   </div>
                   {errors.password && (
-                    <p className="text-sm text-destructive">{errors.password.message}</p>
+                    <p className="text-sm text-destructive">
+                      {errors.password.message}
+                    </p>
                   )}
                 </div>
 
@@ -116,7 +136,7 @@ const Login = () => {
                     type="button"
                     className="text-sm text-muted-foreground hover:text-foreground hover:underline"
                   >
-                    Forgot password?
+                    {t("login.forgotPassword")}
                   </button>
                 </div>
 
@@ -124,18 +144,18 @@ const Login = () => {
                   {isLoading ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Signing in...
+                      {t("login.signingIn")}
                     </>
                   ) : (
-                    "Sign In"
+                    t("login.signIn")
                   )}
                 </Button>
               </form>
 
               <p className="text-center text-sm text-muted-foreground mt-6">
-                Don't have an account?{" "}
+                {t("login.noAccount")}{" "}
                 <Link to="/register" className="text-foreground hover:underline">
-                  Create one
+                  {t("login.createOne")}
                 </Link>
               </p>
             </CardContent>

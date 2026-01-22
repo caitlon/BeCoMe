@@ -1,0 +1,59 @@
+{
+  "budget": {
+    "title": "COVID-19 Budget Support",
+    "shortTitle": "Budget",
+    "description": "Budget allocation for pandemic response measures",
+    "fullDescription": "During the COVID-19 pandemic, the Czech government needed to determine the optimal financial support for entrepreneurs affected by restrictive measures. A panel of 22 high-ranking government officials from various ministries was assembled to provide their expert opinions.",
+    "question": "Based on the submitted analyses of the Ministry of Industry and Trade and the Czech National Bank on the impact of the measures on the state budget of the Czech Republic, propose the total financial support in the range CZK 0–100 billion for entrepreneurs affected by the COVID-19 pandemic.",
+    "context": "The COVID-19 pandemic created unprecedented economic challenges. Businesses across sectors faced closures and reduced revenue due to government-mandated restrictions. The government needed to balance fiscal responsibility with the urgent need to support affected entrepreneurs and maintain economic stability.",
+    "methodology": "Each expert provided their opinion as a fuzzy triangular number with three values: best proposal (most likely value), lower limit (pessimistic estimate), and upper limit (optimistic estimate). The BeCoMe method aggregated these opinions to find the best compromise.",
+    "interpretation": "The best compromise suggests financial support of approximately 57.3 billion CZK, with a maximum estimation error of 8.2 billion CZK. This represents a moderate position balancing fiscal caution with the urgent needs of affected businesses."
+  },
+  "pendlers": {
+    "title": "Cross-border Cooperation",
+    "shortTitle": "Pendlers",
+    "description": "Policy evaluation for international collaboration",
+    "fullDescription": "During the COVID-19 pandemic, cross-border workers (pendlers) faced significant challenges due to border closures between countries. A panel of 22 government officials evaluated whether cross-border travel should be permitted for regular commuters.",
+    "question": "I agree that cross-border travel should be allowed for those who regularly travel from one country to another to work.",
+    "context": "Cross-border workers are essential for many regional economies, particularly in border areas between the Czech Republic, Germany, Austria, Poland, and Slovakia. Border closures during the pandemic disrupted the livelihoods of thousands of workers and created labor shortages in key sectors.",
+    "methodology": "Experts expressed their opinions using a 5-point Likert scale: Strongly disagree (0), Rather disagree (25), Neutral (50), Rather agree (75), Strongly agree (100). The BeCoMe method converted these to fuzzy numbers and calculated the optimal group decision.",
+    "interpretation": "The best compromise of 43.2% corresponds to 'Neutral' on the Likert scale. The decision indicates that experts are divided and do not clearly support generally allowing cross-border travel. The high error margin (12.5%) reflects significant polarization among experts.",
+    "note": "This case study uses illustrative fictional data for demonstration purposes and is not the result of actual research."
+  },
+  "floods": {
+    "title": "Flood Prevention Planning",
+    "shortTitle": "Floods",
+    "description": "Risk assessment for flood prevention infrastructure",
+    "fullDescription": "Flood prevention in agricultural areas requires balancing multiple interests: environmental protection, agricultural productivity, economic considerations, and public safety. A panel of 13 diverse experts assessed what percentage of arable land in flood-prone areas should be converted to natural retention areas.",
+    "question": "What percentage reduction of arable land in flood areas is recommended to prevent floods?",
+    "context": "The Czech Republic experiences periodic flooding that causes significant damage to property and agriculture. Converting arable land to polders (water retention areas) can reduce flood risk but affects farmers' livelihoods and food production capacity. Finding the right balance is crucial.",
+    "methodology": "Each expert provided their opinion as a fuzzy triangular number representing the recommended percentage of land conversion. The diverse panel included hydrologists, municipal representatives, land owners, and other stakeholders to ensure comprehensive perspective.",
+    "interpretation": "The best compromise recommends converting approximately 20.4% of arable land in flood areas to retention zones. This reflects a moderate approach that addresses flood risk while limiting impact on agricultural production. The relatively low error (6.8%) indicates reasonable consensus despite the diverse stakeholder interests."
+  },
+  "common": {
+    "experts": "experts",
+    "expertOpinions": "Expert Opinions",
+    "results": "Results",
+    "bestCompromise": "Best Compromise",
+    "maxError": "Maximum Error",
+    "arithmeticMean": "Arithmetic Mean",
+    "median": "Median",
+    "context": "Context",
+    "methodology": "Methodology",
+    "interpretation": "Interpretation",
+    "question": "Question",
+    "note": "Note",
+    "role": "Role",
+    "bestProposal": "Best Proposal",
+    "lowerLimit": "Lower Limit",
+    "upperLimit": "Upper Limit",
+    "value": "Value"
+  },
+  "likert": {
+    "stronglyDisagree": "Strongly Disagree",
+    "ratherDisagree": "Rather Disagree",
+    "neutral": "Neutral",
+    "ratherAgree": "Rather Agree",
+    "stronglyAgree": "Strongly Agree"
+  }
+}

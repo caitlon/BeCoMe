@@ -1,0 +1,59 @@
+{
+  "budget": {
+    "title": "Podpora rozpočtu COVID-19",
+    "shortTitle": "Rozpočet",
+    "description": "Alokace rozpočtu pro opatření v reakci na pandemii",
+    "fullDescription": "Během pandemie COVID-19 potřebovala česká vláda určit optimální finanční podporu pro podnikatele postižené omezujícími opatřeními. Panel 22 vysokých vládních úředníků z různých ministerstev byl sestaven, aby poskytl své expertní názory.",
+    "question": "Na základě předložených analýz Ministerstva průmyslu a obchodu a České národní banky o dopadu opatření na státní rozpočet České republiky navrhněte celkovou finanční podporu v rozmezí 0–100 miliard Kč pro podnikatele postižené pandemií COVID-19.",
+    "context": "Pandemie COVID-19 vytvořila bezprecedentní ekonomické výzvy. Podniky napříč odvětvími čelily uzavírkám a sníženým příjmům kvůli vládou nařízeným omezením. Vláda potřebovala vyvážit fiskální odpovědnost s naléhavou potřebou podpořit postižené podnikatele a udržet ekonomickou stabilitu.",
+    "methodology": "Každý expert poskytl svůj názor jako fuzzy trojúhelníkové číslo se třemi hodnotami: nejlepší návrh (nejpravděpodobnější hodnota), dolní limit (pesimistický odhad) a horní limit (optimistický odhad). Metoda BeCoMe agregovala tyto názory pro nalezení nejlepšího kompromisu.",
+    "interpretation": "Nejlepší kompromis navrhuje finanční podporu přibližně 57,3 miliardy Kč s maximální chybou odhadu 8,2 miliardy Kč. To představuje umírněnou pozici vyvažující fiskální opatrnost s naléhavými potřebami postižených podniků."
+  },
+  "pendlers": {
+    "title": "Přeshraniční spolupráce",
+    "shortTitle": "Pendleři",
+    "description": "Hodnocení politiky pro mezinárodní spolupráci",
+    "fullDescription": "Během pandemie COVID-19 čelili přeshraniční pracovníci (pendleři) významným výzvám kvůli uzavření hranic mezi zeměmi. Panel 22 vládních úředníků hodnotil, zda by mělo být povoleno přeshraniční cestování pro pravidelné dojíždějící.",
+    "question": "Souhlasím s tím, že přeshraniční cestování by mělo být povoleno pro ty, kteří pravidelně cestují z jedné země do druhé za prací.",
+    "context": "Přeshraniční pracovníci jsou nezbytní pro mnoho regionálních ekonomik, zejména v pohraničních oblastech mezi Českou republikou, Německem, Rakouskem, Polskem a Slovenskem. Uzavření hranic během pandemie narušilo živobytí tisíců pracovníků a vytvořilo nedostatek pracovních sil v klíčových odvětvích.",
+    "methodology": "Experti vyjádřili své názory pomocí 5bodové Likertovy škály: Rozhodně nesouhlasím (0), Spíše nesouhlasím (25), Neutrální (50), Spíše souhlasím (75), Rozhodně souhlasím (100). Metoda BeCoMe převedla tyto hodnoty na fuzzy čísla a vypočítala optimální skupinové rozhodnutí.",
+    "interpretation": "Nejlepší kompromis 43,2 % odpovídá hodnocení 'Neutrální' na Likertově škále. Rozhodnutí naznačuje, že experti jsou rozděleni a jasně nepodporují obecné povolení přeshraničního cestování. Vysoká chybová marže (12,5 %) odráží významnou polarizaci mezi experty.",
+    "note": "Tato případová studie používá ilustrativní fiktivní data pro demonstrační účely a není výsledkem skutečného výzkumu."
+  },
+  "floods": {
+    "title": "Plánování protipovodňové ochrany",
+    "shortTitle": "Povodně",
+    "description": "Hodnocení rizik pro protipovodňovou infrastrukturu",
+    "fullDescription": "Protipovodňová ochrana v zemědělských oblastech vyžaduje vyvážení mnoha zájmů: ochrany životního prostředí, zemědělské produktivity, ekonomických úvah a veřejné bezpečnosti. Panel 13 různorodých expertů hodnotil, jaké procento orné půdy v záplavových oblastech by mělo být přeměněno na přírodní retenční plochy.",
+    "question": "Jaké procentuální snížení orné půdy v záplavových oblastech se doporučuje k prevenci povodní?",
+    "context": "Česká republika zažívá periodické záplavy, které způsobují značné škody na majetku a zemědělství. Přeměna orné půdy na poldery (retenční oblasti) může snížit riziko povodní, ale ovlivňuje živobytí zemědělců a kapacitu produkce potravin. Nalezení správné rovnováhy je klíčové.",
+    "methodology": "Každý expert poskytl svůj názor jako fuzzy trojúhelníkové číslo reprezentující doporučené procento přeměny půdy. Různorodý panel zahrnoval hydrology, zástupce obcí, vlastníky půdy a další zúčastněné strany pro zajištění komplexní perspektivy.",
+    "interpretation": "Nejlepší kompromis doporučuje přeměnit přibližně 20,4 % orné půdy v záplavových oblastech na retenční zóny. To odráží umírněný přístup, který řeší riziko povodní při omezení dopadu na zemědělskou produkci. Relativně nízká chyba (6,8 %) naznačuje rozumný konsenzus navzdory různorodým zájmům zúčastněných stran."
+  },
+  "common": {
+    "experts": "expertů",
+    "expertOpinions": "Expertní názory",
+    "results": "Výsledky",
+    "bestCompromise": "Nejlepší kompromis",
+    "maxError": "Maximální chyba",
+    "arithmeticMean": "Aritmetický průměr",
+    "median": "Medián",
+    "context": "Kontext",
+    "methodology": "Metodologie",
+    "interpretation": "Interpretace",
+    "question": "Otázka",
+    "note": "Poznámka",
+    "role": "Role",
+    "bestProposal": "Nejlepší návrh",
+    "lowerLimit": "Dolní limit",
+    "upperLimit": "Horní limit",
+    "value": "Hodnota"
+  },
+  "likert": {
+    "stronglyDisagree": "Rozhodně nesouhlasím",
+    "ratherDisagree": "Spíše nesouhlasím",
+    "neutral": "Neutrální",
+    "ratherAgree": "Spíše souhlasím",
+    "stronglyAgree": "Rozhodně souhlasím"
+  }
+}

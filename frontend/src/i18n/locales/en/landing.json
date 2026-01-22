@@ -1,0 +1,36 @@
+{
+  "hero": {
+    "title1": "Group Decisions,",
+    "title2": "Precisely Measured",
+    "subtitle": "Aggregate expert opinions using fuzzy triangular numbers. Find the best compromise through mathematical consensus.",
+    "goToProjects": "Go to Projects",
+    "startProject": "Start Your Project"
+  },
+  "howItWorks": {
+    "title": "How It Works",
+    "subtitle": "A three-step process to find consensus among experts",
+    "collect": {
+      "title": "Collect",
+      "description": "Experts provide their estimates as fuzzy triangular numbers (lower, peak, upper)"
+    },
+    "calculate": {
+      "title": "Calculate",
+      "description": "System computes arithmetic mean, median, and identifies the best compromise"
+    },
+    "consensus": {
+      "title": "Consensus",
+      "description": "Get the optimal decision with error estimation and confidence metrics"
+    },
+    "learnMore": "Learn more about the BeCoMe method →"
+  },
+  "caseStudies": {
+    "title": "Case Studies",
+    "subtitle": "Real-world applications of the BeCoMe methodology",
+    "experts": "experts"
+  },
+  "cta": {
+    "title": "Ready to find consensus?",
+    "subtitle": "Create your first project and start collecting expert opinions today.",
+    "button": "Get Started Free"
+  }
+}

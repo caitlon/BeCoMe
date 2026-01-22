@@ -1,0 +1,74 @@
+{
+  "hero": {
+    "title": "About BeCoMe",
+    "subtitle": "Best Compromise Mean — a scientific method for optimal group decision-making under fuzzy uncertainty."
+  },
+  "challenge": {
+    "title": "The Challenge",
+    "paragraph1": "Real-world systems are influenced by many ambiguous circumstances, which complicates planning, modelling, prediction, and decision-making. Decision-making procedures often rely on the opinions of experts who express their standpoints from their own perspective.",
+    "paragraph2": "Depending on the structure of expert teams, experts' opinions can vary broadly or may even contradict each other. Finding the best possible compromise of experts' opinions is a basic need in such situations."
+  },
+  "method": {
+    "title": "The BeCoMe Method",
+    "paragraph1": "Over many years of research at Czech University of Life Sciences in Prague (CZU), researchers developed the unique BeCoMe (Best-Compromise-Mean) method for determining the optimum group decision, which corresponds to the best compromise/agreement of all experts' opinions.",
+    "paragraph2": "The optimum decision is a result of a computationally complex fuzzy set mathematical model based on minimizing entropy. This approach ensures that the final decision represents the most balanced compromise among all expert viewpoints."
+  },
+  "expertOpinions": {
+    "title": "How Experts Express Their Opinions",
+    "subtitle": "Experts answer the raised question and assess a certain quantitative parameter of the proposed solution. They can express their responses in three ways:",
+    "crisp": {
+      "title": "Crisp Number",
+      "description": "A single precise value when the expert is confident about their estimate.",
+      "example": "Example: 50 billion CZK"
+    },
+    "fuzzy": {
+      "title": "Fuzzy Interval",
+      "description": "A triangular membership function with three values: best proposal, lower limit, and upper limit.",
+      "example": "Example: (40, 60, 80) — pessimistic, most likely, optimistic"
+    },
+    "likert": {
+      "title": "Likert Scale",
+      "description": "Linguistic terms mapped to numeric values: Strongly disagree (0), Rather disagree (25), Neutral (50), Rather agree (75), Strongly agree (100).",
+      "example": "Example: Rather agree = 75"
+    }
+  },
+  "results": {
+    "title": "Results",
+    "bestCompromise": {
+      "title": "Best Compromise",
+      "description": "The optimal value that represents the best agreement among all expert opinions, calculated through fuzzy set mathematics."
+    },
+    "maxError": {
+      "title": "Maximum Error of Estimate",
+      "description": "A quality metric that indicates the uncertainty level of the compromise, helping decision-makers understand the confidence in the result."
+    }
+  },
+  "applications": {
+    "title": "Applications",
+    "subtitle": "The BeCoMe method is a unique, helpful, and easily available instrument in many decision-making situations:",
+    "items": {
+      "stateSecurity": "State security decisions",
+      "publicHealth": "Public health policy",
+      "investment": "Investment planning",
+      "floods": "Flood prevention",
+      "energy": "Energy self-sufficiency",
+      "itContracts": "IT contract evaluation",
+      "budget": "Budget allocation",
+      "risk": "Risk assessment"
+    }
+  },
+  "authors": {
+    "title": "Authors",
+    "department": "Department of Information Engineering",
+    "faculty": "Faculty of Economics and Management",
+    "university": "Czech University of Life Sciences Prague",
+    "citation": "Citation:",
+    "citationText": "Vrana, I., Tyrychtr, J. (2020). BeCoMe-FuzzyDecisionTool, CZU Prague."
+  },
+  "cta": {
+    "title": "See BeCoMe in Action",
+    "subtitle": "Explore real-world case studies or start your own project.",
+    "viewCaseStudies": "View Case Studies",
+    "startProject": "Start Your Project"
+  }
+}
