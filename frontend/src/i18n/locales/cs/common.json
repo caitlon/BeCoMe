@@ -28,6 +28,10 @@
     "submit": "Odeslat",
     "close": "Zavřít"
   },
+  "password": {
+    "show": "Zobrazit heslo",
+    "hide": "Skrýt heslo"
+  },
   "notFound": {
     "title": "Stránka nenalezena",
     "description": "Požadovaná stránka nebyla nalezena.",

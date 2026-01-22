@@ -2,6 +2,7 @@ import * as React from "react";
 import { useState } from "react";
 import { FieldError } from "react-hook-form";
 import { Eye, EyeOff } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,10 +15,12 @@ interface PasswordInputProps
 }
 
 const PasswordInput = React.forwardRef<HTMLInputElement, PasswordInputProps>(
-  ({ label, error, id, className, ...props }, ref) => {
+  ({ label, error, id, className, name, ...props }, ref) => {
+    const { t } = useTranslation("common");
     const [showPassword, setShowPassword] = useState(false);
 
-    const fieldId = id || label.toLowerCase().replace(/\s+/g, "-");
+    const reactId = React.useId();
+    const fieldId = id ?? name ?? reactId;
     const errorId = `${fieldId}-error`;
 
     return (
@@ -27,6 +30,7 @@ const PasswordInput = React.forwardRef<HTMLInputElement, PasswordInputProps>(
           <Input
             ref={ref}
             id={fieldId}
+            name={name}
             type={showPassword ? "text" : "password"}
             aria-describedby={error ? errorId : undefined}
             aria-invalid={!!error}
@@ -37,7 +41,7 @@ const PasswordInput = React.forwardRef<HTMLInputElement, PasswordInputProps>(
             type="button"
             onClick={() => setShowPassword(!showPassword)}
             className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-            aria-label={showPassword ? "Hide password" : "Show password"}
+            aria-label={showPassword ? t("password.hide") : t("password.show")}
           >
             {showPassword ? (
               <EyeOff className="h-4 w-4" />

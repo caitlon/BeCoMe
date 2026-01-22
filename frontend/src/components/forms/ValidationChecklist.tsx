@@ -26,9 +26,9 @@ const ValidationChecklist = ({
       {title && (
         <p className="text-xs text-muted-foreground font-medium">{title}</p>
       )}
-      {requirements.map((req, index) => (
+      {requirements.map((req) => (
         <div
-          key={index}
+          key={req.label}
           className={`flex items-center gap-2 text-xs ${
             req.met ? "text-success" : "text-muted-foreground"
           }`}

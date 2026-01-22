@@ -43,7 +43,9 @@
       "opinions": "Všechny expertní názory",
       "results": "Všechny výsledky výpočtů",
       "invitations": "Všechny pozvánky"
-    }
+    },
+    "confirm": "Smazat projekt",
+    "deleting": "Mazání..."
   },
   "toast": {
     "error": "Chyba",

@@ -28,6 +28,10 @@
     "submit": "Submit",
     "close": "Close"
   },
+  "password": {
+    "show": "Show password",
+    "hide": "Hide password"
+  },
   "notFound": {
     "title": "Page Not Found",
     "description": "The requested page could not be found.",

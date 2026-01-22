@@ -25,7 +25,8 @@
       "opinions": "All your opinions will be removed",
       "noUndo": "This action cannot be undone"
     },
-    "confirm": "Delete My Account"
+    "confirm": "Delete My Account",
+    "deleting": "Deleting..."
   },
   "toast": {
     "error": "Error",

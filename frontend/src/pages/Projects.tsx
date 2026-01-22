@@ -355,6 +355,8 @@ const Projects = () => {
           t("deleteModal.details.invitations")
         ]}
         onConfirm={handleDeleteProject}
+        confirmText={t("deleteModal.confirm")}
+        loadingText={t("deleteModal.deleting")}
       />
     </div>
   );
