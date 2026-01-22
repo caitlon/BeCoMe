@@ -43,7 +43,9 @@
       "opinions": "All expert opinions",
       "results": "All calculation results",
       "invitations": "All invitations"
-    }
+    },
+    "confirm": "Delete Project",
+    "deleting": "Deleting..."
   },
   "toast": {
     "error": "Error",

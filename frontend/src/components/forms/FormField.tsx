@@ -13,8 +13,9 @@ interface FormFieldProps extends React.InputHTMLAttributes<HTMLInputElement> {
 }
 
 const FormField = React.forwardRef<HTMLInputElement, FormFieldProps>(
-  ({ label, error, description, id, className, ...props }, ref) => {
-    const fieldId = id || label.toLowerCase().replace(/\s+/g, "-");
+  ({ label, error, description, id, className, name, ...props }, ref) => {
+    const reactId = React.useId();
+    const fieldId = id ?? name ?? reactId;
     const errorId = `${fieldId}-error`;
     const descriptionId = `${fieldId}-description`;
 
@@ -24,6 +25,7 @@ const FormField = React.forwardRef<HTMLInputElement, FormFieldProps>(
         <Input
           ref={ref}
           id={fieldId}
+          name={name}
           aria-describedby={
             error ? errorId : description ? descriptionId : undefined
           }
@@ -55,8 +57,9 @@ interface FormTextareaProps
 }
 
 const FormTextarea = React.forwardRef<HTMLTextAreaElement, FormTextareaProps>(
-  ({ label, error, description, id, className, ...props }, ref) => {
-    const fieldId = id || label.toLowerCase().replace(/\s+/g, "-");
+  ({ label, error, description, id, className, name, ...props }, ref) => {
+    const reactId = React.useId();
+    const fieldId = id ?? name ?? reactId;
     const errorId = `${fieldId}-error`;
     const descriptionId = `${fieldId}-description`;
 
@@ -66,6 +69,7 @@ const FormTextarea = React.forwardRef<HTMLTextAreaElement, FormTextareaProps>(
         <Textarea
           ref={ref}
           id={fieldId}
+          name={name}
           aria-describedby={
             error ? errorId : description ? descriptionId : undefined
           }

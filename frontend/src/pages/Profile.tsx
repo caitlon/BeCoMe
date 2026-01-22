@@ -351,6 +351,7 @@ const Profile = () => {
         ]}
         onConfirm={handleDeleteAccount}
         confirmText={t("deleteModal.confirm")}
+        loadingText={t("deleteModal.deleting")}
       />
     </div>
   );

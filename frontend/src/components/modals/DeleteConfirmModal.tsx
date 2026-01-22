@@ -17,6 +17,7 @@ interface DeleteConfirmModalProps {
   details?: string[];
   onConfirm: () => Promise<void>;
   confirmText?: string;
+  loadingText?: string;
 }
 
 export function DeleteConfirmModal({
@@ -27,6 +28,7 @@ export function DeleteConfirmModal({
   details,
   onConfirm,
   confirmText = "Delete Project",
+  loadingText = "Deleting...",
 }: DeleteConfirmModalProps) {
   const [isLoading, setIsLoading] = useState(false);
 
@@ -81,7 +83,7 @@ export function DeleteConfirmModal({
             variant="destructive"
             onClick={handleConfirm}
             isLoading={isLoading}
-            loadingText="Deleting..."
+            loadingText={loadingText}
           >
             {confirmText}
           </SubmitButton>

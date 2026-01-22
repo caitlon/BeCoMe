@@ -25,7 +25,8 @@
       "opinions": "Všechny vaše názory budou odstraněny",
       "noUndo": "Tuto akci nelze vrátit zpět"
     },
-    "confirm": "Smazat můj účet"
+    "confirm": "Smazat můj účet",
+    "deleting": "Mazání..."
   },
   "toast": {
     "error": "Chyba",
