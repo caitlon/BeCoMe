@@ -52,6 +52,31 @@ class TestInvitationServiceInviteByEmail:
         mock_session.add.assert_called_once()
         mock_session.commit.assert_called_once()
 
+    def test_email_lookup_is_case_insensitive(self):
+        """Invitation finds user when email has different case."""
+        # GIVEN
+        project_id = uuid4()
+        inviter_id = uuid4()
+        invitee = User(
+            id=uuid4(),
+            email="invitee@example.com",  # lowercase in DB
+            hashed_password="hash",
+            first_name="Invitee",
+        )
+        mock_session = MagicMock()
+        mock_session.exec.return_value.first.side_effect = [invitee, None, None]
+        service = InvitationService(mock_session)
+
+        # WHEN - invite with mixed case email
+        invitation, returned_user = service.invite_by_email(
+            project_id, inviter_id, "Invitee@Example.COM"
+        )
+
+        # THEN - user is found despite different case
+        assert returned_user == invitee
+        assert invitation.invitee_id == invitee.id
+        mock_session.add.assert_called_once()
+
     def test_raises_error_when_user_not_found(self):
         """UserNotFoundError is raised when email doesn't exist."""
         # GIVEN
