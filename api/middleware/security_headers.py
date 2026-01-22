@@ -1,9 +1,10 @@
 """Security headers middleware for HTTP response hardening."""
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 
-from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import Response
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -16,9 +17,13 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     - Information leakage (Referrer-Policy, Permissions-Policy)
     """
 
-    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+    async def dispatch(
+        self,
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],
+    ) -> Response:
         """Process request and add security headers to response."""
-        response = await call_next(request)
+        response: Response = await call_next(request)
 
         # Prevent clickjacking - page cannot be embedded in iframe
         response.headers["X-Frame-Options"] = "DENY"
