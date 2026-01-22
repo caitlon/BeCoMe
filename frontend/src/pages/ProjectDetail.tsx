@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/collapsible";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Navbar } from "@/components/layout/Navbar";
+import { SubmitButton } from "@/components/forms";
 import { InviteExpertModal } from "@/components/modals/InviteExpertModal";
 import { DeleteConfirmModal } from "@/components/modals/DeleteConfirmModal";
 import { api } from "@/lib/api";
@@ -601,19 +602,15 @@ const OpinionForm = ({
         )}
 
         <div className="flex gap-3">
-          <Button
+          <SubmitButton
+            type="button"
             onClick={onSave}
-            disabled={isSaving || !lower || !peak || !upper}
+            disabled={!lower || !peak || !upper}
+            isLoading={isSaving}
             className="flex-1"
           >
-            {isSaving ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : myOpinion ? (
-              "Update Opinion"
-            ) : (
-              "Save Opinion"
-            )}
-          </Button>
+            {myOpinion ? "Update Opinion" : "Save Opinion"}
+          </SubmitButton>
         </div>
 
         {myOpinion && (

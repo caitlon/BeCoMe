@@ -82,22 +82,18 @@ class UserService(BaseService):
         user: User,
         first_name: str | None = None,
         last_name: str | None = None,
-        photo_url: str | None = None,
     ) -> User:
         """Update user profile fields.
 
         :param user: User to update
         :param first_name: New first name (optional)
         :param last_name: New last name (optional)
-        :param photo_url: New photo URL (optional)
         :return: Updated User instance
         """
         if first_name is not None:
             user.first_name = first_name
         if last_name is not None:
             user.last_name = last_name
-        if photo_url is not None:
-            user.photo_url = photo_url
 
         self._session.add(user)
         self._session.commit()

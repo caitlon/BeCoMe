@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Navbar } from "@/components/layout/Navbar";
 import { DeleteConfirmModal } from "@/components/modals/DeleteConfirmModal";
 import { ValidationChecklist, Requirement } from "@/components/forms";
@@ -52,7 +52,6 @@ const Profile = () => {
   // Profile form
   const [firstName, setFirstName] = useState(user?.first_name || "");
   const [lastName, setLastName] = useState(user?.last_name || "");
-  const [photoUrl, setPhotoUrl] = useState(user?.photo_url || "");
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [firstNameError, setFirstNameError] = useState<string | null>(null);
   const [lastNameError, setLastNameError] = useState<string | null>(null);
@@ -99,7 +98,6 @@ const Profile = () => {
       await api.updateCurrentUser({
         first_name: firstName,
         last_name: lastName || undefined,
-        photo_url: photoUrl || undefined,
       });
       await refreshUser();
       toast({ title: t("toast.profileUpdated") });
@@ -196,7 +194,6 @@ const Profile = () => {
           {/* Profile Header */}
           <div className="text-center">
             <Avatar className="h-24 w-24 mx-auto mb-4">
-              <AvatarImage src={user.photo_url || undefined} />
               <AvatarFallback className="text-2xl">{initials}</AvatarFallback>
             </Avatar>
             <h1 className="font-display text-2xl font-light">
@@ -236,17 +233,6 @@ const Profile = () => {
                     <p className="text-sm text-destructive">{lastNameError}</p>
                   )}
                 </div>
-              </div>
-
-              <div>
-                <Label htmlFor="photoUrl">{t("editProfile.photoUrl")}</Label>
-                <Input
-                  id="photoUrl"
-                  type="url"
-                  placeholder="https://..."
-                  value={photoUrl}
-                  onChange={(e) => setPhotoUrl(e.target.value)}
-                />
               </div>
 
               <Button

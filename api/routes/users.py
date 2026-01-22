@@ -28,7 +28,6 @@ def get_current_user_profile(current_user: CurrentUser) -> UserResponse:
         email=current_user.email,
         first_name=current_user.first_name,
         last_name=current_user.last_name,
-        photo_url=current_user.photo_url,
     )
 
 
@@ -53,14 +52,12 @@ def update_current_user(
         user=current_user,
         first_name=request.first_name,
         last_name=request.last_name,
-        photo_url=request.photo_url,
     )
     return UserResponse(
         id=str(updated.id),
         email=updated.email,
         first_name=updated.first_name,
         last_name=updated.last_name,
-        photo_url=updated.photo_url,
     )
 
 

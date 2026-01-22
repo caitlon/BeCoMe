@@ -5,7 +5,6 @@ export interface User {
   email: string;
   first_name: string;
   last_name: string | null;
-  photo_url: string | null;
   created_at: string;
 }
 
@@ -119,7 +118,6 @@ export interface RegisterInput {
 export interface UpdateUserInput {
   first_name?: string;
   last_name?: string;
-  photo_url?: string;
 }
 
 export interface ChangePasswordInput {

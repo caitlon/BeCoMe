@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AlertTriangle, Loader2 } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -7,6 +7,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { SubmitButton } from "@/components/forms";
 
 interface DeleteConfirmModalProps {
   open: boolean;
@@ -75,20 +76,15 @@ export function DeleteConfirmModal({
           >
             Cancel
           </Button>
-          <Button 
-            variant="destructive" 
+          <SubmitButton
+            type="button"
+            variant="destructive"
             onClick={handleConfirm}
-            disabled={isLoading}
+            isLoading={isLoading}
+            loadingText="Deleting..."
           >
-            {isLoading ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Deleting...
-              </>
-            ) : (
-              confirmText
-            )}
-          </Button>
+            {confirmText}
+          </SubmitButton>
         </div>
       </DialogContent>
     </Dialog>

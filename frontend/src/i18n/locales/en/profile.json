@@ -3,7 +3,6 @@
     "title": "Edit Profile",
     "firstName": "First Name",
     "lastName": "Last Name",
-    "photoUrl": "Photo URL",
     "save": "Save Changes"
   },
   "changePassword": {
