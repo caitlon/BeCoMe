@@ -37,9 +37,9 @@ export function Navbar() {
 
         {/* Desktop Navigation */}
         <div className="hidden md:flex items-center gap-6">
-          <Link to="/about">
-            <Button variant="ghost" size="sm">About</Button>
-          </Link>
+          <Button variant="ghost" size="sm" asChild>
+            <Link to="/about">About</Link>
+          </Button>
           {isAuthenticated ? (
             <>
               <Link
@@ -78,12 +78,12 @@ export function Navbar() {
             </>
           ) : !isAuthPage && (
             <>
-              <Link to="/login">
-                <Button variant="ghost" size="sm">Sign In</Button>
-              </Link>
-              <Link to="/register">
-                <Button size="sm">Get Started</Button>
-              </Link>
+              <Button variant="ghost" size="sm" asChild>
+                <Link to="/login">Sign In</Link>
+              </Button>
+              <Button size="sm" asChild>
+                <Link to="/register">Get Started</Link>
+              </Button>
             </>
           )}
           
@@ -148,12 +148,14 @@ export function Navbar() {
                 >
                   Sign In
                 </Link>
-                <Link
-                  to="/register"
-                  onClick={() => setIsMenuOpen(false)}
-                >
-                  <Button className="w-full">Get Started</Button>
-                </Link>
+                <Button className="w-full" asChild>
+                  <Link
+                    to="/register"
+                    onClick={() => setIsMenuOpen(false)}
+                  >
+                    Get Started
+                  </Link>
+                </Button>
               </>
             )}
           </div>

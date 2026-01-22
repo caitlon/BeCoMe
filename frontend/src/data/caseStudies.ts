@@ -134,7 +134,7 @@ export const caseStudies: CaseStudy[] = [
     result: {
       bestCompromise: 43.2,
       maxError: 12.5,
-      interpretation: "The best compromise of 43.2% corresponds to 'Rather Disagree' on the Likert scale. The decision indicates that cross-border travel should NOT be generally allowed, though the high error margin (12.5%) reflects significant polarization among experts.",
+      interpretation: "The best compromise of 43.2% corresponds to 'Neutral' on the Likert scale. The decision indicates that experts are divided and do not clearly support generally allowing cross-border travel. The high error margin (12.5%) reflects significant polarization among experts.",
     },
     note: "This case study uses illustrative fictional data for demonstration purposes and is not the result of actual research.",
   },
