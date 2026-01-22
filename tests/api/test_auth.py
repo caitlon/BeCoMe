@@ -18,7 +18,7 @@ from api.db.models import (  # noqa: F401 - import all models to register in met
 )
 from api.db.session import get_session
 from api.middleware.exception_handlers import register_exception_handlers
-from api.routes import auth, calculate, health
+from api.routes import auth, calculate, health, users
 
 
 def _create_test_app() -> FastAPI:
@@ -34,6 +34,7 @@ def _create_test_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(calculate.router)
     app.include_router(auth.router)
+    app.include_router(users.router)
     return app
 
 
@@ -521,3 +522,155 @@ class TestNameValidation:
 
         # THEN
         assert response.status_code == 422
+
+
+class TestProfileUpdate:
+    """Tests for PUT /api/v1/users/me profile update validation."""
+
+    def _get_auth_header(self, client) -> dict:
+        """Register and login, return auth header."""
+        client.post(
+            "/api/v1/auth/register",
+            json={
+                "email": "profile@example.com",
+                "password": "SecurePass123",
+                "first_name": "Profile",
+            },
+        )
+        login = client.post(
+            "/api/v1/auth/login",
+            data={"username": "profile@example.com", "password": "SecurePass123"},
+        )
+        return {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+    def test_update_profile_name_with_digits_fails(self, client):
+        """Profile update with digits in name returns 422."""
+        # GIVEN
+        headers = self._get_auth_header(client)
+
+        # WHEN
+        response = client.put(
+            "/api/v1/users/me",
+            json={"first_name": "John123"},
+            headers=headers,
+        )
+
+        # THEN
+        assert response.status_code == 422
+        assert "letters" in response.json()["detail"][0]["msg"].lower()
+
+    def test_update_profile_valid_name_succeeds(self, client):
+        """Profile update with valid name succeeds."""
+        # GIVEN
+        headers = self._get_auth_header(client)
+
+        # WHEN
+        response = client.put(
+            "/api/v1/users/me",
+            json={"first_name": "Jean-Pierre", "last_name": "O'Connor"},
+            headers=headers,
+        )
+
+        # THEN
+        assert response.status_code == 200
+        assert response.json()["first_name"] == "Jean-Pierre"
+        assert response.json()["last_name"] == "O'Connor"
+
+    def test_update_profile_cyrillic_name_succeeds(self, client):
+        """Profile update with Cyrillic name succeeds."""
+        # GIVEN
+        headers = self._get_auth_header(client)
+
+        # WHEN
+        response = client.put(
+            "/api/v1/users/me",
+            json={"first_name": "Алексей"},
+            headers=headers,
+        )
+
+        # THEN
+        assert response.status_code == 200
+        assert response.json()["first_name"] == "Алексей"
+
+
+class TestPasswordChange:
+    """Tests for PUT /api/v1/users/me/password validation."""
+
+    def _get_auth_header(self, client) -> dict:
+        """Register and login, return auth header."""
+        client.post(
+            "/api/v1/auth/register",
+            json={
+                "email": "pwchange@example.com",
+                "password": "OldPass123",
+                "first_name": "Password",
+            },
+        )
+        login = client.post(
+            "/api/v1/auth/login",
+            data={"username": "pwchange@example.com", "password": "OldPass123"},
+        )
+        return {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+    def test_change_password_without_uppercase_fails(self, client):
+        """Password change without uppercase letter returns 422."""
+        # GIVEN
+        headers = self._get_auth_header(client)
+
+        # WHEN
+        response = client.put(
+            "/api/v1/users/me/password",
+            json={"current_password": "OldPass123", "new_password": "newpass123"},
+            headers=headers,
+        )
+
+        # THEN
+        assert response.status_code == 422
+        assert "uppercase" in response.json()["detail"][0]["msg"].lower()
+
+    def test_change_password_without_lowercase_fails(self, client):
+        """Password change without lowercase letter returns 422."""
+        # GIVEN
+        headers = self._get_auth_header(client)
+
+        # WHEN
+        response = client.put(
+            "/api/v1/users/me/password",
+            json={"current_password": "OldPass123", "new_password": "NEWPASS123"},
+            headers=headers,
+        )
+
+        # THEN
+        assert response.status_code == 422
+        assert "lowercase" in response.json()["detail"][0]["msg"].lower()
+
+    def test_change_password_without_digit_fails(self, client):
+        """Password change without digit returns 422."""
+        # GIVEN
+        headers = self._get_auth_header(client)
+
+        # WHEN
+        response = client.put(
+            "/api/v1/users/me/password",
+            json={"current_password": "OldPass123", "new_password": "NewPassABC"},
+            headers=headers,
+        )
+
+        # THEN
+        assert response.status_code == 422
+        assert "digit" in response.json()["detail"][0]["msg"].lower()
+
+    def test_change_password_valid_succeeds(self, client):
+        """Password change with valid password succeeds."""
+        # GIVEN
+        headers = self._get_auth_header(client)
+
+        # WHEN
+        response = client.put(
+            "/api/v1/users/me/password",
+            json={"current_password": "OldPass123", "new_password": "NewPass456"},
+            headers=headers,
+        )
+
+        # THEN
+        assert response.status_code == 204
