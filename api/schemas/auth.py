@@ -32,9 +32,7 @@ def validate_name_format(name: str) -> str:
     :raises ValueError: If name contains invalid characters
     """
     if not NAME_PATTERN.match(name):
-        raise ValueError(
-            "Name can only contain letters, spaces, hyphens, and apostrophes"
-        )
+        raise ValueError("Name can only contain letters, spaces, hyphens, and apostrophes")
     return name
 
 
