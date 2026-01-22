@@ -37,11 +37,8 @@ export function Navbar() {
 
         {/* Desktop Navigation */}
         <div className="hidden md:flex items-center gap-6">
-          <Link
-            to="/about"
-            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-          >
-            About
+          <Link to="/about">
+            <Button variant="ghost" size="sm">About</Button>
           </Link>
           {isAuthenticated ? (
             <>
