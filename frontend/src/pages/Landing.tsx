@@ -137,6 +137,18 @@ const Landing = () => {
               </motion.div>
             ))}
           </div>
+
+          <motion.div
+            className="text-center mt-10"
+            initial={{ opacity: 0 }}
+            whileInView={{ opacity: 1 }}
+            viewport={{ once: true }}
+            transition={{ delay: 0.3, duration: 0.5 }}
+          >
+            <Link to="/about" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+              Learn more about the BeCoMe method →
+            </Link>
+          </motion.div>
         </div>
       </section>
 
