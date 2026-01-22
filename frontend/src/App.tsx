@@ -12,6 +12,7 @@ import Projects from "./pages/Projects";
 import ProjectDetail from "./pages/ProjectDetail";
 import Profile from "./pages/Profile";
 import CaseStudy from "./pages/CaseStudy";
+import About from "./pages/About";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -25,6 +26,7 @@ const App = () => (
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<Landing />} />
+            <Route path="/about" element={<About />} />
             <Route path="/case-study/:id" element={<CaseStudy />} />
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />

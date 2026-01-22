@@ -37,10 +37,16 @@ export function Navbar() {
 
         {/* Desktop Navigation */}
         <div className="hidden md:flex items-center gap-6">
+          <Link
+            to="/about"
+            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            About
+          </Link>
           {isAuthenticated ? (
             <>
-              <Link 
-                to="/projects" 
+              <Link
+                to="/projects"
                 className="text-sm text-muted-foreground hover:text-foreground transition-colors"
               >
                 Projects
@@ -106,23 +112,30 @@ export function Navbar() {
       {isMenuOpen && !isAuthPage && (
         <div className="md:hidden bg-background border-b border-border">
           <div className="container mx-auto px-6 py-4 space-y-3">
+            <Link
+              to="/about"
+              className="block py-2 text-muted-foreground hover:text-foreground"
+              onClick={() => setIsMenuOpen(false)}
+            >
+              About
+            </Link>
             {isAuthenticated ? (
               <>
-                <Link 
-                  to="/projects" 
+                <Link
+                  to="/projects"
                   className="block py-2 text-muted-foreground hover:text-foreground"
                   onClick={() => setIsMenuOpen(false)}
                 >
                   Projects
                 </Link>
-                <Link 
-                  to="/profile" 
+                <Link
+                  to="/profile"
                   className="block py-2 text-muted-foreground hover:text-foreground"
                   onClick={() => setIsMenuOpen(false)}
                 >
                   Profile
                 </Link>
-                <button 
+                <button
                   onClick={handleLogout}
                   className="block py-2 text-destructive hover:text-destructive/80 w-full text-left"
                 >
@@ -131,14 +144,14 @@ export function Navbar() {
               </>
             ) : (
               <>
-                <Link 
-                  to="/login" 
+                <Link
+                  to="/login"
                   className="block py-2 text-muted-foreground hover:text-foreground"
                   onClick={() => setIsMenuOpen(false)}
                 >
                   Sign In
                 </Link>
-                <Link 
+                <Link
                   to="/register"
                   onClick={() => setIsMenuOpen(false)}
                 >

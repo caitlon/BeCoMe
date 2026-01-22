@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { ArrowLeft, Users, Target, BarChart3, Info } from "lucide-react";
+import { ArrowLeft, Users, Target, BarChart3, Info, AlertTriangle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Navbar } from "@/components/layout/Navbar";
@@ -78,6 +78,14 @@ const CaseStudy = () => {
             <p className="text-lg text-muted-foreground max-w-3xl">
               {caseStudy.fullDescription}
             </p>
+            {caseStudy.note && (
+              <div className="mt-4 flex items-start gap-2 p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg max-w-3xl">
+                <AlertTriangle className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
+                <p className="text-sm text-amber-700 dark:text-amber-400">
+                  {caseStudy.note}
+                </p>
+              </div>
+            )}
           </motion.div>
         </div>
       </section>
