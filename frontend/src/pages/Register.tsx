@@ -113,6 +113,7 @@ const Register = () => {
   const emailRequirements = getEmailRequirements(email, t);
   const passwordRequirements = getPasswordRequirements(password, t);
   const allEmailRequirementsMet = emailRequirements.every((req) => req.met);
+  const allPasswordRequirementsMet = passwordRequirements.every((req) => req.met);
 
   const onSubmit = async (data: RegisterFormData) => {
     setIsLoading(true);
@@ -215,7 +216,7 @@ const Register = () => {
                       )}
                     </button>
                   </div>
-                  {password && (
+                  {password && !allPasswordRequirementsMet && (
                     <div className="mt-3 space-y-1.5">
                       <p className="text-xs text-muted-foreground font-medium">
                         {t("passwordRequirements.title")}
