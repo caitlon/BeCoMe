@@ -15,7 +15,13 @@ from api.dependencies import (
     ProjectMember,
     get_project_service,
 )
-from api.schemas import MemberResponse, ProjectCreate, ProjectResponse, ProjectUpdate
+from api.schemas import (
+    MemberResponse,
+    ProjectCreate,
+    ProjectResponse,
+    ProjectUpdate,
+    ProjectWithRoleResponse,
+)
 from api.services.project_service import ProjectService
 
 router = APIRouter(prefix="/api/v1/projects", tags=["projects"])
@@ -23,22 +29,25 @@ router = APIRouter(prefix="/api/v1/projects", tags=["projects"])
 
 @router.get(
     "",
-    response_model=list[ProjectResponse],
+    response_model=list[ProjectWithRoleResponse],
     summary="List user's projects",
 )
 def list_projects(
     current_user: CurrentUser,
     service: Annotated[ProjectService, Depends(get_project_service)],
-) -> list[ProjectResponse]:
+) -> list[ProjectWithRoleResponse]:
     """Get all projects where the current user is a member.
 
     :param current_user: Authenticated user
     :param service: Project service
-    :return: List of projects with member counts
+    :return: List of projects with member counts and user's role
     """
-    projects_with_counts = service.get_user_projects_with_counts(current_user.id)
+    projects_with_roles = service.get_user_projects_with_roles(current_user.id)
     return [
-        ProjectResponse.from_model(item.project, item.member_count) for item in projects_with_counts
+        ProjectWithRoleResponse.from_model_with_role(
+            item.project, item.member_count, item.role.value
+        )
+        for item in projects_with_roles
     ]
 
 
@@ -66,20 +75,27 @@ def create_project(
 
 @router.get(
     "/{project_id}",
-    response_model=ProjectResponse,
+    response_model=ProjectWithRoleResponse,
     summary="Get project details",
 )
 def get_project(
     project: ProjectMember,
+    current_user: CurrentUser,
     service: Annotated[ProjectService, Depends(get_project_service)],
-) -> ProjectResponse:
+) -> ProjectWithRoleResponse:
     """Get project details. Only members can access.
 
     :param project: Project (verified membership)
+    :param current_user: Authenticated user
     :param service: Project service
-    :return: Project details
+    :return: Project details with user's role
     """
-    return ProjectResponse.from_model(project, service.get_member_count(project.id))
+    role = service.get_user_role_in_project(project.id, current_user.id)
+    return ProjectWithRoleResponse.from_model_with_role(
+        project,
+        service.get_member_count(project.id),
+        role.value if role else "expert",
+    )
 
 
 @router.patch(

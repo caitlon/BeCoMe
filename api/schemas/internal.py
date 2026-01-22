@@ -11,51 +11,11 @@ from uuid import UUID
 
 from api.db.models import (
     ExpertOpinion,
-    Invitation,
     MemberRole,
     Project,
     ProjectMember,
     User,
 )
-
-
-@dataclass(frozen=True)
-class InvitationDetails:
-    """Invitation with associated project and admin details.
-
-    Replaces tuple[Invitation, Project, User] for better type safety.
-    """
-
-    invitation: Invitation
-    project: Project
-    admin: User
-
-    @property
-    def token(self) -> UUID:
-        """Get invitation token."""
-        return self.invitation.token
-
-    @property
-    def project_name(self) -> str:
-        """Get project name."""
-        return self.project.name
-
-    @property
-    def admin_name(self) -> str:
-        """Get admin full name."""
-        if self.admin.last_name:
-            return f"{self.admin.first_name} {self.admin.last_name}"
-        return self.admin.first_name
-
-    @property
-    def expires_at(self) -> datetime:
-        """Get invitation expiration time."""
-        return self.invitation.expires_at
-
-    @property
-    def is_used(self) -> bool:
-        """Check if invitation has been used."""
-        return self.invitation.used_by_id is not None
 
 
 @dataclass(frozen=True)
@@ -67,6 +27,29 @@ class ProjectWithMemberCount:
 
     project: Project
     member_count: int
+
+    @property
+    def id(self) -> UUID:
+        """Get project ID."""
+        return self.project.id
+
+    @property
+    def name(self) -> str:
+        """Get project name."""
+        return self.project.name
+
+
+@dataclass(frozen=True)
+class ProjectWithMemberCountAndRole:
+    """Project with member count and user's role.
+
+    Used for listing projects with role information.
+    Note: role is stored as MemberRole enum from SQLModel query.
+    """
+
+    project: Project
+    member_count: int
+    role: MemberRole
 
     @property
     def id(self) -> UUID:

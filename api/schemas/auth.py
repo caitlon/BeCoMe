@@ -27,3 +27,18 @@ class UserResponse(BaseModel):
     first_name: str
     last_name: str | None
     photo_url: str | None
+
+
+class UpdateUserRequest(BaseModel):
+    """User profile update request."""
+
+    first_name: str | None = Field(None, min_length=1, max_length=100)
+    last_name: str | None = Field(None, max_length=100)
+    photo_url: str | None = Field(None, max_length=500)
+
+
+class ChangePasswordRequest(BaseModel):
+    """Password change request."""
+
+    current_password: str = Field(..., min_length=1, description="Current password")
+    new_password: str = Field(..., min_length=8, max_length=128, description="New password")

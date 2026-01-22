@@ -7,7 +7,11 @@ from sqlmodel import col, func, select
 from api.db.models import MemberRole, Project, ProjectMember, User
 from api.exceptions import MemberNotFoundError, ProjectNotFoundError, ScaleRangeError
 from api.schemas import ProjectCreate, ProjectUpdate
-from api.schemas.internal import MemberWithUser, ProjectWithMemberCount
+from api.schemas.internal import (
+    MemberWithUser,
+    ProjectWithMemberCount,
+    ProjectWithMemberCountAndRole,
+)
 from api.services.base import BaseService
 
 
@@ -71,6 +75,54 @@ class ProjectService(BaseService):
             ProjectWithMemberCount(project=project, member_count=count)
             for project, count in results
         ]
+
+    def get_user_projects_with_roles(self, user_id: UUID) -> list[ProjectWithMemberCountAndRole]:
+        """Get all projects where user is a member, with member counts and role.
+
+        Uses a single query with subquery to avoid N+1 problem.
+
+        :param user_id: User ID
+        :return: List of ProjectWithMemberCountAndRole instances
+        """
+        member_count_subquery = (
+            select(ProjectMember.project_id, func.count().label("member_count"))
+            .group_by(col(ProjectMember.project_id))
+            .subquery()
+        )
+
+        statement = (
+            select(Project, member_count_subquery.c.member_count, ProjectMember.role)
+            .join(ProjectMember, col(ProjectMember.project_id) == Project.id)
+            .join(
+                member_count_subquery,
+                member_count_subquery.c.project_id == Project.id,
+            )
+            .where(ProjectMember.user_id == user_id)
+            .order_by(col(Project.created_at).desc())
+        )
+        results = self._session.exec(statement).all()
+        return [
+            ProjectWithMemberCountAndRole(
+                project=project,
+                member_count=count,
+                role=MemberRole(role) if isinstance(role, str) else role,
+            )
+            for project, count, role in results
+        ]
+
+    def get_user_role_in_project(self, project_id: UUID, user_id: UUID) -> MemberRole | None:
+        """Get user's role in a project.
+
+        :param project_id: Project ID
+        :param user_id: User ID
+        :return: MemberRole if user is a member, None otherwise
+        """
+        statement = select(ProjectMember).where(
+            ProjectMember.project_id == project_id,
+            ProjectMember.user_id == user_id,
+        )
+        membership = self._session.exec(statement).first()
+        return membership.role if membership else None
 
     def get_project(self, project_id: UUID) -> Project | None:
         """Get project by ID.

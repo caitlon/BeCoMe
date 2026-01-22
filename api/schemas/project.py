@@ -73,6 +73,36 @@ class ProjectResponse(BaseModel):
         )
 
 
+class ProjectWithRoleResponse(ProjectResponse):
+    """Project details with user's role."""
+
+    role: str
+
+    @classmethod
+    def from_model_with_role(
+        cls, project: "Project", member_count: int, role: str
+    ) -> "ProjectWithRoleResponse":
+        """Create response from database model with role.
+
+        :param project: Project database model
+        :param member_count: Number of project members
+        :param role: User's role in the project (admin/expert)
+        :return: ProjectWithRoleResponse instance
+        """
+        return cls(
+            id=str(project.id),
+            name=project.name,
+            description=project.description,
+            scale_min=project.scale_min,
+            scale_max=project.scale_max,
+            scale_unit=project.scale_unit,
+            admin_id=str(project.admin_id),
+            created_at=project.created_at,
+            member_count=member_count,
+            role=role,
+        )
+
+
 class MemberResponse(BaseModel):
     """Project member details."""
 

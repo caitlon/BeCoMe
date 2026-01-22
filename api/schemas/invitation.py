@@ -1,86 +1,90 @@
-"""Invitation management schemas."""
+"""Invitation management schemas for email-based invitations."""
 
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import TYPE_CHECKING
 
-from pydantic import BaseModel, Field
-
-from api.db.utils import ensure_utc
+from pydantic import BaseModel, EmailStr, Field
 
 if TYPE_CHECKING:
     from api.db.models import Invitation, Project, User
 
 
-class InvitationCreate(BaseModel):
-    """Request to create a project invitation."""
+class InviteByEmailRequest(BaseModel):
+    """Request to invite a user by email."""
 
-    expires_in_days: int = Field(
-        default=7,
-        ge=1,
-        le=90,
-        description="Days until invitation expires (1-90)",
-    )
+    email: EmailStr = Field(..., description="Email of user to invite")
 
 
 class InvitationResponse(BaseModel):
     """Response after creating an invitation."""
 
-    token: str
-    expires_at: datetime
+    id: str
     project_id: str
-    project_name: str
+    invitee_email: str
+    invited_at: datetime
 
     @classmethod
-    def from_model(cls, invitation: "Invitation", project: "Project") -> "InvitationResponse":
+    def from_model(cls, invitation: "Invitation", invitee: "User") -> "InvitationResponse":
         """Create response from database models.
 
         :param invitation: Invitation database model
-        :param project: Project database model
+        :param invitee: Invitee user database model
         :return: InvitationResponse instance
         """
         return cls(
-            token=str(invitation.token),
-            expires_at=invitation.expires_at,
-            project_id=str(project.id),
-            project_name=project.name,
+            id=str(invitation.id),
+            project_id=str(invitation.project_id),
+            invitee_email=invitee.email,
+            invited_at=invitation.created_at,
         )
 
 
-class InvitationInfoResponse(BaseModel):
-    """Public information about an invitation."""
+class InvitationListItemResponse(BaseModel):
+    """Single invitation in user's invitation list."""
 
+    id: str
+    project_id: str
     project_name: str
     project_description: str | None
-    admin_name: str
-    expires_at: datetime
-    is_valid: bool
+    project_scale_min: float
+    project_scale_max: float
+    project_scale_unit: str
+    inviter_email: str
+    inviter_first_name: str
+    current_experts_count: int
+    invited_at: datetime
 
     @classmethod
     def from_model(
         cls,
         invitation: "Invitation",
         project: "Project",
-        admin: "User",
-    ) -> "InvitationInfoResponse":
+        inviter: "User",
+        member_count: int,
+    ) -> "InvitationListItemResponse":
         """Create response from database models.
 
         :param invitation: Invitation database model
         :param project: Project database model
-        :param admin: Admin user database model
-        :return: InvitationInfoResponse instance
+        :param inviter: User who sent the invitation
+        :param member_count: Current number of project members
+        :return: InvitationListItemResponse instance
         """
-        admin_name = admin.first_name
-        if admin.last_name:
-            admin_name = f"{admin.first_name} {admin.last_name}"
-
-        is_used = invitation.used_by_id is not None
-        is_expired = datetime.now(UTC) > ensure_utc(invitation.expires_at)
-        is_valid = not is_used and not is_expired
-
         return cls(
+            id=str(invitation.id),
+            project_id=str(project.id),
             project_name=project.name,
             project_description=project.description,
-            admin_name=admin_name,
-            expires_at=invitation.expires_at,
-            is_valid=is_valid,
+            project_scale_min=project.scale_min,
+            project_scale_max=project.scale_max,
+            project_scale_unit=project.scale_unit,
+            inviter_email=inviter.email,
+            inviter_first_name=inviter.first_name,
+            current_experts_count=member_count,
+            invited_at=invitation.created_at,
         )
+
+
+# Keep old schema name for backward compatibility in __init__.py
+InvitationCreate = InviteByEmailRequest
+InvitationInfoResponse = InvitationListItemResponse
