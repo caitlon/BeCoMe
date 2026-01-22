@@ -57,8 +57,10 @@ class InvitationService(BaseService):
         :raises UserAlreadyMemberError: If user is already a project member
         :raises AlreadyInvitedError: If user already has a pending invitation
         """
-        # Find user by email
-        invitee = self._session.exec(select(User).where(User.email == invitee_email)).first()
+        # Find user by email (case-insensitive)
+        invitee = self._session.exec(
+            select(User).where(User.email == invitee_email.lower())
+        ).first()
         if not invitee:
             raise UserNotFoundError(f"No user found with email {invitee_email}")
 

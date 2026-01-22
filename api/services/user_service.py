@@ -22,19 +22,20 @@ class UserService(BaseService):
     ) -> User:
         """Create a new user account.
 
-        :param email: User email address
+        :param email: User email address (will be normalized to lowercase)
         :param password: Plain text password (will be hashed)
         :param first_name: User's first name
         :param last_name: User's last name (optional)
         :return: Created User instance
         :raises UserExistsError: If email already registered
         """
-        existing = self.get_by_email(email)
+        normalized_email = email.lower()
+        existing = self.get_by_email(normalized_email)
         if existing:
-            raise UserExistsError(f"User with email {email} already exists")
+            raise UserExistsError(f"User with email {normalized_email} already exists")
 
         user = User(
-            email=email,
+            email=normalized_email,
             hashed_password=hash_password(password),
             first_name=first_name,
             last_name=last_name,
@@ -47,10 +48,10 @@ class UserService(BaseService):
     def get_by_email(self, email: str) -> User | None:
         """Find user by email address.
 
-        :param email: Email to search for
+        :param email: Email to search for (case-insensitive)
         :return: User if found, None otherwise
         """
-        statement = select(User).where(User.email == email)
+        statement = select(User).where(User.email == email.lower())
         return self._session.exec(statement).first()
 
     def get_by_id(self, user_id: UUID) -> User | None:

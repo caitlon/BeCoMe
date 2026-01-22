@@ -127,6 +127,54 @@ class TestRegister:
         assert response.status_code == 409
         assert "already registered" in response.json()["detail"]
 
+    def test_register_duplicate_email_different_case_fails(self, client):
+        """Registration with same email in different case returns 409."""
+        # GIVEN - first registration with mixed case email
+        client.post(
+            "/api/v1/auth/register",
+            json={
+                "email": "Test@Example.COM",
+                "password": "securepassword123",
+                "first_name": "First",
+            },
+        )
+
+        # WHEN - second registration with lowercase email
+        response = client.post(
+            "/api/v1/auth/register",
+            json={
+                "email": "test@example.com",
+                "password": "securepassword123",
+                "first_name": "Second",
+            },
+        )
+
+        # THEN
+        assert response.status_code == 409
+        assert "already registered" in response.json()["detail"]
+
+    def test_login_with_different_case_email_works(self, client):
+        """Login works with email in different case than registered."""
+        # GIVEN - register with mixed case
+        client.post(
+            "/api/v1/auth/register",
+            json={
+                "email": "CaseTest@Example.COM",
+                "password": "securepassword123",
+                "first_name": "Case",
+            },
+        )
+
+        # WHEN - login with lowercase
+        response = client.post(
+            "/api/v1/auth/login",
+            data={"username": "casetest@example.com", "password": "securepassword123"},
+        )
+
+        # THEN
+        assert response.status_code == 200
+        assert "access_token" in response.json()
+
     def test_register_short_password_fails(self, client):
         """Registration with password < 8 chars returns 422."""
         # GIVEN
