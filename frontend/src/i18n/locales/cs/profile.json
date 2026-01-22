@@ -3,7 +3,6 @@
     "title": "Upravit profil",
     "firstName": "Jméno",
     "lastName": "Příjmení",
-    "photoUrl": "URL fotky",
     "save": "Uložit změny"
   },
   "changePassword": {

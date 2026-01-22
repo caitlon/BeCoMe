@@ -85,7 +85,6 @@ class UserResponse(BaseModel):
     email: str
     first_name: str
     last_name: str
-    photo_url: str | None
 
 
 class UpdateUserRequest(BaseModel):
@@ -93,7 +92,6 @@ class UpdateUserRequest(BaseModel):
 
     first_name: str | None = Field(None, max_length=100)
     last_name: str | None = Field(None, max_length=100)
-    photo_url: str | None = Field(None, max_length=500)
 
     @field_validator("first_name")
     @classmethod

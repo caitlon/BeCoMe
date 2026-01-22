@@ -4,20 +4,20 @@ import { Loader2 } from "lucide-react";
 import { Button, ButtonProps } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-interface SubmitButtonProps extends Omit<ButtonProps, "type"> {
+interface SubmitButtonProps extends ButtonProps {
   isLoading?: boolean;
   loadingText?: string;
 }
 
 const SubmitButton = React.forwardRef<HTMLButtonElement, SubmitButtonProps>(
   (
-    { isLoading, loadingText, children, disabled, className, ...props },
+    { isLoading, loadingText, children, disabled, className, type = "submit", ...props },
     ref
   ) => {
     return (
       <Button
         ref={ref}
-        type="submit"
+        type={type}
         disabled={disabled || isLoading}
         aria-busy={isLoading}
         className={cn(className)}

@@ -29,7 +29,6 @@ class User(SQLModel, table=True):
     hashed_password: str = Field(max_length=255)
     first_name: str = Field(max_length=100)
     last_name: str = Field(max_length=100)
-    photo_url: str | None = Field(default=None, max_length=500)
     created_at: datetime = Field(default_factory=utc_now)
 
     owned_projects: list["Project"] = Relationship(back_populates="admin")
