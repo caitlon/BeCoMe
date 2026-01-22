@@ -9,7 +9,7 @@ from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine
 
 from api.config import get_settings
-from api.db.models import (  # noqa: F401
+from api.db.models import (  # noqa: F401 - models required for SQLModel.metadata.create_all
     CalculationResult,
     ExpertOpinion,
     Invitation,

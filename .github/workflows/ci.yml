@@ -43,6 +43,7 @@ jobs:
     needs: lint
     env:
       SECRET_KEY: test-secret-key-for-ci
+      TESTING: "1"
 
     steps:
       - uses: actions/checkout@v5
