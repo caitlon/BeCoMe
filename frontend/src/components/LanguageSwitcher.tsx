@@ -31,7 +31,7 @@ export function LanguageSwitcher() {
           className="w-10 h-10 hover:bg-muted transition-colors duration-300"
           aria-label="Change language"
         >
-          <span className="text-base" role="img" aria-label={currentLanguage.name}>
+          <span className="text-xl" role="img" aria-label={currentLanguage.name}>
             {currentLanguage.flag}
           </span>
         </Button>
