@@ -84,7 +84,7 @@ const Register = () => {
     } catch (error) {
       toast({
         title: t("register.errorTitle"),
-        description: error instanceof Error ? error.message : t("common.error"),
+        description: error instanceof Error ? error.message : t("register.errorMessage"),
         variant: "destructive",
       });
     } finally {
