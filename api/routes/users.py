@@ -163,11 +163,11 @@ async def upload_photo(
             content_type=file.content_type,
             user_id=str(current_user.id),
         )
-    except StorageUploadError:
+    except StorageUploadError as err:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Failed to upload photo",
-        )
+        ) from err
 
     # Update user record
     updated_user = user_service.update_photo_url(current_user, photo_url)
