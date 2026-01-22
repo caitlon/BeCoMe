@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
-import { Loader2, AlertTriangle, Check, X } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Loader2, AlertTriangle } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -9,41 +11,32 @@ import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Navbar } from "@/components/layout/Navbar";
 import { DeleteConfirmModal } from "@/components/modals/DeleteConfirmModal";
+import { ValidationChecklist, Requirement } from "@/components/forms";
 import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
-import { useNavigate } from "react-router-dom";
+import { cn } from "@/lib/utils";
 
 const NAME_REGEX = /^[\p{L}\s'-]+$/u;
 const isValidName = (name: string) => !name || NAME_REGEX.test(name);
 
-type PasswordRequirement = {
-  key: string;
-  label: string;
-  met: boolean;
-};
-
 const getPasswordRequirements = (
   password: string,
   t: (key: string) => string
-): PasswordRequirement[] => [
+): Requirement[] => [
   {
-    key: "minLength",
     label: t("passwordRequirements.minLength"),
     met: password.length >= 8,
   },
   {
-    key: "uppercase",
     label: t("passwordRequirements.uppercase"),
     met: /[A-Z]/.test(password),
   },
   {
-    key: "lowercase",
     label: t("passwordRequirements.lowercase"),
     met: /[a-z]/.test(password),
   },
   {
-    key: "number",
     label: t("passwordRequirements.number"),
     met: /\d/.test(password),
   },
@@ -113,7 +106,8 @@ const Profile = () => {
     } catch (error) {
       toast({
         title: t("toast.error"),
-        description: error instanceof Error ? error.message : t("toast.updateFailed"),
+        description:
+          error instanceof Error ? error.message : t("toast.updateFailed"),
         variant: "destructive",
       });
     } finally {
@@ -153,7 +147,8 @@ const Profile = () => {
     } catch (error) {
       toast({
         title: t("toast.error"),
-        description: error instanceof Error ? error.message : t("toast.passwordFailed"),
+        description:
+          error instanceof Error ? error.message : t("toast.passwordFailed"),
         variant: "destructive",
       });
     } finally {
@@ -170,7 +165,8 @@ const Profile = () => {
     } catch (error) {
       toast({
         title: t("toast.error"),
-        description: error instanceof Error ? error.message : t("toast.deleteFailed"),
+        description:
+          error instanceof Error ? error.message : t("toast.deleteFailed"),
         variant: "destructive",
       });
     }
@@ -222,7 +218,7 @@ const Profile = () => {
                     id="firstName"
                     value={firstName}
                     onChange={(e) => handleFirstNameChange(e.target.value)}
-                    className={firstNameError ? "border-destructive" : ""}
+                    className={cn(firstNameError && "border-destructive")}
                   />
                   {firstNameError && (
                     <p className="text-sm text-destructive">{firstNameError}</p>
@@ -234,7 +230,7 @@ const Profile = () => {
                     id="lastName"
                     value={lastName}
                     onChange={(e) => handleLastNameChange(e.target.value)}
-                    className={lastNameError ? "border-destructive" : ""}
+                    className={cn(lastNameError && "border-destructive")}
                   />
                   {lastNameError && (
                     <p className="text-sm text-destructive">{lastNameError}</p>
@@ -274,7 +270,9 @@ const Profile = () => {
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <Label htmlFor="currentPassword">{t("changePassword.currentPassword")}</Label>
+                <Label htmlFor="currentPassword">
+                  {t("changePassword.currentPassword")}
+                </Label>
                 <Input
                   id="currentPassword"
                   type="password"
@@ -284,39 +282,26 @@ const Profile = () => {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="newPassword">{t("changePassword.newPassword")}</Label>
+                <Label htmlFor="newPassword">
+                  {t("changePassword.newPassword")}
+                </Label>
                 <Input
                   id="newPassword"
                   type="password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                 />
-                {newPassword && !allPasswordRequirementsMet && (
-                  <div className="mt-3 space-y-1.5">
-                    <p className="text-xs text-muted-foreground font-medium">
-                      {tAuth("passwordRequirements.title")}
-                    </p>
-                    {passwordRequirements.map((req) => (
-                      <div
-                        key={req.key}
-                        className={`flex items-center gap-2 text-xs ${
-                          req.met ? "text-success" : "text-muted-foreground"
-                        }`}
-                      >
-                        {req.met ? (
-                          <Check className="h-3.5 w-3.5" />
-                        ) : (
-                          <X className="h-3.5 w-3.5" />
-                        )}
-                        <span>{req.label}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <ValidationChecklist
+                  title={tAuth("passwordRequirements.title")}
+                  requirements={passwordRequirements}
+                  show={!!newPassword}
+                />
               </div>
 
               <div>
-                <Label htmlFor="confirmPassword">{t("changePassword.confirmPassword")}</Label>
+                <Label htmlFor="confirmPassword">
+                  {t("changePassword.confirmPassword")}
+                </Label>
                 <Input
                   id="confirmPassword"
                   type="password"

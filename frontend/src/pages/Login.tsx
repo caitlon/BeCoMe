@@ -5,11 +5,9 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
-import { Eye, EyeOff, Loader2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { FormField, PasswordInput, SubmitButton } from "@/components/forms";
 import { Navbar } from "@/components/layout/Navbar";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
@@ -24,7 +22,6 @@ const Login = () => {
   const navigate = useNavigate();
   const { login } = useAuth();
   const { toast } = useToast();
-  const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
   const loginSchema = useMemo(
@@ -69,7 +66,7 @@ const Login = () => {
   return (
     <div className="min-h-screen flex flex-col">
       <Navbar />
-      
+
       <div className="flex-1 flex items-center justify-center py-12 px-6">
         <motion.div
           className="w-full max-w-md"
@@ -85,52 +82,20 @@ const Login = () => {
             </CardHeader>
             <CardContent className="pt-6">
               <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="email">{t("login.email")}</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder={t("login.emailPlaceholder")}
-                    {...register("email")}
-                    className={errors.email ? "border-destructive" : ""}
-                  />
-                  {errors.email && (
-                    <p className="text-sm text-destructive">
-                      {errors.email.message}
-                    </p>
-                  )}
-                </div>
+                <FormField
+                  label={t("login.email")}
+                  type="email"
+                  placeholder={t("login.emailPlaceholder")}
+                  error={errors.email}
+                  {...register("email")}
+                />
 
-                <div className="space-y-2">
-                  <Label htmlFor="password">{t("login.password")}</Label>
-                  <div className="relative">
-                    <Input
-                      id="password"
-                      type={showPassword ? "text" : "password"}
-                      placeholder={t("login.passwordPlaceholder")}
-                      {...register("password")}
-                      className={
-                        errors.password ? "border-destructive pr-10" : "pr-10"
-                      }
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                    >
-                      {showPassword ? (
-                        <EyeOff className="h-4 w-4" />
-                      ) : (
-                        <Eye className="h-4 w-4" />
-                      )}
-                    </button>
-                  </div>
-                  {errors.password && (
-                    <p className="text-sm text-destructive">
-                      {errors.password.message}
-                    </p>
-                  )}
-                </div>
+                <PasswordInput
+                  label={t("login.password")}
+                  placeholder={t("login.passwordPlaceholder")}
+                  error={errors.password}
+                  {...register("password")}
+                />
 
                 <div className="text-right">
                   <button
@@ -141,16 +106,13 @@ const Login = () => {
                   </button>
                 </div>
 
-                <Button type="submit" className="w-full" disabled={isLoading}>
-                  {isLoading ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      {t("login.signingIn")}
-                    </>
-                  ) : (
-                    t("login.signIn")
-                  )}
-                </Button>
+                <SubmitButton
+                  className="w-full"
+                  isLoading={isLoading}
+                  loadingText={t("login.signingIn")}
+                >
+                  {t("login.signIn")}
+                </SubmitButton>
               </form>
 
               <p className="text-center text-sm text-muted-foreground mt-6">
