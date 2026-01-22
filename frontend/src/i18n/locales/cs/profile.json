@@ -39,6 +39,7 @@
     "accountDeleted": "Účet smazán",
     "deleteFailed": "Nepodařilo se smazat účet",
     "photoUpdated": "Profilová fotka aktualizována",
+    "photoTooLarge": "Soubor je příliš velký. Maximální velikost je 5 MB",
     "photoFailed": "Nepodařilo se nahrát fotku",
     "photoDeleted": "Profilová fotka odstraněna",
     "photoDeleteFailed": "Nepodařilo se odstranit fotku"

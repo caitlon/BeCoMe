@@ -1,5 +1,6 @@
 """Azure Blob Storage service implementation."""
 
+from typing import ClassVar
 from uuid import uuid4
 
 from azure.core.exceptions import AzureError, ResourceNotFoundError
@@ -32,6 +33,46 @@ class AzureBlobStorageService:
     )
     MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024  # 5 MB
 
+    # Map content types to file extensions (trusted, not from user input)
+    CONTENT_TYPE_TO_EXTENSION: ClassVar[dict[str, str]] = {
+        "image/jpeg": "jpg",
+        "image/png": "png",
+        "image/gif": "gif",
+        "image/webp": "webp",
+    }
+
+    # Magic bytes for image file type verification
+    IMAGE_SIGNATURES: ClassVar[dict[bytes, str]] = {
+        b"\xff\xd8\xff": "image/jpeg",  # JPEG
+        b"\x89PNG\r\n\x1a\n": "image/png",  # PNG
+        b"GIF87a": "image/gif",  # GIF87a
+        b"GIF89a": "image/gif",  # GIF89a
+        b"RIFF": "image/webp",  # WebP (need to check for WEBP after RIFF)
+    }
+
+    @classmethod
+    def validate_image_content(cls, content: bytes, claimed_content_type: str) -> bool:
+        """Validate that file content matches claimed content type using magic bytes.
+
+        :param content: Raw file bytes
+        :param claimed_content_type: Content type claimed by client
+        :return: True if content matches claimed type
+        """
+        if not content:
+            return False
+
+        # Check common image signatures
+        for signature, actual_type in cls.IMAGE_SIGNATURES.items():
+            if content.startswith(signature):
+                # Special case for WebP: RIFF header needs WEBP check
+                if signature == b"RIFF":
+                    if len(content) >= 12 and content[8:12] == b"WEBP":
+                        return claimed_content_type == "image/webp"
+                    continue
+                return claimed_content_type == actual_type
+
+        return False
+
     def __init__(self, settings: Settings) -> None:
         """Initialize Azure Blob Storage client.
 
@@ -49,21 +90,30 @@ class AzureBlobStorageService:
         self._ensure_container_exists()
 
     def _ensure_container_exists(self) -> None:
-        """Create container if it doesn't exist."""
-        container_client = self._client.get_container_client(self._container_name)
-        if not container_client.exists():
-            container_client.create_container(public_access="blob")
+        """Create container if it doesn't exist.
 
-    def _generate_blob_name(self, user_id: str, original_filename: str) -> str:
+        :raises StorageConfigurationError: If container operations fail
+        """
+        try:
+            container_client = self._client.get_container_client(self._container_name)
+            if not container_client.exists():
+                container_client.create_container(public_access="blob")
+        except AzureError as e:
+            raise StorageConfigurationError(
+                f"Failed to ensure container '{self._container_name}' exists: {e}"
+            ) from e
+
+    def _generate_blob_name(self, user_id: str, content_type: str) -> str:
         """Generate unique blob name with user ID prefix.
 
+        Extension is derived from content_type (already validated),
+        not from user-provided filename to prevent spoofing.
+
         :param user_id: User UUID as string
-        :param original_filename: Original uploaded filename
+        :param content_type: Validated MIME type
         :return: Sanitized blob name like "profiles/user-id/uuid.ext"
         """
-        extension = (
-            original_filename.rsplit(".", 1)[-1].lower() if "." in original_filename else "jpg"
-        )
+        extension = self.CONTENT_TYPE_TO_EXTENSION.get(content_type, "jpg")
         unique_id = uuid4().hex[:12]
         return f"profiles/{user_id}/{unique_id}.{extension}"
 
@@ -83,20 +133,18 @@ class AzureBlobStorageService:
     def upload_file(
         self,
         file_content: bytes,
-        file_name: str,
         content_type: str,
         user_id: str,
     ) -> str:
         """Upload a file to Azure Blob Storage.
 
         :param file_content: Raw file bytes
-        :param file_name: Original filename
-        :param content_type: MIME type
+        :param content_type: MIME type (must be validated before calling)
         :param user_id: User ID for organizing blobs
         :return: Public URL of uploaded blob
         :raises StorageUploadError: If upload fails
         """
-        blob_name = self._generate_blob_name(user_id, file_name)
+        blob_name = self._generate_blob_name(user_id, content_type)
         blob_client = self._client.get_blob_client(
             container=self._container_name,
             blob=blob_name,

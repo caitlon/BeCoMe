@@ -92,9 +92,22 @@ const Profile = () => {
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
+
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    // Client-side size validation for immediate feedback
+    if (file.size > MAX_FILE_SIZE) {
+      toast({
+        title: t("toast.error"),
+        description: t("toast.photoTooLarge"),
+        variant: "destructive",
+      });
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
 
     setIsUploadingPhoto(true);
     try {

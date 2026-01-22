@@ -39,6 +39,7 @@
     "accountDeleted": "Account deleted",
     "deleteFailed": "Failed to delete account",
     "photoUpdated": "Profile photo updated",
+    "photoTooLarge": "File too large. Maximum size is 5 MB",
     "photoFailed": "Failed to upload photo",
     "photoDeleted": "Profile photo removed",
     "photoDeleteFailed": "Failed to remove photo"

@@ -1,5 +1,6 @@
 """User management routes: profile, password, photo, account deletion."""
 
+from contextlib import suppress
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
@@ -8,7 +9,7 @@ from api.auth.dependencies import CurrentUser
 from api.dependencies import get_storage_service, get_user_service
 from api.schemas import ChangePasswordRequest, UpdateUserRequest, UserResponse
 from api.services.storage.azure_blob_service import AzureBlobStorageService
-from api.services.storage.exceptions import StorageUploadError
+from api.services.storage.exceptions import StorageDeleteError, StorageUploadError
 from api.services.user_service import UserService
 
 router = APIRouter(prefix="/api/v1/users", tags=["users"])
@@ -151,15 +152,22 @@ async def upload_photo(
             detail="File too large. Maximum size is 5 MB",
         )
 
-    # Delete old photo if exists
+    # Validate actual file content matches claimed type (magic bytes check)
+    if not AzureBlobStorageService.validate_image_content(content, file.content_type):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File content does not match declared type",
+        )
+
+    # Delete old photo if exists (ignore errors to allow upload to proceed)
     if current_user.photo_url:
-        storage_service.delete_file(current_user.photo_url)
+        with suppress(StorageDeleteError):
+            storage_service.delete_file(current_user.photo_url)
 
     # Upload new photo
     try:
         photo_url = storage_service.upload_file(
             file_content=content,
-            file_name=file.filename or "photo.jpg",
             content_type=file.content_type,
             user_id=str(current_user.id),
         )
@@ -199,7 +207,9 @@ def delete_photo(
     if not current_user.photo_url:
         return
 
+    # Try to delete from storage, but always clear DB record
     if storage_service:
-        storage_service.delete_file(current_user.photo_url)
+        with suppress(StorageDeleteError):
+            storage_service.delete_file(current_user.photo_url)
 
     user_service.update_photo_url(current_user, None)

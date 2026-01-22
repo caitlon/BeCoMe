@@ -21,6 +21,7 @@ from api.services.invitation_service import InvitationService
 from api.services.opinion_service import OpinionService
 from api.services.project_service import ProjectService
 from api.services.storage.azure_blob_service import AzureBlobStorageService
+from api.services.storage.exceptions import StorageConfigurationError
 from api.services.user_service import UserService
 from src.calculators.become_calculator import BeCoMeCalculator
 
@@ -71,15 +72,18 @@ def get_invitation_service(session: Annotated[Session, Depends(get_session)]) ->
 def get_storage_service() -> AzureBlobStorageService | None:
     """Create storage service if Azure is configured.
 
-    Returns None if Azure storage is not configured,
-    allowing graceful degradation.
+    Returns None if Azure storage is not configured or
+    initialization fails, allowing graceful degradation.
 
     :return: AzureBlobStorageService or None
     """
     settings = get_settings()
     if not settings.azure_storage_enabled:
         return None
-    return AzureBlobStorageService(settings)
+    try:
+        return AzureBlobStorageService(settings)
+    except StorageConfigurationError:
+        return None
 
 
 # --- Authorization Dependencies ---

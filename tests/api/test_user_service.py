@@ -280,3 +280,69 @@ class TestUserServiceAuthenticate:
 
         # THEN
         mock_verify.assert_called_once_with("test_password", "stored_hash_value")
+
+
+class TestUserServiceUpdatePhotoUrl:
+    """Tests for UserService.update_photo_url method."""
+
+    def test_sets_photo_url(self):
+        """Photo URL is set and persisted."""
+        # GIVEN
+        user = User(
+            id=uuid4(),
+            email="photo@example.com",
+            hashed_password="xxx",
+            first_name="Photo",
+            photo_url=None,
+        )
+        mock_session = MagicMock()
+        service = UserService(mock_session)
+
+        # WHEN
+        result = service.update_photo_url(user, "https://storage.example.com/photo.jpg")
+
+        # THEN
+        assert result.photo_url == "https://storage.example.com/photo.jpg"
+        mock_session.add.assert_called_once_with(user)
+        mock_session.commit.assert_called_once()
+        mock_session.refresh.assert_called_once_with(user)
+
+    def test_clears_photo_url_with_none(self):
+        """Photo URL can be cleared by passing None."""
+        # GIVEN
+        user = User(
+            id=uuid4(),
+            email="photo@example.com",
+            hashed_password="xxx",
+            first_name="Photo",
+            photo_url="https://storage.example.com/old.jpg",
+        )
+        mock_session = MagicMock()
+        service = UserService(mock_session)
+
+        # WHEN
+        result = service.update_photo_url(user, None)
+
+        # THEN
+        assert result.photo_url is None
+        mock_session.add.assert_called_once()
+        mock_session.commit.assert_called_once()
+
+    def test_replaces_existing_photo_url(self):
+        """Existing photo URL is replaced with new one."""
+        # GIVEN
+        user = User(
+            id=uuid4(),
+            email="photo@example.com",
+            hashed_password="xxx",
+            first_name="Photo",
+            photo_url="https://storage.example.com/old.jpg",
+        )
+        mock_session = MagicMock()
+        service = UserService(mock_session)
+
+        # WHEN
+        result = service.update_photo_url(user, "https://storage.example.com/new.jpg")
+
+        # THEN
+        assert result.photo_url == "https://storage.example.com/new.jpg"
