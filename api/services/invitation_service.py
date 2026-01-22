@@ -143,8 +143,7 @@ class InvitationService(BaseService):
         :param invitation_id: Invitation ID
         :param user_id: ID of the user accepting
         :return: Created ProjectMember instance
-        :raises InvitationNotFoundError: If invitation doesn't exist
-        :raises ValueError: If invitation is not for this user
+        :raises InvitationNotFoundError: If invitation doesn't exist or is not for this user
         :raises UserAlreadyMemberError: If user is already a member
         """
         invitation = self.get_invitation_by_id(invitation_id)
