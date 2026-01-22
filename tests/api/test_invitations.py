@@ -1,367 +1,59 @@
-"""Tests for invitation management endpoints."""
+"""Tests for invitation management endpoints (email-based)."""
 
-from datetime import UTC, datetime, timedelta
-from uuid import UUID
-
-from sqlmodel import select
-
-from api.db.models import Invitation
 from tests.api.conftest import auth_header, create_project, register_and_login
 
 
-class TestCreateInvitation:
+class TestInviteByEmail:
     """Tests for POST /api/v1/projects/{id}/invite."""
 
-    def test_create_invitation_success(self, client):
-        """Admin can create invitation."""
+    def test_invite_by_email_success(self, client):
+        """Admin can invite a registered user by email."""
         # GIVEN
-        token = register_and_login(client)
-        project = create_project(client, token)
+        admin_token = register_and_login(client, "admin@example.com")
+        register_and_login(client, "invitee@example.com")  # Register invitee
+        project = create_project(client, admin_token)
 
         # WHEN
         response = client.post(
             f"/api/v1/projects/{project['id']}/invite",
-            json={"expires_in_days": 7},
-            headers=auth_header(token),
+            json={"email": "invitee@example.com"},
+            headers=auth_header(admin_token),
         )
 
         # THEN
         assert response.status_code == 201
         data = response.json()
-        assert "token" in data
+        assert data["invitee_email"] == "invitee@example.com"
         assert data["project_id"] == project["id"]
-        assert data["project_name"] == "Test Project"
-        assert "expires_at" in data
+        assert "id" in data
 
-    def test_create_invitation_with_custom_expiration(self, client):
-        """Invitation is created with custom expiration."""
+    def test_invite_user_not_found(self, client):
+        """404 returned when invitee email doesn't exist."""
         # GIVEN
-        token = register_and_login(client)
-        project = create_project(client, token)
+        admin_token = register_and_login(client, "admin@example.com")
+        project = create_project(client, admin_token)
 
         # WHEN
         response = client.post(
             f"/api/v1/projects/{project['id']}/invite",
-            json={"expires_in_days": 30},
-            headers=auth_header(token),
-        )
-
-        # THEN
-        assert response.status_code == 201
-
-    def test_create_invitation_default_expiration(self, client):
-        """Invitation uses default expiration when not specified."""
-        # GIVEN
-        token = register_and_login(client)
-        project = create_project(client, token)
-
-        # WHEN
-        response = client.post(
-            f"/api/v1/projects/{project['id']}/invite",
-            json={},
-            headers=auth_header(token),
-        )
-
-        # THEN
-        assert response.status_code == 201
-
-    def test_create_invitation_project_not_found(self, client):
-        """404 returned for non-existent project."""
-        # GIVEN
-        token = register_and_login(client)
-        fake_id = "00000000-0000-0000-0000-000000000000"
-
-        # WHEN
-        response = client.post(
-            f"/api/v1/projects/{fake_id}/invite",
-            json={},
-            headers=auth_header(token),
+            json={"email": "nonexistent@example.com"},
+            headers=auth_header(admin_token),
         )
 
         # THEN
         assert response.status_code == 404
+        assert "No user found" in response.json()["detail"]
 
-    def test_create_invitation_not_admin(self, client):
-        """Non-admin cannot create invitation."""
-        # GIVEN
-        admin_token = register_and_login(client, "admin@example.com")
-        other_token = register_and_login(client, "other@example.com")
-        project = create_project(client, admin_token)
-
-        # WHEN
-        response = client.post(
-            f"/api/v1/projects/{project['id']}/invite",
-            json={},
-            headers=auth_header(other_token),
-        )
-
-        # THEN
-        assert response.status_code == 403
-
-    def test_create_invitation_without_auth(self, client):
-        """Invitation creation fails without authentication."""
-        # GIVEN
-        token = register_and_login(client)
-        project = create_project(client, token)
-
-        # WHEN
-        response = client.post(
-            f"/api/v1/projects/{project['id']}/invite",
-            json={},
-        )
-
-        # THEN
-        assert response.status_code == 401
-
-    def test_create_invitation_invalid_expiration(self, client):
-        """Invitation creation fails with invalid expiration days."""
-        # GIVEN
-        token = register_and_login(client)
-        project = create_project(client, token)
-
-        # WHEN
-        response = client.post(
-            f"/api/v1/projects/{project['id']}/invite",
-            json={"expires_in_days": 0},  # Below minimum
-            headers=auth_header(token),
-        )
-
-        # THEN
-        assert response.status_code == 422
-
-
-class TestGetInvitationInfo:
-    """Tests for GET /api/v1/invitations/{token}."""
-
-    def test_get_invitation_info_success(self, client):
-        """Invitation info is returned for valid token."""
-        # GIVEN
-        token = register_and_login(client, "admin@example.com")
-        project = create_project(client, token, "My Project")
-        invite_resp = client.post(
-            f"/api/v1/projects/{project['id']}/invite",
-            json={},
-            headers=auth_header(token),
-        )
-        invite_token = invite_resp.json()["token"]
-
-        # WHEN - no auth required
-        response = client.get(f"/api/v1/invitations/{invite_token}")
-
-        # THEN
-        assert response.status_code == 200
-        data = response.json()
-        assert data["project_name"] == "My Project"
-        assert data["admin_name"] == "Test User"
-        assert data["is_valid"] is True
-        assert "expires_at" in data
-
-    def test_get_invitation_info_not_found(self, client):
-        """404 returned for non-existent invitation."""
-        # GIVEN
-        fake_token = "00000000-0000-0000-0000-000000000000"
-
-        # WHEN
-        response = client.get(f"/api/v1/invitations/{fake_token}")
-
-        # THEN
-        assert response.status_code == 404
-
-    def test_get_invitation_info_shows_invalid_when_used(self, client):
-        """Invitation info shows is_valid=False when already used."""
-        # GIVEN
-        admin_token = register_and_login(client, "admin@example.com")
-        expert_token = register_and_login(client, "expert@example.com")
-        project = create_project(client, admin_token)
-        invite_resp = client.post(
-            f"/api/v1/projects/{project['id']}/invite",
-            json={},
-            headers=auth_header(admin_token),
-        )
-        invite_token = invite_resp.json()["token"]
-
-        # Accept the invitation
-        client.post(
-            f"/api/v1/invitations/{invite_token}/accept",
-            headers=auth_header(expert_token),
-        )
-
-        # WHEN
-        response = client.get(f"/api/v1/invitations/{invite_token}")
-
-        # THEN
-        assert response.status_code == 200
-        assert response.json()["is_valid"] is False
-
-    def test_get_invitation_info_shows_invalid_when_expired(self, client_with_session):
-        """Invitation info shows is_valid=False when invitation has expired."""
-        # GIVEN
-        test_client, session = client_with_session
-        admin_token = register_and_login(test_client, "admin@example.com")
-        project = create_project(test_client, admin_token)
-        invite_resp = test_client.post(
-            f"/api/v1/projects/{project['id']}/invite",
-            json={},
-            headers=auth_header(admin_token),
-        )
-        invite_token = invite_resp.json()["token"]
-
-        # Manually expire the invitation in database
-        invitation = session.exec(
-            select(Invitation).where(Invitation.token == UUID(invite_token))
-        ).first()
-        invitation.expires_at = datetime.now(UTC) - timedelta(days=1)
-        session.add(invitation)
-        session.commit()
-
-        # WHEN
-        response = test_client.get(f"/api/v1/invitations/{invite_token}")
-
-        # THEN
-        assert response.status_code == 200
-        assert response.json()["is_valid"] is False
-
-
-class TestAcceptInvitation:
-    """Tests for POST /api/v1/invitations/{token}/accept."""
-
-    def test_accept_invitation_success(self, client):
-        """User joins project as expert when accepting invitation."""
-        # GIVEN
-        admin_token = register_and_login(client, "admin@example.com")
-        expert_token = register_and_login(client, "expert@example.com")
-        project = create_project(client, admin_token)
-        invite_resp = client.post(
-            f"/api/v1/projects/{project['id']}/invite",
-            json={},
-            headers=auth_header(admin_token),
-        )
-        invite_token = invite_resp.json()["token"]
-
-        # WHEN
-        response = client.post(
-            f"/api/v1/invitations/{invite_token}/accept",
-            headers=auth_header(expert_token),
-        )
-
-        # THEN
-        assert response.status_code == 201
-        data = response.json()
-        assert data["email"] == "expert@example.com"
-        assert data["role"] == "expert"
-
-    def test_accept_invitation_user_can_see_project(self, client):
-        """User can access project after accepting invitation."""
-        # GIVEN
-        admin_token = register_and_login(client, "admin@example.com")
-        expert_token = register_and_login(client, "expert@example.com")
-        project = create_project(client, admin_token)
-        invite_resp = client.post(
-            f"/api/v1/projects/{project['id']}/invite",
-            json={},
-            headers=auth_header(admin_token),
-        )
-        invite_token = invite_resp.json()["token"]
-
-        # WHEN
-        client.post(
-            f"/api/v1/invitations/{invite_token}/accept",
-            headers=auth_header(expert_token),
-        )
-
-        # THEN - expert can now access project
-        get_resp = client.get(
-            f"/api/v1/projects/{project['id']}",
-            headers=auth_header(expert_token),
-        )
-        assert get_resp.status_code == 200
-
-    def test_accept_invitation_increases_member_count(self, client):
-        """Member count increases after accepting invitation."""
-        # GIVEN
-        admin_token = register_and_login(client, "admin@example.com")
-        expert_token = register_and_login(client, "expert@example.com")
-        project = create_project(client, admin_token)
-        invite_resp = client.post(
-            f"/api/v1/projects/{project['id']}/invite",
-            json={},
-            headers=auth_header(admin_token),
-        )
-        invite_token = invite_resp.json()["token"]
-
-        # WHEN
-        client.post(
-            f"/api/v1/invitations/{invite_token}/accept",
-            headers=auth_header(expert_token),
-        )
-
-        # THEN
-        get_resp = client.get(
-            f"/api/v1/projects/{project['id']}",
-            headers=auth_header(admin_token),
-        )
-        assert get_resp.json()["member_count"] == 2
-
-    def test_accept_invitation_not_found(self, client):
-        """404 returned for non-existent invitation."""
-        # GIVEN
-        token = register_and_login(client)
-        fake_invite = "00000000-0000-0000-0000-000000000000"
-
-        # WHEN
-        response = client.post(
-            f"/api/v1/invitations/{fake_invite}/accept",
-            headers=auth_header(token),
-        )
-
-        # THEN
-        assert response.status_code == 404
-
-    def test_accept_invitation_already_used(self, client):
-        """400 returned when invitation was already used."""
-        # GIVEN
-        admin_token = register_and_login(client, "admin@example.com")
-        expert1_token = register_and_login(client, "expert1@example.com")
-        expert2_token = register_and_login(client, "expert2@example.com")
-        project = create_project(client, admin_token)
-        invite_resp = client.post(
-            f"/api/v1/projects/{project['id']}/invite",
-            json={},
-            headers=auth_header(admin_token),
-        )
-        invite_token = invite_resp.json()["token"]
-
-        # First expert accepts
-        client.post(
-            f"/api/v1/invitations/{invite_token}/accept",
-            headers=auth_header(expert1_token),
-        )
-
-        # WHEN - second expert tries to accept same invitation
-        response = client.post(
-            f"/api/v1/invitations/{invite_token}/accept",
-            headers=auth_header(expert2_token),
-        )
-
-        # THEN
-        assert response.status_code == 400
-        assert "already been used" in response.json()["detail"]
-
-    def test_accept_invitation_already_member(self, client):
+    def test_invite_user_already_member(self, client):
         """409 returned when user is already a member."""
         # GIVEN
         admin_token = register_and_login(client, "admin@example.com")
         project = create_project(client, admin_token)
-        invite_resp = client.post(
-            f"/api/v1/projects/{project['id']}/invite",
-            json={},
-            headers=auth_header(admin_token),
-        )
-        invite_token = invite_resp.json()["token"]
 
-        # WHEN - admin tries to accept (already a member)
+        # WHEN - try to invite admin (already a member)
         response = client.post(
-            f"/api/v1/invitations/{invite_token}/accept",
+            f"/api/v1/projects/{project['id']}/invite",
+            json={"email": "admin@example.com"},
             headers=auth_header(admin_token),
         )
 
@@ -369,86 +61,369 @@ class TestAcceptInvitation:
         assert response.status_code == 409
         assert "already a member" in response.json()["detail"]
 
-    def test_accept_invitation_without_auth(self, client):
-        """401 returned when not authenticated."""
+    def test_invite_user_already_invited(self, client):
+        """409 returned when user already has pending invitation."""
         # GIVEN
-        token = register_and_login(client)
-        project = create_project(client, token)
-        invite_resp = client.post(
+        admin_token = register_and_login(client, "admin@example.com")
+        register_and_login(client, "invitee@example.com")
+        project = create_project(client, admin_token)
+
+        # First invitation
+        client.post(
             f"/api/v1/projects/{project['id']}/invite",
-            json={},
-            headers=auth_header(token),
+            json={"email": "invitee@example.com"},
+            headers=auth_header(admin_token),
         )
-        invite_token = invite_resp.json()["token"]
+
+        # WHEN - try to invite again
+        response = client.post(
+            f"/api/v1/projects/{project['id']}/invite",
+            json={"email": "invitee@example.com"},
+            headers=auth_header(admin_token),
+        )
+
+        # THEN
+        assert response.status_code == 409
+        assert "pending invitation" in response.json()["detail"]
+
+    def test_invite_project_not_found(self, client):
+        """404 returned for non-existent project."""
+        # GIVEN
+        admin_token = register_and_login(client, "admin@example.com")
+        fake_id = "00000000-0000-0000-0000-000000000000"
 
         # WHEN
-        response = client.post(f"/api/v1/invitations/{invite_token}/accept")
+        response = client.post(
+            f"/api/v1/projects/{fake_id}/invite",
+            json={"email": "invitee@example.com"},
+            headers=auth_header(admin_token),
+        )
+
+        # THEN
+        assert response.status_code == 404
+
+    def test_invite_not_admin(self, client):
+        """403 returned when non-admin tries to invite."""
+        # GIVEN
+        admin_token = register_and_login(client, "admin@example.com")
+        other_token = register_and_login(client, "other@example.com")
+        register_and_login(client, "invitee@example.com")
+        project = create_project(client, admin_token)
+
+        # WHEN
+        response = client.post(
+            f"/api/v1/projects/{project['id']}/invite",
+            json={"email": "invitee@example.com"},
+            headers=auth_header(other_token),
+        )
+
+        # THEN
+        assert response.status_code == 403
+
+    def test_invite_without_auth(self, client):
+        """401 returned when not authenticated."""
+        # GIVEN
+        admin_token = register_and_login(client, "admin@example.com")
+        project = create_project(client, admin_token)
+
+        # WHEN
+        response = client.post(
+            f"/api/v1/projects/{project['id']}/invite",
+            json={"email": "invitee@example.com"},
+        )
 
         # THEN
         assert response.status_code == 401
 
-    def test_accept_invitation_expired(self, client_with_session):
-        """400 returned when invitation has expired."""
-        # GIVEN
-        test_client, session = client_with_session
-        admin_token = register_and_login(test_client, "admin@example.com")
-        expert_token = register_and_login(test_client, "expert@example.com")
-        project = create_project(test_client, admin_token)
-        invite_resp = test_client.post(
-            f"/api/v1/projects/{project['id']}/invite",
-            json={},
-            headers=auth_header(admin_token),
-        )
-        invite_token = invite_resp.json()["token"]
 
-        # Manually expire the invitation in database
-        invitation = session.exec(
-            select(Invitation).where(Invitation.token == UUID(invite_token))
-        ).first()
-        invitation.expires_at = datetime.now(UTC) - timedelta(days=1)
-        session.add(invitation)
-        session.commit()
+class TestGetUserInvitations:
+    """Tests for GET /api/v1/invitations."""
+
+    def test_get_invitations_empty(self, client):
+        """Returns empty list when user has no invitations."""
+        # GIVEN
+        token = register_and_login(client)
 
         # WHEN
-        response = test_client.post(
-            f"/api/v1/invitations/{invite_token}/accept",
-            headers=auth_header(expert_token),
+        response = client.get("/api/v1/invitations", headers=auth_header(token))
+
+        # THEN
+        assert response.status_code == 200
+        assert response.json() == []
+
+    def test_get_invitations_with_pending(self, client):
+        """Returns list of pending invitations."""
+        # GIVEN
+        admin_token = register_and_login(client, "admin@example.com")
+        invitee_token = register_and_login(client, "invitee@example.com")
+        project = create_project(client, admin_token, "Test Project")
+
+        # Create invitation
+        client.post(
+            f"/api/v1/projects/{project['id']}/invite",
+            json={"email": "invitee@example.com"},
+            headers=auth_header(admin_token),
+        )
+
+        # WHEN
+        response = client.get("/api/v1/invitations", headers=auth_header(invitee_token))
+
+        # THEN
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 1
+        assert data[0]["project_name"] == "Test Project"
+        assert data[0]["inviter_first_name"] == "Test"
+        assert "id" in data[0]
+
+    def test_get_invitations_without_auth(self, client):
+        """401 returned when not authenticated."""
+        # WHEN
+        response = client.get("/api/v1/invitations")
+
+        # THEN
+        assert response.status_code == 401
+
+
+class TestAcceptInvitation:
+    """Tests for POST /api/v1/invitations/{id}/accept."""
+
+    def test_accept_invitation_success(self, client):
+        """User joins project as expert when accepting invitation."""
+        # GIVEN
+        admin_token = register_and_login(client, "admin@example.com")
+        invitee_token = register_and_login(client, "invitee@example.com")
+        project = create_project(client, admin_token)
+
+        invite_resp = client.post(
+            f"/api/v1/projects/{project['id']}/invite",
+            json={"email": "invitee@example.com"},
+            headers=auth_header(admin_token),
+        )
+        invitation_id = invite_resp.json()["id"]
+
+        # WHEN
+        response = client.post(
+            f"/api/v1/invitations/{invitation_id}/accept",
+            headers=auth_header(invitee_token),
         )
 
         # THEN
-        assert response.status_code == 400
-        assert "expired" in response.json()["detail"]
+        assert response.status_code == 201
+        data = response.json()
+        assert data["email"] == "invitee@example.com"
+        assert data["role"] == "expert"
+
+    def test_accept_invitation_user_can_see_project(self, client):
+        """User can access project after accepting invitation."""
+        # GIVEN
+        admin_token = register_and_login(client, "admin@example.com")
+        invitee_token = register_and_login(client, "invitee@example.com")
+        project = create_project(client, admin_token)
+
+        invite_resp = client.post(
+            f"/api/v1/projects/{project['id']}/invite",
+            json={"email": "invitee@example.com"},
+            headers=auth_header(admin_token),
+        )
+        invitation_id = invite_resp.json()["id"]
+
+        # WHEN
+        client.post(
+            f"/api/v1/invitations/{invitation_id}/accept",
+            headers=auth_header(invitee_token),
+        )
+
+        # THEN - invitee can now access project
+        get_resp = client.get(
+            f"/api/v1/projects/{project['id']}",
+            headers=auth_header(invitee_token),
+        )
+        assert get_resp.status_code == 200
+
+    def test_accept_invitation_removes_from_list(self, client):
+        """Invitation disappears from list after acceptance."""
+        # GIVEN
+        admin_token = register_and_login(client, "admin@example.com")
+        invitee_token = register_and_login(client, "invitee@example.com")
+        project = create_project(client, admin_token)
+
+        invite_resp = client.post(
+            f"/api/v1/projects/{project['id']}/invite",
+            json={"email": "invitee@example.com"},
+            headers=auth_header(admin_token),
+        )
+        invitation_id = invite_resp.json()["id"]
+
+        # WHEN
+        client.post(
+            f"/api/v1/invitations/{invitation_id}/accept",
+            headers=auth_header(invitee_token),
+        )
+
+        # THEN
+        list_resp = client.get("/api/v1/invitations", headers=auth_header(invitee_token))
+        assert list_resp.json() == []
+
+    def test_accept_invitation_not_found(self, client):
+        """404 returned for non-existent invitation."""
+        # GIVEN
+        token = register_and_login(client)
+        fake_id = "00000000-0000-0000-0000-000000000000"
+
+        # WHEN
+        response = client.post(
+            f"/api/v1/invitations/{fake_id}/accept",
+            headers=auth_header(token),
+        )
+
+        # THEN
+        assert response.status_code == 404
+
+    def test_accept_invitation_not_for_user(self, client):
+        """404 returned when invitation is for different user."""
+        # GIVEN
+        admin_token = register_and_login(client, "admin@example.com")
+        register_and_login(client, "invitee@example.com")  # Register invitee
+        other_token = register_and_login(client, "other@example.com")
+        project = create_project(client, admin_token)
+
+        invite_resp = client.post(
+            f"/api/v1/projects/{project['id']}/invite",
+            json={"email": "invitee@example.com"},
+            headers=auth_header(admin_token),
+        )
+        invitation_id = invite_resp.json()["id"]
+
+        # WHEN - other user tries to accept
+        response = client.post(
+            f"/api/v1/invitations/{invitation_id}/accept",
+            headers=auth_header(other_token),
+        )
+
+        # THEN
+        assert response.status_code == 404
+
+    def test_accept_invitation_without_auth(self, client):
+        """401 returned when not authenticated."""
+        # GIVEN
+        admin_token = register_and_login(client, "admin@example.com")
+        register_and_login(client, "invitee@example.com")
+        project = create_project(client, admin_token)
+
+        invite_resp = client.post(
+            f"/api/v1/projects/{project['id']}/invite",
+            json={"email": "invitee@example.com"},
+            headers=auth_header(admin_token),
+        )
+        invitation_id = invite_resp.json()["id"]
+
+        # WHEN
+        response = client.post(f"/api/v1/invitations/{invitation_id}/accept")
+
+        # THEN
+        assert response.status_code == 401
+
+
+class TestDeclineInvitation:
+    """Tests for POST /api/v1/invitations/{id}/decline."""
+
+    def test_decline_invitation_success(self, client):
+        """Invitation is removed when declined."""
+        # GIVEN
+        admin_token = register_and_login(client, "admin@example.com")
+        invitee_token = register_and_login(client, "invitee@example.com")
+        project = create_project(client, admin_token)
+
+        invite_resp = client.post(
+            f"/api/v1/projects/{project['id']}/invite",
+            json={"email": "invitee@example.com"},
+            headers=auth_header(admin_token),
+        )
+        invitation_id = invite_resp.json()["id"]
+
+        # WHEN
+        response = client.post(
+            f"/api/v1/invitations/{invitation_id}/decline",
+            headers=auth_header(invitee_token),
+        )
+
+        # THEN
+        assert response.status_code == 204
+
+        # Invitation removed from list
+        list_resp = client.get("/api/v1/invitations", headers=auth_header(invitee_token))
+        assert list_resp.json() == []
+
+    def test_decline_invitation_not_found(self, client):
+        """404 returned for non-existent invitation."""
+        # GIVEN
+        token = register_and_login(client)
+        fake_id = "00000000-0000-0000-0000-000000000000"
+
+        # WHEN
+        response = client.post(
+            f"/api/v1/invitations/{fake_id}/decline",
+            headers=auth_header(token),
+        )
+
+        # THEN
+        assert response.status_code == 404
+
+    def test_decline_invitation_not_for_user(self, client):
+        """404 returned when invitation is for different user."""
+        # GIVEN
+        admin_token = register_and_login(client, "admin@example.com")
+        register_and_login(client, "invitee@example.com")  # Register invitee
+        other_token = register_and_login(client, "other@example.com")
+        project = create_project(client, admin_token)
+
+        invite_resp = client.post(
+            f"/api/v1/projects/{project['id']}/invite",
+            json={"email": "invitee@example.com"},
+            headers=auth_header(admin_token),
+        )
+        invitation_id = invite_resp.json()["id"]
+
+        # WHEN - other user tries to decline
+        response = client.post(
+            f"/api/v1/invitations/{invitation_id}/decline",
+            headers=auth_header(other_token),
+        )
+
+        # THEN
+        assert response.status_code == 404
 
 
 class TestInvitationFlow:
     """Integration tests for complete invitation flow."""
 
     def test_full_invitation_flow(self, client):
-        """Complete flow: create invitation -> get info -> accept."""
+        """Complete flow: invite -> list -> accept -> verify membership."""
         # GIVEN
         admin_token = register_and_login(client, "admin@example.com")
         expert_token = register_and_login(client, "expert@example.com")
         project = create_project(client, admin_token, "Decision Project")
 
-        # Step 1: Admin creates invitation
+        # Step 1: Admin invites expert by email
         invite_resp = client.post(
             f"/api/v1/projects/{project['id']}/invite",
-            json={"expires_in_days": 14},
+            json={"email": "expert@example.com"},
             headers=auth_header(admin_token),
         )
         assert invite_resp.status_code == 201
-        invite_token = invite_resp.json()["token"]
+        invitation_id = invite_resp.json()["id"]
 
-        # Step 2: Expert views invitation info (no auth)
-        info_resp = client.get(f"/api/v1/invitations/{invite_token}")
-        assert info_resp.status_code == 200
-        info = info_resp.json()
-        assert info["project_name"] == "Decision Project"
-        assert info["is_valid"] is True
+        # Step 2: Expert sees invitation in their list
+        list_resp = client.get("/api/v1/invitations", headers=auth_header(expert_token))
+        assert list_resp.status_code == 200
+        invitations = list_resp.json()
+        assert len(invitations) == 1
+        assert invitations[0]["project_name"] == "Decision Project"
 
         # Step 3: Expert accepts invitation
         accept_resp = client.post(
-            f"/api/v1/invitations/{invite_token}/accept",
+            f"/api/v1/invitations/{invitation_id}/accept",
             headers=auth_header(expert_token),
         )
         assert accept_resp.status_code == 201
@@ -466,46 +441,43 @@ class TestInvitationFlow:
         assert "admin@example.com" in emails
         assert "expert@example.com" in emails
 
-        # Step 5: Invitation is now invalid
-        info_resp2 = client.get(f"/api/v1/invitations/{invite_token}")
-        assert info_resp2.json()["is_valid"] is False
+        # Step 5: Invitation no longer in list
+        list_resp2 = client.get("/api/v1/invitations", headers=auth_header(expert_token))
+        assert list_resp2.json() == []
 
-    def test_multiple_invitations_same_project(self, client):
-        """Multiple invitations can be created for same project."""
+    def test_invite_multiple_experts(self, client):
+        """Admin can invite multiple experts to same project."""
         # GIVEN
         admin_token = register_and_login(client, "admin@example.com")
         expert1_token = register_and_login(client, "expert1@example.com")
         expert2_token = register_and_login(client, "expert2@example.com")
         project = create_project(client, admin_token)
 
-        # Create two invitations
-        invite1_resp = client.post(
+        # Invite both experts
+        invite1 = client.post(
             f"/api/v1/projects/{project['id']}/invite",
-            json={},
+            json={"email": "expert1@example.com"},
             headers=auth_header(admin_token),
         )
-        invite2_resp = client.post(
+        invite2 = client.post(
             f"/api/v1/projects/{project['id']}/invite",
-            json={},
+            json={"email": "expert2@example.com"},
             headers=auth_header(admin_token),
         )
-        token1 = invite1_resp.json()["token"]
-        token2 = invite2_resp.json()["token"]
-        assert token1 != token2
+        assert invite1.status_code == 201
+        assert invite2.status_code == 201
 
-        # Both experts can accept their respective invitations
-        accept1 = client.post(
-            f"/api/v1/invitations/{token1}/accept",
+        # Both accept
+        client.post(
+            f"/api/v1/invitations/{invite1.json()['id']}/accept",
             headers=auth_header(expert1_token),
         )
-        accept2 = client.post(
-            f"/api/v1/invitations/{token2}/accept",
+        client.post(
+            f"/api/v1/invitations/{invite2.json()['id']}/accept",
             headers=auth_header(expert2_token),
         )
-        assert accept1.status_code == 201
-        assert accept2.status_code == 201
 
-        # Project now has 3 members
+        # Project has 3 members
         get_resp = client.get(
             f"/api/v1/projects/{project['id']}",
             headers=auth_header(admin_token),

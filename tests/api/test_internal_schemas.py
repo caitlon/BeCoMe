@@ -1,111 +1,23 @@
 """Tests for internal Data Transfer Objects."""
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
 
 from api.db.models import (
     ExpertOpinion,
-    Invitation,
     MemberRole,
     Project,
     ProjectMember,
     User,
 )
 from api.schemas.internal import (
-    InvitationDetails,
     MemberWithUser,
     OpinionWithUser,
     ProjectWithMemberCount,
     UpsertResult,
 )
-
-
-class TestInvitationDetails:
-    """Tests for InvitationDetails DTO."""
-
-    @pytest.fixture
-    def invitation_details(self):
-        """Create InvitationDetails for testing."""
-        admin = User(
-            id=uuid4(),
-            email="admin@example.com",
-            hashed_password="hash",
-            first_name="John",
-            last_name="Doe",
-        )
-        project = Project(
-            id=uuid4(),
-            name="Test Project",
-            admin_id=admin.id,
-        )
-        invitation = Invitation(
-            id=uuid4(),
-            project_id=project.id,
-            token=uuid4(),
-            expires_at=datetime.now(UTC) + timedelta(days=7),
-            used_by_id=None,
-        )
-        return InvitationDetails(invitation=invitation, project=project, admin=admin)
-
-    def test_token_property(self, invitation_details):
-        """Token property returns invitation token."""
-        assert invitation_details.token == invitation_details.invitation.token
-
-    def test_project_name_property(self, invitation_details):
-        """Project name property returns project name."""
-        assert invitation_details.project_name == "Test Project"
-
-    def test_admin_name_with_last_name(self, invitation_details):
-        """Admin name includes both first and last name."""
-        assert invitation_details.admin_name == "John Doe"
-
-    def test_admin_name_without_last_name(self):
-        """Admin name returns only first name when last name is None."""
-        admin = User(
-            id=uuid4(),
-            email="admin@example.com",
-            hashed_password="hash",
-            first_name="John",
-            last_name=None,
-        )
-        project = Project(id=uuid4(), name="Project", admin_id=admin.id)
-        invitation = Invitation(
-            id=uuid4(),
-            project_id=project.id,
-            expires_at=datetime.now(UTC) + timedelta(days=7),
-        )
-        details = InvitationDetails(invitation=invitation, project=project, admin=admin)
-
-        assert details.admin_name == "John"
-
-    def test_expires_at_property(self, invitation_details):
-        """Expires at property returns invitation expiration."""
-        assert invitation_details.expires_at == invitation_details.invitation.expires_at
-
-    def test_is_used_when_not_used(self, invitation_details):
-        """Is used returns False when invitation not used."""
-        assert invitation_details.is_used is False
-
-    def test_is_used_when_used(self):
-        """Is used returns True when invitation has been used."""
-        admin = User(
-            id=uuid4(),
-            email="admin@example.com",
-            hashed_password="hash",
-            first_name="Admin",
-        )
-        project = Project(id=uuid4(), name="Project", admin_id=admin.id)
-        invitation = Invitation(
-            id=uuid4(),
-            project_id=project.id,
-            expires_at=datetime.now(UTC) + timedelta(days=7),
-            used_by_id=uuid4(),  # Set as used
-        )
-        details = InvitationDetails(invitation=invitation, project=project, admin=admin)
-
-        assert details.is_used is True
 
 
 class TestProjectWithMemberCount:

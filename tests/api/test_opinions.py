@@ -327,15 +327,15 @@ class TestDeleteOpinion:
         expert_token = register_and_login(client, "expert@example.com")
         project = create_project(client, admin_token)
 
-        # Invite expert
+        # Invite expert by email
         invite_resp = client.post(
             f"/api/v1/projects/{project['id']}/invite",
-            json={},
+            json={"email": "expert@example.com"},
             headers=auth_header(admin_token),
         )
-        invite_token = invite_resp.json()["token"]
+        invitation_id = invite_resp.json()["id"]
         client.post(
-            f"/api/v1/invitations/{invite_token}/accept",
+            f"/api/v1/invitations/{invitation_id}/accept",
             headers=auth_header(expert_token),
         )
 
@@ -501,15 +501,15 @@ class TestOpinionFlow:
         expert_token = register_and_login(client, "expert@example.com")
         project = create_project(client, admin_token, "Decision Project")
 
-        # Invite expert
+        # Invite expert by email
         invite_resp = client.post(
             f"/api/v1/projects/{project['id']}/invite",
-            json={},
+            json={"email": "expert@example.com"},
             headers=auth_header(admin_token),
         )
-        invite_token = invite_resp.json()["token"]
+        invitation_id = invite_resp.json()["id"]
         client.post(
-            f"/api/v1/invitations/{invite_token}/accept",
+            f"/api/v1/invitations/{invitation_id}/accept",
             headers=auth_header(expert_token),
         )
 
@@ -569,16 +569,20 @@ class TestOpinionFlow:
         expert2_token = register_and_login(client, "expert2@example.com")
         project = create_project(client, admin_token)
 
-        # Invite experts
-        for expert_token in [expert1_token, expert2_token]:
+        # Invite experts by email
+        experts = [
+            ("expert1@example.com", expert1_token),
+            ("expert2@example.com", expert2_token),
+        ]
+        for email, expert_token in experts:
             invite_resp = client.post(
                 f"/api/v1/projects/{project['id']}/invite",
-                json={},
+                json={"email": email},
                 headers=auth_header(admin_token),
             )
-            invite_token = invite_resp.json()["token"]
+            invitation_id = invite_resp.json()["id"]
             client.post(
-                f"/api/v1/invitations/{invite_token}/accept",
+                f"/api/v1/invitations/{invitation_id}/accept",
                 headers=auth_header(expert_token),
             )
 

@@ -17,6 +17,8 @@ dev = [
     "pytest-cov>=7.0",
     "ruff>=0.13",
     "mypy>=1.18",
+    "types-python-jose>=3.3",
+    "types-passlib>=1.7",
 ]
 viz = [
     "numpy>=2.3",

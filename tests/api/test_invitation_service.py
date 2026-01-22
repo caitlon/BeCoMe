@@ -1,6 +1,6 @@
-"""Unit tests for InvitationService."""
+"""Unit tests for InvitationService (email-based)."""
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from unittest.mock import MagicMock
 from uuid import uuid4
 
@@ -8,84 +8,142 @@ import pytest
 
 from api.db.models import Invitation, MemberRole, Project, ProjectMember, User
 from api.exceptions import (
-    InvitationAlreadyUsedError,
-    InvitationExpiredError,
     InvitationNotFoundError,
     UserAlreadyMemberError,
 )
-from api.services.invitation_service import InvitationService
+from api.services.invitation_service import (
+    AlreadyInvitedError,
+    InvitationService,
+    UserNotFoundError,
+)
 
 
-class TestInvitationServiceCreateInvitation:
-    """Tests for InvitationService.create_invitation method."""
+class TestInvitationServiceInviteByEmail:
+    """Tests for InvitationService.invite_by_email method."""
 
-    def test_creates_invitation_with_default_expiration(self):
-        """Invitation is created with default 7-day expiration."""
+    def test_creates_invitation_for_existing_user(self):
+        """Invitation is created when user with email exists."""
         # GIVEN
-        mock_session = MagicMock()
-        service = InvitationService(mock_session)
         project_id = uuid4()
-
-        # WHEN
-        invitation = service.create_invitation(project_id)
-
-        # THEN
-        assert invitation.project_id == project_id
-        assert invitation.expires_at > datetime.now(UTC)
-        mock_session.add.assert_called_once()
-        mock_session.commit.assert_called_once()
-        mock_session.refresh.assert_called_once()
-
-    def test_creates_invitation_with_custom_expiration(self):
-        """Invitation is created with custom expiration days."""
-        # GIVEN
-        mock_session = MagicMock()
-        service = InvitationService(mock_session)
-        project_id = uuid4()
-
-        # WHEN
-        invitation = service.create_invitation(project_id, expires_in_days=30)
-
-        # THEN
-        assert invitation.project_id == project_id
-        # Check expiration is approximately 30 days from now
-        expected_min = datetime.now(UTC) + timedelta(days=29)
-        expected_max = datetime.now(UTC) + timedelta(days=31)
-        assert expected_min < invitation.expires_at < expected_max
-
-
-class TestInvitationServiceGetInvitationByToken:
-    """Tests for InvitationService.get_invitation_by_token method."""
-
-    def test_returns_invitation_when_found(self):
-        """Returns invitation when token exists."""
-        # GIVEN
-        token = uuid4()
-        expected_invitation = Invitation(
+        inviter_id = uuid4()
+        invitee = User(
             id=uuid4(),
-            project_id=uuid4(),
-            token=token,
-            expires_at=datetime.now(UTC) + timedelta(days=7),
+            email="invitee@example.com",
+            hashed_password="hash",
+            first_name="Invitee",
         )
         mock_session = MagicMock()
-        mock_session.exec.return_value.first.return_value = expected_invitation
+        # First exec: find user by email
+        # Second exec: check existing membership
+        # Third exec: check existing invitation
+        mock_session.exec.return_value.first.side_effect = [invitee, None, None]
         service = InvitationService(mock_session)
 
         # WHEN
-        result = service.get_invitation_by_token(token)
+        invitation, returned_user = service.invite_by_email(
+            project_id, inviter_id, "invitee@example.com"
+        )
 
         # THEN
-        assert result == expected_invitation
+        assert invitation.project_id == project_id
+        assert invitation.invitee_id == invitee.id
+        assert invitation.inviter_id == inviter_id
+        assert returned_user == invitee
+        mock_session.add.assert_called_once()
+        mock_session.commit.assert_called_once()
 
-    def test_returns_none_when_not_found(self):
-        """Returns None when token doesn't exist."""
+    def test_raises_error_when_user_not_found(self):
+        """UserNotFoundError is raised when email doesn't exist."""
         # GIVEN
         mock_session = MagicMock()
         mock_session.exec.return_value.first.return_value = None
         service = InvitationService(mock_session)
 
+        # WHEN / THEN
+        with pytest.raises(UserNotFoundError, match="No user found"):
+            service.invite_by_email(uuid4(), uuid4(), "nonexistent@example.com")
+
+    def test_raises_error_when_user_already_member(self):
+        """UserAlreadyMemberError is raised when user is already a member."""
+        # GIVEN
+        invitee = User(
+            id=uuid4(),
+            email="invitee@example.com",
+            hashed_password="hash",
+            first_name="Invitee",
+        )
+        existing_membership = ProjectMember(
+            id=uuid4(),
+            project_id=uuid4(),
+            user_id=invitee.id,
+            role=MemberRole.EXPERT,
+        )
+        mock_session = MagicMock()
+        mock_session.exec.return_value.first.side_effect = [invitee, existing_membership]
+        service = InvitationService(mock_session)
+
+        # WHEN / THEN
+        with pytest.raises(UserAlreadyMemberError, match="already a member"):
+            service.invite_by_email(uuid4(), uuid4(), "invitee@example.com")
+
+    def test_raises_error_when_already_invited(self):
+        """AlreadyInvitedError is raised when user has pending invitation."""
+        # GIVEN
+        invitee = User(
+            id=uuid4(),
+            email="invitee@example.com",
+            hashed_password="hash",
+            first_name="Invitee",
+        )
+        existing_invitation = Invitation(
+            id=uuid4(),
+            project_id=uuid4(),
+            invitee_id=invitee.id,
+            inviter_id=uuid4(),
+        )
+        mock_session = MagicMock()
+        # User found, no membership, but existing invitation
+        mock_session.exec.return_value.first.side_effect = [invitee, None, existing_invitation]
+        service = InvitationService(mock_session)
+
+        # WHEN / THEN
+        with pytest.raises(AlreadyInvitedError, match="pending invitation"):
+            service.invite_by_email(uuid4(), uuid4(), "invitee@example.com")
+
+
+class TestInvitationServiceGetInvitationById:
+    """Tests for InvitationService.get_invitation_by_id method."""
+
+    def test_returns_invitation_when_found(self):
+        """Returns invitation when ID exists."""
+        # GIVEN
+        invitation_id = uuid4()
+        expected_invitation = Invitation(
+            id=invitation_id,
+            project_id=uuid4(),
+            invitee_id=uuid4(),
+            inviter_id=uuid4(),
+        )
+        mock_session = MagicMock()
+        mock_session.get.return_value = expected_invitation
+        service = InvitationService(mock_session)
+
         # WHEN
-        result = service.get_invitation_by_token(uuid4())
+        result = service.get_invitation_by_id(invitation_id)
+
+        # THEN
+        assert result == expected_invitation
+        mock_session.get.assert_called_once_with(Invitation, invitation_id)
+
+    def test_returns_none_when_not_found(self):
+        """Returns None when ID doesn't exist."""
+        # GIVEN
+        mock_session = MagicMock()
+        mock_session.get.return_value = None
+        service = InvitationService(mock_session)
+
+        # WHEN
+        result = service.get_invitation_by_id(uuid4())
 
         # THEN
         assert result is None
@@ -94,97 +152,71 @@ class TestInvitationServiceGetInvitationByToken:
 class TestInvitationServiceAcceptInvitation:
     """Tests for InvitationService.accept_invitation method."""
 
-    def test_accepts_valid_invitation(self):
-        """User is added to project when accepting valid invitation."""
+    def test_accepts_invitation_and_adds_membership(self):
+        """User is added to project when accepting invitation."""
         # GIVEN
-        token = uuid4()
+        invitation_id = uuid4()
         user_id = uuid4()
         project_id = uuid4()
         invitation = Invitation(
-            id=uuid4(),
+            id=invitation_id,
             project_id=project_id,
-            token=token,
-            expires_at=datetime.now(UTC) + timedelta(days=7),
-            used_by_id=None,
+            invitee_id=user_id,
+            inviter_id=uuid4(),
         )
         mock_session = MagicMock()
-        # First exec call - get invitation
-        # Second exec call - check existing membership
-        mock_session.exec.return_value.first.side_effect = [invitation, None]
+        mock_session.get.return_value = invitation
+        mock_session.exec.return_value.first.return_value = None  # No existing membership
         service = InvitationService(mock_session)
 
         # WHEN
-        membership = service.accept_invitation(token, user_id)
+        membership = service.accept_invitation(invitation_id, user_id)
 
         # THEN
         assert membership.project_id == project_id
         assert membership.user_id == user_id
         assert membership.role == MemberRole.EXPERT
-        assert invitation.used_by_id == user_id
-        assert mock_session.add.call_count == 2  # invitation update + membership
+        mock_session.delete.assert_called_once_with(invitation)
         mock_session.commit.assert_called_once()
 
     def test_raises_error_when_invitation_not_found(self):
-        """InvitationNotFoundError is raised when token doesn't exist."""
+        """InvitationNotFoundError is raised when invitation doesn't exist."""
         # GIVEN
         mock_session = MagicMock()
-        mock_session.exec.return_value.first.return_value = None
+        mock_session.get.return_value = None
         service = InvitationService(mock_session)
 
         # WHEN / THEN
         with pytest.raises(InvitationNotFoundError, match="not found"):
             service.accept_invitation(uuid4(), uuid4())
 
-    def test_raises_error_when_invitation_already_used(self):
-        """InvitationAlreadyUsedError is raised when invitation was used."""
+    def test_raises_error_when_invitation_not_for_user(self):
+        """InvitationNotFoundError is raised when invitation is for different user."""
         # GIVEN
-        token = uuid4()
         invitation = Invitation(
             id=uuid4(),
             project_id=uuid4(),
-            token=token,
-            expires_at=datetime.now(UTC) + timedelta(days=7),
-            used_by_id=uuid4(),  # Already used
+            invitee_id=uuid4(),  # Different user
+            inviter_id=uuid4(),
         )
         mock_session = MagicMock()
-        mock_session.exec.return_value.first.return_value = invitation
+        mock_session.get.return_value = invitation
         service = InvitationService(mock_session)
 
         # WHEN / THEN
-        with pytest.raises(InvitationAlreadyUsedError, match="already been used"):
-            service.accept_invitation(token, uuid4())
-
-    def test_raises_error_when_invitation_expired(self):
-        """InvitationExpiredError is raised when invitation has expired."""
-        # GIVEN
-        token = uuid4()
-        invitation = Invitation(
-            id=uuid4(),
-            project_id=uuid4(),
-            token=token,
-            expires_at=datetime.now(UTC) - timedelta(days=1),  # Expired
-            used_by_id=None,
-        )
-        mock_session = MagicMock()
-        mock_session.exec.return_value.first.return_value = invitation
-        service = InvitationService(mock_session)
-
-        # WHEN / THEN
-        with pytest.raises(InvitationExpiredError, match="expired"):
-            service.accept_invitation(token, uuid4())
+        with pytest.raises(InvitationNotFoundError, match="not found"):
+            service.accept_invitation(invitation.id, uuid4())  # Different user_id
 
     def test_raises_error_when_user_already_member(self):
         """UserAlreadyMemberError is raised when user is already a member."""
         # GIVEN
-        token = uuid4()
         user_id = uuid4()
         project_id = uuid4()
         invitation = Invitation(
             id=uuid4(),
             project_id=project_id,
-            token=token,
-            expires_at=datetime.now(UTC) + timedelta(days=7),
-            used_by_id=None,
+            invitee_id=user_id,
+            inviter_id=uuid4(),
         )
         existing_membership = ProjectMember(
             id=uuid4(),
@@ -193,146 +225,121 @@ class TestInvitationServiceAcceptInvitation:
             role=MemberRole.EXPERT,
         )
         mock_session = MagicMock()
-        # First call returns invitation, second returns existing membership
-        mock_session.exec.return_value.first.side_effect = [invitation, existing_membership]
+        mock_session.get.return_value = invitation
+        mock_session.exec.return_value.first.return_value = existing_membership
         service = InvitationService(mock_session)
 
         # WHEN / THEN
         with pytest.raises(UserAlreadyMemberError, match="already a member"):
-            service.accept_invitation(token, user_id)
+            service.accept_invitation(invitation.id, user_id)
 
 
-class TestInvitationServiceIsInvitationValid:
-    """Tests for InvitationService.is_invitation_valid method."""
+class TestInvitationServiceDeclineInvitation:
+    """Tests for InvitationService.decline_invitation method."""
 
-    def test_returns_true_for_valid_invitation(self):
-        """Returns True when invitation is valid."""
+    def test_deletes_invitation(self):
+        """Invitation is deleted when declined."""
         # GIVEN
-        token = uuid4()
+        invitation_id = uuid4()
+        user_id = uuid4()
+        invitation = Invitation(
+            id=invitation_id,
+            project_id=uuid4(),
+            invitee_id=user_id,
+            inviter_id=uuid4(),
+        )
+        mock_session = MagicMock()
+        mock_session.get.return_value = invitation
+        service = InvitationService(mock_session)
+
+        # WHEN
+        service.decline_invitation(invitation_id, user_id)
+
+        # THEN
+        mock_session.delete.assert_called_once_with(invitation)
+        mock_session.commit.assert_called_once()
+
+    def test_raises_error_when_invitation_not_found(self):
+        """InvitationNotFoundError is raised when invitation doesn't exist."""
+        # GIVEN
+        mock_session = MagicMock()
+        mock_session.get.return_value = None
+        service = InvitationService(mock_session)
+
+        # WHEN / THEN
+        with pytest.raises(InvitationNotFoundError, match="not found"):
+            service.decline_invitation(uuid4(), uuid4())
+
+    def test_raises_error_when_invitation_not_for_user(self):
+        """InvitationNotFoundError is raised when invitation is for different user."""
+        # GIVEN
         invitation = Invitation(
             id=uuid4(),
             project_id=uuid4(),
-            token=token,
-            expires_at=datetime.now(UTC) + timedelta(days=7),
-            used_by_id=None,
+            invitee_id=uuid4(),  # Different user
+            inviter_id=uuid4(),
         )
         mock_session = MagicMock()
-        mock_session.exec.return_value.first.return_value = invitation
+        mock_session.get.return_value = invitation
         service = InvitationService(mock_session)
 
-        # WHEN
-        result = service.is_invitation_valid(token)
+        # WHEN / THEN
+        with pytest.raises(InvitationNotFoundError, match="not found"):
+            service.decline_invitation(invitation.id, uuid4())
 
-        # THEN
-        assert result is True
 
-    def test_returns_false_when_not_found(self):
-        """Returns False when invitation doesn't exist."""
+class TestInvitationServiceGetUserInvitations:
+    """Tests for InvitationService.get_user_invitations method."""
+
+    def test_returns_empty_list_when_no_invitations(self):
+        """Returns empty list when user has no invitations."""
         # GIVEN
         mock_session = MagicMock()
-        mock_session.exec.return_value.first.return_value = None
+        mock_session.exec.return_value.all.return_value = []
         service = InvitationService(mock_session)
 
         # WHEN
-        result = service.is_invitation_valid(uuid4())
+        result = service.get_user_invitations(uuid4())
 
         # THEN
-        assert result is False
+        assert result == []
 
-    def test_returns_false_when_used(self):
-        """Returns False when invitation was already used."""
+    def test_returns_invitations_with_details(self):
+        """Returns list of InvitationWithDetails when invitations exist."""
         # GIVEN
-        token = uuid4()
-        invitation = Invitation(
-            id=uuid4(),
-            project_id=uuid4(),
-            token=token,
-            expires_at=datetime.now(UTC) + timedelta(days=7),
-            used_by_id=uuid4(),  # Used
-        )
-        mock_session = MagicMock()
-        mock_session.exec.return_value.first.return_value = invitation
-        service = InvitationService(mock_session)
-
-        # WHEN
-        result = service.is_invitation_valid(token)
-
-        # THEN
-        assert result is False
-
-    def test_returns_false_when_expired(self):
-        """Returns False when invitation has expired."""
-        # GIVEN
-        token = uuid4()
-        invitation = Invitation(
-            id=uuid4(),
-            project_id=uuid4(),
-            token=token,
-            expires_at=datetime.now(UTC) - timedelta(days=1),  # Expired
-            used_by_id=None,
-        )
-        mock_session = MagicMock()
-        mock_session.exec.return_value.first.return_value = invitation
-        service = InvitationService(mock_session)
-
-        # WHEN
-        result = service.is_invitation_valid(token)
-
-        # THEN
-        assert result is False
-
-
-class TestInvitationServiceGetInvitationDetails:
-    """Tests for InvitationService.get_invitation_details method."""
-
-    def test_returns_details_when_found(self):
-        """Returns invitation, project, and admin when found."""
-        # GIVEN
-        token = uuid4()
+        user_id = uuid4()
         project_id = uuid4()
-        admin_id = uuid4()
+        inviter_id = uuid4()
         invitation = Invitation(
             id=uuid4(),
             project_id=project_id,
-            token=token,
-            expires_at=datetime.now(UTC) + timedelta(days=7),
+            invitee_id=user_id,
+            inviter_id=inviter_id,
+            created_at=datetime.now(UTC),
         )
         project = Project(
             id=project_id,
             name="Test Project",
-            admin_id=admin_id,
-            scale_min=0,
-            scale_max=100,
+            admin_id=inviter_id,
         )
-        admin = User(
-            id=admin_id,
-            email="admin@example.com",
-            hashed_password="hashed",
-            first_name="Admin",
-            last_name="User",
+        inviter = User(
+            id=inviter_id,
+            email="inviter@example.com",
+            hashed_password="hash",
+            first_name="Inviter",
         )
         mock_session = MagicMock()
-        mock_session.exec.return_value.first.return_value = (invitation, project, admin)
+        mock_session.exec.return_value.all.return_value = [
+            (invitation, project, inviter, 5)  # 5 members
+        ]
         service = InvitationService(mock_session)
 
         # WHEN
-        details = service.get_invitation_details(token)
+        result = service.get_user_invitations(user_id)
 
         # THEN
-        assert details is not None
-        assert details.invitation == invitation
-        assert details.project == project
-        assert details.admin == admin
-
-    def test_returns_none_when_not_found(self):
-        """Returns None when invitation doesn't exist."""
-        # GIVEN
-        mock_session = MagicMock()
-        mock_session.exec.return_value.first.return_value = None
-        service = InvitationService(mock_session)
-
-        # WHEN
-        result = service.get_invitation_details(uuid4())
-
-        # THEN
-        assert result is None
+        assert len(result) == 1
+        assert result[0].invitation == invitation
+        assert result[0].project == project
+        assert result[0].inviter == inviter
+        assert result[0].member_count == 5
