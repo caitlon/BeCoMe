@@ -94,8 +94,8 @@ class TestRegister:
         assert "password" not in data
         assert "hashed_password" not in data
 
-    def test_register_without_last_name(self, client):
-        """Registration works without optional last_name."""
+    def test_register_without_last_name_fails(self, client):
+        """Registration without last_name returns 422."""
         # GIVEN
         payload = {
             "email": "jane@example.com",
@@ -107,9 +107,7 @@ class TestRegister:
         response = client.post("/api/v1/auth/register", json=payload)
 
         # THEN
-        assert response.status_code == 201
-        data = response.json()
-        assert data["last_name"] is None
+        assert response.status_code == 422
 
     def test_register_duplicate_email_fails(self, client):
         """Registration with existing email returns 409."""
@@ -118,6 +116,7 @@ class TestRegister:
             "email": "duplicate@example.com",
             "password": "SecurePass123",
             "first_name": "First",
+            "last_name": "User",
         }
         client.post("/api/v1/auth/register", json=payload)
 
@@ -137,6 +136,7 @@ class TestRegister:
                 "email": "Test@Example.COM",
                 "password": "SecurePass123",
                 "first_name": "First",
+                "last_name": "User",
             },
         )
 
@@ -147,6 +147,7 @@ class TestRegister:
                 "email": "test@example.com",
                 "password": "SecurePass123",
                 "first_name": "Second",
+                "last_name": "User",
             },
         )
 
@@ -163,6 +164,7 @@ class TestRegister:
                 "email": "CaseTest@Example.COM",
                 "password": "SecurePass123",
                 "first_name": "Case",
+                "last_name": "Test",
             },
         )
 
@@ -183,6 +185,7 @@ class TestRegister:
             "email": "short@example.com",
             "password": "short",
             "first_name": "Short",
+            "last_name": "Pass",
         }
 
         # WHEN
@@ -198,6 +201,7 @@ class TestRegister:
             "email": "nouppercase@example.com",
             "password": "password123",
             "first_name": "Test",
+            "last_name": "User",
         }
 
         # WHEN
@@ -214,6 +218,7 @@ class TestRegister:
             "email": "nolowercase@example.com",
             "password": "PASSWORD123",
             "first_name": "Test",
+            "last_name": "User",
         }
 
         # WHEN
@@ -230,6 +235,7 @@ class TestRegister:
             "email": "nodigit@example.com",
             "password": "PasswordABC",
             "first_name": "Test",
+            "last_name": "User",
         }
 
         # WHEN
@@ -246,6 +252,7 @@ class TestRegister:
             "email": "not-an-email",
             "password": "SecurePass123",
             "first_name": "Bad",
+            "last_name": "Email",
         }
 
         # WHEN
@@ -267,6 +274,7 @@ class TestLogin:
                 "email": "login@example.com",
                 "password": "SecurePass123",
                 "first_name": "Login",
+                "last_name": "User",
             },
         )
 
@@ -291,6 +299,7 @@ class TestLogin:
                 "email": "wrongpass@example.com",
                 "password": "CorrectPass1",
                 "first_name": "Wrong",
+                "last_name": "Pass",
             },
         )
 
@@ -378,6 +387,7 @@ class TestMe:
                 "email": "deleted@example.com",
                 "password": "SecurePass123",
                 "first_name": "Deleted",
+                "last_name": "User",
             },
         )
         login_response = client.post(
@@ -417,6 +427,7 @@ class TestEmailValidation:
             "email": "тест@example.com",
             "password": "SecurePass123",
             "first_name": "Test",
+            "last_name": "User",
         }
 
         # WHEN
@@ -433,6 +444,7 @@ class TestEmailValidation:
             "email": "test.user+tag@example.com",
             "password": "SecurePass123",
             "first_name": "Test",
+            "last_name": "User",
         }
 
         # WHEN
@@ -453,6 +465,7 @@ class TestNameValidation:
             "email": "digits@example.com",
             "password": "SecurePass123",
             "first_name": "John123",
+            "last_name": "Doe",
         }
 
         # WHEN
@@ -469,6 +482,7 @@ class TestNameValidation:
             "email": "special@example.com",
             "password": "SecurePass123",
             "first_name": "John@#$",
+            "last_name": "Doe",
         }
 
         # WHEN
@@ -484,6 +498,7 @@ class TestNameValidation:
             "email": "hyphen@example.com",
             "password": "SecurePass123",
             "first_name": "Jean-Pierre",
+            "last_name": "Dupont",
         }
 
         # WHEN
@@ -500,6 +515,7 @@ class TestNameValidation:
             "email": "apostrophe@example.com",
             "password": "SecurePass123",
             "first_name": "O'Brien",
+            "last_name": "Smith",
         }
 
         # WHEN
@@ -534,6 +550,7 @@ class TestNameValidation:
             "email": "space@example.com",
             "password": "SecurePass123",
             "first_name": "Anna Maria",
+            "last_name": "Kowalski",
         }
 
         # WHEN
@@ -559,8 +576,8 @@ class TestNameValidation:
         # THEN
         assert response.status_code == 422
 
-    def test_register_empty_last_name_converts_to_none(self, client):
-        """Registration with empty last name converts it to None."""
+    def test_register_empty_last_name_fails(self, client):
+        """Registration with empty last name returns 422."""
         # GIVEN
         payload = {
             "email": "emptylast@example.com",
@@ -573,8 +590,7 @@ class TestNameValidation:
         response = client.post("/api/v1/auth/register", json=payload)
 
         # THEN
-        assert response.status_code == 201
-        assert response.json()["last_name"] is None
+        assert response.status_code == 422
 
 
 class TestProfileUpdate:
@@ -588,6 +604,7 @@ class TestProfileUpdate:
                 "email": "profile@example.com",
                 "password": "SecurePass123",
                 "first_name": "Profile",
+                "last_name": "User",
             },
         )
         login = client.post(
@@ -645,8 +662,8 @@ class TestProfileUpdate:
         assert response.status_code == 200
         assert response.json()["first_name"] == "Алексей"
 
-    def test_update_profile_empty_last_name_converts_to_none(self, client):
-        """Profile update with empty last name converts it to None."""
+    def test_update_profile_empty_last_name_is_ignored(self, client):
+        """Profile update with empty last name doesn't change it."""
         # GIVEN
         headers = self._get_auth_header(client)
 
@@ -657,9 +674,9 @@ class TestProfileUpdate:
             headers=headers,
         )
 
-        # THEN
+        # THEN - empty string converted to None means "no update"
         assert response.status_code == 200
-        assert response.json()["last_name"] is None
+        assert response.json()["last_name"] == "User"  # unchanged
 
     def test_update_profile_empty_first_name_is_ignored(self, client):
         """Profile update with empty first name doesn't change it."""
@@ -689,6 +706,7 @@ class TestPasswordChange:
                 "email": "pwchange@example.com",
                 "password": "OldPass123",
                 "first_name": "Password",
+                "last_name": "Change",
             },
         )
         login = client.post(
