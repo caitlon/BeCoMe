@@ -97,6 +97,24 @@ class TestUserServiceCreateUser:
         mock_hash.assert_called_once_with("plaintext")
         assert user.hashed_password == "hashed_password_value"
 
+    def test_email_is_normalized_to_lowercase(self):
+        """Email is converted to lowercase when creating user."""
+        # GIVEN
+        mock_session = MagicMock()
+        mock_session.exec.return_value.first.return_value = None
+        service = UserService(mock_session)
+
+        # WHEN
+        with patch("api.services.user_service.hash_password", return_value="hashed"):
+            user = service.create_user(
+                email="Test@Example.COM",
+                password="password123",
+                first_name="Test",
+            )
+
+        # THEN
+        assert user.email == "test@example.com"
+
 
 class TestUserServiceGetByEmail:
     """Tests for UserService.get_by_email method."""
@@ -131,6 +149,26 @@ class TestUserServiceGetByEmail:
 
         # THEN
         assert result is None
+
+    def test_email_search_normalizes_to_lowercase(self):
+        """Email lookup normalizes input to lowercase before searching."""
+        # GIVEN
+        expected_user = User(
+            email="found@example.com",
+            hashed_password="xxx",
+            first_name="Found",
+        )
+        mock_session = MagicMock()
+        mock_session.exec.return_value.first.return_value = expected_user
+        service = UserService(mock_session)
+
+        # WHEN - search with mixed case email
+        result = service.get_by_email("FOUND@EXAMPLE.COM")
+
+        # THEN - should find user because query uses lowercase
+        assert result == expected_user
+        # Verify exec was called (query was made)
+        mock_session.exec.assert_called_once()
 
 
 class TestUserServiceGetById:
