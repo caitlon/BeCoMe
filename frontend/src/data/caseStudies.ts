@@ -12,7 +12,7 @@ export interface LikertOpinion {
   value: number;
 }
 
-export interface CaseStudy {
+interface BaseCaseStudy {
   id: string;
   title: string;
   shortTitle: string;
@@ -21,13 +21,11 @@ export interface CaseStudy {
   question: string;
   icon: LucideIcon;
   experts: number;
-  dataType: "interval" | "likert";
   scaleMin: number;
   scaleMax: number;
   scaleUnit: string;
   context: string;
   methodology: string;
-  opinions: ExpertOpinion[] | LikertOpinion[];
   result: {
     bestCompromise: number;
     maxError: number;
@@ -35,6 +33,18 @@ export interface CaseStudy {
   };
   note?: string;
 }
+
+export interface IntervalCaseStudy extends BaseCaseStudy {
+  dataType: "interval";
+  opinions: ExpertOpinion[];
+}
+
+export interface LikertCaseStudy extends BaseCaseStudy {
+  dataType: "likert";
+  opinions: LikertOpinion[];
+}
+
+export type CaseStudy = IntervalCaseStudy | LikertCaseStudy;
 
 export const caseStudies: CaseStudy[] = [
   {

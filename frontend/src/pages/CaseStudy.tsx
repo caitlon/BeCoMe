@@ -8,8 +8,6 @@ import { Navbar } from "@/components/layout/Navbar";
 import {
   getCaseStudyById,
   getLikertLabel,
-  ExpertOpinion,
-  LikertOpinion,
 } from "@/data/caseStudies";
 
 const CaseStudy = () => {
@@ -38,7 +36,6 @@ const CaseStudy = () => {
   }
 
   const IconComponent = caseStudy.icon;
-  const isInterval = caseStudy.dataType === "interval";
 
   return (
     <div className="min-h-screen bg-background">
@@ -169,7 +166,7 @@ const CaseStudy = () => {
                             <th className="text-left py-3 px-2 font-medium">
                               Expert Role
                             </th>
-                            {isInterval ? (
+                            {caseStudy.dataType === "interval" ? (
                               <>
                                 <th className="text-right py-3 px-2 font-medium">
                                   Lower
@@ -194,38 +191,38 @@ const CaseStudy = () => {
                           </tr>
                         </thead>
                         <tbody>
-                          {caseStudy.opinions.map((opinion, index) => (
-                            <tr
-                              key={index}
-                              className="border-b last:border-0 hover:bg-secondary/50 transition-colors"
-                            >
-                              <td className="py-3 px-2">{opinion.role}</td>
-                              {isInterval ? (
-                                <>
+                          {caseStudy.dataType === "interval"
+                            ? caseStudy.opinions.map((opinion, index) => (
+                                <tr
+                                  key={`${opinion.role}-${index}`}
+                                  className="border-b last:border-0 hover:bg-secondary/50 transition-colors"
+                                >
+                                  <td className="py-3 px-2">{opinion.role}</td>
                                   <td className="text-right py-3 px-2 font-mono text-muted-foreground">
-                                    {(opinion as ExpertOpinion).lowerLimit}
+                                    {opinion.lowerLimit}
                                   </td>
                                   <td className="text-right py-3 px-2 font-mono font-medium">
-                                    {(opinion as ExpertOpinion).bestProposal}
+                                    {opinion.bestProposal}
                                   </td>
                                   <td className="text-right py-3 px-2 font-mono text-muted-foreground">
-                                    {(opinion as ExpertOpinion).upperLimit}
+                                    {opinion.upperLimit}
                                   </td>
-                                </>
-                              ) : (
-                                <>
+                                </tr>
+                              ))
+                            : caseStudy.opinions.map((opinion, index) => (
+                                <tr
+                                  key={`${opinion.role}-${index}`}
+                                  className="border-b last:border-0 hover:bg-secondary/50 transition-colors"
+                                >
+                                  <td className="py-3 px-2">{opinion.role}</td>
                                   <td className="text-right py-3 px-2 font-mono font-medium">
-                                    {(opinion as LikertOpinion).value}
+                                    {opinion.value}
                                   </td>
                                   <td className="py-3 px-2 text-muted-foreground">
-                                    {getLikertLabel(
-                                      (opinion as LikertOpinion).value
-                                    )}
+                                    {getLikertLabel(opinion.value)}
                                   </td>
-                                </>
-                              )}
-                            </tr>
-                          ))}
+                                </tr>
+                              ))}
                         </tbody>
                       </table>
                     </div>
@@ -274,7 +271,7 @@ const CaseStudy = () => {
                       </div>
                     </div>
 
-                    {!isInterval && (
+                    {caseStudy.dataType !== "interval" && (
                       <div>
                         <div className="text-sm opacity-80 mb-1">
                           Likert Interpretation
@@ -299,7 +296,7 @@ const CaseStudy = () => {
                 </Card>
 
                 {/* Visual representation for interval data */}
-                {isInterval && (
+                {caseStudy.dataType === "interval" && (
                   <Card className="mt-6">
                     <CardHeader>
                       <CardTitle className="text-lg">
@@ -308,40 +305,41 @@ const CaseStudy = () => {
                     </CardHeader>
                     <CardContent>
                       <div className="space-y-2">
-                        {(caseStudy.opinions as ExpertOpinion[])
-                          .slice(0, 8)
-                          .map((opinion, index) => {
-                            const range =
-                              caseStudy.scaleMax - caseStudy.scaleMin;
-                            const leftPct =
-                              ((opinion.lowerLimit - caseStudy.scaleMin) /
-                                range) *
-                              100;
-                            const widthPct =
-                              ((opinion.upperLimit - opinion.lowerLimit) /
-                                range) *
-                              100;
-                            const peakPct =
-                              ((opinion.bestProposal - caseStudy.scaleMin) /
-                                range) *
-                              100;
+                        {caseStudy.opinions.slice(0, 8).map((opinion, index) => {
+                          const range =
+                            caseStudy.scaleMax - caseStudy.scaleMin;
+                          const leftPct =
+                            ((opinion.lowerLimit - caseStudy.scaleMin) /
+                              range) *
+                            100;
+                          const widthPct =
+                            ((opinion.upperLimit - opinion.lowerLimit) /
+                              range) *
+                            100;
+                          const peakPct =
+                            ((opinion.bestProposal - caseStudy.scaleMin) /
+                              range) *
+                            100;
 
-                            return (
-                              <div key={index} className="relative h-6">
-                                <div
-                                  className="absolute h-2 bg-secondary rounded-full top-2"
-                                  style={{
-                                    left: `${leftPct}%`,
-                                    width: `${widthPct}%`,
-                                  }}
-                                />
-                                <div
-                                  className="absolute w-2 h-2 bg-primary rounded-full top-2"
-                                  style={{ left: `${peakPct}%` }}
-                                />
-                              </div>
-                            );
-                          })}
+                          return (
+                            <div
+                              key={`${opinion.role}-${index}`}
+                              className="relative h-6"
+                            >
+                              <div
+                                className="absolute h-2 bg-secondary rounded-full top-2"
+                                style={{
+                                  left: `${leftPct}%`,
+                                  width: `${widthPct}%`,
+                                }}
+                              />
+                              <div
+                                className="absolute w-2 h-2 bg-primary rounded-full top-2"
+                                style={{ left: `${peakPct}%` }}
+                              />
+                            </div>
+                          );
+                        })}
                         <div className="flex justify-between text-xs text-muted-foreground mt-2 pt-2 border-t">
                           <span>
                             {caseStudy.scaleMin} {caseStudy.scaleUnit}
