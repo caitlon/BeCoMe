@@ -3,7 +3,13 @@
 All schemas are re-exported here for convenient imports.
 """
 
-from api.schemas.auth import RegisterRequest, TokenResponse, UserResponse
+from api.schemas.auth import (
+    ChangePasswordRequest,
+    RegisterRequest,
+    TokenResponse,
+    UpdateUserRequest,
+    UserResponse,
+)
 from api.schemas.calculation import (
     CalculateRequest,
     CalculateResponse,
@@ -11,15 +17,27 @@ from api.schemas.calculation import (
     FuzzyNumberOutput,
 )
 from api.schemas.health import HealthResponse
-from api.schemas.invitation import InvitationCreate, InvitationInfoResponse, InvitationResponse
+from api.schemas.invitation import (
+    InvitationListItemResponse,
+    InvitationResponse,
+    InviteByEmailRequest,
+)
 from api.schemas.opinion import OpinionCreate, OpinionResponse
-from api.schemas.project import MemberResponse, ProjectCreate, ProjectResponse, ProjectUpdate
+from api.schemas.project import (
+    MemberResponse,
+    ProjectCreate,
+    ProjectResponse,
+    ProjectUpdate,
+    ProjectWithRoleResponse,
+)
 from api.schemas.result import CalculationResultResponse
 
 __all__ = [
     # Auth
+    "ChangePasswordRequest",
     "RegisterRequest",
     "TokenResponse",
+    "UpdateUserRequest",
     "UserResponse",
     # Calculation
     "ExpertInput",
@@ -29,9 +47,9 @@ __all__ = [
     # Health
     "HealthResponse",
     # Invitation
-    "InvitationCreate",
+    "InviteByEmailRequest",
     "InvitationResponse",
-    "InvitationInfoResponse",
+    "InvitationListItemResponse",
     # Opinion
     "OpinionCreate",
     "OpinionResponse",
@@ -39,6 +57,7 @@ __all__ = [
     "ProjectCreate",
     "ProjectUpdate",
     "ProjectResponse",
+    "ProjectWithRoleResponse",
     "MemberResponse",
     # Result
     "CalculationResultResponse",

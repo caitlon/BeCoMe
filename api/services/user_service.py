@@ -75,3 +75,56 @@ class UserService(BaseService):
         if not verify_password(password, user.hashed_password):
             raise InvalidCredentialsError("Invalid email or password")
         return user
+
+    def update_user(
+        self,
+        user: User,
+        first_name: str | None = None,
+        last_name: str | None = None,
+        photo_url: str | None = None,
+    ) -> User:
+        """Update user profile fields.
+
+        :param user: User to update
+        :param first_name: New first name (optional)
+        :param last_name: New last name (optional)
+        :param photo_url: New photo URL (optional)
+        :return: Updated User instance
+        """
+        if first_name is not None:
+            user.first_name = first_name
+        if last_name is not None:
+            user.last_name = last_name
+        if photo_url is not None:
+            user.photo_url = photo_url
+
+        self._session.add(user)
+        self._session.commit()
+        self._session.refresh(user)
+        return user
+
+    def change_password(self, user: User, current_password: str, new_password: str) -> User:
+        """Change user password.
+
+        :param user: User to update
+        :param current_password: Current password for verification
+        :param new_password: New password
+        :return: Updated User instance
+        :raises InvalidCredentialsError: If current password is incorrect
+        """
+        if not verify_password(current_password, user.hashed_password):
+            raise InvalidCredentialsError("Current password is incorrect")
+
+        user.hashed_password = hash_password(new_password)
+        self._session.add(user)
+        self._session.commit()
+        self._session.refresh(user)
+        return user
+
+    def delete_user(self, user: User) -> None:
+        """Delete user account.
+
+        :param user: User to delete
+        """
+        self._session.delete(user)
+        self._session.commit()

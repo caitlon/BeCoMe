@@ -4,11 +4,12 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from api.config import get_settings
 from api.db.engine import create_db_and_tables
 from api.middleware.exception_handlers import register_exception_handlers
-from api.routes import auth, calculate, health, invitations, opinions, projects
+from api.routes import auth, calculate, health, invitations, opinions, projects, users
 
 
 @asynccontextmanager
@@ -33,6 +34,15 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
+    # CORS middleware for frontend integration
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
     # Register exception handlers (OCP: centralized error handling)
     register_exception_handlers(app)
 
@@ -40,6 +50,7 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(calculate.router)
     app.include_router(auth.router)
+    app.include_router(users.router)
     app.include_router(projects.router)
     app.include_router(invitations.router)
     app.include_router(opinions.router)

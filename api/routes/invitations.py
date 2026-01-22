@@ -1,8 +1,4 @@
-"""Invitation management routes.
-
-Exception handling follows OCP: all exceptions are handled
-by centralized middleware, routes focus on business logic only.
-"""
+"""Invitation management routes for email-based invitations."""
 
 from typing import Annotated
 from uuid import UUID
@@ -11,13 +7,17 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from api.auth.dependencies import CurrentUser
 from api.dependencies import ProjectAdmin, get_invitation_service
-from api.schemas import (
-    InvitationCreate,
-    InvitationInfoResponse,
+from api.schemas.invitation import (
+    InvitationListItemResponse,
     InvitationResponse,
-    MemberResponse,
+    InviteByEmailRequest,
 )
-from api.services.invitation_service import InvitationService
+from api.schemas.project import MemberResponse
+from api.services.invitation_service import (
+    AlreadyInvitedError,
+    InvitationService,
+    UserNotFoundError,
+)
 
 router = APIRouter(prefix="/api/v1", tags=["invitations"])
 
@@ -26,80 +26,90 @@ router = APIRouter(prefix="/api/v1", tags=["invitations"])
     "/projects/{project_id}/invite",
     response_model=InvitationResponse,
     status_code=status.HTTP_201_CREATED,
-    summary="Create project invitation",
+    summary="Invite user by email",
 )
-def create_invitation(
+def invite_by_email(
     project: ProjectAdmin,
-    request: InvitationCreate,
+    request: InviteByEmailRequest,
+    current_user: CurrentUser,
     invitation_service: Annotated[InvitationService, Depends(get_invitation_service)],
 ) -> InvitationResponse:
-    """Create an invitation link for a project. Only admin can create invitations.
+    """Invite a registered user to a project by email. Only admin can invite.
 
     :param project: Project (verified admin)
-    :param request: Invitation creation data
+    :param request: Email of user to invite
+    :param current_user: Authenticated admin user
     :param invitation_service: Invitation service
-    :return: Created invitation with token
+    :return: Created invitation
+    :raises HTTPException: 404 if user not found, 409 if already member or invited
     """
-    invitation = invitation_service.create_invitation(
-        project_id=project.id,
-        expires_in_days=request.expires_in_days,
-    )
+    try:
+        invitation, invitee = invitation_service.invite_by_email(
+            project_id=project.id,
+            inviter_id=current_user.id,
+            invitee_email=request.email,
+        )
+    except UserNotFoundError as err:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No user found with this email",
+        ) from err
+    except AlreadyInvitedError as err:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="User already has a pending invitation",
+        ) from err
 
-    return InvitationResponse.from_model(invitation, project)
+    return InvitationResponse.from_model(invitation, invitee)
 
 
 @router.get(
-    "/invitations/{token}",
-    response_model=InvitationInfoResponse,
-    summary="Get invitation info",
+    "/invitations",
+    response_model=list[InvitationListItemResponse],
+    summary="List my invitations",
 )
-def get_invitation_info(
-    token: UUID,
+def list_my_invitations(
+    current_user: CurrentUser,
     invitation_service: Annotated[InvitationService, Depends(get_invitation_service)],
-) -> InvitationInfoResponse:
-    """Get public information about an invitation. No authentication required.
+) -> list[InvitationListItemResponse]:
+    """Get all pending invitations for the current user.
 
-    :param token: Invitation token (UUID)
+    :param current_user: Authenticated user
     :param invitation_service: Invitation service
-    :return: Invitation details
-    :raises HTTPException: 404 if invitation not found
+    :return: List of pending invitations with project details
     """
-    details = invitation_service.get_invitation_details(token)
-    if not details:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Invitation not found",
+    invitations = invitation_service.get_user_invitations(current_user.id)
+    return [
+        InvitationListItemResponse.from_model(
+            item.invitation,
+            item.project,
+            item.inviter,
+            item.member_count,
         )
-
-    return InvitationInfoResponse.from_model(
-        details.invitation,
-        details.project,
-        details.admin,
-    )
+        for item in invitations
+    ]
 
 
 @router.post(
-    "/invitations/{token}/accept",
+    "/invitations/{invitation_id}/accept",
     response_model=MemberResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Accept invitation",
 )
 def accept_invitation(
-    token: UUID,
+    invitation_id: UUID,
     current_user: CurrentUser,
     invitation_service: Annotated[InvitationService, Depends(get_invitation_service)],
 ) -> MemberResponse:
     """Accept an invitation and join the project as expert.
 
-    All invitation exceptions (NotFound, Expired, AlreadyUsed, UserAlreadyMember)
-    are handled by centralized exception middleware.
-
-    :param token: Invitation token (UUID)
+    :param invitation_id: Invitation UUID
     :param current_user: Authenticated user
     :param invitation_service: Invitation service
     :return: Created membership details
+    :raises HTTPException: 404 if invitation not found or not for this user
     """
-    membership = invitation_service.accept_invitation(token, current_user.id)
+    membership = invitation_service.accept_invitation(invitation_id, current_user.id)
 
     return MemberResponse(
         user_id=str(current_user.id),
@@ -109,3 +119,23 @@ def accept_invitation(
         role=membership.role.value,
         joined_at=membership.joined_at,
     )
+
+
+@router.post(
+    "/invitations/{invitation_id}/decline",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Decline invitation",
+)
+def decline_invitation(
+    invitation_id: UUID,
+    current_user: CurrentUser,
+    invitation_service: Annotated[InvitationService, Depends(get_invitation_service)],
+) -> None:
+    """Decline an invitation.
+
+    :param invitation_id: Invitation UUID
+    :param current_user: Authenticated user
+    :param invitation_service: Invitation service
+    :raises HTTPException: 404 if invitation not found or not for this user
+    """
+    invitation_service.decline_invitation(invitation_id, current_user.id)

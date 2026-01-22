@@ -3,7 +3,7 @@
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from jose import JWTError, jwt  # type: ignore[import-untyped]
+from jose import JWTError, jwt
 
 from api.config import get_settings
 

@@ -35,7 +35,6 @@ class User(SQLModel, table=True):
     owned_projects: list["Project"] = Relationship(back_populates="admin")
     memberships: list["ProjectMember"] = Relationship(back_populates="user")
     opinions: list["ExpertOpinion"] = Relationship(back_populates="user")
-    used_invitations: list["Invitation"] = Relationship(back_populates="used_by_user")
     reset_tokens: list["PasswordResetToken"] = Relationship(back_populates="user")
 
     @model_validator(mode="after")
@@ -112,19 +111,27 @@ class ProjectMember(SQLModel, table=True):
 
 
 class Invitation(SQLModel, table=True):
-    """Invitation to join a project as an expert."""
+    """Invitation to join a project as an expert.
+
+    Email-based invitations: invitee_id specifies who the invitation is for.
+    """
 
     __tablename__ = "invitations"
+    __table_args__ = (UniqueConstraint("project_id", "invitee_id"),)
 
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     project_id: UUID = Field(foreign_key="projects.id", index=True, ondelete="CASCADE")
-    token: UUID = Field(default_factory=uuid4, unique=True, index=True)
+    invitee_id: UUID = Field(foreign_key="users.id", index=True, ondelete="CASCADE")
+    inviter_id: UUID = Field(foreign_key="users.id", ondelete="CASCADE")
     created_at: datetime = Field(default_factory=utc_now)
-    expires_at: datetime
-    used_by_id: UUID | None = Field(default=None, foreign_key="users.id", ondelete="SET NULL")
 
     project: Project = Relationship(back_populates="invitations")
-    used_by_user: User | None = Relationship(back_populates="used_invitations")
+    invitee: "User" = Relationship(
+        sa_relationship_kwargs={"foreign_keys": "[Invitation.invitee_id]"}
+    )
+    inviter: "User" = Relationship(
+        sa_relationship_kwargs={"foreign_keys": "[Invitation.inviter_id]"}
+    )
 
 
 class ExpertOpinion(SQLModel, table=True):

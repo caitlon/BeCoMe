@@ -1,0 +1,209 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* BeCoMe Design System - Minimal Black & White */
+
+@layer base {
+  :root {
+    /* BeCoMe Light Mode */
+    --background: 0 0% 100%;
+    --foreground: 0 0% 10%;
+    
+    --card: 0 0% 98%;
+    --card-foreground: 0 0% 10%;
+    
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 10%;
+    
+    /* Primary: Pure Black */
+    --primary: 0 0% 0%;
+    --primary-foreground: 0 0% 100%;
+    
+    /* Secondary: Light Gray */
+    --secondary: 0 0% 96%;
+    --secondary-foreground: 0 0% 10%;
+    
+    /* Muted */
+    --muted: 0 0% 96%;
+    --muted-foreground: 0 0% 40%;
+    
+    /* Accent */
+    --accent: 0 0% 96%;
+    --accent-foreground: 0 0% 10%;
+    
+    /* Status Colors */
+    --success: 122 39% 34%;
+    --success-foreground: 0 0% 100%;
+    --error: 0 65% 47%;
+    --error-foreground: 0 0% 100%;
+    --warning: 27 95% 49%;
+    --warning-foreground: 0 0% 100%;
+    
+    --destructive: 0 65% 47%;
+    --destructive-foreground: 0 0% 100%;
+    
+    --border: 0 0% 90%;
+    --input: 0 0% 95%;
+    --ring: 0 0% 0%;
+
+    --radius: 0.5rem;
+
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 0 0% 10%;
+    --sidebar-primary: 0 0% 0%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 0 0% 96%;
+    --sidebar-accent-foreground: 0 0% 10%;
+    --sidebar-border: 0 0% 90%;
+    --sidebar-ring: 0 0% 0%;
+    
+    /* Shadows */
+    --shadow-sm: 0 1px 3px hsla(0, 0%, 0%, 0.04);
+    --shadow-md: 0 4px 6px hsla(0, 0%, 0%, 0.06);
+    --shadow-lg: 0 10px 15px hsla(0, 0%, 0%, 0.08);
+  }
+
+  .dark {
+    --background: 0 0% 4%;
+    --foreground: 0 0% 98%;
+    
+    --card: 0 0% 10%;
+    --card-foreground: 0 0% 98%;
+    
+    --popover: 0 0% 10%;
+    --popover-foreground: 0 0% 98%;
+    
+    --primary: 0 0% 100%;
+    --primary-foreground: 0 0% 0%;
+    
+    --secondary: 0 0% 15%;
+    --secondary-foreground: 0 0% 98%;
+    
+    --muted: 0 0% 15%;
+    --muted-foreground: 0 0% 63%;
+    
+    --accent: 0 0% 15%;
+    --accent-foreground: 0 0% 98%;
+    
+    --success: 122 39% 34%;
+    --success-foreground: 0 0% 100%;
+    --error: 0 65% 51%;
+    --error-foreground: 0 0% 100%;
+    --warning: 27 95% 49%;
+    --warning-foreground: 0 0% 100%;
+    
+    --destructive: 0 65% 51%;
+    --destructive-foreground: 0 0% 100%;
+    
+    --border: 0 0% 17%;
+    --input: 0 0% 15%;
+    --ring: 0 0% 100%;
+    
+    --sidebar-background: 0 0% 10%;
+    --sidebar-foreground: 0 0% 98%;
+    --sidebar-primary: 0 0% 100%;
+    --sidebar-primary-foreground: 0 0% 0%;
+    --sidebar-accent: 0 0% 15%;
+    --sidebar-accent-foreground: 0 0% 98%;
+    --sidebar-border: 0 0% 17%;
+    --sidebar-ring: 0 0% 100%;
+    
+    --shadow-sm: 0 1px 3px hsla(0, 0%, 0%, 0.2);
+    --shadow-md: 0 4px 6px hsla(0, 0%, 0%, 0.3);
+    --shadow-lg: 0 10px 15px hsla(0, 0%, 0%, 0.4);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+  
+  /* Typography Classes */
+  .font-display {
+    font-family: 'Playfair Display', serif;
+  }
+  
+  .font-mono-numbers {
+    font-family: 'JetBrains Mono', monospace;
+  }
+  
+  /* Heading Styles */
+  h1, .h1 {
+    @apply font-display text-5xl font-light tracking-tight;
+  }
+  
+  h2, .h2 {
+    @apply font-display text-3xl font-normal;
+  }
+  
+  h3, .h3 {
+    @apply font-display text-2xl font-medium;
+  }
+  
+  /* Animation Classes */
+  .fade-in {
+    animation: fadeIn 0.5s ease-out forwards;
+  }
+  
+  .fade-in-up {
+    animation: fadeInUp 0.6s ease-out forwards;
+  }
+  
+  .slide-in-right {
+    animation: slideInRight 0.4s ease-out forwards;
+  }
+  
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  
+  @keyframes fadeInUp {
+    from { 
+      opacity: 0; 
+      transform: translateY(20px); 
+    }
+    to { 
+      opacity: 1; 
+      transform: translateY(0); 
+    }
+  }
+  
+  @keyframes slideInRight {
+    from { 
+      opacity: 0; 
+      transform: translateX(20px); 
+    }
+    to { 
+      opacity: 1; 
+      transform: translateX(0); 
+    }
+  }
+  
+  /* Focus styles */
+  .focus-ring {
+    @apply focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background;
+  }
+  
+  /* Card shadow */
+  .card-shadow {
+    box-shadow: var(--shadow-sm);
+  }
+  
+  .card-shadow-hover:hover {
+    box-shadow: var(--shadow-md);
+  }
+}
+
+@layer utilities {
+  /* Number styling */
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+}

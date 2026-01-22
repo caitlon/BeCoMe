@@ -1,125 +1,171 @@
-"""Invitation business logic service."""
+"""Invitation business logic service for email-based invitations."""
 
-from datetime import UTC, datetime, timedelta
+from dataclasses import dataclass
 from uuid import UUID
 
-from sqlmodel import Session, select
+from sqlmodel import Session, col, func, select
 
 from api.db.models import Invitation, MemberRole, Project, ProjectMember, User
-from api.db.utils import ensure_utc
 from api.exceptions import (
-    InvitationAlreadyUsedError,
-    InvitationExpiredError,
     InvitationNotFoundError,
     UserAlreadyMemberError,
 )
-from api.schemas.internal import InvitationDetails
 from api.services.base import BaseService
 
 
-class InvitationService(BaseService):
-    """Service for invitation-related operations."""
+class UserNotFoundError(Exception):
+    """Raised when user with specified email is not found."""
 
-    def __init__(
-        self,
-        session: Session,
-        default_expiration_days: int = 7,
-    ) -> None:
+
+class AlreadyInvitedError(Exception):
+    """Raised when user already has a pending invitation."""
+
+
+@dataclass(frozen=True)
+class InvitationWithDetails:
+    """Invitation with project, inviter, and member count."""
+
+    invitation: Invitation
+    project: Project
+    inviter: User
+    member_count: int
+
+
+class InvitationService(BaseService):
+    """Service for email-based invitation operations."""
+
+    def __init__(self, session: Session) -> None:
         """Initialize with database session.
 
         :param session: SQLModel session for database operations
-        :param default_expiration_days: Default expiration in days (default: 7)
         """
         super().__init__(session)
-        self._default_expiration_days = default_expiration_days
 
-    def create_invitation(
+    def invite_by_email(
         self,
         project_id: UUID,
-        expires_in_days: int | None = None,
-    ) -> Invitation:
-        """Create a new invitation for a project.
+        inviter_id: UUID,
+        invitee_email: str,
+    ) -> tuple[Invitation, User]:
+        """Invite a registered user to a project by email.
 
         :param project_id: ID of the project to invite to
-        :param expires_in_days: Days until expiration (default: 7)
-        :return: Created Invitation instance
+        :param inviter_id: ID of the user sending the invitation
+        :param invitee_email: Email of the user to invite
+        :return: Tuple of (created Invitation, invitee User)
+        :raises UserNotFoundError: If no user with this email exists
+        :raises UserAlreadyMemberError: If user is already a project member
+        :raises AlreadyInvitedError: If user already has a pending invitation
         """
-        if expires_in_days is None:
-            expires_in_days = self._default_expiration_days
+        # Find user by email
+        invitee = self._session.exec(select(User).where(User.email == invitee_email)).first()
+        if not invitee:
+            raise UserNotFoundError(f"No user found with email {invitee_email}")
 
-        expires_at = datetime.now(UTC) + timedelta(days=expires_in_days)
+        # Check if user is already a member
+        existing_membership = self._session.exec(
+            select(ProjectMember).where(
+                ProjectMember.project_id == project_id,
+                ProjectMember.user_id == invitee.id,
+            )
+        ).first()
+        if existing_membership:
+            raise UserAlreadyMemberError("User is already a member of this project")
 
+        # Check if user already has a pending invitation
+        existing_invitation = self._session.exec(
+            select(Invitation).where(
+                Invitation.project_id == project_id,
+                Invitation.invitee_id == invitee.id,
+            )
+        ).first()
+        if existing_invitation:
+            raise AlreadyInvitedError("User already has a pending invitation")
+
+        # Create invitation
         invitation = Invitation(
             project_id=project_id,
-            expires_at=expires_at,
+            invitee_id=invitee.id,
+            inviter_id=inviter_id,
         )
         self._session.add(invitation)
         self._session.commit()
         self._session.refresh(invitation)
-        return invitation
+        return invitation, invitee
 
-    def get_invitation_by_token(self, token: UUID) -> Invitation | None:
-        """Get invitation by its token.
+    def get_user_invitations(self, user_id: UUID) -> list[InvitationWithDetails]:
+        """Get all pending invitations for a user.
 
-        :param token: Invitation token (UUID)
+        :param user_id: ID of the user
+        :return: List of invitations with project and inviter details
+        """
+        # Subquery for member counts
+        member_count_subquery = (
+            select(ProjectMember.project_id, func.count().label("member_count"))
+            .group_by(col(ProjectMember.project_id))
+            .subquery()
+        )
+
+        statement = (
+            select(Invitation, Project, User, member_count_subquery.c.member_count)
+            .join(Project, Invitation.project_id == Project.id)  # type: ignore[arg-type]
+            .join(User, Invitation.inviter_id == User.id)  # type: ignore[arg-type]
+            .join(
+                member_count_subquery,
+                member_count_subquery.c.project_id == Project.id,
+            )
+            .where(Invitation.invitee_id == user_id)
+            .order_by(col(Invitation.created_at).desc())
+        )
+
+        results = self._session.exec(statement).all()
+        return [
+            InvitationWithDetails(
+                invitation=invitation,
+                project=project,
+                inviter=inviter,
+                member_count=count,
+            )
+            for invitation, project, inviter, count in results
+        ]
+
+    def get_invitation_by_id(self, invitation_id: UUID) -> Invitation | None:
+        """Get invitation by ID.
+
+        :param invitation_id: Invitation UUID
         :return: Invitation if found, None otherwise
         """
-        statement = select(Invitation).where(Invitation.token == token)
-        return self._session.exec(statement).first()
+        return self._session.get(Invitation, invitation_id)
 
-    def get_invitation_details(self, token: UUID) -> InvitationDetails | None:
-        """Get invitation with project and admin details.
-
-        :param token: Invitation token
-        :return: InvitationDetails if found, None otherwise
-        """
-        statement = (
-            select(Invitation, Project, User)
-            .join(Project, Invitation.project_id == Project.id)  # type: ignore[arg-type]
-            .join(User, Project.admin_id == User.id)  # type: ignore[arg-type]
-            .where(Invitation.token == token)
-        )
-        result = self._session.exec(statement).first()
-        if not result:
-            return None
-        invitation, project, admin = result
-        return InvitationDetails(invitation=invitation, project=project, admin=admin)
-
-    def accept_invitation(self, token: UUID, user_id: UUID) -> ProjectMember:
+    def accept_invitation(self, invitation_id: UUID, user_id: UUID) -> ProjectMember:
         """Accept an invitation and add user to project.
 
-        :param token: Invitation token
-        :param user_id: ID of the user accepting the invitation
+        :param invitation_id: Invitation ID
+        :param user_id: ID of the user accepting
         :return: Created ProjectMember instance
         :raises InvitationNotFoundError: If invitation doesn't exist
-        :raises InvitationExpiredError: If invitation has expired
-        :raises InvitationAlreadyUsedError: If invitation was already used
+        :raises ValueError: If invitation is not for this user
         :raises UserAlreadyMemberError: If user is already a member
         """
-        invitation = self.get_invitation_by_token(token)
+        invitation = self.get_invitation_by_id(invitation_id)
         if not invitation:
             raise InvitationNotFoundError("Invitation not found")
 
-        if invitation.used_by_id is not None:
-            raise InvitationAlreadyUsedError("Invitation has already been used")
+        if invitation.invitee_id != user_id:
+            raise InvitationNotFoundError("Invitation not found")
 
-        if datetime.now(UTC) > ensure_utc(invitation.expires_at):
-            raise InvitationExpiredError("Invitation has expired")
-
-        # Check if user is already a member
+        # Check if user is already a member (edge case: added by another path)
         existing_membership = self._session.exec(
             select(ProjectMember).where(
                 ProjectMember.project_id == invitation.project_id,
                 ProjectMember.user_id == user_id,
             )
         ).first()
-
         if existing_membership:
+            # Delete the invitation since user is already a member
+            self._session.delete(invitation)
+            self._session.commit()
             raise UserAlreadyMemberError("User is already a member of this project")
-
-        # Mark invitation as used
-        invitation.used_by_id = user_id
-        self._session.add(invitation)
 
         # Add user as expert member
         membership = ProjectMember(
@@ -128,19 +174,26 @@ class InvitationService(BaseService):
             role=MemberRole.EXPERT,
         )
         self._session.add(membership)
+
+        # Delete the invitation
+        self._session.delete(invitation)
         self._session.commit()
         self._session.refresh(membership)
         return membership
 
-    def is_invitation_valid(self, token: UUID) -> bool:
-        """Check if invitation is valid (exists, not used, not expired).
+    def decline_invitation(self, invitation_id: UUID, user_id: UUID) -> None:
+        """Decline an invitation.
 
-        :param token: Invitation token
-        :return: True if invitation is valid
+        :param invitation_id: Invitation ID
+        :param user_id: ID of the user declining
+        :raises InvitationNotFoundError: If invitation doesn't exist or not for this user
         """
-        invitation = self.get_invitation_by_token(token)
+        invitation = self.get_invitation_by_id(invitation_id)
         if not invitation:
-            return False
-        if invitation.used_by_id is not None:
-            return False
-        return datetime.now(UTC) <= ensure_utc(invitation.expires_at)
+            raise InvitationNotFoundError("Invitation not found")
+
+        if invitation.invitee_id != user_id:
+            raise InvitationNotFoundError("Invitation not found")
+
+        self._session.delete(invitation)
+        self._session.commit()
