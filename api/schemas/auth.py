@@ -42,7 +42,7 @@ class RegisterRequest(BaseModel):
     email: EmailStr = Field(..., max_length=255, description="Email address")
     password: str = Field(..., min_length=8, max_length=128, description="Password")
     first_name: str = Field(..., min_length=1, max_length=100, description="First name")
-    last_name: str | None = Field(None, max_length=100, description="Last name")
+    last_name: str = Field(..., min_length=1, max_length=100, description="Last name")
 
     @field_validator("email")
     @classmethod
@@ -66,10 +66,8 @@ class RegisterRequest(BaseModel):
 
     @field_validator("last_name")
     @classmethod
-    def last_name_format(cls, v: str | None) -> str | None:
-        """Validate last name format. Convert empty string to None."""
-        if v is None or v == "":
-            return None
+    def last_name_format(cls, v: str) -> str:
+        """Validate last name format."""
         return validate_name_format(v)
 
 
@@ -86,7 +84,7 @@ class UserResponse(BaseModel):
     id: str
     email: str
     first_name: str
-    last_name: str | None
+    last_name: str
     photo_url: str | None
 
 
