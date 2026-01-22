@@ -14,8 +14,12 @@ import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 
+const NAME_REGEX = /^[\p{L}\s'-]+$/u;
+const isValidName = (name: string) => !name || NAME_REGEX.test(name);
+
 const Profile = () => {
   const { t } = useTranslation("profile");
+  const { t: tAuth } = useTranslation("auth");
   const { user, refreshUser, logout } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -25,6 +29,28 @@ const Profile = () => {
   const [lastName, setLastName] = useState(user?.last_name || "");
   const [photoUrl, setPhotoUrl] = useState(user?.photo_url || "");
   const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [firstNameError, setFirstNameError] = useState<string | null>(null);
+  const [lastNameError, setLastNameError] = useState<string | null>(null);
+
+  const handleFirstNameChange = (value: string) => {
+    setFirstName(value);
+    if (value && !isValidName(value)) {
+      setFirstNameError(tAuth("validation.nameFormat"));
+    } else {
+      setFirstNameError(null);
+    }
+  };
+
+  const handleLastNameChange = (value: string) => {
+    setLastName(value);
+    if (value && !isValidName(value)) {
+      setLastNameError(tAuth("validation.nameFormat"));
+    } else {
+      setLastNameError(null);
+    }
+  };
+
+  const hasNameErrors = firstNameError !== null || lastNameError !== null;
 
   // Password form
   const [currentPassword, setCurrentPassword] = useState("");
@@ -155,21 +181,29 @@ const Profile = () => {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
-                <div>
+                <div className="space-y-1">
                   <Label htmlFor="firstName">{t("editProfile.firstName")}</Label>
                   <Input
                     id="firstName"
                     value={firstName}
-                    onChange={(e) => setFirstName(e.target.value)}
+                    onChange={(e) => handleFirstNameChange(e.target.value)}
+                    className={firstNameError ? "border-destructive" : ""}
                   />
+                  {firstNameError && (
+                    <p className="text-sm text-destructive">{firstNameError}</p>
+                  )}
                 </div>
-                <div>
+                <div className="space-y-1">
                   <Label htmlFor="lastName">{t("editProfile.lastName")}</Label>
                   <Input
                     id="lastName"
                     value={lastName}
-                    onChange={(e) => setLastName(e.target.value)}
+                    onChange={(e) => handleLastNameChange(e.target.value)}
+                    className={lastNameError ? "border-destructive" : ""}
                   />
+                  {lastNameError && (
+                    <p className="text-sm text-destructive">{lastNameError}</p>
+                  )}
                 </div>
               </div>
 
@@ -186,7 +220,7 @@ const Profile = () => {
 
               <Button
                 onClick={handleSaveProfile}
-                disabled={isSavingProfile || !firstName}
+                disabled={isSavingProfile || !firstName || hasNameErrors}
                 className="w-full"
               >
                 {isSavingProfile ? (
