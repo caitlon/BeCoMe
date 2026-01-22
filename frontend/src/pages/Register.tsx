@@ -85,10 +85,14 @@ const Register = () => {
   const registerSchema = useMemo(
     () =>
       z.object({
-        email: z.string().email(t("validation.emailInvalid")),
+        email: z
+          .string()
+          .email(t("validation.emailInvalid"))
+          .max(255, t("validation.emailMaxLength")),
         password: z
           .string()
           .min(8, t("passwordRequirements.minLength"))
+          .max(128, t("validation.passwordMaxLength"))
           .regex(/[A-Z]/, t("passwordRequirements.uppercase"))
           .regex(/[a-z]/, t("passwordRequirements.lowercase"))
           .regex(/\d/, t("passwordRequirements.number")),
