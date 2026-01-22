@@ -44,6 +44,14 @@ class RegisterRequest(BaseModel):
     first_name: str = Field(..., min_length=1, max_length=100, description="First name")
     last_name: str | None = Field(None, max_length=100, description="Last name")
 
+    @field_validator("email")
+    @classmethod
+    def email_ascii_only(cls, v: str) -> str:
+        """Validate email contains only ASCII characters."""
+        if not v.isascii():
+            raise ValueError("Email must contain only ASCII characters")
+        return v
+
     @field_validator("password")
     @classmethod
     def password_strength(cls, v: str) -> str:

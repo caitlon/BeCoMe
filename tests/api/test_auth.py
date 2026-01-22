@@ -407,6 +407,42 @@ class TestMe:
         assert "Could not validate credentials" in response.json()["detail"]
 
 
+class TestEmailValidation:
+    """Tests for email ASCII validation."""
+
+    def test_register_email_with_cyrillic_fails(self, client):
+        """Registration with Cyrillic email returns 422."""
+        # GIVEN
+        payload = {
+            "email": "тест@example.com",
+            "password": "SecurePass123",
+            "first_name": "Test",
+        }
+
+        # WHEN
+        response = client.post("/api/v1/auth/register", json=payload)
+
+        # THEN
+        assert response.status_code == 422
+        assert "ascii" in response.json()["detail"][0]["msg"].lower()
+
+    def test_register_email_ascii_succeeds(self, client):
+        """Registration with ASCII email succeeds."""
+        # GIVEN
+        payload = {
+            "email": "test.user+tag@example.com",
+            "password": "SecurePass123",
+            "first_name": "Test",
+        }
+
+        # WHEN
+        response = client.post("/api/v1/auth/register", json=payload)
+
+        # THEN
+        assert response.status_code == 201
+        assert response.json()["email"] == "test.user+tag@example.com"
+
+
 class TestNameValidation:
     """Tests for first_name and last_name validation."""
 
