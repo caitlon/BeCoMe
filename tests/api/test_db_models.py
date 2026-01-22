@@ -1,6 +1,6 @@
 """Tests for database models."""
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta  # timedelta used by PasswordResetToken tests
 from uuid import uuid4
 
 import pytest
@@ -296,7 +296,7 @@ class TestProjectMemberModel:
 
 
 class TestInvitationModel:
-    """Tests for Invitation model."""
+    """Tests for Invitation model (email-based)."""
 
     def test_create_invitation(self, session):
         # GIVEN
@@ -306,7 +306,13 @@ class TestInvitationModel:
             first_name="Admin",
             last_name="User",
         )
-        session.add(admin)
+        invitee = User(
+            email="invitee@example.com",
+            hashed_password="hash",
+            first_name="Invitee",
+            last_name="User",
+        )
+        session.add_all([admin, invitee])
         session.commit()
 
         project = Project(name="Test Project", admin_id=admin.id)
@@ -316,17 +322,20 @@ class TestInvitationModel:
         # WHEN
         invitation = Invitation(
             project_id=project.id,
-            expires_at=datetime.now(UTC) + timedelta(days=7),
+            invitee_id=invitee.id,
+            inviter_id=admin.id,
         )
         session.add(invitation)
         session.commit()
         session.refresh(invitation)
 
         # THEN
-        assert invitation.token is not None
-        assert invitation.used_by_id is None
+        assert invitation.id is not None
+        assert invitation.invitee_id == invitee.id
+        assert invitation.inviter_id == admin.id
+        assert invitation.created_at is not None
 
-    def test_invitation_token_unique(self, session):
+    def test_invitation_unique_per_project_invitee(self, session):
         # GIVEN
         admin = User(
             email="admin@example.com",
@@ -334,35 +343,38 @@ class TestInvitationModel:
             first_name="Admin",
             last_name="User",
         )
-        session.add(admin)
+        invitee = User(
+            email="invitee@example.com",
+            hashed_password="hash",
+            first_name="Invitee",
+            last_name="User",
+        )
+        session.add_all([admin, invitee])
         session.commit()
 
         project = Project(name="Test Project", admin_id=admin.id)
         session.add(project)
         session.commit()
 
-        # Create invitation with specific token
-        shared_token = uuid4()
-
         inv1 = Invitation(
             project_id=project.id,
-            token=shared_token,
-            expires_at=datetime.now(UTC) + timedelta(days=7),
+            invitee_id=invitee.id,
+            inviter_id=admin.id,
         )
         session.add(inv1)
         session.commit()
 
-        # WHEN/THEN - duplicate token should fail
+        # WHEN/THEN - duplicate invitation to same user for same project should fail
         inv2 = Invitation(
             project_id=project.id,
-            token=shared_token,
-            expires_at=datetime.now(UTC) + timedelta(days=7),
+            invitee_id=invitee.id,
+            inviter_id=admin.id,
         )
         session.add(inv2)
         with pytest.raises(IntegrityError):
             session.commit()
 
-    def test_invitation_can_be_marked_as_used(self, session):
+    def test_same_user_can_be_invited_to_different_projects(self, session):
         # GIVEN
         admin = User(
             email="admin@example.com",
@@ -370,34 +382,37 @@ class TestInvitationModel:
             first_name="Admin",
             last_name="User",
         )
-        expert = User(
-            email="expert@example.com",
+        invitee = User(
+            email="invitee@example.com",
             hashed_password="hash",
-            first_name="Expert",
+            first_name="Invitee",
             last_name="User",
         )
-        session.add_all([admin, expert])
+        session.add_all([admin, invitee])
         session.commit()
 
-        project = Project(name="Test Project", admin_id=admin.id)
-        session.add(project)
-        session.commit()
-
-        invitation = Invitation(
-            project_id=project.id,
-            expires_at=datetime.now(UTC) + timedelta(days=7),
-        )
-        session.add(invitation)
+        project1 = Project(name="Project 1", admin_id=admin.id)
+        project2 = Project(name="Project 2", admin_id=admin.id)
+        session.add_all([project1, project2])
         session.commit()
 
         # WHEN
-        invitation.used_by_id = expert.id
+        inv1 = Invitation(
+            project_id=project1.id,
+            invitee_id=invitee.id,
+            inviter_id=admin.id,
+        )
+        inv2 = Invitation(
+            project_id=project2.id,
+            invitee_id=invitee.id,
+            inviter_id=admin.id,
+        )
+        session.add_all([inv1, inv2])
         session.commit()
-        session.refresh(invitation)
 
         # THEN
-        assert invitation.used_by_id == expert.id
-        assert invitation.used_by_user == expert
+        assert inv1.id is not None
+        assert inv2.id is not None
 
 
 class TestExpertOpinionModel:
@@ -1018,26 +1033,40 @@ class TestRelationships:
 
     def test_project_invitations_relationship(self, session):
         # GIVEN
-        user = User(
+        admin = User(
             email="admin@example.com",
             hashed_password="hash",
             first_name="Admin",
             last_name="User",
         )
-        session.add(user)
+        invitee1 = User(
+            email="invitee1@example.com",
+            hashed_password="hash",
+            first_name="Invitee1",
+            last_name="User",
+        )
+        invitee2 = User(
+            email="invitee2@example.com",
+            hashed_password="hash",
+            first_name="Invitee2",
+            last_name="User",
+        )
+        session.add_all([admin, invitee1, invitee2])
         session.commit()
 
-        project = Project(name="Test Project", admin_id=user.id)
+        project = Project(name="Test Project", admin_id=admin.id)
         session.add(project)
         session.commit()
 
         inv1 = Invitation(
             project_id=project.id,
-            expires_at=datetime.now(UTC) + timedelta(days=7),
+            invitee_id=invitee1.id,
+            inviter_id=admin.id,
         )
         inv2 = Invitation(
             project_id=project.id,
-            expires_at=datetime.now(UTC) + timedelta(days=14),
+            invitee_id=invitee2.id,
+            inviter_id=admin.id,
         )
         session.add_all([inv1, inv2])
         session.commit()
