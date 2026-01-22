@@ -85,6 +85,7 @@ class UserResponse(BaseModel):
     email: str
     first_name: str
     last_name: str
+    photo_url: str | None = None
 
 
 class UpdateUserRequest(BaseModel):

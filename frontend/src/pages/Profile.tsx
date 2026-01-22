@@ -1,14 +1,14 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
-import { Loader2, AlertTriangle } from "lucide-react";
+import { Loader2, AlertTriangle, Camera, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Navbar } from "@/components/layout/Navbar";
 import { DeleteConfirmModal } from "@/components/modals/DeleteConfirmModal";
 import { ValidationChecklist, Requirement } from "@/components/forms";
@@ -87,6 +87,45 @@ const Profile = () => {
 
   // Delete account
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+
+  // Photo upload
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploadingPhoto(true);
+    try {
+      await api.uploadPhoto(file);
+      await refreshUser();
+      toast({ title: t("toast.photoUpdated") });
+    } catch (error) {
+      toast({
+        title: t("toast.error"),
+        description: error instanceof Error ? error.message : t("toast.photoFailed"),
+        variant: "destructive",
+      });
+    } finally {
+      setIsUploadingPhoto(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const handleDeletePhoto = async () => {
+    try {
+      await api.deletePhoto();
+      await refreshUser();
+      toast({ title: t("toast.photoDeleted") });
+    } catch (error) {
+      toast({
+        title: t("toast.error"),
+        description: t("toast.photoDeleteFailed"),
+        variant: "destructive",
+      });
+    }
+  };
 
   const initials = user
     ? `${user.first_name[0]}${user.last_name?.[0] || ""}`.toUpperCase()
@@ -193,9 +232,44 @@ const Profile = () => {
         >
           {/* Profile Header */}
           <div className="text-center">
-            <Avatar className="h-24 w-24 mx-auto mb-4">
-              <AvatarFallback className="text-2xl">{initials}</AvatarFallback>
-            </Avatar>
+            <div className="relative inline-block mb-4">
+              <Avatar className="h-24 w-24">
+                {user.photo_url && <AvatarImage src={user.photo_url} alt={user.first_name} />}
+                <AvatarFallback className="text-2xl">{initials}</AvatarFallback>
+              </Avatar>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/gif,image/webp"
+                className="hidden"
+                onChange={handlePhotoUpload}
+              />
+              <div className="absolute -bottom-2 -right-2 flex gap-1">
+                <Button
+                  size="icon"
+                  variant="secondary"
+                  className="h-8 w-8 rounded-full"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isUploadingPhoto}
+                >
+                  {isUploadingPhoto ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Camera className="h-4 w-4" />
+                  )}
+                </Button>
+                {user.photo_url && (
+                  <Button
+                    size="icon"
+                    variant="destructive"
+                    className="h-8 w-8 rounded-full"
+                    onClick={handleDeletePhoto}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+            </div>
             <h1 className="font-display text-2xl font-light">
               {user.first_name} {user.last_name}
             </h1>

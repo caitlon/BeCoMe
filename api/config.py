@@ -31,6 +31,21 @@ class Settings(BaseSettings):
         "http://localhost:8080",
     ]
 
+    # Azure Blob Storage (optional - photo upload disabled if not configured)
+    azure_storage_connection_string: str | None = None
+    azure_storage_account_name: str | None = None
+    azure_storage_account_key: str | None = None
+    azure_storage_container_name: str = "become-photos"
+
+    @property
+    def azure_storage_enabled(self) -> bool:
+        """Check if Azure storage is properly configured."""
+        return bool(
+            self.azure_storage_connection_string
+            and self.azure_storage_account_name
+            and self.azure_storage_account_key
+        )
+
 
 @lru_cache
 def get_settings() -> Settings:

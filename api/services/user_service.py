@@ -125,3 +125,16 @@ class UserService(BaseService):
         """
         self._session.delete(user)
         self._session.commit()
+
+    def update_photo_url(self, user: User, photo_url: str | None) -> User:
+        """Update user's profile photo URL.
+
+        :param user: User to update
+        :param photo_url: New photo URL or None to remove
+        :return: Updated User instance
+        """
+        user.photo_url = photo_url
+        self._session.add(user)
+        self._session.commit()
+        self._session.refresh(user)
+        return user

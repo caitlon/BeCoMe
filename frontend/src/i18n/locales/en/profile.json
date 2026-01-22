@@ -37,6 +37,10 @@
     "passwordUpdated": "Password updated",
     "passwordFailed": "Failed to change password",
     "accountDeleted": "Account deleted",
-    "deleteFailed": "Failed to delete account"
+    "deleteFailed": "Failed to delete account",
+    "photoUpdated": "Profile photo updated",
+    "photoFailed": "Failed to upload photo",
+    "photoDeleted": "Profile photo removed",
+    "photoDeleteFailed": "Failed to remove photo"
   }
 }

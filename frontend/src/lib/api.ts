@@ -142,6 +142,39 @@ class ApiClient {
     });
   }
 
+  async uploadPhoto(file: File): Promise<User> {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const headers: HeadersInit = {};
+    if (this.token) {
+      headers['Authorization'] = `Bearer ${this.token}`;
+    }
+
+    const response = await fetch(`${API_BASE_URL}/users/me/photo`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        this.setToken(null);
+        window.location.href = '/login';
+      }
+      const error = await response.json().catch(() => ({ detail: 'Upload failed' }));
+      throw new Error(error.detail || 'Failed to upload photo');
+    }
+
+    return response.json();
+  }
+
+  async deletePhoto(): Promise<void> {
+    return this.request<void>('/users/me/photo', {
+      method: 'DELETE',
+    });
+  }
+
   // Projects
   async getProjects(): Promise<ProjectWithRole[]> {
     return this.request<ProjectWithRole[]>('/projects');

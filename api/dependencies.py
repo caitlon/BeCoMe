@@ -13,12 +13,14 @@ from fastapi import Depends, HTTPException, status
 from sqlmodel import Session
 
 from api.auth.dependencies import CurrentUser
+from api.config import get_settings
 from api.db.models import Project
 from api.db.session import get_session
 from api.services.calculation_service import CalculationService
 from api.services.invitation_service import InvitationService
 from api.services.opinion_service import OpinionService
 from api.services.project_service import ProjectService
+from api.services.storage.azure_blob_service import AzureBlobStorageService
 from api.services.user_service import UserService
 from src.calculators.become_calculator import BeCoMeCalculator
 
@@ -64,6 +66,20 @@ def get_calculation_service(
 def get_invitation_service(session: Annotated[Session, Depends(get_session)]) -> InvitationService:
     """Create InvitationService instance."""
     return InvitationService(session)
+
+
+def get_storage_service() -> AzureBlobStorageService | None:
+    """Create storage service if Azure is configured.
+
+    Returns None if Azure storage is not configured,
+    allowing graceful degradation.
+
+    :return: AzureBlobStorageService or None
+    """
+    settings = get_settings()
+    if not settings.azure_storage_enabled:
+        return None
+    return AzureBlobStorageService(settings)
 
 
 # --- Authorization Dependencies ---

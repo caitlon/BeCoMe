@@ -37,6 +37,10 @@
     "passwordUpdated": "Heslo aktualizováno",
     "passwordFailed": "Nepodařilo se změnit heslo",
     "accountDeleted": "Účet smazán",
-    "deleteFailed": "Nepodařilo se smazat účet"
+    "deleteFailed": "Nepodařilo se smazat účet",
+    "photoUpdated": "Profilová fotka aktualizována",
+    "photoFailed": "Nepodařilo se nahrát fotku",
+    "photoDeleted": "Profilová fotka odstraněna",
+    "photoDeleteFailed": "Nepodařilo se odstranit fotku"
   }
 }
