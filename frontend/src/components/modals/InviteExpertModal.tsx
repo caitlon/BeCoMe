@@ -3,7 +3,8 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useTranslation } from "react-i18next";
-import { Loader2, Check, Info } from "lucide-react";
+import { Check, Info } from "lucide-react";
+
 import {
   Dialog,
   DialogContent,
@@ -11,8 +12,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { FormField, SubmitButton } from "@/components/forms";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 
@@ -31,7 +31,7 @@ export function InviteExpertModal({
   open,
   onOpenChange,
   projectId,
-  projectName
+  projectName,
 }: InviteExpertModalProps) {
   const { t } = useTranslation("projects");
   const { toast } = useToast();
@@ -74,7 +74,8 @@ export function InviteExpertModal({
     } catch (error) {
       toast({
         title: t("invite.errorTitle"),
-        description: error instanceof Error ? error.message : t("invite.errorMessage"),
+        description:
+          error instanceof Error ? error.message : t("invite.errorMessage"),
         variant: "destructive",
       });
     } finally {
@@ -108,9 +109,7 @@ export function InviteExpertModal({
             <Button variant="outline" onClick={handleInviteAnother}>
               {t("invite.inviteAnother")}
             </Button>
-            <Button onClick={handleClose}>
-              {t("invite.done")}
-            </Button>
+            <Button onClick={handleClose}>{t("invite.done")}</Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -127,45 +126,31 @@ export function InviteExpertModal({
         </DialogHeader>
 
         <p className="text-sm text-muted-foreground mb-4">
-          {t("invite.inviteTo")} <span className="font-medium text-foreground">{projectName}</span>
+          {t("invite.inviteTo")}{" "}
+          <span className="font-medium text-foreground">{projectName}</span>
         </p>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="email">{t("invite.email")} *</Label>
-            <Input
-              id="email"
-              type="email"
-              placeholder={t("invite.emailPlaceholder")}
-              {...register("email")}
-              className={errors.email ? "border-destructive" : ""}
-            />
-            {errors.email && (
-              <p className="text-sm text-destructive">{errors.email.message}</p>
-            )}
-          </div>
+          <FormField
+            label={`${t("invite.email")} *`}
+            type="email"
+            placeholder={t("invite.emailPlaceholder")}
+            error={errors.email}
+            {...register("email")}
+          />
 
           <div className="flex items-start gap-2 text-xs text-muted-foreground bg-muted p-3 rounded-lg">
             <Info className="h-4 w-4 shrink-0 mt-0.5" />
-            <p>
-              {t("invite.info")}
-            </p>
+            <p>{t("invite.info")}</p>
           </div>
 
           <div className="flex justify-end gap-3 pt-2">
             <Button type="button" variant="outline" onClick={handleClose}>
               {t("invite.cancel")}
             </Button>
-            <Button type="submit" disabled={isLoading}>
-              {isLoading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  {t("invite.inviting")}
-                </>
-              ) : (
-                t("invite.invite")
-              )}
-            </Button>
+            <SubmitButton isLoading={isLoading} loadingText={t("invite.inviting")}>
+              {t("invite.invite")}
+            </SubmitButton>
           </div>
         </form>
       </DialogContent>

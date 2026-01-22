@@ -3,7 +3,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useTranslation } from "react-i18next";
-import { Loader2 } from "lucide-react";
+
 import {
   Dialog,
   DialogContent,
@@ -13,9 +13,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { FormField, FormTextarea, SubmitButton } from "@/components/forms";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
 
 type CreateProjectFormData = {
   name: string;
@@ -31,23 +32,32 @@ interface CreateProjectModalProps {
   onSuccess: () => void;
 }
 
-export function CreateProjectModal({ open, onOpenChange, onSuccess }: CreateProjectModalProps) {
+export function CreateProjectModal({
+  open,
+  onOpenChange,
+  onSuccess,
+}: CreateProjectModalProps) {
   const { t } = useTranslation("projects");
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
 
   const createProjectSchema = useMemo(
     () =>
-      z.object({
-        name: z.string().min(1, t("create.validation.nameRequired")).max(255),
-        description: z.string().max(1000).optional(),
-        scale_min: z.coerce.number(),
-        scale_max: z.coerce.number(),
-        scale_unit: z.string().min(1, t("create.validation.unitRequired")).max(50),
-      }).refine(data => data.scale_max > data.scale_min, {
-        message: t("create.validation.maxGreaterMin"),
-        path: ["scale_max"],
-      }),
+      z
+        .object({
+          name: z.string().min(1, t("create.validation.nameRequired")).max(255),
+          description: z.string().max(1000).optional(),
+          scale_min: z.coerce.number(),
+          scale_max: z.coerce.number(),
+          scale_unit: z
+            .string()
+            .min(1, t("create.validation.unitRequired"))
+            .max(50),
+        })
+        .refine((data) => data.scale_max > data.scale_min, {
+          message: t("create.validation.maxGreaterMin"),
+          path: ["scale_max"],
+        }),
     [t]
   );
 
@@ -82,7 +92,8 @@ export function CreateProjectModal({ open, onOpenChange, onSuccess }: CreateProj
     } catch (error) {
       toast({
         title: t("create.errorTitle"),
-        description: error instanceof Error ? error.message : t("toast.createFailed"),
+        description:
+          error instanceof Error ? error.message : t("toast.createFailed"),
         variant: "destructive",
       });
     } finally {
@@ -100,28 +111,19 @@ export function CreateProjectModal({ open, onOpenChange, onSuccess }: CreateProj
         </DialogHeader>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="name">{t("create.name")} *</Label>
-            <Input
-              id="name"
-              placeholder={t("create.namePlaceholder")}
-              {...register("name")}
-              className={errors.name ? "border-destructive" : ""}
-            />
-            {errors.name && (
-              <p className="text-sm text-destructive">{errors.name.message}</p>
-            )}
-          </div>
+          <FormField
+            label={`${t("create.name")} *`}
+            placeholder={t("create.namePlaceholder")}
+            error={errors.name}
+            {...register("name")}
+          />
 
-          <div className="space-y-2">
-            <Label htmlFor="description">{t("create.description")}</Label>
-            <Textarea
-              id="description"
-              placeholder={t("create.descriptionPlaceholder")}
-              rows={3}
-              {...register("description")}
-            />
-          </div>
+          <FormTextarea
+            label={t("create.description")}
+            placeholder={t("create.descriptionPlaceholder")}
+            rows={3}
+            {...register("description")}
+          />
 
           <div className="space-y-2">
             <Label>{t("create.scaleSettings")}</Label>
@@ -131,47 +133,52 @@ export function CreateProjectModal({ open, onOpenChange, onSuccess }: CreateProj
                   type="number"
                   placeholder="Min"
                   {...register("scale_min")}
-                  className={errors.scale_min ? "border-destructive" : ""}
+                  className={cn(errors.scale_min && "border-destructive")}
                 />
-                <span className="text-xs text-muted-foreground mt-1 block">{t("create.scaleMin")}</span>
+                <span className="text-xs text-muted-foreground mt-1 block">
+                  {t("create.scaleMin")}
+                </span>
               </div>
               <div>
                 <Input
                   type="number"
                   placeholder="Max"
                   {...register("scale_max")}
-                  className={errors.scale_max ? "border-destructive" : ""}
+                  className={cn(errors.scale_max && "border-destructive")}
                 />
-                <span className="text-xs text-muted-foreground mt-1 block">{t("create.scaleMax")}</span>
+                <span className="text-xs text-muted-foreground mt-1 block">
+                  {t("create.scaleMax")}
+                </span>
               </div>
               <div>
                 <Input
                   placeholder={t("create.scaleUnitPlaceholder")}
                   {...register("scale_unit")}
-                  className={errors.scale_unit ? "border-destructive" : ""}
+                  className={cn(errors.scale_unit && "border-destructive")}
                 />
-                <span className="text-xs text-muted-foreground mt-1 block">{t("create.scaleUnit")}</span>
+                <span className="text-xs text-muted-foreground mt-1 block">
+                  {t("create.scaleUnit")}
+                </span>
               </div>
             </div>
             {errors.scale_max && (
-              <p className="text-sm text-destructive">{errors.scale_max.message}</p>
+              <p className="text-sm text-destructive">
+                {errors.scale_max.message}
+              </p>
             )}
           </div>
 
           <div className="flex justify-end gap-3 pt-4">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+            >
               {t("create.cancel")}
             </Button>
-            <Button type="submit" disabled={isLoading}>
-              {isLoading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  {t("create.creating")}
-                </>
-              ) : (
-                t("create.create")
-              )}
-            </Button>
+            <SubmitButton isLoading={isLoading} loadingText={t("create.creating")}>
+              {t("create.create")}
+            </SubmitButton>
           </div>
         </form>
       </DialogContent>
