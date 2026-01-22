@@ -53,6 +53,7 @@ export function InviteExpertModal({
     formState: { errors },
   } = useForm<InviteFormData>({
     resolver: zodResolver(inviteSchema),
+    mode: "onTouched",
   });
 
   const handleClose = () => {
