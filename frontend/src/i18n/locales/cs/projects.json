@@ -1,0 +1,129 @@
+{
+  "tabs": {
+    "myProjects": "Moje projekty",
+    "invitations": "Pozvánky"
+  },
+  "buttons": {
+    "newProject": "Nový projekt",
+    "decline": "Odmítnout",
+    "accept": "Přijmout pozvánku"
+  },
+  "empty": {
+    "title": "Zatím žádné projekty",
+    "description": "Vytvořte svůj první projekt a začněte sbírat názory expertů.",
+    "createFirst": "Vytvořit první projekt"
+  },
+  "dropdown": {
+    "viewProject": "Zobrazit projekt",
+    "inviteExpert": "Pozvat experta",
+    "deleteProject": "Smazat projekt"
+  },
+  "card": {
+    "noDescription": "Bez popisu",
+    "scale": "Škála",
+    "experts": "expertů"
+  },
+  "roles": {
+    "admin": "Admin",
+    "expert": "Expert"
+  },
+  "invitations": {
+    "empty": {
+      "title": "Žádné čekající pozvánky",
+      "description": "Když vás někdo pozve do projektu, objeví se zde."
+    },
+    "pending": "Máte {{count}} čekající pozvánku/y",
+    "invitedBy": "Pozval(a)",
+    "invitedDate": "Pozváno"
+  },
+  "deleteModal": {
+    "title": "Smazat projekt?",
+    "description": "Opravdu chcete smazat \"{{name}}\"?",
+    "details": {
+      "opinions": "Všechny expertní názory",
+      "results": "Všechny výsledky výpočtů",
+      "invitations": "Všechny pozvánky"
+    }
+  },
+  "toast": {
+    "error": "Chyba",
+    "loadFailed": "Nepodařilo se načíst projekty",
+    "invitationAccepted": "Pozvánka přijata",
+    "invitationDeclined": "Pozvánka odmítnuta",
+    "projectDeleted": "Projekt smazán",
+    "acceptFailed": "Nepodařilo se přijmout pozvánku",
+    "declineFailed": "Nepodařilo se odmítnout pozvánku",
+    "deleteFailed": "Nepodařilo se smazat projekt"
+  },
+  "detail": {
+    "backToProjects": "Zpět na projekty",
+    "experts": "Experti",
+    "responses": "odpovědí",
+    "inviteExpert": "Pozvat experta",
+    "deleteProject": "Smazat projekt",
+    "results": "Výsledky",
+    "noResults": "Nedostatek odpovědí pro výpočet výsledků.",
+    "bestCompromise": "Nejlepší kompromis",
+    "arithmeticMean": "Aritmetický průměr",
+    "median": "Medián",
+    "maxError": "Maximální chyba",
+    "expertOpinions": "Expertní názory",
+    "noOpinions": "Zatím žádné expertní názory.",
+    "pending": "Čeká",
+    "submitted": "Odesláno"
+  },
+  "create": {
+    "title": "Vytvořit nový projekt",
+    "name": "Název projektu",
+    "namePlaceholder": "Zadejte název projektu",
+    "description": "Popis",
+    "descriptionPlaceholder": "Popište svůj projekt...",
+    "question": "Otázka pro experty",
+    "questionPlaceholder": "Na jakou otázku mají experti odpovědět?",
+    "scaleSettings": "Nastavení škály",
+    "scaleMin": "Minimum",
+    "scaleMax": "Maximum",
+    "scaleUnit": "Jednotka",
+    "scaleUnitPlaceholder": "např. miliard Kč, %, bodů",
+    "cancel": "Zrušit",
+    "create": "Vytvořit projekt",
+    "creating": "Vytváření...",
+    "successTitle": "Projekt vytvořen",
+    "successMessage": "Váš projekt byl úspěšně vytvořen.",
+    "errorTitle": "Chyba",
+    "validation": {
+      "nameRequired": "Název je povinný",
+      "unitRequired": "Jednotka je povinná",
+      "maxGreaterMin": "Maximum musí být větší než minimum"
+    }
+  },
+  "invite": {
+    "title": "Pozvat experta",
+    "inviteTo": "Pozvat experta do projektu",
+    "email": "E-mail",
+    "emailPlaceholder": "expert@example.com",
+    "info": "Uživatel musí mít již účet. Pozvánku uvidí v záložce \"Pozvánky\".",
+    "cancel": "Zrušit",
+    "invite": "Odeslat pozvánku",
+    "inviting": "Odesílání...",
+    "inviteAnother": "Pozvat dalšího",
+    "done": "Hotovo",
+    "successTitle": "Pozvánka odeslána!",
+    "successMessage": "Expert byl pozván do projektu.",
+    "errorTitle": "Pozvání selhalo",
+    "errorMessage": "Nepodařilo se odeslat pozvánku",
+    "validation": {
+      "emailInvalid": "Neplatná e-mailová adresa"
+    }
+  },
+  "delete": {
+    "title": "Smazat projekt",
+    "message": "Opravdu chcete smazat tento projekt? Tuto akci nelze vrátit zpět.",
+    "cancel": "Zrušit",
+    "confirm": "Smazat",
+    "deleting": "Mazání...",
+    "successTitle": "Projekt smazán",
+    "successMessage": "Projekt byl smazán.",
+    "errorTitle": "Chyba"
+  }
+}

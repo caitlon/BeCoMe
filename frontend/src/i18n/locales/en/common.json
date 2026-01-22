@@ -1,0 +1,36 @@
+{
+  "nav": {
+    "about": "About",
+    "signIn": "Sign In",
+    "signOut": "Sign Out",
+    "getStarted": "Get Started",
+    "projects": "Projects",
+    "profile": "Profile"
+  },
+  "footer": {
+    "description": "Best Compromise Mean — a scientific approach to aggregating expert opinions using fuzzy triangular numbers.",
+    "product": "Product",
+    "methodAuthors": "Method Authors",
+    "copyright": "All rights reserved.",
+    "methodBy": "BeCoMe method by Czech University of Life Sciences Prague"
+  },
+  "common": {
+    "loading": "Loading...",
+    "error": "Error",
+    "success": "Success",
+    "cancel": "Cancel",
+    "save": "Save",
+    "delete": "Delete",
+    "edit": "Edit",
+    "create": "Create",
+    "back": "Back",
+    "next": "Next",
+    "submit": "Submit",
+    "close": "Close"
+  },
+  "notFound": {
+    "title": "Page Not Found",
+    "description": "The page you're looking for doesn't exist or has been moved.",
+    "backHome": "Back to Home"
+  }
+}

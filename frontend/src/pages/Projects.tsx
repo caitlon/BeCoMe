@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
+import { useTranslation } from "react-i18next";
 import { Plus, Users, Key, MoreHorizontal, Loader2, Mail, Inbox } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -22,6 +23,7 @@ import { ProjectWithRole, Invitation } from "@/types/api";
 import { useToast } from "@/hooks/use-toast";
 
 const Projects = () => {
+  const { t } = useTranslation("projects");
   const { toast } = useToast();
   const [projects, setProjects] = useState<ProjectWithRole[]>([]);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
@@ -41,14 +43,14 @@ const Projects = () => {
       setInvitations(invitationsData);
     } catch (error) {
       toast({
-        title: "Error",
-        description: "Failed to load projects",
+        title: t("toast.error"),
+        description: t("toast.loadFailed"),
         variant: "destructive",
       });
     } finally {
       setIsLoading(false);
     }
-  }, [toast]);
+  }, [toast, t]);
 
   useEffect(() => {
     fetchData();
@@ -57,12 +59,12 @@ const Projects = () => {
   const handleAcceptInvitation = async (invitationId: string) => {
     try {
       await api.acceptInvitation(invitationId);
-      toast({ title: "Invitation accepted" });
+      toast({ title: t("toast.invitationAccepted") });
       fetchData();
     } catch (error) {
       toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to accept",
+        title: t("toast.error"),
+        description: error instanceof Error ? error.message : t("toast.acceptFailed"),
         variant: "destructive",
       });
     }
@@ -71,12 +73,12 @@ const Projects = () => {
   const handleDeclineInvitation = async (invitationId: string) => {
     try {
       await api.declineInvitation(invitationId);
-      toast({ title: "Invitation declined" });
+      toast({ title: t("toast.invitationDeclined") });
       fetchData();
     } catch (error) {
       toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to decline",
+        title: t("toast.error"),
+        description: error instanceof Error ? error.message : t("toast.declineFailed"),
         variant: "destructive",
       });
     }
@@ -86,14 +88,14 @@ const Projects = () => {
     if (!selectedProject) return;
     try {
       await api.deleteProject(selectedProject.id);
-      toast({ title: "Project deleted" });
+      toast({ title: t("toast.projectDeleted") });
       setDeleteModalOpen(false);
       setSelectedProject(null);
       fetchData();
     } catch (error) {
       toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to delete",
+        title: t("toast.error"),
+        description: error instanceof Error ? error.message : t("toast.deleteFailed"),
         variant: "destructive",
       });
     }
@@ -118,9 +120,9 @@ const Projects = () => {
         <Tabs defaultValue="projects" className="space-y-6">
           <div className="flex items-center justify-between">
             <TabsList>
-              <TabsTrigger value="projects">My Projects</TabsTrigger>
+              <TabsTrigger value="projects">{t("tabs.myProjects")}</TabsTrigger>
               <TabsTrigger value="invitations" className="gap-2">
-                Invitations
+                {t("tabs.invitations")}
                 {invitations.length > 0 && (
                   <Badge variant="secondary" className="ml-1 h-5 px-1.5">
                     {invitations.length}
@@ -128,10 +130,10 @@ const Projects = () => {
                 )}
               </TabsTrigger>
             </TabsList>
-            
+
             <Button onClick={() => setCreateModalOpen(true)} className="gap-2">
               <Plus className="h-4 w-4" />
-              New Project
+              {t("buttons.newProject")}
             </Button>
           </div>
 
@@ -145,13 +147,13 @@ const Projects = () => {
                 <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
                   <Inbox className="h-8 w-8 text-muted-foreground" />
                 </div>
-                <h3 className="font-medium text-lg mb-2">No projects yet</h3>
+                <h3 className="font-medium text-lg mb-2">{t("empty.title")}</h3>
                 <p className="text-muted-foreground mb-6">
-                  Create your first project to start collecting expert opinions.
+                  {t("empty.description")}
                 </p>
                 <Button onClick={() => setCreateModalOpen(true)} className="gap-2">
                   <Plus className="h-4 w-4" />
-                  Create Your First Project
+                  {t("empty.createFirst")}
                 </Button>
               </motion.div>
             ) : (
@@ -181,28 +183,28 @@ const Projects = () => {
                             <DropdownMenuContent align="end">
                               <DropdownMenuItem asChild>
                                 <Link to={`/projects/${project.id}`}>
-                                  View Project
+                                  {t("dropdown.viewProject")}
                                 </Link>
                               </DropdownMenuItem>
                               {project.role === 'admin' && (
                                 <>
-                                  <DropdownMenuItem 
+                                  <DropdownMenuItem
                                     onClick={() => {
                                       setSelectedProject(project);
                                       setInviteModalOpen(true);
                                     }}
                                   >
-                                    Invite Expert
+                                    {t("dropdown.inviteExpert")}
                                   </DropdownMenuItem>
                                   <DropdownMenuSeparator />
-                                  <DropdownMenuItem 
+                                  <DropdownMenuItem
                                     onClick={() => {
                                       setSelectedProject(project);
                                       setDeleteModalOpen(true);
                                     }}
                                     className="text-destructive"
                                   >
-                                    Delete Project
+                                    {t("dropdown.deleteProject")}
                                   </DropdownMenuItem>
                                 </>
                               )}
@@ -211,23 +213,23 @@ const Projects = () => {
                         </div>
                         
                         <p className="text-sm text-muted-foreground mb-4 line-clamp-2 min-h-[2.5rem]">
-                          {project.description || "No description"}
+                          {project.description || t("card.noDescription")}
                         </p>
-                        
+
                         <div className="text-xs text-muted-foreground mb-4 font-mono bg-muted px-2 py-1 rounded">
-                          Scale: {project.scale_min} — {project.scale_max} {project.scale_unit}
+                          {t("card.scale")}: {project.scale_min} — {project.scale_max} {project.scale_unit}
                         </div>
-                        
+
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2 text-sm text-muted-foreground">
                             <Users className="h-4 w-4" />
-                            <span>{project.member_count} experts</span>
+                            <span>{project.member_count} {t("card.experts")}</span>
                           </div>
                           <Badge variant={project.role === 'admin' ? 'default' : 'secondary'}>
                             {project.role === 'admin' ? (
-                              <><Key className="h-3 w-3 mr-1" /> Admin</>
+                              <><Key className="h-3 w-3 mr-1" /> {t("roles.admin")}</>
                             ) : (
-                              'Expert'
+                              t("roles.expert")
                             )}
                           </Badge>
                         </div>
@@ -249,15 +251,15 @@ const Projects = () => {
                 <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
                   <Mail className="h-8 w-8 text-muted-foreground" />
                 </div>
-                <h3 className="font-medium text-lg mb-2">No pending invitations</h3>
+                <h3 className="font-medium text-lg mb-2">{t("invitations.empty.title")}</h3>
                 <p className="text-muted-foreground">
-                  When someone invites you to a project, it will appear here.
+                  {t("invitations.empty.description")}
                 </p>
               </motion.div>
             ) : (
               <div className="space-y-4 max-w-2xl">
                 <p className="text-muted-foreground">
-                  You have {invitations.length} pending invitation{invitations.length > 1 ? 's' : ''}
+                  {t("invitations.pending", { count: invitations.length })}
                 </p>
                 
                 {invitations.map((invitation, index) => (
@@ -278,43 +280,43 @@ const Projects = () => {
                             <h3 className="font-medium text-lg mb-1">
                               {invitation.project_name}
                             </h3>
-                            
+
                             <p className="text-sm text-muted-foreground mb-3">
-                              Invited by: {invitation.inviter_first_name} ({invitation.inviter_email})
+                              {t("invitations.invitedBy")}: {invitation.inviter_first_name} ({invitation.inviter_email})
                             </p>
-                            
+
                             {invitation.project_description && (
                               <p className="text-sm text-muted-foreground mb-3 italic">
                                 "{invitation.project_description}"
                               </p>
                             )}
-                            
+
                             <div className="flex flex-wrap gap-4 text-xs text-muted-foreground mb-4">
                               <span className="font-mono bg-muted px-2 py-1 rounded">
-                                Scale: {invitation.project_scale_min} — {invitation.project_scale_max} {invitation.project_scale_unit}
+                                {t("card.scale")}: {invitation.project_scale_min} — {invitation.project_scale_max} {invitation.project_scale_unit}
                               </span>
                               <span className="flex items-center gap-1">
                                 <Users className="h-3 w-3" />
-                                {invitation.current_experts_count} experts
+                                {invitation.current_experts_count} {t("card.experts")}
                               </span>
                               <span>
-                                Invited: {new Date(invitation.invited_at).toLocaleDateString()}
+                                {t("invitations.invitedDate")}: {new Date(invitation.invited_at).toLocaleDateString()}
                               </span>
                             </div>
-                            
+
                             <div className="flex gap-3">
                               <Button
                                 variant="outline"
                                 size="sm"
                                 onClick={() => handleDeclineInvitation(invitation.id)}
                               >
-                                Decline
+                                {t("buttons.decline")}
                               </Button>
                               <Button
                                 size="sm"
                                 onClick={() => handleAcceptInvitation(invitation.id)}
                               >
-                                Accept Invitation
+                                {t("buttons.accept")}
                               </Button>
                             </div>
                           </div>
@@ -345,12 +347,12 @@ const Projects = () => {
       <DeleteConfirmModal
         open={deleteModalOpen}
         onOpenChange={setDeleteModalOpen}
-        title="Delete Project?"
-        description={`Are you sure you want to delete "${selectedProject?.name}"?`}
+        title={t("deleteModal.title")}
+        description={t("deleteModal.description", { name: selectedProject?.name })}
         details={[
-          "All expert opinions",
-          "All calculation results",
-          "All invitations"
+          t("deleteModal.details.opinions"),
+          t("deleteModal.details.results"),
+          t("deleteModal.details.invitations")
         ]}
         onConfirm={handleDeleteProject}
       />

@@ -1,0 +1,36 @@
+{
+  "nav": {
+    "about": "O metodě",
+    "signIn": "Přihlásit se",
+    "signOut": "Odhlásit se",
+    "getStarted": "Začít",
+    "projects": "Projekty",
+    "profile": "Profil"
+  },
+  "footer": {
+    "description": "Best Compromise Mean — vědecký přístup k agregaci expertních názorů pomocí fuzzy trojúhelníkových čísel.",
+    "product": "Produkt",
+    "methodAuthors": "Autoři metody",
+    "copyright": "Všechna práva vyhrazena.",
+    "methodBy": "Metoda BeCoMe od České zemědělské univerzity v Praze"
+  },
+  "common": {
+    "loading": "Načítání...",
+    "error": "Chyba",
+    "success": "Úspěch",
+    "cancel": "Zrušit",
+    "save": "Uložit",
+    "delete": "Smazat",
+    "edit": "Upravit",
+    "create": "Vytvořit",
+    "back": "Zpět",
+    "next": "Další",
+    "submit": "Odeslat",
+    "close": "Zavřít"
+  },
+  "notFound": {
+    "title": "Stránka nenalezena",
+    "description": "Stránka, kterou hledáte, neexistuje nebo byla přesunuta.",
+    "backHome": "Zpět na úvodní stránku"
+  }
+}

@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
+import { useTranslation } from "react-i18next";
 import { ArrowRight, BookOpen, Users, Calculator, BarChart3 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,6 +15,8 @@ const fadeInUp = {
 };
 
 const About = () => {
+  const { t } = useTranslation("about");
+
   useEffect(() => {
     window.scrollTo(0, 0);
   }, []);
@@ -32,12 +35,9 @@ const About = () => {
             className="max-w-3xl"
           >
             <h1 className="font-display text-3xl md:text-5xl font-normal mb-4">
-              About BeCoMe
+              {t("hero.title")}
             </h1>
-            <p className="text-lg text-muted-foreground">
-              Best Compromise Mean — a scientific method for optimal group
-              decision-making under fuzzy uncertainty.
-            </p>
+            <p className="text-lg text-muted-foreground">{t("hero.subtitle")}</p>
           </motion.div>
         </div>
       </section>
@@ -48,21 +48,14 @@ const About = () => {
           <div className="max-w-3xl">
             <motion.div {...fadeInUp}>
               <h2 className="font-display text-2xl md:text-3xl font-normal mb-6">
-                The Challenge
+                {t("challenge.title")}
               </h2>
               <div className="prose prose-neutral dark:prose-invert">
                 <p className="text-muted-foreground leading-relaxed mb-4">
-                  Real-world systems are influenced by many ambiguous
-                  circumstances, which complicates planning, modelling,
-                  prediction, and decision-making. Decision-making procedures
-                  often rely on the opinions of experts who express their
-                  standpoints from their own perspective.
+                  {t("challenge.paragraph1")}
                 </p>
                 <p className="text-muted-foreground leading-relaxed mb-4">
-                  Depending on the structure of expert teams, experts' opinions
-                  can vary broadly or may even contradict each other. Finding
-                  the best possible compromise of experts' opinions is a basic
-                  need in such situations.
+                  {t("challenge.paragraph2")}
                 </p>
               </div>
             </motion.div>
@@ -81,21 +74,14 @@ const About = () => {
               transition={{ duration: 0.5 }}
             >
               <h2 className="font-display text-2xl md:text-3xl font-normal mb-6">
-                The BeCoMe Method
+                {t("method.title")}
               </h2>
               <div className="prose prose-neutral dark:prose-invert">
                 <p className="text-muted-foreground leading-relaxed mb-4">
-                  Over many years of research at Czech University of Life
-                  Sciences in Prague (CZU), researchers developed the unique
-                  BeCoMe (Best-Compromise-Mean) method for determining the
-                  optimum group decision, which corresponds to the best
-                  compromise/agreement of all experts' opinions.
+                  {t("method.paragraph1")}
                 </p>
                 <p className="text-muted-foreground leading-relaxed">
-                  The optimum decision is a result of a computationally complex
-                  fuzzy set mathematical model based on minimizing entropy. This
-                  approach ensures that the final decision represents the most
-                  balanced compromise among all expert viewpoints.
+                  {t("method.paragraph2")}
                 </p>
               </div>
             </motion.div>
@@ -114,12 +100,10 @@ const About = () => {
             className="mb-10"
           >
             <h2 className="font-display text-2xl md:text-3xl font-normal mb-4">
-              How Experts Express Their Opinions
+              {t("expertOpinions.title")}
             </h2>
             <p className="text-muted-foreground max-w-3xl">
-              Experts answer the raised question and assess a certain
-              quantitative parameter of the proposed solution. They can express
-              their responses in three ways:
+              {t("expertOpinions.subtitle")}
             </p>
           </motion.div>
 
@@ -127,28 +111,25 @@ const About = () => {
             {[
               {
                 icon: Calculator,
-                title: "Crisp Number",
-                description:
-                  "A single precise value when the expert is confident about their estimate.",
-                example: "Example: 50 billion CZK",
+                titleKey: "expertOpinions.crisp.title",
+                descriptionKey: "expertOpinions.crisp.description",
+                exampleKey: "expertOpinions.crisp.example",
               },
               {
                 icon: BarChart3,
-                title: "Fuzzy Interval",
-                description:
-                  "A triangular membership function with three values: best proposal, lower limit, and upper limit.",
-                example: "Example: (40, 60, 80) — pessimistic, most likely, optimistic",
+                titleKey: "expertOpinions.fuzzy.title",
+                descriptionKey: "expertOpinions.fuzzy.description",
+                exampleKey: "expertOpinions.fuzzy.example",
               },
               {
                 icon: Users,
-                title: "Likert Scale",
-                description:
-                  "Linguistic terms mapped to numeric values: Strongly disagree (0), Rather disagree (25), Neutral (50), Rather agree (75), Strongly agree (100).",
-                example: "Example: Rather agree = 75",
+                titleKey: "expertOpinions.likert.title",
+                descriptionKey: "expertOpinions.likert.description",
+                exampleKey: "expertOpinions.likert.example",
               },
             ].map((method, index) => (
               <motion.div
-                key={method.title}
+                key={method.titleKey}
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
@@ -159,14 +140,14 @@ const About = () => {
                     <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mb-3">
                       <method.icon className="h-5 w-5 text-primary" />
                     </div>
-                    <CardTitle className="text-lg">{method.title}</CardTitle>
+                    <CardTitle className="text-lg">{t(method.titleKey)}</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <p className="text-sm text-muted-foreground mb-3">
-                      {method.description}
+                      {t(method.descriptionKey)}
                     </p>
                     <p className="text-xs font-mono text-muted-foreground/70">
-                      {method.example}
+                      {t(method.exampleKey)}
                     </p>
                   </CardContent>
                 </Card>
@@ -187,7 +168,7 @@ const About = () => {
               transition={{ duration: 0.5 }}
             >
               <h2 className="font-display text-2xl md:text-3xl font-normal mb-6">
-                Results
+                {t("results.title")}
               </h2>
               <div className="space-y-4">
                 <div className="flex items-start gap-4">
@@ -195,11 +176,11 @@ const About = () => {
                     1
                   </div>
                   <div>
-                    <h3 className="font-medium mb-1">Best Compromise</h3>
+                    <h3 className="font-medium mb-1">
+                      {t("results.bestCompromise.title")}
+                    </h3>
                     <p className="text-sm text-muted-foreground">
-                      The optimal value that represents the best agreement among
-                      all expert opinions, calculated through fuzzy set
-                      mathematics.
+                      {t("results.bestCompromise.description")}
                     </p>
                   </div>
                 </div>
@@ -208,11 +189,11 @@ const About = () => {
                     2
                   </div>
                   <div>
-                    <h3 className="font-medium mb-1">Maximum Error of Estimate</h3>
+                    <h3 className="font-medium mb-1">
+                      {t("results.maxError.title")}
+                    </h3>
                     <p className="text-sm text-muted-foreground">
-                      A quality metric that indicates the uncertainty level of
-                      the compromise, helping decision-makers understand the
-                      confidence in the result.
+                      {t("results.maxError.description")}
                     </p>
                   </div>
                 </div>
@@ -233,29 +214,28 @@ const About = () => {
               transition={{ duration: 0.5 }}
             >
               <h2 className="font-display text-2xl md:text-3xl font-normal mb-6">
-                Applications
+                {t("applications.title")}
               </h2>
               <p className="text-muted-foreground leading-relaxed mb-6">
-                The BeCoMe method is a unique, helpful, and easily available
-                instrument in many decision-making situations:
+                {t("applications.subtitle")}
               </p>
               <ul className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {[
-                  "State security decisions",
-                  "Public health policy",
-                  "Investment planning",
-                  "Flood prevention",
-                  "Energy self-sufficiency",
-                  "IT contract evaluation",
-                  "Budget allocation",
-                  "Risk assessment",
-                ].map((app) => (
+                  "applications.items.stateSecurity",
+                  "applications.items.publicHealth",
+                  "applications.items.investment",
+                  "applications.items.floods",
+                  "applications.items.energy",
+                  "applications.items.itContracts",
+                  "applications.items.budget",
+                  "applications.items.risk",
+                ].map((key) => (
                   <li
-                    key={app}
+                    key={key}
                     className="flex items-center gap-2 text-muted-foreground"
                   >
                     <div className="w-1.5 h-1.5 rounded-full bg-primary" />
-                    {app}
+                    {t(key)}
                   </li>
                 ))}
               </ul>
@@ -274,7 +254,7 @@ const About = () => {
             transition={{ duration: 0.5 }}
           >
             <h2 className="font-display text-2xl md:text-3xl font-normal mb-6">
-              Authors
+              {t("authors.title")}
             </h2>
             <Card className="max-w-xl">
               <CardContent className="pt-6">
@@ -283,23 +263,21 @@ const About = () => {
                     <BookOpen className="h-6 w-6 text-muted-foreground" />
                   </div>
                   <div>
-                    <p className="font-medium">
-                      Prof. Ing. Ivan Vrana, DrSc.
-                    </p>
+                    <p className="font-medium">Prof. Ing. Ivan Vrana, DrSc.</p>
                     <p className="font-medium">Ing. Jan Tyrychtr, PhD.</p>
                     <p className="text-sm text-muted-foreground mt-2">
-                      Department of Information Engineering
+                      {t("authors.department")}
                       <br />
-                      Faculty of Economics and Management
+                      {t("authors.faculty")}
                       <br />
-                      Czech University of Life Sciences Prague
+                      {t("authors.university")}
                     </p>
                   </div>
                 </div>
                 <div className="mt-6 pt-4 border-t">
                   <p className="text-xs text-muted-foreground">
-                    <strong>Citation:</strong> Vrana, I., Tyrychtr, J. (2020).
-                    BeCoMe-FuzzyDecisionTool, CZU Prague.
+                    <strong>{t("authors.citation")}</strong>{" "}
+                    {t("authors.citationText")}
                   </p>
                 </div>
               </CardContent>
@@ -312,14 +290,14 @@ const About = () => {
       <section className="py-16 bg-primary text-primary-foreground">
         <div className="container mx-auto px-6 text-center">
           <h2 className="font-display text-2xl md:text-3xl mb-4">
-            See BeCoMe in Action
+            {t("cta.title")}
           </h2>
           <p className="text-primary-foreground/80 mb-8 max-w-xl mx-auto">
-            Explore real-world case studies or start your own project.
+            {t("cta.subtitle")}
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Button variant="secondary" size="lg" asChild>
-              <Link to="/">View Case Studies</Link>
+              <Link to="/">{t("cta.viewCaseStudies")}</Link>
             </Button>
             <Button
               variant="outline"
@@ -328,7 +306,7 @@ const About = () => {
               asChild
             >
               <Link to="/register">
-                Start Your Project
+                {t("cta.startProject")}
                 <ArrowRight className="h-4 w-4" />
               </Link>
             </Button>

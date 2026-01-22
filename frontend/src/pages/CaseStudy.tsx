@@ -1,18 +1,28 @@
 import { useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { ArrowLeft, Users, Target, BarChart3, Info, AlertTriangle } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import {
+  ArrowLeft,
+  Users,
+  Target,
+  BarChart3,
+  Info,
+  AlertTriangle,
+} from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Navbar } from "@/components/layout/Navbar";
 import {
-  getCaseStudyById,
-  getLikertLabel,
-} from "@/data/caseStudies";
+  useLocalizedCaseStudyById,
+  useLocalizedLikertLabel,
+} from "@/hooks/useLocalizedCaseStudies";
 
 const CaseStudy = () => {
+  const { t } = useTranslation("caseStudies");
+  const { t: tCommon } = useTranslation();
   const { id } = useParams<{ id: string }>();
-  const caseStudy = getCaseStudyById(id || "");
+  const caseStudy = useLocalizedCaseStudyById(id || "");
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -23,11 +33,13 @@ const CaseStudy = () => {
       <div className="min-h-screen bg-background">
         <Navbar />
         <div className="container mx-auto px-6 py-20 text-center">
-          <h1 className="text-2xl font-medium mb-4">Case Study Not Found</h1>
+          <h1 className="text-2xl font-medium mb-4">
+            {tCommon("notFound.title")}
+          </h1>
           <Button variant="outline" asChild>
             <Link to="/">
               <ArrowLeft className="mr-2 h-4 w-4" />
-              Back to Home
+              {tCommon("notFound.backHome")}
             </Link>
           </Button>
         </div>
@@ -49,7 +61,7 @@ const CaseStudy = () => {
             className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-6 transition-colors"
           >
             <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to Home
+            {tCommon("notFound.backHome")}
           </Link>
 
           <motion.div
@@ -63,7 +75,9 @@ const CaseStudy = () => {
               </div>
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Users className="h-4 w-4" />
-                <span className="font-mono">{caseStudy.experts} experts</span>
+                <span className="font-mono">
+                  {caseStudy.experts} {t("common.experts")}
+                </span>
                 <span className="mx-2">•</span>
                 <span className="capitalize">{caseStudy.dataType} scale</span>
               </div>
@@ -103,7 +117,7 @@ const CaseStudy = () => {
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2 text-lg">
                       <Target className="h-5 w-5" />
-                      Research Question
+                      {t("common.question")}
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
@@ -130,13 +144,15 @@ const CaseStudy = () => {
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2 text-lg">
                       <Info className="h-5 w-5" />
-                      Context
+                      {t("common.context")}
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <p className="text-muted-foreground">{caseStudy.context}</p>
                     <div className="pt-4 border-t">
-                      <h4 className="font-medium mb-2">Methodology</h4>
+                      <h4 className="font-medium mb-2">
+                        {t("common.methodology")}
+                      </h4>
                       <p className="text-sm text-muted-foreground">
                         {caseStudy.methodology}
                       </p>
@@ -155,7 +171,7 @@ const CaseStudy = () => {
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2 text-lg">
                       <Users className="h-5 w-5" />
-                      Expert Opinions
+                      {t("common.expertOpinions")}
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
@@ -164,24 +180,24 @@ const CaseStudy = () => {
                         <thead>
                           <tr className="border-b">
                             <th className="text-left py-3 px-2 font-medium">
-                              Expert Role
+                              {t("common.role")}
                             </th>
                             {caseStudy.dataType === "interval" ? (
                               <>
                                 <th className="text-right py-3 px-2 font-medium">
-                                  Lower
+                                  {t("common.lowerLimit")}
                                 </th>
                                 <th className="text-right py-3 px-2 font-medium">
-                                  Best
+                                  {t("common.bestProposal")}
                                 </th>
                                 <th className="text-right py-3 px-2 font-medium">
-                                  Upper
+                                  {t("common.upperLimit")}
                                 </th>
                               </>
                             ) : (
                               <>
                                 <th className="text-right py-3 px-2 font-medium">
-                                  Value
+                                  {t("common.value")}
                                 </th>
                                 <th className="text-left py-3 px-2 font-medium">
                                   Label
@@ -210,18 +226,11 @@ const CaseStudy = () => {
                                 </tr>
                               ))
                             : caseStudy.opinions.map((opinion, index) => (
-                                <tr
+                                <LikertRow
                                   key={`${opinion.role}-${index}`}
-                                  className="border-b last:border-0 hover:bg-secondary/50 transition-colors"
-                                >
-                                  <td className="py-3 px-2">{opinion.role}</td>
-                                  <td className="text-right py-3 px-2 font-mono font-medium">
-                                    {opinion.value}
-                                  </td>
-                                  <td className="py-3 px-2 text-muted-foreground">
-                                    {getLikertLabel(opinion.value)}
-                                  </td>
-                                </tr>
+                                  role={opinion.role}
+                                  value={opinion.value}
+                                />
                               ))}
                         </tbody>
                       </table>
@@ -243,13 +252,13 @@ const CaseStudy = () => {
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2 text-lg">
                       <BarChart3 className="h-5 w-5" />
-                      BeCoMe Result
+                      {t("common.results")}
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-6">
                     <div>
                       <div className="text-sm opacity-80 mb-1">
-                        Best Compromise
+                        {t("common.bestCompromise")}
                       </div>
                       <div className="text-4xl font-mono font-bold">
                         {caseStudy.result.bestCompromise}
@@ -261,7 +270,7 @@ const CaseStudy = () => {
 
                     <div>
                       <div className="text-sm opacity-80 mb-1">
-                        Maximum Error
+                        {t("common.maxError")}
                       </div>
                       <div className="text-2xl font-mono">
                         ±{caseStudy.result.maxError}
@@ -272,21 +281,18 @@ const CaseStudy = () => {
                     </div>
 
                     {caseStudy.dataType !== "interval" && (
-                      <div>
-                        <div className="text-sm opacity-80 mb-1">
-                          Likert Interpretation
-                        </div>
-                        <div className="text-xl font-medium">
-                          {getLikertLabel(caseStudy.result.bestCompromise)}
-                        </div>
-                      </div>
+                      <LikertInterpretation
+                        value={caseStudy.result.bestCompromise}
+                      />
                     )}
                   </CardContent>
                 </Card>
 
                 <Card className="mt-6">
                   <CardHeader>
-                    <CardTitle className="text-lg">Interpretation</CardTitle>
+                    <CardTitle className="text-lg">
+                      {t("common.interpretation")}
+                    </CardTitle>
                   </CardHeader>
                   <CardContent>
                     <p className="text-sm text-muted-foreground leading-relaxed">
@@ -369,12 +375,34 @@ const CaseStudy = () => {
             decision-making challenges.
           </p>
           <Button size="lg" asChild>
-            <Link to="/register">Get Started Free</Link>
+            <Link to="/register">{tCommon("nav.getStarted")}</Link>
           </Button>
         </div>
       </section>
     </div>
   );
 };
+
+function LikertRow({ role, value }: { role: string; value: number }) {
+  const label = useLocalizedLikertLabel(value);
+  return (
+    <tr className="border-b last:border-0 hover:bg-secondary/50 transition-colors">
+      <td className="py-3 px-2">{role}</td>
+      <td className="text-right py-3 px-2 font-mono font-medium">{value}</td>
+      <td className="py-3 px-2 text-muted-foreground">{label}</td>
+    </tr>
+  );
+}
+
+function LikertInterpretation({ value }: { value: number }) {
+  const { t } = useTranslation("caseStudies");
+  const label = useLocalizedLikertLabel(value);
+  return (
+    <div>
+      <div className="text-sm opacity-80 mb-1">Likert {t("common.interpretation")}</div>
+      <div className="text-xl font-medium">{label}</div>
+    </div>
+  );
+}
 
 export default CaseStudy;

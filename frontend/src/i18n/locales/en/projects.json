@@ -1,0 +1,129 @@
+{
+  "tabs": {
+    "myProjects": "My Projects",
+    "invitations": "Invitations"
+  },
+  "buttons": {
+    "newProject": "New Project",
+    "decline": "Decline",
+    "accept": "Accept Invitation"
+  },
+  "empty": {
+    "title": "No projects yet",
+    "description": "Create your first project to start collecting expert opinions.",
+    "createFirst": "Create Your First Project"
+  },
+  "dropdown": {
+    "viewProject": "View Project",
+    "inviteExpert": "Invite Expert",
+    "deleteProject": "Delete Project"
+  },
+  "card": {
+    "noDescription": "No description",
+    "scale": "Scale",
+    "experts": "experts"
+  },
+  "roles": {
+    "admin": "Admin",
+    "expert": "Expert"
+  },
+  "invitations": {
+    "empty": {
+      "title": "No pending invitations",
+      "description": "When someone invites you to a project, it will appear here."
+    },
+    "pending": "You have {{count}} pending invitation(s)",
+    "invitedBy": "Invited by",
+    "invitedDate": "Invited"
+  },
+  "deleteModal": {
+    "title": "Delete Project?",
+    "description": "Are you sure you want to delete \"{{name}}\"?",
+    "details": {
+      "opinions": "All expert opinions",
+      "results": "All calculation results",
+      "invitations": "All invitations"
+    }
+  },
+  "toast": {
+    "error": "Error",
+    "loadFailed": "Failed to load projects",
+    "invitationAccepted": "Invitation accepted",
+    "invitationDeclined": "Invitation declined",
+    "projectDeleted": "Project deleted",
+    "acceptFailed": "Failed to accept invitation",
+    "declineFailed": "Failed to decline invitation",
+    "deleteFailed": "Failed to delete project"
+  },
+  "detail": {
+    "backToProjects": "Back to Projects",
+    "experts": "Experts",
+    "responses": "responses",
+    "inviteExpert": "Invite Expert",
+    "deleteProject": "Delete Project",
+    "results": "Results",
+    "noResults": "Not enough responses to calculate results.",
+    "bestCompromise": "Best Compromise",
+    "arithmeticMean": "Arithmetic Mean",
+    "median": "Median",
+    "maxError": "Max Error",
+    "expertOpinions": "Expert Opinions",
+    "noOpinions": "No expert opinions yet.",
+    "pending": "Pending",
+    "submitted": "Submitted"
+  },
+  "create": {
+    "title": "Create New Project",
+    "name": "Project Name",
+    "namePlaceholder": "Enter project name",
+    "description": "Description",
+    "descriptionPlaceholder": "Describe your project...",
+    "question": "Question for Experts",
+    "questionPlaceholder": "What question should experts answer?",
+    "scaleSettings": "Scale Settings",
+    "scaleMin": "Minimum",
+    "scaleMax": "Maximum",
+    "scaleUnit": "Unit",
+    "scaleUnitPlaceholder": "e.g., billion CZK, %, points",
+    "cancel": "Cancel",
+    "create": "Create Project",
+    "creating": "Creating...",
+    "successTitle": "Project created",
+    "successMessage": "Your project has been created successfully.",
+    "errorTitle": "Error",
+    "validation": {
+      "nameRequired": "Name is required",
+      "unitRequired": "Unit is required",
+      "maxGreaterMin": "Max must be greater than min"
+    }
+  },
+  "invite": {
+    "title": "Invite Expert",
+    "inviteTo": "Invite an expert to",
+    "email": "Email",
+    "emailPlaceholder": "expert@example.com",
+    "info": "The user must already have an account. They will see the invitation in their \"Invitations\" tab.",
+    "cancel": "Cancel",
+    "invite": "Send Invitation",
+    "inviting": "Sending...",
+    "inviteAnother": "Invite Another",
+    "done": "Done",
+    "successTitle": "Invitation sent!",
+    "successMessage": "Expert has been invited to the project.",
+    "errorTitle": "Invitation failed",
+    "errorMessage": "Failed to send invitation",
+    "validation": {
+      "emailInvalid": "Invalid email address"
+    }
+  },
+  "delete": {
+    "title": "Delete Project",
+    "message": "Are you sure you want to delete this project? This action cannot be undone.",
+    "cancel": "Cancel",
+    "confirm": "Delete",
+    "deleting": "Deleting...",
+    "successTitle": "Project deleted",
+    "successMessage": "The project has been deleted.",
+    "errorTitle": "Error"
+  }
+}

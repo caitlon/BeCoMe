@@ -1,0 +1,42 @@
+{
+  "editProfile": {
+    "title": "Edit Profile",
+    "firstName": "First Name",
+    "lastName": "Last Name",
+    "photoUrl": "Photo URL",
+    "save": "Save Changes"
+  },
+  "changePassword": {
+    "title": "Change Password",
+    "currentPassword": "Current Password",
+    "newPassword": "New Password",
+    "confirmPassword": "Confirm New Password",
+    "update": "Update Password"
+  },
+  "dangerZone": {
+    "title": "Danger Zone",
+    "warning": "Once you delete your account, there is no going back. Please be certain.",
+    "deleteButton": "Delete Account"
+  },
+  "deleteModal": {
+    "title": "Delete Account?",
+    "description": "Are you sure you want to delete your account?",
+    "details": {
+      "projects": "All your projects will be deleted",
+      "opinions": "All your opinions will be removed",
+      "noUndo": "This action cannot be undone"
+    },
+    "confirm": "Delete My Account"
+  },
+  "toast": {
+    "error": "Error",
+    "profileUpdated": "Profile updated",
+    "updateFailed": "Failed to update profile",
+    "passwordsNoMatch": "Passwords do not match",
+    "passwordMin": "Password must be at least 8 characters",
+    "passwordUpdated": "Password updated",
+    "passwordFailed": "Failed to change password",
+    "accountDeleted": "Account deleted",
+    "deleteFailed": "Failed to delete account"
+  }
+}

@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { motion } from "framer-motion";
+import { useTranslation } from "react-i18next";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,16 +14,16 @@ import { Navbar } from "@/components/layout/Navbar";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 
-const registerSchema = z.object({
-  email: z.string().email("Invalid email address"),
-  password: z.string().min(8, "Password must be at least 8 characters"),
-  firstName: z.string().min(1, "First name is required").max(100),
-  lastName: z.string().max(100).optional(),
-});
+type RegisterFormData = {
+  email: string;
+  password: string;
+  firstName: string;
+  lastName?: string;
+};
 
-type RegisterFormData = z.infer<typeof registerSchema>;
-
-const getPasswordStrength = (password: string): { level: number; label: string } => {
+const getPasswordStrength = (
+  password: string
+): { level: number; label: string } => {
   let strength = 0;
   if (password.length >= 8) strength++;
   if (password.length >= 12) strength++;
@@ -36,11 +37,23 @@ const getPasswordStrength = (password: string): { level: number; label: string }
 };
 
 const Register = () => {
+  const { t } = useTranslation("auth");
   const navigate = useNavigate();
   const { register: registerUser } = useAuth();
   const { toast } = useToast();
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+
+  const registerSchema = useMemo(
+    () =>
+      z.object({
+        email: z.string().email(t("validation.emailInvalid")),
+        password: z.string().min(8, t("validation.passwordMin")),
+        firstName: z.string().min(1, t("validation.firstNameRequired")).max(100),
+        lastName: z.string().max(100).optional(),
+      }),
+    [t]
+  );
 
   const {
     register,
@@ -57,16 +70,21 @@ const Register = () => {
   const onSubmit = async (data: RegisterFormData) => {
     setIsLoading(true);
     try {
-      await registerUser(data.email, data.password, data.firstName, data.lastName);
+      await registerUser(
+        data.email,
+        data.password,
+        data.firstName,
+        data.lastName
+      );
       toast({
-        title: "Account created",
-        description: "Welcome to BeCoMe!",
+        title: t("register.successTitle"),
+        description: t("register.successMessage"),
       });
       navigate("/projects");
     } catch (error) {
       toast({
-        title: "Registration failed",
-        description: error instanceof Error ? error.message : "Please try again",
+        title: t("register.errorTitle"),
+        description: error instanceof Error ? error.message : t("common.error"),
         variant: "destructive",
       });
     } finally {
@@ -77,7 +95,7 @@ const Register = () => {
   return (
     <div className="min-h-screen flex flex-col">
       <Navbar />
-      
+
       <div className="flex-1 flex items-center justify-center py-12 px-6">
         <motion.div
           className="w-full max-w-md"
@@ -88,41 +106,49 @@ const Register = () => {
           <Card className="border-border/50">
             <CardHeader className="text-center pb-2">
               <CardTitle className="font-display text-2xl font-normal">
-                Create Account
+                {t("register.title")}
               </CardTitle>
             </CardHeader>
             <CardContent className="pt-6">
               <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="email">Email *</Label>
+                  <Label htmlFor="email">{t("register.email")} *</Label>
                   <Input
                     id="email"
                     type="email"
-                    placeholder="you@example.com"
+                    placeholder={t("register.emailPlaceholder")}
                     {...register("email")}
                     className={errors.email ? "border-destructive" : ""}
                   />
                   {errors.email && (
-                    <p className="text-sm text-destructive">{errors.email.message}</p>
+                    <p className="text-sm text-destructive">
+                      {errors.email.message}
+                    </p>
                   )}
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="password">Password *</Label>
+                  <Label htmlFor="password">{t("register.password")} *</Label>
                   <div className="relative">
                     <Input
                       id="password"
                       type={showPassword ? "text" : "password"}
-                      placeholder="Min. 8 characters"
+                      placeholder={t("register.passwordPlaceholder")}
                       {...register("password")}
-                      className={errors.password ? "border-destructive pr-10" : "pr-10"}
+                      className={
+                        errors.password ? "border-destructive pr-10" : "pr-10"
+                      }
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                     >
-                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      {showPassword ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
                     </button>
                   </div>
                   {password && (
@@ -136,8 +162,8 @@ const Register = () => {
                                 ? passwordStrength.level < 2
                                   ? "bg-destructive"
                                   : passwordStrength.level < 4
-                                  ? "bg-warning"
-                                  : "bg-success"
+                                    ? "bg-warning"
+                                    : "bg-success"
                                 : "bg-border"
                             }`}
                           />
@@ -149,28 +175,32 @@ const Register = () => {
                     </div>
                   )}
                   {errors.password && (
-                    <p className="text-sm text-destructive">{errors.password.message}</p>
+                    <p className="text-sm text-destructive">
+                      {errors.password.message}
+                    </p>
                   )}
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="firstName">First Name *</Label>
+                  <Label htmlFor="firstName">{t("register.firstName")} *</Label>
                   <Input
                     id="firstName"
-                    placeholder="John"
+                    placeholder={t("register.firstNamePlaceholder")}
                     {...register("firstName")}
                     className={errors.firstName ? "border-destructive" : ""}
                   />
                   {errors.firstName && (
-                    <p className="text-sm text-destructive">{errors.firstName.message}</p>
+                    <p className="text-sm text-destructive">
+                      {errors.firstName.message}
+                    </p>
                   )}
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="lastName">Last Name</Label>
+                  <Label htmlFor="lastName">{t("register.lastName")}</Label>
                   <Input
                     id="lastName"
-                    placeholder="Doe (optional)"
+                    placeholder={t("register.lastNamePlaceholder")}
                     {...register("lastName")}
                   />
                 </div>
@@ -179,18 +209,18 @@ const Register = () => {
                   {isLoading ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Creating account...
+                      {t("register.creatingAccount")}
                     </>
                   ) : (
-                    "Create Account"
+                    t("register.createAccount")
                   )}
                 </Button>
               </form>
 
               <p className="text-center text-sm text-muted-foreground mt-6">
-                Already have an account?{" "}
+                {t("register.haveAccount")}{" "}
                 <Link to="/login" className="text-foreground hover:underline">
-                  Sign in
+                  {t("register.signIn")}
                 </Link>
               </p>
             </CardContent>
