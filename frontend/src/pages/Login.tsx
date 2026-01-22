@@ -42,6 +42,7 @@ const Login = () => {
     formState: { errors },
   } = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
+    mode: "onTouched",
   });
 
   const onSubmit = async (data: LoginFormData) => {

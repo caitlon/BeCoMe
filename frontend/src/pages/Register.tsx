@@ -62,6 +62,7 @@ const Register = () => {
     formState: { errors },
   } = useForm<RegisterFormData>({
     resolver: zodResolver(registerSchema),
+    mode: "onTouched",
   });
 
   const password = watch("password", "");
