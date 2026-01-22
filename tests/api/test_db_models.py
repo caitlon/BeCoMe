@@ -36,6 +36,7 @@ class TestUserModel:
                     "email": "not-an-email",
                     "hashed_password": "hash",
                     "first_name": "Test",
+                    "last_name": "User",
                 }
             )
 
@@ -51,6 +52,7 @@ class TestUserModel:
                 "email": "valid@example.com",
                 "hashed_password": "hash",
                 "first_name": "Test",
+                "last_name": "User",
             }
         )
 
