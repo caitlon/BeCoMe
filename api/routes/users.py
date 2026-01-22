@@ -1,12 +1,14 @@
-"""User management routes: profile, password, account deletion."""
+"""User management routes: profile, password, photo, account deletion."""
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 
 from api.auth.dependencies import CurrentUser
-from api.dependencies import get_user_service
+from api.dependencies import get_storage_service, get_user_service
 from api.schemas import ChangePasswordRequest, UpdateUserRequest, UserResponse
+from api.services.storage.azure_blob_service import AzureBlobStorageService
+from api.services.storage.exceptions import StorageUploadError
 from api.services.user_service import UserService
 
 router = APIRouter(prefix="/api/v1/users", tags=["users"])
@@ -28,6 +30,7 @@ def get_current_user_profile(current_user: CurrentUser) -> UserResponse:
         email=current_user.email,
         first_name=current_user.first_name,
         last_name=current_user.last_name,
+        photo_url=current_user.photo_url,
     )
 
 
@@ -58,6 +61,7 @@ def update_current_user(
         email=updated.email,
         first_name=updated.first_name,
         last_name=updated.last_name,
+        photo_url=updated.photo_url,
     )
 
 
@@ -101,3 +105,101 @@ def delete_current_user(
     :param service: User service
     """
     service.delete_user(current_user)
+
+
+@router.post(
+    "/me/photo",
+    response_model=UserResponse,
+    summary="Upload profile photo",
+    responses={
+        400: {"description": "Invalid file type or file too large"},
+        503: {"description": "Storage service unavailable"},
+    },
+)
+async def upload_photo(
+    current_user: CurrentUser,
+    file: Annotated[UploadFile, File(description="Profile photo (JPEG, PNG, GIF, WebP, max 5MB)")],
+    user_service: Annotated[UserService, Depends(get_user_service)],
+    storage_service: Annotated[AzureBlobStorageService | None, Depends(get_storage_service)],
+) -> UserResponse:
+    """Upload or replace user profile photo.
+
+    :param current_user: Authenticated user
+    :param file: Uploaded image file
+    :param user_service: User service
+    :param storage_service: Storage service (None if not configured)
+    :return: Updated user profile
+    """
+    if storage_service is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Photo upload is not available",
+        )
+
+    # Validate content type
+    if file.content_type not in AzureBlobStorageService.ALLOWED_CONTENT_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid file type. Allowed: JPEG, PNG, GIF, WebP",
+        )
+
+    # Read and validate size
+    content = await file.read()
+    if len(content) > AzureBlobStorageService.MAX_FILE_SIZE_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File too large. Maximum size is 5 MB",
+        )
+
+    # Delete old photo if exists
+    if current_user.photo_url:
+        storage_service.delete_file(current_user.photo_url)
+
+    # Upload new photo
+    try:
+        photo_url = storage_service.upload_file(
+            file_content=content,
+            file_name=file.filename or "photo.jpg",
+            content_type=file.content_type,
+            user_id=str(current_user.id),
+        )
+    except StorageUploadError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Failed to upload photo",
+        )
+
+    # Update user record
+    updated_user = user_service.update_photo_url(current_user, photo_url)
+    return UserResponse(
+        id=str(updated_user.id),
+        email=updated_user.email,
+        first_name=updated_user.first_name,
+        last_name=updated_user.last_name,
+        photo_url=updated_user.photo_url,
+    )
+
+
+@router.delete(
+    "/me/photo",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete profile photo",
+)
+def delete_photo(
+    current_user: CurrentUser,
+    user_service: Annotated[UserService, Depends(get_user_service)],
+    storage_service: Annotated[AzureBlobStorageService | None, Depends(get_storage_service)],
+) -> None:
+    """Remove user profile photo.
+
+    :param current_user: Authenticated user
+    :param user_service: User service
+    :param storage_service: Storage service
+    """
+    if not current_user.photo_url:
+        return
+
+    if storage_service:
+        storage_service.delete_file(current_user.photo_url)
+
+    user_service.update_photo_url(current_user, None)

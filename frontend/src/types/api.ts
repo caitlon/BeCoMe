@@ -5,6 +5,7 @@ export interface User {
   email: string;
   first_name: string;
   last_name: string | null;
+  photo_url: string | null;
   created_at: string;
 }
 
