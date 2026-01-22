@@ -22,7 +22,22 @@ class UserExistsError(ValidationError):
 
 
 class InvalidCredentialsError(BeCoMeAPIError):
-    """Raised when authentication fails."""
+    """Raised when authentication fails.
+
+    :param message: Error message
+    :param email: Email address that was attempted (for logging)
+    :param reason: Failure reason for logging (user_not_found, invalid_password)
+    """
+
+    def __init__(
+        self,
+        message: str = "Invalid credentials",
+        email: str | None = None,
+        reason: str = "unknown",
+    ) -> None:
+        super().__init__(message)
+        self.email = email
+        self.reason = reason
 
 
 # Project-related exceptions

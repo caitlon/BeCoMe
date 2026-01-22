@@ -8,6 +8,7 @@ requires only adding a new entry to EXCEPTION_MAP, not modifying route handlers.
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 
+from api.auth.logging import log_login_failure
 from api.exceptions import (
     BeCoMeAPIError,
     InvalidCredentialsError,
@@ -102,10 +103,13 @@ async def become_api_error_handler(request: Request, exc: BeCoMeAPIError) -> JSO
     """
     status_code, detail = _get_status_and_detail(exc)
 
-    # Special headers for auth errors
+    # Special handling for auth errors
     headers = None
     if isinstance(exc, InvalidCredentialsError):
         headers = {"WWW-Authenticate": "Bearer"}
+        # Log failed authentication attempt
+        if exc.email:
+            log_login_failure(exc.email, exc.reason, request)
 
     return JSONResponse(
         status_code=status_code,

@@ -3,10 +3,12 @@
 from contextlib import suppress
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
 
 from api.auth.dependencies import CurrentUser
+from api.auth.logging import log_account_deletion, log_password_change
 from api.dependencies import get_storage_service, get_user_service
+from api.middleware.rate_limit import RATE_LIMIT_PASSWORD, RATE_LIMIT_UPLOAD, limiter
 from api.schemas import ChangePasswordRequest, UpdateUserRequest, UserResponse
 from api.services.storage.azure_blob_service import AzureBlobStorageService
 from api.services.storage.exceptions import StorageDeleteError, StorageUploadError
@@ -71,24 +73,30 @@ def update_current_user(
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Change current user password",
 )
+@limiter.limit(RATE_LIMIT_PASSWORD)
 def change_password(
+    request: Request,
     current_user: CurrentUser,
-    request: ChangePasswordRequest,
+    data: ChangePasswordRequest,
     service: Annotated[UserService, Depends(get_user_service)],
 ) -> None:
     """Change the authenticated user's password.
 
     InvalidCredentialsError is handled by centralized exception middleware.
+    Rate limited to prevent password guessing attacks.
 
+    :param request: FastAPI request (for rate limiting)
     :param current_user: User from JWT token
-    :param request: Current and new password
+    :param data: Current and new password
     :param service: User service
     """
     service.change_password(
         user=current_user,
-        current_password=request.current_password,
-        new_password=request.new_password,
+        current_password=data.current_password,
+        new_password=data.new_password,
     )
+
+    log_password_change(current_user.id, request)
 
 
 @router.delete(
@@ -97,15 +105,22 @@ def change_password(
     summary="Delete current user account",
 )
 def delete_current_user(
+    request: Request,
     current_user: CurrentUser,
     service: Annotated[UserService, Depends(get_user_service)],
 ) -> None:
     """Delete the authenticated user's account.
 
+    :param request: FastAPI request (for logging)
     :param current_user: User from JWT token
     :param service: User service
     """
+    user_id = current_user.id
+    email = current_user.email
+
     service.delete_user(current_user)
+
+    log_account_deletion(user_id, email, request)
 
 
 @router.post(
@@ -117,7 +132,9 @@ def delete_current_user(
         503: {"description": "Storage service unavailable"},
     },
 )
+@limiter.limit(RATE_LIMIT_UPLOAD)
 async def upload_photo(
+    request: Request,
     current_user: CurrentUser,
     file: Annotated[UploadFile, File(description="Profile photo (JPEG, PNG, GIF, WebP, max 5MB)")],
     user_service: Annotated[UserService, Depends(get_user_service)],
@@ -125,6 +142,9 @@ async def upload_photo(
 ) -> UserResponse:
     """Upload or replace user profile photo.
 
+    Rate limited to prevent storage abuse.
+
+    :param request: FastAPI request (for rate limiting)
     :param current_user: Authenticated user
     :param file: Uploaded image file
     :param user_service: User service

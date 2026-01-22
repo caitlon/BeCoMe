@@ -72,9 +72,17 @@ class UserService(BaseService):
         """
         user = self.get_by_email(email)
         if not user:
-            raise InvalidCredentialsError("Invalid email or password")
+            raise InvalidCredentialsError(
+                "Invalid email or password",
+                email=email,
+                reason="user_not_found",
+            )
         if not verify_password(password, user.hashed_password):
-            raise InvalidCredentialsError("Invalid email or password")
+            raise InvalidCredentialsError(
+                "Invalid email or password",
+                email=email,
+                reason="invalid_password",
+            )
         return user
 
     def update_user(
