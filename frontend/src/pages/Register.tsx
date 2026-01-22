@@ -17,6 +17,7 @@ import { useToast } from "@/hooks/use-toast";
 type RegisterFormData = {
   email: string;
   password: string;
+  confirmPassword: string;
   firstName: string;
   lastName?: string;
 };
@@ -84,29 +85,35 @@ const Register = () => {
 
   const registerSchema = useMemo(
     () =>
-      z.object({
-        email: z
-          .string()
-          .email(t("validation.emailInvalid"))
-          .max(255, t("validation.emailMaxLength")),
-        password: z
-          .string()
-          .min(8, t("passwordRequirements.minLength"))
-          .max(128, t("validation.passwordMaxLength"))
-          .regex(/[A-Z]/, t("passwordRequirements.uppercase"))
-          .regex(/[a-z]/, t("passwordRequirements.lowercase"))
-          .regex(/\d/, t("passwordRequirements.number")),
-        firstName: z
-          .string()
-          .min(1, t("validation.firstNameRequired"))
-          .max(100)
-          .regex(/^[\p{L}\s'-]+$/u, t("validation.nameFormat")),
-        lastName: z
-          .string()
-          .max(100)
-          .regex(/^[\p{L}\s'-]*$/u, t("validation.nameFormat"))
-          .optional(),
-      }),
+      z
+        .object({
+          email: z
+            .string()
+            .email(t("validation.emailInvalid"))
+            .max(255, t("validation.emailMaxLength")),
+          password: z
+            .string()
+            .min(8, t("passwordRequirements.minLength"))
+            .max(128, t("validation.passwordMaxLength"))
+            .regex(/[A-Z]/, t("passwordRequirements.uppercase"))
+            .regex(/[a-z]/, t("passwordRequirements.lowercase"))
+            .regex(/\d/, t("passwordRequirements.number")),
+          confirmPassword: z.string().min(1, t("validation.passwordRequired")),
+          firstName: z
+            .string()
+            .min(1, t("validation.firstNameRequired"))
+            .max(100)
+            .regex(/^[\p{L}\s'-]+$/u, t("validation.nameFormat")),
+          lastName: z
+            .string()
+            .max(100)
+            .regex(/^[\p{L}\s'-]*$/u, t("validation.nameFormat"))
+            .optional(),
+        })
+        .refine((data) => data.password === data.confirmPassword, {
+          message: t("validation.passwordsMatch"),
+          path: ["confirmPassword"],
+        }),
     [t]
   );
 
@@ -253,6 +260,24 @@ const Register = () => {
                   {errors.password && (
                     <p className="text-sm text-destructive">
                       {errors.password.message}
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="confirmPassword">
+                    {t("register.confirmPassword")} *
+                  </Label>
+                  <Input
+                    id="confirmPassword"
+                    type="password"
+                    placeholder={t("register.confirmPasswordPlaceholder")}
+                    {...register("confirmPassword")}
+                    className={errors.confirmPassword ? "border-destructive" : ""}
+                  />
+                  {errors.confirmPassword && (
+                    <p className="text-sm text-destructive">
+                      {errors.confirmPassword.message}
                     </p>
                   )}
                 </div>
