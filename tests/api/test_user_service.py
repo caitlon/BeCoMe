@@ -24,7 +24,7 @@ class TestUserServiceCreateUser:
         with patch("api.services.user_service.hash_password", return_value="hashed"):
             user = service.create_user(
                 email="new@example.com",
-                password="password123",
+                password="Password123",
                 first_name="John",
                 last_name="Doe",
             )
@@ -48,7 +48,7 @@ class TestUserServiceCreateUser:
         with patch("api.services.user_service.hash_password", return_value="hashed"):
             user = service.create_user(
                 email="noname@example.com",
-                password="password123",
+                password="Password123",
                 first_name="Jane",
             )
 
@@ -73,7 +73,7 @@ class TestUserServiceCreateUser:
         with pytest.raises(UserExistsError, match="already exists"):
             service.create_user(
                 email="taken@example.com",
-                password="password123",
+                password="Password123",
                 first_name="New",
             )
 
@@ -108,7 +108,7 @@ class TestUserServiceCreateUser:
         with patch("api.services.user_service.hash_password", return_value="hashed"):
             user = service.create_user(
                 email="Test@Example.COM",
-                password="password123",
+                password="Password123",
                 first_name="Test",
             )
 

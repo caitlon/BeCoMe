@@ -75,7 +75,7 @@ class TestRegister:
         # GIVEN
         payload = {
             "email": "test@example.com",
-            "password": "securepassword123",
+            "password": "SecurePass123",
             "first_name": "John",
             "last_name": "Doe",
         }
@@ -98,7 +98,7 @@ class TestRegister:
         # GIVEN
         payload = {
             "email": "jane@example.com",
-            "password": "securepassword123",
+            "password": "SecurePass123",
             "first_name": "Jane",
         }
 
@@ -115,7 +115,7 @@ class TestRegister:
         # GIVEN - first registration
         payload = {
             "email": "duplicate@example.com",
-            "password": "securepassword123",
+            "password": "SecurePass123",
             "first_name": "First",
         }
         client.post("/api/v1/auth/register", json=payload)
@@ -134,7 +134,7 @@ class TestRegister:
             "/api/v1/auth/register",
             json={
                 "email": "Test@Example.COM",
-                "password": "securepassword123",
+                "password": "SecurePass123",
                 "first_name": "First",
             },
         )
@@ -144,7 +144,7 @@ class TestRegister:
             "/api/v1/auth/register",
             json={
                 "email": "test@example.com",
-                "password": "securepassword123",
+                "password": "SecurePass123",
                 "first_name": "Second",
             },
         )
@@ -160,7 +160,7 @@ class TestRegister:
             "/api/v1/auth/register",
             json={
                 "email": "CaseTest@Example.COM",
-                "password": "securepassword123",
+                "password": "SecurePass123",
                 "first_name": "Case",
             },
         )
@@ -168,7 +168,7 @@ class TestRegister:
         # WHEN - login with lowercase
         response = client.post(
             "/api/v1/auth/login",
-            data={"username": "casetest@example.com", "password": "securepassword123"},
+            data={"username": "casetest@example.com", "password": "SecurePass123"},
         )
 
         # THEN
@@ -190,12 +190,60 @@ class TestRegister:
         # THEN
         assert response.status_code == 422
 
+    def test_register_password_without_uppercase_fails(self, client):
+        """Registration with password missing uppercase letter returns 422."""
+        # GIVEN
+        payload = {
+            "email": "nouppercase@example.com",
+            "password": "password123",
+            "first_name": "Test",
+        }
+
+        # WHEN
+        response = client.post("/api/v1/auth/register", json=payload)
+
+        # THEN
+        assert response.status_code == 422
+        assert "uppercase" in response.json()["detail"][0]["msg"].lower()
+
+    def test_register_password_without_lowercase_fails(self, client):
+        """Registration with password missing lowercase letter returns 422."""
+        # GIVEN
+        payload = {
+            "email": "nolowercase@example.com",
+            "password": "PASSWORD123",
+            "first_name": "Test",
+        }
+
+        # WHEN
+        response = client.post("/api/v1/auth/register", json=payload)
+
+        # THEN
+        assert response.status_code == 422
+        assert "lowercase" in response.json()["detail"][0]["msg"].lower()
+
+    def test_register_password_without_digit_fails(self, client):
+        """Registration with password missing digit returns 422."""
+        # GIVEN
+        payload = {
+            "email": "nodigit@example.com",
+            "password": "PasswordABC",
+            "first_name": "Test",
+        }
+
+        # WHEN
+        response = client.post("/api/v1/auth/register", json=payload)
+
+        # THEN
+        assert response.status_code == 422
+        assert "digit" in response.json()["detail"][0]["msg"].lower()
+
     def test_register_invalid_email_fails(self, client):
         """Registration with invalid email returns 422."""
         # GIVEN
         payload = {
             "email": "not-an-email",
-            "password": "securepassword123",
+            "password": "SecurePass123",
             "first_name": "Bad",
         }
 
@@ -216,7 +264,7 @@ class TestLogin:
             "/api/v1/auth/register",
             json={
                 "email": "login@example.com",
-                "password": "securepassword123",
+                "password": "SecurePass123",
                 "first_name": "Login",
             },
         )
@@ -224,7 +272,7 @@ class TestLogin:
         # WHEN - login with OAuth2 form data
         response = client.post(
             "/api/v1/auth/login",
-            data={"username": "login@example.com", "password": "securepassword123"},
+            data={"username": "login@example.com", "password": "SecurePass123"},
         )
 
         # THEN
@@ -240,7 +288,7 @@ class TestLogin:
             "/api/v1/auth/register",
             json={
                 "email": "wrongpass@example.com",
-                "password": "correctpassword",
+                "password": "CorrectPass1",
                 "first_name": "Wrong",
             },
         )
@@ -248,7 +296,7 @@ class TestLogin:
         # WHEN
         response = client.post(
             "/api/v1/auth/login",
-            data={"username": "wrongpass@example.com", "password": "incorrectpassword"},
+            data={"username": "wrongpass@example.com", "password": "WrongPass999"},
         )
 
         # THEN
@@ -277,14 +325,14 @@ class TestMe:
             "/api/v1/auth/register",
             json={
                 "email": "me@example.com",
-                "password": "securepassword123",
+                "password": "SecurePass123",
                 "first_name": "Me",
                 "last_name": "User",
             },
         )
         login_response = client.post(
             "/api/v1/auth/login",
-            data={"username": "me@example.com", "password": "securepassword123"},
+            data={"username": "me@example.com", "password": "SecurePass123"},
         )
         token = login_response.json()["access_token"]
 
@@ -327,13 +375,13 @@ class TestMe:
             "/api/v1/auth/register",
             json={
                 "email": "deleted@example.com",
-                "password": "securepassword123",
+                "password": "SecurePass123",
                 "first_name": "Deleted",
             },
         )
         login_response = client.post(
             "/api/v1/auth/login",
-            data={"username": "deleted@example.com", "password": "securepassword123"},
+            data={"username": "deleted@example.com", "password": "SecurePass123"},
         )
         token = login_response.json()["access_token"]
 
