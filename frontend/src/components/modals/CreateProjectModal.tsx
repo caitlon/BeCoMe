@@ -82,7 +82,7 @@ export function CreateProjectModal({ open, onOpenChange, onSuccess }: CreateProj
     } catch (error) {
       toast({
         title: t("create.errorTitle"),
-        description: error instanceof Error ? error.message : t("toast.deleteFailed"),
+        description: error instanceof Error ? error.message : t("toast.createFailed"),
         variant: "destructive",
       });
     } finally {

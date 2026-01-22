@@ -53,7 +53,8 @@
     "projectDeleted": "Projekt smazán",
     "acceptFailed": "Nepodařilo se přijmout pozvánku",
     "declineFailed": "Nepodařilo se odmítnout pozvánku",
-    "deleteFailed": "Nepodařilo se smazat projekt"
+    "deleteFailed": "Nepodařilo se smazat projekt",
+    "createFailed": "Nepodařilo se vytvořit projekt"
   },
   "detail": {
     "backToProjects": "Zpět na projekty",

@@ -30,7 +30,7 @@
   },
   "notFound": {
     "title": "Stránka nenalezena",
-    "description": "Stránka, kterou hledáte, neexistuje nebo byla přesunuta.",
+    "description": "Požadovaná stránka nebyla nalezena.",
     "backHome": "Zpět na úvodní stránku"
   }
 }

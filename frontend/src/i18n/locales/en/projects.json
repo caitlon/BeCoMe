@@ -53,7 +53,8 @@
     "projectDeleted": "Project deleted",
     "acceptFailed": "Failed to accept invitation",
     "declineFailed": "Failed to decline invitation",
-    "deleteFailed": "Failed to delete project"
+    "deleteFailed": "Failed to delete project",
+    "createFailed": "Failed to create project"
   },
   "detail": {
     "backToProjects": "Back to Projects",
