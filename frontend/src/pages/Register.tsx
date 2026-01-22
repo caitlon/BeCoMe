@@ -96,8 +96,16 @@ const Register = () => {
           .regex(/[A-Z]/, t("passwordRequirements.uppercase"))
           .regex(/[a-z]/, t("passwordRequirements.lowercase"))
           .regex(/\d/, t("passwordRequirements.number")),
-        firstName: z.string().min(1, t("validation.firstNameRequired")).max(100),
-        lastName: z.string().max(100).optional(),
+        firstName: z
+          .string()
+          .min(1, t("validation.firstNameRequired"))
+          .max(100)
+          .regex(/^[\p{L}\s'-]+$/u, t("validation.nameFormat")),
+        lastName: z
+          .string()
+          .max(100)
+          .regex(/^[\p{L}\s'-]*$/u, t("validation.nameFormat"))
+          .optional(),
       }),
     [t]
   );

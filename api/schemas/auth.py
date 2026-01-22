@@ -2,7 +2,10 @@
 
 import re
 
+import regex
 from pydantic import BaseModel, EmailStr, Field, field_validator
+
+NAME_PATTERN = regex.compile(r"^[\p{L}\s'-]+$")
 
 
 def validate_password_strength(password: str) -> str:
@@ -21,6 +24,20 @@ def validate_password_strength(password: str) -> str:
     return password
 
 
+def validate_name_format(name: str) -> str:
+    """Validate name contains only letters, spaces, hyphens, and apostrophes.
+
+    :param name: Name to validate
+    :return: Name if valid
+    :raises ValueError: If name contains invalid characters
+    """
+    if not NAME_PATTERN.match(name):
+        raise ValueError(
+            "Name can only contain letters, spaces, hyphens, and apostrophes"
+        )
+    return name
+
+
 class RegisterRequest(BaseModel):
     """User registration request."""
 
@@ -34,6 +51,20 @@ class RegisterRequest(BaseModel):
     def password_strength(cls, v: str) -> str:
         """Validate password strength."""
         return validate_password_strength(v)
+
+    @field_validator("first_name")
+    @classmethod
+    def first_name_format(cls, v: str) -> str:
+        """Validate first name format."""
+        return validate_name_format(v)
+
+    @field_validator("last_name")
+    @classmethod
+    def last_name_format(cls, v: str | None) -> str | None:
+        """Validate last name format."""
+        if v is None:
+            return v
+        return validate_name_format(v)
 
 
 class TokenResponse(BaseModel):
@@ -59,6 +90,22 @@ class UpdateUserRequest(BaseModel):
     first_name: str | None = Field(None, min_length=1, max_length=100)
     last_name: str | None = Field(None, max_length=100)
     photo_url: str | None = Field(None, max_length=500)
+
+    @field_validator("first_name")
+    @classmethod
+    def first_name_format(cls, v: str | None) -> str | None:
+        """Validate first name format."""
+        if v is None:
+            return v
+        return validate_name_format(v)
+
+    @field_validator("last_name")
+    @classmethod
+    def last_name_format(cls, v: str | None) -> str | None:
+        """Validate last name format."""
+        if v is None:
+            return v
+        return validate_name_format(v)
 
 
 class ChangePasswordRequest(BaseModel):

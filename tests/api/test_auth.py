@@ -404,3 +404,120 @@ class TestMe:
         # THEN
         assert response.status_code == 401
         assert "Could not validate credentials" in response.json()["detail"]
+
+
+class TestNameValidation:
+    """Tests for first_name and last_name validation."""
+
+    def test_register_name_with_digits_fails(self, client):
+        """Registration with digits in name returns 422."""
+        # GIVEN
+        payload = {
+            "email": "digits@example.com",
+            "password": "SecurePass123",
+            "first_name": "John123",
+        }
+
+        # WHEN
+        response = client.post("/api/v1/auth/register", json=payload)
+
+        # THEN
+        assert response.status_code == 422
+        assert "letters" in response.json()["detail"][0]["msg"].lower()
+
+    def test_register_name_with_special_chars_fails(self, client):
+        """Registration with special characters in name returns 422."""
+        # GIVEN
+        payload = {
+            "email": "special@example.com",
+            "password": "SecurePass123",
+            "first_name": "John@#$",
+        }
+
+        # WHEN
+        response = client.post("/api/v1/auth/register", json=payload)
+
+        # THEN
+        assert response.status_code == 422
+
+    def test_register_name_with_hyphen_succeeds(self, client):
+        """Registration with hyphenated name succeeds."""
+        # GIVEN
+        payload = {
+            "email": "hyphen@example.com",
+            "password": "SecurePass123",
+            "first_name": "Jean-Pierre",
+        }
+
+        # WHEN
+        response = client.post("/api/v1/auth/register", json=payload)
+
+        # THEN
+        assert response.status_code == 201
+        assert response.json()["first_name"] == "Jean-Pierre"
+
+    def test_register_name_with_apostrophe_succeeds(self, client):
+        """Registration with apostrophe in name succeeds."""
+        # GIVEN
+        payload = {
+            "email": "apostrophe@example.com",
+            "password": "SecurePass123",
+            "first_name": "O'Brien",
+        }
+
+        # WHEN
+        response = client.post("/api/v1/auth/register", json=payload)
+
+        # THEN
+        assert response.status_code == 201
+        assert response.json()["first_name"] == "O'Brien"
+
+    def test_register_cyrillic_name_succeeds(self, client):
+        """Registration with Cyrillic name succeeds."""
+        # GIVEN
+        payload = {
+            "email": "cyrillic@example.com",
+            "password": "SecurePass123",
+            "first_name": "Олег",
+            "last_name": "Петров",
+        }
+
+        # WHEN
+        response = client.post("/api/v1/auth/register", json=payload)
+
+        # THEN
+        assert response.status_code == 201
+        assert response.json()["first_name"] == "Олег"
+        assert response.json()["last_name"] == "Петров"
+
+    def test_register_name_with_space_succeeds(self, client):
+        """Registration with space in name succeeds."""
+        # GIVEN
+        payload = {
+            "email": "space@example.com",
+            "password": "SecurePass123",
+            "first_name": "Anna Maria",
+        }
+
+        # WHEN
+        response = client.post("/api/v1/auth/register", json=payload)
+
+        # THEN
+        assert response.status_code == 201
+        assert response.json()["first_name"] == "Anna Maria"
+
+    def test_register_last_name_with_digits_fails(self, client):
+        """Registration with digits in last name returns 422."""
+        # GIVEN
+        payload = {
+            "email": "lastdigits@example.com",
+            "password": "SecurePass123",
+            "first_name": "John",
+            "last_name": "Doe123",
+        }
+
+        # WHEN
+        response = client.post("/api/v1/auth/register", json=payload)
+
+        # THEN
+        assert response.status_code == 422
