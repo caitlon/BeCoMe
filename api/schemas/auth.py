@@ -67,9 +67,9 @@ class RegisterRequest(BaseModel):
     @field_validator("last_name")
     @classmethod
     def last_name_format(cls, v: str | None) -> str | None:
-        """Validate last name format."""
-        if v is None:
-            return v
+        """Validate last name format. Convert empty string to None."""
+        if v is None or v == "":
+            return None
         return validate_name_format(v)
 
 
@@ -93,24 +93,24 @@ class UserResponse(BaseModel):
 class UpdateUserRequest(BaseModel):
     """User profile update request."""
 
-    first_name: str | None = Field(None, min_length=1, max_length=100)
+    first_name: str | None = Field(None, max_length=100)
     last_name: str | None = Field(None, max_length=100)
     photo_url: str | None = Field(None, max_length=500)
 
     @field_validator("first_name")
     @classmethod
     def first_name_format(cls, v: str | None) -> str | None:
-        """Validate first name format."""
-        if v is None:
-            return v
+        """Validate first name format. Convert empty string to None."""
+        if v is None or v == "":
+            return None
         return validate_name_format(v)
 
     @field_validator("last_name")
     @classmethod
     def last_name_format(cls, v: str | None) -> str | None:
-        """Validate last name format."""
-        if v is None:
-            return v
+        """Validate last name format. Convert empty string to None."""
+        if v is None or v == "":
+            return None
         return validate_name_format(v)
 
 

@@ -559,6 +559,23 @@ class TestNameValidation:
         # THEN
         assert response.status_code == 422
 
+    def test_register_empty_last_name_converts_to_none(self, client):
+        """Registration with empty last name converts it to None."""
+        # GIVEN
+        payload = {
+            "email": "emptylast@example.com",
+            "password": "SecurePass123",
+            "first_name": "John",
+            "last_name": "",
+        }
+
+        # WHEN
+        response = client.post("/api/v1/auth/register", json=payload)
+
+        # THEN
+        assert response.status_code == 201
+        assert response.json()["last_name"] is None
+
 
 class TestProfileUpdate:
     """Tests for PUT /api/v1/users/me profile update validation."""
@@ -627,6 +644,38 @@ class TestProfileUpdate:
         # THEN
         assert response.status_code == 200
         assert response.json()["first_name"] == "Алексей"
+
+    def test_update_profile_empty_last_name_converts_to_none(self, client):
+        """Profile update with empty last name converts it to None."""
+        # GIVEN
+        headers = self._get_auth_header(client)
+
+        # WHEN
+        response = client.put(
+            "/api/v1/users/me",
+            json={"last_name": ""},
+            headers=headers,
+        )
+
+        # THEN
+        assert response.status_code == 200
+        assert response.json()["last_name"] is None
+
+    def test_update_profile_empty_first_name_is_ignored(self, client):
+        """Profile update with empty first name doesn't change it."""
+        # GIVEN
+        headers = self._get_auth_header(client)
+
+        # WHEN
+        response = client.put(
+            "/api/v1/users/me",
+            json={"first_name": ""},
+            headers=headers,
+        )
+
+        # THEN - empty string converted to None means "no update"
+        assert response.status_code == 200
+        assert response.json()["first_name"] == "Profile"  # unchanged
 
 
 class TestPasswordChange:
