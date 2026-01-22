@@ -5,7 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
-import { Eye, EyeOff, Loader2 } from "lucide-react";
+import { Eye, EyeOff, Loader2, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,20 +21,37 @@ type RegisterFormData = {
   lastName?: string;
 };
 
-const getPasswordStrength = (
-  password: string
-): { level: number; label: string } => {
-  let strength = 0;
-  if (password.length >= 8) strength++;
-  if (password.length >= 12) strength++;
-  if (/[a-z]/.test(password) && /[A-Z]/.test(password)) strength++;
-  if (/\d/.test(password)) strength++;
-  if (/[!@#$%^&*(),.?":{}|<>]/.test(password)) strength++;
-
-  const labels = ["Weak", "Weak", "Medium", "Strong", "Very Strong"];
-  const level = Math.min(strength, 4);
-  return { level, label: labels[level] };
+type PasswordRequirement = {
+  key: string;
+  label: string;
+  met: boolean;
 };
+
+const getPasswordRequirements = (
+  password: string,
+  t: (key: string) => string
+): PasswordRequirement[] => [
+  {
+    key: "minLength",
+    label: t("passwordRequirements.minLength"),
+    met: password.length >= 8,
+  },
+  {
+    key: "uppercase",
+    label: t("passwordRequirements.uppercase"),
+    met: /[A-Z]/.test(password),
+  },
+  {
+    key: "lowercase",
+    label: t("passwordRequirements.lowercase"),
+    met: /[a-z]/.test(password),
+  },
+  {
+    key: "number",
+    label: t("passwordRequirements.number"),
+    met: /\d/.test(password),
+  },
+];
 
 const Register = () => {
   const { t } = useTranslation("auth");
@@ -48,7 +65,12 @@ const Register = () => {
     () =>
       z.object({
         email: z.string().email(t("validation.emailInvalid")),
-        password: z.string().min(8, t("validation.passwordMin")),
+        password: z
+          .string()
+          .min(8, t("passwordRequirements.minLength"))
+          .regex(/[A-Z]/, t("passwordRequirements.uppercase"))
+          .regex(/[a-z]/, t("passwordRequirements.lowercase"))
+          .regex(/\d/, t("passwordRequirements.number")),
         firstName: z.string().min(1, t("validation.firstNameRequired")).max(100),
         lastName: z.string().max(100).optional(),
       }),
@@ -66,7 +88,7 @@ const Register = () => {
   });
 
   const password = watch("password", "");
-  const passwordStrength = getPasswordStrength(password);
+  const passwordRequirements = getPasswordRequirements(password, t);
 
   const onSubmit = async (data: RegisterFormData) => {
     setIsLoading(true);
@@ -153,26 +175,25 @@ const Register = () => {
                     </button>
                   </div>
                   {password && (
-                    <div className="flex items-center gap-2 mt-2">
-                      <div className="flex gap-1 flex-1">
-                        {[0, 1, 2, 3, 4].map((i) => (
-                          <div
-                            key={i}
-                            className={`h-1 flex-1 rounded-full ${
-                              i <= passwordStrength.level
-                                ? passwordStrength.level < 2
-                                  ? "bg-destructive"
-                                  : passwordStrength.level < 4
-                                    ? "bg-warning"
-                                    : "bg-success"
-                                : "bg-border"
-                            }`}
-                          />
-                        ))}
-                      </div>
-                      <span className="text-xs text-muted-foreground">
-                        {passwordStrength.label}
-                      </span>
+                    <div className="mt-3 space-y-1.5">
+                      <p className="text-xs text-muted-foreground font-medium">
+                        {t("passwordRequirements.title")}
+                      </p>
+                      {passwordRequirements.map((req) => (
+                        <div
+                          key={req.key}
+                          className={`flex items-center gap-2 text-xs ${
+                            req.met ? "text-success" : "text-muted-foreground"
+                          }`}
+                        >
+                          {req.met ? (
+                            <Check className="h-3.5 w-3.5" />
+                          ) : (
+                            <X className="h-3.5 w-3.5" />
+                          )}
+                          <span>{req.label}</span>
+                        </div>
+                      ))}
                     </div>
                   )}
                   {errors.password && (
