@@ -90,7 +90,10 @@ const Register = () => {
           email: z
             .string()
             .email(t("validation.emailInvalid"))
-            .max(255, t("validation.emailMaxLength")),
+            .max(255, t("validation.emailMaxLength"))
+            .refine((val) => /^[\x00-\x7F]*$/.test(val), {
+              message: t("validation.emailAsciiOnly"),
+            }),
           password: z
             .string()
             .min(8, t("passwordRequirements.minLength"))
