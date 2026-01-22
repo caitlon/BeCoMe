@@ -29,9 +29,10 @@ const getPasswordStrength = (password: string): { level: number; label: string }
   if (/[a-z]/.test(password) && /[A-Z]/.test(password)) strength++;
   if (/\d/.test(password)) strength++;
   if (/[!@#$%^&*(),.?":{}|<>]/.test(password)) strength++;
-  
+
   const labels = ["Weak", "Weak", "Medium", "Strong", "Very Strong"];
-  return { level: Math.min(strength, 4), label: labels[strength] || "Weak" };
+  const level = Math.min(strength, 4);
+  return { level, label: labels[level] };
 };
 
 const Register = () => {
