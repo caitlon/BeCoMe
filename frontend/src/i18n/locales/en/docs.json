@@ -1,0 +1,108 @@
+{
+  "title": "Documentation",
+  "subtitle": "Learn how to use BeCoMe for expert opinion aggregation",
+  "tableOfContents": "Table of Contents",
+  "gettingStarted": {
+    "title": "Getting Started",
+    "intro": "BeCoMe helps you aggregate expert opinions expressed as fuzzy triangular numbers. Here's how to get started:",
+    "createProject": {
+      "title": "Creating a Project",
+      "step1": "Sign up or log in to your account",
+      "step2": "Click \"New Project\" on the Projects page",
+      "step3": "Enter a project name and description",
+      "step4": "Set the scale: minimum value, maximum value, and unit (e.g., 0-100 CZK billions)"
+    },
+    "inviteExperts": {
+      "title": "Inviting Experts",
+      "description": "Only registered users can be invited as experts.",
+      "step1": "Open your project",
+      "step2": "Click \"Invite Experts\"",
+      "step3": "Enter the email of a registered user",
+      "step4": "They will see the invitation in their \"Invitations\" tab"
+    }
+  },
+  "expertOpinions": {
+    "title": "Entering Expert Opinions",
+    "intro": "Experts answer the raised question by assessing a quantitative parameter. They can express their responses in three ways:",
+    "crisp": {
+      "title": "Crisp Number",
+      "description": "A single precise value when the expert is confident about their estimate. In the interface, simply enter the same value for all three fields (Lower = Peak = Upper).",
+      "example": "Example: If you're certain the budget should be exactly 50 billion CZK, enter (50, 50, 50)."
+    },
+    "fuzzy": {
+      "title": "Fuzzy Triangular Number",
+      "description": "A triangular membership function with three values representing uncertainty. This is the most common input format.",
+      "lower": "Lower bound (pessimistic estimate) - the minimum realistic value",
+      "peak": "Peak (most likely value) - your best estimate",
+      "upper": "Upper bound (optimistic estimate) - the maximum realistic value",
+      "example": "Example: If you think the budget should be around 60 billion, but could realistically be between 40 and 80, enter (40, 60, 80).",
+      "rule": "Values must satisfy: Lower ≤ Peak ≤ Upper"
+    },
+    "likert": {
+      "title": "Likert Scale",
+      "description": "For agreement/disagreement questions, use linguistic terms mapped to numeric values:",
+      "scale": {
+        "stronglyDisagree": "Strongly disagree = 0",
+        "ratherDisagree": "Rather disagree = 25",
+        "neutral": "Neutral = 50",
+        "ratherAgree": "Rather agree = 75",
+        "stronglyAgree": "Strongly agree = 100"
+      },
+      "example": "Example: If you \"Rather agree\", you might enter (60, 75, 90) to express your position with some uncertainty."
+    }
+  },
+  "results": {
+    "title": "Understanding Results",
+    "intro": "After experts submit their opinions, BeCoMe calculates the optimal group decision.",
+    "bestCompromise": {
+      "title": "Best Compromise (ΓΩMean)",
+      "description": "The optimal aggregation of all expert opinions. It combines the arithmetic mean (Γ) and median (Ω) to find the value that best represents the group consensus.",
+      "centroid": "The centroid is the \"center of gravity\" of the triangular number - a single value representing the overall estimate."
+    },
+    "arithmeticMean": {
+      "title": "Arithmetic Mean (Γ)",
+      "description": "The component-wise average of all expert opinions. Each component (lower, peak, upper) is averaged separately."
+    },
+    "median": {
+      "title": "Median (Ω)",
+      "description": "The middle value when opinions are sorted by centroid. More robust against extreme outliers than the mean."
+    },
+    "maxError": {
+      "title": "Maximum Error (Δmax)",
+      "description": "A quality metric indicating the uncertainty level of the compromise. Lower values indicate better agreement among experts.",
+      "interpretation": "If max error is high relative to the scale, it suggests significant disagreement among experts."
+    }
+  },
+  "visualization": {
+    "title": "Reading the Visualization",
+    "description": "The triangle chart shows all fuzzy numbers on the same scale:",
+    "elements": {
+      "xAxis": "X-axis: the scale values (e.g., 0-100)",
+      "yAxis": "Y-axis: membership degree (0-1, where 1 is most certain)",
+      "gray": "Gray triangles: individual expert opinions",
+      "blue": "Blue dashed line: arithmetic mean",
+      "green": "Green dashed line: median",
+      "black": "Black solid line: best compromise"
+    },
+    "tip": "Toggle \"Show individual opinions\" to see how each expert's opinion compares to the aggregated result."
+  },
+  "glossary": {
+    "title": "Glossary",
+    "fuzzyNumber": {
+      "term": "Fuzzy Triangular Number",
+      "definition": "A number represented by three values (lower, peak, upper) forming a triangle. Expresses uncertainty in expert estimates."
+    },
+    "centroid": {
+      "term": "Centroid",
+      "definition": "The center of gravity of a triangular number. Calculated as (lower + peak + upper) / 3."
+    },
+    "membership": {
+      "term": "Membership Function",
+      "definition": "A function that assigns a degree of membership (0-1) to each value. For triangular numbers, the peak has membership 1, and it decreases linearly to 0 at the bounds."
+    },
+    "aggregation": {
+      "term": "Opinion Aggregation",
+      "definition": "The process of combining multiple expert opinions into a single representative value."
+    }
+  }
+}

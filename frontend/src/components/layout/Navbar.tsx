@@ -5,7 +5,13 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { useAuth } from "@/contexts/AuthContext";
 import { useState } from "react";
-import { Menu, X, ChevronDown, User, LogOut } from "lucide-react";
+import { Menu, X, ChevronDown, User, LogOut, HelpCircle } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -14,8 +20,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-export function Navbar() {
+interface NavbarProps {
+  startTour?: () => void;
+}
+
+export function Navbar({ startTour }: NavbarProps) {
   const { t } = useTranslation();
+  const { t: tTour } = useTranslation("tour");
   const { isAuthenticated, user, logout } = useAuth();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const location = useLocation();
@@ -26,6 +37,7 @@ export function Navbar() {
   };
 
   const isAuthPage = ['/login', '/register'].includes(location.pathname);
+  const isProjectDetailPage = /^\/projects\/[^/]+$/.test(location.pathname);
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 bg-background/95 backdrop-blur-sm border-b border-border">
@@ -90,12 +102,41 @@ export function Navbar() {
             </>
           )}
 
+          {isProjectDetailPage && startTour && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={startTour}
+                    className="h-9 w-9"
+                  >
+                    <HelpCircle className="h-5 w-5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{tTour("navbar.startTour")}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
           <LanguageSwitcher />
           <ThemeToggle />
         </div>
 
         {/* Mobile Menu Button */}
         <div className="md:hidden flex items-center gap-2">
+          {isProjectDetailPage && startTour && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={startTour}
+              className="h-9 w-9"
+            >
+              <HelpCircle className="h-5 w-5" />
+            </Button>
+          )}
           <LanguageSwitcher />
           <ThemeToggle />
           {!isAuthPage && (

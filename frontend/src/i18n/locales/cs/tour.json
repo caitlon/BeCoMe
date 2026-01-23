@@ -1,0 +1,50 @@
+{
+  "projectDetail": {
+    "welcome": {
+      "title": "Vítejte ve vašem projektu",
+      "description": "Tento průvodce vás provede zadáním vašeho expertního názoru a pochopením výsledků."
+    },
+    "opinionForm": {
+      "title": "Formulář vašeho názoru",
+      "description": "Zadejte svůj expertní odhad pomocí tří hodnot: dolní mez, vrchol (nejpravděpodobnější) a horní mez."
+    },
+    "fuzzyValues": {
+      "title": "Fuzzy trojúhelníkové číslo",
+      "description": "Dolní mez je váš pesimistický odhad, Vrchol je nejpravděpodobnější hodnota, Horní mez je váš optimistický odhad. Hodnoty musí splňovat: Dolní ≤ Vrchol ≤ Horní."
+    },
+    "preview": {
+      "title": "Živý náhled",
+      "description": "Podívejte se na vizualizaci vašeho fuzzy čísla jako trojúhelníku v reálném čase během zadávání hodnot."
+    },
+    "saveButton": {
+      "title": "Uložit váš názor",
+      "description": "Klikněte zde pro odeslání vašeho názoru. Můžete jej kdykoliv aktualizovat změnou hodnot a opětovným uložením."
+    },
+    "otherOpinions": {
+      "title": "Názory ostatních expertů",
+      "description": "Prohlédněte si, co zadali ostatní experti. Názory jsou seřazeny podle hodnoty centroidu (těžiště)."
+    },
+    "results": {
+      "title": "Výsledek nejlepšího kompromisu",
+      "description": "Toto je optimální agregace všech expertních názorů pomocí metody BeCoMe. Představuje nejlepší shodu mezi všemi stanovisky."
+    },
+    "visualization": {
+      "title": "Vizualizace",
+      "description": "Podívejte se, jak se jednotlivé názory srovnávají s konečným Nejlepším kompromisem. Přepněte 'Zobrazit jednotlivé názory' pro zobrazení všech expertních trojúhelníků."
+    },
+    "complete": {
+      "title": "Jste připraveni!",
+      "description": "Začněte zadáním svého názoru. Výsledky se automaticky aktualizují, jakmile experti zadají své odhady."
+    }
+  },
+  "buttons": {
+    "next": "Další",
+    "previous": "Předchozí",
+    "skip": "Přeskočit prohlídku",
+    "finish": "Rozumím!"
+  },
+  "navbar": {
+    "startTour": "Spustit prohlídku",
+    "help": "Nápověda"
+  }
+}

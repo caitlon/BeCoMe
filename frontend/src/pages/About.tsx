@@ -2,8 +2,8 @@ import { useEffect } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
-import { ArrowRight, BookOpen, Users, Calculator, BarChart3 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ArrowRight, BookOpen, FileText } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
@@ -54,7 +54,7 @@ const About = () => {
                 <p className="text-muted-foreground leading-relaxed mb-4">
                   {t("challenge.paragraph1")}
                 </p>
-                <p className="text-muted-foreground leading-relaxed mb-4">
+                <p className="text-muted-foreground leading-relaxed">
                   {t("challenge.paragraph2")}
                 </p>
               </div>
@@ -80,124 +80,16 @@ const About = () => {
                 <p className="text-muted-foreground leading-relaxed mb-4">
                   {t("method.paragraph1")}
                 </p>
-                <p className="text-muted-foreground leading-relaxed">
+                <p className="text-muted-foreground leading-relaxed mb-6">
                   {t("method.paragraph2")}
                 </p>
               </div>
-            </motion.div>
-          </div>
-        </div>
-      </section>
-
-      {/* How Experts Express Opinions */}
-      <section className="py-12 md:py-16">
-        <div className="container mx-auto px-6">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.5 }}
-            className="mb-10"
-          >
-            <h2 className="font-display text-2xl md:text-3xl font-normal mb-4">
-              {t("expertOpinions.title")}
-            </h2>
-            <p className="text-muted-foreground max-w-3xl">
-              {t("expertOpinions.subtitle")}
-            </p>
-          </motion.div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl">
-            {[
-              {
-                icon: Calculator,
-                titleKey: "expertOpinions.crisp.title",
-                descriptionKey: "expertOpinions.crisp.description",
-                exampleKey: "expertOpinions.crisp.example",
-              },
-              {
-                icon: BarChart3,
-                titleKey: "expertOpinions.fuzzy.title",
-                descriptionKey: "expertOpinions.fuzzy.description",
-                exampleKey: "expertOpinions.fuzzy.example",
-              },
-              {
-                icon: Users,
-                titleKey: "expertOpinions.likert.title",
-                descriptionKey: "expertOpinions.likert.description",
-                exampleKey: "expertOpinions.likert.example",
-              },
-            ].map((method, index) => (
-              <motion.div
-                key={method.titleKey}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: index * 0.1, duration: 0.5 }}
-              >
-                <Card className="h-full">
-                  <CardHeader>
-                    <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mb-3">
-                      <method.icon className="h-5 w-5 text-primary" />
-                    </div>
-                    <CardTitle className="text-lg">{t(method.titleKey)}</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-sm text-muted-foreground mb-3">
-                      {t(method.descriptionKey)}
-                    </p>
-                    <p className="text-xs font-mono text-muted-foreground/70">
-                      {t(method.exampleKey)}
-                    </p>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Results */}
-      <section className="py-12 md:py-16 bg-card">
-        <div className="container mx-auto px-6">
-          <div className="max-w-3xl">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.5 }}
-            >
-              <h2 className="font-display text-2xl md:text-3xl font-normal mb-6">
-                {t("results.title")}
-              </h2>
-              <div className="space-y-4">
-                <div className="flex items-start gap-4">
-                  <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-medium shrink-0">
-                    1
-                  </div>
-                  <div>
-                    <h3 className="font-medium mb-1">
-                      {t("results.bestCompromise.title")}
-                    </h3>
-                    <p className="text-sm text-muted-foreground">
-                      {t("results.bestCompromise.description")}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-4">
-                  <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-medium shrink-0">
-                    2
-                  </div>
-                  <div>
-                    <h3 className="font-medium mb-1">
-                      {t("results.maxError.title")}
-                    </h3>
-                    <p className="text-sm text-muted-foreground">
-                      {t("results.maxError.description")}
-                    </p>
-                  </div>
-                </div>
-              </div>
+              <Button variant="outline" asChild className="gap-2">
+                <Link to="/docs">
+                  <FileText className="h-4 w-4" />
+                  {t("method.learnMore")}
+                </Link>
+              </Button>
             </motion.div>
           </div>
         </div>
