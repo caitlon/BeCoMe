@@ -1,6 +1,6 @@
 """HTML sanitization utilities for input validation."""
 
-import bleach
+import bleach  # type: ignore[import-untyped]
 
 
 def sanitize_text(value: str) -> str:
@@ -9,7 +9,8 @@ def sanitize_text(value: str) -> str:
     :param value: Raw text input
     :return: Sanitized text with HTML tags stripped
     """
-    return bleach.clean(value, tags=[], strip=True)
+    result: str = bleach.clean(value, tags=[], strip=True)
+    return result
 
 
 def sanitize_text_or_none(value: str | None) -> str | None:

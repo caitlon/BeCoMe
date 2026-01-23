@@ -132,7 +132,9 @@ def decode_token(token: str, expected_type: str) -> TokenPayload:
         if not user_id_str:
             raise TokenError("Missing user ID in token")
 
-        exp_timestamp = payload.get("exp")
+        exp_timestamp: float | None = payload.get("exp")
+        if exp_timestamp is None:
+            raise TokenError("Missing expiration in token")
         exp_datetime = datetime.fromtimestamp(exp_timestamp, tz=UTC)
 
         return TokenPayload(
