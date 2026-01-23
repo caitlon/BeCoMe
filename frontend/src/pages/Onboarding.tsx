@@ -56,14 +56,26 @@ const Onboarding = () => {
     navigate("/projects");
   }, [navigate]);
 
-  // Keyboard navigation
+  // Keyboard navigation (skip when focus is in input/textarea/select)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.isContentEditable ||
+          ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName))
+      ) {
+        return;
+      }
+
       if (e.key === "ArrowRight" && !isLastStep) {
+        e.preventDefault();
         goToNext();
       } else if (e.key === "ArrowLeft" && !isFirstStep) {
+        e.preventDefault();
         goToPrevious();
       } else if (e.key === "Escape") {
+        e.preventDefault();
         handleSkip();
       }
     };
@@ -156,6 +168,7 @@ const Onboarding = () => {
               {steps.map((_, index) => (
                 <button
                   key={index}
+                  type="button"
                   onClick={() => {
                     setDirection(index > currentStep ? 1 : -1);
                     setCurrentStep(index);
@@ -167,7 +180,7 @@ const Onboarding = () => {
                         ? "bg-primary/50"
                         : "bg-muted-foreground/30"
                   }`}
-                  aria-label={`Go to step ${index + 1}`}
+                  aria-label={t("buttons.goToStep", { step: index + 1 })}
                 />
               ))}
             </div>

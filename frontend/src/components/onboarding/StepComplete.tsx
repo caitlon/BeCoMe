@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { CheckCircle2, Rocket } from "lucide-react";
@@ -10,6 +11,16 @@ const fadeInUp = {
 
 export function StepComplete() {
   const { t } = useTranslation("onboarding");
+
+  // Memoize particle positions to prevent recalculation on every render
+  const particlePositions = useMemo(
+    () =>
+      [...Array(6)].map(() => ({
+        x: 50 + (Math.random() - 0.5) * 60,
+        y: 50 + (Math.random() - 0.5) * 60,
+      })),
+    []
+  );
 
   return (
     <div className="flex flex-col items-center justify-center text-center px-6 py-12">
@@ -50,7 +61,7 @@ export function StepComplete() {
 
       {/* Celebration particles */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
-        {[...Array(6)].map((_, i) => (
+        {particlePositions.map((pos, i) => (
           <motion.div
             key={i}
             initial={{
@@ -62,8 +73,8 @@ export function StepComplete() {
             animate={{
               opacity: [0, 1, 0],
               scale: [0, 1, 0.5],
-              x: `${50 + (Math.random() - 0.5) * 60}%`,
-              y: `${50 + (Math.random() - 0.5) * 60}%`,
+              x: `${pos.x}%`,
+              y: `${pos.y}%`,
             }}
             transition={{
               delay: 0.5 + i * 0.1,

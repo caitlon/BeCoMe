@@ -5,7 +5,8 @@
     "previous": "Previous",
     "skip": "Skip tour",
     "finish": "Go to Projects",
-    "getStarted": "Get Started"
+    "getStarted": "Get Started",
+    "goToStep": "Go to step {{step}}"
   },
   "steps": {
     "welcome": {
@@ -36,7 +37,21 @@
         "emailPlaceholder": "expert@example.com",
         "invite": "Send Invitation"
       },
-      "hint": "Experts will see the invitation in their dashboard"
+      "hint": "Experts will see the invitation in their dashboard",
+      "samples": [
+        {
+          "initials": "JD",
+          "name": "John Doe",
+          "email": "john@example.com",
+          "status": "Invited"
+        },
+        {
+          "initials": "AS",
+          "name": "Anna Smith",
+          "email": "anna@example.com",
+          "status": "Joined"
+        }
+      ]
     },
     "enterOpinion": {
       "title": "Enter Your Opinion",
@@ -51,7 +66,9 @@
       },
       "tryIt": "Try it yourself:",
       "rule": "Values must satisfy: Lower ≤ Peak ≤ Upper",
-      "preview": "Your triangle will appear here"
+      "preview": "Your triangle will appear here",
+      "previewTitle": "Triangle preview",
+      "yAxisLabel": "membership"
     },
     "viewResults": {
       "title": "View Results",

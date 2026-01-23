@@ -102,6 +102,7 @@ const Documentation = () => {
                   {tocItems.map((item) => (
                     <button
                       key={item.id}
+                      type="button"
                       onClick={() => scrollToSection(item.id)}
                       className={`w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md transition-colors text-left ${
                         activeSection === item.id
@@ -232,19 +233,22 @@ const Documentation = () => {
                         <li className="flex items-start gap-2 text-muted-foreground">
                           <ChevronRight className="h-5 w-5 shrink-0 text-primary" />
                           <span>
-                            <strong>Lower:</strong> {t("expertOpinions.fuzzy.lower")}
+                            <strong>{t("expertOpinions.fuzzy.lowerLabel")}</strong>{" "}
+                            {t("expertOpinions.fuzzy.lower")}
                           </span>
                         </li>
                         <li className="flex items-start gap-2 text-muted-foreground">
                           <ChevronRight className="h-5 w-5 shrink-0 text-primary" />
                           <span>
-                            <strong>Peak:</strong> {t("expertOpinions.fuzzy.peak")}
+                            <strong>{t("expertOpinions.fuzzy.peakLabel")}</strong>{" "}
+                            {t("expertOpinions.fuzzy.peak")}
                           </span>
                         </li>
                         <li className="flex items-start gap-2 text-muted-foreground">
                           <ChevronRight className="h-5 w-5 shrink-0 text-primary" />
                           <span>
-                            <strong>Upper:</strong> {t("expertOpinions.fuzzy.upper")}
+                            <strong>{t("expertOpinions.fuzzy.upperLabel")}</strong>{" "}
+                            {t("expertOpinions.fuzzy.upper")}
                           </span>
                         </li>
                       </ul>

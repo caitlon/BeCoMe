@@ -51,17 +51,26 @@ export function StepInviteExperts() {
         <Card>
           <CardContent className="pt-6 space-y-4">
             <div>
-              <Label>{t("steps.inviteExperts.form.email")}</Label>
+              <Label htmlFor="invite-email">
+                {t("steps.inviteExperts.form.email")}
+              </Label>
               <div className="flex gap-2 mt-1">
                 <div className="relative flex-1">
                   <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
+                    id="invite-email"
                     placeholder={t("steps.inviteExperts.form.emailPlaceholder")}
                     className="pl-10"
                     readOnly
+                    aria-readonly="true"
                   />
                 </div>
-                <Button size="icon" className="shrink-0">
+                <Button
+                  type="button"
+                  size="icon"
+                  className="shrink-0"
+                  aria-label={t("steps.inviteExperts.form.invite")}
+                >
                   <Send className="h-4 w-4" />
                 </Button>
               </div>
@@ -74,13 +83,21 @@ export function StepInviteExperts() {
               className="flex items-center gap-3 p-3 bg-muted rounded-lg"
             >
               <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
-                <span className="text-xs font-medium">JD</span>
+                <span className="text-xs font-medium">
+                  {t("steps.inviteExperts.samples.0.initials")}
+                </span>
               </div>
               <div className="flex-1">
-                <p className="text-sm font-medium">John Doe</p>
-                <p className="text-xs text-muted-foreground">john@example.com</p>
+                <p className="text-sm font-medium">
+                  {t("steps.inviteExperts.samples.0.name")}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {t("steps.inviteExperts.samples.0.email")}
+                </p>
               </div>
-              <span className="text-xs text-primary">Invited</span>
+              <span className="text-xs text-primary">
+                {t("steps.inviteExperts.samples.0.status")}
+              </span>
             </motion.div>
 
             <motion.div
@@ -90,13 +107,21 @@ export function StepInviteExperts() {
               className="flex items-center gap-3 p-3 bg-muted rounded-lg"
             >
               <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
-                <span className="text-xs font-medium">AS</span>
+                <span className="text-xs font-medium">
+                  {t("steps.inviteExperts.samples.1.initials")}
+                </span>
               </div>
               <div className="flex-1">
-                <p className="text-sm font-medium">Anna Smith</p>
-                <p className="text-xs text-muted-foreground">anna@example.com</p>
+                <p className="text-sm font-medium">
+                  {t("steps.inviteExperts.samples.1.name")}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {t("steps.inviteExperts.samples.1.email")}
+                </p>
               </div>
-              <span className="text-xs text-green-600">Joined</span>
+              <span className="text-xs text-green-600">
+                {t("steps.inviteExperts.samples.1.status")}
+              </span>
             </motion.div>
 
             <p className="text-xs text-muted-foreground italic">

@@ -5,7 +5,8 @@
     "previous": "Předchozí",
     "skip": "Přeskočit",
     "finish": "Přejít na projekty",
-    "getStarted": "Začít"
+    "getStarted": "Začít",
+    "goToStep": "Přejít na krok {{step}}"
   },
   "steps": {
     "welcome": {
@@ -36,7 +37,21 @@
         "emailPlaceholder": "expert@example.com",
         "invite": "Odeslat pozvánku"
       },
-      "hint": "Experti uvidí pozvánku ve svém přehledu"
+      "hint": "Experti uvidí pozvánku ve svém přehledu",
+      "samples": [
+        {
+          "initials": "JN",
+          "name": "Jan Novák",
+          "email": "jan@example.com",
+          "status": "Pozván"
+        },
+        {
+          "initials": "AK",
+          "name": "Anna Kovářová",
+          "email": "anna@example.com",
+          "status": "Připojen"
+        }
+      ]
     },
     "enterOpinion": {
       "title": "Zadejte svůj názor",
@@ -51,7 +66,9 @@
       },
       "tryIt": "Vyzkoušejte si to:",
       "rule": "Hodnoty musí splňovat: Dolní ≤ Vrchol ≤ Horní",
-      "preview": "Váš trojúhelník se zobrazí zde"
+      "preview": "Váš trojúhelník se zobrazí zde",
+      "previewTitle": "Náhled trojúhelníku",
+      "yAxisLabel": "příslušnost"
     },
     "viewResults": {
       "title": "Zobrazení výsledků",
