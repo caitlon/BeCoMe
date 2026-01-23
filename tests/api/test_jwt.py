@@ -97,6 +97,7 @@ class TestDecodeAccessToken:
             "sub": "not-a-valid-uuid",
             "exp": datetime.now(UTC) + timedelta(hours=1),
             "iat": datetime.now(UTC),
+            "jti": "test-jti-123",
             "type": "access",
         }
         token = jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM)
@@ -118,6 +119,7 @@ class TestDecodeAccessToken:
             "sub": str(user_id),
             "exp": datetime.now(UTC) + timedelta(hours=1),
             "iat": datetime.now(UTC),
+            "jti": "test-jti-789",
             "type": "refresh",  # Wrong type
         }
         token = jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM)
@@ -137,6 +139,7 @@ class TestDecodeAccessToken:
         payload = {
             "exp": datetime.now(UTC) + timedelta(hours=1),
             "iat": datetime.now(UTC),
+            "jti": "test-jti-456",
             "type": "access",
         }
         token = jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM)

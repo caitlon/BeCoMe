@@ -5,6 +5,7 @@ All schemas are re-exported here for convenient imports.
 
 from api.schemas.auth import (
     ChangePasswordRequest,
+    RefreshTokenRequest,
     RegisterRequest,
     TokenResponse,
     UpdateUserRequest,
@@ -35,6 +36,7 @@ from api.schemas.result import CalculationResultResponse
 __all__ = [
     # Auth
     "ChangePasswordRequest",
+    "RefreshTokenRequest",
     "RegisterRequest",
     "TokenResponse",
     "UpdateUserRequest",

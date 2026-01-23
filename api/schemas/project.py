@@ -3,7 +3,9 @@
 from datetime import datetime
 from typing import TYPE_CHECKING, Self
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+from api.schemas.sanitization import sanitize_text, sanitize_text_or_none
 
 if TYPE_CHECKING:
     from api.db.models import Project, ProjectMember, User
@@ -19,6 +21,18 @@ class ProjectCreate(BaseModel):
     scale_unit: str = Field(
         default="", max_length=50, description="Scale unit (e.g., '%', 'points')"
     )
+
+    @field_validator("name", "scale_unit", mode="after")
+    @classmethod
+    def sanitize_required_text(cls, v: str) -> str:
+        """Remove HTML from text fields."""
+        return sanitize_text(v)
+
+    @field_validator("description", mode="after")
+    @classmethod
+    def sanitize_optional_text(cls, v: str | None) -> str | None:
+        """Remove HTML from optional text fields."""
+        return sanitize_text_or_none(v)
 
     @model_validator(mode="after")
     def validate_scale(self) -> Self:
@@ -37,6 +51,12 @@ class ProjectUpdate(BaseModel):
     scale_min: float | None = None
     scale_max: float | None = None
     scale_unit: str | None = Field(None, max_length=50)
+
+    @field_validator("name", "description", "scale_unit", mode="after")
+    @classmethod
+    def sanitize_text_fields(cls, v: str | None) -> str | None:
+        """Remove HTML from text fields."""
+        return sanitize_text_or_none(v)
 
 
 class ProjectResponse(BaseModel):
