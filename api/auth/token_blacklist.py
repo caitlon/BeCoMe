@@ -5,12 +5,9 @@ Falls back to in-memory storage if Redis is not configured.
 """
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, ClassVar
+from typing import Any, ClassVar
 
 from api.config import get_settings
-
-if TYPE_CHECKING:
-    from redis import Redis
 
 
 class TokenBlacklist:
@@ -20,7 +17,7 @@ class TokenBlacklist:
     Supports Redis for production and in-memory fallback for development.
     """
 
-    _redis_client: ClassVar["Redis[str] | None"] = None
+    _redis_client: ClassVar[Any] = None
     _memory_store: ClassVar[dict[str, datetime]] = {}
     _initialized: ClassVar[bool] = False
 
@@ -35,7 +32,7 @@ class TokenBlacklist:
             try:
                 import redis
 
-                cls._redis_client = redis.from_url(
+                cls._redis_client = redis.from_url(  # type: ignore[no-untyped-call]
                     settings.redis_url,
                     decode_responses=True,
                 )
@@ -78,7 +75,7 @@ class TokenBlacklist:
         cls._initialize()
 
         if cls._redis_client:
-            return cls._redis_client.exists(f"blacklist:{jti}") > 0
+            return bool(cls._redis_client.exists(f"blacklist:{jti}"))
 
         # In-memory fallback with cleanup
         if jti in cls._memory_store:
