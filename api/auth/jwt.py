@@ -170,10 +170,15 @@ def decode_refresh_token(token: str) -> TokenPayload:
     return decode_token(token, "refresh")
 
 
-def revoke_token(jti: str, exp: datetime) -> None:
+def revoke_token(jti: str) -> None:
     """Revoke a token by adding its JTI to the blacklist.
 
+    Blacklists for the full refresh token lifetime to ensure that any
+    refresh token sharing this JTI cannot be used after revocation,
+    even if revocation was initiated using an access token.
+
     :param jti: JWT ID to revoke
-    :param exp: Token expiration time
     """
-    TokenBlacklist.add(jti, exp)
+    settings = get_settings()
+    blacklist_exp = datetime.now(UTC) + timedelta(days=settings.refresh_token_expire_days)
+    TokenBlacklist.add(jti, blacklist_exp)

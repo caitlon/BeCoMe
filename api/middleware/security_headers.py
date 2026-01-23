@@ -34,10 +34,12 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         # XSS protection for older browsers
         response.headers["X-XSS-Protection"] = "1; mode=block"
 
-        # HTTP Strict Transport Security - force HTTPS for 1 year
-        response.headers["Strict-Transport-Security"] = (
-            "max-age=31536000; includeSubDomains; preload"
-        )
+        # HTTP Strict Transport Security - only for HTTPS requests
+        # Sending HSTS on HTTP can cause issues in dev/staging
+        if request.url.scheme == "https":
+            response.headers["Strict-Transport-Security"] = (
+                "max-age=31536000; includeSubDomains; preload"
+            )
 
         # Control referrer information sent with requests
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"

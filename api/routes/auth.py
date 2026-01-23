@@ -11,6 +11,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 
 from api.auth.dependencies import CurrentUser, get_current_token_payload
 from api.auth.jwt import (
+    TokenError,
     TokenPayload,
     create_access_token,
     create_token_pair,
@@ -18,6 +19,7 @@ from api.auth.jwt import (
     revoke_token,
 )
 from api.auth.logging import log_login_success, log_registration
+from api.config import get_settings
 from api.dependencies import get_user_service
 from api.middleware.rate_limit import RATE_LIMIT_AUTH, limiter
 from api.schemas import RefreshTokenRequest, RegisterRequest, TokenResponse, UserResponse
@@ -122,18 +124,19 @@ def refresh_token(
     """
     try:
         payload = decode_refresh_token(data.refresh_token)
-    except Exception:
+    except TokenError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired refresh token",
             headers={"WWW-Authenticate": "Bearer"},
         ) from None
 
+    settings = get_settings()
     new_access_token = create_access_token(payload.user_id, payload.jti)
 
     return TokenResponse(
         access_token=new_access_token,
-        expires_in=15 * 60,  # 15 minutes in seconds
+        expires_in=settings.access_token_expire_minutes * 60,
     )
 
 
@@ -147,12 +150,12 @@ def logout(
 ) -> None:
     """Revoke current access token.
 
-    Adds the token's JTI to blacklist, preventing further use.
-    Both access and refresh tokens with the same JTI are revoked.
+    Adds the token's JTI to blacklist for the full refresh token lifetime,
+    preventing further use of both access and refresh tokens.
 
     :param token_payload: Current token payload from JWT
     """
-    revoke_token(token_payload.jti, token_payload.exp)
+    revoke_token(token_payload.jti)
 
 
 @router.get(

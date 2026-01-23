@@ -810,3 +810,155 @@ class TestPasswordChange:
 
         # THEN
         assert response.status_code == 204
+
+
+class TestRefreshToken:
+    """Tests for POST /api/v1/auth/refresh."""
+
+    def test_refresh_returns_new_access_token(self, client):
+        """Refresh with valid refresh token returns new access token."""
+        # GIVEN - register and login
+        client.post(
+            "/api/v1/auth/register",
+            json={
+                "email": "refresh@example.com",
+                "password": "SecurePass123!",
+                "first_name": "Refresh",
+                "last_name": "User",
+            },
+        )
+        login_response = client.post(
+            "/api/v1/auth/login",
+            data={"username": "refresh@example.com", "password": "SecurePass123!"},
+        )
+        refresh_token = login_response.json()["refresh_token"]
+
+        # WHEN
+        response = client.post(
+            "/api/v1/auth/refresh",
+            json={"refresh_token": refresh_token},
+        )
+
+        # THEN
+        assert response.status_code == 200
+        data = response.json()
+        assert "access_token" in data
+        assert data["expires_in"] > 0
+
+    def test_refresh_with_invalid_token_fails(self, client):
+        """Refresh with invalid token returns 401."""
+        # WHEN
+        response = client.post(
+            "/api/v1/auth/refresh",
+            json={"refresh_token": "invalid.refresh.token"},
+        )
+
+        # THEN
+        assert response.status_code == 401
+
+    def test_refresh_with_access_token_fails(self, client):
+        """Refresh with access token (wrong type) returns 401."""
+        # GIVEN - register and login
+        client.post(
+            "/api/v1/auth/register",
+            json={
+                "email": "wrongtype@example.com",
+                "password": "SecurePass123!",
+                "first_name": "Wrong",
+                "last_name": "Type",
+            },
+        )
+        login_response = client.post(
+            "/api/v1/auth/login",
+            data={"username": "wrongtype@example.com", "password": "SecurePass123!"},
+        )
+        access_token = login_response.json()["access_token"]
+
+        # WHEN - try to use access token as refresh token
+        response = client.post(
+            "/api/v1/auth/refresh",
+            json={"refresh_token": access_token},
+        )
+
+        # THEN
+        assert response.status_code == 401
+
+
+class TestLogout:
+    """Tests for POST /api/v1/auth/logout."""
+
+    def test_logout_revokes_token(self, client):
+        """Logout revokes the current token."""
+        # GIVEN - register and login
+        from api.auth.token_blacklist import TokenBlacklist
+
+        TokenBlacklist.reset()
+
+        client.post(
+            "/api/v1/auth/register",
+            json={
+                "email": "logout@example.com",
+                "password": "SecurePass123!",
+                "first_name": "Logout",
+                "last_name": "User",
+            },
+        )
+        login_response = client.post(
+            "/api/v1/auth/login",
+            data={"username": "logout@example.com", "password": "SecurePass123!"},
+        )
+        access_token = login_response.json()["access_token"]
+        headers = {"Authorization": f"Bearer {access_token}"}
+
+        # WHEN - logout
+        response = client.post("/api/v1/auth/logout", headers=headers)
+
+        # THEN
+        assert response.status_code == 204
+
+        # AND - token should no longer work
+        me_response = client.get("/api/v1/auth/me", headers=headers)
+        assert me_response.status_code == 401
+
+    def test_logout_without_token_fails(self, client):
+        """Logout without token returns 401."""
+        # WHEN
+        response = client.post("/api/v1/auth/logout")
+
+        # THEN
+        assert response.status_code == 401
+
+    def test_refresh_after_logout_fails(self, client):
+        """Refresh token cannot be used after logout."""
+        # GIVEN - register and login
+        from api.auth.token_blacklist import TokenBlacklist
+
+        TokenBlacklist.reset()
+
+        client.post(
+            "/api/v1/auth/register",
+            json={
+                "email": "logoutrefresh@example.com",
+                "password": "SecurePass123!",
+                "first_name": "Logout",
+                "last_name": "Refresh",
+            },
+        )
+        login_response = client.post(
+            "/api/v1/auth/login",
+            data={"username": "logoutrefresh@example.com", "password": "SecurePass123!"},
+        )
+        tokens = login_response.json()
+        access_token = tokens["access_token"]
+        refresh_token = tokens["refresh_token"]
+        headers = {"Authorization": f"Bearer {access_token}"}
+
+        # WHEN - logout
+        client.post("/api/v1/auth/logout", headers=headers)
+
+        # THEN - refresh token should no longer work
+        refresh_response = client.post(
+            "/api/v1/auth/refresh",
+            json={"refresh_token": refresh_token},
+        )
+        assert refresh_response.status_code == 401
