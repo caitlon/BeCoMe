@@ -16,54 +16,54 @@ class TestDatabaseEngine:
     @patch("api.db.engine.get_settings")
     def test_get_engine_returns_engine(self, mock_get_settings: MagicMock) -> None:
         """get_engine should return an Engine instance (lazy initialization)."""
-        # GIVEN: mock settings to use SQLite
-        mock_get_settings.return_value.database_url = "sqlite:///./test_engine.db"
+        # GIVEN: mock settings to use in-memory SQLite
+        mock_get_settings.return_value.database_url = "sqlite:///:memory:"
         mock_get_settings.return_value.debug = False
         get_engine.cache_clear()
 
-        # WHEN
-        result = get_engine()
+        try:
+            # WHEN
+            result = get_engine()
 
-        # THEN
-        assert isinstance(result, Engine)
-
-        # Cleanup
-        get_engine.cache_clear()
+            # THEN
+            assert isinstance(result, Engine)
+        finally:
+            get_engine.cache_clear()
 
     @patch("api.db.engine.get_settings")
     def test_get_engine_returns_same_instance(self, mock_get_settings: MagicMock) -> None:
         """get_engine should return cached singleton instance."""
-        # GIVEN: mock settings to use SQLite
-        mock_get_settings.return_value.database_url = "sqlite:///./test_cache.db"
+        # GIVEN: mock settings to use in-memory SQLite
+        mock_get_settings.return_value.database_url = "sqlite:///:memory:"
         mock_get_settings.return_value.debug = False
         get_engine.cache_clear()
 
-        # WHEN
-        engine1 = get_engine()
-        engine2 = get_engine()
+        try:
+            # WHEN
+            engine1 = get_engine()
+            engine2 = get_engine()
 
-        # THEN: same instance (cached)
-        assert engine1 is engine2
-
-        # Cleanup
-        get_engine.cache_clear()
+            # THEN: same instance (cached)
+            assert engine1 is engine2
+        finally:
+            get_engine.cache_clear()
 
     @patch("api.db.engine.get_settings")
-    def test_sqlite_engine_has_check_same_thread_false(self, mock_get_settings: MagicMock) -> None:
-        """SQLite engine should have check_same_thread=False for FastAPI."""
-        # GIVEN: mock settings to use SQLite
-        mock_get_settings.return_value.database_url = "sqlite:///./test_sqlite.db"
+    def test_get_engine_returns_sqlite_engine(self, mock_get_settings: MagicMock) -> None:
+        """get_engine should return SQLite engine when configured."""
+        # GIVEN: mock settings to use in-memory SQLite
+        mock_get_settings.return_value.database_url = "sqlite:///:memory:"
         mock_get_settings.return_value.debug = False
         get_engine.cache_clear()
 
-        # WHEN
-        test_engine = get_engine()
+        try:
+            # WHEN
+            test_engine = get_engine()
 
-        # THEN: engine URL should be SQLite
-        assert "sqlite" in str(test_engine.url)
-
-        # Cleanup
-        get_engine.cache_clear()
+            # THEN: engine URL should be SQLite
+            assert "sqlite" in str(test_engine.url)
+        finally:
+            get_engine.cache_clear()
 
 
 class TestDatabaseSession:
@@ -107,11 +107,11 @@ class TestCreateDbAndTables:
         mock_get_settings.return_value.debug = False
         get_engine.cache_clear()
 
-        # WHEN/THEN: should not raise
-        create_db_and_tables()
-
-        # Cleanup
-        get_engine.cache_clear()
+        try:
+            # WHEN/THEN: should not raise
+            create_db_and_tables()
+        finally:
+            get_engine.cache_clear()
 
     @patch("api.db.engine.get_settings")
     @patch("api.db.engine.SQLModel.metadata.create_all")
@@ -124,14 +124,14 @@ class TestCreateDbAndTables:
         mock_get_settings.return_value.debug = False
         get_engine.cache_clear()
 
-        # WHEN
-        create_db_and_tables()
+        try:
+            # WHEN
+            create_db_and_tables()
 
-        # THEN
-        mock_create_all.assert_called_once()
-
-        # Cleanup
-        get_engine.cache_clear()
+            # THEN
+            mock_create_all.assert_called_once()
+        finally:
+            get_engine.cache_clear()
 
 
 class TestLifespan:
