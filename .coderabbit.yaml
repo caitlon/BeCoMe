@@ -1,0 +1,99 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: "en-US"
+early_access: false
+
+reviews:
+  profile: "assertive"
+  request_changes_workflow: false
+  high_level_summary: true
+  high_level_summary_in_walkthrough: true
+  poem: false
+  review_status: true
+  collapse_walkthrough: false
+  sequence_diagrams: true
+
+  auto_review:
+    enabled: true
+    drafts: false
+    base_branches:
+      - main
+
+  path_instructions:
+    # Frontend - React/TypeScript
+    - path: "frontend/**/*.tsx"
+      instructions: |
+        Review React components for:
+        - Proper TypeScript types (no `any`)
+        - React hooks best practices (dependencies, cleanup)
+        - Accessibility (aria labels, semantic HTML)
+        - shadcn/ui component usage
+        - Tailwind CSS class ordering
+        - i18n: all user-facing text must use useTranslation()
+
+    - path: "frontend/**/*.ts"
+      instructions: |
+        Review TypeScript code for:
+        - Proper type definitions (no `any`)
+        - API client patterns consistency
+        - Error handling
+
+    - path: "frontend/src/i18n/locales/**/*.json"
+      instructions: |
+        Verify that:
+        - All keys exist in BOTH en/ and cs/ locales
+        - Translations are consistent and complete
+        - No hardcoded English text in Czech files
+
+    # Backend - FastAPI/Python
+    - path: "api/**/*.py"
+      instructions: |
+        Review Python code for:
+        - FastAPI best practices
+        - Proper type hints (strict typing)
+        - SOLID principles compliance
+        - Repository pattern for data access
+        - Pydantic models for validation
+        - No SQL injection vulnerabilities
+        - Proper error handling with HTTPException
+
+    # Core library - Python
+    - path: "src/**/*.py"
+      instructions: |
+        Review Python code for:
+        - Strict OOP principles (encapsulation, composition over inheritance)
+        - SOLID principles compliance
+        - Immutable data structures where appropriate
+        - Proper docstrings (what, not how)
+        - Type hints for all public methods
+        - No commented-out code
+
+    # Tests
+    - path: "tests/**/*.py"
+      instructions: |
+        Review tests for:
+        - GIVEN-WHEN-THEN structure in test bodies
+        - Descriptive test names (test_<action>_<expected_result>)
+        - Proper use of pytest fixtures
+        - Test isolation (no shared state)
+        - Edge cases coverage
+
+    - path: "frontend/**/*.test.tsx"
+      instructions: |
+        Review React tests for:
+        - Testing user behavior, not implementation
+        - Proper use of React Testing Library
+        - Accessibility queries preferred (getByRole, getByLabelText)
+
+  # Pre-merge checks
+  pre_merge_checks:
+    title:
+      mode: "warning"
+      requirements: "Use conventional commits format: feat|fix|refactor|test|docs|chore: description (max 50 chars)"
+    description:
+      mode: "warning"
+    docstrings:
+      mode: "warning"
+      threshold: 80
+
+chat:
+  auto_reply: true
