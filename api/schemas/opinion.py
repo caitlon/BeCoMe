@@ -4,7 +4,9 @@ import math
 from datetime import datetime
 from typing import TYPE_CHECKING, Self
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+from api.schemas.sanitization import sanitize_text
 
 if TYPE_CHECKING:
     from api.db.models import ExpertOpinion, User
@@ -17,6 +19,12 @@ class OpinionCreate(BaseModel):
     lower_bound: float = Field(..., description="Lower bound (pessimistic estimate)")
     peak: float = Field(..., description="Peak value (most likely)")
     upper_bound: float = Field(..., description="Upper bound (optimistic estimate)")
+
+    @field_validator("position", mode="after")
+    @classmethod
+    def sanitize_position(cls, v: str) -> str:
+        """Remove HTML from position field."""
+        return sanitize_text(v)
 
     @model_validator(mode="after")
     def validate_fuzzy_constraints(self) -> Self:

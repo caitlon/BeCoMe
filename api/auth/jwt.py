@@ -1,10 +1,12 @@
-"""JWT token creation and decoding."""
+"""JWT token creation and decoding with refresh token support."""
 
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 from jose import JWTError, jwt
 
+from api.auth.token_blacklist import TokenBlacklist
 from api.config import get_settings
 
 ALGORITHM = "HS256"
@@ -14,46 +16,91 @@ class TokenError(Exception):
     """Raised when token validation fails."""
 
 
-def create_access_token(user_id: UUID) -> str:
+@dataclass(frozen=True)
+class TokenPair:
+    """Access and refresh token pair."""
+
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+    expires_in: int = 0  # Access token lifetime in seconds
+
+
+@dataclass(frozen=True)
+class TokenPayload:
+    """Decoded token payload."""
+
+    user_id: UUID
+    jti: str
+    token_type: str
+    exp: datetime
+
+
+def create_access_token(user_id: UUID, jti: str | None = None) -> str:
     """Create a JWT access token for a user.
 
-    Includes standard claims:
-    - sub: subject (user ID)
-    - exp: expiration time
-    - iat: issued at time
-    - jti: unique token ID (for future revocation support)
-    - type: token type (access)
-
     :param user_id: User's UUID
+    :param jti: Optional JWT ID (generated if not provided)
     :return: Encoded JWT token string
     """
     settings = get_settings()
     now = datetime.now(UTC)
-    expire = now + timedelta(hours=settings.access_token_expire_hours)
+    expire = now + timedelta(minutes=settings.access_token_expire_minutes)
     payload = {
         "sub": str(user_id),
         "exp": expire,
         "iat": now,
-        "jti": uuid4().hex,  # Unique token ID for revocation support
+        "jti": jti or uuid4().hex,
         "type": "access",
     }
     encoded: str = jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM)
     return encoded
 
 
-def decode_access_token(token: str) -> UUID:
-    """Decode and validate a JWT access token.
+def create_refresh_token(user_id: UUID) -> tuple[str, str]:
+    """Create a JWT refresh token for a user.
 
-    Validates:
-    - Signature (via secret key)
-    - Expiration (exp claim)
-    - Issued at (iat claim)
-    - Token type (must be 'access')
-    - Subject presence (sub claim)
+    :param user_id: User's UUID
+    :return: Tuple of (encoded token, jti)
+    """
+    settings = get_settings()
+    now = datetime.now(UTC)
+    expire = now + timedelta(days=settings.refresh_token_expire_days)
+    jti = uuid4().hex
+    payload = {
+        "sub": str(user_id),
+        "exp": expire,
+        "iat": now,
+        "jti": jti,
+        "type": "refresh",
+    }
+    encoded: str = jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM)
+    return encoded, jti
+
+
+def create_token_pair(user_id: UUID) -> TokenPair:
+    """Create both access and refresh tokens for a user.
+
+    :param user_id: User's UUID
+    :return: TokenPair with both tokens
+    """
+    settings = get_settings()
+    refresh_token, jti = create_refresh_token(user_id)
+    access_token = create_access_token(user_id, jti)
+    return TokenPair(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        expires_in=settings.access_token_expire_minutes * 60,
+    )
+
+
+def decode_token(token: str, expected_type: str) -> TokenPayload:
+    """Decode and validate a JWT token.
 
     :param token: JWT token string
-    :return: User UUID from token
-    :raises TokenError: If token is invalid or expired
+    :param expected_type: Expected token type ('access' or 'refresh')
+    :return: TokenPayload with decoded data
+    :raises TokenError: If token is invalid, expired, or blacklisted
     """
     settings = get_settings()
     try:
@@ -69,18 +116,62 @@ def decode_access_token(token: str) -> UUID:
             },
         )
 
-        # Validate token type
         token_type: str | None = payload.get("type")
-        if token_type != "access":
-            raise TokenError("Invalid token type")
+        if token_type != expected_type:
+            raise TokenError(f"Invalid token type: expected {expected_type}")
 
-        # Extract and validate user ID
+        jti: str | None = payload.get("jti")
+        if not jti:
+            raise TokenError("Missing token ID")
+
+        # Check blacklist
+        if TokenBlacklist.is_blacklisted(jti):
+            raise TokenError("Token has been revoked")
+
         user_id_str: str | None = payload.get("sub")
         if not user_id_str:
             raise TokenError("Missing user ID in token")
 
-        return UUID(user_id_str)
+        exp_timestamp = payload.get("exp")
+        exp_datetime = datetime.fromtimestamp(exp_timestamp, tz=UTC)
+
+        return TokenPayload(
+            user_id=UUID(user_id_str),
+            jti=jti,
+            token_type=token_type,
+            exp=exp_datetime,
+        )
     except JWTError as e:
         raise TokenError("Invalid or expired token") from e
     except ValueError as e:
         raise TokenError("Invalid user ID in token") from e
+
+
+def decode_access_token(token: str) -> UUID:
+    """Decode and validate a JWT access token.
+
+    :param token: JWT token string
+    :return: User UUID from token
+    :raises TokenError: If token is invalid or expired
+    """
+    payload = decode_token(token, "access")
+    return payload.user_id
+
+
+def decode_refresh_token(token: str) -> TokenPayload:
+    """Decode and validate a JWT refresh token.
+
+    :param token: JWT token string
+    :return: TokenPayload with user_id, jti, and exp
+    :raises TokenError: If token is invalid or expired
+    """
+    return decode_token(token, "refresh")
+
+
+def revoke_token(jti: str, exp: datetime) -> None:
+    """Revoke a token by adding its JTI to the blacklist.
+
+    :param jti: JWT ID to revoke
+    :param exp: Token expiration time
+    """
+    TokenBlacklist.add(jti, exp)

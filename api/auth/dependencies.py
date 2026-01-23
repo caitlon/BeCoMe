@@ -11,7 +11,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlmodel import Session
 
-from api.auth.jwt import TokenError, decode_access_token
+from api.auth.jwt import TokenError, TokenPayload, decode_access_token, decode_token
 from api.db.models import User
 from api.db.session import get_session
 from api.services.user_service import UserService
@@ -51,3 +51,25 @@ def get_current_user(
 
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
+
+
+def get_current_token_payload(
+    token: Annotated[str, Depends(oauth2_scheme)],
+) -> TokenPayload:
+    """Extract and validate token payload from JWT.
+
+    Used for logout to get JTI without loading user from DB.
+
+    :param token: JWT access token from Authorization header
+    :return: TokenPayload with jti, exp, and user_id
+    :raises HTTPException: 401 if token invalid
+    """
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        return decode_token(token, "access")
+    except TokenError as e:
+        raise credentials_exception from e

@@ -19,7 +19,11 @@ class Settings(BaseSettings):
 
     # Auth
     secret_key: str  # Required, load from .env
-    access_token_expire_hours: int = 24
+    access_token_expire_minutes: int = 15  # Short-lived access token
+    refresh_token_expire_days: int = 7  # Long-lived refresh token
+
+    # Redis (for token blacklist)
+    redis_url: str | None = None  # e.g., redis://localhost:6379/0
 
     # API
     debug: bool = False
