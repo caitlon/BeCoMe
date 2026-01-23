@@ -1,15 +1,10 @@
 name: Deploy Backend to Azure
 
 on:
-  push:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
     branches: [main]
-    paths:
-      - 'api/**'
-      - 'src/**'
-      - 'pyproject.toml'
-      - 'uv.lock'
-      - 'Dockerfile'
-      - '.github/workflows/deploy-backend.yml'
   workflow_dispatch:  # Allow manual trigger
 
 env:
@@ -18,35 +13,10 @@ env:
   IMAGE_NAME: become-api
 
 jobs:
-  test:
-    name: Run Tests
-    runs-on: ubuntu-24.04
-    env:
-      SECRET_KEY: test-secret-key-for-ci
-      TESTING: "1"
-
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Set up uv
-        uses: astral-sh/setup-uv@v6
-        with:
-          enable-cache: true
-
-      - name: Set up Python
-        run: uv python install 3.13.7
-
-      - name: Install dependencies
-        run: uv sync --frozen --extra dev --extra api
-
-      - name: Run tests
-        run: uv run pytest tests/api/ -v --tb=short
-
   build-and-deploy:
     name: Build and Deploy
     runs-on: ubuntu-24.04
-    needs: test
-    if: github.ref == 'refs/heads/main'
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
 
     steps:
       - uses: actions/checkout@v5

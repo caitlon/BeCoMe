@@ -1,11 +1,12 @@
 name: Deploy Frontend to Azure Static Web Apps
 
 on:
-  push:
+  # Deploy to production after CI passes
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
     branches: [main]
-    paths:
-      - 'frontend/**'
-      - '.github/workflows/deploy-frontend.yml'
+  # Preview deployments on PR
   pull_request:
     types: [opened, synchronize, reopened, closed]
     branches: [main]
@@ -20,7 +21,11 @@ env:
 
 jobs:
   build-and-deploy:
-    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action != 'closed')
+    # Run on: PR (preview), workflow_dispatch, or after successful CI (production)
+    if: |
+      (github.event_name == 'pull_request' && github.event.action != 'closed') ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
+      github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     name: Build and Deploy
 
