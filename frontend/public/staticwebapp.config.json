@@ -3,12 +3,6 @@
     "rewrite": "/index.html",
     "exclude": ["/assets/*", "/*.svg", "/*.ico", "/*.png", "/*.jpg", "/*.jpeg", "/*.gif", "/*.webp"]
   },
-  "routes": [
-    {
-      "route": "/api/*",
-      "allowedRoles": ["anonymous"]
-    }
-  ],
   "globalHeaders": {
     "X-Frame-Options": "DENY",
     "X-Content-Type-Options": "nosniff",
