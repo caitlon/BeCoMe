@@ -45,3 +45,7 @@ CLAUDE.md
 
 # Generated visualizations
 examples/visualizations/output/
+
+# Azure deployment logs
+logs/
+logs.zip
