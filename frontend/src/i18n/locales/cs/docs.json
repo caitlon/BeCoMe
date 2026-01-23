@@ -32,8 +32,11 @@
     "fuzzy": {
       "title": "Fuzzy trojúhelníkové číslo",
       "description": "Trojúhelníková funkce příslušnosti se třemi hodnotami představujícími nejistotu. Toto je nejběžnější formát vstupu.",
+      "lowerLabel": "Dolní mez:",
       "lower": "Dolní mez (pesimistický odhad) - minimální realistická hodnota",
+      "peakLabel": "Vrchol:",
       "peak": "Vrchol (nejpravděpodobnější hodnota) - váš nejlepší odhad",
+      "upperLabel": "Horní mez:",
       "upper": "Horní mez (optimistický odhad) - maximální realistická hodnota",
       "example": "Příklad: Pokud si myslíte, že rozpočet by měl být kolem 60 miliard, ale realisticky může být mezi 40 a 80, zadejte (40, 60, 80).",
       "rule": "Hodnoty musí splňovat: Dolní ≤ Vrchol ≤ Horní"

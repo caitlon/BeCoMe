@@ -18,6 +18,7 @@ export function StepEnterOpinion() {
   const [peak, setPeak] = useState("50");
   const [upper, setUpper] = useState("70");
 
+  // Fallback values form a valid triangle (0, 50, 100) when inputs are empty or invalid
   const lowerNum = parseFloat(lower) || 0;
   const peakNum = parseFloat(peak) || 50;
   const upperNum = parseFloat(upper) || 100;
@@ -67,10 +68,11 @@ export function StepEnterOpinion() {
 
             <div className="grid grid-cols-3 gap-4">
               <div>
-                <Label className="text-xs">
+                <Label htmlFor="lower-input" className="text-xs">
                   {t("steps.enterOpinion.fields.lower")}
                 </Label>
                 <Input
+                  id="lower-input"
                   type="number"
                   value={lower}
                   onChange={(e) => setLower(e.target.value)}
@@ -83,10 +85,11 @@ export function StepEnterOpinion() {
                 </p>
               </div>
               <div>
-                <Label className="text-xs">
+                <Label htmlFor="peak-input" className="text-xs">
                   {t("steps.enterOpinion.fields.peak")}
                 </Label>
                 <Input
+                  id="peak-input"
                   type="number"
                   value={peak}
                   onChange={(e) => setPeak(e.target.value)}
@@ -99,10 +102,11 @@ export function StepEnterOpinion() {
                 </p>
               </div>
               <div>
-                <Label className="text-xs">
+                <Label htmlFor="upper-input" className="text-xs">
                   {t("steps.enterOpinion.fields.upper")}
                 </Label>
                 <Input
+                  id="upper-input"
                   type="number"
                   value={upper}
                   onChange={(e) => setUpper(e.target.value)}
@@ -122,7 +126,15 @@ export function StepEnterOpinion() {
 
             {/* Triangle Preview */}
             <div className="bg-muted rounded-lg p-4">
-              <svg viewBox="0 0 300 120" className="w-full">
+              <svg
+                viewBox="0 0 300 120"
+                className="w-full"
+                role="img"
+                aria-labelledby="triangle-preview-title"
+              >
+                <title id="triangle-preview-title">
+                  {t("steps.enterOpinion.previewTitle")}
+                </title>
                 {/* Axes */}
                 <line
                   x1="20"
@@ -179,7 +191,7 @@ export function StepEnterOpinion() {
                   textAnchor="middle"
                   transform="rotate(-90, 10, 60)"
                 >
-                  membership
+                  {t("steps.enterOpinion.yAxisLabel")}
                 </text>
 
                 {isValid && (

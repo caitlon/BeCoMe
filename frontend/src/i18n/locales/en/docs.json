@@ -32,8 +32,11 @@
     "fuzzy": {
       "title": "Fuzzy Triangular Number",
       "description": "A triangular membership function with three values representing uncertainty. This is the most common input format.",
+      "lowerLabel": "Lower:",
       "lower": "Lower bound (pessimistic estimate) - the minimum realistic value",
+      "peakLabel": "Peak:",
       "peak": "Peak (most likely value) - your best estimate",
+      "upperLabel": "Upper:",
       "upper": "Upper bound (optimistic estimate) - the maximum realistic value",
       "example": "Example: If you think the budget should be around 60 billion, but could realistically be between 40 and 80, enter (40, 60, 80).",
       "rule": "Values must satisfy: Lower ≤ Peak ≤ Upper"
