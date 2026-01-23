@@ -11,7 +11,8 @@
   "method": {
     "title": "The BeCoMe Method",
     "paragraph1": "Over many years of research at Czech University of Life Sciences in Prague (CZU), researchers developed the unique BeCoMe (Best-Compromise-Mean) method for determining the optimum group decision, which corresponds to the best compromise/agreement of all experts' opinions.",
-    "paragraph2": "The optimum decision is a result of a computationally complex fuzzy set mathematical model based on minimizing entropy. This approach ensures that the final decision represents the most balanced compromise among all expert viewpoints."
+    "paragraph2": "The optimum decision is a result of a computationally complex fuzzy set mathematical model based on minimizing entropy. This approach ensures that the final decision represents the most balanced compromise among all expert viewpoints.",
+    "learnMore": "View Documentation"
   },
   "expertOpinions": {
     "title": "How Experts Express Their Opinions",

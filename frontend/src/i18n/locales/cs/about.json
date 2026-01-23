@@ -11,7 +11,8 @@
   "method": {
     "title": "Metoda BeCoMe",
     "paragraph1": "Během mnoha let výzkumu na České zemědělské univerzitě v Praze (ČZU) vyvinuli výzkumníci unikátní metodu BeCoMe (Best-Compromise-Mean) pro určení optimálního skupinového rozhodnutí, které odpovídá nejlepšímu kompromisu/shodě všech expertních názorů.",
-    "paragraph2": "Optimální rozhodnutí je výsledkem výpočetně složitého matematického modelu fuzzy množin založeného na minimalizaci entropie. Tento přístup zajišťuje, že konečné rozhodnutí představuje nejvyváženější kompromis mezi všemi expertními pohledy."
+    "paragraph2": "Optimální rozhodnutí je výsledkem výpočetně složitého matematického modelu fuzzy množin založeného na minimalizaci entropie. Tento přístup zajišťuje, že konečné rozhodnutí představuje nejvyváženější kompromis mezi všemi expertními pohledy.",
+    "learnMore": "Zobrazit dokumentaci"
   },
   "expertOpinions": {
     "title": "Jak experti vyjadřují své názory",

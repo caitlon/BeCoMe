@@ -9,6 +9,8 @@ import enAbout from "./locales/en/about.json";
 import enProjects from "./locales/en/projects.json";
 import enProfile from "./locales/en/profile.json";
 import enCaseStudies from "./locales/en/caseStudies.json";
+import enTour from "./locales/en/tour.json";
+import enDocs from "./locales/en/docs.json";
 
 import csCommon from "./locales/cs/common.json";
 import csLanding from "./locales/cs/landing.json";
@@ -17,6 +19,8 @@ import csAbout from "./locales/cs/about.json";
 import csProjects from "./locales/cs/projects.json";
 import csProfile from "./locales/cs/profile.json";
 import csCaseStudies from "./locales/cs/caseStudies.json";
+import csTour from "./locales/cs/tour.json";
+import csDocs from "./locales/cs/docs.json";
 
 export const defaultNS = "common";
 
@@ -29,6 +33,8 @@ export const resources = {
     projects: enProjects,
     profile: enProfile,
     caseStudies: enCaseStudies,
+    tour: enTour,
+    docs: enDocs,
   },
   cs: {
     common: csCommon,
@@ -38,6 +44,8 @@ export const resources = {
     projects: csProjects,
     profile: csProfile,
     caseStudies: csCaseStudies,
+    tour: csTour,
+    docs: csDocs,
   },
 } as const;
 

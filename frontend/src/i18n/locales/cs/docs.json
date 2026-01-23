@@ -1,0 +1,108 @@
+{
+  "title": "Dokumentace",
+  "subtitle": "Naučte se používat BeCoMe pro agregaci expertních názorů",
+  "tableOfContents": "Obsah",
+  "gettingStarted": {
+    "title": "Začínáme",
+    "intro": "BeCoMe vám pomáhá agregovat expertní názory vyjádřené jako fuzzy trojúhelníková čísla. Zde je návod, jak začít:",
+    "createProject": {
+      "title": "Vytvoření projektu",
+      "step1": "Zaregistrujte se nebo se přihlaste ke svému účtu",
+      "step2": "Klikněte na \"Nový projekt\" na stránce Projekty",
+      "step3": "Zadejte název a popis projektu",
+      "step4": "Nastavte škálu: minimální hodnotu, maximální hodnotu a jednotku (např. 0-100 mld. Kč)"
+    },
+    "inviteExperts": {
+      "title": "Pozvání expertů",
+      "description": "Jako experti mohou být pozváni pouze registrovaní uživatelé.",
+      "step1": "Otevřete svůj projekt",
+      "step2": "Klikněte na \"Pozvat experty\"",
+      "step3": "Zadejte email registrovaného uživatele",
+      "step4": "Pozvánku uvidí na záložce \"Pozvánky\""
+    }
+  },
+  "expertOpinions": {
+    "title": "Zadávání expertních názorů",
+    "intro": "Experti odpovídají na položenou otázku hodnocením kvantitativního parametru. Své odpovědi mohou vyjádřit třemi způsoby:",
+    "crisp": {
+      "title": "Přesné číslo",
+      "description": "Jedna přesná hodnota, když je expert přesvědčen o svém odhadu. V rozhraní jednoduše zadejte stejnou hodnotu do všech tří polí (Dolní = Vrchol = Horní).",
+      "example": "Příklad: Pokud jste si jisti, že rozpočet by měl být přesně 50 miliard Kč, zadejte (50, 50, 50)."
+    },
+    "fuzzy": {
+      "title": "Fuzzy trojúhelníkové číslo",
+      "description": "Trojúhelníková funkce příslušnosti se třemi hodnotami představujícími nejistotu. Toto je nejběžnější formát vstupu.",
+      "lower": "Dolní mez (pesimistický odhad) - minimální realistická hodnota",
+      "peak": "Vrchol (nejpravděpodobnější hodnota) - váš nejlepší odhad",
+      "upper": "Horní mez (optimistický odhad) - maximální realistická hodnota",
+      "example": "Příklad: Pokud si myslíte, že rozpočet by měl být kolem 60 miliard, ale realisticky může být mezi 40 a 80, zadejte (40, 60, 80).",
+      "rule": "Hodnoty musí splňovat: Dolní ≤ Vrchol ≤ Horní"
+    },
+    "likert": {
+      "title": "Likertova škála",
+      "description": "Pro otázky souhlasu/nesouhlasu použijte lingvistické termíny mapované na číselné hodnoty:",
+      "scale": {
+        "stronglyDisagree": "Rozhodně nesouhlasím = 0",
+        "ratherDisagree": "Spíše nesouhlasím = 25",
+        "neutral": "Neutrální = 50",
+        "ratherAgree": "Spíše souhlasím = 75",
+        "stronglyAgree": "Rozhodně souhlasím = 100"
+      },
+      "example": "Příklad: Pokud \"Spíše souhlasíte\", můžete zadat (60, 75, 90) pro vyjádření své pozice s určitou nejistotou."
+    }
+  },
+  "results": {
+    "title": "Pochopení výsledků",
+    "intro": "Poté, co experti odešlou své názory, BeCoMe vypočítá optimální skupinové rozhodnutí.",
+    "bestCompromise": {
+      "title": "Nejlepší kompromis (ΓΩMean)",
+      "description": "Optimální agregace všech expertních názorů. Kombinuje aritmetický průměr (Γ) a medián (Ω) pro nalezení hodnoty, která nejlépe reprezentuje skupinový konsenzus.",
+      "centroid": "Centroid je \"těžiště\" trojúhelníkového čísla - jediná hodnota reprezentující celkový odhad."
+    },
+    "arithmeticMean": {
+      "title": "Aritmetický průměr (Γ)",
+      "description": "Složkový průměr všech expertních názorů. Každá složka (dolní, vrchol, horní) je průměrována samostatně."
+    },
+    "median": {
+      "title": "Medián (Ω)",
+      "description": "Střední hodnota, když jsou názory seřazeny podle centroidu. Robustnější proti extrémním odchylkám než průměr."
+    },
+    "maxError": {
+      "title": "Maximální chyba (Δmax)",
+      "description": "Metrika kvality indikující úroveň nejistoty kompromisu. Nižší hodnoty naznačují lepší shodu mezi experty.",
+      "interpretation": "Pokud je maximální chyba vysoká vzhledem ke škále, naznačuje to významnou neshodu mezi experty."
+    }
+  },
+  "visualization": {
+    "title": "Čtení vizualizace",
+    "description": "Graf trojúhelníků zobrazuje všechna fuzzy čísla na stejné škále:",
+    "elements": {
+      "xAxis": "Osa X: hodnoty škály (např. 0-100)",
+      "yAxis": "Osa Y: stupeň příslušnosti (0-1, kde 1 je nejjistější)",
+      "gray": "Šedé trojúhelníky: jednotlivé expertní názory",
+      "blue": "Modrá čárkovaná čára: aritmetický průměr",
+      "green": "Zelená čárkovaná čára: medián",
+      "black": "Černá plná čára: nejlepší kompromis"
+    },
+    "tip": "Přepněte \"Zobrazit jednotlivé názory\" pro zobrazení, jak se názor každého experta srovnává s agregovaným výsledkem."
+  },
+  "glossary": {
+    "title": "Slovník pojmů",
+    "fuzzyNumber": {
+      "term": "Fuzzy trojúhelníkové číslo",
+      "definition": "Číslo reprezentované třemi hodnotami (dolní, vrchol, horní) tvořícími trojúhelník. Vyjadřuje nejistotu v expertních odhadech."
+    },
+    "centroid": {
+      "term": "Centroid",
+      "definition": "Těžiště trojúhelníkového čísla. Vypočítá se jako (dolní + vrchol + horní) / 3."
+    },
+    "membership": {
+      "term": "Funkce příslušnosti",
+      "definition": "Funkce, která přiřazuje stupeň příslušnosti (0-1) každé hodnotě. U trojúhelníkových čísel má vrchol příslušnost 1 a lineárně klesá k 0 na hranicích."
+    },
+    "aggregation": {
+      "term": "Agregace názorů",
+      "definition": "Proces kombinování více expertních názorů do jediné reprezentativní hodnoty."
+    }
+  }
+}
