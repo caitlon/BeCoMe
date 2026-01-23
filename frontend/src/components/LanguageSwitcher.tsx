@@ -9,7 +9,8 @@ const languages = [
 export function LanguageSwitcher() {
   const { i18n } = useTranslation();
 
-  const currentLang = i18n.language === "cs" ? "cs" : "en";
+  const resolved = (i18n.resolvedLanguage ?? i18n.language).split("-")[0];
+  const currentLang = resolved === "cs" ? "cs" : "en";
   const nextLang = currentLang === "en" ? languages[1] : languages[0];
 
   const toggleLanguage = () => {

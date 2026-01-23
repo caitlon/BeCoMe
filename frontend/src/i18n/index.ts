@@ -60,8 +60,12 @@ i18n
 
 // Update HTML lang attribute for screen readers
 i18n.on("languageChanged", (lng) => {
-  document.documentElement.lang = lng;
+  if (typeof document !== "undefined") {
+    document.documentElement.lang = lng;
+  }
 });
-document.documentElement.lang = i18n.language;
+if (typeof document !== "undefined") {
+  document.documentElement.lang = i18n.language;
+}
 
 export default i18n;

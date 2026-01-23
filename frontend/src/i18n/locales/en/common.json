@@ -76,11 +76,12 @@
     "peakDesc": "Peak (most likely)",
     "upperDesc": "Upper (optimistic)",
     "arithmeticMean": "Arithmetic Mean (Γ)",
-    "median": "Median (Ω)",
+    "medianOmega": "Median (Ω)",
     "maxError": "Max Error (Δmax)",
     "membershipFunction": "μ(x)",
     "mean": "Mean",
     "median": "Median",
-    "best": "Best"
+    "best": "Best",
+    "triangleVisualization": "Fuzzy triangular number visualization"
   }
 }

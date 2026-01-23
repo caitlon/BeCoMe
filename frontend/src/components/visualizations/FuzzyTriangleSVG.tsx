@@ -28,10 +28,10 @@ export function FuzzyTriangleSVG() {
   const current = triangleForms[currentForm];
 
   return (
-    <svg 
-      viewBox="0 0 400 200" 
+    <svg
+      viewBox="0 0 400 200"
       className="w-full max-w-2xl mx-auto"
-      aria-label="Fuzzy triangular number visualization"
+      aria-label={t("fuzzy.triangleVisualization")}
     >
       {/* Grid lines */}
       <defs>
