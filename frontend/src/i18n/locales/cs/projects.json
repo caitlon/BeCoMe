@@ -40,7 +40,7 @@
     "title": "Smazat projekt?",
     "description": "Opravdu chcete smazat \"{{name}}\"?",
     "details": {
-      "opinions": "Všechny expertní názory",
+      "opinions": "Všechny expertní názory ({{count}})",
       "results": "Všechny výsledky výpočtů",
       "invitations": "Všechny pozvánky"
     },
@@ -50,22 +50,41 @@
   "toast": {
     "error": "Chyba",
     "loadFailed": "Nepodařilo se načíst projekty",
+    "loadProjectFailed": "Nepodařilo se načíst projekt",
+    "validationError": "Chyba validace",
+    "invalidNumbers": "Zadejte prosím platná čísla",
+    "lowerPeakUpper": "Hodnoty musí splňovat: dolní ≤ vrchol ≤ horní",
+    "scaleRange": "Hodnoty musí být v rozsahu škály: {{min}} — {{max}}",
+    "opinionSaved": "Názor uložen",
+    "saveFailed": "Nepodařilo se uložit",
+    "opinionDeleted": "Názor smazán",
+    "deleteOpinionFailed": "Nepodařilo se smazat názor",
     "invitationAccepted": "Pozvánka přijata",
     "invitationDeclined": "Pozvánka odmítnuta",
     "projectDeleted": "Projekt smazán",
     "acceptFailed": "Nepodařilo se přijmout pozvánku",
     "declineFailed": "Nepodařilo se odmítnout pozvánku",
     "deleteFailed": "Nepodařilo se smazat projekt",
-    "createFailed": "Nepodařilo se vytvořit projekt"
+    "createFailed": "Nepodařilo se vytvořit projekt",
+    "memberRemoved": "Člen odebrán",
+    "removeMemberFailed": "Nepodařilo se odebrat člena"
   },
   "detail": {
     "backToProjects": "Zpět na projekty",
+    "projects": "Projekty",
     "experts": "Experti",
     "responses": "odpovědí",
+    "scale": "Škála",
+    "edit": "Upravit",
+    "inviteExperts": "Pozvat experty",
     "inviteExpert": "Pozvat experta",
+    "delete": "Smazat",
     "deleteProject": "Smazat projekt",
+    "opinions": "Názory",
     "results": "Výsledky",
-    "noResults": "Nedostatek odpovědí pro výpočet výsledků.",
+    "team": "Tým",
+    "teamMembers": "Tým ({{count}} členů)",
+    "noResults": "Výsledky se zobrazí po odeslání názorů experty.",
     "bestCompromise": "Nejlepší kompromis",
     "arithmeticMean": "Aritmetický průměr (Γ)",
     "median": "Medián (Ω)",
@@ -87,6 +106,12 @@
     "expert": "Expert",
     "visualization": "Vizualizace",
     "showIndividual": "Zobrazit jednotlivé názory"
+  },
+  "team": {
+    "name": "Jméno",
+    "email": "E-mail",
+    "role": "Role",
+    "joined": "Přidal se"
   },
   "create": {
     "title": "Vytvořit nový projekt",

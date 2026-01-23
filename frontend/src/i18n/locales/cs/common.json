@@ -76,11 +76,12 @@
     "peakDesc": "Vrchol (nejpravděpodobnější)",
     "upperDesc": "Horní (optimistický)",
     "arithmeticMean": "Aritmetický průměr (Γ)",
-    "median": "Medián (Ω)",
+    "medianOmega": "Medián (Ω)",
     "maxError": "Max. chyba (Δmax)",
     "membershipFunction": "μ(x)",
     "mean": "Průměr",
     "median": "Medián",
-    "best": "Nejlepší"
+    "best": "Nejlepší",
+    "triangleVisualization": "Vizualizace fuzzy trojúhelníkového čísla"
   }
 }

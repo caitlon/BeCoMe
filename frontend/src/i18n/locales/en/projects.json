@@ -40,7 +40,7 @@
     "title": "Delete Project?",
     "description": "Are you sure you want to delete \"{{name}}\"?",
     "details": {
-      "opinions": "All expert opinions",
+      "opinions": "All expert opinions ({{count}})",
       "results": "All calculation results",
       "invitations": "All invitations"
     },
@@ -50,22 +50,41 @@
   "toast": {
     "error": "Error",
     "loadFailed": "Failed to load projects",
+    "loadProjectFailed": "Failed to load project",
+    "validationError": "Validation Error",
+    "invalidNumbers": "Please enter valid numbers",
+    "lowerPeakUpper": "Values must satisfy: lower ≤ peak ≤ upper",
+    "scaleRange": "Values must be within scale range: {{min}} — {{max}}",
+    "opinionSaved": "Opinion saved",
+    "saveFailed": "Failed to save",
+    "opinionDeleted": "Opinion deleted",
+    "deleteOpinionFailed": "Failed to delete opinion",
     "invitationAccepted": "Invitation accepted",
     "invitationDeclined": "Invitation declined",
     "projectDeleted": "Project deleted",
     "acceptFailed": "Failed to accept invitation",
     "declineFailed": "Failed to decline invitation",
     "deleteFailed": "Failed to delete project",
-    "createFailed": "Failed to create project"
+    "createFailed": "Failed to create project",
+    "memberRemoved": "Member removed",
+    "removeMemberFailed": "Failed to remove member"
   },
   "detail": {
     "backToProjects": "Back to Projects",
+    "projects": "Projects",
     "experts": "Experts",
     "responses": "responses",
+    "scale": "Scale",
+    "edit": "Edit",
+    "inviteExperts": "Invite Experts",
     "inviteExpert": "Invite Expert",
+    "delete": "Delete",
     "deleteProject": "Delete Project",
+    "opinions": "Opinions",
     "results": "Results",
-    "noResults": "Not enough responses to calculate results.",
+    "team": "Team",
+    "teamMembers": "Team ({{count}} members)",
+    "noResults": "Results will appear once experts submit their opinions.",
     "bestCompromise": "Best Compromise",
     "arithmeticMean": "Arithmetic Mean (Γ)",
     "median": "Median (Ω)",
@@ -87,6 +106,12 @@
     "expert": "Expert",
     "visualization": "Visualization",
     "showIndividual": "Show individual opinions"
+  },
+  "team": {
+    "name": "Name",
+    "email": "Email",
+    "role": "Role",
+    "joined": "Joined"
   },
   "create": {
     "title": "Create New Project",

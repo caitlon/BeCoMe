@@ -97,8 +97,8 @@ const ProjectDetail = () => {
       }
     } catch (error) {
       toast({
-        title: "Error",
-        description: "Failed to load project",
+        title: t("toast.error"),
+        description: t("toast.loadProjectFailed"),
         variant: "destructive",
       });
       navigate("/projects");
@@ -121,8 +121,8 @@ const ProjectDetail = () => {
     // Validation
     if (isNaN(lowerNum) || isNaN(peakNum) || isNaN(upperNum)) {
       toast({
-        title: "Validation Error",
-        description: "Please enter valid numbers",
+        title: t("toast.validationError"),
+        description: t("toast.invalidNumbers"),
         variant: "destructive",
       });
       return;
@@ -130,8 +130,8 @@ const ProjectDetail = () => {
 
     if (lowerNum > peakNum || peakNum > upperNum) {
       toast({
-        title: "Validation Error",
-        description: "Values must satisfy: lower ≤ peak ≤ upper",
+        title: t("toast.validationError"),
+        description: t("toast.lowerPeakUpper"),
         variant: "destructive",
       });
       return;
@@ -139,8 +139,8 @@ const ProjectDetail = () => {
 
     if (lowerNum < project.scale_min || upperNum > project.scale_max) {
       toast({
-        title: "Validation Error",
-        description: `Values must be within scale range: ${project.scale_min} — ${project.scale_max}`,
+        title: t("toast.validationError"),
+        description: t("toast.scaleRange", { min: project.scale_min, max: project.scale_max }),
         variant: "destructive",
       });
       return;
@@ -154,12 +154,12 @@ const ProjectDetail = () => {
         peak: peakNum,
         upper_bound: upperNum,
       });
-      toast({ title: "Opinion saved" });
+      toast({ title: t("toast.opinionSaved") });
       fetchData();
     } catch (error) {
       toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to save",
+        title: t("toast.error"),
+        description: error instanceof Error ? error.message : t("toast.saveFailed"),
         variant: "destructive",
       });
     } finally {
@@ -175,12 +175,12 @@ const ProjectDetail = () => {
       setLower("");
       setPeak("");
       setUpper("");
-      toast({ title: "Opinion deleted" });
+      toast({ title: t("toast.opinionDeleted") });
       fetchData();
     } catch (error) {
       toast({
-        title: "Error",
-        description: "Failed to delete opinion",
+        title: t("toast.error"),
+        description: t("toast.deleteOpinionFailed"),
         variant: "destructive",
       });
     }
@@ -190,12 +190,12 @@ const ProjectDetail = () => {
     if (!id) return;
     try {
       await api.deleteProject(id);
-      toast({ title: "Project deleted" });
+      toast({ title: t("toast.projectDeleted") });
       navigate("/projects");
     } catch (error) {
       toast({
-        title: "Error",
-        description: "Failed to delete project",
+        title: t("toast.error"),
+        description: t("toast.deleteFailed"),
         variant: "destructive",
       });
     }
@@ -205,12 +205,12 @@ const ProjectDetail = () => {
     if (!id) return;
     try {
       await api.removeMember(id, userId);
-      toast({ title: "Member removed" });
+      toast({ title: t("toast.memberRemoved") });
       fetchData();
     } catch (error) {
       toast({
-        title: "Error",
-        description: "Failed to remove member",
+        title: t("toast.error"),
+        description: t("toast.removeMemberFailed"),
         variant: "destructive",
       });
     }
@@ -243,7 +243,7 @@ const ProjectDetail = () => {
             className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
           >
             <ArrowLeft className="h-4 w-4" />
-            Projects
+            {t("detail.projects")}
           </Link>
         </div>
 
@@ -261,13 +261,13 @@ const ProjectDetail = () => {
           )}
           <div className="flex flex-wrap items-center gap-4">
             <span className="font-mono text-sm bg-muted px-3 py-1 rounded">
-              Scale: {project.scale_min} — {project.scale_max} {project.scale_unit}
+              {t("detail.scale")}: {project.scale_min} — {project.scale_max} {project.scale_unit}
             </span>
             {isAdmin && (
               <div className="flex gap-2">
                 <Button variant="outline" size="sm" className="gap-2">
                   <Edit className="h-4 w-4" />
-                  Edit
+                  {t("detail.edit")}
                 </Button>
                 <Button
                   variant="outline"
@@ -276,7 +276,7 @@ const ProjectDetail = () => {
                   onClick={() => setInviteModalOpen(true)}
                 >
                   <UserPlus className="h-4 w-4" />
-                  Invite Experts
+                  {t("detail.inviteExperts")}
                 </Button>
                 <Button
                   variant="outline"
@@ -285,7 +285,7 @@ const ProjectDetail = () => {
                   onClick={() => setDeleteModalOpen(true)}
                 >
                   <Trash2 className="h-4 w-4" />
-                  Delete
+                  {t("detail.delete")}
                 </Button>
               </div>
             )}
@@ -332,13 +332,13 @@ const ProjectDetail = () => {
           <Tabs defaultValue="opinions" className="space-y-6">
             <TabsList className="w-full">
               <TabsTrigger value="opinions" className="flex-1">
-                Opinions
+                {t("detail.opinions")}
               </TabsTrigger>
               <TabsTrigger value="results" className="flex-1">
-                Results
+                {t("detail.results")}
               </TabsTrigger>
               <TabsTrigger value="team" className="flex-1">
-                Team
+                {t("detail.team")}
               </TabsTrigger>
             </TabsList>
 
@@ -392,7 +392,7 @@ const ProjectDetail = () => {
               >
                 <span className="flex items-center gap-2">
                   <Users className="h-4 w-4" />
-                  Team ({members.length} members)
+                  {t("detail.teamMembers", { count: members.length })}
                 </span>
                 {teamOpen ? (
                   <ChevronUp className="h-4 w-4" />
@@ -423,12 +423,12 @@ const ProjectDetail = () => {
       <DeleteConfirmModal
         open={deleteModalOpen}
         onOpenChange={setDeleteModalOpen}
-        title="Delete Project?"
-        description={`Are you sure you want to delete "${project.name}"?`}
+        title={t("deleteModal.title")}
+        description={t("deleteModal.description", { name: project.name })}
         details={[
-          `All expert opinions (${opinions.length})`,
-          "All calculation results",
-          "All invitations",
+          t("deleteModal.details.opinions", { count: opinions.length }),
+          t("deleteModal.details.results"),
+          t("deleteModal.details.invitations"),
         ]}
         onConfirm={handleDeleteProject}
       />
@@ -619,6 +619,7 @@ const OpinionForm = ({
 
         {myOpinion && (
           <button
+            type="button"
             onClick={onDelete}
             className="text-sm text-destructive hover:underline"
           >
@@ -1012,16 +1013,18 @@ const TeamTable = ({
   currentUserId,
   onRemove,
 }: TeamTableProps) => {
+  const { t } = useTranslation("projects");
+
   return (
     <Card>
       <CardContent className="pt-6">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Email</TableHead>
-              <TableHead>Role</TableHead>
-              <TableHead>Joined</TableHead>
+              <TableHead>{t("team.name")}</TableHead>
+              <TableHead>{t("team.email")}</TableHead>
+              <TableHead>{t("team.role")}</TableHead>
+              <TableHead>{t("team.joined")}</TableHead>
               {isAdmin && <TableHead></TableHead>}
             </TableRow>
           </TableHeader>
@@ -1038,7 +1041,7 @@ const TeamTable = ({
                   <Badge
                     variant={member.role === "admin" ? "default" : "secondary"}
                   >
-                    {member.role}
+                    {t(`roles.${member.role}`)}
                   </Badge>
                 </TableCell>
                 <TableCell className="text-muted-foreground">
