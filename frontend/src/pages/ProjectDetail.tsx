@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { motion } from "framer-motion";
 import {
   ArrowLeft,
@@ -47,6 +48,7 @@ const ProjectDetail = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { toast } = useToast();
+  const { t } = useTranslation("projects");
 
   const [project, setProject] = useState<ProjectWithRole | null>(null);
   const [opinions, setOpinions] = useState<Opinion[]>([]);
@@ -467,6 +469,8 @@ const OpinionForm = ({
   onSave,
   onDelete,
 }: OpinionFormProps) => {
+  const { t } = useTranslation("projects");
+  const { t: tFuzzy } = useTranslation();
   const lowerNum = parseFloat(lower) || 0;
   const peakNum = parseFloat(peak) || 0;
   const upperNum = parseFloat(upper) || 0;
@@ -479,25 +483,25 @@ const OpinionForm = ({
   return (
     <Card className="border-2 border-primary/20">
       <CardHeader>
-        <CardTitle className="text-lg">Your Opinion</CardTitle>
+        <CardTitle className="text-lg">{t("detail.yourOpinion")}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <div>
-          <Label htmlFor="position">Position (optional)</Label>
+          <Label htmlFor="position">{t("detail.position")}</Label>
           <Input
             id="position"
-            placeholder="e.g., Head of Department"
+            placeholder={t("detail.positionPlaceholder")}
             value={position}
             onChange={(e) => setPosition(e.target.value)}
           />
         </div>
 
         <div>
-          <Label>Your Estimate</Label>
+          <Label>{t("detail.yourEstimate")}</Label>
           <div className="grid grid-cols-3 gap-4 mt-2">
             <div>
               <Label className="text-xs text-muted-foreground">
-                Lower (pessimistic)
+                {tFuzzy("fuzzy.lowerDesc")}
               </Label>
               <Input
                 type="number"
@@ -509,7 +513,7 @@ const OpinionForm = ({
             </div>
             <div>
               <Label className="text-xs text-muted-foreground">
-                Peak (most likely)
+                {tFuzzy("fuzzy.peakDesc")}
               </Label>
               <Input
                 type="number"
@@ -520,7 +524,7 @@ const OpinionForm = ({
             </div>
             <div>
               <Label className="text-xs text-muted-foreground">
-                Upper (optimistic)
+                {tFuzzy("fuzzy.upperDesc")}
               </Label>
               <Input
                 type="number"
@@ -532,7 +536,7 @@ const OpinionForm = ({
             </div>
           </div>
           <p className="text-xs text-muted-foreground mt-2">
-            Range: {project.scale_min} — {project.scale_max} {project.scale_unit}
+            {t("detail.range")}: {project.scale_min} — {project.scale_max} {project.scale_unit}
           </p>
         </div>
 
@@ -609,7 +613,7 @@ const OpinionForm = ({
             isLoading={isSaving}
             className="flex-1"
           >
-            {myOpinion ? "Update Opinion" : "Save Opinion"}
+            {myOpinion ? t("detail.updateOpinion") : t("detail.saveOpinion")}
           </SubmitButton>
         </div>
 
@@ -618,7 +622,7 @@ const OpinionForm = ({
             onClick={onDelete}
             className="text-sm text-destructive hover:underline"
           >
-            Delete my opinion
+            {t("detail.deleteOpinion")}
           </button>
         )}
       </CardContent>
@@ -627,15 +631,18 @@ const OpinionForm = ({
 };
 
 const OtherOpinionsTable = ({ opinions }: { opinions: Opinion[] }) => {
+  const { t } = useTranslation("projects");
+  const { t: tFuzzy } = useTranslation();
+
   if (opinions.length === 0) {
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Other Opinions</CardTitle>
+          <CardTitle className="text-lg">{t("detail.otherOpinions")}</CardTitle>
         </CardHeader>
         <CardContent>
           <p className="text-muted-foreground text-center py-8">
-            No other opinions yet
+            {t("detail.noOtherOpinions")}
           </p>
         </CardContent>
       </Card>
@@ -647,17 +654,17 @@ const OtherOpinionsTable = ({ opinions }: { opinions: Opinion[] }) => {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-lg">Other Opinions</CardTitle>
+        <CardTitle className="text-lg">{t("detail.otherOpinions")}</CardTitle>
       </CardHeader>
       <CardContent>
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Expert</TableHead>
+              <TableHead>{t("detail.expert")}</TableHead>
               <TableHead className="text-right font-mono">L</TableHead>
               <TableHead className="text-right font-mono">P</TableHead>
               <TableHead className="text-right font-mono">U</TableHead>
-              <TableHead className="text-right font-mono">Centroid</TableHead>
+              <TableHead className="text-right font-mono">{tFuzzy("fuzzy.centroid")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -711,12 +718,15 @@ const ResultsSection = ({
   setShowIndividual,
   opinions,
 }: ResultsSectionProps) => {
+  const { t } = useTranslation("projects");
+  const { t: tFuzzy } = useTranslation();
+
   if (!result || opinions.length === 0) {
     return (
       <Card>
         <CardContent className="py-16 text-center">
           <p className="text-muted-foreground">
-            Results will appear once experts submit their opinions.
+            {t("detail.noResults")}
           </p>
         </CardContent>
       </Card>
@@ -732,7 +742,7 @@ const ResultsSection = ({
       <Card className="border-2 border-primary">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            Best Compromise
+            {t("detail.bestCompromise")}
             <span className="text-sm font-normal text-muted-foreground">
               (ΓΩMean)
             </span>
@@ -741,26 +751,26 @@ const ResultsSection = ({
         <CardContent>
           <div className="grid grid-cols-3 gap-4 text-center mb-4">
             <div>
-              <div className="text-xs text-muted-foreground uppercase">Lower</div>
+              <div className="text-xs text-muted-foreground uppercase">{tFuzzy("fuzzy.lower")}</div>
               <div className="font-mono text-2xl font-medium">
                 {result.best_compromise.lower.toFixed(2)}
               </div>
             </div>
             <div>
-              <div className="text-xs text-muted-foreground uppercase">Peak</div>
+              <div className="text-xs text-muted-foreground uppercase">{tFuzzy("fuzzy.peak")}</div>
               <div className="font-mono text-2xl font-medium">
                 {result.best_compromise.peak.toFixed(2)}
               </div>
             </div>
             <div>
-              <div className="text-xs text-muted-foreground uppercase">Upper</div>
+              <div className="text-xs text-muted-foreground uppercase">{tFuzzy("fuzzy.upper")}</div>
               <div className="font-mono text-2xl font-medium">
                 {result.best_compromise.upper.toFixed(2)}
               </div>
             </div>
           </div>
           <div className="text-center border-t pt-4">
-            <div className="text-xs text-muted-foreground uppercase">Centroid</div>
+            <div className="text-xs text-muted-foreground uppercase">{tFuzzy("fuzzy.centroid")}</div>
             <div className="font-mono text-3xl font-medium">
               {result.best_compromise.centroid.toFixed(2)}
             </div>
@@ -772,7 +782,7 @@ const ResultsSection = ({
       <div className="grid grid-cols-2 gap-4">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Arithmetic Mean (Γ)</CardTitle>
+            <CardTitle className="text-sm">{t("detail.arithmeticMean")}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="font-mono text-sm">
@@ -781,14 +791,14 @@ const ResultsSection = ({
               {result.arithmetic_mean.upper.toFixed(2)}
             </div>
             <div className="text-xs text-muted-foreground mt-1">
-              Centroid: {result.arithmetic_mean.centroid.toFixed(2)}
+              {tFuzzy("fuzzy.centroid")}: {result.arithmetic_mean.centroid.toFixed(2)}
             </div>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Median (Ω)</CardTitle>
+            <CardTitle className="text-sm">{t("detail.median")}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="font-mono text-sm">
@@ -796,7 +806,7 @@ const ResultsSection = ({
               {result.median.upper.toFixed(2)}
             </div>
             <div className="text-xs text-muted-foreground mt-1">
-              Centroid: {result.median.centroid.toFixed(2)}
+              {tFuzzy("fuzzy.centroid")}: {result.median.centroid.toFixed(2)}
             </div>
           </CardContent>
         </Card>
@@ -806,14 +816,14 @@ const ResultsSection = ({
       <Card>
         <CardContent className="pt-6">
           <div className="flex justify-between items-center mb-2">
-            <span className="text-sm">Max Error (Δmax)</span>
+            <span className="text-sm">{t("detail.maxError")}</span>
             <span className="font-mono font-medium">
               {result.max_error.toFixed(2)}
             </span>
           </div>
           <Progress value={Math.min(errorPercent, 100)} className="h-2" />
           <div className="flex justify-between items-center mt-4 text-sm text-muted-foreground">
-            <span>Experts</span>
+            <span>{t("detail.experts")}</span>
             <span className="font-mono">{result.num_experts}</span>
           </div>
         </CardContent>
@@ -822,7 +832,7 @@ const ResultsSection = ({
       {/* Visualization */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Visualization</CardTitle>
+          <CardTitle className="text-lg">{t("detail.visualization")}</CardTitle>
         </CardHeader>
         <CardContent>
           <TriangleVisualization
@@ -835,15 +845,15 @@ const ResultsSection = ({
             <div className="flex gap-4 text-xs">
               <div className="flex items-center gap-1">
                 <div className="w-3 h-0.5 bg-blue-500" />
-                <span>Mean</span>
+                <span>{tFuzzy("fuzzy.mean")}</span>
               </div>
               <div className="flex items-center gap-1">
                 <div className="w-3 h-0.5 bg-green-500" />
-                <span>Median</span>
+                <span>{tFuzzy("fuzzy.median")}</span>
               </div>
               <div className="flex items-center gap-1">
                 <div className="w-3 h-0.5 bg-foreground" />
-                <span>Best</span>
+                <span>{tFuzzy("fuzzy.best")}</span>
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -853,7 +863,7 @@ const ResultsSection = ({
                 onCheckedChange={(checked) => setShowIndividual(!!checked)}
               />
               <Label htmlFor="showIndividual" className="text-xs cursor-pointer">
-                Show individual opinions
+                {t("detail.showIndividual")}
               </Label>
             </div>
           </div>

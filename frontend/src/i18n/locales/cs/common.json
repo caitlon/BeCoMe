@@ -66,5 +66,21 @@
     "title": "Stránka nenalezena",
     "description": "Požadovaná stránka nebyla nalezena.",
     "backHome": "Zpět na úvodní stránku"
+  },
+  "fuzzy": {
+    "lower": "Dolní",
+    "peak": "Vrchol",
+    "upper": "Horní",
+    "centroid": "Centroid",
+    "lowerDesc": "Dolní (pesimistický)",
+    "peakDesc": "Vrchol (nejpravděpodobnější)",
+    "upperDesc": "Horní (optimistický)",
+    "arithmeticMean": "Aritmetický průměr (Γ)",
+    "median": "Medián (Ω)",
+    "maxError": "Max. chyba (Δmax)",
+    "membershipFunction": "μ(x)",
+    "mean": "Průměr",
+    "median": "Medián",
+    "best": "Nejlepší"
   }
 }
