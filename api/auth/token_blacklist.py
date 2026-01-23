@@ -4,6 +4,7 @@ Uses Redis to store revoked token JTIs with automatic expiration.
 Falls back to in-memory storage if Redis is not configured.
 """
 
+import threading
 from datetime import UTC, datetime
 from typing import Any, ClassVar
 
@@ -15,10 +16,15 @@ class TokenBlacklist:
 
     Stores token JTIs (JWT ID) with TTL matching token expiration.
     Supports Redis for production and in-memory fallback for development.
+
+    Note: In-memory fallback is intended for development/testing only.
+    In multi-worker deployments, each worker has its own blacklist.
+    Use Redis in production for consistent revocation across workers.
     """
 
     _redis_client: ClassVar[Any] = None
     _memory_store: ClassVar[dict[str, datetime]] = {}
+    _memory_lock: ClassVar[threading.Lock] = threading.Lock()
     _initialized: ClassVar[bool] = False
 
     @classmethod
@@ -63,7 +69,8 @@ class TokenBlacklist:
         if cls._redis_client:
             cls._redis_client.setex(f"blacklist:{jti}", ttl_seconds, "revoked")
         else:
-            cls._memory_store[jti] = expires_at
+            with cls._memory_lock:
+                cls._memory_store[jti] = expires_at
 
     @classmethod
     def is_blacklisted(cls, jti: str) -> bool:
@@ -78,16 +85,17 @@ class TokenBlacklist:
             return bool(cls._redis_client.exists(f"blacklist:{jti}"))
 
         # In-memory fallback with cleanup
-        if jti in cls._memory_store:
-            expires_at = cls._memory_store[jti]
-            now = datetime.now(UTC)
-            if expires_at.tzinfo is None:
-                expires_at = expires_at.replace(tzinfo=UTC)
-            if now < expires_at:
-                return True
-            del cls._memory_store[jti]
+        with cls._memory_lock:
+            if jti in cls._memory_store:
+                expires_at = cls._memory_store[jti]
+                now = datetime.now(UTC)
+                if expires_at.tzinfo is None:
+                    expires_at = expires_at.replace(tzinfo=UTC)
+                if now < expires_at:
+                    return True
+                del cls._memory_store[jti]
 
-        return False
+            return False
 
     @classmethod
     def cleanup_expired(cls) -> int:
@@ -98,19 +106,21 @@ class TokenBlacklist:
         if cls._redis_client:
             return 0  # Redis handles TTL automatically
 
-        now = datetime.now(UTC)
-        expired = [
-            jti
-            for jti, exp in cls._memory_store.items()
-            if (exp.replace(tzinfo=UTC) if exp.tzinfo is None else exp) <= now
-        ]
-        for jti in expired:
-            del cls._memory_store[jti]
-        return len(expired)
+        with cls._memory_lock:
+            now = datetime.now(UTC)
+            expired = [
+                jti
+                for jti, exp in cls._memory_store.items()
+                if (exp.replace(tzinfo=UTC) if exp.tzinfo is None else exp) <= now
+            ]
+            for jti in expired:
+                del cls._memory_store[jti]
+            return len(expired)
 
     @classmethod
     def reset(cls) -> None:
         """Reset blacklist state (for testing)."""
-        cls._memory_store.clear()
+        with cls._memory_lock:
+            cls._memory_store.clear()
         cls._redis_client = None
         cls._initialized = False
