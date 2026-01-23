@@ -113,14 +113,25 @@ class TestCreateDbAndTables:
         # Cleanup
         get_engine.cache_clear()
 
+    @patch("api.db.engine.get_settings")
     @patch("api.db.engine.SQLModel.metadata.create_all")
-    def test_create_db_and_tables_calls_create_all(self, mock_create_all: MagicMock) -> None:
+    def test_create_db_and_tables_calls_create_all(
+        self, mock_create_all: MagicMock, mock_get_settings: MagicMock
+    ) -> None:
         """create_db_and_tables should call SQLModel.metadata.create_all."""
+        # GIVEN: mock settings to use in-memory SQLite
+        mock_get_settings.return_value.database_url = "sqlite:///:memory:"
+        mock_get_settings.return_value.debug = False
+        get_engine.cache_clear()
+
         # WHEN
         create_db_and_tables()
 
         # THEN
         mock_create_all.assert_called_once()
+
+        # Cleanup
+        get_engine.cache_clear()
 
 
 class TestLifespan:
