@@ -4,10 +4,13 @@ Uses Redis to store revoked token JTIs with automatic expiration.
 Falls back to in-memory storage if Redis is not configured.
 """
 
-from datetime import datetime, timedelta, timezone
-from typing import ClassVar
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, ClassVar
 
 from api.config import get_settings
+
+if TYPE_CHECKING:
+    from redis import Redis
 
 
 class TokenBlacklist:
@@ -17,7 +20,7 @@ class TokenBlacklist:
     Supports Redis for production and in-memory fallback for development.
     """
 
-    _redis_client: ClassVar["Redis | None"] = None  # type: ignore[name-defined]
+    _redis_client: ClassVar["Redis[str] | None"] = None
     _memory_store: ClassVar[dict[str, datetime]] = {}
     _initialized: ClassVar[bool] = False
 
@@ -52,9 +55,9 @@ class TokenBlacklist:
         """
         cls._initialize()
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         if expires_at.tzinfo is None:
-            expires_at = expires_at.replace(tzinfo=timezone.utc)
+            expires_at = expires_at.replace(tzinfo=UTC)
 
         ttl_seconds = int((expires_at - now).total_seconds())
         if ttl_seconds <= 0:
@@ -80,9 +83,9 @@ class TokenBlacklist:
         # In-memory fallback with cleanup
         if jti in cls._memory_store:
             expires_at = cls._memory_store[jti]
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             if expires_at.tzinfo is None:
-                expires_at = expires_at.replace(tzinfo=timezone.utc)
+                expires_at = expires_at.replace(tzinfo=UTC)
             if now < expires_at:
                 return True
             del cls._memory_store[jti]
@@ -98,11 +101,11 @@ class TokenBlacklist:
         if cls._redis_client:
             return 0  # Redis handles TTL automatically
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         expired = [
             jti
             for jti, exp in cls._memory_store.items()
-            if (exp.replace(tzinfo=timezone.utc) if exp.tzinfo is None else exp) <= now
+            if (exp.replace(tzinfo=UTC) if exp.tzinfo is None else exp) <= now
         ]
         for jti in expired:
             del cls._memory_store[jti]

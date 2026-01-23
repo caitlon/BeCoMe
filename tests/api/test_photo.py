@@ -45,14 +45,14 @@ def _register_and_login(client: TestClient) -> str:
         "/api/v1/auth/register",
         json={
             "email": "photo@example.com",
-            "password": "SecurePass123",
+            "password": "SecurePass123!",
             "first_name": "Photo",
             "last_name": "Test",
         },
     )
     response = client.post(
         "/api/v1/auth/login",
-        data={"username": "photo@example.com", "password": "SecurePass123"},
+        data={"username": "photo@example.com", "password": "SecurePass123!"},
     )
     return response.json()["access_token"]
 

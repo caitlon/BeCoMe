@@ -127,7 +127,7 @@ def refresh_token(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired refresh token",
             headers={"WWW-Authenticate": "Bearer"},
-        )
+        ) from None
 
     new_access_token = create_access_token(payload.user_id, payload.jti)
 

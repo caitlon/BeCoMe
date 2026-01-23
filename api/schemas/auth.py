@@ -11,6 +11,8 @@ NAME_PATTERN = regex.compile(r"^[\p{L}\s'-]+$")
 def validate_password_strength(password: str) -> str:
     """Validate password meets strength requirements.
 
+    Requirements: 12+ chars, uppercase, lowercase, digit, special character.
+
     :param password: Password to validate
     :return: Password if valid
     :raises ValueError: If password doesn't meet requirements
@@ -21,6 +23,8 @@ def validate_password_strength(password: str) -> str:
         raise ValueError("Password must contain at least one lowercase letter")
     if not re.search(r"\d", password):
         raise ValueError("Password must contain at least one digit")
+    if not re.search(r"[!@#$%^&*(),.?\":{}|<>\-_=+\[\]\\;'/`~]", password):
+        raise ValueError("Password must contain at least one special character")
     return password
 
 
@@ -40,7 +44,7 @@ class RegisterRequest(BaseModel):
     """User registration request."""
 
     email: EmailStr = Field(..., max_length=255, description="Email address")
-    password: str = Field(..., min_length=8, max_length=128, description="Password")
+    password: str = Field(..., min_length=12, max_length=128, description="Password")
     first_name: str = Field(..., min_length=1, max_length=100, description="First name")
     last_name: str = Field(..., min_length=1, max_length=100, description="Last name")
 
@@ -123,7 +127,7 @@ class ChangePasswordRequest(BaseModel):
     """Password change request."""
 
     current_password: str = Field(..., min_length=1, description="Current password")
-    new_password: str = Field(..., min_length=8, max_length=128, description="New password")
+    new_password: str = Field(..., min_length=12, max_length=128, description="New password")
 
     @field_validator("new_password")
     @classmethod

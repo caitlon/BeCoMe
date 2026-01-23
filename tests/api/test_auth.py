@@ -76,7 +76,7 @@ class TestRegister:
         # GIVEN
         payload = {
             "email": "test@example.com",
-            "password": "SecurePass123",
+            "password": "SecurePass123!",
             "first_name": "John",
             "last_name": "Doe",
         }
@@ -99,7 +99,7 @@ class TestRegister:
         # GIVEN
         payload = {
             "email": "jane@example.com",
-            "password": "SecurePass123",
+            "password": "SecurePass123!",
             "first_name": "Jane",
         }
 
@@ -114,7 +114,7 @@ class TestRegister:
         # GIVEN - first registration
         payload = {
             "email": "duplicate@example.com",
-            "password": "SecurePass123",
+            "password": "SecurePass123!",
             "first_name": "First",
             "last_name": "User",
         }
@@ -134,7 +134,7 @@ class TestRegister:
             "/api/v1/auth/register",
             json={
                 "email": "Test@Example.COM",
-                "password": "SecurePass123",
+                "password": "SecurePass123!",
                 "first_name": "First",
                 "last_name": "User",
             },
@@ -145,7 +145,7 @@ class TestRegister:
             "/api/v1/auth/register",
             json={
                 "email": "test@example.com",
-                "password": "SecurePass123",
+                "password": "SecurePass123!",
                 "first_name": "Second",
                 "last_name": "User",
             },
@@ -162,7 +162,7 @@ class TestRegister:
             "/api/v1/auth/register",
             json={
                 "email": "CaseTest@Example.COM",
-                "password": "SecurePass123",
+                "password": "SecurePass123!",
                 "first_name": "Case",
                 "last_name": "Test",
             },
@@ -171,7 +171,7 @@ class TestRegister:
         # WHEN - login with lowercase
         response = client.post(
             "/api/v1/auth/login",
-            data={"username": "casetest@example.com", "password": "SecurePass123"},
+            data={"username": "casetest@example.com", "password": "SecurePass123!"},
         )
 
         # THEN
@@ -179,7 +179,7 @@ class TestRegister:
         assert "access_token" in response.json()
 
     def test_register_short_password_fails(self, client):
-        """Registration with password < 8 chars returns 422."""
+        """Registration with password < 12 chars returns 422."""
         # GIVEN
         payload = {
             "email": "short@example.com",
@@ -199,7 +199,7 @@ class TestRegister:
         # GIVEN
         payload = {
             "email": "nouppercase@example.com",
-            "password": "password123",
+            "password": "password1234!",
             "first_name": "Test",
             "last_name": "User",
         }
@@ -216,7 +216,7 @@ class TestRegister:
         # GIVEN
         payload = {
             "email": "nolowercase@example.com",
-            "password": "PASSWORD123",
+            "password": "PASSWORD1234!",
             "first_name": "Test",
             "last_name": "User",
         }
@@ -233,7 +233,7 @@ class TestRegister:
         # GIVEN
         payload = {
             "email": "nodigit@example.com",
-            "password": "PasswordABC",
+            "password": "PasswordABCD!",
             "first_name": "Test",
             "last_name": "User",
         }
@@ -245,12 +245,29 @@ class TestRegister:
         assert response.status_code == 422
         assert "digit" in response.json()["detail"][0]["msg"].lower()
 
+    def test_register_password_without_special_char_fails(self, client):
+        """Registration with password missing special character returns 422."""
+        # GIVEN
+        payload = {
+            "email": "nospecial@example.com",
+            "password": "PasswordABCD1",
+            "first_name": "Test",
+            "last_name": "User",
+        }
+
+        # WHEN
+        response = client.post("/api/v1/auth/register", json=payload)
+
+        # THEN
+        assert response.status_code == 422
+        assert "special" in response.json()["detail"][0]["msg"].lower()
+
     def test_register_invalid_email_fails(self, client):
         """Registration with invalid email returns 422."""
         # GIVEN
         payload = {
             "email": "not-an-email",
-            "password": "SecurePass123",
+            "password": "SecurePass123!",
             "first_name": "Bad",
             "last_name": "Email",
         }
@@ -272,7 +289,7 @@ class TestLogin:
             "/api/v1/auth/register",
             json={
                 "email": "login@example.com",
-                "password": "SecurePass123",
+                "password": "SecurePass123!",
                 "first_name": "Login",
                 "last_name": "User",
             },
@@ -281,7 +298,7 @@ class TestLogin:
         # WHEN - login with OAuth2 form data
         response = client.post(
             "/api/v1/auth/login",
-            data={"username": "login@example.com", "password": "SecurePass123"},
+            data={"username": "login@example.com", "password": "SecurePass123!"},
         )
 
         # THEN
@@ -297,7 +314,7 @@ class TestLogin:
             "/api/v1/auth/register",
             json={
                 "email": "wrongpass@example.com",
-                "password": "CorrectPass1",
+                "password": "CorrectPass1!",
                 "first_name": "Wrong",
                 "last_name": "Pass",
             },
@@ -335,14 +352,14 @@ class TestMe:
             "/api/v1/auth/register",
             json={
                 "email": "me@example.com",
-                "password": "SecurePass123",
+                "password": "SecurePass123!",
                 "first_name": "Me",
                 "last_name": "User",
             },
         )
         login_response = client.post(
             "/api/v1/auth/login",
-            data={"username": "me@example.com", "password": "SecurePass123"},
+            data={"username": "me@example.com", "password": "SecurePass123!"},
         )
         token = login_response.json()["access_token"]
 
@@ -385,14 +402,14 @@ class TestMe:
             "/api/v1/auth/register",
             json={
                 "email": "deleted@example.com",
-                "password": "SecurePass123",
+                "password": "SecurePass123!",
                 "first_name": "Deleted",
                 "last_name": "User",
             },
         )
         login_response = client.post(
             "/api/v1/auth/login",
-            data={"username": "deleted@example.com", "password": "SecurePass123"},
+            data={"username": "deleted@example.com", "password": "SecurePass123!"},
         )
         token = login_response.json()["access_token"]
 
@@ -425,7 +442,7 @@ class TestEmailValidation:
         # GIVEN
         payload = {
             "email": "тест@example.com",
-            "password": "SecurePass123",
+            "password": "SecurePass123!",
             "first_name": "Test",
             "last_name": "User",
         }
@@ -442,7 +459,7 @@ class TestEmailValidation:
         # GIVEN
         payload = {
             "email": "test.user+tag@example.com",
-            "password": "SecurePass123",
+            "password": "SecurePass123!",
             "first_name": "Test",
             "last_name": "User",
         }
@@ -463,7 +480,7 @@ class TestNameValidation:
         # GIVEN
         payload = {
             "email": "digits@example.com",
-            "password": "SecurePass123",
+            "password": "SecurePass123!",
             "first_name": "John123",
             "last_name": "Doe",
         }
@@ -480,7 +497,7 @@ class TestNameValidation:
         # GIVEN
         payload = {
             "email": "special@example.com",
-            "password": "SecurePass123",
+            "password": "SecurePass123!",
             "first_name": "John@#$",
             "last_name": "Doe",
         }
@@ -496,7 +513,7 @@ class TestNameValidation:
         # GIVEN
         payload = {
             "email": "hyphen@example.com",
-            "password": "SecurePass123",
+            "password": "SecurePass123!",
             "first_name": "Jean-Pierre",
             "last_name": "Dupont",
         }
@@ -513,7 +530,7 @@ class TestNameValidation:
         # GIVEN
         payload = {
             "email": "apostrophe@example.com",
-            "password": "SecurePass123",
+            "password": "SecurePass123!",
             "first_name": "O'Brien",
             "last_name": "Smith",
         }
@@ -530,7 +547,7 @@ class TestNameValidation:
         # GIVEN
         payload = {
             "email": "cyrillic@example.com",
-            "password": "SecurePass123",
+            "password": "SecurePass123!",
             "first_name": "Олег",
             "last_name": "Петров",
         }
@@ -548,7 +565,7 @@ class TestNameValidation:
         # GIVEN
         payload = {
             "email": "space@example.com",
-            "password": "SecurePass123",
+            "password": "SecurePass123!",
             "first_name": "Anna Maria",
             "last_name": "Kowalski",
         }
@@ -565,7 +582,7 @@ class TestNameValidation:
         # GIVEN
         payload = {
             "email": "lastdigits@example.com",
-            "password": "SecurePass123",
+            "password": "SecurePass123!",
             "first_name": "John",
             "last_name": "Doe123",
         }
@@ -581,7 +598,7 @@ class TestNameValidation:
         # GIVEN
         payload = {
             "email": "emptylast@example.com",
-            "password": "SecurePass123",
+            "password": "SecurePass123!",
             "first_name": "John",
             "last_name": "",
         }
@@ -602,14 +619,14 @@ class TestProfileUpdate:
             "/api/v1/auth/register",
             json={
                 "email": "profile@example.com",
-                "password": "SecurePass123",
+                "password": "SecurePass123!",
                 "first_name": "Profile",
                 "last_name": "User",
             },
         )
         login = client.post(
             "/api/v1/auth/login",
-            data={"username": "profile@example.com", "password": "SecurePass123"},
+            data={"username": "profile@example.com", "password": "SecurePass123!"},
         )
         return {"Authorization": f"Bearer {login.json()['access_token']}"}
 
@@ -704,14 +721,14 @@ class TestPasswordChange:
             "/api/v1/auth/register",
             json={
                 "email": "pwchange@example.com",
-                "password": "OldPass123",
+                "password": "OldSecure123!",
                 "first_name": "Password",
                 "last_name": "Change",
             },
         )
         login = client.post(
             "/api/v1/auth/login",
-            data={"username": "pwchange@example.com", "password": "OldPass123"},
+            data={"username": "pwchange@example.com", "password": "OldSecure123!"},
         )
         return {"Authorization": f"Bearer {login.json()['access_token']}"}
 
@@ -723,7 +740,7 @@ class TestPasswordChange:
         # WHEN
         response = client.put(
             "/api/v1/users/me/password",
-            json={"current_password": "OldPass123", "new_password": "newpass123"},
+            json={"current_password": "OldSecure123!", "new_password": "newpassword1!"},
             headers=headers,
         )
 
@@ -739,7 +756,7 @@ class TestPasswordChange:
         # WHEN
         response = client.put(
             "/api/v1/users/me/password",
-            json={"current_password": "OldPass123", "new_password": "NEWPASS123"},
+            json={"current_password": "OldSecure123!", "new_password": "NEWPASSWORD1!"},
             headers=headers,
         )
 
@@ -755,13 +772,29 @@ class TestPasswordChange:
         # WHEN
         response = client.put(
             "/api/v1/users/me/password",
-            json={"current_password": "OldPass123", "new_password": "NewPassABC"},
+            json={"current_password": "OldSecure123!", "new_password": "NewPasswordAB!"},
             headers=headers,
         )
 
         # THEN
         assert response.status_code == 422
         assert "digit" in response.json()["detail"][0]["msg"].lower()
+
+    def test_change_password_without_special_char_fails(self, client):
+        """Password change without special character returns 422."""
+        # GIVEN
+        headers = self._get_auth_header(client)
+
+        # WHEN
+        response = client.put(
+            "/api/v1/users/me/password",
+            json={"current_password": "OldSecure123!", "new_password": "NewPassword123"},
+            headers=headers,
+        )
+
+        # THEN
+        assert response.status_code == 422
+        assert "special" in response.json()["detail"][0]["msg"].lower()
 
     def test_change_password_valid_succeeds(self, client):
         """Password change with valid password succeeds."""
@@ -771,7 +804,7 @@ class TestPasswordChange:
         # WHEN
         response = client.put(
             "/api/v1/users/me/password",
-            json={"current_password": "OldPass123", "new_password": "NewPass456"},
+            json={"current_password": "OldSecure123!", "new_password": "NewSecure456!"},
             headers=headers,
         )
 
