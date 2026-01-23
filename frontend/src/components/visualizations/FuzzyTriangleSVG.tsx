@@ -107,18 +107,18 @@ export function FuzzyTriangleSVG() {
         transition={smoothTransition}
       />
       
-      {/* Centroid line */}
+      {/* Peak projection line */}
       <motion.line
         y1="160"
-        y2="100"
         stroke="currentColor"
         strokeWidth="1"
         strokeDasharray="2,2"
         strokeOpacity="0.4"
         initial={false}
-        animate={{ 
+        animate={{
           x1: current.centroid,
           x2: current.centroid,
+          y2: current.peak.cy,
         }}
         transition={smoothTransition}
       />
