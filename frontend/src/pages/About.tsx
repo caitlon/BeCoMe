@@ -297,7 +297,7 @@ const About = () => {
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Button variant="secondary" size="lg" asChild>
-              <Link to="/">{t("cta.viewCaseStudies")}</Link>
+              <Link to="/#case-studies">{t("cta.viewCaseStudies")}</Link>
             </Button>
             <Button
               variant="outline"

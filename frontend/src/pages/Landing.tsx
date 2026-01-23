@@ -1,4 +1,5 @@
-import { Link } from "react-router-dom";
+import { useEffect } from "react";
+import { Link, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -27,6 +28,18 @@ const stagger = {
 const Landing = () => {
   const { t } = useTranslation("landing");
   const { isAuthenticated } = useAuth();
+  const location = useLocation();
+
+  useEffect(() => {
+    if (location.hash) {
+      const element = document.querySelector(location.hash);
+      if (element) {
+        setTimeout(() => {
+          element.scrollIntoView({ behavior: "smooth", block: "center" });
+        }, 100);
+      }
+    }
+  }, [location.hash]);
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -157,7 +170,7 @@ const Landing = () => {
       </section>
 
       {/* Case Studies */}
-      <section className="py-20 md:py-32">
+      <section id="case-studies" className="py-20 md:py-32">
         <div className="container mx-auto px-6">
           <motion.div
             className="text-center mb-16"
