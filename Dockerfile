@@ -13,8 +13,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Install uv for faster dependency resolution
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+# Install uv for faster dependency resolution (pinned version for supply-chain security)
+COPY --from=ghcr.io/astral-sh/uv:0.5.14 /uv /usr/local/bin/uv
 
 # Copy dependency files and README (required for hatchling build)
 COPY pyproject.toml uv.lock README.md ./
@@ -58,5 +58,7 @@ USER appuser
 # Expose port (Azure App Service uses 8000 by default)
 EXPOSE 8000
 
-# Run uvicorn in single-process mode (no --workers flag)
+# Run uvicorn in single-process mode.
+# Azure App Service handles horizontal scaling via multiple container instances,
+# so a single worker per container is sufficient.
 CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]

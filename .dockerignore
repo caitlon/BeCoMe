@@ -47,9 +47,8 @@ docker-compose*.yml
 # Documentation and supplementary files
 docs/
 supplementary/
-DEPLOYMENT.md
-AZURE_SETUP_GUIDE.md
-CHANGELOG.md
+*.md
+!README.md
 
 # Tests (not needed in production image)
 tests/

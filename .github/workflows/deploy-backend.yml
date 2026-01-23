@@ -13,8 +13,8 @@ on:
   workflow_dispatch:  # Allow manual trigger
 
 env:
-  AZURE_WEBAPP_NAME: become-api  # Change to your App Service name
-  ACR_LOGIN_SERVER: becomeacr.azurecr.io  # Change to your ACR name
+  AZURE_WEBAPP_NAME: become-api
+  ACR_LOGIN_SERVER: becomeacr.azurecr.io
   IMAGE_NAME: become-api
 
 jobs:
@@ -60,8 +60,9 @@ jobs:
 
       - name: Build and push Docker image
         run: |
-          docker build . -t ${{ env.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
-          docker build . -t ${{ env.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:latest
+          docker build . \
+            -t ${{ env.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
+            -t ${{ env.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:latest
           docker push ${{ env.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
           docker push ${{ env.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:latest
 
