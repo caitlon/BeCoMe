@@ -34,11 +34,12 @@ export function FuzzyTriangleSVG() {
       {/* Grid lines */}
       <defs>
         <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-          <path 
-            d="M 40 0 L 0 0 0 40" 
-            fill="none" 
-            stroke="currentColor" 
-            strokeOpacity="0.1" 
+          <rect
+            width="40"
+            height="40"
+            fill="none"
+            stroke="currentColor"
+            strokeOpacity="0.1"
             strokeWidth="0.5"
           />
         </pattern>
