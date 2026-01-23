@@ -48,11 +48,7 @@ const Onboarding = () => {
     }
   }, [currentStep]);
 
-  const handleSkip = useCallback(() => {
-    navigate("/projects");
-  }, [navigate]);
-
-  const handleFinish = useCallback(() => {
+  const navigateToProjects = useCallback(() => {
     navigate("/projects");
   }, [navigate]);
 
@@ -76,13 +72,13 @@ const Onboarding = () => {
         goToPrevious();
       } else if (e.key === "Escape") {
         e.preventDefault();
-        handleSkip();
+        navigateToProjects();
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [goToNext, goToPrevious, handleSkip, isFirstStep, isLastStep]);
+  }, [goToNext, goToPrevious, navigateToProjects, isFirstStep, isLastStep]);
 
   const CurrentStepComponent = steps[currentStep];
 
@@ -115,7 +111,7 @@ const Onboarding = () => {
             <Button
               variant="ghost"
               size="sm"
-              onClick={handleSkip}
+              onClick={navigateToProjects}
               className="text-muted-foreground hover:text-foreground"
             >
               <X className="h-4 w-4 mr-1" />
@@ -186,7 +182,7 @@ const Onboarding = () => {
             </div>
 
             {isLastStep ? (
-              <Button onClick={handleFinish} className="gap-2">
+              <Button onClick={navigateToProjects} className="gap-2">
                 {t("buttons.finish")}
                 <ChevronRight className="h-4 w-4" />
               </Button>

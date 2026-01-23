@@ -83,9 +83,12 @@ export function StepComplete() {
             }}
             className="absolute w-3 h-3 rounded-full"
             style={{
-              backgroundColor: ["#10b981", "#3b82f6", "#f59e0b", "#ec4899"][
-                i % 4
-              ],
+              backgroundColor: [
+                "hsl(var(--success, 142 71% 45%))",
+                "hsl(var(--primary))",
+                "hsl(var(--warning, 38 92% 50%))",
+                "hsl(var(--destructive))",
+              ][i % 4],
             }}
           />
         ))}
