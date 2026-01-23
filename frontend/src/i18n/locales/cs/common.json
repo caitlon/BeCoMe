@@ -12,7 +12,27 @@
     "product": "Produkt",
     "methodAuthors": "Autoři metody",
     "copyright": "Všechna práva vyhrazena.",
-    "methodBy": "Metoda BeCoMe od České zemědělské univerzity v Praze"
+    "methodBy": "Metoda BeCoMe vyvinuta na České zemědělské univerzitě v Praze",
+    "resources": "Zdroje",
+    "documentation": "Dokumentace",
+    "faq": "Časté dotazy",
+    "caseStudies": "Případové studie",
+    "implementation": "Implementace a vývoj webové aplikace",
+    "implementationAuthor": "Ekaterina Kuzmina – Bakalářská práce 2026",
+    "implementationThesis": "Bakalářská práce 2026",
+    "implementationUniversity": "Česká zemědělská univerzita v Praze",
+    "feedback": "Zpětná vazba a kontakt",
+    "feedbackText": "Máte otázky nebo zpětnou vazbu? Kontaktujte nás nebo nahlaste problém na"
+  },
+  "docs": {
+    "title": "Dokumentace",
+    "comingSoon": "Dokumentace se připravuje.",
+    "checkGithub": "Mezitím se podívejte na náš"
+  },
+  "faq": {
+    "title": "Časté dotazy",
+    "comingSoon": "Sekce FAQ se připravuje.",
+    "askQuestion": "Máte otázku? Otevřete issue na"
   },
   "common": {
     "loading": "Načítání...",

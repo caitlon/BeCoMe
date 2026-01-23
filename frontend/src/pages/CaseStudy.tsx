@@ -13,6 +13,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Navbar } from "@/components/layout/Navbar";
+import { Footer } from "@/components/layout/Footer";
 import {
   useLocalizedCaseStudyById,
   useLocalizedLikertLabel,
@@ -50,7 +51,7 @@ const CaseStudy = () => {
   const IconComponent = caseStudy.icon;
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen flex flex-col bg-background">
       <Navbar />
 
       {/* Hero Section */}
@@ -379,6 +380,8 @@ const CaseStudy = () => {
           </Button>
         </div>
       </section>
+
+      <Footer />
     </div>
   );
 };
