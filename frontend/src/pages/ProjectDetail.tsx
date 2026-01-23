@@ -38,7 +38,6 @@ import { Navbar } from "@/components/layout/Navbar";
 import { SubmitButton } from "@/components/forms";
 import { InviteExpertModal } from "@/components/modals/InviteExpertModal";
 import { DeleteConfirmModal } from "@/components/modals/DeleteConfirmModal";
-import { ProjectDetailTour } from "@/components/tour";
 import { api } from "@/lib/api";
 import { ProjectWithRole, Opinion, CalculationResult, Member } from "@/types/api";
 import { useAuth } from "@/contexts/AuthContext";
@@ -62,7 +61,6 @@ const ProjectDetail = () => {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [teamOpen, setTeamOpen] = useState(false);
   const [showIndividual, setShowIndividual] = useState(false);
-  const [startTourFn, setStartTourFn] = useState<(() => void) | null>(null);
 
   // Opinion form state
   const [position, setPosition] = useState("");
@@ -235,8 +233,7 @@ const ProjectDetail = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <Navbar startTour={startTourFn ?? undefined} />
-      <ProjectDetailTour onStartTour={(fn) => setStartTourFn(() => fn)} />
+      <Navbar />
 
       <main className="container mx-auto px-6 pt-24 pb-16">
         {/* Breadcrumb */}
@@ -484,7 +481,7 @@ const OpinionForm = ({
     upperNum <= project.scale_max;
 
   return (
-    <Card className="border-2 border-primary/20" data-tour="opinion-form">
+    <Card className="border-2 border-primary/20">
       <CardHeader>
         <CardTitle className="text-lg">{t("detail.yourOpinion")}</CardTitle>
       </CardHeader>
@@ -501,7 +498,7 @@ const OpinionForm = ({
 
         <div>
           <Label>{t("detail.yourEstimate")}</Label>
-          <div className="grid grid-cols-3 gap-4 mt-2" data-tour="fuzzy-inputs">
+          <div className="grid grid-cols-3 gap-4 mt-2">
             <div>
               <Label className="text-xs text-muted-foreground">
                 {tFuzzy("fuzzy.lowerDesc")}
@@ -545,7 +542,7 @@ const OpinionForm = ({
 
         {/* Mini Triangle Preview */}
         {lower && peak && upper && isValid && (
-          <div className="bg-muted rounded p-4" data-tour="triangle-preview">
+          <div className="bg-muted rounded p-4">
             <svg viewBox="0 0 200 60" className="w-full h-12">
               <line
                 x1="10"
@@ -608,7 +605,7 @@ const OpinionForm = ({
           </div>
         )}
 
-        <div className="flex gap-3" data-tour="save-button">
+        <div className="flex gap-3">
           <SubmitButton
             type="button"
             onClick={onSave}
@@ -656,7 +653,7 @@ const OtherOpinionsTable = ({ opinions }: { opinions: Opinion[] }) => {
   const sorted = [...opinions].sort((a, b) => b.centroid - a.centroid);
 
   return (
-    <Card data-tour="other-opinions">
+    <Card>
       <CardHeader>
         <CardTitle className="text-lg">{t("detail.otherOpinions")}</CardTitle>
       </CardHeader>
@@ -743,7 +740,7 @@ const ResultsSection = ({
   return (
     <div className="space-y-6">
       {/* Best Compromise */}
-      <Card className="border-2 border-primary" data-tour="results">
+      <Card className="border-2 border-primary">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             {t("detail.bestCompromise")}
@@ -834,7 +831,7 @@ const ResultsSection = ({
       </Card>
 
       {/* Visualization */}
-      <Card data-tour="visualization">
+      <Card>
         <CardHeader>
           <CardTitle className="text-lg">{t("detail.visualization")}</CardTitle>
         </CardHeader>

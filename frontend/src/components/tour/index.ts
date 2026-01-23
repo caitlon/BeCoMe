@@ -1,1 +1,0 @@
-export { ProjectDetailTour } from "./ProjectDetailTour";
