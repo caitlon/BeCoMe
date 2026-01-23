@@ -1,7 +1,7 @@
 """Tests for database infrastructure (engine, session, lifespan)."""
 
 from contextlib import suppress
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from sqlalchemy import Engine
 from sqlmodel import Session
@@ -13,16 +13,31 @@ from api.db.session import get_session
 class TestDatabaseEngine:
     """Tests for database engine creation."""
 
-    def test_get_engine_returns_engine(self) -> None:
+    @patch("api.db.engine.get_settings")
+    def test_get_engine_returns_engine(self, mock_get_settings: MagicMock) -> None:
         """get_engine should return an Engine instance (lazy initialization)."""
+        # GIVEN: mock settings to use SQLite
+        mock_get_settings.return_value.database_url = "sqlite:///./test_engine.db"
+        mock_get_settings.return_value.debug = False
+        get_engine.cache_clear()
+
         # WHEN
         result = get_engine()
 
         # THEN
         assert isinstance(result, Engine)
 
-    def test_get_engine_returns_same_instance(self) -> None:
+        # Cleanup
+        get_engine.cache_clear()
+
+    @patch("api.db.engine.get_settings")
+    def test_get_engine_returns_same_instance(self, mock_get_settings: MagicMock) -> None:
         """get_engine should return cached singleton instance."""
+        # GIVEN: mock settings to use SQLite
+        mock_get_settings.return_value.database_url = "sqlite:///./test_cache.db"
+        mock_get_settings.return_value.debug = False
+        get_engine.cache_clear()
+
         # WHEN
         engine1 = get_engine()
         engine2 = get_engine()
@@ -30,14 +45,25 @@ class TestDatabaseEngine:
         # THEN: same instance (cached)
         assert engine1 is engine2
 
-    def test_sqlite_engine_has_check_same_thread_false(self) -> None:
+        # Cleanup
+        get_engine.cache_clear()
+
+    @patch("api.db.engine.get_settings")
+    def test_sqlite_engine_has_check_same_thread_false(self, mock_get_settings: MagicMock) -> None:
         """SQLite engine should have check_same_thread=False for FastAPI."""
-        # GIVEN: default settings use SQLite
+        # GIVEN: mock settings to use SQLite
+        mock_get_settings.return_value.database_url = "sqlite:///./test_sqlite.db"
+        mock_get_settings.return_value.debug = False
+        get_engine.cache_clear()
+
         # WHEN
         test_engine = get_engine()
 
         # THEN: engine URL should be SQLite
         assert "sqlite" in str(test_engine.url)
+
+        # Cleanup
+        get_engine.cache_clear()
 
 
 class TestDatabaseSession:
@@ -73,13 +99,22 @@ class TestDatabaseSession:
 class TestCreateDbAndTables:
     """Tests for table creation."""
 
-    def test_create_db_and_tables_does_not_raise(self) -> None:
+    @patch("api.db.engine.get_settings")
+    def test_create_db_and_tables_does_not_raise(self, mock_get_settings: MagicMock) -> None:
         """create_db_and_tables should complete without errors."""
+        # GIVEN: mock settings to use in-memory SQLite
+        mock_get_settings.return_value.database_url = "sqlite:///:memory:"
+        mock_get_settings.return_value.debug = False
+        get_engine.cache_clear()
+
         # WHEN/THEN: should not raise
         create_db_and_tables()
 
+        # Cleanup
+        get_engine.cache_clear()
+
     @patch("api.db.engine.SQLModel.metadata.create_all")
-    def test_create_db_and_tables_calls_create_all(self, mock_create_all) -> None:
+    def test_create_db_and_tables_calls_create_all(self, mock_create_all: MagicMock) -> None:
         """create_db_and_tables should call SQLModel.metadata.create_all."""
         # WHEN
         create_db_and_tables()
