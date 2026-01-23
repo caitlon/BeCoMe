@@ -1,0 +1,78 @@
+{
+  "progress": "Step {{current}} of {{total}}",
+  "buttons": {
+    "next": "Next",
+    "previous": "Previous",
+    "skip": "Skip tour",
+    "finish": "Go to Projects",
+    "getStarted": "Get Started"
+  },
+  "steps": {
+    "welcome": {
+      "title": "Welcome to BeCoMe",
+      "subtitle": "Best Compromise Mean",
+      "description": "Learn how to use the platform in just a few steps. This quick tour will show you how to create projects, gather expert opinions, and see aggregated results."
+    },
+    "createProject": {
+      "title": "Create a Project",
+      "description": "Start by creating a new project. Give it a name, description, and set the scale for expert opinions.",
+      "form": {
+        "name": "Project Name",
+        "namePlaceholder": "COVID-19 Budget Support",
+        "description": "Description",
+        "descriptionPlaceholder": "Evaluate the optimal budget allocation...",
+        "scaleMin": "Scale Min",
+        "scaleMax": "Scale Max",
+        "scaleUnit": "Unit",
+        "unitPlaceholder": "billion CZK"
+      },
+      "hint": "The scale defines the range for expert estimates"
+    },
+    "inviteExperts": {
+      "title": "Invite Experts",
+      "description": "Add team members to your project by their email address. Only registered users can be invited.",
+      "form": {
+        "email": "Expert Email",
+        "emailPlaceholder": "expert@example.com",
+        "invite": "Send Invitation"
+      },
+      "hint": "Experts will see the invitation in their dashboard"
+    },
+    "enterOpinion": {
+      "title": "Enter Your Opinion",
+      "description": "Express your estimate using three values that form a fuzzy triangular number.",
+      "fields": {
+        "lower": "Lower Bound",
+        "lowerHint": "Pessimistic estimate",
+        "peak": "Peak",
+        "peakHint": "Most likely value",
+        "upper": "Upper Bound",
+        "upperHint": "Optimistic estimate"
+      },
+      "tryIt": "Try it yourself:",
+      "rule": "Values must satisfy: Lower ≤ Peak ≤ Upper",
+      "preview": "Your triangle will appear here"
+    },
+    "viewResults": {
+      "title": "View Results",
+      "description": "Once experts submit their opinions, BeCoMe calculates the optimal group decision.",
+      "metrics": {
+        "bestCompromise": "Best Compromise",
+        "bestCompromiseDesc": "The optimal aggregation of all expert opinions",
+        "maxError": "Max Error",
+        "maxErrorDesc": "Quality metric indicating agreement level",
+        "experts": "Experts",
+        "expertsDesc": "Number of opinions collected"
+      },
+      "hint": "Results update automatically as experts submit"
+    },
+    "complete": {
+      "title": "You're Ready!",
+      "description": "You now know the basics of BeCoMe. Start your first project and gather expert opinions.",
+      "cta": "Create Your First Project"
+    }
+  },
+  "navbar": {
+    "takeTour": "Take a tour"
+  }
+}

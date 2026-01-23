@@ -1,0 +1,78 @@
+{
+  "progress": "Krok {{current}} z {{total}}",
+  "buttons": {
+    "next": "Další",
+    "previous": "Předchozí",
+    "skip": "Přeskočit",
+    "finish": "Přejít na projekty",
+    "getStarted": "Začít"
+  },
+  "steps": {
+    "welcome": {
+      "title": "Vítejte v BeCoMe",
+      "subtitle": "Best Compromise Mean",
+      "description": "Naučte se používat platformu v několika krocích. Tento rychlý průvodce vám ukáže, jak vytvořit projekty, shromáždit expertní názory a zobrazit agregované výsledky."
+    },
+    "createProject": {
+      "title": "Vytvořte projekt",
+      "description": "Začněte vytvořením nového projektu. Zadejte název, popis a nastavte škálu pro expertní názory.",
+      "form": {
+        "name": "Název projektu",
+        "namePlaceholder": "Podpora rozpočtu COVID-19",
+        "description": "Popis",
+        "descriptionPlaceholder": "Zhodnotit optimální alokaci rozpočtu...",
+        "scaleMin": "Minimum škály",
+        "scaleMax": "Maximum škály",
+        "scaleUnit": "Jednotka",
+        "unitPlaceholder": "mld. Kč"
+      },
+      "hint": "Škála definuje rozsah pro expertní odhady"
+    },
+    "inviteExperts": {
+      "title": "Pozvěte experty",
+      "description": "Přidejte členy týmu do projektu podle jejich e-mailové adresy. Pozvat lze pouze registrované uživatele.",
+      "form": {
+        "email": "E-mail experta",
+        "emailPlaceholder": "expert@example.com",
+        "invite": "Odeslat pozvánku"
+      },
+      "hint": "Experti uvidí pozvánku ve svém přehledu"
+    },
+    "enterOpinion": {
+      "title": "Zadejte svůj názor",
+      "description": "Vyjádřete svůj odhad pomocí tří hodnot, které tvoří fuzzy trojúhelníkové číslo.",
+      "fields": {
+        "lower": "Dolní mez",
+        "lowerHint": "Pesimistický odhad",
+        "peak": "Vrchol",
+        "peakHint": "Nejpravděpodobnější hodnota",
+        "upper": "Horní mez",
+        "upperHint": "Optimistický odhad"
+      },
+      "tryIt": "Vyzkoušejte si to:",
+      "rule": "Hodnoty musí splňovat: Dolní ≤ Vrchol ≤ Horní",
+      "preview": "Váš trojúhelník se zobrazí zde"
+    },
+    "viewResults": {
+      "title": "Zobrazení výsledků",
+      "description": "Jakmile experti odešlou své názory, BeCoMe vypočítá optimální skupinové rozhodnutí.",
+      "metrics": {
+        "bestCompromise": "Nejlepší kompromis",
+        "bestCompromiseDesc": "Optimální agregace všech expertních názorů",
+        "maxError": "Max. chyba",
+        "maxErrorDesc": "Metrika kvality indikující úroveň shody",
+        "experts": "Experti",
+        "expertsDesc": "Počet shromážděných názorů"
+      },
+      "hint": "Výsledky se automaticky aktualizují"
+    },
+    "complete": {
+      "title": "Jste připraveni!",
+      "description": "Nyní znáte základy BeCoMe. Založte svůj první projekt a shromážděte expertní názory.",
+      "cta": "Vytvořit první projekt"
+    }
+  },
+  "navbar": {
+    "takeTour": "Projít průvodce"
+  }
+}

@@ -5,7 +5,7 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { useAuth } from "@/contexts/AuthContext";
 import { useState } from "react";
-import { Menu, X, ChevronDown, User, LogOut, HelpCircle } from "lucide-react";
+import { Menu, X, ChevronDown, User, LogOut, HelpCircle, GraduationCap } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -27,6 +27,7 @@ interface NavbarProps {
 export function Navbar({ startTour }: NavbarProps) {
   const { t } = useTranslation();
   const { t: tTour } = useTranslation("tour");
+  const { t: tOnboarding } = useTranslation("onboarding");
   const { isAuthenticated, user, logout } = useAuth();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const location = useLocation();
@@ -121,6 +122,27 @@ export function Navbar({ startTour }: NavbarProps) {
               </Tooltip>
             </TooltipProvider>
           )}
+          {isAuthenticated && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-9 w-9"
+                    asChild
+                  >
+                    <Link to="/onboarding">
+                      <GraduationCap className="h-5 w-5" />
+                    </Link>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{tOnboarding("navbar.takeTour")}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
           <LanguageSwitcher />
           <ThemeToggle />
         </div>
@@ -135,6 +157,18 @@ export function Navbar({ startTour }: NavbarProps) {
               className="h-9 w-9"
             >
               <HelpCircle className="h-5 w-5" />
+            </Button>
+          )}
+          {isAuthenticated && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9"
+              asChild
+            >
+              <Link to="/onboarding">
+                <GraduationCap className="h-5 w-5" />
+              </Link>
             </Button>
           )}
           <LanguageSwitcher />

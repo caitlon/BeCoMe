@@ -15,6 +15,7 @@ import CaseStudy from "./pages/CaseStudy";
 import About from "./pages/About";
 import Documentation from "./pages/Documentation";
 import FAQ from "./pages/FAQ";
+import Onboarding from "./pages/Onboarding";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -47,6 +48,11 @@ const App = () => (
             <Route path="/profile" element={
               <ProtectedRoute>
                 <Profile />
+              </ProtectedRoute>
+            } />
+            <Route path="/onboarding" element={
+              <ProtectedRoute>
+                <Onboarding />
               </ProtectedRoute>
             } />
             <Route path="*" element={<NotFound />} />
