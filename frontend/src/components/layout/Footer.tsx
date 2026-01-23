@@ -11,7 +11,7 @@ export function Footer() {
         {/* Logo & Description */}
         <div className="mb-8">
           <Link to="/" className="font-display text-xl font-medium">
-            BeCoMe
+            {t("brand.name")}
           </Link>
           <p className="mt-3 text-sm text-muted-foreground max-w-md">
             {t("footer.description")}
@@ -82,7 +82,7 @@ export function Footer() {
                   rel="noopener noreferrer"
                   className="text-sm text-muted-foreground hover:text-foreground transition-colors mt-2 block"
                 >
-                  CZU Prague
+                  {t("footer.czuPrague")}
                 </a>
               </li>
             </ul>
@@ -101,7 +101,7 @@ export function Footer() {
                   rel="noopener noreferrer"
                   className="text-sm text-muted-foreground hover:text-foreground transition-colors"
                 >
-                  GitHub
+                  {t("footer.github")}
                 </a>
               </li>
               <li>
@@ -137,7 +137,7 @@ export function Footer() {
               rel="noopener noreferrer"
               className="text-foreground hover:underline"
             >
-              Ekaterina Kuzmina
+              {t("footer.authorName")}
             </a>
             {" – "}
             {t("footer.implementationThesis")}
@@ -161,7 +161,7 @@ export function Footer() {
               rel="noopener noreferrer"
               className="text-foreground hover:underline"
             >
-              GitHub
+              {t("footer.github")}
             </a>
           </p>
         </div>
@@ -169,7 +169,7 @@ export function Footer() {
         {/* Copyright */}
         <div className="flex flex-col md:flex-row justify-between items-center gap-4">
           <p className="text-sm text-muted-foreground">
-            © {new Date().getFullYear()} BeCoMe. {t("footer.copyright")}
+            © {new Date().getFullYear()} {t("brand.name")}. {t("footer.copyright")}
           </p>
           <p className="text-sm text-muted-foreground">{t("footer.methodBy")}</p>
         </div>

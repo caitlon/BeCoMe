@@ -10,7 +10,7 @@ export function FooterMinimal() {
         <div className="flex flex-col md:flex-row justify-between items-center gap-4">
           <div className="flex items-center gap-6">
             <Link to="/" className="font-display text-lg font-medium">
-              BeCoMe
+              {t("brand.name")}
             </Link>
             <nav className="flex items-center gap-4">
               <Link
@@ -25,12 +25,12 @@ export function FooterMinimal() {
                 rel="noopener noreferrer"
                 className="text-sm text-muted-foreground hover:text-foreground transition-colors"
               >
-                GitHub
+                {t("footer.github")}
               </a>
             </nav>
           </div>
           <p className="text-sm text-muted-foreground">
-            © {new Date().getFullYear()} BeCoMe. {t("footer.copyright")}
+            © {new Date().getFullYear()} {t("brand.name")}. {t("footer.copyright")}
           </p>
         </div>
       </div>

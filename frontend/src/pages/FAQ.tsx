@@ -42,7 +42,7 @@ const FAQ = () => {
                 rel="noopener noreferrer"
                 className="text-primary hover:underline"
               >
-                GitHub
+                {t("faq.github")}
               </a>
             </p>
             <Button asChild variant="outline">
@@ -52,7 +52,7 @@ const FAQ = () => {
                 rel="noopener noreferrer"
               >
                 <ExternalLink className="mr-2 h-4 w-4" />
-                Open Issue
+                {t("faq.openIssue")}
               </a>
             </Button>
           </motion.div>
