@@ -44,7 +44,7 @@ jobs:
         working-directory: frontend
         run: npm run build
         env:
-          VITE_API_URL: ${{ vars.API_URL || 'https://become-api.azurewebsites.net' }}
+          VITE_API_URL: ${{ vars.API_URL || 'https://become-api.azurewebsites.net/api/v1' }}
 
       - name: Remove node_modules before deploy
         run: rm -rf frontend/node_modules
