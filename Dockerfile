@@ -33,18 +33,19 @@ FROM python:3.13-slim
 
 WORKDIR /app
 
-# Install runtime dependencies only
+# Install runtime dependencies and create non-root user with explicit UID/GID
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libpq5 \
+    libpq5 curl \
     && rm -rf /var/lib/apt/lists/* \
-    && adduser --disabled-password --gecos '' appuser
+    && groupadd --system --gid 10001 appgroup \
+    && useradd --system --gid 10001 --uid 10001 --create-home appuser
 
 # Copy virtual environment from builder with correct permissions
-COPY --chown=appuser:appuser --from=builder /app/.venv /app/.venv
+COPY --chown=appuser:appgroup --from=builder /app/.venv /app/.venv
 
 # Copy application code with correct permissions
-COPY --chown=appuser:appuser src/ ./src/
-COPY --chown=appuser:appuser api/ ./api/
+COPY --chown=appuser:appgroup src/ ./src/
+COPY --chown=appuser:appgroup api/ ./api/
 
 # Set environment variables
 ENV PATH="/app/.venv/bin:$PATH"
@@ -57,6 +58,10 @@ USER appuser
 
 # Expose port (Azure App Service uses 8000 by default)
 EXPOSE 8000
+
+# Health check for Azure App Service
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8000/api/v1/health || exit 1
 
 # Run uvicorn in single-process mode.
 # Azure App Service handles horizontal scaling via multiple container instances,
