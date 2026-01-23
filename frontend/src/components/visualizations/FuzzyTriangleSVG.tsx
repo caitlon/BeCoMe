@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 // Three triangle forms to cycle through
 const triangleForms = [
@@ -14,6 +15,7 @@ const smoothTransition = {
 };
 
 export function FuzzyTriangleSVG() {
+  const { t } = useTranslation();
   const [currentForm, setCurrentForm] = useState(0);
 
   useEffect(() => {
@@ -63,10 +65,10 @@ export function FuzzyTriangleSVG() {
       />
       
       {/* Labels */}
-      <text x="40" y="180" className="fill-muted-foreground text-xs">Lower</text>
-      <text x="180" y="180" className="fill-muted-foreground text-xs">Peak</text>
-      <text x="320" y="180" className="fill-muted-foreground text-xs">Upper</text>
-      <text x="20" y="30" className="fill-muted-foreground text-xs">μ(x)</text>
+      <text x="40" y="180" className="fill-muted-foreground text-xs">{t("fuzzy.lower")}</text>
+      <text x="180" y="180" className="fill-muted-foreground text-xs">{t("fuzzy.peak")}</text>
+      <text x="320" y="180" className="fill-muted-foreground text-xs">{t("fuzzy.upper")}</text>
+      <text x="20" y="30" className="fill-muted-foreground text-xs">{t("fuzzy.membershipFunction")}</text>
       
       {/* Dashed triangle outlines (all three forms, static) */}
       {triangleForms.map((form, index) => (

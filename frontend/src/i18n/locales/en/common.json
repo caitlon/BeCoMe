@@ -66,5 +66,21 @@
     "title": "Page Not Found",
     "description": "The requested page could not be found.",
     "backHome": "Back to Home"
+  },
+  "fuzzy": {
+    "lower": "Lower",
+    "peak": "Peak",
+    "upper": "Upper",
+    "centroid": "Centroid",
+    "lowerDesc": "Lower (pessimistic)",
+    "peakDesc": "Peak (most likely)",
+    "upperDesc": "Upper (optimistic)",
+    "arithmeticMean": "Arithmetic Mean (Γ)",
+    "median": "Median (Ω)",
+    "maxError": "Max Error (Δmax)",
+    "membershipFunction": "μ(x)",
+    "mean": "Mean",
+    "median": "Median",
+    "best": "Best"
   }
 }
