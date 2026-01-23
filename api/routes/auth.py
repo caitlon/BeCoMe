@@ -174,4 +174,5 @@ def get_me(current_user: CurrentUser) -> UserResponse:
         email=current_user.email,
         first_name=current_user.first_name,
         last_name=current_user.last_name,
+        photo_url=current_user.photo_url,
     )
