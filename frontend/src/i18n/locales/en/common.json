@@ -1,4 +1,7 @@
 {
+  "brand": {
+    "name": "BeCoMe"
+  },
   "nav": {
     "about": "About",
     "signIn": "Sign In",
@@ -22,17 +25,24 @@
     "implementationThesis": "Bachelor's Thesis 2026",
     "implementationUniversity": "Czech University of Life Sciences Prague",
     "feedback": "Feedback & Contact",
-    "feedbackText": "Have questions or feedback? Contact us or report issues on"
+    "feedbackText": "Have questions or feedback? Contact us or report issues on",
+    "github": "GitHub",
+    "czuPrague": "CZU Prague",
+    "authorName": "Ekaterina Kuzmina"
   },
   "docs": {
     "title": "Documentation",
     "comingSoon": "Documentation is coming soon.",
-    "checkGithub": "In the meantime, check out our"
+    "checkGithub": "In the meantime, check out our",
+    "githubReadme": "GitHub README",
+    "github": "GitHub"
   },
   "faq": {
     "title": "Frequently Asked Questions",
     "comingSoon": "FAQ is coming soon.",
-    "askQuestion": "Have a question? Open an issue on"
+    "askQuestion": "Have a question? Open an issue on",
+    "github": "GitHub",
+    "openIssue": "Open Issue"
   },
   "common": {
     "loading": "Loading...",

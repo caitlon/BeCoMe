@@ -42,7 +42,7 @@ const Documentation = () => {
                 rel="noopener noreferrer"
                 className="text-primary hover:underline"
               >
-                GitHub README
+                {t("docs.githubReadme")}
               </a>
             </p>
             <Button asChild variant="outline">
@@ -52,7 +52,7 @@ const Documentation = () => {
                 rel="noopener noreferrer"
               >
                 <ExternalLink className="mr-2 h-4 w-4" />
-                GitHub
+                {t("docs.github")}
               </a>
             </Button>
           </motion.div>

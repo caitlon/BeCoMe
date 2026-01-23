@@ -32,11 +32,13 @@ const Landing = () => {
 
   useEffect(() => {
     if (location.hash) {
-      const element = document.querySelector(location.hash);
+      const id = location.hash.slice(1);
+      const element = document.getElementById(id);
       if (element) {
-        setTimeout(() => {
+        const timeoutId = setTimeout(() => {
           element.scrollIntoView({ behavior: "smooth", block: "center" });
         }, 100);
+        return () => clearTimeout(timeoutId);
       }
     }
   }, [location.hash]);

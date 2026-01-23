@@ -1,4 +1,7 @@
 {
+  "brand": {
+    "name": "BeCoMe"
+  },
   "nav": {
     "about": "O metodě",
     "signIn": "Přihlásit se",
@@ -22,17 +25,24 @@
     "implementationThesis": "Bakalářská práce 2026",
     "implementationUniversity": "Česká zemědělská univerzita v Praze",
     "feedback": "Zpětná vazba a kontakt",
-    "feedbackText": "Máte otázky nebo zpětnou vazbu? Kontaktujte nás nebo nahlaste problém na"
+    "feedbackText": "Máte otázky nebo zpětnou vazbu? Kontaktujte nás nebo nahlaste problém na",
+    "github": "GitHub",
+    "czuPrague": "ČZU Praha",
+    "authorName": "Ekaterina Kuzmina"
   },
   "docs": {
     "title": "Dokumentace",
     "comingSoon": "Dokumentace se připravuje.",
-    "checkGithub": "Mezitím se podívejte na náš"
+    "checkGithub": "Mezitím se podívejte na náš",
+    "githubReadme": "GitHub README",
+    "github": "GitHub"
   },
   "faq": {
     "title": "Časté dotazy",
     "comingSoon": "Sekce FAQ se připravuje.",
-    "askQuestion": "Máte otázku? Otevřete issue na"
+    "askQuestion": "Máte otázku? Otevřete issue na",
+    "github": "GitHub",
+    "openIssue": "Otevřít issue"
   },
   "common": {
     "loading": "Načítání...",
