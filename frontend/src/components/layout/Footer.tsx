@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { Code, MessageSquare } from "lucide-react";
 
 export function Footer() {
   const { t } = useTranslation();
@@ -7,18 +8,19 @@ export function Footer() {
   return (
     <footer className="border-t border-border bg-card">
       <div className="container mx-auto px-6 py-12">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
-          {/* Logo & Description */}
-          <div className="md:col-span-2">
-            <Link to="/" className="font-display text-xl font-medium">
-              BeCoMe
-            </Link>
-            <p className="mt-3 text-sm text-muted-foreground max-w-md">
-              {t("footer.description")}
-            </p>
-          </div>
+        {/* Logo & Description */}
+        <div className="mb-8">
+          <Link to="/" className="font-display text-xl font-medium">
+            BeCoMe
+          </Link>
+          <p className="mt-3 text-sm text-muted-foreground max-w-md">
+            {t("footer.description")}
+          </p>
+        </div>
 
-          {/* Links */}
+        {/* 3-column grid */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
+          {/* Product */}
           <div>
             <h4 className="font-medium text-sm mb-4">{t("footer.product")}</h4>
             <ul className="space-y-2">
@@ -38,10 +40,26 @@ export function Footer() {
                   {t("nav.signIn")}
                 </Link>
               </li>
+              <li>
+                <Link
+                  to="/about"
+                  className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {t("nav.about")}
+                </Link>
+              </li>
+              <li>
+                <Link
+                  to="/#case-studies"
+                  className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {t("footer.caseStudies")}
+                </Link>
+              </li>
             </ul>
           </div>
 
-          {/* Authors */}
+          {/* Method Authors */}
           <div>
             <h4 className="font-medium text-sm mb-4">
               {t("footer.methodAuthors")}
@@ -54,19 +72,102 @@ export function Footer() {
               </li>
               <li>
                 <span className="text-sm text-muted-foreground">
-                  Ing. Jan Tyrychtr, PhD.
+                  Ing. Jan Tyrychtr, Ph.D.
                 </span>
               </li>
               <li>
-                <span className="text-sm text-muted-foreground mt-2 block">
+                <a
+                  href="https://www.czu.cz"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm text-muted-foreground hover:text-foreground transition-colors mt-2 block"
+                >
                   CZU Prague
-                </span>
+                </a>
+              </li>
+            </ul>
+          </div>
+
+          {/* Resources */}
+          <div>
+            <h4 className="font-medium text-sm mb-4">
+              {t("footer.resources")}
+            </h4>
+            <ul className="space-y-2">
+              <li>
+                <a
+                  href="https://github.com/caitlon/BeCoMe"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  GitHub
+                </a>
+              </li>
+              <li>
+                <Link
+                  to="/docs"
+                  className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {t("footer.documentation")}
+                </Link>
+              </li>
+              <li>
+                <Link
+                  to="/faq"
+                  className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {t("footer.faq")}
+                </Link>
               </li>
             </ul>
           </div>
         </div>
 
-        <div className="mt-12 pt-8 border-t border-border flex flex-col md:flex-row justify-between items-center gap-4">
+        {/* Implementation section */}
+        <div className="bg-muted/50 rounded-lg p-6 mb-8">
+          <div className="flex items-center gap-2 mb-2">
+            <Code className="h-4 w-4 text-muted-foreground" />
+            <h4 className="font-medium text-sm">{t("footer.implementation")}</h4>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            <a
+              href="https://www.linkedin.com/in/kuzmina-ekaterina/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-foreground hover:underline"
+            >
+              Ekaterina Kuzmina
+            </a>
+            {" – "}
+            {t("footer.implementationThesis")}
+          </p>
+          <p className="text-sm text-muted-foreground">
+            {t("footer.implementationUniversity")}
+          </p>
+        </div>
+
+        {/* Feedback section */}
+        <div className="text-center mb-8 pb-8 border-b border-border">
+          <div className="flex items-center justify-center gap-2 mb-2">
+            <MessageSquare className="h-4 w-4 text-muted-foreground" />
+            <h4 className="font-medium text-sm">{t("footer.feedback")}</h4>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            {t("footer.feedbackText")}{" "}
+            <a
+              href="https://github.com/caitlon/BeCoMe/issues"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-foreground hover:underline"
+            >
+              GitHub
+            </a>
+          </p>
+        </div>
+
+        {/* Copyright */}
+        <div className="flex flex-col md:flex-row justify-between items-center gap-4">
           <p className="text-sm text-muted-foreground">
             © {new Date().getFullYear()} BeCoMe. {t("footer.copyright")}
           </p>
