@@ -11,6 +11,9 @@
     "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://become-api.azurewebsites.net; frame-ancestors 'none'"
   },
   "mimeTypes": {
+    ".js": "text/javascript",
+    ".mjs": "text/javascript",
+    ".css": "text/css",
     ".json": "application/json",
     ".woff": "font/woff",
     ".woff2": "font/woff2"
