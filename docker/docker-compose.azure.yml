@@ -1,20 +1,19 @@
-# BeCoMe - Docker Compose for Azure (PostgreSQL + Blob Storage)
+# BeCoMe - Docker Compose for Azure App Service + Supabase
 #
 # Usage:
 #   cd docker
 #   docker compose -f docker-compose.azure.yml --env-file ../.env up --build
 #
 # Required .env variables:
-#   SECRET_KEY                      - JWT secret (openssl rand -hex 32)
-#   DATABASE_URL                    - Azure PostgreSQL connection string
-#   AZURE_STORAGE_CONNECTION_STRING - Azure Blob Storage connection string
-#   AZURE_STORAGE_ACCOUNT_NAME      - Storage account name
-#   AZURE_STORAGE_ACCOUNT_KEY       - Storage account key
-#   AZURE_STORAGE_CONTAINER_NAME    - Container name (default: become-photos)
+#   SECRET_KEY              - JWT secret (openssl rand -hex 32)
+#   DATABASE_URL            - Supabase PostgreSQL connection string
+#   SUPABASE_URL            - Supabase project URL
+#   SUPABASE_KEY            - Supabase anon key
+#   SUPABASE_STORAGE_BUCKET - Storage bucket name (default: become-photos)
 
 services:
   # ============================================
-  # BeCoMe API (Azure)
+  # BeCoMe API (Azure App Service + Supabase)
   # ============================================
   api:
     build:
@@ -30,11 +29,10 @@ services:
       DEBUG: ${DEBUG:-false}
       CORS_ORIGINS: '["http://localhost:3000"]'
       UVICORN_WORKERS: ${UVICORN_WORKERS:-4}
-      # Azure Blob Storage
-      AZURE_STORAGE_CONNECTION_STRING: ${AZURE_STORAGE_CONNECTION_STRING}
-      AZURE_STORAGE_ACCOUNT_NAME: ${AZURE_STORAGE_ACCOUNT_NAME}
-      AZURE_STORAGE_ACCOUNT_KEY: ${AZURE_STORAGE_ACCOUNT_KEY}
-      AZURE_STORAGE_CONTAINER_NAME: ${AZURE_STORAGE_CONTAINER_NAME:-become-photos}
+      # Supabase Storage
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_KEY: ${SUPABASE_KEY}
+      SUPABASE_STORAGE_BUCKET: ${SUPABASE_STORAGE_BUCKET:-become-photos}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')"]
       interval: 30s

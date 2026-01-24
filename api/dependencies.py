@@ -20,7 +20,7 @@ from api.services.calculation_service import CalculationService
 from api.services.invitation_service import InvitationService
 from api.services.opinion_service import OpinionService
 from api.services.project_service import ProjectService
-from api.services.storage.azure_blob_service import AzureBlobStorageService
+from api.services.storage.supabase_storage_service import SupabaseStorageService
 from api.services.storage.exceptions import StorageConfigurationError
 from api.services.user_service import UserService
 from src.calculators.become_calculator import BeCoMeCalculator
@@ -69,19 +69,19 @@ def get_invitation_service(session: Annotated[Session, Depends(get_session)]) ->
     return InvitationService(session)
 
 
-def get_storage_service() -> AzureBlobStorageService | None:
-    """Create storage service if Azure is configured.
+def get_storage_service() -> SupabaseStorageService | None:
+    """Create storage service if Supabase is configured.
 
-    Returns None if Azure storage is not configured or
+    Returns None if Supabase storage is not configured or
     initialization fails, allowing graceful degradation.
 
-    :return: AzureBlobStorageService or None
+    :return: SupabaseStorageService or None
     """
     settings = get_settings()
-    if not settings.azure_storage_enabled:
+    if not settings.supabase_storage_enabled:
         return None
     try:
-        return AzureBlobStorageService(settings)
+        return SupabaseStorageService(settings)
     except StorageConfigurationError:
         return None
 

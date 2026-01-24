@@ -22,7 +22,7 @@ from api.db.session import get_session
 from api.dependencies import get_storage_service
 from api.middleware.exception_handlers import register_exception_handlers
 from api.routes import auth, users
-from api.services.storage.azure_blob_service import AzureBlobStorageService
+from api.services.storage.supabase_storage_service import SupabaseStorageService
 from api.services.storage.exceptions import StorageDeleteError, StorageUploadError
 
 
@@ -83,7 +83,7 @@ def client_with_mock_storage():
         with Session(test_engine) as session:
             yield session
 
-    mock_storage = MagicMock(spec=AzureBlobStorageService)
+    mock_storage = MagicMock(spec=SupabaseStorageService)
     mock_storage.upload_file.return_value = "https://storage.blob.core.windows.net/photos/test.jpg"
 
     test_app.dependency_overrides[get_session] = override_get_session
@@ -369,20 +369,20 @@ class TestMagicBytesValidation:
 
     def test_valid_jpeg(self):
         """Valid JPEG passes validation."""
-        assert AzureBlobStorageService.validate_image_content(VALID_JPEG_BYTES, "image/jpeg")
+        assert SupabaseStorageService.validate_image_content(VALID_JPEG_BYTES, "image/jpeg")
 
     def test_valid_png(self):
         """Valid PNG passes validation."""
-        assert AzureBlobStorageService.validate_image_content(VALID_PNG_BYTES, "image/png")
+        assert SupabaseStorageService.validate_image_content(VALID_PNG_BYTES, "image/png")
 
     def test_invalid_content(self):
         """Invalid content fails validation."""
-        assert not AzureBlobStorageService.validate_image_content(INVALID_FILE_BYTES, "image/jpeg")
+        assert not SupabaseStorageService.validate_image_content(INVALID_FILE_BYTES, "image/jpeg")
 
     def test_mismatched_type(self):
         """JPEG bytes with PNG claimed type fails."""
-        assert not AzureBlobStorageService.validate_image_content(VALID_JPEG_BYTES, "image/png")
+        assert not SupabaseStorageService.validate_image_content(VALID_JPEG_BYTES, "image/png")
 
     def test_empty_content(self):
         """Empty content fails validation."""
-        assert not AzureBlobStorageService.validate_image_content(b"", "image/jpeg")
+        assert not SupabaseStorageService.validate_image_content(b"", "image/jpeg")

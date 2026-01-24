@@ -10,7 +10,7 @@ from api.auth.logging import log_account_deletion, log_password_change
 from api.dependencies import get_storage_service, get_user_service
 from api.middleware.rate_limit import RATE_LIMIT_PASSWORD, RATE_LIMIT_UPLOAD, limiter
 from api.schemas import ChangePasswordRequest, UpdateUserRequest, UserResponse
-from api.services.storage.azure_blob_service import AzureBlobStorageService
+from api.services.storage.supabase_storage_service import SupabaseStorageService
 from api.services.storage.exceptions import StorageDeleteError, StorageUploadError
 from api.services.user_service import UserService
 
@@ -138,7 +138,7 @@ async def upload_photo(
     current_user: CurrentUser,
     file: Annotated[UploadFile, File(description="Profile photo (JPEG, PNG, GIF, WebP, max 5MB)")],
     user_service: Annotated[UserService, Depends(get_user_service)],
-    storage_service: Annotated[AzureBlobStorageService | None, Depends(get_storage_service)],
+    storage_service: Annotated[SupabaseStorageService | None, Depends(get_storage_service)],
 ) -> UserResponse:
     """Upload or replace user profile photo.
 
@@ -158,7 +158,7 @@ async def upload_photo(
         )
 
     # Validate content type
-    if file.content_type not in AzureBlobStorageService.ALLOWED_CONTENT_TYPES:
+    if file.content_type not in SupabaseStorageService.ALLOWED_CONTENT_TYPES:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid file type. Allowed: JPEG, PNG, GIF, WebP",
@@ -166,14 +166,14 @@ async def upload_photo(
 
     # Read and validate size
     content = await file.read()
-    if len(content) > AzureBlobStorageService.MAX_FILE_SIZE_BYTES:
+    if len(content) > SupabaseStorageService.MAX_FILE_SIZE_BYTES:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="File too large. Maximum size is 5 MB",
         )
 
     # Validate actual file content matches claimed type (magic bytes check)
-    if not AzureBlobStorageService.validate_image_content(content, file.content_type):
+    if not SupabaseStorageService.validate_image_content(content, file.content_type):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="File content does not match declared type",
@@ -216,7 +216,7 @@ async def upload_photo(
 def delete_photo(
     current_user: CurrentUser,
     user_service: Annotated[UserService, Depends(get_user_service)],
-    storage_service: Annotated[AzureBlobStorageService | None, Depends(get_storage_service)],
+    storage_service: Annotated[SupabaseStorageService | None, Depends(get_storage_service)],
 ) -> None:
     """Remove user profile photo.
 
