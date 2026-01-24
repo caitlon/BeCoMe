@@ -16,7 +16,7 @@ jobs:
   build-and-deploy:
     name: Build and Deploy
     runs-on: ubuntu-24.04
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     permissions:
       contents: read
       packages: write
@@ -31,15 +31,22 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,prefix=
+            type=raw,value=latest
+
       - name: Build and push Docker image
-        run: |
-          IMAGE_NAME_LOWER=$(echo "${{ env.IMAGE_NAME }}" | tr '[:upper:]' '[:lower:]')
-          docker build . \
-            -t ${{ env.REGISTRY }}/${IMAGE_NAME_LOWER}:${{ github.sha }} \
-            -t ${{ env.REGISTRY }}/${IMAGE_NAME_LOWER}:latest
-          docker push ${{ env.REGISTRY }}/${IMAGE_NAME_LOWER}:${{ github.sha }}
-          docker push ${{ env.REGISTRY }}/${IMAGE_NAME_LOWER}:latest
-          echo "IMAGE_NAME_LOWER=${IMAGE_NAME_LOWER}" >> $GITHUB_ENV
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
 
       - name: Log in to Azure
         uses: azure/login@v1
@@ -50,7 +57,7 @@ jobs:
         uses: azure/webapps-deploy@v2
         with:
           app-name: ${{ env.AZURE_WEBAPP_NAME }}
-          images: '${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LOWER }}:${{ github.sha }}'
+          images: ${{ fromJSON(steps.meta.outputs.json).tags[0] }}
 
       - name: Log out from Azure
         run: az logout
@@ -61,4 +68,3 @@ jobs:
           package-name: become-api
           package-type: container
           min-versions-to-keep: 2
-          delete-only-untagged-versions: true
