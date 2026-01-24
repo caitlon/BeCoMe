@@ -44,7 +44,6 @@ api = [
     "pydantic-settings>=2.7",
     "httpx>=0.28",
     "sqlmodel>=0.0.24",
-    "alembic>=1.14",
     "psycopg2>=2.9",
     "python-jose[cryptography]>=3.3",
     "passlib[bcrypt]>=1.7",
