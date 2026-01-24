@@ -54,7 +54,7 @@
     },
     "howToInviteExperts": {
       "question": "Jak pozvu experty?",
-      "answer": "Otevřete svůj projekt, klikněte na 'Pozvat experty' a zadejte email registrovaného uživatele. Pozvánku uvidí na záložce 'Pozvánky'."
+      "answer": "Otevřete svůj projekt, klikněte na 'Pozvat experty' a zadejte e-mail registrovaného uživatele. Pozvánku uvidí na záložce 'Pozvánky'."
     },
     "whatInputFormats": {
       "question": "Jaké vstupní formáty jsou podporovány?",
@@ -65,7 +65,7 @@
     "intro": "Řešení běžných problémů, které můžete při používání aplikace narazit.",
     "cantSeeInvitation": {
       "question": "Proč nevidím pozvánku?",
-      "answer": "Ujistěte se, že jste přihlášeni s emailem, který obdržel pozvánku. Pozvaný uživatel musí být před přijetím pozvánky registrován v systému."
+      "answer": "Ujistěte se, že jste přihlášeni s e-mailem, který obdržel pozvánku. Pozvaný uživatel musí být před přijetím pozvánky registrován v systému."
     },
     "noResults": {
       "question": "Proč se nezobrazují výsledky?",
@@ -78,8 +78,8 @@
   },
   "cta": {
     "title": "Máte další otázky?",
-    "subtitle": "Podívejte se do dokumentace nebo otevřete issue na GitHubu",
+    "subtitle": "Podívejte se do dokumentace nebo nahlaste problém na GitHubu",
     "viewDocs": "Zobrazit dokumentaci",
-    "openIssue": "Otevřít issue"
+    "openIssue": "Nahlásit problém"
   }
 }
