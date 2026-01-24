@@ -33,11 +33,13 @@ jobs:
 
       - name: Build and push Docker image
         run: |
+          IMAGE_NAME_LOWER=$(echo "${{ env.IMAGE_NAME }}" | tr '[:upper:]' '[:lower:]')
           docker build . \
-            -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
-            -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
-          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            -t ${{ env.REGISTRY }}/${IMAGE_NAME_LOWER}:${{ github.sha }} \
+            -t ${{ env.REGISTRY }}/${IMAGE_NAME_LOWER}:latest
+          docker push ${{ env.REGISTRY }}/${IMAGE_NAME_LOWER}:${{ github.sha }}
+          docker push ${{ env.REGISTRY }}/${IMAGE_NAME_LOWER}:latest
+          echo "IMAGE_NAME_LOWER=${IMAGE_NAME_LOWER}" >> $GITHUB_ENV
 
       - name: Log in to Azure
         uses: azure/login@v1
@@ -48,7 +50,7 @@ jobs:
         uses: azure/webapps-deploy@v2
         with:
           app-name: ${{ env.AZURE_WEBAPP_NAME }}
-          images: '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}'
+          images: '${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LOWER }}:${{ github.sha }}'
 
       - name: Log out from Azure
         run: az logout
@@ -58,5 +60,5 @@ jobs:
         with:
           package-name: become-api
           package-type: container
-          min-versions-to-keep: 1
-          delete-only-untagged-versions: false
+          min-versions-to-keep: 2
+          delete-only-untagged-versions: true
