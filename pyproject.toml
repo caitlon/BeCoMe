@@ -107,6 +107,10 @@ disallow_untyped_defs = false
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = ["-v", "--cov=src", "--cov=api"]
+filterwarnings = [
+    # SQLite in-memory database cleanup during GC is uncontrollable
+    "ignore:unclosed database:ResourceWarning",
+]
 
 [tool.coverage.run]
 data_file = ".coverage"

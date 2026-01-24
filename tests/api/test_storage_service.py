@@ -37,72 +37,6 @@ class TestSupabaseStorageServiceInit:
         with pytest.raises(StorageConfigurationError, match="not configured"):
             SupabaseStorageService(mock_settings)
 
-    @patch("supabase.create_client")
-    def test_creates_bucket_if_not_exists(self, mock_create_client):
-        """Bucket is created if it doesn't exist."""
-        # GIVEN
-        mock_settings = MagicMock()
-        mock_settings.supabase_url = "https://test.supabase.co"
-        mock_settings.supabase_key = "test-key"
-        mock_settings.supabase_storage_bucket = "test-bucket"
-
-        mock_client = MagicMock()
-        mock_create_client.return_value = mock_client
-
-        # Return empty bucket list
-        mock_bucket = MagicMock()
-        mock_bucket.name = "other-bucket"
-        mock_client.storage.list_buckets.return_value = [mock_bucket]
-
-        # WHEN
-        SupabaseStorageService(mock_settings)
-
-        # THEN
-        mock_client.storage.create_bucket.assert_called_once_with(
-            "test-bucket",
-            options={"public": True},
-        )
-
-    @patch("supabase.create_client")
-    def test_skips_bucket_creation_if_exists(self, mock_create_client):
-        """Bucket creation is skipped if it already exists."""
-        # GIVEN
-        mock_settings = MagicMock()
-        mock_settings.supabase_url = "https://test.supabase.co"
-        mock_settings.supabase_key = "test-key"
-        mock_settings.supabase_storage_bucket = "test-bucket"
-
-        mock_client = MagicMock()
-        mock_create_client.return_value = mock_client
-
-        # Return bucket list with our bucket
-        mock_bucket = MagicMock()
-        mock_bucket.name = "test-bucket"
-        mock_client.storage.list_buckets.return_value = [mock_bucket]
-
-        # WHEN
-        SupabaseStorageService(mock_settings)
-
-        # THEN
-        mock_client.storage.create_bucket.assert_not_called()
-
-    @patch("supabase.create_client")
-    def test_wraps_exception_during_init(self, mock_create_client):
-        """Exception during bucket check is wrapped in StorageConfigurationError."""
-        # GIVEN
-        mock_settings = MagicMock()
-        mock_settings.supabase_url = "https://test.supabase.co"
-        mock_settings.supabase_key = "test-key"
-        mock_settings.supabase_storage_bucket = "test-bucket"
-
-        mock_client = MagicMock()
-        mock_create_client.return_value = mock_client
-        mock_client.storage.list_buckets.side_effect = Exception("Network error")
-
-        # WHEN / THEN
-        with pytest.raises(StorageConfigurationError, match="Failed to ensure bucket"):
-            SupabaseStorageService(mock_settings)
-
 
 class TestGenerateFilePath:
     """Tests for file path generation."""
@@ -115,12 +49,6 @@ class TestGenerateFilePath:
         mock_settings.supabase_url = "https://test.supabase.co"
         mock_settings.supabase_key = "test-key"
         mock_settings.supabase_storage_bucket = "test-bucket"
-
-        mock_client = MagicMock()
-        mock_create_client.return_value = mock_client
-        mock_bucket = MagicMock()
-        mock_bucket.name = "test-bucket"
-        mock_client.storage.list_buckets.return_value = [mock_bucket]
 
         service = SupabaseStorageService(mock_settings)
 
@@ -139,12 +67,6 @@ class TestGenerateFilePath:
         mock_settings.supabase_url = "https://test.supabase.co"
         mock_settings.supabase_key = "test-key"
         mock_settings.supabase_storage_bucket = "test-bucket"
-
-        mock_client = MagicMock()
-        mock_create_client.return_value = mock_client
-        mock_bucket = MagicMock()
-        mock_bucket.name = "test-bucket"
-        mock_client.storage.list_buckets.return_value = [mock_bucket]
 
         service = SupabaseStorageService(mock_settings)
 
@@ -169,10 +91,6 @@ class TestUploadFile:
 
         mock_client = MagicMock()
         mock_create_client.return_value = mock_client
-        mock_bucket = MagicMock()
-        mock_bucket.name = "test-bucket"
-        mock_client.storage.list_buckets.return_value = [mock_bucket]
-
         mock_storage_bucket = MagicMock()
         mock_client.storage.from_.return_value = mock_storage_bucket
         mock_storage_bucket.get_public_url.return_value = (
@@ -199,10 +117,6 @@ class TestUploadFile:
 
         mock_client = MagicMock()
         mock_create_client.return_value = mock_client
-        mock_bucket = MagicMock()
-        mock_bucket.name = "test-bucket"
-        mock_client.storage.list_buckets.return_value = [mock_bucket]
-
         mock_storage_bucket = MagicMock()
         mock_client.storage.from_.return_value = mock_storage_bucket
         mock_storage_bucket.upload.side_effect = Exception("Upload failed")
@@ -228,10 +142,6 @@ class TestDeleteFile:
 
         mock_client = MagicMock()
         mock_create_client.return_value = mock_client
-        mock_bucket = MagicMock()
-        mock_bucket.name = "test-bucket"
-        mock_client.storage.list_buckets.return_value = [mock_bucket]
-
         mock_storage_bucket = MagicMock()
         mock_client.storage.from_.return_value = mock_storage_bucket
 
@@ -255,12 +165,6 @@ class TestDeleteFile:
         mock_settings.supabase_key = "test-key"
         mock_settings.supabase_storage_bucket = "test-bucket"
 
-        mock_client = MagicMock()
-        mock_create_client.return_value = mock_client
-        mock_bucket = MagicMock()
-        mock_bucket.name = "test-bucket"
-        mock_client.storage.list_buckets.return_value = [mock_bucket]
-
         service = SupabaseStorageService(mock_settings)
 
         # WHEN
@@ -280,10 +184,6 @@ class TestDeleteFile:
 
         mock_client = MagicMock()
         mock_create_client.return_value = mock_client
-        mock_bucket = MagicMock()
-        mock_bucket.name = "test-bucket"
-        mock_client.storage.list_buckets.return_value = [mock_bucket]
-
         mock_storage_bucket = MagicMock()
         mock_client.storage.from_.return_value = mock_storage_bucket
         mock_storage_bucket.remove.side_effect = Exception("Delete failed")
