@@ -22,9 +22,6 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 15  # Short-lived access token
     refresh_token_expire_days: int = 7  # Long-lived refresh token
 
-    # Redis (for token blacklist)
-    redis_url: str | None = None  # e.g., redis://localhost:6379/0
-
     # API
     debug: bool = False
     api_version: str = "0.1.0"
