@@ -84,7 +84,9 @@ def client_with_mock_storage():
             yield session
 
     mock_storage = MagicMock(spec=SupabaseStorageService)
-    mock_storage.upload_file.return_value = "https://storage.blob.core.windows.net/photos/test.jpg"
+    mock_storage.upload_file.return_value = (
+        "https://test.supabase.co/storage/v1/object/public/photos/test.jpg"
+    )
 
     test_app.dependency_overrides[get_session] = override_get_session
     test_app.dependency_overrides[get_storage_service] = lambda: mock_storage
@@ -139,7 +141,9 @@ class TestPhotoUpload:
         # THEN
         assert response.status_code == 200
         data = response.json()
-        assert data["photo_url"] == "https://storage.blob.core.windows.net/photos/test.jpg"
+        assert (
+            data["photo_url"] == "https://test.supabase.co/storage/v1/object/public/photos/test.jpg"
+        )
         mock_storage.upload_file.assert_called_once()
 
     def test_upload_photo_invalid_content_type(self, client_with_mock_storage):
@@ -215,7 +219,7 @@ class TestPhotoUpload:
         """Upload failure from storage returns 503."""
         # GIVEN
         client, mock_storage = client_with_mock_storage
-        mock_storage.upload_file.side_effect = StorageUploadError("Azure error")
+        mock_storage.upload_file.side_effect = StorageUploadError("Supabase error")
         token = _register_and_login(client)
 
         # WHEN
@@ -244,7 +248,7 @@ class TestPhotoUpload:
 
         # WHEN - upload second photo
         mock_storage.upload_file.return_value = (
-            "https://storage.blob.core.windows.net/photos/test2.jpg"
+            "https://test.supabase.co/storage/v1/object/public/photos/test2.jpg"
         )
         response = client.post(
             "/api/v1/users/me/photo",
@@ -334,7 +338,7 @@ class TestPhotoDelete:
         )
 
         # Make delete_file raise error
-        mock_storage.delete_file.side_effect = StorageDeleteError("Azure error")
+        mock_storage.delete_file.side_effect = StorageDeleteError("Supabase error")
 
         # WHEN
         response = client.delete(

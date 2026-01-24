@@ -109,6 +109,7 @@ testpaths = ["tests"]
 addopts = ["-v", "--cov=src", "--cov=api"]
 filterwarnings = [
     # SQLite in-memory database cleanup during GC is uncontrollable
+    # Warning may come from inspect module when analyzing sqlite objects
     "ignore:unclosed database:ResourceWarning",
 ]
 

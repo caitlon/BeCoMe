@@ -8,7 +8,8 @@
 #   SECRET_KEY              - JWT secret (openssl rand -hex 32)
 #   DATABASE_URL            - Supabase PostgreSQL connection string
 #   SUPABASE_URL            - Supabase project URL
-#   SUPABASE_KEY            - Supabase anon key
+#   SUPABASE_KEY            - Supabase anon key (requires RLS policies on storage.objects)
+#                             or service_role key (bypasses RLS, keep secret)
 #   SUPABASE_STORAGE_BUCKET - Storage bucket name (default: become-photos)
 
 services:
@@ -29,7 +30,7 @@ services:
       DEBUG: ${DEBUG:-false}
       CORS_ORIGINS: '["http://localhost:3000"]'
       UVICORN_WORKERS: ${UVICORN_WORKERS:-4}
-      # Supabase Storage
+      # Supabase Storage (anon key + RLS policies, or service_role key)
       SUPABASE_URL: ${SUPABASE_URL}
       SUPABASE_KEY: ${SUPABASE_KEY}
       SUPABASE_STORAGE_BUCKET: ${SUPABASE_STORAGE_BUCKET:-become-photos}
