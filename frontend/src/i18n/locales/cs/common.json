@@ -2,6 +2,13 @@
   "brand": {
     "name": "BeCoMe"
   },
+  "cancel": "Zrušit",
+  "deleteModal": {
+    "permanentlyDelete": "Trvale smaže:",
+    "cannotUndo": "Tuto akci nelze vrátit zpět.",
+    "confirm": "Smazat",
+    "deleting": "Mazání..."
+  },
   "nav": {
     "about": "O metodě",
     "signIn": "Přihlásit se",

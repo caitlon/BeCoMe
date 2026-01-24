@@ -40,7 +40,7 @@
     "title": "Delete Project?",
     "description": "Are you sure you want to delete \"{{name}}\"?",
     "details": {
-      "opinions": "All expert opinions ({{count}})",
+      "opinions": "All expert opinions",
       "results": "All calculation results",
       "invitations": "All invitations"
     },

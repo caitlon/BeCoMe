@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { AlertTriangle } from "lucide-react";
 import {
   Dialog,
@@ -27,9 +28,10 @@ export function DeleteConfirmModal({
   description,
   details,
   onConfirm,
-  confirmText = "Delete Project",
-  loadingText = "Deleting...",
+  confirmText,
+  loadingText,
 }: DeleteConfirmModalProps) {
+  const { t } = useTranslation("common");
   const [isLoading, setIsLoading] = useState(false);
 
   const handleConfirm = async () => {
@@ -56,7 +58,7 @@ export function DeleteConfirmModal({
 
           {details && details.length > 0 && (
             <div className="bg-muted p-4 rounded-lg mb-4">
-              <p className="text-sm font-medium mb-2">This will permanently delete:</p>
+              <p className="text-sm font-medium mb-2">{t("deleteModal.permanentlyDelete")}</p>
               <ul className="text-sm text-muted-foreground space-y-1">
                 {details.map((detail, index) => (
                   <li key={index}>• {detail}</li>
@@ -66,26 +68,26 @@ export function DeleteConfirmModal({
           )}
 
           <p className="text-sm font-medium text-destructive">
-            This action cannot be undone.
+            {t("deleteModal.cannotUndo")}
           </p>
         </div>
 
         <div className="flex justify-end gap-3">
-          <Button 
-            variant="outline" 
+          <Button
+            variant="outline"
             onClick={() => onOpenChange(false)}
             disabled={isLoading}
           >
-            Cancel
+            {t("cancel")}
           </Button>
           <SubmitButton
             type="button"
             variant="destructive"
             onClick={handleConfirm}
             isLoading={isLoading}
-            loadingText={loadingText}
+            loadingText={loadingText || t("deleteModal.deleting")}
           >
-            {confirmText}
+            {confirmText || t("deleteModal.confirm")}
           </SubmitButton>
         </div>
       </DialogContent>
