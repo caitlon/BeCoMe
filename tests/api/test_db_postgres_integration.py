@@ -8,6 +8,7 @@ Run with: uv run pytest tests/api/test_db_postgres_integration.py -v
 
 import shutil
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import create_engine
@@ -39,6 +40,7 @@ def load_schema(**kwargs):
     )
     engine = create_engine(connection)
     SQLModel.metadata.create_all(engine)
+    engine.dispose()
 
 
 # Import factories only if PostgreSQL is available
@@ -83,8 +85,6 @@ class TestForeignKeyEnforcement:
         WHEN saved to PostgreSQL
         THEN IntegrityError is raised (FK constraint violation)
         """
-        from uuid import uuid4
-
         # GIVEN
         admin = User(
             email="admin@example.com",
@@ -111,6 +111,7 @@ class TestForeignKeyEnforcement:
         pg_session.add(membership)
         with pytest.raises(IntegrityError):
             pg_session.commit()
+        pg_session.rollback()
 
     def test_cascade_delete_with_fk_enforcement(self, pg_session):
         """
@@ -321,7 +322,7 @@ class TestTransactionIsolation:
         WHEN another transaction queries
         THEN uncommitted changes are not visible
         """
-        # Session 1 creates user but does NOT commit
+        # GIVEN - Session 1 creates user but does NOT commit
         session1 = scoped_session(sessionmaker(bind=pg_engine))
         user = User(
             email="uncommitted@example.com",
@@ -332,21 +333,21 @@ class TestTransactionIsolation:
         session1.add(user)
         session1.flush()  # Write to DB but don't commit
 
-        # Session 2 should NOT see the uncommitted user
+        # WHEN - Session 2 queries for the user
         session2 = scoped_session(sessionmaker(bind=pg_engine))
         found_user = (
             session2.execute(select(User).where(User.email == "uncommitted@example.com"))
             .scalars()
             .first()
         )
-        session2.close()
 
-        # Cleanup session1 without commit
+        # THEN - uncommitted user is not visible
+        assert found_user is None
+
+        # Cleanup
+        session2.close()
         session1.rollback()
         session1.close()
-
-        # THEN
-        assert found_user is None
 
 
 class TestPostgreSQLSpecificFeatures:
@@ -371,13 +372,13 @@ class TestPostgreSQLSpecificFeatures:
 
         # THEN
         assert user.id is not None
-        assert len(str(user.id)) == 36  # UUID format: 8-4-4-4-12
+        assert isinstance(user.id, UUID)
 
-    def test_timestamp_with_timezone(self, pg_session):
+    def test_timestamp_is_set_on_creation(self, pg_session):
         """
         GIVEN a model with timestamp field
-        WHEN saved and retrieved from PostgreSQL
-        THEN timestamp preserves timezone information
+        WHEN saved to PostgreSQL
+        THEN created_at timestamp is automatically set
         """
         # GIVEN/WHEN
         user = User(
@@ -392,14 +393,12 @@ class TestPostgreSQLSpecificFeatures:
 
         # THEN
         assert user.created_at is not None
-        # PostgreSQL returns timezone-aware timestamps
-        # (behavior may vary based on column definition)
 
-    def test_check_constraint_enforcement(self, pg_session):
+    def test_pydantic_scale_range_validation(self, pg_session):
         """
-        GIVEN a project with invalid scale range
-        WHEN trying to save to PostgreSQL
-        THEN validation error is raised at model level
+        GIVEN a project with invalid scale range (min > max)
+        WHEN model_validate is called
+        THEN Pydantic ValidationError is raised before reaching database
         """
         from pydantic import ValidationError
 
