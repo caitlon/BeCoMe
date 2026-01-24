@@ -54,7 +54,6 @@ api = [
     "azure-storage-blob>=12.19.0",
     "slowapi>=0.1.9",
     "bleach>=6.0",
-    "redis>=5.0",
 ]
 
 [build-system]
