@@ -48,7 +48,7 @@ const Landing = () => {
       <Navbar />
       
       {/* Hero Section */}
-      <section className="pt-32 pb-20 md:pt-40 md:pb-32">
+      <section className="pt-32 pb-20 md:pt-40 md:pb-32 bg-gradient-to-b from-background via-background to-muted/20">
         <div className="container mx-auto px-6">
           <motion.div 
             className="max-w-4xl mx-auto text-center"
@@ -134,10 +134,11 @@ const Landing = () => {
                 key={step.titleKey}
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
+                whileHover={{ y: -4 }}
                 viewport={{ once: true }}
                 transition={{ delay: index * 0.1, duration: 0.5 }}
               >
-                <Card className="h-full border-border/50 hover:border-border transition-colors">
+                <Card className="h-full border-border/50 hover:border-border hover:shadow-lg transition-all duration-300">
                   <CardContent className="pt-8 pb-8 text-center">
                     <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-6">
                       <step.icon className="h-6 w-6" />
@@ -195,11 +196,12 @@ const Landing = () => {
                 key={study.id}
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
+                whileHover={{ y: -4 }}
                 viewport={{ once: true }}
                 transition={{ delay: index * 0.1, duration: 0.5 }}
               >
                 <Link to={`/case-study/${study.id}`}>
-                  <Card className="h-full group hover:shadow-md hover:border-primary/30 transition-all duration-200 cursor-pointer">
+                  <Card className="h-full group hover:shadow-lg hover:border-primary/30 transition-all duration-300 cursor-pointer">
                     <CardContent className="pt-6 pb-6">
                       <div className="flex items-start gap-4">
                         <div className="w-10 h-10 rounded-lg bg-secondary flex items-center justify-center shrink-0 group-hover:bg-primary/10 transition-colors">

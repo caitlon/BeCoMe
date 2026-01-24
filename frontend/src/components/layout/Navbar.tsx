@@ -4,8 +4,10 @@ import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { useAuth } from "@/contexts/AuthContext";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Menu, X, ChevronDown, User, LogOut } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -19,7 +21,16 @@ export function Navbar() {
   const { t: tOnboarding } = useTranslation("onboarding");
   const { isAuthenticated, user, logout } = useAuth();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isScrolled, setIsScrolled] = useState(false);
   const location = useLocation();
+
+  useEffect(() => {
+    const handleScroll = () => {
+      setIsScrolled(window.scrollY > 10);
+    };
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
 
   const handleLogout = () => {
     logout();
@@ -29,7 +40,14 @@ export function Navbar() {
   const isAuthPage = ['/login', '/register'].includes(location.pathname);
 
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 bg-background/95 backdrop-blur-sm border-b border-border">
+    <nav
+      className={cn(
+        "fixed top-0 left-0 right-0 z-50 transition-all duration-300",
+        isScrolled
+          ? "bg-background/80 backdrop-blur-md border-b border-border shadow-sm"
+          : "bg-background/95 backdrop-blur-sm border-b border-transparent"
+      )}
+    >
       <div className="container mx-auto px-6 h-16 flex items-center justify-between">
         {/* Logo */}
         <Link
@@ -118,9 +136,16 @@ export function Navbar() {
       </div>
 
       {/* Mobile Menu */}
-      {isMenuOpen && !isAuthPage && (
-        <div className="md:hidden bg-background border-b border-border">
-          <div className="container mx-auto px-6 py-4 space-y-3">
+      <AnimatePresence>
+        {isMenuOpen && !isAuthPage && (
+          <motion.div
+            className="md:hidden bg-background/95 backdrop-blur-md border-b border-border"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.2 }}
+          >
+            <div className="container mx-auto px-6 py-4 space-y-3">
             <Link
               to="/about"
               className="block py-2 text-muted-foreground hover:text-foreground"
@@ -175,8 +200,9 @@ export function Navbar() {
               </>
             )}
           </div>
-        </div>
+        </motion.div>
       )}
+      </AnimatePresence>
     </nav>
   );
 }
