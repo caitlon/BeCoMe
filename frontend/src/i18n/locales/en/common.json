@@ -44,13 +44,6 @@
     "githubReadme": "GitHub README",
     "github": "GitHub"
   },
-  "faq": {
-    "title": "Frequently Asked Questions",
-    "comingSoon": "FAQ is coming soon.",
-    "askQuestion": "Have a question? Open an issue on",
-    "github": "GitHub",
-    "openIssue": "Open Issue"
-  },
   "common": {
     "loading": "Loading...",
     "error": "Error",

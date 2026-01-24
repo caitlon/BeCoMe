@@ -1,61 +1,209 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
-import { HelpCircle, ExternalLink } from "lucide-react";
+import {
+  HelpCircle,
+  BookOpen,
+  Calculator,
+  BarChart3,
+  Laptop,
+  Wrench,
+  ExternalLink,
+  List,
+} from "lucide-react";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 
+const fadeInUp = {
+  initial: { opacity: 0, y: 20 },
+  animate: { opacity: 1, y: 0 },
+  transition: { duration: 0.5 },
+};
+
+const categories = [
+  { id: "method", icon: BookOpen, labelKey: "categories.method" },
+  { id: "fuzzyNumbers", icon: Calculator, labelKey: "categories.fuzzyNumbers" },
+  { id: "results", icon: BarChart3, labelKey: "categories.results" },
+  { id: "application", icon: Laptop, labelKey: "categories.application" },
+  { id: "troubleshooting", icon: Wrench, labelKey: "categories.troubleshooting" },
+];
+
+const faqItems: Record<string, string[]> = {
+  method: ["whatIsBecome", "whyBetterThanMean", "whenToUse"],
+  fuzzyNumbers: ["whatIsFuzzy", "whatIsCentroid"],
+  results: ["whatIsMaxError", "whyDifferentMedian"],
+  application: ["howToCreateProject", "howToInviteExperts", "whatInputFormats"],
+  troubleshooting: ["cantSeeInvitation", "noResults", "howToEditOpinion"],
+};
+
 const FAQ = () => {
-  const { t } = useTranslation();
+  const { t } = useTranslation("faq");
+  const [activeCategory, setActiveCategory] = useState("method");
 
   useEffect(() => {
     window.scrollTo(0, 0);
   }, []);
 
+  useEffect(() => {
+    const handleScroll = () => {
+      for (const cat of categories) {
+        const element = document.getElementById(cat.id);
+        if (element) {
+          const rect = element.getBoundingClientRect();
+          if (rect.top <= 150 && rect.bottom >= 150) {
+            setActiveCategory(cat.id);
+            break;
+          }
+        }
+      }
+    };
+
+    window.addEventListener("scroll", handleScroll);
+    handleScroll();
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  const scrollToSection = (id: string) => {
+    const element = document.getElementById(id);
+    if (element) {
+      const offset = 100;
+      const top = element.getBoundingClientRect().top + window.scrollY - offset;
+      window.scrollTo({ top, behavior: "smooth" });
+    }
+  };
+
   return (
     <div className="min-h-screen flex flex-col">
       <Navbar />
 
-      <section className="flex-1 pt-24 pb-12 md:pt-32 md:pb-16">
+      {/* Hero Section */}
+      <section className="pt-24 pb-8 md:pt-32 md:pb-12 bg-secondary/30">
         <div className="container mx-auto px-6">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-            className="max-w-2xl mx-auto text-center"
-          >
-            <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-6">
-              <HelpCircle className="h-8 w-8 text-primary" />
+          <motion.div {...fadeInUp} className="max-w-3xl">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center">
+                <HelpCircle className="h-6 w-6 text-primary" />
+              </div>
+              <h1 className="font-display text-3xl md:text-5xl font-normal">
+                {t("title")}
+              </h1>
             </div>
-            <h1 className="font-display text-3xl md:text-4xl font-normal mb-4">
-              {t("faq.title")}
-            </h1>
-            <p className="text-lg text-muted-foreground mb-8">
-              {t("faq.comingSoon")}
-            </p>
-            <p className="text-muted-foreground mb-6">
-              {t("faq.askQuestion")}{" "}
-              <a
-                href="https://github.com/caitlon/BeCoMe/issues"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-primary hover:underline"
-              >
-                {t("faq.github")}
-              </a>
-            </p>
-            <Button asChild variant="outline">
+            <p className="text-lg text-muted-foreground">{t("subtitle")}</p>
+          </motion.div>
+        </div>
+      </section>
+
+      {/* Main Content */}
+      <section className="flex-1 py-8 md:py-12">
+        <div className="container mx-auto px-6">
+          <div className="flex flex-col lg:flex-row gap-8">
+            {/* Sidebar Navigation */}
+            <aside className="lg:w-64 shrink-0">
+              <div className="lg:sticky lg:top-24">
+                <div className="flex items-center gap-2 mb-4 text-sm font-medium">
+                  <List className="h-4 w-4" />
+                  {t("categories.title")}
+                </div>
+                <nav className="space-y-1">
+                  {categories.map((cat) => (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => scrollToSection(cat.id)}
+                      className={`w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md transition-colors text-left ${
+                        activeCategory === cat.id
+                          ? "bg-primary text-primary-foreground"
+                          : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                      }`}
+                    >
+                      <cat.icon className="h-4 w-4 shrink-0" />
+                      {t(cat.labelKey)}
+                    </button>
+                  ))}
+                </nav>
+              </div>
+            </aside>
+
+            {/* FAQ Content */}
+            <main className="flex-1 max-w-3xl">
+              {categories.map((cat) => (
+                <motion.section
+                  key={cat.id}
+                  id={cat.id}
+                  className="mb-12"
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.5 }}
+                >
+                  <h2 className="font-display text-2xl md:text-3xl font-normal mb-4 flex items-center gap-3">
+                    <cat.icon className="h-6 w-6 text-primary" />
+                    {t(cat.labelKey)}
+                  </h2>
+                  <p className="text-muted-foreground mb-6">
+                    {t(`${cat.id}.intro`)}
+                  </p>
+                  <Card>
+                    <CardContent className="pt-6">
+                      <Accordion type="single" collapsible className="w-full border-t">
+                        {faqItems[cat.id].map((itemKey) => (
+                          <AccordionItem key={itemKey} value={itemKey}>
+                            <AccordionTrigger className="text-left">
+                              {t(`${cat.id}.${itemKey}.question`)}
+                            </AccordionTrigger>
+                            <AccordionContent className="text-muted-foreground">
+                              {t(`${cat.id}.${itemKey}.answer`)}
+                            </AccordionContent>
+                          </AccordionItem>
+                        ))}
+                      </Accordion>
+                    </CardContent>
+                  </Card>
+                </motion.section>
+              ))}
+            </main>
+          </div>
+        </div>
+      </section>
+
+      {/* CTA Section */}
+      <section className="py-16 bg-primary text-primary-foreground">
+        <div className="container mx-auto px-6 text-center">
+          <h2 className="font-display text-2xl md:text-3xl mb-4">
+            {t("cta.title")}
+          </h2>
+          <p className="text-primary-foreground/80 mb-8 max-w-xl mx-auto">
+            {t("cta.subtitle")}
+          </p>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <Button variant="secondary" size="lg" asChild>
+              <Link to="/docs">{t("cta.viewDocs")}</Link>
+            </Button>
+            <Button
+              variant="outline"
+              size="lg"
+              className="gap-2 bg-transparent border-primary-foreground/30 text-primary-foreground hover:bg-primary-foreground/10"
+              asChild
+            >
               <a
                 href="https://github.com/caitlon/BeCoMe/issues/new"
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                <ExternalLink className="mr-2 h-4 w-4" />
-                {t("faq.openIssue")}
+                <ExternalLink className="h-4 w-4" />
+                {t("cta.openIssue")}
               </a>
             </Button>
-          </motion.div>
+          </div>
         </div>
       </section>
 

@@ -1,0 +1,85 @@
+{
+  "title": "Frequently Asked Questions",
+  "subtitle": "Find answers to common questions about the BeCoMe method and application",
+  "categories": {
+    "title": "Categories",
+    "method": "About BeCoMe Method",
+    "fuzzyNumbers": "Fuzzy Numbers",
+    "results": "Understanding Results",
+    "application": "Using the Application",
+    "troubleshooting": "Troubleshooting"
+  },
+  "method": {
+    "intro": "Learn about the BeCoMe method and when to use it for group decision-making.",
+    "whatIsBecome": {
+      "question": "What is BeCoMe?",
+      "answer": "BeCoMe (Best Compromise Mean) is a simplified method for aggregating expert opinions. The formula calculates the average between the arithmetic mean and median of expert opinions expressed as fuzzy triangular numbers."
+    },
+    "whyBetterThanMean": {
+      "question": "Why is BeCoMe better than a simple average?",
+      "answer": "BeCoMe accounts for uncertainty through fuzzy numbers, is robust against outliers thanks to the median component, and provides an accuracy estimate (Δmax) that indicates the quality of consensus."
+    },
+    "whenToUse": {
+      "question": "When should I use BeCoMe?",
+      "answer": "BeCoMe is ideal for group decision-making scenarios, especially when experts have contradicting opinions or when you need to reach a quick consensus while preserving uncertainty information."
+    }
+  },
+  "fuzzyNumbers": {
+    "intro": "Understand how fuzzy triangular numbers represent uncertainty in expert estimates.",
+    "whatIsFuzzy": {
+      "question": "What is a fuzzy triangular number?",
+      "answer": "A fuzzy triangular number A = (a, c, b) represents uncertainty in an expert's estimate: 'a' is the lower bound (pessimistic), 'c' is the peak (most likely value), and 'b' is the upper bound (optimistic)."
+    },
+    "whatIsCentroid": {
+      "question": "What is the centroid (Gx)?",
+      "answer": "The centroid is the center of mass of the triangle, calculated as Gx = (a + b + c) / 3. It's used to sort fuzzy numbers when calculating the median."
+    }
+  },
+  "results": {
+    "intro": "Learn how to interpret BeCoMe calculation results and error estimates.",
+    "whatIsMaxError": {
+      "question": "What does the maximum error (Δmax) mean?",
+      "answer": "The maximum error Δmax = |Γ − Ω| / 2 shows the maximum deviation from the optimum. A lower value indicates better agreement among experts."
+    },
+    "whyDifferentMedian": {
+      "question": "Why is the median calculated differently for odd and even expert counts?",
+      "answer": "For an odd number of experts, the median is the middle element after sorting by centroid. For an even number, it's the average of the two central elements."
+    }
+  },
+  "application": {
+    "intro": "Step-by-step guidance on using the BeCoMe web application.",
+    "howToCreateProject": {
+      "question": "How do I create a project?",
+      "answer": "Sign up or log in, click 'New Project' on the Projects page, enter a name and description, then set the scale (minimum, maximum, and unit)."
+    },
+    "howToInviteExperts": {
+      "question": "How do I invite experts?",
+      "answer": "Open your project, click 'Invite Experts', and enter the email of a registered user. They will see the invitation in their 'Invitations' tab."
+    },
+    "whatInputFormats": {
+      "question": "What input formats are supported?",
+      "answer": "Three formats: Crisp (single precise value), Fuzzy (triangular number with lower, peak, upper), and Likert scale (linguistic terms from 'Strongly disagree' to 'Strongly agree')."
+    }
+  },
+  "troubleshooting": {
+    "intro": "Solutions to common issues you might encounter while using the application.",
+    "cantSeeInvitation": {
+      "question": "Why can't I see the invitation?",
+      "answer": "Make sure you're logged in with the email that received the invitation. The invited user must be registered in the system before receiving invitations."
+    },
+    "noResults": {
+      "question": "Why aren't results showing?",
+      "answer": "Results require at least 2 expert opinions. Make sure multiple experts have submitted their opinions in the project."
+    },
+    "howToEditOpinion": {
+      "question": "How do I edit my opinion?",
+      "answer": "Open the project page and modify your previously entered values. Your opinion will be updated automatically."
+    }
+  },
+  "cta": {
+    "title": "Still have questions?",
+    "subtitle": "Check the documentation or open an issue on GitHub",
+    "viewDocs": "View Documentation",
+    "openIssue": "Open Issue"
+  }
+}

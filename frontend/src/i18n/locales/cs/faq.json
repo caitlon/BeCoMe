@@ -1,0 +1,85 @@
+{
+  "title": "Časté dotazy",
+  "subtitle": "Najděte odpovědi na běžné otázky o metodě BeCoMe a aplikaci",
+  "categories": {
+    "title": "Kategorie",
+    "method": "O metodě BeCoMe",
+    "fuzzyNumbers": "Fuzzy čísla",
+    "results": "Pochopení výsledků",
+    "application": "Používání aplikace",
+    "troubleshooting": "Řešení problémů"
+  },
+  "method": {
+    "intro": "Zjistěte více o metodě BeCoMe a kdy ji použít pro skupinové rozhodování.",
+    "whatIsBecome": {
+      "question": "Co je BeCoMe?",
+      "answer": "BeCoMe (Best Compromise Mean) je zjednodušená metoda pro agregaci expertních názorů. Vzorec počítá průměr mezi aritmetickým průměrem a mediánem expertních názorů vyjádřených jako fuzzy trojúhelníková čísla."
+    },
+    "whyBetterThanMean": {
+      "question": "Proč je BeCoMe lepší než prostý průměr?",
+      "answer": "BeCoMe zohledňuje nejistotu prostřednictvím fuzzy čísel, je robustní vůči odlehlým hodnotám díky složce mediánu a poskytuje odhad přesnosti (Δmax), který indikuje kvalitu konsenzu."
+    },
+    "whenToUse": {
+      "question": "Kdy mám použít BeCoMe?",
+      "answer": "BeCoMe je ideální pro scénáře skupinového rozhodování, zejména když mají experti protichůdné názory nebo když potřebujete dosáhnout rychlého konsenzu při zachování informace o nejistotě."
+    }
+  },
+  "fuzzyNumbers": {
+    "intro": "Pochopte, jak fuzzy trojúhelníková čísla reprezentují nejistotu v expertních odhadech.",
+    "whatIsFuzzy": {
+      "question": "Co je fuzzy trojúhelníkové číslo?",
+      "answer": "Fuzzy trojúhelníkové číslo A = (a, c, b) reprezentuje nejistotu v expertním odhadu: 'a' je dolní mez (pesimistická), 'c' je vrchol (nejpravděpodobnější hodnota) a 'b' je horní mez (optimistická)."
+    },
+    "whatIsCentroid": {
+      "question": "Co je centroid (Gx)?",
+      "answer": "Centroid je těžiště trojúhelníku, vypočítané jako Gx = (a + b + c) / 3. Používá se k řazení fuzzy čísel při výpočtu mediánu."
+    }
+  },
+  "results": {
+    "intro": "Naučte se interpretovat výsledky výpočtu BeCoMe a odhady chyb.",
+    "whatIsMaxError": {
+      "question": "Co znamená maximální chyba (Δmax)?",
+      "answer": "Maximální chyba Δmax = |Γ − Ω| / 2 ukazuje maximální odchylku od optima. Nižší hodnota indikuje lepší shodu mezi experty."
+    },
+    "whyDifferentMedian": {
+      "question": "Proč se medián počítá jinak pro lichý a sudý počet expertů?",
+      "answer": "Pro lichý počet expertů je medián prostřední prvek po seřazení podle centroidu. Pro sudý počet je to průměr dvou středních prvků."
+    }
+  },
+  "application": {
+    "intro": "Průvodce krok za krokem pro používání webové aplikace BeCoMe.",
+    "howToCreateProject": {
+      "question": "Jak vytvořím projekt?",
+      "answer": "Zaregistrujte se nebo se přihlaste, klikněte na 'Nový projekt' na stránce Projekty, zadejte název a popis, pak nastavte škálu (minimum, maximum a jednotku)."
+    },
+    "howToInviteExperts": {
+      "question": "Jak pozvu experty?",
+      "answer": "Otevřete svůj projekt, klikněte na 'Pozvat experty' a zadejte email registrovaného uživatele. Pozvánku uvidí na záložce 'Pozvánky'."
+    },
+    "whatInputFormats": {
+      "question": "Jaké vstupní formáty jsou podporovány?",
+      "answer": "Tři formáty: Přesné číslo (jedna přesná hodnota), Fuzzy (trojúhelníkové číslo s dolní, vrcholem, horní) a Likertova škála (lingvistické termíny od 'Rozhodně nesouhlasím' po 'Rozhodně souhlasím')."
+    }
+  },
+  "troubleshooting": {
+    "intro": "Řešení běžných problémů, které můžete při používání aplikace narazit.",
+    "cantSeeInvitation": {
+      "question": "Proč nevidím pozvánku?",
+      "answer": "Ujistěte se, že jste přihlášeni s emailem, který obdržel pozvánku. Pozvaný uživatel musí být před přijetím pozvánky registrován v systému."
+    },
+    "noResults": {
+      "question": "Proč se nezobrazují výsledky?",
+      "answer": "Výsledky vyžadují minimálně 2 expertní názory. Ujistěte se, že v projektu odeslalo své názory více expertů."
+    },
+    "howToEditOpinion": {
+      "question": "Jak upravím svůj názor?",
+      "answer": "Otevřete stránku projektu a upravte dříve zadané hodnoty. Váš názor bude automaticky aktualizován."
+    }
+  },
+  "cta": {
+    "title": "Máte další otázky?",
+    "subtitle": "Podívejte se do dokumentace nebo otevřete issue na GitHubu",
+    "viewDocs": "Zobrazit dokumentaci",
+    "openIssue": "Otevřít issue"
+  }
+}
