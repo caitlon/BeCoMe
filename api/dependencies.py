@@ -20,8 +20,8 @@ from api.services.calculation_service import CalculationService
 from api.services.invitation_service import InvitationService
 from api.services.opinion_service import OpinionService
 from api.services.project_service import ProjectService
-from api.services.storage.supabase_storage_service import SupabaseStorageService
 from api.services.storage.exceptions import StorageConfigurationError
+from api.services.storage.supabase_storage_service import SupabaseStorageService
 from api.services.user_service import UserService
 from src.calculators.become_calculator import BeCoMeCalculator
 
