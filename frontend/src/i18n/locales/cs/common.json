@@ -44,13 +44,6 @@
     "githubReadme": "GitHub README",
     "github": "GitHub"
   },
-  "faq": {
-    "title": "Časté dotazy",
-    "comingSoon": "Sekce FAQ se připravuje.",
-    "askQuestion": "Máte otázku? Otevřete issue na",
-    "github": "GitHub",
-    "openIssue": "Otevřít issue"
-  },
   "common": {
     "loading": "Načítání...",
     "error": "Chyba",
