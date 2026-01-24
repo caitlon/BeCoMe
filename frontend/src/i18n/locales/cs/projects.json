@@ -40,7 +40,7 @@
     "title": "Smazat projekt?",
     "description": "Opravdu chcete smazat \"{{name}}\"?",
     "details": {
-      "opinions": "Všechny expertní názory ({{count}})",
+      "opinions": "Všechny expertní názory",
       "results": "Všechny výsledky výpočtů",
       "invitations": "Všechny pozvánky"
     },
