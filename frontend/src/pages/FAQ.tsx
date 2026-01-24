@@ -11,6 +11,7 @@ import {
   Wrench,
   ExternalLink,
   List,
+  type LucideIcon,
 } from "lucide-react";
 import {
   Accordion,
@@ -35,9 +36,11 @@ const categories = [
   { id: "results", icon: BarChart3, labelKey: "categories.results" },
   { id: "application", icon: Laptop, labelKey: "categories.application" },
   { id: "troubleshooting", icon: Wrench, labelKey: "categories.troubleshooting" },
-];
+] as const satisfies ReadonlyArray<{ id: string; icon: LucideIcon; labelKey: string }>;
 
-const faqItems: Record<string, string[]> = {
+type CategoryId = (typeof categories)[number]["id"];
+
+const faqItems: Record<CategoryId, string[]> = {
   method: ["whatIsBecome", "whyBetterThanMean", "whenToUse"],
   fuzzyNumbers: ["whatIsFuzzy", "whatIsCentroid"],
   results: ["whatIsMaxError", "whyDifferentMedian"],
@@ -47,7 +50,7 @@ const faqItems: Record<string, string[]> = {
 
 const FAQ = () => {
   const { t } = useTranslation("faq");
-  const [activeCategory, setActiveCategory] = useState("method");
+  const [activeCategory, setActiveCategory] = useState<CategoryId>("method");
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -119,6 +122,7 @@ const FAQ = () => {
                       key={cat.id}
                       type="button"
                       onClick={() => scrollToSection(cat.id)}
+                      aria-current={activeCategory === cat.id ? "true" : undefined}
                       className={`w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md transition-colors text-left ${
                         activeCategory === cat.id
                           ? "bg-primary text-primary-foreground"
