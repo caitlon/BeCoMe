@@ -10,7 +10,7 @@ import shutil
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import pytest
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import scoped_session, sessionmaker
 from sqlmodel import SQLModel, select
@@ -334,9 +334,11 @@ class TestTransactionIsolation:
 
         # Session 2 should NOT see the uncommitted user
         session2 = scoped_session(sessionmaker(bind=pg_engine))
-        found_user = session2.execute(
-            select(User).where(User.email == "uncommitted@example.com")
-        ).scalars().first()
+        found_user = (
+            session2.execute(select(User).where(User.email == "uncommitted@example.com"))
+            .scalars()
+            .first()
+        )
         session2.close()
 
         # Cleanup session1 without commit
