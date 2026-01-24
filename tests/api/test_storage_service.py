@@ -4,12 +4,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from api.services.storage.supabase_storage_service import SupabaseStorageService
 from api.services.storage.exceptions import (
     StorageConfigurationError,
     StorageDeleteError,
     StorageUploadError,
 )
+from api.services.storage.supabase_storage_service import SupabaseStorageService
 
 
 class TestSupabaseStorageServiceInit:

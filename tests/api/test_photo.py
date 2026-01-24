@@ -22,8 +22,8 @@ from api.db.session import get_session
 from api.dependencies import get_storage_service
 from api.middleware.exception_handlers import register_exception_handlers
 from api.routes import auth, users
-from api.services.storage.supabase_storage_service import SupabaseStorageService
 from api.services.storage.exceptions import StorageDeleteError, StorageUploadError
+from api.services.storage.supabase_storage_service import SupabaseStorageService
 
 
 def _create_test_app() -> FastAPI:
