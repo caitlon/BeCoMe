@@ -1,6 +1,6 @@
 """Tests for database utility functions."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -78,6 +78,28 @@ class TestEnsureUtc:
         # THEN
         assert result == aware
         assert result.tzinfo == UTC
+
+    def test_non_utc_aware_datetime_unchanged(self):
+        """
+        GIVEN a timezone-aware datetime with non-UTC timezone
+        WHEN passed to ensure_utc
+        THEN returns same datetime unchanged (does not convert to UTC)
+
+        Note: ensure_utc only adds UTC to naive datetimes,
+        it does not convert between timezones.
+        """
+        from datetime import timezone
+
+        # GIVEN - create datetime with +05:00 offset
+        offset = timezone(timedelta(hours=5))
+        aware_non_utc = datetime(2024, 1, 15, 12, 0, 0, tzinfo=offset)
+
+        # WHEN
+        result = ensure_utc(aware_non_utc)
+
+        # THEN - should be unchanged
+        assert result == aware_non_utc
+        assert result.tzinfo == offset
 
 
 class TestEmailRegex:

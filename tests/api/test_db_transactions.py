@@ -14,7 +14,10 @@ class TestTransactionRollback:
         """
         GIVEN a valid user already in database
         WHEN trying to add duplicate email
-        THEN integrity error is raised
+        THEN integrity error is raised and transaction must be rolled back
+
+        Note: After IntegrityError, session.rollback() is required
+        to continue using the session.
         """
         # GIVEN
         user1 = User(

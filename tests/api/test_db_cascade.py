@@ -3,6 +3,7 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from sqlalchemy.exc import IntegrityError
 
 from api.db.models import (
     CalculationResult,
@@ -204,9 +205,9 @@ class TestUserCascadeDelete:
         GIVEN a user who is member of projects
         WHEN the user is deleted
         THEN IntegrityError is raised (FK constraint with NOT NULL)
-        """
-        from sqlalchemy.exc import IntegrityError
 
+        Note: Requires rollback after exception to continue using session.
+        """
         # GIVEN
         admin = User(
             email="admin@example.com",
@@ -245,9 +246,9 @@ class TestUserCascadeDelete:
         GIVEN a user who submitted opinions
         WHEN the user is deleted
         THEN IntegrityError is raised (FK constraint with NOT NULL)
-        """
-        from sqlalchemy.exc import IntegrityError
 
+        Note: Requires rollback after exception to continue using session.
+        """
         # GIVEN
         admin = User(
             email="admin@example.com",
@@ -283,14 +284,20 @@ class TestUserCascadeDelete:
         with pytest.raises(IntegrityError):
             session.commit()
 
-    def test_deleting_user_with_reset_tokens_fails(self, session):
+    def test_deleting_user_with_reset_tokens_fails_in_sqlite(self, session):
         """
         GIVEN a user with password reset tokens
-        WHEN the user is deleted
-        THEN IntegrityError is raised (FK constraint with NOT NULL)
-        """
-        from sqlalchemy.exc import IntegrityError
+        WHEN the user is deleted in SQLite
+        THEN IntegrityError is raised (NOT NULL constraint)
 
+        Note: PasswordResetToken.user_id has ondelete="CASCADE" which only
+        works at database level with FK enforcement. SQLite doesn't enforce
+        FK constraints by default, and the User.reset_tokens relationship
+        lacks ORM-level cascade. Thus, ORM tries SET NULL → NOT NULL error.
+
+        For actual CASCADE behavior, see PostgreSQL integration tests:
+        test_db_postgres_integration.py::test_cascade_delete_with_fk_enforcement
+        """
         # GIVEN
         user = User(
             email="user@example.com",
@@ -308,7 +315,7 @@ class TestUserCascadeDelete:
         session.add(token)
         session.commit()
 
-        # WHEN/THEN - deletion should fail
+        # WHEN/THEN - in SQLite, deletion fails due to NOT NULL constraint
         session.delete(user)
         with pytest.raises(IntegrityError):
             session.commit()
@@ -318,9 +325,9 @@ class TestUserCascadeDelete:
         GIVEN a user who owns projects (is admin)
         WHEN the user is deleted
         THEN IntegrityError is raised (FK constraint with NOT NULL)
-        """
-        from sqlalchemy.exc import IntegrityError
 
+        Note: Requires rollback after exception to continue using session.
+        """
         # GIVEN
         admin = User(
             email="admin@example.com",

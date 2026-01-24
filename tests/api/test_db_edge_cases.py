@@ -291,7 +291,7 @@ class TestDatetimeEdgeCases:
         session.refresh(project)
 
         # THEN
-        assert project.updated_at >= original_updated_at
+        assert project.updated_at > original_updated_at
 
 
 class TestUuidEdgeCases:
