@@ -40,7 +40,10 @@ def client_with_mock_storage(test_engine):
     test_app.dependency_overrides[get_storage_service] = lambda: mock_storage
 
     with TestClient(test_app) as test_client:
-        yield test_client, mock_storage
+        try:
+            yield test_client, mock_storage
+        finally:
+            test_app.dependency_overrides.clear()
 
 
 @pytest.fixture
@@ -56,7 +59,10 @@ def client_without_storage(test_engine):
     test_app.dependency_overrides[get_storage_service] = lambda: None
 
     with TestClient(test_app) as test_client:
-        yield test_client
+        try:
+            yield test_client
+        finally:
+            test_app.dependency_overrides.clear()
 
 
 class TestPhotoUpload:
