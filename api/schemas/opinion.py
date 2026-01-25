@@ -1,12 +1,12 @@
 """Expert opinion schemas."""
 
-import math
 from datetime import datetime
 from typing import TYPE_CHECKING, Self
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from api.schemas.sanitization import sanitize_text
+from api.schemas.validators import validate_fuzzy_constraints
+from api.utils.sanitization import sanitize_text
 
 if TYPE_CHECKING:
     from api.db.models import ExpertOpinion, User
@@ -27,18 +27,9 @@ class OpinionCreate(BaseModel):
         return sanitize_text(v)
 
     @model_validator(mode="after")
-    def validate_fuzzy_constraints(self) -> Self:
-        """Validate: finite values and lower <= peak <= upper."""
-        values = [self.lower_bound, self.peak, self.upper_bound]
-        if not all(math.isfinite(v) for v in values):
-            msg = "Values must be finite (no NaN or infinity)"
-            raise ValueError(msg)
-        if not (self.lower_bound <= self.peak <= self.upper_bound):
-            msg = (
-                f"Must satisfy: lower_bound <= peak <= upper_bound. "
-                f"Got: {self.lower_bound}, {self.peak}, {self.upper_bound}"
-            )
-            raise ValueError(msg)
+    def validate_fuzzy(self) -> Self:
+        """Validate fuzzy number constraints."""
+        validate_fuzzy_constraints(self.lower_bound, self.peak, self.upper_bound)
         return self
 
 

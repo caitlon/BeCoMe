@@ -14,10 +14,10 @@ from api.schemas.auth import (
 from api.schemas.calculation import (
     CalculateRequest,
     CalculateResponse,
+    CalculationResultResponse,
     ExpertInput,
     FuzzyNumberOutput,
 )
-from api.schemas.health import HealthResponse
 from api.schemas.invitation import (
     InvitationListItemResponse,
     InvitationResponse,
@@ -31,7 +31,6 @@ from api.schemas.project import (
     ProjectUpdate,
     ProjectWithRoleResponse,
 )
-from api.schemas.result import CalculationResultResponse
 
 __all__ = [
     # Auth
@@ -42,25 +41,22 @@ __all__ = [
     "UpdateUserRequest",
     "UserResponse",
     # Calculation
-    "ExpertInput",
     "CalculateRequest",
-    "FuzzyNumberOutput",
     "CalculateResponse",
-    # Health
-    "HealthResponse",
+    "CalculationResultResponse",
+    "ExpertInput",
+    "FuzzyNumberOutput",
     # Invitation
-    "InviteByEmailRequest",
-    "InvitationResponse",
     "InvitationListItemResponse",
+    "InvitationResponse",
+    "InviteByEmailRequest",
     # Opinion
     "OpinionCreate",
     "OpinionResponse",
     # Project
-    "ProjectCreate",
-    "ProjectUpdate",
-    "ProjectResponse",
-    "ProjectWithRoleResponse",
     "MemberResponse",
-    # Result
-    "CalculationResultResponse",
+    "ProjectCreate",
+    "ProjectResponse",
+    "ProjectUpdate",
+    "ProjectWithRoleResponse",
 ]

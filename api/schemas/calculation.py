@@ -1,10 +1,11 @@
 """BeCoMe calculation schemas."""
 
-import math
+from datetime import datetime
 from typing import Self
 
 from pydantic import BaseModel, Field, model_validator
 
+from api.schemas.validators import validate_fuzzy_constraints
 from src.models.fuzzy_number import FuzzyTriangleNumber
 
 
@@ -17,15 +18,9 @@ class ExpertInput(BaseModel):
     upper: float = Field(..., description="Upper bound (optimistic estimate)")
 
     @model_validator(mode="after")
-    def validate_fuzzy_constraints(self) -> Self:
-        """Validate: finite values and lower <= peak <= upper."""
-        values = [self.lower, self.peak, self.upper]
-        if not all(math.isfinite(v) for v in values):
-            msg = "Values must be finite (no NaN or infinity)"
-            raise ValueError(msg)
-        if not (self.lower <= self.peak <= self.upper):
-            msg = f"Must satisfy: lower <= peak <= upper. Got: {self.lower}, {self.peak}, {self.upper}"
-            raise ValueError(msg)
+    def validate_fuzzy(self) -> Self:
+        """Validate fuzzy number constraints."""
+        validate_fuzzy_constraints(self.lower, self.peak, self.upper)
         return self
 
 
@@ -65,3 +60,16 @@ class CalculateResponse(BaseModel):
     median: FuzzyNumberOutput
     max_error: float
     num_experts: int
+
+
+class CalculationResultResponse(BaseModel):
+    """BeCoMe calculation result for a project."""
+
+    best_compromise: FuzzyNumberOutput
+    arithmetic_mean: FuzzyNumberOutput
+    median: FuzzyNumberOutput
+    max_error: float
+    num_experts: int
+    likert_value: int | None
+    likert_decision: str | None
+    calculated_at: datetime

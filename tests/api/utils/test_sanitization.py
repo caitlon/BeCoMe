@@ -1,6 +1,6 @@
 """Tests for HTML sanitization utilities."""
 
-from api.schemas.sanitization import sanitize_text, sanitize_text_or_none
+from api.utils.sanitization import sanitize_text, sanitize_text_or_none
 
 
 class TestSanitizeText:
