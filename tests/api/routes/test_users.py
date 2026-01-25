@@ -2,7 +2,7 @@
 
 from fastapi import status
 
-from tests.api.conftest import auth_header, register_and_login
+from tests.api.conftest import DEFAULT_TEST_PASSWORD, auth_header, register_and_login
 
 
 class TestDeleteAccount:
@@ -43,10 +43,10 @@ class TestDeleteAccount:
         # Delete account
         client.delete("/api/v1/users/me", headers=auth_header(token))
 
-        # WHEN - try to login with same credentials (password from register_and_login)
+        # WHEN - try to login with same credentials
         response = client.post(
             "/api/v1/auth/login",
-            data={"username": email, "password": "SecurePass123!"},
+            data={"username": email, "password": DEFAULT_TEST_PASSWORD},
         )
 
         # THEN
