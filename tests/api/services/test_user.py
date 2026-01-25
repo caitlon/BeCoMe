@@ -351,14 +351,23 @@ class TestUserServiceUpdatePhotoUrl:
 class TestUserServiceDeleteUser:
     """Tests for UserService.delete_user method."""
 
-    def test_deletes_user_from_database(self):
-        """User is deleted from database."""
+    @pytest.mark.parametrize(
+        ("email", "first_name", "photo_url"),
+        [
+            ("delete@example.com", "Delete", None),
+            ("nophoto@example.com", "NoPhoto", None),
+            ("withphoto@example.com", "WithPhoto", "https://storage.example.com/photo.jpg"),
+        ],
+    )
+    def test_deletes_user_from_database(self, email, first_name, photo_url):
+        """User is deleted from database regardless of photo_url."""
         # GIVEN
         user = User(
             id=uuid4(),
-            email="delete@example.com",
+            email=email,
             hashed_password="xxx",
-            first_name="Delete",
+            first_name=first_name,
+            photo_url=photo_url,
         )
         mock_session = MagicMock()
         service = UserService(mock_session)
@@ -369,41 +378,3 @@ class TestUserServiceDeleteUser:
         # THEN
         mock_session.delete.assert_called_once_with(user)
         mock_session.commit.assert_called_once()
-
-    def test_deletes_user_without_photo(self):
-        """User without photo URL can be deleted."""
-        # GIVEN
-        user = User(
-            id=uuid4(),
-            email="nophoto@example.com",
-            hashed_password="xxx",
-            first_name="NoPhoto",
-            photo_url=None,
-        )
-        mock_session = MagicMock()
-        service = UserService(mock_session)
-
-        # WHEN
-        service.delete_user(user)
-
-        # THEN
-        mock_session.delete.assert_called_once_with(user)
-
-    def test_deletes_user_with_photo(self):
-        """User with photo URL can be deleted (photo cleanup is caller's responsibility)."""
-        # GIVEN
-        user = User(
-            id=uuid4(),
-            email="withphoto@example.com",
-            hashed_password="xxx",
-            first_name="WithPhoto",
-            photo_url="https://storage.example.com/photo.jpg",
-        )
-        mock_session = MagicMock()
-        service = UserService(mock_session)
-
-        # WHEN
-        service.delete_user(user)
-
-        # THEN
-        mock_session.delete.assert_called_once_with(user)

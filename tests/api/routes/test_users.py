@@ -38,29 +38,15 @@ class TestDeleteAccount:
         """Deleted user cannot log in again."""
         # GIVEN
         email = "nologin@example.com"
-        password = "SecurePass123!"
-        client.post(
-            "/api/v1/auth/register",
-            json={
-                "email": email,
-                "password": password,
-                "first_name": "Test",
-                "last_name": "User",
-            },
-        )
-        login_response = client.post(
-            "/api/v1/auth/login",
-            data={"username": email, "password": password},
-        )
-        token = login_response.json()["access_token"]
+        token = register_and_login(client, email)
 
         # Delete account
         client.delete("/api/v1/users/me", headers=auth_header(token))
 
-        # WHEN
+        # WHEN - try to login with same credentials (password from register_and_login)
         response = client.post(
             "/api/v1/auth/login",
-            data={"username": email, "password": password},
+            data={"username": email, "password": "SecurePass123!"},
         )
 
         # THEN
