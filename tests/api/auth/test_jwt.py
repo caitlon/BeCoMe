@@ -1,7 +1,6 @@
 """Unit tests for JWT token creation and validation."""
 
 from datetime import UTC, datetime, timedelta
-from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
@@ -17,6 +16,7 @@ from api.auth.jwt import (
     revoke_token,
 )
 from api.auth.token_blacklist import TokenBlacklist
+from tests.api.conftest import mock_datetime_offset
 
 
 class TestCreateAccessToken:
@@ -86,9 +86,7 @@ class TestDecodeAccessToken:
         user_id = uuid4()
 
         # Create token that expired in the past
-        with patch("api.auth.jwt.datetime") as mock_datetime:
-            mock_datetime.now.return_value = datetime.now(UTC) - timedelta(hours=48)
-            mock_datetime.side_effect = datetime
+        with mock_datetime_offset("api.auth.jwt.datetime", timedelta(hours=48)):
             token = create_access_token(user_id)
 
         # WHEN / THEN
@@ -382,9 +380,7 @@ class TestDecodeRefreshToken:
         user_id = uuid4()
 
         # Create token that expired in the past
-        with patch("api.auth.jwt.datetime") as mock_datetime:
-            mock_datetime.now.return_value = datetime.now(UTC) - timedelta(days=30)
-            mock_datetime.side_effect = datetime
+        with mock_datetime_offset("api.auth.jwt.datetime", timedelta(days=30)):
             token, _ = create_refresh_token(user_id)
 
         # WHEN / THEN

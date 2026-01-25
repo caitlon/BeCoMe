@@ -3,6 +3,8 @@
 Uses shared fixtures from conftest.py (client, test_engine).
 """
 
+from sqlmodel import select
+
 from api.db.models import User
 
 
@@ -92,29 +94,6 @@ class TestRegister:
         # THEN
         assert response.status_code == 409
         assert "already registered" in response.json()["detail"]
-
-    def test_login_with_different_case_email_works(self, client):
-        """Login works with email in different case than registered."""
-        # GIVEN - register with mixed case
-        client.post(
-            "/api/v1/auth/register",
-            json={
-                "email": "CaseTest@Example.COM",
-                "password": "SecurePass123!",
-                "first_name": "Case",
-                "last_name": "Test",
-            },
-        )
-
-        # WHEN - login with lowercase
-        response = client.post(
-            "/api/v1/auth/login",
-            data={"username": "casetest@example.com", "password": "SecurePass123!"},
-        )
-
-        # THEN
-        assert response.status_code == 200
-        assert "access_token" in response.json()
 
     def test_register_short_password_fails(self, client):
         """Registration with password < 12 chars returns 422."""
@@ -279,6 +258,29 @@ class TestLogin:
         # THEN
         assert response.status_code == 401
 
+    def test_login_with_different_case_email_works(self, client):
+        """Login works with email in different case than registered."""
+        # GIVEN - register with mixed case
+        client.post(
+            "/api/v1/auth/register",
+            json={
+                "email": "CaseTest@Example.COM",
+                "password": "SecurePass123!",
+                "first_name": "Case",
+                "last_name": "Test",
+            },
+        )
+
+        # WHEN - login with lowercase
+        response = client.post(
+            "/api/v1/auth/login",
+            data={"username": "casetest@example.com", "password": "SecurePass123!"},
+        )
+
+        # THEN
+        assert response.status_code == 200
+        assert "access_token" in response.json()
+
 
 class TestMe:
     """Tests for GET /api/v1/auth/me."""
@@ -355,9 +357,7 @@ class TestMe:
         from api.db.session import get_session
 
         session = next(client.app.dependency_overrides[get_session]())
-        user = session.exec(
-            __import__("sqlmodel").select(User).where(User.email == "deleted@example.com")
-        ).first()
+        user = session.exec(select(User).where(User.email == "deleted@example.com")).first()
         session.delete(user)
         session.commit()
 
