@@ -205,8 +205,8 @@ def client_with_session(test_engine):
 def mock_datetime_offset(module_path: str, offset: timedelta):
     """Mock datetime.now() to return a time shifted by offset.
 
-    Mocks datetime.now() while preserving other datetime methods like fromtimestamp().
-    Used to test token expiration by creating tokens "in the past".
+    Uses wraps=datetime to preserve classmethods like fromtimestamp() while
+    overriding now(). Used to test token expiration by creating tokens "in the past".
 
     :param module_path: Full module path to mock (e.g., "api.auth.jwt.datetime")
     :param offset: Timedelta to subtract from current time (positive = past)
@@ -215,7 +215,6 @@ def mock_datetime_offset(module_path: str, offset: timedelta):
         with mock_datetime_offset("api.auth.jwt.datetime", timedelta(hours=48)):
             token = create_access_token(user_id)  # Created 48 hours ago
     """
-    with patch(module_path) as mock_dt:
+    with patch(module_path, wraps=datetime) as mock_dt:
         mock_dt.now.return_value = datetime.now(UTC) - offset
-        mock_dt.side_effect = datetime
         yield mock_dt

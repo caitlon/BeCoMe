@@ -8,7 +8,7 @@ from fastapi import HTTPException
 from jose import jwt
 
 from api.auth.dependencies import get_current_token_payload, get_current_user
-from api.auth.jwt import create_access_token, revoke_token
+from api.auth.jwt import ALGORITHM, create_access_token, revoke_token
 from api.auth.token_blacklist import TokenBlacklist
 from api.config import get_settings
 
@@ -83,7 +83,7 @@ class TestGetCurrentUser:
 
         # Extract JTI and revoke
         settings = get_settings()
-        payload = jwt.decode(token, settings.secret_key, algorithms=["HS256"])
+        payload = jwt.decode(token, settings.secret_key, algorithms=[ALGORITHM])
         revoke_token(payload["jti"])
 
         # WHEN / THEN
@@ -145,7 +145,7 @@ class TestGetCurrentTokenPayload:
 
         # Extract JTI and revoke
         settings = get_settings()
-        payload = jwt.decode(token, settings.secret_key, algorithms=["HS256"])
+        payload = jwt.decode(token, settings.secret_key, algorithms=[ALGORITHM])
         revoke_token(payload["jti"])
 
         # WHEN / THEN
