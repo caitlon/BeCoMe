@@ -67,6 +67,11 @@ class TestProjectModel:
         assert project.scale_max == 100.0
 
     def test_create_project_with_admin(self, session):
+        """
+        GIVEN an admin user exists in the database
+        WHEN a project is created with that admin_id
+        THEN the project is persisted with correct attributes
+        """
         # GIVEN
         admin = User(
             email="admin@example.com",
@@ -173,6 +178,7 @@ class TestProjectMemberModel:
         session.add(member2)
         with pytest.raises(IntegrityError):
             session.commit()
+        session.rollback()
 
     def test_user_can_be_member_of_multiple_projects(self, session):
         # GIVEN
@@ -279,6 +285,7 @@ class TestInvitationModel:
         session.add(inv2)
         with pytest.raises(IntegrityError):
             session.commit()
+        session.rollback()
 
     def test_same_user_can_be_invited_to_different_projects(self, session):
         # GIVEN
