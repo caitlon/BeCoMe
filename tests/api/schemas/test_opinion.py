@@ -1,10 +1,60 @@
 """Tests for expert opinion schemas."""
 
+import math
 from datetime import UTC, datetime
 from uuid import uuid4
 
+import pytest
+from pydantic import ValidationError
+
 from api.db.models import ExpertOpinion, User
 from api.schemas.opinion import OpinionCreate, OpinionResponse
+
+
+class TestOpinionCreateValidation:
+    """Validation tests for OpinionCreate schema."""
+
+    def test_valid_opinion_accepted(self):
+        """
+        GIVEN valid fuzzy number values
+        WHEN OpinionCreate is created
+        THEN no validation error is raised
+        """
+        # WHEN/THEN
+        opinion = OpinionCreate(lower_bound=5.0, peak=10.0, upper_bound=15.0)
+        assert opinion.lower_bound == 5.0
+        assert opinion.peak == 10.0
+        assert opinion.upper_bound == 15.0
+
+    def test_nan_value_rejected(self):
+        """
+        GIVEN NaN value in fuzzy number
+        WHEN OpinionCreate is created
+        THEN ValidationError is raised
+        """
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="finite"):
+            OpinionCreate(lower_bound=5.0, peak=math.nan, upper_bound=15.0)
+
+    def test_infinity_value_rejected(self):
+        """
+        GIVEN infinity value in fuzzy number
+        WHEN OpinionCreate is created
+        THEN ValidationError is raised
+        """
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="finite"):
+            OpinionCreate(lower_bound=5.0, peak=10.0, upper_bound=math.inf)
+
+    def test_invalid_constraints_rejected(self):
+        """
+        GIVEN invalid fuzzy constraints (lower > peak)
+        WHEN OpinionCreate is created
+        THEN ValidationError is raised
+        """
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="lower <= peak <= upper"):
+            OpinionCreate(lower_bound=15.0, peak=10.0, upper_bound=20.0)
 
 
 class TestOpinionCreateSanitization:

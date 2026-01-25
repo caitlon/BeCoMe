@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Self
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from api.schemas.sanitization import sanitize_text, sanitize_text_or_none
+from api.utils.sanitization import sanitize_text, sanitize_text_or_none
 
 if TYPE_CHECKING:
     from api.db.models import Project, ProjectMember, User
