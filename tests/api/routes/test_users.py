@@ -1,6 +1,5 @@
 """Tests for DELETE /api/v1/users/me endpoint."""
 
-import pytest
 from fastapi import status
 
 from tests.api.conftest import auth_header, register_and_login
