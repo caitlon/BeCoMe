@@ -127,6 +127,24 @@ class TestLogLoginFailure:
         extra = mock_logger.warning.call_args[1]["extra"]
         assert extra["ip"] == "10.0.0.50"
 
+    def test_handles_none_request(self):
+        """Login failure handles None request gracefully."""
+        # GIVEN
+        email = "test@example.com"
+        reason = "Invalid credentials"
+
+        # WHEN
+        with patch("api.auth.logging.logger") as mock_logger:
+            log_login_failure(email, reason, None)
+
+        # THEN
+        mock_logger.warning.assert_called_once()
+        extra = mock_logger.warning.call_args[1]["extra"]
+        assert extra["event"] == "login_failure"
+        assert extra["email"] == email
+        assert extra["reason"] == reason
+        assert extra["ip"] == "unknown"
+
 
 class TestLogRegistration:
     """Tests for log_registration function."""
@@ -160,6 +178,36 @@ class TestLogRegistration:
         extra = mock_logger.info.call_args[1]["extra"]
         assert extra["user_id"] == str(user_id)
         assert extra["email"] == email
+
+    def test_extracts_ip_from_request(self):
+        """Registration extracts IP from request."""
+        # GIVEN
+        user_id = uuid4()
+        email = "newuser@example.com"
+        mock_request = MagicMock()
+        mock_request.headers.get.return_value = "203.0.113.100"
+
+        # WHEN
+        with patch("api.auth.logging.logger") as mock_logger:
+            log_registration(user_id, email, mock_request)
+
+        # THEN
+        extra = mock_logger.info.call_args[1]["extra"]
+        assert extra["ip"] == "203.0.113.100"
+
+    def test_handles_none_request(self):
+        """Registration handles None request gracefully."""
+        # GIVEN
+        user_id = uuid4()
+        email = "newuser@example.com"
+
+        # WHEN
+        with patch("api.auth.logging.logger") as mock_logger:
+            log_registration(user_id, email, None)
+
+        # THEN
+        extra = mock_logger.info.call_args[1]["extra"]
+        assert extra["ip"] == "unknown"
 
 
 class TestLogPasswordChange:

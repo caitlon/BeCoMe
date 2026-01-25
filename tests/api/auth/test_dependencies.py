@@ -5,13 +5,20 @@ from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException
+from jose import jwt
 
 from api.auth.dependencies import get_current_token_payload, get_current_user
-from api.auth.jwt import create_access_token
+from api.auth.jwt import create_access_token, revoke_token
+from api.auth.token_blacklist import TokenBlacklist
+from api.config import get_settings
 
 
 class TestGetCurrentUser:
     """Tests for get_current_user dependency."""
+
+    def setup_method(self):
+        """Reset blacklist before each test."""
+        TokenBlacklist.reset()
 
     def test_returns_user_for_valid_token(self):
         """Valid token returns corresponding user."""
@@ -70,14 +77,6 @@ class TestGetCurrentUser:
     def test_raises_401_for_revoked_token(self):
         """Revoked token raises HTTPException 401."""
         # GIVEN
-        from jose import jwt
-
-        from api.auth.jwt import revoke_token
-        from api.auth.token_blacklist import TokenBlacklist
-        from api.config import get_settings
-
-        TokenBlacklist.reset()
-
         user_id = uuid4()
         token = create_access_token(user_id)
         mock_session = MagicMock()
@@ -96,6 +95,10 @@ class TestGetCurrentUser:
 
 class TestGetCurrentTokenPayload:
     """Tests for get_current_token_payload dependency."""
+
+    def setup_method(self):
+        """Reset blacklist before each test."""
+        TokenBlacklist.reset()
 
     def test_returns_payload_for_valid_token(self):
         """Valid token returns TokenPayload."""
@@ -137,14 +140,6 @@ class TestGetCurrentTokenPayload:
     def test_raises_401_for_revoked_token(self):
         """Revoked token raises HTTPException 401."""
         # GIVEN
-        from jose import jwt
-
-        from api.auth.jwt import revoke_token
-        from api.auth.token_blacklist import TokenBlacklist
-        from api.config import get_settings
-
-        TokenBlacklist.reset()
-
         user_id = uuid4()
         token = create_access_token(user_id)
 
