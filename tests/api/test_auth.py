@@ -1,71 +1,9 @@
-"""Tests for authentication endpoints."""
+"""Tests for authentication endpoints.
 
-import pytest
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
-from sqlalchemy.pool import StaticPool
-from sqlmodel import Session, SQLModel, create_engine
+Uses shared fixtures from conftest.py (client, test_engine).
+"""
 
-from api.config import get_settings
-from api.db.models import (  # noqa: F401 - import all models to register in metadata
-    CalculationResult,
-    ExpertOpinion,
-    Invitation,
-    PasswordResetToken,
-    Project,
-    ProjectMember,
-    User,
-)
-from api.db.session import get_session
-from api.middleware.exception_handlers import register_exception_handlers
-from api.routes import auth, calculate, health, users
-
-
-def _create_test_app() -> FastAPI:
-    """Create FastAPI app without lifespan for testing."""
-    settings = get_settings()
-    app = FastAPI(
-        title="BeCoMe API Test",
-        version=settings.api_version,
-    )
-    # Register exception handlers (OCP: centralized error handling)
-    register_exception_handlers(app)
-
-    app.include_router(health.router)
-    app.include_router(calculate.router)
-    app.include_router(auth.router)
-    app.include_router(users.router)
-    return app
-
-
-@pytest.fixture
-def client():
-    """Create test client with in-memory database.
-
-    Uses yield pattern with engine.dispose() for proper resource cleanup.
-    """
-    # Create engine with StaticPool to share in-memory DB across connections
-    test_engine = create_engine(
-        "sqlite:///:memory:",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    # Create all tables in test engine
-    SQLModel.metadata.create_all(test_engine)
-
-    # Create test app without lifespan
-    test_app = _create_test_app()
-
-    def override_get_session():
-        with Session(test_engine) as session:
-            yield session
-
-    test_app.dependency_overrides[get_session] = override_get_session
-
-    with TestClient(test_app) as test_client:
-        yield test_client
-
-    test_engine.dispose()
+from api.db.models import User
 
 
 class TestRegister:
