@@ -61,8 +61,11 @@ class TestSanitizeTextOrNone:
         WHEN sanitize_text_or_none is called
         THEN None is returned
         """
+        # GIVEN
+        value = None
+
         # WHEN
-        result = sanitize_text_or_none(None)
+        result = sanitize_text_or_none(value)
 
         # THEN
         assert result is None

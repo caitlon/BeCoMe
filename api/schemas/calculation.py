@@ -62,14 +62,12 @@ class CalculateResponse(BaseModel):
     num_experts: int
 
 
-class CalculationResultResponse(BaseModel):
-    """BeCoMe calculation result for a project."""
+class CalculationResultResponse(CalculateResponse):
+    """BeCoMe calculation result for a project.
 
-    best_compromise: FuzzyNumberOutput
-    arithmetic_mean: FuzzyNumberOutput
-    median: FuzzyNumberOutput
-    max_error: float
-    num_experts: int
+    Extends CalculateResponse with Likert interpretation and timestamp.
+    """
+
     likert_value: int | None
     likert_decision: str | None
     calculated_at: datetime

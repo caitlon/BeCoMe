@@ -60,6 +60,15 @@ class TestProjectWithMemberCountAndRole:
 
         assert pwmcr.name == "My Project"
 
+    def test_role_property(self):
+        """Role property returns member role."""
+        project = Project(id=uuid4(), name="Test", admin_id=uuid4())
+        pwmcr = ProjectWithMemberCountAndRole(
+            project=project, member_count=5, role=MemberRole.ADMIN
+        )
+
+        assert pwmcr.role == MemberRole.ADMIN
+
 
 class TestMemberWithUser:
     """Tests for MemberWithUser DTO."""
