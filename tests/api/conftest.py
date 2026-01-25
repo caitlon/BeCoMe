@@ -31,6 +31,9 @@ from api.middleware.exception_handlers import register_exception_handlers
 from api.middleware.rate_limit import limiter
 from api.routes import auth, calculate, health, invitations, opinions, projects, users
 
+# Shared test password constant to avoid coupling between helpers and tests
+DEFAULT_TEST_PASSWORD = "SecurePass123!"
+
 
 def create_test_app() -> FastAPI:
     """Create FastAPI app without lifespan for testing.
@@ -71,14 +74,14 @@ def register_and_login(client: TestClient, email: str = "test@example.com") -> s
         "/api/v1/auth/register",
         json={
             "email": email,
-            "password": "SecurePass123!",
+            "password": DEFAULT_TEST_PASSWORD,
             "first_name": "Test",
             "last_name": "User",
         },
     )
     response = client.post(
         "/api/v1/auth/login",
-        data={"username": email, "password": "SecurePass123!"},
+        data={"username": email, "password": DEFAULT_TEST_PASSWORD},
     )
     return response.json()["access_token"]
 
