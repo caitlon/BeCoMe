@@ -16,6 +16,7 @@ from api.schemas.internal import (
     MemberWithUser,
     OpinionWithUser,
     ProjectWithMemberCount,
+    ProjectWithMemberCountAndRole,
     UpsertResult,
 )
 
@@ -36,6 +37,28 @@ class TestProjectWithMemberCount:
         pwmc = ProjectWithMemberCount(project=project, member_count=3)
 
         assert pwmc.name == "My Project"
+
+
+class TestProjectWithMemberCountAndRole:
+    """Tests for ProjectWithMemberCountAndRole DTO."""
+
+    def test_id_property(self):
+        """ID property returns project ID."""
+        project = Project(id=uuid4(), name="Test", admin_id=uuid4())
+        pwmcr = ProjectWithMemberCountAndRole(
+            project=project, member_count=5, role=MemberRole.ADMIN
+        )
+
+        assert pwmcr.id == project.id
+
+    def test_name_property(self):
+        """Name property returns project name."""
+        project = Project(id=uuid4(), name="My Project", admin_id=uuid4())
+        pwmcr = ProjectWithMemberCountAndRole(
+            project=project, member_count=3, role=MemberRole.EXPERT
+        )
+
+        assert pwmcr.name == "My Project"
 
 
 class TestMemberWithUser:
