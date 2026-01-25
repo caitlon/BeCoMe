@@ -14,12 +14,8 @@ from api.dependencies import (
     get_calculation_service,
     get_opinion_service,
 )
-from api.schemas import (
-    CalculationResultResponse,
-    FuzzyNumberOutput,
-    OpinionCreate,
-    OpinionResponse,
-)
+from api.schemas.calculation import CalculationResultResponse, FuzzyNumberOutput
+from api.schemas.opinion import OpinionCreate, OpinionResponse
 from api.services.calculation_service import CalculationService
 from api.services.opinion_service import OpinionService
 

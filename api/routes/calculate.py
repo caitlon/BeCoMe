@@ -9,11 +9,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException
 
 from api.dependencies import get_calculator
-from api.schemas import (
-    CalculateRequest,
-    CalculateResponse,
-    FuzzyNumberOutput,
-)
+from api.schemas.calculation import CalculateRequest, CalculateResponse, FuzzyNumberOutput
 from src.calculators.become_calculator import BeCoMeCalculator
 from src.exceptions import BeCoMeError
 from src.models.expert_opinion import ExpertOpinion

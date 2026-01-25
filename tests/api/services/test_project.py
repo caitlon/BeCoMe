@@ -7,7 +7,7 @@ import pytest
 
 from api.db.models import MemberRole, Project, ProjectMember
 from api.exceptions import MemberNotFoundError, ProjectNotFoundError, ScaleRangeError
-from api.schemas import ProjectCreate, ProjectUpdate
+from api.schemas.project import ProjectCreate, ProjectUpdate
 from api.services.base import BaseService
 from api.services.project_service import ProjectService
 

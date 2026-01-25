@@ -22,7 +22,7 @@ from api.auth.logging import log_login_success, log_registration
 from api.config import get_settings
 from api.dependencies import get_user_service
 from api.middleware.rate_limit import RATE_LIMIT_AUTH, limiter
-from api.schemas import RefreshTokenRequest, RegisterRequest, TokenResponse, UserResponse
+from api.schemas.auth import RefreshTokenRequest, RegisterRequest, TokenResponse, UserResponse
 from api.services.user_service import UserService
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
