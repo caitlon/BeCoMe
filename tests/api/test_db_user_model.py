@@ -89,6 +89,7 @@ class TestUserModel:
         session.add(user2)
         with pytest.raises(IntegrityError):
             session.commit()
+        session.rollback()
 
 
 class TestPasswordResetTokenModel:

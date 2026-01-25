@@ -138,6 +138,7 @@ class TestExpertOpinionModel:
         session.add(opinion2)
         with pytest.raises(IntegrityError):
             session.commit()
+        session.rollback()
 
     def test_expert_can_have_opinions_in_different_projects(self, session):
         # GIVEN
@@ -323,6 +324,11 @@ class TestCalculationResultModel:
         assert result.num_experts == 3
 
     def test_project_id_unique(self, session):
+        """
+        GIVEN a project with an existing calculation result
+        WHEN a second result is added for the same project
+        THEN IntegrityError is raised due to unique constraint
+        """
         # GIVEN
         user = User(
             email="admin@example.com",
@@ -372,3 +378,4 @@ class TestCalculationResultModel:
         session.add(result2)
         with pytest.raises(IntegrityError):
             session.commit()
+        session.rollback()
