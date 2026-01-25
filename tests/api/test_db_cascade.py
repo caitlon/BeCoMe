@@ -193,20 +193,27 @@ class TestProjectCascadeDelete:
 
 
 class TestUserCascadeDelete:
-    """Tests for cascade delete when user is deleted.
+    """Tests for user deletion behavior in SQLite test environment.
 
-    Note: User model relationships use SET NULL behavior by default,
-    but NOT NULL constraints on FK columns prevent deletion of users
-    with related records. These tests verify that behavior.
+    Important: These tests document SQLite-specific behavior where FK constraints
+    are not enforced by default. Models like ProjectMember and PasswordResetToken
+    have ondelete="CASCADE" at database level, but this only works in PostgreSQL.
+    In SQLite, ORM attempts SET NULL which violates NOT NULL constraints.
+
+    For actual CASCADE behavior, see PostgreSQL integration tests:
+    test_db_postgres_integration.py::TestCascadeDeleteWithFKEnforcement
     """
 
-    def test_deleting_user_with_memberships_fails(self, session):
+    def test_deleting_user_with_memberships_fails_in_sqlite(self, session):
         """
         GIVEN a user who is member of projects
-        WHEN the user is deleted
-        THEN IntegrityError is raised (FK constraint with NOT NULL)
+        WHEN the user is deleted in SQLite
+        THEN IntegrityError is raised (NOT NULL constraint)
 
-        Note: Requires rollback after exception to continue using session.
+        Note: ProjectMember.user_id has ondelete="CASCADE" which only works
+        at database level with FK enforcement. SQLite doesn't enforce FK
+        constraints by default, and User.memberships relationship lacks
+        ORM-level cascade. Thus, ORM tries SET NULL → NOT NULL error.
         """
         # GIVEN
         admin = User(
@@ -241,13 +248,16 @@ class TestUserCascadeDelete:
         with pytest.raises(IntegrityError):
             session.commit()
 
-    def test_deleting_user_with_opinions_fails(self, session):
+    def test_deleting_user_with_opinions_fails_in_sqlite(self, session):
         """
         GIVEN a user who submitted opinions
-        WHEN the user is deleted
-        THEN IntegrityError is raised (FK constraint with NOT NULL)
+        WHEN the user is deleted in SQLite
+        THEN IntegrityError is raised (NOT NULL constraint)
 
-        Note: Requires rollback after exception to continue using session.
+        Note: ExpertOpinion.user_id has ondelete="CASCADE" which only works
+        at database level with FK enforcement. SQLite doesn't enforce FK
+        constraints by default, and User.opinions relationship lacks
+        ORM-level cascade. Thus, ORM tries SET NULL → NOT NULL error.
         """
         # GIVEN
         admin = User(
@@ -320,13 +330,16 @@ class TestUserCascadeDelete:
         with pytest.raises(IntegrityError):
             session.commit()
 
-    def test_deleting_admin_with_projects_fails(self, session):
+    def test_deleting_admin_with_projects_fails_in_sqlite(self, session):
         """
         GIVEN a user who owns projects (is admin)
-        WHEN the user is deleted
-        THEN IntegrityError is raised (FK constraint with NOT NULL)
+        WHEN the user is deleted in SQLite
+        THEN IntegrityError is raised (NOT NULL constraint)
 
-        Note: Requires rollback after exception to continue using session.
+        Note: Project.admin_id has ondelete="CASCADE" which only works
+        at database level with FK enforcement. SQLite doesn't enforce FK
+        constraints by default, and User.owned_projects relationship lacks
+        ORM-level cascade. Thus, ORM tries SET NULL → NOT NULL error.
         """
         # GIVEN
         admin = User(
