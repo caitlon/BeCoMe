@@ -15,7 +15,7 @@ from api.dependencies import (
     ProjectMember,
     get_project_service,
 )
-from api.schemas import (
+from api.schemas.project import (
     MemberResponse,
     ProjectCreate,
     ProjectResponse,

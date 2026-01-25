@@ -9,7 +9,7 @@ from api.auth.dependencies import CurrentUser
 from api.auth.logging import log_account_deletion, log_password_change
 from api.dependencies import get_storage_service, get_user_service
 from api.middleware.rate_limit import RATE_LIMIT_PASSWORD, RATE_LIMIT_UPLOAD, limiter
-from api.schemas import ChangePasswordRequest, UpdateUserRequest, UserResponse
+from api.schemas.auth import ChangePasswordRequest, UpdateUserRequest, UserResponse
 from api.services.storage.exceptions import StorageDeleteError, StorageUploadError
 from api.services.storage.supabase_storage_service import SupabaseStorageService
 from api.services.user_service import UserService

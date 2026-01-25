@@ -6,12 +6,12 @@ from sqlmodel import col, func, select
 
 from api.db.models import MemberRole, Project, ProjectMember, User
 from api.exceptions import MemberNotFoundError, ProjectNotFoundError, ScaleRangeError
-from api.schemas import ProjectCreate, ProjectUpdate
 from api.schemas.internal import (
     MemberWithUser,
     ProjectWithMemberCount,
     ProjectWithMemberCountAndRole,
 )
+from api.schemas.project import ProjectCreate, ProjectUpdate
 from api.services.base import BaseService
 
 
