@@ -1,17 +1,9 @@
 """Health check endpoint."""
 
 from fastapi import APIRouter
-from pydantic import BaseModel
 
 from api.config import get_settings
-
-
-class HealthResponse(BaseModel):
-    """Health check response schema."""
-
-    status: str
-    version: str
-
+from api.schemas.health import HealthResponse
 
 router = APIRouter(prefix="/api/v1", tags=["health"])
 
