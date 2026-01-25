@@ -3,59 +3,14 @@
 from unittest.mock import MagicMock
 
 import pytest
-from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy.pool import StaticPool
-from sqlmodel import Session, SQLModel, create_engine
+from sqlmodel import Session
 
-from api.config import get_settings
-from api.db.models import (  # noqa: F401 - models required for SQLModel.metadata.create_all
-    CalculationResult,
-    ExpertOpinion,
-    Invitation,
-    PasswordResetToken,
-    Project,
-    ProjectMember,
-    User,
-)
 from api.db.session import get_session
 from api.dependencies import get_storage_service
-from api.middleware.exception_handlers import register_exception_handlers
-from api.routes import auth, users
 from api.services.storage.exceptions import StorageDeleteError, StorageUploadError
 from api.services.storage.supabase_storage_service import SupabaseStorageService
-
-
-def _create_test_app() -> FastAPI:
-    """Create FastAPI app for testing."""
-    settings = get_settings()
-    app = FastAPI(
-        title="BeCoMe API Test",
-        version=settings.api_version,
-    )
-    register_exception_handlers(app)
-    app.include_router(auth.router)
-    app.include_router(users.router)
-    return app
-
-
-def _register_and_login(client: TestClient) -> str:
-    """Register a user and return access token."""
-    client.post(
-        "/api/v1/auth/register",
-        json={
-            "email": "photo@example.com",
-            "password": "SecurePass123!",
-            "first_name": "Photo",
-            "last_name": "Test",
-        },
-    )
-    response = client.post(
-        "/api/v1/auth/login",
-        data={"username": "photo@example.com", "password": "SecurePass123!"},
-    )
-    return response.json()["access_token"]
-
+from tests.api.conftest import auth_header, create_test_app, register_and_login
 
 # Valid JPEG magic bytes (minimal valid JPEG header)
 VALID_JPEG_BYTES = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00" + b"\x00" * 100
@@ -68,16 +23,9 @@ INVALID_FILE_BYTES = b"This is not an image file"
 
 
 @pytest.fixture
-def client_with_mock_storage():
+def client_with_mock_storage(test_engine):
     """Create test client with mocked storage service."""
-    test_engine = create_engine(
-        "sqlite:///:memory:",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    SQLModel.metadata.create_all(test_engine)
-
-    test_app = _create_test_app()
+    test_app = create_test_app()
 
     def override_get_session():
         with Session(test_engine) as session:
@@ -94,20 +42,11 @@ def client_with_mock_storage():
     with TestClient(test_app) as test_client:
         yield test_client, mock_storage
 
-    test_engine.dispose()
-
 
 @pytest.fixture
-def client_without_storage():
+def client_without_storage(test_engine):
     """Create test client with storage service returning None."""
-    test_engine = create_engine(
-        "sqlite:///:memory:",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    SQLModel.metadata.create_all(test_engine)
-
-    test_app = _create_test_app()
+    test_app = create_test_app()
 
     def override_get_session():
         with Session(test_engine) as session:
@@ -119,8 +58,6 @@ def client_without_storage():
     with TestClient(test_app) as test_client:
         yield test_client
 
-    test_engine.dispose()
-
 
 class TestPhotoUpload:
     """Tests for POST /api/v1/users/me/photo."""
@@ -129,12 +66,12 @@ class TestPhotoUpload:
         """Successful photo upload returns updated user with photo_url."""
         # GIVEN
         client, mock_storage = client_with_mock_storage
-        token = _register_and_login(client)
+        token = register_and_login(client, "photo@example.com")
 
         # WHEN
         response = client.post(
             "/api/v1/users/me/photo",
-            headers={"Authorization": f"Bearer {token}"},
+            headers=auth_header(token),
             files={"file": ("photo.jpg", VALID_JPEG_BYTES, "image/jpeg")},
         )
 
@@ -150,12 +87,12 @@ class TestPhotoUpload:
         """Upload with invalid content type returns 400."""
         # GIVEN
         client, _ = client_with_mock_storage
-        token = _register_and_login(client)
+        token = register_and_login(client, "photo@example.com")
 
         # WHEN
         response = client.post(
             "/api/v1/users/me/photo",
-            headers={"Authorization": f"Bearer {token}"},
+            headers=auth_header(token),
             files={"file": ("doc.pdf", b"PDF content", "application/pdf")},
         )
 
@@ -167,12 +104,12 @@ class TestPhotoUpload:
         """Upload where content doesn't match claimed type returns 400."""
         # GIVEN
         client, _ = client_with_mock_storage
-        token = _register_and_login(client)
+        token = register_and_login(client, "photo@example.com")
 
         # WHEN - claim JPEG but send text
         response = client.post(
             "/api/v1/users/me/photo",
-            headers={"Authorization": f"Bearer {token}"},
+            headers=auth_header(token),
             files={"file": ("fake.jpg", INVALID_FILE_BYTES, "image/jpeg")},
         )
 
@@ -184,13 +121,13 @@ class TestPhotoUpload:
         """Upload exceeding 5MB returns 400."""
         # GIVEN
         client, _ = client_with_mock_storage
-        token = _register_and_login(client)
+        token = register_and_login(client, "photo@example.com")
         large_file = VALID_JPEG_BYTES[:11] + b"\x00" * (6 * 1024 * 1024)  # >5MB
 
         # WHEN
         response = client.post(
             "/api/v1/users/me/photo",
-            headers={"Authorization": f"Bearer {token}"},
+            headers=auth_header(token),
             files={"file": ("large.jpg", large_file, "image/jpeg")},
         )
 
@@ -202,12 +139,12 @@ class TestPhotoUpload:
         """Upload when storage not configured returns 503."""
         # GIVEN
         client = client_without_storage
-        token = _register_and_login(client)
+        token = register_and_login(client, "photo@example.com")
 
         # WHEN
         response = client.post(
             "/api/v1/users/me/photo",
-            headers={"Authorization": f"Bearer {token}"},
+            headers=auth_header(token),
             files={"file": ("photo.jpg", VALID_JPEG_BYTES, "image/jpeg")},
         )
 
@@ -220,12 +157,12 @@ class TestPhotoUpload:
         # GIVEN
         client, mock_storage = client_with_mock_storage
         mock_storage.upload_file.side_effect = StorageUploadError("Supabase error")
-        token = _register_and_login(client)
+        token = register_and_login(client, "photo@example.com")
 
         # WHEN
         response = client.post(
             "/api/v1/users/me/photo",
-            headers={"Authorization": f"Bearer {token}"},
+            headers=auth_header(token),
             files={"file": ("photo.jpg", VALID_JPEG_BYTES, "image/jpeg")},
         )
 
@@ -237,12 +174,12 @@ class TestPhotoUpload:
         """Uploading new photo deletes old one."""
         # GIVEN
         client, mock_storage = client_with_mock_storage
-        token = _register_and_login(client)
+        token = register_and_login(client, "photo@example.com")
 
         # Upload first photo
         client.post(
             "/api/v1/users/me/photo",
-            headers={"Authorization": f"Bearer {token}"},
+            headers=auth_header(token),
             files={"file": ("photo1.jpg", VALID_JPEG_BYTES, "image/jpeg")},
         )
 
@@ -252,7 +189,7 @@ class TestPhotoUpload:
         )
         response = client.post(
             "/api/v1/users/me/photo",
-            headers={"Authorization": f"Bearer {token}"},
+            headers=auth_header(token),
             files={"file": ("photo2.jpg", VALID_JPEG_BYTES, "image/jpeg")},
         )
 
@@ -282,19 +219,19 @@ class TestPhotoDelete:
         """Delete photo removes from storage and clears DB."""
         # GIVEN
         client, mock_storage = client_with_mock_storage
-        token = _register_and_login(client)
+        token = register_and_login(client, "photo@example.com")
 
         # Upload photo first
         client.post(
             "/api/v1/users/me/photo",
-            headers={"Authorization": f"Bearer {token}"},
+            headers=auth_header(token),
             files={"file": ("photo.jpg", VALID_JPEG_BYTES, "image/jpeg")},
         )
 
         # WHEN
         response = client.delete(
             "/api/v1/users/me/photo",
-            headers={"Authorization": f"Bearer {token}"},
+            headers=auth_header(token),
         )
 
         # THEN
@@ -304,7 +241,7 @@ class TestPhotoDelete:
         # Verify photo_url is cleared
         profile = client.get(
             "/api/v1/users/me",
-            headers={"Authorization": f"Bearer {token}"},
+            headers=auth_header(token),
         )
         assert profile.json()["photo_url"] is None
 
@@ -312,12 +249,12 @@ class TestPhotoDelete:
         """Delete when no photo exists returns 204 (no-op)."""
         # GIVEN
         client, mock_storage = client_with_mock_storage
-        token = _register_and_login(client)
+        token = register_and_login(client, "photo@example.com")
 
         # WHEN
         response = client.delete(
             "/api/v1/users/me/photo",
-            headers={"Authorization": f"Bearer {token}"},
+            headers=auth_header(token),
         )
 
         # THEN
@@ -328,12 +265,12 @@ class TestPhotoDelete:
         """Delete continues even if storage deletion fails."""
         # GIVEN
         client, mock_storage = client_with_mock_storage
-        token = _register_and_login(client)
+        token = register_and_login(client, "photo@example.com")
 
         # Upload photo first
         client.post(
             "/api/v1/users/me/photo",
-            headers={"Authorization": f"Bearer {token}"},
+            headers=auth_header(token),
             files={"file": ("photo.jpg", VALID_JPEG_BYTES, "image/jpeg")},
         )
 
@@ -343,7 +280,7 @@ class TestPhotoDelete:
         # WHEN
         response = client.delete(
             "/api/v1/users/me/photo",
-            headers={"Authorization": f"Bearer {token}"},
+            headers=auth_header(token),
         )
 
         # THEN - should still succeed
@@ -352,7 +289,7 @@ class TestPhotoDelete:
         # Verify photo_url is cleared in DB
         profile = client.get(
             "/api/v1/users/me",
-            headers={"Authorization": f"Bearer {token}"},
+            headers=auth_header(token),
         )
         assert profile.json()["photo_url"] is None
 
