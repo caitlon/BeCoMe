@@ -3,6 +3,7 @@
 from uuid import uuid4
 
 import pytest
+from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 
 from api.db.models import Invitation, MemberRole, Project, ProjectMember, User
@@ -17,8 +18,6 @@ class TestProjectModel:
         WHEN Project is validated
         THEN ValidationError is raised
         """
-        from pydantic import ValidationError
-
         # WHEN/THEN
         with pytest.raises(ValidationError, match=r"scale_min .* must be less than scale_max"):
             Project.model_validate(
@@ -36,8 +35,6 @@ class TestProjectModel:
         WHEN Project is validated
         THEN ValidationError is raised
         """
-        from pydantic import ValidationError
-
         # WHEN/THEN
         with pytest.raises(ValidationError, match=r"scale_min .* must be less than scale_max"):
             Project.model_validate(
@@ -139,7 +136,7 @@ class TestProjectMemberModel:
         assert membership.project_id == project.id
         assert membership.user_id == expert.id
 
-    def test_member_role_enum(self, session):
+    def test_member_role_enum(self):
         # GIVEN/WHEN/THEN
         assert MemberRole.ADMIN.value == "admin"
         assert MemberRole.EXPERT.value == "expert"

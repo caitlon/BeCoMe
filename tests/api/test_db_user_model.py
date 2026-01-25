@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
+from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 
 from api.db.models import PasswordResetToken, User
@@ -18,8 +19,6 @@ class TestUserModel:
         WHEN User is validated
         THEN ValidationError is raised
         """
-        from pydantic import ValidationError
-
         # WHEN/THEN
         with pytest.raises(ValidationError, match="Invalid email format"):
             User.model_validate(
