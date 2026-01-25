@@ -3,6 +3,7 @@
 from uuid import uuid4
 
 import pytest
+from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 
 from api.db.models import CalculationResult, ExpertOpinion, Project, User
@@ -17,8 +18,6 @@ class TestExpertOpinionModel:
         WHEN ExpertOpinion is validated
         THEN ValidationError is raised
         """
-        from pydantic import ValidationError
-
         # WHEN/THEN
         with pytest.raises(ValidationError, match="lower <= peak <= upper"):
             ExpertOpinion.model_validate(
@@ -37,8 +36,6 @@ class TestExpertOpinionModel:
         WHEN ExpertOpinion is validated
         THEN ValidationError is raised
         """
-        from pydantic import ValidationError
-
         # WHEN/THEN
         with pytest.raises(ValidationError, match="lower <= peak <= upper"):
             ExpertOpinion.model_validate(
@@ -190,8 +187,6 @@ class TestCalculationResultModel:
         WHEN CalculationResult is validated
         THEN ValidationError is raised
         """
-        from pydantic import ValidationError
-
         # WHEN/THEN
         with pytest.raises(ValidationError, match=r"best_compromise.*lower <= peak <= upper"):
             CalculationResult.model_validate(
@@ -217,8 +212,6 @@ class TestCalculationResultModel:
         WHEN CalculationResult is validated
         THEN ValidationError is raised
         """
-        from pydantic import ValidationError
-
         # WHEN/THEN
         with pytest.raises(ValidationError, match=r"arithmetic_mean.*lower <= peak <= upper"):
             CalculationResult.model_validate(
@@ -244,8 +237,6 @@ class TestCalculationResultModel:
         WHEN CalculationResult is validated
         THEN ValidationError is raised
         """
-        from pydantic import ValidationError
-
         # WHEN/THEN
         with pytest.raises(ValidationError, match=r"median.*lower <= peak <= upper"):
             CalculationResult.model_validate(
