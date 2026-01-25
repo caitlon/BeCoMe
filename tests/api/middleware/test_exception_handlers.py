@@ -182,9 +182,7 @@ class TestBecomeApiErrorHandler:
             reason="invalid_password",
         )
 
-        with patch(
-            "api.middleware.exception_handlers.log_login_failure"
-        ) as mock_log:
+        with patch("api.middleware.exception_handlers.log_login_failure") as mock_log:
             # WHEN
             asyncio.run(become_api_error_handler(request, exc))
 
@@ -205,9 +203,7 @@ class TestBecomeApiErrorHandler:
         request = MagicMock()
         exc = InvalidCredentialsError()  # No email
 
-        with patch(
-            "api.middleware.exception_handlers.log_login_failure"
-        ) as mock_log:
+        with patch("api.middleware.exception_handlers.log_login_failure") as mock_log:
             # WHEN
             asyncio.run(become_api_error_handler(request, exc))
 
