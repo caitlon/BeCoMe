@@ -348,6 +348,164 @@ class TestUserServiceUpdatePhotoUrl:
         assert result.photo_url == "https://storage.example.com/new.jpg"
 
 
+class TestUserServiceUpdateUser:
+    """Tests for UserService.update_user method."""
+
+    def test_updates_first_name_only(self):
+        """Updates first_name when provided."""
+        # GIVEN
+        user = User(
+            id=uuid4(),
+            email="update@example.com",
+            hashed_password="xxx",
+            first_name="Original",
+            last_name="Name",
+        )
+        mock_session = MagicMock()
+        service = UserService(mock_session)
+
+        # WHEN
+        result = service.update_user(user, first_name="Updated")
+
+        # THEN
+        assert result.first_name == "Updated"
+        assert result.last_name == "Name"
+        mock_session.add.assert_called_once_with(user)
+        mock_session.commit.assert_called_once()
+        mock_session.refresh.assert_called_once_with(user)
+
+    def test_updates_last_name_only(self):
+        """Updates last_name when provided."""
+        # GIVEN
+        user = User(
+            id=uuid4(),
+            email="update@example.com",
+            hashed_password="xxx",
+            first_name="Original",
+            last_name="Name",
+        )
+        mock_session = MagicMock()
+        service = UserService(mock_session)
+
+        # WHEN
+        result = service.update_user(user, last_name="NewLast")
+
+        # THEN
+        assert result.first_name == "Original"
+        assert result.last_name == "NewLast"
+
+    def test_updates_both_names(self):
+        """Updates both first_name and last_name when provided."""
+        # GIVEN
+        user = User(
+            id=uuid4(),
+            email="update@example.com",
+            hashed_password="xxx",
+            first_name="Original",
+            last_name="Name",
+        )
+        mock_session = MagicMock()
+        service = UserService(mock_session)
+
+        # WHEN
+        result = service.update_user(user, first_name="NewFirst", last_name="NewLast")
+
+        # THEN
+        assert result.first_name == "NewFirst"
+        assert result.last_name == "NewLast"
+
+    def test_ignores_none_values(self):
+        """Does not change fields when None is passed."""
+        # GIVEN
+        user = User(
+            id=uuid4(),
+            email="update@example.com",
+            hashed_password="xxx",
+            first_name="Original",
+            last_name="Name",
+        )
+        mock_session = MagicMock()
+        service = UserService(mock_session)
+
+        # WHEN
+        result = service.update_user(user, first_name=None, last_name=None)
+
+        # THEN
+        assert result.first_name == "Original"
+        assert result.last_name == "Name"
+
+
+class TestUserServiceChangePassword:
+    """Tests for UserService.change_password method."""
+
+    def test_changes_password_successfully(self):
+        """Password is changed when current password is correct."""
+        # GIVEN
+        user = User(
+            id=uuid4(),
+            email="password@example.com",
+            hashed_password="old_hash",
+            first_name="Test",
+        )
+        mock_session = MagicMock()
+        service = UserService(mock_session)
+
+        # WHEN
+        with (
+            patch("api.services.user_service.verify_password", return_value=True),
+            patch("api.services.user_service.hash_password", return_value="new_hash"),
+        ):
+            result = service.change_password(user, "current_pass", "new_pass")
+
+        # THEN
+        assert result.hashed_password == "new_hash"
+        mock_session.add.assert_called_once_with(user)
+        mock_session.commit.assert_called_once()
+        mock_session.refresh.assert_called_once_with(user)
+
+    def test_raises_error_on_wrong_current_password(self):
+        """InvalidCredentialsError is raised when current password is wrong."""
+        # GIVEN
+        user = User(
+            id=uuid4(),
+            email="password@example.com",
+            hashed_password="stored_hash",
+            first_name="Test",
+        )
+        mock_session = MagicMock()
+        service = UserService(mock_session)
+
+        # WHEN / THEN
+        with (
+            patch("api.services.user_service.verify_password", return_value=False),
+            pytest.raises(InvalidCredentialsError, match="Current password is incorrect"),
+        ):
+            service.change_password(user, "wrong_pass", "new_pass")
+
+    def test_new_password_is_hashed(self):
+        """New password is hashed before storing."""
+        # GIVEN
+        user = User(
+            id=uuid4(),
+            email="password@example.com",
+            hashed_password="old_hash",
+            first_name="Test",
+        )
+        mock_session = MagicMock()
+        service = UserService(mock_session)
+
+        # WHEN
+        with (
+            patch("api.services.user_service.verify_password", return_value=True),
+            patch("api.services.user_service.hash_password") as mock_hash,
+        ):
+            mock_hash.return_value = "new_hashed_value"
+            service.change_password(user, "current", "new_password")
+
+        # THEN
+        mock_hash.assert_called_once_with("new_password")
+
+
 class TestUserServiceDeleteUser:
     """Tests for UserService.delete_user method."""
 

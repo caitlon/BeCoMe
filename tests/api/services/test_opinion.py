@@ -6,8 +6,8 @@ from uuid import uuid4
 
 import pytest
 
-from api.db.models import ExpertOpinion, User
-from api.exceptions import OpinionNotFoundError
+from api.db.models import ExpertOpinion, Project, User
+from api.exceptions import OpinionNotFoundError, ValuesOutOfRangeError
 from api.services.opinion_service import OpinionService
 
 
@@ -249,3 +249,90 @@ class TestOpinionServiceCountOpinions:
 
         # THEN
         assert result == 0
+
+
+class TestOpinionServiceValidateValuesInRange:
+    """Tests for OpinionService.validate_values_in_range method."""
+
+    def test_passes_when_all_values_in_range(self):
+        """No exception when all values are within project scale."""
+        # GIVEN
+        project = Project(
+            id=uuid4(),
+            name="Test",
+            admin_id=uuid4(),
+            scale_min=0,
+            scale_max=100,
+        )
+        mock_session = MagicMock()
+        service = OpinionService(mock_session)
+
+        # WHEN / THEN - no exception raised
+        service.validate_values_in_range(project, 20.0, 50.0, 80.0)
+
+    def test_raises_error_when_lower_bound_below_min(self):
+        """ValuesOutOfRangeError raised when lower_bound < scale_min."""
+        # GIVEN
+        project = Project(
+            id=uuid4(),
+            name="Test",
+            admin_id=uuid4(),
+            scale_min=0,
+            scale_max=100,
+        )
+        mock_session = MagicMock()
+        service = OpinionService(mock_session)
+
+        # WHEN / THEN
+        with pytest.raises(ValuesOutOfRangeError, match="within project scale"):
+            service.validate_values_in_range(project, -5.0, 50.0, 80.0)
+
+    def test_raises_error_when_peak_below_min(self):
+        """ValuesOutOfRangeError raised when peak < scale_min."""
+        # GIVEN
+        project = Project(
+            id=uuid4(),
+            name="Test",
+            admin_id=uuid4(),
+            scale_min=10,
+            scale_max=100,
+        )
+        mock_session = MagicMock()
+        service = OpinionService(mock_session)
+
+        # WHEN / THEN
+        with pytest.raises(ValuesOutOfRangeError, match="within project scale"):
+            service.validate_values_in_range(project, 15.0, 5.0, 80.0)
+
+    def test_raises_error_when_upper_bound_above_max(self):
+        """ValuesOutOfRangeError raised when upper_bound > scale_max."""
+        # GIVEN
+        project = Project(
+            id=uuid4(),
+            name="Test",
+            admin_id=uuid4(),
+            scale_min=0,
+            scale_max=100,
+        )
+        mock_session = MagicMock()
+        service = OpinionService(mock_session)
+
+        # WHEN / THEN
+        with pytest.raises(ValuesOutOfRangeError, match="within project scale"):
+            service.validate_values_in_range(project, 20.0, 50.0, 150.0)
+
+    def test_passes_for_boundary_values(self):
+        """No exception when values equal scale boundaries."""
+        # GIVEN
+        project = Project(
+            id=uuid4(),
+            name="Test",
+            admin_id=uuid4(),
+            scale_min=0,
+            scale_max=100,
+        )
+        mock_session = MagicMock()
+        service = OpinionService(mock_session)
+
+        # WHEN / THEN - no exception raised for boundary values
+        service.validate_values_in_range(project, 0.0, 50.0, 100.0)

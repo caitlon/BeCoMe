@@ -5,7 +5,7 @@ from uuid import uuid4
 
 import pytest
 
-from api.db.models import MemberRole, Project, ProjectMember
+from api.db.models import MemberRole, Project, ProjectMember, User
 from api.exceptions import MemberNotFoundError, ProjectNotFoundError, ScaleRangeError
 from api.schemas.project import ProjectCreate, ProjectUpdate
 from api.services.base import BaseService
@@ -370,6 +370,214 @@ class TestProjectServiceIsMember:
 
         # THEN
         assert result is False
+
+
+class TestProjectServiceGetUserProjectsWithCounts:
+    """Tests for ProjectService.get_user_projects_with_counts method."""
+
+    def test_returns_projects_with_member_counts(self):
+        """Returns list of projects with their member counts."""
+        # GIVEN
+        project = Project(
+            id=uuid4(),
+            name="Test Project",
+            admin_id=uuid4(),
+            scale_min=0,
+            scale_max=100,
+        )
+        mock_session = MagicMock()
+        mock_session.exec.return_value.all.return_value = [(project, 5)]
+        service = ProjectService(mock_session)
+
+        # WHEN
+        result = service.get_user_projects_with_counts(uuid4())
+
+        # THEN
+        assert len(result) == 1
+        assert result[0].project == project
+        assert result[0].member_count == 5
+
+    def test_returns_empty_list_when_no_projects(self):
+        """Returns empty list when user has no projects."""
+        # GIVEN
+        mock_session = MagicMock()
+        mock_session.exec.return_value.all.return_value = []
+        service = ProjectService(mock_session)
+
+        # WHEN
+        result = service.get_user_projects_with_counts(uuid4())
+
+        # THEN
+        assert result == []
+
+
+class TestProjectServiceGetUserProjectsWithRoles:
+    """Tests for ProjectService.get_user_projects_with_roles method."""
+
+    def test_returns_projects_with_roles(self):
+        """Returns list of projects with member counts and roles."""
+        # GIVEN
+        project = Project(
+            id=uuid4(),
+            name="Test Project",
+            admin_id=uuid4(),
+            scale_min=0,
+            scale_max=100,
+        )
+        mock_session = MagicMock()
+        mock_session.exec.return_value.all.return_value = [(project, 3, MemberRole.ADMIN)]
+        service = ProjectService(mock_session)
+
+        # WHEN
+        result = service.get_user_projects_with_roles(uuid4())
+
+        # THEN
+        assert len(result) == 1
+        assert result[0].project == project
+        assert result[0].member_count == 3
+        assert result[0].role == MemberRole.ADMIN
+
+    def test_returns_empty_list_when_no_projects(self):
+        """Returns empty list when user has no projects."""
+        # GIVEN
+        mock_session = MagicMock()
+        mock_session.exec.return_value.all.return_value = []
+        service = ProjectService(mock_session)
+
+        # WHEN
+        result = service.get_user_projects_with_roles(uuid4())
+
+        # THEN
+        assert result == []
+
+    def test_converts_string_role_to_enum(self):
+        """Converts string role value to MemberRole enum."""
+        # GIVEN
+        project = Project(
+            id=uuid4(),
+            name="Test Project",
+            admin_id=uuid4(),
+            scale_min=0,
+            scale_max=100,
+        )
+        mock_session = MagicMock()
+        # Some DB drivers return string instead of enum
+        mock_session.exec.return_value.all.return_value = [(project, 2, "expert")]
+        service = ProjectService(mock_session)
+
+        # WHEN
+        result = service.get_user_projects_with_roles(uuid4())
+
+        # THEN
+        assert result[0].role == MemberRole.EXPERT
+
+
+class TestProjectServiceGetUserRoleInProject:
+    """Tests for ProjectService.get_user_role_in_project method."""
+
+    def test_returns_role_when_member(self):
+        """Returns member's role when user is a member."""
+        # GIVEN
+        membership = ProjectMember(
+            project_id=uuid4(),
+            user_id=uuid4(),
+            role=MemberRole.EXPERT,
+        )
+        mock_session = MagicMock()
+        mock_session.exec.return_value.first.return_value = membership
+        service = ProjectService(mock_session)
+
+        # WHEN
+        result = service.get_user_role_in_project(uuid4(), uuid4())
+
+        # THEN
+        assert result == MemberRole.EXPERT
+
+    def test_returns_none_when_not_member(self):
+        """Returns None when user is not a member."""
+        # GIVEN
+        mock_session = MagicMock()
+        mock_session.exec.return_value.first.return_value = None
+        service = ProjectService(mock_session)
+
+        # WHEN
+        result = service.get_user_role_in_project(uuid4(), uuid4())
+
+        # THEN
+        assert result is None
+
+
+class TestProjectServiceGetMembers:
+    """Tests for ProjectService.get_members method."""
+
+    def test_returns_members_with_user_details(self):
+        """Returns list of MemberWithUser instances."""
+        # GIVEN
+        user = User(
+            id=uuid4(),
+            email="member@example.com",
+            first_name="Test",
+            hashed_password="hash",
+        )
+        membership = ProjectMember(
+            project_id=uuid4(),
+            user_id=user.id,
+            role=MemberRole.EXPERT,
+        )
+        mock_session = MagicMock()
+        mock_session.exec.return_value.all.return_value = [(membership, user)]
+        service = ProjectService(mock_session)
+
+        # WHEN
+        result = service.get_members(uuid4())
+
+        # THEN
+        assert len(result) == 1
+        assert result[0].membership == membership
+        assert result[0].user == user
+
+    def test_returns_empty_list_when_no_members(self):
+        """Returns empty list when project has no members."""
+        # GIVEN
+        mock_session = MagicMock()
+        mock_session.exec.return_value.all.return_value = []
+        service = ProjectService(mock_session)
+
+        # WHEN
+        result = service.get_members(uuid4())
+
+        # THEN
+        assert result == []
+
+
+class TestProjectServiceGetMemberCount:
+    """Tests for ProjectService.get_member_count method."""
+
+    def test_returns_count(self):
+        """Returns number of members."""
+        # GIVEN
+        mock_session = MagicMock()
+        mock_session.exec.return_value.one.return_value = 7
+        service = ProjectService(mock_session)
+
+        # WHEN
+        result = service.get_member_count(uuid4())
+
+        # THEN
+        assert result == 7
+
+    def test_returns_zero_for_empty_project(self):
+        """Returns zero when project has no members."""
+        # GIVEN
+        mock_session = MagicMock()
+        mock_session.exec.return_value.one.return_value = 0
+        service = ProjectService(mock_session)
+
+        # WHEN
+        result = service.get_member_count(uuid4())
+
+        # THEN
+        assert result == 0
 
 
 class TestProjectServiceIsAdmin:
