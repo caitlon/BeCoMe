@@ -77,5 +77,9 @@ describe('DeleteConfirmModal', () => {
     expect(screen.getByText('Deleting...')).toBeInTheDocument()
 
     resolveConfirm!()
+
+    await waitFor(() => {
+      expect(screen.queryByText('Deleting...')).not.toBeInTheDocument()
+    })
   })
 })

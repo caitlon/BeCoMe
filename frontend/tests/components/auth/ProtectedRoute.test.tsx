@@ -27,7 +27,7 @@ describe('ProtectedRoute', () => {
     )
 
     expect(screen.queryByText('Protected Content')).not.toBeInTheDocument()
-    expect(document.querySelector('.animate-spin')).toBeInTheDocument()
+    expect(screen.getByRole('status', { name: /loading/i })).toBeInTheDocument()
   })
 
   it('renders children when authenticated', () => {
