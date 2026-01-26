@@ -1,4 +1,5 @@
 import { render, screen } from '@tests/utils'
+import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { describe, it, expect, vi } from 'vitest'
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute'
 import * as AuthContext from '@/contexts/AuthContext'
@@ -26,6 +27,7 @@ describe('ProtectedRoute', () => {
     )
 
     expect(screen.queryByText('Protected Content')).not.toBeInTheDocument()
+    expect(document.querySelector('.animate-spin')).toBeInTheDocument()
   })
 
   it('renders children when authenticated', () => {
@@ -59,12 +61,28 @@ describe('ProtectedRoute', () => {
       refreshUser: vi.fn(),
     })
 
+    let currentLocation = ''
     render(
-      <ProtectedRoute>
-        <div>Protected Content</div>
-      </ProtectedRoute>
+      <MemoryRouter initialEntries={['/protected']}>
+        <Routes>
+          <Route
+            path="/protected"
+            element={
+              <ProtectedRoute>
+                <div>Protected Content</div>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/login"
+            element={<div>Login Page</div>}
+          />
+        </Routes>
+      </MemoryRouter>,
+      { wrapper: ({ children }) => children }
     )
 
     expect(screen.queryByText('Protected Content')).not.toBeInTheDocument()
+    expect(screen.getByText('Login Page')).toBeInTheDocument()
   })
 })

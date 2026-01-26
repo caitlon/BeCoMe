@@ -16,7 +16,7 @@ describe('PasswordInput', () => {
     render(<PasswordInput label="Password" name="password" />)
 
     const input = screen.getByLabelText('Password')
-    const toggleButton = screen.getByRole('button')
+    const toggleButton = screen.getByRole('button', { name: /show|hide/i })
 
     expect(input).toHaveAttribute('type', 'password')
 
