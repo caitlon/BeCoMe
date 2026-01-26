@@ -27,8 +27,10 @@ describe('DeleteConfirmModal', () => {
       />
     )
 
-    expect(screen.getByText('• All opinions will be deleted')).toBeInTheDocument()
-    expect(screen.getByText('• All invitations will be cancelled')).toBeInTheDocument()
+    const items = screen.getAllByRole('listitem')
+    expect(items).toHaveLength(2)
+    expect(items[0]).toHaveTextContent('All opinions will be deleted')
+    expect(items[1]).toHaveTextContent('All invitations will be cancelled')
   })
 
   it('calls onOpenChange with false when cancel button is clicked', async () => {
