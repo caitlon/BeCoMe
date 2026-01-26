@@ -66,6 +66,14 @@ class UserAlreadyMemberError(ValidationError):
     """Raised when user is already a member of the project."""
 
 
+class UserNotFoundForInvitationError(NotFoundError):
+    """Raised when user with specified email is not found for invitation."""
+
+
+class AlreadyInvitedError(ValidationError):
+    """Raised when user already has a pending invitation to the project."""
+
+
 # Opinion-related exceptions
 class OpinionNotFoundError(NotFoundError):
     """Raised when opinion is not found."""

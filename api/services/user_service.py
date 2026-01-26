@@ -40,10 +40,7 @@ class UserService(BaseService):
             first_name=first_name,
             last_name=last_name,
         )
-        self._session.add(user)
-        self._session.commit()
-        self._session.refresh(user)
-        return user
+        return self._save_and_refresh(user)
 
     def get_by_email(self, email: str) -> User | None:
         """Find user by email address.
@@ -103,10 +100,7 @@ class UserService(BaseService):
         if last_name is not None:
             user.last_name = last_name
 
-        self._session.add(user)
-        self._session.commit()
-        self._session.refresh(user)
-        return user
+        return self._save_and_refresh(user)
 
     def change_password(self, user: User, current_password: str, new_password: str) -> User:
         """Change user password.
@@ -121,18 +115,14 @@ class UserService(BaseService):
             raise InvalidCredentialsError("Current password is incorrect")
 
         user.hashed_password = hash_password(new_password)
-        self._session.add(user)
-        self._session.commit()
-        self._session.refresh(user)
-        return user
+        return self._save_and_refresh(user)
 
     def delete_user(self, user: User) -> None:
         """Delete user account.
 
         :param user: User to delete
         """
-        self._session.delete(user)
-        self._session.commit()
+        self._delete_and_commit(user)
 
     def update_photo_url(self, user: User, photo_url: str | None) -> User:
         """Update user's profile photo URL.
@@ -142,7 +132,4 @@ class UserService(BaseService):
         :return: Updated User instance
         """
         user.photo_url = photo_url
-        self._session.add(user)
-        self._session.commit()
-        self._session.refresh(user)
-        return user
+        return self._save_and_refresh(user)

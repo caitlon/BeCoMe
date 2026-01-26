@@ -13,6 +13,8 @@ from api.auth.dependencies import CurrentUser
 from api.dependencies import (
     ProjectAdmin,
     ProjectMember,
+    get_project_membership_service,
+    get_project_query_service,
     get_project_service,
 )
 from api.schemas.project import (
@@ -22,6 +24,8 @@ from api.schemas.project import (
     ProjectUpdate,
     ProjectWithRoleResponse,
 )
+from api.services.project_membership_service import ProjectMembershipService
+from api.services.project_query_service import ProjectQueryService
 from api.services.project_service import ProjectService
 
 router = APIRouter(prefix="/api/v1/projects", tags=["projects"])
@@ -34,15 +38,15 @@ router = APIRouter(prefix="/api/v1/projects", tags=["projects"])
 )
 def list_projects(
     current_user: CurrentUser,
-    service: Annotated[ProjectService, Depends(get_project_service)],
+    query_service: Annotated[ProjectQueryService, Depends(get_project_query_service)],
 ) -> list[ProjectWithRoleResponse]:
     """Get all projects where the current user is a member.
 
     :param current_user: Authenticated user
-    :param service: Project service
+    :param query_service: Project query service
     :return: List of projects with member counts and user's role
     """
-    projects_with_roles = service.get_user_projects_with_roles(current_user.id)
+    projects_with_roles = query_service.get_user_projects_with_roles(current_user.id)
     return [
         ProjectWithRoleResponse.from_model_with_role(
             item.project, item.member_count, item.role.value
@@ -81,19 +85,23 @@ def create_project(
 def get_project(
     project: ProjectMember,
     current_user: CurrentUser,
-    service: Annotated[ProjectService, Depends(get_project_service)],
+    project_service: Annotated[ProjectService, Depends(get_project_service)],
+    membership_service: Annotated[
+        ProjectMembershipService, Depends(get_project_membership_service)
+    ],
 ) -> ProjectWithRoleResponse:
     """Get project details. Only members can access.
 
     :param project: Project (verified membership)
     :param current_user: Authenticated user
-    :param service: Project service
+    :param project_service: Project service
+    :param membership_service: Membership service
     :return: Project details with user's role
     """
-    role = service.get_user_role_in_project(project.id, current_user.id)
+    role = membership_service.get_user_role_in_project(project.id, current_user.id)
     return ProjectWithRoleResponse.from_model_with_role(
         project,
-        service.get_member_count(project.id),
+        project_service.get_member_count(project.id),
         role.value if role else "expert",
     )
 
@@ -145,15 +153,17 @@ def delete_project(
 )
 def list_members(
     project: ProjectMember,
-    service: Annotated[ProjectService, Depends(get_project_service)],
+    membership_service: Annotated[
+        ProjectMembershipService, Depends(get_project_membership_service)
+    ],
 ) -> list[MemberResponse]:
     """List all members of a project. Only members can access.
 
     :param project: Project (verified membership)
-    :param service: Project service
+    :param membership_service: Membership service
     :return: List of members with their roles
     """
-    members = service.get_members(project.id)
+    members = membership_service.get_members(project.id)
     return [MemberResponse.from_model(member.membership, member.user) for member in members]
 
 
@@ -166,7 +176,9 @@ def remove_member(
     project: ProjectAdmin,
     user_id: UUID,
     current_user: CurrentUser,
-    service: Annotated[ProjectService, Depends(get_project_service)],
+    membership_service: Annotated[
+        ProjectMembershipService, Depends(get_project_membership_service)
+    ],
 ) -> None:
     """Remove a member from project. Only admin can remove members.
 
@@ -176,7 +188,7 @@ def remove_member(
     :param project: Project (verified admin)
     :param user_id: User UUID to remove
     :param current_user: Authenticated user
-    :param service: Project service
+    :param membership_service: Membership service
     :raises HTTPException: 400 if removing self
     """
     if user_id == current_user.id:
@@ -185,4 +197,4 @@ def remove_member(
             detail="Admin cannot remove themselves. Delete the project instead.",
         )
 
-    service.remove_member(project.id, user_id)
+    membership_service.remove_member(project.id, user_id)

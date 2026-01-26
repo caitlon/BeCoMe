@@ -2,21 +2,20 @@
 
 from uuid import UUID
 
-from sqlmodel import col, func, select
+from sqlmodel import func, select
 
-from api.db.models import MemberRole, Project, ProjectMember, User
-from api.exceptions import MemberNotFoundError, ProjectNotFoundError, ScaleRangeError
-from api.schemas.internal import (
-    MemberWithUser,
-    ProjectWithMemberCount,
-    ProjectWithMemberCountAndRole,
-)
+from api.db.models import MemberRole, Project, ProjectMember
+from api.exceptions import ProjectNotFoundError, ScaleRangeError
 from api.schemas.project import ProjectCreate, ProjectUpdate
 from api.services.base import BaseService
 
 
 class ProjectService(BaseService):
-    """Service for project-related operations."""
+    """Service for project CRUD operations.
+
+    For membership operations, use ProjectMembershipService.
+    For complex queries, use ProjectQueryService.
+    """
 
     def create_project(self, user_id: UUID, data: ProjectCreate) -> Project:
         """Create a new project and add creator as admin.
@@ -46,84 +45,6 @@ class ProjectService(BaseService):
         self._session.refresh(project)
         return project
 
-    def get_user_projects_with_counts(self, user_id: UUID) -> list[ProjectWithMemberCount]:
-        """Get all projects where user is a member, with member counts.
-
-        Uses a single query with subquery to avoid N+1 problem.
-
-        :param user_id: User ID
-        :return: List of ProjectWithMemberCount instances
-        """
-        member_count_subquery = (
-            select(ProjectMember.project_id, func.count().label("member_count"))
-            .group_by(col(ProjectMember.project_id))
-            .subquery()
-        )
-
-        statement = (
-            select(Project, member_count_subquery.c.member_count)
-            .join(ProjectMember, col(ProjectMember.project_id) == Project.id)
-            .join(
-                member_count_subquery,
-                member_count_subquery.c.project_id == Project.id,
-            )
-            .where(ProjectMember.user_id == user_id)
-            .order_by(col(Project.created_at).desc())
-        )
-        results = self._session.exec(statement).all()
-        return [
-            ProjectWithMemberCount(project=project, member_count=count)
-            for project, count in results
-        ]
-
-    def get_user_projects_with_roles(self, user_id: UUID) -> list[ProjectWithMemberCountAndRole]:
-        """Get all projects where user is a member, with member counts and role.
-
-        Uses a single query with subquery to avoid N+1 problem.
-
-        :param user_id: User ID
-        :return: List of ProjectWithMemberCountAndRole instances
-        """
-        member_count_subquery = (
-            select(ProjectMember.project_id, func.count().label("member_count"))
-            .group_by(col(ProjectMember.project_id))
-            .subquery()
-        )
-
-        statement = (
-            select(Project, member_count_subquery.c.member_count, ProjectMember.role)
-            .join(ProjectMember, col(ProjectMember.project_id) == Project.id)
-            .join(
-                member_count_subquery,
-                member_count_subquery.c.project_id == Project.id,
-            )
-            .where(ProjectMember.user_id == user_id)
-            .order_by(col(Project.created_at).desc())
-        )
-        results = self._session.exec(statement).all()
-        return [
-            ProjectWithMemberCountAndRole(
-                project=project,
-                member_count=count,
-                role=MemberRole(role) if isinstance(role, str) else role,
-            )
-            for project, count, role in results
-        ]
-
-    def get_user_role_in_project(self, project_id: UUID, user_id: UUID) -> MemberRole | None:
-        """Get user's role in a project.
-
-        :param project_id: Project ID
-        :param user_id: User ID
-        :return: MemberRole if user is a member, None otherwise
-        """
-        statement = select(ProjectMember).where(
-            ProjectMember.project_id == project_id,
-            ProjectMember.user_id == user_id,
-        )
-        membership = self._session.exec(statement).first()
-        return membership.role if membership else None
-
     def get_project(self, project_id: UUID) -> Project | None:
         """Get project by ID.
 
@@ -139,6 +60,7 @@ class ProjectService(BaseService):
         :param data: Fields to update (only non-None values applied)
         :return: Updated Project
         :raises ProjectNotFoundError: If project doesn't exist
+        :raises ScaleRangeError: If scale range becomes invalid
         """
         project = self.get_project(project_id)
         if not project:
@@ -153,7 +75,6 @@ class ProjectService(BaseService):
                 msg = f"scale_min ({new_min}) must be less than scale_max ({new_max})"
                 raise ScaleRangeError(msg)
 
-        # Explicit field assignment (safer than setattr)
         if "name" in update_data:
             project.name = update_data["name"]
         if "description" in update_data:
@@ -165,10 +86,7 @@ class ProjectService(BaseService):
         if "scale_unit" in update_data:
             project.scale_unit = update_data["scale_unit"]
 
-        self._session.add(project)
-        self._session.commit()
-        self._session.refresh(project)
-        return project
+        return self._save_and_refresh(project)
 
     def delete_project(self, project_id: UUID) -> None:
         """Delete project and all related data (cascade).
@@ -180,23 +98,7 @@ class ProjectService(BaseService):
         if not project:
             raise ProjectNotFoundError(f"Project {project_id} not found")
 
-        self._session.delete(project)
-        self._session.commit()
-
-    def get_members(self, project_id: UUID) -> list[MemberWithUser]:
-        """Get all members of a project with user details.
-
-        :param project_id: Project ID
-        :return: List of MemberWithUser instances
-        """
-        statement = (
-            select(ProjectMember, User)
-            .join(User)
-            .where(ProjectMember.project_id == project_id)
-            .order_by(col(ProjectMember.joined_at))
-        )
-        results = self._session.exec(statement).all()
-        return [MemberWithUser(membership=membership, user=user) for membership, user in results]
+        self._delete_and_commit(project)
 
     def get_member_count(self, project_id: UUID) -> int:
         """Get number of members in a project.
@@ -209,50 +111,4 @@ class ProjectService(BaseService):
             .select_from(ProjectMember)
             .where(ProjectMember.project_id == project_id)
         )
-        result = self._session.exec(statement).one()
-        return result
-
-    def remove_member(self, project_id: UUID, user_id: UUID) -> None:
-        """Remove a member from project.
-
-        :param project_id: Project ID
-        :param user_id: User ID to remove
-        :raises MemberNotFoundError: If user is not a member of the project
-        """
-        statement = select(ProjectMember).where(
-            ProjectMember.project_id == project_id,
-            ProjectMember.user_id == user_id,
-        )
-        membership = self._session.exec(statement).first()
-        if not membership:
-            raise MemberNotFoundError(f"User {user_id} is not a member of project {project_id}")
-
-        self._session.delete(membership)
-        self._session.commit()
-
-    def is_member(self, project_id: UUID, user_id: UUID) -> bool:
-        """Check if user is a member of the project.
-
-        :param project_id: Project ID
-        :param user_id: User ID
-        :return: True if user is a member
-        """
-        statement = select(ProjectMember).where(
-            ProjectMember.project_id == project_id,
-            ProjectMember.user_id == user_id,
-        )
-        return self._session.exec(statement).first() is not None
-
-    def is_admin(self, project_id: UUID, user_id: UUID) -> bool:
-        """Check if user is an admin of the project.
-
-        :param project_id: Project ID
-        :param user_id: User ID
-        :return: True if user is an admin
-        """
-        statement = select(ProjectMember).where(
-            ProjectMember.project_id == project_id,
-            ProjectMember.user_id == user_id,
-            ProjectMember.role == MemberRole.ADMIN,
-        )
-        return self._session.exec(statement).first() is not None
+        return self._session.exec(statement).one()

@@ -7,17 +7,14 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from api.auth.dependencies import CurrentUser
 from api.dependencies import ProjectAdmin, get_invitation_service
+from api.exceptions import AlreadyInvitedError, UserNotFoundForInvitationError
 from api.schemas.invitation import (
     InvitationListItemResponse,
     InvitationResponse,
     InviteByEmailRequest,
 )
 from api.schemas.project import MemberResponse
-from api.services.invitation_service import (
-    AlreadyInvitedError,
-    InvitationService,
-    UserNotFoundError,
-)
+from api.services.invitation_service import InvitationService
 
 router = APIRouter(prefix="/api/v1", tags=["invitations"])
 
@@ -49,7 +46,7 @@ def invite_by_email(
             inviter_id=current_user.id,
             invitee_email=request.email,
         )
-    except UserNotFoundError as err:
+    except UserNotFoundForInvitationError as err:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No user found with this email",

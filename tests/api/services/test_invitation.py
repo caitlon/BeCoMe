@@ -8,14 +8,12 @@ import pytest
 
 from api.db.models import Invitation, MemberRole, Project, ProjectMember, User
 from api.exceptions import (
+    AlreadyInvitedError,
     InvitationNotFoundError,
     UserAlreadyMemberError,
+    UserNotFoundForInvitationError,
 )
-from api.services.invitation_service import (
-    AlreadyInvitedError,
-    InvitationService,
-    UserNotFoundError,
-)
+from api.services.invitation_service import InvitationService
 
 
 class TestInvitationServiceInviteByEmail:
@@ -78,14 +76,14 @@ class TestInvitationServiceInviteByEmail:
         mock_session.add.assert_called_once()
 
     def test_raises_error_when_user_not_found(self):
-        """UserNotFoundError is raised when email doesn't exist."""
+        """UserNotFoundForInvitationError is raised when email doesn't exist."""
         # GIVEN
         mock_session = MagicMock()
         mock_session.exec.return_value.first.return_value = None
         service = InvitationService(mock_session)
 
         # WHEN / THEN
-        with pytest.raises(UserNotFoundError, match="No user found"):
+        with pytest.raises(UserNotFoundForInvitationError, match="No user found"):
             service.invite_by_email(uuid4(), uuid4(), "nonexistent@example.com")
 
     def test_raises_error_when_user_already_member(self):
