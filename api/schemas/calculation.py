@@ -68,6 +68,6 @@ class CalculationResultResponse(CalculateResponse):
     Extends CalculateResponse with Likert interpretation and timestamp.
     """
 
-    likert_value: int | None
-    likert_decision: str | None
+    likert_value: int | None = Field(None, ge=0, le=100)
+    likert_decision: str | None = None
     calculated_at: datetime
