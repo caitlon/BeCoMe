@@ -134,7 +134,7 @@ Environment variables (can use `.env` file):
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `DATABASE_URL` | `sqlite:///./become.db` | Database connection string |
-| `SECRET_KEY` | *required* | JWT signing key |
+| `SECRET_KEY` | *required* | JWT signing key (generate with `openssl rand -hex 32`) |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | `15` | Access token TTL |
 | `REFRESH_TOKEN_EXPIRE_DAYS` | `7` | Refresh token TTL |
 | `DEBUG` | `false` | Debug mode |
@@ -143,7 +143,14 @@ Environment variables (can use `.env` file):
 | `SUPABASE_URL` | *optional* | Supabase project URL |
 | `SUPABASE_KEY` | *optional* | Supabase service key |
 
+**Note:** When Supabase credentials are not provided or invalid, file storage features (user photos) are disabled. The API continues to function with all other features available.
+
 ## Testing
+
+The test suite includes:
+- Configuration behavior (`tests/api/test_config.py`)
+- Dependency injection and graceful degradation (`tests/api/test_dependencies.py`)
+- Route handlers and edge cases (`tests/api/routes/`)
 
 ```bash
 # Run all API tests
