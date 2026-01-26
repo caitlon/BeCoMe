@@ -15,7 +15,7 @@ The API runs at `http://localhost:8000`. Interactive documentation:
 
 ## Module Structure
 
-```
+```text
 api/
 ├── auth/               # Authentication & authorization
 │   ├── jwt.py              # Token creation/validation
@@ -139,7 +139,7 @@ Environment variables (can use `.env` file):
 | `REFRESH_TOKEN_EXPIRE_DAYS` | `7` | Refresh token TTL |
 | `DEBUG` | `false` | Debug mode |
 | `API_VERSION` | `0.1.0` | API version |
-| `CORS_ORIGINS` | `localhost:3000,8080` | Allowed CORS origins |
+| `CORS_ORIGINS` | `http://localhost:3000,http://localhost:8080` | Allowed CORS origins |
 | `SUPABASE_URL` | *optional* | Supabase project URL |
 | `SUPABASE_KEY` | *optional* | Supabase service key |
 
