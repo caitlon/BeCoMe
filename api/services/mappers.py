@@ -45,15 +45,18 @@ class BeCoMeResultMapper:
     def update_db_model(
         existing: CalculationResult,
         result: BeCoMeResult,
-        likert_value: int | None = None,
-        likert_decision: str | None = None,
+        likert_value: int | None,
+        likert_decision: str | None,
     ) -> CalculationResult:
         """Update existing CalculationResult with new BeCoMeResult values.
 
+        Always overwrites all fields including Likert values. Pass None explicitly
+        to clear Likert fields (e.g., when project scale changes from Likert to custom).
+
         :param existing: Existing CalculationResult to update
         :param result: Domain BeCoMeResult from calculator
-        :param likert_value: Optional Likert scale value
-        :param likert_decision: Optional Likert decision text
+        :param likert_value: Likert scale value (None clears the field)
+        :param likert_decision: Likert decision text (None clears the field)
         :return: Updated CalculationResult instance (not yet persisted)
         """
         existing.best_compromise_lower = result.best_compromise.lower_bound
