@@ -27,7 +27,7 @@ ENV UV_COMPILE_BYTECODE=1
 ENV UV_LINK_MODE=copy
 
 # Copy dependency files first (better caching)
-COPY pyproject.toml uv.lock ./
+COPY pyproject.toml uv.lock README.md ./
 
 # Install dependencies first (without project) for better layer caching
 RUN --mount=type=cache,target=/root/.cache/uv \
@@ -36,7 +36,6 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # Copy application code
 COPY src/ ./src/
 COPY api/ ./api/
-COPY README.md ./
 
 # Install project with dependencies
 RUN --mount=type=cache,target=/root/.cache/uv \
@@ -77,6 +76,8 @@ ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 
 # Default worker count (can be overridden via environment)
+# Azure App Service: set to 1 (horizontal scaling via container instances)
+# Local/self-hosted: set to 4 or more
 ENV UVICORN_WORKERS=4
 
 # Expose port
