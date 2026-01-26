@@ -38,4 +38,33 @@ describe('PasswordInput', () => {
 
     expect(screen.getByText('Password too short')).toBeInTheDocument()
   })
+
+  it('generates id when neither id nor name provided', () => {
+    render(<PasswordInput label="Password" />)
+
+    const input = screen.getByLabelText('Password')
+    expect(input).toHaveAttribute('id')
+    expect(input.id).toBeTruthy()
+  })
+
+  it('uses id prop when provided', () => {
+    render(<PasswordInput label="Password" id="custom-password-id" />)
+
+    const input = screen.getByLabelText('Password')
+    expect(input).toHaveAttribute('id', 'custom-password-id')
+  })
+
+  it('sets aria-describedby when error is present', () => {
+    render(
+      <PasswordInput
+        label="Password"
+        name="password"
+        error={{ type: 'required', message: 'Required' }}
+      />
+    )
+
+    const input = screen.getByLabelText('Password')
+    expect(input).toHaveAttribute('aria-describedby')
+    expect(input).toHaveAttribute('aria-invalid', 'true')
+  })
 })
