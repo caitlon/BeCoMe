@@ -4,155 +4,156 @@ FastAPI-based REST API for the BeCoMe group decision-making method.
 
 ## Quick Start
 
-Start the development server:
-
 ```bash
+uv sync --extra api
 uv run uvicorn api.main:app --reload
 ```
 
-The API will be available at `http://localhost:8000`. Interactive documentation is at `/docs` (Swagger UI) or `/redoc` (ReDoc).
-
-## Endpoints
-
-### Health Check
-
-```
-GET /api/v1/health
-```
-
-Returns API status and version.
-
-```bash
-curl http://localhost:8000/api/v1/health
-```
-
-Response:
-
-```json
-{"status": "ok", "version": "0.1.0"}
-```
-
-### Calculate Best Compromise
-
-```
-POST /api/v1/calculate
-```
-
-Accepts expert opinions as fuzzy triangular numbers and returns the best compromise along with intermediate results.
-
-```bash
-curl -X POST http://localhost:8000/api/v1/calculate \
-    -H "Content-Type: application/json" \
-    -d '{
-        "experts": [
-            {"name": "Expert1", "lower": 5, "peak": 10, "upper": 15},
-            {"name": "Expert2", "lower": 8, "peak": 12, "upper": 18},
-            {"name": "Expert3", "lower": 6, "peak": 11, "upper": 16}
-        ]
-    }'
-```
-
-Response:
-
-```json
-{
-    "best_compromise": {"lower": 6.5, "peak": 11.0, "upper": 16.0, "centroid": 11.17},
-    "arithmetic_mean": {"lower": 6.33, "peak": 11.0, "upper": 16.33, "centroid": 11.22},
-    "median": {"lower": 6.0, "peak": 11.0, "upper": 16.0, "centroid": 11.0},
-    "max_error": 0.22,
-    "num_experts": 3
-}
-```
-
-## Request/Response Schemas
-
-### ExpertInput
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `name` | string | Expert name or identifier |
-| `lower` | float | Lower bound (pessimistic estimate) |
-| `peak` | float | Peak value (most likely) |
-| `upper` | float | Upper bound (optimistic estimate) |
-
-Constraint: `lower <= peak <= upper`
-
-### CalculateResponse
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `best_compromise` | FuzzyNumberOutput | Average of arithmetic mean and median |
-| `arithmetic_mean` | FuzzyNumberOutput | Component-wise average of all opinions |
-| `median` | FuzzyNumberOutput | Middle opinion after sorting by centroid |
-| `max_error` | float | Half-distance between mean and median centroids |
-| `num_experts` | int | Number of experts in calculation |
-
-### FuzzyNumberOutput
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `lower` | float | Lower bound |
-| `peak` | float | Peak value |
-| `upper` | float | Upper bound |
-| `centroid` | float | (lower + peak + upper) / 3 |
-
-## Error Handling
-
-| Status Code | Description |
-|-------------|-------------|
-| 200 | Success |
-| 400 | BeCoMe calculation error (invalid input for calculator) |
-| 422 | Validation error (malformed request) |
-| 500 | Internal server error |
+The API runs at `http://localhost:8000`. Interactive documentation:
+- Swagger UI: `/docs`
+- ReDoc: `/redoc`
 
 ## Module Structure
 
 ```
 api/
-├── __init__.py          # Package marker
-├── config.py            # Settings (Pydantic Settings)
-├── main.py              # FastAPI app, endpoints, schemas
-└── README.md            # This file
+├── auth/               # Authentication & authorization
+│   ├── jwt.py              # Token creation/validation
+│   ├── password.py         # Password hashing (bcrypt)
+│   ├── dependencies.py     # CurrentUser dependency
+│   ├── token_blacklist.py  # Revoked tokens storage
+│   └── logging.py          # Auth event logging
+├── db/                 # Database layer
+│   ├── models.py           # SQLModel entities
+│   ├── engine.py           # Database engine setup
+│   ├── session.py          # Session dependency
+│   └── utils.py            # UTC helpers, email regex
+├── middleware/         # Request processing
+│   ├── rate_limit.py       # SlowAPI rate limiting
+│   ├── security_headers.py # Security response headers
+│   └── exception_handlers.py
+├── routes/             # HTTP endpoints
+│   ├── auth.py             # /api/v1/auth/*
+│   ├── users.py            # /api/v1/users/*
+│   ├── projects.py         # /api/v1/projects/*
+│   ├── opinions.py         # /api/v1/projects/{id}/opinions
+│   ├── invitations.py      # /api/v1/invitations/*
+│   ├── calculate.py        # /api/v1/calculate
+│   └── health.py           # /api/v1/health
+├── schemas/            # Pydantic DTOs
+│   ├── auth.py             # Login, register, tokens
+│   ├── project.py          # Project CRUD
+│   ├── opinion.py          # Expert opinions
+│   ├── invitation.py       # Project invitations
+│   ├── calculation.py      # BeCoMe calculation I/O
+│   └── ...
+├── services/           # Business logic
+│   ├── user_service.py
+│   ├── project_service.py
+│   ├── opinion_service.py
+│   ├── invitation_service.py
+│   ├── calculation_service.py
+│   └── storage/            # File storage (Supabase)
+├── utils/              # Utilities
+│   └── sanitization.py     # HTML sanitization
+├── config.py           # Settings (Pydantic Settings)
+├── dependencies.py     # DI factories + authorization
+├── exceptions.py       # API exception hierarchy
+└── main.py             # FastAPI application
 ```
 
-### config.py
+## API Endpoints
 
-`Settings` class loads configuration from environment variables. Supports `.env` file.
+### Authentication
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/v1/auth/register` | Register new user |
+| POST | `/api/v1/auth/login` | Login, get tokens |
+| POST | `/api/v1/auth/logout` | Revoke refresh token |
+| POST | `/api/v1/auth/refresh` | Refresh access token |
+| GET | `/api/v1/auth/me` | Get current user profile |
+
+### Users
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/v1/users/me` | Get profile |
+| PUT | `/api/v1/users/me` | Update profile |
+| PUT | `/api/v1/users/me/password` | Change password |
+| POST | `/api/v1/users/me/photo` | Upload photo |
+| DELETE | `/api/v1/users/me/photo` | Delete photo |
+| DELETE | `/api/v1/users/me` | Delete account |
+
+### Projects
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/v1/projects` | List user's projects |
+| POST | `/api/v1/projects` | Create project |
+| GET | `/api/v1/projects/{id}` | Get project details |
+| PATCH | `/api/v1/projects/{id}` | Update project |
+| DELETE | `/api/v1/projects/{id}` | Delete project |
+| GET | `/api/v1/projects/{id}/members` | List members |
+| DELETE | `/api/v1/projects/{id}/members/{user_id}` | Remove member |
+| POST | `/api/v1/projects/{id}/invite` | Invite user |
+
+### Opinions
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/v1/projects/{id}/opinions` | List opinions |
+| POST | `/api/v1/projects/{id}/opinions` | Submit opinion |
+| DELETE | `/api/v1/projects/{id}/opinions` | Delete own opinion |
+
+### Invitations
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/v1/invitations` | List pending invitations |
+| POST | `/api/v1/invitations/{id}/accept` | Accept invitation |
+| POST | `/api/v1/invitations/{id}/decline` | Decline invitation |
+
+### Calculation
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/v1/calculate` | Calculate BeCoMe (standalone) |
+| GET | `/api/v1/projects/{id}/result` | Get project calculation result |
+
+### Health
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/v1/health` | API health check |
+
+## Configuration
+
+Environment variables (can use `.env` file):
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DEBUG` | `false` | Enable debug mode |
-| `API_VERSION` | `0.1.0` | API version string |
-
-### main.py
-
-Contains the FastAPI application factory `create_app()`, request/response Pydantic models, and endpoint handlers. The `/calculate` endpoint converts API input to domain models, runs `BeCoMeCalculator`, and returns the result.
-
-## Dependencies
-
-The `api` extra in `pyproject.toml` includes:
-
-- `fastapi` — web framework
-- `uvicorn` — ASGI server
-- `pydantic-settings` — configuration management
-- `httpx` — test client
-
-Install with:
-
-```bash
-uv sync --extra api
-```
+| `DATABASE_URL` | `sqlite:///./become.db` | Database connection string |
+| `SECRET_KEY` | *required* | JWT signing key |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | `15` | Access token TTL |
+| `REFRESH_TOKEN_EXPIRE_DAYS` | `7` | Refresh token TTL |
+| `DEBUG` | `false` | Debug mode |
+| `API_VERSION` | `0.1.0` | API version |
+| `CORS_ORIGINS` | `localhost:3000,8080` | Allowed CORS origins |
+| `SUPABASE_URL` | *optional* | Supabase project URL |
+| `SUPABASE_KEY` | *optional* | Supabase service key |
 
 ## Testing
 
-API tests are in `tests/api/`. They use FastAPI's `TestClient` and verify results against reference case studies.
-
 ```bash
+# Run all API tests
 uv run pytest tests/api/ -v
+
+# Run with coverage
+uv run pytest tests/api/ --cov=api --cov-report=term-missing
 ```
 
 ## Related Documentation
 
 - [Main README](../README.md) — project overview
-- [Source code](../src/README.md) — core library documentation
-- [Examples](../examples/README.md) — case studies
+- [CLAUDE.md](../CLAUDE.md) — development guidelines
