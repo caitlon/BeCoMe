@@ -1,33 +1,30 @@
-# BeCoMe Method Implementation
+# BeCoMe
 
-Python implementation of the BeCoMe (Best Compromise Mean) method for group decision-making under fuzzy uncertainty.
+Full-stack web application for group decision-making under fuzzy uncertainty using the BeCoMe (Best Compromise Mean) method.
+
+**🌐 Live: [becomify.app](https://www.becomify.app)**
 
 ![Python](https://img.shields.io/badge/python-3.13+-blue.svg)
-![License](https://img.shields.io/badge/license-Academic-blue)
-![Tests](https://img.shields.io/badge/tests-passing-brightgreen)
+![TypeScript](https://img.shields.io/badge/typescript-5.0+-blue.svg)
+![FastAPI](https://img.shields.io/badge/fastapi-0.115+-green.svg)
+![React](https://img.shields.io/badge/react-19+-blue.svg)
+![Tests](https://img.shields.io/badge/tests-810%20passed-brightgreen)
 ![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)
 
 ## Table of Contents
 
 - [Project Information](#project-information)
 - [Abstract](#abstract)
-- [Motivation](#motivation)
 - [Features](#features)
-- [Methodology](#methodology)
-- [Data](#data)
 - [Quick Start](#quick-start)
+- [Web Application](#web-application)
+- [Methodology](#methodology)
 - [Installation](#installation)
-- [Usage](#usage)
 - [Project Structure](#project-structure)
 - [Testing](#testing)
-- [Code Quality](#code-quality)
 - [Documentation](#documentation)
-- [Architecture](#architecture)
-- [Examples](#examples)
 - [License](#license)
-- [Contact](#contact)
 - [References](#references)
-- [Acknowledgments](#acknowledgments)
 
 ## Project Information
 
@@ -46,24 +43,62 @@ Python implementation of the BeCoMe (Best Compromise Mean) method for group deci
 
 Validated on three Czech case studies (COVID-19 budget allocation, flood prevention, cross-border travel policy). Results verified against original Excel implementation with 100% test coverage.
 
-## Motivation
-
-Expert opinions are ranges, not points. Traditional aggregation methods either lose information about uncertainty or fail to handle outliers well. Most existing tools are difficult to use in practice.
-
-BeCoMe addresses these problems. Arithmetic mean preserves distributional information; median provides robustness to outliers. Combining both in a fuzzy triangular number framework gives better consensus estimates. This library includes three worked examples from Czech policy decisions.
-
 ## Features
 
-- **Fuzzy Triangular Number Operations**: Addition, averaging, and centroid calculation for TFN
-- **Arithmetic Mean Aggregation**: Component-wise averaging of expert opinions
-- **Median Aggregation**: Centroid-based sorting with odd/even handling via Strategy pattern
-- **Best Compromise Calculation**: Combined mean-median approach for robust consensus
-- **Error Estimation**: Maximum deviation metric for result quality assessment
-- **Likert Scale Support**: Handle ordinal scale data as special case of fuzzy numbers
-- **Three Real-World Case Studies**: COVID-19 budget, flood prevention, cross-border travel
-- **100% Test Coverage**: Unit and integration tests for all modules
-- **Type Safety**: Full mypy strict mode compliance
-- **Excel Validation**: Results verified against original Excel implementation
+### Web Application
+- **REST API**: FastAPI backend with JWT authentication
+- **React Frontend**: Modern UI with TypeScript and Tailwind CSS
+- **Project Management**: Create projects, invite experts, collect opinions
+- **Real-time Calculations**: Automatic BeCoMe aggregation when opinions are submitted
+- **Multi-language**: English and Czech localization
+
+### Core Library
+- **Fuzzy Triangular Numbers**: Operations on TFN (a, c, b) with validation
+- **BeCoMe Algorithm**: Arithmetic mean + median → best compromise
+- **Strategy Pattern**: Handles odd/even expert counts for median calculation
+- **Likert Scale Support**: Ordinal data as special case of fuzzy numbers
+
+### Quality
+- **100% Test Coverage**: 810+ tests for API, frontend, and core library
+- **Type Safety**: mypy strict mode, TypeScript strict
+- **Three Case Studies**: COVID-19 budget, flood prevention, cross-border travel
+
+## Web Application
+
+The project includes a full-stack web application for collaborative decision-making.
+
+### Architecture
+
+| Component | Technology | Port |
+|-----------|------------|------|
+| Backend | FastAPI + SQLModel | 8000 |
+| Frontend | React + Vite + Tailwind | 5173 |
+| Database | SQLite (dev) / PostgreSQL (prod) | — |
+
+### Key Features
+
+- **User Authentication**: JWT-based auth with refresh tokens
+- **Project Management**: Create projects with custom scales, invite experts by email
+- **Opinion Collection**: Experts submit fuzzy triangular numbers (lower, peak, upper)
+- **Automatic Calculation**: BeCoMe result computed when opinions are submitted
+- **Role-based Access**: Admin and member roles per project
+
+### Live Application
+
+**https://www.becomify.app**
+
+### Local Development
+
+```bash
+# Backend (http://localhost:8000)
+uv sync --extra api
+uv run uvicorn api.main:app --reload
+
+# Frontend (http://localhost:5173)
+cd frontend && npm install && npm run dev
+```
+
+See [api/README.md](api/README.md) for API documentation.
 
 ## Methodology
 
@@ -141,11 +176,15 @@ Expert2 | 12.0 | 18.0 | 25.0
 
 ## Quick Start
 
-Get results in under 3 minutes:
+### Web Application
+
+**Live demo:** https://www.becomify.app
+
+Register, create a project, invite experts, and collect opinions — no installation required.
+
+### Command Line (Case Studies)
 
 ```bash
-git clone <repository-url>
-cd BeCoMe
 uv sync --extra dev
 uv run python -m examples.analyze_budget_case
 ```
@@ -252,53 +291,33 @@ See [src/README.md](src/README.md) for API documentation.
 
 ## Project Structure
 
-```
+```text
 BeCoMe/
-├── src/                    # Source code
-│   ├── models/             # Data models
-│   │   ├── fuzzy_number.py      # Fuzzy triangular number
-│   │   ├── expert_opinion.py    # Expert opinion representation
-│   │   └── become_result.py     # Result model
-│   ├── calculators/        # Calculation logic
-│   │   ├── become_calculator.py      # Main BeCoMe calculator
-│   │   ├── base_calculator.py        # Abstract base calculator
-│   │   └── median_strategies.py     # Median calculation strategies
-│   ├── interpreters/       # Result interpretation
-│   │   └── likert_interpreter.py    # Likert scale decision interpreter
-│   └── exceptions.py       # Custom exceptions
-├── tests/                  # Test suite
-│   ├── unit/              # Unit tests
-│   │   ├── models/             # Model tests
-│   │   ├── calculators/        # Calculator tests
-│   │   ├── interpreters/       # Interpreter tests
-│   │   └── utilities/          # Utility function tests
-│   ├── integration/       # Integration tests
-│   │   ├── test_excel_reference.py    # Excel validation tests
-│   │   └── test_data_loading.py       # Data loading tests
-│   └── reference/         # Reference test data
-│       ├── budget_case.py        # Budget case expected results
-│       ├── floods_case.py        # Floods case expected results
-│       └── pendlers_case.py      # Pendlers case expected results
-├── examples/              # Practical examples
-│   ├── data/             # Case study data files
-│   │   ├── README.md            # Dataset documentation
-│   │   ├── budget_case.txt      # COVID-19 budget case
-│   │   ├── floods_case.txt      # Flood prevention case
-│   │   └── pendlers_case.txt    # Cross-border travel case
-│   ├── utils/            # Example utilities
-│   │   ├── data_loading.py     # Data file parser
-│   │   ├── display.py          # Step-by-step display
-│   │   ├── formatting.py       # Output formatting
-│   │   └── analysis.py         # Agreement analysis
-│   ├── analyze_budget_case.py    # Budget case analysis
-│   ├── analyze_floods_case.py    # Floods case analysis
-│   └── analyze_pendlers_case.py  # Pendlers case analysis
-├── docs/                  # Documentation
-│   ├── method-description.md    # Mathematical foundation
-│   ├── quality-report.md        # Quality metrics
-│   └── uml-diagrams/            # UML diagrams (PNG, PUML, README)
-├── supplementary/         # Reference materials
-└── README.md             # This file
+├── api/                    # REST API (FastAPI)
+│   ├── auth/                   # Authentication (JWT, passwords)
+│   ├── db/                     # Database models (SQLModel)
+│   ├── routes/                 # HTTP endpoints
+│   ├── schemas/                # Pydantic DTOs
+│   ├── services/               # Business logic
+│   └── README.md               # API documentation
+├── frontend/               # Web UI (React + Vite)
+│   ├── src/
+│   │   ├── components/         # UI components (shadcn/ui)
+│   │   ├── pages/              # Route pages
+│   │   ├── contexts/           # React contexts
+│   │   └── i18n/               # Translations (en, cs)
+│   └── README.md
+├── src/                    # Core library
+│   ├── models/                 # Fuzzy number, expert opinion
+│   ├── calculators/            # BeCoMe algorithm
+│   └── interpreters/           # Likert scale support
+├── tests/                  # Test suite (810+ tests)
+│   ├── api/                    # API tests
+│   ├── unit/                   # Core library tests
+│   └── integration/            # Excel validation tests
+├── examples/               # Case study examples
+│   └── data/                   # Dataset files
+└── docs/                   # Documentation
 ```
 
 ## Testing
