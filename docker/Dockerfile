@@ -27,7 +27,7 @@ ENV UV_COMPILE_BYTECODE=1
 ENV UV_LINK_MODE=copy
 
 # Copy dependency files first (better caching)
-COPY pyproject.toml uv.lock README.md ./
+COPY pyproject.toml uv.lock ./
 
 # Install dependencies first (without project) for better layer caching
 RUN --mount=type=cache,target=/root/.cache/uv \
@@ -36,6 +36,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # Copy application code
 COPY src/ ./src/
 COPY api/ ./api/
+COPY README.md ./
 
 # Install project with dependencies
 RUN --mount=type=cache,target=/root/.cache/uv \
