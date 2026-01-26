@@ -1,0 +1,652 @@
+
+<!doctype html>
+<html lang="en">
+
+<head>
+    <title>Code coverage report for src/data/caseStudies.ts</title>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="../../prettify.css" />
+    <link rel="stylesheet" href="../../base.css" />
+    <link rel="shortcut icon" type="image/x-icon" href="../../favicon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style type='text/css'>
+        .coverage-summary .sorter {
+            background-image: url(../../sort-arrow-sprite.png);
+        }
+    </style>
+</head>
+    
+<body>
+<div class='wrapper'>
+    <div class='pad1'>
+        <h1><a href="../../index.html">All files</a> / <a href="index.html">src/data</a> caseStudies.ts</h1>
+        <div class='clearfix'>
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">8.33% </span>
+                <span class="quiet">Statements</span>
+                <span class='fraction'>1/12</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">0% </span>
+                <span class="quiet">Branches</span>
+                <span class='fraction'>0/8</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">0% </span>
+                <span class="quiet">Functions</span>
+                <span class='fraction'>0/3</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">14.28% </span>
+                <span class="quiet">Lines</span>
+                <span class='fraction'>1/7</span>
+            </div>
+        
+            
+        </div>
+        <p class="quiet">
+            Press <em>n</em> or <em>j</em> to go to the next uncovered block, <em>b</em>, <em>p</em> or <em>k</em> for the previous block.
+        </p>
+        <template id="filterTemplate">
+            <div class="quiet">
+                Filter:
+                <input type="search" id="fileSearch">
+            </div>
+        </template>
+    </div>
+    <div class='status-line low'></div>
+    <pre><table class="coverage">
+<tr><td class="line-count quiet"><a name='L1'></a><a href='#L1'>1</a>
+<a name='L2'></a><a href='#L2'>2</a>
+<a name='L3'></a><a href='#L3'>3</a>
+<a name='L4'></a><a href='#L4'>4</a>
+<a name='L5'></a><a href='#L5'>5</a>
+<a name='L6'></a><a href='#L6'>6</a>
+<a name='L7'></a><a href='#L7'>7</a>
+<a name='L8'></a><a href='#L8'>8</a>
+<a name='L9'></a><a href='#L9'>9</a>
+<a name='L10'></a><a href='#L10'>10</a>
+<a name='L11'></a><a href='#L11'>11</a>
+<a name='L12'></a><a href='#L12'>12</a>
+<a name='L13'></a><a href='#L13'>13</a>
+<a name='L14'></a><a href='#L14'>14</a>
+<a name='L15'></a><a href='#L15'>15</a>
+<a name='L16'></a><a href='#L16'>16</a>
+<a name='L17'></a><a href='#L17'>17</a>
+<a name='L18'></a><a href='#L18'>18</a>
+<a name='L19'></a><a href='#L19'>19</a>
+<a name='L20'></a><a href='#L20'>20</a>
+<a name='L21'></a><a href='#L21'>21</a>
+<a name='L22'></a><a href='#L22'>22</a>
+<a name='L23'></a><a href='#L23'>23</a>
+<a name='L24'></a><a href='#L24'>24</a>
+<a name='L25'></a><a href='#L25'>25</a>
+<a name='L26'></a><a href='#L26'>26</a>
+<a name='L27'></a><a href='#L27'>27</a>
+<a name='L28'></a><a href='#L28'>28</a>
+<a name='L29'></a><a href='#L29'>29</a>
+<a name='L30'></a><a href='#L30'>30</a>
+<a name='L31'></a><a href='#L31'>31</a>
+<a name='L32'></a><a href='#L32'>32</a>
+<a name='L33'></a><a href='#L33'>33</a>
+<a name='L34'></a><a href='#L34'>34</a>
+<a name='L35'></a><a href='#L35'>35</a>
+<a name='L36'></a><a href='#L36'>36</a>
+<a name='L37'></a><a href='#L37'>37</a>
+<a name='L38'></a><a href='#L38'>38</a>
+<a name='L39'></a><a href='#L39'>39</a>
+<a name='L40'></a><a href='#L40'>40</a>
+<a name='L41'></a><a href='#L41'>41</a>
+<a name='L42'></a><a href='#L42'>42</a>
+<a name='L43'></a><a href='#L43'>43</a>
+<a name='L44'></a><a href='#L44'>44</a>
+<a name='L45'></a><a href='#L45'>45</a>
+<a name='L46'></a><a href='#L46'>46</a>
+<a name='L47'></a><a href='#L47'>47</a>
+<a name='L48'></a><a href='#L48'>48</a>
+<a name='L49'></a><a href='#L49'>49</a>
+<a name='L50'></a><a href='#L50'>50</a>
+<a name='L51'></a><a href='#L51'>51</a>
+<a name='L52'></a><a href='#L52'>52</a>
+<a name='L53'></a><a href='#L53'>53</a>
+<a name='L54'></a><a href='#L54'>54</a>
+<a name='L55'></a><a href='#L55'>55</a>
+<a name='L56'></a><a href='#L56'>56</a>
+<a name='L57'></a><a href='#L57'>57</a>
+<a name='L58'></a><a href='#L58'>58</a>
+<a name='L59'></a><a href='#L59'>59</a>
+<a name='L60'></a><a href='#L60'>60</a>
+<a name='L61'></a><a href='#L61'>61</a>
+<a name='L62'></a><a href='#L62'>62</a>
+<a name='L63'></a><a href='#L63'>63</a>
+<a name='L64'></a><a href='#L64'>64</a>
+<a name='L65'></a><a href='#L65'>65</a>
+<a name='L66'></a><a href='#L66'>66</a>
+<a name='L67'></a><a href='#L67'>67</a>
+<a name='L68'></a><a href='#L68'>68</a>
+<a name='L69'></a><a href='#L69'>69</a>
+<a name='L70'></a><a href='#L70'>70</a>
+<a name='L71'></a><a href='#L71'>71</a>
+<a name='L72'></a><a href='#L72'>72</a>
+<a name='L73'></a><a href='#L73'>73</a>
+<a name='L74'></a><a href='#L74'>74</a>
+<a name='L75'></a><a href='#L75'>75</a>
+<a name='L76'></a><a href='#L76'>76</a>
+<a name='L77'></a><a href='#L77'>77</a>
+<a name='L78'></a><a href='#L78'>78</a>
+<a name='L79'></a><a href='#L79'>79</a>
+<a name='L80'></a><a href='#L80'>80</a>
+<a name='L81'></a><a href='#L81'>81</a>
+<a name='L82'></a><a href='#L82'>82</a>
+<a name='L83'></a><a href='#L83'>83</a>
+<a name='L84'></a><a href='#L84'>84</a>
+<a name='L85'></a><a href='#L85'>85</a>
+<a name='L86'></a><a href='#L86'>86</a>
+<a name='L87'></a><a href='#L87'>87</a>
+<a name='L88'></a><a href='#L88'>88</a>
+<a name='L89'></a><a href='#L89'>89</a>
+<a name='L90'></a><a href='#L90'>90</a>
+<a name='L91'></a><a href='#L91'>91</a>
+<a name='L92'></a><a href='#L92'>92</a>
+<a name='L93'></a><a href='#L93'>93</a>
+<a name='L94'></a><a href='#L94'>94</a>
+<a name='L95'></a><a href='#L95'>95</a>
+<a name='L96'></a><a href='#L96'>96</a>
+<a name='L97'></a><a href='#L97'>97</a>
+<a name='L98'></a><a href='#L98'>98</a>
+<a name='L99'></a><a href='#L99'>99</a>
+<a name='L100'></a><a href='#L100'>100</a>
+<a name='L101'></a><a href='#L101'>101</a>
+<a name='L102'></a><a href='#L102'>102</a>
+<a name='L103'></a><a href='#L103'>103</a>
+<a name='L104'></a><a href='#L104'>104</a>
+<a name='L105'></a><a href='#L105'>105</a>
+<a name='L106'></a><a href='#L106'>106</a>
+<a name='L107'></a><a href='#L107'>107</a>
+<a name='L108'></a><a href='#L108'>108</a>
+<a name='L109'></a><a href='#L109'>109</a>
+<a name='L110'></a><a href='#L110'>110</a>
+<a name='L111'></a><a href='#L111'>111</a>
+<a name='L112'></a><a href='#L112'>112</a>
+<a name='L113'></a><a href='#L113'>113</a>
+<a name='L114'></a><a href='#L114'>114</a>
+<a name='L115'></a><a href='#L115'>115</a>
+<a name='L116'></a><a href='#L116'>116</a>
+<a name='L117'></a><a href='#L117'>117</a>
+<a name='L118'></a><a href='#L118'>118</a>
+<a name='L119'></a><a href='#L119'>119</a>
+<a name='L120'></a><a href='#L120'>120</a>
+<a name='L121'></a><a href='#L121'>121</a>
+<a name='L122'></a><a href='#L122'>122</a>
+<a name='L123'></a><a href='#L123'>123</a>
+<a name='L124'></a><a href='#L124'>124</a>
+<a name='L125'></a><a href='#L125'>125</a>
+<a name='L126'></a><a href='#L126'>126</a>
+<a name='L127'></a><a href='#L127'>127</a>
+<a name='L128'></a><a href='#L128'>128</a>
+<a name='L129'></a><a href='#L129'>129</a>
+<a name='L130'></a><a href='#L130'>130</a>
+<a name='L131'></a><a href='#L131'>131</a>
+<a name='L132'></a><a href='#L132'>132</a>
+<a name='L133'></a><a href='#L133'>133</a>
+<a name='L134'></a><a href='#L134'>134</a>
+<a name='L135'></a><a href='#L135'>135</a>
+<a name='L136'></a><a href='#L136'>136</a>
+<a name='L137'></a><a href='#L137'>137</a>
+<a name='L138'></a><a href='#L138'>138</a>
+<a name='L139'></a><a href='#L139'>139</a>
+<a name='L140'></a><a href='#L140'>140</a>
+<a name='L141'></a><a href='#L141'>141</a>
+<a name='L142'></a><a href='#L142'>142</a>
+<a name='L143'></a><a href='#L143'>143</a>
+<a name='L144'></a><a href='#L144'>144</a>
+<a name='L145'></a><a href='#L145'>145</a>
+<a name='L146'></a><a href='#L146'>146</a>
+<a name='L147'></a><a href='#L147'>147</a>
+<a name='L148'></a><a href='#L148'>148</a>
+<a name='L149'></a><a href='#L149'>149</a>
+<a name='L150'></a><a href='#L150'>150</a>
+<a name='L151'></a><a href='#L151'>151</a>
+<a name='L152'></a><a href='#L152'>152</a>
+<a name='L153'></a><a href='#L153'>153</a>
+<a name='L154'></a><a href='#L154'>154</a>
+<a name='L155'></a><a href='#L155'>155</a>
+<a name='L156'></a><a href='#L156'>156</a>
+<a name='L157'></a><a href='#L157'>157</a>
+<a name='L158'></a><a href='#L158'>158</a>
+<a name='L159'></a><a href='#L159'>159</a>
+<a name='L160'></a><a href='#L160'>160</a>
+<a name='L161'></a><a href='#L161'>161</a>
+<a name='L162'></a><a href='#L162'>162</a>
+<a name='L163'></a><a href='#L163'>163</a>
+<a name='L164'></a><a href='#L164'>164</a>
+<a name='L165'></a><a href='#L165'>165</a>
+<a name='L166'></a><a href='#L166'>166</a>
+<a name='L167'></a><a href='#L167'>167</a>
+<a name='L168'></a><a href='#L168'>168</a>
+<a name='L169'></a><a href='#L169'>169</a>
+<a name='L170'></a><a href='#L170'>170</a>
+<a name='L171'></a><a href='#L171'>171</a>
+<a name='L172'></a><a href='#L172'>172</a>
+<a name='L173'></a><a href='#L173'>173</a>
+<a name='L174'></a><a href='#L174'>174</a>
+<a name='L175'></a><a href='#L175'>175</a>
+<a name='L176'></a><a href='#L176'>176</a>
+<a name='L177'></a><a href='#L177'>177</a>
+<a name='L178'></a><a href='#L178'>178</a>
+<a name='L179'></a><a href='#L179'>179</a>
+<a name='L180'></a><a href='#L180'>180</a>
+<a name='L181'></a><a href='#L181'>181</a>
+<a name='L182'></a><a href='#L182'>182</a>
+<a name='L183'></a><a href='#L183'>183</a>
+<a name='L184'></a><a href='#L184'>184</a>
+<a name='L185'></a><a href='#L185'>185</a>
+<a name='L186'></a><a href='#L186'>186</a>
+<a name='L187'></a><a href='#L187'>187</a>
+<a name='L188'></a><a href='#L188'>188</a>
+<a name='L189'></a><a href='#L189'>189</a>
+<a name='L190'></a><a href='#L190'>190</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">import { FileText, Droplets, Globe, LucideIcon } from "lucide-react";
+&nbsp;
+export interface ExpertOpinion {
+  role: string;
+  bestProposal: number;
+  lowerLimit: number;
+  upperLimit: number;
+}
+&nbsp;
+export interface LikertOpinion {
+  role: string;
+  value: number;
+}
+&nbsp;
+interface BaseCaseStudy {
+  id: string;
+  title: string;
+  shortTitle: string;
+  description: string;
+  fullDescription: string;
+  question: string;
+  icon: LucideIcon;
+  experts: number;
+  scaleMin: number;
+  scaleMax: number;
+  scaleUnit: string;
+  context: string;
+  methodology: string;
+  result: {
+    bestCompromise: number;
+    maxError: number;
+    interpretation: string;
+  };
+  note?: string;
+}
+&nbsp;
+export interface IntervalCaseStudy extends BaseCaseStudy {
+  dataType: "interval";
+  opinions: ExpertOpinion[];
+}
+&nbsp;
+export interface LikertCaseStudy extends BaseCaseStudy {
+  dataType: "likert";
+  opinions: LikertOpinion[];
+}
+&nbsp;
+export type CaseStudy = IntervalCaseStudy | LikertCaseStudy;
+&nbsp;
+export const caseStudies: CaseStudy[] = [
+  {
+    id: "budget",
+    title: "COVID-19 Budget Support",
+    shortTitle: "Budget",
+    description: "Budget allocation for pandemic response measures",
+    fullDescription: "During the COVID-19 pandemic, the Czech government needed to determine the optimal financial support for entrepreneurs affected by restrictive measures. A panel of 22 high-ranking government officials from various ministries was assembled to provide their expert opinions.",
+    question: "Based on the submitted analyses of the Ministry of Industry and Trade and the Czech National Bank on the impact of the measures on the state budget of the Czech Republic, propose the total financial support in the range CZK 0–100 billion for entrepreneurs affected by the COVID-19 pandemic.",
+    icon: FileText,
+    experts: 22,
+    dataType: "interval",
+    scaleMin: 0,
+    scaleMax: 100,
+    scaleUnit: "CZK billion",
+    context: "The COVID-19 pandemic created unprecedented economic challenges. Businesses across sectors faced closures and reduced revenue due to government-mandated restrictions. The government needed to balance fiscal responsibility with the urgent need to support affected entrepreneurs and maintain economic stability.",
+    methodology: "Each expert provided their opinion as a fuzzy triangular number with three values: best proposal (most likely value), lower limit (pessimistic estimate), and upper limit (optimistic estimate). The BeCoMe method aggregated these opinions to find the best compromise.",
+    opinions: [
+      { role: "Chairman", bestProposal: 70, lowerLimit: 40, upperLimit: 90 },
+      { role: "Deputy Chairman", bestProposal: 80, lowerLimit: 60, upperLimit: 90 },
+      { role: "Deputy Minister of Interior", bestProposal: 90, lowerLimit: 60, upperLimit: 90 },
+      { role: "Deputy Minister of Defence", bestProposal: 40, lowerLimit: 30, upperLimit: 40 },
+      { role: "Deputy Minister of Foreign Affairs", bestProposal: 70, lowerLimit: 40, upperLimit: 90 },
+      { role: "Deputy Minister of Finance", bestProposal: 45, lowerLimit: 30, upperLimit: 70 },
+      { role: "Deputy Minister of Health", bestProposal: 60, lowerLimit: 40, upperLimit: 85 },
+      { role: "Deputy Minister of Industry and Trade", bestProposal: 90, lowerLimit: 40, upperLimit: 90 },
+      { role: "Deputy Minister of Transport", bestProposal: 50, lowerLimit: 40, upperLimit: 50 },
+      { role: "Deputy Minister of Education", bestProposal: 40, lowerLimit: 15, upperLimit: 60 },
+      { role: "Deputy Minister of Agriculture", bestProposal: 50, lowerLimit: 40, upperLimit: 70 },
+      { role: "Deputy Minister of Labour", bestProposal: 50, lowerLimit: 10, upperLimit: 50 },
+      { role: "Deputy Minister of Culture", bestProposal: 30, lowerLimit: 10, upperLimit: 40 },
+      { role: "Deputy Minister of Justice", bestProposal: 40, lowerLimit: 10, upperLimit: 50 },
+      { role: "Chairman of SSHR", bestProposal: 40, lowerLimit: 40, upperLimit: 40 },
+      { role: "Police President", bestProposal: 50, lowerLimit: 50, upperLimit: 50 },
+      { role: "Chief Hygienist", bestProposal: 65, lowerLimit: 45, upperLimit: 80 },
+      { role: "Economic Advisor 1", bestProposal: 55, lowerLimit: 35, upperLimit: 75 },
+      { role: "Economic Advisor 2", bestProposal: 60, lowerLimit: 40, upperLimit: 80 },
+      { role: "Regional Governor 1", bestProposal: 75, lowerLimit: 50, upperLimit: 85 },
+      { role: "Regional Governor 2", bestProposal: 70, lowerLimit: 45, upperLimit: 90 },
+      { role: "Business Association Rep", bestProposal: 85, lowerLimit: 60, upperLimit: 95 },
+    ] as ExpertOpinion[],
+    result: {
+      bestCompromise: 57.3,
+      maxError: 8.2,
+      interpretation: "The best compromise suggests financial support of approximately 57.3 billion CZK, with a maximum estimation error of 8.2 billion CZK. This represents a moderate position balancing fiscal caution with the urgent needs of affected businesses.",
+    },
+  },
+  {
+    id: "pendlers",
+    title: "Cross-border Cooperation",
+    shortTitle: "Pendlers",
+    description: "Policy evaluation for international collaboration",
+    fullDescription: "During the COVID-19 pandemic, cross-border workers (pendlers) faced significant challenges due to border closures between countries. A panel of 22 government officials evaluated whether cross-border travel should be permitted for regular commuters.",
+    question: "I agree that cross-border travel should be allowed for those who regularly travel from one country to another to work.",
+    icon: Globe,
+    experts: 22,
+    dataType: "likert",
+    scaleMin: 0,
+    scaleMax: 100,
+    scaleUnit: "agreement %",
+    context: "Cross-border workers are essential for many regional economies, particularly in border areas between the Czech Republic, Germany, Austria, Poland, and Slovakia. Border closures during the pandemic disrupted the livelihoods of thousands of workers and created labor shortages in key sectors.",
+    methodology: "Experts expressed their opinions using a 5-point Likert scale: Strongly disagree (0), Rather disagree (25), Neutral (50), Rather agree (75), Strongly agree (100). The BeCoMe method converted these to fuzzy numbers and calculated the optimal group decision.",
+    opinions: [
+      { role: "Chairman", value: 75 },
+      { role: "Deputy Chairman", value: 25 },
+      { role: "Deputy Minister of Interior", value: 0 },
+      { role: "Deputy Minister of Defence", value: 0 },
+      { role: "Deputy Minister of Foreign Affairs", value: 100 },
+      { role: "Deputy Minister of Finance", value: 50 },
+      { role: "Deputy Minister of Health", value: 25 },
+      { role: "Deputy Minister of Industry and Trade", value: 75 },
+      { role: "Deputy Minister of Transport", value: 25 },
+      { role: "Deputy Minister of Education", value: 25 },
+      { role: "Deputy Minister of Agriculture", value: 0 },
+      { role: "Deputy Minister of Labour", value: 75 },
+      { role: "Deputy Minister of Culture", value: 50 },
+      { role: "Deputy Minister of Justice", value: 75 },
+      { role: "Chairman of SSHR", value: 25 },
+      { role: "Police President", value: 50 },
+      { role: "Chief Hygienist", value: 0 },
+      { role: "Border Police Chief", value: 25 },
+      { role: "Regional Governor (Border)", value: 75 },
+      { role: "Labour Union Rep", value: 100 },
+      { role: "Employers Association Rep", value: 100 },
+      { role: "Public Health Expert", value: 25 },
+    ] as LikertOpinion[],
+    result: {
+      bestCompromise: 43.2,
+      maxError: 12.5,
+      interpretation: "The best compromise of 43.2% corresponds to 'Neutral' on the Likert scale. The decision indicates that experts are divided and do not clearly support generally allowing cross-border travel. The high error margin (12.5%) reflects significant polarization among experts.",
+    },
+    note: "This case study uses illustrative fictional data for demonstration purposes and is not the result of actual research.",
+  },
+  {
+    id: "floods",
+    title: "Flood Prevention Planning",
+    shortTitle: "Floods",
+    description: "Risk assessment for flood prevention infrastructure",
+    fullDescription: "Flood prevention in agricultural areas requires balancing multiple interests: environmental protection, agricultural productivity, economic considerations, and public safety. A panel of 13 diverse experts assessed what percentage of arable land in flood-prone areas should be converted to natural retention areas.",
+    question: "What percentage reduction of arable land in flood areas is recommended to prevent floods?",
+    icon: Droplets,
+    experts: 13,
+    dataType: "interval",
+    scaleMin: 0,
+    scaleMax: 100,
+    scaleUnit: "%",
+    context: "The Czech Republic experiences periodic flooding that causes significant damage to property and agriculture. Converting arable land to polders (water retention areas) can reduce flood risk but affects farmers' livelihoods and food production capacity. Finding the right balance is crucial.",
+    methodology: "Each expert provided their opinion as a fuzzy triangular number representing the recommended percentage of land conversion. The diverse panel included hydrologists, municipal representatives, land owners, and other stakeholders to ensure comprehensive perspective.",
+    opinions: [
+      { role: "Hydrologist 1", bestProposal: 42, lowerLimit: 37, upperLimit: 47 },
+      { role: "Hydrologist 2", bestProposal: 50, lowerLimit: 42, upperLimit: 50 },
+      { role: "Nature Protection Officer", bestProposal: 7, lowerLimit: 5, upperLimit: 9 },
+      { role: "Risk Management Expert", bestProposal: 40, lowerLimit: 37, upperLimit: 48 },
+      { role: "Land Use Planner", bestProposal: 8, lowerLimit: 6, upperLimit: 11 },
+      { role: "Civil Service Rep", bestProposal: 8, lowerLimit: 5, upperLimit: 9 },
+      { role: "Municipality 1", bestProposal: 38, lowerLimit: 33, upperLimit: 43 },
+      { role: "Municipality 2", bestProposal: 8, lowerLimit: 5, upperLimit: 8 },
+      { role: "Economist", bestProposal: 14, lowerLimit: 10, upperLimit: 20 },
+      { role: "Rescue Coordinator", bestProposal: 45, lowerLimit: 40, upperLimit: 50 },
+      { role: "Land Owner 1", bestProposal: 3, lowerLimit: 2, upperLimit: 4 },
+      { role: "Land Owner 2", bestProposal: 0, lowerLimit: 0, upperLimit: 2 },
+      { role: "Land Owner 3", bestProposal: 2, lowerLimit: 0, upperLimit: 3 },
+    ] as ExpertOpinion[],
+    result: {
+      bestCompromise: 20.4,
+      maxError: 6.8,
+      interpretation: "The best compromise recommends converting approximately 20.4% of arable land in flood areas to retention zones. This reflects a moderate approach that addresses flood risk while limiting impact on agricultural production. The relatively low error (6.8%) indicates reasonable consensus despite the diverse stakeholder interests.",
+    },
+  },
+];
+&nbsp;
+export function <span class="fstat-no" title="function not covered" >getCaseStudyById(i</span>d: string): CaseStudy | undefined {
+<span class="cstat-no" title="statement not covered" >  return caseStudies.find(<span class="fstat-no" title="function not covered" >(c</span>s) =&gt; <span class="cstat-no" title="statement not covered" >cs.id === id);</span></span>
+}
+&nbsp;
+export function <span class="fstat-no" title="function not covered" >getLikertLabel(v</span>alue: number): string {
+<span class="cstat-no" title="statement not covered" >  if (value &lt;= 12.5) <span class="cstat-no" title="statement not covered" >return "Strongly Disagree";</span></span>
+<span class="cstat-no" title="statement not covered" >  if (value &lt;= 37.5) <span class="cstat-no" title="statement not covered" >return "Rather Disagree";</span></span>
+<span class="cstat-no" title="statement not covered" >  if (value &lt;= 62.5) <span class="cstat-no" title="statement not covered" >return "Neutral";</span></span>
+<span class="cstat-no" title="statement not covered" >  if (value &lt;= 87.5) <span class="cstat-no" title="statement not covered" >return "Rather Agree";</span></span>
+<span class="cstat-no" title="statement not covered" >  return "Strongly Agree";</span>
+}
+&nbsp;</pre></td></tr></table></pre>
+
+                <div class='push'></div><!-- for sticky footer -->
+            </div><!-- /wrapper -->
+            <div class='footer quiet pad2 space-top1 center small'>
+                Code coverage generated by
+                <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
+                at 2026-01-26T16:39:01.834Z
+            </div>
+        <script src="../../prettify.js"></script>
+        <script>
+            window.onload = function () {
+                prettyPrint();
+            };
+        </script>
+        <script src="../../sorter.js"></script>
+        <script src="../../block-navigation.js"></script>
+    </body>
+</html>
+    
