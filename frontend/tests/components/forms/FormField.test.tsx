@@ -63,6 +63,88 @@ describe('FormField', () => {
   })
 })
 
+describe('FormField - aria-describedby', () => {
+  it('sets aria-describedby to description id when only description is present', () => {
+    render(
+      <FormField
+        label="Email"
+        name="email"
+        description="Enter your email"
+      />
+    )
+
+    const input = screen.getByLabelText('Email')
+    const describedBy = input.getAttribute('aria-describedby')
+    expect(describedBy).toContain('description')
+  })
+
+  it('sets aria-describedby to error id when only error is present', () => {
+    render(
+      <FormField
+        label="Email"
+        name="email"
+        error={{ type: 'required', message: 'Required' }}
+      />
+    )
+
+    const input = screen.getByLabelText('Email')
+    const describedBy = input.getAttribute('aria-describedby')
+    expect(describedBy).toContain('error')
+  })
+
+  it('sets aria-describedby to error id when both description and error are present', () => {
+    render(
+      <FormField
+        label="Email"
+        name="email"
+        description="Enter your email"
+        error={{ type: 'required', message: 'Required' }}
+      />
+    )
+
+    const input = screen.getByLabelText('Email')
+    const describedBy = input.getAttribute('aria-describedby')
+    expect(describedBy).toContain('error')
+  })
+
+  it('uses id prop for field identification when provided', () => {
+    render(
+      <FormField
+        label="Email"
+        id="custom-email-id"
+        name="email"
+      />
+    )
+
+    const input = screen.getByLabelText('Email')
+    expect(input).toHaveAttribute('id', 'custom-email-id')
+  })
+
+  it('falls back to name for field identification when id not provided', () => {
+    render(
+      <FormField
+        label="Email"
+        name="email-field"
+      />
+    )
+
+    const input = screen.getByLabelText('Email')
+    expect(input).toHaveAttribute('id', 'email-field')
+  })
+
+  it('generates id when neither id nor name provided', () => {
+    render(
+      <FormField
+        label="Email"
+      />
+    )
+
+    const input = screen.getByLabelText('Email')
+    expect(input).toHaveAttribute('id')
+    expect(input.id).toBeTruthy()
+  })
+})
+
 describe('FormTextarea', () => {
   it('renders textarea with label', () => {
     render(<FormTextarea label="Description" name="description" />)
@@ -80,5 +162,31 @@ describe('FormTextarea', () => {
     )
 
     expect(screen.getByText('Description is required')).toBeInTheDocument()
+  })
+
+  it('sets aria-describedby for description', () => {
+    render(
+      <FormTextarea
+        label="Description"
+        name="description"
+        description="Write a detailed description"
+      />
+    )
+
+    const textarea = screen.getByLabelText('Description')
+    const describedBy = textarea.getAttribute('aria-describedby')
+    expect(describedBy).toContain('description')
+  })
+
+  it('generates id when neither id nor name provided', () => {
+    render(
+      <FormTextarea
+        label="Description"
+      />
+    )
+
+    const textarea = screen.getByLabelText('Description')
+    expect(textarea).toHaveAttribute('id')
+    expect(textarea.id).toBeTruthy()
   })
 })
