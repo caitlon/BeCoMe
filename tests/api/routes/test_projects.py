@@ -1,5 +1,8 @@
 """Tests for project management endpoints."""
 
+from unittest.mock import patch
+
+from api.services.project_membership_service import ProjectMembershipService
 from tests.api.conftest import auth_header, register_and_login
 
 
@@ -212,6 +215,25 @@ class TestGetProject:
 
         # THEN
         assert response.status_code == 403
+
+    def test_get_project_role_not_found(self, client):
+        """404 returned when role lookup fails (race condition edge case)."""
+        # GIVEN
+        token = register_and_login(client)
+        create_resp = client.post(
+            "/api/v1/projects",
+            json={"name": "Test Project"},
+            headers=auth_header(token),
+        )
+        project_id = create_resp.json()["id"]
+
+        # WHEN - mock get_user_role_in_project to return None (simulates race condition)
+        with patch.object(ProjectMembershipService, "get_user_role_in_project", return_value=None):
+            response = client.get(f"/api/v1/projects/{project_id}", headers=auth_header(token))
+
+        # THEN
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Membership not found for this project."
 
 
 class TestUpdateProject:
