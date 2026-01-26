@@ -61,7 +61,6 @@ describe('ProtectedRoute', () => {
       refreshUser: vi.fn(),
     })
 
-    let currentLocation = ''
     render(
       <MemoryRouter initialEntries={['/protected']}>
         <Routes>
