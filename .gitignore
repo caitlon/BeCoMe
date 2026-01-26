@@ -42,6 +42,7 @@ supplementary/
 .mcp.json
 CLAUDE.md
 .claude
+.github/ISSUE_TEMPLATE
 
 # Generated visualizations
 examples/visualizations/output/
