@@ -99,10 +99,15 @@ def get_project(
     :return: Project details with user's role
     """
     role = membership_service.get_user_role_in_project(project.id, current_user.id)
+    if role is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Membership not found for this project.",
+        )
     return ProjectWithRoleResponse.from_model_with_role(
         project,
         project_service.get_member_count(project.id),
-        role.value if role else "expert",
+        role.value,
     )
 
 
