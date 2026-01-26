@@ -68,10 +68,7 @@ class OpinionService(BaseService):
             existing.lower_bound = lower_bound
             existing.peak = peak
             existing.upper_bound = upper_bound
-            self._session.add(existing)
-            self._session.commit()
-            self._session.refresh(existing)
-            return UpsertResult(opinion=existing, is_new=False)
+            return UpsertResult(opinion=self._save_and_refresh(existing), is_new=False)
 
         opinion = ExpertOpinion(
             project_id=project_id,
@@ -81,10 +78,7 @@ class OpinionService(BaseService):
             peak=peak,
             upper_bound=upper_bound,
         )
-        self._session.add(opinion)
-        self._session.commit()
-        self._session.refresh(opinion)
-        return UpsertResult(opinion=opinion, is_new=True)
+        return UpsertResult(opinion=self._save_and_refresh(opinion), is_new=True)
 
     def delete_opinion(self, project_id: UUID, user_id: UUID) -> None:
         """Delete user's opinion for a project.
@@ -97,8 +91,7 @@ class OpinionService(BaseService):
         if not opinion:
             raise OpinionNotFoundError("Opinion not found")
 
-        self._session.delete(opinion)
-        self._session.commit()
+        self._delete_and_commit(opinion)
 
     def count_opinions(self, project_id: UUID) -> int:
         """Count opinions for a project.

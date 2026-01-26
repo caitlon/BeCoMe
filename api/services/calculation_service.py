@@ -6,6 +6,7 @@ from sqlmodel import Session, select
 
 from api.db.models import CalculationResult, ExpertOpinion, Project
 from api.services.base import BaseService
+from api.services.mappers import BeCoMeResultMapper
 from api.services.protocols import CalculatorProtocol, LikertInterpreterProtocol
 from src.calculators.become_calculator import BeCoMeCalculator
 from src.interpreters.likert_interpreter import LikertDecisionInterpreter
@@ -28,8 +29,8 @@ class CalculationService(BaseService):
         """Initialize with database session and optional dependencies.
 
         :param session: SQLModel session for database operations
-        :param calculator: Calculator implementing CalculatorProtocol (default: BeCoMeCalculator)
-        :param likert_interpreter: Interpreter implementing LikertInterpreterProtocol (default: LikertDecisionInterpreter)
+        :param calculator: Calculator implementing CalculatorProtocol
+        :param likert_interpreter: Interpreter implementing LikertInterpreterProtocol
         :param likert_scale_min: Minimum value for Likert scale (default: 0.0)
         :param likert_scale_max: Maximum value for Likert scale (default: 100.0)
         """
@@ -114,52 +115,20 @@ class CalculationService(BaseService):
         likert_value: int | None,
         likert_decision: str | None,
     ) -> CalculationResult:
-        """Save or update calculation result."""
+        """Save or update calculation result using mapper."""
         existing = self.get_result(project_id)
 
         if existing:
-            existing.best_compromise_lower = result.best_compromise.lower_bound
-            existing.best_compromise_peak = result.best_compromise.peak
-            existing.best_compromise_upper = result.best_compromise.upper_bound
-            existing.arithmetic_mean_lower = result.arithmetic_mean.lower_bound
-            existing.arithmetic_mean_peak = result.arithmetic_mean.peak
-            existing.arithmetic_mean_upper = result.arithmetic_mean.upper_bound
-            existing.median_lower = result.median.lower_bound
-            existing.median_peak = result.median.peak
-            existing.median_upper = result.median.upper_bound
-            existing.max_error = result.max_error
-            existing.num_experts = result.num_experts
-            existing.likert_value = likert_value
-            existing.likert_decision = likert_decision
-            self._session.add(existing)
-            self._session.commit()
-            self._session.refresh(existing)
-            return existing
+            BeCoMeResultMapper.update_db_model(existing, result, likert_value, likert_decision)
+            return self._save_and_refresh(existing)
 
-        db_result = CalculationResult(
-            project_id=project_id,
-            best_compromise_lower=result.best_compromise.lower_bound,
-            best_compromise_peak=result.best_compromise.peak,
-            best_compromise_upper=result.best_compromise.upper_bound,
-            arithmetic_mean_lower=result.arithmetic_mean.lower_bound,
-            arithmetic_mean_peak=result.arithmetic_mean.peak,
-            arithmetic_mean_upper=result.arithmetic_mean.upper_bound,
-            median_lower=result.median.lower_bound,
-            median_peak=result.median.peak,
-            median_upper=result.median.upper_bound,
-            max_error=result.max_error,
-            num_experts=result.num_experts,
-            likert_value=likert_value,
-            likert_decision=likert_decision,
+        db_result = BeCoMeResultMapper.to_db_model(
+            project_id, result, likert_value, likert_decision
         )
-        self._session.add(db_result)
-        self._session.commit()
-        self._session.refresh(db_result)
-        return db_result
+        return self._save_and_refresh(db_result)
 
     def _delete_result(self, project_id: UUID) -> None:
         """Delete calculation result if exists."""
         existing = self.get_result(project_id)
         if existing:
-            self._session.delete(existing)
-            self._session.commit()
+            self._delete_and_commit(existing)

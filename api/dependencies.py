@@ -19,6 +19,8 @@ from api.db.session import get_session
 from api.services.calculation_service import CalculationService
 from api.services.invitation_service import InvitationService
 from api.services.opinion_service import OpinionService
+from api.services.project_membership_service import ProjectMembershipService
+from api.services.project_query_service import ProjectQueryService
 from api.services.project_service import ProjectService
 from api.services.storage.exceptions import StorageConfigurationError
 from api.services.storage.supabase_storage_service import SupabaseStorageService
@@ -50,6 +52,20 @@ def get_user_service(session: Annotated[Session, Depends(get_session)]) -> UserS
 def get_project_service(session: Annotated[Session, Depends(get_session)]) -> ProjectService:
     """Create ProjectService instance."""
     return ProjectService(session)
+
+
+def get_project_membership_service(
+    session: Annotated[Session, Depends(get_session)],
+) -> ProjectMembershipService:
+    """Create ProjectMembershipService instance."""
+    return ProjectMembershipService(session)
+
+
+def get_project_query_service(
+    session: Annotated[Session, Depends(get_session)],
+) -> ProjectQueryService:
+    """Create ProjectQueryService instance."""
+    return ProjectQueryService(session)
 
 
 def get_opinion_service(session: Annotated[Session, Depends(get_session)]) -> OpinionService:
@@ -119,24 +135,28 @@ class RequireProjectAccess:
         self,
         project_id: UUID,
         current_user: CurrentUser,
-        service: Annotated[ProjectService, Depends(get_project_service)],
+        project_service: Annotated[ProjectService, Depends(get_project_service)],
+        membership_service: Annotated[
+            ProjectMembershipService, Depends(get_project_membership_service)
+        ],
     ) -> Project:
         """Verify access level and return project.
 
         :param project_id: Project UUID from path
         :param current_user: Authenticated user
-        :param service: Project service
+        :param project_service: Project service for fetching project
+        :param membership_service: Membership service for access checks
         :return: Project if user has required access
         :raises HTTPException: 404 if not found, 403 if insufficient access
         """
-        project = service.get_project(project_id)
+        project = project_service.get_project(project_id)
         if not project:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Project not found",
             )
 
-        has_access = self._check_access(service, project_id, current_user.id)
+        has_access = self._check_access(membership_service, project_id, current_user.id)
         if not has_access:
             detail = self._get_error_detail()
             raise HTTPException(
@@ -145,10 +165,12 @@ class RequireProjectAccess:
             )
         return project
 
-    def _check_access(self, service: ProjectService, project_id: UUID, user_id: UUID) -> bool:
+    def _check_access(
+        self, service: ProjectMembershipService, project_id: UUID, user_id: UUID
+    ) -> bool:
         """Check if user has required access level.
 
-        :param service: Project service
+        :param service: Membership service
         :param project_id: Project ID
         :param user_id: User ID
         :return: True if user has required access
