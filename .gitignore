@@ -38,7 +38,7 @@ docker/.env
 
 # Thesis workspace
 supplementary/
-
+scripts/
 .mcp.json
 CLAUDE.md
 .claude
