@@ -20,6 +20,7 @@ def main() -> None:
     base_dir = Path(__file__).parent
     languages = ["cs", "en"]
     diagrams = ["class-diagram", "sequence-diagram", "activity-diagram"]
+    failed = False
 
     for lang in languages:
         print(f"\n[{lang.upper()}] Generating diagrams...")
@@ -44,8 +45,11 @@ def main() -> None:
                 generate_diagram(puml_file, png_file)
             except Exception as e:
                 print(f"  ✗ {name}: {e}", file=sys.stderr)
+                failed = True
 
     print("\nDone.")
+    if failed:
+        sys.exit(1)
 
 
 if __name__ == "__main__":
