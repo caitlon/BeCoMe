@@ -1,0 +1,124 @@
+@startuml BeCoMe-Activity-Diagram
+
+' Style configuration
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontSize 12
+skinparam activityBorderColor #333333
+skinparam activityBackgroundColor #F0F0F0
+
+' Title
+title Algoritmus BeCoMe - Diagram aktivit
+
+start
+
+:Přijmout seznam názorů expertů;
+note right
+    Vstup: List[ExpertOpinion]
+    Každý názor obsahuje:
+    - expert_id
+    - FuzzyTriangleNumber(lower, peak, upper)
+end note
+
+' Validation
+if (je seznam názorů prázdný?) then (ano)
+    :Vyvolat ValueError;
+    stop
+else (ne)
+    :M = počet expertů;
+endif
+
+' === STEP 1: Arithmetic Mean ===
+partition "**Krok 1: Vypočítat aritmetický průměr (Γ)**" #FFDDDD {
+    :Inicializovat součty:\n- sum_lower = 0\n- sum_peak = 0\n- sum_upper = 0;
+
+    repeat :Pro každý názor v opinions;
+        :sum_lower += opinion.lower_bound;
+        :sum_peak += opinion.peak;
+        :sum_upper += opinion.upper_bound;
+    repeat while (další názory?) is (ano)
+    ->ne;
+
+    :Vypočítat průměry:\n- α = sum_lower / M\n- γ = sum_peak / M\n- β = sum_upper / M;
+
+    :Vytvořit Gamma (Γ):\nFuzzyTriangleNumber(α, γ, β);
+}
+
+' === STEP 2: Median ===
+partition "**Krok 2: Vypočítat medián (Ω)**" #DDFFDD {
+    ' Sort by centroid
+    :Vypočítat těžiště pro každý názor:\nGx = (lower + peak + upper) / 3;
+
+    :Seřadit názory podle těžiště\n(vzestupně);
+
+    ' Check if odd or even
+    if (M je lichý?\nM = 2n + 1) then (ano)
+        :Najít střední index:\nmiddle_index = M // 2;
+
+        :Získat střední názor:\nopinion_middle = sorted_opinions[middle_index];
+
+        :Extrahovat komponenty:\n- ρ = opinion_middle.lower_bound\n- ω = opinion_middle.peak\n- σ = opinion_middle.upper_bound;
+
+    else (ne, M je sudý\nM = 2n)
+        :Najít dva střední indexy:\n- left_index = n - 1\n- right_index = n;
+
+        :Získat dva střední názory:\n- opinion_left = sorted_opinions[left_index]\n- opinion_right = sorted_opinions[right_index];
+
+        :Zprůměrovat dva názory:\n- ρ = (left.lower + right.lower) / 2\n- ω = (left.peak + right.peak) / 2\n- σ = (left.upper + right.upper) / 2;
+    endif
+
+    :Vytvořit Omega (Ω):\nFuzzyTriangleNumber(ρ, ω, σ);
+}
+
+' === STEP 3: Best Compromise ===
+partition "**Krok 3: Vypočítat nejlepší kompromis (ΓΩMean)**" #DDDDFF {
+    :Vypočítat kompromis:\n- π = (α + ρ) / 2\n- φ = (γ + ω) / 2\n- ξ = (β + σ) / 2;
+
+    :Vytvořit ΓΩMean:\nFuzzyTriangleNumber(π, φ, ξ);
+}
+
+' === STEP 4: Maximum Error ===
+partition "**Krok 4: Vypočítat maximální chybu (Δmax)**" #FFFFDD {
+    :Vypočítat těžiště:\n- mean_centroid = Γ.get_centroid()\n- median_centroid = Ω.get_centroid();
+
+    :Vypočítat max. chybu:\nΔmax = |mean_centroid - median_centroid| / 2;
+
+    note right
+        Δmax je ukazatel přesnosti.
+        Menší hodnoty indikují
+        vyšší shodu mezi experty.
+    end note
+}
+
+' === STEP 5: Create Result ===
+:Vytvořit BeCoMeResult:\n- best_compromise = ΓΩMean\n- arithmetic_mean = Γ\n- median = Ω\n- max_error = Δmax\n- num_experts = M\n- is_even = (M % 2 == 0);
+
+:Vrátit BeCoMeResult;
+
+stop
+
+' Legend
+legend bottom right
+    **Klíčové vzorce:**
+
+    **Aritmetický průměr (Γ):**
+    α = (1/M) × Σ(Aₖ)
+    γ = (1/M) × Σ(Cₖ)
+    β = (1/M) × Σ(Bₖ)
+
+    **Nejlepší kompromis (ΓΩMean):**
+    π = (α + ρ) / 2
+    φ = (γ + ω) / 2
+    ξ = (β + σ) / 2
+
+    **Maximální chyba:**
+    Δmax = |těžiště(Γ) - těžiště(Ω)| / 2
+
+    **Barvy:**
+    Červená: Aritmetický průměr
+    Zelená: Medián
+    Modrá: Nejlepší kompromis
+    Žlutá: Výpočet chyby
+endlegend
+
+@enduml
