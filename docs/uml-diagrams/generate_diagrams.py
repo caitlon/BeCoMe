@@ -10,7 +10,7 @@ import plantuml  # type: ignore[import-untyped]
 def generate_diagram(puml_file: Path, output_file: Path) -> None:
     """Generate PNG from PlantUML source."""
     print(f"  Generating {output_file.name}...")
-    server = plantuml.PlantUML(url="http://www.plantuml.com/plantuml/img/")
+    server = plantuml.PlantUML(url="https://www.plantuml.com/plantuml/img/")
     server.processes_file(filename=str(puml_file), outfile=str(output_file))
     print(f"  ✓ {output_file.name}")
 
