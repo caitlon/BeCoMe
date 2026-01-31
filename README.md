@@ -374,7 +374,7 @@ Documentation is available in the `docs/` directory:
 | Document | Description |
 |----------|-------------|
 | [Method Description](docs/method-description.md) | Mathematical foundation with formulas and worked examples |
-| [UML Diagrams](docs/uml-diagrams/README.md) | Visual architecture (class, sequence, activity diagrams) |
+| [UML Diagrams](docs/uml-diagrams/en/README.md) | Visual architecture (class, sequence, activity diagrams) |
 | [Quality Report](docs/quality-report.md) | Code quality metrics and test coverage details |
 | [Source Code](src/README.md) | API documentation and module descriptions |
 
@@ -384,9 +384,9 @@ The implementation follows object-oriented design principles:
 
 ### Class Diagram
 
-![Class Diagram](docs/uml-diagrams/diagrams/png/class-diagram.png)
+![Class Diagram](docs/uml-diagrams/en/diagrams/png/class-diagram.png)
 
-*Complete architecture with sequence and activity diagrams available in [UML Documentation](docs/uml-diagrams/README.md)*
+*Complete architecture with sequence and activity diagrams available in [UML Documentation](docs/uml-diagrams/en/README.md)*
 
 ### Design Patterns
 

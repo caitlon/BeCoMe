@@ -1,0 +1,157 @@
+@startuml BeCoMe-Sequence-Diagram
+
+' Style configuration
+skinparam sequenceMessageAlign center
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontSize 12
+
+' Title
+title Výpočet BeCoMe - Sekvenční diagram
+
+' Actors and participants
+actor Uživatel
+participant "BeCoMeCalculator" as Calculator
+participant "ExpertOpinion" as Opinion
+participant "FuzzyTriangleNumber" as Fuzzy
+participant "BeCoMeResult" as Result
+
+' Main flow
+Uživatel -> Calculator: calculate_compromise(opinions)
+activate Calculator
+
+' Step 1: Calculate Arithmetic Mean
+Calculator -> Calculator: calculate_arithmetic_mean(opinions)
+activate Calculator #FFBBBB
+
+loop pro každý názor v opinions
+    Calculator -> Opinion: získat opinion.lower_bound
+    activate Opinion
+    Opinion -> Fuzzy: lower_bound
+    activate Fuzzy
+    return hodnota
+    return hodnota
+
+    Calculator -> Opinion: získat opinion.peak
+    activate Opinion
+    Opinion -> Fuzzy: peak
+    activate Fuzzy
+    return hodnota
+    return hodnota
+
+    Calculator -> Opinion: získat opinion.upper_bound
+    activate Opinion
+    Opinion -> Fuzzy: upper_bound
+    activate Fuzzy
+    return hodnota
+    return hodnota
+end
+
+Calculator -> Calculator: α = sum(lower_bounds) / M\nγ = sum(peaks) / M\nβ = sum(upper_bounds) / M
+
+Calculator -> Fuzzy: new FuzzyTriangleNumber(α, γ, β)
+activate Fuzzy
+return aritmetický_průměr (Γ)
+
+deactivate Calculator
+
+' Step 2: Calculate Median
+Calculator -> Calculator: calculate_median(opinions)
+activate Calculator #BBFFBB
+
+Calculator -> Calculator: _sort_by_centroid(opinions)
+activate Calculator #DDFFDD
+
+loop pro každý názor v opinions
+    Calculator -> Opinion: get_centroid()
+    activate Opinion
+    Opinion -> Fuzzy: get_centroid()
+    activate Fuzzy
+    Fuzzy -> Fuzzy: (lower + peak + upper) / 3
+    return těžiště
+    return těžiště
+end
+
+Calculator -> Calculator: sorted_opinions = sorted(opinions)
+deactivate Calculator
+
+alt M je lichý (M = 2n + 1)
+    Calculator -> Calculator: middle_index = M // 2
+    Calculator -> Opinion: získat sorted_opinions[middle_index]
+    activate Opinion
+    Opinion -> Fuzzy: získat názor
+    activate Fuzzy
+    return fuzzy_číslo
+    return fuzzy_číslo
+
+    Calculator -> Fuzzy: new FuzzyTriangleNumber(ρ, ω, σ)
+    activate Fuzzy
+    return medián (Ω)
+
+else M je sudý (M = 2n)
+    Calculator -> Calculator: left_index = n - 1\nright_index = n
+
+    Calculator -> Opinion: získat sorted_opinions[left_index]
+    activate Opinion
+    Opinion -> Fuzzy: získat názor
+    activate Fuzzy
+    return levé_fuzzy
+    return levé_fuzzy
+
+    Calculator -> Opinion: získat sorted_opinions[right_index]
+    activate Opinion
+    Opinion -> Fuzzy: získat názor
+    activate Fuzzy
+    return pravé_fuzzy
+    return pravé_fuzzy
+
+    Calculator -> Calculator: ρ = (left.lower + right.lower) / 2\nω = (left.peak + right.peak) / 2\nσ = (left.upper + right.upper) / 2
+
+    Calculator -> Fuzzy: new FuzzyTriangleNumber(ρ, ω, σ)
+    activate Fuzzy
+    return medián (Ω)
+end
+
+deactivate Calculator
+
+' Step 3: Calculate Best Compromise
+Calculator -> Calculator: π = (α + ρ) / 2\nφ = (γ + ω) / 2\nξ = (β + σ) / 2
+
+Calculator -> Fuzzy: new FuzzyTriangleNumber(π, φ, ξ)
+activate Fuzzy
+return nejlepší_kompromis (ΓΩMean)
+
+' Step 4: Calculate Maximum Error
+Calculator -> Fuzzy: arithmetic_mean.get_centroid()
+activate Fuzzy
+return těžiště_průměru
+
+Calculator -> Fuzzy: median.get_centroid()
+activate Fuzzy
+return těžiště_mediánu
+
+Calculator -> Calculator: max_error = |těžiště_průměru - těžiště_mediánu| / 2
+
+' Step 5: Create Result
+Calculator -> Result: new BeCoMeResult(\n    best_compromise,\n    arithmetic_mean,\n    median,\n    max_error,\n    num_experts,\n    is_even\n)
+activate Result
+return výsledek
+
+Calculator --> Uživatel: vrátit BeCoMeResult
+deactivate Calculator
+
+' Legend
+legend bottom right
+    **Kroky:**
+    1. Vypočítat aritmetický průměr (Γ)
+    2. Vypočítat medián (Ω)
+    3. Vypočítat nejlepší kompromis (ΓΩMean)
+    4. Vypočítat maximální chybu (Δmax)
+    5. Vytvořit objekt výsledku
+
+    **Barvy:**
+    Červená: Výpočet aritmetického průměru
+    Zelená: Výpočet mediánu
+endlegend
+
+@enduml
