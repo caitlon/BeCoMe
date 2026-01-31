@@ -43,8 +43,8 @@ def display_case_header(
     :param metadata: Metadata dictionary with case info
     """
     print_header(f"{case_name} - PODROBNÁ ANALÝZA")
-    print(f"\nPřípad: {metadata['case']}")
-    print(f"Popis: {metadata['description']}")
+    print(f"\nPřípad: {metadata.get('case', 'N/A')}")
+    print(f"Popis: {metadata.get('description', 'N/A')}")
     parity = "sudý" if len(opinions) % 2 == 0 else "lichý"
     print(f"Počet expertů: {len(opinions)} ({parity})")
 

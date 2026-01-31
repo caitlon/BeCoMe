@@ -43,8 +43,8 @@ def display_case_header(
     :param metadata: Metadata dictionary with case info
     """
     print_header(f"{case_name} - DETAILED ANALYSIS")
-    print(f"\nCase: {metadata['case']}")
-    print(f"Description: {metadata['description']}")
+    print(f"\nCase: {metadata.get('case', 'N/A')}")
+    print(f"Description: {metadata.get('description', 'N/A')}")
     parity = "even" if len(opinions) % 2 == 0 else "odd"
     print(f"Number of experts: {len(opinions)} ({parity})")
 
