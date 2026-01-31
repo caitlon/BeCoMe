@@ -1,0 +1,29 @@
+CASE: Pendlers
+DESCRIPTION: Experts express their standpoint in LIKERT scale (0-25-50-75-100) regarding the statement: I agree that cross-border travel should be allowed for those who regularly travel from one country to another to work. Likert values: 0=Strongly disagree, 25=Rather disagree, 50=Neutral, 75=Rather agree, 100=Strongly agree
+EXPERTS: 22
+
+# Format: ExpertID | Lower | Peak | Upper
+# Note: Likert scale values are crisp (lower = peak = upper)
+Chairman | 75 | 75 | 75
+Deputy chairman | 25 | 25 | 25
+Deputy Minister of MI | 0 | 0 | 0
+Deputy Minister of MD | 0 | 0 | 0
+Deputy Minister of MFA | 100 | 100 | 100
+Deputy Minister of MF | 50 | 50 | 50
+Deputy Minister of MH | 25 | 25 | 25
+Deputy Minister of MIT | 75 | 75 | 75
+Deputy Minister of MT | 25 | 25 | 25
+Deputy Minister of MEYS | 25 | 25 | 25
+Deputy Minister of MA | 0 | 0 | 0
+Deputy Minister of MoLSA | 75 | 75 | 75
+Deputy Minister of MC | 50 | 50 | 50
+Deputy Minister of MJ | 75 | 75 | 75
+Chairman of the SSHR | 25 | 25 | 25
+Police President | 50 | 50 | 50
+Director of Fire Rescue Service | 25 | 25 | 25
+Chief of General Staff of the ACR | 25 | 25 | 25
+Director of NÚKIB | 25 | 25 | 25
+Chief hygienist | 0 | 0 | 0
+Director of SZU | 25 | 25 | 25
+Director of the Office of the Government | 25 | 25 | 25
+

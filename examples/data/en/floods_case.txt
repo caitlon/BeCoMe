@@ -1,0 +1,19 @@
+CASE: Floods
+DESCRIPTION: Real case study about flood prevention. Experts express their standpoint regarding the question: What percentage reduction of arable land in flood areas is recommended to prevent floods?
+EXPERTS: 13
+
+# Format: ExpertID | Lower | Peak | Upper
+Hydrologist 1 | 37 | 42 | 47
+Hydrologist 2 | 42 | 50 | 50
+Nature protection | 5 | 7 | 9
+Risk management | 37 | 40 | 48
+Land use | 6 | 8 | 11
+Civil service | 5 | 8 | 9
+Municipality 1 | 33 | 38 | 43
+Municipality 2 | 5 | 8 | 8
+Economist | 10 | 14 | 20
+Rescue coordinator | 40 | 45 | 50
+Land owner 1 | 2 | 3 | 4
+Land owner 2 | 0 | 0 | 2
+Land owner 3 | 0 | 2 | 3
+

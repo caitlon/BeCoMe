@@ -1,0 +1,76 @@
+"""
+Detailed BeCoMe analysis of Floods case study.
+
+Demonstrates step-by-step calculation for 13 expert interval estimates
+of flood prevention arable land reduction percentage.
+"""
+
+from pathlib import Path
+
+from examples.en.utils.analysis import calculate_agreement_level
+from examples.en.utils.display import (
+    display_step_1_arithmetic_mean,
+    display_step_2_median,
+    display_step_3_best_compromise,
+    display_step_4_max_error,
+)
+from examples.en.utils.formatting import display_case_header, print_header, print_section
+from examples.utils.data_loading import load_data_from_txt
+from src.calculators.base_calculator import BaseAggregationCalculator
+from src.calculators.become_calculator import BeCoMeCalculator
+
+
+def main(calculator: BaseAggregationCalculator | None = None) -> None:
+    """
+    Run detailed BeCoMe analysis for Floods case study.
+
+    :param calculator: Aggregation calculator instance.
+                       Defaults to BeCoMeCalculator if not provided.
+    """
+    if calculator is None:
+        calculator = BeCoMeCalculator()
+
+    data_file = str(Path(__file__).parent.parent / "data" / "en" / "floods_case.txt")
+    opinions, metadata = load_data_from_txt(data_file)
+
+    display_case_header("FLOODS CASE", opinions, metadata)
+
+    mean, mean_centroid = display_step_1_arithmetic_mean(opinions, calculator)
+
+    median, median_centroid = display_step_2_median(opinions, calculator)
+
+    best_compromise, best_compromise_centroid = display_step_3_best_compromise(mean, median)
+
+    max_error = display_step_4_max_error(mean_centroid, median_centroid)
+
+    print_section("FINAL RESULT")
+    result = calculator.calculate_compromise(opinions)
+    print(f"\n{result}")
+
+    print_header("INTERPRETATION")
+
+    print(
+        f"\nBest compromise estimate: {best_compromise_centroid:.2f}% reduction "
+        "of arable land (centroid)"
+    )
+    print(
+        f"Fuzzy number: ({best_compromise.lower_bound:.2f}, "
+        f"{best_compromise.peak:.2f}, {best_compromise.upper_bound:.2f})"
+    )
+    print(f"Range: [{best_compromise.lower_bound:.2f}%, {best_compromise.upper_bound:.2f}%]")
+    print(f"Precision indicator (Δmax): {max_error:.2f}")
+
+    agreement = calculate_agreement_level(max_error, thresholds=(1.0, 3.0))
+    print(f"Expert agreement: {agreement.upper()}")
+
+    print("\nNOTE: This case shows highly polarized opinions:")
+    print("  - Land owners prefer minimal reduction (0-4%)")
+    print("  - Hydrologists/rescue services recommend high reduction (37-50%)")
+    print(
+        f"  - The BeCoMe method provides a balanced compromise at {best_compromise_centroid:.2f}%"
+    )
+    print(f"  - High max error ({max_error:.2f}) indicates significant disagreement")
+
+
+if __name__ == "__main__":
+    main()

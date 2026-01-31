@@ -1,0 +1,18 @@
+CASE: Povodně
+DESCRIPTION: Reálná případová studie o prevenci povodní. Experti vyjadřují stanovisko k otázce: Jaké procentuální snížení orné půdy v záplavových oblastech je doporučeno pro prevenci povodní?
+EXPERTS: 13
+
+# Format: ExpertID | Lower | Peak | Upper
+Hydrolog 1 | 37 | 42 | 47
+Hydrolog 2 | 42 | 50 | 50
+Ochrana přírody | 5 | 7 | 9
+Krizové řízení | 37 | 40 | 48
+Územní plánování | 6 | 8 | 11
+Státní správa | 5 | 8 | 9
+Obec 1 | 33 | 38 | 43
+Obec 2 | 5 | 8 | 8
+Ekonom | 10 | 14 | 20
+Koordinátor záchranných složek | 40 | 45 | 50
+Vlastník půdy 1 | 2 | 3 | 4
+Vlastník půdy 2 | 0 | 0 | 2
+Vlastník půdy 3 | 0 | 2 | 3

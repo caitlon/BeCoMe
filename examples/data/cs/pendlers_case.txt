@@ -1,0 +1,28 @@
+CASE: Pendleři
+DESCRIPTION: Experti vyjadřují stanovisko na Likertově škále (0-25-50-75-100) k tvrzení: Souhlasím s tím, aby přeshraniční cestování bylo umožněno těm, kteří pravidelně dojíždějí z jedné země do druhé za prací. Hodnoty: 0=Rozhodně nesouhlasím, 25=Spíše nesouhlasím, 50=Neutrální, 75=Spíše souhlasím, 100=Rozhodně souhlasím
+EXPERTS: 22
+
+# Format: ExpertID | Lower | Peak | Upper
+# Note: Likert scale values are crisp (lower = peak = upper)
+Předseda | 75 | 75 | 75
+Místopředseda | 25 | 25 | 25
+Náměstek ministra vnitra | 0 | 0 | 0
+Náměstek ministra obrany | 0 | 0 | 0
+Náměstek ministra zahraničí | 100 | 100 | 100
+Náměstek ministra financí | 50 | 50 | 50
+Náměstek ministra zdravotnictví | 25 | 25 | 25
+Náměstek ministra průmyslu | 75 | 75 | 75
+Náměstek ministra dopravy | 25 | 25 | 25
+Náměstek ministra školství | 25 | 25 | 25
+Náměstek ministra zemědělství | 0 | 0 | 0
+Náměstek ministra práce | 75 | 75 | 75
+Náměstek ministra kultury | 50 | 50 | 50
+Náměstek ministra spravedlnosti | 75 | 75 | 75
+Předseda SSHR | 25 | 25 | 25
+Policejní prezident | 50 | 50 | 50
+Ředitel HZS | 25 | 25 | 25
+Náčelník generálního štábu AČR | 25 | 25 | 25
+Ředitel NÚKIB | 25 | 25 | 25
+Hlavní hygienik | 0 | 0 | 0
+Ředitel SZÚ | 25 | 25 | 25
+Ředitel Úřadu vlády | 25 | 25 | 25
