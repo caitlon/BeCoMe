@@ -45,7 +45,7 @@ CLAUDE.md
 .github/ISSUE_TEMPLATE
 
 # Generated visualizations
-examples/visualizations/output/
+examples/visualizations/*/output/
 
 # Azure deployment logs
 logs/
