@@ -11,6 +11,7 @@ def print_header(title: str, width: int = 60) -> None:
     :param title: Title text to display
     :param width: Total width of the header in characters
     """
+    width = max(width, len(title))
     print("\n" + "=" * width)
     print(title.center(width))
     print("=" * width)
@@ -23,8 +24,10 @@ def print_section(title: str, width: int = 60) -> None:
     :param title: Section title
     :param width: Total width of the divider in characters
     """
-    padding: int = (width - len(title) - 2) // 2
-    print("\n" + "-" * padding + f" {title} " + "-" * padding)
+    width = max(width, len(title) + 2)
+    padding_left: int = (width - len(title) - 2) // 2
+    padding_right: int = width - len(title) - 2 - padding_left
+    print("\n" + "-" * padding_left + f" {title} " + "-" * padding_right)
 
 
 def display_case_header(
