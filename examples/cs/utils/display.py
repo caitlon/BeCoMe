@@ -112,12 +112,11 @@ def display_step_2_median(
     else:
         print("\nŘazení expertů podle těžiště...")
 
+    median = calculator.calculate_median(opinions)
     sorted_opinions = calculator.sort_by_centroid(opinions)
     m = len(sorted_opinions)
 
     display_median_calculation_details(sorted_opinions, m, is_likert)
-
-    median = calculator.calculate_median(opinions)
 
     print(f"\nMedián: Ω({median.lower_bound:.2f}, {median.peak:.2f}, {median.upper_bound:.2f})")
 
