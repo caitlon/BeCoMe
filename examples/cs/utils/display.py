@@ -20,7 +20,7 @@ def display_step_1_arithmetic_mean(
     """
     print_section("KROK 1: Aritmetický průměr (Γ)")
 
-    print("\nVzorec: α = (1/M) × Σ(Ak), γ = (1/M) × Σ(Ck), β = (1/M) × Σ(Bk)")
+    print("\nVzorec: α = (1/M) x Σ(Ak), γ = (1/M) x Σ(Ck), β = (1/M) x Σ(Bk)")
     print("Kde: α = dolní hranice, γ = vrchol, β = horní hranice")
 
     mean = calculator.calculate_arithmetic_mean(opinions)
@@ -70,15 +70,15 @@ def display_median_calculation_details(
 
         print(f"Medián = průměr {left_idx + 1}. a {right_idx + 1}. experta:")
         if is_likert:
-            print(f"  {left_idx + 1}.: {left_op.expert_id} → {int(left_op.opinion.peak)}")
-            print(f"  {right_idx + 1}.: {right_op.expert_id} → {int(right_op.opinion.peak)}")
+            print(f"  {left_idx + 1}.: {left_op.expert_id} -> {int(left_op.opinion.peak)}")
+            print(f"  {right_idx + 1}.: {right_op.expert_id} -> {int(right_op.opinion.peak)}")
         else:
             print(
-                f"  {left_idx + 1}.: {left_op.expert_id} → {left_op.opinion} "
+                f"  {left_idx + 1}.: {left_op.expert_id} -> {left_op.opinion} "
                 f"(těžiště: {left_op.opinion.centroid:.2f})"
             )
             print(
-                f"  {right_idx + 1}.: {right_op.expert_id} → {right_op.opinion} "
+                f"  {right_idx + 1}.: {right_op.expert_id} -> {right_op.opinion} "
                 f"(těžiště: {right_op.opinion.centroid:.2f})"
             )
     else:
@@ -86,10 +86,10 @@ def display_median_calculation_details(
         middle_op = sorted_opinions[middle_idx]
         print(f"Medián = střední expert (pozice {middle_idx + 1}):")
         if is_likert:
-            print(f"  {middle_op.expert_id} → {int(middle_op.opinion.peak)}")
+            print(f"  {middle_op.expert_id} -> {int(middle_op.opinion.peak)}")
         else:
             print(
-                f"  {middle_op.expert_id} → {middle_op.opinion} "
+                f"  {middle_op.expert_id} -> {middle_op.opinion} "
                 f"(těžiště: {middle_op.opinion.centroid:.2f})"
             )
 
