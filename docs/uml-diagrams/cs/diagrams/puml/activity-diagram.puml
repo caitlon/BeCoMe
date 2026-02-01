@@ -74,9 +74,9 @@ partition "**Krok 3: Vypočítat nejlepší kompromis (ΓΩMean)**" #DDDDFF {
 
 ' === STEP 4: Maximum Error ===
 partition "**Krok 4: Vypočítat maximální chybu (Δmax)**" #FFFFDD {
-    :Vypočítat těžiště:\n- mean_centroid = Γ.get_centroid()\n- median_centroid = Ω.get_centroid();
+    :Vypočítat těžiště:\n- mean_centroid = Γ.get_centroid()\n- omega_centroid = Ω.get_centroid();
 
-    :Vypočítat max. chybu:\nΔmax = |mean_centroid - median_centroid| / 2;
+    :Vypočítat max. chybu:\nΔmax = |mean_centroid - omega_centroid| / 2;
 
     note right
         Δmax je ukazatel přesnosti.

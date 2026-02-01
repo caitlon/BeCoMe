@@ -4,6 +4,7 @@ import { AlertTriangle } from "lucide-react";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -45,16 +46,18 @@ export function DeleteConfirmModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md" aria-describedby={undefined}>
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-destructive">
             <AlertTriangle className="h-5 w-5" />
             {title}
           </DialogTitle>
+          <DialogDescription className="text-muted-foreground">
+            {description}
+          </DialogDescription>
         </DialogHeader>
 
         <div className="py-4">
-          <p className="text-muted-foreground mb-4">{description}</p>
 
           {details && details.length > 0 && (
             <div className="bg-muted p-4 rounded-lg mb-4">

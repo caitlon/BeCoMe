@@ -74,9 +74,9 @@ partition "**Step 3: Calculate Best Compromise (ΓΩMean)**" #DDDDFF {
 
 ' === STEP 4: Maximum Error ===
 partition "**Step 4: Calculate Maximum Error (Δmax)**" #FFFFDD {
-    :Calculate centroids:\n- mean_centroid = Γ.get_centroid()\n- median_centroid = Ω.get_centroid();
-    
-    :Calculate max error:\nΔmax = |mean_centroid - median_centroid| / 2;
+    :Calculate centroids:\n- mean_centroid = Γ.get_centroid()\n- omega_centroid = Ω.get_centroid();
+
+    :Calculate max error:\nΔmax = |mean_centroid - omega_centroid| / 2;
     
     note right
         Δmax is the precision indicator.
