@@ -1,0 +1,57 @@
+@startuml BeCoMe-Architecture-Patterns
+
+' Style
+skinparam classAttributeIconSize 0
+skinparam classFontSize 11
+skinparam classFontStyle bold
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam packageStyle rectangle
+skinparam nodesep 40
+skinparam ranksep 40
+
+' Default top to bottom direction
+
+' ==================== STRATEGY ====================
+
+package "Strategy" {
+    together {
+        class OddMedianStrategy {
+            + calculate(sorted_opinions, median_centroid): FuzzyTriangleNumber
+        }
+
+        class EvenMedianStrategy {
+            + calculate(sorted_opinions, median_centroid): FuzzyTriangleNumber
+        }
+    }
+
+    abstract class MedianCalculationStrategy <<ABC>> {
+        + {abstract} calculate(sorted_opinions, median_centroid): FuzzyTriangleNumber
+    }
+
+    OddMedianStrategy --|> MedianCalculationStrategy
+    EvenMedianStrategy --|> MedianCalculationStrategy
+}
+
+' ==================== TEMPLATE METHOD ====================
+
+package "Template Method" {
+    abstract class BaseAggregationCalculator <<ABC>> {
+        + {abstract} calculate_compromise(opinions): BeCoMeResult
+        + {abstract} calculate_arithmetic_mean(opinions): FuzzyTriangleNumber
+        + {abstract} calculate_median(opinions): FuzzyTriangleNumber
+    }
+
+    class BeCoMeCalculator {
+        + calculate_compromise(opinions): BeCoMeResult
+        + calculate_arithmetic_mean(opinions): FuzzyTriangleNumber
+        + calculate_median(opinions): FuzzyTriangleNumber
+    }
+
+    BeCoMeCalculator --|> BaseAggregationCalculator
+}
+
+' Connection between patterns
+MedianCalculationStrategy <.down. BeCoMeCalculator : <<uses>>
+
+@enduml

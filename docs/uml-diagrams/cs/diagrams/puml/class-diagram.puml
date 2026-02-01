@@ -2,118 +2,55 @@
 
 ' Style configuration
 skinparam classAttributeIconSize 0
-skinparam classFontSize 12
+skinparam classFontSize 11
 skinparam classFontStyle bold
 skinparam backgroundColor #FFFFFF
 skinparam shadowing false
+skinparam nodesep 40
+skinparam ranksep 30
 
-' Title
-title Metoda BeCoMe - Diagram tříd
+' Layout
+top to bottom direction
 
-' FuzzyTriangleNumber class
-class FuzzyTriangleNumber {
-    ' Attributes
-    - lower_bound: float
-    - peak: float
-    - upper_bound: float
+' ==================== CORE CLASSES ====================
 
-    ' Methods
-    + __init__(lower_bound: float, peak: float, upper_bound: float)
-    + get_centroid(): float
-    + __str__(): str
-    + __repr__(): str
+class FuzzyTriangleNumber <<immutable>> {
+    - _lower_bound: float
+    - _peak: float
+    - _upper_bound: float
+    __
+    + centroid: float <<property>>
+    + {static} average(fuzzy_numbers): FuzzyTriangleNumber
 }
 
-note right of FuzzyTriangleNumber
-    Reprezentuje fuzzy trojúhelníkové číslo
-    se třemi charakteristickými hodnotami.
-
-    Omezení: lower_bound ≤ peak ≤ upper_bound
-
-    Vzorec pro těžiště:
-    Gx = (lower_bound + peak + upper_bound) / 3
-end note
-
-' ExpertOpinion class
-class ExpertOpinion {
-    ' Attributes
-    - expert_id: str
-    - opinion: FuzzyTriangleNumber
-
-    ' Methods
-    + get_centroid(): float
-    + __lt__(other: ExpertOpinion): bool
-    + __le__(other: ExpertOpinion): bool
-    + __eq__(other: object): bool
-    + __repr__(): str
+class ExpertOpinion <<immutable>> {
+    - _expert_id: str
+    - _opinion: FuzzyTriangleNumber
+    __
+    + centroid: float <<property>>
 }
 
-note right of ExpertOpinion
-    Reprezentuje názor jednoho experta.
-
-    Porovnání založené na těžišti názoru
-    umožňuje řazení pro výpočet mediánu.
-end note
-
-' BeCoMeCalculator class
 class BeCoMeCalculator {
-    ' Methods
-    + calculate_arithmetic_mean(opinions: list[ExpertOpinion]): FuzzyTriangleNumber
-    + calculate_median(opinions: list[ExpertOpinion]): FuzzyTriangleNumber
-    + calculate_compromise(opinions: list[ExpertOpinion]): BeCoMeResult
-    - _sort_by_centroid(opinions: list[ExpertOpinion]): list[ExpertOpinion]
+    + calculate_arithmetic_mean(opinions): FuzzyTriangleNumber
+    + calculate_median(opinions): FuzzyTriangleNumber
+    + calculate_compromise(opinions): BeCoMeResult
 }
 
-note left of BeCoMeCalculator
-    Hlavní kalkulátor implementující
-    metodu BeCoMe.
-
-    BeCoMe = (Gamma + Omega) / 2
-
-    Kde:
-    - Gamma (Γ): Aritmetický průměr
-    - Omega (Ω): Statistický medián
-end note
-
-' BeCoMeResult class
-class BeCoMeResult {
-    ' Attributes
-    - best_compromise: FuzzyTriangleNumber
-    - arithmetic_mean: FuzzyTriangleNumber
-    - median: FuzzyTriangleNumber
-    - max_error: float
-    - num_experts: int
-    - is_even: bool
-
-    ' Methods
-    + __str__(): str
+class BeCoMeResult <<pydantic>> {
+    + best_compromise: FuzzyTriangleNumber
+    + arithmetic_mean: FuzzyTriangleNumber
+    + median: FuzzyTriangleNumber
+    + max_error: float
+    + num_experts: int
+    __
+    + {static} from_calculations(mean, median, n): BeCoMeResult
 }
 
-note right of BeCoMeResult
-    Kompletní výsledek výpočtu BeCoMe.
+' ==================== RELATIONSHIPS ====================
 
-    Obsahuje:
-    - Nejlepší kompromis (ΓΩMean)
-    - Aritmetický průměr (Γ)
-    - Medián (Ω)
-    - Ukazatel přesnosti (Δmax)
-end note
-
-' Relationships
-ExpertOpinion *-- FuzzyTriangleNumber : obsahuje
+ExpertOpinion *--> FuzzyTriangleNumber : obsahuje
+BeCoMeResult *--> "3" FuzzyTriangleNumber : obsahuje
 BeCoMeCalculator ..> ExpertOpinion : <<používá>>
 BeCoMeCalculator ..> BeCoMeResult : <<vytváří>>
-BeCoMeResult *-- "3" FuzzyTriangleNumber : obsahuje
-
-' Legend
-legend bottom right
-    **Vztahy:**
-    ◆—— Kompozice (obsahuje)
-    ⋯⋯> Závislost (používá/vytváří)
-
-    **Symboly:**
-    + veřejná metoda
-    - privátní atribut/metoda
-endlegend
 
 @enduml
