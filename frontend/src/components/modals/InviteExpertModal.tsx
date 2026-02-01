@@ -8,6 +8,7 @@ import { Check, Info } from "lucide-react";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -91,19 +92,18 @@ export function InviteExpertModal({
   if (isSuccess) {
     return (
       <Dialog open={open} onOpenChange={handleClose}>
-        <DialogContent className="sm:max-w-md" aria-describedby={undefined}>
-          <DialogHeader>
-            <DialogTitle className="font-display text-xl font-normal">
-              {t("invite.title")}
-            </DialogTitle>
-          </DialogHeader>
-
-          <div className="py-6 text-center">
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader className="text-center">
             <div className="w-12 h-12 rounded-full bg-success/10 flex items-center justify-center mx-auto mb-4">
               <Check className="h-6 w-6 text-success" />
             </div>
-            <p className="text-lg font-medium">{t("invite.successTitle")}</p>
-          </div>
+            <DialogTitle className="font-display text-xl font-normal">
+              {t("invite.title")}
+            </DialogTitle>
+            <DialogDescription className="text-lg font-medium">
+              {t("invite.successTitle")}
+            </DialogDescription>
+          </DialogHeader>
 
           <div className="flex justify-end gap-3">
             <Button variant="outline" onClick={handleInviteAnother}>
@@ -118,17 +118,16 @@ export function InviteExpertModal({
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-md" aria-describedby={undefined}>
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="font-display text-xl font-normal">
             {t("invite.title")}
           </DialogTitle>
+          <DialogDescription className="text-sm text-muted-foreground">
+            {t("invite.inviteTo")}{" "}
+            <span className="font-medium text-foreground">{projectName}</span>
+          </DialogDescription>
         </DialogHeader>
-
-        <p className="text-sm text-muted-foreground mb-4">
-          {t("invite.inviteTo")}{" "}
-          <span className="font-medium text-foreground">{projectName}</span>
-        </p>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <FormField
