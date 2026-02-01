@@ -22,7 +22,7 @@ def display_step_1_arithmetic_mean(
 
     print_section("STEP 1: Arithmetic Mean (Gamma)")
 
-    print("\nFormula: α = (1/M) × Σ(Ak), γ = (1/M) × Σ(Ck), β = (1/M) × Σ(Bk)")
+    print("\nFormula: α = (1/M) x Σ(Ak), γ = (1/M) x Σ(Ck), β = (1/M) x Σ(Bk)")
     print("Where: α = lower bound, γ = peak, β = upper bound")
 
     mean = calculator.calculate_arithmetic_mean(opinions)
@@ -69,15 +69,15 @@ def display_median_calculation_details(
 
         print(f"Median = average of {left_idx + 1}th and {right_idx + 1}th experts:")
         if is_likert:
-            print(f"  {left_idx + 1}th: {left_op.expert_id} → {int(left_op.opinion.peak)}")
-            print(f"  {right_idx + 1}th: {right_op.expert_id} → {int(right_op.opinion.peak)}")
+            print(f"  {left_idx + 1}th: {left_op.expert_id} -> {int(left_op.opinion.peak)}")
+            print(f"  {right_idx + 1}th: {right_op.expert_id} -> {int(right_op.opinion.peak)}")
         else:
             print(
-                f"  {left_idx + 1}th: {left_op.expert_id} → {left_op.opinion} "
+                f"  {left_idx + 1}th: {left_op.expert_id} -> {left_op.opinion} "
                 f"(centroid: {left_op.opinion.centroid:.2f})"
             )
             print(
-                f"  {right_idx + 1}th: {right_op.expert_id} → {right_op.opinion} "
+                f"  {right_idx + 1}th: {right_op.expert_id} -> {right_op.opinion} "
                 f"(centroid: {right_op.opinion.centroid:.2f})"
             )
     else:
@@ -85,10 +85,10 @@ def display_median_calculation_details(
         middle_op = sorted_opinions[middle_idx]
         print(f"Median = middle expert (position {middle_idx + 1}):")
         if is_likert:
-            print(f"  {middle_op.expert_id} → {int(middle_op.opinion.peak)}")
+            print(f"  {middle_op.expert_id} -> {int(middle_op.opinion.peak)}")
         else:
             print(
-                f"  {middle_op.expert_id} → {middle_op.opinion} "
+                f"  {middle_op.expert_id} -> {middle_op.opinion} "
                 f"(centroid: {middle_op.opinion.centroid:.2f})"
             )
 
