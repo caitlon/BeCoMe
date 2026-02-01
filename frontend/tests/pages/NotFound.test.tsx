@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { screen } from '@testing-library/react';
 import { render } from '@tests/utils';
 import NotFound from '@/pages/NotFound';
@@ -13,6 +13,17 @@ vi.mock('@/contexts/AuthContext', () => ({
 }));
 
 describe('NotFound', () => {
+  const originalConsoleError = console.error;
+
+  beforeEach(() => {
+    // Suppress the expected 404 console.error log
+    console.error = vi.fn();
+  });
+
+  afterEach(() => {
+    console.error = originalConsoleError;
+  });
+
   it('renders 404 heading', () => {
     render(<NotFound />);
 

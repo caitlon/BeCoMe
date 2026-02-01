@@ -29,7 +29,7 @@ export interface CustomRenderOptions extends Omit<RenderOptions, 'wrapper'> {
 
 function AllTheProviders({ children }: { children: ReactNode }) {
   return (
-    <MemoryRouter>
+    <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <I18nextProvider i18n={i18n}>
         {children}
       </I18nextProvider>
@@ -43,7 +43,10 @@ function AllTheProviders({ children }: { children: ReactNode }) {
 function createWrapper(initialEntries?: MemoryRouterProps['initialEntries']) {
   return function Wrapper({ children }: { children: ReactNode }) {
     return (
-      <MemoryRouter initialEntries={initialEntries}>
+      <MemoryRouter
+        initialEntries={initialEntries}
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      >
         <I18nextProvider i18n={i18n}>
           {children}
         </I18nextProvider>

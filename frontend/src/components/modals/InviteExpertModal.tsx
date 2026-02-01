@@ -91,7 +91,7 @@ export function InviteExpertModal({
   if (isSuccess) {
     return (
       <Dialog open={open} onOpenChange={handleClose}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md" aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle className="font-display text-xl font-normal">
               {t("invite.title")}
@@ -118,7 +118,7 @@ export function InviteExpertModal({
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md" aria-describedby={undefined}>
         <DialogHeader>
           <DialogTitle className="font-display text-xl font-normal">
             {t("invite.title")}
