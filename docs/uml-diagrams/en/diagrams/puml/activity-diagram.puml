@@ -7,9 +7,6 @@ skinparam defaultFontSize 12
 skinparam activityBorderColor #333333
 skinparam activityBackgroundColor #F0F0F0
 
-' Title
-title BeCoMe Algorithm - Activity Diagram
-
 start
 
 :Receive list of expert opinions;
@@ -48,25 +45,23 @@ partition "**Step 1: Calculate Arithmetic Mean (Γ)**" #FFDDDD {
 partition "**Step 2: Calculate Median (Ω)**" #DDFFDD {
     ' Sort by centroid
     :Calculate centroid for each opinion:\nGx = (lower + peak + upper) / 3;
-    
+
     :Sort opinions by centroid values\n(ascending order);
-    
+
+    :Calculate median of centroids:\nmedian_centroid = statistics.median(centroids);
+
     ' Check if odd or even
     if (M is odd?\nM = 2n + 1) then (yes)
-        :Find middle index:\nmiddle_index = M // 2;
-        
-        :Get middle opinion:\nopinion_middle = sorted_opinions[middle_index];
-        
-        :Extract components:\n- ρ = opinion_middle.lower_bound\n- ω = opinion_middle.peak\n- σ = opinion_middle.upper_bound;
-        
+        :Find opinion with centroid\nclosest to median_centroid;
+
+        :Extract components:\n- ρ = opinion.lower_bound\n- ω = opinion.peak\n- σ = opinion.upper_bound;
+
     else (no, M is even\nM = 2n)
-        :Find two middle indices:\n- left_index = n - 1\n- right_index = n;
-        
-        :Get two middle opinions:\n- opinion_left = sorted_opinions[left_index]\n- opinion_right = sorted_opinions[right_index];
-        
+        :Find two opinions with centroids\nclosest to median_centroid;
+
         :Average the two opinions:\n- ρ = (left.lower + right.lower) / 2\n- ω = (left.peak + right.peak) / 2\n- σ = (left.upper + right.upper) / 2;
     endif
-    
+
     :Create Omega (Ω):\nFuzzyTriangleNumber(ρ, ω, σ);
 }
 
@@ -96,30 +91,6 @@ partition "**Step 4: Calculate Maximum Error (Δmax)**" #FFFFDD {
 :Return BeCoMeResult;
 
 stop
-
-' Legend
-legend bottom right
-    **Key Formulas:**
-    
-    **Arithmetic Mean (Γ):**
-    α = (1/M) × Σ(Aₖ)
-    γ = (1/M) × Σ(Cₖ)
-    β = (1/M) × Σ(Bₖ)
-    
-    **Best Compromise (ΓΩMean):**
-    π = (α + ρ) / 2
-    φ = (γ + ω) / 2
-    ξ = (β + σ) / 2
-    
-    **Maximum Error:**
-    Δmax = |centroid(Γ) - centroid(Ω)| / 2
-    
-    **Colors:**
-    Red: Arithmetic Mean
-    Green: Median
-    Blue: Best Compromise
-    Yellow: Error Calculation
-endlegend
 
 @enduml
 

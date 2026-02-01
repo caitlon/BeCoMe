@@ -1,0 +1,57 @@
+@startuml BeCoMe-Activity-Diagram-Simplified
+
+' Style configuration
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontSize 11
+skinparam activityBorderColor #333333
+skinparam activityBackgroundColor #F0F0F0
+
+start
+
+:Přijmout seznam názorů expertů;
+note right: List[ExpertOpinion]
+
+if (je seznam prázdný?) then (ano)
+    :Vyvolat ValueError;
+    stop
+else (ne)
+    :M = počet expertů;
+endif
+
+' === STEP 1: Arithmetic Mean (simplified) ===
+partition "**Krok 1: Aritmetický průměr (Γ)**" #FFDDDD {
+    :Vypočítat součty lower, peak, upper\npro všechny názory;
+    :Γ = FuzzyTriangleNumber(α, γ, β);
+}
+
+' === STEP 2: Median (simplified but keeping key branching) ===
+partition "**Krok 2: Medián (Ω)**" #DDFFDD {
+    :Seřadit názory podle těžiště Gx;
+
+    :median_centroid = statistics.median(centroids);
+
+    if (M je lichý?) then (ano)
+        :Najít prostřední názor\n(nejbližší k median_centroid);
+    else (ne, M je sudý)
+        :Zprůměrovat dva prostřední názory\n(nejbližší k median_centroid);
+    endif
+
+    :Ω = FuzzyTriangleNumber(ρ, ω, σ);
+}
+
+' === STEP 3: Best Compromise ===
+partition "**Krok 3: Nejlepší kompromis (ΓΩMean)**" #DDDDFF {
+    :ΓΩMean = (Γ + Ω) / 2;
+}
+
+' === STEP 4: Maximum Error ===
+partition "**Krok 4: Maximální chyba (Δmax)**" #FFFFDD {
+    :Δmax = |Gx(Γ) - Gx(Ω)| / 2;
+}
+
+:Vrátit BeCoMeResult;
+
+stop
+
+@enduml
