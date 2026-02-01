@@ -7,9 +7,6 @@ skinparam defaultFontSize 12
 skinparam activityBorderColor #333333
 skinparam activityBackgroundColor #F0F0F0
 
-' Title
-title Algoritmus BeCoMe - Diagram aktivit
-
 start
 
 :Přijmout seznam názorů expertů;
@@ -51,18 +48,16 @@ partition "**Krok 2: Vypočítat medián (Ω)**" #DDFFDD {
 
     :Seřadit názory podle těžiště\n(vzestupně);
 
+    :Vypočítat medián těžišť:\nmedian_centroid = statistics.median(centroids);
+
     ' Check if odd or even
     if (M je lichý?\nM = 2n + 1) then (ano)
-        :Najít střední index:\nmiddle_index = M // 2;
+        :Najít názor s těžištěm\nnejbližším k median_centroid;
 
-        :Získat střední názor:\nopinion_middle = sorted_opinions[middle_index];
-
-        :Extrahovat komponenty:\n- ρ = opinion_middle.lower_bound\n- ω = opinion_middle.peak\n- σ = opinion_middle.upper_bound;
+        :Extrahovat komponenty:\n- ρ = opinion.lower_bound\n- ω = opinion.peak\n- σ = opinion.upper_bound;
 
     else (ne, M je sudý\nM = 2n)
-        :Najít dva střední indexy:\n- left_index = n - 1\n- right_index = n;
-
-        :Získat dva střední názory:\n- opinion_left = sorted_opinions[left_index]\n- opinion_right = sorted_opinions[right_index];
+        :Najít dva názory s těžišti\nnejbližšími k median_centroid;
 
         :Zprůměrovat dva názory:\n- ρ = (left.lower + right.lower) / 2\n- ω = (left.peak + right.peak) / 2\n- σ = (left.upper + right.upper) / 2;
     endif
@@ -96,29 +91,5 @@ partition "**Krok 4: Vypočítat maximální chybu (Δmax)**" #FFFFDD {
 :Vrátit BeCoMeResult;
 
 stop
-
-' Legend
-legend bottom right
-    **Klíčové vzorce:**
-
-    **Aritmetický průměr (Γ):**
-    α = (1/M) × Σ(Aₖ)
-    γ = (1/M) × Σ(Cₖ)
-    β = (1/M) × Σ(Bₖ)
-
-    **Nejlepší kompromis (ΓΩMean):**
-    π = (α + ρ) / 2
-    φ = (γ + ω) / 2
-    ξ = (β + σ) / 2
-
-    **Maximální chyba:**
-    Δmax = |těžiště(Γ) - těžiště(Ω)| / 2
-
-    **Barvy:**
-    Červená: Aritmetický průměr
-    Zelená: Medián
-    Modrá: Nejlepší kompromis
-    Žlutá: Výpočet chyby
-endlegend
 
 @enduml
