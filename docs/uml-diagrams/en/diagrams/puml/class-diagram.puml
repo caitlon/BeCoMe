@@ -43,7 +43,7 @@ class BeCoMeResult <<pydantic>> {
     + max_error: float
     + num_experts: int
     __
-    + {static} from_calculations(mean, median, n): BeCoMeResult
+    + {static} from_calculations(mean, median, num_experts): BeCoMeResult
 }
 
 ' ==================== RELATIONSHIPS ====================
