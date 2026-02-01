@@ -19,7 +19,7 @@ def main() -> None:
     """Generate all UML diagrams for both language versions (cs, en)."""
     base_dir = Path(__file__).parent
     languages = ["cs", "en"]
-    diagrams = ["class-diagram", "sequence-diagram", "activity-diagram"]
+    diagrams = ["class-diagram", "class-diagram-patterns", "sequence-diagram", "activity-diagram"]
     failed = False
 
     for lang in languages:
