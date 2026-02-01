@@ -19,9 +19,14 @@ describe('AuthContext', () => {
   })
 
   it('throws error when useAuth is used outside AuthProvider', () => {
+    const originalConsoleError = console.error;
+    console.error = vi.fn();
+
     expect(() => renderHook(() => useAuth())).toThrow(
       'useAuth must be used within an AuthProvider'
-    )
+    );
+
+    console.error = originalConsoleError;
   })
 
   it('sets isAuthenticated to true when user exists', async () => {

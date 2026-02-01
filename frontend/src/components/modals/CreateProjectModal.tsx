@@ -103,7 +103,7 @@ export function CreateProjectModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md" aria-describedby={undefined}>
         <DialogHeader>
           <DialogTitle className="font-display text-xl font-normal">
             {t("create.title")}
