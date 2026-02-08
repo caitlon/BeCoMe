@@ -23,6 +23,7 @@ import { Progress } from "@/components/ui/progress";
 import {
   Table,
   TableBody,
+  TableCaption,
   TableCell,
   TableHead,
   TableHeader,
@@ -42,6 +43,7 @@ import { api } from "@/lib/api";
 import { ProjectWithRole, Opinion, CalculationResult, Member } from "@/types/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 const ProjectDetail = () => {
   const { id } = useParams<{ id: string }>();
@@ -49,6 +51,7 @@ const ProjectDetail = () => {
   const { user } = useAuth();
   const { toast } = useToast();
   const { t } = useTranslation("projects");
+  const { t: tCommon } = useTranslation();
 
   const [project, setProject] = useState<ProjectWithRole | null>(null);
   const [opinions, setOpinions] = useState<Opinion[]>([]);
@@ -67,6 +70,7 @@ const ProjectDetail = () => {
   const [lower, setLower] = useState("");
   const [peak, setPeak] = useState("");
   const [upper, setUpper] = useState("");
+  useDocumentTitle(project ? tCommon("pageTitle.projectDetail", { name: project.name }) : tCommon("common.loading"));
 
   const myOpinion = opinions.find((o) => o.user_id === user?.id);
   const otherOpinions = opinions.filter((o) => o.user_id !== user?.id);
@@ -105,7 +109,7 @@ const ProjectDetail = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [id, user?.id, toast, navigate]);
+  }, [id, user?.id, toast, navigate, t]);
 
   useEffect(() => {
     fetchData();
@@ -220,8 +224,9 @@ const ProjectDetail = () => {
     return (
       <div className="min-h-screen">
         <Navbar />
-        <div className="pt-24 flex items-center justify-center">
+        <div className="pt-24 flex items-center justify-center" role="status" aria-label={tCommon("a11y.loading")}>
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          <span className="sr-only">{tCommon("common.loading")}</span>
         </div>
       </div>
     );
@@ -235,7 +240,7 @@ const ProjectDetail = () => {
     <div className="min-h-screen bg-background">
       <Navbar />
 
-      <main className="container mx-auto px-6 pt-24 pb-16">
+      <main id="main-content" className="container mx-auto px-6 pt-24 pb-16">
         {/* Breadcrumb */}
         <div className="mb-6">
           <Link
@@ -481,7 +486,7 @@ const OpinionForm = ({
     upperNum <= project.scale_max;
 
   return (
-    <Card className="border-2 border-primary/20">
+    <Card className="border-2 border-primary/20" aria-busy={isSaving}>
       <CardHeader>
         <CardTitle className="text-lg">{t("detail.yourOpinion")}</CardTitle>
       </CardHeader>
@@ -496,14 +501,15 @@ const OpinionForm = ({
           />
         </div>
 
-        <div>
-          <Label>{t("detail.yourEstimate")}</Label>
-          <div className="grid grid-cols-3 gap-4 mt-2">
+        <fieldset>
+          <legend className="text-sm font-medium leading-none mb-2">{t("detail.yourEstimate")}</legend>
+          <div className="grid grid-cols-3 gap-4">
             <div>
-              <Label className="text-xs text-muted-foreground">
+              <Label htmlFor="opinion-lower" className="text-xs text-muted-foreground">
                 {tFuzzy("fuzzy.lowerDesc")}
               </Label>
               <Input
+                id="opinion-lower"
                 type="number"
                 placeholder={String(project.scale_min)}
                 value={lower}
@@ -512,10 +518,11 @@ const OpinionForm = ({
               />
             </div>
             <div>
-              <Label className="text-xs text-muted-foreground">
+              <Label htmlFor="opinion-peak" className="text-xs text-muted-foreground">
                 {tFuzzy("fuzzy.peakDesc")}
               </Label>
               <Input
+                id="opinion-peak"
                 type="number"
                 value={peak}
                 onChange={(e) => setPeak(e.target.value)}
@@ -523,10 +530,11 @@ const OpinionForm = ({
               />
             </div>
             <div>
-              <Label className="text-xs text-muted-foreground">
+              <Label htmlFor="opinion-upper" className="text-xs text-muted-foreground">
                 {tFuzzy("fuzzy.upperDesc")}
               </Label>
               <Input
+                id="opinion-upper"
                 type="number"
                 placeholder={String(project.scale_max)}
                 value={upper}
@@ -538,12 +546,12 @@ const OpinionForm = ({
           <p className="text-xs text-muted-foreground mt-2">
             {t("detail.range")}: {project.scale_min} — {project.scale_max} {project.scale_unit}
           </p>
-        </div>
+        </fieldset>
 
         {/* Mini Triangle Preview */}
         {lower && peak && upper && isValid && (
           <div className="bg-muted rounded p-4">
-            <svg viewBox="0 0 200 60" className="w-full h-12">
+            <svg viewBox="0 0 200 60" className="w-full h-12" role="img" aria-label={tFuzzy("a11y.opinionPreviewDesc", { lower: lowerNum, peak: peakNum, upper: upperNum })}>
               <line
                 x1="10"
                 y1="50"
@@ -659,6 +667,7 @@ const OtherOpinionsTable = ({ opinions }: { opinions: Opinion[] }) => {
       </CardHeader>
       <CardContent>
         <Table>
+          <TableCaption className="sr-only">{tFuzzy("a11y.expertOpinions")}</TableCaption>
           <TableHeader>
             <TableRow>
               <TableHead>{t("detail.expert")}</TableHead>
@@ -887,6 +896,7 @@ const TriangleVisualization = ({
   showIndividual,
   opinions,
 }: TriangleVisualizationProps) => {
+  const { t: tCommon } = useTranslation();
   const scaleToX = (value: number) => {
     return (
       40 +
@@ -898,7 +908,7 @@ const TriangleVisualization = ({
   const peakY = 30;
 
   return (
-    <svg viewBox="0 0 400 200" className="w-full">
+    <svg viewBox="0 0 400 200" className="w-full" role="img" aria-label={tCommon("a11y.resultsChartDesc")}>
       {/* Axes */}
       <line
         x1="40"
@@ -1014,11 +1024,13 @@ const TeamTable = ({
   onRemove,
 }: TeamTableProps) => {
   const { t } = useTranslation("projects");
+  const { t: tCommon } = useTranslation();
 
   return (
     <Card>
       <CardContent className="pt-6">
         <Table>
+          <TableCaption className="sr-only">{tCommon("a11y.teamMembers")}</TableCaption>
           <TableHeader>
             <TableRow>
               <TableHead>{t("team.name")}</TableHead>
@@ -1056,6 +1068,7 @@ const TeamTable = ({
                           size="icon"
                           className="h-8 w-8 text-destructive hover:text-destructive"
                           onClick={() => onRemove(member.user_id)}
+                          aria-label={tCommon("a11y.removeTeamMember", { name: `${member.first_name} ${member.last_name}` })}
                         >
                           <X className="h-4 w-4" />
                         </Button>

@@ -125,38 +125,44 @@ export function CreateProjectModal({
             {...register("description")}
           />
 
-          <div className="space-y-2">
-            <Label>{t("create.scaleSettings")}</Label>
+          <fieldset className="space-y-2">
+            <legend className="text-sm font-medium leading-none">{t("create.scaleSettings")}</legend>
             <div className="grid grid-cols-3 gap-3">
               <div>
+                <Label htmlFor="scale-min" className="sr-only">{t("create.scaleMin")}</Label>
                 <Input
+                  id="scale-min"
                   type="number"
                   placeholder="Min"
                   {...register("scale_min")}
                   className={cn(errors.scale_min && "border-destructive")}
                 />
-                <span className="text-xs text-muted-foreground mt-1 block">
+                <span className="text-xs text-muted-foreground mt-1 block" aria-hidden="true">
                   {t("create.scaleMin")}
                 </span>
               </div>
               <div>
+                <Label htmlFor="scale-max" className="sr-only">{t("create.scaleMax")}</Label>
                 <Input
+                  id="scale-max"
                   type="number"
                   placeholder="Max"
                   {...register("scale_max")}
                   className={cn(errors.scale_max && "border-destructive")}
                 />
-                <span className="text-xs text-muted-foreground mt-1 block">
+                <span className="text-xs text-muted-foreground mt-1 block" aria-hidden="true">
                   {t("create.scaleMax")}
                 </span>
               </div>
               <div>
+                <Label htmlFor="scale-unit" className="sr-only">{t("create.scaleUnit")}</Label>
                 <Input
+                  id="scale-unit"
                   placeholder={t("create.scaleUnitPlaceholder")}
                   {...register("scale_unit")}
                   className={cn(errors.scale_unit && "border-destructive")}
                 />
-                <span className="text-xs text-muted-foreground mt-1 block">
+                <span className="text-xs text-muted-foreground mt-1 block" aria-hidden="true">
                   {t("create.scaleUnit")}
                 </span>
               </div>
@@ -166,7 +172,7 @@ export function CreateProjectModal({
                 {errors.scale_max.message}
               </p>
             )}
-          </div>
+          </fieldset>
 
           <div className="flex justify-end gap-3 pt-4">
             <Button

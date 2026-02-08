@@ -10,6 +10,7 @@ import { FuzzyTriangleSVG } from "@/components/visualizations/FuzzyTriangleSVG";
 import { ArrowRight, Users, Calculator, Target } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { caseStudies } from "@/data/caseStudies";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 const fadeInUp = {
   initial: { opacity: 0, y: 20 },
@@ -27,8 +28,10 @@ const stagger = {
 
 const Landing = () => {
   const { t } = useTranslation("landing");
+  const { t: tCommon } = useTranslation();
   const { isAuthenticated } = useAuth();
   const location = useLocation();
+  useDocumentTitle(tCommon("pageTitle.landing"));
 
   useEffect(() => {
     if (location.hash) {
@@ -46,6 +49,7 @@ const Landing = () => {
   return (
     <div className="min-h-screen flex flex-col">
       <Navbar />
+      <main id="main-content">
       
       {/* Hero Section */}
       <section className="pt-32 pb-20 md:pt-40 md:pb-32 bg-gradient-to-b from-background via-background to-muted/20">
@@ -255,6 +259,7 @@ const Landing = () => {
         </div>
       </section>
 
+      </main>
       <Footer />
     </div>
   );

@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { useAuth } from "@/contexts/AuthContext";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Menu, X, ChevronDown, User, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
@@ -37,6 +37,17 @@ export function Navbar() {
     window.location.href = '/';
   };
 
+  const closeMenuOnEscape = useCallback((e: KeyboardEvent) => {
+    if (e.key === "Escape" && isMenuOpen) {
+      setIsMenuOpen(false);
+    }
+  }, [isMenuOpen]);
+
+  useEffect(() => {
+    document.addEventListener("keydown", closeMenuOnEscape);
+    return () => document.removeEventListener("keydown", closeMenuOnEscape);
+  }, [closeMenuOnEscape]);
+
   const isAuthPage = ['/login', '/register'].includes(location.pathname);
 
   return (
@@ -60,18 +71,20 @@ export function Navbar() {
         {/* Desktop Navigation */}
         <div className="hidden md:flex items-center gap-6">
           <Button variant="ghost" size="sm" asChild>
-            <Link to="/about">{t("nav.about")}</Link>
+            <Link to="/about" aria-current={location.pathname === "/about" ? "page" : undefined}>{t("nav.about")}</Link>
           </Button>
           {isAuthenticated ? (
             <>
               <Link
                 to="/projects"
+                aria-current={location.pathname === "/projects" ? "page" : undefined}
                 className="text-sm text-muted-foreground hover:text-foreground transition-colors"
               >
                 {t("nav.projects")}
               </Link>
               <Link
                 to="/onboarding"
+                aria-current={location.pathname === "/onboarding" ? "page" : undefined}
                 className="text-sm text-muted-foreground hover:text-foreground transition-colors"
               >
                 {tOnboarding("navbar.takeTour")}
@@ -128,6 +141,9 @@ export function Navbar() {
               variant="ghost"
               size="icon"
               onClick={() => setIsMenuOpen(!isMenuOpen)}
+              aria-expanded={isMenuOpen}
+              aria-controls="mobile-menu"
+              aria-label={isMenuOpen ? t("a11y.closeMenu") : t("a11y.openMenu")}
             >
               {isMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </Button>
@@ -139,6 +155,9 @@ export function Navbar() {
       <AnimatePresence>
         {isMenuOpen && !isAuthPage && (
           <motion.div
+            id="mobile-menu"
+            role="navigation"
+            aria-label={t("a11y.mobileNavigation")}
             className="md:hidden bg-background/95 backdrop-blur-md border-b border-border"
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
@@ -148,6 +167,7 @@ export function Navbar() {
             <div className="container mx-auto px-6 py-4 space-y-3">
             <Link
               to="/about"
+              aria-current={location.pathname === "/about" ? "page" : undefined}
               className="block py-2 text-muted-foreground hover:text-foreground"
               onClick={() => setIsMenuOpen(false)}
             >
@@ -157,6 +177,7 @@ export function Navbar() {
               <>
                 <Link
                   to="/projects"
+                  aria-current={location.pathname === "/projects" ? "page" : undefined}
                   className="block py-2 text-muted-foreground hover:text-foreground"
                   onClick={() => setIsMenuOpen(false)}
                 >
@@ -164,6 +185,7 @@ export function Navbar() {
                 </Link>
                 <Link
                   to="/onboarding"
+                  aria-current={location.pathname === "/onboarding" ? "page" : undefined}
                   className="block py-2 text-muted-foreground hover:text-foreground"
                   onClick={() => setIsMenuOpen(false)}
                 >
@@ -171,6 +193,7 @@ export function Navbar() {
                 </Link>
                 <Link
                   to="/profile"
+                  aria-current={location.pathname === "/profile" ? "page" : undefined}
                   className="block py-2 text-muted-foreground hover:text-foreground"
                   onClick={() => setIsMenuOpen(false)}
                 >

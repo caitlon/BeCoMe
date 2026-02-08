@@ -83,5 +83,35 @@
     "median": "Medián",
     "best": "Nejlepší",
     "triangleVisualization": "Vizualizace fuzzy trojúhelníkového čísla"
+  },
+  "a11y": {
+    "skipToContent": "Přeskočit na hlavní obsah",
+    "menu": "Menu",
+    "openMenu": "Otevřít menu",
+    "closeMenu": "Zavřít menu",
+    "mobileNavigation": "Mobilní navigace",
+    "loading": "Načítání",
+    "navigatedTo": "Přechod na {{page}}",
+    "triangleDesc": "Animovaný fuzzy trojúhelník cyklující mezi třemi tvary expertních názorů",
+    "resultsChartDesc": "Graf zobrazující aritmetický průměr, medián a nejlepší kompromis",
+    "opinionPreviewDesc": "Náhled fuzzy trojúhelníkového čísla s hodnotami {{lower}}, {{peak}}, {{upper}}",
+    "removeTeamMember": "Odebrat {{name}} z týmu",
+    "expertOpinions": "Tabulka expertních názorů",
+    "teamMembers": "Tabulka členů týmu",
+    "fuzzyEstimate": "Odhad fuzzy čísla"
+  },
+  "pageTitle": {
+    "landing": "Úvod",
+    "about": "O metodě",
+    "login": "Přihlášení",
+    "register": "Vytvoření účtu",
+    "projects": "Projekty",
+    "projectDetail": "Projekt: {{name}}",
+    "profile": "Profil",
+    "onboarding": "Začínáme",
+    "caseStudy": "Případová studie",
+    "documentation": "Dokumentace",
+    "faq": "Časté dotazy",
+    "notFound": "Stránka nenalezena"
   }
 }

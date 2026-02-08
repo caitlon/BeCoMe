@@ -83,5 +83,35 @@
     "median": "Median",
     "best": "Best",
     "triangleVisualization": "Fuzzy triangular number visualization"
+  },
+  "a11y": {
+    "skipToContent": "Skip to main content",
+    "menu": "Menu",
+    "openMenu": "Open menu",
+    "closeMenu": "Close menu",
+    "mobileNavigation": "Mobile navigation",
+    "loading": "Loading",
+    "navigatedTo": "Navigated to {{page}}",
+    "triangleDesc": "Animated fuzzy triangle cycling through three expert opinion shapes",
+    "resultsChartDesc": "Chart showing arithmetic mean, median, and best compromise triangles",
+    "opinionPreviewDesc": "Preview of your fuzzy triangular number with values {{lower}}, {{peak}}, {{upper}}",
+    "removeTeamMember": "Remove {{name}} from team",
+    "expertOpinions": "Expert opinions table",
+    "teamMembers": "Team members table",
+    "fuzzyEstimate": "Fuzzy number estimate"
+  },
+  "pageTitle": {
+    "landing": "Home",
+    "about": "About the Method",
+    "login": "Sign In",
+    "register": "Create Account",
+    "projects": "Projects",
+    "projectDetail": "Project: {{name}}",
+    "profile": "Profile",
+    "onboarding": "Getting Started",
+    "caseStudy": "Case Study",
+    "documentation": "Documentation",
+    "faq": "FAQ",
+    "notFound": "Page Not Found"
   }
 }

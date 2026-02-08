@@ -21,6 +21,7 @@ import { DeleteConfirmModal } from "@/components/modals/DeleteConfirmModal";
 import { api } from "@/lib/api";
 import { ProjectWithRole, Invitation } from "@/types/api";
 import { useToast } from "@/hooks/use-toast";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -41,7 +42,9 @@ const itemVariants = {
 
 const Projects = () => {
   const { t } = useTranslation("projects");
+  const { t: tCommon } = useTranslation();
   const { toast } = useToast();
+  useDocumentTitle(tCommon("pageTitle.projects"));
   const [projects, setProjects] = useState<ProjectWithRole[]>([]);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -122,8 +125,9 @@ const Projects = () => {
     return (
       <div className="min-h-screen">
         <Navbar />
-        <div className="pt-24 flex items-center justify-center">
+        <div className="pt-24 flex items-center justify-center" role="status" aria-label={tCommon("a11y.loading")}>
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          <span className="sr-only">{tCommon("common.loading")}</span>
         </div>
       </div>
     );
@@ -133,7 +137,7 @@ const Projects = () => {
     <div className="min-h-screen bg-background">
       <Navbar />
       
-      <main className="container mx-auto px-6 pt-24 pb-16">
+      <main id="main-content" className="container mx-auto px-6 pt-24 pb-16">
         <Tabs defaultValue="projects" className="space-y-6">
           <div className="flex items-center justify-between">
             <TabsList>
