@@ -18,12 +18,14 @@ import {
   useLocalizedCaseStudyById,
   useLocalizedLikertLabel,
 } from "@/hooks/useLocalizedCaseStudies";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 const CaseStudy = () => {
   const { t } = useTranslation("caseStudies");
   const { t: tCommon } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const caseStudy = useLocalizedCaseStudyById(id || "");
+  useDocumentTitle(tCommon("pageTitle.caseStudy"));
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -53,7 +55,7 @@ const CaseStudy = () => {
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <Navbar />
-
+      <main id="main-content">
       {/* Hero Section */}
       <section className="pt-24 pb-12 md:pt-32 md:pb-16 bg-secondary/30">
         <div className="container mx-auto px-6">
@@ -381,6 +383,7 @@ const CaseStudy = () => {
         </div>
       </section>
 
+      </main>
       <Footer />
     </div>
   );

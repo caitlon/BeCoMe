@@ -123,6 +123,32 @@
   body {
     @apply bg-background text-foreground font-sans antialiased;
   }
+
+  /* Skip to content link */
+  .skip-to-content {
+    position: absolute;
+    left: -9999px;
+    top: 0;
+    z-index: 9999;
+    padding: 0.75rem 1.5rem;
+    background: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+    font-size: 0.875rem;
+    font-weight: 500;
+    text-decoration: none;
+    border-radius: 0 0 0.5rem 0;
+  }
+
+  .skip-to-content:focus {
+    left: 0;
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+  }
+
+  /* Allow main to receive programmatic focus without visible outline */
+  main:focus {
+    outline: none;
+  }
   
   /* Typography Classes */
   .font-display {
@@ -237,5 +263,17 @@
   /* Number styling */
   .tabular-nums {
     font-variant-numeric: tabular-nums;
+  }
+}
+
+/* Respect reduced motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

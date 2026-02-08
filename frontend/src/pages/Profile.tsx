@@ -16,6 +16,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 const NAME_REGEX = /^[\p{L}\s'-]+$/u;
 const isValidName = (name: string) => !name || NAME_REGEX.test(name);
@@ -44,8 +45,10 @@ const getPasswordRequirements = (
 
 const Profile = () => {
   const { t } = useTranslation("profile");
+  const { t: tCommon } = useTranslation();
   const { t: tAuth } = useTranslation("auth");
   const { user, refreshUser, logout } = useAuth();
+  useDocumentTitle(tCommon("pageTitle.profile"));
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -237,7 +240,7 @@ const Profile = () => {
     <div className="min-h-screen bg-background">
       <Navbar />
 
-      <main className="container mx-auto px-6 pt-24 pb-16">
+      <main id="main-content" className="container mx-auto px-6 pt-24 pb-16">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}

@@ -14,6 +14,7 @@ import {
   StepViewResults,
   StepComplete,
 } from "@/components/onboarding";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 const steps = [
   StepWelcome,
@@ -26,7 +27,9 @@ const steps = [
 
 const Onboarding = () => {
   const { t } = useTranslation("onboarding");
+  const { t: tCommon } = useTranslation();
   const navigate = useNavigate();
+  useDocumentTitle(tCommon("pageTitle.onboarding"));
   const [currentStep, setCurrentStep] = useState(0);
   const [direction, setDirection] = useState(0);
 
@@ -123,7 +126,7 @@ const Onboarding = () => {
       </div>
 
       {/* Step Content */}
-      <main className="flex-1 pt-32 pb-24 overflow-hidden">
+      <main id="main-content" className="flex-1 pt-32 pb-24 overflow-hidden">
         <div className="container mx-auto px-6 h-full">
           <AnimatePresence mode="wait" custom={direction}>
             <motion.div

@@ -13,6 +13,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 const fadeInUp = {
   initial: { opacity: 0, y: 20 },
@@ -22,7 +23,9 @@ const fadeInUp = {
 
 const Documentation = () => {
   const { t } = useTranslation("docs");
+  const { t: tCommon } = useTranslation();
   const [activeSection, setActiveSection] = useState("getting-started");
+  useDocumentTitle(tCommon("pageTitle.documentation"));
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -120,7 +123,7 @@ const Documentation = () => {
             </aside>
 
             {/* Content */}
-            <main className="flex-1 max-w-3xl">
+            <main id="main-content" className="flex-1 max-w-3xl">
               {/* Getting Started */}
               <section id="getting-started" className="mb-12">
                 <h2 className="font-display text-2xl md:text-3xl font-normal mb-4">

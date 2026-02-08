@@ -23,6 +23,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 const fadeInUp = {
   initial: { opacity: 0, y: 20 },
@@ -50,7 +51,9 @@ const faqItems: Record<CategoryId, string[]> = {
 
 const FAQ = () => {
   const { t } = useTranslation("faq");
+  const { t: tCommon } = useTranslation();
   const [activeCategory, setActiveCategory] = useState<CategoryId>("method");
+  useDocumentTitle(tCommon("pageTitle.faq"));
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -138,7 +141,7 @@ const FAQ = () => {
             </aside>
 
             {/* FAQ Content */}
-            <main className="flex-1 max-w-3xl">
+            <main id="main-content" className="flex-1 max-w-3xl">
               {categories.map((cat) => (
                 <motion.section
                   key={cat.id}

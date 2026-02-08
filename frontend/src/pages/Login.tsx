@@ -11,6 +11,7 @@ import { FormField, PasswordInput, SubmitButton } from "@/components/forms";
 import { Navbar } from "@/components/layout/Navbar";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 type LoginFormData = {
   email: string;
@@ -19,10 +20,12 @@ type LoginFormData = {
 
 const Login = () => {
   const { t } = useTranslation("auth");
+  const { t: tCommon } = useTranslation();
   const navigate = useNavigate();
   const { login } = useAuth();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
+  useDocumentTitle(tCommon("pageTitle.login"));
 
   const loginSchema = useMemo(
     () =>
@@ -66,8 +69,7 @@ const Login = () => {
   return (
     <div className="min-h-screen flex flex-col">
       <Navbar />
-
-      <div className="flex-1 flex items-center justify-center py-12 px-6">
+      <main id="main-content" className="flex-1 flex items-center justify-center py-12 px-6">
         <motion.div
           className="w-full max-w-md"
           initial={{ opacity: 0, y: 20 }}
@@ -124,7 +126,7 @@ const Login = () => {
             </CardContent>
           </Card>
         </motion.div>
-      </div>
+      </main>
     </div>
   );
 };

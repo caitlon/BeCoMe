@@ -19,6 +19,9 @@ export function FuzzyTriangleSVG() {
   const [currentForm, setCurrentForm] = useState(0);
 
   useEffect(() => {
+    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (prefersReducedMotion) return;
+
     const interval = setInterval(() => {
       setCurrentForm(prev => (prev + 1) % triangleForms.length);
     }, 3000);
@@ -31,8 +34,11 @@ export function FuzzyTriangleSVG() {
     <svg
       viewBox="0 0 400 200"
       className="w-full max-w-2xl mx-auto"
-      aria-label={t("fuzzy.triangleVisualization")}
+      role="img"
+      aria-labelledby="fuzzy-triangle-title fuzzy-triangle-desc"
     >
+      <title id="fuzzy-triangle-title">{t("fuzzy.triangleVisualization")}</title>
+      <desc id="fuzzy-triangle-desc">{t("a11y.triangleDesc")}</desc>
       {/* Grid lines */}
       <defs>
         <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
