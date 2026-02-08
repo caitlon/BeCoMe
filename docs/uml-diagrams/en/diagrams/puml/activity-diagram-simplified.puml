@@ -1,0 +1,57 @@
+@startuml BeCoMe-Activity-Diagram-Simplified
+
+' Style configuration
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontSize 11
+skinparam activityBorderColor #333333
+skinparam activityBackgroundColor #F0F0F0
+
+start
+
+:Accept list of expert opinions;
+note right: List[ExpertOpinion]
+
+if (is the list empty?) then (yes)
+    :Raise ValueError;
+    stop
+else (no)
+    :M = number of experts;
+endif
+
+' === STEP 1: Arithmetic Mean (simplified) ===
+partition "**Step 1: Arithmetic Mean (Γ)**" #FFDDDD {
+    :Calculate sums of lower, peak, upper\nfor all opinions;
+    :Γ = FuzzyTriangleNumber(α, γ, β);
+}
+
+' === STEP 2: Median (simplified but keeping key branching) ===
+partition "**Step 2: Median (Ω)**" #DDFFDD {
+    :Sort opinions by centroid Gx;
+
+    :median_centroid = statistics.median(centroids);
+
+    if (Is M odd?) then (yes)
+        :Find middle opinion\n(closest to median_centroid);
+    else (no, M is even)
+        :Average two middle opinions\n(closest to median_centroid);
+    endif
+
+    :Ω = FuzzyTriangleNumber(ρ, ω, σ);
+}
+
+' === STEP 3: Best Compromise ===
+partition "**Step 3: Best Compromise (ΓΩMean)**" #DDDDFF {
+    :ΓΩMean = (Γ + Ω) / 2;
+}
+
+' === STEP 4: Maximum Error ===
+partition "**Step 4: Maximum Error (Δmax)**" #FFFFDD {
+    :Δmax = |Gx(Γ) - Gx(Ω)| / 2;
+}
+
+:Return BeCoMeResult;
+
+stop
+
+@enduml
