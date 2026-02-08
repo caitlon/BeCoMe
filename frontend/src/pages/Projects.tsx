@@ -138,6 +138,7 @@ const Projects = () => {
       <Navbar />
       
       <main id="main-content" className="container mx-auto px-6 pt-24 pb-16">
+        <h1 className="sr-only">{t("heading")}</h1>
         <Tabs defaultValue="projects" className="space-y-6">
           <div className="flex items-center justify-between">
             <TabsList>

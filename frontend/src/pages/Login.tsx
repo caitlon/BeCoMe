@@ -78,7 +78,7 @@ const Login = () => {
         >
           <Card className="border-border/50">
             <CardHeader className="text-center pb-2">
-              <CardTitle className="font-display text-2xl font-normal">
+              <CardTitle as="h1" className="font-display text-2xl font-normal">
                 {t("login.title")}
               </CardTitle>
             </CardHeader>

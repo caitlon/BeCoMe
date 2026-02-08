@@ -102,7 +102,7 @@ const Documentation = () => {
                   <List className="h-4 w-4" />
                   {t("tableOfContents")}
                 </div>
-                <nav className="space-y-1">
+                <nav aria-label={t("tableOfContents")} className="space-y-1">
                   {tocItems.map((item) => (
                     <button
                       key={item.id}

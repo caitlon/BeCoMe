@@ -98,7 +98,9 @@
     "removeTeamMember": "Remove {{name}} from team",
     "expertOpinions": "Expert opinions table",
     "teamMembers": "Team members table",
-    "fuzzyEstimate": "Fuzzy number estimate"
+    "fuzzyEstimate": "Fuzzy number estimate",
+    "mainNavigation": "Main navigation",
+    "stepNavigation": "Step navigation"
   },
   "pageTitle": {
     "landing": "Home",

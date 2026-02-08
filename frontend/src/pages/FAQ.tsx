@@ -119,7 +119,7 @@ const FAQ = () => {
                   <List className="h-4 w-4" />
                   {t("categories.title")}
                 </div>
-                <nav className="space-y-1">
+                <nav aria-label={t("categories.title")} className="space-y-1">
                   {categories.map((cat) => (
                     <button
                       key={cat.id}
