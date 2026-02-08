@@ -163,7 +163,7 @@ const Onboarding = () => {
             </Button>
 
             {/* Step indicators */}
-            <div className="hidden sm:flex items-center gap-2">
+            <nav aria-label={tCommon("a11y.stepNavigation")} className="hidden sm:flex items-center gap-1">
               {steps.map((_, index) => (
                 <button
                   key={index}
@@ -172,17 +172,22 @@ const Onboarding = () => {
                     setDirection(index > currentStep ? 1 : -1);
                     setCurrentStep(index);
                   }}
-                  className={`w-2 h-2 rounded-full transition-all ${
-                    index === currentStep
-                      ? "bg-primary w-6"
-                      : index < currentStep
-                        ? "bg-primary/50"
-                        : "bg-muted-foreground/30"
-                  }`}
+                  className="p-2 rounded-full"
                   aria-label={t("buttons.goToStep", { step: index + 1 })}
-                />
+                  aria-current={index === currentStep ? "step" : undefined}
+                >
+                  <span
+                    className={`block h-2 rounded-full transition-all ${
+                      index === currentStep
+                        ? "bg-primary w-6"
+                        : index < currentStep
+                          ? "bg-primary/50 w-2"
+                          : "bg-muted-foreground/30 w-2"
+                    }`}
+                  />
+                </button>
               ))}
-            </div>
+            </nav>
 
             {isLastStep ? (
               <Button onClick={navigateToProjects} className="gap-2">

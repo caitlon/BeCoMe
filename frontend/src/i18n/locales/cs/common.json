@@ -98,7 +98,9 @@
     "removeTeamMember": "Odebrat {{name}} z týmu",
     "expertOpinions": "Tabulka expertních názorů",
     "teamMembers": "Tabulka členů týmu",
-    "fuzzyEstimate": "Odhad fuzzy čísla"
+    "fuzzyEstimate": "Odhad fuzzy čísla",
+    "mainNavigation": "Hlavní navigace",
+    "stepNavigation": "Navigace kroků"
   },
   "pageTitle": {
     "landing": "Úvod",
