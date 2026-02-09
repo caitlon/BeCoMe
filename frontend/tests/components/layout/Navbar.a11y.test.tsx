@@ -1,8 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { render } from '@tests/utils';
-import { filterMotionProps } from '@tests/utils';
+import { render, filterMotionProps } from '@tests/utils';
 import { Navbar } from '@/components/layout/Navbar';
 
 const { mockUser, mockLogout, mockPathname } = vi.hoisted(() => ({

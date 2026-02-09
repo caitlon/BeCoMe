@@ -1,8 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { render } from '@tests/utils';
-import { filterMotionProps } from '@tests/utils';
+import { render, filterMotionProps } from '@tests/utils';
 import { StepEnterOpinion } from '@/components/onboarding/StepEnterOpinion';
 
 // Mock framer-motion

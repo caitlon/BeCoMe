@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { useAuth } from "@/contexts/AuthContext";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Menu, X, ChevronDown, User, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
@@ -23,6 +23,7 @@ export function Navbar() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
   const location = useLocation();
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -38,10 +39,13 @@ export function Navbar() {
   };
 
   const closeMenuOnEscape = useCallback((e: KeyboardEvent) => {
-    if (e.key === "Escape" && isMenuOpen) {
-      setIsMenuOpen(false);
+    if (e.key === "Escape") {
+      setIsMenuOpen((open) => {
+        if (open) menuButtonRef.current?.focus();
+        return false;
+      });
     }
-  }, [isMenuOpen]);
+  }, []);
 
   useEffect(() => {
     document.addEventListener("keydown", closeMenuOnEscape);
@@ -139,6 +143,7 @@ export function Navbar() {
           <ThemeToggle />
           {!isAuthPage && (
             <Button
+              ref={menuButtonRef}
               variant="ghost"
               size="icon"
               onClick={() => setIsMenuOpen(!isMenuOpen)}
@@ -157,7 +162,7 @@ export function Navbar() {
         {isMenuOpen && !isAuthPage && (
           <motion.div
             id="mobile-menu"
-            role="navigation"
+            role="region"
             aria-label={t("a11y.mobileNavigation")}
             className="md:hidden bg-background/95 backdrop-blur-md border-b border-border"
             initial={{ opacity: 0, height: 0 }}

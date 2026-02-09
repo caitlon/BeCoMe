@@ -19,7 +19,7 @@ describe('SubmitButton', () => {
   it('shows spinner when isLoading', () => {
     render(<SubmitButton isLoading>Submit</SubmitButton>);
 
-    expect(screen.getByRole('button')).toHaveAttribute('aria-busy', 'true');
+    expect(screen.getByRole('button').querySelector('svg')).toBeInTheDocument();
   });
 
   it('shows loadingText when provided and isLoading', () => {

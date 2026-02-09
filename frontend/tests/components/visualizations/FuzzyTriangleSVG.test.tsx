@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { screen, act } from '@testing-library/react';
-import { render } from '@tests/utils';
-import { filterMotionProps } from '@tests/utils';
+import { render, filterMotionProps } from '@tests/utils';
 import { FuzzyTriangleSVG } from '@/components/visualizations/FuzzyTriangleSVG';
 
 // Mock framer-motion
@@ -82,15 +81,16 @@ describe('FuzzyTriangleSVG', () => {
 
   it('skips animation interval when prefers-reduced-motion is reduce', () => {
     prefersReducedMotion = true;
-    render(<FuzzyTriangleSVG />);
+    const { container } = render(<FuzzyTriangleSVG />);
 
-    // After 6 seconds (2 full cycles), form should still be 0
-    vi.advanceTimersByTime(6000);
+    const animatedPolygon = container.querySelector('polygon:not([stroke-dasharray])');
+    const initialPoints = animatedPolygon?.getAttribute('points');
 
-    // Only the first form's dashed outline should be hidden (opacity 0)
-    // This confirms the form didn't cycle
-    const svg = screen.getByRole('img');
-    expect(svg).toBeInTheDocument();
+    // After 6 seconds (2 full cycles), points should remain unchanged
+    act(() => { vi.advanceTimersByTime(6000); });
+
+    const updatedPoints = animatedPolygon?.getAttribute('points');
+    expect(updatedPoints).toBe(initialPoints);
   });
 
   it('cycles through forms when motion is allowed', () => {

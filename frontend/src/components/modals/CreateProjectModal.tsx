@@ -133,7 +133,7 @@ export function CreateProjectModal({
                 <Input
                   id="scale-min"
                   type="number"
-                  placeholder="Min"
+                  placeholder={t("create.scaleMinPlaceholder")}
                   {...register("scale_min")}
                   className={cn(errors.scale_min && "border-destructive")}
                 />
@@ -146,7 +146,7 @@ export function CreateProjectModal({
                 <Input
                   id="scale-max"
                   type="number"
-                  placeholder="Max"
+                  placeholder={t("create.scaleMaxPlaceholder")}
                   {...register("scale_max")}
                   className={cn(errors.scale_max && "border-destructive")}
                 />

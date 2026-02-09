@@ -1,7 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { screen } from '@testing-library/react';
-import { render } from '@tests/utils';
-import { filterMotionProps } from '@tests/utils';
+import { render, filterMotionProps } from '@tests/utils';
 import Documentation from '@/pages/Documentation';
 
 vi.mock('@/contexts/AuthContext', () => ({
@@ -46,13 +45,6 @@ describe('Documentation', () => {
     const nav = screen.getByRole('navigation', { name: /table of contents|obsah/i });
     const buttons = nav.querySelectorAll('button');
     expect(buttons.length).toBe(5);
-  });
-
-  it('TOC nav has aria-label', () => {
-    render(<Documentation />);
-
-    const nav = screen.getByRole('navigation', { name: /table of contents|obsah/i });
-    expect(nav).toBeInTheDocument();
   });
 
   it('Getting Started section with cards', () => {
