@@ -263,10 +263,11 @@ describe('Register', () => {
   it('has link to login page', () => {
     render(<Register />);
 
-    // Find within the card content (not navbar)
-    const cardContent = document.querySelector('.text-center.text-sm');
-    const loginLink = cardContent?.querySelector('a[href="/login"]');
-    expect(loginLink).toBeInTheDocument();
-    expect(loginLink).toHaveAttribute('href', '/login');
+    const loginLinks = screen.getAllByRole('link', { name: /sign in/i });
+    const cardLoginLink = loginLinks.find(
+      (link) => link.classList.contains('text-foreground')
+    );
+    expect(cardLoginLink).toBeInTheDocument();
+    expect(cardLoginLink).toHaveAttribute('href', '/login');
   });
 });

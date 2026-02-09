@@ -53,8 +53,7 @@ describe('Projects', () => {
 
       render(<Projects />);
 
-      // Loader2 has animate-spin class
-      expect(document.querySelector('.animate-spin')).toBeInTheDocument();
+      expect(screen.getByRole('status')).toBeInTheDocument();
     });
   });
 

@@ -117,7 +117,7 @@ describe('ProjectDetail', () => {
 
     render(<ProjectDetail />);
 
-    expect(document.querySelector('.animate-spin')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toBeInTheDocument();
   });
 
   it('renders project name and description', async () => {

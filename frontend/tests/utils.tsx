@@ -68,5 +68,21 @@ const customRender = (
   return render(ui, { wrapper, ...renderOptions })
 }
 
+/**
+ * Filters out framer-motion props from a component's props.
+ * Used in framer-motion mocks to prevent React warnings about unknown DOM props.
+ * Preserves all non-motion props including aria-*, data-*, etc.
+ */
+export const filterMotionProps = (props: Record<string, unknown>) => {
+  const motionProps = ['initial', 'animate', 'exit', 'variants', 'transition', 'whileHover', 'whileTap', 'whileInView', 'viewport', 'custom', 'layout', 'layoutId', 'onAnimationComplete'];
+  const filtered: Record<string, unknown> = {};
+  for (const key of Object.keys(props)) {
+    if (!motionProps.includes(key)) {
+      filtered[key] = props[key];
+    }
+  }
+  return filtered;
+};
+
 export * from '@testing-library/react'
 export { customRender as render }
