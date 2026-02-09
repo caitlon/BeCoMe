@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { render, filterMotionProps } from '@tests/utils';
+import { render, framerMotionMock } from '@tests/utils';
 import { Navbar } from '@/components/layout/Navbar';
 
 const { mockUser, mockLogout, mockPathname } = vi.hoisted(() => ({
@@ -34,20 +34,7 @@ vi.mock('@/contexts/AuthContext', () => ({
   }),
 }));
 
-vi.mock('framer-motion', () => ({
-  motion: {
-    div: ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) => (
-      <div {...filterMotionProps(props)}>{children}</div>
-    ),
-    nav: ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) => (
-      <nav {...filterMotionProps(props)}>{children}</nav>
-    ),
-    span: ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) => (
-      <span {...filterMotionProps(props)}>{children}</span>
-    ),
-  },
-  AnimatePresence: ({ children }: React.PropsWithChildren<object>) => <>{children}</>,
-}));
+vi.mock('framer-motion', () => framerMotionMock);
 
 describe('Navbar - Accessibility', () => {
   beforeEach(() => {

@@ -84,5 +84,46 @@ export const filterMotionProps = (props: Record<string, unknown>) => {
   return filtered;
 };
 
+/**
+ * Shared framer-motion mock factory.
+ * Usage: vi.mock('framer-motion', () => framerMotionMock);
+ *
+ * Covers all motion elements used across the app:
+ * div, section, nav, span, h1, h2, p, polygon, circle, line.
+ */
+const makeMotionComponent = (Tag: string) => {
+  const Component = ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) => {
+    const filtered = filterMotionProps(props);
+    return <Tag {...filtered}>{children}</Tag>;
+  };
+  Component.displayName = `motion.${Tag}`;
+  return Component;
+};
+
+const makeMotionVoidComponent = (Tag: string) => {
+  const Component = (props: Record<string, unknown>) => {
+    const filtered = filterMotionProps(props);
+    return <Tag {...filtered} />;
+  };
+  Component.displayName = `motion.${Tag}`;
+  return Component;
+};
+
+export const framerMotionMock = {
+  motion: {
+    div: makeMotionComponent('div'),
+    section: makeMotionComponent('section'),
+    nav: makeMotionComponent('nav'),
+    span: makeMotionComponent('span'),
+    h1: makeMotionComponent('h1'),
+    h2: makeMotionComponent('h2'),
+    p: makeMotionComponent('p'),
+    polygon: makeMotionVoidComponent('polygon'),
+    circle: makeMotionVoidComponent('circle'),
+    line: makeMotionVoidComponent('line'),
+  },
+  AnimatePresence: ({ children }: React.PropsWithChildren<object>) => <>{children}</>,
+};
+
 export * from '@testing-library/react'
 export { customRender as render }

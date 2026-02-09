@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen } from '@testing-library/react';
-import { render, filterMotionProps } from '@tests/utils';
+import { render, framerMotionMock } from '@tests/utils';
 import CaseStudy from '@/pages/CaseStudy';
 
 const { mockParams } = vi.hoisted(() => ({
@@ -12,7 +12,7 @@ vi.mock('react-router-dom', async () => {
   return {
     ...actual,
     useParams: () => mockParams.value,
-    useLocation: () => ({ pathname: '/case-studies/budget' }),
+    useLocation: () => ({ pathname: `/case-studies/${mockParams.value.id}` }),
   };
 });
 
@@ -24,26 +24,7 @@ vi.mock('@/contexts/AuthContext', () => ({
   }),
 }));
 
-vi.mock('framer-motion', () => ({
-  motion: {
-    div: ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) => (
-      <div {...filterMotionProps(props)}>{children}</div>
-    ),
-    section: ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) => (
-      <section {...filterMotionProps(props)}>{children}</section>
-    ),
-    nav: ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) => (
-      <nav {...filterMotionProps(props)}>{children}</nav>
-    ),
-    span: ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) => (
-      <span {...filterMotionProps(props)}>{children}</span>
-    ),
-    polygon: (props: Record<string, unknown>) => <polygon {...filterMotionProps(props)} />,
-    circle: (props: Record<string, unknown>) => <circle {...filterMotionProps(props)} />,
-    line: (props: Record<string, unknown>) => <line {...filterMotionProps(props)} />,
-  },
-  AnimatePresence: ({ children }: React.PropsWithChildren<object>) => <>{children}</>,
-}));
+vi.mock('framer-motion', () => framerMotionMock);
 
 describe('CaseStudy - Budget', () => {
   beforeEach(() => {
@@ -90,10 +71,10 @@ describe('CaseStudy - Budget', () => {
   });
 
   it('main content area has id="main-content"', () => {
-    const { container } = render(<CaseStudy />);
+    render(<CaseStudy />);
 
-    const main = container.querySelector('main#main-content');
-    expect(main).toBeInTheDocument();
+    const main = screen.getByRole('main');
+    expect(main).toHaveAttribute('id', 'main-content');
   });
 });
 
@@ -105,7 +86,7 @@ describe('CaseStudy - Not Found', () => {
   it('renders not-found state for invalid ID', () => {
     render(<CaseStudy />);
 
-    expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/not found|nenalezeno/i);
   });
 
   it('not-found state has link to /', () => {

@@ -1,29 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { render, filterMotionProps } from '@tests/utils';
+import { render, framerMotionMock } from '@tests/utils';
 import { StepEnterOpinion } from '@/components/onboarding/StepEnterOpinion';
 
-// Mock framer-motion
-vi.mock('framer-motion', () => ({
-  motion: {
-    div: ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) => (
-      <div {...filterMotionProps(props)}>{children}</div>
-    ),
-    h2: ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) => (
-      <h2 {...filterMotionProps(props)}>{children}</h2>
-    ),
-    p: ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) => (
-      <p {...filterMotionProps(props)}>{children}</p>
-    ),
-    polygon: ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) => (
-      <polygon {...filterMotionProps(props)}>{children}</polygon>
-    ),
-    circle: ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) => (
-      <circle {...filterMotionProps(props)}>{children}</circle>
-    ),
-  },
-}));
+vi.mock('framer-motion', () => framerMotionMock);
 
 describe('StepEnterOpinion', () => {
   it('renders 3 number inputs', () => {
@@ -72,6 +53,7 @@ describe('StepEnterOpinion', () => {
     const svg = screen.getByRole('img');
     const errorText = svg.querySelector('text');
     expect(errorText).toBeInTheDocument();
+    expect(errorText?.textContent).toBeTruthy();
   });
 
   it('updates triangle when inputs change', async () => {
