@@ -1,22 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { screen, act } from '@testing-library/react';
-import { render, filterMotionProps } from '@tests/utils';
+import { render, framerMotionMock } from '@tests/utils';
 import { FuzzyTriangleSVG } from '@/components/visualizations/FuzzyTriangleSVG';
 
-// Mock framer-motion
-vi.mock('framer-motion', () => ({
-  motion: {
-    polygon: ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) => (
-      <polygon {...filterMotionProps(props)}>{children}</polygon>
-    ),
-    circle: ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) => (
-      <circle {...filterMotionProps(props)}>{children}</circle>
-    ),
-    line: ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) => (
-      <line {...filterMotionProps(props)}>{children}</line>
-    ),
-  },
-}));
+vi.mock('framer-motion', () => framerMotionMock);
 
 // Mock matchMedia
 let prefersReducedMotion = false;

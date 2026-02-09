@@ -1,8 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { render } from '@tests/utils';
-import { filterMotionProps } from '@tests/utils';
+import { render, framerMotionMock } from '@tests/utils';
 import Onboarding from '@/pages/Onboarding';
 
 const { mockUser, mockNavigate, mockPathname } = vi.hoisted(() => ({
@@ -36,35 +35,7 @@ vi.mock('@/contexts/AuthContext', () => ({
   }),
 }));
 
-vi.mock('framer-motion', () => ({
-  motion: {
-    div: ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) => (
-      <div {...filterMotionProps(props)}>{children}</div>
-    ),
-    h1: ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) => (
-      <h1 {...filterMotionProps(props)}>{children}</h1>
-    ),
-    h2: ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) => (
-      <h2 {...filterMotionProps(props)}>{children}</h2>
-    ),
-    p: ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) => (
-      <p {...filterMotionProps(props)}>{children}</p>
-    ),
-    nav: ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) => (
-      <nav {...filterMotionProps(props)}>{children}</nav>
-    ),
-    span: ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) => (
-      <span {...filterMotionProps(props)}>{children}</span>
-    ),
-    polygon: (props: Record<string, unknown>) => <polygon {...filterMotionProps(props)} />,
-    circle: (props: Record<string, unknown>) => <circle {...filterMotionProps(props)} />,
-    line: (props: Record<string, unknown>) => <line {...filterMotionProps(props)} />,
-    section: ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) => (
-      <section {...filterMotionProps(props)}>{children}</section>
-    ),
-  },
-  AnimatePresence: ({ children }: React.PropsWithChildren<object>) => <>{children}</>,
-}));
+vi.mock('framer-motion', () => framerMotionMock);
 
 describe('Onboarding', () => {
   beforeEach(() => {

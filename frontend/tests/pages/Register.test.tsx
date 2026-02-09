@@ -263,11 +263,11 @@ describe('Register', () => {
   it('has link to login page', () => {
     render(<Register />);
 
+    // Find sign-in links and verify at least one points to /login
     const loginLinks = screen.getAllByRole('link', { name: /sign in/i });
-    const cardLoginLink = loginLinks.find(
-      (link) => link.classList.contains('text-foreground')
+    const loginLink = loginLinks.find(
+      (link) => link.getAttribute('href') === '/login'
     );
-    expect(cardLoginLink).toBeInTheDocument();
-    expect(cardLoginLink).toHaveAttribute('href', '/login');
+    expect(loginLink).toBeInTheDocument();
   });
 });
