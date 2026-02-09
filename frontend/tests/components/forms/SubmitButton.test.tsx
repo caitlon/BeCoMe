@@ -19,7 +19,7 @@ describe('SubmitButton', () => {
   it('shows spinner when isLoading', () => {
     render(<SubmitButton isLoading>Submit</SubmitButton>);
 
-    expect(document.querySelector('.animate-spin')).toBeInTheDocument();
+    expect(screen.getByRole('button')).toHaveAttribute('aria-busy', 'true');
   });
 
   it('shows loadingText when provided and isLoading', () => {
