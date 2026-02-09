@@ -109,8 +109,8 @@ describe('Navbar - Accessibility', () => {
 
     await user.keyboard('{Escape}');
 
-    // After Escape, the button should show "open menu" again (aria-expanded="false")
-    const button = screen.getByRole('button', { name: /open menu|otevřít menu/i });
-    expect(button).toHaveAttribute('aria-expanded', 'false');
+    // After Escape, menu closes and focus returns to the toggle button
+    expect(menuButton).toHaveAttribute('aria-expanded', 'false');
+    expect(menuButton).toHaveFocus();
   });
 });
