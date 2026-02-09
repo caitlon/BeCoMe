@@ -1,4 +1,5 @@
 import { lazy, Suspense } from "react";
+import { useTranslation } from "react-i18next";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -25,11 +26,12 @@ const NotFound = lazy(() => import("./pages/NotFound"));
 const queryClient = new QueryClient();
 
 function PageLoader() {
+  const { t } = useTranslation();
   return (
-    <div className="min-h-screen flex items-center justify-center" role="status">
+    <main id="main-content" tabIndex={-1} className="min-h-screen flex items-center justify-center" role="status">
       <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      <span className="sr-only">Loading…</span>
-    </div>
+      <span className="sr-only">{t("common.loading")}</span>
+    </main>
   );
 }
 
