@@ -125,9 +125,11 @@ const Projects = () => {
     return (
       <div className="min-h-screen">
         <Navbar />
-        <main id="main-content" className="pt-24 flex items-center justify-center" role="status" aria-label={tCommon("a11y.loading")}>
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-          <span className="sr-only">{tCommon("common.loading")}</span>
+        <main id="main-content" className="pt-24 flex items-center justify-center">
+          <div role="status" aria-label={tCommon("a11y.loading")}>
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            <span className="sr-only">{tCommon("common.loading")}</span>
+          </div>
         </main>
       </div>
     );

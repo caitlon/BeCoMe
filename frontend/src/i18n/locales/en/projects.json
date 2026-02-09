@@ -126,6 +126,8 @@
     "scaleMin": "Minimum",
     "scaleMax": "Maximum",
     "scaleUnit": "Unit",
+    "scaleMinPlaceholder": "Min",
+    "scaleMaxPlaceholder": "Max",
     "scaleUnitPlaceholder": "e.g., billion CZK, %, points",
     "cancel": "Cancel",
     "create": "Create Project",

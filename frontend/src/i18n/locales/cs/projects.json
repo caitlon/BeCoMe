@@ -126,6 +126,8 @@
     "scaleMin": "Minimum",
     "scaleMax": "Maximum",
     "scaleUnit": "Jednotka",
+    "scaleMinPlaceholder": "Min",
+    "scaleMaxPlaceholder": "Max",
     "scaleUnitPlaceholder": "např. miliard Kč, %, bodů",
     "cancel": "Zrušit",
     "create": "Vytvořit projekt",

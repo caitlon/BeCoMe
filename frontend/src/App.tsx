@@ -28,9 +28,11 @@ const queryClient = new QueryClient();
 function PageLoader() {
   const { t } = useTranslation();
   return (
-    <main id="main-content" tabIndex={-1} className="min-h-screen flex items-center justify-center" role="status">
-      <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      <span className="sr-only">{t("common.loading")}</span>
+    <main id="main-content" tabIndex={-1} className="min-h-screen flex items-center justify-center">
+      <div role="status">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        <span className="sr-only">{t("common.loading")}</span>
+      </div>
     </main>
   );
 }

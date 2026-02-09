@@ -1,7 +1,6 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen } from '@testing-library/react';
-import { render } from '@tests/utils';
-import { filterMotionProps } from '@tests/utils';
+import { render, filterMotionProps } from '@tests/utils';
 import CaseStudy from '@/pages/CaseStudy';
 
 const { mockParams } = vi.hoisted(() => ({
@@ -47,6 +46,10 @@ vi.mock('framer-motion', () => ({
 }));
 
 describe('CaseStudy - Budget', () => {
+  beforeEach(() => {
+    mockParams.value = { id: 'budget' };
+  });
+
   it('renders case study title for valid ID', () => {
     render(<CaseStudy />);
 
@@ -95,15 +98,17 @@ describe('CaseStudy - Budget', () => {
 });
 
 describe('CaseStudy - Not Found', () => {
-  it('renders not-found state for invalid ID', () => {
+  beforeEach(() => {
     mockParams.value = { id: 'nonexistent' };
+  });
+
+  it('renders not-found state for invalid ID', () => {
     render(<CaseStudy />);
 
     expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument();
   });
 
   it('not-found state has link to /', () => {
-    mockParams.value = { id: 'nonexistent' };
     render(<CaseStudy />);
 
     const homeLink = screen.getByRole('link', { name: /back|home|zpět/i });

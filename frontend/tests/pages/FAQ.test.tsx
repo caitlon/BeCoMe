@@ -1,7 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { screen } from '@testing-library/react';
-import { render } from '@tests/utils';
-import { filterMotionProps } from '@tests/utils';
+import { render, filterMotionProps } from '@tests/utils';
 import FAQ from '@/pages/FAQ';
 
 vi.mock('@/contexts/AuthContext', () => ({
