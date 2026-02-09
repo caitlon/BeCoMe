@@ -6,7 +6,7 @@ import jsxA11y from "eslint-plugin-jsx-a11y";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["dist"] },
+  { ignores: ["dist", "coverage"] },
   {
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     files: ["**/*.{ts,tsx}"],
@@ -39,6 +39,13 @@ export default tseslint.config(
   // Context providers co-export hooks by design
   {
     files: ["src/contexts/**/*.{ts,tsx}", "src/components/ThemeProvider.tsx"],
+    rules: {
+      "react-refresh/only-export-components": "off",
+    },
+  },
+  // Test utilities export helpers, not React components
+  {
+    files: ["tests/**/*.{ts,tsx}"],
     rules: {
       "react-refresh/only-export-components": "off",
     },

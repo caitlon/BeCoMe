@@ -23,7 +23,7 @@ vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual('react-router-dom');
   return {
     ...actual,
-    useLocation: () => ({ pathname: mockPathname.value }),
+    useLocation: () => ({ pathname: mockPathname.value, search: '', hash: '', state: null, key: 'default' }),
   };
 });
 

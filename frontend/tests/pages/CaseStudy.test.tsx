@@ -12,7 +12,7 @@ vi.mock('react-router-dom', async () => {
   return {
     ...actual,
     useParams: () => mockParams.value,
-    useLocation: () => ({ pathname: `/case-studies/${mockParams.value.id}` }),
+    useLocation: () => ({ pathname: `/case-studies/${mockParams.value.id}`, search: '', hash: '', state: null, key: 'default' }),
   };
 });
 
