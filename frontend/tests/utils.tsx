@@ -74,10 +74,10 @@ const customRender = (
  * Preserves all non-motion props including aria-*, data-*, etc.
  */
 export const filterMotionProps = (props: Record<string, unknown>) => {
-  const motionProps = ['initial', 'animate', 'exit', 'variants', 'transition', 'whileHover', 'whileTap', 'whileInView', 'viewport', 'custom', 'layout', 'layoutId', 'onAnimationComplete'];
+  const motionProps = new Set(['initial', 'animate', 'exit', 'variants', 'transition', 'whileHover', 'whileTap', 'whileInView', 'viewport', 'custom', 'layout', 'layoutId', 'onAnimationComplete']);
   const filtered: Record<string, unknown> = {};
   for (const key of Object.keys(props)) {
-    if (!motionProps.includes(key)) {
+    if (!motionProps.has(key)) {
       filtered[key] = props[key];
     }
   }

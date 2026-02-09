@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import { render, framerMotionMock } from '@tests/utils';
 import Onboarding from '@/pages/Onboarding';
 
@@ -20,7 +20,7 @@ vi.mock('react-router-dom', async () => {
   return {
     ...actual,
     useNavigate: () => vi.fn(),
-    useLocation: () => ({ pathname: mockPathname.value }),
+    useLocation: () => ({ pathname: mockPathname.value, search: '', hash: '', state: null, key: 'default' }),
   };
 });
 
@@ -67,10 +67,10 @@ describe('Onboarding - Accessibility', () => {
   });
 
   it('main content area has id="main-content"', () => {
-    const { container } = render(<Onboarding />, { initialEntries: ['/onboarding'] });
+    render(<Onboarding />, { initialEntries: ['/onboarding'] });
 
-    const main = container.querySelector('main#main-content');
-    expect(main).toBeInTheDocument();
+    const main = screen.getByRole('main');
+    expect(main).toHaveAttribute('id', 'main-content');
   });
 
   it('useDocumentTitle sets correct title', () => {
@@ -82,9 +82,8 @@ describe('Onboarding - Accessibility', () => {
   it('step dots are wrapped in nav element', () => {
     render(<Onboarding />, { initialEntries: ['/onboarding'] });
 
-    // The step navigation should contain all step dot buttons
     const stepNav = screen.getByRole('navigation', { name: /step navigation|navigace kroků/i });
-    const buttons = stepNav.querySelectorAll('button');
-    expect(buttons.length).toBe(6);
+    const buttons = within(stepNav).getAllByRole('button');
+    expect(buttons).toHaveLength(6);
   });
 });
