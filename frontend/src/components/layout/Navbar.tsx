@@ -99,9 +99,9 @@ export function Navbar() {
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" className="gap-2">
-                    <Avatar className="h-7 w-7">
+                    <Avatar className="h-7 w-7" aria-hidden="true">
                       {user?.photo_url && (
-                        <AvatarImage src={user.photo_url} alt={user.first_name} />
+                        <AvatarImage src={user.photo_url} alt="" />
                       )}
                       <AvatarFallback className="text-xs">
                         {user ? `${user.first_name[0]}${user.last_name?.[0] || ""}`.toUpperCase() : ""}

@@ -109,8 +109,3 @@ class ProjectInvitationResponse(BaseModel):
             invitee_last_name=invitee.last_name,
             invited_at=invitation.created_at,
         )
-
-
-# Keep old schema name for backward compatibility in __init__.py
-InvitationCreate = InviteByEmailRequest
-InvitationInfoResponse = InvitationListItemResponse
