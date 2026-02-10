@@ -100,7 +100,10 @@
     "teamMembers": "Team members table",
     "fuzzyEstimate": "Fuzzy number estimate",
     "mainNavigation": "Main navigation",
-    "stepNavigation": "Step navigation"
+    "stepNavigation": "Step navigation",
+    "noDataAvailable": "No data yet",
+    "pendingMemberRow": "{{name}} — awaiting response, no opinion submitted yet",
+    "pendingInvitationRow": "{{name}} — invitation pending, not yet joined"
   },
   "pageTitle": {
     "landing": "Home",

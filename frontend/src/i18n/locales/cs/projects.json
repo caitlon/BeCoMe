@@ -26,7 +26,8 @@
   },
   "roles": {
     "admin": "Admin",
-    "expert": "Expert"
+    "expert": "Expert",
+    "invited": "Pozváno"
   },
   "invitations": {
     "empty": {
@@ -106,7 +107,8 @@
     "noOtherOpinions": "Zatím žádné další názory",
     "expert": "Expert",
     "visualization": "Vizualizace",
-    "showIndividual": "Zobrazit jednotlivé názory"
+    "showIndividual": "Zobrazit jednotlivé názory",
+    "awaitingResponse": "Čeká na odpověď"
   },
   "team": {
     "name": "Jméno",

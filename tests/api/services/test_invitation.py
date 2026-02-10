@@ -366,3 +366,93 @@ class TestInvitationServiceGetUserInvitations:
         assert result[0].project == project
         assert result[0].inviter == inviter
         assert result[0].member_count == 5
+
+
+class TestInvitationServiceGetProjectInvitations:
+    """Tests for InvitationService.get_project_invitations method."""
+
+    def test_returns_empty_list_when_no_invitations(self):
+        """Returns empty list when project has no pending invitations."""
+        # GIVEN
+        mock_session = MagicMock()
+        mock_session.exec.return_value.all.return_value = []
+        service = InvitationService(mock_session)
+
+        # WHEN
+        result = service.get_project_invitations(uuid4())
+
+        # THEN
+        assert result == []
+
+    def test_returns_invitation_user_tuples(self):
+        """Returns list of (Invitation, User) tuples for pending invitations."""
+        # GIVEN
+        project_id = uuid4()
+        invitee_id = uuid4()
+        invitation = Invitation(
+            id=uuid4(),
+            project_id=project_id,
+            invitee_id=invitee_id,
+            inviter_id=uuid4(),
+            created_at=datetime.now(UTC),
+        )
+        invitee = User(
+            id=invitee_id,
+            email="invitee@example.com",
+            hashed_password="hash",
+            first_name="Invitee",
+            last_name="User",
+        )
+        mock_session = MagicMock()
+        mock_session.exec.return_value.all.return_value = [(invitation, invitee)]
+        service = InvitationService(mock_session)
+
+        # WHEN
+        result = service.get_project_invitations(project_id)
+
+        # THEN
+        assert len(result) == 1
+        returned_invitation, returned_user = result[0]
+        assert returned_invitation == invitation
+        assert returned_user == invitee
+        assert returned_user.email == "invitee@example.com"
+
+    def test_returns_multiple_invitations(self):
+        """Returns all pending invitations for the project."""
+        # GIVEN
+        project_id = uuid4()
+        inv1 = Invitation(
+            id=uuid4(),
+            project_id=project_id,
+            invitee_id=uuid4(),
+            inviter_id=uuid4(),
+            created_at=datetime.now(UTC),
+        )
+        user1 = User(
+            id=inv1.invitee_id,
+            email="a@example.com",
+            hashed_password="hash",
+            first_name="Alice",
+        )
+        inv2 = Invitation(
+            id=uuid4(),
+            project_id=project_id,
+            invitee_id=uuid4(),
+            inviter_id=uuid4(),
+            created_at=datetime.now(UTC),
+        )
+        user2 = User(
+            id=inv2.invitee_id,
+            email="b@example.com",
+            hashed_password="hash",
+            first_name="Bob",
+        )
+        mock_session = MagicMock()
+        mock_session.exec.return_value.all.return_value = [(inv1, user1), (inv2, user2)]
+        service = InvitationService(mock_session)
+
+        # WHEN
+        result = service.get_project_invitations(project_id)
+
+        # THEN
+        assert len(result) == 2

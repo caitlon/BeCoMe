@@ -193,18 +193,18 @@ const Projects = () => {
                     variants={itemVariants}
                     whileHover={{ y: -4, transition: { duration: 0.2 } }}
                   >
-                    <Card className="h-full hover:shadow-lg transition-shadow duration-300">
+                    <Card className="relative h-full hover:shadow-lg transition-shadow duration-300 cursor-pointer">
                       <CardContent className="p-6">
                         <div className="flex items-start justify-between mb-3">
-                          <Link 
+                          <Link
                             to={`/projects/${project.id}`}
-                            className="font-medium text-lg hover:underline line-clamp-1"
+                            className="font-medium text-lg hover:underline line-clamp-1 after:absolute after:inset-0 after:content-['']"
                           >
                             {project.name}
                           </Link>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" className="h-8 w-8">
+                              <Button variant="ghost" size="icon" className="h-8 w-8 relative z-10">
                                 <MoreHorizontal className="h-4 w-4" />
                               </Button>
                             </DropdownMenuTrigger>

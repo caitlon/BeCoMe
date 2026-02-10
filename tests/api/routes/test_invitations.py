@@ -483,3 +483,146 @@ class TestInvitationFlow:
             headers=auth_header(admin_token),
         )
         assert get_resp.json()["member_count"] == 3
+
+
+class TestListProjectInvitations:
+    """Tests for GET /api/v1/projects/{id}/invitations."""
+
+    def test_returns_empty_list_when_no_invitations(self, client):
+        """Returns empty list when project has no pending invitations."""
+        # GIVEN
+        admin_token = register_and_login(client, "admin@example.com")
+        project = create_project(client, admin_token)
+
+        # WHEN
+        response = client.get(
+            f"/api/v1/projects/{project['id']}/invitations",
+            headers=auth_header(admin_token),
+        )
+
+        # THEN
+        assert response.status_code == 200
+        assert response.json() == []
+
+    def test_returns_pending_invitations_with_invitee_details(self, client):
+        """Returns pending invitations with invitee name and email."""
+        # GIVEN
+        admin_token = register_and_login(client, "admin@example.com")
+        register_and_login(client, "invitee@example.com")
+        project = create_project(client, admin_token)
+
+        client.post(
+            f"/api/v1/projects/{project['id']}/invite",
+            json={"email": "invitee@example.com"},
+            headers=auth_header(admin_token),
+        )
+
+        # WHEN
+        response = client.get(
+            f"/api/v1/projects/{project['id']}/invitations",
+            headers=auth_header(admin_token),
+        )
+
+        # THEN
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 1
+        assert data[0]["invitee_email"] == "invitee@example.com"
+        assert data[0]["invitee_first_name"] == "Test"
+        assert "id" in data[0]
+        assert "invited_at" in data[0]
+
+    def test_accepted_invitations_not_returned(self, client):
+        """Accepted invitations are removed and not listed."""
+        # GIVEN
+        admin_token = register_and_login(client, "admin@example.com")
+        invitee_token = register_and_login(client, "invitee@example.com")
+        project = create_project(client, admin_token)
+
+        invite_resp = client.post(
+            f"/api/v1/projects/{project['id']}/invite",
+            json={"email": "invitee@example.com"},
+            headers=auth_header(admin_token),
+        )
+        invitation_id = invite_resp.json()["id"]
+
+        client.post(
+            f"/api/v1/invitations/{invitation_id}/accept",
+            headers=auth_header(invitee_token),
+        )
+
+        # WHEN
+        response = client.get(
+            f"/api/v1/projects/{project['id']}/invitations",
+            headers=auth_header(admin_token),
+        )
+
+        # THEN
+        assert response.status_code == 200
+        assert response.json() == []
+
+    def test_accessible_by_project_member(self, client):
+        """Expert (non-admin) members can access project invitations."""
+        # GIVEN
+        admin_token = register_and_login(client, "admin@example.com")
+        expert_token = register_and_login(client, "expert@example.com")
+        register_and_login(client, "invitee@example.com")
+        project = create_project(client, admin_token)
+
+        # Add expert as member
+        invite_resp = client.post(
+            f"/api/v1/projects/{project['id']}/invite",
+            json={"email": "expert@example.com"},
+            headers=auth_header(admin_token),
+        )
+        client.post(
+            f"/api/v1/invitations/{invite_resp.json()['id']}/accept",
+            headers=auth_header(expert_token),
+        )
+
+        # Create a new pending invitation
+        client.post(
+            f"/api/v1/projects/{project['id']}/invite",
+            json={"email": "invitee@example.com"},
+            headers=auth_header(admin_token),
+        )
+
+        # WHEN - expert accesses invitations
+        response = client.get(
+            f"/api/v1/projects/{project['id']}/invitations",
+            headers=auth_header(expert_token),
+        )
+
+        # THEN
+        assert response.status_code == 200
+        assert len(response.json()) == 1
+
+    def test_not_accessible_by_non_member(self, client):
+        """Non-members cannot access project invitations."""
+        # GIVEN
+        admin_token = register_and_login(client, "admin@example.com")
+        outsider_token = register_and_login(client, "outsider@example.com")
+        project = create_project(client, admin_token)
+
+        # WHEN
+        response = client.get(
+            f"/api/v1/projects/{project['id']}/invitations",
+            headers=auth_header(outsider_token),
+        )
+
+        # THEN
+        assert response.status_code == 403
+
+    def test_requires_authentication(self, client):
+        """401 returned when not authenticated."""
+        # GIVEN
+        admin_token = register_and_login(client, "admin@example.com")
+        project = create_project(client, admin_token)
+
+        # WHEN
+        response = client.get(
+            f"/api/v1/projects/{project['id']}/invitations",
+        )
+
+        # THEN
+        assert response.status_code == 401

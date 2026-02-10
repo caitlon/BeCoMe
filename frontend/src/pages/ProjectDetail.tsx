@@ -40,7 +40,7 @@ import { SubmitButton } from "@/components/forms";
 import { InviteExpertModal } from "@/components/modals/InviteExpertModal";
 import { DeleteConfirmModal } from "@/components/modals/DeleteConfirmModal";
 import { api } from "@/lib/api";
-import { ProjectWithRole, Opinion, CalculationResult, Member } from "@/types/api";
+import { ProjectWithRole, Opinion, CalculationResult, Member, ProjectInvitation } from "@/types/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
@@ -57,6 +57,7 @@ const ProjectDetail = () => {
   const [opinions, setOpinions] = useState<Opinion[]>([]);
   const [result, setResult] = useState<CalculationResult | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
+  const [pendingInvitations, setPendingInvitations] = useState<ProjectInvitation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSavingOpinion, setIsSavingOpinion] = useState(false);
 
@@ -79,17 +80,19 @@ const ProjectDetail = () => {
   const fetchData = useCallback(async () => {
     if (!id) return;
     try {
-      const [projectData, opinionsData, resultData, membersData] =
+      const [projectData, opinionsData, resultData, membersData, invitationsData] =
         await Promise.all([
           api.getProject(id),
           api.getOpinions(id),
           api.getResult(id),
           api.getMembers(id),
+          api.getProjectInvitations(id),
         ]);
       setProject(projectData);
       setOpinions(opinionsData);
       setResult(resultData);
       setMembers(membersData);
+      setPendingInvitations(invitationsData);
 
       // Pre-fill form if user has opinion
       const existing = opinionsData.find((o) => o.user_id === user?.id);
@@ -319,7 +322,7 @@ const ProjectDetail = () => {
               onDelete={handleDeleteOpinion}
             />
 
-            <OtherOpinionsTable opinions={otherOpinions} />
+            <OtherOpinionsTable opinions={otherOpinions} members={members} currentUserId={user?.id} />
           </div>
 
           {/* Right Column - Results */}
@@ -365,7 +368,7 @@ const ProjectDetail = () => {
                 onSave={handleSaveOpinion}
                 onDelete={handleDeleteOpinion}
               />
-              <OtherOpinionsTable opinions={otherOpinions} />
+              <OtherOpinionsTable opinions={otherOpinions} members={members} currentUserId={user?.id} />
             </TabsContent>
 
             <TabsContent value="results">
@@ -381,6 +384,7 @@ const ProjectDetail = () => {
             <TabsContent value="team">
               <TeamTable
                 members={members}
+                pendingInvitations={pendingInvitations}
                 isAdmin={isAdmin}
                 currentUserId={user?.id}
                 onRemove={handleRemoveMember}
@@ -411,6 +415,7 @@ const ProjectDetail = () => {
             <CollapsibleContent>
               <TeamTable
                 members={members}
+                pendingInvitations={pendingInvitations}
                 isAdmin={isAdmin}
                 currentUserId={user?.id}
                 onRemove={handleRemoveMember}
@@ -641,11 +646,24 @@ const OpinionForm = ({
   );
 };
 
-const OtherOpinionsTable = ({ opinions }: { opinions: Opinion[] }) => {
+const OtherOpinionsTable = ({
+  opinions,
+  members,
+  currentUserId,
+}: {
+  opinions: Opinion[];
+  members: Member[];
+  currentUserId?: string;
+}) => {
   const { t } = useTranslation("projects");
   const { t: tFuzzy } = useTranslation();
 
-  if (opinions.length === 0) {
+  const opinionUserIds = new Set(opinions.map((o) => o.user_id));
+  const pendingMembers = members.filter(
+    (m) => m.user_id !== currentUserId && !opinionUserIds.has(m.user_id)
+  );
+
+  if (opinions.length === 0 && pendingMembers.length === 0) {
     return (
       <Card>
         <CardHeader>
@@ -708,6 +726,27 @@ const OtherOpinionsTable = ({ opinions }: { opinions: Opinion[] }) => {
                 </TableCell>
               </TableRow>
             ))}
+            {pendingMembers.map((member) => {
+              const fullName = `${member.first_name} ${member.last_name ?? ""}`.trim();
+              return (
+                <TableRow key={member.user_id} className="opacity-50" aria-label={tFuzzy("a11y.pendingMemberRow", { name: fullName })}>
+                  <TableCell>
+                    <div>
+                      <div className="font-medium">
+                        {fullName}
+                      </div>
+                      <div className="text-xs text-muted-foreground italic">
+                        {t("detail.awaitingResponse")}
+                      </div>
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-right text-muted-foreground" aria-label={tFuzzy("a11y.noDataAvailable")}>—</TableCell>
+                  <TableCell className="text-right text-muted-foreground" aria-label={tFuzzy("a11y.noDataAvailable")}>—</TableCell>
+                  <TableCell className="text-right text-muted-foreground" aria-label={tFuzzy("a11y.noDataAvailable")}>—</TableCell>
+                  <TableCell className="text-right text-muted-foreground" aria-label={tFuzzy("a11y.noDataAvailable")}>—</TableCell>
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
       </CardContent>
@@ -1014,6 +1053,7 @@ const TriangleVisualization = ({
 
 interface TeamTableProps {
   members: Member[];
+  pendingInvitations: ProjectInvitation[];
   isAdmin: boolean;
   currentUserId?: string;
   onRemove: (userId: string) => void;
@@ -1021,6 +1061,7 @@ interface TeamTableProps {
 
 const TeamTable = ({
   members,
+  pendingInvitations,
   isAdmin,
   currentUserId,
   onRemove,
@@ -1079,6 +1120,26 @@ const TeamTable = ({
                 )}
               </TableRow>
             ))}
+            {pendingInvitations.map((inv) => {
+              const fullName = `${inv.invitee_first_name} ${inv.invitee_last_name ?? ""}`.trim();
+              return (
+                <TableRow key={inv.id} className="opacity-50" aria-label={tCommon("a11y.pendingInvitationRow", { name: fullName })}>
+                  <TableCell className="font-medium">
+                    {fullName}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {inv.invitee_email}
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="outline">
+                      {t("roles.invited")}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground" aria-label={tCommon("a11y.noDataAvailable")}>—</TableCell>
+                  {isAdmin && <TableCell />}
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
       </CardContent>
