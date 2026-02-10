@@ -80,19 +80,25 @@ const ProjectDetail = () => {
   const fetchData = useCallback(async () => {
     if (!id) return;
     try {
-      const [projectData, opinionsData, resultData, membersData, invitationsData] =
+      const [projectData, opinionsData, resultData, membersData] =
         await Promise.all([
           api.getProject(id),
           api.getOpinions(id),
           api.getResult(id),
           api.getMembers(id),
-          api.getProjectInvitations(id),
         ]);
       setProject(projectData);
       setOpinions(opinionsData);
       setResult(resultData);
       setMembers(membersData);
-      setPendingInvitations(invitationsData);
+
+      // Fetch invitations separately — non-critical data
+      try {
+        const invitationsData = await api.getProjectInvitations(id);
+        setPendingInvitations(invitationsData);
+      } catch {
+        // Silently ignore; pending invitations are non-essential
+      }
 
       // Pre-fill form if user has opinion
       const existing = opinionsData.find((o) => o.user_id === user?.id);
@@ -729,9 +735,10 @@ const OtherOpinionsTable = ({
             {pendingMembers.map((member) => {
               const fullName = `${member.first_name} ${member.last_name ?? ""}`.trim();
               return (
-                <TableRow key={member.user_id} className="opacity-50" aria-label={tFuzzy("a11y.pendingMemberRow", { name: fullName })}>
+                <TableRow key={member.user_id} className="opacity-50">
                   <TableCell>
                     <div>
+                      <span className="sr-only">{tFuzzy("a11y.pendingMemberRow", { name: fullName })}</span>
                       <div className="font-medium">
                         {fullName}
                       </div>
@@ -1123,8 +1130,9 @@ const TeamTable = ({
             {pendingInvitations.map((inv) => {
               const fullName = `${inv.invitee_first_name} ${inv.invitee_last_name ?? ""}`.trim();
               return (
-                <TableRow key={inv.id} className="opacity-50" aria-label={tCommon("a11y.pendingInvitationRow", { name: fullName })}>
+                <TableRow key={inv.id} className="opacity-50">
                   <TableCell className="font-medium">
+                    <span className="sr-only">{tCommon("a11y.pendingInvitationRow", { name: fullName })}</span>
                     {fullName}
                   </TableCell>
                   <TableCell className="text-muted-foreground">

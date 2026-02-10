@@ -300,7 +300,7 @@ describe('ProjectDetail - Team Section', () => {
     render(<ProjectDetail />);
 
     await waitFor(() => {
-      expect(screen.getByText(/team.*2 members/i)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /team.*2 members/i })).toBeInTheDocument();
     });
   });
 });
@@ -366,13 +366,11 @@ describe('ProjectDetail - Pending Members', () => {
     render(<ProjectDetail />);
 
     await waitFor(() => {
-      // Only Jane should appear as pending (user-1 is current user)
+      // Only Jane should be pending — current user (John) must be excluded.
+      // Text appears twice: once in desktop layout, once in mobile tab.
       const awaitingTexts = screen.getAllByText('Awaiting response');
-      expect(awaitingTexts.length).toBeGreaterThan(0);
+      expect(awaitingTexts).toHaveLength(2);
     });
-
-    // "John Doe" should NOT appear in the pending list with "Awaiting response"
-    // It appears in the team section, but not as a pending opinion row
   });
 
   it('shows table when only pending members exist (no opinions)', async () => {
@@ -418,9 +416,9 @@ describe('ProjectDetail - Pending Invitations in Team', () => {
 
     // Open the desktop collapsible to reveal the team table
     await waitFor(() => {
-      expect(screen.getByText(/team.*1 members/i)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /team.*1 members/i })).toBeInTheDocument();
     });
-    await user.click(screen.getByText(/team.*1 members/i));
+    await user.click(screen.getByRole('button', { name: /team.*1 members/i }));
 
     await waitFor(() => {
       const invitedBadges = screen.getAllByText('Invited');
@@ -443,9 +441,9 @@ describe('ProjectDetail - Pending Invitations in Team', () => {
 
     // Open the desktop collapsible
     await waitFor(() => {
-      expect(screen.getByText(/team.*0 members/i)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /team.*0 members/i })).toBeInTheDocument();
     });
-    await user.click(screen.getByText(/team.*0 members/i));
+    await user.click(screen.getByRole('button', { name: /team.*0 members/i }));
 
     await waitFor(() => {
       const names = screen.getAllByText('Michael Brown');
