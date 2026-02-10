@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
@@ -1088,7 +1089,17 @@ const TeamTable = ({
             {members.map((member) => (
               <TableRow key={member.user_id}>
                 <TableCell className="font-medium">
-                  {member.first_name} {member.last_name}
+                  <div className="flex items-center gap-2">
+                    <Avatar className="h-7 w-7">
+                      {member.photo_url && (
+                        <AvatarImage src={member.photo_url} alt={member.first_name} />
+                      )}
+                      <AvatarFallback className="text-xs">
+                        {`${member.first_name[0]}${member.last_name?.[0] || ""}`.toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    <span>{member.first_name} {member.last_name}</span>
+                  </div>
                 </TableCell>
                 <TableCell className="text-muted-foreground">
                   {member.email}
@@ -1126,8 +1137,17 @@ const TeamTable = ({
               return (
                 <TableRow key={inv.id} className="opacity-50">
                   <TableCell className="font-medium">
-                    <span className="sr-only">{tCommon("a11y.pendingInvitationRow", { name: fullName })}</span>
-                    {fullName}
+                    <div className="flex items-center gap-2">
+                      <Avatar className="h-7 w-7">
+                        <AvatarFallback className="text-xs">
+                          {`${inv.invitee_first_name[0]}${inv.invitee_last_name?.[0] || ""}`.toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span>
+                        <span className="sr-only">{tCommon("a11y.pendingInvitationRow", { name: fullName })}</span>
+                        {fullName}
+                      </span>
+                    </div>
                   </TableCell>
                   <TableCell className="text-muted-foreground">
                     {inv.invitee_email}

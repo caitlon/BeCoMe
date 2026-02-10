@@ -6,6 +6,7 @@ import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { useAuth } from "@/contexts/AuthContext";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Menu, X, ChevronDown, User, LogOut } from "lucide-react";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -98,6 +99,14 @@ export function Navbar() {
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" className="gap-2">
+                    <Avatar className="h-7 w-7">
+                      {user?.photo_url && (
+                        <AvatarImage src={user.photo_url} alt={user.first_name} />
+                      )}
+                      <AvatarFallback className="text-xs">
+                        {user ? `${user.first_name[0]}${user.last_name?.[0] || ""}`.toUpperCase() : ""}
+                      </AvatarFallback>
+                    </Avatar>
                     <span className="text-sm">
                       {user?.first_name} {user?.last_name}
                     </span>

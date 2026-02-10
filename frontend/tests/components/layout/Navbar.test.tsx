@@ -77,6 +77,29 @@ describe('Navbar - Authenticated', () => {
   });
 });
 
+describe('Navbar - Avatar', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockUser.photo_url = null;
+  });
+
+  it('displays initials fallback when no photo', () => {
+    render(<Navbar />);
+
+    expect(screen.getByText('JD')).toBeInTheDocument();
+  });
+
+  it('still shows initials fallback in jsdom even with photo_url', () => {
+    mockUser.photo_url = 'https://example.com/photo.jpg';
+
+    render(<Navbar />);
+
+    // Radix AvatarImage requires real image loading which jsdom cannot do,
+    // so fallback is always shown in test environment
+    expect(screen.getByText('JD')).toBeInTheDocument();
+  });
+});
+
 // Note: Unauthenticated navbar tests require different mock setup
 // that would need vi.resetModules() which is complex with the current pattern.
 // The authenticated flow is the primary use case and is well tested above.

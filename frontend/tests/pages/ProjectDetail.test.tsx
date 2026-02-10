@@ -303,6 +303,27 @@ describe('ProjectDetail - Team Section', () => {
       expect(screen.getByRole('button', { name: /team.*2 members/i })).toBeInTheDocument();
     });
   });
+
+  it('displays member avatar initials in team table', async () => {
+    const user = userEvent.setup();
+    const members = [
+      createMember({ user_id: 'user-1', first_name: 'John', last_name: 'Doe', role: 'admin' }),
+    ];
+    mockApi.getMembers.mockResolvedValue(members);
+
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /team.*1 members/i })).toBeInTheDocument();
+    });
+    await user.click(screen.getByRole('button', { name: /team.*1 members/i }));
+
+    await waitFor(() => {
+      // JD appears in both Navbar avatar and team table avatar
+      const initials = screen.getAllByText('JD');
+      expect(initials.length).toBeGreaterThanOrEqual(2);
+    });
+  });
 });
 
 describe('ProjectDetail - Delete Project', () => {

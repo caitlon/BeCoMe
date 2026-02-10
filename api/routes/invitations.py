@@ -133,6 +133,7 @@ def accept_invitation(
         email=current_user.email,
         first_name=current_user.first_name,
         last_name=current_user.last_name,
+        photo_url=current_user.photo_url,
         role=membership.role.value,
         joined_at=membership.joined_at,
     )
