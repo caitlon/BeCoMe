@@ -7,6 +7,7 @@ import {
   CalculationResult,
   Invitation,
   Member,
+  ProjectInvitation,
   CreateProjectInput,
   UpdateProjectInput,
   CreateOpinionInput,
@@ -226,6 +227,11 @@ class ApiClient {
     return this.request<void>(`/invitations/${invitationId}/decline`, {
       method: 'POST',
     });
+  }
+
+  // Project invitations
+  async getProjectInvitations(projectId: string): Promise<ProjectInvitation[]> {
+    return this.request<ProjectInvitation[]>(`/projects/${projectId}/invitations`);
   }
 
   // Members

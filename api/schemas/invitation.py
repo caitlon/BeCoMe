@@ -85,6 +85,32 @@ class InvitationListItemResponse(BaseModel):
         )
 
 
+class ProjectInvitationResponse(BaseModel):
+    """Pending invitation shown on the project detail page."""
+
+    id: str
+    invitee_email: str
+    invitee_first_name: str
+    invitee_last_name: str | None
+    invited_at: datetime
+
+    @classmethod
+    def from_model(cls, invitation: "Invitation", invitee: "User") -> "ProjectInvitationResponse":
+        """Create response from database models.
+
+        :param invitation: Invitation database model
+        :param invitee: Invitee user database model
+        :return: ProjectInvitationResponse instance
+        """
+        return cls(
+            id=str(invitation.id),
+            invitee_email=invitee.email,
+            invitee_first_name=invitee.first_name,
+            invitee_last_name=invitee.last_name,
+            invited_at=invitation.created_at,
+        )
+
+
 # Keep old schema name for backward compatibility in __init__.py
 InvitationCreate = InviteByEmailRequest
 InvitationInfoResponse = InvitationListItemResponse

@@ -6,12 +6,14 @@ import {
   CalculationResult,
   FuzzyNumber,
   Member,
+  ProjectInvitation,
 } from '@/types/api';
 
 let projectCounter = 0;
 let opinionCounter = 0;
 let invitationCounter = 0;
 let memberCounter = 0;
+let projectInvitationCounter = 0;
 
 /**
  * Creates a mock Project object with default values.
@@ -138,6 +140,21 @@ export function createMember(overrides: Partial<Member> = {}): Member {
 }
 
 /**
+ * Creates a mock ProjectInvitation object (pending invitation on project page).
+ */
+export function createProjectInvitation(overrides: Partial<ProjectInvitation> = {}): ProjectInvitation {
+  projectInvitationCounter++;
+  return {
+    id: `proj-invitation-${projectInvitationCounter}`,
+    invitee_email: `pending${projectInvitationCounter}@example.com`,
+    invitee_first_name: 'Pending',
+    invitee_last_name: `User ${projectInvitationCounter}`,
+    invited_at: '2024-01-01T00:00:00Z',
+    ...overrides,
+  };
+}
+
+/**
  * Resets all counters for deterministic IDs in tests.
  */
 export function resetProjectCounters() {
@@ -145,4 +162,5 @@ export function resetProjectCounters() {
   opinionCounter = 0;
   invitationCounter = 0;
   memberCounter = 0;
+  projectInvitationCounter = 0;
 }

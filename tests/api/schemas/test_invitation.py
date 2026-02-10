@@ -4,7 +4,11 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 from api.db.models import Invitation, Project, User
-from api.schemas.invitation import InvitationListItemResponse, InvitationResponse
+from api.schemas.invitation import (
+    InvitationListItemResponse,
+    InvitationResponse,
+    ProjectInvitationResponse,
+)
 
 
 class TestInvitationResponseFromModel:
@@ -138,3 +142,71 @@ class TestInvitationListItemResponseFromModel:
 
         # THEN
         assert response.project_description is None
+
+
+class TestProjectInvitationResponseFromModel:
+    """Tests for ProjectInvitationResponse.from_model method."""
+
+    def test_creates_response_from_models(self):
+        """
+        GIVEN Invitation and User (invitee) models
+        WHEN from_model is called
+        THEN ProjectInvitationResponse is created with correct values
+        """
+        # GIVEN
+        invitation_id = uuid4()
+        invitee_id = uuid4()
+        created_at = datetime.now(UTC)
+
+        invitation = Invitation(
+            id=invitation_id,
+            project_id=uuid4(),
+            inviter_id=uuid4(),
+            invitee_id=invitee_id,
+            created_at=created_at,
+        )
+        invitee = User(
+            id=invitee_id,
+            email="invitee@example.com",
+            hashed_password="hash",
+            first_name="Jane",
+            last_name="Doe",
+        )
+
+        # WHEN
+        response = ProjectInvitationResponse.from_model(invitation, invitee)
+
+        # THEN
+        assert response.id == str(invitation_id)
+        assert response.invitee_email == "invitee@example.com"
+        assert response.invitee_first_name == "Jane"
+        assert response.invitee_last_name == "Doe"
+        assert response.invited_at == created_at
+
+    def test_handles_none_last_name(self):
+        """
+        GIVEN User with None last_name
+        WHEN from_model is called
+        THEN response has None invitee_last_name
+        """
+        # GIVEN
+        invitation = Invitation(
+            id=uuid4(),
+            project_id=uuid4(),
+            inviter_id=uuid4(),
+            invitee_id=uuid4(),
+        )
+        invitee = User(
+            id=invitation.invitee_id,
+            email="invitee@example.com",
+            hashed_password="hash",
+            first_name="Solo",
+            last_name=None,
+        )
+
+        # WHEN
+        response = ProjectInvitationResponse.from_model(invitation, invitee)
+
+        # THEN
+        assert response.invitee_last_name is None
+        assert response.invitee_first_name == "Solo"

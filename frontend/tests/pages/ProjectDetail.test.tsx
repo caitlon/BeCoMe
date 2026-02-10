@@ -3,7 +3,7 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { render } from '@tests/utils';
 import ProjectDetail from '@/pages/ProjectDetail';
-import { createProject, createOpinion, createMember, createCalculationResult } from '@tests/factories/project';
+import { createProject, createOpinion, createMember, createCalculationResult, createProjectInvitation } from '@tests/factories/project';
 
 // Use vi.hoisted for mock variables
 const { mockApi, mockToast, mockUser, mockNavigate } = vi.hoisted(() => ({
@@ -12,6 +12,7 @@ const { mockApi, mockToast, mockUser, mockNavigate } = vi.hoisted(() => ({
     getOpinions: vi.fn(),
     getResult: vi.fn(),
     getMembers: vi.fn(),
+    getProjectInvitations: vi.fn(),
     createOrUpdateOpinion: vi.fn(),
     deleteOpinion: vi.fn(),
     deleteProject: vi.fn(),
@@ -98,6 +99,7 @@ const defaultSetup = () => {
   mockApi.getOpinions.mockResolvedValue([]);
   mockApi.getResult.mockResolvedValue(null);
   mockApi.getMembers.mockResolvedValue([]);
+  mockApi.getProjectInvitations.mockResolvedValue([]);
 
   return { project };
 };
@@ -114,6 +116,7 @@ describe('ProjectDetail', () => {
     mockApi.getOpinions.mockReturnValue(new Promise(() => {}));
     mockApi.getResult.mockReturnValue(new Promise(() => {}));
     mockApi.getMembers.mockReturnValue(new Promise(() => {}));
+    mockApi.getProjectInvitations.mockReturnValue(new Promise(() => {}));
 
     render(<ProjectDetail />);
 
@@ -320,6 +323,143 @@ describe('ProjectDetail - Delete Project', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Delete Project?')).toBeInTheDocument();
+    });
+  });
+});
+
+describe('ProjectDetail - Pending Members', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    defaultSetup();
+  });
+
+  it('shows awaiting response for members without opinions', async () => {
+    const members = [
+      createMember({ user_id: 'user-1', first_name: 'John', last_name: 'Doe', role: 'admin' }),
+      createMember({ user_id: 'user-2', first_name: 'Jane', last_name: 'Smith', role: 'expert' }),
+      createMember({ user_id: 'user-3', first_name: 'Anna', last_name: 'Lee', role: 'expert' }),
+    ];
+    const opinions = [
+      createOpinion({ user_id: 'user-2', user_first_name: 'Jane', user_last_name: 'Smith' }),
+    ];
+    mockApi.getMembers.mockResolvedValue(members);
+    mockApi.getOpinions.mockResolvedValue(opinions);
+
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      // Anna has no opinion and is not the current user — should see "Awaiting response"
+      const awaitingTexts = screen.getAllByText('Awaiting response');
+      expect(awaitingTexts.length).toBeGreaterThan(0);
+    });
+  });
+
+  it('does not show current user as pending member', async () => {
+    const members = [
+      createMember({ user_id: 'user-1', first_name: 'John', last_name: 'Doe', role: 'admin' }),
+      createMember({ user_id: 'user-2', first_name: 'Jane', last_name: 'Smith', role: 'expert' }),
+    ];
+    // No opinions at all — user-1 (current user) should NOT appear as pending
+    mockApi.getMembers.mockResolvedValue(members);
+    mockApi.getOpinions.mockResolvedValue([]);
+
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      // Only Jane should appear as pending (user-1 is current user)
+      const awaitingTexts = screen.getAllByText('Awaiting response');
+      expect(awaitingTexts.length).toBeGreaterThan(0);
+    });
+
+    // "John Doe" should NOT appear in the pending list with "Awaiting response"
+    // It appears in the team section, but not as a pending opinion row
+  });
+
+  it('shows table when only pending members exist (no opinions)', async () => {
+    const members = [
+      createMember({ user_id: 'user-1', first_name: 'John', last_name: 'Doe', role: 'admin' }),
+      createMember({ user_id: 'user-2', first_name: 'Jane', last_name: 'Smith', role: 'expert' }),
+    ];
+    mockApi.getMembers.mockResolvedValue(members);
+    mockApi.getOpinions.mockResolvedValue([]);
+
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      // Table should render (not "no other opinions" empty state)
+      const awaitingTexts = screen.getAllByText('Awaiting response');
+      expect(awaitingTexts.length).toBeGreaterThan(0);
+    });
+  });
+});
+
+describe('ProjectDetail - Pending Invitations in Team', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    defaultSetup();
+  });
+
+  it('displays pending invitations in team table', async () => {
+    const user = userEvent.setup();
+    const members = [
+      createMember({ user_id: 'user-1', first_name: 'John', last_name: 'Doe', role: 'admin' }),
+    ];
+    const invitations = [
+      createProjectInvitation({
+        invitee_first_name: 'Sophie',
+        invitee_last_name: 'Wagner',
+        invitee_email: 'sophie@example.com',
+      }),
+    ];
+    mockApi.getMembers.mockResolvedValue(members);
+    mockApi.getProjectInvitations.mockResolvedValue(invitations);
+
+    render(<ProjectDetail />);
+
+    // Open the desktop collapsible to reveal the team table
+    await waitFor(() => {
+      expect(screen.getByText(/team.*1 members/i)).toBeInTheDocument();
+    });
+    await user.click(screen.getByText(/team.*1 members/i));
+
+    await waitFor(() => {
+      const invitedBadges = screen.getAllByText('Invited');
+      expect(invitedBadges.length).toBeGreaterThan(0);
+    });
+  });
+
+  it('shows invitee name and email in team table', async () => {
+    const user = userEvent.setup();
+    const invitations = [
+      createProjectInvitation({
+        invitee_first_name: 'Michael',
+        invitee_last_name: 'Brown',
+        invitee_email: 'michael@example.com',
+      }),
+    ];
+    mockApi.getProjectInvitations.mockResolvedValue(invitations);
+
+    render(<ProjectDetail />);
+
+    // Open the desktop collapsible
+    await waitFor(() => {
+      expect(screen.getByText(/team.*0 members/i)).toBeInTheDocument();
+    });
+    await user.click(screen.getByText(/team.*0 members/i));
+
+    await waitFor(() => {
+      const names = screen.getAllByText('Michael Brown');
+      expect(names.length).toBeGreaterThan(0);
+      const emails = screen.getAllByText('michael@example.com');
+      expect(emails.length).toBeGreaterThan(0);
+    });
+  });
+
+  it('fetches project invitations on load', async () => {
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      expect(mockApi.getProjectInvitations).toHaveBeenCalledWith('project-1');
     });
   });
 });

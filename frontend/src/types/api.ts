@@ -82,6 +82,14 @@ export interface Member {
   joined_at: string;
 }
 
+export interface ProjectInvitation {
+  id: string;
+  invitee_email: string;
+  invitee_first_name: string;
+  invitee_last_name: string | null;
+  invited_at: string;
+}
+
 export interface ProjectWithRole extends Project {
   role: 'admin' | 'expert';
 }

@@ -100,7 +100,10 @@
     "teamMembers": "Tabulka členů týmu",
     "fuzzyEstimate": "Odhad fuzzy čísla",
     "mainNavigation": "Hlavní navigace",
-    "stepNavigation": "Navigace kroků"
+    "stepNavigation": "Navigace kroků",
+    "noDataAvailable": "Zatím žádná data",
+    "pendingMemberRow": "{{name}} — čeká na odpověď, názor zatím neodevzdán",
+    "pendingInvitationRow": "{{name}} — pozvánka čeká, zatím se nepřidal/a"
   },
   "pageTitle": {
     "landing": "Úvod",

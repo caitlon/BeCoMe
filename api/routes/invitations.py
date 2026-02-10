@@ -6,12 +6,13 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from api.auth.dependencies import CurrentUser
-from api.dependencies import ProjectAdmin, get_invitation_service
+from api.dependencies import ProjectAdmin, ProjectMember, get_invitation_service
 from api.exceptions import AlreadyInvitedError, UserNotFoundForInvitationError
 from api.schemas.invitation import (
     InvitationListItemResponse,
     InvitationResponse,
     InviteByEmailRequest,
+    ProjectInvitationResponse,
 )
 from api.schemas.project import MemberResponse
 from api.services.invitation_service import InvitationService
@@ -58,6 +59,25 @@ def invite_by_email(
         ) from err
 
     return InvitationResponse.from_model(invitation, invitee)
+
+
+@router.get(
+    "/projects/{project_id}/invitations",
+    response_model=list[ProjectInvitationResponse],
+    summary="List pending invitations for a project",
+)
+def list_project_invitations(
+    project: ProjectMember,
+    invitation_service: Annotated[InvitationService, Depends(get_invitation_service)],
+) -> list[ProjectInvitationResponse]:
+    """Get all pending invitations for a project. Accessible to project members.
+
+    :param project: Project (verified member access)
+    :param invitation_service: Invitation service
+    :return: List of pending invitations with invitee details
+    """
+    invitations = invitation_service.get_project_invitations(project.id)
+    return [ProjectInvitationResponse.from_model(inv, invitee) for inv, invitee in invitations]
 
 
 @router.get(

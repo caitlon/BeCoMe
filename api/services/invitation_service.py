@@ -149,6 +149,20 @@ class InvitationService(BaseService):
         self._session.refresh(membership)
         return membership
 
+    def get_project_invitations(self, project_id: UUID) -> list[tuple[Invitation, User]]:
+        """Get all pending invitations for a project with invitee details.
+
+        :param project_id: Project UUID
+        :return: List of (invitation, invitee) tuples ordered by creation date
+        """
+        statement = (
+            select(Invitation, User)
+            .join(User, Invitation.invitee_id == User.id)  # type: ignore[arg-type]
+            .where(Invitation.project_id == project_id)
+            .order_by(col(Invitation.created_at))
+        )
+        return list(self._session.exec(statement).all())
+
     def decline_invitation(self, invitation_id: UUID, user_id: UUID) -> None:
         """Decline an invitation.
 

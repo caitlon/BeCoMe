@@ -26,7 +26,8 @@
   },
   "roles": {
     "admin": "Admin",
-    "expert": "Expert"
+    "expert": "Expert",
+    "invited": "Invited"
   },
   "invitations": {
     "empty": {
@@ -106,7 +107,8 @@
     "noOtherOpinions": "No other opinions yet",
     "expert": "Expert",
     "visualization": "Visualization",
-    "showIndividual": "Show individual opinions"
+    "showIndividual": "Show individual opinions",
+    "awaitingResponse": "Awaiting response"
   },
   "team": {
     "name": "Name",
