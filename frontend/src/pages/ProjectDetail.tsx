@@ -1090,9 +1090,9 @@ const TeamTable = ({
               <TableRow key={member.user_id}>
                 <TableCell className="font-medium">
                   <div className="flex items-center gap-2">
-                    <Avatar className="h-7 w-7">
+                    <Avatar className="h-7 w-7" aria-hidden="true">
                       {member.photo_url && (
-                        <AvatarImage src={member.photo_url} alt={member.first_name} />
+                        <AvatarImage src={member.photo_url} alt="" />
                       )}
                       <AvatarFallback className="text-xs">
                         {`${member.first_name[0]}${member.last_name?.[0] || ""}`.toUpperCase()}
@@ -1138,7 +1138,7 @@ const TeamTable = ({
                 <TableRow key={inv.id} className="opacity-50">
                   <TableCell className="font-medium">
                     <div className="flex items-center gap-2">
-                      <Avatar className="h-7 w-7">
+                      <Avatar className="h-7 w-7" aria-hidden="true">
                         <AvatarFallback className="text-xs">
                           {`${inv.invitee_first_name[0]}${inv.invitee_last_name?.[0] || ""}`.toUpperCase()}
                         </AvatarFallback>
