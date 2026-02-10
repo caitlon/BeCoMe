@@ -128,15 +128,7 @@ def accept_invitation(
     """
     membership = invitation_service.accept_invitation(invitation_id, current_user.id)
 
-    return MemberResponse(
-        user_id=str(current_user.id),
-        email=current_user.email,
-        first_name=current_user.first_name,
-        last_name=current_user.last_name,
-        photo_url=current_user.photo_url,
-        role=membership.role.value,
-        joined_at=membership.joined_at,
-    )
+    return MemberResponse.from_model(membership, current_user)
 
 
 @router.post(
