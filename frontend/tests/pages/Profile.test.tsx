@@ -99,7 +99,9 @@ describe('Profile', () => {
   it('renders user initials in avatar', () => {
     render(<Profile />);
 
-    expect(screen.getByText('JD')).toBeInTheDocument();
+    // JD appears in both navbar avatar and profile avatar
+    const initials = screen.getAllByText('JD');
+    expect(initials.length).toBeGreaterThanOrEqual(2);
   });
 
   it('renders Edit Profile section', () => {

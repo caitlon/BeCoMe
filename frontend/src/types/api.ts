@@ -78,6 +78,7 @@ export interface Member {
   email: string;
   first_name: string;
   last_name: string | null;
+  photo_url: string | null;
   role: 'admin' | 'expert';
   joined_at: string;
 }

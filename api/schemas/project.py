@@ -130,6 +130,7 @@ class MemberResponse(BaseModel):
     email: str
     first_name: str
     last_name: str | None
+    photo_url: str | None = None
     role: str
     joined_at: datetime
 
@@ -146,6 +147,7 @@ class MemberResponse(BaseModel):
             email=user.email,
             first_name=user.first_name,
             last_name=user.last_name,
+            photo_url=user.photo_url,
             role=member.role.value,
             joined_at=member.joined_at,
         )

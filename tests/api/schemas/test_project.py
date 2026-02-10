@@ -284,8 +284,39 @@ class TestMemberResponseFromModel:
         assert response.email == "expert@example.com"
         assert response.first_name == "Jane"
         assert response.last_name == "Doe"
+        assert response.photo_url is None
         assert response.role == "expert"
         assert response.joined_at == joined_at
+
+    def test_includes_photo_url(self):
+        """
+        GIVEN User with photo_url set
+        WHEN from_model is called
+        THEN MemberResponse includes the photo_url
+        """
+        # GIVEN
+        user_id = uuid4()
+        user = User(
+            id=user_id,
+            email="expert@example.com",
+            hashed_password="hash",
+            first_name="Jane",
+            last_name="Doe",
+            photo_url="https://storage.example.com/photos/jane.jpg",
+        )
+        member = ProjectMember(
+            id=uuid4(),
+            project_id=uuid4(),
+            user_id=user_id,
+            role=MemberRole.EXPERT,
+            joined_at=datetime.now(UTC),
+        )
+
+        # WHEN
+        response = MemberResponse.from_model(member, user)
+
+        # THEN
+        assert response.photo_url == "https://storage.example.com/photos/jane.jpg"
 
     def test_handles_none_last_name(self):
         """
