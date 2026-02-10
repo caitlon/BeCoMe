@@ -351,6 +351,9 @@ describe('ProjectDetail - Pending Members', () => {
       // Anna has no opinion and is not the current user — should see "Awaiting response"
       const awaitingTexts = screen.getAllByText('Awaiting response');
       expect(awaitingTexts.length).toBeGreaterThan(0);
+      // Verify Anna specifically appears as pending
+      const annaTexts = screen.getAllByText('Anna Lee');
+      expect(annaTexts.length).toBeGreaterThan(0);
     });
   });
 

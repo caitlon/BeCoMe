@@ -80,25 +80,19 @@ const ProjectDetail = () => {
   const fetchData = useCallback(async () => {
     if (!id) return;
     try {
-      const [projectData, opinionsData, resultData, membersData] =
+      const [projectData, opinionsData, resultData, membersData, invitationsData] =
         await Promise.all([
           api.getProject(id),
           api.getOpinions(id),
           api.getResult(id),
           api.getMembers(id),
+          api.getProjectInvitations(id).catch(() => [] as ProjectInvitation[]),
         ]);
       setProject(projectData);
       setOpinions(opinionsData);
       setResult(resultData);
       setMembers(membersData);
-
-      // Fetch invitations separately — non-critical data
-      try {
-        const invitationsData = await api.getProjectInvitations(id);
-        setPendingInvitations(invitationsData);
-      } catch {
-        // Silently ignore; pending invitations are non-essential
-      }
+      setPendingInvitations(invitationsData);
 
       // Pre-fill form if user has opinion
       const existing = opinionsData.find((o) => o.user_id === user?.id);
