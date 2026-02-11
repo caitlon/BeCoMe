@@ -25,7 +25,8 @@
         "scaleMin": "Minimum škály",
         "scaleMax": "Maximum škály",
         "scaleUnit": "Jednotka",
-        "unitPlaceholder": "mld. Kč"
+        "unitPlaceholder": "mld. Kč",
+        "scaleSettings": "Nastavení škály"
       },
       "hint": "Škála definuje rozsah pro expertní odhady"
     },

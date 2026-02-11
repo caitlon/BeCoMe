@@ -527,6 +527,7 @@ const OpinionForm = ({
               <Input
                 id="opinion-lower"
                 type="number"
+                required
                 placeholder={String(project.scale_min)}
                 value={lower}
                 onChange={(e) => setLower(e.target.value)}
@@ -540,6 +541,7 @@ const OpinionForm = ({
               <Input
                 id="opinion-peak"
                 type="number"
+                required
                 value={peak}
                 onChange={(e) => setPeak(e.target.value)}
                 className="font-mono"
@@ -552,6 +554,7 @@ const OpinionForm = ({
               <Input
                 id="opinion-upper"
                 type="number"
+                required
                 placeholder={String(project.scale_max)}
                 value={upper}
                 onChange={(e) => setUpper(e.target.value)}
@@ -750,10 +753,10 @@ const OtherOpinionsTable = ({
                       </div>
                     </div>
                   </TableCell>
-                  <TableCell className="text-right text-muted-foreground" aria-label={tFuzzy("a11y.noDataAvailable")}>—</TableCell>
-                  <TableCell className="text-right text-muted-foreground" aria-label={tFuzzy("a11y.noDataAvailable")}>—</TableCell>
-                  <TableCell className="text-right text-muted-foreground" aria-label={tFuzzy("a11y.noDataAvailable")}>—</TableCell>
-                  <TableCell className="text-right text-muted-foreground" aria-label={tFuzzy("a11y.noDataAvailable")}>—</TableCell>
+                  <TableCell className="text-right text-muted-foreground"><span aria-hidden="true">—</span><span className="sr-only">{tFuzzy("a11y.noDataAvailable")}</span></TableCell>
+                  <TableCell className="text-right text-muted-foreground"><span aria-hidden="true">—</span><span className="sr-only">{tFuzzy("a11y.noDataAvailable")}</span></TableCell>
+                  <TableCell className="text-right text-muted-foreground"><span aria-hidden="true">—</span><span className="sr-only">{tFuzzy("a11y.noDataAvailable")}</span></TableCell>
+                  <TableCell className="text-right text-muted-foreground"><span aria-hidden="true">—</span><span className="sr-only">{tFuzzy("a11y.noDataAvailable")}</span></TableCell>
                 </TableRow>
               );
             })}
@@ -1201,7 +1204,7 @@ const TeamTable = ({
                       {t("roles.invited")}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-muted-foreground" aria-label={tCommon("a11y.noDataAvailable")}>—</TableCell>
+                  <TableCell className="text-muted-foreground"><span aria-hidden="true">—</span><span className="sr-only">{tCommon("a11y.noDataAvailable")}</span></TableCell>
                   {isAdmin && <TableCell />}
                 </TableRow>
               );

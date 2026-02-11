@@ -15,6 +15,7 @@
     "createFirst": "Create Your First Project"
   },
   "dropdown": {
+    "openMenu": "Project options",
     "viewProject": "View Project",
     "inviteExpert": "Invite Expert",
     "deleteProject": "Delete Project"

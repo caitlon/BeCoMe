@@ -15,6 +15,7 @@
     "createFirst": "Vytvořit první projekt"
   },
   "dropdown": {
+    "openMenu": "Možnosti projektu",
     "viewProject": "Zobrazit projekt",
     "inviteExpert": "Pozvat experta",
     "deleteProject": "Smazat projekt"

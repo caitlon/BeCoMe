@@ -64,7 +64,8 @@ export function StepEnterOpinion() {
       >
         <Card>
           <CardContent className="pt-6 space-y-6">
-            <p className="text-sm font-medium">{t("steps.enterOpinion.tryIt")}</p>
+            <fieldset>
+            <legend className="text-sm font-medium mb-2">{t("steps.enterOpinion.tryIt")}</legend>
 
             <div className="grid grid-cols-3 gap-4">
               <div>
@@ -123,6 +124,7 @@ export function StepEnterOpinion() {
             <p className="text-xs text-muted-foreground italic">
               {t("steps.enterOpinion.rule")}
             </p>
+            </fieldset>
 
             {/* Triangle Preview */}
             <div className="bg-muted rounded-lg p-4">

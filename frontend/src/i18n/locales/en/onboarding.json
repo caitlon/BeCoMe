@@ -25,7 +25,8 @@
         "scaleMin": "Scale Min",
         "scaleMax": "Scale Max",
         "scaleUnit": "Unit",
-        "unitPlaceholder": "billion CZK"
+        "unitPlaceholder": "billion CZK",
+        "scaleSettings": "Scale settings"
       },
       "hint": "The scale defines the range for expert estimates"
     },
