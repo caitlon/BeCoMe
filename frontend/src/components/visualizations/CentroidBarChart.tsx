@@ -126,7 +126,7 @@ export function CentroidBarChart({ opinions, result }: CentroidBarChartProps) {
           compromise: compromiseC.toFixed(2),
         })}
       </p>
-      <ChartContainer config={chartConfig} className="h-[120px] w-full !aspect-auto">
+      <ChartContainer config={chartConfig} className="h-[120px] w-full aspect-auto!">
         <ScatterChart
           margin={{ top: 12, right: 20, left: 20, bottom: 0 }}
           accessibilityLayer
