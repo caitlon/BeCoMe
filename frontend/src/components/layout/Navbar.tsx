@@ -81,20 +81,16 @@ export function Navbar() {
           </Button>
           {isAuthenticated ? (
             <>
-              <Link
-                to="/projects"
-                aria-current={location.pathname === "/projects" ? "page" : undefined}
-                className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-              >
-                {t("nav.projects")}
-              </Link>
-              <Link
-                to="/onboarding"
-                aria-current={location.pathname === "/onboarding" ? "page" : undefined}
-                className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-              >
-                {tOnboarding("navbar.takeTour")}
-              </Link>
+              <Button variant="ghost" size="sm" asChild>
+                <Link to="/projects" aria-current={location.pathname === "/projects" ? "page" : undefined}>
+                  {t("nav.projects")}
+                </Link>
+              </Button>
+              <Button variant="ghost" size="sm" asChild>
+                <Link to="/onboarding" aria-current={location.pathname === "/onboarding" ? "page" : undefined}>
+                  {tOnboarding("navbar.takeTour")}
+                </Link>
+              </Button>
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
