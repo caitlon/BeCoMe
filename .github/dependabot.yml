@@ -3,8 +3,10 @@ updates:
   - package-ecosystem: "pip"
     directory: "/"
     schedule:
-      interval: "daily"
+      interval: "weekly"
     reviewers:
+      - "caitlon"
+    assignees:
       - "caitlon"
     labels:
       - "dependencies"
@@ -16,8 +18,10 @@ updates:
   - package-ecosystem: "npm"
     directory: "/frontend"
     schedule:
-      interval: "daily"
+      interval: "weekly"
     reviewers:
+      - "caitlon"
+    assignees:
       - "caitlon"
     labels:
       - "dependencies"
@@ -37,8 +41,10 @@ updates:
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "daily"
+      interval: "weekly"
     reviewers:
+      - "caitlon"
+    assignees:
       - "caitlon"
     labels:
       - "dependencies"
