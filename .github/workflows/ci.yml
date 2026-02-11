@@ -67,6 +67,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       # Python setup
       - name: Set up uv
@@ -82,7 +84,7 @@ jobs:
 
       # Python tests
       - name: Run Python tests
-        run: uv run pytest --cov=src --cov=api --cov-report=term-missing --cov-report=html
+        run: uv run pytest --cov=src --cov=api --cov-report=term-missing --cov-report=html --cov-report=xml:coverage.xml
 
       - name: Upload Python coverage report
         if: always()
@@ -116,6 +118,12 @@ jobs:
           name: frontend-coverage-report
           path: frontend/coverage/
           retention-days: 30
+
+      # SonarQube Cloud
+      - name: SonarQube Cloud Scan
+        uses: SonarSource/sonarqube-scan-action@v5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
       - name: Minimize uv cache
         if: always()
