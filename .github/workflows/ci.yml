@@ -122,7 +122,7 @@ jobs:
       # SonarQube Cloud (skipped for Dependabot PRs — no access to secrets)
       - name: SonarQube Cloud Scan
         if: env.SONAR_TOKEN != ''
-        uses: SonarSource/sonarqube-scan-action@v6
+        uses: SonarSource/sonarqube-scan-action@v7
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
