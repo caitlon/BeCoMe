@@ -19,8 +19,9 @@ on:
 jobs:
   build-and-deploy:
     # Run on: PR (preview), workflow_dispatch, or after successful CI (production)
+    # Skip Dependabot PRs — secrets are not available for bot PRs
     if: |
-      (github.event_name == 'pull_request' && github.event.action != 'closed') ||
+      (github.event_name == 'pull_request' && github.event.action != 'closed' && github.actor != 'dependabot[bot]') ||
       (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
       github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
