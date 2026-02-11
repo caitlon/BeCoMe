@@ -641,7 +641,8 @@ const OpinionForm = ({
               isLoading={isSaving}
               className="flex-1"
               aria-describedby={
-                !position.trim() ? "opinion-hint" : !hasChanges ? "opinion-hint" : undefined
+                !position.trim() || (!lower || !peak || !upper) || !hasChanges
+                  ? "opinion-hint" : undefined
               }
             >
               {myOpinion ? t("detail.updateOpinion") : t("detail.saveOpinion")}
@@ -650,6 +651,10 @@ const OpinionForm = ({
           {!position.trim() ? (
             <p id="opinion-hint" className="text-xs text-muted-foreground">
               {t("detail.hintPositionRequired")}
+            </p>
+          ) : !lower || !peak || !upper ? (
+            <p id="opinion-hint" className="text-xs text-muted-foreground">
+              {t("detail.hintFieldsRequired")}
             </p>
           ) : !hasChanges ? (
             <p id="opinion-hint" className="text-xs text-muted-foreground">

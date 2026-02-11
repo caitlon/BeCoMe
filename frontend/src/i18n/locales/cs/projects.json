@@ -105,6 +105,7 @@
     "updateOpinion": "Aktualizovat názor",
     "deleteOpinion": "Smazat můj názor",
     "hintPositionRequired": "Vyplňte pozici pro uložení",
+    "hintFieldsRequired": "Vyplňte všechna pole odhadu",
     "hintNoChanges": "Žádné změny k uložení",
     "otherOpinions": "Ostatní názory",
     "noOtherOpinions": "Zatím žádné další názory",
