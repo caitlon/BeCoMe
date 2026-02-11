@@ -214,6 +214,33 @@ describe('ProjectDetail - Opinion Form', () => {
       expect(deleteLinks.length).toBeGreaterThan(0);
     });
   });
+
+  it('disables update button when opinion values unchanged', async () => {
+    const existingOpinion = createOpinion({
+      user_id: 'user-1',
+      position: 'Manager',
+      lower_bound: 20,
+      peak: 50,
+      upper_bound: 80,
+    });
+    mockApi.getOpinions.mockResolvedValue([existingOpinion]);
+
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      const buttons = screen.getAllByRole('button', { name: 'Update Opinion' });
+      expect(buttons[0]).toBeDisabled();
+    });
+  });
+
+  it('disables save button when position is empty', async () => {
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      const buttons = screen.getAllByRole('button', { name: 'Save Opinion' });
+      expect(buttons[0]).toBeDisabled();
+    });
+  });
 });
 
 describe('ProjectDetail - Other Opinions Table', () => {
