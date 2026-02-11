@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-24.04
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       # Python setup
       - name: Set up uv
@@ -66,7 +66,7 @@ jobs:
       TESTING: "1"
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       # Python setup
       - name: Set up uv
