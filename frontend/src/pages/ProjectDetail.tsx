@@ -45,6 +45,8 @@ import { ProjectWithRole, Opinion, CalculationResult, Member, ProjectInvitation 
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { CentroidBarChart } from "@/components/visualizations/CentroidBarChart";
+import { cn } from "@/lib/utils";
 
 const ProjectDetail = () => {
   const { id } = useParams<{ id: string }>();
@@ -789,6 +791,13 @@ const ResultsSection = ({
   const scaleRange = project.scale_max - project.scale_min;
   const errorPercent = (result.max_error / scaleRange) * 100;
 
+  const agreementLevel = errorPercent <= 20 ? "high" : errorPercent <= 40 ? "moderate" : "low";
+  const agreementColorClass = {
+    high: "[&>div]:bg-green-700",
+    moderate: "[&>div]:bg-amber-500",
+    low: "[&>div]:bg-red-700",
+  }[agreementLevel];
+
   return (
     <div className="space-y-6">
       {/* Best Compromise */}
@@ -870,11 +879,23 @@ const ResultsSection = ({
         <CardContent className="pt-6">
           <div className="flex justify-between items-center mb-2">
             <span className="text-sm">{t("detail.maxError")}</span>
-            <span className="font-mono font-medium">
-              {result.max_error.toFixed(2)}
-            </span>
+            <div className="flex items-center gap-2">
+              <Badge
+                className={cn(
+                  "text-xs",
+                  agreementLevel === "high" && "bg-green-700 text-white hover:bg-green-800",
+                  agreementLevel === "moderate" && "bg-amber-200 text-amber-900 hover:bg-amber-300",
+                  agreementLevel === "low" && "bg-red-700 text-white hover:bg-red-800",
+                )}
+              >
+                {t(`detail.agreement.${agreementLevel}`)}
+              </Badge>
+              <span className="font-mono font-medium">
+                {result.max_error.toFixed(2)}
+              </span>
+            </div>
           </div>
-          <Progress value={Math.min(errorPercent, 100)} className="h-2" />
+          <Progress value={Math.min(errorPercent, 100)} className={cn("h-2", agreementColorClass)} />
           <div className="flex justify-between items-center mt-4 text-sm text-muted-foreground">
             <span>{t("detail.experts")}</span>
             <span className="font-mono">{result.num_experts}</span>
@@ -888,38 +909,55 @@ const ResultsSection = ({
           <CardTitle className="text-lg">{t("detail.visualization")}</CardTitle>
         </CardHeader>
         <CardContent>
-          <TriangleVisualization
-            result={result}
-            project={project}
-            showIndividual={showIndividual}
-            opinions={opinions}
-          />
-          <div className="flex items-center justify-between mt-4">
-            <div className="flex gap-4 text-xs">
-              <div className="flex items-center gap-1">
-                <div className="w-3 h-0.5 bg-blue-500" />
-                <span>{tFuzzy("fuzzy.mean")}</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <div className="w-3 h-0.5 bg-green-500" />
-                <span>{tFuzzy("fuzzy.median")}</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <div className="w-3 h-0.5 bg-foreground" />
-                <span>{tFuzzy("fuzzy.best")}</span>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Checkbox
-                id="showIndividual"
-                checked={showIndividual}
-                onCheckedChange={(checked) => setShowIndividual(!!checked)}
+          <Tabs defaultValue="triangle" className="space-y-4">
+            <TabsList className="w-full">
+              <TabsTrigger value="triangle" className="flex-1">
+                {t("detail.vizTab.triangle")}
+              </TabsTrigger>
+              <TabsTrigger value="centroid" className="flex-1">
+                {t("detail.vizTab.centroid")}
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="triangle">
+              <TriangleVisualization
+                result={result}
+                project={project}
+                showIndividual={showIndividual}
+                opinions={opinions}
               />
-              <Label htmlFor="showIndividual" className="text-xs cursor-pointer">
-                {t("detail.showIndividual")}
-              </Label>
-            </div>
-          </div>
+              <div className="flex items-center justify-between mt-4">
+                <div className="flex gap-4 text-xs">
+                  <div className="flex items-center gap-1">
+                    <div className="w-3 h-0.5 bg-blue-500" />
+                    <span>{tFuzzy("fuzzy.mean")}</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <div className="w-3 h-0.5 bg-green-500" />
+                    <span>{tFuzzy("fuzzy.median")}</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <div className="w-3 h-0.5 bg-foreground" />
+                    <span>{tFuzzy("fuzzy.best")}</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="showIndividual"
+                    checked={showIndividual}
+                    onCheckedChange={(checked) => setShowIndividual(!!checked)}
+                  />
+                  <Label htmlFor="showIndividual" className="text-xs cursor-pointer">
+                    {t("detail.showIndividual")}
+                  </Label>
+                </div>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="centroid">
+              <CentroidBarChart opinions={opinions} result={result} />
+            </TabsContent>
+          </Tabs>
         </CardContent>
       </Card>
     </div>

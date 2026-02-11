@@ -103,7 +103,16 @@
     "stepNavigation": "Navigace kroků",
     "noDataAvailable": "Zatím žádná data",
     "pendingMemberRow": "{{name}} — čeká na odpověď, názor zatím neodevzdán",
-    "pendingInvitationRow": "{{name}} — pozvánka čeká, zatím se nepřidal/a"
+    "pendingInvitationRow": "{{name}} — pozvánka čeká, zatím se nepřidal/a",
+    "centroidChartDesc": "Sloupcový graf centroidů expertních názorů s referenčními liniemi pro průměr, medián a nejlepší kompromis"
+  },
+  "centroidChart": {
+    "centroidValue": "Centroid",
+    "yAxisLabel": "Hodnota centroidu",
+    "meanLine": "Průměr (Γ)",
+    "medianLine": "Medián (Ω)",
+    "compromiseLine": "Nejlepší kompromis (ΓΩMean)",
+    "srSummary": "{{count}} expertů, centroidy od {{min}} do {{max}}. Průměr: {{mean}}, Medián: {{median}}, Nejlepší kompromis: {{compromise}}."
   },
   "pageTitle": {
     "landing": "Úvod",

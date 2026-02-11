@@ -103,7 +103,16 @@
     "stepNavigation": "Step navigation",
     "noDataAvailable": "No data yet",
     "pendingMemberRow": "{{name}} — awaiting response, no opinion submitted yet",
-    "pendingInvitationRow": "{{name}} — invitation pending, not yet joined"
+    "pendingInvitationRow": "{{name}} — invitation pending, not yet joined",
+    "centroidChartDesc": "Bar chart showing expert opinion centroids sorted by value with reference lines for mean, median, and best compromise"
+  },
+  "centroidChart": {
+    "centroidValue": "Centroid",
+    "yAxisLabel": "Centroid value",
+    "meanLine": "Mean (Γ)",
+    "medianLine": "Median (Ω)",
+    "compromiseLine": "Best Compromise (ΓΩMean)",
+    "srSummary": "{{count}} experts, centroids from {{min}} to {{max}}. Mean: {{mean}}, Median: {{median}}, Best Compromise: {{compromise}}."
   },
   "pageTitle": {
     "landing": "Home",

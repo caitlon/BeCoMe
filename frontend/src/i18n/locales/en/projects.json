@@ -108,7 +108,16 @@
     "expert": "Expert",
     "visualization": "Visualization",
     "showIndividual": "Show individual opinions",
-    "awaitingResponse": "Awaiting response"
+    "awaitingResponse": "Awaiting response",
+    "vizTab": {
+      "triangle": "Triangle",
+      "centroid": "Centroid"
+    },
+    "agreement": {
+      "high": "High agreement",
+      "moderate": "Moderate agreement",
+      "low": "Low agreement"
+    }
   },
   "team": {
     "name": "Name",

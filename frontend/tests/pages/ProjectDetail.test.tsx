@@ -282,6 +282,71 @@ describe('ProjectDetail - Results Section', () => {
       expect(bestCompromiseTexts.length).toBeGreaterThan(0);
     });
   });
+
+  it('shows agreement badge with results', async () => {
+    // max_error=12.5, scale 0-100, errorPercent=12.5% → "High agreement"
+    const opinions = [createOpinion({ user_id: 'other' })];
+    const result = createCalculationResult({ max_error: 12.5 });
+
+    mockApi.getOpinions.mockResolvedValue(opinions);
+    mockApi.getResult.mockResolvedValue(result);
+
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      const badges = screen.getAllByText('High agreement');
+      expect(badges.length).toBeGreaterThan(0);
+    });
+  });
+
+  it('shows moderate agreement for medium error', async () => {
+    // max_error=30, scale 0-100, errorPercent=30% → "Moderate agreement"
+    const opinions = [createOpinion({ user_id: 'other' })];
+    const result = createCalculationResult({ max_error: 30 });
+
+    mockApi.getOpinions.mockResolvedValue(opinions);
+    mockApi.getResult.mockResolvedValue(result);
+
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      const badges = screen.getAllByText('Moderate agreement');
+      expect(badges.length).toBeGreaterThan(0);
+    });
+  });
+
+  it('shows low agreement for high error', async () => {
+    // max_error=50, scale 0-100, errorPercent=50% → "Low agreement"
+    const opinions = [createOpinion({ user_id: 'other' })];
+    const result = createCalculationResult({ max_error: 50 });
+
+    mockApi.getOpinions.mockResolvedValue(opinions);
+    mockApi.getResult.mockResolvedValue(result);
+
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      const badges = screen.getAllByText('Low agreement');
+      expect(badges.length).toBeGreaterThan(0);
+    });
+  });
+
+  it('renders visualization tabs (Triangle and Centroid)', async () => {
+    const opinions = [createOpinion({ user_id: 'other' })];
+    const result = createCalculationResult();
+
+    mockApi.getOpinions.mockResolvedValue(opinions);
+    mockApi.getResult.mockResolvedValue(result);
+
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      const triangleTabs = screen.getAllByRole('tab', { name: /triangle/i });
+      expect(triangleTabs.length).toBeGreaterThan(0);
+      const centroidTabs = screen.getAllByRole('tab', { name: /centroid/i });
+      expect(centroidTabs.length).toBeGreaterThan(0);
+    });
+  });
 });
 
 describe('ProjectDetail - Team Section', () => {

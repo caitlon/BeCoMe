@@ -108,7 +108,16 @@
     "expert": "Expert",
     "visualization": "Vizualizace",
     "showIndividual": "Zobrazit jednotlivé názory",
-    "awaitingResponse": "Čeká na odpověď"
+    "awaitingResponse": "Čeká na odpověď",
+    "vizTab": {
+      "triangle": "Trojúhelník",
+      "centroid": "Centroid"
+    },
+    "agreement": {
+      "high": "Vysoká shoda",
+      "moderate": "Střední shoda",
+      "low": "Nízká shoda"
+    }
   },
   "team": {
     "name": "Jméno",
