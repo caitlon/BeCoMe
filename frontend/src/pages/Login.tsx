@@ -99,15 +99,6 @@ const Login = () => {
                   {...register("password")}
                 />
 
-                <div className="text-right">
-                  <button
-                    type="button"
-                    className="text-sm text-muted-foreground hover:text-foreground hover:underline"
-                  >
-                    {t("login.forgotPassword")}
-                  </button>
-                </div>
-
                 <SubmitButton
                   className="w-full"
                   isLoading={isLoading}
