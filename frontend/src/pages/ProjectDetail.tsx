@@ -632,16 +632,30 @@ const OpinionForm = ({
           </div>
         )}
 
-        <div className="flex gap-3">
-          <SubmitButton
-            type="button"
-            onClick={onSave}
-            disabled={!lower || !peak || !upper || !position.trim() || !hasChanges}
-            isLoading={isSaving}
-            className="flex-1"
-          >
-            {myOpinion ? t("detail.updateOpinion") : t("detail.saveOpinion")}
-          </SubmitButton>
+        <div className="flex flex-col gap-2">
+          <div className="flex gap-3">
+            <SubmitButton
+              type="button"
+              onClick={onSave}
+              disabled={!lower || !peak || !upper || !position.trim() || !hasChanges}
+              isLoading={isSaving}
+              className="flex-1"
+              aria-describedby={
+                !position.trim() ? "opinion-hint" : !hasChanges ? "opinion-hint" : undefined
+              }
+            >
+              {myOpinion ? t("detail.updateOpinion") : t("detail.saveOpinion")}
+            </SubmitButton>
+          </div>
+          {!position.trim() ? (
+            <p id="opinion-hint" className="text-xs text-muted-foreground">
+              {t("detail.hintPositionRequired")}
+            </p>
+          ) : !hasChanges ? (
+            <p id="opinion-hint" className="text-xs text-muted-foreground">
+              {t("detail.hintNoChanges")}
+            </p>
+          ) : null}
         </div>
 
         {myOpinion && (

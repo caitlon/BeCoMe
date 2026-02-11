@@ -129,6 +129,7 @@ class TestProjectCascadeDelete:
         opinion = ExpertOpinion(
             project_id=project.id,
             user_id=user.id,
+            position="Analyst",
             lower_bound=5.0,
             peak=10.0,
             upper_bound=15.0,
@@ -282,6 +283,7 @@ class TestUserCascadeDelete:
         opinion = ExpertOpinion(
             project_id=project.id,
             user_id=expert.id,
+            position="Analyst",
             lower_bound=5.0,
             peak=10.0,
             upper_bound=15.0,

@@ -72,11 +72,11 @@ class TestStringFieldEdgeCases:
         session.refresh(project)
         assert project.description is None
 
-    def test_empty_string_position_allowed(self, session):
+    def test_position_stored_correctly(self, session):
         """
-        GIVEN an opinion with empty position
+        GIVEN an opinion with a valid position
         WHEN saved to database
-        THEN succeeds without error
+        THEN position is stored and retrieved correctly
         """
         # GIVEN
         user = User(
@@ -96,7 +96,7 @@ class TestStringFieldEdgeCases:
         opinion = ExpertOpinion(
             project_id=project.id,
             user_id=user.id,
-            position="",
+            position="Head of Department",
             lower_bound=5.0,
             peak=10.0,
             upper_bound=15.0,
@@ -106,7 +106,7 @@ class TestStringFieldEdgeCases:
 
         # THEN
         session.refresh(opinion)
-        assert opinion.position == ""
+        assert opinion.position == "Head of Department"
 
     def test_max_length_email_accepted(self, session):
         """
@@ -224,6 +224,7 @@ class TestFloatFieldEdgeCases:
         opinion = ExpertOpinion(
             project_id=project.id,
             user_id=user.id,
+            position="Analyst",
             lower_bound=10.0,
             peak=10.0,
             upper_bound=10.0,

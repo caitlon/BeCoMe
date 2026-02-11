@@ -60,6 +60,7 @@ class TestRelationships:
         opinion1 = ExpertOpinion(
             project_id=project.id,
             user_id=admin.id,
+            position="Chairman",
             lower_bound=5.0,
             peak=10.0,
             upper_bound=15.0,
@@ -67,6 +68,7 @@ class TestRelationships:
         opinion2 = ExpertOpinion(
             project_id=project.id,
             user_id=expert.id,
+            position="Analyst",
             lower_bound=6.0,
             peak=11.0,
             upper_bound=16.0,
