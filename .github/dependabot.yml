@@ -10,6 +10,7 @@ updates:
       - "caitlon"
     labels:
       - "dependencies"
+      - "area:core"
     groups:
       python-deps:
         patterns:
@@ -25,6 +26,7 @@ updates:
       - "caitlon"
     labels:
       - "dependencies"
+      - "area:frontend"
     groups:
       npm-minor-patch:
         patterns:
@@ -48,6 +50,7 @@ updates:
       - "caitlon"
     labels:
       - "dependencies"
+      - "area:infra"
     groups:
       github-actions:
         patterns:
