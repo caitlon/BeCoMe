@@ -21,7 +21,7 @@ class TestOpinionCreateValidation:
         THEN no validation error is raised
         """
         # WHEN/THEN
-        opinion = OpinionCreate(lower_bound=5.0, peak=10.0, upper_bound=15.0)
+        opinion = OpinionCreate(position="Analyst", lower_bound=5.0, peak=10.0, upper_bound=15.0)
         assert opinion.lower_bound == 5.0
         assert opinion.peak == 10.0
         assert opinion.upper_bound == 15.0
@@ -34,7 +34,7 @@ class TestOpinionCreateValidation:
         """
         # WHEN/THEN
         with pytest.raises(ValidationError, match="finite"):
-            OpinionCreate(lower_bound=5.0, peak=math.nan, upper_bound=15.0)
+            OpinionCreate(position="Analyst", lower_bound=5.0, peak=math.nan, upper_bound=15.0)
 
     def test_infinity_value_rejected(self):
         """
@@ -44,7 +44,7 @@ class TestOpinionCreateValidation:
         """
         # WHEN/THEN
         with pytest.raises(ValidationError, match="finite"):
-            OpinionCreate(lower_bound=5.0, peak=10.0, upper_bound=math.inf)
+            OpinionCreate(position="Analyst", lower_bound=5.0, peak=10.0, upper_bound=math.inf)
 
     def test_invalid_constraints_rejected(self):
         """
@@ -54,7 +54,7 @@ class TestOpinionCreateValidation:
         """
         # WHEN/THEN
         with pytest.raises(ValidationError, match="lower <= peak <= upper"):
-            OpinionCreate(lower_bound=15.0, peak=10.0, upper_bound=20.0)
+            OpinionCreate(position="Analyst", lower_bound=15.0, peak=10.0, upper_bound=20.0)
 
 
 class TestOpinionCreateSanitization:
@@ -77,21 +77,20 @@ class TestOpinionCreateSanitization:
         # THEN
         assert opinion.position == "badAnalyst"
 
-    def test_empty_position_preserved(self):
+    def test_empty_position_rejected(self):
         """
-        GIVEN empty position (default)
+        GIVEN empty position
         WHEN OpinionCreate is created
-        THEN position remains empty string
+        THEN ValidationError is raised
         """
-        # WHEN
-        opinion = OpinionCreate(
-            lower_bound=5.0,
-            peak=10.0,
-            upper_bound=15.0,
-        )
-
-        # THEN
-        assert opinion.position == ""
+        # WHEN/THEN
+        with pytest.raises(ValidationError):
+            OpinionCreate(
+                position="",
+                lower_bound=5.0,
+                peak=10.0,
+                upper_bound=15.0,
+            )
 
 
 class TestOpinionResponseFromModel:
@@ -161,6 +160,7 @@ class TestOpinionResponseFromModel:
             id=uuid4(),
             project_id=uuid4(),
             user_id=user.id,
+            position="Analyst",
             lower_bound=0.0,
             peak=6.0,
             upper_bound=12.0,
@@ -191,6 +191,7 @@ class TestOpinionResponseFromModel:
             id=uuid4(),
             project_id=uuid4(),
             user_id=user.id,
+            position="Analyst",
             lower_bound=5.0,
             peak=10.0,
             upper_bound=15.0,
