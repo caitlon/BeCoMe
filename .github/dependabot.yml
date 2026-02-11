@@ -8,6 +8,10 @@ updates:
       - "caitlon"
     labels:
       - "dependencies"
+    groups:
+      python-deps:
+        patterns:
+          - "*"
 
   - package-ecosystem: "npm"
     directory: "/frontend"
@@ -17,6 +21,18 @@ updates:
       - "caitlon"
     labels:
       - "dependencies"
+    groups:
+      npm-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+      npm-major:
+        patterns:
+          - "*"
+        update-types:
+          - "major"
 
   - package-ecosystem: "github-actions"
     directory: "/"
@@ -26,3 +42,7 @@ updates:
       - "caitlon"
     labels:
       - "dependencies"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
