@@ -75,40 +75,43 @@ export function StepCreateProject() {
               />
             </motion.div>
 
-            <motion.div variants={fadeInUp} className="grid grid-cols-3 gap-3">
-              <div>
-                <Label className="text-xs">
-                  {t("steps.createProject.form.scaleMin")}
-                </Label>
-                <Input
-                  type="number"
-                  placeholder="0"
-                  className="mt-1 font-mono"
-                  readOnly
-                />
-              </div>
-              <div>
-                <Label className="text-xs">
-                  {t("steps.createProject.form.scaleMax")}
-                </Label>
-                <Input
-                  type="number"
-                  placeholder="100"
-                  className="mt-1 font-mono"
-                  readOnly
-                />
-              </div>
-              <div>
-                <Label className="text-xs">
-                  {t("steps.createProject.form.scaleUnit")}
-                </Label>
-                <Input
-                  placeholder={t("steps.createProject.form.unitPlaceholder")}
-                  className="mt-1"
-                  readOnly
-                />
-              </div>
-            </motion.div>
+            <fieldset>
+              <legend className="sr-only">{t("steps.createProject.form.scaleSettings")}</legend>
+              <motion.div variants={fadeInUp} className="grid grid-cols-3 gap-3">
+                <div>
+                  <Label className="text-xs">
+                    {t("steps.createProject.form.scaleMin")}
+                  </Label>
+                  <Input
+                    type="number"
+                    placeholder="0"
+                    className="mt-1 font-mono"
+                    readOnly
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">
+                    {t("steps.createProject.form.scaleMax")}
+                  </Label>
+                  <Input
+                    type="number"
+                    placeholder="100"
+                    className="mt-1 font-mono"
+                    readOnly
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">
+                    {t("steps.createProject.form.scaleUnit")}
+                  </Label>
+                  <Input
+                    placeholder={t("steps.createProject.form.unitPlaceholder")}
+                    className="mt-1"
+                    readOnly
+                  />
+                </div>
+              </motion.div>
+            </fieldset>
 
             <motion.p
               variants={fadeInUp}

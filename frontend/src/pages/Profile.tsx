@@ -306,9 +306,11 @@ const Profile = () => {
                     value={firstName}
                     onChange={(e) => handleFirstNameChange(e.target.value)}
                     className={cn(firstNameError && "border-destructive")}
+                    aria-describedby={firstNameError ? "firstName-error" : undefined}
+                    aria-invalid={!!firstNameError}
                   />
                   {firstNameError && (
-                    <p className="text-sm text-destructive">{firstNameError}</p>
+                    <p id="firstName-error" role="alert" className="text-sm text-destructive">{firstNameError}</p>
                   )}
                 </div>
                 <div className="space-y-1">
@@ -318,9 +320,11 @@ const Profile = () => {
                     value={lastName}
                     onChange={(e) => handleLastNameChange(e.target.value)}
                     className={cn(lastNameError && "border-destructive")}
+                    aria-describedby={lastNameError ? "lastName-error" : undefined}
+                    aria-invalid={!!lastNameError}
                   />
                   {lastNameError && (
-                    <p className="text-sm text-destructive">{lastNameError}</p>
+                    <p id="lastName-error" role="alert" className="text-sm text-destructive">{lastNameError}</p>
                   )}
                 </div>
               </div>
