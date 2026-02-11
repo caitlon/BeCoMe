@@ -759,7 +759,7 @@ describe('ProjectDetail - Member Profile Dialog', () => {
 
     await waitFor(() => {
       // sr-only text with opinion values summary
-      expect(screen.getByText(/opinion values.*10\.00.*20\.00.*30\.00.*20\.00/i)).toBeInTheDocument();
+      expect(screen.getByText(/opinion values.*lower.*10\.00.*peak.*20\.00.*upper.*30\.00.*centroid.*20\.00/i)).toBeInTheDocument();
     });
   });
 });

@@ -1314,6 +1314,7 @@ const MemberProfileDialog = ({
           <DialogDescription className="flex flex-col items-center gap-1">
             <Badge
               variant={member.role === "admin" ? "default" : "secondary"}
+              aria-hidden="true"
             >
               {t(`roles.${member.role}`)}
             </Badge>
