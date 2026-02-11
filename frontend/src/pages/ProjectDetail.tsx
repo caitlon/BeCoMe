@@ -510,6 +510,7 @@ const OpinionForm = ({
           <Label htmlFor="position">{t("detail.position")}</Label>
           <Input
             id="position"
+            required
             placeholder={t("detail.positionPlaceholder")}
             value={position}
             onChange={(e) => setPosition(e.target.value)}
