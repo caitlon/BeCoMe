@@ -156,6 +156,64 @@ class TestSubmitOpinion:
         )
         assert len(list_resp.json()) == 1
 
+    def test_position_is_required(self, client):
+        """Returns 422 when position is missing from request."""
+        # GIVEN
+        token = register_and_login(client)
+        project = create_project(client, token)
+
+        # WHEN
+        response = client.post(
+            f"/api/v1/projects/{project['id']}/opinions",
+            json={"lower_bound": 40.0, "peak": 60.0, "upper_bound": 80.0},
+            headers=auth_header(token),
+        )
+
+        # THEN
+        assert response.status_code == 422
+
+    def test_empty_position_rejected(self, client):
+        """Returns 422 when position is an empty string."""
+        # GIVEN
+        token = register_and_login(client)
+        project = create_project(client, token)
+
+        # WHEN
+        response = client.post(
+            f"/api/v1/projects/{project['id']}/opinions",
+            json={
+                "position": "",
+                "lower_bound": 40.0,
+                "peak": 60.0,
+                "upper_bound": 80.0,
+            },
+            headers=auth_header(token),
+        )
+
+        # THEN
+        assert response.status_code == 422
+
+    def test_html_only_position_rejected(self, client):
+        """Returns 422 when position contains only HTML tags (empty after sanitization)."""
+        # GIVEN
+        token = register_and_login(client)
+        project = create_project(client, token)
+
+        # WHEN
+        response = client.post(
+            f"/api/v1/projects/{project['id']}/opinions",
+            json={
+                "position": "<br><hr>",
+                "lower_bound": 40.0,
+                "peak": 60.0,
+                "upper_bound": 80.0,
+            },
+            headers=auth_header(token),
+        )
+
+        # THEN
+        assert response.status_code == 422
+
     def test_validates_fuzzy_constraints(self, client):
         """Returns 422 when fuzzy constraints violated."""
         # GIVEN
@@ -166,6 +224,7 @@ class TestSubmitOpinion:
         response = client.post(
             f"/api/v1/projects/{project['id']}/opinions",
             json={
+                "position": "Analyst",
                 "lower_bound": 70.0,
                 "peak": 50.0,
                 "upper_bound": 80.0,
@@ -186,6 +245,7 @@ class TestSubmitOpinion:
         response = client.post(
             f"/api/v1/projects/{project['id']}/opinions",
             json={
+                "position": "Analyst",
                 "lower_bound": 80.0,
                 "peak": 90.0,
                 "upper_bound": 110.0,
@@ -211,6 +271,7 @@ class TestSubmitOpinion:
         response = client.post(
             f"/api/v1/projects/{project['id']}/opinions",
             json={
+                "position": "Analyst",
                 "lower_bound": 10.0,  # Below scale_min!
                 "peak": 50.0,
                 "upper_bound": 70.0,
@@ -233,6 +294,7 @@ class TestSubmitOpinion:
         response = client.post(
             f"/api/v1/projects/{project['id']}/opinions",
             json={
+                "position": "Analyst",
                 "lower_bound": 40.0,
                 "peak": 60.0,
                 "upper_bound": 80.0,
