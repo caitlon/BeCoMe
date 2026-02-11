@@ -627,7 +627,7 @@ describe('ProjectDetail - Member Profile Dialog', () => {
     // Position and opinion values should be inside the dialog
     expect(within(dialog).getByText('Head of Research')).toBeInTheDocument();
     // Opinion values are in sr-only summary (grid is aria-hidden)
-    expect(within(dialog).getByText(/10\.00.*20\.00.*30\.00/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/opinion values.*lower.*10\.00.*peak.*20\.00.*upper.*30\.00.*centroid.*20\.00/i)).toBeInTheDocument();
   });
 
   it('shows no opinion message when member has no opinion', async () => {
@@ -674,9 +674,7 @@ describe('ProjectDetail - Member Profile Dialog', () => {
     await waitFor(() => {
       const dialog = screen.getByRole('dialog');
       // Role badge "Expert" should be inside the dialog
-      const expertBadges = screen.getAllByText('Expert');
-      const dialogBadge = expertBadges.find((el) => dialog.contains(el));
-      expect(dialogBadge).toBeDefined();
+      expect(within(dialog).getByText('Expert')).toBeInTheDocument();
     });
   });
 

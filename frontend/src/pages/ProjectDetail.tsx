@@ -1160,7 +1160,7 @@ const TeamTable = ({
   onRemove,
   onMemberClick,
 }: TeamTableProps) => {
-  const { t } = useTranslation("projects");
+  const { t, i18n } = useTranslation("projects");
   const { t: tCommon } = useTranslation();
 
   return (
@@ -1220,7 +1220,7 @@ const TeamTable = ({
                     </Badge>
                   </TableCell>
                   <TableCell className="text-muted-foreground">
-                    {new Date(member.joined_at).toLocaleDateString()}
+                    {new Date(member.joined_at).toLocaleDateString(i18n.language)}
                   </TableCell>
                   {isAdmin && (
                     <TableCell>
@@ -1292,7 +1292,7 @@ const MemberProfileDialog = ({
   opinion,
   onOpenChange,
 }: MemberProfileDialogProps) => {
-  const { t } = useTranslation("projects");
+  const { t, i18n } = useTranslation("projects");
   const { t: tCommon } = useTranslation();
 
   if (!member) return null;
@@ -1394,7 +1394,7 @@ const MemberProfileDialog = ({
               {t("memberProfile.joined")}
             </p>
             <p className="text-sm">
-              {new Date(member.joined_at).toLocaleDateString()}
+              {new Date(member.joined_at).toLocaleDateString(i18n.language)}
             </p>
           </div>
         </div>
