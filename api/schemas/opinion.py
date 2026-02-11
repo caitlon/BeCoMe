@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 class OpinionCreate(BaseModel):
     """Request to create or update an expert opinion."""
 
-    position: str = Field(default="", max_length=255, description="Expert's position/role")
+    position: str = Field(..., min_length=1, max_length=255, description="Expert's position/role")
     lower_bound: float = Field(..., description="Lower bound (pessimistic estimate)")
     peak: float = Field(..., description="Peak value (most likely)")
     upper_bound: float = Field(..., description="Upper bound (optimistic estimate)")

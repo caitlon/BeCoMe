@@ -112,7 +112,7 @@ export interface UpdateProjectInput {
 }
 
 export interface CreateOpinionInput {
-  position?: string;
+  position: string;
   lower_bound: number;
   peak: number;
   upper_bound: number;

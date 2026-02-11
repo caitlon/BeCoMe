@@ -146,7 +146,7 @@ class ExpertOpinion(SQLModel, table=True):
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     project_id: UUID = Field(foreign_key="projects.id", index=True, ondelete="CASCADE")
     user_id: UUID = Field(foreign_key="users.id", index=True, ondelete="CASCADE")
-    position: str = Field(default="", max_length=255)
+    position: str = Field(max_length=255)
     lower_bound: float
     peak: float
     upper_bound: float

@@ -159,7 +159,7 @@ const ProjectDetail = () => {
     setIsSavingOpinion(true);
     try {
       await api.createOrUpdateOpinion(id, {
-        position: position || undefined,
+        position,
         lower_bound: lowerNum,
         peak: peakNum,
         upper_bound: upperNum,
@@ -494,6 +494,11 @@ const OpinionForm = ({
     peakNum <= upperNum &&
     lowerNum >= project.scale_min &&
     upperNum <= project.scale_max;
+  const hasChanges = !myOpinion ||
+    position !== (myOpinion.position || "") ||
+    lower !== String(myOpinion.lower_bound) ||
+    peak !== String(myOpinion.peak) ||
+    upper !== String(myOpinion.upper_bound);
 
   return (
     <Card className="border-2 border-primary/20" aria-busy={isSaving}>
@@ -627,7 +632,7 @@ const OpinionForm = ({
           <SubmitButton
             type="button"
             onClick={onSave}
-            disabled={!lower || !peak || !upper}
+            disabled={!lower || !peak || !upper || !position.trim() || !hasChanges}
             isLoading={isSaving}
             className="flex-1"
           >
