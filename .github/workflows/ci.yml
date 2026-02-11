@@ -119,9 +119,10 @@ jobs:
           path: frontend/coverage/
           retention-days: 30
 
-      # SonarQube Cloud
+      # SonarQube Cloud (skipped for Dependabot PRs — no access to secrets)
       - name: SonarQube Cloud Scan
-        uses: SonarSource/sonarqube-scan-action@v5
+        if: env.SONAR_TOKEN != ''
+        uses: SonarSource/sonarqube-scan-action@v6
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
