@@ -104,6 +104,8 @@
     "saveOpinion": "Save Opinion",
     "updateOpinion": "Update Opinion",
     "deleteOpinion": "Delete my opinion",
+    "hintPositionRequired": "Enter your position to save",
+    "hintNoChanges": "No changes to save",
     "otherOpinions": "Other Opinions",
     "noOtherOpinions": "No other opinions yet",
     "expert": "Expert",

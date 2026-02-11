@@ -104,6 +104,8 @@
     "saveOpinion": "Uložit názor",
     "updateOpinion": "Aktualizovat názor",
     "deleteOpinion": "Smazat můj názor",
+    "hintPositionRequired": "Vyplňte pozici pro uložení",
+    "hintNoChanges": "Žádné změny k uložení",
     "otherOpinions": "Ostatní názory",
     "noOtherOpinions": "Zatím žádné další názory",
     "expert": "Expert",
