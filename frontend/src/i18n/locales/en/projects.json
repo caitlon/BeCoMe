@@ -105,6 +105,7 @@
     "updateOpinion": "Update Opinion",
     "deleteOpinion": "Delete my opinion",
     "hintPositionRequired": "Enter your position to save",
+    "hintFieldsRequired": "Fill in all estimate fields",
     "hintNoChanges": "No changes to save",
     "otherOpinions": "Other Opinions",
     "noOtherOpinions": "No other opinions yet",
