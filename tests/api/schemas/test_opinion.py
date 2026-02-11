@@ -92,6 +92,21 @@ class TestOpinionCreateSanitization:
                 upper_bound=15.0,
             )
 
+    def test_html_only_position_rejected(self):
+        """
+        GIVEN position containing only empty HTML tags
+        WHEN OpinionCreate is created
+        THEN ValidationError is raised because sanitization strips to whitespace
+        """
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="Position must not be empty"):
+            OpinionCreate(
+                position="<br><hr><img src=x>",
+                lower_bound=5.0,
+                peak=10.0,
+                upper_bound=15.0,
+            )
+
 
 class TestOpinionResponseFromModel:
     """Tests for OpinionResponse.from_model method."""

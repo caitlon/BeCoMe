@@ -24,7 +24,11 @@ class OpinionCreate(BaseModel):
     @classmethod
     def sanitize_position(cls, v: str) -> str:
         """Remove HTML from position field."""
-        return sanitize_text(v)
+        sanitized = sanitize_text(v)
+        if not sanitized.strip():
+            msg = "Position must not be empty after sanitization"
+            raise ValueError(msg)
+        return sanitized
 
     @model_validator(mode="after")
     def validate_fuzzy(self) -> Self:
