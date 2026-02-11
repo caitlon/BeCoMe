@@ -24,6 +24,7 @@ class TestExpertOpinionModel:
                 {
                     "project_id": uuid4(),
                     "user_id": uuid4(),
+                    "position": "Analyst",
                     "lower_bound": 15.0,
                     "peak": 10.0,
                     "upper_bound": 20.0,
@@ -42,6 +43,7 @@ class TestExpertOpinionModel:
                 {
                     "project_id": uuid4(),
                     "user_id": uuid4(),
+                    "position": "Analyst",
                     "lower_bound": 5.0,
                     "peak": 25.0,
                     "upper_bound": 20.0,
@@ -59,6 +61,7 @@ class TestExpertOpinionModel:
             {
                 "project_id": uuid4(),
                 "user_id": uuid4(),
+                "position": "Analyst",
                 "lower_bound": 5.0,
                 "peak": 10.0,
                 "upper_bound": 15.0,
@@ -120,6 +123,7 @@ class TestExpertOpinionModel:
         opinion1 = ExpertOpinion(
             project_id=project.id,
             user_id=user.id,
+            position="Analyst",
             lower_bound=5.0,
             peak=10.0,
             upper_bound=15.0,
@@ -131,6 +135,7 @@ class TestExpertOpinionModel:
         opinion2 = ExpertOpinion(
             project_id=project.id,
             user_id=user.id,
+            position="Analyst",
             lower_bound=6.0,
             peak=11.0,
             upper_bound=16.0,
@@ -160,6 +165,7 @@ class TestExpertOpinionModel:
         opinion1 = ExpertOpinion(
             project_id=project1.id,
             user_id=user.id,
+            position="Analyst",
             lower_bound=5.0,
             peak=10.0,
             upper_bound=15.0,
@@ -167,6 +173,7 @@ class TestExpertOpinionModel:
         opinion2 = ExpertOpinion(
             project_id=project2.id,
             user_id=user.id,
+            position="Analyst",
             lower_bound=6.0,
             peak=11.0,
             upper_bound=16.0,
