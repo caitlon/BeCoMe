@@ -104,7 +104,9 @@
     "noDataAvailable": "Zatím žádná data",
     "pendingMemberRow": "{{name}} — čeká na odpověď, názor zatím neodevzdán",
     "pendingInvitationRow": "{{name}} — pozvánka čeká, zatím se nepřidal/a",
-    "centroidChartDesc": "Sloupcový graf centroidů expertních názorů s referenčními liniemi pro průměr, medián a nejlepší kompromis"
+    "centroidChartDesc": "Sloupcový graf centroidů expertních názorů s referenčními liniemi pro průměr, medián a nejlepší kompromis",
+    "memberProfileDialog": "Profil {{name}}",
+    "opinionValues": "Hodnoty názoru: Dolní {{lower}}, Vrchol {{peak}}, Horní {{upper}}, Centroid {{centroid}}"
   },
   "centroidChart": {
     "centroidValue": "Centroid",

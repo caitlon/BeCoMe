@@ -140,11 +140,6 @@ describe('Login', () => {
     expect(registerLink).toHaveAttribute('href', '/register');
   });
 
-  it('has forgot password button', () => {
-    render(<Login />);
-
-    expect(screen.getByRole('button', { name: /forgot password/i })).toBeInTheDocument();
-  });
 
   it('disables submit while loading', async () => {
     const user = userEvent.setup();

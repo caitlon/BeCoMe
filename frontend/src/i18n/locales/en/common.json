@@ -104,7 +104,9 @@
     "noDataAvailable": "No data yet",
     "pendingMemberRow": "{{name}} — awaiting response, no opinion submitted yet",
     "pendingInvitationRow": "{{name}} — invitation pending, not yet joined",
-    "centroidChartDesc": "Bar chart showing expert opinion centroids sorted by value with reference lines for mean, median, and best compromise"
+    "centroidChartDesc": "Bar chart showing expert opinion centroids sorted by value with reference lines for mean, median, and best compromise",
+    "memberProfileDialog": "Profile of {{name}}",
+    "opinionValues": "Opinion values: Lower {{lower}}, Peak {{peak}}, Upper {{upper}}, Centroid {{centroid}}"
   },
   "centroidChart": {
     "centroidValue": "Centroid",

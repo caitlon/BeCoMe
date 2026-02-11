@@ -36,6 +36,14 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import { Separator } from "@/components/ui/separator";
 import { Navbar } from "@/components/layout/Navbar";
 import { SubmitButton } from "@/components/forms";
 import { InviteExpertModal } from "@/components/modals/InviteExpertModal";
@@ -66,8 +74,9 @@ const ProjectDetail = () => {
 
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-  const [teamOpen, setTeamOpen] = useState(false);
+  const [teamOpen, setTeamOpen] = useState(true);
   const [showIndividual, setShowIndividual] = useState(false);
+  const [profileMember, setProfileMember] = useState<Member | null>(null);
 
   // Opinion form state
   const [position, setPosition] = useState("");
@@ -79,6 +88,9 @@ const ProjectDetail = () => {
   const myOpinion = opinions.find((o) => o.user_id === user?.id);
   const otherOpinions = opinions.filter((o) => o.user_id !== user?.id);
   const isAdmin = project?.role === "admin";
+  const profileOpinion = profileMember
+    ? opinions.find((o) => o.user_id === profileMember.user_id) ?? null
+    : null;
 
   const fetchData = useCallback(async () => {
     if (!id) return;
@@ -390,7 +402,9 @@ const ProjectDetail = () => {
                 pendingInvitations={pendingInvitations}
                 isAdmin={isAdmin}
                 currentUserId={user?.id}
+                selectedMemberId={profileMember?.user_id}
                 onRemove={handleRemoveMember}
+                onMemberClick={(member) => setProfileMember(member)}
               />
             </TabsContent>
           </Tabs>
@@ -402,7 +416,7 @@ const ProjectDetail = () => {
             <CollapsibleTrigger asChild>
               <Button
                 variant="ghost"
-                className="w-full justify-between p-4 h-auto"
+                className="w-full justify-between p-4 h-auto bg-muted rounded-lg hover:bg-muted/70"
               >
                 <span className="flex items-center gap-2">
                   <Users className="h-4 w-4" />
@@ -421,7 +435,9 @@ const ProjectDetail = () => {
                 pendingInvitations={pendingInvitations}
                 isAdmin={isAdmin}
                 currentUserId={user?.id}
+                selectedMemberId={profileMember?.user_id}
                 onRemove={handleRemoveMember}
+                onMemberClick={(member) => setProfileMember(member)}
               />
             </CollapsibleContent>
           </Collapsible>
@@ -446,6 +462,12 @@ const ProjectDetail = () => {
           t("deleteModal.details.invitations"),
         ]}
         onConfirm={handleDeleteProject}
+      />
+
+      <MemberProfileDialog
+        member={profileMember}
+        opinion={profileOpinion}
+        onOpenChange={(open) => !open && setProfileMember(null)}
       />
     </div>
   );
@@ -1124,7 +1146,9 @@ interface TeamTableProps {
   pendingInvitations: ProjectInvitation[];
   isAdmin: boolean;
   currentUserId?: string;
+  selectedMemberId?: string;
   onRemove: (userId: string) => void;
+  onMemberClick: (member: Member) => void;
 }
 
 const TeamTable = ({
@@ -1132,9 +1156,11 @@ const TeamTable = ({
   pendingInvitations,
   isAdmin,
   currentUserId,
+  selectedMemberId,
   onRemove,
+  onMemberClick,
 }: TeamTableProps) => {
-  const { t } = useTranslation("projects");
+  const { t, i18n } = useTranslation("projects");
   const { t: tCommon } = useTranslation();
 
   return (
@@ -1152,52 +1178,72 @@ const TeamTable = ({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {members.map((member) => (
-              <TableRow key={member.user_id}>
-                <TableCell className="font-medium">
-                  <div className="flex items-center gap-2">
-                    <Avatar className="h-7 w-7" aria-hidden="true">
-                      {member.photo_url && (
-                        <AvatarImage src={member.photo_url} alt="" />
-                      )}
-                      <AvatarFallback className="text-xs">
-                        {`${member.first_name[0]}${member.last_name?.[0] || ""}`.toUpperCase()}
-                      </AvatarFallback>
-                    </Avatar>
-                    <span>{member.first_name} {member.last_name}</span>
-                  </div>
-                </TableCell>
-                <TableCell className="text-muted-foreground">
-                  {member.email}
-                </TableCell>
-                <TableCell>
-                  <Badge
-                    variant={member.role === "admin" ? "default" : "secondary"}
-                  >
-                    {t(`roles.${member.role}`)}
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-muted-foreground">
-                  {new Date(member.joined_at).toLocaleDateString()}
-                </TableCell>
-                {isAdmin && (
-                  <TableCell>
-                    {member.role !== "admin" &&
-                      member.user_id !== currentUserId && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-destructive hover:text-destructive"
-                          onClick={() => onRemove(member.user_id)}
-                          aria-label={tCommon("a11y.removeTeamMember", { name: `${member.first_name} ${member.last_name}` })}
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
-                      )}
+            {members.map((member) => {
+              const fullName = `${member.first_name} ${member.last_name ?? ""}`.trim();
+              return (
+                <TableRow
+                  key={member.user_id}
+                  className="cursor-pointer hover:bg-muted/50 transition-colors"
+                  onClick={() => onMemberClick(member)}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={t("memberProfile.viewProfile", { name: fullName })}
+                  aria-current={selectedMemberId === member.user_id ? "true" : undefined}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      onMemberClick(member);
+                    }
+                  }}
+                >
+                  <TableCell className="font-medium">
+                    <div className="flex items-center gap-2">
+                      <Avatar className="h-7 w-7" aria-hidden="true">
+                        {member.photo_url && (
+                          <AvatarImage src={member.photo_url} alt="" />
+                        )}
+                        <AvatarFallback className="text-xs">
+                          {`${member.first_name[0]}${member.last_name?.[0] || ""}`.toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span>{fullName}</span>
+                    </div>
                   </TableCell>
-                )}
-              </TableRow>
-            ))}
+                  <TableCell className="text-muted-foreground">
+                    {member.email}
+                  </TableCell>
+                  <TableCell>
+                    <Badge
+                      variant={member.role === "admin" ? "default" : "secondary"}
+                    >
+                      {t(`roles.${member.role}`)}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {new Date(member.joined_at).toLocaleDateString(i18n.language)}
+                  </TableCell>
+                  {isAdmin && (
+                    <TableCell>
+                      {member.role !== "admin" &&
+                        member.user_id !== currentUserId && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-destructive hover:text-destructive"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onRemove(member.user_id);
+                            }}
+                            aria-label={tCommon("a11y.removeTeamMember", { name: fullName })}
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        )}
+                    </TableCell>
+                  )}
+                </TableRow>
+              );
+            })}
             {pendingInvitations.map((inv) => {
               const fullName = `${inv.invitee_first_name} ${inv.invitee_last_name ?? ""}`.trim();
               return (
@@ -1232,6 +1278,129 @@ const TeamTable = ({
         </Table>
       </CardContent>
     </Card>
+  );
+};
+
+interface MemberProfileDialogProps {
+  member: Member | null;
+  opinion: Opinion | null;
+  onOpenChange: (open: boolean) => void;
+}
+
+const MemberProfileDialog = ({
+  member,
+  opinion,
+  onOpenChange,
+}: MemberProfileDialogProps) => {
+  const { t, i18n } = useTranslation("projects");
+  const { t: tCommon } = useTranslation();
+
+  if (!member) return null;
+
+  const fullName = `${member.first_name} ${member.last_name ?? ""}`.trim();
+  const initials = `${member.first_name[0]}${member.last_name?.[0] || ""}`.toUpperCase();
+
+  return (
+    <Dialog open={!!member} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader className="items-center text-center">
+          <Avatar className="h-20 w-20 mb-2">
+            {member.photo_url && (
+              <AvatarImage src={member.photo_url} alt={fullName} />
+            )}
+            <AvatarFallback className="text-xl">{initials}</AvatarFallback>
+          </Avatar>
+          <DialogTitle className="text-xl font-light">{fullName}</DialogTitle>
+          <DialogDescription className="flex flex-col items-center gap-1">
+            <Badge
+              variant={member.role === "admin" ? "default" : "secondary"}
+              aria-hidden="true"
+            >
+              {t(`roles.${member.role}`)}
+            </Badge>
+            <span className="sr-only">{t("memberProfile.dialogDescription")}</span>
+          </DialogDescription>
+        </DialogHeader>
+
+        <Separator />
+
+        <div className="space-y-4">
+          {opinion?.position && (
+            <div>
+              <p className="text-sm text-muted-foreground">
+                {t("memberProfile.position")}
+              </p>
+              <p className="font-medium">{opinion.position}</p>
+            </div>
+          )}
+
+          <div>
+            <p className="text-sm text-muted-foreground mb-2">
+              {t("memberProfile.opinion")}
+            </p>
+            {opinion ? (
+              <>
+                <span className="sr-only">
+                  {tCommon("a11y.opinionValues", {
+                    lower: opinion.lower_bound.toFixed(2),
+                    peak: opinion.peak.toFixed(2),
+                    upper: opinion.upper_bound.toFixed(2),
+                    centroid: opinion.centroid.toFixed(2),
+                  })}
+                </span>
+                <div className="grid grid-cols-4 gap-3 text-center" aria-hidden="true">
+                  <div>
+                    <div className="text-xs text-muted-foreground">
+                      {tCommon("fuzzy.lower")}
+                    </div>
+                    <div className="font-mono font-medium">
+                      {opinion.lower_bound.toFixed(2)}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground">
+                      {tCommon("fuzzy.peak")}
+                    </div>
+                    <div className="font-mono font-medium">
+                      {opinion.peak.toFixed(2)}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground">
+                      {tCommon("fuzzy.upper")}
+                    </div>
+                    <div className="font-mono font-medium">
+                      {opinion.upper_bound.toFixed(2)}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground">
+                      {tCommon("fuzzy.centroid")}
+                    </div>
+                    <div className="font-mono font-medium">
+                      {opinion.centroid.toFixed(2)}
+                    </div>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground italic">
+                {t("memberProfile.noOpinion")}
+              </p>
+            )}
+          </div>
+
+          <div>
+            <p className="text-sm text-muted-foreground">
+              {t("memberProfile.joined")}
+            </p>
+            <p className="text-sm">
+              {new Date(member.joined_at).toLocaleDateString(i18n.language)}
+            </p>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 };
 
