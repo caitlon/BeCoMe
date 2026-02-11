@@ -129,6 +129,14 @@
     "role": "Role",
     "joined": "Joined"
   },
+  "memberProfile": {
+    "position": "Position",
+    "opinion": "Opinion",
+    "noOpinion": "No opinion submitted yet",
+    "joined": "Joined",
+    "viewProfile": "View profile of {{name}}",
+    "dialogDescription": "Team member profile and expert opinion"
+  },
   "create": {
     "title": "Create New Project",
     "name": "Project Name",

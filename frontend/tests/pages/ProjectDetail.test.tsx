@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { render } from '@tests/utils';
 import ProjectDetail from '@/pages/ProjectDetail';
@@ -397,7 +397,6 @@ describe('ProjectDetail - Team Section', () => {
   });
 
   it('displays member avatar initials in team table', async () => {
-    const user = userEvent.setup();
     const members = [
       createMember({ user_id: 'user-1', first_name: 'John', last_name: 'Doe', role: 'admin' }),
     ];
@@ -406,12 +405,7 @@ describe('ProjectDetail - Team Section', () => {
     render(<ProjectDetail />);
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /team.*1 members/i })).toBeInTheDocument();
-    });
-    await user.click(screen.getByRole('button', { name: /team.*1 members/i }));
-
-    await waitFor(() => {
-      // JD appears in both Navbar avatar and team table avatar
+      // JD appears in both Navbar avatar and team table avatar (team section open by default)
       const initials = screen.getAllByText('JD');
       expect(initials.length).toBeGreaterThanOrEqual(2);
     });
@@ -514,7 +508,6 @@ describe('ProjectDetail - Pending Invitations in Team', () => {
   });
 
   it('displays pending invitations in team table', async () => {
-    const user = userEvent.setup();
     const members = [
       createMember({ user_id: 'user-1', first_name: 'John', last_name: 'Doe', role: 'admin' }),
     ];
@@ -530,12 +523,7 @@ describe('ProjectDetail - Pending Invitations in Team', () => {
 
     render(<ProjectDetail />);
 
-    // Open the desktop collapsible to reveal the team table
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /team.*1 members/i })).toBeInTheDocument();
-    });
-    await user.click(screen.getByRole('button', { name: /team.*1 members/i }));
-
+    // Team section is open by default
     await waitFor(() => {
       const invitedBadges = screen.getAllByText('Invited');
       expect(invitedBadges.length).toBeGreaterThan(0);
@@ -543,7 +531,6 @@ describe('ProjectDetail - Pending Invitations in Team', () => {
   });
 
   it('shows invitee name and email in team table', async () => {
-    const user = userEvent.setup();
     const invitations = [
       createProjectInvitation({
         invitee_first_name: 'Michael',
@@ -555,12 +542,7 @@ describe('ProjectDetail - Pending Invitations in Team', () => {
 
     render(<ProjectDetail />);
 
-    // Open the desktop collapsible
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /team.*0 members/i })).toBeInTheDocument();
-    });
-    await user.click(screen.getByRole('button', { name: /team.*0 members/i }));
-
+    // Team section is open by default
     await waitFor(() => {
       const names = screen.getAllByText('Michael Brown');
       expect(names.length).toBeGreaterThan(0);
@@ -574,6 +556,212 @@ describe('ProjectDetail - Pending Invitations in Team', () => {
 
     await waitFor(() => {
       expect(mockApi.getProjectInvitations).toHaveBeenCalledWith('project-1');
+    });
+  });
+});
+
+describe('ProjectDetail - Member Profile Dialog', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    defaultSetup();
+  });
+
+  it('opens profile dialog when clicking a member row', async () => {
+    const user = userEvent.setup();
+    const members = [
+      createMember({ user_id: 'user-1', first_name: 'John', last_name: 'Doe', role: 'admin' }),
+      createMember({ user_id: 'user-2', first_name: 'Jane', last_name: 'Smith', role: 'expert' }),
+    ];
+    mockApi.getMembers.mockResolvedValue(members);
+
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('Jane Smith').length).toBeGreaterThan(0);
+    });
+
+    const memberRow = screen.getAllByRole('button', { name: /view profile of jane smith/i })[0];
+    await user.click(memberRow);
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Jane Smith' })).toBeInTheDocument();
+    });
+  });
+
+  it('displays opinion values in profile dialog', async () => {
+    const user = userEvent.setup();
+    const members = [
+      createMember({ user_id: 'user-1', first_name: 'John', last_name: 'Doe', role: 'admin' }),
+      createMember({ user_id: 'user-2', first_name: 'Jane', last_name: 'Smith', role: 'expert' }),
+    ];
+    const opinions = [
+      createOpinion({
+        user_id: 'user-2',
+        user_first_name: 'Jane',
+        user_last_name: 'Smith',
+        position: 'Head of Research',
+        lower_bound: 10,
+        peak: 20,
+        upper_bound: 30,
+        centroid: 20,
+      }),
+    ];
+    mockApi.getMembers.mockResolvedValue(members);
+    mockApi.getOpinions.mockResolvedValue(opinions);
+
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('Jane Smith').length).toBeGreaterThan(0);
+    });
+
+    const memberRows = screen.getAllByRole('button', { name: /view profile of jane smith/i });
+    await user.click(memberRows[0]);
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+    });
+
+    const dialog = screen.getByRole('dialog');
+    // Position and opinion values should be inside the dialog
+    expect(within(dialog).getByText('Head of Research')).toBeInTheDocument();
+    // Opinion values are in sr-only summary (grid is aria-hidden)
+    expect(within(dialog).getByText(/10\.00.*20\.00.*30\.00/)).toBeInTheDocument();
+  });
+
+  it('shows no opinion message when member has no opinion', async () => {
+    const user = userEvent.setup();
+    const members = [
+      createMember({ user_id: 'user-1', first_name: 'John', last_name: 'Doe', role: 'admin' }),
+      createMember({ user_id: 'user-2', first_name: 'Jane', last_name: 'Smith', role: 'expert' }),
+    ];
+    mockApi.getMembers.mockResolvedValue(members);
+    mockApi.getOpinions.mockResolvedValue([]);
+
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('Jane Smith').length).toBeGreaterThan(0);
+    });
+
+    const memberRow = screen.getAllByRole('button', { name: /view profile of jane smith/i })[0];
+    await user.click(memberRow);
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+      expect(screen.getByText('No opinion submitted yet')).toBeInTheDocument();
+    });
+  });
+
+  it('displays role badge in profile dialog', async () => {
+    const user = userEvent.setup();
+    const members = [
+      createMember({ user_id: 'user-1', first_name: 'John', last_name: 'Doe', role: 'admin' }),
+      createMember({ user_id: 'user-2', first_name: 'Jane', last_name: 'Smith', role: 'expert' }),
+    ];
+    mockApi.getMembers.mockResolvedValue(members);
+
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('Jane Smith').length).toBeGreaterThan(0);
+    });
+
+    const memberRow = screen.getAllByRole('button', { name: /view profile of jane smith/i })[0];
+    await user.click(memberRow);
+
+    await waitFor(() => {
+      const dialog = screen.getByRole('dialog');
+      // Role badge "Expert" should be inside the dialog
+      const expertBadges = screen.getAllByText('Expert');
+      const dialogBadge = expertBadges.find((el) => dialog.contains(el));
+      expect(dialogBadge).toBeDefined();
+    });
+  });
+
+  it('opens profile dialog via keyboard Enter', async () => {
+    const user = userEvent.setup();
+    const members = [
+      createMember({ user_id: 'user-1', first_name: 'John', last_name: 'Doe', role: 'admin' }),
+      createMember({ user_id: 'user-2', first_name: 'Jane', last_name: 'Smith', role: 'expert' }),
+    ];
+    mockApi.getMembers.mockResolvedValue(members);
+
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('Jane Smith').length).toBeGreaterThan(0);
+    });
+
+    const memberRow = screen.getAllByRole('button', { name: /view profile of jane smith/i })[0];
+    memberRow.focus();
+    await user.keyboard('{Enter}');
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Jane Smith' })).toBeInTheDocument();
+    });
+  });
+
+  it('does not open dialog when remove button is clicked', async () => {
+    const user = userEvent.setup();
+    const members = [
+      createMember({ user_id: 'user-1', first_name: 'John', last_name: 'Doe', role: 'admin' }),
+      createMember({ user_id: 'user-2', first_name: 'Jane', last_name: 'Smith', role: 'expert' }),
+    ];
+    mockApi.getMembers.mockResolvedValue(members);
+    mockApi.removeMember.mockResolvedValue(undefined);
+
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('Jane Smith').length).toBeGreaterThan(0);
+    });
+
+    // Click the remove button (X icon)
+    const removeButtons = screen.getAllByRole('button', { name: /remove jane smith from team/i });
+    await user.click(removeButtons[0]);
+
+    // Should NOT open dialog
+    await waitFor(() => {
+      expect(mockApi.removeMember).toHaveBeenCalledWith('project-1', 'user-2');
+    });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('provides sr-only opinion summary for screen readers', async () => {
+    const user = userEvent.setup();
+    const members = [
+      createMember({ user_id: 'user-1', first_name: 'John', last_name: 'Doe', role: 'admin' }),
+      createMember({ user_id: 'user-2', first_name: 'Jane', last_name: 'Smith', role: 'expert' }),
+    ];
+    const opinions = [
+      createOpinion({
+        user_id: 'user-2',
+        user_first_name: 'Jane',
+        user_last_name: 'Smith',
+        lower_bound: 10,
+        peak: 20,
+        upper_bound: 30,
+        centroid: 20,
+      }),
+    ];
+    mockApi.getMembers.mockResolvedValue(members);
+    mockApi.getOpinions.mockResolvedValue(opinions);
+
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('Jane Smith').length).toBeGreaterThan(0);
+    });
+
+    const memberRow = screen.getAllByRole('button', { name: /view profile of jane smith/i })[0];
+    await user.click(memberRow);
+
+    await waitFor(() => {
+      // sr-only text with opinion values summary
+      expect(screen.getByText(/opinion values.*10\.00.*20\.00.*30\.00.*20\.00/i)).toBeInTheDocument();
     });
   });
 });

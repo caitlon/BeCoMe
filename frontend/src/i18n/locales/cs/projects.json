@@ -129,6 +129,14 @@
     "role": "Role",
     "joined": "Přidal se"
   },
+  "memberProfile": {
+    "position": "Pozice",
+    "opinion": "Názor",
+    "noOpinion": "Názor zatím neodevzdán",
+    "joined": "Přidal/a se",
+    "viewProfile": "Zobrazit profil {{name}}",
+    "dialogDescription": "Profil člena týmu a expertní názor"
+  },
   "create": {
     "title": "Vytvořit nový projekt",
     "name": "Název projektu",
