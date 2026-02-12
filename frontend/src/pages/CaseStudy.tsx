@@ -120,7 +120,7 @@ const CaseStudy = () => {
                     </blockquote>
                     <div className="mt-4 flex items-center gap-4 text-sm">
                       <span className="px-3 py-1 bg-secondary rounded-full">
-                        Scale: {caseStudy.scaleMin}–{caseStudy.scaleMax}{" "}
+                        {t("common.scale")}: {caseStudy.scaleMin}–{caseStudy.scaleMax}{" "}
                         {caseStudy.scaleUnit}
                       </span>
                     </div>
@@ -303,7 +303,7 @@ const CaseStudy = () => {
                   <Card className="mt-6">
                     <CardHeader>
                       <CardTitle className="text-lg">
-                        Opinion Distribution
+                        {t("common.opinionDistribution")}
                       </CardTitle>
                     </CardHeader>
                     <CardContent>
@@ -365,11 +365,10 @@ const CaseStudy = () => {
       <section className="py-16 bg-secondary/30">
         <div className="container mx-auto px-6 text-center">
           <h2 className="font-display text-2xl md:text-3xl font-normal mb-4">
-            Try BeCoMe for Your Project
+            {t("common.ctaTitle")}
           </h2>
           <p className="text-muted-foreground mb-8 max-w-xl mx-auto">
-            Aggregate expert opinions and find the best compromise for your
-            decision-making challenges.
+            {t("common.ctaDescription")}
           </p>
           <Button size="lg" asChild>
             <Link to="/register">{tCommon("nav.getStarted")}</Link>
@@ -399,7 +398,7 @@ function LikertInterpretation({ value }: { value: number }) {
   const label = useLocalizedLikertLabel(value);
   return (
     <div>
-      <div className="text-sm opacity-80 mb-1">Likert {t("common.interpretation")}</div>
+      <div className="text-sm opacity-80 mb-1">{t("common.likertInterpretation")}</div>
       <div className="text-xl font-medium">{label}</div>
     </div>
   );

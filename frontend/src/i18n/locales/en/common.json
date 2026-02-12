@@ -66,6 +66,7 @@
     "hide": "Hide password"
   },
   "notFound": {
+    "code": "404",
     "title": "Page Not Found",
     "description": "The requested page could not be found.",
     "backHome": "Back to Home"

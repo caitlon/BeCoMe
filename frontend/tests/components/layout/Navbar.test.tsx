@@ -45,11 +45,11 @@ describe('Navbar - Authenticated', () => {
     mockPathname.value = '/';
   });
 
-  it('renders logo linking to projects when authenticated', () => {
+  it('renders logo linking to landing when authenticated', () => {
     render(<Navbar />);
 
     const logo = screen.getByText('BeCoMe');
-    expect(logo).toHaveAttribute('href', '/projects');
+    expect(logo).toHaveAttribute('href', '/');
   });
 
   it('renders About link', () => {

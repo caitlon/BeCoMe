@@ -50,7 +50,12 @@
     "value": "Value",
     "label": "Label",
     "intervalScale": "Interval scale",
-    "likertScale": "Likert scale"
+    "likertScale": "Likert scale",
+    "scale": "Scale",
+    "opinionDistribution": "Opinion Distribution",
+    "ctaTitle": "Try BeCoMe for Your Project",
+    "ctaDescription": "Aggregate expert opinions and find the best compromise for your decision-making challenges.",
+    "likertInterpretation": "Likert Interpretation"
   },
   "likert": {
     "stronglyDisagree": "Strongly Disagree",

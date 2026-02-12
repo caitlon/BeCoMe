@@ -63,9 +63,9 @@ const CaseStudies = () => {
                             <study.icon className="h-5 w-5 text-muted-foreground group-hover:text-primary transition-colors" aria-hidden="true" />
                           </div>
                           <div>
-                            <h2 className="font-display font-medium text-lg mb-1 group-hover:text-primary transition-colors">
+                            <h3 className="font-display font-medium text-lg mb-1 group-hover:text-primary transition-colors">
                               {study.title}
-                            </h2>
+                            </h3>
                             <p className="text-sm text-muted-foreground mb-3">
                               {study.description}
                             </p>

@@ -267,6 +267,7 @@ const Profile = () => {
                   className="h-8 w-8 rounded-full"
                   onClick={() => fileInputRef.current?.click()}
                   disabled={isUploadingPhoto}
+                  aria-label={t("photo.upload")}
                 >
                   {isUploadingPhoto ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -280,6 +281,7 @@ const Profile = () => {
                     variant="destructive"
                     className="h-8 w-8 rounded-full"
                     onClick={handleDeletePhoto}
+                    aria-label={t("photo.delete")}
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>

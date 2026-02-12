@@ -124,6 +124,6 @@ describe('About', () => {
     render(<About />);
 
     const caseStudiesLink = screen.getByRole('link', { name: /view case studies/i });
-    expect(caseStudiesLink).toHaveAttribute('href', '/#case-studies');
+    expect(caseStudiesLink).toHaveAttribute('href', '/case-studies');
   });
 });

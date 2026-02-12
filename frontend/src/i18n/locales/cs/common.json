@@ -66,6 +66,7 @@
     "hide": "Skrýt heslo"
   },
   "notFound": {
+    "code": "404",
     "title": "Stránka nenalezena",
     "description": "Požadovaná stránka nebyla nalezena.",
     "backHome": "Zpět na úvodní stránku"
