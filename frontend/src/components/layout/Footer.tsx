@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { Code, MessageSquare } from "lucide-react";
+import { MessageSquare } from "lucide-react";
 
 export function Footer() {
   const { t } = useTranslation();
@@ -13,8 +13,22 @@ export function Footer() {
           <Link to="/" className="font-display text-xl font-medium">
             {t("brand.name")}
           </Link>
-          <p className="mt-3 text-sm text-muted-foreground max-w-md">
+          <p className="mt-3 text-sm text-muted-foreground">
             {t("footer.description")}
+          </p>
+          <p className="mt-2 text-sm text-muted-foreground">
+            <a
+              href="https://www.linkedin.com/in/kuzmina-ekaterina/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-foreground hover:underline"
+            >
+              {t("footer.authorName")}
+            </a>
+            {" – "}
+            {t("footer.implementationThesis")}
+            {", "}
+            {t("footer.implementationUniversity")}
           </p>
         </div>
 
@@ -50,7 +64,7 @@ export function Footer() {
               </li>
               <li>
                 <Link
-                  to="/#case-studies"
+                  to="/case-studies"
                   className="text-sm text-muted-foreground hover:text-foreground transition-colors"
                 >
                   {t("footer.caseStudies")}
@@ -122,29 +136,6 @@ export function Footer() {
               </li>
             </ul>
           </div>
-        </div>
-
-        {/* Implementation section */}
-        <div className="bg-muted/50 rounded-lg p-6 mb-8">
-          <div className="flex items-center gap-2 mb-2">
-            <Code className="h-4 w-4 text-muted-foreground" />
-            <h4 className="font-medium text-sm">{t("footer.implementation")}</h4>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            <a
-              href="https://www.linkedin.com/in/kuzmina-ekaterina/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-foreground hover:underline"
-            >
-              {t("footer.authorName")}
-            </a>
-            {" – "}
-            {t("footer.implementationThesis")}
-          </p>
-          <p className="text-sm text-muted-foreground">
-            {t("footer.implementationUniversity")}
-          </p>
         </div>
 
         {/* Feedback section */}

@@ -22,7 +22,7 @@ const NotFound = () => {
       <Navbar />
       <main id="main-content" className="flex min-h-[calc(100vh-4rem)] items-center justify-center">
         <div className="text-center">
-          <h1 className="mb-4 text-4xl font-bold">404</h1>
+          <h1 className="font-display text-4xl font-light tracking-tight mb-4">{t("notFound.code")}</h1>
           <p className="mb-4 text-xl text-muted-foreground">
             {t("notFound.description")}
           </p>

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { render } from '@tests/utils';
+import { render, framerMotionMock } from '@tests/utils';
 import Profile from '@/pages/Profile';
 import { createUser } from '@tests/factories/user';
 
@@ -54,33 +54,7 @@ vi.mock('@/contexts/AuthContext', () => ({
   }),
 }));
 
-// Filter out framer-motion props
-const filterMotionProps = (props: Record<string, unknown>) => {
-  const motionProps = ['initial', 'animate', 'exit', 'variants', 'transition', 'whileHover', 'whileTap', 'whileInView', 'viewport'];
-  const filtered: Record<string, unknown> = {};
-  for (const key of Object.keys(props)) {
-    if (!motionProps.includes(key)) {
-      filtered[key] = props[key];
-    }
-  }
-  return filtered;
-};
-
-// Mock framer-motion
-vi.mock('framer-motion', () => ({
-  motion: {
-    div: ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) => (
-      <div {...filterMotionProps(props)}>{children}</div>
-    ),
-    nav: ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) => (
-      <nav {...filterMotionProps(props)}>{children}</nav>
-    ),
-    span: ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) => (
-      <span {...filterMotionProps(props)}>{children}</span>
-    ),
-  },
-  AnimatePresence: ({ children }: React.PropsWithChildren<object>) => <>{children}</>,
-}));
+vi.mock('framer-motion', () => framerMotionMock);
 
 describe('Profile', () => {
   beforeEach(() => {
@@ -259,6 +233,32 @@ describe('Profile - Change Password', () => {
     render(<Profile />);
 
     expect(screen.getByRole('button', { name: 'Update Password' })).toBeDisabled();
+  });
+});
+
+describe('Profile - Photo Buttons a11y', () => {
+  const originalPhotoUrl = mockUser.photo_url;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockUser.photo_url = null;
+  });
+
+  afterEach(() => {
+    mockUser.photo_url = originalPhotoUrl;
+  });
+
+  it('upload photo button has aria-label', () => {
+    render(<Profile />);
+
+    expect(screen.getByRole('button', { name: /upload photo|nahrát fotku/i })).toBeInTheDocument();
+  });
+
+  it('delete photo button has aria-label when photo exists', () => {
+    mockUser.photo_url = 'https://example.com/photo.jpg';
+    render(<Profile />);
+
+    expect(screen.getByRole('button', { name: /delete photo|smazat fotku/i })).toBeInTheDocument();
   });
 });
 

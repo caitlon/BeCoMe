@@ -7,9 +7,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { FuzzyTriangleSVG } from "@/components/visualizations/FuzzyTriangleSVG";
+import { CaseStudyCard } from "@/components/CaseStudyCard";
 import { ArrowRight, Users, Calculator, Target } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { caseStudies } from "@/data/caseStudies";
+import { useLocalizedCaseStudies } from "@/hooks/useLocalizedCaseStudies";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 const fadeInUp = {
@@ -32,6 +33,7 @@ const Landing = () => {
   const { isAuthenticated } = useAuth();
   const location = useLocation();
   useDocumentTitle(tCommon("pageTitle.landing"));
+  const localizedStudies = useLocalizedCaseStudies();
 
   useEffect(() => {
     if (location.hash) {
@@ -77,10 +79,10 @@ const Landing = () => {
             </motion.p>
 
             <motion.div variants={fadeInUp}>
-              <Button size="lg" className="gap-2" asChild>
+              <Button size="lg" className="group gap-2 shadow-md hover:shadow-xl hover:scale-[1.03] transition-all duration-300" asChild>
                 <Link to={isAuthenticated ? "/projects" : "/register"}>
                   {isAuthenticated ? t("hero.goToProjects") : t("hero.startProject")}
-                  <ArrowRight className="h-4 w-4" />
+                  <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-1" />
                 </Link>
               </Button>
             </motion.div>
@@ -138,11 +140,10 @@ const Landing = () => {
                 key={step.titleKey}
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
-                whileHover={{ y: -4 }}
                 viewport={{ once: true }}
                 transition={{ delay: index * 0.1, duration: 0.5 }}
               >
-                <Card className="h-full border-border/50 hover:border-border hover:shadow-lg transition-all duration-300">
+                <Card className="h-full border-border/50">
                   <CardContent className="pt-8 pb-8 text-center">
                     <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-6">
                       <step.icon className="h-6 w-6" />
@@ -195,7 +196,7 @@ const Landing = () => {
           </motion.div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
-            {caseStudies.map((study, index) => (
+            {localizedStudies.map((study, index) => (
               <motion.div
                 key={study.id}
                 initial={{ opacity: 0, y: 20 }}
@@ -204,31 +205,7 @@ const Landing = () => {
                 viewport={{ once: true }}
                 transition={{ delay: index * 0.1, duration: 0.5 }}
               >
-                <Link to={`/case-study/${study.id}`}>
-                  <Card className="h-full group hover:shadow-lg hover:border-primary/30 transition-all duration-300 cursor-pointer">
-                    <CardContent className="pt-6 pb-6">
-                      <div className="flex items-start gap-4">
-                        <div className="w-10 h-10 rounded-lg bg-secondary flex items-center justify-center shrink-0 group-hover:bg-primary/10 transition-colors">
-                          <study.icon className="h-5 w-5 text-muted-foreground group-hover:text-primary transition-colors" />
-                        </div>
-                        <div>
-                          <h3 className="font-medium text-base mb-1 group-hover:text-primary transition-colors">
-                            {study.title}
-                          </h3>
-                          <p className="text-sm text-muted-foreground mb-3">
-                            {study.description}
-                          </p>
-                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                            <Users className="h-3 w-3" />
-                            <span className="font-mono">
-                              {study.experts} {t("caseStudies.experts")}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </Link>
+                <CaseStudyCard study={study} />
               </motion.div>
             ))}
           </div>
@@ -236,7 +213,10 @@ const Landing = () => {
       </section>
 
       {/* CTA Section */}
-      <section className="py-20 md:py-32 bg-primary text-primary-foreground">
+      <section className="relative py-16 md:py-24 bg-primary text-primary-foreground overflow-hidden">
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-1/3 h-px bg-gradient-to-r from-transparent via-primary-foreground/20 to-transparent" aria-hidden="true" />
+        <div className="absolute top-10 left-10 w-32 h-32 rounded-full bg-primary-foreground/5 blur-2xl" aria-hidden="true" />
+        <div className="absolute bottom-10 right-10 w-40 h-40 rounded-full bg-primary-foreground/5 blur-2xl" aria-hidden="true" />
         <div className="container mx-auto px-6">
           <motion.div
             className="max-w-2xl mx-auto text-center"
@@ -249,10 +229,10 @@ const Landing = () => {
               {t("cta.title")}
             </h2>
             <p className="text-primary-foreground/80 mb-8">{t("cta.subtitle")}</p>
-            <Button variant="secondary" size="lg" className="gap-2" asChild>
+            <Button variant="secondary" size="lg" className="group gap-2 shadow-md hover:shadow-xl hover:scale-[1.03] transition-all duration-300" asChild>
               <Link to={isAuthenticated ? "/projects" : "/register"}>
                 {t("cta.button")}
-                <ArrowRight className="h-4 w-4" />
+                <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-1" />
               </Link>
             </Button>
           </motion.div>

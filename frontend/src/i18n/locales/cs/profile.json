@@ -28,6 +28,10 @@
     "confirm": "Smazat můj účet",
     "deleting": "Mazání..."
   },
+  "photo": {
+    "upload": "Nahrát fotku",
+    "delete": "Smazat fotku"
+  },
   "toast": {
     "error": "Chyba",
     "profileUpdated": "Profil aktualizován",

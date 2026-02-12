@@ -1,15 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
 import { screen, within } from '@testing-library/react';
-import { render, framerMotionMock } from '@tests/utils';
+import userEvent from '@testing-library/user-event';
+import { render, framerMotionMock, unauthenticatedAuthMock, expectSectionIds, getGithubLinks } from '@tests/utils';
 import FAQ from '@/pages/FAQ';
 
-vi.mock('@/contexts/AuthContext', () => ({
-  useAuth: () => ({
-    user: null,
-    isLoading: false,
-    isAuthenticated: false,
-  }),
-}));
+vi.mock('@/contexts/AuthContext', () => unauthenticatedAuthMock);
 
 vi.mock('framer-motion', () => framerMotionMock);
 
@@ -60,5 +55,38 @@ describe('FAQ', () => {
 
     const main = screen.getByRole('main');
     expect(main).toHaveAttribute('id', 'main-content');
+  });
+
+  it('clicking sidebar button does not throw', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
+
+    render(<FAQ />);
+
+    const nav = screen.getByRole('navigation', { name: /categories|kategorie/i });
+    const buttons = within(nav).getAllByRole('button');
+
+    await user.click(buttons[0]);
+
+    expect(buttons[0]).toBeInTheDocument();
+
+    vi.restoreAllMocks();
+  });
+
+  it('CTA section has GitHub external link', () => {
+    render(<FAQ />);
+
+    const githubLinks = getGithubLinks();
+    expect(githubLinks.length).toBeGreaterThan(0);
+
+    for (const link of githubLinks) {
+      expect(link).toHaveAttribute('target', '_blank');
+    }
+  });
+
+  it('renders all category sections with IDs', () => {
+    const { container } = render(<FAQ />);
+
+    expectSectionIds(container, ['method', 'fuzzyNumbers', 'results', 'application', 'troubleshooting']);
   });
 });

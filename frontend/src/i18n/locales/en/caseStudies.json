@@ -47,7 +47,15 @@
     "bestProposal": "Best Proposal",
     "lowerLimit": "Lower Limit",
     "upperLimit": "Upper Limit",
-    "value": "Value"
+    "value": "Value",
+    "label": "Label",
+    "intervalScale": "Interval scale",
+    "likertScale": "Likert scale",
+    "scale": "Scale",
+    "opinionDistribution": "Opinion Distribution",
+    "ctaTitle": "Try BeCoMe for Your Project",
+    "ctaDescription": "Aggregate expert opinions and find the best compromise for your decision-making challenges.",
+    "likertInterpretation": "Likert Interpretation"
   },
   "likert": {
     "stronglyDisagree": "Strongly Disagree",
@@ -55,5 +63,9 @@
     "neutral": "Neutral",
     "ratherAgree": "Rather Agree",
     "stronglyAgree": "Strongly Agree"
+  },
+  "listing": {
+    "title": "Case Studies",
+    "subtitle": "Real-world applications of the BeCoMe methodology across different domains"
   }
 }

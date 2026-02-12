@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen, waitFor, within } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { render } from '@tests/utils';
 import Projects from '@/pages/Projects';
@@ -38,6 +38,26 @@ const mockToast = vi.fn();
 vi.mock('@/hooks/use-toast', () => ({
   useToast: () => ({ toast: mockToast }),
 }));
+
+/** Render Projects, wait for loading to finish, and switch to the Invitations tab. */
+async function openInvitationsTab() {
+  const user = userEvent.setup();
+  render(<Projects />);
+  await waitFor(() => {
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+  await user.click(screen.getByRole('tab', { name: /invitations/i }));
+  return user;
+}
+
+/** Open the Invitations tab, then find and click a button by accessible name. */
+async function clickInvitationAction(buttonName: RegExp) {
+  await openInvitationsTab();
+  await waitFor(() => {
+    expect(screen.getByRole('button', { name: buttonName })).toBeInTheDocument();
+  });
+  await screen.getByRole('button', { name: buttonName }).click();
+}
 
 describe('Projects', () => {
   beforeEach(() => {
@@ -214,17 +234,9 @@ describe('Projects', () => {
     });
 
     it('switches to invitations tab', async () => {
-      const user = userEvent.setup();
-      const invitations = [createInvitation({ project_name: 'Invited Project' })];
-      mockApi.getInvitations.mockResolvedValue(invitations);
+      mockApi.getInvitations.mockResolvedValue([createInvitation({ project_name: 'Invited Project' })]);
 
-      render(<Projects />);
-
-      await waitFor(() => {
-        expect(screen.getByRole('tab', { name: /invitations/i })).toBeInTheDocument();
-      });
-
-      await user.click(screen.getByRole('tab', { name: /invitations/i }));
+      await openInvitationsTab();
 
       await waitFor(() => {
         expect(screen.getByText('Invited Project')).toBeInTheDocument();
@@ -234,16 +246,9 @@ describe('Projects', () => {
 
   describe('Invitations', () => {
     it('shows empty state when no invitations', async () => {
-      const user = userEvent.setup();
       mockApi.getInvitations.mockResolvedValue([]);
 
-      render(<Projects />);
-
-      await waitFor(() => {
-        expect(screen.getByRole('tab', { name: /invitations/i })).toBeInTheDocument();
-      });
-
-      await user.click(screen.getByRole('tab', { name: /invitations/i }));
+      await openInvitationsTab();
 
       await waitFor(() => {
         expect(screen.getByText(/no pending invitations/i)).toBeInTheDocument();
@@ -251,23 +256,15 @@ describe('Projects', () => {
     });
 
     it('shows invitation details', async () => {
-      const user = userEvent.setup();
-      const invitations = [
+      mockApi.getInvitations.mockResolvedValue([
         createInvitation({
           project_name: 'Research Project',
           inviter_first_name: 'John',
           inviter_email: 'john@example.com',
         }),
-      ];
-      mockApi.getInvitations.mockResolvedValue(invitations);
+      ]);
 
-      render(<Projects />);
-
-      await waitFor(() => {
-        expect(screen.queryByRole('status')).not.toBeInTheDocument();
-      });
-
-      await user.click(screen.getByRole('tab', { name: /invitations/i }));
+      await openInvitationsTab();
 
       await waitFor(() => {
         expect(screen.getByText('Research Project')).toBeInTheDocument();
@@ -276,24 +273,10 @@ describe('Projects', () => {
     });
 
     it('accept invitation calls API and refreshes', async () => {
-      const user = userEvent.setup();
-      const invitations = [createInvitation({ id: 'inv-123' })];
-      mockApi.getInvitations.mockResolvedValue(invitations);
+      mockApi.getInvitations.mockResolvedValue([createInvitation({ id: 'inv-123' })]);
       mockApi.acceptInvitation.mockResolvedValue({});
 
-      render(<Projects />);
-
-      await waitFor(() => {
-        expect(screen.queryByRole('status')).not.toBeInTheDocument();
-      });
-
-      await user.click(screen.getByRole('tab', { name: /invitations/i }));
-
-      await waitFor(() => {
-        expect(screen.getByRole('button', { name: /accept/i })).toBeInTheDocument();
-      });
-
-      await user.click(screen.getByRole('button', { name: /accept/i }));
+      await clickInvitationAction(/accept/i);
 
       await waitFor(() => {
         expect(mockApi.acceptInvitation).toHaveBeenCalledWith('inv-123');
@@ -301,24 +284,10 @@ describe('Projects', () => {
     });
 
     it('decline invitation calls API and refreshes', async () => {
-      const user = userEvent.setup();
-      const invitations = [createInvitation({ id: 'inv-456' })];
-      mockApi.getInvitations.mockResolvedValue(invitations);
+      mockApi.getInvitations.mockResolvedValue([createInvitation({ id: 'inv-456' })]);
       mockApi.declineInvitation.mockResolvedValue(undefined);
 
-      render(<Projects />);
-
-      await waitFor(() => {
-        expect(screen.queryByRole('status')).not.toBeInTheDocument();
-      });
-
-      await user.click(screen.getByRole('tab', { name: /invitations/i }));
-
-      await waitFor(() => {
-        expect(screen.getByRole('button', { name: /decline/i })).toBeInTheDocument();
-      });
-
-      await user.click(screen.getByRole('button', { name: /decline/i }));
+      await clickInvitationAction(/decline/i);
 
       await waitFor(() => {
         expect(mockApi.declineInvitation).toHaveBeenCalledWith('inv-456');
@@ -356,6 +325,32 @@ describe('Projects', () => {
           expect.objectContaining({
             variant: 'destructive',
           })
+        );
+      });
+    });
+
+    it('shows error toast when accept invitation fails', async () => {
+      mockApi.getInvitations.mockResolvedValue([createInvitation({ id: 'inv-err' })]);
+      mockApi.acceptInvitation.mockRejectedValue(new Error('Accept failed'));
+
+      await clickInvitationAction(/accept/i);
+
+      await waitFor(() => {
+        expect(mockToast).toHaveBeenCalledWith(
+          expect.objectContaining({ variant: 'destructive' })
+        );
+      });
+    });
+
+    it('shows error toast when decline invitation fails', async () => {
+      mockApi.getInvitations.mockResolvedValue([createInvitation({ id: 'inv-err2' })]);
+      mockApi.declineInvitation.mockRejectedValue(new Error('Decline failed'));
+
+      await clickInvitationAction(/decline/i);
+
+      await waitFor(() => {
+        expect(mockToast).toHaveBeenCalledWith(
+          expect.objectContaining({ variant: 'destructive' })
         );
       });
     });

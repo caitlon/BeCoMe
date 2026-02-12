@@ -260,13 +260,14 @@ const Profile = () => {
                 className="hidden"
                 onChange={handlePhotoUpload}
               />
-              <div className="absolute -bottom-2 -right-2 flex gap-1">
+              <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 flex gap-1">
                 <Button
                   size="icon"
                   variant="secondary"
                   className="h-8 w-8 rounded-full"
                   onClick={() => fileInputRef.current?.click()}
                   disabled={isUploadingPhoto}
+                  aria-label={t("photo.upload")}
                 >
                   {isUploadingPhoto ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -280,13 +281,14 @@ const Profile = () => {
                     variant="destructive"
                     className="h-8 w-8 rounded-full"
                     onClick={handleDeletePhoto}
+                    aria-label={t("photo.delete")}
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 )}
               </div>
             </div>
-            <h1 className="font-display text-2xl font-light">
+            <h1 className="font-display text-3xl font-light">
               {user.first_name} {user.last_name}
             </h1>
             <p className="text-muted-foreground">{user.email}</p>

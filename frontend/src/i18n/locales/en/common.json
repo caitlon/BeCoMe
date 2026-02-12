@@ -15,7 +15,10 @@
     "signOut": "Sign Out",
     "getStarted": "Get Started",
     "projects": "Projects",
-    "profile": "Profile"
+    "profile": "Profile",
+    "docs": "Docs",
+    "faq": "FAQ",
+    "caseStudies": "Case Studies"
   },
   "footer": {
     "description": "Best Compromise Mean — a scientific approach to aggregating expert opinions using fuzzy triangular numbers.",
@@ -63,6 +66,7 @@
     "hide": "Hide password"
   },
   "notFound": {
+    "code": "404",
     "title": "Page Not Found",
     "description": "The requested page could not be found.",
     "backHome": "Back to Home"
@@ -128,6 +132,7 @@
     "caseStudy": "Case Study",
     "documentation": "Documentation",
     "faq": "FAQ",
+    "caseStudies": "Case Studies",
     "notFound": "Page Not Found"
   }
 }

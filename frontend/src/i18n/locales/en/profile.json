@@ -28,6 +28,10 @@
     "confirm": "Delete My Account",
     "deleting": "Deleting..."
   },
+  "photo": {
+    "upload": "Upload photo",
+    "delete": "Delete photo"
+  },
   "toast": {
     "error": "Error",
     "profileUpdated": "Profile updated",

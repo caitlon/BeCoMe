@@ -203,7 +203,7 @@ export function StepEnterOpinion() {
                       initial={{ opacity: 0 }}
                       animate={{
                         opacity: 1,
-                        points: `${scaleToX(lowerNum)},100 ${scaleToX(peakNum)},25 ${scaleToX(upperNum)},100`,
+                        points: `${scaleToX(lowerNum)},88 ${scaleToX(peakNum)},25 ${scaleToX(upperNum)},88`,
                       }}
                       transition={{ duration: 0.3 }}
                       fill="currentColor"
@@ -226,7 +226,7 @@ export function StepEnterOpinion() {
                     {/* Value labels */}
                     <text
                       x={scaleToX(lowerNum)}
-                      y="95"
+                      y="100"
                       className="fill-muted-foreground"
                       fontSize="9"
                       textAnchor="middle"
@@ -245,7 +245,7 @@ export function StepEnterOpinion() {
                     </text>
                     <text
                       x={scaleToX(upperNum)}
-                      y="95"
+                      y="100"
                       className="fill-muted-foreground"
                       fontSize="9"
                       textAnchor="middle"

@@ -87,7 +87,8 @@
     "complete": {
       "title": "Jste připraveni!",
       "description": "Nyní znáte základy BeCoMe. Založte svůj první projekt a shromážděte expertní názory.",
-      "cta": "Vytvořit první projekt"
+      "cta": "Vytvořit první projekt",
+      "goToProjects": "Vytvořte svůj první projekt"
     }
   },
   "navbar": {

@@ -185,7 +185,7 @@ const FAQ = () => {
       {/* CTA Section */}
       <section className="py-16 bg-primary text-primary-foreground">
         <div className="container mx-auto px-6 text-center">
-          <h2 className="font-display text-2xl md:text-3xl mb-4">
+          <h2 className="font-display text-2xl md:text-3xl font-normal mb-4">
             {t("cta.title")}
           </h2>
           <p className="text-primary-foreground/80 mb-8 max-w-xl mx-auto">

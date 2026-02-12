@@ -55,6 +55,21 @@ export function Navbar() {
 
   const isAuthPage = ['/login', '/register'].includes(location.pathname);
 
+  const isActive = (path: string) =>
+    location.pathname === path || location.pathname.startsWith(path + "/");
+
+  const navItems = [
+    { to: "/about", label: t("nav.about") },
+    { to: "/docs", label: t("nav.docs") },
+    { to: "/faq", label: t("nav.faq") },
+    { to: "/case-studies", label: t("nav.caseStudies") },
+  ];
+
+  const authNavItems = [
+    { to: "/projects", label: t("nav.projects") },
+    { to: "/onboarding", label: tOnboarding("navbar.takeTour") },
+  ];
+
   return (
     <nav
       aria-label={t("a11y.mainNavigation")}
@@ -68,7 +83,7 @@ export function Navbar() {
       <div className="container mx-auto px-6 h-16 flex items-center justify-between">
         {/* Logo */}
         <Link
-          to={isAuthenticated ? "/projects" : "/"}
+          to="/"
           className="font-display text-2xl font-medium tracking-tight"
         >
           BeCoMe
@@ -76,21 +91,18 @@ export function Navbar() {
 
         {/* Desktop Navigation */}
         <div className="hidden md:flex items-center gap-6">
-          <Button variant="ghost" size="sm" asChild>
-            <Link to="/about" aria-current={location.pathname === "/about" ? "page" : undefined}>{t("nav.about")}</Link>
-          </Button>
+          {navItems.map(({ to, label }) => (
+            <Button key={to} variant="ghost" size="sm" className={cn(isActive(to) && "text-foreground border-b-2 border-primary rounded-none")} asChild>
+              <Link to={to} aria-current={isActive(to) ? "page" : undefined}>{label}</Link>
+            </Button>
+          ))}
           {isAuthenticated ? (
             <>
-              <Button variant="ghost" size="sm" asChild>
-                <Link to="/projects" aria-current={location.pathname === "/projects" ? "page" : undefined}>
-                  {t("nav.projects")}
-                </Link>
-              </Button>
-              <Button variant="ghost" size="sm" asChild>
-                <Link to="/onboarding" aria-current={location.pathname === "/onboarding" ? "page" : undefined}>
-                  {tOnboarding("navbar.takeTour")}
-                </Link>
-              </Button>
+              {authNavItems.map(({ to, label }) => (
+                <Button key={to} variant="ghost" size="sm" className={cn(isActive(to) && "text-foreground border-b-2 border-primary rounded-none")} asChild>
+                  <Link to={to} aria-current={isActive(to) ? "page" : undefined}>{label}</Link>
+                </Button>
+              ))}
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -176,40 +188,30 @@ export function Navbar() {
             transition={{ duration: 0.2 }}
           >
             <div className="container mx-auto px-6 py-4 space-y-3">
-            <Link
-              to="/about"
-              aria-current={location.pathname === "/about" ? "page" : undefined}
-              className="block py-2 text-muted-foreground hover:text-foreground"
-              onClick={() => setIsMenuOpen(false)}
-            >
-              {t("nav.about")}
-            </Link>
+            {navItems.map(({ to, label }) => (
+              <Link
+                key={to}
+                to={to}
+                aria-current={isActive(to) ? "page" : undefined}
+                className={cn("block py-2 hover:text-foreground", isActive(to) ? "text-foreground font-medium" : "text-muted-foreground")}
+                onClick={() => setIsMenuOpen(false)}
+              >
+                {label}
+              </Link>
+            ))}
             {isAuthenticated ? (
               <>
-                <Link
-                  to="/projects"
-                  aria-current={location.pathname === "/projects" ? "page" : undefined}
-                  className="block py-2 text-muted-foreground hover:text-foreground"
-                  onClick={() => setIsMenuOpen(false)}
-                >
-                  {t("nav.projects")}
-                </Link>
-                <Link
-                  to="/onboarding"
-                  aria-current={location.pathname === "/onboarding" ? "page" : undefined}
-                  className="block py-2 text-muted-foreground hover:text-foreground"
-                  onClick={() => setIsMenuOpen(false)}
-                >
-                  {tOnboarding("navbar.takeTour")}
-                </Link>
-                <Link
-                  to="/profile"
-                  aria-current={location.pathname === "/profile" ? "page" : undefined}
-                  className="block py-2 text-muted-foreground hover:text-foreground"
-                  onClick={() => setIsMenuOpen(false)}
-                >
-                  {t("nav.profile")}
-                </Link>
+                {[...authNavItems, { to: "/profile", label: t("nav.profile") }].map(({ to, label }) => (
+                  <Link
+                    key={to}
+                    to={to}
+                    aria-current={isActive(to) ? "page" : undefined}
+                    className={cn("block py-2 hover:text-foreground", isActive(to) ? "text-foreground font-medium" : "text-muted-foreground")}
+                    onClick={() => setIsMenuOpen(false)}
+                  >
+                    {label}
+                  </Link>
+                ))}
                 <button
                   onClick={handleLogout}
                   className="block py-2 text-destructive hover:text-destructive/80 w-full text-left"

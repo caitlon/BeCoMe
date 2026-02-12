@@ -171,7 +171,7 @@ const Projects = () => {
                 <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
                   <Inbox className="h-8 w-8 text-muted-foreground" />
                 </div>
-                <h3 className="font-medium text-lg mb-2">{t("empty.title")}</h3>
+                <h3 className="font-display font-medium text-lg mb-2">{t("empty.title")}</h3>
                 <p className="text-muted-foreground mb-6">
                   {t("empty.description")}
                 </p>
@@ -279,7 +279,7 @@ const Projects = () => {
                 <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
                   <Mail className="h-8 w-8 text-muted-foreground" />
                 </div>
-                <h3 className="font-medium text-lg mb-2">{t("invitations.empty.title")}</h3>
+                <h3 className="font-display font-medium text-lg mb-2">{t("invitations.empty.title")}</h3>
                 <p className="text-muted-foreground">
                   {t("invitations.empty.description")}
                 </p>
@@ -305,7 +305,7 @@ const Projects = () => {
                           </div>
                           
                           <div className="flex-1 min-w-0">
-                            <h3 className="font-medium text-lg mb-1">
+                            <h3 className="font-display font-medium text-lg mb-1">
                               {invitation.project_name}
                             </h3>
 

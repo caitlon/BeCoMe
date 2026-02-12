@@ -47,7 +47,15 @@
     "bestProposal": "Nejlepší návrh",
     "lowerLimit": "Dolní limit",
     "upperLimit": "Horní limit",
-    "value": "Hodnota"
+    "value": "Hodnota",
+    "label": "Označení",
+    "intervalScale": "Intervalová škála",
+    "likertScale": "Likertova škála",
+    "scale": "Škála",
+    "opinionDistribution": "Rozložení názorů",
+    "ctaTitle": "Vyzkoušejte BeCoMe pro svůj projekt",
+    "ctaDescription": "Agregujte expertní názory a najděte nejlepší kompromis pro vaše rozhodovací výzvy.",
+    "likertInterpretation": "Likertova interpretace"
   },
   "likert": {
     "stronglyDisagree": "Rozhodně nesouhlasím",
@@ -55,5 +63,9 @@
     "neutral": "Neutrální",
     "ratherAgree": "Spíše souhlasím",
     "stronglyAgree": "Rozhodně souhlasím"
+  },
+  "listing": {
+    "title": "Případové studie",
+    "subtitle": "Reálné aplikace metodiky BeCoMe v různých oblastech"
   }
 }

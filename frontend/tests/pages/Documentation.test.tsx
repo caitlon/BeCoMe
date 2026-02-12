@@ -1,15 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
 import { screen, within } from '@testing-library/react';
-import { render, framerMotionMock } from '@tests/utils';
+import userEvent from '@testing-library/user-event';
+import { render, framerMotionMock, unauthenticatedAuthMock, expectSectionIds, getGithubLinks } from '@tests/utils';
 import Documentation from '@/pages/Documentation';
 
-vi.mock('@/contexts/AuthContext', () => ({
-  useAuth: () => ({
-    user: null,
-    isLoading: false,
-    isAuthenticated: false,
-  }),
-}));
+vi.mock('@/contexts/AuthContext', () => unauthenticatedAuthMock);
 
 vi.mock('framer-motion', () => framerMotionMock);
 
@@ -47,5 +42,33 @@ describe('Documentation', () => {
 
     const main = screen.getByRole('main');
     expect(main).toHaveAttribute('id', 'main-content');
+  });
+
+  it('clicking TOC button does not throw', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
+
+    render(<Documentation />);
+
+    const nav = screen.getByRole('navigation', { name: /table of contents|obsah/i });
+    const buttons = within(nav).getAllByRole('button');
+
+    await user.click(buttons[0]);
+
+    expect(buttons[0]).toBeInTheDocument();
+
+    vi.restoreAllMocks();
+  });
+
+  it('renders all expected section IDs', () => {
+    const { container } = render(<Documentation />);
+
+    expectSectionIds(container, ['getting-started', 'expert-opinions', 'results', 'visualization', 'glossary']);
+  });
+
+  it('renders GitHub link in CTA section', () => {
+    render(<Documentation />);
+
+    expect(getGithubLinks().length).toBeGreaterThan(0);
   });
 });

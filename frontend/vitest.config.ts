@@ -13,7 +13,10 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'html', 'lcov'],
       include: ['src/**/*.{ts,tsx}'],
-      exclude: ['src/**/*.d.ts', 'src/components/ui/**'],
+      exclude: [
+        'src/**/*.d.ts',
+        'src/types/**',
+      ],
     },
   },
   resolve: {

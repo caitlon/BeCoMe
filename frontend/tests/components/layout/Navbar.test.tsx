@@ -45,17 +45,35 @@ describe('Navbar - Authenticated', () => {
     mockPathname.value = '/';
   });
 
-  it('renders logo linking to projects when authenticated', () => {
+  it('renders logo linking to landing when authenticated', () => {
     render(<Navbar />);
 
-    const logo = screen.getByText('BeCoMe');
-    expect(logo).toHaveAttribute('href', '/projects');
+    const logo = screen.getByRole('link', { name: /become/i });
+    expect(logo).toHaveAttribute('href', '/');
   });
 
   it('renders About link', () => {
     render(<Navbar />);
 
     expect(screen.getByRole('link', { name: /about/i })).toHaveAttribute('href', '/about');
+  });
+
+  it('renders Docs link', () => {
+    render(<Navbar />);
+
+    expect(screen.getByRole('link', { name: /docs/i })).toHaveAttribute('href', '/docs');
+  });
+
+  it('renders FAQ link', () => {
+    render(<Navbar />);
+
+    expect(screen.getByRole('link', { name: /faq/i })).toHaveAttribute('href', '/faq');
+  });
+
+  it('renders Case Studies link', () => {
+    render(<Navbar />);
+
+    expect(screen.getByRole('link', { name: /case studies/i })).toHaveAttribute('href', '/case-studies');
   });
 
   it('renders Projects link for authenticated users', () => {
