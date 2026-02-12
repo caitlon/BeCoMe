@@ -35,7 +35,7 @@ const About = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
-            className="max-w-3xl"
+            className="max-w-3xl mx-auto"
           >
             <h1 className="font-display text-3xl md:text-5xl font-normal mb-4">
               {t("hero.title")}
@@ -48,7 +48,7 @@ const About = () => {
       {/* Introduction */}
       <section className="py-12 md:py-16">
         <div className="container mx-auto px-6">
-          <div className="max-w-3xl">
+          <div className="max-w-3xl mx-auto">
             <motion.div {...fadeInUp}>
               <h2 className="font-display text-2xl md:text-3xl font-normal mb-6">
                 {t("challenge.title")}
@@ -69,7 +69,7 @@ const About = () => {
       {/* The Method */}
       <section className="py-12 md:py-16 bg-card">
         <div className="container mx-auto px-6">
-          <div className="max-w-3xl">
+          <div className="max-w-3xl mx-auto">
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
@@ -101,7 +101,7 @@ const About = () => {
       {/* Applications */}
       <section className="py-12 md:py-16">
         <div className="container mx-auto px-6">
-          <div className="max-w-3xl">
+          <div className="max-w-3xl mx-auto">
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
@@ -151,7 +151,7 @@ const About = () => {
             <h2 className="font-display text-2xl md:text-3xl font-normal mb-6">
               {t("authors.title")}
             </h2>
-            <Card className="max-w-xl">
+            <Card className="max-w-xl mx-auto">
               <CardContent className="pt-6">
                 <div className="flex items-start gap-4">
                   <div className="w-12 h-12 rounded-full bg-secondary flex items-center justify-center">
@@ -184,7 +184,7 @@ const About = () => {
       {/* CTA Section */}
       <section className="py-16 bg-primary text-primary-foreground">
         <div className="container mx-auto px-6 text-center">
-          <h2 className="font-display text-2xl md:text-3xl mb-4">
+          <h2 className="font-display text-2xl md:text-3xl font-normal mb-4">
             {t("cta.title")}
           </h2>
           <p className="text-primary-foreground/80 mb-8 max-w-xl mx-auto">
@@ -192,7 +192,7 @@ const About = () => {
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Button variant="secondary" size="lg" asChild>
-              <Link to="/#case-studies">{t("cta.viewCaseStudies")}</Link>
+              <Link to="/case-studies">{t("cta.viewCaseStudies")}</Link>
             </Button>
             <Button
               variant="outline"

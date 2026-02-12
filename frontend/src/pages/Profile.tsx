@@ -260,7 +260,7 @@ const Profile = () => {
                 className="hidden"
                 onChange={handlePhotoUpload}
               />
-              <div className="absolute -bottom-2 -right-2 flex gap-1">
+              <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 flex gap-1">
                 <Button
                   size="icon"
                   variant="secondary"
@@ -286,7 +286,7 @@ const Profile = () => {
                 )}
               </div>
             </div>
-            <h1 className="font-display text-2xl font-light">
+            <h1 className="font-display text-3xl font-light">
               {user.first_name} {user.last_name}
             </h1>
             <p className="text-muted-foreground">{user.email}</p>

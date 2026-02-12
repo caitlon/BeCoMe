@@ -16,6 +16,7 @@ const Register = lazy(() => import("./pages/Register"));
 const Projects = lazy(() => import("./pages/Projects"));
 const ProjectDetail = lazy(() => import("./pages/ProjectDetail"));
 const Profile = lazy(() => import("./pages/Profile"));
+const CaseStudies = lazy(() => import("./pages/CaseStudies"));
 const CaseStudy = lazy(() => import("./pages/CaseStudy"));
 const About = lazy(() => import("./pages/About"));
 const Documentation = lazy(() => import("./pages/Documentation"));
@@ -51,6 +52,7 @@ const App = () => (
               <Route path="/about" element={<About />} />
               <Route path="/docs" element={<Documentation />} />
               <Route path="/faq" element={<FAQ />} />
+              <Route path="/case-studies" element={<CaseStudies />} />
               <Route path="/case-study/:id" element={<CaseStudy />} />
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Register />} />

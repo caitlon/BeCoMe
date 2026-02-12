@@ -15,7 +15,10 @@
     "signOut": "Odhlásit se",
     "getStarted": "Začít",
     "projects": "Projekty",
-    "profile": "Profil"
+    "profile": "Profil",
+    "docs": "Dokumentace",
+    "faq": "FAQ",
+    "caseStudies": "Případové studie"
   },
   "footer": {
     "description": "Best Compromise Mean — vědecký přístup k agregaci expertních názorů pomocí fuzzy trojúhelníkových čísel.",
@@ -128,6 +131,7 @@
     "caseStudy": "Případová studie",
     "documentation": "Dokumentace",
     "faq": "Časté dotazy",
+    "caseStudies": "Případové studie",
     "notFound": "Stránka nenalezena"
   }
 }

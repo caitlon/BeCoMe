@@ -8,7 +8,6 @@ import {
   Target,
   BarChart3,
   Info,
-  AlertTriangle,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -36,7 +35,7 @@ const CaseStudy = () => {
       <div className="min-h-screen bg-background">
         <Navbar />
         <div className="container mx-auto px-6 py-20 text-center">
-          <h1 className="text-2xl font-medium mb-4">
+          <h1 className="font-display text-3xl md:text-4xl font-light mb-4">
             {tCommon("notFound.title")}
           </h1>
           <Button variant="outline" asChild>
@@ -60,11 +59,11 @@ const CaseStudy = () => {
       <section className="pt-24 pb-12 md:pt-32 md:pb-16 bg-secondary/30">
         <div className="container mx-auto px-6">
           <Link
-            to="/"
+            to="/case-studies"
             className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-6 transition-colors"
           >
             <ArrowLeft className="mr-2 h-4 w-4" />
-            {tCommon("notFound.backHome")}
+            {t("listing.title")}
           </Link>
 
           <motion.div
@@ -74,15 +73,15 @@ const CaseStudy = () => {
           >
             <div className="flex items-center gap-4 mb-4">
               <div className="w-12 h-12 rounded-xl bg-background flex items-center justify-center shadow-sm">
-                <IconComponent className="h-6 w-6 text-muted-foreground" />
+                <IconComponent className="h-6 w-6 text-muted-foreground" aria-hidden="true" />
               </div>
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Users className="h-4 w-4" />
+                <Users className="h-4 w-4" aria-hidden="true" />
                 <span className="font-mono">
                   {caseStudy.experts} {t("common.experts")}
                 </span>
                 <span className="mx-2">•</span>
-                <span className="capitalize">{caseStudy.dataType} scale</span>
+                <span>{caseStudy.dataType === "interval" ? t("common.intervalScale") : t("common.likertScale")}</span>
               </div>
             </div>
 
@@ -92,14 +91,6 @@ const CaseStudy = () => {
             <p className="text-lg text-muted-foreground max-w-3xl">
               {caseStudy.fullDescription}
             </p>
-            {caseStudy.note && (
-              <div className="mt-4 flex items-start gap-2 p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg max-w-3xl">
-                <AlertTriangle className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
-                <p className="text-sm text-amber-700 dark:text-amber-400">
-                  {caseStudy.note}
-                </p>
-              </div>
-            )}
           </motion.div>
         </div>
       </section>
@@ -153,9 +144,9 @@ const CaseStudy = () => {
                   <CardContent className="space-y-4">
                     <p className="text-muted-foreground">{caseStudy.context}</p>
                     <div className="pt-4 border-t">
-                      <h4 className="font-medium mb-2">
+                      <h3 className="font-medium text-base mb-2">
                         {t("common.methodology")}
-                      </h4>
+                      </h3>
                       <p className="text-sm text-muted-foreground">
                         {caseStudy.methodology}
                       </p>
@@ -180,30 +171,33 @@ const CaseStudy = () => {
                   <CardContent>
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
+                        <caption className="sr-only">
+                          {t("common.expertOpinions")} — {caseStudy.title}
+                        </caption>
                         <thead>
                           <tr className="border-b">
-                            <th className="text-left py-3 px-2 font-medium">
+                            <th scope="col" className="text-left py-3 px-2 font-medium">
                               {t("common.role")}
                             </th>
                             {caseStudy.dataType === "interval" ? (
                               <>
-                                <th className="text-right py-3 px-2 font-medium">
+                                <th scope="col" className="text-right py-3 px-2 font-medium">
                                   {t("common.lowerLimit")}
                                 </th>
-                                <th className="text-right py-3 px-2 font-medium">
+                                <th scope="col" className="text-right py-3 px-2 font-medium">
                                   {t("common.bestProposal")}
                                 </th>
-                                <th className="text-right py-3 px-2 font-medium">
+                                <th scope="col" className="text-right py-3 px-2 font-medium">
                                   {t("common.upperLimit")}
                                 </th>
                               </>
                             ) : (
                               <>
-                                <th className="text-right py-3 px-2 font-medium">
+                                <th scope="col" className="text-right py-3 px-2 font-medium">
                                   {t("common.value")}
                                 </th>
-                                <th className="text-left py-3 px-2 font-medium">
-                                  Label
+                                <th scope="col" className="text-left py-3 px-2 font-medium">
+                                  {t("common.label")}
                                 </th>
                               </>
                             )}
@@ -370,7 +364,7 @@ const CaseStudy = () => {
       {/* CTA Section */}
       <section className="py-16 bg-secondary/30">
         <div className="container mx-auto px-6 text-center">
-          <h2 className="font-display text-2xl md:text-3xl mb-4">
+          <h2 className="font-display text-2xl md:text-3xl font-normal mb-4">
             Try BeCoMe for Your Project
           </h2>
           <p className="text-muted-foreground mb-8 max-w-xl mx-auto">

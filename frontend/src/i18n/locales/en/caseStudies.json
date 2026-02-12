@@ -47,7 +47,10 @@
     "bestProposal": "Best Proposal",
     "lowerLimit": "Lower Limit",
     "upperLimit": "Upper Limit",
-    "value": "Value"
+    "value": "Value",
+    "label": "Label",
+    "intervalScale": "Interval scale",
+    "likertScale": "Likert scale"
   },
   "likert": {
     "stronglyDisagree": "Strongly Disagree",
@@ -55,5 +58,9 @@
     "neutral": "Neutral",
     "ratherAgree": "Rather Agree",
     "stronglyAgree": "Strongly Agree"
+  },
+  "listing": {
+    "title": "Case Studies",
+    "subtitle": "Real-world applications of the BeCoMe methodology across different domains"
   }
 }

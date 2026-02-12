@@ -55,6 +55,9 @@ export function Navbar() {
 
   const isAuthPage = ['/login', '/register'].includes(location.pathname);
 
+  const isActive = (path: string) =>
+    location.pathname === path || location.pathname.startsWith(path + "/");
+
   return (
     <nav
       aria-label={t("a11y.mainNavigation")}
@@ -68,7 +71,7 @@ export function Navbar() {
       <div className="container mx-auto px-6 h-16 flex items-center justify-between">
         {/* Logo */}
         <Link
-          to={isAuthenticated ? "/projects" : "/"}
+          to="/"
           className="font-display text-2xl font-medium tracking-tight"
         >
           BeCoMe
@@ -76,18 +79,27 @@ export function Navbar() {
 
         {/* Desktop Navigation */}
         <div className="hidden md:flex items-center gap-6">
-          <Button variant="ghost" size="sm" asChild>
-            <Link to="/about" aria-current={location.pathname === "/about" ? "page" : undefined}>{t("nav.about")}</Link>
+          <Button variant="ghost" size="sm" className={cn(isActive("/about") && "text-foreground border-b-2 border-primary rounded-none")} asChild>
+            <Link to="/about" aria-current={isActive("/about") ? "page" : undefined}>{t("nav.about")}</Link>
+          </Button>
+          <Button variant="ghost" size="sm" className={cn(isActive("/docs") && "text-foreground border-b-2 border-primary rounded-none")} asChild>
+            <Link to="/docs" aria-current={isActive("/docs") ? "page" : undefined}>{t("nav.docs")}</Link>
+          </Button>
+          <Button variant="ghost" size="sm" className={cn(isActive("/faq") && "text-foreground border-b-2 border-primary rounded-none")} asChild>
+            <Link to="/faq" aria-current={isActive("/faq") ? "page" : undefined}>{t("nav.faq")}</Link>
+          </Button>
+          <Button variant="ghost" size="sm" className={cn(isActive("/case-studies") && "text-foreground border-b-2 border-primary rounded-none")} asChild>
+            <Link to="/case-studies" aria-current={isActive("/case-studies") ? "page" : undefined}>{t("nav.caseStudies")}</Link>
           </Button>
           {isAuthenticated ? (
             <>
-              <Button variant="ghost" size="sm" asChild>
-                <Link to="/projects" aria-current={location.pathname === "/projects" ? "page" : undefined}>
+              <Button variant="ghost" size="sm" className={cn(isActive("/projects") && "text-foreground border-b-2 border-primary rounded-none")} asChild>
+                <Link to="/projects" aria-current={isActive("/projects") ? "page" : undefined}>
                   {t("nav.projects")}
                 </Link>
               </Button>
-              <Button variant="ghost" size="sm" asChild>
-                <Link to="/onboarding" aria-current={location.pathname === "/onboarding" ? "page" : undefined}>
+              <Button variant="ghost" size="sm" className={cn(isActive("/onboarding") && "text-foreground border-b-2 border-primary rounded-none")} asChild>
+                <Link to="/onboarding" aria-current={isActive("/onboarding") ? "page" : undefined}>
                   {tOnboarding("navbar.takeTour")}
                 </Link>
               </Button>
@@ -178,34 +190,58 @@ export function Navbar() {
             <div className="container mx-auto px-6 py-4 space-y-3">
             <Link
               to="/about"
-              aria-current={location.pathname === "/about" ? "page" : undefined}
-              className="block py-2 text-muted-foreground hover:text-foreground"
+              aria-current={isActive("/about") ? "page" : undefined}
+              className={cn("block py-2 hover:text-foreground", isActive("/about") ? "text-foreground font-medium" : "text-muted-foreground")}
               onClick={() => setIsMenuOpen(false)}
             >
               {t("nav.about")}
+            </Link>
+            <Link
+              to="/docs"
+              aria-current={isActive("/docs") ? "page" : undefined}
+              className={cn("block py-2 hover:text-foreground", isActive("/docs") ? "text-foreground font-medium" : "text-muted-foreground")}
+              onClick={() => setIsMenuOpen(false)}
+            >
+              {t("nav.docs")}
+            </Link>
+            <Link
+              to="/faq"
+              aria-current={isActive("/faq") ? "page" : undefined}
+              className={cn("block py-2 hover:text-foreground", isActive("/faq") ? "text-foreground font-medium" : "text-muted-foreground")}
+              onClick={() => setIsMenuOpen(false)}
+            >
+              {t("nav.faq")}
+            </Link>
+            <Link
+              to="/case-studies"
+              aria-current={isActive("/case-studies") ? "page" : undefined}
+              className={cn("block py-2 hover:text-foreground", isActive("/case-studies") ? "text-foreground font-medium" : "text-muted-foreground")}
+              onClick={() => setIsMenuOpen(false)}
+            >
+              {t("nav.caseStudies")}
             </Link>
             {isAuthenticated ? (
               <>
                 <Link
                   to="/projects"
-                  aria-current={location.pathname === "/projects" ? "page" : undefined}
-                  className="block py-2 text-muted-foreground hover:text-foreground"
+                  aria-current={isActive("/projects") ? "page" : undefined}
+                  className={cn("block py-2 hover:text-foreground", isActive("/projects") ? "text-foreground font-medium" : "text-muted-foreground")}
                   onClick={() => setIsMenuOpen(false)}
                 >
                   {t("nav.projects")}
                 </Link>
                 <Link
                   to="/onboarding"
-                  aria-current={location.pathname === "/onboarding" ? "page" : undefined}
-                  className="block py-2 text-muted-foreground hover:text-foreground"
+                  aria-current={isActive("/onboarding") ? "page" : undefined}
+                  className={cn("block py-2 hover:text-foreground", isActive("/onboarding") ? "text-foreground font-medium" : "text-muted-foreground")}
                   onClick={() => setIsMenuOpen(false)}
                 >
                   {tOnboarding("navbar.takeTour")}
                 </Link>
                 <Link
                   to="/profile"
-                  aria-current={location.pathname === "/profile" ? "page" : undefined}
-                  className="block py-2 text-muted-foreground hover:text-foreground"
+                  aria-current={isActive("/profile") ? "page" : undefined}
+                  className={cn("block py-2 hover:text-foreground", isActive("/profile") ? "text-foreground font-medium" : "text-muted-foreground")}
                   onClick={() => setIsMenuOpen(false)}
                 >
                   {t("nav.profile")}
