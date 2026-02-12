@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { render, framerMotionMock, unauthenticatedAuthMock } from '@tests/utils';
+import { render, framerMotionMock, unauthenticatedAuthMock, expectSectionIds, getGithubLinks } from '@tests/utils';
 import Documentation from '@/pages/Documentation';
 
 vi.mock('@/contexts/AuthContext', () => unauthenticatedAuthMock);
@@ -63,18 +63,12 @@ describe('Documentation', () => {
   it('renders all expected section IDs', () => {
     const { container } = render(<Documentation />);
 
-    const expectedIds = ['getting-started', 'expert-opinions', 'results', 'visualization', 'glossary'];
-    for (const id of expectedIds) {
-      expect(container.querySelector(`#${id}`)).toBeInTheDocument();
-    }
+    expectSectionIds(container, ['getting-started', 'expert-opinions', 'results', 'visualization', 'glossary']);
   });
 
   it('renders GitHub link in CTA section', () => {
     render(<Documentation />);
 
-    const githubLinks = screen.getAllByRole('link').filter(
-      (link) => link.getAttribute('href')?.includes('github.com')
-    );
-    expect(githubLinks.length).toBeGreaterThan(0);
+    expect(getGithubLinks().length).toBeGreaterThan(0);
   });
 });

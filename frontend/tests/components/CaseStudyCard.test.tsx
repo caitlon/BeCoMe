@@ -34,7 +34,7 @@ describe('CaseStudyCard', () => {
   it('renders study title', () => {
     render(<CaseStudyCard study={mockStudy} />);
 
-    expect(screen.getByText('COVID-19 Budget Support')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /covid-19 budget support/i })).toBeInTheDocument();
   });
 
   it('renders study description', () => {
@@ -71,7 +71,8 @@ describe('CaseStudyCard', () => {
   it('marks decorative icon as aria-hidden', () => {
     const { container } = render(<CaseStudyCard study={mockStudy} />);
 
-    const hiddenIcons = container.querySelectorAll('[aria-hidden="true"]');
-    expect(hiddenIcons.length).toBeGreaterThan(0);
+    // FileText icon is decorative — verify it's hidden from assistive tech
+    const svgIcons = container.querySelectorAll('svg[aria-hidden="true"]');
+    expect(svgIcons.length).toBeGreaterThan(0);
   });
 });

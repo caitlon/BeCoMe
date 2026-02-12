@@ -1,5 +1,5 @@
 import { ReactElement, ReactNode } from 'react'
-import { render, RenderOptions } from '@testing-library/react'
+import { render, RenderOptions, screen } from '@testing-library/react'
 import { MemoryRouter, MemoryRouterProps } from 'react-router-dom'
 import { I18nextProvider } from 'react-i18next'
 import i18n from '@/i18n'
@@ -134,8 +134,32 @@ export const unauthenticatedAuthMock = {
     user: null,
     isLoading: false,
     isAuthenticated: false,
+    login: () => Promise.resolve(),
+    register: () => Promise.resolve(),
+    logout: () => Promise.resolve(),
+    refreshUser: () => Promise.resolve(),
   }),
 };
+
+/**
+ * Assert that all given IDs exist as elements in the container.
+ * Shared between Documentation and FAQ tests.
+ */
+export function expectSectionIds(container: HTMLElement, ids: string[]) {
+  for (const id of ids) {
+    expect(container.querySelector(`#${id}`)).toBeInTheDocument();
+  }
+}
+
+/**
+ * Find all links pointing to github.com on the current page.
+ * Returns matching link elements for further assertions.
+ */
+export function getGithubLinks() {
+  return screen.getAllByRole('link').filter(
+    (link) => link.getAttribute('href')?.includes('github.com')
+  );
+}
 
 export * from '@testing-library/react'
 export { customRender as render }

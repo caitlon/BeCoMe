@@ -8,8 +8,8 @@ function ThemeConsumer() {
   return (
     <div>
       <span data-testid="theme">{theme}</span>
-      <button onClick={() => setTheme('dark')}>Set Dark</button>
-      <button onClick={() => setTheme('light')}>Set Light</button>
+      <button type="button" onClick={() => setTheme('dark')}>Set Dark</button>
+      <button type="button" onClick={() => setTheme('light')}>Set Light</button>
     </div>
   );
 }

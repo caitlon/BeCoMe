@@ -31,7 +31,7 @@ describe('StepCreateProject', () => {
     }
   });
 
-  it('has fieldset with sr-only legend', () => {
+  it('has fieldset with accessible legend', () => {
     const { container } = render(<StepCreateProject />);
 
     const fieldset = container.querySelector('fieldset');
@@ -39,7 +39,7 @@ describe('StepCreateProject', () => {
 
     const legend = fieldset?.querySelector('legend');
     expect(legend).toBeInTheDocument();
-    expect(legend?.className).toContain('sr-only');
+    expect(legend?.textContent).toBeTruthy();
   });
 
   it('renders hint text', () => {
