@@ -7,9 +7,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { FuzzyTriangleSVG } from "@/components/visualizations/FuzzyTriangleSVG";
+import { CaseStudyCard } from "@/components/CaseStudyCard";
 import { ArrowRight, Users, Calculator, Target } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { caseStudies } from "@/data/caseStudies";
+import { useLocalizedCaseStudies } from "@/hooks/useLocalizedCaseStudies";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 const fadeInUp = {
@@ -32,6 +33,7 @@ const Landing = () => {
   const { isAuthenticated } = useAuth();
   const location = useLocation();
   useDocumentTitle(tCommon("pageTitle.landing"));
+  const localizedStudies = useLocalizedCaseStudies();
 
   useEffect(() => {
     if (location.hash) {
@@ -194,7 +196,7 @@ const Landing = () => {
           </motion.div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
-            {caseStudies.map((study, index) => (
+            {localizedStudies.map((study, index) => (
               <motion.div
                 key={study.id}
                 initial={{ opacity: 0, y: 20 }}
@@ -203,31 +205,7 @@ const Landing = () => {
                 viewport={{ once: true }}
                 transition={{ delay: index * 0.1, duration: 0.5 }}
               >
-                <Link to={`/case-study/${study.id}`}>
-                  <Card className="h-full group hover:shadow-lg hover:border-primary/30 transition-all duration-300 cursor-pointer">
-                    <CardContent className="pt-6 pb-6">
-                      <div className="flex items-start gap-4">
-                        <div className="w-10 h-10 rounded-lg bg-secondary flex items-center justify-center shrink-0 group-hover:bg-primary/10 transition-colors">
-                          <study.icon className="h-5 w-5 text-muted-foreground group-hover:text-primary transition-colors" />
-                        </div>
-                        <div>
-                          <h3 className="font-display font-medium text-base mb-1 group-hover:text-primary transition-colors">
-                            {study.title}
-                          </h3>
-                          <p className="text-sm text-muted-foreground mb-3">
-                            {study.description}
-                          </p>
-                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                            <Users className="h-3 w-3" />
-                            <span className="font-mono">
-                              {study.experts} {t("caseStudies.experts")}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </Link>
+                <CaseStudyCard study={study} />
               </motion.div>
             ))}
           </div>

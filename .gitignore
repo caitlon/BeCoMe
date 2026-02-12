@@ -32,6 +32,9 @@ node_modules/
 # macOS system files
 .DS_Store
 
+# VS Code
+.vscode/
+
 # Environment variables
 .env
 docker/.env

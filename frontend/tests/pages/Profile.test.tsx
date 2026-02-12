@@ -262,6 +262,22 @@ describe('Profile - Change Password', () => {
   });
 });
 
+describe('Profile - Photo Buttons a11y', () => {
+  it('upload photo button has aria-label', () => {
+    render(<Profile />);
+
+    expect(screen.getByRole('button', { name: /upload photo|nahrát fotku/i })).toBeInTheDocument();
+  });
+
+  it('delete photo button has aria-label when photo exists', () => {
+    mockUser.photo_url = 'https://example.com/photo.jpg';
+    render(<Profile />);
+
+    expect(screen.getByRole('button', { name: /delete photo|smazat fotku/i })).toBeInTheDocument();
+    mockUser.photo_url = null;
+  });
+});
+
 describe('Profile - Delete Account', () => {
   beforeEach(() => {
     vi.clearAllMocks();
