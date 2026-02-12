@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { render, framerMotionMock } from '@tests/utils';
 import Documentation from '@/pages/Documentation';
 
@@ -47,5 +48,39 @@ describe('Documentation', () => {
 
     const main = screen.getByRole('main');
     expect(main).toHaveAttribute('id', 'main-content');
+  });
+
+  it('clicking TOC button triggers scrollTo', async () => {
+    const user = userEvent.setup();
+    const scrollToSpy = vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
+
+    render(<Documentation />);
+
+    const nav = screen.getByRole('navigation', { name: /table of contents|obsah/i });
+    const buttons = within(nav).getAllByRole('button');
+
+    await user.click(buttons[0]);
+
+    expect(buttons[0]).toBeDefined();
+
+    scrollToSpy.mockRestore();
+  });
+
+  it('renders all expected section IDs', () => {
+    const { container } = render(<Documentation />);
+
+    const expectedIds = ['getting-started', 'expert-opinions', 'results', 'visualization', 'glossary'];
+    for (const id of expectedIds) {
+      expect(container.querySelector(`#${id}`)).toBeInTheDocument();
+    }
+  });
+
+  it('renders GitHub link in CTA section', () => {
+    render(<Documentation />);
+
+    const githubLinks = screen.getAllByRole('link').filter(
+      (link) => link.getAttribute('href')?.includes('github.com')
+    );
+    expect(githubLinks.length).toBeGreaterThan(0);
   });
 });

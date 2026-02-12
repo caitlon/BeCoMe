@@ -21,15 +21,8 @@ describe('StepComplete', () => {
   it('renders link to projects page', () => {
     render(<StepComplete />);
 
-    const projectsLink = screen.getByRole('link');
+    const projectsLink = screen.getByRole('link', { name: /project|projekt/i });
     expect(projectsLink).toHaveAttribute('href', '/projects');
-  });
-
-  it('renders go-to-projects label in link', () => {
-    render(<StepComplete />);
-
-    const link = screen.getByRole('link');
-    expect(link.textContent).toMatch(/project|projekt/i);
   });
 
   it('marks rocket icon as aria-hidden', () => {

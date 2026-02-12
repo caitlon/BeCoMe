@@ -160,3 +160,83 @@ describe('Onboarding', () => {
     expect(screen.getByRole('button', { name: /skip/i })).toBeInTheDocument();
   });
 });
+
+describe('Onboarding - Keyboard Navigation', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockPathname.value = '/onboarding';
+  });
+
+  it('ArrowRight advances to next step', async () => {
+    const user = userEvent.setup();
+    render(<Onboarding />, { initialEntries: ['/onboarding'] });
+
+    expect(screen.getByText('Welcome to BeCoMe')).toBeInTheDocument();
+
+    await user.keyboard('{ArrowRight}');
+
+    expect(screen.getByText('Create a Project')).toBeInTheDocument();
+  });
+
+  it('ArrowLeft goes to previous step', async () => {
+    const user = userEvent.setup();
+    render(<Onboarding />, { initialEntries: ['/onboarding'] });
+
+    // Go to step 2 first
+    await user.click(screen.getByRole('button', { name: /get started/i }));
+    expect(screen.getByText('Create a Project')).toBeInTheDocument();
+
+    await user.keyboard('{ArrowLeft}');
+
+    expect(screen.getByText('Welcome to BeCoMe')).toBeInTheDocument();
+  });
+
+  it('ArrowLeft does nothing on first step', async () => {
+    const user = userEvent.setup();
+    render(<Onboarding />, { initialEntries: ['/onboarding'] });
+
+    await user.keyboard('{ArrowLeft}');
+
+    // Still on step 1
+    expect(screen.getByText('Welcome to BeCoMe')).toBeInTheDocument();
+  });
+
+  it('ArrowRight does nothing on last step', async () => {
+    const user = userEvent.setup();
+    render(<Onboarding />, { initialEntries: ['/onboarding'] });
+
+    // Go to last step
+    await user.click(screen.getByRole('button', { name: /go to step 6/i }));
+
+    await user.keyboard('{ArrowRight}');
+
+    // Still on last step
+    expect(screen.getByRole('button', { name: /go to projects/i })).toBeInTheDocument();
+  });
+
+  it('Escape navigates to /projects', async () => {
+    const user = userEvent.setup();
+    render(<Onboarding />, { initialEntries: ['/onboarding'] });
+
+    await user.keyboard('{Escape}');
+
+    expect(mockNavigate).toHaveBeenCalledWith('/projects');
+  });
+
+  it('keyboard events are ignored when focus is in an input', async () => {
+    const user = userEvent.setup();
+    render(<Onboarding />, { initialEntries: ['/onboarding'] });
+
+    // Go to step 2 (StepCreateProject has inputs)
+    await user.click(screen.getByRole('button', { name: /get started/i }));
+    expect(screen.getByText('Create a Project')).toBeInTheDocument();
+
+    // Focus an input and press ArrowRight
+    const inputs = screen.getAllByRole('textbox');
+    await user.click(inputs[0]);
+    await user.keyboard('{ArrowRight}');
+
+    // Should still be on step 2 (keyboard nav skipped)
+    expect(screen.getByText('Create a Project')).toBeInTheDocument();
+  });
+});

@@ -263,6 +263,17 @@ describe('Profile - Change Password', () => {
 });
 
 describe('Profile - Photo Buttons a11y', () => {
+  const originalPhotoUrl = mockUser.photo_url;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockUser.photo_url = null;
+  });
+
+  afterEach(() => {
+    mockUser.photo_url = originalPhotoUrl;
+  });
+
   it('upload photo button has aria-label', () => {
     render(<Profile />);
 
@@ -274,7 +285,6 @@ describe('Profile - Photo Buttons a11y', () => {
     render(<Profile />);
 
     expect(screen.getByRole('button', { name: /delete photo|smazat fotku/i })).toBeInTheDocument();
-    mockUser.photo_url = null;
   });
 });
 

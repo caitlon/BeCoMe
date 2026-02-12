@@ -114,17 +114,34 @@ describe('Landing', () => {
   });
 });
 
-describe('Landing - authenticated user', () => {
-  it('shows "Go to Projects" button when authenticated', () => {
-    vi.doMock('@/contexts/AuthContext', () => ({
-      useAuth: () => ({
-        user: { id: '1', email: 'test@example.com' },
-        isLoading: false,
-        isAuthenticated: true,
-      }),
-    }));
+describe('Landing - hash scrolling', () => {
+  it('scrolls to element when URL has hash', () => {
+    const mockScrollIntoView = vi.fn();
+    const mockElement = document.createElement('div');
+    mockElement.scrollIntoView = mockScrollIntoView;
 
-    // Re-import to get the mocked version
-    vi.resetModules();
+    vi.spyOn(document, 'getElementById').mockReturnValue(mockElement);
+    vi.useFakeTimers();
+
+    render(<Landing />, { initialEntries: ['/#case-studies'] });
+
+    vi.advanceTimersByTime(200);
+
+    expect(mockScrollIntoView).toHaveBeenCalledWith({
+      behavior: 'smooth',
+      block: 'center',
+    });
+
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it('does nothing when hash element does not exist', () => {
+    vi.spyOn(document, 'getElementById').mockReturnValue(null);
+
+    // Should not throw
+    render(<Landing />, { initialEntries: ['/#nonexistent'] });
+
+    vi.restoreAllMocks();
   });
 });

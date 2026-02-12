@@ -359,5 +359,59 @@ describe('Projects', () => {
         );
       });
     });
+
+    it('shows error toast when accept invitation fails', async () => {
+      const user = userEvent.setup();
+      const invitations = [createInvitation({ id: 'inv-err' })];
+      mockApi.getInvitations.mockResolvedValue(invitations);
+      mockApi.acceptInvitation.mockRejectedValue(new Error('Accept failed'));
+
+      render(<Projects />);
+
+      await waitFor(() => {
+        expect(screen.queryByRole('status')).not.toBeInTheDocument();
+      });
+
+      await user.click(screen.getByRole('tab', { name: /invitations/i }));
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /accept/i })).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByRole('button', { name: /accept/i }));
+
+      await waitFor(() => {
+        expect(mockToast).toHaveBeenCalledWith(
+          expect.objectContaining({ variant: 'destructive' })
+        );
+      });
+    });
+
+    it('shows error toast when decline invitation fails', async () => {
+      const user = userEvent.setup();
+      const invitations = [createInvitation({ id: 'inv-err2' })];
+      mockApi.getInvitations.mockResolvedValue(invitations);
+      mockApi.declineInvitation.mockRejectedValue(new Error('Decline failed'));
+
+      render(<Projects />);
+
+      await waitFor(() => {
+        expect(screen.queryByRole('status')).not.toBeInTheDocument();
+      });
+
+      await user.click(screen.getByRole('tab', { name: /invitations/i }));
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /decline/i })).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByRole('button', { name: /decline/i }));
+
+      await waitFor(() => {
+        expect(mockToast).toHaveBeenCalledWith(
+          expect.objectContaining({ variant: 'destructive' })
+        );
+      });
+    });
   });
 });
