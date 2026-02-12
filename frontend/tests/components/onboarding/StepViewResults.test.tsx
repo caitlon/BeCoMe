@@ -13,10 +13,9 @@ describe('StepViewResults', () => {
   });
 
   it('renders description', () => {
-    const { container } = render(<StepViewResults />);
+    render(<StepViewResults />);
 
-    const description = container.querySelector('.text-muted-foreground.text-center.max-w-md');
-    expect(description).toBeInTheDocument();
+    expect(screen.getByText(/once experts submit/i)).toBeInTheDocument();
   });
 
   it('displays Best Compromise value 54.3', () => {
@@ -44,9 +43,8 @@ describe('StepViewResults', () => {
   });
 
   it('renders hint text', () => {
-    const { container } = render(<StepViewResults />);
+    render(<StepViewResults />);
 
-    const hint = container.querySelector('.text-xs.text-muted-foreground.italic');
-    expect(hint).toBeInTheDocument();
+    expect(screen.getByText(/results update automatically/i)).toBeInTheDocument();
   });
 });

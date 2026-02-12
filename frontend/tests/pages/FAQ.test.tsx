@@ -1,16 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { render, framerMotionMock } from '@tests/utils';
+import { render, framerMotionMock, unauthenticatedAuthMock } from '@tests/utils';
 import FAQ from '@/pages/FAQ';
 
-vi.mock('@/contexts/AuthContext', () => ({
-  useAuth: () => ({
-    user: null,
-    isLoading: false,
-    isAuthenticated: false,
-  }),
-}));
+vi.mock('@/contexts/AuthContext', () => unauthenticatedAuthMock);
 
 vi.mock('framer-motion', () => framerMotionMock);
 
@@ -63,9 +57,9 @@ describe('FAQ', () => {
     expect(main).toHaveAttribute('id', 'main-content');
   });
 
-  it('clicking sidebar button calls scrollTo', async () => {
+  it('clicking sidebar button does not throw', async () => {
     const user = userEvent.setup();
-    const scrollToSpy = vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
+    vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
 
     render(<FAQ />);
 
@@ -74,12 +68,9 @@ describe('FAQ', () => {
 
     await user.click(buttons[0]);
 
-    // scrollToSection is called — it calls window.scrollTo for existing elements
-    // Element might not exist in test DOM, so scrollTo may not be called
-    // But the click handler itself should execute without error
-    expect(buttons[0]).toBeDefined();
+    expect(buttons[0]).toBeInTheDocument();
 
-    scrollToSpy.mockRestore();
+    vi.restoreAllMocks();
   });
 
   it('CTA section has GitHub external link', () => {

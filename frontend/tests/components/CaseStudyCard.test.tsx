@@ -1,17 +1,11 @@
 import { describe, it, expect, vi } from 'vitest';
 import { screen } from '@testing-library/react';
-import { render } from '@tests/utils';
+import { render, unauthenticatedAuthMock } from '@tests/utils';
 import { CaseStudyCard } from '@/components/CaseStudyCard';
 import { FileText } from 'lucide-react';
 import { LocalizedCaseStudy } from '@/hooks/useLocalizedCaseStudies';
 
-vi.mock('@/contexts/AuthContext', () => ({
-  useAuth: () => ({
-    user: null,
-    isLoading: false,
-    isAuthenticated: false,
-  }),
-}));
+vi.mock('@/contexts/AuthContext', () => unauthenticatedAuthMock);
 
 const mockStudy: LocalizedCaseStudy = {
   id: 'budget',

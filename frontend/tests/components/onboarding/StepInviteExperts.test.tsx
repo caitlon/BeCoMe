@@ -13,10 +13,9 @@ describe('StepInviteExperts', () => {
   });
 
   it('renders description', () => {
-    const { container } = render(<StepInviteExperts />);
+    render(<StepInviteExperts />);
 
-    const description = container.querySelector('.text-muted-foreground.text-center.max-w-md');
-    expect(description).toBeInTheDocument();
+    expect(screen.getByText(/add team members/i)).toBeInTheDocument();
   });
 
   it('renders email input as readOnly with aria-readonly', () => {
@@ -30,22 +29,19 @@ describe('StepInviteExperts', () => {
   it('renders invite button with aria-label', () => {
     render(<StepInviteExperts />);
 
-    const buttons = screen.getAllByRole('button');
-    const inviteButton = buttons.find((btn) => btn.getAttribute('aria-label'));
-    expect(inviteButton).toBeDefined();
+    expect(screen.getByRole('button', { name: /send invitation|odeslat/i })).toBeInTheDocument();
   });
 
   it('renders two sample expert cards', () => {
-    const { container } = render(<StepInviteExperts />);
+    render(<StepInviteExperts />);
 
-    const sampleCards = container.querySelectorAll('.bg-muted.rounded-lg');
-    expect(sampleCards).toHaveLength(2);
+    expect(screen.getByText('John Doe')).toBeInTheDocument();
+    expect(screen.getByText('Anna Smith')).toBeInTheDocument();
   });
 
   it('renders hint text', () => {
-    const { container } = render(<StepInviteExperts />);
+    render(<StepInviteExperts />);
 
-    const hint = container.querySelector('.text-xs.text-muted-foreground.italic');
-    expect(hint).toBeInTheDocument();
+    expect(screen.getByText(/experts will see/i)).toBeInTheDocument();
   });
 });

@@ -13,10 +13,9 @@ describe('StepCreateProject', () => {
   });
 
   it('renders description', () => {
-    const { container } = render(<StepCreateProject />);
+    render(<StepCreateProject />);
 
-    const description = container.querySelector('.text-muted-foreground.text-center.max-w-md');
-    expect(description).toBeInTheDocument();
+    expect(screen.getByText(/start by creating/i)).toBeInTheDocument();
   });
 
   it('renders 5 readOnly inputs', () => {
@@ -44,9 +43,8 @@ describe('StepCreateProject', () => {
   });
 
   it('renders hint text', () => {
-    const { container } = render(<StepCreateProject />);
+    render(<StepCreateProject />);
 
-    const hint = container.querySelector('.text-xs.text-muted-foreground.italic');
-    expect(hint).toBeInTheDocument();
+    expect(screen.getByText(/the scale defines/i)).toBeInTheDocument();
   });
 });

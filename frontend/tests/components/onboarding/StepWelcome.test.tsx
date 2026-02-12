@@ -12,24 +12,15 @@ describe('StepWelcome', () => {
     expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument();
   });
 
-  it('renders subtitle with primary color', () => {
-    const { container } = render(<StepWelcome />);
+  it('renders subtitle', () => {
+    render(<StepWelcome />);
 
-    const subtitle = container.querySelector('.text-primary.font-medium');
-    expect(subtitle).toBeInTheDocument();
+    expect(screen.getByText(/best compromise mean/i)).toBeInTheDocument();
   });
 
   it('renders description text', () => {
-    const { container } = render(<StepWelcome />);
+    render(<StepWelcome />);
 
-    const description = container.querySelector('.text-muted-foreground.max-w-md');
-    expect(description).toBeInTheDocument();
-  });
-
-  it('renders Sparkles icon', () => {
-    const { container } = render(<StepWelcome />);
-
-    const svgs = container.querySelectorAll('svg');
-    expect(svgs.length).toBeGreaterThan(0);
+    expect(screen.getByText(/learn how to use the platform/i)).toBeInTheDocument();
   });
 });

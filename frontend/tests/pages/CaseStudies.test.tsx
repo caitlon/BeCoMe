@@ -1,15 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
 import { screen } from '@testing-library/react';
-import { render, framerMotionMock } from '@tests/utils';
+import { render, framerMotionMock, unauthenticatedAuthMock } from '@tests/utils';
 import CaseStudies from '@/pages/CaseStudies';
 
-vi.mock('@/contexts/AuthContext', () => ({
-  useAuth: () => ({
-    user: null,
-    isLoading: false,
-    isAuthenticated: false,
-  }),
-}));
+vi.mock('@/contexts/AuthContext', () => unauthenticatedAuthMock);
 
 vi.mock('framer-motion', () => framerMotionMock);
 

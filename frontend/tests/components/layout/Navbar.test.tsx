@@ -48,7 +48,7 @@ describe('Navbar - Authenticated', () => {
   it('renders logo linking to landing when authenticated', () => {
     render(<Navbar />);
 
-    const logo = screen.getByText('BeCoMe');
+    const logo = screen.getByRole('link', { name: /become/i });
     expect(logo).toHaveAttribute('href', '/');
   });
 

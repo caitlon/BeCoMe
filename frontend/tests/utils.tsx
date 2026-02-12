@@ -125,5 +125,17 @@ export const framerMotionMock = {
   AnimatePresence: ({ children }: React.PropsWithChildren<object>) => <>{children}</>,
 };
 
+/**
+ * Shared mock for unauthenticated AuthContext.
+ * Usage: vi.mock('@/contexts/AuthContext', () => unauthenticatedAuthMock);
+ */
+export const unauthenticatedAuthMock = {
+  useAuth: () => ({
+    user: null,
+    isLoading: false,
+    isAuthenticated: false,
+  }),
+};
+
 export * from '@testing-library/react'
 export { customRender as render }

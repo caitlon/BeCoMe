@@ -1,63 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
 import { screen } from '@testing-library/react';
-import { render } from '@tests/utils';
+import { render, framerMotionMock, unauthenticatedAuthMock } from '@tests/utils';
 import About from '@/pages/About';
 
-// Mock useAuth
-vi.mock('@/contexts/AuthContext', () => ({
-  useAuth: () => ({
-    user: null,
-    isLoading: false,
-    isAuthenticated: false,
-  }),
-}));
-
-// Filter out framer-motion props from DOM elements
-const filterMotionProps = (props: Record<string, unknown>) => {
-  const motionProps = [
-    'initial',
-    'animate',
-    'exit',
-    'variants',
-    'transition',
-    'whileHover',
-    'whileTap',
-    'whileInView',
-    'viewport',
-  ];
-  const filtered: Record<string, unknown> = {};
-  for (const key of Object.keys(props)) {
-    if (!motionProps.includes(key)) {
-      filtered[key] = props[key];
-    }
-  }
-  return filtered;
-};
-
-// Mock framer-motion
-vi.mock('framer-motion', () => ({
-  motion: {
-    div: ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) => (
-      <div {...filterMotionProps(props)}>{children}</div>
-    ),
-    h1: ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) => (
-      <h1 {...filterMotionProps(props)}>{children}</h1>
-    ),
-    p: ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) => (
-      <p {...filterMotionProps(props)}>{children}</p>
-    ),
-    nav: ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) => (
-      <nav {...filterMotionProps(props)}>{children}</nav>
-    ),
-    span: ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) => (
-      <span {...filterMotionProps(props)}>{children}</span>
-    ),
-    polygon: (props: Record<string, unknown>) => <polygon {...filterMotionProps(props)} />,
-    circle: (props: Record<string, unknown>) => <circle {...filterMotionProps(props)} />,
-    line: (props: Record<string, unknown>) => <line {...filterMotionProps(props)} />,
-  },
-  AnimatePresence: ({ children }: React.PropsWithChildren<object>) => <>{children}</>,
-}));
+vi.mock('@/contexts/AuthContext', () => unauthenticatedAuthMock);
+vi.mock('framer-motion', () => framerMotionMock);
 
 describe('About', () => {
   it('renders page title', () => {

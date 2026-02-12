@@ -33,10 +33,8 @@ describe('StepComplete', () => {
   });
 
   it('renders checkmark icon', () => {
-    const { container } = render(<StepComplete />);
+    render(<StepComplete />);
 
-    // CheckCircle2 renders as an SVG
-    const svgs = container.querySelectorAll('svg');
-    expect(svgs.length).toBeGreaterThan(0);
+    expect(screen.getByRole('img', { name: /completed/i })).toBeInTheDocument();
   });
 });

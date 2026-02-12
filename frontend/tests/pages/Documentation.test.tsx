@@ -1,16 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { render, framerMotionMock } from '@tests/utils';
+import { render, framerMotionMock, unauthenticatedAuthMock } from '@tests/utils';
 import Documentation from '@/pages/Documentation';
 
-vi.mock('@/contexts/AuthContext', () => ({
-  useAuth: () => ({
-    user: null,
-    isLoading: false,
-    isAuthenticated: false,
-  }),
-}));
+vi.mock('@/contexts/AuthContext', () => unauthenticatedAuthMock);
 
 vi.mock('framer-motion', () => framerMotionMock);
 
@@ -50,9 +44,9 @@ describe('Documentation', () => {
     expect(main).toHaveAttribute('id', 'main-content');
   });
 
-  it('clicking TOC button triggers scrollTo', async () => {
+  it('clicking TOC button does not throw', async () => {
     const user = userEvent.setup();
-    const scrollToSpy = vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
+    vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
 
     render(<Documentation />);
 
@@ -61,9 +55,9 @@ describe('Documentation', () => {
 
     await user.click(buttons[0]);
 
-    expect(buttons[0]).toBeDefined();
+    expect(buttons[0]).toBeInTheDocument();
 
-    scrollToSpy.mockRestore();
+    vi.restoreAllMocks();
   });
 
   it('renders all expected section IDs', () => {

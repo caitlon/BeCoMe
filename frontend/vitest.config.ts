@@ -15,8 +15,6 @@ export default defineConfig({
       include: ['src/**/*.{ts,tsx}'],
       exclude: [
         'src/**/*.d.ts',
-        'src/components/ui/**',
-        'src/hooks/use-toast.ts',
         'src/types/**',
       ],
     },

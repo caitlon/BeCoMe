@@ -32,7 +32,7 @@ export function StepComplete() {
         className="mb-8"
       >
         <div className="w-24 h-24 rounded-full bg-green-500/10 flex items-center justify-center">
-          <CheckCircle2 className="h-12 w-12 text-green-500" />
+          <CheckCircle2 className="h-12 w-12 text-green-500" role="img" aria-label="Completed" />
         </div>
       </motion.div>
 

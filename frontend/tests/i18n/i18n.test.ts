@@ -31,20 +31,27 @@ describe('i18n configuration', () => {
 
   it('fallbackLng includes "en"', () => {
     const fallback = i18n.options.fallbackLng;
-    // fallbackLng can be string, array, or object
     if (Array.isArray(fallback)) {
       expect(fallback).toContain('en');
+    } else if (typeof fallback === 'object' && fallback !== null) {
+      const values = Object.values(fallback).flat();
+      expect(values).toContain('en');
     } else {
       expect(fallback).toBe('en');
     }
   });
 
   it('updates document.documentElement.lang on language change', async () => {
-    await i18n.changeLanguage('cs');
-    expect(document.documentElement.lang).toBe('cs');
+    const originalLang = i18n.language;
+    try {
+      await i18n.changeLanguage('cs');
+      expect(document.documentElement.lang).toBe('cs');
 
-    await i18n.changeLanguage('en');
-    expect(document.documentElement.lang).toBe('en');
+      await i18n.changeLanguage('en');
+      expect(document.documentElement.lang).toBe('en');
+    } finally {
+      await i18n.changeLanguage(originalLang);
+    }
   });
 
   it('uses "become-language" as localStorage key for detection', () => {

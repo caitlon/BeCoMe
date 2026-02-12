@@ -51,7 +51,7 @@ describe('ThemeProvider', () => {
       </ThemeProvider>
     );
 
-    await user.click(screen.getByText('Set Dark'));
+    await user.click(screen.getByRole('button', { name: 'Set Dark' }));
 
     expect(localStorage.getItem('vite-ui-theme')).toBe('dark');
   });
@@ -87,7 +87,7 @@ describe('ThemeProvider', () => {
 
     expect(document.documentElement.classList.contains('light')).toBe(true);
 
-    await user.click(screen.getByText('Set Dark'));
+    await user.click(screen.getByRole('button', { name: 'Set Dark' }));
 
     expect(document.documentElement.classList.contains('dark')).toBe(true);
     expect(document.documentElement.classList.contains('light')).toBe(false);
@@ -124,7 +124,7 @@ describe('ThemeProvider', () => {
       </ThemeProvider>
     );
 
-    await user.click(screen.getByText('Set Dark'));
+    await user.click(screen.getByRole('button', { name: 'Set Dark' }));
 
     expect(localStorage.getItem('my-theme')).toBe('dark');
     expect(localStorage.getItem('vite-ui-theme')).toBeNull();
