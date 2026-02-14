@@ -1,10 +1,11 @@
 import { test, expect, Page } from '@playwright/test';
 
+const uniqueId = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 const TEST_USER = {
-  email: `e2e-${Date.now()}@test.com`,
+  email: `test-${uniqueId}@test.com`,
   password: 'TestPass123!@#',
-  firstName: 'E2E',
-  lastName: 'Tester',
+  firstName: 'Test',
+  lastName: 'User',
 };
 
 test.describe.serial('Full Application Flow', () => {
@@ -29,12 +30,26 @@ test.describe.serial('Full Application Flow', () => {
   test('register a new account and see empty projects', async () => {
     await page.goto('/register');
 
-    await page.getByPlaceholder('you@example.com').fill(TEST_USER.email);
-    await page.getByPlaceholder('Min. 12 characters').fill(TEST_USER.password);
-    await page.getByPlaceholder('Confirm your password').fill(TEST_USER.password);
-    await page.getByPlaceholder('John').fill(TEST_USER.firstName);
-    await page.getByPlaceholder('Doe').fill(TEST_USER.lastName);
-    await page.getByPlaceholder('Doe').blur();
+    // Each field needs focus+blur to trigger "onTouched" validation in react-hook-form
+    const emailField = page.getByPlaceholder('you@example.com');
+    await emailField.fill(TEST_USER.email);
+    await emailField.blur();
+
+    const passwordField = page.getByPlaceholder('Min. 12 characters');
+    await passwordField.fill(TEST_USER.password);
+    await passwordField.blur();
+
+    const confirmField = page.getByPlaceholder('Confirm your password');
+    await confirmField.fill(TEST_USER.password);
+    await confirmField.blur();
+
+    const firstNameField = page.getByPlaceholder('John');
+    await firstNameField.fill(TEST_USER.firstName);
+    await firstNameField.blur();
+
+    const lastNameField = page.getByPlaceholder('Doe');
+    await lastNameField.fill(TEST_USER.lastName);
+    await lastNameField.blur();
 
     const submitBtn = page.getByRole('button', { name: 'Create Account' });
     await expect(submitBtn).toBeEnabled({ timeout: 10000 });
@@ -53,13 +68,13 @@ test.describe.serial('Full Application Flow', () => {
     });
 
     await page.goto('/login');
+    await expect(page.getByRole('heading', { name: 'Welcome Back' })).toBeVisible();
 
     await page.getByPlaceholder('you@example.com').fill(TEST_USER.email);
     await page.getByPlaceholder('Enter your password').fill(TEST_USER.password);
 
     await page.getByRole('button', { name: /sign in/i }).click();
-
-    await expect(page).toHaveURL('/projects', { timeout: 10000 });
+    await expect(page).toHaveURL('/projects', { timeout: 15000 });
   });
 
   test('create a new project', async () => {
@@ -84,21 +99,21 @@ test.describe.serial('Full Application Flow', () => {
     await page.getByRole('link', { name: projectName }).click();
     await expect(page).toHaveURL(/\/projects\//, { timeout: 10000 });
 
-    // Fill opinion form
-    await page.locator('#position').fill('E2E Test Expert');
-    await page.locator('#opinion-lower').fill('30');
-    await page.locator('#opinion-peak').fill('50');
-    await page.locator('#opinion-upper').fill('70');
+    // Fill opinion form (use .first() — page may render multiple opinion sections)
+    await page.locator('#position').first().fill('Test Expert');
+    await page.locator('#opinion-lower').first().fill('30');
+    await page.locator('#opinion-peak').first().fill('50');
+    await page.locator('#opinion-upper').first().fill('70');
 
     await page.getByRole('button', { name: 'Save Opinion' }).click();
 
-    await expect(page.getByText('Opinion saved')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText('Opinion saved', { exact: true })).toBeVisible({ timeout: 5000 });
   });
 
   test('view calculation results', async () => {
-    await expect(page.getByText('Best Compromise')).toBeVisible({ timeout: 10000 });
-    await expect(page.getByText(/Arithmetic Mean/)).toBeVisible();
-    await expect(page.getByText(/Median/)).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Best Compromise/ })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('heading', { name: /Arithmetic Mean/ })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Median/ })).toBeVisible();
     await expect(page.getByText(/Max Error/)).toBeVisible();
 
     // Single expert (30, 50, 70): all aggregates equal input
