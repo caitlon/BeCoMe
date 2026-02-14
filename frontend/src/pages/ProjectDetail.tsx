@@ -1311,14 +1311,16 @@ const MemberProfileDialog = ({
             <AvatarFallback className="text-xl">{initials}</AvatarFallback>
           </Avatar>
           <DialogTitle className="text-xl font-light">{fullName}</DialogTitle>
-          <DialogDescription className="flex flex-col items-center gap-1">
+          <div className="flex flex-col items-center gap-1">
             <Badge
               variant={member.role === "admin" ? "default" : "secondary"}
               aria-hidden="true"
             >
               {t(`roles.${member.role}`)}
             </Badge>
-            <span className="sr-only">{t("memberProfile.dialogDescription")}</span>
+          </div>
+          <DialogDescription className="sr-only">
+            {t("memberProfile.dialogDescription")}
           </DialogDescription>
         </DialogHeader>
 
