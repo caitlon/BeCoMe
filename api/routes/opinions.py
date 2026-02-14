@@ -5,6 +5,7 @@ by centralized middleware, routes focus on business logic only.
 """
 
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, status
 
@@ -28,6 +29,7 @@ router = APIRouter(prefix="/api/v1/projects", tags=["opinions"])
     summary="List project opinions",
 )
 def list_opinions(
+    project_id: UUID,
     project: ProjectMember,
     opinion_service: Annotated[OpinionService, Depends(get_opinion_service)],
 ) -> list[OpinionResponse]:
@@ -48,6 +50,7 @@ def list_opinions(
     summary="Submit or update opinion",
 )
 def submit_opinion(
+    project_id: UUID,
     project: ProjectMember,
     request: OpinionCreate,
     current_user: CurrentUser,
@@ -90,6 +93,7 @@ def submit_opinion(
     summary="Delete own opinion",
 )
 def delete_opinion(
+    project_id: UUID,
     project: ProjectMember,
     current_user: CurrentUser,
     opinion_service: Annotated[OpinionService, Depends(get_opinion_service)],
@@ -114,6 +118,7 @@ def delete_opinion(
     summary="Get calculation result",
 )
 def get_result(
+    project_id: UUID,
     project: ProjectMember,
     calculation_service: Annotated[CalculationService, Depends(get_calculation_service)],
 ) -> CalculationResultResponse | None:
