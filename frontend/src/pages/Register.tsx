@@ -3,10 +3,8 @@ import { Link, useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   FormField,
   PasswordInput,
@@ -14,10 +12,11 @@ import {
   ValidationChecklist,
   Requirement,
 } from "@/components/forms";
-import { Navbar } from "@/components/layout/Navbar";
+import { AuthLayout } from "@/components/layout/AuthLayout";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { SPECIAL_CHAR_REGEX, getPasswordRequirements } from "@/lib/validation";
 
 type RegisterFormData = {
   email: string;
@@ -26,8 +25,6 @@ type RegisterFormData = {
   firstName: string;
   lastName: string;
 };
-
-const SPECIAL_CHAR_REGEX = /[!@#$%^&*(),.?":{}|<>\-_=+[\]\\;'/`~]/;
 
 const getEmailRequirements = (
   email: string,
@@ -44,32 +41,6 @@ const getEmailRequirements = (
   {
     label: t("emailRequirements.noSpaces"),
     met: !email.includes(" "),
-  },
-];
-
-const getPasswordRequirements = (
-  password: string,
-  t: (key: string) => string
-): Requirement[] => [
-  {
-    label: t("passwordRequirements.minLength"),
-    met: password.length >= 12,
-  },
-  {
-    label: t("passwordRequirements.uppercase"),
-    met: /[A-Z]/.test(password),
-  },
-  {
-    label: t("passwordRequirements.lowercase"),
-    met: /[a-z]/.test(password),
-  },
-  {
-    label: t("passwordRequirements.number"),
-    met: /\d/.test(password),
-  },
-  {
-    label: t("passwordRequirements.specialChar"),
-    met: SPECIAL_CHAR_REGEX.test(password),
   },
 ];
 
@@ -162,95 +133,76 @@ const Register = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <Navbar />
-      <main id="main-content" className="flex-1 flex items-center justify-center py-12 px-6">
-        <motion.div
-          className="w-full max-w-md"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4 }}
+    <AuthLayout title={t("register.title")}>
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        <div>
+          <FormField
+            label={`${t("register.email")} *`}
+            type="email"
+            placeholder={t("register.emailPlaceholder")}
+            error={errors.email}
+            {...register("email")}
+          />
+          <ValidationChecklist
+            title={t("emailRequirements.title")}
+            requirements={emailRequirements}
+            show={!!email}
+          />
+        </div>
+
+        <div>
+          <PasswordInput
+            label={`${t("register.password")} *`}
+            placeholder={t("register.passwordPlaceholder")}
+            error={errors.password}
+            {...register("password")}
+          />
+          <ValidationChecklist
+            title={t("passwordRequirements.title")}
+            requirements={passwordRequirements}
+            show={!!password}
+          />
+        </div>
+
+        <FormField
+          label={`${t("register.confirmPassword")} *`}
+          type="password"
+          placeholder={t("register.confirmPasswordPlaceholder")}
+          error={errors.confirmPassword}
+          {...register("confirmPassword")}
+        />
+
+        <FormField
+          label={`${t("register.firstName")} *`}
+          placeholder={t("register.firstNamePlaceholder")}
+          error={errors.firstName}
+          {...register("firstName")}
+        />
+
+        <FormField
+          label={`${t("register.lastName")} *`}
+          placeholder={t("register.lastNamePlaceholder")}
+          error={errors.lastName}
+          {...register("lastName")}
+        />
+
+        <SubmitButton
+          className="w-full"
+          isLoading={isLoading}
+          loadingText={t("register.creatingAccount")}
+          disabled={!isValid}
         >
-          <Card className="border-border/50">
-            <CardHeader className="text-center pb-2">
-              <CardTitle as="h1" className="font-display text-2xl font-normal">
-                {t("register.title")}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-6">
-              <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-                <div>
-                  <FormField
-                    label={`${t("register.email")} *`}
-                    type="email"
-                    placeholder={t("register.emailPlaceholder")}
-                    error={errors.email}
-                    {...register("email")}
-                  />
-                  <ValidationChecklist
-                    title={t("emailRequirements.title")}
-                    requirements={emailRequirements}
-                    show={!!email}
-                  />
-                </div>
+          {t("register.createAccount")}
+        </SubmitButton>
+      </form>
 
-                <div>
-                  <PasswordInput
-                    label={`${t("register.password")} *`}
-                    placeholder={t("register.passwordPlaceholder")}
-                    error={errors.password}
-                    {...register("password")}
-                  />
-                  <ValidationChecklist
-                    title={t("passwordRequirements.title")}
-                    requirements={passwordRequirements}
-                    show={!!password}
-                  />
-                </div>
-
-                <FormField
-                  label={`${t("register.confirmPassword")} *`}
-                  type="password"
-                  placeholder={t("register.confirmPasswordPlaceholder")}
-                  error={errors.confirmPassword}
-                  {...register("confirmPassword")}
-                />
-
-                <FormField
-                  label={`${t("register.firstName")} *`}
-                  placeholder={t("register.firstNamePlaceholder")}
-                  error={errors.firstName}
-                  {...register("firstName")}
-                />
-
-                <FormField
-                  label={`${t("register.lastName")} *`}
-                  placeholder={t("register.lastNamePlaceholder")}
-                  error={errors.lastName}
-                  {...register("lastName")}
-                />
-
-                <SubmitButton
-                  className="w-full"
-                  isLoading={isLoading}
-                  loadingText={t("register.creatingAccount")}
-                  disabled={!isValid}
-                >
-                  {t("register.createAccount")}
-                </SubmitButton>
-              </form>
-
-              <p className="text-center text-sm text-muted-foreground mt-6">
-                {t("register.haveAccount")}{" "}
-                <Link to="/login" className="text-foreground hover:underline">
-                  {t("register.signIn")}
-                </Link>
-              </p>
-            </CardContent>
-          </Card>
-        </motion.div>
-      </main>
-    </div>
+      <p className="text-center text-sm text-muted-foreground mt-6">
+        {t("register.haveAccount")}{" "}
+        <Link to="/login" className="text-foreground hover:underline">
+          {t("register.signIn")}
+        </Link>
+      </p>
+    </AuthLayout>
   );
 };
 

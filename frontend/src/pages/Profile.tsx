@@ -11,42 +11,16 @@ import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Navbar } from "@/components/layout/Navbar";
 import { DeleteConfirmModal } from "@/components/modals/DeleteConfirmModal";
-import { ValidationChecklist, Requirement } from "@/components/forms";
+import { ValidationChecklist } from "@/components/forms";
 import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { getPasswordRequirements } from "@/lib/validation";
 
 const NAME_REGEX = /^[\p{L}\s'-]+$/u;
-const SPECIAL_CHAR_REGEX = /[!@#$%^&*(),.?":{}|<>\-_=+[\]\\;'/`~]/;
 const isValidName = (name: string) => !name || NAME_REGEX.test(name);
-
-const getPasswordRequirements = (
-  password: string,
-  t: (key: string) => string
-): Requirement[] => [
-  {
-    label: t("passwordRequirements.minLength"),
-    met: password.length >= 12,
-  },
-  {
-    label: t("passwordRequirements.uppercase"),
-    met: /[A-Z]/.test(password),
-  },
-  {
-    label: t("passwordRequirements.lowercase"),
-    met: /[a-z]/.test(password),
-  },
-  {
-    label: t("passwordRequirements.number"),
-    met: /\d/.test(password),
-  },
-  {
-    label: t("passwordRequirements.specialChar"),
-    met: SPECIAL_CHAR_REGEX.test(password),
-  },
-];
 
 const Profile = () => {
   const { t } = useTranslation("profile");

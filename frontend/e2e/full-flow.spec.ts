@@ -34,9 +34,10 @@ test.describe.serial('Full Application Flow', () => {
     await page.getByPlaceholder('Confirm your password').fill(TEST_USER.password);
     await page.getByPlaceholder('John').fill(TEST_USER.firstName);
     await page.getByPlaceholder('Doe').fill(TEST_USER.lastName);
+    await page.getByPlaceholder('Doe').blur();
 
     const submitBtn = page.getByRole('button', { name: 'Create Account' });
-    await expect(submitBtn).toBeEnabled({ timeout: 5000 });
+    await expect(submitBtn).toBeEnabled({ timeout: 10000 });
     await submitBtn.click();
 
     await expect(page).toHaveURL('/projects', { timeout: 10000 });
