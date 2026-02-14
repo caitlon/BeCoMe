@@ -1,4 +1,4 @@
-"""Pytest fixtures and helpers for API tests."""
+"""Pytest fixtures and helpers for API integration tests."""
 
 import os
 from contextlib import contextmanager

@@ -53,8 +53,8 @@ jobs:
         working-directory: frontend
         run: npm run lint
 
-  tests:
-    name: Tests with Coverage
+  unit-tests:
+    name: Unit Tests
     runs-on: ubuntu-24.04
     needs: lint
     env:
@@ -63,8 +63,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
 
       # Python setup
       - name: Set up uv
@@ -78,17 +76,9 @@ jobs:
       - name: Install Python dependencies
         run: uv sync --frozen --extra dev --extra api
 
-      # Python tests
-      - name: Run Python tests
-        run: uv run pytest --cov=src --cov=api --cov-report=term-missing --cov-report=html --cov-report=xml:coverage.xml
-
-      - name: Upload Python coverage report
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: python-coverage-report
-          path: htmlcov/
-          retention-days: 30
+      # Python unit tests
+      - name: Run Python unit tests
+        run: uv run pytest tests/unit/ --cov=src --cov=api --cov-report=term-missing --cov-report=xml:coverage-unit.xml
 
       # Node.js setup
       - name: Setup Node.js
@@ -113,6 +103,43 @@ jobs:
         with:
           name: frontend-coverage-report
           path: frontend/coverage/
+          retention-days: 30
+
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-24.04
+    needs: lint
+    env:
+      SECRET_KEY: test-secret-key-for-ci
+      TESTING: "1"
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      # Python setup
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.13.7
+
+      - name: Install Python dependencies
+        run: uv sync --frozen --extra dev --extra api
+
+      # Python integration tests
+      - name: Run Python integration tests
+        run: uv run pytest tests/integration/ --cov=src --cov=api --cov-report=term-missing --cov-report=html --cov-report=xml:coverage.xml
+
+      - name: Upload Python coverage report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: python-coverage-report
+          path: htmlcov/
           retention-days: 30
 
       # SonarQube Cloud (skipped for Dependabot PRs — no access to secrets)

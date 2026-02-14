@@ -3,7 +3,7 @@
 from unittest.mock import patch
 
 from api.services.project_membership_service import ProjectMembershipService
-from tests.api.conftest import auth_header, register_and_login
+from tests.integration.api.conftest import auth_header, register_and_login
 
 
 class TestCreateProject:

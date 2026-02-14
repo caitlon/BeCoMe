@@ -108,6 +108,9 @@ disallow_untyped_defs = false
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = ["-v", "--cov=src", "--cov=api"]
+markers = [
+    "e2e: end-to-end tests requiring running server and PostgreSQL",
+]
 filterwarnings = [
     # SQLite in-memory database cleanup during GC is uncontrollable
     # Warning may come from inspect module when analyzing sqlite objects

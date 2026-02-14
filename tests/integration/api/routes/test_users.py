@@ -2,7 +2,7 @@
 
 from fastapi import status
 
-from tests.api.conftest import DEFAULT_TEST_PASSWORD, auth_header, register_and_login
+from tests.integration.api.conftest import DEFAULT_TEST_PASSWORD, auth_header, register_and_login
 
 
 class TestDeleteAccount:
