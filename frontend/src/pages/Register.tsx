@@ -27,6 +27,8 @@ type RegisterFormData = {
   lastName: string;
 };
 
+const SPECIAL_CHAR_REGEX = /[!@#$%^&*(),.?":{}|<>\-_=+[\]\\;'/`~]/;
+
 const getEmailRequirements = (
   email: string,
   t: (key: string) => string
@@ -67,7 +69,7 @@ const getPasswordRequirements = (
   },
   {
     label: t("passwordRequirements.specialChar"),
-    met: /[!@#$%^&*(),.?":{}|<>\-_=+[\]\\;'/`~]/.test(password),
+    met: SPECIAL_CHAR_REGEX.test(password),
   },
 ];
 
@@ -98,10 +100,7 @@ const Register = () => {
             .regex(/[A-Z]/, t("passwordRequirements.uppercase"))
             .regex(/[a-z]/, t("passwordRequirements.lowercase"))
             .regex(/\d/, t("passwordRequirements.number"))
-            .regex(
-              /[!@#$%^&*(),.?":{}|<>\-_=+[\]\\;'/`~]/,
-              t("passwordRequirements.specialChar")
-            ),
+            .regex(SPECIAL_CHAR_REGEX, t("passwordRequirements.specialChar")),
           confirmPassword: z.string().min(1, t("validation.passwordRequired")),
           firstName: z
             .string()

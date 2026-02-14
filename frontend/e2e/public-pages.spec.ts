@@ -21,21 +21,21 @@ test.describe('Public Pages', () => {
     await page.goto('/about');
 
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-    await expect(page.locator('main#main-content')).toBeVisible();
+    await expect(page.getByRole('main')).toBeVisible();
   });
 
   test('documentation page loads', async ({ page }) => {
     await page.goto('/docs');
 
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-    await expect(page.locator('main#main-content')).toBeVisible();
+    await expect(page.getByRole('main')).toBeVisible();
   });
 
   test('FAQ page loads', async ({ page }) => {
     await page.goto('/faq');
 
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-    await expect(page.locator('main#main-content')).toBeVisible();
+    await expect(page.getByRole('main')).toBeVisible();
   });
 
   test('case studies page loads', async ({ page }) => {

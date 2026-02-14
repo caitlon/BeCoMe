@@ -11,6 +11,9 @@ test.describe.serial('Full Application Flow', () => {
   let page: Page;
   let projectName: string;
 
+  // Serial tests share a single page instance across all tests,
+  // so we create the page manually instead of using the base fixture
+  // which creates a new page per test.
   test.beforeAll(async ({ browser }) => {
     const context = await browser.newContext();
     page = await context.newPage();
@@ -98,8 +101,8 @@ test.describe.serial('Full Application Flow', () => {
     await expect(page.getByText(/Max Error/)).toBeVisible();
 
     // Single expert (30, 50, 70): all aggregates equal input
-    await expect(page.getByText('30.00').first()).toBeVisible();
-    await expect(page.getByText('50.00').first()).toBeVisible();
-    await expect(page.getByText('70.00').first()).toBeVisible();
+    await expect(page.getByText('30.00').first()).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText('50.00').first()).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText('70.00').first()).toBeVisible({ timeout: 5000 });
   });
 });

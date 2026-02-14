@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 const NAME_REGEX = /^[\p{L}\s'-]+$/u;
+const SPECIAL_CHAR_REGEX = /[!@#$%^&*(),.?":{}|<>\-_=+[\]\\;'/`~]/;
 const isValidName = (name: string) => !name || NAME_REGEX.test(name);
 
 const getPasswordRequirements = (
@@ -43,7 +44,7 @@ const getPasswordRequirements = (
   },
   {
     label: t("passwordRequirements.specialChar"),
-    met: /[!@#$%^&*(),.?":{}|<>\-_=+[\]\\;'/`~]/.test(password),
+    met: SPECIAL_CHAR_REGEX.test(password),
   },
 ];
 

@@ -177,7 +177,7 @@ jobs:
 
       - name: Install Playwright browsers
         working-directory: frontend
-        run: npx playwright install chromium --with-deps
+        run: npx playwright install --with-deps
 
       - name: Start API server
         run: |
@@ -187,6 +187,7 @@ jobs:
             echo "Waiting for API... ($i/30)"
             sleep 2
           done
+          curl -sf http://localhost:8000/api/v1/health || { echo "API failed to start"; exit 1; }
         env:
           DATABASE_URL: postgresql://become:become@localhost:5432/become_test
           SECRET_KEY: test-secret-key-for-ci
