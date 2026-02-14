@@ -86,7 +86,7 @@ test.describe.serial('Full Application Flow', () => {
     await expect(dialog).toBeVisible();
 
     await dialog.getByPlaceholder('Enter project name').fill(projectName);
-    await dialog.locator('#scale-unit').fill('%');
+    await dialog.getByLabel('Unit').fill('%');
 
     await dialog.getByRole('button', { name: 'Create Project' }).click();
 
@@ -99,11 +99,11 @@ test.describe.serial('Full Application Flow', () => {
     await page.getByRole('link', { name: projectName }).click();
     await expect(page).toHaveURL(/\/projects\//, { timeout: 10000 });
 
-    // Fill opinion form (use .first() — page may render multiple opinion sections)
-    await page.locator('#position').first().fill('Test Expert');
-    await page.locator('#opinion-lower').first().fill('30');
-    await page.locator('#opinion-peak').first().fill('50');
-    await page.locator('#opinion-upper').first().fill('70');
+    // Fill opinion form using accessible label selectors
+    await page.getByLabel('Position').first().fill('Test Expert');
+    await page.getByLabel('Lower (pessimistic)').first().fill('30');
+    await page.getByLabel('Peak (most likely)').first().fill('50');
+    await page.getByLabel('Upper (optimistic)').first().fill('70');
 
     await page.getByRole('button', { name: 'Save Opinion' }).click();
 
