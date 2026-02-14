@@ -191,7 +191,7 @@ jobs:
         env:
           DATABASE_URL: postgresql://become:become@localhost:5432/become_test
           SECRET_KEY: test-secret-key-for-ci
-          CORS_ORIGINS: http://localhost:8080
+          CORS_ORIGINS: '["http://localhost:8080"]'
           DEBUG: "false"
 
       - name: Run E2E tests
