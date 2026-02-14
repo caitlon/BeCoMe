@@ -83,6 +83,7 @@ def create_project(
     summary="Get project details",
 )
 def get_project(
+    project_id: UUID,
     project: ProjectMember,
     current_user: CurrentUser,
     project_service: Annotated[ProjectService, Depends(get_project_service)],
@@ -117,6 +118,7 @@ def get_project(
     summary="Update project",
 )
 def update_project(
+    project_id: UUID,
     project: ProjectAdmin,
     request: ProjectUpdate,
     service: Annotated[ProjectService, Depends(get_project_service)],
@@ -140,6 +142,7 @@ def update_project(
     summary="Delete project",
 )
 def delete_project(
+    project_id: UUID,
     project: ProjectAdmin,
     service: Annotated[ProjectService, Depends(get_project_service)],
 ) -> None:
@@ -157,6 +160,7 @@ def delete_project(
     summary="List project members",
 )
 def list_members(
+    project_id: UUID,
     project: ProjectMember,
     membership_service: Annotated[
         ProjectMembershipService, Depends(get_project_membership_service)
@@ -178,6 +182,7 @@ def list_members(
     summary="Remove member from project",
 )
 def remove_member(
+    project_id: UUID,
     project: ProjectAdmin,
     user_id: UUID,
     current_user: CurrentUser,

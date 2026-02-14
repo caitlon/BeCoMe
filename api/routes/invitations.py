@@ -27,6 +27,7 @@ router = APIRouter(prefix="/api/v1", tags=["invitations"])
     summary="Invite user by email",
 )
 def invite_by_email(
+    project_id: UUID,
     project: ProjectAdmin,
     request: InviteByEmailRequest,
     current_user: CurrentUser,
@@ -67,6 +68,7 @@ def invite_by_email(
     summary="List pending invitations for a project",
 )
 def list_project_invitations(
+    project_id: UUID,
     project: ProjectMember,
     invitation_service: Annotated[InvitationService, Depends(get_invitation_service)],
 ) -> list[ProjectInvitationResponse]:
