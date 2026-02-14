@@ -8,6 +8,22 @@ vi.mock('@/components/ui/toast', () => ({
 
 import { reducer, useToast, toast } from '@/hooks/use-toast';
 
+/**
+ * Cleanup global toast state between tests.
+ * The toast module uses module-level mutable state (memoryState, listeners, toastTimeouts)
+ * that persists across tests. Since there's no exported reset API, we create a temporary
+ * hook instance to dismiss all toasts and flush pending removal timers.
+ */
+function cleanupToasts() {
+  const { result, unmount } = renderHook(() => useToast());
+  act(() => {
+    result.current.dismiss();
+    vi.runAllTimers();
+  });
+  unmount();
+  vi.useRealTimers();
+}
+
 describe('reducer', () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -94,24 +110,18 @@ describe('toast()', () => {
   });
 
   afterEach(() => {
-    const { result, unmount } = renderHook(() => useToast());
-    act(() => {
-      result.current.dismiss();
-      vi.runAllTimers();
-    });
-    unmount();
-    vi.useRealTimers();
+    cleanupToasts();
   });
 
   it('returns id, dismiss, and update functions', () => {
-    let result: ReturnType<typeof toast>;
+    let result!: ReturnType<typeof toast>;
     act(() => {
       result = toast({ title: 'Hello' });
     });
 
-    expect(result!.id).toBeDefined();
-    expect(typeof result!.dismiss).toBe('function');
-    expect(typeof result!.update).toBe('function');
+    expect(result.id).toBeDefined();
+    expect(typeof result.dismiss).toBe('function');
+    expect(typeof result.update).toBe('function');
   });
 
   it('toast appears in useToast state', () => {
@@ -163,19 +173,13 @@ describe('useToast()', () => {
   });
 
   afterEach(() => {
-    const { result, unmount } = renderHook(() => useToast());
-    act(() => {
-      result.current.dismiss();
-      vi.runAllTimers();
-    });
-    unmount();
-    vi.useRealTimers();
+    cleanupToasts();
   });
 
   it('dismiss sets open to false', () => {
     const { result: hookResult } = renderHook(() => useToast());
 
-    let toastId: string;
+    let toastId!: string;
     act(() => {
       toastId = toast({ title: 'Test' }).id;
     });
@@ -188,19 +192,19 @@ describe('useToast()', () => {
   });
 
   it('cleans up listener on unmount', () => {
-    const { unmount } = renderHook(() => useToast());
+    const hookA = renderHook(() => useToast());
+    const hookB = renderHook(() => useToast());
 
-    unmount();
+    hookA.unmount();
 
-    // After unmount, calling toast should not throw
     act(() => {
       toast({ title: 'After unmount' });
     });
 
-    // Cleanup: dismiss the toast created above
-    const { result: cleanupResult } = renderHook(() => useToast());
-    act(() => {
-      cleanupResult.current.dismiss();
-    });
+    expect(hookB.result.current.toasts).toHaveLength(1);
+    expect(hookB.result.current.toasts[0].title).toBe('After unmount');
+
+    // hookA's state did not update after unmount
+    expect(hookA.result.current.toasts).toHaveLength(0);
   });
 });

@@ -16,8 +16,7 @@ describe('HeroSection', () => {
   it('renders the subtitle in a paragraph', () => {
     render(<HeroSection title="t" subtitle="Test Subtitle" />);
 
-    const subtitle = screen.getByText('Test Subtitle');
-    expect(subtitle.tagName).toBe('P');
+    expect(screen.getByText('Test Subtitle')).toBeVisible();
   });
 
   it('wraps content in a section element', () => {

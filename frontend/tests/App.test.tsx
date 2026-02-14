@@ -89,6 +89,7 @@ const authenticatedAuth = {
 
 describe('App - public routes', () => {
   beforeEach(() => {
+    routeRef.value = '/';
     mockUseAuth.mockReturnValue(unauthenticatedAuth);
   });
 
