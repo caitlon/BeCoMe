@@ -186,16 +186,16 @@ describe('Profile - Change Password', () => {
 
     render(<Profile />);
 
-    await user.type(screen.getByLabelText('Current Password'), 'oldPassword123');
-    await user.type(screen.getByLabelText('New Password'), 'NewPassword1');
-    await user.type(screen.getByLabelText('Confirm New Password'), 'NewPassword1');
+    await user.type(screen.getByLabelText('Current Password'), 'oldPassword123!');
+    await user.type(screen.getByLabelText('New Password'), 'NewPassword1!@#');
+    await user.type(screen.getByLabelText('Confirm New Password'), 'NewPassword1!@#');
 
     await user.click(screen.getByRole('button', { name: 'Update Password' }));
 
     await waitFor(() => {
       expect(mockApi.changePassword).toHaveBeenCalledWith({
-        current_password: 'oldPassword123',
-        new_password: 'NewPassword1',
+        current_password: 'oldPassword123!',
+        new_password: 'NewPassword1!@#',
       });
     });
   });
@@ -204,9 +204,9 @@ describe('Profile - Change Password', () => {
     const user = userEvent.setup();
     render(<Profile />);
 
-    await user.type(screen.getByLabelText('Current Password'), 'oldPassword123');
-    await user.type(screen.getByLabelText('New Password'), 'NewPassword1');
-    await user.type(screen.getByLabelText('Confirm New Password'), 'DifferentPassword1');
+    await user.type(screen.getByLabelText('Current Password'), 'oldPassword123!');
+    await user.type(screen.getByLabelText('New Password'), 'NewPassword1!@#');
+    await user.type(screen.getByLabelText('Confirm New Password'), 'DiffPassword1!@#');
 
     await user.click(screen.getByRole('button', { name: 'Update Password' }));
 
@@ -226,7 +226,7 @@ describe('Profile - Change Password', () => {
 
     await user.type(screen.getByLabelText('New Password'), 'abc');
 
-    expect(screen.getByText(/at least 8 characters/i)).toBeInTheDocument();
+    expect(screen.getByText(/at least 12 characters/i)).toBeInTheDocument();
   });
 
   it('disables update button when fields are empty', () => {

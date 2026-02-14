@@ -27,7 +27,7 @@ const getPasswordRequirements = (
 ): Requirement[] => [
   {
     label: t("passwordRequirements.minLength"),
-    met: password.length >= 8,
+    met: password.length >= 12,
   },
   {
     label: t("passwordRequirements.uppercase"),
@@ -40,6 +40,10 @@ const getPasswordRequirements = (
   {
     label: t("passwordRequirements.number"),
     met: /\d/.test(password),
+  },
+  {
+    label: t("passwordRequirements.specialChar"),
+    met: /[!@#$%^&*(),.?":{}|<>\-_=+\[\]\\;'/`~]/.test(password),
   },
 ];
 

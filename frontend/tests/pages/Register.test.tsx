@@ -37,7 +37,7 @@ describe('Register', () => {
   });
 
   const getEmailInput = () => screen.getByPlaceholderText('you@example.com');
-  const getPasswordInput = () => screen.getByPlaceholderText('Min. 8 characters');
+  const getPasswordInput = () => screen.getByPlaceholderText('Min. 12 characters');
   const getConfirmPasswordInput = () => screen.getByPlaceholderText('Confirm your password');
   const getFirstNameInput = () => screen.getByPlaceholderText('John');
   const getLastNameInput = () => screen.getByPlaceholderText('Doe');
@@ -74,24 +74,25 @@ describe('Register', () => {
     await user.type(getPasswordInput(), 'test');
 
     await waitFor(() => {
-      expect(screen.getByText(/at least 8 characters/i)).toBeInTheDocument();
+      expect(screen.getByText(/at least 12 characters/i)).toBeInTheDocument();
       expect(screen.getByText(/an uppercase letter/i)).toBeInTheDocument();
       expect(screen.getByText(/a lowercase letter/i)).toBeInTheDocument();
       expect(screen.getByText(/a number/i)).toBeInTheDocument();
+      expect(screen.getByText(/a special character/i)).toBeInTheDocument();
     });
   });
 
-  it('validates password meets 8+ characters requirement', async () => {
+  it('validates password meets 12+ characters requirement', async () => {
     const user = userEvent.setup();
     render(<Register />);
 
-    await user.type(getPasswordInput(), 'Pass1');
+    await user.type(getPasswordInput(), 'Pass1!');
     await user.tab();
 
     await waitFor(() => {
       const errorElement = document.getElementById('password-error');
       expect(errorElement).toBeInTheDocument();
-      expect(errorElement?.textContent).toContain('8 characters');
+      expect(errorElement?.textContent).toContain('12 characters');
     });
   });
 
@@ -138,8 +139,8 @@ describe('Register', () => {
     const user = userEvent.setup();
     render(<Register />);
 
-    await user.type(getPasswordInput(), 'Password1');
-    await user.type(getConfirmPasswordInput(), 'Password2');
+    await user.type(getPasswordInput(), 'TestPass123!@#');
+    await user.type(getConfirmPasswordInput(), 'TestPass456!@#');
     await user.tab();
 
     await waitFor(() => {
@@ -184,8 +185,8 @@ describe('Register', () => {
     render(<Register />);
 
     await user.type(getEmailInput(), 'test@example.com');
-    await user.type(getPasswordInput(), 'Password1');
-    await user.type(getConfirmPasswordInput(), 'Password1');
+    await user.type(getPasswordInput(), 'TestPass123!@#');
+    await user.type(getConfirmPasswordInput(), 'TestPass123!@#');
     await user.type(getFirstNameInput(), 'John');
     await user.type(getLastNameInput(), 'Doe');
 
@@ -207,8 +208,8 @@ describe('Register', () => {
     render(<Register />);
 
     await user.type(getEmailInput(), 'test@example.com');
-    await user.type(getPasswordInput(), 'Password1');
-    await user.type(getConfirmPasswordInput(), 'Password1');
+    await user.type(getPasswordInput(), 'TestPass123!@#');
+    await user.type(getConfirmPasswordInput(), 'TestPass123!@#');
     await user.type(getFirstNameInput(), 'John');
     await user.type(getLastNameInput(), 'Doe');
 
@@ -221,7 +222,7 @@ describe('Register', () => {
     await waitFor(() => {
       expect(mockRegister).toHaveBeenCalledWith(
         'test@example.com',
-        'Password1',
+        'TestPass123!@#',
         'John',
         'Doe'
       );
@@ -239,8 +240,8 @@ describe('Register', () => {
     render(<Register />);
 
     await user.type(getEmailInput(), 'existing@example.com');
-    await user.type(getPasswordInput(), 'Password1');
-    await user.type(getConfirmPasswordInput(), 'Password1');
+    await user.type(getPasswordInput(), 'TestPass123!@#');
+    await user.type(getConfirmPasswordInput(), 'TestPass123!@#');
     await user.type(getFirstNameInput(), 'John');
     await user.type(getLastNameInput(), 'Doe');
 

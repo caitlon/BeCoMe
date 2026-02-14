@@ -51,7 +51,7 @@ const getPasswordRequirements = (
 ): Requirement[] => [
   {
     label: t("passwordRequirements.minLength"),
-    met: password.length >= 8,
+    met: password.length >= 12,
   },
   {
     label: t("passwordRequirements.uppercase"),
@@ -64,6 +64,10 @@ const getPasswordRequirements = (
   {
     label: t("passwordRequirements.number"),
     met: /\d/.test(password),
+  },
+  {
+    label: t("passwordRequirements.specialChar"),
+    met: /[!@#$%^&*(),.?":{}|<>\-_=+\[\]\\;'/`~]/.test(password),
   },
 ];
 
@@ -89,11 +93,15 @@ const Register = () => {
             }),
           password: z
             .string()
-            .min(8, t("passwordRequirements.minLength"))
+            .min(12, t("passwordRequirements.minLength"))
             .max(128, t("validation.passwordMaxLength"))
             .regex(/[A-Z]/, t("passwordRequirements.uppercase"))
             .regex(/[a-z]/, t("passwordRequirements.lowercase"))
-            .regex(/\d/, t("passwordRequirements.number")),
+            .regex(/\d/, t("passwordRequirements.number"))
+            .regex(
+              /[!@#$%^&*(),.?":{}|<>\-_=+\[\]\\;'/`~]/,
+              t("passwordRequirements.specialChar")
+            ),
           confirmPassword: z.string().min(1, t("validation.passwordRequired")),
           firstName: z
             .string()
