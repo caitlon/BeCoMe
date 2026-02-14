@@ -53,10 +53,6 @@ jobs:
         working-directory: frontend
         run: npm run lint
 
-      - name: Minimize uv cache
-        if: always()
-        run: uv cache prune --ci
-
   tests:
     name: Tests with Coverage
     runs-on: ubuntu-24.04
@@ -125,10 +121,6 @@ jobs:
         uses: SonarSource/sonarqube-scan-action@v7
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-
-      - name: Minimize uv cache
-        if: always()
-        run: uv cache prune --ci
 
   e2e:
     name: E2E Tests (Playwright)
@@ -206,6 +198,3 @@ jobs:
           path: frontend/playwright-report/
           retention-days: 7
 
-      - name: Minimize uv cache
-        if: always()
-        run: uv cache prune --ci

@@ -8,7 +8,7 @@ interface AuthLayoutProps {
   children: React.ReactNode;
 }
 
-export function AuthLayout({ title, children }: AuthLayoutProps) {
+export function AuthLayout({ title, children }: Readonly<AuthLayoutProps>) {
   return (
     <div className="min-h-screen flex flex-col">
       <Navbar />
