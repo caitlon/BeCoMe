@@ -1,5 +1,5 @@
-import { useState, useMemo } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useMemo } from "react";
+import { Link } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -8,7 +8,7 @@ import { useTranslation } from "react-i18next";
 import { FormField, PasswordInput, SubmitButton } from "@/components/forms";
 import { AuthLayout } from "@/components/layout/AuthLayout";
 import { useAuth } from "@/contexts/AuthContext";
-import { useToast } from "@/hooks/use-toast";
+import { useAuthSubmit } from "@/hooks/use-auth-submit";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 type LoginFormData = {
@@ -19,11 +19,15 @@ type LoginFormData = {
 const Login = () => {
   const { t } = useTranslation("auth");
   const { t: tCommon } = useTranslation();
-  const navigate = useNavigate();
   const { login } = useAuth();
-  const { toast } = useToast();
-  const [isLoading, setIsLoading] = useState(false);
   useDocumentTitle(tCommon("pageTitle.login"));
+
+  const { isLoading, execute } = useAuthSubmit({
+    successTitle: t("login.successTitle"),
+    successDescription: t("login.successMessage"),
+    errorTitle: t("login.errorTitle"),
+    errorFallback: t("login.errorMessage"),
+  });
 
   const loginSchema = useMemo(
     () =>
@@ -43,26 +47,8 @@ const Login = () => {
     mode: "onTouched",
   });
 
-  const onSubmit = async (data: LoginFormData) => {
-    setIsLoading(true);
-    try {
-      await login(data.email, data.password);
-      toast({
-        title: t("login.successTitle"),
-        description: t("login.successMessage"),
-      });
-      navigate("/projects");
-    } catch (error) {
-      toast({
-        title: t("login.errorTitle"),
-        description:
-          error instanceof Error ? error.message : t("login.errorMessage"),
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const onSubmit = (data: LoginFormData) =>
+    execute(() => login(data.email, data.password));
 
   return (
     <AuthLayout title={t("login.title")}>

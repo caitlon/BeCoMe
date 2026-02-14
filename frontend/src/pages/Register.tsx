@@ -1,5 +1,5 @@
-import { useState, useMemo } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useMemo } from "react";
+import { Link } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -14,7 +14,7 @@ import {
 } from "@/components/forms";
 import { AuthLayout } from "@/components/layout/AuthLayout";
 import { useAuth } from "@/contexts/AuthContext";
-import { useToast } from "@/hooks/use-toast";
+import { useAuthSubmit } from "@/hooks/use-auth-submit";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { SPECIAL_CHAR_REGEX, getPasswordRequirements } from "@/lib/validation";
 
@@ -47,11 +47,15 @@ const getEmailRequirements = (
 const Register = () => {
   const { t } = useTranslation("auth");
   const { t: tCommon } = useTranslation();
-  const navigate = useNavigate();
   const { register: registerUser } = useAuth();
-  const { toast } = useToast();
-  const [isLoading, setIsLoading] = useState(false);
   useDocumentTitle(tCommon("pageTitle.register"));
+
+  const { isLoading, execute } = useAuthSubmit({
+    successTitle: t("register.successTitle"),
+    successDescription: t("register.successMessage"),
+    errorTitle: t("register.errorTitle"),
+    errorFallback: t("register.errorMessage"),
+  });
 
   const registerSchema = useMemo(
     () =>
@@ -106,31 +110,10 @@ const Register = () => {
   const emailRequirements = getEmailRequirements(email, t);
   const passwordRequirements = getPasswordRequirements(password, t);
 
-  const onSubmit = async (data: RegisterFormData) => {
-    setIsLoading(true);
-    try {
-      await registerUser(
-        data.email,
-        data.password,
-        data.firstName,
-        data.lastName
-      );
-      toast({
-        title: t("register.successTitle"),
-        description: t("register.successMessage"),
-      });
-      navigate("/projects");
-    } catch (error) {
-      toast({
-        title: t("register.errorTitle"),
-        description:
-          error instanceof Error ? error.message : t("register.errorMessage"),
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const onSubmit = (data: RegisterFormData) =>
+    execute(() =>
+      registerUser(data.email, data.password, data.firstName, data.lastName)
+    );
 
   return (
     <AuthLayout title={t("register.title")}>
