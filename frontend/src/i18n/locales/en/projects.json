@@ -155,6 +155,7 @@
     "cancel": "Cancel",
     "create": "Create Project",
     "creating": "Creating...",
+    "dialogDescription": "Set up a new project with name, description, and scale settings",
     "successTitle": "Project created",
     "successMessage": "Your project has been created successfully.",
     "errorTitle": "Error",

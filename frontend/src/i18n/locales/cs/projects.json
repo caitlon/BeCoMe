@@ -155,6 +155,7 @@
     "cancel": "Zrušit",
     "create": "Vytvořit projekt",
     "creating": "Vytváření...",
+    "dialogDescription": "Nastavte nový projekt s názvem, popisem a škálou",
     "successTitle": "Projekt vytvořen",
     "successMessage": "Váš projekt byl úspěšně vytvořen.",
     "errorTitle": "Chyba",

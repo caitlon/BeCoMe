@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -108,6 +109,9 @@ export function CreateProjectModal({
           <DialogTitle className="font-display text-xl font-normal">
             {t("create.title")}
           </DialogTitle>
+          <DialogDescription className="sr-only">
+            {t("create.dialogDescription")}
+          </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">

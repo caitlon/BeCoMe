@@ -1,8 +1,14 @@
 """Application configuration using Pydantic Settings."""
 
 from functools import lru_cache
+from importlib.metadata import PackageNotFoundError, version
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+try:
+    _version = version("become")
+except PackageNotFoundError:
+    _version = "0.0.0"
 
 
 class Settings(BaseSettings):
@@ -24,7 +30,7 @@ class Settings(BaseSettings):
 
     # API
     debug: bool = False
-    api_version: str = "0.1.0"
+    api_version: str = _version
 
     # CORS
     cors_origins: list[str] = [
