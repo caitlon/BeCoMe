@@ -4,6 +4,8 @@ from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from src import __version__
+
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
@@ -24,7 +26,7 @@ class Settings(BaseSettings):
 
     # API
     debug: bool = False
-    api_version: str = "0.1.0"
+    api_version: str = __version__
 
     # CORS
     cors_origins: list[str] = [

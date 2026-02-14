@@ -138,7 +138,7 @@ Environment variables (can use `.env` file):
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | `15` | Access token TTL |
 | `REFRESH_TOKEN_EXPIRE_DAYS` | `7` | Refresh token TTL |
 | `DEBUG` | `false` | Debug mode |
-| `API_VERSION` | `0.1.0` | API version |
+| `API_VERSION` | `1.0.0b1` | API version (auto-read from pyproject.toml) |
 | `CORS_ORIGINS` | `http://localhost:3000,http://localhost:8080` | Allowed CORS origins |
 | `SUPABASE_URL` | *optional* | Supabase project URL |
 | `SUPABASE_KEY` | *optional* | Supabase service key |
