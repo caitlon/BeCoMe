@@ -43,7 +43,7 @@ const getPasswordRequirements = (
   },
   {
     label: t("passwordRequirements.specialChar"),
-    met: /[!@#$%^&*(),.?":{}|<>\-_=+\[\]\\;'/`~]/.test(password),
+    met: /[!@#$%^&*(),.?":{}|<>\-_=+[\]\\;'/`~]/.test(password),
   },
 ];
 

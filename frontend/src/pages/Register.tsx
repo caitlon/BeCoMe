@@ -67,7 +67,7 @@ const getPasswordRequirements = (
   },
   {
     label: t("passwordRequirements.specialChar"),
-    met: /[!@#$%^&*(),.?":{}|<>\-_=+\[\]\\;'/`~]/.test(password),
+    met: /[!@#$%^&*(),.?":{}|<>\-_=+[\]\\;'/`~]/.test(password),
   },
 ];
 
@@ -99,7 +99,7 @@ const Register = () => {
             .regex(/[a-z]/, t("passwordRequirements.lowercase"))
             .regex(/\d/, t("passwordRequirements.number"))
             .regex(
-              /[!@#$%^&*(),.?":{}|<>\-_=+\[\]\\;'/`~]/,
+              /[!@#$%^&*(),.?":{}|<>\-_=+[\]\\;'/`~]/,
               t("passwordRequirements.specialChar")
             ),
           confirmPassword: z.string().min(1, t("validation.passwordRequired")),
