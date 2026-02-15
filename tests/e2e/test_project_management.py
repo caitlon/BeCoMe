@@ -258,7 +258,7 @@ class TestScaleBoundaryOpinion:
 class TestNegativeScaleProject:
     """Projects with negative scale ranges must work correctly."""
 
-    def test_negative_scale_valid_opinion(self, http_client):
+    def test_negative_scale_valid_opinion_returns_201_with_correct_calculation(self, http_client):
         """Scale -100..0, opinion (-80,-50,-20) → 201 with correct calculation."""
         # GIVEN — project with negative scale
         email = unique_email("negscale")

@@ -1,4 +1,5 @@
-import { test, expect, Page } from '@playwright/test';
+import { test, expect } from './fixtures/base';
+import { test as baseTest, Page } from '@playwright/test';
 import { uniqueId, registerUser } from './helpers';
 
 async function createProjectAndNavigate(page: Page, name: string) {
@@ -16,11 +17,7 @@ async function createProjectAndNavigate(page: Page, name: string) {
 }
 
 test.describe('Project Detail — Edge Cases', () => {
-  test('empty project shows no results message', async ({ browser }) => {
-    const context = await browser.newContext();
-    const page = await context.newPage();
-    await page.addInitScript(() => localStorage.setItem('become-language', 'en'));
-
+  test('empty project shows no results message', async ({ page }) => {
     const email = `detail-empty-${uniqueId()}@test.com`;
     await registerUser(page, email, 'Empty', 'Project');
 
@@ -29,16 +26,9 @@ test.describe('Project Detail — Edge Cases', () => {
 
     // No results message: "Results will appear once experts submit their opinions."
     await expect(page.getByText(/results will appear/i)).toBeVisible({ timeout: 10000 });
-
-    await page.close();
-    await context.close();
   });
 
-  test('update existing opinion shows Update button and confirms', async ({ browser }) => {
-    const context = await browser.newContext();
-    const page = await context.newPage();
-    await page.addInitScript(() => localStorage.setItem('become-language', 'en'));
-
+  test('update existing opinion shows Update button and confirms', async ({ page }) => {
     const email = `detail-update-${uniqueId()}@test.com`;
     await registerUser(page, email, 'Updater', 'Tester');
 
@@ -61,7 +51,6 @@ test.describe('Project Detail — Edge Cases', () => {
 
     // Now change a value to enable the button (fetchData already done, won't overwrite)
     const peakField = page.getByLabel('Peak (most likely)').first();
-    await peakField.clear();
     await peakField.fill('50');
     await peakField.blur();
 
@@ -69,16 +58,9 @@ test.describe('Project Detail — Edge Cases', () => {
     await expect(updateBtn).toBeEnabled({ timeout: 5000 });
     await updateBtn.click();
     await expect(page.getByText('Opinion saved', { exact: true })).toBeVisible({ timeout: 5000 });
-
-    await page.close();
-    await context.close();
   });
 
-  test('switch Triangle and Centroid visualization tabs', async ({ browser }) => {
-    const context = await browser.newContext();
-    const page = await context.newPage();
-    await page.addInitScript(() => localStorage.setItem('become-language', 'en'));
-
+  test('switch Triangle and Centroid visualization tabs', async ({ page }) => {
     const email = `detail-viz-${uniqueId()}@test.com`;
     await registerUser(page, email, 'Viz', 'Tester');
 
@@ -115,16 +97,9 @@ test.describe('Project Detail — Edge Cases', () => {
     await triangleTab.click();
     await expect(triangleTab).toHaveAttribute('aria-selected', 'true');
     await expect(centroidTab).toHaveAttribute('aria-selected', 'false');
-
-    await page.close();
-    await context.close();
   });
 
-  test('toggle Show Individual Opinions checkbox', async ({ browser }) => {
-    const context = await browser.newContext();
-    const page = await context.newPage();
-    await page.addInitScript(() => localStorage.setItem('become-language', 'en'));
-
+  test('toggle Show Individual Opinions checkbox', async ({ page }) => {
     const email = `detail-indiv-${uniqueId()}@test.com`;
     await registerUser(page, email, 'Indiv', 'Tester');
 
@@ -156,12 +131,12 @@ test.describe('Project Detail — Edge Cases', () => {
     // Toggle off
     await checkbox.uncheck();
     await expect(checkbox).not.toBeChecked();
-
-    await page.close();
-    await context.close();
   });
+});
 
-  test('clicking team member opens profile dialog', async ({ browser }) => {
+// Tests requiring manual browser context management
+baseTest.describe('Project Detail — Multi-Context', () => {
+  baseTest('clicking team member opens profile dialog', async ({ browser }) => {
     const ownerContext = await browser.newContext();
     const expertContext = await browser.newContext();
     const ownerPage = await ownerContext.newPage();
@@ -193,6 +168,11 @@ test.describe('Project Detail — Edge Cases', () => {
     await expect(expertPage.getByText(projectName)).toBeVisible({ timeout: 10000 });
     await expertPage.getByRole('button', { name: 'Accept Invitation' }).click();
 
+    // Wait for acceptance confirmation before owner reload
+    await expect(expertPage.getByRole('button', { name: 'Accept Invitation' })).toBeHidden({
+      timeout: 10000,
+    });
+
     // Owner reloads to see team member
     await ownerPage.reload();
 
@@ -216,7 +196,7 @@ test.describe('Project Detail — Edge Cases', () => {
     await expertContext.close();
   });
 
-  test('language switch to Czech persists across navigation', async ({ browser }) => {
+  baseTest('language switch to Czech persists across navigation', async ({ browser }) => {
     // Do NOT use addInitScript here — it would override language on every navigation
     const context = await browser.newContext();
     const page = await context.newPage();
