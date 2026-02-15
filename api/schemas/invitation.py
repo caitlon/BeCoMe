@@ -45,7 +45,7 @@ class InvitationListItemResponse(BaseModel):
     id: str
     project_id: str
     project_name: str
-    project_description: str | None
+    project_description: str | None = None
     project_scale_min: float
     project_scale_max: float
     project_scale_unit: str
@@ -91,7 +91,7 @@ class ProjectInvitationResponse(BaseModel):
     id: str
     invitee_email: str
     invitee_first_name: str
-    invitee_last_name: str | None
+    invitee_last_name: str | None = None
     invited_at: datetime
 
     @classmethod

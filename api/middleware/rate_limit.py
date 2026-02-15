@@ -30,7 +30,7 @@ _is_testing = os.environ.get("TESTING", "").lower() in ("1", "true", "yes")
 limiter = Limiter(key_func=_get_client_ip, enabled=not _is_testing)
 
 # Rate limit constants for different endpoint types
-RATE_LIMIT_AUTH = "5/minute"  # Login, register - strict to prevent brute-force
-RATE_LIMIT_PASSWORD = "3/minute"  # Password reset/change - very strict
-RATE_LIMIT_STANDARD = "60/minute"  # Normal API endpoints
-RATE_LIMIT_UPLOAD = "10/minute"  # File uploads - prevent abuse
+LIMIT_AUTH_ENDPOINTS = "5/minute"  # Login, register - strict to prevent brute-force
+LIMIT_PWD_RESET = "3/minute"  # Password reset/change - very strict
+LIMIT_STANDARD = "60/minute"  # Normal API endpoints
+LIMIT_UPLOAD = "10/minute"  # File uploads - prevent abuse

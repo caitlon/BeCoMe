@@ -23,11 +23,7 @@ from api.services.opinion_service import OpinionService
 router = APIRouter(prefix="/api/v1/projects", tags=["opinions"])
 
 
-@router.get(
-    "/{project_id}/opinions",
-    response_model=list[OpinionResponse],
-    summary="List project opinions",
-)
+@router.get("/{project_id}/opinions", summary="List project opinions")
 def list_opinions(
     project_id: UUID,
     project: ProjectMember,
@@ -45,7 +41,6 @@ def list_opinions(
 
 @router.post(
     "/{project_id}/opinions",
-    response_model=OpinionResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Submit or update opinion",
 )
@@ -112,11 +107,7 @@ def delete_opinion(
     calculation_service.recalculate(project.id)
 
 
-@router.get(
-    "/{project_id}/result",
-    response_model=CalculationResultResponse | None,
-    summary="Get calculation result",
-)
+@router.get("/{project_id}/result", summary="Get calculation result")
 def get_result(
     project_id: UUID,
     project: ProjectMember,

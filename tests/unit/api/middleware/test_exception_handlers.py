@@ -1,6 +1,5 @@
 """Tests for exception handlers."""
 
-import asyncio
 from unittest.mock import MagicMock, patch
 
 from fastapi import FastAPI, status
@@ -146,7 +145,7 @@ class TestBecomeApiErrorHandler:
         exc = ProjectNotFoundError("Project 123 not found")
 
         # WHEN
-        response = asyncio.run(become_api_error_handler(request, exc))
+        response = become_api_error_handler(request, exc)
 
         # THEN
         assert response.status_code == status.HTTP_404_NOT_FOUND
@@ -163,7 +162,7 @@ class TestBecomeApiErrorHandler:
         exc = InvalidCredentialsError()
 
         # WHEN
-        response = asyncio.run(become_api_error_handler(request, exc))
+        response = become_api_error_handler(request, exc)
 
         # THEN
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
@@ -184,7 +183,7 @@ class TestBecomeApiErrorHandler:
 
         with patch("api.middleware.exception_handlers.log_login_failure") as mock_log:
             # WHEN
-            asyncio.run(become_api_error_handler(request, exc))
+            become_api_error_handler(request, exc)
 
             # THEN
             mock_log.assert_called_once_with(
@@ -205,7 +204,7 @@ class TestBecomeApiErrorHandler:
 
         with patch("api.middleware.exception_handlers.log_login_failure") as mock_log:
             # WHEN
-            asyncio.run(become_api_error_handler(request, exc))
+            become_api_error_handler(request, exc)
 
             # THEN
             mock_log.assert_not_called()

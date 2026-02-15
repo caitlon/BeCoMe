@@ -11,6 +11,10 @@ from sqlmodel import Field, Relationship, SQLModel
 
 from api.db.utils import EMAIL_REGEX, utc_now
 
+_USERS_FK = "users.id"
+_PROJECTS_FK = "projects.id"
+_CASCADE_ALL_DELETE_ORPHAN = "all, delete-orphan"
+
 
 class MemberRole(str, enum.Enum):
     """Role of a member within a project."""
@@ -54,7 +58,7 @@ class Project(SQLModel, table=True):
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     name: str = Field(max_length=255)
     description: str | None = Field(default=None)
-    admin_id: UUID = Field(foreign_key="users.id", ondelete="CASCADE")
+    admin_id: UUID = Field(foreign_key=_USERS_FK, ondelete="CASCADE")
     scale_min: float = Field(default=0.0)
     scale_max: float = Field(default=100.0)
     scale_unit: str = Field(default="", max_length=50)
@@ -67,19 +71,19 @@ class Project(SQLModel, table=True):
     admin: User = Relationship(back_populates="owned_projects")
     members: list["ProjectMember"] = Relationship(
         back_populates="project",
-        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+        sa_relationship_kwargs={"cascade": _CASCADE_ALL_DELETE_ORPHAN},
     )
     invitations: list["Invitation"] = Relationship(
         back_populates="project",
-        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+        sa_relationship_kwargs={"cascade": _CASCADE_ALL_DELETE_ORPHAN},
     )
     opinions: list["ExpertOpinion"] = Relationship(
         back_populates="project",
-        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+        sa_relationship_kwargs={"cascade": _CASCADE_ALL_DELETE_ORPHAN},
     )
     result: Optional["CalculationResult"] = Relationship(
         back_populates="project",
-        sa_relationship_kwargs={"uselist": False, "cascade": "all, delete-orphan"},
+        sa_relationship_kwargs={"uselist": False, "cascade": _CASCADE_ALL_DELETE_ORPHAN},
     )
 
     @model_validator(mode="after")
@@ -101,8 +105,8 @@ class ProjectMember(SQLModel, table=True):
     __table_args__ = (UniqueConstraint("project_id", "user_id"),)
 
     id: UUID = Field(default_factory=uuid4, primary_key=True)
-    project_id: UUID = Field(foreign_key="projects.id", index=True, ondelete="CASCADE")
-    user_id: UUID = Field(foreign_key="users.id", index=True, ondelete="CASCADE")
+    project_id: UUID = Field(foreign_key=_PROJECTS_FK, index=True, ondelete="CASCADE")
+    user_id: UUID = Field(foreign_key=_USERS_FK, index=True, ondelete="CASCADE")
     role: MemberRole = Field(default=MemberRole.EXPERT)
     joined_at: datetime = Field(default_factory=utc_now)
 
@@ -120,9 +124,9 @@ class Invitation(SQLModel, table=True):
     __table_args__ = (UniqueConstraint("project_id", "invitee_id"),)
 
     id: UUID = Field(default_factory=uuid4, primary_key=True)
-    project_id: UUID = Field(foreign_key="projects.id", index=True, ondelete="CASCADE")
-    invitee_id: UUID = Field(foreign_key="users.id", index=True, ondelete="CASCADE")
-    inviter_id: UUID = Field(foreign_key="users.id", ondelete="CASCADE")
+    project_id: UUID = Field(foreign_key=_PROJECTS_FK, index=True, ondelete="CASCADE")
+    invitee_id: UUID = Field(foreign_key=_USERS_FK, index=True, ondelete="CASCADE")
+    inviter_id: UUID = Field(foreign_key=_USERS_FK, ondelete="CASCADE")
     created_at: datetime = Field(default_factory=utc_now)
 
     project: Project = Relationship(back_populates="invitations")
@@ -144,8 +148,8 @@ class ExpertOpinion(SQLModel, table=True):
     __table_args__ = (UniqueConstraint("project_id", "user_id"),)
 
     id: UUID = Field(default_factory=uuid4, primary_key=True)
-    project_id: UUID = Field(foreign_key="projects.id", index=True, ondelete="CASCADE")
-    user_id: UUID = Field(foreign_key="users.id", index=True, ondelete="CASCADE")
+    project_id: UUID = Field(foreign_key=_PROJECTS_FK, index=True, ondelete="CASCADE")
+    user_id: UUID = Field(foreign_key=_USERS_FK, index=True, ondelete="CASCADE")
     position: str = Field(max_length=255)
     lower_bound: float
     peak: float
@@ -174,7 +178,7 @@ class PasswordResetToken(SQLModel, table=True):
     __tablename__ = "password_reset_tokens"
 
     id: UUID = Field(default_factory=uuid4, primary_key=True)
-    user_id: UUID = Field(foreign_key="users.id", index=True, ondelete="CASCADE")
+    user_id: UUID = Field(foreign_key=_USERS_FK, index=True, ondelete="CASCADE")
     token: UUID = Field(default_factory=uuid4, unique=True, index=True)
     created_at: datetime = Field(default_factory=utc_now)
     expires_at: datetime
@@ -189,7 +193,7 @@ class CalculationResult(SQLModel, table=True):
     __tablename__ = "calculation_results"
 
     id: UUID = Field(default_factory=uuid4, primary_key=True)
-    project_id: UUID = Field(foreign_key="projects.id", unique=True, index=True, ondelete="CASCADE")
+    project_id: UUID = Field(foreign_key=_PROJECTS_FK, unique=True, index=True, ondelete="CASCADE")
     best_compromise_lower: float
     best_compromise_peak: float
     best_compromise_upper: float

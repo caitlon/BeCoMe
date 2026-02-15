@@ -18,7 +18,10 @@ from src.models.fuzzy_number import FuzzyTriangleNumber
 router = APIRouter(prefix="/api/v1", tags=["calculation"])
 
 
-@router.post("/calculate", response_model=CalculateResponse)
+@router.post(
+    "/calculate",
+    responses={400: {"description": "Invalid input or calculation error"}},
+)
 def calculate(
     request: CalculateRequest,
     calculator: Annotated[BeCoMeCalculator, Depends(get_calculator)],

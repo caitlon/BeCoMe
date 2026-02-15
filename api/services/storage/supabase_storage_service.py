@@ -14,6 +14,11 @@ from api.services.storage.exceptions import (
 if TYPE_CHECKING:
     from api.config import Settings
 
+_MIME_JPEG = "image/jpeg"
+_MIME_PNG = "image/png"
+_MIME_GIF = "image/gif"
+_MIME_WEBP = "image/webp"
+
 
 class SupabaseStorageService:
     """Supabase Storage implementation for file operations.
@@ -24,31 +29,23 @@ class SupabaseStorageService:
     :param settings: Application settings with Supabase configuration
     """
 
-    ALLOWED_CONTENT_TYPES = frozenset(
-        {
-            "image/jpeg",
-            "image/png",
-            "image/gif",
-            "image/webp",
-        }
-    )
-    MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024  # 5 MB
-
     # Map content types to file extensions (trusted, not from user input)
     CONTENT_TYPE_TO_EXTENSION: ClassVar[dict[str, str]] = {
-        "image/jpeg": "jpg",
-        "image/png": "png",
-        "image/gif": "gif",
-        "image/webp": "webp",
+        _MIME_JPEG: "jpg",
+        _MIME_PNG: "png",
+        _MIME_GIF: "gif",
+        _MIME_WEBP: "webp",
     }
+    ALLOWED_CONTENT_TYPES = frozenset(CONTENT_TYPE_TO_EXTENSION)
+    MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024  # 5 MB
 
     # Magic bytes for image file type verification
     IMAGE_SIGNATURES: ClassVar[dict[bytes, str]] = {
-        b"\xff\xd8\xff": "image/jpeg",  # JPEG
-        b"\x89PNG\r\n\x1a\n": "image/png",  # PNG
-        b"GIF87a": "image/gif",  # GIF87a
-        b"GIF89a": "image/gif",  # GIF89a
-        b"RIFF": "image/webp",  # WebP (need to check for WEBP after RIFF)
+        b"\xff\xd8\xff": _MIME_JPEG,  # JPEG
+        b"\x89PNG\r\n\x1a\n": _MIME_PNG,  # PNG
+        b"GIF87a": _MIME_GIF,  # GIF87a
+        b"GIF89a": _MIME_GIF,  # GIF89a
+        b"RIFF": _MIME_WEBP,  # WebP (need to check for WEBP after RIFF)
     }
 
     @classmethod
@@ -68,7 +65,7 @@ class SupabaseStorageService:
                 # Special case for WebP: RIFF header needs WEBP check
                 if signature == b"RIFF":
                     if len(content) >= 12 and content[8:12] == b"WEBP":
-                        return claimed_content_type == "image/webp"
+                        return claimed_content_type == _MIME_WEBP
                     continue
                 return claimed_content_type == actual_type
 

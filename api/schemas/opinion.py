@@ -44,7 +44,7 @@ class OpinionResponse(BaseModel):
     user_id: str
     user_email: str
     user_first_name: str
-    user_last_name: str | None
+    user_last_name: str | None = None
     position: str
     lower_bound: float
     peak: float

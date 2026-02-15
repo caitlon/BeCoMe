@@ -64,7 +64,7 @@ class ProjectResponse(BaseModel):
 
     id: str
     name: str
-    description: str | None
+    description: str | None = None
     scale_min: float
     scale_max: float
     scale_unit: str
@@ -129,7 +129,7 @@ class MemberResponse(BaseModel):
     user_id: str
     email: str
     first_name: str
-    last_name: str | None
+    last_name: str | None = None
     photo_url: str | None = None
     role: str
     joined_at: datetime

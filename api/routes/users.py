@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from api.auth.dependencies import CurrentUser
 from api.auth.logging import log_account_deletion, log_password_change
 from api.dependencies import get_storage_service, get_user_service
-from api.middleware.rate_limit import RATE_LIMIT_PASSWORD, RATE_LIMIT_UPLOAD, limiter
+from api.middleware.rate_limit import LIMIT_PWD_RESET, LIMIT_UPLOAD, limiter
 from api.schemas.auth import ChangePasswordRequest, UpdateUserRequest, UserResponse
 from api.services.storage.exceptions import StorageDeleteError, StorageUploadError
 from api.services.storage.supabase_storage_service import SupabaseStorageService
@@ -17,11 +17,7 @@ from api.services.user_service import UserService
 router = APIRouter(prefix="/api/v1/users", tags=["users"])
 
 
-@router.get(
-    "/me",
-    response_model=UserResponse,
-    summary="Get current user profile",
-)
+@router.get("/me", summary="Get current user profile")
 def get_current_user_profile(current_user: CurrentUser) -> UserResponse:
     """Return the authenticated user's profile.
 
@@ -37,11 +33,7 @@ def get_current_user_profile(current_user: CurrentUser) -> UserResponse:
     )
 
 
-@router.put(
-    "/me",
-    response_model=UserResponse,
-    summary="Update current user profile",
-)
+@router.put("/me", summary="Update current user profile")
 def update_current_user(
     current_user: CurrentUser,
     request: UpdateUserRequest,
@@ -73,7 +65,7 @@ def update_current_user(
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Change current user password",
 )
-@limiter.limit(RATE_LIMIT_PASSWORD)
+@limiter.limit(LIMIT_PWD_RESET)
 def change_password(
     request: Request,
     current_user: CurrentUser,
@@ -125,14 +117,13 @@ def delete_current_user(
 
 @router.post(
     "/me/photo",
-    response_model=UserResponse,
     summary="Upload profile photo",
     responses={
         400: {"description": "Invalid file type or file too large"},
         503: {"description": "Storage service unavailable"},
     },
 )
-@limiter.limit(RATE_LIMIT_UPLOAD)
+@limiter.limit(LIMIT_UPLOAD)
 async def upload_photo(
     request: Request,
     current_user: CurrentUser,

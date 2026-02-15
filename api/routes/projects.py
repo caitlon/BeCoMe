@@ -31,11 +31,7 @@ from api.services.project_service import ProjectService
 router = APIRouter(prefix="/api/v1/projects", tags=["projects"])
 
 
-@router.get(
-    "",
-    response_model=list[ProjectWithRoleResponse],
-    summary="List user's projects",
-)
+@router.get("", summary="List user's projects")
 def list_projects(
     current_user: CurrentUser,
     query_service: Annotated[ProjectQueryService, Depends(get_project_query_service)],
@@ -57,7 +53,6 @@ def list_projects(
 
 @router.post(
     "",
-    response_model=ProjectResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Create a new project",
 )
@@ -77,11 +72,7 @@ def create_project(
     return ProjectResponse.from_model(project, member_count=1)
 
 
-@router.get(
-    "/{project_id}",
-    response_model=ProjectWithRoleResponse,
-    summary="Get project details",
-)
+@router.get("/{project_id}", summary="Get project details")
 def get_project(
     project_id: UUID,
     project: ProjectMember,
@@ -112,11 +103,7 @@ def get_project(
     )
 
 
-@router.patch(
-    "/{project_id}",
-    response_model=ProjectResponse,
-    summary="Update project",
-)
+@router.patch("/{project_id}", summary="Update project")
 def update_project(
     project_id: UUID,
     project: ProjectAdmin,
@@ -154,11 +141,7 @@ def delete_project(
     service.delete_project(project.id)
 
 
-@router.get(
-    "/{project_id}/members",
-    response_model=list[MemberResponse],
-    summary="List project members",
-)
+@router.get("/{project_id}/members", summary="List project members")
 def list_members(
     project_id: UUID,
     project: ProjectMember,

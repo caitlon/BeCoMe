@@ -21,7 +21,7 @@ from api.auth.jwt import (
 from api.auth.logging import log_login_success, log_registration
 from api.config import get_settings
 from api.dependencies import get_user_service
-from api.middleware.rate_limit import RATE_LIMIT_AUTH, limiter
+from api.middleware.rate_limit import LIMIT_AUTH_ENDPOINTS, limiter
 from api.schemas.auth import RefreshTokenRequest, RegisterRequest, TokenResponse, UserResponse
 from api.services.user_service import UserService
 
@@ -30,11 +30,10 @@ router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
 @router.post(
     "/register",
-    response_model=UserResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Register a new user",
 )
-@limiter.limit(RATE_LIMIT_AUTH)
+@limiter.limit(LIMIT_AUTH_ENDPOINTS)
 def register(
     request: Request,
     data: RegisterRequest,
@@ -67,12 +66,8 @@ def register(
     )
 
 
-@router.post(
-    "/login",
-    response_model=TokenResponse,
-    summary="Login and get access + refresh tokens",
-)
-@limiter.limit(RATE_LIMIT_AUTH)
+@router.post("/login", summary="Login and get access + refresh tokens")
+@limiter.limit(LIMIT_AUTH_ENDPOINTS)
 def login(
     request: Request,
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
@@ -102,12 +97,8 @@ def login(
     )
 
 
-@router.post(
-    "/refresh",
-    response_model=TokenResponse,
-    summary="Refresh access token",
-)
-@limiter.limit(RATE_LIMIT_AUTH)
+@router.post("/refresh", summary="Refresh access token")
+@limiter.limit(LIMIT_AUTH_ENDPOINTS)
 def refresh_token(
     request: Request,
     data: RefreshTokenRequest,
@@ -158,11 +149,7 @@ def logout(
     revoke_token(token_payload.jti)
 
 
-@router.get(
-    "/me",
-    response_model=UserResponse,
-    summary="Get current user profile",
-)
+@router.get("/me", summary="Get current user profile")
 def get_me(current_user: CurrentUser) -> UserResponse:
     """Return the authenticated user's profile.
 
