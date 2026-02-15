@@ -101,7 +101,10 @@ const ProjectDetail = () => {
           api.getOpinions(id),
           api.getResult(id),
           api.getMembers(id),
-          api.getProjectInvitations(id).catch(() => [] as ProjectInvitation[]),
+          api.getProjectInvitations(id).catch(() => {
+            // Invitations endpoint may return 403 for non-admin users
+            return [] as ProjectInvitation[];
+          }),
         ]);
       setProject(projectData);
       setOpinions(opinionsData);
@@ -117,7 +120,7 @@ const ProjectDetail = () => {
         setPeak(String(existing.peak));
         setUpper(String(existing.upper_bound));
       }
-    } catch (error) {
+    } catch {
       toast({
         title: t("toast.error"),
         description: t("toast.loadProjectFailed"),
@@ -136,12 +139,12 @@ const ProjectDetail = () => {
   const handleSaveOpinion = async () => {
     if (!id || !project) return;
 
-    const lowerNum = parseFloat(lower);
-    const peakNum = parseFloat(peak);
-    const upperNum = parseFloat(upper);
+    const lowerNum = Number.parseFloat(lower);
+    const peakNum = Number.parseFloat(peak);
+    const upperNum = Number.parseFloat(upper);
 
     // Validation
-    if (isNaN(lowerNum) || isNaN(peakNum) || isNaN(upperNum)) {
+    if (Number.isNaN(lowerNum) || Number.isNaN(peakNum) || Number.isNaN(upperNum)) {
       toast({
         title: t("toast.validationError"),
         description: t("toast.invalidNumbers"),
@@ -199,7 +202,7 @@ const ProjectDetail = () => {
       setUpper("");
       toast({ title: t("toast.opinionDeleted") });
       fetchData();
-    } catch (error) {
+    } catch {
       toast({
         title: t("toast.error"),
         description: t("toast.deleteOpinionFailed"),
@@ -214,7 +217,7 @@ const ProjectDetail = () => {
       await api.deleteProject(id);
       toast({ title: t("toast.projectDeleted") });
       navigate("/projects");
-    } catch (error) {
+    } catch {
       toast({
         title: t("toast.error"),
         description: t("toast.deleteFailed"),
@@ -229,7 +232,7 @@ const ProjectDetail = () => {
       await api.removeMember(id, userId);
       toast({ title: t("toast.memberRemoved") });
       fetchData();
-    } catch (error) {
+    } catch {
       toast({
         title: t("toast.error"),
         description: t("toast.removeMemberFailed"),
@@ -243,10 +246,10 @@ const ProjectDetail = () => {
       <div className="min-h-screen">
         <Navbar />
         <main id="main-content" className="pt-24 flex items-center justify-center">
-          <div role="status" aria-label={tCommon("a11y.loading")}>
+          <output aria-label={tCommon("a11y.loading")}>
             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             <span className="sr-only">{tCommon("common.loading")}</span>
-          </div>
+          </output>
         </main>
       </div>
     );
@@ -508,9 +511,9 @@ const OpinionForm = ({
 }: OpinionFormProps) => {
   const { t } = useTranslation("projects");
   const { t: tFuzzy } = useTranslation();
-  const lowerNum = parseFloat(lower) || 0;
-  const peakNum = parseFloat(peak) || 0;
-  const upperNum = parseFloat(upper) || 0;
+  const lowerNum = Number.parseFloat(lower) || 0;
+  const peakNum = Number.parseFloat(peak) || 0;
+  const upperNum = Number.parseFloat(upper) || 0;
   const isValid =
     lowerNum <= peakNum &&
     peakNum <= upperNum &&
@@ -592,7 +595,7 @@ const OpinionForm = ({
         {/* Mini Triangle Preview */}
         {lower && peak && upper && isValid && (
           <div className="bg-muted rounded p-4">
-            <svg viewBox="0 0 200 60" className="w-full h-12" role="img" aria-label={tFuzzy("a11y.opinionPreviewDesc", { lower: lowerNum, peak: peakNum, upper: upperNum })}>
+            <svg viewBox="0 0 200 60" className="w-full h-12" aria-label={tFuzzy("a11y.opinionPreviewDesc", { lower: lowerNum, peak: peakNum, upper: upperNum })}>
               <line
                 x1="10"
                 y1="50"
@@ -655,34 +658,38 @@ const OpinionForm = ({
         )}
 
         <div className="flex flex-col gap-2">
-          <div className="flex gap-3">
-            <SubmitButton
-              type="button"
-              onClick={onSave}
-              disabled={!lower || !peak || !upper || !position.trim() || !hasChanges}
-              isLoading={isSaving}
-              className="flex-1"
-              aria-describedby={
-                !position.trim() || (!lower || !peak || !upper) || !hasChanges
-                  ? "opinion-hint" : undefined
-              }
-            >
-              {myOpinion ? t("detail.updateOpinion") : t("detail.saveOpinion")}
-            </SubmitButton>
-          </div>
-          {!position.trim() ? (
-            <p id="opinion-hint" className="text-xs text-muted-foreground">
-              {t("detail.hintPositionRequired")}
-            </p>
-          ) : !lower || !peak || !upper ? (
-            <p id="opinion-hint" className="text-xs text-muted-foreground">
-              {t("detail.hintFieldsRequired")}
-            </p>
-          ) : !hasChanges ? (
-            <p id="opinion-hint" className="text-xs text-muted-foreground">
-              {t("detail.hintNoChanges")}
-            </p>
-          ) : null}
+          {(() => {
+            let hintMessage: string | null = null;
+            if (!position.trim()) {
+              hintMessage = t("detail.hintPositionRequired");
+            } else if (!lower || !peak || !upper) {
+              hintMessage = t("detail.hintFieldsRequired");
+            } else if (!hasChanges) {
+              hintMessage = t("detail.hintNoChanges");
+            }
+
+            return (
+              <>
+                <div className="flex gap-3">
+                  <SubmitButton
+                    type="button"
+                    onClick={onSave}
+                    disabled={!lower || !peak || !upper || !position.trim() || !hasChanges}
+                    isLoading={isSaving}
+                    className="flex-1"
+                    aria-describedby={hintMessage ? "opinion-hint" : undefined}
+                  >
+                    {myOpinion ? t("detail.updateOpinion") : t("detail.saveOpinion")}
+                  </SubmitButton>
+                </div>
+                {hintMessage && (
+                  <p id="opinion-hint" className="text-xs text-muted-foreground">
+                    {hintMessage}
+                  </p>
+                )}
+              </>
+            );
+          })()}
         </div>
 
         {myOpinion && (
@@ -841,7 +848,14 @@ const ResultsSection = ({
   const scaleRange = project.scale_max - project.scale_min;
   const errorPercent = (result.max_error / scaleRange) * 100;
 
-  const agreementLevel = errorPercent <= 20 ? "high" : errorPercent <= 40 ? "moderate" : "low";
+  let agreementLevel: "high" | "moderate" | "low";
+  if (errorPercent <= 20) {
+    agreementLevel = "high";
+  } else if (errorPercent <= 40) {
+    agreementLevel = "moderate";
+  } else {
+    agreementLevel = "low";
+  }
   const agreementColorClass = {
     high: "[&>div]:bg-green-700",
     moderate: "[&>div]:bg-amber-500",
@@ -1039,7 +1053,7 @@ const TriangleVisualization = ({
   const peakY = 30;
 
   return (
-    <svg viewBox="0 0 400 200" className="w-full" role="img" aria-label={tCommon("a11y.resultsChartDesc")}>
+    <svg viewBox="0 0 400 200" className="w-full" aria-label={tCommon("a11y.resultsChartDesc")}>
       {/* Axes */}
       <line
         x1="40"

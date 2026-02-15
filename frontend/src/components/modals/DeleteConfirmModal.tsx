@@ -12,14 +12,14 @@ import { Button } from "@/components/ui/button";
 import { SubmitButton } from "@/components/forms";
 
 interface DeleteConfirmModalProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  title: string;
-  description: string;
-  details?: string[];
-  onConfirm: () => Promise<void>;
-  confirmText?: string;
-  loadingText?: string;
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+  readonly title: string;
+  readonly description: string;
+  readonly details?: string[];
+  readonly onConfirm: () => Promise<void>;
+  readonly confirmText?: string;
+  readonly loadingText?: string;
 }
 
 export function DeleteConfirmModal({
@@ -63,8 +63,8 @@ export function DeleteConfirmModal({
             <div className="bg-muted p-4 rounded-lg mb-4">
               <p className="text-sm font-medium mb-2">{t("deleteModal.permanentlyDelete")}</p>
               <ul className="text-sm text-muted-foreground space-y-1">
-                {details.map((detail, index) => (
-                  <li key={index}>• {detail}</li>
+                {details.map((detail) => (
+                  <li key={detail}>• {detail}</li>
                 ))}
               </ul>
             </div>

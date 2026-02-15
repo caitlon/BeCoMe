@@ -12,6 +12,12 @@ interface FormFieldProps extends React.InputHTMLAttributes<HTMLInputElement> {
   description?: string;
 }
 
+function getDescribedBy(error: FieldError | undefined, errorId: string, description: string | undefined, descriptionId: string): string | undefined {
+  if (error) return errorId;
+  if (description) return descriptionId;
+  return undefined;
+}
+
 const FormField = React.forwardRef<HTMLInputElement, FormFieldProps>(
   ({ label, error, description, id, className, name, ...props }, ref) => {
     const reactId = React.useId();
@@ -26,9 +32,7 @@ const FormField = React.forwardRef<HTMLInputElement, FormFieldProps>(
           ref={ref}
           id={fieldId}
           name={name}
-          aria-describedby={
-            error ? errorId : description ? descriptionId : undefined
-          }
+          aria-describedby={getDescribedBy(error, errorId, description, descriptionId)}
           aria-invalid={!!error}
           className={cn(error && "border-destructive", className)}
           {...props}
@@ -70,9 +74,7 @@ const FormTextarea = React.forwardRef<HTMLTextAreaElement, FormTextareaProps>(
           ref={ref}
           id={fieldId}
           name={name}
-          aria-describedby={
-            error ? errorId : description ? descriptionId : undefined
-          }
+          aria-describedby={getDescribedBy(error, errorId, description, descriptionId)}
           aria-invalid={!!error}
           className={cn(error && "border-destructive", className)}
           {...props}

@@ -1,8 +1,8 @@
 import { motion } from "framer-motion";
 
 interface HeroSectionProps {
-  title: string;
-  subtitle: string;
+  readonly title: string;
+  readonly subtitle: string;
 }
 
 export function HeroSection({ title, subtitle }: HeroSectionProps) {

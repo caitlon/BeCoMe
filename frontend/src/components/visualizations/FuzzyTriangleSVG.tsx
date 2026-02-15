@@ -19,7 +19,7 @@ export function FuzzyTriangleSVG() {
   const [currentForm, setCurrentForm] = useState(0);
 
   useEffect(() => {
-    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const prefersReducedMotion = globalThis.matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (prefersReducedMotion) return;
 
     const interval = setInterval(() => {
@@ -34,7 +34,6 @@ export function FuzzyTriangleSVG() {
     <svg
       viewBox="0 0 400 200"
       className="w-full max-w-2xl mx-auto"
-      role="img"
       aria-labelledby="fuzzy-triangle-title fuzzy-triangle-desc"
     >
       <title id="fuzzy-triangle-title">{t("fuzzy.triangleVisualization")}</title>
@@ -79,7 +78,7 @@ export function FuzzyTriangleSVG() {
       {/* Dashed triangle outlines (all three forms, static) */}
       {triangleForms.map((form, index) => (
         <polygon
-          key={index}
+          key={form.points}
           points={form.points}
           fill="none"
           stroke="currentColor"

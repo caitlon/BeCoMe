@@ -23,10 +23,10 @@ describe('StepEnterOpinion', () => {
     expect(screen.getByLabelText(/upper|horní/i)).toHaveValue(70);
   });
 
-  it('renders triangle preview SVG with role="img"', () => {
-    render(<StepEnterOpinion />);
+  it('renders triangle preview SVG with aria-labelledby', () => {
+    const { container } = render(<StepEnterOpinion />);
 
-    const svg = screen.getByRole('img');
+    const svg = container.querySelector('svg[aria-labelledby]');
     expect(svg).toBeInTheDocument();
     expect(svg).toHaveAttribute('aria-labelledby', 'triangle-preview-title');
   });
@@ -50,7 +50,7 @@ describe('StepEnterOpinion', () => {
     await user.type(lowerInput, '80');
 
     // The error text from the preview should be visible
-    const svg = screen.getByRole('img');
+    const svg = document.querySelector('svg[aria-labelledby]')!;
     const errorText = svg.querySelector('text');
     expect(errorText).toBeInTheDocument();
     expect(errorText?.textContent).toBeTruthy();

@@ -1,15 +1,15 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { User } from '@/types/api';
 import { api } from '@/lib/api';
 
 interface AuthContextType {
-  user: User | null;
-  isLoading: boolean;
-  isAuthenticated: boolean;
-  login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, firstName: string, lastName?: string) => Promise<void>;
-  logout: () => void;
-  refreshUser: () => Promise<void>;
+  readonly user: User | null;
+  readonly isLoading: boolean;
+  readonly isAuthenticated: boolean;
+  readonly login: (email: string, password: string) => Promise<void>;
+  readonly register: (email: string, password: string, firstName: string, lastName?: string) => Promise<void>;
+  readonly logout: () => void;
+  readonly refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -41,38 +41,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     refreshUser();
   }, [refreshUser]);
 
-  const login = async (email: string, password: string) => {
+  const login = useCallback(async (email: string, password: string) => {
     await api.login(email, password);
     await refreshUser();
-  };
+  }, [refreshUser]);
 
-  const register = async (email: string, password: string, firstName: string, lastName?: string) => {
+  const register = useCallback(async (email: string, password: string, firstName: string, lastName?: string) => {
     await api.register({
       email,
       password,
       first_name: firstName,
       last_name: lastName,
     });
-    await login(email, password);
-  };
+    await api.login(email, password);
+    await refreshUser();
+  }, [refreshUser]);
 
-  const logout = () => {
+  const logout = useCallback(() => {
     api.logout();
     setUser(null);
-  };
+  }, []);
+
+  const value = useMemo(() => ({
+    user,
+    isLoading,
+    isAuthenticated: !!user,
+    login,
+    register,
+    logout,
+    refreshUser,
+  }), [user, isLoading, login, register, logout, refreshUser]);
 
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        isLoading,
-        isAuthenticated: !!user,
-        login,
-        register,
-        logout,
-        refreshUser,
-      }}
-    >
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );

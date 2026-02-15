@@ -15,8 +15,8 @@ import {
 import type { Opinion, CalculationResult } from "@/types/api";
 
 interface CentroidBarChartProps {
-  opinions: Opinion[];
-  result: CalculationResult;
+  readonly opinions: Opinion[];
+  readonly result: CalculationResult;
 }
 
 interface ChartDataItem {
@@ -36,10 +36,10 @@ function CustomTooltip({
   tChart,
   tFuzzy,
 }: {
-  active?: boolean;
-  payload?: Array<{ payload: ChartDataItem }>;
-  tChart: (key: string) => string;
-  tFuzzy: (key: string) => string;
+  readonly active?: boolean;
+  readonly payload?: Array<{ payload: ChartDataItem }>;
+  readonly tChart: (key: string) => string;
+  readonly tFuzzy: (key: string) => string;
 }) {
   if (!active || !payload?.length) return null;
 
@@ -64,8 +64,8 @@ function CustomTooltip({
 }
 
 function usePrefersReducedMotion(): boolean {
-  if (typeof window === "undefined") return false;
-  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (typeof globalThis === "undefined") return false;
+  return globalThis.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
 export function CentroidBarChart({ opinions, result }: CentroidBarChartProps) {
@@ -75,9 +75,9 @@ export function CentroidBarChart({ opinions, result }: CentroidBarChartProps) {
   const chartData = useMemo(() => {
     const sorted = [...opinions].sort((a, b) => a.centroid - b.centroid);
     return sorted.map((op): ChartDataItem => ({
-      x: parseFloat(op.centroid.toFixed(2)),
+      x: Number.parseFloat(op.centroid.toFixed(2)),
       y: 1,
-      centroid: parseFloat(op.centroid.toFixed(2)),
+      centroid: Number.parseFloat(op.centroid.toFixed(2)),
       lower: op.lower_bound,
       peak: op.peak,
       upper: op.upper_bound,

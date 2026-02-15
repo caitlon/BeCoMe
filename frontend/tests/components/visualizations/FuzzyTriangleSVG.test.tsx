@@ -31,10 +31,10 @@ afterEach(() => {
 });
 
 describe('FuzzyTriangleSVG', () => {
-  it('SVG has role="img" and aria-labelledby', () => {
-    render(<FuzzyTriangleSVG />);
+  it('SVG has aria-labelledby for accessibility', () => {
+    const { container } = render(<FuzzyTriangleSVG />);
 
-    const svg = screen.getByRole('img');
+    const svg = container.querySelector('svg');
     expect(svg).toHaveAttribute('aria-labelledby', 'fuzzy-triangle-title fuzzy-triangle-desc');
   });
 

@@ -5,8 +5,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { LocalizedCaseStudy } from "@/hooks/useLocalizedCaseStudies";
 
 interface CaseStudyCardProps {
-  study: LocalizedCaseStudy;
-  showScale?: boolean;
+  readonly study: LocalizedCaseStudy;
+  readonly showScale?: boolean;
 }
 
 export function CaseStudyCard({ study, showScale = false }: CaseStudyCardProps) {

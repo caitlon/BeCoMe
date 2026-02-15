@@ -28,15 +28,15 @@ export function Navbar() {
 
   useEffect(() => {
     const handleScroll = () => {
-      setIsScrolled(window.scrollY > 10);
+      setIsScrolled(globalThis.scrollY > 10);
     };
-    window.addEventListener("scroll", handleScroll, { passive: true });
-    return () => window.removeEventListener("scroll", handleScroll);
+    globalThis.addEventListener("scroll", handleScroll, { passive: true });
+    return () => globalThis.removeEventListener("scroll", handleScroll);
   }, []);
 
   const handleLogout = () => {
     logout();
-    window.location.href = '/';
+    globalThis.location.href = '/';
   };
 
   const closeMenuOnEscape = useCallback((e: KeyboardEvent) => {

@@ -61,7 +61,7 @@ const Projects = () => {
       ]);
       setProjects(projectsData);
       setInvitations(invitationsData);
-    } catch (error) {
+    } catch {
       toast({
         title: t("toast.error"),
         description: t("toast.loadFailed"),
@@ -126,10 +126,10 @@ const Projects = () => {
       <div className="min-h-screen">
         <Navbar />
         <main id="main-content" className="pt-24 flex items-center justify-center">
-          <div role="status" aria-label={tCommon("a11y.loading")}>
+          <output aria-label={tCommon("a11y.loading")}>
             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             <span className="sr-only">{tCommon("common.loading")}</span>
-          </div>
+          </output>
         </main>
       </div>
     );

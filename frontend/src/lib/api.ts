@@ -60,9 +60,9 @@ class ApiClient {
     if (!response.ok) {
       if (response.status === 401) {
         this.setToken(null);
-        window.location.href = '/login';
+        globalThis.location.href = '/login';
       }
-      
+
       const error: ApiError = await response.json().catch(() => ({
         detail: 'An unexpected error occurred',
       }));
@@ -161,7 +161,7 @@ class ApiClient {
     if (!response.ok) {
       if (response.status === 401) {
         this.setToken(null);
-        window.location.href = '/login';
+        globalThis.location.href = '/login';
       }
       const error = await response.json().catch(() => ({ detail: 'Upload failed' }));
       throw new Error(error.detail || 'Failed to upload photo');

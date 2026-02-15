@@ -23,8 +23,8 @@ export interface MockAuthContextValue {
  * Extended render options for testing.
  */
 export interface CustomRenderOptions extends Omit<RenderOptions, 'wrapper'> {
-  initialEntries?: MemoryRouterProps['initialEntries'];
-  wrapper?: RenderOptions['wrapper'];
+  readonly initialEntries?: MemoryRouterProps['initialEntries'];
+  readonly wrapper?: RenderOptions['wrapper'];
 }
 
 function AllTheProviders({ children }: { children: ReactNode }) {

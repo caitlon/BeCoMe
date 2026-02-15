@@ -19,9 +19,9 @@ export function StepEnterOpinion() {
   const [upper, setUpper] = useState("70");
 
   // Fallback values form a valid triangle (0, 50, 100) when inputs are empty or invalid
-  const lowerNum = parseFloat(lower) || 0;
-  const peakNum = parseFloat(peak) || 50;
-  const upperNum = parseFloat(upper) || 100;
+  const lowerNum = Number.parseFloat(lower) || 0;
+  const peakNum = Number.parseFloat(peak) || 50;
+  const upperNum = Number.parseFloat(upper) || 100;
 
   const isValid = lowerNum <= peakNum && peakNum <= upperNum;
 
@@ -131,7 +131,6 @@ export function StepEnterOpinion() {
               <svg
                 viewBox="0 0 300 120"
                 className="w-full"
-                role="img"
                 aria-labelledby="triangle-preview-title"
               >
                 <title id="triangle-preview-title">

@@ -43,13 +43,12 @@ export function RouteAnnouncer() {
   }, [location.pathname]);
 
   return (
-    <div
+    <output
       aria-live="polite"
       aria-atomic="true"
-      role="status"
       className="sr-only"
     >
       {announcement}
-    </div>
+    </output>
   );
 }

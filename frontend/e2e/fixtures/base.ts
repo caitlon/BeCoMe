@@ -9,4 +9,5 @@ const test = base.extend({
   },
 });
 
-export { test, expect };
+export { test };
+export { expect } from '@playwright/test';
