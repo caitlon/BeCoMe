@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from api.auth.dependencies import CurrentUser
 from api.auth.logging import log_account_deletion, log_password_change
 from api.dependencies import get_storage_service, get_user_service
-from api.middleware.rate_limit import LIMIT_PASSWORD_RESET, RATE_LIMIT_UPLOAD, limiter
+from api.middleware.rate_limit import LIMIT_PASSWORD_RESET, LIMIT_UPLOAD, limiter
 from api.schemas.auth import ChangePasswordRequest, UpdateUserRequest, UserResponse
 from api.services.storage.exceptions import StorageDeleteError, StorageUploadError
 from api.services.storage.supabase_storage_service import SupabaseStorageService
@@ -123,7 +123,7 @@ def delete_current_user(
         503: {"description": "Storage service unavailable"},
     },
 )
-@limiter.limit(RATE_LIMIT_UPLOAD)
+@limiter.limit(LIMIT_UPLOAD)
 async def upload_photo(
     request: Request,
     current_user: CurrentUser,

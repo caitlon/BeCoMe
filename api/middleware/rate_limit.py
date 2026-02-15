@@ -32,5 +32,5 @@ limiter = Limiter(key_func=_get_client_ip, enabled=not _is_testing)
 # Rate limit constants for different endpoint types
 LIMIT_AUTH_ENDPOINTS = "5/minute"  # Login, register - strict to prevent brute-force
 LIMIT_PASSWORD_RESET = "3/minute"  # Password reset/change - very strict
-RATE_LIMIT_STANDARD = "60/minute"  # Normal API endpoints
-RATE_LIMIT_UPLOAD = "10/minute"  # File uploads - prevent abuse
+LIMIT_STANDARD = "60/minute"  # Normal API endpoints
+LIMIT_UPLOAD = "10/minute"  # File uploads - prevent abuse
