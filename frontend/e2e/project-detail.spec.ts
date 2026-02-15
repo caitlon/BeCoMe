@@ -189,14 +189,12 @@ test.describe('Project Detail — Edge Cases', () => {
 
     // Expert accepts
     await expertPage.reload();
-    await expertPage.waitForLoadState('networkidle');
     await expertPage.getByRole('tab', { name: 'Invitations' }).click();
     await expect(expertPage.getByText(projectName)).toBeVisible({ timeout: 10000 });
     await expertPage.getByRole('button', { name: 'Accept Invitation' }).click();
 
     // Owner reloads to see team member
     await ownerPage.reload();
-    await ownerPage.waitForLoadState('networkidle');
 
     // Click team member row to open profile dialog
     const memberRow = ownerPage.getByRole('button', { name: /View profile of Team Expert/i });

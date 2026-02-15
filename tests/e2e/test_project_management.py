@@ -289,6 +289,7 @@ class TestNegativeScaleProject:
         assert result["num_experts"] == 1
         assert result["arithmetic_mean"]["lower"] == pytest.approx(-80.0)
         assert result["arithmetic_mean"]["peak"] == pytest.approx(-50.0)
+        assert result["arithmetic_mean"]["upper"] == pytest.approx(-20.0)
 
 
 @pytest.mark.e2e
