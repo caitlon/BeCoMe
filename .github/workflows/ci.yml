@@ -207,6 +207,8 @@ jobs:
     name: E2E Tests (Playwright)
     runs-on: ubuntu-24.04
     needs: lint
+    env:
+      TESTING: "1"
 
     services:
       postgres:
