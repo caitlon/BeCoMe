@@ -219,7 +219,7 @@ class TestMultipleExperts:
 class TestScaleBoundaryOpinion:
     """Opinion at exact scale boundaries must be accepted."""
 
-    def test_opinion_at_exact_boundaries(self, http_client):
+    def test_opinion_at_exact_boundaries_returns_201(self, http_client):
         """lower=0, peak=50, upper=100 on default 0-100 scale → 201."""
         # GIVEN — a project with default scale
         email = unique_email("boundary")

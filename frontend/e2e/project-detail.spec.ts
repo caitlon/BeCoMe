@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, Page } from '@playwright/test';
 import { uniqueId, registerUser } from './helpers';
 
 async function createProjectAndNavigate(page: Page, name: string) {
