@@ -94,7 +94,7 @@ def _get_status_and_detail(exc: BeCoMeAPIError) -> tuple[int, str]:
     return status.HTTP_400_BAD_REQUEST, str(exc)  # pragma: no cover
 
 
-async def become_api_error_handler(request: Request, exc: BeCoMeAPIError) -> JSONResponse:
+def become_api_error_handler(request: Request, exc: BeCoMeAPIError) -> JSONResponse:
     """Handle all BeCoMeAPIError exceptions.
 
     :param request: FastAPI request

@@ -22,7 +22,6 @@ router = APIRouter(prefix="/api/v1", tags=["invitations"])
 
 @router.post(
     "/projects/{project_id}/invite",
-    response_model=InvitationResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Invite user by email",
 )
@@ -64,7 +63,6 @@ def invite_by_email(
 
 @router.get(
     "/projects/{project_id}/invitations",
-    response_model=list[ProjectInvitationResponse],
     summary="List pending invitations for a project",
 )
 def list_project_invitations(
@@ -82,11 +80,7 @@ def list_project_invitations(
     return [ProjectInvitationResponse.from_model(inv, invitee) for inv, invitee in invitations]
 
 
-@router.get(
-    "/invitations",
-    response_model=list[InvitationListItemResponse],
-    summary="List my invitations",
-)
+@router.get("/invitations", summary="List my invitations")
 def list_my_invitations(
     current_user: CurrentUser,
     invitation_service: Annotated[InvitationService, Depends(get_invitation_service)],
@@ -111,7 +105,6 @@ def list_my_invitations(
 
 @router.post(
     "/invitations/{invitation_id}/accept",
-    response_model=MemberResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Accept invitation",
 )

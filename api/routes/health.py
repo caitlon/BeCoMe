@@ -8,7 +8,7 @@ from api.schemas.health import HealthResponse
 router = APIRouter(prefix="/api/v1", tags=["health"])
 
 
-@router.get("/health", response_model=HealthResponse)
+@router.get("/health")
 def health_check() -> HealthResponse:
     """Check API health status."""
     settings = get_settings()
