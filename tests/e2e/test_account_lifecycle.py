@@ -25,11 +25,12 @@ class TestAccountLifecycle:
         submit_opinion(http_client, token, project["id"])
 
         # Verify project and opinion exist
-        result = http_client.get(
+        result_resp = http_client.get(
             f"/projects/{project['id']}/result",
             headers=auth_headers(token),
-        ).json()
-        assert result is not None
+        )
+        result_resp.raise_for_status()
+        result = result_resp.json()
         assert result["num_experts"] == 1
 
         # Delete project first (admin_id NOT NULL prevents user cascade)

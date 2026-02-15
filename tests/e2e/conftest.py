@@ -24,7 +24,7 @@ def api_url():
             response = httpx.get(f"{E2E_BASE_URL}/health", timeout=2)
             if response.status_code == 200:
                 return E2E_BASE_URL
-        except httpx.ConnectError:
+        except httpx.RequestError:
             pass
         if attempt < 9:
             time.sleep(1)
@@ -128,6 +128,7 @@ def invite_and_accept(
     inv_resp = client.get("/invitations", headers=auth_headers(expert_token))
     inv_resp.raise_for_status()
     invitations = inv_resp.json()
+    assert invitations, "No pending invitations for expert"
     invitation_id = invitations[0]["id"]
 
     accept_resp = client.post(

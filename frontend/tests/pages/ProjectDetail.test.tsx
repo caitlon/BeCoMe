@@ -456,10 +456,10 @@ describe('ProjectDetail - Team Section', () => {
     // Click to collapse
     await user.click(screen.getByRole('button', { name: /team.*2 members/i }));
 
-    // Team table content should be hidden in the desktop collapsible
+    // Team section should be collapsed after click
     await waitFor(() => {
       const trigger = screen.getByRole('button', { name: /team.*2 members/i });
-      expect(trigger).toBeInTheDocument();
+      expect(trigger).toHaveAttribute('data-state', 'closed');
     });
   });
 

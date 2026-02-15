@@ -87,6 +87,7 @@ class TestInvitationErrors:
             headers=auth_headers(owner_token),
         )
         invitations = http_client.get("/invitations", headers=auth_headers(expert_token)).json()
+        assert invitations, "No pending invitations found"
         http_client.post(
             f"/invitations/{invitations[0]['id']}/accept",
             headers=auth_headers(expert_token),
@@ -122,6 +123,7 @@ class TestInvitationDecline:
             headers=auth_headers(owner_token),
         )
         invitations = http_client.get("/invitations", headers=auth_headers(expert_token)).json()
+        assert invitations, "No pending invitations found"
         invitation_id = invitations[0]["id"]
 
         # WHEN — expert declines

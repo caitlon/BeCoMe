@@ -11,10 +11,12 @@ describe('CaseStudies', () => {
   it('scrolls to top on mount', () => {
     const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
 
-    render(<CaseStudies />);
-
-    expect(scrollTo).toHaveBeenCalledWith(0, 0);
-    scrollTo.mockRestore();
+    try {
+      render(<CaseStudies />);
+      expect(scrollTo).toHaveBeenCalledWith(0, 0);
+    } finally {
+      scrollTo.mockRestore();
+    }
   });
 
   it('renders page title', () => {
