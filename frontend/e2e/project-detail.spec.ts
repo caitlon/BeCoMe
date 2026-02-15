@@ -108,9 +108,13 @@ test.describe('Project Detail — Edge Cases', () => {
 
     // Switch to Centroid tab
     await centroidTab.click();
+    await expect(centroidTab).toHaveAttribute('aria-selected', 'true');
+    await expect(triangleTab).toHaveAttribute('aria-selected', 'false');
 
     // Switch back to Triangle tab
     await triangleTab.click();
+    await expect(triangleTab).toHaveAttribute('aria-selected', 'true');
+    await expect(centroidTab).toHaveAttribute('aria-selected', 'false');
 
     await page.close();
     await context.close();

@@ -238,8 +238,20 @@ class TestScaleBoundaryOpinion:
             headers=auth_headers(token),
         )
 
-        # THEN — accepted
+        # THEN — accepted and persisted
         assert response.status_code == 201
+
+        # Verify persisted values via GET
+        opinions_resp = http_client.get(
+            f"/projects/{project['id']}/opinions",
+            headers=auth_headers(token),
+        )
+        opinions_resp.raise_for_status()
+        opinions = opinions_resp.json()
+        assert len(opinions) == 1
+        assert opinions[0]["lower_bound"] == pytest.approx(0.0)
+        assert opinions[0]["peak"] == pytest.approx(50.0)
+        assert opinions[0]["upper_bound"] == pytest.approx(100.0)
 
 
 @pytest.mark.e2e
