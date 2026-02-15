@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useId } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { motion } from "framer-motion";
@@ -48,7 +48,7 @@ import { Navbar } from "@/components/layout/Navbar";
 import { SubmitButton } from "@/components/forms";
 import { InviteExpertModal } from "@/components/modals/InviteExpertModal";
 import { DeleteConfirmModal } from "@/components/modals/DeleteConfirmModal";
-import { api } from "@/lib/api";
+import { api, HttpError } from "@/lib/api";
 import { ProjectWithRole, Opinion, CalculationResult, Member, ProjectInvitation } from "@/types/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
@@ -102,11 +102,7 @@ const ProjectDetail = () => {
           api.getResult(id),
           api.getMembers(id),
           api.getProjectInvitations(id).catch((error: unknown) => {
-            const status =
-              typeof error === "object" && error && "status" in error
-                ? (error as { status?: number }).status
-                : undefined;
-            if (status === 403) {
+            if (error instanceof HttpError && error.status === 403) {
               return [] as ProjectInvitation[];
             }
             throw error;
@@ -517,6 +513,8 @@ const OpinionForm = ({
 }: OpinionFormProps) => {
   const { t } = useTranslation("projects");
   const { t: tFuzzy } = useTranslation();
+  const previewTitleId = useId();
+  const hintId = useId();
   const lowerNum = Number.parseFloat(lower) || 0;
   const peakNum = Number.parseFloat(peak) || 0;
   const upperNum = Number.parseFloat(upper) || 0;
@@ -601,8 +599,8 @@ const OpinionForm = ({
         {/* Mini Triangle Preview */}
         {lower && peak && upper && isValid && (
           <div className="bg-muted rounded p-4">
-            <svg viewBox="0 0 200 60" className="w-full h-12" aria-labelledby="opinion-preview-title">
-              <title id="opinion-preview-title">
+            <svg viewBox="0 0 200 60" className="w-full h-12" aria-labelledby={previewTitleId}>
+              <title id={previewTitleId}>
                 {tFuzzy("a11y.opinionPreviewDesc", { lower: lowerNum, peak: peakNum, upper: upperNum })}
               </title>
               <line
@@ -686,13 +684,13 @@ const OpinionForm = ({
                     disabled={!lower || !peak || !upper || !position.trim() || !hasChanges}
                     isLoading={isSaving}
                     className="flex-1"
-                    aria-describedby={hintMessage ? "opinion-hint" : undefined}
+                    aria-describedby={hintMessage ? hintId : undefined}
                   >
                     {myOpinion ? t("detail.updateOpinion") : t("detail.saveOpinion")}
                   </SubmitButton>
                 </div>
                 {hintMessage && (
-                  <p id="opinion-hint" className="text-xs text-muted-foreground">
+                  <p id={hintId} className="text-xs text-muted-foreground">
                     {hintMessage}
                   </p>
                 )}
@@ -1051,6 +1049,7 @@ const TriangleVisualization = ({
   opinions,
 }: TriangleVisualizationProps) => {
   const { t: tCommon } = useTranslation();
+  const resultsTitleId = useId();
   const scaleToX = (value: number) => {
     return (
       40 +
@@ -1062,8 +1061,8 @@ const TriangleVisualization = ({
   const peakY = 30;
 
   return (
-    <svg viewBox="0 0 400 200" className="w-full" aria-labelledby="results-chart-title">
-      <title id="results-chart-title">{tCommon("a11y.resultsChartDesc")}</title>
+    <svg viewBox="0 0 400 200" className="w-full" aria-labelledby={resultsTitleId}>
+      <title id={resultsTitleId}>{tCommon("a11y.resultsChartDesc")}</title>
       {/* Axes */}
       <line
         x1="40"

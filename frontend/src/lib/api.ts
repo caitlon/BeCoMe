@@ -19,6 +19,13 @@ import {
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
 
+export class HttpError extends Error {
+  constructor(message: string, public readonly status: number) {
+    super(message);
+    this.name = 'HttpError';
+  }
+}
+
 class ApiClient {
   private token: string | null = null;
 
@@ -67,10 +74,11 @@ class ApiClient {
         detail: 'An unexpected error occurred',
       }));
       
-      throw new Error(
+      throw new HttpError(
         typeof error.detail === 'string'
           ? error.detail
-          : error.detail[0]?.msg || 'Validation error'
+          : error.detail[0]?.msg || 'Validation error',
+        response.status
       );
     }
 
