@@ -1,33 +1,10 @@
-import { Page } from '@playwright/test';
 import { test, expect } from './fixtures/base';
-
-const uniqueId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-
-const TEST_PASSWORD = 'TestPass123!@#';
-
-async function registerAndLogin(page: Page, email: string, firstName: string, lastName: string) {
-  await page.goto('/register');
-  await page.getByPlaceholder('you@example.com').fill(email);
-  await page.getByPlaceholder('you@example.com').blur();
-  await page.getByPlaceholder('Min. 12 characters').fill(TEST_PASSWORD);
-  await page.getByPlaceholder('Min. 12 characters').blur();
-  await page.getByPlaceholder('Confirm your password').fill(TEST_PASSWORD);
-  await page.getByPlaceholder('Confirm your password').blur();
-  await page.getByPlaceholder('John').fill(firstName);
-  await page.getByPlaceholder('John').blur();
-  await page.getByPlaceholder('Doe').fill(lastName);
-  await page.getByPlaceholder('Doe').blur();
-
-  const registerBtn = page.getByRole('button', { name: 'Create Account' });
-  await expect(registerBtn).toBeEnabled({ timeout: 10000 });
-  await registerBtn.click();
-  await expect(page).toHaveURL('/projects', { timeout: 10000 });
-}
+import { uniqueId, registerUser } from './helpers';
 
 test.describe('Error States', () => {
   test('shows validation error for invalid fuzzy number', async ({ page }) => {
     const email = `err-fuzzy-${uniqueId()}@test.com`;
-    await registerAndLogin(page, email, 'Error', 'Tester');
+    await registerUser(page, email, 'Error', 'Tester');
 
     // Create a project
     await page.getByRole('button', { name: 'Create Your First Project' }).click();
@@ -56,7 +33,7 @@ test.describe('Error States', () => {
 
   test('shows error for empty project name', async ({ page }) => {
     const email = `err-name-${uniqueId()}@test.com`;
-    await registerAndLogin(page, email, 'Empty', 'Name');
+    await registerUser(page, email, 'Empty', 'Name');
 
     // Open create project dialog
     await page.getByRole('button', { name: 'Create Your First Project' }).click();
@@ -86,7 +63,7 @@ test.describe('Error States', () => {
 
   test('redirects to login on expired session', async ({ page }) => {
     const email = `err-session-${uniqueId()}@test.com`;
-    await registerAndLogin(page, email, 'Session', 'Test');
+    await registerUser(page, email, 'Session', 'Test');
 
     // Clear auth tokens from localStorage (simulate expired session)
     await page.evaluate(() => {

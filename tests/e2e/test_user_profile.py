@@ -16,7 +16,7 @@ NEW_PASSWORD = "NewSecurePass99!"
 class TestUpdateProfile:
     """PUT /users/me must update first_name and last_name."""
 
-    def test_update_profile_name(self, http_client):
+    def test_update_profile_name_persists(self, http_client):
         """Change first_name and last_name, then verify via GET."""
         # GIVEN — a registered user
         email = unique_email("profile")
@@ -73,7 +73,7 @@ class TestChangePassword:
         assert login_resp.status_code == 200
         assert login_resp.json()["access_token"]
 
-    def test_change_password_wrong_current(self, http_client):
+    def test_change_password_wrong_current_rejected(self, http_client):
         """Wrong current_password must be rejected."""
         # GIVEN — a registered user
         email = unique_email("wrongcur")

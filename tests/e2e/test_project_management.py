@@ -19,7 +19,7 @@ from tests.e2e.conftest import (
 class TestUpdateProject:
     """PATCH /projects/{id} must update project fields."""
 
-    def test_update_project_name_and_description(self, http_client):
+    def test_update_project_name_and_description_persists(self, http_client):
         """Admin renames project and adds description."""
         # GIVEN — a project
         email = unique_email("projup")
@@ -52,7 +52,7 @@ class TestUpdateProject:
 class TestStandaloneCalculation:
     """POST /calculate must return correct BeCoMe results."""
 
-    def test_standalone_calculate_three_experts(self, http_client):
+    def test_standalone_calculate_three_experts_returns_correct_stats(self, http_client):
         """Three experts produce correct arithmetic mean, median, and best compromise."""
         # GIVEN — three expert opinions
         payload = {
@@ -91,7 +91,7 @@ class TestStandaloneCalculation:
 class TestListPendingInvitations:
     """GET /projects/{id}/invitations must return pending invitations."""
 
-    def test_list_pending_invitations(self, http_client):
+    def test_list_pending_invitations_includes_invitee(self, http_client):
         """Invite an expert, verify the invitation appears in the list."""
         # GIVEN — a project owner and a registered expert
         owner_email = unique_email("invowner")
@@ -156,8 +156,8 @@ class TestConcurrentOpinionSubmit:
             f2 = pool.submit(post_opinion, (30.0, 50.0, 70.0))
             results = [f1.result(), f2.result()]
 
-        # THEN — at least one succeeds (race may cause 500 on the other due to
-        # DB unique constraint), but exactly one opinion is stored
+        # THEN — at least one succeeds (the other may get 409 or 500 from
+        # the DB unique constraint race), and exactly one opinion is stored
         assert 201 in results
         opinions_resp = http_client.get(
             f"/projects/{project['id']}/opinions",

@@ -1,46 +1,15 @@
-import { test, expect, Page } from '@playwright/test';
+import { test, expect, Page, BrowserContext } from '@playwright/test';
+import { uniqueId, TEST_PASSWORD, registerUser } from './helpers';
 
-const uniqueId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-
-const TEST_PASSWORD = 'TestPass123!@#';
 const NEW_PASSWORD = 'NewSecurePass99!';
-
-async function registerUser(page: Page, email: string, firstName: string, lastName: string) {
-  await page.goto('/register');
-
-  const emailField = page.getByPlaceholder('you@example.com');
-  await emailField.fill(email);
-  await emailField.blur();
-
-  const passwordField = page.getByPlaceholder('Min. 12 characters');
-  await passwordField.fill(TEST_PASSWORD);
-  await passwordField.blur();
-
-  const confirmField = page.getByPlaceholder('Confirm your password');
-  await confirmField.fill(TEST_PASSWORD);
-  await confirmField.blur();
-
-  const firstNameField = page.getByPlaceholder('John');
-  await firstNameField.fill(firstName);
-  await firstNameField.blur();
-
-  const lastNameField = page.getByPlaceholder('Doe');
-  await lastNameField.fill(lastName);
-  await lastNameField.blur();
-
-  const submitBtn = page.getByRole('button', { name: 'Create Account' });
-  await expect(submitBtn).toBeEnabled({ timeout: 10000 });
-  await submitBtn.click();
-
-  await expect(page).toHaveURL('/projects', { timeout: 10000 });
-}
 
 test.describe.serial('Profile Page Flow', () => {
   let page: Page;
+  let context: BrowserContext;
   const testEmail = `profile-${uniqueId()}@test.com`;
 
   test.beforeAll(async ({ browser }) => {
-    const context = await browser.newContext();
+    context = await browser.newContext();
     page = await context.newPage();
     await page.addInitScript(() => {
       localStorage.setItem('become-language', 'en');
@@ -49,6 +18,7 @@ test.describe.serial('Profile Page Flow', () => {
 
   test.afterAll(async () => {
     await page.close();
+    await context.close();
   });
 
   test('register and navigate to profile', async () => {

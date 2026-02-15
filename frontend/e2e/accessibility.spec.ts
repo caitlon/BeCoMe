@@ -1,4 +1,13 @@
 import { test, expect } from './fixtures/base';
+import { uniqueId, registerUser } from './helpers';
+
+async function countTabbableElements(page: import('@playwright/test').Page): Promise<number> {
+  return page.evaluate(() =>
+    document.querySelectorAll(
+      'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])',
+    ).length,
+  );
+}
 
 test.describe('Accessibility — Tab Order', () => {
   test('login form fields are keyboard-focusable in order', async ({ page }) => {
@@ -18,8 +27,9 @@ test.describe('Accessibility — Tab Order', () => {
     await emailField.focus();
     await expect(emailField).toBeFocused();
 
-    // Tab forward until we reach password (may skip intermediate elements)
-    for (let i = 0; i < 5; i++) {
+    // Tab forward until we reach password (dynamic cap based on tabbable elements)
+    const maxTabs = await countTabbableElements(page);
+    for (let i = 0; i < maxTabs; i++) {
       await page.keyboard.press('Tab');
       if (await passwordField.evaluate((el) => el === document.activeElement)) break;
     }
@@ -47,9 +57,10 @@ test.describe('Accessibility — Tab Order', () => {
     await expect(fields[0]).toBeFocused();
 
     // Tab through and verify each subsequent field receives focus
+    const maxTabs = await countTabbableElements(page);
     for (let f = 1; f < fields.length; f++) {
       // Tab forward until we reach the next expected field
-      for (let i = 0; i < 10; i++) {
+      for (let i = 0; i < maxTabs; i++) {
         await page.keyboard.press('Tab');
         if (await fields[f].evaluate((el) => el === document.activeElement)) break;
       }
@@ -64,35 +75,8 @@ test.describe('Accessibility — Dialog Focus', () => {
     const page = await context.newPage();
     await page.addInitScript(() => localStorage.setItem('become-language', 'en'));
 
-    const uid = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-    const email = `a11y-dialog-${uid}@test.com`;
-
-    await page.goto('/register');
-
-    const emailField = page.getByPlaceholder('you@example.com');
-    await emailField.fill(email);
-    await emailField.blur();
-
-    const passwordField = page.getByPlaceholder('Min. 12 characters');
-    await passwordField.fill('TestPass123!@#');
-    await passwordField.blur();
-
-    const confirmField = page.getByPlaceholder('Confirm your password');
-    await confirmField.fill('TestPass123!@#');
-    await confirmField.blur();
-
-    const firstNameField = page.getByPlaceholder('John');
-    await firstNameField.fill('Dialog');
-    await firstNameField.blur();
-
-    const lastNameField = page.getByPlaceholder('Doe');
-    await lastNameField.fill('Tester');
-    await lastNameField.blur();
-
-    const submitBtn = page.getByRole('button', { name: 'Create Account' });
-    await expect(submitBtn).toBeEnabled({ timeout: 15000 });
-    await submitBtn.click();
-    await expect(page).toHaveURL('/projects', { timeout: 10000 });
+    const email = `a11y-dialog-${uniqueId()}@test.com`;
+    await registerUser(page, email, 'Dialog', 'Tester');
 
     // Open create project dialog
     const createBtn = page.getByRole('button', { name: 'Create Your First Project' });

@@ -1,27 +1,5 @@
-import { test, expect, Page } from '@playwright/test';
-
-const uniqueId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-
-const TEST_PASSWORD = 'TestPass123!@#';
-
-async function registerAndLogin(page: Page, email: string, firstName: string, lastName: string) {
-  await page.goto('/register');
-  await page.getByPlaceholder('you@example.com').fill(email);
-  await page.getByPlaceholder('you@example.com').blur();
-  await page.getByPlaceholder('Min. 12 characters').fill(TEST_PASSWORD);
-  await page.getByPlaceholder('Min. 12 characters').blur();
-  await page.getByPlaceholder('Confirm your password').fill(TEST_PASSWORD);
-  await page.getByPlaceholder('Confirm your password').blur();
-  await page.getByPlaceholder('John').fill(firstName);
-  await page.getByPlaceholder('John').blur();
-  await page.getByPlaceholder('Doe').fill(lastName);
-  await page.getByPlaceholder('Doe').blur();
-
-  const registerBtn = page.getByRole('button', { name: 'Create Account' });
-  await expect(registerBtn).toBeEnabled({ timeout: 10000 });
-  await registerBtn.click();
-  await expect(page).toHaveURL('/projects', { timeout: 10000 });
-}
+import { test, expect } from '@playwright/test';
+import { uniqueId, registerUser } from './helpers';
 
 async function createProjectAndNavigate(page: Page, name: string) {
   await page.getByRole('button', { name: 'Create Your First Project' }).click();
@@ -44,7 +22,7 @@ test.describe('Project Detail — Edge Cases', () => {
     await page.addInitScript(() => localStorage.setItem('become-language', 'en'));
 
     const email = `detail-empty-${uniqueId()}@test.com`;
-    await registerAndLogin(page, email, 'Empty', 'Project');
+    await registerUser(page, email, 'Empty', 'Project');
 
     const projectName = `Empty Project ${Date.now()}`;
     await createProjectAndNavigate(page, projectName);
@@ -62,7 +40,7 @@ test.describe('Project Detail — Edge Cases', () => {
     await page.addInitScript(() => localStorage.setItem('become-language', 'en'));
 
     const email = `detail-update-${uniqueId()}@test.com`;
-    await registerAndLogin(page, email, 'Updater', 'Tester');
+    await registerUser(page, email, 'Updater', 'Tester');
 
     const projectName = `Update Test ${Date.now()}`;
     await createProjectAndNavigate(page, projectName);
@@ -102,7 +80,7 @@ test.describe('Project Detail — Edge Cases', () => {
     await page.addInitScript(() => localStorage.setItem('become-language', 'en'));
 
     const email = `detail-viz-${uniqueId()}@test.com`;
-    await registerAndLogin(page, email, 'Viz', 'Tester');
+    await registerUser(page, email, 'Viz', 'Tester');
 
     const projectName = `Viz Tabs ${Date.now()}`;
     await createProjectAndNavigate(page, projectName);
@@ -144,7 +122,7 @@ test.describe('Project Detail — Edge Cases', () => {
     await page.addInitScript(() => localStorage.setItem('become-language', 'en'));
 
     const email = `detail-indiv-${uniqueId()}@test.com`;
-    await registerAndLogin(page, email, 'Indiv', 'Tester');
+    await registerUser(page, email, 'Indiv', 'Tester');
 
     const projectName = `Individual ${Date.now()}`;
     await createProjectAndNavigate(page, projectName);
@@ -190,8 +168,8 @@ test.describe('Project Detail — Edge Cases', () => {
     const ownerEmail = `detail-team-owner-${uniqueId()}@test.com`;
     const expertEmail = `detail-team-expert-${uniqueId()}@test.com`;
 
-    await registerAndLogin(ownerPage, ownerEmail, 'Team', 'Owner');
-    await registerAndLogin(expertPage, expertEmail, 'Team', 'Expert');
+    await registerUser(ownerPage, ownerEmail, 'Team', 'Owner');
+    await registerUser(expertPage, expertEmail, 'Team', 'Expert');
 
     const projectName = `Team Dialog ${Date.now()}`;
     await createProjectAndNavigate(ownerPage, projectName);
