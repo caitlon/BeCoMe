@@ -45,6 +45,26 @@ test.describe('Public Pages', () => {
     await expect(page.getByRole('heading', { level: 3 }).first()).toBeVisible();
   });
 
+  test('hero CTA links to register', async ({ page }) => {
+    await page.goto('/');
+
+    const cta = page.getByRole('link', { name: /Start Your Project/i });
+    await expect(cta).toBeVisible({ timeout: 10000 });
+    await cta.click();
+
+    await expect(page).toHaveURL('/register', { timeout: 10000 });
+  });
+
+  test('Learn More links to about', async ({ page }) => {
+    await page.goto('/');
+
+    const link = page.getByRole('link', { name: /Learn more about the BeCoMe method/i });
+    await expect(link).toBeVisible({ timeout: 10000 });
+    await link.click();
+
+    await expect(page).toHaveURL('/about', { timeout: 10000 });
+  });
+
   test('404 page shows for invalid route', async ({ page }) => {
     await page.goto('/this-route-does-not-exist');
 

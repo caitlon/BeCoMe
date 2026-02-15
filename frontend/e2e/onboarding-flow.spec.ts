@@ -126,4 +126,31 @@ test.describe('Onboarding Flow', () => {
     await page.close();
     await context.close();
   });
+
+  test('ArrowRight/Left navigate, Escape exits', async ({ browser }) => {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    await page.addInitScript(() => localStorage.setItem('become-language', 'en'));
+
+    const email = `onboard-keys-${uniqueId()}@test.com`;
+    await registerUser(page, email);
+
+    await page.goto('/onboarding');
+    await expect(page.getByText('Step 1 of 6')).toBeVisible({ timeout: 10000 });
+
+    // ArrowRight → Step 2
+    await page.keyboard.press('ArrowRight');
+    await expect(page.getByText('Step 2 of 6')).toBeVisible({ timeout: 5000 });
+
+    // ArrowLeft → Step 1
+    await page.keyboard.press('ArrowLeft');
+    await expect(page.getByText('Step 1 of 6')).toBeVisible({ timeout: 5000 });
+
+    // Escape → /projects
+    await page.keyboard.press('Escape');
+    await expect(page).toHaveURL('/projects', { timeout: 10000 });
+
+    await page.close();
+    await context.close();
+  });
 });

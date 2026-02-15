@@ -6,6 +6,7 @@ from tests.e2e.conftest import (
     auth_headers,
     create_project,
     register_user,
+    register_user_with_name,
     unique_email,
 )
 
@@ -103,3 +104,60 @@ class TestOpinionScaleValidation:
 
         # THEN — rejected
         assert response.status_code == 422
+
+
+@pytest.mark.e2e
+class TestSpecialCharsInProjectName:
+    """Project names with special characters are sanitized."""
+
+    def test_html_stripped_special_chars_preserved(self, http_client):
+        """HTML tags stripped, special characters preserved."""
+        # GIVEN — authenticated user
+        email = unique_email("spchars")
+        token = register_user(http_client, email)
+
+        # WHEN — create project with HTML and special chars
+        response = http_client.post(
+            "/projects",
+            json={"name": "Test ()&@# <b>bold</b> Project"},
+            headers=auth_headers(token),
+        )
+
+        # THEN — created, HTML stripped, special chars preserved or encoded
+        assert response.status_code == 201
+        name = response.json()["name"]
+        assert "<b>" not in name
+        assert "bold" in name
+        assert "@#" in name
+        assert "()" in name
+
+
+@pytest.mark.e2e
+class TestUnicodeUserNames:
+    """User names with Unicode characters must be accepted."""
+
+    def test_diacritics_accepted(self, http_client):
+        """European diacritics in names stored correctly."""
+        # GIVEN / WHEN — register with diacritics
+        email = unique_email("diacritics")
+        token = register_user_with_name(http_client, email, "François", "O'Connor")
+
+        # THEN — names preserved
+        me_resp = http_client.get("/users/me", headers=auth_headers(token))
+        assert me_resp.status_code == 200
+        data = me_resp.json()
+        assert data["first_name"] == "François"
+        assert data["last_name"] == "O'Connor"
+
+    def test_cjk_names_accepted(self, http_client):
+        """CJK characters in names stored correctly."""
+        # GIVEN / WHEN — register with CJK characters
+        email = unique_email("cjk")
+        token = register_user_with_name(http_client, email, "李", "小明")
+
+        # THEN — names preserved
+        me_resp = http_client.get("/users/me", headers=auth_headers(token))
+        assert me_resp.status_code == 200
+        data = me_resp.json()
+        assert data["first_name"] == "李"
+        assert data["last_name"] == "小明"

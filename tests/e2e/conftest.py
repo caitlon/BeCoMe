@@ -138,6 +138,63 @@ def invite_and_accept(
     accept_resp.raise_for_status()
 
 
+def register_user_with_name(
+    client: httpx.Client,
+    email: str,
+    first_name: str,
+    last_name: str,
+) -> str:
+    """Register a user with custom names and return their access token.
+
+    :param client: httpx.Client instance
+    :param email: User email address
+    :param first_name: First name
+    :param last_name: Last name
+    :return: JWT access token string
+    """
+    client.post(
+        "/auth/register",
+        json={
+            "email": email,
+            "password": DEFAULT_PASSWORD,
+            "first_name": first_name,
+            "last_name": last_name,
+        },
+    ).raise_for_status()
+
+    response = client.post(
+        "/auth/login",
+        data={"username": email, "password": DEFAULT_PASSWORD},
+    )
+    response.raise_for_status()
+    return response.json()["access_token"]
+
+
+def create_project_with_scale(
+    client: httpx.Client,
+    token: str,
+    name: str,
+    scale_min: float,
+    scale_max: float,
+) -> dict:
+    """Create a project with custom scale range.
+
+    :param client: httpx.Client instance
+    :param token: Admin user's access token
+    :param name: Project name
+    :param scale_min: Minimum scale value
+    :param scale_max: Maximum scale value
+    :return: Project response dict with 'id' field
+    """
+    response = client.post(
+        "/projects",
+        json={"name": name, "scale_min": scale_min, "scale_max": scale_max},
+        headers=auth_headers(token),
+    )
+    response.raise_for_status()
+    return response.json()
+
+
 def submit_opinion(
     client: httpx.Client,
     token: str,

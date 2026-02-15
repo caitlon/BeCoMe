@@ -95,3 +95,50 @@ class TestWrongCredentials:
 
         # THEN
         assert response.status_code == 401
+
+
+@pytest.mark.e2e
+class TestTamperedToken:
+    """Tampered access token must be rejected; refresh must still work."""
+
+    def test_tampered_token_returns_401_then_refresh_works(self, http_client):
+        """Corrupted access token → 401, then refresh → new valid token."""
+        # GIVEN — a registered user with tokens
+        email = unique_email("tamper")
+        http_client.post(
+            "/auth/register",
+            json={
+                "email": email,
+                "password": DEFAULT_PASSWORD,
+                "first_name": "Tamper",
+                "last_name": "Tester",
+            },
+        ).raise_for_status()
+
+        login_resp = http_client.post(
+            "/auth/login",
+            data={"username": email, "password": DEFAULT_PASSWORD},
+        )
+        login_resp.raise_for_status()
+        tokens = login_resp.json()
+        access_token = tokens["access_token"]
+        refresh_token = tokens["refresh_token"]
+
+        # WHEN — use a tampered access token
+        tampered = access_token + "TAMPERED"
+        me_resp = http_client.get("/users/me", headers=auth_headers(tampered))
+
+        # THEN — rejected with 401
+        assert me_resp.status_code == 401
+
+        # AND — refresh still works
+        refresh_resp = http_client.post(
+            "/auth/refresh",
+            json={"refresh_token": refresh_token},
+        )
+        assert refresh_resp.status_code == 200
+        new_token = refresh_resp.json()["access_token"]
+
+        me_after = http_client.get("/users/me", headers=auth_headers(new_token))
+        assert me_after.status_code == 200
+        assert me_after.json()["email"] == email

@@ -179,6 +179,63 @@ test.describe('Project Detail — Edge Cases', () => {
     await context.close();
   });
 
+  test('clicking team member opens profile dialog', async ({ browser }) => {
+    const ownerContext = await browser.newContext();
+    const expertContext = await browser.newContext();
+    const ownerPage = await ownerContext.newPage();
+    const expertPage = await expertContext.newPage();
+    await ownerPage.addInitScript(() => localStorage.setItem('become-language', 'en'));
+    await expertPage.addInitScript(() => localStorage.setItem('become-language', 'en'));
+
+    const ownerEmail = `detail-team-owner-${uniqueId()}@test.com`;
+    const expertEmail = `detail-team-expert-${uniqueId()}@test.com`;
+
+    await registerAndLogin(ownerPage, ownerEmail, 'Team', 'Owner');
+    await registerAndLogin(expertPage, expertEmail, 'Team', 'Expert');
+
+    const projectName = `Team Dialog ${Date.now()}`;
+    await createProjectAndNavigate(ownerPage, projectName);
+
+    // Invite expert
+    await ownerPage.getByRole('button', { name: 'Invite Experts' }).click();
+    const inviteDialog = ownerPage.getByRole('dialog');
+    await expect(inviteDialog).toBeVisible();
+    await inviteDialog.getByPlaceholder('expert@example.com').fill(expertEmail);
+    await inviteDialog.getByRole('button', { name: 'Send Invitation' }).click();
+    await expect(inviteDialog.getByText('Invitation sent!')).toBeVisible({ timeout: 10000 });
+    await inviteDialog.getByRole('button', { name: 'Done' }).click();
+
+    // Expert accepts
+    await expertPage.reload();
+    await expertPage.waitForLoadState('networkidle');
+    await expertPage.getByRole('tab', { name: 'Invitations' }).click();
+    await expect(expertPage.getByText(projectName)).toBeVisible({ timeout: 10000 });
+    await expertPage.getByRole('button', { name: 'Accept Invitation' }).click();
+
+    // Owner reloads to see team member
+    await ownerPage.reload();
+    await ownerPage.waitForLoadState('networkidle');
+
+    // Click team member row to open profile dialog
+    const memberRow = ownerPage.getByRole('button', { name: /View profile of Team Expert/i });
+    await expect(memberRow).toBeVisible({ timeout: 10000 });
+    await memberRow.click();
+
+    // Profile dialog should show member name
+    const profileDialog = ownerPage.getByRole('dialog');
+    await expect(profileDialog).toBeVisible({ timeout: 5000 });
+    await expect(profileDialog.getByText('Team Expert')).toBeVisible();
+
+    // Escape closes dialog
+    await ownerPage.keyboard.press('Escape');
+    await expect(profileDialog).toBeHidden({ timeout: 5000 });
+
+    await ownerPage.close();
+    await expertPage.close();
+    await ownerContext.close();
+    await expertContext.close();
+  });
+
   test('language switch to Czech persists across navigation', async ({ browser }) => {
     // Do NOT use addInitScript here — it would override language on every navigation
     const context = await browser.newContext();
