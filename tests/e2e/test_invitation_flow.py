@@ -14,7 +14,7 @@ from tests.e2e.conftest import (
 class TestInvitationAccept:
     """Full invitation flow: invite, accept, and join a project."""
 
-    def test_owner_invites_expert_who_accepts_and_joins(self, http_client):
+    def test_invite_expert_accepts_allows_project_access(self, http_client):
         """Invited expert accepts and becomes a project member."""
         # GIVEN — owner creates project, expert is registered
         owner_email = unique_email("owner")
@@ -107,7 +107,7 @@ class TestInvitationErrors:
 class TestInvitationDecline:
     """Expert can decline an invitation."""
 
-    def test_expert_can_decline_invitation(self, http_client):
+    def test_decline_invitation_denies_project_access(self, http_client):
         """Declining removes the invitation; expert stays outside the project."""
         # GIVEN — pending invitation
         owner_email = unique_email("owner")

@@ -91,6 +91,7 @@ class TestAuthenticationErrors:
 
     def test_invalid_token_returns_401(self, http_client):
         """Request with a malformed JWT returns 401."""
+        # GIVEN — invalid auth token
         # WHEN
         response = http_client.get(
             "/projects",
@@ -102,6 +103,7 @@ class TestAuthenticationErrors:
 
     def test_missing_auth_header_returns_401(self, http_client):
         """Request without Authorization header returns 401."""
+        # GIVEN — no Authorization header
         # WHEN
         response = http_client.get("/projects")
 
@@ -115,6 +117,7 @@ class TestWeakPassword:
 
     def test_short_password_rejected(self, http_client):
         """Password shorter than 12 characters returns 422."""
+        # GIVEN — weak password input
         # WHEN
         response = http_client.post(
             "/auth/register",
@@ -131,6 +134,7 @@ class TestWeakPassword:
 
     def test_password_without_special_char_rejected(self, http_client):
         """Password missing special characters returns 422."""
+        # GIVEN — password missing special character
         # WHEN
         response = http_client.post(
             "/auth/register",

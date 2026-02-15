@@ -99,7 +99,11 @@ class TestExpertPermissions:
             f"/projects/{project['id']}/members",
             headers=auth_headers(owner_token),
         ).json()
-        expert2_id = next(m["user_id"] for m in members if m["email"] == expert2_email)
+        expert2_id = next(
+            (m["user_id"] for m in members if m["email"] == expert2_email),
+            None,
+        )
+        assert expert2_id is not None, f"Expert ({expert2_email}) not found in members"
 
         # WHEN — expert1 tries to remove expert2
         response = http_client.delete(

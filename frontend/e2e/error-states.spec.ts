@@ -1,29 +1,33 @@
+import { Page } from '@playwright/test';
 import { test, expect } from './fixtures/base';
 
 const uniqueId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 
+const TEST_PASSWORD = 'TestPass123!@#';
+
+async function registerAndLogin(page: Page, email: string, firstName: string, lastName: string) {
+  await page.goto('/register');
+  await page.getByPlaceholder('you@example.com').fill(email);
+  await page.getByPlaceholder('you@example.com').blur();
+  await page.getByPlaceholder('Min. 12 characters').fill(TEST_PASSWORD);
+  await page.getByPlaceholder('Min. 12 characters').blur();
+  await page.getByPlaceholder('Confirm your password').fill(TEST_PASSWORD);
+  await page.getByPlaceholder('Confirm your password').blur();
+  await page.getByPlaceholder('John').fill(firstName);
+  await page.getByPlaceholder('John').blur();
+  await page.getByPlaceholder('Doe').fill(lastName);
+  await page.getByPlaceholder('Doe').blur();
+
+  const registerBtn = page.getByRole('button', { name: 'Create Account' });
+  await expect(registerBtn).toBeEnabled({ timeout: 10000 });
+  await registerBtn.click();
+  await expect(page).toHaveURL('/projects', { timeout: 10000 });
+}
+
 test.describe('Error States', () => {
   test('shows validation error for invalid fuzzy number', async ({ page }) => {
-    // Register and login
     const email = `err-fuzzy-${uniqueId()}@test.com`;
-    const password = 'TestPass123!@#';
-
-    await page.goto('/register');
-    await page.getByPlaceholder('you@example.com').fill(email);
-    await page.getByPlaceholder('you@example.com').blur();
-    await page.getByPlaceholder('Min. 12 characters').fill(password);
-    await page.getByPlaceholder('Min. 12 characters').blur();
-    await page.getByPlaceholder('Confirm your password').fill(password);
-    await page.getByPlaceholder('Confirm your password').blur();
-    await page.getByPlaceholder('John').fill('Error');
-    await page.getByPlaceholder('John').blur();
-    await page.getByPlaceholder('Doe').fill('Tester');
-    await page.getByPlaceholder('Doe').blur();
-
-    const registerBtn = page.getByRole('button', { name: 'Create Account' });
-    await expect(registerBtn).toBeEnabled({ timeout: 10000 });
-    await registerBtn.click();
-    await expect(page).toHaveURL('/projects', { timeout: 10000 });
+    await registerAndLogin(page, email, 'Error', 'Tester');
 
     // Create a project
     await page.getByRole('button', { name: 'Create Your First Project' }).click();
@@ -51,26 +55,8 @@ test.describe('Error States', () => {
   });
 
   test('shows error for empty project name', async ({ page }) => {
-    // Register and login
     const email = `err-name-${uniqueId()}@test.com`;
-    const password = 'TestPass123!@#';
-
-    await page.goto('/register');
-    await page.getByPlaceholder('you@example.com').fill(email);
-    await page.getByPlaceholder('you@example.com').blur();
-    await page.getByPlaceholder('Min. 12 characters').fill(password);
-    await page.getByPlaceholder('Min. 12 characters').blur();
-    await page.getByPlaceholder('Confirm your password').fill(password);
-    await page.getByPlaceholder('Confirm your password').blur();
-    await page.getByPlaceholder('John').fill('Empty');
-    await page.getByPlaceholder('John').blur();
-    await page.getByPlaceholder('Doe').fill('Name');
-    await page.getByPlaceholder('Doe').blur();
-
-    const registerBtn = page.getByRole('button', { name: 'Create Account' });
-    await expect(registerBtn).toBeEnabled({ timeout: 10000 });
-    await registerBtn.click();
-    await expect(page).toHaveURL('/projects', { timeout: 10000 });
+    await registerAndLogin(page, email, 'Empty', 'Name');
 
     // Open create project dialog
     await page.getByRole('button', { name: 'Create Your First Project' }).click();
@@ -99,26 +85,8 @@ test.describe('Error States', () => {
   });
 
   test('redirects to login on expired session', async ({ page }) => {
-    // Register and login first
     const email = `err-session-${uniqueId()}@test.com`;
-    const password = 'TestPass123!@#';
-
-    await page.goto('/register');
-    await page.getByPlaceholder('you@example.com').fill(email);
-    await page.getByPlaceholder('you@example.com').blur();
-    await page.getByPlaceholder('Min. 12 characters').fill(password);
-    await page.getByPlaceholder('Min. 12 characters').blur();
-    await page.getByPlaceholder('Confirm your password').fill(password);
-    await page.getByPlaceholder('Confirm your password').blur();
-    await page.getByPlaceholder('John').fill('Session');
-    await page.getByPlaceholder('John').blur();
-    await page.getByPlaceholder('Doe').fill('Test');
-    await page.getByPlaceholder('Doe').blur();
-
-    const registerBtn = page.getByRole('button', { name: 'Create Account' });
-    await expect(registerBtn).toBeEnabled({ timeout: 10000 });
-    await registerBtn.click();
-    await expect(page).toHaveURL('/projects', { timeout: 10000 });
+    await registerAndLogin(page, email, 'Session', 'Test');
 
     // Clear auth tokens from localStorage (simulate expired session)
     await page.evaluate(() => {

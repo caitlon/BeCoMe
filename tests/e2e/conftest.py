@@ -58,7 +58,7 @@ def register_user(client: httpx.Client, email: str) -> str:
     :param email: User email address
     :return: JWT access token string
     """
-    client.post(
+    reg_response = client.post(
         "/auth/register",
         json={
             "email": email,
@@ -67,10 +67,13 @@ def register_user(client: httpx.Client, email: str) -> str:
             "last_name": "User",
         },
     )
+    reg_response.raise_for_status()
+
     response = client.post(
         "/auth/login",
         data={"username": email, "password": DEFAULT_PASSWORD},
     )
+    response.raise_for_status()
     return response.json()["access_token"]
 
 
@@ -96,6 +99,7 @@ def create_project(client: httpx.Client, token: str, name: str = "E2E Project") 
         json={"name": name},
         headers=auth_headers(token),
     )
+    response.raise_for_status()
     return response.json()
 
 
@@ -114,19 +118,23 @@ def invite_and_accept(
     :param expert_email: Expert's email address
     :param project_id: Project UUID string
     """
-    client.post(
+    invite_resp = client.post(
         f"/projects/{project_id}/invite",
         json={"email": expert_email},
         headers=auth_headers(owner_token),
     )
+    invite_resp.raise_for_status()
 
-    invitations = client.get("/invitations", headers=auth_headers(expert_token)).json()
+    inv_resp = client.get("/invitations", headers=auth_headers(expert_token))
+    inv_resp.raise_for_status()
+    invitations = inv_resp.json()
     invitation_id = invitations[0]["id"]
 
-    client.post(
+    accept_resp = client.post(
         f"/invitations/{invitation_id}/accept",
         headers=auth_headers(expert_token),
     )
+    accept_resp.raise_for_status()
 
 
 def submit_opinion(
@@ -159,4 +167,5 @@ def submit_opinion(
         },
         headers=auth_headers(token),
     )
+    response.raise_for_status()
     return response.json()

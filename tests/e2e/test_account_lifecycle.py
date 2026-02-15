@@ -54,7 +54,8 @@ class TestAccountLifecycle:
         email = unique_email("deleted")
         token = register_user(http_client, email)
 
-        http_client.delete("/users/me", headers=auth_headers(token))
+        delete_resp = http_client.delete("/users/me", headers=auth_headers(token))
+        assert delete_resp.status_code == 204
 
         # WHEN — try to use the old token
         response = http_client.get(

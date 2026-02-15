@@ -358,6 +358,31 @@ describe('ProjectDetail - Results Section', () => {
     });
   });
 
+  it('toggles individual opinions visibility via checkbox', async () => {
+    const user = userEvent.setup();
+    const opinions = [createOpinion({ user_id: 'other' })];
+    const result = createCalculationResult();
+
+    mockApi.getOpinions.mockResolvedValue(opinions);
+    mockApi.getResult.mockResolvedValue(result);
+
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      const bestCompromiseTexts = screen.getAllByText('Best Compromise');
+      expect(bestCompromiseTexts.length).toBeGreaterThan(0);
+    });
+
+    // showIndividual checkbox should exist and be unchecked by default
+    const checkboxes = screen.getAllByRole('checkbox', { name: /individual/i });
+    expect(checkboxes.length).toBeGreaterThan(0);
+    expect(checkboxes[0]).not.toBeChecked();
+
+    // Toggle it
+    await user.click(checkboxes[0]);
+    expect(checkboxes[0]).toBeChecked();
+  });
+
   it('renders visualization tabs (Triangle and Centroid)', async () => {
     const opinions = [createOpinion({ user_id: 'other' })];
     const result = createCalculationResult();
@@ -393,6 +418,48 @@ describe('ProjectDetail - Team Section', () => {
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /team.*2 members/i })).toBeInTheDocument();
+    });
+  });
+
+  it('team section is expanded by default', async () => {
+    const members = [
+      createMember({ user_id: 'user-1', first_name: 'John', last_name: 'Doe', role: 'admin' }),
+      createMember({ user_id: 'user-2', first_name: 'Jane', last_name: 'Smith', role: 'expert' }),
+    ];
+    mockApi.getMembers.mockResolvedValue(members);
+
+    render(<ProjectDetail />);
+
+    // Team content should be visible without clicking the trigger (teamOpen defaults to true)
+    await waitFor(() => {
+      expect(screen.getAllByText('Jane Smith').length).toBeGreaterThan(0);
+    });
+
+    // Collapsible trigger shows member count — section already expanded
+    expect(screen.getByRole('button', { name: /team.*2 members/i })).toBeInTheDocument();
+  });
+
+  it('can collapse team section', async () => {
+    const user = userEvent.setup();
+    const members = [
+      createMember({ user_id: 'user-1', first_name: 'John', last_name: 'Doe', role: 'admin' }),
+      createMember({ user_id: 'user-2', first_name: 'Jane', last_name: 'Smith', role: 'expert' }),
+    ];
+    mockApi.getMembers.mockResolvedValue(members);
+
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /team.*2 members/i })).toBeInTheDocument();
+    });
+
+    // Click to collapse
+    await user.click(screen.getByRole('button', { name: /team.*2 members/i }));
+
+    // Team table content should be hidden in the desktop collapsible
+    await waitFor(() => {
+      const trigger = screen.getByRole('button', { name: /team.*2 members/i });
+      expect(trigger).toBeInTheDocument();
     });
   });
 

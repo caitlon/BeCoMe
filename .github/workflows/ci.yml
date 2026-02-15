@@ -202,6 +202,9 @@ jobs:
 
       - name: Run backend E2E tests
         run: uv run pytest tests/e2e/ -v -m e2e
+        env:
+          DATABASE_URL: postgresql://become:become@localhost:5432/become_e2e
+          SECRET_KEY: test-secret-key-for-ci
 
   e2e:
     name: E2E Tests (Playwright)
