@@ -149,10 +149,69 @@ jobs:
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
+  backend-e2e:
+    name: Backend E2E Tests
+    runs-on: ubuntu-24.04
+    needs: lint
+    env:
+      TESTING: "1"
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: become
+          POSTGRES_PASSWORD: become
+          POSTGRES_DB: become_e2e
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.13.7
+
+      - name: Install dependencies
+        run: uv sync --frozen --extra dev --extra api
+
+      - name: Start API server
+        run: |
+          uv run uvicorn api.main:app --host 0.0.0.0 --port 8000 &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:8000/api/v1/health && break
+            echo "Waiting for API... ($i/30)"
+            sleep 2
+          done
+          curl -sf http://localhost:8000/api/v1/health || { echo "API failed to start"; exit 1; }
+        env:
+          DATABASE_URL: postgresql://become:become@localhost:5432/become_e2e
+          SECRET_KEY: test-secret-key-for-ci
+          CORS_ORIGINS: '["http://localhost:8080"]'
+          DEBUG: "false"
+
+      - name: Run backend E2E tests
+        run: uv run pytest tests/e2e/ -v -m e2e
+        env:
+          DATABASE_URL: postgresql://become:become@localhost:5432/become_e2e
+          SECRET_KEY: test-secret-key-for-ci
+
   e2e:
     name: E2E Tests (Playwright)
     runs-on: ubuntu-24.04
     needs: lint
+    env:
+      TESTING: "1"
 
     services:
       postgres:
