@@ -64,7 +64,9 @@ function CustomTooltip({
 }
 
 function usePrefersReducedMotion(): boolean {
-  if (typeof globalThis === "undefined") return false;
+  if (typeof globalThis === "undefined" || typeof globalThis.matchMedia !== "function") {
+    return false;
+  }
   return globalThis.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 

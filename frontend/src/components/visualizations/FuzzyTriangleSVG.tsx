@@ -19,6 +19,7 @@ export function FuzzyTriangleSVG() {
   const [currentForm, setCurrentForm] = useState(0);
 
   useEffect(() => {
+    if (typeof globalThis.matchMedia !== "function") return;
     const prefersReducedMotion = globalThis.matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (prefersReducedMotion) return;
 
@@ -34,6 +35,7 @@ export function FuzzyTriangleSVG() {
     <svg
       viewBox="0 0 400 200"
       className="w-full max-w-2xl mx-auto"
+      role="img"
       aria-labelledby="fuzzy-triangle-title fuzzy-triangle-desc"
     >
       <title id="fuzzy-triangle-title">{t("fuzzy.triangleVisualization")}</title>

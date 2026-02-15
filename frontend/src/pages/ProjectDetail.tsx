@@ -101,9 +101,15 @@ const ProjectDetail = () => {
           api.getOpinions(id),
           api.getResult(id),
           api.getMembers(id),
-          api.getProjectInvitations(id).catch(() => {
-            // Invitations endpoint may return 403 for non-admin users
-            return [] as ProjectInvitation[];
+          api.getProjectInvitations(id).catch((error: unknown) => {
+            const status =
+              typeof error === "object" && error && "status" in error
+                ? (error as { status?: number }).status
+                : undefined;
+            if (status === 403) {
+              return [] as ProjectInvitation[];
+            }
+            throw error;
           }),
         ]);
       setProject(projectData);
@@ -595,7 +601,10 @@ const OpinionForm = ({
         {/* Mini Triangle Preview */}
         {lower && peak && upper && isValid && (
           <div className="bg-muted rounded p-4">
-            <svg viewBox="0 0 200 60" className="w-full h-12" aria-label={tFuzzy("a11y.opinionPreviewDesc", { lower: lowerNum, peak: peakNum, upper: upperNum })}>
+            <svg viewBox="0 0 200 60" className="w-full h-12" aria-labelledby="opinion-preview-title">
+              <title id="opinion-preview-title">
+                {tFuzzy("a11y.opinionPreviewDesc", { lower: lowerNum, peak: peakNum, upper: upperNum })}
+              </title>
               <line
                 x1="10"
                 y1="50"
@@ -1053,7 +1062,8 @@ const TriangleVisualization = ({
   const peakY = 30;
 
   return (
-    <svg viewBox="0 0 400 200" className="w-full" aria-label={tCommon("a11y.resultsChartDesc")}>
+    <svg viewBox="0 0 400 200" className="w-full" aria-labelledby="results-chart-title">
+      <title id="results-chart-title">{tCommon("a11y.resultsChartDesc")}</title>
       {/* Axes */}
       <line
         x1="40"

@@ -63,8 +63,8 @@ export function DeleteConfirmModal({
             <div className="bg-muted p-4 rounded-lg mb-4">
               <p className="text-sm font-medium mb-2">{t("deleteModal.permanentlyDelete")}</p>
               <ul className="text-sm text-muted-foreground space-y-1">
-                {details.map((detail) => (
-                  <li key={detail}>• {detail}</li>
+                {details.map((detail, index) => (
+                  <li key={`${detail}-${index}`}>• {detail}</li>
                 ))}
               </ul>
             </div>

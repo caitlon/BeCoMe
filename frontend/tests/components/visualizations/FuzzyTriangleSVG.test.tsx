@@ -32,10 +32,9 @@ afterEach(() => {
 
 describe('FuzzyTriangleSVG', () => {
   it('SVG has aria-labelledby for accessibility', () => {
-    const { container } = render(<FuzzyTriangleSVG />);
+    render(<FuzzyTriangleSVG />);
 
-    const svg = container.querySelector('svg');
-    expect(svg).toHaveAttribute('aria-labelledby', 'fuzzy-triangle-title fuzzy-triangle-desc');
+    expect(screen.getByRole('img', { name: /fuzzy triangular/i })).toBeInTheDocument();
   });
 
   it('has <title> and <desc> elements with correct IDs', () => {

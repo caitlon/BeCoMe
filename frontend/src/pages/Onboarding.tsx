@@ -25,6 +25,12 @@ const steps = [
   StepComplete,
 ];
 
+function getStepIndicatorClass(index: number, currentStep: number): string {
+  if (index === currentStep) return "bg-primary w-6";
+  if (index < currentStep) return "bg-primary/50 w-2";
+  return "bg-muted-foreground/30 w-2";
+}
+
 const Onboarding = () => {
   const { t } = useTranslation("onboarding");
   const { t: tCommon } = useTranslation();
@@ -176,17 +182,7 @@ const Onboarding = () => {
                   aria-label={t("buttons.goToStep", { step: index + 1 })}
                   aria-current={index === currentStep ? "step" : undefined}
                 >
-                  {(() => {
-                    let stepClass = "bg-muted-foreground/30 w-2";
-                    if (index === currentStep) {
-                      stepClass = "bg-primary w-6";
-                    } else if (index < currentStep) {
-                      stepClass = "bg-primary/50 w-2";
-                    }
-                    return (
-                      <span className={`block h-2 rounded-full transition-all ${stepClass}`} />
-                    );
-                  })()}
+                  <span className={`block h-2 rounded-full transition-all ${getStepIndicatorClass(index, currentStep)}`} />
                 </button>
               ))}
             </nav>

@@ -24,11 +24,10 @@ describe('StepEnterOpinion', () => {
   });
 
   it('renders triangle preview SVG with aria-labelledby', () => {
-    const { container } = render(<StepEnterOpinion />);
+    render(<StepEnterOpinion />);
 
-    const svg = container.querySelector('svg[aria-labelledby]');
+    const svg = screen.getByLabelText(/triangle preview/i);
     expect(svg).toBeInTheDocument();
-    expect(svg).toHaveAttribute('aria-labelledby', 'triangle-preview-title');
   });
 
   it('shows valid triangle when lower <= peak <= upper', () => {
@@ -50,7 +49,7 @@ describe('StepEnterOpinion', () => {
     await user.type(lowerInput, '80');
 
     // The error text from the preview should be visible
-    const svg = document.querySelector('svg[aria-labelledby]')!;
+    const svg = screen.getByLabelText(/triangle preview/i);
     const errorText = svg.querySelector('text');
     expect(errorText).toBeInTheDocument();
     expect(errorText?.textContent).toBeTruthy();
