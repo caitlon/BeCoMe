@@ -78,7 +78,7 @@ jobs:
 
       # Python unit tests
       - name: Run Python unit tests
-        run: uv run pytest tests/unit/ --cov=src --cov=api --cov-report=term-missing --cov-report=xml:coverage-unit.xml
+        run: uv run pytest tests/unit/ --cov=src --cov=api --cov-report=term-missing
 
       # Node.js setup
       - name: Setup Node.js
@@ -130,9 +130,9 @@ jobs:
       - name: Install Python dependencies
         run: uv sync --frozen --extra dev --extra api
 
-      # Python integration tests
-      - name: Run Python integration tests
-        run: uv run pytest tests/integration/ --cov=src --cov=api --cov-report=term-missing --cov-report=html --cov-report=xml:coverage.xml
+      # Python tests (unit + integration for complete SonarCloud coverage)
+      - name: Run Python tests with coverage
+        run: uv run pytest tests/unit/ tests/integration/ --cov=src --cov=api --cov-report=term-missing --cov-report=html --cov-report=xml:coverage.xml
 
       - name: Upload Python coverage report
         if: always()
