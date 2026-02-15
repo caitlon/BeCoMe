@@ -132,9 +132,7 @@ class TestConcurrentOpinionSubmit:
         owner_token = register_user(http_client, owner_email)
         expert_token = register_user(http_client, expert_email)
         project = create_project(http_client, owner_token, "Concurrent Test")
-        invite_and_accept(
-            http_client, owner_token, expert_token, expert_email, project["id"]
-        )
+        invite_and_accept(http_client, owner_token, expert_token, expert_email, project["id"])
 
         # WHEN — submit two opinions concurrently
         def post_opinion(values: tuple[float, float, float]) -> int:
@@ -166,9 +164,7 @@ class TestConcurrentOpinionSubmit:
             headers=auth_headers(expert_token),
         )
         opinions_resp.raise_for_status()
-        expert_opinions = [
-            o for o in opinions_resp.json() if o["user_email"] == expert_email
-        ]
+        expert_opinions = [o for o in opinions_resp.json() if o["user_email"] == expert_email]
         assert len(expert_opinions) == 1
 
 
@@ -194,12 +190,14 @@ class TestMultipleExperts:
         for i, (low, peak, up) in enumerate(expert_values):
             exp_email = unique_email(f"multi{i}")
             exp_token = register_user(http_client, exp_email)
-            invite_and_accept(
-                http_client, owner_token, exp_token, exp_email, project["id"]
-            )
+            invite_and_accept(http_client, owner_token, exp_token, exp_email, project["id"])
             submit_opinion(
-                http_client, exp_token, project["id"],
-                lower_bound=low, peak=peak, upper_bound=up,
+                http_client,
+                exp_token,
+                project["id"],
+                lower_bound=low,
+                peak=peak,
+                upper_bound=up,
             )
 
         # WHEN — fetch result
@@ -253,9 +251,7 @@ class TestNegativeScaleProject:
         # GIVEN — project with negative scale
         email = unique_email("negscale")
         token = register_user(http_client, email)
-        project = create_project_with_scale(
-            http_client, token, "Negative Scale", -100.0, 0.0
-        )
+        project = create_project_with_scale(http_client, token, "Negative Scale", -100.0, 0.0)
 
         # WHEN — submit opinion within range
         response = http_client.post(
@@ -313,9 +309,7 @@ class TestLikertInterpretation:
         # GIVEN — custom scale project
         email = unique_email("nolikert")
         token = register_user(http_client, email)
-        project = create_project_with_scale(
-            http_client, token, "Custom Scale", 1.0, 10.0
-        )
+        project = create_project_with_scale(http_client, token, "Custom Scale", 1.0, 10.0)
 
         # Submit opinion within custom scale
         http_client.post(
@@ -354,9 +348,7 @@ class TestProjectDeleteWhileExpertViews:
         owner_token = register_user(http_client, owner_email)
         expert_token = register_user(http_client, expert_email)
         project = create_project(http_client, owner_token, "Delete Test")
-        invite_and_accept(
-            http_client, owner_token, expert_token, expert_email, project["id"]
-        )
+        invite_and_accept(http_client, owner_token, expert_token, expert_email, project["id"])
         submit_opinion(http_client, expert_token, project["id"])
 
         # WHEN — owner deletes project
@@ -386,9 +378,7 @@ class TestRemoveMemberThenSubmit:
         owner_token = register_user(http_client, owner_email)
         expert_token = register_user(http_client, expert_email)
         project = create_project(http_client, owner_token, "Remove Test")
-        invite_and_accept(
-            http_client, owner_token, expert_token, expert_email, project["id"]
-        )
+        invite_and_accept(http_client, owner_token, expert_token, expert_email, project["id"])
 
         # Get expert user ID
         me_resp = http_client.get("/users/me", headers=auth_headers(expert_token))
