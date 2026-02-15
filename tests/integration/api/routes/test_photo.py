@@ -10,7 +10,7 @@ from api.db.session import get_session
 from api.dependencies import get_storage_service
 from api.services.storage.exceptions import StorageDeleteError, StorageUploadError
 from api.services.storage.supabase_storage_service import SupabaseStorageService
-from tests.api.conftest import auth_header, create_test_app, register_and_login
+from tests.integration.api.conftest import auth_header, create_test_app, register_and_login
 
 # Valid JPEG magic bytes (minimal valid JPEG header)
 VALID_JPEG_BYTES = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00" + b"\x00" * 100

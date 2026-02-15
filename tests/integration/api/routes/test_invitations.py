@@ -1,6 +1,6 @@
 """Tests for invitation management endpoints (email-based)."""
 
-from tests.api.conftest import auth_header, create_project, register_and_login
+from tests.integration.api.conftest import auth_header, create_project, register_and_login
 
 
 class TestInviteByEmail:

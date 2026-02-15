@@ -3,7 +3,7 @@
 These tests require PostgreSQL to be installed and available.
 They will be skipped if pg_ctl is not found in PATH.
 
-Run with: uv run pytest tests/api/test_db_postgres_integration.py -v
+Run with: uv run pytest tests/integration/api/db/test_postgres_integration.py -v
 """
 
 import shutil
@@ -147,6 +147,7 @@ class TestForeignKeyEnforcement:
         opinion = ExpertOpinion(
             project_id=project.id,
             user_id=expert.id,
+            position="Expert",
             lower_bound=5.0,
             peak=10.0,
             upper_bound=15.0,

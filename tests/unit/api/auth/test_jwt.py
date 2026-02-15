@@ -16,7 +16,7 @@ from api.auth.jwt import (
     revoke_token,
 )
 from api.auth.token_blacklist import TokenBlacklist
-from tests.api.conftest import mock_datetime_offset
+from tests.unit.api.conftest import mock_datetime_offset
 
 
 class TestCreateAccessToken:

@@ -1,6 +1,6 @@
 """Integration tests for opinion management endpoints."""
 
-from tests.api.conftest import (
+from tests.integration.api.conftest import (
     auth_header,
     create_project,
     register_and_login,
