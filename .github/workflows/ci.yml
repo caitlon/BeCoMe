@@ -142,9 +142,10 @@ jobs:
           path: htmlcov/
           retention-days: 30
 
-      # SonarQube Cloud (skipped for Dependabot PRs — no access to secrets)
+      # SonarQube Cloud — PR only (main push triggers a separate "New Code" analysis
+      # that can fail due to cumulative coverage gaps across merged PRs)
       - name: SonarQube Cloud Scan
-        if: env.SONAR_TOKEN != ''
+        if: github.event_name == 'pull_request' && env.SONAR_TOKEN != ''
         uses: SonarSource/sonarqube-scan-action@v7
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
