@@ -3,6 +3,7 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { render } from '@tests/utils';
 import ProjectDetail from '@/pages/ProjectDetail';
+import { HttpError } from '@/lib/api';
 import { createProject, createOpinion, createMember, createCalculationResult, createProjectInvitation } from '@tests/factories/project';
 
 // Use vi.hoisted for mock variables
@@ -40,10 +41,14 @@ vi.mock('react-router-dom', async () => {
   };
 });
 
-// Mock api
-vi.mock('@/lib/api', () => ({
-  api: mockApi,
-}));
+// Mock api (keep HttpError from original module)
+vi.mock('@/lib/api', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/api')>('@/lib/api');
+  return {
+    api: mockApi,
+    HttpError: actual.HttpError,
+  };
+});
 
 // Mock useToast
 vi.mock('@/hooks/use-toast', () => ({
@@ -827,6 +832,45 @@ describe('ProjectDetail - Member Profile Dialog', () => {
     await waitFor(() => {
       // sr-only text with opinion values summary
       expect(screen.getByText(/opinion values.*lower.*10\.00.*peak.*20\.00.*upper.*30\.00.*centroid.*20\.00/i)).toBeInTheDocument();
+    });
+  });
+});
+
+describe('ProjectDetail - Invitations 403 handling', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('renders page normally when invitations endpoint returns 403', async () => {
+    const project = createProject({ id: 'project-1', name: 'Test Project', role: 'member' });
+    mockApi.getProject.mockResolvedValue(project);
+    mockApi.getOpinions.mockResolvedValue([]);
+    mockApi.getResult.mockResolvedValue(null);
+    mockApi.getMembers.mockResolvedValue([]);
+    mockApi.getProjectInvitations.mockRejectedValue(new HttpError('Forbidden', 403));
+
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Test Project')).toBeInTheDocument();
+    });
+  });
+
+  it('shows error toast and navigates away on non-403 invitation error', async () => {
+    const project = createProject({ id: 'project-1', name: 'Test Project', role: 'admin' });
+    mockApi.getProject.mockResolvedValue(project);
+    mockApi.getOpinions.mockResolvedValue([]);
+    mockApi.getResult.mockResolvedValue(null);
+    mockApi.getMembers.mockResolvedValue([]);
+    mockApi.getProjectInvitations.mockRejectedValue(new HttpError('Server Error', 500));
+
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({ variant: 'destructive' }),
+      );
+      expect(mockNavigate).toHaveBeenCalledWith('/projects');
     });
   });
 });

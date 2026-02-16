@@ -22,10 +22,10 @@ type InviteFormData = {
 };
 
 interface InviteExpertModalProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  projectId?: string;
-  projectName?: string;
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+  readonly projectId?: string;
+  readonly projectName?: string;
 }
 
 export function InviteExpertModal({

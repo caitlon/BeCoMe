@@ -382,7 +382,7 @@ const CaseStudy = () => {
   );
 };
 
-function LikertRow({ role, value }: { role: string; value: number }) {
+function LikertRow({ role, value }: { readonly role: string; readonly value: number }) {
   const label = useLocalizedLikertLabel(value);
   return (
     <tr className="border-b last:border-0 hover:bg-secondary/50 transition-colors">
@@ -393,7 +393,7 @@ function LikertRow({ role, value }: { role: string; value: number }) {
   );
 }
 
-function LikertInterpretation({ value }: { value: number }) {
+function LikertInterpretation({ value }: { readonly value: number }) {
   const { t } = useTranslation("caseStudies");
   const label = useLocalizedLikertLabel(value);
   return (

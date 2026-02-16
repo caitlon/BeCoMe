@@ -113,7 +113,7 @@ const Profile = () => {
       await api.deletePhoto();
       await refreshUser();
       toast({ title: t("toast.photoDeleted") });
-    } catch (error) {
+    } catch {
       toast({
         title: t("toast.error"),
         description: t("toast.photoDeleteFailed"),

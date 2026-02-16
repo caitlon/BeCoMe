@@ -20,7 +20,7 @@ const CaseStudies = lazy(() => import("./pages/CaseStudies"));
 const CaseStudy = lazy(() => import("./pages/CaseStudy"));
 const About = lazy(() => import("./pages/About"));
 const Documentation = lazy(() => import("./pages/Documentation"));
-const FAQ = lazy(() => import("./pages/FAQ"));
+const FaqPage = lazy(() => import("./pages/FAQ"));
 const Onboarding = lazy(() => import("./pages/Onboarding"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
@@ -30,10 +30,10 @@ function PageLoader() {
   const { t } = useTranslation();
   return (
     <main id="main-content" tabIndex={-1} className="min-h-screen flex items-center justify-center">
-      <div role="status">
+      <output>
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
         <span className="sr-only">{t("common.loading")}</span>
-      </div>
+      </output>
     </main>
   );
 }
@@ -51,7 +51,7 @@ const App = () => (
               <Route path="/" element={<Landing />} />
               <Route path="/about" element={<About />} />
               <Route path="/docs" element={<Documentation />} />
-              <Route path="/faq" element={<FAQ />} />
+              <Route path="/faq" element={<FaqPage />} />
               <Route path="/case-studies" element={<CaseStudies />} />
               <Route path="/case-study/:id" element={<CaseStudy />} />
               <Route path="/login" element={<Login />} />

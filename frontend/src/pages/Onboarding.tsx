@@ -25,6 +25,12 @@ const steps = [
   StepComplete,
 ];
 
+function getStepIndicatorClass(index: number, currentStep: number): string {
+  if (index === currentStep) return "bg-primary w-6";
+  if (index < currentStep) return "bg-primary/50 w-2";
+  return "bg-muted-foreground/30 w-2";
+}
+
 const Onboarding = () => {
   const { t } = useTranslation("onboarding");
   const { t: tCommon } = useTranslation();
@@ -79,8 +85,8 @@ const Onboarding = () => {
       }
     };
 
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    globalThis.addEventListener("keydown", handleKeyDown);
+    return () => globalThis.removeEventListener("keydown", handleKeyDown);
   }, [goToNext, goToPrevious, navigateToProjects, isFirstStep, isLastStep]);
 
   const CurrentStepComponent = steps[currentStep];
@@ -166,7 +172,7 @@ const Onboarding = () => {
             <nav aria-label={tCommon("a11y.stepNavigation")} className="hidden sm:flex items-center gap-1">
               {steps.map((_, index) => (
                 <button
-                  key={index}
+                  key={`step-${index}`}
                   type="button"
                   onClick={() => {
                     setDirection(index > currentStep ? 1 : -1);
@@ -176,15 +182,7 @@ const Onboarding = () => {
                   aria-label={t("buttons.goToStep", { step: index + 1 })}
                   aria-current={index === currentStep ? "step" : undefined}
                 >
-                  <span
-                    className={`block h-2 rounded-full transition-all ${
-                      index === currentStep
-                        ? "bg-primary w-6"
-                        : index < currentStep
-                          ? "bg-primary/50 w-2"
-                          : "bg-muted-foreground/30 w-2"
-                    }`}
-                  />
+                  <span className={`block h-2 rounded-full transition-all ${getStepIndicatorClass(index, currentStep)}`} />
                 </button>
               ))}
             </nav>

@@ -16,7 +16,7 @@ export function StepComplete() {
   // Memoize particle positions to prevent recalculation on every render
   const particlePositions = useMemo(
     () =>
-      [...Array(6)].map(() => ({
+      Array.from({ length: 6 }).map(() => ({
         x: 50 + (Math.random() - 0.5) * 60,
         y: 50 + (Math.random() - 0.5) * 60,
       })),
@@ -72,7 +72,7 @@ export function StepComplete() {
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
         {particlePositions.map((pos, i) => (
           <motion.div
-            key={i}
+            key={`particle-${pos.x}-${pos.y}`}
             initial={{
               opacity: 0,
               scale: 0,

@@ -31,11 +31,10 @@ afterEach(() => {
 });
 
 describe('FuzzyTriangleSVG', () => {
-  it('SVG has role="img" and aria-labelledby', () => {
+  it('SVG has aria-labelledby for accessibility', () => {
     render(<FuzzyTriangleSVG />);
 
-    const svg = screen.getByRole('img');
-    expect(svg).toHaveAttribute('aria-labelledby', 'fuzzy-triangle-title fuzzy-triangle-desc');
+    expect(screen.getByRole('img', { name: /fuzzy triangular/i })).toBeInTheDocument();
   });
 
   it('has <title> and <desc> elements with correct IDs', () => {
