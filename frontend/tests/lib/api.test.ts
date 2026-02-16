@@ -188,6 +188,62 @@ describe('ApiClient', () => {
       api.setToken('token');
       await expect(api.getProjects()).rejects.toThrow('An unexpected error occurred');
     });
+
+    it('throws HttpError with correct status for 400', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        json: () => Promise.resolve({ detail: 'Bad request' }),
+      });
+
+      api.setToken('token');
+      try {
+        await api.getProjects();
+        expect.fail('Expected HttpError to be thrown');
+      } catch (e: unknown) {
+        const err = e as { name: string; status: number; message: string };
+        expect(err.name).toBe('HttpError');
+        expect(err.status).toBe(400);
+        expect(err.message).toBe('Bad request');
+      }
+    });
+
+    it('throws HttpError with correct status for 403', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 403,
+        json: () => Promise.resolve({ detail: 'Forbidden' }),
+      });
+
+      api.setToken('token');
+      try {
+        await api.getProjects();
+        expect.fail('Expected HttpError to be thrown');
+      } catch (e: unknown) {
+        const err = e as { name: string; status: number };
+        expect(err.name).toBe('HttpError');
+        expect(err.status).toBe(403);
+      }
+    });
+
+    it('throws HttpError with status for JSON parse failure', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 502,
+        json: () => Promise.reject(new Error('Invalid JSON')),
+      });
+
+      api.setToken('token');
+      try {
+        await api.getProjects();
+        expect.fail('Expected HttpError to be thrown');
+      } catch (e: unknown) {
+        const err = e as { name: string; status: number; message: string };
+        expect(err.name).toBe('HttpError');
+        expect(err.status).toBe(502);
+        expect(err.message).toBe('An unexpected error occurred');
+      }
+    });
   });
 
   describe('Auth Endpoints', () => {
