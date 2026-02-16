@@ -865,9 +865,8 @@ describe('ProjectDetail - Member Profile Dialog', () => {
         expect(mockToast).toHaveBeenCalledWith(
           expect.objectContaining({ variant: 'destructive' }),
         );
+        expect(mockNavigate).toHaveBeenCalledWith('/projects');
       });
-
-      expect(mockNavigate).toHaveBeenCalledWith('/projects');
     });
   });
 });
