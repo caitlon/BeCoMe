@@ -834,39 +834,43 @@ describe('ProjectDetail - Member Profile Dialog', () => {
       expect(screen.getByText(/opinion values.*lower.*10\.00.*peak.*20\.00.*upper.*30\.00.*centroid.*20\.00/i)).toBeInTheDocument();
     });
   });
+});
 
-  describe('Invitations 403 handling', () => {
-    it('renders page normally when invitations endpoint returns 403', async () => {
-      const project = createProject({ id: 'project-1', name: 'Test Project', role: 'member' });
-      mockApi.getProject.mockResolvedValue(project);
-      mockApi.getOpinions.mockResolvedValue([]);
-      mockApi.getResult.mockResolvedValue(null);
-      mockApi.getMembers.mockResolvedValue([]);
-      mockApi.getProjectInvitations.mockRejectedValue(new HttpError('Forbidden', 403));
+describe('ProjectDetail - Invitations 403 handling', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
 
-      render(<ProjectDetail />);
+  it('renders page normally when invitations endpoint returns 403', async () => {
+    const project = createProject({ id: 'project-1', name: 'Test Project', role: 'member' });
+    mockApi.getProject.mockResolvedValue(project);
+    mockApi.getOpinions.mockResolvedValue([]);
+    mockApi.getResult.mockResolvedValue(null);
+    mockApi.getMembers.mockResolvedValue([]);
+    mockApi.getProjectInvitations.mockRejectedValue(new HttpError('Forbidden', 403));
 
-      await waitFor(() => {
-        expect(screen.getByText('Test Project')).toBeInTheDocument();
-      });
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Test Project')).toBeInTheDocument();
     });
+  });
 
-    it('shows error toast and navigates away on non-403 invitation error', async () => {
-      const project = createProject({ id: 'project-1', name: 'Test Project', role: 'admin' });
-      mockApi.getProject.mockResolvedValue(project);
-      mockApi.getOpinions.mockResolvedValue([]);
-      mockApi.getResult.mockResolvedValue(null);
-      mockApi.getMembers.mockResolvedValue([]);
-      mockApi.getProjectInvitations.mockRejectedValue(new HttpError('Server Error', 500));
+  it('shows error toast and navigates away on non-403 invitation error', async () => {
+    const project = createProject({ id: 'project-1', name: 'Test Project', role: 'admin' });
+    mockApi.getProject.mockResolvedValue(project);
+    mockApi.getOpinions.mockResolvedValue([]);
+    mockApi.getResult.mockResolvedValue(null);
+    mockApi.getMembers.mockResolvedValue([]);
+    mockApi.getProjectInvitations.mockRejectedValue(new HttpError('Server Error', 500));
 
-      render(<ProjectDetail />);
+    render(<ProjectDetail />);
 
-      await waitFor(() => {
-        expect(mockToast).toHaveBeenCalledWith(
-          expect.objectContaining({ variant: 'destructive' }),
-        );
-        expect(mockNavigate).toHaveBeenCalledWith('/projects');
-      });
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({ variant: 'destructive' }),
+      );
+      expect(mockNavigate).toHaveBeenCalledWith('/projects');
     });
   });
 });
