@@ -30,6 +30,9 @@ coverage.xml
 # SonarCloud local scanner
 .scannerwork/
 
+# Playwright MCP browser logs
+.playwright-mcp/
+
 # Node modules
 node_modules/
 
