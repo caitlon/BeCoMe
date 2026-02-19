@@ -81,17 +81,17 @@ export function Footer() {
             <ul className="space-y-2">
               <li>
                 <span className="text-sm text-muted-foreground">
-                  Prof. Ing. Ivan Vrana, DrSc.
+                  {t("footer.vrana")}
                 </span>
               </li>
               <li>
                 <span className="text-sm text-muted-foreground">
-                  doc. Ing. Jan Tyrychtr, Ph.D.
+                  {t("footer.tyrychtr")}
                 </span>
               </li>
               <li>
                 <span className="text-sm text-muted-foreground">
-                  doc. Ing. Martin Pelikán, Ph.D.
+                  {t("footer.pelikan")}
                 </span>
               </li>
               <li>
