@@ -86,7 +86,12 @@ export function Footer() {
               </li>
               <li>
                 <span className="text-sm text-muted-foreground">
-                  Ing. Jan Tyrychtr, Ph.D.
+                  doc. Ing. Jan Tyrychtr, Ph.D.
+                </span>
+              </li>
+              <li>
+                <span className="text-sm text-muted-foreground">
+                  doc. Ing. Martin Pelikán, Ph.D.
                 </span>
               </li>
               <li>

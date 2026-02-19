@@ -145,7 +145,8 @@ const About = () => {
                   </div>
                   <div>
                     <p className="font-medium">Prof. Ing. Ivan Vrana, DrSc.</p>
-                    <p className="font-medium">Ing. Jan Tyrychtr, PhD.</p>
+                    <p className="font-medium">doc. Ing. Jan Tyrychtr, Ph.D.</p>
+                    <p className="font-medium">doc. Ing. Martin Pelikán, Ph.D.</p>
                     <p className="text-sm text-muted-foreground mt-2">
                       {t("authors.department")}
                       <br />
