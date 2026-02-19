@@ -1,0 +1,66 @@
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { renderHook, act } from '@testing-library/react';
+import { useScrollSpy } from '@/hooks/useScrollSpy';
+
+describe('useScrollSpy', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('returns defaultId as initial activeId', () => {
+    const { result } = renderHook(() =>
+      useScrollSpy(['section-a', 'section-b'], 'section-a')
+    );
+
+    expect(result.current.activeId).toBe('section-a');
+  });
+
+  it('returns scrollToSection function', () => {
+    const { result } = renderHook(() =>
+      useScrollSpy(['section-a'], 'section-a')
+    );
+
+    expect(typeof result.current.scrollToSection).toBe('function');
+  });
+
+  it('scrollToSection calls window.scrollTo with smooth behavior', () => {
+    vi.spyOn(globalThis, 'scrollTo').mockImplementation(() => {});
+
+    const el = document.createElement('div');
+    el.id = 'section-a';
+    document.body.appendChild(el);
+    vi.spyOn(el, 'getBoundingClientRect').mockReturnValue({
+      top: 200, bottom: 400, left: 0, right: 0,
+      width: 0, height: 200, x: 0, y: 200, toJSON: () => {},
+    });
+
+    const { result } = renderHook(() =>
+      useScrollSpy(['section-a'], 'section-a')
+    );
+
+    act(() => {
+      result.current.scrollToSection('section-a');
+    });
+
+    expect(globalThis.scrollTo).toHaveBeenCalledWith(
+      expect.objectContaining({ behavior: 'smooth' })
+    );
+
+    document.body.removeChild(el);
+  });
+
+  it('adds and removes scroll event listener', () => {
+    const addSpy = vi.spyOn(globalThis, 'addEventListener');
+    const removeSpy = vi.spyOn(globalThis, 'removeEventListener');
+
+    const { unmount } = renderHook(() =>
+      useScrollSpy(['section-a'], 'section-a')
+    );
+
+    expect(addSpy).toHaveBeenCalledWith('scroll', expect.any(Function));
+
+    unmount();
+
+    expect(removeSpy).toHaveBeenCalledWith('scroll', expect.any(Function));
+  });
+});

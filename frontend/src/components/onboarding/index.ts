@@ -4,3 +4,4 @@ export { StepInviteExperts } from "./StepInviteExperts";
 export { StepEnterOpinion } from "./StepEnterOpinion";
 export { StepViewResults } from "./StepViewResults";
 export { StepComplete } from "./StepComplete";
+export { StepHeader } from "./StepHeader";

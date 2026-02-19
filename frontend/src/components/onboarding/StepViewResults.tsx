@@ -2,12 +2,8 @@ import { motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { BarChart3, TrendingUp, AlertCircle, Users } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-
-const fadeInUp = {
-  initial: { opacity: 0, y: 20 },
-  animate: { opacity: 1, y: 0 },
-  transition: { duration: 0.5 },
-};
+import { fadeInUp } from "@/lib/motion";
+import { StepHeader } from "./StepHeader";
 
 const stagger = {
   animate: {
@@ -22,30 +18,11 @@ export function StepViewResults() {
 
   return (
     <div className="flex flex-col items-center px-6 py-8">
-      <motion.div
-        initial={{ scale: 0 }}
-        animate={{ scale: 1 }}
-        transition={{ type: "spring", duration: 0.6 }}
-        className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-6"
-      >
-        <BarChart3 className="h-8 w-8 text-primary" />
-      </motion.div>
-
-      <motion.h2
-        {...fadeInUp}
-        className="font-display text-2xl md:text-3xl font-normal mb-2 text-center"
-      >
-        {t("steps.viewResults.title")}
-      </motion.h2>
-
-      <motion.p
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1, duration: 0.5 }}
-        className="text-muted-foreground text-center max-w-md mb-8"
-      >
-        {t("steps.viewResults.description")}
-      </motion.p>
+      <StepHeader
+        icon={BarChart3}
+        titleKey="steps.viewResults.title"
+        descriptionKey="steps.viewResults.description"
+      />
 
       <motion.div
         variants={stagger}

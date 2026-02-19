@@ -12,12 +12,7 @@ import { ArrowRight, Users, Calculator, Target } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLocalizedCaseStudies } from "@/hooks/useLocalizedCaseStudies";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
-
-const fadeInUp = {
-  initial: { opacity: 0, y: 20 },
-  animate: { opacity: 1, y: 0 },
-  transition: { duration: 0.5 }
-};
+import { fadeInUp } from "@/lib/motion";
 
 const stagger = {
   animate: {
