@@ -49,8 +49,10 @@ describe('About', () => {
     // Authors appear in multiple places (navbar and content), use getAllByText
     const vranaNames = screen.getAllByText('Prof. Ing. Ivan Vrana, DrSc.');
     expect(vranaNames.length).toBeGreaterThan(0);
-    const tyrychtrNames = screen.getAllByText('Ing. Jan Tyrychtr, PhD.');
+    const tyrychtrNames = screen.getAllByText('doc. Ing. Jan Tyrychtr, Ph.D.');
     expect(tyrychtrNames.length).toBeGreaterThan(0);
+    const pelikanNames = screen.getAllByText('doc. Ing. Martin Pelikán, Ph.D.');
+    expect(pelikanNames.length).toBeGreaterThan(0);
   });
 
   it('has link to documentation', () => {

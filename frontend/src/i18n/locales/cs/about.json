@@ -60,11 +60,14 @@
   },
   "authors": {
     "title": "Autoři",
+    "vrana": "Prof. Ing. Ivan Vrana, DrSc.",
+    "tyrychtr": "doc. Ing. Jan Tyrychtr, Ph.D.",
+    "pelikan": "doc. Ing. Martin Pelikán, Ph.D.",
     "department": "Katedra informačního inženýrství",
     "faculty": "Provozně ekonomická fakulta",
     "university": "Česká zemědělská univerzita v Praze",
     "citation": "Citace:",
-    "citationText": "Vrana, I., Tyrychtr, J. (2020). BeCoMe-FuzzyDecisionTool, ČZU Praha."
+    "citationText": "Vrana, I., Tyrychtr, J., Pelikán, M. (2020). BeCoMe-FuzzyDecisionTool, ČZU Praha."
   },
   "cta": {
     "title": "Podívejte se na BeCoMe v akci",

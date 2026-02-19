@@ -60,11 +60,14 @@
   },
   "authors": {
     "title": "Authors",
+    "vrana": "Prof. Ing. Ivan Vrana, DrSc.",
+    "tyrychtr": "doc. Ing. Jan Tyrychtr, Ph.D.",
+    "pelikan": "doc. Ing. Martin Pelikán, Ph.D.",
     "department": "Department of Information Engineering",
     "faculty": "Faculty of Economics and Management",
     "university": "Czech University of Life Sciences Prague",
     "citation": "Citation:",
-    "citationText": "Vrana, I., Tyrychtr, J. (2020). BeCoMe-FuzzyDecisionTool, CZU Prague."
+    "citationText": "Vrana, I., Tyrychtr, J., Pelikán, M. (2020). BeCoMe-FuzzyDecisionTool, CZU Prague."
   },
   "cta": {
     "title": "See BeCoMe in Action",
