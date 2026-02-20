@@ -38,7 +38,6 @@ export function StepInviteExperts() {
                     placeholder={t("steps.inviteExperts.form.emailPlaceholder")}
                     className="pl-10"
                     readOnly
-                    aria-readonly="true"
                   />
                 </div>
                 <Button

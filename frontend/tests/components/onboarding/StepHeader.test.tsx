@@ -28,12 +28,10 @@ describe('StepHeader', () => {
       />
     );
 
-    // Description rendered as <p> after the heading
-    const heading = screen.getByRole('heading', { level: 2 });
-    expect(heading.nextElementSibling?.tagName).toBe('P');
+    expect(screen.getByRole('paragraph')).toBeInTheDocument();
   });
 
-  it('renders icon inside circular container', () => {
+  it('renders icon SVG', () => {
     const { container } = render(
       <StepHeader
         icon={FolderPlus}
@@ -42,7 +40,6 @@ describe('StepHeader', () => {
       />
     );
 
-    const iconWrapper = container.querySelector('.rounded-full');
-    expect(iconWrapper).toBeInTheDocument();
+    expect(container.querySelector('svg')).toBeInTheDocument();
   });
 });

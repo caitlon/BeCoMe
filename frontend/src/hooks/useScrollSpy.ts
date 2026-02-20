@@ -1,8 +1,11 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 /**
  * Tracks which section is currently visible in the viewport.
  * Returns the ID of the active section and a function to smooth-scroll to a section.
+ *
+ * Callers should pass a stable array reference for `sectionIds`
+ * (module-level constant or wrapped in useMemo) to avoid re-subscribing on every render.
  */
 export function useScrollSpy(sectionIds: readonly string[], defaultId: string) {
   const [activeId, setActiveId] = useState(defaultId);
@@ -26,7 +29,7 @@ export function useScrollSpy(sectionIds: readonly string[], defaultId: string) {
     return () => globalThis.removeEventListener("scroll", handleScroll);
   }, [sectionIds]);
 
-  const scrollToSection = (id: string) => {
+  const scrollToSection = useCallback((id: string) => {
     const element = document.getElementById(id);
     if (element) {
       const offset = 100;
@@ -34,7 +37,7 @@ export function useScrollSpy(sectionIds: readonly string[], defaultId: string) {
         element.getBoundingClientRect().top + globalThis.scrollY - offset;
       globalThis.scrollTo({ top, behavior: "smooth" });
     }
-  };
+  }, []);
 
   return { activeId, scrollToSection } as const;
 }

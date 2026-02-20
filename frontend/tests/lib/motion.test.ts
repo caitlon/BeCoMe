@@ -15,4 +15,8 @@ describe('fadeInUp', () => {
   it('animate state has full opacity and zero y offset', () => {
     expect(fadeInUp.animate).toEqual({ opacity: 1, y: 0 });
   });
+
+  it('transition has 0.5s duration', () => {
+    expect(fadeInUp.transition).toEqual({ duration: 0.5 });
+  });
 });

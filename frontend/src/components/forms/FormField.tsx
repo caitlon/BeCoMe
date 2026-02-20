@@ -43,9 +43,9 @@ function FormFieldWrapper({ label, error, description, fieldId, children }: Form
 }
 
 interface FormFieldProps extends React.InputHTMLAttributes<HTMLInputElement> {
-  label: string;
-  error?: FieldError;
-  description?: string;
+  readonly label: string;
+  readonly error?: FieldError;
+  readonly description?: string;
 }
 
 const FormField = React.forwardRef<HTMLInputElement, FormFieldProps>(
@@ -74,9 +74,9 @@ FormField.displayName = "FormField";
 
 interface FormTextareaProps
   extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
-  label: string;
-  error?: FieldError;
-  description?: string;
+  readonly label: string;
+  readonly error?: FieldError;
+  readonly description?: string;
 }
 
 const FormTextarea = React.forwardRef<HTMLTextAreaElement, FormTextareaProps>(

@@ -18,12 +18,11 @@ describe('StepInviteExperts', () => {
     expect(screen.getByText(/add team members/i)).toBeInTheDocument();
   });
 
-  it('renders email input as readOnly with aria-readonly', () => {
+  it('renders email input as readOnly', () => {
     render(<StepInviteExperts />);
 
     const emailInput = screen.getByRole('textbox');
     expect(emailInput).toHaveAttribute('readonly');
-    expect(emailInput).toHaveAttribute('aria-readonly', 'true');
   });
 
   it('renders invite button with aria-label', () => {
