@@ -5,12 +5,7 @@ import { PenLine } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-
-const fadeInUp = {
-  initial: { opacity: 0, y: 20 },
-  animate: { opacity: 1, y: 0 },
-  transition: { duration: 0.5 },
-};
+import { StepHeader } from "./StepHeader";
 
 export function StepEnterOpinion() {
   const { t } = useTranslation("onboarding");
@@ -31,30 +26,11 @@ export function StepEnterOpinion() {
 
   return (
     <div className="flex flex-col items-center px-6 py-8">
-      <motion.div
-        initial={{ scale: 0 }}
-        animate={{ scale: 1 }}
-        transition={{ type: "spring", duration: 0.6 }}
-        className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-6"
-      >
-        <PenLine className="h-8 w-8 text-primary" />
-      </motion.div>
-
-      <motion.h2
-        {...fadeInUp}
-        className="font-display text-2xl md:text-3xl font-normal mb-2 text-center"
-      >
-        {t("steps.enterOpinion.title")}
-      </motion.h2>
-
-      <motion.p
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1, duration: 0.5 }}
-        className="text-muted-foreground text-center max-w-md mb-8"
-      >
-        {t("steps.enterOpinion.description")}
-      </motion.p>
+      <StepHeader
+        icon={PenLine}
+        titleKey="steps.enterOpinion.title"
+        descriptionKey="steps.enterOpinion.description"
+      />
 
       <motion.div
         initial={{ opacity: 0, y: 20 }}

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
@@ -10,7 +10,6 @@ import {
   Laptop,
   Wrench,
   ExternalLink,
-  List,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -23,13 +22,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
+import { SidebarNav, type SidebarNavItem } from "@/components/layout/SidebarNav";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
-
-const fadeInUp = {
-  initial: { opacity: 0, y: 20 },
-  animate: { opacity: 1, y: 0 },
-  transition: { duration: 0.5 },
-};
+import { useScrollSpy } from "@/hooks/useScrollSpy";
+import { fadeInUp } from "@/lib/motion";
 
 const categories = [
   { id: "method", icon: BookOpen, labelKey: "categories.method" },
@@ -40,6 +36,8 @@ const categories = [
 ] as const satisfies ReadonlyArray<{ id: string; icon: LucideIcon; labelKey: string }>;
 
 type CategoryId = (typeof categories)[number]["id"];
+
+const categoryIds = categories.map((c) => c.id);
 
 const faqItems: Record<CategoryId, string[]> = {
   method: ["whatIsBecome", "whyBetterThanMean", "whenToUse"],
@@ -52,40 +50,19 @@ const faqItems: Record<CategoryId, string[]> = {
 const FAQ = () => {
   const { t } = useTranslation("faq");
   const { t: tCommon } = useTranslation();
-  const [activeCategory, setActiveCategory] = useState<CategoryId>("method");
   useDocumentTitle(tCommon("pageTitle.faq"));
 
-  useEffect(() => {
-    window.scrollTo(0, 0);
-  }, []);
+  const { activeId, scrollToSection } = useScrollSpy(categoryIds, "method");
 
   useEffect(() => {
-    const handleScroll = () => {
-      for (const cat of categories) {
-        const element = document.getElementById(cat.id);
-        if (element) {
-          const rect = element.getBoundingClientRect();
-          if (rect.top <= 150 && rect.bottom >= 150) {
-            setActiveCategory(cat.id);
-            break;
-          }
-        }
-      }
-    };
-
-    window.addEventListener("scroll", handleScroll);
-    handleScroll();
-    return () => window.removeEventListener("scroll", handleScroll);
+    globalThis.scrollTo(0, 0);
   }, []);
 
-  const scrollToSection = (id: string) => {
-    const element = document.getElementById(id);
-    if (element) {
-      const offset = 100;
-      const top = element.getBoundingClientRect().top + window.scrollY - offset;
-      window.scrollTo({ top, behavior: "smooth" });
-    }
-  };
+  const sidebarItems: SidebarNavItem[] = categories.map((cat) => ({
+    id: cat.id,
+    label: t(cat.labelKey),
+    icon: cat.icon,
+  }));
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -112,33 +89,12 @@ const FAQ = () => {
       <section className="flex-1 py-8 md:py-12">
         <div className="container mx-auto px-6">
           <div className="flex flex-col lg:flex-row gap-8">
-            {/* Sidebar Navigation */}
-            <aside className="lg:w-64 shrink-0">
-              <div className="lg:sticky lg:top-24">
-                <div className="flex items-center gap-2 mb-4 text-sm font-medium">
-                  <List className="h-4 w-4" />
-                  {t("categories.title")}
-                </div>
-                <nav aria-label={t("categories.title")} className="space-y-1">
-                  {categories.map((cat) => (
-                    <button
-                      key={cat.id}
-                      type="button"
-                      onClick={() => scrollToSection(cat.id)}
-                      aria-current={activeCategory === cat.id ? "true" : undefined}
-                      className={`w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md transition-colors text-left ${
-                        activeCategory === cat.id
-                          ? "bg-primary text-primary-foreground"
-                          : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                      }`}
-                    >
-                      <cat.icon className="h-4 w-4 shrink-0" />
-                      {t(cat.labelKey)}
-                    </button>
-                  ))}
-                </nav>
-              </div>
-            </aside>
+            <SidebarNav
+              title={t("categories.title")}
+              items={sidebarItems}
+              activeId={activeId}
+              onNavigate={scrollToSection}
+            />
 
             {/* FAQ Content */}
             <main id="main-content" className="flex-1 max-w-3xl">

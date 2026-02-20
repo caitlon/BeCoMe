@@ -9,12 +9,7 @@ import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { HeroSection } from "@/components/layout/HeroSection";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
-
-const fadeInUp = {
-  initial: { opacity: 0, y: 20 },
-  animate: { opacity: 1, y: 0 },
-  transition: { duration: 0.5 },
-};
+import { fadeInUp } from "@/lib/motion";
 
 const About = () => {
   const { t } = useTranslation("about");

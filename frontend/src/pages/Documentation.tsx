@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import {
@@ -8,66 +8,29 @@ import {
   Calculator,
   BarChart3,
   FileText,
-  List,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
+import { SidebarNav, type SidebarNavItem } from "@/components/layout/SidebarNav";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { useScrollSpy } from "@/hooks/useScrollSpy";
+import { fadeInUp } from "@/lib/motion";
 
-const fadeInUp = {
-  initial: { opacity: 0, y: 20 },
-  animate: { opacity: 1, y: 0 },
-  transition: { duration: 0.5 },
-};
+const sectionIds = ["getting-started", "expert-opinions", "results", "visualization", "glossary"] as const;
 
 const Documentation = () => {
   const { t } = useTranslation("docs");
   const { t: tCommon } = useTranslation();
-  const [activeSection, setActiveSection] = useState("getting-started");
   useDocumentTitle(tCommon("pageTitle.documentation"));
 
-  useEffect(() => {
-    window.scrollTo(0, 0);
-  }, []);
+  const { activeId, scrollToSection } = useScrollSpy(sectionIds, "getting-started");
 
   useEffect(() => {
-    const handleScroll = () => {
-      const sections = [
-        "getting-started",
-        "expert-opinions",
-        "results",
-        "visualization",
-        "glossary",
-      ];
-
-      for (const section of sections) {
-        const element = document.getElementById(section);
-        if (element) {
-          const rect = element.getBoundingClientRect();
-          if (rect.top <= 150 && rect.bottom >= 150) {
-            setActiveSection(section);
-            break;
-          }
-        }
-      }
-    };
-
-    window.addEventListener("scroll", handleScroll);
-    handleScroll();
-    return () => window.removeEventListener("scroll", handleScroll);
+    globalThis.scrollTo(0, 0);
   }, []);
 
-  const scrollToSection = (id: string) => {
-    const element = document.getElementById(id);
-    if (element) {
-      const offset = 100;
-      const top = element.getBoundingClientRect().top + window.scrollY - offset;
-      window.scrollTo({ top, behavior: "smooth" });
-    }
-  };
-
-  const tocItems = [
+  const tocItems: SidebarNavItem[] = [
     { id: "getting-started", label: t("gettingStarted.title"), icon: BookOpen },
     { id: "expert-opinions", label: t("expertOpinions.title"), icon: Users },
     { id: "results", label: t("results.title"), icon: Calculator },
@@ -95,32 +58,12 @@ const Documentation = () => {
       <section className="flex-1 py-8 md:py-12">
         <div className="container mx-auto px-6">
           <div className="flex flex-col lg:flex-row gap-8">
-            {/* Sidebar TOC */}
-            <aside className="lg:w-64 shrink-0">
-              <div className="lg:sticky lg:top-24">
-                <div className="flex items-center gap-2 mb-4 text-sm font-medium">
-                  <List className="h-4 w-4" />
-                  {t("tableOfContents")}
-                </div>
-                <nav aria-label={t("tableOfContents")} className="space-y-1">
-                  {tocItems.map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => scrollToSection(item.id)}
-                      className={`w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md transition-colors text-left ${
-                        activeSection === item.id
-                          ? "bg-primary text-primary-foreground"
-                          : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                      }`}
-                    >
-                      <item.icon className="h-4 w-4 shrink-0" />
-                      {item.label}
-                    </button>
-                  ))}
-                </nav>
-              </div>
-            </aside>
+            <SidebarNav
+              title={t("tableOfContents")}
+              items={tocItems}
+              activeId={activeId}
+              onNavigate={scrollToSection}
+            />
 
             {/* Content */}
             <main id="main-content" className="flex-1 max-w-3xl">

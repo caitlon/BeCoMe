@@ -6,16 +6,46 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
-interface FormFieldProps extends React.InputHTMLAttributes<HTMLInputElement> {
-  label: string;
-  error?: FieldError;
-  description?: string;
+interface FormFieldWrapperProps {
+  readonly label: string;
+  readonly error?: FieldError;
+  readonly description?: string;
+  readonly fieldId: string;
+  readonly children: React.ReactNode;
 }
 
 function getDescribedBy(error: FieldError | undefined, errorId: string, description: string | undefined, descriptionId: string): string | undefined {
   if (error) return errorId;
   if (description) return descriptionId;
   return undefined;
+}
+
+function FormFieldWrapper({ label, error, description, fieldId, children }: FormFieldWrapperProps) {
+  const errorId = `${fieldId}-error`;
+  const descriptionId = `${fieldId}-description`;
+
+  return (
+    <div className="space-y-2">
+      <Label htmlFor={fieldId}>{label}</Label>
+      {children}
+      {description && !error && (
+        <p id={descriptionId} className="text-xs text-muted-foreground">
+          {description}
+        </p>
+      )}
+      {error && (
+        <p id={errorId} className="text-sm text-destructive">
+          {error.message}
+        </p>
+      )}
+    </div>
+  );
+}
+
+interface FormFieldProps extends React.InputHTMLAttributes<HTMLInputElement> {
+  readonly label: string;
+  readonly error?: FieldError;
+  readonly description?: string;
 }
 
 const FormField = React.forwardRef<HTMLInputElement, FormFieldProps>(
@@ -26,8 +56,7 @@ const FormField = React.forwardRef<HTMLInputElement, FormFieldProps>(
     const descriptionId = `${fieldId}-description`;
 
     return (
-      <div className="space-y-2">
-        <Label htmlFor={fieldId}>{label}</Label>
+      <FormFieldWrapper label={label} error={error} description={description} fieldId={fieldId}>
         <Input
           ref={ref}
           id={fieldId}
@@ -37,17 +66,7 @@ const FormField = React.forwardRef<HTMLInputElement, FormFieldProps>(
           className={cn(error && "border-destructive", className)}
           {...props}
         />
-        {description && !error && (
-          <p id={descriptionId} className="text-xs text-muted-foreground">
-            {description}
-          </p>
-        )}
-        {error && (
-          <p id={errorId} className="text-sm text-destructive">
-            {error.message}
-          </p>
-        )}
-      </div>
+      </FormFieldWrapper>
     );
   }
 );
@@ -55,9 +74,9 @@ FormField.displayName = "FormField";
 
 interface FormTextareaProps
   extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
-  label: string;
-  error?: FieldError;
-  description?: string;
+  readonly label: string;
+  readonly error?: FieldError;
+  readonly description?: string;
 }
 
 const FormTextarea = React.forwardRef<HTMLTextAreaElement, FormTextareaProps>(
@@ -68,8 +87,7 @@ const FormTextarea = React.forwardRef<HTMLTextAreaElement, FormTextareaProps>(
     const descriptionId = `${fieldId}-description`;
 
     return (
-      <div className="space-y-2">
-        <Label htmlFor={fieldId}>{label}</Label>
+      <FormFieldWrapper label={label} error={error} description={description} fieldId={fieldId}>
         <Textarea
           ref={ref}
           id={fieldId}
@@ -79,17 +97,7 @@ const FormTextarea = React.forwardRef<HTMLTextAreaElement, FormTextareaProps>(
           className={cn(error && "border-destructive", className)}
           {...props}
         />
-        {description && !error && (
-          <p id={descriptionId} className="text-xs text-muted-foreground">
-            {description}
-          </p>
-        )}
-        {error && (
-          <p id={errorId} className="text-sm text-destructive">
-            {error.message}
-          </p>
-        )}
-      </div>
+      </FormFieldWrapper>
     );
   }
 );

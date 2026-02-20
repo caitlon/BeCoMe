@@ -108,7 +108,7 @@ jobs:
   integration-tests:
     name: Integration Tests
     runs-on: ubuntu-24.04
-    needs: lint
+    needs: [lint, unit-tests]
     env:
       SECRET_KEY: test-secret-key-for-ci
       TESTING: "1"
@@ -141,6 +141,12 @@ jobs:
           name: python-coverage-report
           path: htmlcov/
           retention-days: 30
+
+      - name: Download frontend coverage
+        uses: actions/download-artifact@v6
+        with:
+          name: frontend-coverage-report
+          path: frontend/coverage/
 
       # SonarQube Cloud — PR only (main push triggers a separate "New Code" analysis
       # that can fail due to cumulative coverage gaps across merged PRs)
