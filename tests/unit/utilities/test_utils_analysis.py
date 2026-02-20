@@ -3,6 +3,7 @@
 import pytest
 
 from examples.utils.analysis import calculate_agreement_level
+from examples.utils.locales import CS_ANALYSIS
 
 
 class TestCalculateAgreementLevel:
@@ -65,3 +66,36 @@ class TestCalculateAgreementLevel:
         assert calculate_agreement_level(2.999999) == "moderate"
         assert calculate_agreement_level(3.0) == "low"
         assert calculate_agreement_level(3.000001) == "low"
+
+
+class TestCalculateAgreementLevelWithCzechLabels:
+    """Test calculate_agreement_level with Czech locale labels."""
+
+    @pytest.mark.parametrize(
+        "max_error,expected_level",
+        [
+            (0.5, "vysoká"),
+            (2.0, "střední"),
+            (5.0, "nízká"),
+        ],
+    )
+    def test_czech_labels_returned(self, max_error: float, expected_level: str) -> None:
+        """Test that Czech agreement strings are returned when CS labels are passed."""
+        # WHEN
+        result = calculate_agreement_level(max_error, labels=CS_ANALYSIS)
+
+        # THEN
+        assert result == expected_level
+
+    def test_czech_with_custom_thresholds(self) -> None:
+        """Test Czech labels work correctly with custom thresholds."""
+        # WHEN/THEN
+        assert (
+            calculate_agreement_level(4.0, thresholds=(5.0, 10.0), labels=CS_ANALYSIS) == "vysoká"
+        )
+        assert (
+            calculate_agreement_level(7.0, thresholds=(5.0, 10.0), labels=CS_ANALYSIS) == "střední"
+        )
+        assert (
+            calculate_agreement_level(15.0, thresholds=(5.0, 10.0), labels=CS_ANALYSIS) == "nízká"
+        )

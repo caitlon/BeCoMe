@@ -1,7 +1,15 @@
 """Display formatting utilities for BeCoMe examples."""
 
-from src.models.expert_opinion import ExpertOpinion
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from src.models.fuzzy_number import FuzzyTriangleNumber
+
+if TYPE_CHECKING:
+    from src.models.expert_opinion import ExpertOpinion
+
+    from .labels import FormattingLabels
 
 
 def print_header(title: str, width: int = 60) -> None:
@@ -11,6 +19,7 @@ def print_header(title: str, width: int = 60) -> None:
     :param title: Title text to display
     :param width: Total width of the header in characters
     """
+    width = max(width, len(title))
     print("\n" + "=" * width)
     print(title.center(width))
     print("=" * width)
@@ -23,14 +32,17 @@ def print_section(title: str, width: int = 60) -> None:
     :param title: Section title
     :param width: Total width of the divider in characters
     """
-    padding: int = (width - len(title) - 2) // 2
-    print("\n" + "-" * padding + f" {title} " + "-" * padding)
+    width = max(width, len(title) + 2)
+    padding_left: int = (width - len(title) - 2) // 2
+    padding_right: int = width - len(title) - 2 - padding_left
+    print("\n" + "-" * padding_left + f" {title} " + "-" * padding_right)
 
 
 def display_case_header(
     case_name: str,
     opinions: list[ExpertOpinion],
     metadata: dict[str, str],
+    labels: FormattingLabels | None = None,
 ) -> None:
     """
     Display case study header with metadata.
@@ -38,20 +50,39 @@ def display_case_header(
     :param case_name: Name of the case study (e.g., "BUDGET CASE")
     :param opinions: List of expert opinions
     :param metadata: Metadata dictionary with case info
+    :param labels: Locale-specific labels. Defaults to English.
     """
-    print_header(f"{case_name} - DETAILED ANALYSIS")
-    print(f"\nCase: {metadata['case']}")
-    print(f"Description: {metadata['description']}")
-    print(f"Number of experts: {len(opinions)} ({'even' if len(opinions) % 2 == 0 else 'odd'})")
+    if labels is None:
+        from .locales import EN_FORMATTING
+
+        labels = EN_FORMATTING
+
+    print_header(f"{case_name} - {labels.detailed_analysis}")
+    print(f"\n{labels.case_label}: {metadata.get('case', 'N/A')}")
+    print(f"{labels.description_label}: {metadata.get('description', 'N/A')}")
+    parity = labels.even_label if len(opinions) % 2 == 0 else labels.odd_label
+    print(f"{labels.num_experts_label}: {len(opinions)} ({parity})")
 
 
-def display_centroid(fuzzy_number: FuzzyTriangleNumber, name: str = "Centroid") -> None:
+def display_centroid(
+    fuzzy_number: FuzzyTriangleNumber,
+    name: str | None = None,
+    labels: FormattingLabels | None = None,
+) -> None:
     """
     Display centroid calculation in standard format.
 
     :param fuzzy_number: Fuzzy number to display centroid for
-    :param name: Label for the centroid (e.g., "Mean centroid")
+    :param name: Label for the centroid (e.g., "Mean centroid").
+                 Falls back to ``labels.default_centroid_name`` if not provided.
+    :param labels: Locale-specific labels. Defaults to English.
     """
+    if name is None:
+        if labels is None:
+            from .locales import EN_FORMATTING
+
+            labels = EN_FORMATTING
+        name = labels.default_centroid_name
 
     centroid = fuzzy_number.centroid
     print(

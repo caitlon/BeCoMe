@@ -10,6 +10,7 @@ from examples.utils.display import (
     display_step_3_best_compromise,
     display_step_4_max_error,
 )
+from examples.utils.locales import CS_DISPLAY
 from src.calculators.become_calculator import BeCoMeCalculator
 from src.models.expert_opinion import ExpertOpinion
 from src.models.fuzzy_number import FuzzyTriangleNumber
@@ -196,9 +197,11 @@ class TestDisplayErrorHandling:
     def test_display_step_2_with_none_opinions_raises_error(
         self, calculator: BeCoMeCalculator
     ) -> None:
-        """Test that None opinions raise TypeError in step 2."""
+        """Test that None opinions raise EmptyOpinionsError in step 2."""
         # WHEN/THEN
-        with pytest.raises(TypeError):
+        from src.exceptions import EmptyOpinionsError
+
+        with pytest.raises(EmptyOpinionsError):
             display_step_2_median(None, calculator)  # type: ignore
 
     def test_display_step_3_with_none_mean_raises_error(self) -> None:
@@ -218,3 +221,60 @@ class TestDisplayErrorHandling:
         # WHEN/THEN
         with pytest.raises(AttributeError):
             display_step_3_best_compromise(mean, None)  # type: ignore
+
+
+class TestDisplayWithCzechLabels:
+    """Test display functions produce Czech output when CS labels are passed."""
+
+    def test_step_1_czech_output(
+        self, capsys, sample_three_opinions: list[ExpertOpinion], calculator: BeCoMeCalculator
+    ) -> None:
+        """Test step 1 output uses Czech labels."""
+        # WHEN
+        display_step_1_arithmetic_mean(sample_three_opinions, calculator, labels=CS_DISPLAY)
+        output: str = capsys.readouterr().out
+
+        # THEN
+        assert "KROK 1:" in output
+        assert "Aritmetický průměr" in output
+        assert "Těžiště průměru" in output
+
+    def test_step_2_czech_output(
+        self, capsys, opinions_factory, calculator: BeCoMeCalculator
+    ) -> None:
+        """Test step 2 output uses Czech labels."""
+        # GIVEN
+        opinions: list[ExpertOpinion] = opinions_factory(3, is_likert=False)
+
+        # WHEN
+        display_step_2_median(opinions, calculator, labels=CS_DISPLAY)
+        output: str = capsys.readouterr().out
+
+        # THEN
+        assert "KROK 2:" in output
+        assert "Medián" in output
+
+    def test_step_3_czech_output(self, capsys) -> None:
+        """Test step 3 output uses Czech labels."""
+        # GIVEN
+        mean = FuzzyTriangleNumber(10.0, 20.0, 30.0)
+        median = FuzzyTriangleNumber(15.0, 25.0, 35.0)
+
+        # WHEN
+        display_step_3_best_compromise(mean, median, labels=CS_DISPLAY)
+        output: str = capsys.readouterr().out
+
+        # THEN
+        assert "KROK 3:" in output
+        assert "Nejlepší kompromis" in output
+
+    def test_step_4_czech_output(self, capsys) -> None:
+        """Test step 4 output uses Czech labels."""
+        # WHEN
+        display_step_4_max_error(20.0, 25.0, labels=CS_DISPLAY)
+        output: str = capsys.readouterr().out
+
+        # THEN
+        assert "KROK 4:" in output
+        assert "Maximální chyba" in output
+        assert "Ukazatel přesnosti" in output

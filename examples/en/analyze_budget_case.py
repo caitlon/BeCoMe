@@ -7,15 +7,10 @@ of COVID-19 pandemic budget support.
 
 from pathlib import Path
 
-from examples.en.utils.analysis import calculate_agreement_level
-from examples.en.utils.display import (
-    display_step_1_arithmetic_mean,
-    display_step_2_median,
-    display_step_3_best_compromise,
-    display_step_4_max_error,
-)
-from examples.en.utils.formatting import display_case_header, print_header, print_section
-from examples.utils.data_loading import load_data_from_txt
+from examples.utils.analysis import calculate_agreement_level
+from examples.utils.formatting import print_header, print_section
+from examples.utils.locales import EN_ANALYSIS, EN_DISPLAY, EN_FORMATTING
+from examples.utils.runner import run_analysis
 from src.calculators.base_calculator import BaseAggregationCalculator
 from src.calculators.become_calculator import BeCoMeCalculator
 
@@ -31,39 +26,32 @@ def main(calculator: BaseAggregationCalculator | None = None) -> None:
         calculator = BeCoMeCalculator()
 
     data_file = str(Path(__file__).parent.parent / "data" / "en" / "budget_case.txt")
-    opinions, metadata = load_data_from_txt(data_file)
 
-    display_case_header("BUDGET CASE", opinions, metadata)
-
-    mean, mean_centroid = display_step_1_arithmetic_mean(opinions, calculator)
-
-    median, median_centroid = display_step_2_median(opinions, calculator)
-
-    best_compromise, best_compromise_centroid = display_step_3_best_compromise(mean, median)
-
-    max_error = display_step_4_max_error(mean_centroid, median_centroid)
+    ar = run_analysis(
+        data_file=data_file,
+        case_title="BUDGET CASE",
+        display_labels=EN_DISPLAY,
+        formatting_labels=EN_FORMATTING,
+        calculator=calculator,
+    )
 
     print_section("FINAL RESULT")
-    result = calculator.calculate_compromise(opinions)
+    result = calculator.calculate_compromise(ar.opinions)
     print(f"\n{result}")
 
     print_header("INTERPRETATION")
 
-    print(f"\nBest compromise estimate: {best_compromise_centroid:.2f} billion CZK (centroid)")
-    print(
-        f"Fuzzy number: ({best_compromise.lower_bound:.2f}, "
-        f"{best_compromise.peak:.2f}, {best_compromise.upper_bound:.2f})"
-    )
-    print(
-        f"Range: [{best_compromise.lower_bound:.2f}, {best_compromise.upper_bound:.2f}] billion CZK"
-    )
-    print(f"Precision indicator (Δmax): {max_error:.2f}")
+    bc = ar.best_compromise
+    print(f"\nBest compromise estimate: {ar.best_compromise_centroid:.2f} billion CZK (centroid)")
+    print(f"Fuzzy number: ({bc.lower_bound:.2f}, {bc.peak:.2f}, {bc.upper_bound:.2f})")
+    print(f"Range: [{bc.lower_bound:.2f}, {bc.upper_bound:.2f}] billion CZK")
+    print(f"Precision indicator (Δmax): {ar.max_error:.2f}")
 
-    agreement = calculate_agreement_level(max_error, thresholds=(1.0, 3.0))
+    agreement = calculate_agreement_level(ar.max_error, thresholds=(1.0, 3.0), labels=EN_ANALYSIS)
     print(f"Expert agreement: {agreement.upper()}")
 
     print(
-        f"\nThe result suggests that approximately {best_compromise_centroid:.2f} billion CZK"
+        f"\nThe result suggests that approximately {ar.best_compromise_centroid:.2f} billion CZK"
         f"\nof budget support is the best compromise among all experts."
     )
 

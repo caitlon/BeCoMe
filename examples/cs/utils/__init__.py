@@ -1,1 +1,0 @@
-"""Czech localized display utilities."""
