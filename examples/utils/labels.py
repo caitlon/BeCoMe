@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class DisplayLabels:
     """Labels used by display step functions.
 
@@ -56,7 +56,7 @@ class DisplayLabels:
     median_centroid_gx: str
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class FormattingLabels:
     """Labels used by formatting functions."""
 
@@ -70,7 +70,7 @@ class FormattingLabels:
     not_available_label: str
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class AnalysisLabels:
     """Labels for expert agreement level results."""
 

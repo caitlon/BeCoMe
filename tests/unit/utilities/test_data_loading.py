@@ -80,8 +80,11 @@ class TestParseExpertLine:
 
     def test_valid_line_parsing(self) -> None:
         """Test parsing a well-formed expert opinion line."""
+        # GIVEN
+        line = "Expert1 | 10 | 20 | 30"
+
         # WHEN
-        opinion = _parse_expert_line("Expert1 | 10 | 20 | 30")
+        opinion = _parse_expert_line(line)
 
         # THEN
         assert opinion.expert_id == "Expert1"
@@ -91,8 +94,11 @@ class TestParseExpertLine:
 
     def test_float_values(self) -> None:
         """Test parsing expert line with float values."""
+        # GIVEN
+        line = "E1 | 10.5 | 20.7 | 30.9"
+
         # WHEN
-        opinion = _parse_expert_line("E1 | 10.5 | 20.7 | 30.9")
+        opinion = _parse_expert_line(line)
 
         # THEN
         assert opinion.opinion.lower_bound == 10.5
@@ -101,8 +107,11 @@ class TestParseExpertLine:
 
     def test_expert_id_with_spaces(self) -> None:
         """Test parsing expert ID containing spaces."""
+        # GIVEN
+        line = "Deputy Minister of MF | 30 | 45 | 70"
+
         # WHEN
-        opinion = _parse_expert_line("Deputy Minister of MF | 30 | 45 | 70")
+        opinion = _parse_expert_line(line)
 
         # THEN
         assert opinion.expert_id == "Deputy Minister of MF"

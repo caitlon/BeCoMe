@@ -114,6 +114,8 @@ class TestLocaleFieldParity:
         """Test that EN_DISPLAY and CS_DISPLAY have identical field names."""
         # GIVEN
         en_fields = {f.name for f in dataclasses.fields(EN_DISPLAY)}
+
+        # WHEN
         cs_fields = {f.name for f in dataclasses.fields(CS_DISPLAY)}
 
         # THEN
@@ -123,6 +125,8 @@ class TestLocaleFieldParity:
         """Test that EN_FORMATTING and CS_FORMATTING have identical field names."""
         # GIVEN
         en_fields = {f.name for f in dataclasses.fields(EN_FORMATTING)}
+
+        # WHEN
         cs_fields = {f.name for f in dataclasses.fields(CS_FORMATTING)}
 
         # THEN
@@ -132,6 +136,8 @@ class TestLocaleFieldParity:
         """Test that EN_ANALYSIS and CS_ANALYSIS have identical field names."""
         # GIVEN
         en_fields = {f.name for f in dataclasses.fields(EN_ANALYSIS)}
+
+        # WHEN
         cs_fields = {f.name for f in dataclasses.fields(CS_ANALYSIS)}
 
         # THEN
