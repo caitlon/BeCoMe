@@ -100,6 +100,25 @@ describe('Projects', () => {
         expect(buttons.length).toBeGreaterThan(0);
       });
     });
+
+    it('clicking empty-state create button opens modal', async () => {
+      const user = userEvent.setup();
+      mockApi.getProjects.mockResolvedValue([]);
+      mockApi.getInvitations.mockResolvedValue([]);
+
+      render(<Projects />);
+
+      await waitFor(() => {
+        expect(screen.getByText(/no projects yet/i)).toBeInTheDocument();
+      });
+
+      const createBtn = screen.getByRole('button', { name: /create your first project/i });
+      await user.click(createBtn);
+
+      await waitFor(() => {
+        expect(screen.getByRole('dialog')).toBeInTheDocument();
+      });
+    });
   });
 
   describe('Project Cards', () => {
@@ -351,6 +370,234 @@ describe('Projects', () => {
       await waitFor(() => {
         expect(mockToast).toHaveBeenCalledWith(
           expect.objectContaining({ variant: 'destructive' })
+        );
+      });
+    });
+
+    it('shows fallback message when accept fails with non-Error', async () => {
+      mockApi.getInvitations.mockResolvedValue([createInvitation({ id: 'inv-str' })]);
+      mockApi.acceptInvitation.mockRejectedValue('string error');
+
+      await clickInvitationAction(/accept/i);
+
+      await waitFor(() => {
+        expect(mockToast).toHaveBeenCalledWith(
+          expect.objectContaining({
+            description: 'Failed to accept invitation',
+            variant: 'destructive',
+          })
+        );
+      });
+    });
+
+    it('shows fallback message when decline fails with non-Error', async () => {
+      mockApi.getInvitations.mockResolvedValue([createInvitation({ id: 'inv-str2' })]);
+      mockApi.declineInvitation.mockRejectedValue('string error');
+
+      await clickInvitationAction(/decline/i);
+
+      await waitFor(() => {
+        expect(mockToast).toHaveBeenCalledWith(
+          expect.objectContaining({
+            description: 'Failed to decline invitation',
+            variant: 'destructive',
+          })
+        );
+      });
+    });
+  });
+
+  describe('Loading State Transition', () => {
+    it('hides spinner after data loads', async () => {
+      mockApi.getProjects.mockResolvedValue([]);
+      mockApi.getInvitations.mockResolvedValue([]);
+
+      render(<Projects />);
+
+      await waitFor(() => {
+        expect(screen.queryByRole('status')).not.toBeInTheDocument();
+      });
+    });
+  });
+
+  describe('Empty Description', () => {
+    it('shows "No description" when project has no description', async () => {
+      const projects = [
+        createProjectWithRole({ description: '' }),
+      ];
+      mockApi.getProjects.mockResolvedValue(projects);
+
+      render(<Projects />);
+
+      await waitFor(() => {
+        expect(screen.getByText('No description')).toBeInTheDocument();
+      });
+    });
+  });
+
+  describe('Dropdown Menu', () => {
+    /** Render a project with given role, wait for load, and open its dropdown. */
+    async function openProjectDropdown(role: 'admin' | 'expert' = 'admin') {
+      const user = userEvent.setup();
+      const project = createProjectWithRole({
+        id: 'proj-dd',
+        name: 'Dropdown Project',
+        role,
+      });
+      mockApi.getProjects.mockResolvedValue([project]);
+
+      render(<Projects />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Dropdown Project')).toBeInTheDocument();
+      });
+
+      const trigger = screen.getByRole('button', { name: /project options/i });
+      await user.click(trigger);
+
+      return user;
+    }
+
+    it('shows View Project link in dropdown', async () => {
+      await openProjectDropdown();
+
+      await waitFor(() => {
+        expect(screen.getByRole('menuitem', { name: /view project/i })).toBeInTheDocument();
+      });
+    });
+
+    it('View Project link points to project detail', async () => {
+      await openProjectDropdown();
+
+      await waitFor(() => {
+        const viewLink = screen.getByRole('menuitem', { name: /view project/i });
+        expect(viewLink.closest('a')).toHaveAttribute('href', '/projects/proj-dd');
+      });
+    });
+
+    it('admin sees Invite Expert and Delete options', async () => {
+      await openProjectDropdown('admin');
+
+      await waitFor(() => {
+        expect(screen.getByRole('menuitem', { name: /invite expert/i })).toBeInTheDocument();
+        expect(screen.getByRole('menuitem', { name: /delete project/i })).toBeInTheDocument();
+      });
+    });
+
+    it('expert does NOT see Invite Expert or Delete options', async () => {
+      await openProjectDropdown('expert');
+
+      await waitFor(() => {
+        expect(screen.getByRole('menuitem', { name: /view project/i })).toBeInTheDocument();
+      });
+
+      expect(screen.queryByRole('menuitem', { name: /invite expert/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('menuitem', { name: /delete project/i })).not.toBeInTheDocument();
+    });
+
+    it('clicking Invite Expert opens InviteExpertModal', async () => {
+      const user = await openProjectDropdown('admin');
+
+      const inviteItem = screen.getByRole('menuitem', { name: /invite expert/i });
+      await user.click(inviteItem);
+
+      await waitFor(() => {
+        expect(screen.getByRole('dialog')).toBeInTheDocument();
+        expect(screen.getByText(/invite an expert to/i)).toBeInTheDocument();
+      });
+    });
+
+    it('clicking Delete opens DeleteConfirmModal', async () => {
+      const user = await openProjectDropdown('admin');
+
+      const deleteItem = screen.getByRole('menuitem', { name: /delete project/i });
+      await user.click(deleteItem);
+
+      await waitFor(() => {
+        expect(screen.getByRole('dialog')).toBeInTheDocument();
+        expect(screen.getByText(/delete project\?/i)).toBeInTheDocument();
+      });
+    });
+  });
+
+  describe('Delete Project', () => {
+    /** Set up an admin project, open its dropdown, click Delete, and return user. */
+    async function openDeleteModal() {
+      const user = userEvent.setup();
+      const project = createProjectWithRole({
+        id: 'proj-del',
+        name: 'Deletable Project',
+        role: 'admin',
+      });
+      mockApi.getProjects.mockResolvedValue([project]);
+
+      render(<Projects />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Deletable Project')).toBeInTheDocument();
+      });
+
+      const trigger = screen.getByRole('button', { name: /project options/i });
+      await user.click(trigger);
+
+      await waitFor(() => {
+        expect(screen.getByRole('menuitem', { name: /delete project/i })).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByRole('menuitem', { name: /delete project/i }));
+
+      await waitFor(() => {
+        expect(screen.getByRole('dialog')).toBeInTheDocument();
+      });
+
+      return user;
+    }
+
+    it('confirming delete calls API and shows success toast', async () => {
+      mockApi.deleteProject.mockResolvedValue({});
+      const user = await openDeleteModal();
+
+      const confirmBtn = screen.getByRole('button', { name: /delete project/i });
+      await user.click(confirmBtn);
+
+      await waitFor(() => {
+        expect(mockApi.deleteProject).toHaveBeenCalledWith('proj-del');
+        expect(mockToast).toHaveBeenCalledWith(
+          expect.objectContaining({ title: 'Project deleted' })
+        );
+      });
+    });
+
+    it('shows error toast when delete API fails with Error', async () => {
+      mockApi.deleteProject.mockRejectedValue(new Error('Server error'));
+      const user = await openDeleteModal();
+
+      const confirmBtn = screen.getByRole('button', { name: /delete project/i });
+      await user.click(confirmBtn);
+
+      await waitFor(() => {
+        expect(mockToast).toHaveBeenCalledWith(
+          expect.objectContaining({
+            description: 'Server error',
+            variant: 'destructive',
+          })
+        );
+      });
+    });
+
+    it('shows fallback message when delete API fails with non-Error', async () => {
+      mockApi.deleteProject.mockRejectedValue('string error');
+      const user = await openDeleteModal();
+
+      const confirmBtn = screen.getByRole('button', { name: /delete project/i });
+      await user.click(confirmBtn);
+
+      await waitFor(() => {
+        expect(mockToast).toHaveBeenCalledWith(
+          expect.objectContaining({
+            description: 'Failed to delete project',
+            variant: 'destructive',
+          })
         );
       });
     });

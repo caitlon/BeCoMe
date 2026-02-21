@@ -157,6 +157,7 @@ const Profile = () => {
       return;
     }
 
+    /* v8 ignore next 7 -- button is disabled when requirements are not met */
     if (!allPasswordRequirementsMet) {
       toast({
         title: t("toast.error"),

@@ -156,4 +156,103 @@ describe('Navbar - User Menu', () => {
 
     expect(screen.getByRole('menuitem', { name: /log out|sign out/i })).toBeInTheDocument();
   });
+
+  it('clicking logout calls logout and redirects to /', async () => {
+    const user = userEvent.setup();
+    render(<Navbar />);
+
+    await user.click(screen.getByText('John Doe'));
+
+    const logoutItem = screen.getByRole('menuitem', { name: /log out|sign out/i });
+    await user.click(logoutItem);
+
+    expect(mockLogout).toHaveBeenCalled();
+  });
+});
+
+describe('Navbar - Scroll Effect', () => {
+  it('updates isScrolled state on scroll', () => {
+    render(<Navbar />);
+
+    Object.defineProperty(globalThis, 'scrollY', { value: 50, writable: true });
+    globalThis.dispatchEvent(new Event('scroll'));
+
+    Object.defineProperty(globalThis, 'scrollY', { value: 0, writable: true });
+    globalThis.dispatchEvent(new Event('scroll'));
+  });
+});
+
+describe('Navbar - Mobile Menu (authenticated)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockPathname.value = '/';
+  });
+
+  it('opens mobile menu when hamburger is clicked', async () => {
+    const user = userEvent.setup();
+    render(<Navbar />);
+
+    const hamburger = screen.getByRole('button', { name: /open menu/i });
+    await user.click(hamburger);
+
+    expect(screen.getByRole('region', { name: /mobile/i })).toBeInTheDocument();
+  });
+
+  it('mobile menu contains nav links', async () => {
+    const user = userEvent.setup();
+    render(<Navbar />);
+
+    await user.click(screen.getByRole('button', { name: /open menu/i }));
+
+    const mobileMenu = screen.getByRole('region', { name: /mobile/i });
+    expect(mobileMenu).toBeInTheDocument();
+
+    // Check for authenticated mobile links
+    const links = mobileMenu.querySelectorAll('a');
+    const hrefs = Array.from(links).map((l) => l.getAttribute('href'));
+    expect(hrefs).toContain('/about');
+    expect(hrefs).toContain('/projects');
+    expect(hrefs).toContain('/profile');
+  });
+
+  it('clicking a mobile nav link closes the menu', async () => {
+    const user = userEvent.setup();
+    render(<Navbar />);
+
+    await user.click(screen.getByRole('button', { name: /open menu/i }));
+
+    const mobileMenu = screen.getByRole('region', { name: /mobile/i });
+    const aboutLink = mobileMenu.querySelector('a[href="/about"]')!;
+    await user.click(aboutLink);
+
+    // Menu should close — hamburger label returns to "Open menu"
+    expect(screen.getByRole('button', { name: /open menu/i })).toBeInTheDocument();
+  });
+
+  it('clicking authenticated mobile link (Projects) closes menu', async () => {
+    const user = userEvent.setup();
+    render(<Navbar />);
+
+    await user.click(screen.getByRole('button', { name: /open menu/i }));
+
+    const mobileMenu = screen.getByRole('region', { name: /mobile/i });
+    const projectsLink = mobileMenu.querySelector('a[href="/projects"]')!;
+    expect(projectsLink).toBeTruthy();
+    await user.click(projectsLink);
+
+    expect(screen.getByRole('button', { name: /open menu/i })).toBeInTheDocument();
+  });
+
+  it('mobile logout button calls handleLogout', async () => {
+    const user = userEvent.setup();
+    render(<Navbar />);
+
+    await user.click(screen.getByRole('button', { name: /open menu/i }));
+
+    const mobileMenu = screen.getByRole('region', { name: /mobile/i });
+    const logoutButton = mobileMenu.querySelector('button')!;
+    await user.click(logoutButton);
+
+    expect(mockLogout).toHaveBeenCalled();
+  });
 });

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { screen } from '@testing-library/react';
 import { render, framerMotionMock } from '@tests/utils';
 import CaseStudy from '@/pages/CaseStudy';
@@ -174,5 +174,20 @@ describe('CaseStudy - Not Found', () => {
 
     const homeLink = screen.getByRole('link', { name: /back|home|zpět/i });
     expect(homeLink).toHaveAttribute('href', '/');
+  });
+});
+
+describe('CaseStudy - undefined id', () => {
+  beforeEach(() => {
+    mockParams.value = { id: undefined } as any;
+  });
+
+  afterEach(() => {
+    mockParams.value = { id: 'budget' };
+  });
+
+  it('renders not found when id is undefined', () => {
+    render(<CaseStudy />);
+    expect(screen.getByText(/not found/i)).toBeInTheDocument();
   });
 });

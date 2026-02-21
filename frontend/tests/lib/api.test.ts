@@ -516,6 +516,21 @@ describe('ApiClient', () => {
         expect.objectContaining({ method: 'DELETE' })
       );
     });
+
+    it('getProjectInvitations calls correct endpoint', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve([{ id: 'inv-1' }]),
+      });
+      api.setToken('token');
+      const result = await api.getProjectInvitations('proj-1');
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/projects/proj-1/invitations'),
+        expect.any(Object)
+      );
+      expect(result).toEqual([{ id: 'inv-1' }]);
+    });
   });
 
   describe('Invitation Endpoints', () => {
@@ -725,6 +740,18 @@ describe('ApiClient', () => {
 
       const file = new File(['test'], 'photo.jpg', { type: 'image/jpeg' });
       await expect(api.uploadPhoto(file)).rejects.toThrow('Upload failed');
+    });
+
+    it('uses fallback message when uploadPhoto error has no detail', async () => {
+      api.setToken('token');
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        json: () => Promise.resolve({}),
+      });
+
+      const file = new File(['test'], 'photo.jpg', { type: 'image/jpeg' });
+      await expect(api.uploadPhoto(file)).rejects.toThrow('Failed to upload photo');
     });
 
     it('omits Authorization header when no token for uploadPhoto', async () => {

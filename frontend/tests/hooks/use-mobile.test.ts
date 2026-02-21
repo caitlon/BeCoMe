@@ -83,4 +83,16 @@ describe('useIsMobile', () => {
 
     expect(removeEventListenerSpy).toHaveBeenCalledWith('change', expect.any(Function));
   });
+
+  it('returns false when matchMedia is undefined', () => {
+    const originalMatchMedia = globalThis.matchMedia;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).matchMedia = undefined;
+
+    const { result } = renderHook(() => useIsMobile());
+
+    expect(result.current).toBe(false);
+
+    globalThis.matchMedia = originalMatchMedia;
+  });
 });

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { render } from '@tests/utils';
 import { InviteExpertModal } from '@/components/modals/InviteExpertModal';
@@ -202,5 +202,36 @@ describe('InviteExpertModal', () => {
 
     await user.click(screen.getByRole('button', { name: /done/i }));
     expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it('handleClose setTimeout resets success state and form after delay', async () => {
+    const user = userEvent.setup();
+    const onOpenChange = vi.fn();
+    mockInviteExpert.mockResolvedValueOnce({});
+
+    const { rerender } = render(
+      <InviteExpertModal {...defaultProps} onOpenChange={onOpenChange} />
+    );
+
+    // Submit to reach success state
+    await user.type(getEmailInput(), 'expert@test.com');
+    await user.click(getSubmitButton());
+
+    await waitFor(() => {
+      expect(screen.getByText('Invitation sent!')).toBeInTheDocument();
+    });
+
+    // Click Done — triggers handleClose with setTimeout(200ms)
+    await user.click(screen.getByRole('button', { name: /done/i }));
+
+    // Wait for the setTimeout(200ms) callback to fire
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 250));
+    });
+
+    // Rerender with open=true — form should show (not success state)
+    rerender(<InviteExpertModal {...defaultProps} open={true} onOpenChange={onOpenChange} />);
+
+    expect(screen.getByPlaceholderText('expert@example.com')).toBeInTheDocument();
   });
 });

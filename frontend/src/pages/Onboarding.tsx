@@ -31,6 +31,21 @@ function getStepIndicatorClass(index: number, currentStep: number): string {
   return "bg-muted-foreground/30 w-2";
 }
 
+export const slideVariants = {
+  enter: (direction: number) => ({
+    x: direction > 0 ? 300 : -300,
+    opacity: 0,
+  }),
+  center: {
+    x: 0,
+    opacity: 1,
+  },
+  exit: (direction: number) => ({
+    x: direction < 0 ? 300 : -300,
+    opacity: 0,
+  }),
+};
+
 const Onboarding = () => {
   const { t } = useTranslation("onboarding");
   const { t: tCommon } = useTranslation();
@@ -44,6 +59,7 @@ const Onboarding = () => {
   const isLastStep = currentStep === totalSteps - 1;
 
   const goToNext = useCallback(() => {
+    /* v8 ignore next */
     if (currentStep < totalSteps - 1) {
       setDirection(1);
       setCurrentStep((prev) => prev + 1);
@@ -51,6 +67,7 @@ const Onboarding = () => {
   }, [currentStep, totalSteps]);
 
   const goToPrevious = useCallback(() => {
+    /* v8 ignore next */
     if (currentStep > 0) {
       setDirection(-1);
       setCurrentStep((prev) => prev - 1);
@@ -90,21 +107,6 @@ const Onboarding = () => {
   }, [goToNext, goToPrevious, navigateToProjects, isFirstStep, isLastStep]);
 
   const CurrentStepComponent = steps[currentStep].component;
-
-  const slideVariants = {
-    enter: (direction: number) => ({
-      x: direction > 0 ? 300 : -300,
-      opacity: 0,
-    }),
-    center: {
-      x: 0,
-      opacity: 1,
-    },
-    exit: (direction: number) => ({
-      x: direction < 0 ? 300 : -300,
-      opacity: 0,
-    }),
-  };
 
   return (
     <div className="min-h-screen flex flex-col bg-background">

@@ -115,6 +115,18 @@ describe('ThemeProvider', () => {
     expect(screen.getByTestId('theme')).toHaveTextContent('system');
   });
 
+  it('default context setTheme is a no-op outside ThemeProvider', async () => {
+    const user = userEvent.setup();
+
+    render(<ThemeConsumer />);
+
+    // Clicking the button calls the no-op setTheme from initialState
+    await user.click(screen.getByRole('button', { name: 'Set Dark' }));
+
+    // Theme stays "system" — the no-op does nothing
+    expect(screen.getByTestId('theme')).toHaveTextContent('system');
+  });
+
   it('respects custom storageKey', async () => {
     const user = userEvent.setup();
 

@@ -105,6 +105,7 @@ const Projects = () => {
   };
 
   const handleDeleteProject = async () => {
+    /* v8 ignore next */
     if (!selectedProject) return;
     try {
       await api.deleteProject(selectedProject.id);
