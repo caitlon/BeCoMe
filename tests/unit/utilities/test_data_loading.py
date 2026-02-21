@@ -144,12 +144,7 @@ class TestLoadDataFromTxtValidation:
         # GIVEN
         data_file = tmp_path / "good_data.txt"
         data_file.write_text(
-            "CASE: Test\n"
-            "DESCRIPTION: A test\n"
-            "EXPERTS: 1\n"
-            "\n"
-            "# comment\n"
-            "Expert1 | 10 | 20 | 30\n",
+            "CASE: Test\nDESCRIPTION: A test\nEXPERTS: 1\n\n# comment\nExpert1 | 10 | 20 | 30\n",
             encoding="utf-8",
         )
 
