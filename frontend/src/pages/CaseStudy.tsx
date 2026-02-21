@@ -328,6 +328,7 @@ const CaseStudy = () => {
                             <div
                               key={`${opinion.role}-${index}`}
                               className="relative h-6"
+                              data-testid="opinion-bar"
                             >
                               <div
                                 className="absolute h-2 bg-secondary rounded-full top-2"

@@ -45,8 +45,7 @@ describe('Profile - Loading State', () => {
   it('shows loading spinner when user is null', () => {
     render(<Profile />);
 
-    const spinner = document.querySelector('.animate-spin');
-    expect(spinner).toBeInTheDocument();
+    expect(screen.getByRole('status', { name: /loading/i })).toBeInTheDocument();
   });
 
   it('does not render profile form when user is null', () => {

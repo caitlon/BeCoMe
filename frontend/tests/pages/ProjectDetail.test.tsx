@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen, waitFor, within, fireEvent } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { render } from '@tests/utils';
 import ProjectDetail from '@/pages/ProjectDetail';
@@ -1146,12 +1146,12 @@ describe('ProjectDetail - Delete Opinion', () => {
     render(<ProjectDetail />);
 
     await waitFor(() => {
-      const deleteLinks = screen.getAllByText('Delete my opinion');
-      expect(deleteLinks.length).toBeGreaterThan(0);
+      const deleteButtons = screen.getAllByRole('button', { name: /delete my opinion/i });
+      expect(deleteButtons.length).toBeGreaterThan(0);
     });
 
-    const deleteLinks = screen.getAllByText('Delete my opinion');
-    await user.click(deleteLinks[0]);
+    const deleteButtons = screen.getAllByRole('button', { name: /delete my opinion/i });
+    await user.click(deleteButtons[0]);
 
     await waitFor(() => {
       expect(mockApi.deleteOpinion).toHaveBeenCalledWith('project-1');
@@ -1174,12 +1174,12 @@ describe('ProjectDetail - Delete Opinion', () => {
     render(<ProjectDetail />);
 
     await waitFor(() => {
-      const deleteLinks = screen.getAllByText('Delete my opinion');
-      expect(deleteLinks.length).toBeGreaterThan(0);
+      const deleteButtons = screen.getAllByRole('button', { name: /delete my opinion/i });
+      expect(deleteButtons.length).toBeGreaterThan(0);
     });
 
-    const deleteLinks = screen.getAllByText('Delete my opinion');
-    await user.click(deleteLinks[0]);
+    const deleteButtons = screen.getAllByRole('button', { name: /delete my opinion/i });
+    await user.click(deleteButtons[0]);
 
     await waitFor(() => {
       expect(mockToast).toHaveBeenCalledWith(
@@ -1442,6 +1442,7 @@ describe('ProjectDetail - Space Key on Member Row', () => {
   });
 
   it('does not open dialog on unrelated key press', async () => {
+    const user = userEvent.setup();
     const members = [
       createMember({ user_id: 'user-1', first_name: 'John', last_name: 'Doe', role: 'admin' }),
       createMember({ user_id: 'user-2', first_name: 'Jane', last_name: 'Smith', role: 'expert' }),
@@ -1455,13 +1456,15 @@ describe('ProjectDetail - Space Key on Member Row', () => {
     });
 
     const memberRow = screen.getAllByRole('button', { name: /view profile of jane smith/i })[0];
-    fireEvent.keyDown(memberRow, { key: 'Tab' });
+    memberRow.focus();
+    await user.keyboard('{Tab}');
 
     // Dialog should not open
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
   it('opens profile dialog when Space key is pressed on member row', async () => {
+    const user = userEvent.setup();
     const members = [
       createMember({ user_id: 'user-1', first_name: 'John', last_name: 'Doe', role: 'admin' }),
       createMember({ user_id: 'user-2', first_name: 'Jane', last_name: 'Smith', role: 'expert' }),
@@ -1475,7 +1478,8 @@ describe('ProjectDetail - Space Key on Member Row', () => {
     });
 
     const memberRow = screen.getAllByRole('button', { name: /view profile of jane smith/i })[0];
-    fireEvent.keyDown(memberRow, { key: ' ' });
+    memberRow.focus();
+    await user.keyboard(' ');
 
     await waitFor(() => {
       expect(screen.getByRole('dialog')).toBeInTheDocument();
@@ -1498,7 +1502,7 @@ describe('ProjectDetail - Mobile Team Tab', () => {
     ];
     mockApi.getMembers.mockResolvedValue(members);
 
-    const { container } = render(<ProjectDetail />);
+    render(<ProjectDetail />);
 
     await waitFor(() => {
       expect(screen.getAllByText('Jane Smith').length).toBeGreaterThan(0);
@@ -1508,10 +1512,9 @@ describe('ProjectDetail - Mobile Team Tab', () => {
     const teamTabs = screen.getAllByRole('tab', { name: /team/i });
     await user.click(teamTabs[0]);
 
-    // Find the mobile team tab content (lg:hidden div) and click the member row within it
-    const mobileDiv = container.querySelector('.lg\\:hidden');
-    expect(mobileDiv).toBeTruthy();
-    const mobileRows = within(mobileDiv as HTMLElement).getAllByRole('button', { name: /view profile of jane smith/i });
+    // Find the mobile team tab content and click the member row within it
+    const mobileDiv = screen.getByTestId('mobile-tabs');
+    const mobileRows = within(mobileDiv).getAllByRole('button', { name: /view profile of jane smith/i });
     await user.click(mobileRows[0]);
 
     await waitFor(() => {

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen } from '@testing-library/react';
+import { screen, within, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { render, framerMotionMock } from '@tests/utils';
 import { Navbar } from '@/components/layout/Navbar';
@@ -173,12 +173,19 @@ describe('Navbar - User Menu', () => {
 describe('Navbar - Scroll Effect', () => {
   it('updates isScrolled state on scroll', () => {
     render(<Navbar />);
+    const nav = screen.getByRole('navigation');
 
-    Object.defineProperty(globalThis, 'scrollY', { value: 50, writable: true });
-    globalThis.dispatchEvent(new Event('scroll'));
+    act(() => {
+      Object.defineProperty(globalThis, 'scrollY', { value: 50, writable: true });
+      globalThis.dispatchEvent(new Event('scroll'));
+    });
+    expect(nav.className).toContain('shadow');
 
-    Object.defineProperty(globalThis, 'scrollY', { value: 0, writable: true });
-    globalThis.dispatchEvent(new Event('scroll'));
+    act(() => {
+      Object.defineProperty(globalThis, 'scrollY', { value: 0, writable: true });
+      globalThis.dispatchEvent(new Event('scroll'));
+    });
+    expect(nav.className).not.toContain('shadow');
   });
 });
 
@@ -208,8 +215,8 @@ describe('Navbar - Mobile Menu (authenticated)', () => {
     expect(mobileMenu).toBeInTheDocument();
 
     // Check for authenticated mobile links
-    const links = mobileMenu.querySelectorAll('a');
-    const hrefs = Array.from(links).map((l) => l.getAttribute('href'));
+    const links = within(mobileMenu).getAllByRole('link');
+    const hrefs = links.map((l) => l.getAttribute('href'));
     expect(hrefs).toContain('/about');
     expect(hrefs).toContain('/projects');
     expect(hrefs).toContain('/profile');
@@ -222,7 +229,7 @@ describe('Navbar - Mobile Menu (authenticated)', () => {
     await user.click(screen.getByRole('button', { name: /open menu/i }));
 
     const mobileMenu = screen.getByRole('region', { name: /mobile/i });
-    const aboutLink = mobileMenu.querySelector('a[href="/about"]')!;
+    const aboutLink = within(mobileMenu).getByRole('link', { name: /about/i });
     await user.click(aboutLink);
 
     // Menu should close — hamburger label returns to "Open menu"
@@ -236,8 +243,7 @@ describe('Navbar - Mobile Menu (authenticated)', () => {
     await user.click(screen.getByRole('button', { name: /open menu/i }));
 
     const mobileMenu = screen.getByRole('region', { name: /mobile/i });
-    const projectsLink = mobileMenu.querySelector('a[href="/projects"]')!;
-    expect(projectsLink).toBeTruthy();
+    const projectsLink = within(mobileMenu).getByRole('link', { name: /projects/i });
     await user.click(projectsLink);
 
     expect(screen.getByRole('button', { name: /open menu/i })).toBeInTheDocument();
@@ -250,7 +256,7 @@ describe('Navbar - Mobile Menu (authenticated)', () => {
     await user.click(screen.getByRole('button', { name: /open menu/i }));
 
     const mobileMenu = screen.getByRole('region', { name: /mobile/i });
-    const logoutButton = mobileMenu.querySelector('button')!;
+    const logoutButton = within(mobileMenu).getByRole('button', { name: /sign out|log out/i });
     await user.click(logoutButton);
 
     expect(mockLogout).toHaveBeenCalled();

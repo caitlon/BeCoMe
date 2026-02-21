@@ -68,6 +68,7 @@ beforeEach(() => {
   resetProjectCounters();
   originalMatchMedia = globalThis.matchMedia;
   tooltipFlag.renderContent = false;
+  tooltipFlag.tooltipPayload = null;
 });
 
 afterEach(() => {

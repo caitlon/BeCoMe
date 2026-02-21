@@ -137,12 +137,10 @@ describe('CaseStudy - Opinion Distribution', () => {
   });
 
   it('renders at most 8 opinion bars', () => {
-    const { container } = render(<CaseStudy />);
+    render(<CaseStudy />);
 
-    // Opinion distribution bars have class "relative h-6"
-    const distSection = screen.getByText(/opinion distribution/i).closest('[class*="card"]');
-    const bars = distSection?.querySelectorAll('.relative.h-6');
-    expect(bars?.length).toBe(8);
+    const bars = screen.getAllByTestId('opinion-bar');
+    expect(bars.length).toBe(8);
   });
 });
 

@@ -20,10 +20,8 @@ vi.mock('framer-motion', () => framerMotionMock);
 describe('Landing - Authenticated', () => {
   it('shows "Go to Projects" button linking to /projects', () => {
     render(<Landing />);
-    const heroButton = screen.getAllByRole('link').find(
-      link => link.getAttribute('href') === '/projects'
-    );
-    expect(heroButton).toBeDefined();
+    const heroButton = screen.getByRole('link', { name: /go to projects/i });
+    expect(heroButton).toHaveAttribute('href', '/projects');
   });
 
   it('CTA section links to /projects for authenticated users', () => {

@@ -214,7 +214,7 @@ const Profile = () => {
     return (
       <div className="min-h-screen">
         <Navbar />
-        <div className="pt-24 flex items-center justify-center">
+        <div className="pt-24 flex items-center justify-center" role="status" aria-label="Loading">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
         </div>
       </div>
@@ -243,6 +243,7 @@ const Profile = () => {
                 type="file"
                 accept="image/jpeg,image/png,image/gif,image/webp"
                 className="hidden"
+                aria-label="Profile photo"
                 onChange={handlePhotoUpload}
               />
               <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 flex gap-1">

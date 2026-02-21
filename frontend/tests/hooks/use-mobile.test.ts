@@ -4,6 +4,7 @@ import { useIsMobile } from '@/hooks/use-mobile';
 
 describe('useIsMobile', () => {
   const originalInnerWidth = window.innerWidth;
+  const originalMatchMedia = globalThis.matchMedia;
   const listeners: Map<string, EventListener> = new Map();
 
   const mockMatchMedia = (matches: boolean) => ({
@@ -30,6 +31,7 @@ describe('useIsMobile', () => {
       writable: true,
       value: originalInnerWidth,
     });
+    globalThis.matchMedia = originalMatchMedia;
   });
 
   it('returns false when window width is above 768px', () => {
@@ -85,14 +87,11 @@ describe('useIsMobile', () => {
   });
 
   it('returns false when matchMedia is undefined', () => {
-    const originalMatchMedia = globalThis.matchMedia;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (globalThis as any).matchMedia = undefined;
 
     const { result } = renderHook(() => useIsMobile());
 
     expect(result.current).toBe(false);
-
-    globalThis.matchMedia = originalMatchMedia;
   });
 });

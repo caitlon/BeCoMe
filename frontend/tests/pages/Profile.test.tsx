@@ -359,7 +359,7 @@ describe('Profile - Photo Upload', () => {
     const user = userEvent.setup();
     render(<Profile />);
 
-    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const fileInput = screen.getByLabelText('Profile photo') as HTMLInputElement;
     const oversizedFile = new File(['x'.repeat(6 * 1024 * 1024)], 'big.png', { type: 'image/png' });
     Object.defineProperty(oversizedFile, 'size', { value: 6 * 1024 * 1024 });
 
@@ -384,7 +384,7 @@ describe('Profile - Photo Upload', () => {
 
     render(<Profile />);
 
-    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const fileInput = screen.getByLabelText('Profile photo') as HTMLInputElement;
     const validFile = new File(['photo-data'], 'avatar.png', { type: 'image/png' });
 
     await user.upload(fileInput, validFile);
@@ -404,7 +404,7 @@ describe('Profile - Photo Upload', () => {
 
     render(<Profile />);
 
-    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const fileInput = screen.getByLabelText('Profile photo') as HTMLInputElement;
     const validFile = new File(['data'], 'pic.png', { type: 'image/png' });
 
     await user.upload(fileInput, validFile);
@@ -426,7 +426,7 @@ describe('Profile - Photo Upload', () => {
 
     render(<Profile />);
 
-    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const fileInput = screen.getByLabelText('Profile photo') as HTMLInputElement;
     const validFile = new File(['data'], 'pic.png', { type: 'image/png' });
 
     await user.upload(fileInput, validFile);
@@ -446,7 +446,7 @@ describe('Profile - Photo Upload', () => {
     const user = userEvent.setup();
     render(<Profile />);
 
-    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const fileInput = screen.getByLabelText('Profile photo') as HTMLInputElement;
     const clickSpy = vi.spyOn(fileInput, 'click');
 
     await user.click(screen.getByRole('button', { name: /upload photo/i }));

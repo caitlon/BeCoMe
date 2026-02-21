@@ -69,7 +69,7 @@ export function ThemeProvider({
 export const useTheme = () => {
   const context = useContext(ThemeProviderContext)
 
-  /* v8 ignore next */
+  /* v8 ignore next 2 */
   if (context === undefined)
     throw new Error("useTheme must be used within a ThemeProvider")
 

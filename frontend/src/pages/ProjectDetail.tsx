@@ -364,7 +364,7 @@ const ProjectDetail = () => {
         </div>
 
         {/* Mobile - Tabs */}
-        <div className="lg:hidden">
+        <div className="lg:hidden" data-testid="mobile-tabs">
           <Tabs defaultValue="opinions" className="space-y-6">
             <TabsList className="w-full">
               <TabsTrigger value="opinions" className="flex-1">

@@ -182,7 +182,7 @@ describe('InviteExpertModal', () => {
         })
       );
       const call = mockToast.mock.calls[0][0];
-      expect(call.description).not.toBe('network timeout');
+      expect(call.description).toBe('Failed to send invitation');
     });
   });
 
@@ -225,9 +225,7 @@ describe('InviteExpertModal', () => {
     await user.click(screen.getByRole('button', { name: /done/i }));
 
     // Wait for the setTimeout(200ms) callback to fire
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 250));
-    });
+    await new Promise((r) => setTimeout(r, 300));
 
     // Rerender with open=true — form should show (not success state)
     rerender(<InviteExpertModal {...defaultProps} open={true} onOpenChange={onOpenChange} />);
