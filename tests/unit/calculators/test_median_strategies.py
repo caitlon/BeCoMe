@@ -61,6 +61,9 @@ def _make_scaled_experts(count: int) -> list[ExpertOpinion]:
         ("E5", 9.0, 14.0, 19.0),
         ("E6", 11.0, 17.0, 23.0),
     ]
+    if not 1 <= count <= len(data):
+        msg = f"count must be between 1 and {len(data)}, got {count}"
+        raise ValueError(msg)
     return [
         ExpertOpinion(
             expert_id=eid,

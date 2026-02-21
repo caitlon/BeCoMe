@@ -12,8 +12,9 @@ from api.db.session import get_session
 
 def _dispose_and_clear_engine() -> None:
     """Dispose the cached engine and clear the lru_cache."""
-    with suppress(Exception):
-        get_engine().dispose()
+    if get_engine.cache_info().currsize:
+        with suppress(Exception):
+            get_engine().dispose()
     get_engine.cache_clear()
 
 

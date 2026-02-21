@@ -2,7 +2,7 @@
 
 from datetime import UTC, datetime
 from unittest.mock import MagicMock
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from api.db.models import CalculationResult, ExpertOpinion, Project
 from api.services.calculation_service import CalculationService
@@ -62,7 +62,7 @@ def _build_single_opinion_service(
     *,
     scale_min: float = 0.0,
     scale_max: float = 100.0,
-) -> tuple[CalculationService, "uuid4"]:
+) -> tuple[CalculationService, UUID]:
     """Build a CalculationService with one opinion and a mock session.
 
     :param lower: Lower bound of fuzzy number
