@@ -36,10 +36,22 @@ class User(SQLModel, table=True):
     photo_url: str | None = Field(default=None, max_length=500)
     created_at: datetime = Field(default_factory=utc_now)
 
-    owned_projects: list["Project"] = Relationship(back_populates="admin")
-    memberships: list["ProjectMember"] = Relationship(back_populates="user")
-    opinions: list["ExpertOpinion"] = Relationship(back_populates="user")
-    reset_tokens: list["PasswordResetToken"] = Relationship(back_populates="user")
+    owned_projects: list["Project"] = Relationship(
+        back_populates="admin",
+        sa_relationship_kwargs={"passive_deletes": True},
+    )
+    memberships: list["ProjectMember"] = Relationship(
+        back_populates="user",
+        sa_relationship_kwargs={"passive_deletes": True},
+    )
+    opinions: list["ExpertOpinion"] = Relationship(
+        back_populates="user",
+        sa_relationship_kwargs={"passive_deletes": True},
+    )
+    reset_tokens: list["PasswordResetToken"] = Relationship(
+        back_populates="user",
+        sa_relationship_kwargs={"passive_deletes": True},
+    )
 
     @model_validator(mode="after")
     def validate_email_format(self) -> Self:

@@ -2,9 +2,6 @@
 
 from datetime import UTC, datetime, timedelta
 
-import pytest
-from sqlalchemy.exc import IntegrityError
-
 from api.db.models import (
     CalculationResult,
     ExpertOpinion,
@@ -194,27 +191,25 @@ class TestProjectCascadeDelete:
 
 
 class TestUserCascadeDelete:
-    """Tests for user deletion behavior in SQLite test environment.
+    """Tests for user deletion behavior with passive_deletes=True.
 
-    Important: These tests document SQLite-specific behavior where FK constraints
-    are not enforced by default. Models like ProjectMember and PasswordResetToken
-    have ondelete="CASCADE" at database level, but this only works in PostgreSQL.
-    In SQLite, ORM attempts SET NULL which violates NOT NULL constraints.
+    User relationships use passive_deletes=True, which delegates cascade
+    deletion to the database engine. In SQLite (no FK enforcement by default),
+    the ORM simply deletes the user row without touching child records.
+    In PostgreSQL, the database-level ondelete="CASCADE" handles cleanup.
 
     For actual CASCADE behavior, see PostgreSQL integration tests:
     test_db_postgres_integration.py::TestCascadeDeleteWithFKEnforcement
     """
 
-    def test_deleting_user_with_memberships_fails_in_sqlite(self, session):
+    def test_deleting_user_with_memberships_succeeds_in_sqlite(self, session):
         """
         GIVEN a user who is member of projects
         WHEN the user is deleted in SQLite
-        THEN IntegrityError is raised (NOT NULL constraint)
+        THEN deletion succeeds (passive_deletes delegates to DB)
 
-        Note: ProjectMember.user_id has ondelete="CASCADE" which only works
-        at database level with FK enforcement. SQLite doesn't enforce FK
-        constraints by default, and User.memberships relationship lacks
-        ORM-level cascade. Thus, ORM tries SET NULL → NOT NULL error.
+        In PostgreSQL, ProjectMember rows are cascade-deleted by the DB.
+        In SQLite without FK enforcement, child rows become orphaned.
         """
         # GIVEN
         admin = User(
@@ -243,22 +238,22 @@ class TestUserCascadeDelete:
         )
         session.add(membership)
         session.commit()
+        member_id = member.id
 
-        # WHEN/THEN - deletion should fail due to NOT NULL constraint
+        # WHEN
         session.delete(member)
-        with pytest.raises(IntegrityError):
-            session.commit()
+        session.commit()
 
-    def test_deleting_user_with_opinions_fails_in_sqlite(self, session):
+        # THEN — user is deleted
+        assert session.get(User, member_id) is None
+
+    def test_deleting_user_with_opinions_succeeds_in_sqlite(self, session):
         """
         GIVEN a user who submitted opinions
         WHEN the user is deleted in SQLite
-        THEN IntegrityError is raised (NOT NULL constraint)
+        THEN deletion succeeds (passive_deletes delegates to DB)
 
-        Note: ExpertOpinion.user_id has ondelete="CASCADE" which only works
-        at database level with FK enforcement. SQLite doesn't enforce FK
-        constraints by default, and User.opinions relationship lacks
-        ORM-level cascade. Thus, ORM tries SET NULL → NOT NULL error.
+        In PostgreSQL, ExpertOpinion rows are cascade-deleted by the DB.
         """
         # GIVEN
         admin = User(
@@ -290,25 +285,22 @@ class TestUserCascadeDelete:
         )
         session.add(opinion)
         session.commit()
+        expert_id = expert.id
 
-        # WHEN/THEN - deletion should fail
+        # WHEN
         session.delete(expert)
-        with pytest.raises(IntegrityError):
-            session.commit()
+        session.commit()
 
-    def test_deleting_user_with_reset_tokens_fails_in_sqlite(self, session):
+        # THEN — user is deleted
+        assert session.get(User, expert_id) is None
+
+    def test_deleting_user_with_reset_tokens_succeeds_in_sqlite(self, session):
         """
         GIVEN a user with password reset tokens
         WHEN the user is deleted in SQLite
-        THEN IntegrityError is raised (NOT NULL constraint)
+        THEN deletion succeeds (passive_deletes delegates to DB)
 
-        Note: PasswordResetToken.user_id has ondelete="CASCADE" which only
-        works at database level with FK enforcement. SQLite doesn't enforce
-        FK constraints by default, and the User.reset_tokens relationship
-        lacks ORM-level cascade. Thus, ORM tries SET NULL → NOT NULL error.
-
-        For actual CASCADE behavior, see PostgreSQL integration tests:
-        test_db_postgres_integration.py::test_cascade_delete_with_fk_enforcement
+        In PostgreSQL, PasswordResetToken rows are cascade-deleted by the DB.
         """
         # GIVEN
         user = User(
@@ -326,22 +318,22 @@ class TestUserCascadeDelete:
         )
         session.add(token)
         session.commit()
+        user_id = user.id
 
-        # WHEN/THEN - in SQLite, deletion fails due to NOT NULL constraint
+        # WHEN
         session.delete(user)
-        with pytest.raises(IntegrityError):
-            session.commit()
+        session.commit()
 
-    def test_deleting_admin_with_projects_fails_in_sqlite(self, session):
+        # THEN — user is deleted
+        assert session.get(User, user_id) is None
+
+    def test_deleting_admin_with_projects_succeeds_in_sqlite(self, session):
         """
         GIVEN a user who owns projects (is admin)
         WHEN the user is deleted in SQLite
-        THEN IntegrityError is raised (NOT NULL constraint)
+        THEN deletion succeeds (passive_deletes delegates to DB)
 
-        Note: Project.admin_id has ondelete="CASCADE" which only works
-        at database level with FK enforcement. SQLite doesn't enforce FK
-        constraints by default, and User.owned_projects relationship lacks
-        ORM-level cascade. Thus, ORM tries SET NULL → NOT NULL error.
+        In PostgreSQL, Project rows are cascade-deleted by the DB.
         """
         # GIVEN
         admin = User(
@@ -356,11 +348,14 @@ class TestUserCascadeDelete:
         project = Project(name="Test Project", admin_id=admin.id)
         session.add(project)
         session.commit()
+        admin_id = admin.id
 
-        # WHEN/THEN - deletion should fail
+        # WHEN
         session.delete(admin)
-        with pytest.raises(IntegrityError):
-            session.commit()
+        session.commit()
+
+        # THEN — user is deleted
+        assert session.get(User, admin_id) is None
 
     def test_deleting_user_without_relations_succeeds(self, session):
         """

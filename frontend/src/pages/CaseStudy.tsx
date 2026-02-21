@@ -344,11 +344,11 @@ const CaseStudy = () => {
                             </div>
                           );
                         })}
-                        <div className="flex justify-between text-xs text-muted-foreground mt-2 pt-2 border-t">
-                          <span>
+                        <div className="flex justify-between text-xs mt-2 pt-2 border-t">
+                          <span className="text-muted-foreground">
                             {caseStudy.scaleMin} {caseStudy.scaleUnit}
                           </span>
-                          <span>
+                          <span className="text-muted-foreground">
                             {caseStudy.scaleMax} {caseStudy.scaleUnit}
                           </span>
                         </div>
