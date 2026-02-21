@@ -312,12 +312,10 @@ describe('ProjectDetail - Other Opinions Table', () => {
     });
 
     // Verify descending centroid order: Jane (60) before Bob (20)
-    const bodyContent = document.body.textContent ?? '';
-    const janePos = bodyContent.indexOf('Jane Smith');
-    const bobPos = bodyContent.indexOf('Bob Brown');
-    expect(janePos).toBeGreaterThan(-1);
-    expect(bobPos).toBeGreaterThan(-1);
-    expect(janePos).toBeLessThan(bobPos);
+    const janeEl = screen.getAllByText('Jane Smith')[0];
+    const bobEl = screen.getAllByText('Bob Brown')[0];
+    // Node.DOCUMENT_POSITION_FOLLOWING (4) means bob comes after jane
+    expect(janeEl.compareDocumentPosition(bobEl) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });
 
@@ -1522,9 +1520,10 @@ describe('ProjectDetail - Mobile Team Tab', () => {
     const teamTabs = screen.getAllByRole('tab', { name: /team/i });
     await user.click(teamTabs[0]);
 
-    // Find the mobile team tab content and click the member row within it
-    const mobileDiv = screen.getByTestId('mobile-tabs');
-    const mobileRows = within(mobileDiv).getAllByRole('button', { name: /view profile of jane smith/i });
+    // Find the mobile team tabpanel and click the member row within it
+    const teamPanels = screen.getAllByRole('tabpanel');
+    const mobileTeamPanel = teamPanels.find(panel => within(panel).queryByRole('button', { name: /view profile of jane smith/i }))!;
+    const mobileRows = within(mobileTeamPanel).getAllByRole('button', { name: /view profile of jane smith/i });
     await user.click(mobileRows[0]);
 
     await waitFor(() => {

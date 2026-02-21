@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import React from 'react';
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import { render } from '@tests/utils';
 import { CentroidBarChart } from '@/components/visualizations/CentroidBarChart';
 import { createOpinion, createCalculationResult, resetProjectCounters } from '@tests/factories/project';
@@ -253,8 +253,9 @@ describe('CentroidBarChart - CustomTooltip', () => {
 
     const tooltip = screen.getByRole('tooltip');
     expect(tooltip.textContent).toContain('Jane');
-    // Position div is conditionally rendered only when non-empty
-    expect(tooltip.querySelector('.text-muted-foreground')).toBeNull();
+    // When position is empty, no position text is rendered between name and fuzzy values
+    expect(within(tooltip).queryByText('Expert')).toBeNull();
+    expect(within(tooltip).queryByText('Senior Analyst')).toBeNull();
   });
 
   it('returns null when payload is empty', () => {
