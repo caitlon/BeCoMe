@@ -95,7 +95,7 @@ class TestDecodeAccessToken:
 
     def test_token_with_invalid_uuid_raises_error(self):
         """Token with invalid UUID in sub claim raises TokenError."""
-        from jose import jwt
+        import jwt
 
         from api.config import get_settings
 
@@ -116,7 +116,7 @@ class TestDecodeAccessToken:
 
     def test_token_with_wrong_type_raises_error(self):
         """Token with wrong type claim raises TokenError."""
-        from jose import jwt
+        import jwt
 
         from api.config import get_settings
 
@@ -138,7 +138,7 @@ class TestDecodeAccessToken:
 
     def test_token_without_sub_raises_error(self):
         """Token missing sub claim raises TokenError."""
-        from jose import jwt
+        import jwt
 
         from api.config import get_settings
 
@@ -158,7 +158,7 @@ class TestDecodeAccessToken:
 
     def test_token_without_jti_raises_error(self):
         """Token missing jti claim raises TokenError."""
-        from jose import jwt
+        import jwt
 
         from api.config import get_settings
 
@@ -180,7 +180,7 @@ class TestDecodeAccessToken:
 
     def test_token_without_exp_raises_error(self):
         """Token missing exp claim raises TokenError."""
-        from jose import jwt
+        import jwt
 
         from api.config import get_settings
 
@@ -196,7 +196,7 @@ class TestDecodeAccessToken:
         }
         token = jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM)
 
-        # WHEN / THEN - jose library raises JWTError for missing exp due to require_exp=True
+        # WHEN / THEN - PyJWT raises InvalidTokenError for missing exp due to require=["exp"]
         with pytest.raises(TokenError, match="Invalid or expired token"):
             decode_access_token(token)
 
@@ -232,7 +232,7 @@ class TestCreateRefreshToken:
 
     def test_token_has_correct_type_claim(self):
         """Refresh token has 'refresh' type in payload."""
-        from jose import jwt
+        import jwt
 
         from api.config import get_settings
 
@@ -254,7 +254,7 @@ class TestCreateRefreshToken:
 
     def test_token_contains_user_id(self):
         """Refresh token contains correct user_id in sub claim."""
-        from jose import jwt
+        import jwt
 
         from api.config import get_settings
 
@@ -294,7 +294,7 @@ class TestCreateTokenPair:
 
     def test_tokens_share_same_jti(self):
         """Access and refresh tokens share the same JTI."""
-        from jose import jwt
+        import jwt
 
         from api.config import get_settings
 
@@ -426,7 +426,7 @@ class TestRevokeToken:
         pair = create_token_pair(user_id)
 
         # Extract JTI from access token
-        from jose import jwt
+        import jwt
 
         from api.config import get_settings
 

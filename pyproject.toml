@@ -19,7 +19,6 @@ dev = [
     "ruff>=0.13",
     "mypy>=1.18",
     "pip-audit>=2.7",
-    "types-python-jose>=3.3",
     "types-passlib>=1.7",
     "types-regex>=2024.0",
 ]
@@ -48,7 +47,7 @@ api = [
     "httpx>=0.28",
     "sqlmodel>=0.0.24",
     "psycopg2>=2.9",
-    "python-jose[cryptography]>=3.3",
+    "PyJWT>=2.9",
     "passlib[bcrypt]>=1.7",
     "python-multipart>=0.0.9",
     "email-validator>=2.0",

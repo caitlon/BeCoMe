@@ -4,7 +4,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
-from jose import JWTError, jwt
+import jwt
+from jwt import InvalidTokenError
 
 from api.auth.token_blacklist import TokenBlacklist
 from api.config import get_settings
@@ -111,8 +112,7 @@ def decode_token(token: str, expected_type: str) -> TokenPayload:
             options={
                 "verify_exp": True,
                 "verify_iat": True,
-                "require_exp": True,
-                "require_iat": True,
+                "require": ["exp", "iat"],
             },
         )
 
@@ -132,7 +132,7 @@ def decode_token(token: str, expected_type: str) -> TokenPayload:
         if not user_id_str:
             raise TokenError("Missing user ID in token")
 
-        # exp is guaranteed by jose with require_exp=True
+        # exp is guaranteed by PyJWT with require=["exp"]
         exp_datetime = datetime.fromtimestamp(payload["exp"], tz=UTC)
 
         return TokenPayload(
@@ -141,7 +141,7 @@ def decode_token(token: str, expected_type: str) -> TokenPayload:
             token_type=token_type,
             exp=exp_datetime,
         )
-    except JWTError as e:
+    except InvalidTokenError as e:
         raise TokenError("Invalid or expired token") from e
     except ValueError as e:
         raise TokenError("Invalid user ID in token") from e

@@ -5,7 +5,7 @@ from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException
-from jose import jwt
+import jwt
 
 from api.auth.dependencies import get_current_token_payload, get_current_user
 from api.auth.jwt import ALGORITHM, create_access_token, revoke_token
