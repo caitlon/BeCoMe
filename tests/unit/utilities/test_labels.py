@@ -188,6 +188,7 @@ class TestLabelDataclassCreation:
             even_label="even",
             odd_label="odd",
             default_centroid_name="Centroid",
+            not_available_label="N/A",
         )
 
         # THEN

@@ -58,8 +58,9 @@ def display_case_header(
         labels = EN_FORMATTING
 
     print_header(f"{case_name} - {labels.detailed_analysis}")
-    print(f"\n{labels.case_label}: {metadata.get('case', 'N/A')}")
-    print(f"{labels.description_label}: {metadata.get('description', 'N/A')}")
+    fallback = labels.not_available_label
+    print(f"\n{labels.case_label}: {metadata.get('case', fallback)}")
+    print(f"{labels.description_label}: {metadata.get('description', fallback)}")
     parity = labels.even_label if len(opinions) % 2 == 0 else labels.odd_label
     print(f"{labels.num_experts_label}: {len(opinions)} ({parity})")
 

@@ -67,6 +67,7 @@ class FormattingLabels:
     even_label: str
     odd_label: str
     default_centroid_name: str
+    not_available_label: str
 
 
 @dataclass(frozen=True)

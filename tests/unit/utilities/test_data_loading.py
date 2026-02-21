@@ -119,7 +119,7 @@ class TestParseExpertLine:
         with pytest.raises(ValueError, match="Invalid numeric"):
             _parse_expert_line("Expert1 | abc | 20 | 30")
 
-    def test_empty_parts_raise_value_error(self) -> None:
+    def test_too_many_parts_raises_value_error(self) -> None:
         """Test that a line with too many parts raises ValueError."""
         # WHEN/THEN
         with pytest.raises(ValueError, match="expected 4 parts"):
@@ -154,3 +154,25 @@ class TestLoadDataFromTxtValidation:
         # THEN
         assert len(opinions) == 1
         assert metadata["case"] == "Test"
+
+    def test_file_not_found_raises_error(self, tmp_path) -> None:
+        """Test that a non-existent file raises FileNotFoundError."""
+        # GIVEN
+        non_existent = tmp_path / "does_not_exist.txt"
+
+        # WHEN/THEN
+        with pytest.raises(FileNotFoundError, match="Data file not found"):
+            load_data_from_txt(str(non_existent))
+
+    def test_expert_count_mismatch_raises_value_error(self, tmp_path) -> None:
+        """Test that mismatched expert count raises ValueError."""
+        # GIVEN
+        data_file = tmp_path / "mismatch.txt"
+        data_file.write_text(
+            "EXPERTS: 2\nExpert1 | 10 | 20 | 30\n",
+            encoding="utf-8",
+        )
+
+        # WHEN/THEN
+        with pytest.raises(ValueError, match="Expected 2 experts but loaded 1"):
+            load_data_from_txt(str(data_file))

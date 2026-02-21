@@ -57,6 +57,7 @@ EN_FORMATTING = FormattingLabels(
     even_label="even",
     odd_label="odd",
     default_centroid_name="Centroid",
+    not_available_label="N/A",
 )
 
 EN_ANALYSIS = AnalysisLabels(good="good", moderate="moderate", low="low")
@@ -115,6 +116,7 @@ CS_FORMATTING = FormattingLabels(
     even_label="sudý",
     odd_label="lichý",
     default_centroid_name="Těžiště",
+    not_available_label="Nedostupné",
 )
 
 CS_ANALYSIS = AnalysisLabels(good="vysoká", moderate="střední", low="nízká")
