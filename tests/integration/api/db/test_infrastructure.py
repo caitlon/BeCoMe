@@ -161,13 +161,13 @@ class TestLifespan:
 
         from api.main import create_app
 
-        # WHEN: app is created and started
-        app = create_app()
-        with TestClient(app):
-            pass
+        try:
+            # WHEN: app is created and started
+            app = create_app()
+            with TestClient(app):
+                pass
 
-        # THEN: create_db_and_tables should have been called
-        mock_create.assert_called()
-
-        # Cleanup: dispose engine to avoid ResourceWarning for unclosed sqlite3 connection
-        _dispose_and_clear_engine()
+            # THEN: create_db_and_tables should have been called
+            mock_create.assert_called()
+        finally:
+            _dispose_and_clear_engine()
