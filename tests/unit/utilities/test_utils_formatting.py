@@ -8,6 +8,7 @@ from examples.utils.formatting import (
     print_header,
     print_section,
 )
+from examples.utils.locales import CS_FORMATTING
 from src.models.expert_opinion import ExpertOpinion
 from src.models.fuzzy_number import FuzzyTriangleNumber
 
@@ -165,9 +166,9 @@ class TestFormattingErrorHandling:
     """Test error handling in formatting functions."""
 
     def test_print_header_with_none_title_raises_error(self) -> None:
-        """Test that None title raises AttributeError."""
+        """Test that None title raises TypeError."""
         # WHEN/THEN
-        with pytest.raises(AttributeError):
+        with pytest.raises(TypeError):
             print_header(None)  # type: ignore
 
     def test_print_section_with_none_title_raises_error(self) -> None:
@@ -186,14 +187,14 @@ class TestFormattingErrorHandling:
             display_case_header("TEST CASE", None, metadata)  # type: ignore
 
     def test_display_case_header_with_none_metadata_raises_error(self) -> None:
-        """Test that None metadata raises TypeError in display_case_header."""
+        """Test that None metadata raises AttributeError in display_case_header."""
         # GIVEN
         opinions: list[ExpertOpinion] = [
             ExpertOpinion(expert_id="E1", opinion=FuzzyTriangleNumber(1.0, 2.0, 3.0))
         ]
 
         # WHEN/THEN
-        with pytest.raises(TypeError):
+        with pytest.raises(AttributeError):
             display_case_header("TEST CASE", opinions, None)  # type: ignore
 
     def test_display_case_header_with_empty_opinions_list(self) -> None:
@@ -210,3 +211,53 @@ class TestFormattingErrorHandling:
         # WHEN/THEN
         with pytest.raises(AttributeError):
             display_centroid(None, name="Test")  # type: ignore
+
+
+class TestFormattingWithCzechLabels:
+    """Test formatting functions with Czech labels."""
+
+    def test_display_case_header_czech(self, capsys) -> None:
+        """Test case header uses Czech labels."""
+        # GIVEN
+        opinions: list[ExpertOpinion] = [
+            ExpertOpinion(expert_id="E1", opinion=FuzzyTriangleNumber(1.0, 2.0, 3.0)),
+            ExpertOpinion(expert_id="E2", opinion=FuzzyTriangleNumber(4.0, 5.0, 6.0)),
+        ]
+        metadata: dict[str, str] = {"case": "Test", "description": "Testovací případ"}
+
+        # WHEN
+        display_case_header("TESTOVACÍ PŘÍPAD", opinions, metadata, labels=CS_FORMATTING)
+        output: str = capsys.readouterr().out
+
+        # THEN
+        assert "PODROBNÁ ANALÝZA" in output
+        assert "Případ: Test" in output
+        assert "Popis: Testovací případ" in output
+        assert "Počet expertů: 2 (sudý)" in output
+
+    def test_display_case_header_czech_odd(self, capsys) -> None:
+        """Test case header uses Czech odd parity label."""
+        # GIVEN
+        opinions: list[ExpertOpinion] = [
+            ExpertOpinion(expert_id="E1", opinion=FuzzyTriangleNumber(1.0, 2.0, 3.0)),
+        ]
+        metadata: dict[str, str] = {"case": "Test", "description": "Popis"}
+
+        # WHEN
+        display_case_header("PŘÍPAD", opinions, metadata, labels=CS_FORMATTING)
+        output: str = capsys.readouterr().out
+
+        # THEN
+        assert "lichý" in output
+
+    def test_display_centroid_czech_default_name(self, capsys) -> None:
+        """Test centroid display uses Czech default name when no name given."""
+        # GIVEN
+        fuzzy_num = FuzzyTriangleNumber(10.0, 20.0, 30.0)
+
+        # WHEN
+        display_centroid(fuzzy_num, labels=CS_FORMATTING)
+        output: str = capsys.readouterr().out
+
+        # THEN
+        assert "Těžiště:" in output

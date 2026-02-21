@@ -1,1 +1,0 @@
-"""English localized display utilities."""
