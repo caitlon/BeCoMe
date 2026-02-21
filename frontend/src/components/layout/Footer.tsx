@@ -21,7 +21,7 @@ export function Footer() {
               href="https://www.linkedin.com/in/kuzmina-ekaterina/"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-foreground hover:underline"
+              className="text-foreground"
             >
               {t("footer.authorName")}
             </a>
@@ -155,7 +155,7 @@ export function Footer() {
               href="https://github.com/caitlon/BeCoMe/issues"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-foreground hover:underline"
+              className="text-foreground"
             >
               {t("footer.github")}
             </a>

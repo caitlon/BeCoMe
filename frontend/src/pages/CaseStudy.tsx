@@ -211,13 +211,13 @@ const CaseStudy = () => {
                                   className="border-b last:border-0 hover:bg-secondary/50 transition-colors"
                                 >
                                   <td className="py-3 px-2">{opinion.role}</td>
-                                  <td className="text-right py-3 px-2 font-mono text-muted-foreground">
+                                  <td className="text-right py-3 px-2 font-mono">
                                     {opinion.lowerLimit}
                                   </td>
                                   <td className="text-right py-3 px-2 font-mono font-medium">
                                     {opinion.bestProposal}
                                   </td>
-                                  <td className="text-right py-3 px-2 font-mono text-muted-foreground">
+                                  <td className="text-right py-3 px-2 font-mono">
                                     {opinion.upperLimit}
                                   </td>
                                 </tr>

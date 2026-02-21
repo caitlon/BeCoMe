@@ -199,7 +199,7 @@
     
     /* Muted */
     --muted: 0 0% 96%;
-    --muted-foreground: 0 0% 40%;
+    --muted-foreground: 0 0% 35%;
     
     /* Accent */
     --accent: 0 0% 96%;
@@ -301,6 +301,12 @@
     outline: 2px solid hsl(var(--ring));
     outline-offset: 2px;
     border-radius: 0.125rem;
+  }
+
+  /* WCAG 1.4.1: Inline links must be distinguishable by more than color */
+  :where(p, dd, blockquote, figcaption) a {
+    text-decoration: underline;
+    text-underline-offset: 2px;
   }
 
   /* Skip to content link */
