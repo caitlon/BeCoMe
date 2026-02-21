@@ -100,8 +100,8 @@ lightTest.describe('Visual Regression — Light Theme', () => {
     await centroidTab.click();
     await expect(centroidTab).toHaveAttribute('aria-selected', 'true');
 
-    // Wait for Recharts async rendering
-    await page.waitForTimeout(1000);
+    // Wait for Recharts scatter plot to render
+    await expect(page.locator('.recharts-scatter')).toBeVisible({ timeout: 5000 });
 
     await expect(page).toHaveScreenshot('project-results-centroid-light.png');
   });
@@ -151,7 +151,7 @@ darkTest.describe('Visual Regression — Dark Theme', () => {
     await centroidTab.click();
     await expect(centroidTab).toHaveAttribute('aria-selected', 'true');
 
-    await page.waitForTimeout(1000);
+    await expect(page.locator('.recharts-scatter')).toBeVisible({ timeout: 5000 });
 
     await expect(page).toHaveScreenshot('project-results-centroid-dark.png');
   });

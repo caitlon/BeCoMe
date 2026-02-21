@@ -50,6 +50,7 @@ class TestRightOfAccess:
 
     def test_data_export_endpoint_not_implemented(self, http_client):
         """No data export endpoint exists yet (GDPR Article 20 gap)."""
+        # GIVEN — registered user
         email = unique_email("gdpr-export")
         token = register_user(http_client, email)
 
@@ -214,13 +215,13 @@ class TestDataErasure:
         email = unique_email("gdpr-login")
         token = register_user(http_client, email)
 
+        # WHEN — user deletes account and attempts to login again
         delete_resp = http_client.delete(
             "/users/me",
             headers=auth_headers(token),
         )
         assert delete_resp.status_code == 204
 
-        # WHEN — attempt to login with original credentials
         login_resp = http_client.post(
             "/auth/login",
             data={"username": email, "password": DEFAULT_PASSWORD},
