@@ -92,7 +92,7 @@ class TestParseExpertLine:
         assert opinion.opinion.peak == 20.0
         assert opinion.opinion.upper_bound == 30.0
 
-    def test_float_values(self) -> None:
+    def test_parse_expert_line_with_float_values(self) -> None:
         """Test parsing expert line with float values."""
         # GIVEN
         line = "E1 | 10.5 | 20.7 | 30.9"
@@ -105,7 +105,7 @@ class TestParseExpertLine:
         assert opinion.opinion.peak == 20.7
         assert opinion.opinion.upper_bound == 30.9
 
-    def test_expert_id_with_spaces(self) -> None:
+    def test_parse_expert_line_with_spaces_in_id(self) -> None:
         """Test parsing expert ID containing spaces."""
         # GIVEN
         line = "Deputy Minister of MF | 30 | 45 | 70"
@@ -118,21 +118,30 @@ class TestParseExpertLine:
 
     def test_wrong_number_of_parts_raises_value_error(self) -> None:
         """Test that a line with wrong number of pipe-separated parts raises ValueError."""
+        # GIVEN
+        line = "Expert1 | 10 | 20"
+
         # WHEN/THEN
         with pytest.raises(ValueError, match="expected 4 parts"):
-            _parse_expert_line("Expert1 | 10 | 20")
+            _parse_expert_line(line)
 
     def test_non_numeric_values_raise_value_error(self) -> None:
         """Test that non-numeric values raise ValueError."""
+        # GIVEN
+        line = "Expert1 | abc | 20 | 30"
+
         # WHEN/THEN
         with pytest.raises(ValueError, match="Invalid numeric"):
-            _parse_expert_line("Expert1 | abc | 20 | 30")
+            _parse_expert_line(line)
 
     def test_too_many_parts_raises_value_error(self) -> None:
         """Test that a line with too many parts raises ValueError."""
+        # GIVEN
+        line = "E1 | 10 | 20 | 30 | 40"
+
         # WHEN/THEN
         with pytest.raises(ValueError, match="expected 4 parts"):
-            _parse_expert_line("E1 | 10 | 20 | 30 | 40")
+            _parse_expert_line(line)
 
 
 class TestLoadDataFromTxtValidation:
