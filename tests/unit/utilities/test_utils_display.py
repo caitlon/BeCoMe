@@ -230,6 +230,8 @@ class TestDisplayWithCzechLabels:
         self, capsys, sample_three_opinions: list[ExpertOpinion], calculator: BeCoMeCalculator
     ) -> None:
         """Test step 1 output uses Czech labels."""
+        # GIVEN — sample_three_opinions and calculator injected via fixtures
+
         # WHEN
         display_step_1_arithmetic_mean(sample_three_opinions, calculator, labels=CS_DISPLAY)
         output: str = capsys.readouterr().out

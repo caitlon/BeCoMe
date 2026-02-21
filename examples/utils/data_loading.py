@@ -94,6 +94,9 @@ def load_data_from_txt(filepath: str) -> tuple[list[ExpertOpinion], dict[str, st
 
             if "|" in line:
                 opinions.append(_parse_expert_line(line))
+                continue
+
+            raise ValueError(f"Unrecognized line format: {line}")
 
     if "num_experts" in metadata:
         expected_count: int = int(metadata["num_experts"])

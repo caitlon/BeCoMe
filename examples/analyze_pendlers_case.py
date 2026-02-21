@@ -1,9 +1,4 @@
-"""
-Detailed BeCoMe analysis of Pendlers case study.
-
-Demonstrates step-by-step calculation for 22 expert Likert scale ratings
-(0-25-50-75-100) for cross-border travel policy.
-"""
+"""Convenience wrapper that delegates to the English Pendlers case analysis."""
 
 from examples.en.analyze_pendlers_case import main
 

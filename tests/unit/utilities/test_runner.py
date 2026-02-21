@@ -99,6 +99,24 @@ class TestRunAnalysisWithCzech:
         assert isinstance(result.best_compromise, FuzzyTriangleNumber)
         assert result.best_compromise_centroid > 0.0
 
+    def test_czech_floods_case(self) -> None:
+        """Test analysis with Czech labels on floods case (odd expert count)."""
+        # GIVEN
+        data_file = str(DATA_DIR / "cs" / "floods_case.txt")
+
+        # WHEN
+        result = run_analysis(
+            data_file=data_file,
+            case_title="PŘÍPAD POVODNĚ",
+            display_labels=CS_DISPLAY,
+            formatting_labels=CS_FORMATTING,
+        )
+
+        # THEN
+        assert len(result.opinions) == 13
+        assert isinstance(result.best_compromise, FuzzyTriangleNumber)
+        assert result.max_error >= 0.0
+
 
 class TestRunAnalysisLikert:
     """Test run_analysis with Likert scale data."""

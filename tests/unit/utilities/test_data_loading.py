@@ -2,7 +2,7 @@
 
 import pytest
 
-from examples.utils.data_loading import _parse_expert_line, _parse_metadata_line
+from examples.utils.data_loading import _parse_expert_line, _parse_metadata_line, load_data_from_txt
 
 
 class TestParseMetadataLine:
@@ -124,3 +124,38 @@ class TestParseExpertLine:
         # WHEN/THEN
         with pytest.raises(ValueError, match="expected 4 parts"):
             _parse_expert_line("E1 | 10 | 20 | 30 | 40")
+
+
+class TestLoadDataFromTxtValidation:
+    """Test load_data_from_txt validation of unrecognized lines."""
+
+    def test_unrecognized_line_raises_value_error(self, tmp_path) -> None:
+        """Test that a line matching no known format raises ValueError."""
+        # GIVEN
+        data_file = tmp_path / "bad_data.txt"
+        data_file.write_text("CASE: Test\nsome garbage line\n", encoding="utf-8")
+
+        # WHEN/THEN
+        with pytest.raises(ValueError, match="Unrecognized line format"):
+            load_data_from_txt(str(data_file))
+
+    def test_valid_file_loads_successfully(self, tmp_path) -> None:
+        """Test that a well-formed file loads without errors."""
+        # GIVEN
+        data_file = tmp_path / "good_data.txt"
+        data_file.write_text(
+            "CASE: Test\n"
+            "DESCRIPTION: A test\n"
+            "EXPERTS: 1\n"
+            "\n"
+            "# comment\n"
+            "Expert1 | 10 | 20 | 30\n",
+            encoding="utf-8",
+        )
+
+        # WHEN
+        opinions, metadata = load_data_from_txt(str(data_file))
+
+        # THEN
+        assert len(opinions) == 1
+        assert metadata["case"] == "Test"

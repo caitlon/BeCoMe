@@ -1,9 +1,4 @@
-"""
-Detailed BeCoMe analysis of Floods case study.
-
-Demonstrates step-by-step calculation for 13 expert interval estimates
-of flood prevention arable land reduction percentage.
-"""
+"""Convenience wrapper that delegates to the English Floods case analysis."""
 
 from examples.en.analyze_floods_case import main
 

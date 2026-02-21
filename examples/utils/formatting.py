@@ -77,11 +77,11 @@ def display_centroid(
                  Falls back to ``labels.default_centroid_name`` if not provided.
     :param labels: Locale-specific labels. Defaults to English.
     """
-    if name is None:
-        if labels is None:
-            from .locales import EN_FORMATTING
+    if labels is None:
+        from .locales import EN_FORMATTING
 
-            labels = EN_FORMATTING
+        labels = EN_FORMATTING
+    if name is None:
         name = labels.default_centroid_name
 
     centroid = fuzzy_number.centroid

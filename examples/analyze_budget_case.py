@@ -1,9 +1,4 @@
-"""
-Detailed BeCoMe analysis of Budget case study.
-
-Demonstrates step-by-step calculation for 22 expert interval estimates
-of COVID-19 pandemic budget support.
-"""
+"""Convenience wrapper that delegates to the English Budget case analysis."""
 
 from examples.en.analyze_budget_case import main
 
