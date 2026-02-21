@@ -10,6 +10,13 @@ from api.db.engine import create_db_and_tables, get_engine
 from api.db.session import get_session
 
 
+def _dispose_and_clear_engine() -> None:
+    """Dispose the cached engine and clear the lru_cache."""
+    with suppress(Exception):
+        get_engine().dispose()
+    get_engine.cache_clear()
+
+
 class TestDatabaseEngine:
     """Tests for database engine creation."""
 
@@ -28,7 +35,7 @@ class TestDatabaseEngine:
             # THEN
             assert isinstance(result, Engine)
         finally:
-            get_engine.cache_clear()
+            _dispose_and_clear_engine()
 
     @patch("api.db.engine.get_settings")
     def test_get_engine_returns_same_instance(self, mock_get_settings: MagicMock) -> None:
@@ -46,7 +53,7 @@ class TestDatabaseEngine:
             # THEN: same instance (cached)
             assert engine1 is engine2
         finally:
-            get_engine.cache_clear()
+            _dispose_and_clear_engine()
 
     @patch("api.db.engine.get_settings")
     def test_get_engine_returns_sqlite_engine(self, mock_get_settings: MagicMock) -> None:
@@ -63,7 +70,7 @@ class TestDatabaseEngine:
             # THEN: engine URL should be SQLite
             assert "sqlite" in str(test_engine.url)
         finally:
-            get_engine.cache_clear()
+            _dispose_and_clear_engine()
 
 
 class TestDatabaseSession:
@@ -111,7 +118,7 @@ class TestCreateDbAndTables:
             # WHEN/THEN: should not raise
             create_db_and_tables()
         finally:
-            get_engine.cache_clear()
+            _dispose_and_clear_engine()
 
     @patch("api.db.engine.get_settings")
     @patch("api.db.engine.SQLModel.metadata.create_all")
@@ -131,7 +138,7 @@ class TestCreateDbAndTables:
             # THEN
             mock_create_all.assert_called_once()
         finally:
-            get_engine.cache_clear()
+            _dispose_and_clear_engine()
 
 
 class TestLifespan:
@@ -160,3 +167,6 @@ class TestLifespan:
 
         # THEN: create_db_and_tables should have been called
         mock_create.assert_called()
+
+        # Cleanup: dispose engine to avoid ResourceWarning for unclosed sqlite3 connection
+        _dispose_and_clear_engine()
