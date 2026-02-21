@@ -18,6 +18,7 @@ dev = [
     "pytest-postgresql>=6.0",
     "ruff>=0.13",
     "mypy>=1.18",
+    "pip-audit>=2.7",
     "types-python-jose>=3.3",
     "types-passlib>=1.7",
     "types-regex>=2024.0",
