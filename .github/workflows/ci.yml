@@ -28,7 +28,7 @@ jobs:
 
       # Security: dependency audit
       - name: Audit Python dependencies
-        run: uv run pip-audit
+        run: uv run pip-audit --ignore-vuln CVE-2024-23342  # ecdsa: no fix, transitive via python-jose
 
       # Python linting
       - name: Check code formatting
