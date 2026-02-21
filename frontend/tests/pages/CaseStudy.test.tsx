@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import { render, framerMotionMock } from '@tests/utils';
 import CaseStudy from '@/pages/CaseStudy';
 
@@ -94,8 +94,8 @@ describe('CaseStudy - Pendlers (Likert)', () => {
     render(<CaseStudy />);
 
     const table = screen.getByRole('table');
-    const headers = table.querySelectorAll('th');
-    const headerTexts = Array.from(headers).map(h => h.textContent?.trim());
+    const headers = within(table).getAllByRole('columnheader');
+    const headerTexts = headers.map(h => h.textContent?.trim());
     expect(headerTexts).toContain('Value');
     expect(headerTexts).toContain('Label');
   });
@@ -117,11 +117,11 @@ describe('CaseStudy - Pendlers (Likert)', () => {
     render(<CaseStudy />);
 
     // bestCompromise = 43.2 => "Neutral" (37.5-62.5)
-    // "Neutral" also appears in table rows, so check for Likert Interpretation heading
-    expect(screen.getByText(/likert interpretation/i)).toBeInTheDocument();
-    // The LikertInterpretation component renders a label next to the heading
-    const interpSection = screen.getByText(/likert interpretation/i).closest('div');
-    expect(interpSection?.parentElement?.textContent).toContain('Neutral');
+    const interpHeading = screen.getByText(/likert interpretation/i);
+    expect(interpHeading).toBeInTheDocument();
+    // LikertInterpretation renders heading + label as siblings inside a wrapper div
+    const interpWrapper = interpHeading.parentElement!;
+    expect(interpWrapper.textContent).toContain('Neutral');
   });
 
   it('does NOT render opinion distribution for Likert data', () => {

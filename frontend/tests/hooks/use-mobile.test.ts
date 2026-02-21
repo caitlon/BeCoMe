@@ -87,8 +87,10 @@ describe('useIsMobile', () => {
   });
 
   it('returns false when matchMedia is undefined', () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (globalThis as any).matchMedia = undefined;
+    Object.defineProperty(globalThis, 'matchMedia', {
+      writable: true,
+      value: undefined,
+    });
 
     const { result } = renderHook(() => useIsMobile());
 

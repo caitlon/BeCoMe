@@ -281,16 +281,9 @@ describe('ProjectDetail - Other Opinions Table', () => {
     });
   });
 
-  it('displays other expert opinions sorted by centroid', async () => {
+  it('displays other expert opinions sorted by centroid descending', async () => {
+    // Bob has lower centroid than Jane, but is listed first in input array
     const otherOpinions = [
-      createOpinion({
-        user_id: 'other-user',
-        user_first_name: 'Jane',
-        user_last_name: 'Smith',
-        lower_bound: 30,
-        peak: 60,
-        upper_bound: 90,
-      }),
       createOpinion({
         user_id: 'other-user-2',
         user_first_name: 'Bob',
@@ -298,6 +291,16 @@ describe('ProjectDetail - Other Opinions Table', () => {
         lower_bound: 10,
         peak: 20,
         upper_bound: 30,
+        centroid: 20,
+      }),
+      createOpinion({
+        user_id: 'other-user',
+        user_first_name: 'Jane',
+        user_last_name: 'Smith',
+        lower_bound: 30,
+        peak: 60,
+        upper_bound: 90,
+        centroid: 60,
       }),
     ];
     mockApi.getOpinions.mockResolvedValue(otherOpinions);
@@ -305,9 +308,16 @@ describe('ProjectDetail - Other Opinions Table', () => {
     render(<ProjectDetail />);
 
     await waitFor(() => {
-      const names = screen.getAllByText('Jane Smith');
-      expect(names.length).toBeGreaterThan(0);
+      expect(screen.getAllByText('Jane Smith').length).toBeGreaterThan(0);
     });
+
+    // Verify descending centroid order: Jane (60) before Bob (20)
+    const bodyContent = document.body.textContent ?? '';
+    const janePos = bodyContent.indexOf('Jane Smith');
+    const bobPos = bodyContent.indexOf('Bob Brown');
+    expect(janePos).toBeGreaterThan(-1);
+    expect(bobPos).toBeGreaterThan(-1);
+    expect(janePos).toBeLessThan(bobPos);
   });
 });
 
@@ -1619,7 +1629,7 @@ describe('ProjectDetail - Member Profile Dialog Edge Cases', () => {
     const user = userEvent.setup();
     const members = [
       createMember({ user_id: 'user-1', first_name: 'John', last_name: 'Doe', role: 'admin' }),
-      createMember({ user_id: 'user-2', first_name: 'Madonna', last_name: null as unknown as string, role: 'expert' }),
+      createMember({ user_id: 'user-2', first_name: 'Madonna', last_name: null, role: 'expert' }),
     ];
     mockApi.getMembers.mockResolvedValue(members);
 
@@ -1652,7 +1662,7 @@ describe('ProjectDetail - Invitation with Null Last Name', () => {
     const invitations = [
       createProjectInvitation({
         invitee_first_name: 'Cher',
-        invitee_last_name: null as unknown as string,
+        invitee_last_name: null,
         invitee_email: 'cher@example.com',
       }),
     ];

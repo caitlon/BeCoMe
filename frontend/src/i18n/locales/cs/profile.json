@@ -29,6 +29,7 @@
     "deleting": "Mazání..."
   },
   "photo": {
+    "label": "Profilová fotka",
     "upload": "Nahrát fotku",
     "delete": "Smazat fotku"
   },

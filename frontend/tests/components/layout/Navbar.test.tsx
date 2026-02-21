@@ -157,7 +157,7 @@ describe('Navbar - User Menu', () => {
     expect(screen.getByRole('menuitem', { name: /log out|sign out/i })).toBeInTheDocument();
   });
 
-  it('clicking logout calls logout and redirects to /', async () => {
+  it('clicking logout calls logout', async () => {
     const user = userEvent.setup();
     render(<Navbar />);
 

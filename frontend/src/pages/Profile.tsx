@@ -243,7 +243,7 @@ const Profile = () => {
                 type="file"
                 accept="image/jpeg,image/png,image/gif,image/webp"
                 className="hidden"
-                aria-label="Profile photo"
+                aria-label={t("photo.label")}
                 onChange={handlePhotoUpload}
               />
               <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 flex gap-1">

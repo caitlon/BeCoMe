@@ -24,12 +24,11 @@ describe('Landing - Authenticated', () => {
     expect(heroButton).toHaveAttribute('href', '/projects');
   });
 
-  it('CTA section links to /projects for authenticated users', () => {
+  it('renders multiple /projects links for authenticated users (hero + CTA)', () => {
     render(<Landing />);
-    const ctaLinks = screen.getAllByRole('link').filter(
+    const projectsLinks = screen.getAllByRole('link').filter(
       link => link.getAttribute('href') === '/projects'
     );
-    // Hero + CTA + Navbar = at least 2 links to /projects
-    expect(ctaLinks.length).toBeGreaterThanOrEqual(2);
+    expect(projectsLinks.length).toBeGreaterThanOrEqual(2);
   });
 });

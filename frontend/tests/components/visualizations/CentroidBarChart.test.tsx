@@ -252,11 +252,9 @@ describe('CentroidBarChart - CustomTooltip', () => {
     render(<CentroidBarChart opinions={opinions} result={result} />);
 
     const tooltip = screen.getByRole('tooltip');
-    // Name should be there, but no extra empty div for position
     expect(tooltip.textContent).toContain('Jane');
-    // Only 3 child divs: name, fuzzy values container, centroid value
-    const directChildren = tooltip.querySelectorAll(':scope > div');
-    expect(directChildren).toHaveLength(2);
+    // Position div is conditionally rendered only when non-empty
+    expect(tooltip.querySelector('.text-muted-foreground')).toBeNull();
   });
 
   it('returns null when payload is empty', () => {
