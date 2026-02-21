@@ -3,6 +3,7 @@ import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { render, framerMotionMock } from '@tests/utils';
 import Onboarding from '@/pages/Onboarding';
+import { slideVariants } from '@/pages/onboarding-utils';
 
 const { mockUser, mockNavigate, mockPathname } = vi.hoisted(() => ({
   mockUser: {
@@ -238,5 +239,40 @@ describe('Onboarding - Keyboard Navigation', () => {
 
     // Should still be on step 2 (keyboard nav skipped)
     expect(screen.getByText('Create a Project')).toBeInTheDocument();
+  });
+
+  it('clicking step dot backward sets negative direction', async () => {
+    const user = userEvent.setup();
+    render(<Onboarding />, { initialEntries: ['/onboarding'] });
+
+    // Go forward to step 3 via step dot
+    await user.click(screen.getByRole('button', { name: /go to step 3/i }));
+    expect(screen.getByText('Invite Experts')).toBeInTheDocument();
+
+    // Go backward to step 1 via step dot
+    await user.click(screen.getByRole('button', { name: /go to step 1/i }));
+    expect(screen.getByText('Welcome to BeCoMe')).toBeInTheDocument();
+  });
+});
+
+describe('slideVariants', () => {
+  it('enter returns positive x for forward direction', () => {
+    expect(slideVariants.enter(1)).toEqual({ x: 300, opacity: 0 });
+  });
+
+  it('enter returns negative x for backward direction', () => {
+    expect(slideVariants.enter(-1)).toEqual({ x: -300, opacity: 0 });
+  });
+
+  it('center is a static object with x:0 and opacity:1', () => {
+    expect(slideVariants.center).toEqual({ x: 0, opacity: 1 });
+  });
+
+  it('exit returns positive x for backward direction', () => {
+    expect(slideVariants.exit(-1)).toEqual({ x: 300, opacity: 0 });
+  });
+
+  it('exit returns negative x for forward direction', () => {
+    expect(slideVariants.exit(1)).toEqual({ x: -300, opacity: 0 });
   });
 });

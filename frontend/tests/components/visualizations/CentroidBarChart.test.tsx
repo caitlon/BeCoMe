@@ -1,8 +1,14 @@
-import { describe, it, expect, vi } from 'vitest';
-import { screen } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import React from 'react';
+import { screen, within } from '@testing-library/react';
 import { render } from '@tests/utils';
 import { CentroidBarChart } from '@/components/visualizations/CentroidBarChart';
-import { createOpinion, createCalculationResult } from '@tests/factories/project';
+import { createOpinion, createCalculationResult, resetProjectCounters } from '@tests/factories/project';
+
+const tooltipFlag = vi.hoisted(() => ({
+  renderContent: false,
+  tooltipPayload: null as Array<{ payload: Record<string, unknown> }> | null,
+}));
 
 // Mock recharts to avoid SVG rendering in happy-dom
 vi.mock('recharts', async (importOriginal) => {
@@ -20,12 +26,31 @@ vi.mock('recharts', async (importOriginal) => {
     Scatter: (props: Record<string, unknown>) => (
       <div data-testid="scatter" data-animation-active={String(props.isAnimationActive)} />
     ),
-    XAxis: () => <div data-testid="x-axis" />,
+    XAxis: ({ tickFormatter }: { tickFormatter?: (v: number) => string }) => (
+      <div data-testid="x-axis">
+        {tickFormatter && (
+          <>
+            <span data-testid="tick-integer">{tickFormatter(10)}</span>
+            <span data-testid="tick-decimal">{tickFormatter(10.5)}</span>
+          </>
+        )}
+      </div>
+    ),
     YAxis: () => <div data-testid="y-axis" />,
     ReferenceLine: ({ x, stroke }: { x?: number; stroke?: string }) => (
       <div data-testid="reference-line" data-x={x} data-stroke={stroke} />
     ),
-    Tooltip: () => null,
+    Tooltip: ({ content }: { content?: React.ReactElement }) => {
+      if (!tooltipFlag.renderContent || !content) return null;
+      return (
+        <div data-testid="tooltip-wrapper">
+          {React.cloneElement(content, {
+            active: true,
+            payload: tooltipFlag.tooltipPayload,
+          })}
+        </div>
+      );
+    },
   };
 });
 
@@ -36,6 +61,22 @@ const opinions = [
 ];
 
 const result = createCalculationResult();
+
+let originalMatchMedia: typeof globalThis.matchMedia;
+
+beforeEach(() => {
+  resetProjectCounters();
+  originalMatchMedia = globalThis.matchMedia;
+  tooltipFlag.renderContent = false;
+  tooltipFlag.tooltipPayload = null;
+});
+
+afterEach(() => {
+  Object.defineProperty(globalThis, 'matchMedia', {
+    writable: true,
+    value: originalMatchMedia,
+  });
+});
 
 describe('CentroidBarChart', () => {
   it('renders as a figure with aria-label', () => {
@@ -61,7 +102,6 @@ describe('CentroidBarChart', () => {
     const referenceLines = screen.getAllByTestId('reference-line');
     expect(referenceLines).toHaveLength(3);
 
-    // Each reference line should have an x value (centroid of an aggregate)
     referenceLines.forEach((line) => {
       expect(line).toHaveAttribute('data-x');
     });
@@ -76,7 +116,6 @@ describe('CentroidBarChart', () => {
     expect(legend?.textContent).toContain('Mean');
     expect(legend?.textContent).toContain('Median');
     expect(legend?.textContent).toContain('Centroid');
-    // Legend should show numeric values of aggregates
     expect(legend?.textContent).toContain(result.arithmetic_mean.centroid.toFixed(1));
   });
 
@@ -88,7 +127,7 @@ describe('CentroidBarChart', () => {
   });
 
   it('disables animation when prefers-reduced-motion is set', () => {
-    Object.defineProperty(window, 'matchMedia', {
+    Object.defineProperty(globalThis, 'matchMedia', {
       writable: true,
       value: vi.fn().mockImplementation((query: string) => ({
         matches: query === '(prefers-reduced-motion: reduce)',
@@ -106,5 +145,125 @@ describe('CentroidBarChart', () => {
 
     const scatter = screen.getByTestId('scatter');
     expect(scatter).toHaveAttribute('data-animation-active', 'false');
+  });
+
+  it('enables animation when matchMedia is not available', () => {
+    Object.defineProperty(globalThis, 'matchMedia', {
+      writable: true,
+      value: undefined,
+    });
+
+    render(<CentroidBarChart opinions={opinions} result={result} />);
+
+    const scatter = screen.getByTestId('scatter');
+    expect(scatter).toHaveAttribute('data-animation-active', 'true');
+  });
+});
+
+describe('CentroidBarChart - tickFormatter', () => {
+  it('formats integer values without decimals', () => {
+    render(<CentroidBarChart opinions={opinions} result={result} />);
+
+    const tickInteger = screen.getByTestId('tick-integer');
+    expect(tickInteger.textContent).toBe('10');
+  });
+
+  it('formats decimal values to one decimal place', () => {
+    render(<CentroidBarChart opinions={opinions} result={result} />);
+
+    const tickDecimal = screen.getByTestId('tick-decimal');
+    expect(tickDecimal.textContent).toBe('10.5');
+  });
+});
+
+describe('CentroidBarChart - edge cases', () => {
+  it('handles empty opinions array', () => {
+    render(<CentroidBarChart opinions={[]} result={result} />);
+
+    const figure = screen.getByRole('figure');
+    expect(figure).toBeInTheDocument();
+
+    const srOnly = figure.querySelector('.sr-only');
+    expect(srOnly?.textContent).toContain('0');
+  });
+
+  it('handles equal centroids with padding fallback', () => {
+    const sameOpinions = [
+      createOpinion({ centroid: 50, lower_bound: 40, peak: 50, upper_bound: 60 }),
+      createOpinion({ centroid: 50, lower_bound: 45, peak: 50, upper_bound: 55 }),
+    ];
+
+    render(<CentroidBarChart opinions={sameOpinions} result={result} />);
+
+    const figure = screen.getByRole('figure');
+    expect(figure).toBeInTheDocument();
+  });
+
+  it('trims full name when last name is null', () => {
+    tooltipFlag.renderContent = true;
+    tooltipFlag.tooltipPayload = [{
+      payload: { x: 50, y: 1, centroid: 50, lower: 40, peak: 50, upper: 60, fullName: 'Solo', position: 'Expert' },
+    }];
+    const opWithNullLast = [
+      createOpinion({ user_first_name: 'Solo', user_last_name: null, centroid: 50 }),
+    ];
+
+    render(<CentroidBarChart opinions={opWithNullLast} result={result} />);
+
+    const tooltip = screen.getByRole('tooltip');
+    expect(tooltip.textContent).toContain('Solo');
+  });
+});
+
+describe('CentroidBarChart - CustomTooltip', () => {
+  beforeEach(() => {
+    tooltipFlag.renderContent = true;
+  });
+
+  it('renders tooltip with expert name and fuzzy values', () => {
+    tooltipFlag.tooltipPayload = [{
+      payload: { x: 45, y: 1, centroid: 45, lower: 25, peak: 45, upper: 65, fullName: 'Clara', position: 'Expert' },
+    }];
+
+    render(<CentroidBarChart opinions={opinions} result={result} />);
+
+    const tooltip = screen.getByRole('tooltip');
+    expect(tooltip).toBeInTheDocument();
+    expect(tooltip.textContent).toContain('Clara');
+    expect(tooltip.textContent).toContain('45.00');
+  });
+
+  it('renders tooltip with position when position is present', () => {
+    tooltipFlag.tooltipPayload = [{
+      payload: { x: 50, y: 1, centroid: 50, lower: 40, peak: 50, upper: 60, fullName: 'Jane Doe', position: 'Senior Analyst' },
+    }];
+
+    render(<CentroidBarChart opinions={opinions} result={result} />);
+
+    const tooltip = screen.getByRole('tooltip');
+    expect(tooltip.textContent).toContain('Senior Analyst');
+  });
+
+  it('omits position when position is empty string', () => {
+    tooltipFlag.tooltipPayload = [{
+      payload: { x: 50, y: 1, centroid: 50, lower: 40, peak: 50, upper: 60, fullName: 'Jane', position: '' },
+    }];
+
+    render(<CentroidBarChart opinions={opinions} result={result} />);
+
+    const tooltip = screen.getByRole('tooltip');
+    expect(tooltip.textContent).toContain('Jane');
+    // When position is empty, no position text is rendered between name and fuzzy values
+    expect(within(tooltip).queryByText('Expert')).toBeNull();
+    expect(within(tooltip).queryByText('Senior Analyst')).toBeNull();
+  });
+
+  it('returns null when payload is empty', () => {
+    tooltipFlag.tooltipPayload = [];
+
+    render(<CentroidBarChart opinions={opinions} result={result} />);
+
+    const tooltipWrapper = screen.getByTestId('tooltip-wrapper');
+    expect(tooltipWrapper.querySelector('[role="tooltip"]')).toBeNull();
   });
 });

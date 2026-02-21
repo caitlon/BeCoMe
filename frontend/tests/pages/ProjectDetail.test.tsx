@@ -220,6 +220,24 @@ describe('ProjectDetail - Opinion Form', () => {
     });
   });
 
+  it('pre-fills form with empty position when opinion has no position', async () => {
+    const existingOpinion = createOpinion({
+      user_id: 'user-1',
+      position: '',
+      lower_bound: 20,
+      peak: 50,
+      upper_bound: 80,
+    });
+    mockApi.getOpinions.mockResolvedValue([existingOpinion]);
+
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      const positionInputs = screen.getAllByLabelText('Position');
+      expect(positionInputs[0]).toHaveValue('');
+    });
+  });
+
   it('disables update button when opinion values unchanged', async () => {
     const existingOpinion = createOpinion({
       user_id: 'user-1',
@@ -263,8 +281,18 @@ describe('ProjectDetail - Other Opinions Table', () => {
     });
   });
 
-  it('displays other expert opinions', async () => {
+  it('displays other expert opinions sorted by centroid descending', async () => {
+    // Bob has lower centroid than Jane, but is listed first in input array
     const otherOpinions = [
+      createOpinion({
+        user_id: 'other-user-2',
+        user_first_name: 'Bob',
+        user_last_name: 'Brown',
+        lower_bound: 10,
+        peak: 20,
+        upper_bound: 30,
+        centroid: 20,
+      }),
       createOpinion({
         user_id: 'other-user',
         user_first_name: 'Jane',
@@ -272,6 +300,7 @@ describe('ProjectDetail - Other Opinions Table', () => {
         lower_bound: 30,
         peak: 60,
         upper_bound: 90,
+        centroid: 60,
       }),
     ];
     mockApi.getOpinions.mockResolvedValue(otherOpinions);
@@ -279,9 +308,14 @@ describe('ProjectDetail - Other Opinions Table', () => {
     render(<ProjectDetail />);
 
     await waitFor(() => {
-      const names = screen.getAllByText('Jane Smith');
-      expect(names.length).toBeGreaterThan(0);
+      expect(screen.getAllByText('Jane Smith').length).toBeGreaterThan(0);
     });
+
+    // Verify descending centroid order: Jane (60) before Bob (20)
+    const janeEl = screen.getAllByText('Jane Smith')[0];
+    const bobEl = screen.getAllByText('Bob Brown')[0];
+    // Node.DOCUMENT_POSITION_FOLLOWING (4) means bob comes after jane
+    expect(janeEl.compareDocumentPosition(bobEl) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });
 
@@ -871,6 +905,797 @@ describe('ProjectDetail - Invitations 403 handling', () => {
         expect.objectContaining({ variant: 'destructive' }),
       );
       expect(mockNavigate).toHaveBeenCalledWith('/projects');
+    });
+  });
+});
+
+describe('ProjectDetail - Opinion Form Validations', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    defaultSetup();
+  });
+
+  it('shows error toast when peak > upper (order violation)', async () => {
+    const user = userEvent.setup();
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      expect(screen.getAllByRole('button', { name: 'Save Opinion' }).length).toBeGreaterThan(0);
+    });
+
+    const positionInputs = screen.getAllByLabelText('Position');
+    await user.type(positionInputs[0], 'Manager');
+
+    const lowerInputs = screen.getAllByLabelText(/lower/i);
+    await user.type(lowerInputs[0], '20');
+
+    const peakInputs = screen.getAllByLabelText(/peak/i);
+    await user.type(peakInputs[0], '90');
+
+    const upperInputs = screen.getAllByLabelText(/upper/i);
+    await user.type(upperInputs[0], '80');
+
+    const saveButtons = screen.getAllByRole('button', { name: 'Save Opinion' });
+    await user.click(saveButtons[0]);
+
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Validation Error',
+          description: 'Values must satisfy: lower ≤ peak ≤ upper',
+          variant: 'destructive',
+        }),
+      );
+    });
+  });
+
+  it('shows error toast when lower > peak', async () => {
+    const user = userEvent.setup();
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      expect(screen.getAllByRole('button', { name: 'Save Opinion' }).length).toBeGreaterThan(0);
+    });
+
+    const positionInputs = screen.getAllByLabelText('Position');
+    await user.type(positionInputs[0], 'Manager');
+
+    const lowerInputs = screen.getAllByLabelText(/lower/i);
+    await user.type(lowerInputs[0], '60');
+
+    const peakInputs = screen.getAllByLabelText(/peak/i);
+    await user.type(peakInputs[0], '40');
+
+    const upperInputs = screen.getAllByLabelText(/upper/i);
+    await user.type(upperInputs[0], '80');
+
+    const saveButtons = screen.getAllByRole('button', { name: 'Save Opinion' });
+    await user.click(saveButtons[0]);
+
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Validation Error',
+          description: 'Values must satisfy: lower ≤ peak ≤ upper',
+          variant: 'destructive',
+        }),
+      );
+    });
+  });
+
+  it('shows error toast when values outside scale range', async () => {
+    const user = userEvent.setup();
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      expect(screen.getAllByRole('button', { name: 'Save Opinion' }).length).toBeGreaterThan(0);
+    });
+
+    const positionInputs = screen.getAllByLabelText('Position');
+    await user.type(positionInputs[0], 'Manager');
+
+    // scale_min=0, scale_max=100. Use lower=-5 which is outside range
+    const lowerInputs = screen.getAllByLabelText(/lower/i);
+    await user.type(lowerInputs[0], '-5');
+
+    const peakInputs = screen.getAllByLabelText(/peak/i);
+    await user.type(peakInputs[0], '50');
+
+    const upperInputs = screen.getAllByLabelText(/upper/i);
+    await user.type(upperInputs[0], '80');
+
+    const saveButtons = screen.getAllByRole('button', { name: 'Save Opinion' });
+    await user.click(saveButtons[0]);
+
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Validation Error',
+          variant: 'destructive',
+        }),
+      );
+    });
+  });
+});
+
+describe('ProjectDetail - Opinion Save', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    defaultSetup();
+  });
+
+  it('saves opinion successfully and shows success toast', async () => {
+    const user = userEvent.setup();
+    mockApi.createOrUpdateOpinion.mockResolvedValue(undefined);
+
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      expect(screen.getAllByRole('button', { name: 'Save Opinion' }).length).toBeGreaterThan(0);
+    });
+
+    const positionInputs = screen.getAllByLabelText('Position');
+    await user.type(positionInputs[0], 'Manager');
+
+    const lowerInputs = screen.getAllByLabelText(/lower/i);
+    await user.type(lowerInputs[0], '20');
+
+    const peakInputs = screen.getAllByLabelText(/peak/i);
+    await user.type(peakInputs[0], '50');
+
+    const upperInputs = screen.getAllByLabelText(/upper/i);
+    await user.type(upperInputs[0], '80');
+
+    const saveButtons = screen.getAllByRole('button', { name: 'Save Opinion' });
+    await user.click(saveButtons[0]);
+
+    await waitFor(() => {
+      expect(mockApi.createOrUpdateOpinion).toHaveBeenCalledWith('project-1', {
+        position: 'Manager',
+        lower_bound: 20,
+        peak: 50,
+        upper_bound: 80,
+      });
+      expect(mockToast).toHaveBeenCalledWith({ title: 'Opinion saved' });
+    });
+  });
+
+  it('shows generic error toast when save fails with non-Error', async () => {
+    const user = userEvent.setup();
+    mockApi.createOrUpdateOpinion.mockRejectedValue('string error');
+
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      expect(screen.getAllByRole('button', { name: 'Save Opinion' }).length).toBeGreaterThan(0);
+    });
+
+    const positionInputs = screen.getAllByLabelText('Position');
+    await user.type(positionInputs[0], 'Manager');
+
+    const lowerInputs = screen.getAllByLabelText(/lower/i);
+    await user.type(lowerInputs[0], '20');
+
+    const peakInputs = screen.getAllByLabelText(/peak/i);
+    await user.type(peakInputs[0], '50');
+
+    const upperInputs = screen.getAllByLabelText(/upper/i);
+    await user.type(upperInputs[0], '80');
+
+    const saveButtons = screen.getAllByRole('button', { name: 'Save Opinion' });
+    await user.click(saveButtons[0]);
+
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Error',
+          description: 'Failed to save',
+          variant: 'destructive',
+        }),
+      );
+    });
+  });
+
+  it('shows error toast when save fails with Error', async () => {
+    const user = userEvent.setup();
+    mockApi.createOrUpdateOpinion.mockRejectedValue(new Error('Network error'));
+
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      expect(screen.getAllByRole('button', { name: 'Save Opinion' }).length).toBeGreaterThan(0);
+    });
+
+    const positionInputs = screen.getAllByLabelText('Position');
+    await user.type(positionInputs[0], 'Manager');
+
+    const lowerInputs = screen.getAllByLabelText(/lower/i);
+    await user.type(lowerInputs[0], '20');
+
+    const peakInputs = screen.getAllByLabelText(/peak/i);
+    await user.type(peakInputs[0], '50');
+
+    const upperInputs = screen.getAllByLabelText(/upper/i);
+    await user.type(upperInputs[0], '80');
+
+    const saveButtons = screen.getAllByRole('button', { name: 'Save Opinion' });
+    await user.click(saveButtons[0]);
+
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Error',
+          description: 'Network error',
+          variant: 'destructive',
+        }),
+      );
+    });
+  });
+});
+
+describe('ProjectDetail - Delete Opinion', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    defaultSetup();
+  });
+
+  it('deletes opinion and clears form', async () => {
+    const user = userEvent.setup();
+    const existingOpinion = createOpinion({
+      user_id: 'user-1',
+      position: 'Manager',
+      lower_bound: 20,
+      peak: 50,
+      upper_bound: 80,
+    });
+    mockApi.getOpinions.mockResolvedValue([existingOpinion]);
+    mockApi.deleteOpinion.mockResolvedValue(undefined);
+
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      const deleteButtons = screen.getAllByRole('button', { name: /delete my opinion/i });
+      expect(deleteButtons.length).toBeGreaterThan(0);
+    });
+
+    const deleteButtons = screen.getAllByRole('button', { name: /delete my opinion/i });
+    await user.click(deleteButtons[0]);
+
+    await waitFor(() => {
+      expect(mockApi.deleteOpinion).toHaveBeenCalledWith('project-1');
+      expect(mockToast).toHaveBeenCalledWith({ title: 'Opinion deleted' });
+    });
+  });
+
+  it('shows error toast when delete opinion fails', async () => {
+    const user = userEvent.setup();
+    const existingOpinion = createOpinion({
+      user_id: 'user-1',
+      position: 'Manager',
+      lower_bound: 20,
+      peak: 50,
+      upper_bound: 80,
+    });
+    mockApi.getOpinions.mockResolvedValue([existingOpinion]);
+    mockApi.deleteOpinion.mockRejectedValue(new Error('Delete failed'));
+
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      const deleteButtons = screen.getAllByRole('button', { name: /delete my opinion/i });
+      expect(deleteButtons.length).toBeGreaterThan(0);
+    });
+
+    const deleteButtons = screen.getAllByRole('button', { name: /delete my opinion/i });
+    await user.click(deleteButtons[0]);
+
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Error',
+          description: 'Failed to delete opinion',
+          variant: 'destructive',
+        }),
+      );
+    });
+  });
+});
+
+describe('ProjectDetail - Delete Project', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    defaultSetup();
+  });
+
+  it('deletes project successfully and navigates to projects', async () => {
+    const user = userEvent.setup();
+    mockApi.deleteProject.mockResolvedValue(undefined);
+
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /^delete$/i })).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole('button', { name: /^delete$/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Delete Project?')).toBeInTheDocument();
+    });
+
+    const dialog = screen.getByRole('dialog');
+    const confirmButton = within(dialog).getByRole('button', { name: /delete/i });
+    await user.click(confirmButton);
+
+    await waitFor(() => {
+      expect(mockApi.deleteProject).toHaveBeenCalledWith('project-1');
+      expect(mockToast).toHaveBeenCalledWith({ title: 'Project deleted' });
+      expect(mockNavigate).toHaveBeenCalledWith('/projects');
+    });
+  });
+
+  it('shows error toast when delete project fails', async () => {
+    const user = userEvent.setup();
+    mockApi.deleteProject.mockRejectedValue(new Error('Delete failed'));
+
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /^delete$/i })).toBeInTheDocument();
+    });
+
+    // Open delete modal - click the "Delete" button in the header
+    await user.click(screen.getByRole('button', { name: /^delete$/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Delete Project?')).toBeInTheDocument();
+    });
+
+    // Inside the modal, find the confirm delete button within the dialog
+    const dialog = screen.getByRole('dialog');
+    const confirmButton = within(dialog).getByRole('button', { name: /delete/i });
+    await user.click(confirmButton);
+
+    await waitFor(() => {
+      expect(mockApi.deleteProject).toHaveBeenCalledWith('project-1');
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Error',
+          description: 'Failed to delete project',
+          variant: 'destructive',
+        }),
+      );
+    });
+  });
+});
+
+describe('ProjectDetail - Remove Member', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    defaultSetup();
+  });
+
+  it('removes member successfully', async () => {
+    const user = userEvent.setup();
+    const members = [
+      createMember({ user_id: 'user-1', first_name: 'John', last_name: 'Doe', role: 'admin' }),
+      createMember({ user_id: 'user-2', first_name: 'Jane', last_name: 'Smith', role: 'expert' }),
+    ];
+    mockApi.getMembers.mockResolvedValue(members);
+    mockApi.removeMember.mockResolvedValue(undefined);
+
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('Jane Smith').length).toBeGreaterThan(0);
+    });
+
+    const removeButtons = screen.getAllByRole('button', { name: /remove jane smith from team/i });
+    await user.click(removeButtons[0]);
+
+    await waitFor(() => {
+      expect(mockApi.removeMember).toHaveBeenCalledWith('project-1', 'user-2');
+      expect(mockToast).toHaveBeenCalledWith({ title: 'Member removed' });
+    });
+  });
+
+  it('shows error toast when remove member fails', async () => {
+    const user = userEvent.setup();
+    const members = [
+      createMember({ user_id: 'user-1', first_name: 'John', last_name: 'Doe', role: 'admin' }),
+      createMember({ user_id: 'user-2', first_name: 'Jane', last_name: 'Smith', role: 'expert' }),
+    ];
+    mockApi.getMembers.mockResolvedValue(members);
+    mockApi.removeMember.mockRejectedValue(new Error('Remove failed'));
+
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('Jane Smith').length).toBeGreaterThan(0);
+    });
+
+    const removeButtons = screen.getAllByRole('button', { name: /remove jane smith from team/i });
+    await user.click(removeButtons[0]);
+
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Error',
+          description: 'Failed to remove member',
+          variant: 'destructive',
+        }),
+      );
+    });
+  });
+});
+
+describe('ProjectDetail - Form Inputs', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    defaultSetup();
+  });
+
+  it('updates position input value on change', async () => {
+    const user = userEvent.setup();
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      expect(screen.getAllByLabelText('Position').length).toBeGreaterThan(0);
+    });
+
+    const positionInputs = screen.getAllByLabelText('Position');
+    await user.type(positionInputs[0], 'Director');
+
+    expect(positionInputs[0]).toHaveValue('Director');
+  });
+
+  it('updates lower bound input value on change', async () => {
+    const user = userEvent.setup();
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      expect(screen.getAllByLabelText(/lower/i).length).toBeGreaterThan(0);
+    });
+
+    const lowerInputs = screen.getAllByLabelText(/lower/i);
+    await user.type(lowerInputs[0], '25');
+
+    expect(lowerInputs[0]).toHaveValue(25);
+  });
+
+  it('updates peak input value on change', async () => {
+    const user = userEvent.setup();
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      expect(screen.getAllByLabelText(/peak/i).length).toBeGreaterThan(0);
+    });
+
+    const peakInputs = screen.getAllByLabelText(/peak/i);
+    await user.type(peakInputs[0], '50');
+
+    expect(peakInputs[0]).toHaveValue(50);
+  });
+
+  it('updates upper bound input value on change', async () => {
+    const user = userEvent.setup();
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      expect(screen.getAllByLabelText(/upper/i).length).toBeGreaterThan(0);
+    });
+
+    const upperInputs = screen.getAllByLabelText(/upper/i);
+    await user.type(upperInputs[0], '75');
+
+    expect(upperInputs[0]).toHaveValue(75);
+  });
+});
+
+describe('ProjectDetail - Hint Messages', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    defaultSetup();
+  });
+
+  it('shows position required hint when position is empty', async () => {
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      const hints = screen.getAllByText('Enter your position to save');
+      expect(hints.length).toBeGreaterThan(0);
+    });
+  });
+
+  it('shows fill fields hint when position filled but values empty', async () => {
+    const user = userEvent.setup();
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      expect(screen.getAllByLabelText('Position').length).toBeGreaterThan(0);
+    });
+
+    const positionInputs = screen.getAllByLabelText('Position');
+    await user.type(positionInputs[0], 'Manager');
+
+    await waitFor(() => {
+      const hints = screen.getAllByText('Fill in all estimate fields');
+      expect(hints.length).toBeGreaterThan(0);
+    });
+  });
+
+  it('shows no changes hint when existing opinion values unchanged', async () => {
+    const existingOpinion = createOpinion({
+      user_id: 'user-1',
+      position: 'Manager',
+      lower_bound: 20,
+      peak: 50,
+      upper_bound: 80,
+    });
+    mockApi.getOpinions.mockResolvedValue([existingOpinion]);
+
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      const hints = screen.getAllByText('No changes to save');
+      expect(hints.length).toBeGreaterThan(0);
+    });
+  });
+});
+
+describe('ProjectDetail - Space Key on Member Row', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    defaultSetup();
+  });
+
+  it('does not open dialog on unrelated key press', async () => {
+    const user = userEvent.setup();
+    const members = [
+      createMember({ user_id: 'user-1', first_name: 'John', last_name: 'Doe', role: 'admin' }),
+      createMember({ user_id: 'user-2', first_name: 'Jane', last_name: 'Smith', role: 'expert' }),
+    ];
+    mockApi.getMembers.mockResolvedValue(members);
+
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('Jane Smith').length).toBeGreaterThan(0);
+    });
+
+    const memberRow = screen.getAllByRole('button', { name: /view profile of jane smith/i })[0];
+    memberRow.focus();
+    await user.keyboard('{Tab}');
+
+    // Dialog should not open
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('opens profile dialog when Space key is pressed on member row', async () => {
+    const user = userEvent.setup();
+    const members = [
+      createMember({ user_id: 'user-1', first_name: 'John', last_name: 'Doe', role: 'admin' }),
+      createMember({ user_id: 'user-2', first_name: 'Jane', last_name: 'Smith', role: 'expert' }),
+    ];
+    mockApi.getMembers.mockResolvedValue(members);
+
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('Jane Smith').length).toBeGreaterThan(0);
+    });
+
+    const memberRow = screen.getAllByRole('button', { name: /view profile of jane smith/i })[0];
+    memberRow.focus();
+    await user.keyboard(' ');
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Jane Smith' })).toBeInTheDocument();
+    });
+  });
+});
+
+describe('ProjectDetail - Mobile Team Tab', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    defaultSetup();
+  });
+
+  it('opens profile dialog from mobile team tab member click', async () => {
+    const user = userEvent.setup();
+    const members = [
+      createMember({ user_id: 'user-1', first_name: 'John', last_name: 'Doe', role: 'admin' }),
+      createMember({ user_id: 'user-2', first_name: 'Jane', last_name: 'Smith', role: 'expert' }),
+    ];
+    mockApi.getMembers.mockResolvedValue(members);
+
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('Jane Smith').length).toBeGreaterThan(0);
+    });
+
+    // Click the mobile "Team" tab to make mobile team content active
+    const teamTabs = screen.getAllByRole('tab', { name: /team/i });
+    await user.click(teamTabs[0]);
+
+    // Find the mobile team tabpanel and click the member row within it
+    const teamPanels = screen.getAllByRole('tabpanel');
+    const mobileTeamPanel = teamPanels.find(panel => within(panel).queryByRole('button', { name: /view profile of jane smith/i }))!;
+    const mobileRows = within(mobileTeamPanel).getAllByRole('button', { name: /view profile of jane smith/i });
+    await user.click(mobileRows[0]);
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+    });
+  });
+});
+
+describe('ProjectDetail - Close Member Profile Dialog', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    defaultSetup();
+  });
+
+  it('closes profile dialog when dismissed', async () => {
+    const user = userEvent.setup();
+    const members = [
+      createMember({ user_id: 'user-1', first_name: 'John', last_name: 'Doe', role: 'admin' }),
+      createMember({ user_id: 'user-2', first_name: 'Jane', last_name: 'Smith', role: 'expert' }),
+    ];
+    mockApi.getMembers.mockResolvedValue(members);
+
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('Jane Smith').length).toBeGreaterThan(0);
+    });
+
+    // Open the dialog
+    const memberRow = screen.getAllByRole('button', { name: /view profile of jane smith/i })[0];
+    await user.click(memberRow);
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+    });
+
+    // Close the dialog by pressing Escape
+    await user.keyboard('{Escape}');
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+  });
+});
+
+describe('ProjectDetail - Member Profile Dialog Edge Cases', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    defaultSetup();
+  });
+
+  it('shows admin badge variant in profile dialog for admin member', async () => {
+    const user = userEvent.setup();
+    const members = [
+      createMember({ user_id: 'user-1', first_name: 'John', last_name: 'Doe', role: 'admin' }),
+      createMember({ user_id: 'user-2', first_name: 'Jane', last_name: 'Smith', role: 'admin' }),
+    ];
+    mockApi.getMembers.mockResolvedValue(members);
+
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('Jane Smith').length).toBeGreaterThan(0);
+    });
+
+    const memberRow = screen.getAllByRole('button', { name: /view profile of jane smith/i })[0];
+    await user.click(memberRow);
+
+    await waitFor(() => {
+      const dialog = screen.getByRole('dialog');
+      expect(within(dialog).getByText('Admin')).toBeInTheDocument();
+    });
+  });
+
+  it('renders member with photo_url in team table and dialog', async () => {
+    const user = userEvent.setup();
+    const members = [
+      createMember({ user_id: 'user-1', first_name: 'John', last_name: 'Doe', role: 'admin' }),
+      createMember({ user_id: 'user-2', first_name: 'Jane', last_name: 'Smith', role: 'expert', photo_url: 'https://example.com/photo.jpg' }),
+    ];
+    mockApi.getMembers.mockResolvedValue(members);
+
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('Jane Smith').length).toBeGreaterThan(0);
+    });
+
+    // Open profile dialog for the member with photo
+    const memberRow = screen.getAllByRole('button', { name: /view profile of jane smith/i })[0];
+    await user.click(memberRow);
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+      // The dialog has MemberProfileDialog which conditionally renders AvatarImage when photo_url is set.
+      // The initials fallback JS is still rendered alongside.
+      expect(screen.getByRole('heading', { name: 'Jane Smith' })).toBeInTheDocument();
+    });
+  });
+
+  it('handles member with null last_name in profile dialog', async () => {
+    const user = userEvent.setup();
+    const members = [
+      createMember({ user_id: 'user-1', first_name: 'John', last_name: 'Doe', role: 'admin' }),
+      createMember({ user_id: 'user-2', first_name: 'Madonna', last_name: null, role: 'expert' }),
+    ];
+    mockApi.getMembers.mockResolvedValue(members);
+
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('Madonna').length).toBeGreaterThan(0);
+    });
+
+    const memberRow = screen.getAllByRole('button', { name: /view profile of madonna/i })[0];
+    await user.click(memberRow);
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Madonna' })).toBeInTheDocument();
+    });
+  });
+});
+
+describe('ProjectDetail - Invitation with Null Last Name', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    defaultSetup();
+  });
+
+  it('displays invitation when invitee has null last name', async () => {
+    const members = [
+      createMember({ user_id: 'user-1', first_name: 'John', last_name: 'Doe', role: 'admin' }),
+    ];
+    const invitations = [
+      createProjectInvitation({
+        invitee_first_name: 'Cher',
+        invitee_last_name: null,
+        invitee_email: 'cher@example.com',
+      }),
+    ];
+    mockApi.getMembers.mockResolvedValue(members);
+    mockApi.getProjectInvitations.mockResolvedValue(invitations);
+
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      const names = screen.getAllByText('Cher');
+      expect(names.length).toBeGreaterThan(0);
+    });
+  });
+});
+
+describe('ProjectDetail - Invite Modal', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    defaultSetup();
+  });
+
+  it('opens invite modal when Invite Experts button is clicked', async () => {
+    const user = userEvent.setup();
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /invite experts/i })).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole('button', { name: /invite experts/i }));
+
+    await waitFor(() => {
+      // InviteExpertModal renders a dialog with invite-related content
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
     });
   });
 });

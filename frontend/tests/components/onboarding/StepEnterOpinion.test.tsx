@@ -67,4 +67,15 @@ describe('StepEnterOpinion', () => {
     const polygon = container.querySelector('polygon');
     expect(polygon).toBeInTheDocument();
   });
+
+  it('updates upper input value on change', async () => {
+    const user = userEvent.setup();
+    render(<StepEnterOpinion />);
+
+    const upperInput = screen.getByLabelText(/upper|horní/i);
+    await user.clear(upperInput);
+    await user.type(upperInput, '90');
+
+    expect(upperInput).toHaveValue(90);
+  });
 });

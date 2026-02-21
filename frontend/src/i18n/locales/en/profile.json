@@ -29,6 +29,7 @@
     "deleting": "Deleting..."
   },
   "photo": {
+    "label": "Profile photo",
     "upload": "Upload photo",
     "delete": "Delete photo"
   },

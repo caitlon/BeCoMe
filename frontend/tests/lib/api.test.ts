@@ -516,6 +516,21 @@ describe('ApiClient', () => {
         expect.objectContaining({ method: 'DELETE' })
       );
     });
+
+    it('getProjectInvitations calls correct endpoint', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve([{ id: 'inv-1' }]),
+      });
+      api.setToken('token');
+      const result = await api.getProjectInvitations('proj-1');
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/projects/proj-1/invitations'),
+        expect.any(Object)
+      );
+      expect(result).toEqual([{ id: 'inv-1' }]);
+    });
   });
 
   describe('Invitation Endpoints', () => {
@@ -684,6 +699,124 @@ describe('ApiClient', () => {
         expect.stringContaining('/projects/proj-1/opinions'),
         expect.objectContaining({ method: 'DELETE' })
       );
+    });
+  });
+
+  describe('Upload Photo Error Handling', () => {
+    beforeEach(() => {
+      api.setToken('valid-token');
+    });
+
+    it('throws error on uploadPhoto 500 response', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        json: () => Promise.resolve({ detail: 'Server error' }),
+      });
+
+      const file = new File(['test'], 'photo.jpg', { type: 'image/jpeg' });
+      await expect(api.uploadPhoto(file)).rejects.toThrow('Server error');
+    });
+
+    it('redirects to /login and clears token on uploadPhoto 401', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        json: () => Promise.resolve({ detail: 'Unauthorized' }),
+      });
+
+      const file = new File(['test'], 'photo.jpg', { type: 'image/jpeg' });
+      await expect(api.uploadPhoto(file)).rejects.toThrow();
+      expect(api.getToken()).toBeNull();
+      expect(window.location.href).toBe('/login');
+    });
+
+    it('handles uploadPhoto JSON parse failure gracefully', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        json: () => Promise.reject(new Error('Invalid JSON')),
+      });
+
+      const file = new File(['test'], 'photo.jpg', { type: 'image/jpeg' });
+      await expect(api.uploadPhoto(file)).rejects.toThrow('Upload failed');
+    });
+
+    it('uses fallback message when uploadPhoto error has no detail', async () => {
+      api.setToken('token');
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        json: () => Promise.resolve({}),
+      });
+
+      const file = new File(['test'], 'photo.jpg', { type: 'image/jpeg' });
+      await expect(api.uploadPhoto(file)).rejects.toThrow('Failed to upload photo');
+    });
+
+    it('omits Authorization header when no token for uploadPhoto', async () => {
+      api.setToken(null);
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ id: '1', photo_url: 'url' }),
+      });
+
+      const file = new File(['test'], 'photo.jpg', { type: 'image/jpeg' });
+      await api.uploadPhoto(file);
+
+      const [, options] = mockFetch.mock.calls[0];
+      expect(options.headers['Authorization']).toBeUndefined();
+    });
+  });
+
+  describe('Error Detail Edge Cases', () => {
+    beforeEach(() => {
+      api.setToken('valid-token');
+    });
+
+    it('falls back to "Validation error" when detail is empty array', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 422,
+        json: () => Promise.resolve({ detail: [] }),
+      });
+
+      await expect(api.getProjects()).rejects.toThrow('Validation error');
+    });
+
+    it('falls back to "Validation error" when detail array item has no msg', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 422,
+        json: () => Promise.resolve({
+          detail: [{ loc: ['body'], type: 'value_error' }],
+        }),
+      });
+
+      await expect(api.getProjects()).rejects.toThrow('Validation error');
+    });
+  });
+
+  describe('Login Error Edge Cases', () => {
+    it('handles login JSON parse failure gracefully', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        json: () => Promise.reject(new Error('Invalid JSON')),
+      });
+
+      await expect(api.login('user@example.com', 'pass')).rejects.toThrow('Invalid credentials');
+    });
+
+    it('falls back to "Login failed" when error.detail is empty', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        json: () => Promise.resolve({ detail: '' }),
+      });
+
+      await expect(api.login('user@example.com', 'pass')).rejects.toThrow('Login failed');
     });
   });
 

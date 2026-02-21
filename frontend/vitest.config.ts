@@ -18,6 +18,8 @@ export default defineConfig({
         'src/types/**',
         'src/components/ui/**',
         'src/main.tsx',
+        'src/components/onboarding/index.ts',
+        'src/components/forms/index.ts',
       ],
     },
   },

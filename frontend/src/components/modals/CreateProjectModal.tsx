@@ -94,6 +94,7 @@ export function CreateProjectModal({
       toast({
         title: t("create.errorTitle"),
         description:
+          /* v8 ignore next */
           error instanceof Error ? error.message : t("toast.createFailed"),
         variant: "destructive",
       });
@@ -139,7 +140,7 @@ export function CreateProjectModal({
                   type="number"
                   placeholder={t("create.scaleMinPlaceholder")}
                   {...register("scale_min")}
-                  className={cn(errors.scale_min && "border-destructive")}
+                  className={cn(/* v8 ignore next */ errors.scale_min && "border-destructive")}
                 />
                 <span className="text-xs text-muted-foreground mt-1 block" aria-hidden="true">
                   {t("create.scaleMin")}

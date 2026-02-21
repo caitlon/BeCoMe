@@ -4,6 +4,7 @@ import { useIsMobile } from '@/hooks/use-mobile';
 
 describe('useIsMobile', () => {
   const originalInnerWidth = window.innerWidth;
+  const originalMatchMedia = globalThis.matchMedia;
   const listeners: Map<string, EventListener> = new Map();
 
   const mockMatchMedia = (matches: boolean) => ({
@@ -30,6 +31,7 @@ describe('useIsMobile', () => {
       writable: true,
       value: originalInnerWidth,
     });
+    globalThis.matchMedia = originalMatchMedia;
   });
 
   it('returns false when window width is above 768px', () => {
@@ -82,5 +84,16 @@ describe('useIsMobile', () => {
     unmount();
 
     expect(removeEventListenerSpy).toHaveBeenCalledWith('change', expect.any(Function));
+  });
+
+  it('returns false when matchMedia is undefined', () => {
+    Object.defineProperty(globalThis, 'matchMedia', {
+      writable: true,
+      value: undefined,
+    });
+
+    const { result } = renderHook(() => useIsMobile());
+
+    expect(result.current).toBe(false);
   });
 });

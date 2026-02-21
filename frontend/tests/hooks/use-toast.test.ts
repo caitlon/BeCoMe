@@ -102,6 +102,31 @@ describe('reducer', () => {
 
     expect(result.toasts).toHaveLength(0);
   });
+
+  it('UPDATE_TOAST leaves non-matching toasts unchanged', () => {
+    const state = { toasts: [{ id: '1', title: 'Original', open: true }] };
+
+    const result = reducer(state, {
+      type: 'UPDATE_TOAST',
+      toast: { id: '99', title: 'Nope' },
+    });
+
+    expect(result.toasts[0].title).toBe('Original');
+  });
+
+  it('DISMISS_TOAST with specific id leaves non-matching toasts open', () => {
+    const state = {
+      toasts: [
+        { id: '1', open: true },
+        { id: '2', open: true },
+      ],
+    };
+
+    const result = reducer(state, { type: 'DISMISS_TOAST', toastId: '1' });
+
+    expect(result.toasts[0].open).toBe(false);
+    expect(result.toasts[1].open).toBe(true);
+  });
 });
 
 describe('toast()', () => {
@@ -164,6 +189,22 @@ describe('toast()', () => {
     });
 
     expect(hookResult.current.toasts[0].open).toBe(false);
+  });
+
+  it('onOpenChange(true) does not dismiss the toast', () => {
+    const { result: hookResult } = renderHook(() => useToast());
+
+    act(() => {
+      toast({ title: 'Keep Open' });
+    });
+
+    const toastItem = hookResult.current.toasts[0];
+
+    act(() => {
+      toastItem.onOpenChange?.(true);
+    });
+
+    expect(hookResult.current.toasts[0].open).toBe(true);
   });
 });
 

@@ -94,4 +94,19 @@ describe('FuzzyTriangleSVG', () => {
     const updatedPoints = animatedPolygon?.getAttribute('points');
     expect(updatedPoints).not.toBe(initialPoints);
   });
+
+  it('does not cycle when matchMedia is not a function', () => {
+    Object.defineProperty(window, 'matchMedia', {
+      writable: true,
+      value: undefined,
+    });
+
+    const { container } = render(<FuzzyTriangleSVG />);
+    const animatedPolygon = container.querySelector('polygon:not([stroke-dasharray])');
+    const initialPoints = animatedPolygon?.getAttribute('points');
+
+    act(() => { vi.advanceTimersByTime(6000); });
+
+    expect(animatedPolygon?.getAttribute('points')).toBe(initialPoints);
+  });
 });

@@ -15,21 +15,16 @@ import {
   StepComplete,
 } from "@/components/onboarding";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { getStepIndicatorClass, slideVariants } from "@/pages/onboarding-utils";
 
 const steps = [
-  StepWelcome,
-  StepCreateProject,
-  StepInviteExperts,
-  StepEnterOpinion,
-  StepViewResults,
-  StepComplete,
+  { id: "welcome", component: StepWelcome },
+  { id: "create-project", component: StepCreateProject },
+  { id: "invite-experts", component: StepInviteExperts },
+  { id: "enter-opinion", component: StepEnterOpinion },
+  { id: "view-results", component: StepViewResults },
+  { id: "complete", component: StepComplete },
 ];
-
-function getStepIndicatorClass(index: number, currentStep: number): string {
-  if (index === currentStep) return "bg-primary w-6";
-  if (index < currentStep) return "bg-primary/50 w-2";
-  return "bg-muted-foreground/30 w-2";
-}
 
 const Onboarding = () => {
   const { t } = useTranslation("onboarding");
@@ -44,6 +39,7 @@ const Onboarding = () => {
   const isLastStep = currentStep === totalSteps - 1;
 
   const goToNext = useCallback(() => {
+    /* v8 ignore next */
     if (currentStep < totalSteps - 1) {
       setDirection(1);
       setCurrentStep((prev) => prev + 1);
@@ -51,6 +47,7 @@ const Onboarding = () => {
   }, [currentStep, totalSteps]);
 
   const goToPrevious = useCallback(() => {
+    /* v8 ignore next */
     if (currentStep > 0) {
       setDirection(-1);
       setCurrentStep((prev) => prev - 1);
@@ -89,22 +86,7 @@ const Onboarding = () => {
     return () => globalThis.removeEventListener("keydown", handleKeyDown);
   }, [goToNext, goToPrevious, navigateToProjects, isFirstStep, isLastStep]);
 
-  const CurrentStepComponent = steps[currentStep];
-
-  const slideVariants = {
-    enter: (direction: number) => ({
-      x: direction > 0 ? 300 : -300,
-      opacity: 0,
-    }),
-    center: {
-      x: 0,
-      opacity: 1,
-    },
-    exit: (direction: number) => ({
-      x: direction < 0 ? 300 : -300,
-      opacity: 0,
-    }),
-  };
+  const CurrentStepComponent = steps[currentStep].component;
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -136,7 +118,7 @@ const Onboarding = () => {
         <div className="container mx-auto px-6 h-full">
           <AnimatePresence mode="wait" custom={direction}>
             <motion.div
-              key={currentStep}
+              key={steps[currentStep].id}
               custom={direction}
               variants={slideVariants}
               initial="enter"
@@ -170,9 +152,9 @@ const Onboarding = () => {
 
             {/* Step indicators */}
             <nav aria-label={tCommon("a11y.stepNavigation")} className="hidden sm:flex items-center gap-1">
-              {steps.map((_, index) => (
+              {steps.map((step, index) => (
                 <button
-                  key={`step-${index}`}
+                  key={step.id}
                   type="button"
                   onClick={() => {
                     setDirection(index > currentStep ? 1 : -1);

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen } from '@testing-library/react';
+import { screen, within, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { render, framerMotionMock } from '@tests/utils';
 import { Navbar } from '@/components/layout/Navbar';
@@ -155,5 +155,110 @@ describe('Navbar - User Menu', () => {
     await user.click(screen.getByText('John Doe'));
 
     expect(screen.getByRole('menuitem', { name: /log out|sign out/i })).toBeInTheDocument();
+  });
+
+  it('clicking logout calls logout', async () => {
+    const user = userEvent.setup();
+    render(<Navbar />);
+
+    await user.click(screen.getByText('John Doe'));
+
+    const logoutItem = screen.getByRole('menuitem', { name: /log out|sign out/i });
+    await user.click(logoutItem);
+
+    expect(mockLogout).toHaveBeenCalled();
+  });
+});
+
+describe('Navbar - Scroll Effect', () => {
+  it('updates isScrolled state on scroll', () => {
+    render(<Navbar />);
+    const nav = screen.getByRole('navigation');
+
+    act(() => {
+      Object.defineProperty(globalThis, 'scrollY', { value: 50, writable: true });
+      globalThis.dispatchEvent(new Event('scroll'));
+    });
+    expect(nav.className).toContain('shadow');
+
+    act(() => {
+      Object.defineProperty(globalThis, 'scrollY', { value: 0, writable: true });
+      globalThis.dispatchEvent(new Event('scroll'));
+    });
+    expect(nav.className).not.toContain('shadow');
+  });
+});
+
+describe('Navbar - Mobile Menu (authenticated)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockPathname.value = '/';
+  });
+
+  it('opens mobile menu when hamburger is clicked', async () => {
+    const user = userEvent.setup();
+    render(<Navbar />);
+
+    const hamburger = screen.getByRole('button', { name: /open menu/i });
+    await user.click(hamburger);
+
+    expect(screen.getByRole('region', { name: /mobile/i })).toBeInTheDocument();
+  });
+
+  it('mobile menu contains nav links', async () => {
+    const user = userEvent.setup();
+    render(<Navbar />);
+
+    await user.click(screen.getByRole('button', { name: /open menu/i }));
+
+    const mobileMenu = screen.getByRole('region', { name: /mobile/i });
+    expect(mobileMenu).toBeInTheDocument();
+
+    // Check for authenticated mobile links
+    const links = within(mobileMenu).getAllByRole('link');
+    const hrefs = links.map((l) => l.getAttribute('href'));
+    expect(hrefs).toContain('/about');
+    expect(hrefs).toContain('/projects');
+    expect(hrefs).toContain('/profile');
+  });
+
+  it('clicking a mobile nav link closes the menu', async () => {
+    const user = userEvent.setup();
+    render(<Navbar />);
+
+    await user.click(screen.getByRole('button', { name: /open menu/i }));
+
+    const mobileMenu = screen.getByRole('region', { name: /mobile/i });
+    const aboutLink = within(mobileMenu).getByRole('link', { name: /about/i });
+    await user.click(aboutLink);
+
+    // Menu should close — hamburger label returns to "Open menu"
+    expect(screen.getByRole('button', { name: /open menu/i })).toBeInTheDocument();
+  });
+
+  it('clicking authenticated mobile link (Projects) closes menu', async () => {
+    const user = userEvent.setup();
+    render(<Navbar />);
+
+    await user.click(screen.getByRole('button', { name: /open menu/i }));
+
+    const mobileMenu = screen.getByRole('region', { name: /mobile/i });
+    const projectsLink = within(mobileMenu).getByRole('link', { name: /projects/i });
+    await user.click(projectsLink);
+
+    expect(screen.getByRole('button', { name: /open menu/i })).toBeInTheDocument();
+  });
+
+  it('mobile logout button calls handleLogout', async () => {
+    const user = userEvent.setup();
+    render(<Navbar />);
+
+    await user.click(screen.getByRole('button', { name: /open menu/i }));
+
+    const mobileMenu = screen.getByRole('region', { name: /mobile/i });
+    const logoutButton = within(mobileMenu).getByRole('button', { name: /sign out|log out/i });
+    await user.click(logoutButton);
+
+    expect(mockLogout).toHaveBeenCalled();
   });
 });

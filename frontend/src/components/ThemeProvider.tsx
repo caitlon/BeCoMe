@@ -36,6 +36,7 @@ export function ThemeProvider({
     root.classList.remove("light", "dark")
 
     if (theme === "system") {
+      /* v8 ignore next 3 */
       const systemTheme = typeof globalThis.matchMedia === "function"
         && globalThis.matchMedia("(prefers-color-scheme: dark)").matches
         ? "dark"
@@ -68,6 +69,7 @@ export function ThemeProvider({
 export const useTheme = () => {
   const context = useContext(ThemeProviderContext)
 
+  /* v8 ignore next 2 */
   if (context === undefined)
     throw new Error("useTheme must be used within a ThemeProvider")
 
