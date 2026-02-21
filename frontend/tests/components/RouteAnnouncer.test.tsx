@@ -110,6 +110,47 @@ describe('RouteAnnouncer', () => {
     expect(focusSpy).toHaveBeenCalledWith({ preventScroll: true });
   });
 
+  it('retries focusing main-content via rAF when element is missing', () => {
+    // Remove main-content so retry logic kicks in
+    const main = document.getElementById('main-content')!;
+    main.remove();
+
+    const rAFSpy = vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) => {
+      // Don't actually call callback to avoid infinite loop
+      return 1;
+    });
+    const cancelSpy = vi.spyOn(globalThis, 'cancelAnimationFrame').mockImplementation(() => {});
+
+    renderWithNavigate();
+
+    act(() => { navigateFn('/projects'); });
+
+    // focusMain should have called requestAnimationFrame since main-content is missing
+    expect(rAFSpy).toHaveBeenCalled();
+
+    rAFSpy.mockRestore();
+    cancelSpy.mockRestore();
+  });
+
+  it('cancels rAF on cleanup when main-content is missing', () => {
+    // Remove main-content
+    const main = document.getElementById('main-content')!;
+    main.remove();
+
+    const cancelSpy = vi.spyOn(globalThis, 'cancelAnimationFrame').mockImplementation(() => {});
+    vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation(() => 42);
+
+    const { unmount } = renderWithNavigate();
+
+    act(() => { navigateFn('/about'); });
+
+    unmount();
+
+    expect(cancelSpy).toHaveBeenCalledWith(42);
+
+    cancelSpy.mockRestore();
+  });
+
   it('does not re-announce when pathname stays the same', () => {
     document.title = 'Home — BeCoMe';
     renderWithNavigate();

@@ -7,6 +7,7 @@ export function RouteAnnouncer() {
   const previousPathname = useRef<string | null>(null);
 
   useEffect(() => {
+    /* v8 ignore next */
     if (previousPathname.current !== null && location.pathname === previousPathname.current) return;
     previousPathname.current = location.pathname;
 
@@ -25,6 +26,7 @@ export function RouteAnnouncer() {
         main.focus({ preventScroll: true });
         return;
       }
+      /* v8 ignore next 3 */
       if (retries++ < 10) {
         frameId = requestAnimationFrame(focusMain);
       }

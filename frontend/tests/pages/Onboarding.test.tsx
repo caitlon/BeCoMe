@@ -2,7 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { render, framerMotionMock } from '@tests/utils';
-import Onboarding, { slideVariants } from '@/pages/Onboarding';
+import Onboarding from '@/pages/Onboarding';
+import { slideVariants } from '@/pages/onboarding-utils';
 
 const { mockUser, mockNavigate, mockPathname } = vi.hoisted(() => ({
   mockUser: {

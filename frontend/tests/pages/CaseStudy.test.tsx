@@ -179,7 +179,7 @@ describe('CaseStudy - Not Found', () => {
 
 describe('CaseStudy - undefined id', () => {
   beforeEach(() => {
-    mockParams.value = { id: undefined } as any;
+    mockParams.value = { id: undefined } as unknown as { id: string };
   });
 
   afterEach(() => {

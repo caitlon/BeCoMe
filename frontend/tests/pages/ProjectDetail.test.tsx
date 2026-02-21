@@ -281,7 +281,7 @@ describe('ProjectDetail - Other Opinions Table', () => {
     });
   });
 
-  it('displays other expert opinions', async () => {
+  it('displays other expert opinions sorted by centroid', async () => {
     const otherOpinions = [
       createOpinion({
         user_id: 'other-user',
@@ -290,6 +290,14 @@ describe('ProjectDetail - Other Opinions Table', () => {
         lower_bound: 30,
         peak: 60,
         upper_bound: 90,
+      }),
+      createOpinion({
+        user_id: 'other-user-2',
+        user_first_name: 'Bob',
+        user_last_name: 'Brown',
+        lower_bound: 10,
+        peak: 20,
+        upper_bound: 30,
       }),
     ];
     mockApi.getOpinions.mockResolvedValue(otherOpinions);
