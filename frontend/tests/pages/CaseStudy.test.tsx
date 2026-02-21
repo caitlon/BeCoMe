@@ -78,6 +78,86 @@ describe('CaseStudy - Budget', () => {
   });
 });
 
+describe('CaseStudy - Pendlers (Likert)', () => {
+  beforeEach(() => {
+    mockParams.value = { id: 'pendlers' };
+  });
+
+  it('renders Likert scale label instead of interval scale', () => {
+    render(<CaseStudy />);
+
+    expect(screen.getAllByText(/likert scale/i).length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText(/interval scale/i)).not.toBeInTheDocument();
+  });
+
+  it('renders Likert table with Value and Label columns', () => {
+    render(<CaseStudy />);
+
+    const table = screen.getByRole('table');
+    const headers = table.querySelectorAll('th');
+    const headerTexts = Array.from(headers).map(h => h.textContent?.trim());
+    expect(headerTexts).toContain('Value');
+    expect(headerTexts).toContain('Label');
+  });
+
+  it('renders LikertRow with value and localized label', () => {
+    render(<CaseStudy />);
+
+    const table = screen.getByRole('table');
+    const rows = table.querySelectorAll('tbody tr');
+    expect(rows.length).toBe(22);
+
+    // First row: Chairman, value 75 => "Rather Agree" (62.5-87.5)
+    expect(rows[0].textContent).toContain('Chairman');
+    expect(rows[0].textContent).toContain('75');
+    expect(rows[0].textContent).toContain('Rather Agree');
+  });
+
+  it('renders LikertInterpretation in results card', () => {
+    render(<CaseStudy />);
+
+    // bestCompromise = 43.2 => "Neutral" (37.5-62.5)
+    // "Neutral" also appears in table rows, so check for Likert Interpretation heading
+    expect(screen.getByText(/likert interpretation/i)).toBeInTheDocument();
+    // The LikertInterpretation component renders a label next to the heading
+    const interpSection = screen.getByText(/likert interpretation/i).closest('div');
+    expect(interpSection?.parentElement?.textContent).toContain('Neutral');
+  });
+
+  it('does NOT render opinion distribution for Likert data', () => {
+    render(<CaseStudy />);
+
+    expect(screen.queryByText(/opinion distribution/i)).not.toBeInTheDocument();
+  });
+});
+
+describe('CaseStudy - Opinion Distribution', () => {
+  beforeEach(() => {
+    mockParams.value = { id: 'budget' };
+  });
+
+  it('renders at most 8 opinion bars', () => {
+    const { container } = render(<CaseStudy />);
+
+    // Opinion distribution bars have class "relative h-6"
+    const distSection = screen.getByText(/opinion distribution/i).closest('[class*="card"]');
+    const bars = distSection?.querySelectorAll('.relative.h-6');
+    expect(bars?.length).toBe(8);
+  });
+});
+
+describe('CaseStudy - scrollTo', () => {
+  it('calls window.scrollTo on mount', () => {
+    const scrollToSpy = vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
+    mockParams.value = { id: 'budget' };
+
+    render(<CaseStudy />);
+
+    expect(scrollToSpy).toHaveBeenCalledWith(0, 0);
+    scrollToSpy.mockRestore();
+  });
+});
+
 describe('CaseStudy - Not Found', () => {
   beforeEach(() => {
     mockParams.value = { id: 'nonexistent' };

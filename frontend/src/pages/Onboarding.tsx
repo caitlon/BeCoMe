@@ -17,12 +17,12 @@ import {
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 const steps = [
-  StepWelcome,
-  StepCreateProject,
-  StepInviteExperts,
-  StepEnterOpinion,
-  StepViewResults,
-  StepComplete,
+  { id: "welcome", component: StepWelcome },
+  { id: "create-project", component: StepCreateProject },
+  { id: "invite-experts", component: StepInviteExperts },
+  { id: "enter-opinion", component: StepEnterOpinion },
+  { id: "view-results", component: StepViewResults },
+  { id: "complete", component: StepComplete },
 ];
 
 function getStepIndicatorClass(index: number, currentStep: number): string {
@@ -89,7 +89,7 @@ const Onboarding = () => {
     return () => globalThis.removeEventListener("keydown", handleKeyDown);
   }, [goToNext, goToPrevious, navigateToProjects, isFirstStep, isLastStep]);
 
-  const CurrentStepComponent = steps[currentStep];
+  const CurrentStepComponent = steps[currentStep].component;
 
   const slideVariants = {
     enter: (direction: number) => ({
@@ -136,7 +136,7 @@ const Onboarding = () => {
         <div className="container mx-auto px-6 h-full">
           <AnimatePresence mode="wait" custom={direction}>
             <motion.div
-              key={currentStep}
+              key={steps[currentStep].id}
               custom={direction}
               variants={slideVariants}
               initial="enter"
@@ -170,9 +170,9 @@ const Onboarding = () => {
 
             {/* Step indicators */}
             <nav aria-label={tCommon("a11y.stepNavigation")} className="hidden sm:flex items-center gap-1">
-              {steps.map((_, index) => (
+              {steps.map((step, index) => (
                 <button
-                  key={`step-${index}`}
+                  key={step.id}
                   type="button"
                   onClick={() => {
                     setDirection(index > currentStep ? 1 : -1);

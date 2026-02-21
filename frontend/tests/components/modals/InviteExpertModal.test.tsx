@@ -151,4 +151,56 @@ describe('InviteExpertModal', () => {
       );
     });
   });
+
+  it('does not call api when projectId is undefined', async () => {
+    const user = userEvent.setup();
+    render(
+      <InviteExpertModal open={true} onOpenChange={vi.fn()} projectName="Test" />
+    );
+
+    await user.type(getEmailInput(), 'expert@test.com');
+    await user.click(getSubmitButton());
+
+    await waitFor(() => {
+      expect(mockInviteExpert).not.toHaveBeenCalled();
+    });
+  });
+
+  it('shows fallback error message for non-Error exceptions', async () => {
+    const user = userEvent.setup();
+    mockInviteExpert.mockRejectedValueOnce('network timeout');
+
+    render(<InviteExpertModal {...defaultProps} />);
+
+    await user.type(getEmailInput(), 'expert@test.com');
+    await user.click(getSubmitButton());
+
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          variant: 'destructive',
+        })
+      );
+      const call = mockToast.mock.calls[0][0];
+      expect(call.description).not.toBe('network timeout');
+    });
+  });
+
+  it('calls onOpenChange(false) when clicking Done on success state', async () => {
+    const user = userEvent.setup();
+    const onOpenChange = vi.fn();
+    mockInviteExpert.mockResolvedValueOnce({});
+
+    render(<InviteExpertModal {...defaultProps} onOpenChange={onOpenChange} />);
+
+    await user.type(getEmailInput(), 'expert@test.com');
+    await user.click(getSubmitButton());
+
+    await waitFor(() => {
+      expect(screen.getByText('Invitation sent!')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole('button', { name: /done/i }));
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
 });
