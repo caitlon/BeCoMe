@@ -113,7 +113,8 @@
     "pendingInvitationRow": "{{name}} — invitation pending, not yet joined",
     "centroidChartDesc": "Bar chart showing expert opinion centroids sorted by value with reference lines for mean, median, and best compromise",
     "memberProfileDialog": "Profile of {{name}}",
-    "opinionValues": "Opinion values: Lower {{lower}}, Peak {{peak}}, Upper {{upper}}, Centroid {{centroid}}"
+    "opinionValues": "Opinion values: Lower {{lower}}, Peak {{peak}}, Upper {{upper}}, Centroid {{centroid}}",
+    "opensInNewTab": "opens in new tab"
   },
   "centroidChart": {
     "centroidValue": "Centroid",

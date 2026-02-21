@@ -109,7 +109,11 @@ const Onboarding = () => {
               {t("buttons.skip")}
             </Button>
           </div>
-          <Progress value={((currentStep + 1) / totalSteps) * 100} className="h-1" />
+          <Progress
+            value={((currentStep + 1) / totalSteps) * 100}
+            className="h-1"
+            aria-label={t("progress", { current: currentStep + 1, total: totalSteps })}
+          />
         </div>
       </div>
 

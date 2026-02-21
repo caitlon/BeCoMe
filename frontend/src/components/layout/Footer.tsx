@@ -21,9 +21,10 @@ export function Footer() {
               href="https://www.linkedin.com/in/kuzmina-ekaterina/"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-foreground hover:underline"
+              className="text-foreground"
             >
               {t("footer.authorName")}
+              <span className="sr-only">, {t("a11y.opensInNewTab")}</span>
             </a>
             {" – "}
             {t("footer.implementationThesis")}
@@ -102,6 +103,7 @@ export function Footer() {
                   className="text-sm text-muted-foreground hover:text-foreground transition-colors mt-2 block"
                 >
                   {t("footer.czuPrague")}
+                  <span className="sr-only">, {t("a11y.opensInNewTab")}</span>
                 </a>
               </li>
             </ul>
@@ -121,6 +123,7 @@ export function Footer() {
                   className="text-sm text-muted-foreground hover:text-foreground transition-colors"
                 >
                   {t("footer.github")}
+                  <span className="sr-only">, {t("a11y.opensInNewTab")}</span>
                 </a>
               </li>
               <li>
@@ -155,9 +158,10 @@ export function Footer() {
               href="https://github.com/caitlon/BeCoMe/issues"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-foreground hover:underline"
+              className="text-foreground"
             >
               {t("footer.github")}
+              <span className="sr-only">, {t("a11y.opensInNewTab")}</span>
             </a>
           </p>
         </div>

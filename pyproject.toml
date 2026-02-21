@@ -16,6 +16,7 @@ dev = [
     "pytest>=8.0",
     "pytest-cov>=7.0",
     "pytest-postgresql>=6.0",
+    "hypothesis>=6.100",
     "ruff>=0.13",
     "mypy>=1.18",
     "pip-audit>=2.7",

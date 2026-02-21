@@ -113,7 +113,8 @@
     "pendingInvitationRow": "{{name}} — pozvánka čeká, zatím se nepřidal/a",
     "centroidChartDesc": "Sloupcový graf centroidů expertních názorů s referenčními liniemi pro průměr, medián a nejlepší kompromis",
     "memberProfileDialog": "Profil {{name}}",
-    "opinionValues": "Hodnoty názoru: Dolní {{lower}}, Vrchol {{peak}}, Horní {{upper}}, Centroid {{centroid}}"
+    "opinionValues": "Hodnoty názoru: Dolní {{lower}}, Vrchol {{peak}}, Horní {{upper}}, Centroid {{centroid}}",
+    "opensInNewTab": "otevře se v nové záložce"
   },
   "centroidChart": {
     "centroidValue": "Centroid",
