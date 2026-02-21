@@ -289,7 +289,7 @@ jobs:
 
       - name: Run E2E tests
         working-directory: frontend
-        run: npx playwright test --project=chromium --project=firefox --project=webkit
+        run: npx playwright test
 
       - name: Upload Playwright report
         if: failure()
