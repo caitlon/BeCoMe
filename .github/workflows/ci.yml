@@ -26,6 +26,10 @@ jobs:
       - name: Install Python dependencies
         run: uv sync --frozen --extra dev --extra api
 
+      # Security: dependency audit
+      - name: Audit Python dependencies
+        run: uv run pip-audit
+
       # Python linting
       - name: Check code formatting
         run: uv run ruff format --check .
@@ -47,6 +51,10 @@ jobs:
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci
+
+      - name: Audit npm dependencies
+        working-directory: frontend
+        run: npm audit --omit=dev --audit-level=moderate
 
       # TypeScript linting
       - name: Run ESLint
