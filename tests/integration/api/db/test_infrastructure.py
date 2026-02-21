@@ -161,6 +161,7 @@ class TestLifespan:
 
         from api.main import create_app
 
+        # GIVEN: create_db_and_tables is mocked to isolate lifespan behavior
         try:
             # WHEN: app is created and started
             app = create_app()
