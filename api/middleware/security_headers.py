@@ -55,7 +55,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         # For stricter CSP, configure nonce-based styles in Vite build
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
-            "img-src 'self' https://*.blob.core.windows.net data:; "
+            "img-src 'self' https://*.supabase.co data:; "
             "style-src 'self' 'unsafe-inline'; "
             "script-src 'self'; "
             "connect-src 'self'; "

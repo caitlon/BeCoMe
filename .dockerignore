@@ -53,7 +53,7 @@ supplementary/
 # Tests (not needed in production image)
 tests/
 
-# Frontend (deployed separately to Static Web Apps)
+# Frontend (deployed separately to Railway)
 frontend/
 
 # Notebooks and examples

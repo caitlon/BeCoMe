@@ -75,7 +75,7 @@ ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 
 # Default worker count (can be overridden via environment)
-# Azure App Service: set to 1 (horizontal scaling via container instances)
+# Railway: set to 1 (horizontal scaling via Railway replicas)
 # Local/self-hosted: set to 4 or more
 ENV UVICORN_WORKERS=4
 

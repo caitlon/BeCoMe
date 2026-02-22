@@ -67,6 +67,6 @@ results_*.csv
 # Generated visualizations
 examples/visualizations/*/output/
 
-# Azure deployment logs
+# Deployment logs
 logs/
 logs.zip
