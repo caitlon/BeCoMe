@@ -25,3 +25,6 @@ dist-ssr
 coverage/
 playwright-report/
 test-results/
+
+# Visual regression baselines (only linux snapshots are used in CI)
+*-darwin.png
