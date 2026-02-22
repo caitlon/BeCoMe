@@ -73,19 +73,19 @@ Modules with core computational logic (`base_calculator`, `median_strategies`) h
 
 ### Surviving Mutants Analysis
 
-All 50 surviving mutants fall into non-functional categories:
+50 surviving mutants by category:
 
-| Category | Count | Example |
-|----------|-------|---------|
-| Pydantic `Field(description=...)` strings | 23 | `description="Best compromise (ΓΩMean)..."` |
-| `__repr__` / `__str__` format strings | 10 | `f"FuzzyTriangleNumber(lower_bound=..."` |
-| Error message strings | 7 | `f"Cannot calculate {operation}..."` |
-| Likert decision map text values | 6 | `"Policy is recommended with minor adjustments"` |
-| Class metadata (`__slots__`, decorators) | 4 | `__slots__ = (...)`, `@staticmethod` |
+| Category | Count | Example | Equivalent? |
+|----------|-------|---------|-------------|
+| Pydantic `Field(description=...)` strings | 23 | `description="Best compromise (ΓΩMean)..."` | Yes |
+| `__repr__` / `__str__` format strings | 10 | `f"FuzzyTriangleNumber(lower_bound=..."` | Yes |
+| Error message strings | 7 | `f"Cannot calculate {operation}..."` | Yes |
+| Likert decision map text values | 6 | `"Policy is recommended with minor adjustments"` | Yes |
+| Class metadata (`__slots__`, decorators) | 4 | `__slots__ = (...)`, `@staticmethod` | No |
 
-None of the surviving mutants affect computational behavior. They are equivalent mutants: changes to string literals in error messages, OpenAPI descriptions, and `repr()` output that do not alter what the code computes. Writing tests to assert exact error message text would add maintenance cost without improving defect detection.
+46 of 50 survivors are equivalent mutants: changes to string literals in error messages, OpenAPI descriptions, and `repr()` output that do not alter what the code computes. Writing tests to assert exact error message text would add maintenance cost without improving defect detection. The remaining 4 mutants modify class metadata (`__slots__` tuples, `@staticmethod` decorators) — structurally harmless but not strictly equivalent.
 
-**Effective mutation score** (excluding equivalent string mutants): **~96%**.
+**Effective mutation score** (excluding 46 equivalent string mutants): 120 / (170 − 46) = **96.8%**.
 
 ### Running
 
