@@ -105,10 +105,10 @@ Run date: 2026-02-22 | Commit: ae7fd59
 
 | Endpoint | Experts | Avg (ms) | Median (ms) | P95 (ms) | P99 (ms) | RPS |
 |----------|---------|----------|-------------|----------|----------|-----|
-| /calculate | 10 | 2.3 | 2 | 4 | 9 | 16.0 |
-| /calculate | 100 | 2.8 | 2 | 5 | 8 | 9.9 |
-| /calculate | 1000 | 7.4 | 7 | 12 | 28 | 2.9 |
-| /health | — | 1.9 | 1 | 3 | 10 | 3.2 |
+| /api/v1/calculate | 10 | 2.3 | 2 | 4 | 9 | 16.0 |
+| /api/v1/calculate | 100 | 2.8 | 2 | 5 | 8 | 9.9 |
+| /api/v1/calculate | 1000 | 7.4 | 7 | 12 | 28 | 2.9 |
+| /api/v1/health | — | 1.9 | 1 | 3 | 10 | 3.2 |
 
 Environment: macOS (Apple Silicon), Python 3.13, PostgreSQL 16 (Docker), 10 concurrent users, 60s run.
 Tool: Locust 2.43.3. Total requests: 1863, failures: 0.
