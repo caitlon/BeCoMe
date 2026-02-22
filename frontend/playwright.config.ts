@@ -22,17 +22,22 @@ export default defineConfig({
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
-      testIgnore: /visual-regression/,
+      testIgnore: /visual-regression|wcag-audit/,
     },
     {
       name: 'firefox',
       use: { ...devices['Desktop Firefox'] },
-      testIgnore: /visual-regression/,
+      testIgnore: /visual-regression|wcag-audit/,
     },
     {
       name: 'webkit',
       use: { ...devices['Desktop Safari'] },
-      testIgnore: /visual-regression/,
+      testIgnore: /visual-regression|wcag-audit/,
+    },
+    {
+      name: 'wcag-audit',
+      use: { ...devices['Desktop Chrome'] },
+      testMatch: /wcag-audit/,
     },
     {
       name: 'visual-regression',
