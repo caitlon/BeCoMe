@@ -41,6 +41,8 @@ Unit tests cover models (fuzzy numbers, expert opinions, results) and calculator
 
 ## Mutation Testing
 
+Run date: 2026-02-22 | Commit: ae7fd59
+
 Mutation testing measures test suite quality: mutmut introduces small code changes (mutants) — replacing `+` with `-`, `<=` with `<`, swapping constants — and checks whether existing tests detect each change. A "killed" mutant means the tests caught the defect; a "survived" mutant means they did not.
 
 | Metric | Value |
@@ -94,6 +96,8 @@ None of the surviving mutants affect computational behavior. They are equivalent
 ```
 
 ## Performance Testing
+
+Run date: 2026-02-22 | Commit: ae7fd59
 
 | Endpoint | Experts | Avg (ms) | Median (ms) | P95 (ms) | P99 (ms) | RPS |
 |----------|---------|----------|-------------|----------|----------|-----|
