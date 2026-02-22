@@ -58,6 +58,12 @@ CLAUDE.md
 .claude
 .github/ISSUE_TEMPLATE
 
+# Mutation testing
+.mutmut-cache
+
+# Performance test results
+results_*.csv
+
 # Generated visualizations
 examples/visualizations/*/output/
 

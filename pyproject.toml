@@ -22,6 +22,8 @@ dev = [
     "pip-audit>=2.7",
     "types-passlib>=1.7",
     "types-regex>=2024.0",
+    "mutmut>=2.0,<3.0",
+    "locust>=2.32",
 ]
 viz = [
     "numpy>=2.3",
@@ -120,3 +122,7 @@ filterwarnings = [
 
 [tool.coverage.run]
 data_file = ".coverage"
+
+[tool.mutmut]
+paths_to_mutate = "src/"
+runner = "python -m pytest -x -q --assert=plain -c /dev/null tests/unit/models tests/unit/calculators tests/unit/interpreters tests/integration/test_excel_reference.py tests/integration/test_data_loading.py"

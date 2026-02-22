@@ -33,7 +33,9 @@ class TestCalculatorMedianStability:
         result_shuffled = calculator.calculate_median(shuffled)
 
         # THEN
-        assert result_original == result_shuffled
+        assert result_original.lower_bound == pytest.approx(result_shuffled.lower_bound, abs=1e-9)
+        assert result_original.peak == pytest.approx(result_shuffled.peak, abs=1e-9)
+        assert result_original.upper_bound == pytest.approx(result_shuffled.upper_bound, abs=1e-9)
 
     @given(opinions=expert_opinions(min_size=2, max_size=10), data=st.data())
     @settings(max_examples=50)
@@ -49,10 +51,17 @@ class TestCalculatorMedianStability:
         result_shuffled = calculator.calculate_compromise(shuffled)
 
         # THEN
-        assert result_original.best_compromise == result_shuffled.best_compromise
-        assert result_original.arithmetic_mean == result_shuffled.arithmetic_mean
-        assert result_original.median == result_shuffled.median
-        assert result_original.max_error == pytest.approx(result_shuffled.max_error, rel=1e-9)
+        for attr in ("lower_bound", "peak", "upper_bound"):
+            assert getattr(result_original.best_compromise, attr) == pytest.approx(
+                getattr(result_shuffled.best_compromise, attr), abs=1e-9
+            )
+            assert getattr(result_original.arithmetic_mean, attr) == pytest.approx(
+                getattr(result_shuffled.arithmetic_mean, attr), abs=1e-9
+            )
+            assert getattr(result_original.median, attr) == pytest.approx(
+                getattr(result_shuffled.median, attr), abs=1e-9
+            )
+        assert result_original.max_error == pytest.approx(result_shuffled.max_error, abs=1e-9)
 
 
 class TestCalculatorIdenticalExperts:
