@@ -4,11 +4,11 @@
 
 | Check | Status | Result |
 |-------|--------|--------|
-| mypy (strict) | Pass | No errors in 12 files |
+| mypy (strict) | Pass | No errors in 32 files |
 | ruff check | Pass | No issues |
 | ruff format | Pass | All files formatted |
-| pytest | Pass | 202 tests, 0.14s |
-| coverage | Pass | 100% |
+| pytest | Pass | 187 tests passed |
+| coverage | Pass | 100% on `src/` |
 
 ## Running Checks
 
@@ -27,11 +27,15 @@ uv run mypy src/ examples/ && uv run ruff check . && uv run pytest --cov=src
 
 | Module | Statements | Coverage |
 |--------|------------|----------|
-| models/fuzzy_number.py | 15 | 100% |
-| models/expert_opinion.py | 12 | 100% |
-| models/become_result.py | 10 | 100% |
-| calculators/become_calculator.py | 68 | 100% |
-| **Total** | **105** | **100%** |
+| calculators/base_calculator.py | 12 | 100% |
+| calculators/become_calculator.py | 31 | 100% |
+| calculators/median_strategies.py | 20 | 100% |
+| exceptions.py | 8 | 100% |
+| interpreters/likert_interpreter.py | 24 | 100% |
+| models/become_result.py | 24 | 100% |
+| models/expert_opinion.py | 36 | 100% |
+| models/fuzzy_number.py | 46 | 100% |
+| **Total** | **201** | **100%** |
 
 HTML report: `uv run pytest --cov=src --cov-report=html` generates `htmlcov/index.html`.
 
