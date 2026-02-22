@@ -7,7 +7,7 @@
 | mypy (strict) | Pass | No errors in 32 files |
 | ruff check | Pass | No issues |
 | ruff format | Pass | All files formatted |
-| pytest | Pass | 187 tests passed |
+| pytest | Pass | 953 tests passed |
 | coverage | Pass | 100% on `src/` |
 
 ## Running Checks
@@ -41,7 +41,7 @@ HTML report: `uv run pytest --cov=src --cov-report=html` generates `htmlcov/inde
 
 ## Test Breakdown
 
-Unit tests cover models (fuzzy numbers, expert opinions, results) and calculators (mean, median, compromise). Integration tests validate against Excel reference data for all three case studies — budget, floods, pendlers. Edge cases include single expert, identical opinions, empty lists, and boundary values.
+Unit tests (571) cover models, calculators, interpreters, utilities, and API components (auth, schemas, services, middleware). Integration tests (329) validate core calculations against Excel reference data for all three case studies and test API routes with a real database. End-to-end tests (53) exercise full API workflows. Edge cases include single expert, identical opinions, empty lists, and boundary values.
 
 ## Mutation Testing
 

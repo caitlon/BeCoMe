@@ -1,10 +1,10 @@
 # BeCoMe Test Suite
 
-Tests for the BeCoMe implementation: 202 tests total, 100% code coverage.
+Tests for the BeCoMe implementation: 953 tests total, 100% code coverage.
 
 ## Overview
 
-Unit tests cover models, calculators, and interpreters in isolation. Integration tests validate results against the original Excel implementation (tolerance: 0.001). All tests follow the GIVEN-WHEN-THEN pattern.
+Unit tests cover models, calculators, interpreters, utilities, and API components in isolation. Integration tests validate core results against the original Excel implementation (tolerance: 0.001) and test API routes with a real database. End-to-end tests exercise full API workflows. All tests follow the GIVEN-WHEN-THEN pattern.
 
 ## Running Tests
 
@@ -33,17 +33,29 @@ tests/
 │   ├── models/          # FuzzyTriangleNumber, ExpertOpinion, BeCoMeResult
 │   ├── calculators/     # arithmetic mean, median, strategies, compromise
 │   ├── interpreters/    # Likert scale interpreter
-│   └── utilities/       # display, formatting, analysis helpers
+│   ├── utilities/       # display, formatting, analysis helpers
+│   └── api/             # API unit tests
+│       ├── auth/            # JWT, password hashing, token blacklist
+│       ├── middleware/      # rate limiting, security headers, exceptions
+│       ├── schemas/         # request/response validation
+│       ├── services/        # business logic (users, projects, opinions)
+│       └── utils/           # sanitization
 ├── integration/
 │   ├── test_excel_reference.py   # validates against Excel (3 case studies)
-│   └── test_data_loading.py      # text file parsing
+│   ├── test_data_loading.py      # text file parsing
+│   └── api/                      # API integration tests
+│       ├── auth/            # authentication flows
+│       ├── db/              # database models, relationships, cascades
+│       └── routes/          # HTTP endpoint integration tests
+├── e2e/                 # end-to-end API workflow tests
+├── shared/              # test helpers and utilities
 └── reference/
     ├── budget_case.py    # 22 experts, expected results
     ├── floods_case.py    # 13 experts, expected results
     └── pendlers_case.py  # 22 experts, Likert scale
 ```
 
-**Unit tests** check individual components in isolation. **Integration tests** run the full pipeline and compare against Excel results (tolerance: 0.001). **Reference data** contains expected values from the original Excel implementation.
+**Unit tests** (571) check individual components in isolation, including API auth, schemas, services, and middleware. **Integration tests** (329) validate core calculations against Excel results (tolerance: 0.001) and test API routes with a real database. **End-to-end tests** (53) exercise complete API workflows including auth, projects, and invitations. **Reference data** contains expected values from the original Excel implementation.
 
 ## Writing Tests
 

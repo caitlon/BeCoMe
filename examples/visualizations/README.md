@@ -23,9 +23,9 @@ Interactive Jupyter charts for exploring expert opinions and BeCoMe calculation 
 ## Running
 
 ```bash
-jupyter notebook examples/visualizations/visualize_become.py
+jupyter notebook examples/visualizations/en/visualize_become.ipynb
 # or
-jupyter lab examples/visualizations/visualize_become.py
+jupyter lab examples/visualizations/en/visualize_become.ipynb
 ```
 
 Requires Jupyter environment (`uv sync` installs all dependencies).

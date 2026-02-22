@@ -148,16 +148,16 @@ Environment variables (can use `.env` file):
 ## Testing
 
 The test suite includes:
-- Configuration behavior (`tests/api/test_config.py`)
-- Dependency injection and graceful degradation (`tests/api/test_dependencies.py`)
-- Route handlers and edge cases (`tests/api/routes/`)
+- Unit tests: auth, middleware, schemas, services, utilities (`tests/unit/api/`)
+- Integration tests: auth flows, database, route handlers (`tests/integration/api/`)
+- End-to-end tests: full API workflows (`tests/e2e/`)
 
 ```bash
 # Run all API tests
-uv run pytest tests/api/ -v
+uv run pytest tests/unit/api/ tests/integration/api/ -v
 
 # Run with coverage
-uv run pytest tests/api/ --cov=api --cov-report=term-missing
+uv run pytest tests/unit/api/ tests/integration/api/ --cov=api --cov-report=term-missing
 ```
 
 ## Related Documentation

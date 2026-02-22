@@ -7,8 +7,8 @@ Full-stack web application for group decision-making under fuzzy uncertainty usi
 ![Python](https://img.shields.io/badge/python-3.13+-blue.svg)
 ![TypeScript](https://img.shields.io/badge/typescript-5.0+-blue.svg)
 ![FastAPI](https://img.shields.io/badge/fastapi-0.115+-green.svg)
-![React](https://img.shields.io/badge/react-19+-blue.svg)
-![Tests](https://img.shields.io/badge/tests-810%20passed-brightgreen)
+![React](https://img.shields.io/badge/react-18+-blue.svg)
+![Tests](https://img.shields.io/badge/tests-953%20passed-brightgreen)
 ![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)
 
 ## Table of Contents
@@ -59,7 +59,7 @@ Validated on three Czech case studies (COVID-19 budget allocation, flood prevent
 - **Likert Scale Support**: Ordinal data as special case of fuzzy numbers
 
 ### Quality
-- **100% Test Coverage**: 810+ tests for API, frontend, and core library
+- **100% Test Coverage**: 950+ tests for API, frontend, and core library
 - **Type Safety**: mypy strict mode, TypeScript strict
 - **Three Case Studies**: COVID-19 budget, flood prevention, cross-border travel
 
@@ -72,7 +72,7 @@ The project includes a full-stack web application for collaborative decision-mak
 | Component | Technology | Port |
 |-----------|------------|------|
 | Backend | FastAPI + SQLModel | 8000 |
-| Frontend | React + Vite + Tailwind | 5173 |
+| Frontend | React + Vite + Tailwind | 8080 |
 | Database | SQLite (dev) / PostgreSQL (prod) | — |
 
 ### Key Features
@@ -94,7 +94,7 @@ The project includes a full-stack web application for collaborative decision-mak
 uv sync --extra api
 uv run uvicorn api.main:app --reload
 
-# Frontend (http://localhost:5173)
+# Frontend (http://localhost:8080)
 cd frontend && npm install && npm run dev
 ```
 
@@ -311,10 +311,11 @@ BeCoMe/
 │   ├── models/                 # Fuzzy number, expert opinion
 │   ├── calculators/            # BeCoMe algorithm
 │   └── interpreters/           # Likert scale support
-├── tests/                  # Test suite (810+ tests)
-│   ├── api/                    # API tests
-│   ├── unit/                   # Core library tests
-│   └── integration/            # Excel validation tests
+├── tests/                  # Test suite (950+ tests)
+│   ├── unit/                   # Unit tests (models, calculators, API)
+│   ├── integration/            # Integration tests (Excel validation, API routes, DB)
+│   ├── e2e/                    # End-to-end API tests
+│   └── reference/              # Expected values from Excel
 ├── examples/               # Case study examples
 │   └── data/                   # Dataset files
 └── docs/                   # Documentation
@@ -343,7 +344,7 @@ uv run pytest tests/unit/models/       # Model tests only
 
 Current test coverage: **100%** (all source code lines covered).
 
-The test suite contains 173 unit tests for models, calculators, and interpreters. Another 29 integration tests validate results against the original Excel implementation. Edge cases like single expert, identical opinions, and extreme values are covered. Property-based tests verify fuzzy number arithmetic.
+The test suite contains 571 unit tests (models, calculators, interpreters, utilities, API) and 329 integration tests (Excel validation, API routes, database). Another 53 end-to-end tests cover full API workflows. Edge cases like single expert, identical opinions, and extreme values are covered. Property-based tests verify fuzzy number arithmetic.
 
 See [Quality Report](docs/quality-report.md) for detailed metrics.
 

@@ -42,7 +42,7 @@ Each script loads data from text files, calculates arithmetic mean (Γ), median 
 The `visualizations/` directory contains interactive Jupyter notebooks for exploring BeCoMe results. Available charts include triangular membership functions, centroid comparisons, sensitivity analysis (toggle experts on/off to see impact), and a scenario dashboard comparing all three cases side-by-side.
 
 ```bash
-jupyter notebook examples/visualizations/visualize_become.py
+jupyter notebook examples/visualizations/en/visualize_become.ipynb
 ```
 
 See [visualizations/README.md](visualizations/README.md) for details.
