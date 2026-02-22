@@ -279,6 +279,8 @@ jobs:
     runs-on: ubuntu-24.04
     needs: [python-tests, frontend-tests]
     if: github.event_name == 'pull_request'
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
     steps:
       - uses: actions/checkout@v6
@@ -300,5 +302,3 @@ jobs:
       - name: SonarQube Cloud Scan
         if: env.SONAR_TOKEN != ''
         uses: SonarSource/sonarqube-scan-action@v7
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
