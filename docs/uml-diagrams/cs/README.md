@@ -34,7 +34,7 @@ Zdrojové soubory jsou v `diagrams/puml/`. Pro regeneraci PNG:
 uv run python docs/uml-diagrams/generate_diagrams.py
 ```
 
-Vyžaduje balíček `plantuml` a připojení k internetu (používá online službu PlantUML).
+Vyžaduje lokálně nainstalovaný `plantuml` CLI (`brew install plantuml`).
 
 ## Související
 

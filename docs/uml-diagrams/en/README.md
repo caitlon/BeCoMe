@@ -34,7 +34,7 @@ Source files live in `diagrams/puml/`. To regenerate PNGs:
 uv run python docs/uml-diagrams/generate_diagrams.py
 ```
 
-Requires `plantuml` package and internet connection (uses PlantUML online service).
+Requires `plantuml` CLI installed locally (`brew install plantuml`).
 
 ## Related
 

@@ -1,4 +1,5 @@
 @startuml BeCoMe-Architecture-Patterns
+scale 2
 
 ' Style
 skinparam classAttributeIconSize 0
@@ -33,9 +34,9 @@ package "Strategy" {
     EvenMedianStrategy --|> MedianCalculationStrategy
 }
 
-' ==================== TEMPLATE METHOD ====================
+' ==================== ABSTRACT BASE CLASS ====================
 
-package "Template Method" {
+package "Abstract Base Class" {
     abstract class BaseAggregationCalculator <<ABC>> {
         + {abstract} calculate_compromise(opinions): BeCoMeResult
         + {abstract} calculate_arithmetic_mean(opinions): FuzzyTriangleNumber
