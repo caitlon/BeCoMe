@@ -11,6 +11,10 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
+# API URL injected at build time via Railway env vars
+ARG VITE_API_URL
+ENV VITE_API_URL=${VITE_API_URL}
+
 # Copy package files first for better caching
 COPY package.json package-lock.json ./
 
