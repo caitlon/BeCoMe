@@ -1,4 +1,4 @@
-name: Deploy Backend to Azure
+name: Deploy Backend to Railway
 
 on:
   workflow_run:
@@ -8,13 +8,12 @@ on:
   workflow_dispatch:  # Allow manual trigger
 
 env:
-  AZURE_WEBAPP_NAME: become-api
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository_owner }}/become-api
 
 jobs:
-  build-and-deploy:
-    name: Build and Deploy
+  build-and-push:
+    name: Build and Push Image
     runs-on: ubuntu-24.04
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     permissions:
@@ -48,20 +47,6 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-
-      - name: Log in to Azure
-        uses: azure/login@v2
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
-
-      - name: Deploy to Azure App Service
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: ${{ env.AZURE_WEBAPP_NAME }}
-          images: ${{ fromJSON(steps.meta.outputs.json).tags[0] }}
-
-      - name: Log out from Azure
-        run: az logout
 
       - name: Delete old container images
         uses: actions/delete-package-versions@v5
