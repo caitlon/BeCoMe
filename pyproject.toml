@@ -40,9 +40,7 @@ notebook = [
     "ipywidgets>=8.0",
     "notebook>=7.0",
 ]
-docs = [
-    "plantuml>=0.3",
-]
+docs = []
 api = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.34",
