@@ -123,6 +123,17 @@ uv run locust -f tests/performance/locustfile.py \
     --users 10 --spawn-rate 2 --run-time 60s --csv results
 ```
 
+## Production Performance
+
+Run date: 2026-02-22 | Environment: Railway (Hobby), europe-west4, Cloudflare proxy
+
+| Endpoint | Avg TTFB (ms) | Min (ms) | Max (ms) |
+|----------|---------------|----------|----------|
+| /api/v1/health | 417 | 222 | 534 |
+| /api/v1/calculate (10 experts) | 437 | 210 | 504 |
+
+Measured from Prague (CZ) via Cloudflare edge (PRG) → Railway (europe-west4, NL). TTFB includes network latency (~20ms round-trip), Cloudflare proxy overhead, and TLS negotiation. Actual compute time remains ~2-3ms per request; the difference from local benchmarks is purely network overhead.
+
 ## Configuration
 
 mypy runs in strict mode (`pyproject.toml`). ruff enforces pycodestyle, pyflakes, isort, bugbear, and naming conventions. Line length is 100 characters.
