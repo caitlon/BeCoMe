@@ -65,8 +65,8 @@ jobs:
         working-directory: frontend
         run: npm run lint
 
-  unit-tests:
-    name: Unit Tests
+  python-tests:
+    name: Python Tests
     runs-on: ubuntu-24.04
     needs: lint
     env:
@@ -75,8 +75,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
-      # Python setup
       - name: Set up uv
         uses: astral-sh/setup-uv@v7
         with:
@@ -88,11 +89,33 @@ jobs:
       - name: Install Python dependencies
         run: uv sync --frozen --extra dev --extra api
 
-      # Python unit tests
-      - name: Run Python unit tests
-        run: uv run pytest tests/unit/ --cov=src --cov=api --cov-report=term-missing
+      - name: Run Python tests with coverage
+        run: uv run pytest tests/unit/ tests/integration/ --cov=src --cov=api --cov-report=term-missing --cov-report=html --cov-report=xml:coverage.xml
 
-      # Node.js setup
+      - name: Upload Python coverage XML
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: python-coverage-xml
+          path: coverage.xml
+          retention-days: 30
+
+      - name: Upload Python coverage HTML
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: python-coverage-report
+          path: htmlcov/
+          retention-days: 30
+
+  frontend-tests:
+    name: Frontend Tests
+    runs-on: ubuntu-24.04
+    needs: lint
+
+    steps:
+      - uses: actions/checkout@v6
+
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
@@ -104,7 +127,6 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      # TypeScript tests
       - name: Run frontend tests with coverage
         working-directory: frontend
         run: npm run test:coverage
@@ -116,57 +138,6 @@ jobs:
           name: frontend-coverage-report
           path: frontend/coverage/
           retention-days: 30
-
-  integration-tests:
-    name: Integration Tests
-    runs-on: ubuntu-24.04
-    needs: [lint, unit-tests]
-    env:
-      SECRET_KEY: test-secret-key-for-ci
-      TESTING: "1"
-
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-
-      # Python setup
-      - name: Set up uv
-        uses: astral-sh/setup-uv@v7
-        with:
-          enable-cache: true
-
-      - name: Set up Python
-        run: uv python install 3.13.7
-
-      - name: Install Python dependencies
-        run: uv sync --frozen --extra dev --extra api
-
-      # Python tests (unit + integration for complete SonarCloud coverage)
-      - name: Run Python tests with coverage
-        run: uv run pytest tests/unit/ tests/integration/ --cov=src --cov=api --cov-report=term-missing --cov-report=html --cov-report=xml:coverage.xml
-
-      - name: Upload Python coverage report
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: python-coverage-report
-          path: htmlcov/
-          retention-days: 30
-
-      - name: Download frontend coverage
-        uses: actions/download-artifact@v6
-        with:
-          name: frontend-coverage-report
-          path: frontend/coverage/
-
-      # SonarQube Cloud — PR only (main push triggers a separate "New Code" analysis
-      # that can fail due to cumulative coverage gaps across merged PRs)
-      - name: SonarQube Cloud Scan
-        if: github.event_name == 'pull_request' && env.SONAR_TOKEN != ''
-        uses: SonarSource/sonarqube-scan-action@v7
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
   backend-e2e:
     name: Backend E2E Tests
@@ -303,3 +274,31 @@ jobs:
           path: frontend/playwright-report/
           retention-days: 7
 
+  sonarcloud:
+    name: SonarCloud Analysis
+    runs-on: ubuntu-24.04
+    needs: [python-tests, frontend-tests]
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Download Python coverage
+        uses: actions/download-artifact@v6
+        with:
+          name: python-coverage-xml
+          path: .
+
+      - name: Download frontend coverage
+        uses: actions/download-artifact@v6
+        with:
+          name: frontend-coverage-report
+          path: frontend/coverage/
+
+      - name: SonarQube Cloud Scan
+        if: env.SONAR_TOKEN != ''
+        uses: SonarSource/sonarqube-scan-action@v7
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
