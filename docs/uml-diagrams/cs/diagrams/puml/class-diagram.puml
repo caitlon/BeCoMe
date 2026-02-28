@@ -1,4 +1,5 @@
 @startuml BeCoMe-Class-Diagram
+scale 2
 
 ' Style configuration
 skinparam classAttributeIconSize 0
