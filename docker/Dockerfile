@@ -30,7 +30,8 @@ ENV UV_LINK_MODE=copy
 COPY pyproject.toml uv.lock ./
 
 # Install dependencies first (without project) for better layer caching
-RUN uv sync --locked --no-install-project --no-dev --extra api
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --locked --no-install-project --no-dev --extra api
 
 # Copy application code
 COPY src/ ./src/
