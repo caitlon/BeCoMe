@@ -1,6 +1,28 @@
-"""Fuzzy triangular number representation."""
+"""Fuzzy number representations."""
 
 import statistics
+from typing import Protocol, runtime_checkable
+
+
+@runtime_checkable
+class FuzzyNumber(Protocol):
+    """Structural interface for fuzzy number types.
+
+    Any class with matching properties (triangular, trapezoidal, Gaussian)
+    satisfies this protocol via duck typing — no explicit inheritance required.
+    """
+
+    @property
+    def lower_bound(self) -> float: ...
+
+    @property
+    def peak(self) -> float: ...
+
+    @property
+    def upper_bound(self) -> float: ...
+
+    @property
+    def centroid(self) -> float: ...
 
 
 class FuzzyTriangleNumber:

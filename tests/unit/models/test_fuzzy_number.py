@@ -2,7 +2,15 @@
 
 import pytest
 
-from src.models.fuzzy_number import FuzzyTriangleNumber
+from src.models.fuzzy_number import FuzzyNumber, FuzzyTriangleNumber
+
+
+class TestFuzzyNumberProtocol:
+    """Test that FuzzyTriangleNumber satisfies the FuzzyNumber protocol."""
+
+    def test_fuzzy_triangle_number_satisfies_protocol(self) -> None:
+        """FuzzyTriangleNumber is a structural subtype of FuzzyNumber."""
+        assert isinstance(FuzzyTriangleNumber(1, 2, 3), FuzzyNumber)
 
 
 class TestFuzzyTriangleNumberCreation:
