@@ -94,9 +94,9 @@ Modules with core computational logic (`base_calculator`, `median_strategies`) h
 ### Running
 
 ```bash
-./scripts/mutmut-run.sh          # full mutation run
-./scripts/mutmut-run.sh results  # view summary from cache
-./scripts/mutmut-run.sh detail   # list surviving mutants by file
+./scripts/ci/mutmut-run.sh          # full mutation run
+./scripts/ci/mutmut-run.sh results  # view summary from cache
+./scripts/ci/mutmut-run.sh detail   # list surviving mutants by file
 ```
 
 ## Performance Testing
