@@ -5,11 +5,10 @@ set -euo pipefail
 # Starts PostgreSQL in Docker, runs the API, executes backend and Playwright tests, then cleans up.
 #
 # Usage:
-#   ./scripts/ci/e2e-local.sh              # all E2E tests (backend + Playwright)
+#   ./scripts/ci/e2e-local.sh              # all E2E tests (backend + Playwright + visual)
 #   ./scripts/ci/e2e-local.sh backend      # backend E2E only (pytest + httpx)
 #   ./scripts/ci/e2e-local.sh playwright   # Playwright functional tests only
 #   ./scripts/ci/e2e-local.sh visual       # Visual regression tests only (Chromium)
-#   ./scripts/ci/e2e-local.sh all          # backend + Playwright + visual regression
 
 PROJECT_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 CONTAINER_NAME="become-e2e-db"
