@@ -52,7 +52,9 @@ docker/.env
 
 # Thesis workspace
 supplementary/
-scripts/
+scripts/diagrams/
+scripts/photos/
+scripts/seed_db.py
 .mcp.json
 CLAUDE.md
 .claude
