@@ -20,6 +20,14 @@ API_PORT=8000
 API_PID=""
 MODE="${1:-all}"
 
+case "$MODE" in
+  all|backend|playwright|visual) ;;
+  *)
+    echo "ERROR: Invalid mode '$MODE'. Use one of: all, backend, playwright, visual."
+    exit 2
+    ;;
+esac
+
 cleanup() {
   echo ""
   echo "Cleaning up..."
@@ -28,8 +36,8 @@ cleanup() {
     wait "$API_PID" 2>/dev/null || true
     echo "  API server stopped"
   fi
-  if docker ps -q -f name="$CONTAINER_NAME" 2>/dev/null | grep -q .; then
-    docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1
+  if docker ps -aq -f name="$CONTAINER_NAME" 2>/dev/null | grep -q .; then
+    docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
     echo "  PostgreSQL container removed"
   fi
   echo "Done."
@@ -42,8 +50,8 @@ echo ""
 
 # 1. Start PostgreSQL
 echo "[1/3] Starting PostgreSQL..."
-if docker ps -q -f name="$CONTAINER_NAME" 2>/dev/null | grep -q .; then
-  docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1
+if docker ps -aq -f name="$CONTAINER_NAME" 2>/dev/null | grep -q .; then
+  docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
 fi
 
 docker run -d --name "$CONTAINER_NAME" \
@@ -149,10 +157,10 @@ if [ "$MODE" = "all" ] || [ "$MODE" = "visual" ]; then
 fi
 
 # Exit with failure if any suite failed
-TOTAL_EXIT=$((BACKEND_EXIT + PLAYWRIGHT_EXIT + VISUAL_EXIT))
-if [ $TOTAL_EXIT -eq 0 ]; then
+if [ "$BACKEND_EXIT" -eq 0 ] && [ "$PLAYWRIGHT_EXIT" -eq 0 ] && [ "$VISUAL_EXIT" -eq 0 ]; then
   echo ""
   echo "All E2E tests passed!"
+  exit 0
 fi
 
-exit $TOTAL_EXIT
+exit 1
