@@ -22,7 +22,7 @@ dev = [
     "pip-audit>=2.7",
     "types-passlib>=1.7",
     "types-regex>=2024.0",
-    "mutmut>=2.0,<3.0",
+    "mutmut>=2.0,<4.0",
     "locust>=2.32",
 ]
 viz = [
