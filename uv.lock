@@ -284,7 +284,7 @@ requires-dist = [
     { name = "jupyter", marker = "extra == 'notebook'", specifier = ">=1.1" },
     { name = "locust", marker = "extra == 'dev'", specifier = ">=2.32" },
     { name = "matplotlib", marker = "extra == 'viz'", specifier = ">=3.10" },
-    { name = "mutmut", marker = "extra == 'dev'", specifier = ">=2.0,<3.0" },
+    { name = "mutmut", marker = "extra == 'dev'", specifier = ">=2.0,<4.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.18" },
     { name = "notebook", marker = "extra == 'notebook'", specifier = ">=7.0" },
     { name = "numpy", marker = "extra == 'viz'", specifier = ">=2.3" },
