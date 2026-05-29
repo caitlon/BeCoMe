@@ -24,8 +24,8 @@ class RailwayBucketStorageService(StorageService):
     """Store profile photos in a Railway Storage Bucket over the S3 API.
 
     Railway buckets are private, so files are served by the application rather
-    than from a public bucket URL. Path-style addressing is used to match the
-    Railway S3 gateway.
+    than from a public bucket URL. Virtual-host addressing is used to match the
+    Railway S3 gateway (``urlStyle: virtual-host``).
 
     :param settings: Application settings carrying the bucket credentials.
     :param client: Preconfigured S3 client; built from settings when omitted
@@ -56,7 +56,7 @@ class RailwayBucketStorageService(StorageService):
             aws_access_key_id=settings.bucket_access_key_id,
             aws_secret_access_key=settings.bucket_secret_access_key,
             region_name=settings.bucket_region,
-            config=Config(signature_version="s3v4", s3={"addressing_style": "path"}),
+            config=Config(signature_version="s3v4", s3={"addressing_style": "virtual"}),
         )
 
     @staticmethod
