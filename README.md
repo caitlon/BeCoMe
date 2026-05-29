@@ -131,6 +131,8 @@ The `TESTING` flag is separate from the profile. The test suite sets `APP_ENV=te
 
 On Railway, set the profile and secrets as service variables per environment: `APP_ENV`, `SECRET_KEY`, `DATABASE_URL`, `CORS_ORIGINS`, `DEBUG`. The staging service uses `APP_ENV=test`; production uses `APP_ENV=prod`. The frontend reads its API URL from `VITE_API_URL`, injected at build time (see the frontend Dockerfile), so staging and production differ only by that value.
 
+See [docs/environments.md](docs/environments.md) for the full reference: per-profile details, Railway variables, and current deployment status.
+
 ## Methodology
 
 ### Method Overview
