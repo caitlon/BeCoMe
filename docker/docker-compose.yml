@@ -7,6 +7,7 @@
 #   SECRET_KEY=$(openssl rand -hex 32) docker compose up --build
 #
 # Environment variables:
+#   APP_ENV          - Deployment profile: dev | test | prod (default: dev)
 #   SECRET_KEY       - REQUIRED for production. Generate with: openssl rand -hex 32
 #   POSTGRES_PASSWORD - Database password (default: become, CHANGE for production)
 #   UVICORN_WORKERS  - Number of API workers (default: 4)
@@ -59,6 +60,7 @@ services:
     ports:
       - "8000:8000"
     environment:
+      APP_ENV: ${APP_ENV:-dev}
       DATABASE_URL: postgresql://${POSTGRES_USER:-become}:${POSTGRES_PASSWORD:-become}@db:5432/${POSTGRES_DB:-become}
       # SECRET_KEY is REQUIRED - generate with: openssl rand -hex 32
       SECRET_KEY: "${SECRET_KEY:?Set SECRET_KEY env var}"
@@ -109,6 +111,7 @@ services:
   #   ports:
   #     - "8000:8000"
   #   environment:
+  #     APP_ENV: dev
   #     DATABASE_URL: postgresql://${POSTGRES_USER:-become}:${POSTGRES_PASSWORD:-become}@db:5432/${POSTGRES_DB:-become}
   #     SECRET_KEY: "${SECRET_KEY:?SECRET_KEY is required}"
   #     DEBUG: "true"

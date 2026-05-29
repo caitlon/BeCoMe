@@ -70,6 +70,7 @@ jobs:
     runs-on: ubuntu-24.04
     needs: lint
     env:
+      APP_ENV: "test"
       SECRET_KEY: test-secret-key-for-ci
       TESTING: "1"
 
@@ -144,6 +145,7 @@ jobs:
     runs-on: ubuntu-24.04
     needs: lint
     env:
+      APP_ENV: "test"
       TESTING: "1"
 
     services:
@@ -201,6 +203,7 @@ jobs:
     runs-on: ubuntu-24.04
     needs: lint
     env:
+      APP_ENV: "test"
       TESTING: "1"
 
     services:

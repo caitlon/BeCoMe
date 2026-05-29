@@ -30,6 +30,7 @@ COPY api/ ./api/
 # Environment variables
 ENV PATH="/app/.venv/bin:$PATH"
 ENV PYTHONUNBUFFERED=1
+ENV APP_ENV=dev
 ENV DEBUG=true
 
 # Expose port
