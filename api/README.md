@@ -164,4 +164,5 @@ uv run pytest tests/unit/api/ tests/integration/api/ --cov=api --cov-report=term
 ## Related Documentation
 
 - [Main README](../README.md) — project overview
+- [docs/environments.md](../docs/environments.md) — dev/test/prod profiles, Railway deployment, database topology
 - [CLAUDE.md](../CLAUDE.md) — development guidelines

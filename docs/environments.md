@@ -105,11 +105,11 @@ If `APP_ENV` is left unset on a deployed service, it falls back to dev, which tu
 
 ## Current status
 
-- **prod** is live: https://www.becomify.app (frontend) and https://api.becomify.app (API), with the database on Supabase.
-- **dev** is deployed on Railway from `develop`: https://become-dev.up.railway.app (API) plus the dev frontend, each backed by an isolated Railway Postgres. It also runs locally with no setup, since dev is the default profile.
-- **test / staging** has its Railway environment and Postgres; the backend and frontend services are still being wired up.
+All three environments run on Railway, each with its own isolated Railway Postgres:
 
-Two production follow-ups remain: set `APP_ENV=prod` on the prod API so the startup guard runs (it currently falls back to dev), and point the prod frontend at `frontend/railway.json` so its builds stop reaching for the API Dockerfile.
+- **prod** is live: https://www.becomify.app (frontend) and https://api.becomify.app (API), `APP_ENV=prod`. Its database is **Railway Postgres** (`prod-db`), migrated off Supabase with `pg_dump`/`pg_restore`. Supabase is retained only for file storage (user photos), not for the database.
+- **test / staging** is live from `staging`: https://test-backend-staging.up.railway.app (API) and https://test-frontend-staging.up.railway.app, on its own Railway Postgres (`test-db`), `APP_ENV=test`.
+- **dev** is deployed from `develop`: https://become-dev.up.railway.app (API) plus the dev frontend, on its own Railway Postgres (`dev-db`). It also runs locally with no setup, since dev is the default profile.
 
 ## Where the code lives
 
