@@ -1,8 +1,12 @@
 """Application configuration using Pydantic Settings."""
 
+import os
+from enum import StrEnum
 from functools import lru_cache
 from importlib.metadata import PackageNotFoundError, version
+from typing import Any
 
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 try:
@@ -10,15 +14,63 @@ try:
 except PackageNotFoundError:
     _version = "0.0.0"
 
+# Secret values rejected in production (development defaults must never ship).
+_INSECURE_SECRET_KEYS = frozenset({"", "changeme", "test-secret-key", "test-secret-key-for-ci"})
+
+_APP_ENV_VAR = "APP_ENV"
+
+
+class Environment(StrEnum):
+    """Deployment environment profile.
+
+    :cvar DEV: Local development. Debug on, permissive CORS, SQLite allowed.
+    :cvar TEST: Deployed staging for manual QA. Debug off, rate limiting on.
+    :cvar PROD: Production. Strict secret and database validation enforced.
+    """
+
+    DEV = "dev"
+    TEST = "test"
+    PROD = "prod"
+
+
+def _resolve_environment() -> Environment:
+    """Resolve the active profile from the ``APP_ENV`` variable.
+
+    ``APP_ENV`` is the single environment selector. When unset, the local
+    development profile is assumed.
+
+    :return: Resolved environment profile.
+    :raises ValueError: If ``APP_ENV`` holds a value outside the enum.
+    """
+    raw = os.environ.get(_APP_ENV_VAR)
+    if raw is None:
+        return Environment.DEV
+    return Environment(raw.strip().lower())
+
+
+def _env_files_for(environment: Environment) -> tuple[str, ...]:
+    """Build the ordered dotenv list for a profile.
+
+    The base ``.env`` loads first and the per-environment ``.env.<env>`` file
+    loads second, so profile-specific values override the shared base.
+
+    :param environment: Active environment profile.
+    :return: Ordered tuple of dotenv paths (later entries override earlier).
+    """
+    return (".env", f".env.{environment.value}")
+
 
 class Settings(BaseSettings):
-    """Application settings loaded from environment variables."""
+    """Application settings loaded from environment variables and dotenv files."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
     )
+
+    # Deployment profile and test-runner flag (two independent axes)
+    environment: Environment = Environment.DEV
+    testing: bool = Field(default=False, validation_alias="TESTING")
 
     # Database
     database_url: str = "sqlite:///./become.db"
@@ -43,13 +95,46 @@ class Settings(BaseSettings):
     supabase_key: str | None = None
     supabase_storage_bucket: str = "become-photos"
 
+    def __init__(self, **kwargs: Any) -> None:
+        """Load ``.env`` then ``.env.<APP_ENV>`` and inject the resolved profile.
+
+        The profile is resolved from ``APP_ENV`` and passed as an init argument,
+        which takes precedence over the implicit ``ENVIRONMENT`` variable so
+        ``APP_ENV`` stays the only selector.
+
+        :param kwargs: Keyword settings forwarded to the base settings model.
+        """
+        resolved = _resolve_environment()
+        kwargs.setdefault("environment", resolved)
+        super().__init__(_env_file=_env_files_for(resolved), **kwargs)
+
     @property
     def supabase_storage_enabled(self) -> bool:
-        """Check if Supabase storage is properly configured."""
+        """Check if Supabase storage is properly configured.
+
+        :return: True when both Supabase URL and key are set.
+        """
         return bool(self.supabase_url and self.supabase_key)
+
+    @model_validator(mode="after")
+    def _validate_production_invariants(self) -> "Settings":
+        """Reject insecure development defaults when running in production.
+
+        :return: The validated settings instance.
+        :raises ValueError: If production uses an insecure secret or SQLite.
+        """
+        if self.environment is Environment.PROD:
+            if self.secret_key in _INSECURE_SECRET_KEYS:
+                raise ValueError("secret_key must be a strong non-default value in production")
+            if self.database_url.startswith("sqlite"):
+                raise ValueError("SQLite is not allowed in production; use PostgreSQL")
+        return self
 
 
 @lru_cache
 def get_settings() -> Settings:
-    """Get cached settings instance."""
-    return Settings()  # type: ignore[call-arg]
+    """Get cached settings instance.
+
+    :return: Process-wide cached :class:`Settings` instance.
+    """
+    return Settings()
