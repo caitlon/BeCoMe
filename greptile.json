@@ -1,0 +1,21 @@
+{
+  "excludeAuthors": ["dependabot[bot]"],
+  "excludeBranches": ["dependabot/**"],
+  "instructions": "Enforce project standards: Python 3.13+ with mypy strict and ruff, 100-character lines, absolute imports only, English-only and ASCII-only code, comments, and docstrings. Public Python functions and methods need reStructuredText docstrings with :param:, :return:, and :raises:. Flag leftover commented-out code, _old or _deprecated suffixes, and TODO-remove-later notes.",
+  "customContext": {
+    "rules": [
+      {
+        "scope": ["api/**/*.py"],
+        "rule": "Keep endpoints thin; business logic belongs in service classes injected via FastAPI dependencies. Validate input and output with Pydantic schemas and raise custom exceptions rather than a bare HTTPException."
+      },
+      {
+        "scope": ["src/**/*.py"],
+        "rule": "Follow OOP and SOLID: immutable value objects use @dataclass(frozen=True), prefer composition over inheritance, and depend on abstractions (ABC or Protocol) injected through the constructor."
+      },
+      {
+        "scope": ["frontend/src/**/*.ts", "frontend/src/**/*.tsx"],
+        "rule": "User-facing text must be added to both the en and cs locales under frontend/src/i18n/locales; do not hardcode display strings in components."
+      }
+    ]
+  }
+}
