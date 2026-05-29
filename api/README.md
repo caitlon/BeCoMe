@@ -133,6 +133,7 @@ Environment variables (can use `.env` file):
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `APP_ENV` | `dev` | Deployment profile: `dev`, `test`, or `prod`. Selects the `.env.<APP_ENV>` overlay; `prod` rejects a default secret or SQLite. See the root README "Environment profiles". |
 | `DATABASE_URL` | `sqlite:///./become.db` | Database connection string |
 | `SECRET_KEY` | *required* | JWT signing key (generate with `openssl rand -hex 32`) |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | `15` | Access token TTL |
