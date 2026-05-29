@@ -2,16 +2,18 @@
 
 from contextlib import suppress
 from typing import Annotated
+from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile, status
 
 from api.auth.dependencies import CurrentUser
 from api.auth.logging import log_account_deletion, log_password_change
 from api.dependencies import get_storage_service, get_user_service
-from api.middleware.rate_limit import LIMIT_PWD_RESET, LIMIT_UPLOAD, limiter
+from api.middleware.rate_limit import LIMIT_PHOTO, LIMIT_PWD_RESET, LIMIT_UPLOAD, limiter
 from api.schemas.auth import ChangePasswordRequest, UpdateUserRequest, UserResponse
+from api.services.storage import validation
+from api.services.storage.base import StorageService
 from api.services.storage.exceptions import StorageDeleteError, StorageUploadError
-from api.services.storage.supabase_storage_service import SupabaseStorageService
 from api.services.user_service import UserService
 
 router = APIRouter(prefix="/api/v1/users", tags=["users"])
@@ -24,13 +26,7 @@ def get_current_user_profile(current_user: CurrentUser) -> UserResponse:
     :param current_user: User from JWT token
     :return: User profile data
     """
-    return UserResponse(
-        id=str(current_user.id),
-        email=current_user.email,
-        first_name=current_user.first_name,
-        last_name=current_user.last_name,
-        photo_url=current_user.photo_url,
-    )
+    return UserResponse.from_user(current_user)
 
 
 @router.put("/me", summary="Update current user profile")
@@ -51,13 +47,7 @@ def update_current_user(
         first_name=request.first_name,
         last_name=request.last_name,
     )
-    return UserResponse(
-        id=str(updated.id),
-        email=updated.email,
-        first_name=updated.first_name,
-        last_name=updated.last_name,
-        photo_url=updated.photo_url,
-    )
+    return UserResponse.from_user(updated)
 
 
 @router.put(
@@ -129,7 +119,7 @@ async def upload_photo(
     current_user: CurrentUser,
     file: Annotated[UploadFile, File(description="Profile photo (JPEG, PNG, GIF, WebP, max 5MB)")],
     user_service: Annotated[UserService, Depends(get_user_service)],
-    storage_service: Annotated[SupabaseStorageService | None, Depends(get_storage_service)],
+    storage_service: Annotated[StorageService | None, Depends(get_storage_service)],
 ) -> UserResponse:
     """Upload or replace user profile photo.
 
@@ -149,7 +139,8 @@ async def upload_photo(
         )
 
     # Validate content type
-    if file.content_type not in SupabaseStorageService.ALLOWED_CONTENT_TYPES:
+    content_type = file.content_type
+    if content_type is None or content_type not in validation.ALLOWED_CONTENT_TYPES:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid file type. Allowed: JPEG, PNG, GIF, WebP",
@@ -157,46 +148,35 @@ async def upload_photo(
 
     # Read and validate size
     content = await file.read()
-    if len(content) > SupabaseStorageService.MAX_FILE_SIZE_BYTES:
+    if len(content) > validation.MAX_FILE_SIZE_BYTES:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="File too large. Maximum size is 5 MB",
         )
 
     # Validate actual file content matches claimed type (magic bytes check)
-    if not SupabaseStorageService.validate_image_content(content, file.content_type):
+    if not validation.validate_image_content(content, content_type):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="File content does not match declared type",
         )
 
-    # Delete old photo if exists (ignore errors to allow upload to proceed)
+    # Delete the previous photo if any (ignore errors so the upload can proceed)
     if current_user.photo_url:
         with suppress(StorageDeleteError):
-            storage_service.delete_file(current_user.photo_url)
+            storage_service.delete(current_user.photo_url)
 
-    # Upload new photo
+    # Upload the new photo and store its object key
     try:
-        photo_url = storage_service.upload_file(
-            file_content=content,
-            content_type=file.content_type,
-            user_id=str(current_user.id),
-        )
+        photo_key = storage_service.upload(content, content_type, str(current_user.id))
     except StorageUploadError as err:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Failed to upload photo",
         ) from err
 
-    # Update user record
-    updated_user = user_service.update_photo_url(current_user, photo_url)
-    return UserResponse(
-        id=str(updated_user.id),
-        email=updated_user.email,
-        first_name=updated_user.first_name,
-        last_name=updated_user.last_name,
-        photo_url=updated_user.photo_url,
-    )
+    updated_user = user_service.update_photo_url(current_user, photo_key)
+    return UserResponse.from_user(updated_user)
 
 
 @router.delete(
@@ -207,7 +187,7 @@ async def upload_photo(
 def delete_photo(
     current_user: CurrentUser,
     user_service: Annotated[UserService, Depends(get_user_service)],
-    storage_service: Annotated[SupabaseStorageService | None, Depends(get_storage_service)],
+    storage_service: Annotated[StorageService | None, Depends(get_storage_service)],
 ) -> None:
     """Remove user profile photo.
 
@@ -218,9 +198,52 @@ def delete_photo(
     if not current_user.photo_url:
         return
 
-    # Try to delete from storage, but always clear DB record
+    # Try to delete from storage, but always clear the DB record
     if storage_service:
         with suppress(StorageDeleteError):
-            storage_service.delete_file(current_user.photo_url)
+            storage_service.delete(current_user.photo_url)
 
     user_service.update_photo_url(current_user, None)
+
+
+@router.get(
+    "/{user_id}/photo",
+    summary="Get a user's profile photo",
+    responses={404: {"description": "No photo for this user"}},
+)
+@limiter.limit(LIMIT_PHOTO)
+def get_user_photo(
+    request: Request,
+    user_id: UUID,
+    user_service: Annotated[UserService, Depends(get_user_service)],
+    storage_service: Annotated[StorageService | None, Depends(get_storage_service)],
+) -> Response:
+    """Stream a user's profile photo from private storage.
+
+    Public endpoint: image tags cannot send auth headers, and avatars are shown
+    for every project member. Returns 404 when the user has no photo or storage
+    is unavailable.
+
+    :param request: FastAPI request (for rate limiting)
+    :param user_id: User whose photo to serve
+    :param user_service: User service for the photo key lookup
+    :param storage_service: Storage service (None when not configured)
+    :return: The image bytes with public caching headers
+    """
+    if storage_service is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Photo not found")
+
+    user = user_service.get_by_id(user_id)
+    if user is None or not user.photo_url:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Photo not found")
+
+    result = storage_service.open(user.photo_url)
+    if result is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Photo not found")
+
+    content, content_type = result
+    return Response(
+        content=content,
+        media_type=content_type,
+        headers={"Cache-Control": "public, max-age=86400"},
+    )

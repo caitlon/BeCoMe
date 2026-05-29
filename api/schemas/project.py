@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Self
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from api.utils.photo_links import build_photo_url
 from api.utils.sanitization import sanitize_text, sanitize_text_or_none
 
 if TYPE_CHECKING:
@@ -147,7 +148,7 @@ class MemberResponse(BaseModel):
             email=user.email,
             first_name=user.first_name,
             last_name=user.last_name,
-            photo_url=user.photo_url,
+            photo_url=build_photo_url(user.id, user.photo_url),
             role=member.role.value,
             joined_at=member.joined_at,
         )

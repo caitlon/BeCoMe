@@ -1,89 +1,77 @@
 """Tests for application configuration."""
 
+from typing import ClassVar
+
 import pytest
 from pydantic import ValidationError
 
 from api.config import Environment, Settings
 
 
-class TestSupabaseStorageEnabled:
-    """Tests for supabase_storage_enabled property."""
+class TestStorageEnabled:
+    """Tests for the storage_enabled property."""
 
-    def test_returns_true_when_both_url_and_key_set(self):
+    _BUCKET: ClassVar[dict[str, str]] = {
+        "bucket_name": "become-photos",
+        "bucket_endpoint": "https://storage.railway.app",
+        "bucket_access_key_id": "key",
+        "bucket_secret_access_key": "secret",
+    }
+
+    def test_returns_true_when_all_bucket_vars_set(self):
         """
-        GIVEN Settings with both supabase_url and supabase_key configured
-        WHEN supabase_storage_enabled is accessed
+        GIVEN Settings with all four bucket variables configured
+        WHEN storage_enabled is accessed
         THEN it returns True
         """
         # GIVEN
-        settings = Settings(
-            secret_key="test-secret-key",
-            supabase_url="https://example.supabase.co",
-            supabase_key="test-key-123",
-        )
+        settings = Settings(secret_key="test-secret-key", **self._BUCKET)
 
-        # WHEN
-        result = settings.supabase_storage_enabled
+        # WHEN / THEN
+        assert settings.storage_enabled is True
 
-        # THEN
-        assert result is True
-
-    def test_returns_false_when_url_missing(self):
+    def test_returns_false_when_endpoint_missing(self):
         """
-        GIVEN Settings with supabase_url missing
-        WHEN supabase_storage_enabled is accessed
+        GIVEN Settings missing the bucket endpoint
+        WHEN storage_enabled is accessed
         THEN it returns False
         """
         # GIVEN
         settings = Settings(
             secret_key="test-secret-key",
-            supabase_url=None,
-            supabase_key="test-key-123",
+            **{**self._BUCKET, "bucket_endpoint": None},
         )
 
-        # WHEN
-        result = settings.supabase_storage_enabled
+        # WHEN / THEN
+        assert settings.storage_enabled is False
 
-        # THEN
-        assert result is False
-
-    def test_returns_false_when_key_missing(self):
+    def test_returns_false_when_credentials_missing(self):
         """
-        GIVEN Settings with supabase_key missing
-        WHEN supabase_storage_enabled is accessed
+        GIVEN Settings with only the bucket name and endpoint set
+        WHEN storage_enabled is accessed
         THEN it returns False
         """
         # GIVEN
         settings = Settings(
             secret_key="test-secret-key",
-            supabase_url="https://example.supabase.co",
-            supabase_key=None,
+            bucket_name="become-photos",
+            bucket_endpoint="https://storage.railway.app",
         )
 
-        # WHEN
-        result = settings.supabase_storage_enabled
+        # WHEN / THEN
+        assert settings.storage_enabled is False
 
-        # THEN
-        assert result is False
-
-    def test_returns_false_when_both_missing(self):
+    def test_returns_false_when_unconfigured(self):
         """
-        GIVEN Settings with neither supabase_url nor supabase_key configured
-        WHEN supabase_storage_enabled is accessed
+        GIVEN Settings with no bucket variables
+        WHEN storage_enabled is accessed
         THEN it returns False
         """
         # GIVEN
-        settings = Settings(
-            secret_key="test-secret-key",
-            supabase_url=None,
-            supabase_key=None,
-        )
+        settings = Settings(secret_key="test-secret-key")
 
-        # WHEN
-        result = settings.supabase_storage_enabled
-
-        # THEN
-        assert result is False
+        # WHEN / THEN
+        assert settings.storage_enabled is False
 
 
 class TestEnvironmentResolution:

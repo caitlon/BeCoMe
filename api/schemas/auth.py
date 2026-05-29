@@ -1,9 +1,15 @@
 """Authentication schemas."""
 
 import re
+from typing import TYPE_CHECKING
 
 import regex
 from pydantic import BaseModel, EmailStr, Field, field_validator
+
+from api.utils.photo_links import build_photo_url
+
+if TYPE_CHECKING:
+    from api.db.models import User
 
 NAME_PATTERN = regex.compile(r"^[\p{L}\s'-]+$")
 
@@ -98,6 +104,21 @@ class UserResponse(BaseModel):
     first_name: str
     last_name: str
     photo_url: str | None = None
+
+    @classmethod
+    def from_user(cls, user: "User") -> "UserResponse":
+        """Build the response from a user model, resolving the photo proxy URL.
+
+        :param user: User database model.
+        :return: UserResponse with a public photo URL, or None when unset.
+        """
+        return cls(
+            id=str(user.id),
+            email=user.email,
+            first_name=user.first_name,
+            last_name=user.last_name,
+            photo_url=build_photo_url(user.id, user.photo_url),
+        )
 
 
 class UpdateUserRequest(BaseModel):

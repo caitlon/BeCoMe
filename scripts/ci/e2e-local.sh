@@ -80,8 +80,6 @@ APP_ENV="test" \
 DATABASE_URL="postgresql://$DB_USER:$DB_PASS@localhost:$DB_PORT/$DB_NAME" \
 SECRET_KEY="e2e-local-test-secret-key" \
 CORS_ORIGINS='["http://localhost:8080"]' \
-SUPABASE_URL="" \
-SUPABASE_KEY="" \
 TESTING="1" \
 DEBUG="false" \
   uv run --project "$PROJECT_ROOT" uvicorn api.main:app \

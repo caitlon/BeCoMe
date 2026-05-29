@@ -124,12 +124,12 @@ class UserService(BaseService):
         """
         self._delete_and_commit(user)
 
-    def update_photo_url(self, user: User, photo_url: str | None) -> User:
-        """Update user's profile photo URL.
+    def update_photo_url(self, user: User, photo_key: str | None) -> User:
+        """Update the user's stored profile photo key.
 
         :param user: User to update
-        :param photo_url: New photo URL or None to remove
+        :param photo_key: New storage object key, or None to remove the photo
         :return: Updated User instance
         """
-        user.photo_url = photo_url
+        user.photo_url = photo_key
         return self._save_and_refresh(user)

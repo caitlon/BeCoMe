@@ -288,11 +288,11 @@ class TestMemberResponseFromModel:
         assert response.role == "expert"
         assert response.joined_at == joined_at
 
-    def test_includes_photo_url(self):
+    def test_builds_photo_proxy_url(self):
         """
-        GIVEN User with photo_url set
+        GIVEN a user with a stored photo key
         WHEN from_model is called
-        THEN MemberResponse includes the photo_url
+        THEN photo_url is the public photo proxy URL for that user
         """
         # GIVEN
         user_id = uuid4()
@@ -302,7 +302,7 @@ class TestMemberResponseFromModel:
             hashed_password="hash",
             first_name="Jane",
             last_name="Doe",
-            photo_url="https://storage.example.com/photos/jane.jpg",
+            photo_url="profiles/jane/abc123def456.jpg",
         )
         member = ProjectMember(
             id=uuid4(),
@@ -316,7 +316,8 @@ class TestMemberResponseFromModel:
         response = MemberResponse.from_model(member, user)
 
         # THEN
-        assert response.photo_url == "https://storage.example.com/photos/jane.jpg"
+        assert response.photo_url is not None
+        assert response.photo_url.endswith(f"/api/v1/users/{user_id}/photo?v=abc123def456")
 
     def test_handles_none_last_name(self):
         """

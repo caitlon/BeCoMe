@@ -98,10 +98,16 @@ class Settings(BaseSettings):
         "http://localhost:8080",
     ]
 
-    # Supabase Storage (optional - photo upload disabled if not configured)
-    supabase_url: str | None = None
-    supabase_key: str | None = None
-    supabase_storage_bucket: str = "become-photos"
+    # Public base URL of this API, used to build profile photo proxy links.
+    api_public_url: str = "http://localhost:8000"
+
+    # Railway Storage Bucket (S3-compatible; photo upload disabled if not set).
+    # Railway injects these when a bucket is attached to the service.
+    bucket_name: str | None = None
+    bucket_endpoint: str | None = None
+    bucket_access_key_id: str | None = None
+    bucket_secret_access_key: str | None = None
+    bucket_region: str = "auto"
 
     def __init__(self, **kwargs: Any) -> None:
         """Load ``.env`` then ``.env.<APP_ENV>`` and inject the resolved profile.
@@ -117,12 +123,17 @@ class Settings(BaseSettings):
         super().__init__(_env_file=_env_files_for(resolved), **kwargs)
 
     @property
-    def supabase_storage_enabled(self) -> bool:
-        """Check if Supabase storage is properly configured.
+    def storage_enabled(self) -> bool:
+        """Check if Railway bucket storage is fully configured.
 
-        :return: True when both Supabase URL and key are set.
+        :return: True when the bucket name, endpoint, and both credentials are set.
         """
-        return bool(self.supabase_url and self.supabase_key)
+        return bool(
+            self.bucket_name
+            and self.bucket_endpoint
+            and self.bucket_access_key_id
+            and self.bucket_secret_access_key
+        )
 
     @model_validator(mode="after")
     def _validate_production_invariants(self) -> "Settings":

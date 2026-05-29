@@ -22,8 +22,9 @@ from api.services.opinion_service import OpinionService
 from api.services.project_membership_service import ProjectMembershipService
 from api.services.project_query_service import ProjectQueryService
 from api.services.project_service import ProjectService
+from api.services.storage.base import StorageService
 from api.services.storage.exceptions import StorageConfigurationError
-from api.services.storage.supabase_storage_service import SupabaseStorageService
+from api.services.storage.railway_bucket_storage_service import RailwayBucketStorageService
 from api.services.user_service import UserService
 from src.calculators.become_calculator import BeCoMeCalculator
 
@@ -85,19 +86,19 @@ def get_invitation_service(session: Annotated[Session, Depends(get_session)]) ->
     return InvitationService(session)
 
 
-def get_storage_service() -> SupabaseStorageService | None:
-    """Create storage service if Supabase is configured.
+def get_storage_service() -> StorageService | None:
+    """Create the storage service when bucket storage is configured.
 
-    Returns None if Supabase storage is not configured or
-    initialization fails, allowing graceful degradation.
+    Returns None when storage is not configured or initialization fails,
+    which disables photo upload while leaving the rest of the API working.
 
-    :return: SupabaseStorageService or None
+    :return: A StorageService implementation, or None.
     """
     settings = get_settings()
-    if not settings.supabase_storage_enabled:
+    if not settings.storage_enabled:
         return None
     try:
-        return SupabaseStorageService(settings)
+        return RailwayBucketStorageService(settings)
     except StorageConfigurationError:
         return None
 

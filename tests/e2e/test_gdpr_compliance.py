@@ -236,11 +236,10 @@ class TestDeletionAudit:
     """Deletion edge cases and graceful handling."""
 
     def test_deletion_succeeds_without_storage(self, http_client):
-        """Account deletion works even when Supabase storage is unavailable.
+        """Account deletion works even when storage is unavailable.
 
-        In E2E environment, Supabase storage may not be configured.
-        The deletion endpoint suppresses StorageDeleteError to ensure
-        account removal is not blocked by storage failures.
+        Account removal does not depend on the storage backend, so a user with
+        no photo (or an unconfigured bucket) can still delete their account.
         """
         # GIVEN — user without a profile photo
         email = unique_email("gdpr-nostorage")

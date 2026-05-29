@@ -33,6 +33,8 @@ class User(SQLModel, table=True):
     hashed_password: str = Field(max_length=255)
     first_name: str = Field(max_length=100)
     last_name: str = Field(max_length=100)
+    # Storage object key for the profile photo, served through the photo proxy
+    # endpoint; None when unset. The public URL is built at serialization time.
     photo_url: str | None = Field(default=None, max_length=500)
     created_at: datetime = Field(default_factory=utc_now)
 

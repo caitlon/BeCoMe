@@ -1,245 +1,197 @@
-"""Unit tests for SupabaseStorageService."""
+"""Unit tests for RailwayBucketStorageService."""
 
 from unittest.mock import MagicMock, patch
 
 import pytest
+from botocore.exceptions import ClientError
 
 from api.services.storage.exceptions import (
     StorageConfigurationError,
     StorageDeleteError,
+    StorageError,
     StorageUploadError,
 )
-from api.services.storage.supabase_storage_service import SupabaseStorageService
+from api.services.storage.railway_bucket_storage_service import RailwayBucketStorageService
 
 
-class TestSupabaseStorageServiceInit:
-    """Tests for SupabaseStorageService initialization."""
+def _settings(**overrides: object) -> MagicMock:
+    """Build a settings stub with valid bucket configuration."""
+    settings = MagicMock()
+    settings.storage_enabled = True
+    settings.bucket_name = "test-bucket"
+    settings.bucket_endpoint = "https://storage.railway.app"
+    settings.bucket_access_key_id = "key"
+    settings.bucket_secret_access_key = "secret"
+    settings.bucket_region = "auto"
+    for key, value in overrides.items():
+        setattr(settings, key, value)
+    return settings
 
-    def test_raises_error_when_url_missing(self):
-        """Raises StorageConfigurationError when supabase_url is None."""
+
+def _client_error(code: str) -> ClientError:
+    """Build a botocore ClientError carrying the given error code."""
+    return ClientError({"Error": {"Code": code, "Message": code}}, "GetObject")
+
+
+class TestInit:
+    """Tests for service construction and configuration validation."""
+
+    def test_raises_when_storage_disabled(self):
+        """Raises StorageConfigurationError when storage is not enabled."""
         # GIVEN
-        mock_settings = MagicMock()
-        mock_settings.supabase_url = None
-        mock_settings.supabase_key = "test-key"
+        settings = _settings(storage_enabled=False)
 
         # WHEN / THEN
         with pytest.raises(StorageConfigurationError, match="not configured"):
-            SupabaseStorageService(mock_settings)
+            RailwayBucketStorageService(settings, client=MagicMock())
 
-    def test_raises_error_when_key_missing(self):
-        """Raises StorageConfigurationError when supabase_key is None."""
+    def test_raises_when_bucket_name_missing(self):
+        """Raises StorageConfigurationError when the bucket name is None."""
         # GIVEN
-        mock_settings = MagicMock()
-        mock_settings.supabase_url = "https://test.supabase.co"
-        mock_settings.supabase_key = None
+        settings = _settings(bucket_name=None)
 
         # WHEN / THEN
         with pytest.raises(StorageConfigurationError, match="not configured"):
-            SupabaseStorageService(mock_settings)
+            RailwayBucketStorageService(settings, client=MagicMock())
 
-
-class TestGenerateFilePath:
-    """Tests for file path generation."""
-
-    @patch("supabase.create_client")
-    def test_generates_unique_path_with_jpeg_extension(self, mock_create_client):
-        """File path includes user ID and .jpg extension for JPEG."""
+    def test_builds_client_from_settings_when_not_injected(self):
+        """Builds a boto3 S3 client from settings when no client is injected."""
         # GIVEN
-        mock_settings = MagicMock()
-        mock_settings.supabase_url = "https://test.supabase.co"
-        mock_settings.supabase_key = "test-key"
-        mock_settings.supabase_storage_bucket = "test-bucket"
-
-        service = SupabaseStorageService(mock_settings)
+        settings = _settings()
 
         # WHEN
-        file_path = service._generate_file_path("user-123", "image/jpeg")
+        with patch("boto3.client") as mock_boto_client:
+            RailwayBucketStorageService(settings)
 
         # THEN
-        assert file_path.startswith("profiles/user-123/")
-        assert file_path.endswith(".jpg")
+        mock_boto_client.assert_called_once()
+        assert mock_boto_client.call_args.args[0] == "s3"
+        assert mock_boto_client.call_args.kwargs["endpoint_url"] == settings.bucket_endpoint
 
-    @patch("supabase.create_client")
-    def test_generates_png_extension(self, mock_create_client):
-        """File path uses .png extension for PNG content type."""
+
+class TestBuildKey:
+    """Tests for object key generation."""
+
+    def test_namespaces_by_user_with_jpeg_extension(self):
+        """Key is namespaced by user and carries the JPEG extension."""
+        # WHEN
+        key = RailwayBucketStorageService.build_key("user-123", "image/jpeg")
+
+        # THEN
+        assert key.startswith("profiles/user-123/")
+        assert key.endswith(".jpg")
+
+    def test_uses_png_extension(self):
+        """Key uses the PNG extension for a PNG content type."""
+        # WHEN
+        key = RailwayBucketStorageService.build_key("user-456", "image/png")
+
+        # THEN
+        assert key.endswith(".png")
+
+
+class TestUpload:
+    """Tests for uploading a file."""
+
+    def test_stores_object_and_returns_key(self):
+        """Uploads to the bucket and returns the generated key."""
         # GIVEN
-        mock_settings = MagicMock()
-        mock_settings.supabase_url = "https://test.supabase.co"
-        mock_settings.supabase_key = "test-key"
-        mock_settings.supabase_storage_bucket = "test-bucket"
-
-        service = SupabaseStorageService(mock_settings)
+        client = MagicMock()
+        service = RailwayBucketStorageService(_settings(), client=client)
 
         # WHEN
-        file_path = service._generate_file_path("user-456", "image/png")
+        key = service.upload(b"image data", "image/jpeg", "user-123")
 
         # THEN
-        assert file_path.endswith(".png")
+        assert key.startswith("profiles/user-123/")
+        client.put_object.assert_called_once()
+        call = client.put_object.call_args.kwargs
+        assert call["Bucket"] == "test-bucket"
+        assert call["Key"] == key
+        assert call["Body"] == b"image data"
+        assert call["ContentType"] == "image/jpeg"
 
-
-class TestUploadFile:
-    """Tests for file upload."""
-
-    @patch("supabase.create_client")
-    def test_uploads_file_successfully(self, mock_create_client):
-        """File is uploaded and URL returned."""
+    def test_raises_upload_error_on_failure(self):
+        """Wraps a client failure in StorageUploadError."""
         # GIVEN
-        mock_settings = MagicMock()
-        mock_settings.supabase_url = "https://test.supabase.co"
-        mock_settings.supabase_key = "test-key"
-        mock_settings.supabase_storage_bucket = "test-bucket"
-
-        mock_client = MagicMock()
-        mock_create_client.return_value = mock_client
-        mock_storage_bucket = MagicMock()
-        mock_client.storage.from_.return_value = mock_storage_bucket
-        mock_storage_bucket.get_public_url.return_value = (
-            "https://test.supabase.co/storage/v1/object/public/test-bucket/test.jpg"
-        )
-
-        service = SupabaseStorageService(mock_settings)
-
-        # WHEN
-        url = service.upload_file(b"image data", "image/jpeg", "user-123")
-
-        # THEN
-        assert "supabase.co" in url
-        mock_storage_bucket.upload.assert_called_once()
-
-    @patch("supabase.create_client")
-    def test_raises_error_on_upload_failure(self, mock_create_client):
-        """StorageUploadError is raised when upload fails."""
-        # GIVEN
-        mock_settings = MagicMock()
-        mock_settings.supabase_url = "https://test.supabase.co"
-        mock_settings.supabase_key = "test-key"
-        mock_settings.supabase_storage_bucket = "test-bucket"
-
-        mock_client = MagicMock()
-        mock_create_client.return_value = mock_client
-        mock_storage_bucket = MagicMock()
-        mock_client.storage.from_.return_value = mock_storage_bucket
-        mock_storage_bucket.upload.side_effect = Exception("Upload failed")
-
-        service = SupabaseStorageService(mock_settings)
+        client = MagicMock()
+        client.put_object.side_effect = Exception("boom")
+        service = RailwayBucketStorageService(_settings(), client=client)
 
         # WHEN / THEN
         with pytest.raises(StorageUploadError, match="Failed to upload"):
-            service.upload_file(b"image data", "image/jpeg", "user-123")
+            service.upload(b"image data", "image/jpeg", "user-123")
 
 
-class TestDeleteFile:
-    """Tests for file deletion."""
+class TestOpen:
+    """Tests for fetching an object."""
 
-    @patch("supabase.create_client")
-    def test_deletes_file_successfully(self, mock_create_client):
-        """File is deleted and True returned."""
+    def test_returns_bytes_and_content_type(self):
+        """Returns the object bytes together with its content type."""
         # GIVEN
-        mock_settings = MagicMock()
-        mock_settings.supabase_url = "https://test.supabase.co"
-        mock_settings.supabase_key = "test-key"
-        mock_settings.supabase_storage_bucket = "test-bucket"
-
-        mock_client = MagicMock()
-        mock_create_client.return_value = mock_client
-        mock_storage_bucket = MagicMock()
-        mock_client.storage.from_.return_value = mock_storage_bucket
-
-        service = SupabaseStorageService(mock_settings)
+        body = MagicMock()
+        body.read.return_value = b"image bytes"
+        client = MagicMock()
+        client.get_object.return_value = {"Body": body, "ContentType": "image/png"}
+        service = RailwayBucketStorageService(_settings(), client=client)
 
         # WHEN
-        result = service.delete_file(
-            "https://test.supabase.co/storage/v1/object/public/test-bucket/profiles/user/photo.jpg"
-        )
+        result = service.open("profiles/user/abc.png")
+
+        # THEN
+        assert result == (b"image bytes", "image/png")
+        client.get_object.assert_called_once_with(Bucket="test-bucket", Key="profiles/user/abc.png")
+
+    def test_returns_none_when_object_absent(self):
+        """Returns None when the object does not exist."""
+        # GIVEN
+        client = MagicMock()
+        client.get_object.side_effect = _client_error("NoSuchKey")
+        service = RailwayBucketStorageService(_settings(), client=client)
+
+        # WHEN
+        result = service.open("profiles/user/missing.jpg")
+
+        # THEN
+        assert result is None
+
+    def test_raises_storage_error_on_other_failure(self):
+        """Raises StorageError for failures other than a missing object."""
+        # GIVEN
+        client = MagicMock()
+        client.get_object.side_effect = _client_error("AccessDenied")
+        service = RailwayBucketStorageService(_settings(), client=client)
+
+        # WHEN / THEN
+        with pytest.raises(StorageError, match="Failed to read"):
+            service.open("profiles/user/denied.jpg")
+
+
+class TestDelete:
+    """Tests for deleting an object."""
+
+    def test_deletes_object_and_returns_true(self):
+        """Deletes the object and reports success."""
+        # GIVEN
+        client = MagicMock()
+        service = RailwayBucketStorageService(_settings(), client=client)
+
+        # WHEN
+        result = service.delete("profiles/user/abc.jpg")
 
         # THEN
         assert result is True
-        mock_storage_bucket.remove.assert_called_once_with(["profiles/user/photo.jpg"])
+        client.delete_object.assert_called_once_with(
+            Bucket="test-bucket", Key="profiles/user/abc.jpg"
+        )
 
-    @patch("supabase.create_client")
-    def test_returns_false_for_invalid_url(self, mock_create_client):
-        """Returns False when URL doesn't match expected format."""
+    def test_raises_delete_error_on_failure(self):
+        """Wraps a client failure in StorageDeleteError."""
         # GIVEN
-        mock_settings = MagicMock()
-        mock_settings.supabase_url = "https://test.supabase.co"
-        mock_settings.supabase_key = "test-key"
-        mock_settings.supabase_storage_bucket = "test-bucket"
-
-        service = SupabaseStorageService(mock_settings)
-
-        # WHEN
-        result = service.delete_file("https://other-service.com/photo.jpg")
-
-        # THEN
-        assert result is False
-
-    @patch("supabase.create_client")
-    def test_raises_error_on_delete_failure(self, mock_create_client):
-        """StorageDeleteError is raised when deletion fails unexpectedly."""
-        # GIVEN
-        mock_settings = MagicMock()
-        mock_settings.supabase_url = "https://test.supabase.co"
-        mock_settings.supabase_key = "test-key"
-        mock_settings.supabase_storage_bucket = "test-bucket"
-
-        mock_client = MagicMock()
-        mock_create_client.return_value = mock_client
-        mock_storage_bucket = MagicMock()
-        mock_client.storage.from_.return_value = mock_storage_bucket
-        mock_storage_bucket.remove.side_effect = Exception("Delete failed")
-
-        service = SupabaseStorageService(mock_settings)
+        client = MagicMock()
+        client.delete_object.side_effect = Exception("boom")
+        service = RailwayBucketStorageService(_settings(), client=client)
 
         # WHEN / THEN
         with pytest.raises(StorageDeleteError, match="Failed to delete"):
-            service.delete_file(
-                "https://test.supabase.co/storage/v1/object/public/test-bucket/profiles/user/photo.jpg"
-            )
-
-
-class TestValidateImageContent:
-    """Tests for magic bytes validation."""
-
-    def test_valid_jpeg(self):
-        """Valid JPEG content passes validation."""
-        content = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00" + b"\x00" * 100
-        assert SupabaseStorageService.validate_image_content(content, "image/jpeg")
-
-    def test_valid_png(self):
-        """Valid PNG content passes validation."""
-        content = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
-        assert SupabaseStorageService.validate_image_content(content, "image/png")
-
-    def test_valid_gif87a(self):
-        """Valid GIF87a content passes validation."""
-        content = b"GIF87a" + b"\x00" * 100
-        assert SupabaseStorageService.validate_image_content(content, "image/gif")
-
-    def test_valid_gif89a(self):
-        """Valid GIF89a content passes validation."""
-        content = b"GIF89a" + b"\x00" * 100
-        assert SupabaseStorageService.validate_image_content(content, "image/gif")
-
-    def test_valid_webp(self):
-        """Valid WebP content passes validation."""
-        content = b"RIFF\x00\x00\x00\x00WEBP" + b"\x00" * 100
-        assert SupabaseStorageService.validate_image_content(content, "image/webp")
-
-    def test_invalid_content(self):
-        """Non-image content fails validation."""
-        content = b"This is just text"
-        assert not SupabaseStorageService.validate_image_content(content, "image/jpeg")
-
-    def test_mismatched_type(self):
-        """JPEG content with PNG claimed type fails."""
-        jpeg_content = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00" + b"\x00" * 100
-        assert not SupabaseStorageService.validate_image_content(jpeg_content, "image/png")
-
-    def test_empty_content(self):
-        """Empty content fails validation."""
-        assert not SupabaseStorageService.validate_image_content(b"", "image/jpeg")
-
-    def test_riff_without_webp(self):
-        """RIFF file that's not WebP fails validation."""
-        content = b"RIFF\x00\x00\x00\x00WAVE" + b"\x00" * 100  # WAV file
-        assert not SupabaseStorageService.validate_image_content(content, "image/webp")
+            service.delete("profiles/user/abc.jpg")

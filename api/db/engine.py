@@ -16,7 +16,7 @@ def _create_engine() -> Engine:
     """Create database engine based on settings.
 
     SQLite uses check_same_thread=False for FastAPI compatibility.
-    PostgreSQL gets a tuned connection pool to stay within Supabase limits.
+    PostgreSQL gets a tuned connection pool sized for the managed database.
 
     :return: Configured SQLAlchemy Engine instance
     """
@@ -27,7 +27,7 @@ def _create_engine() -> Engine:
     if settings.database_url.startswith("sqlite"):
         connect_args["check_same_thread"] = False
     else:
-        # Keep the pool small to avoid hitting Supabase session-mode limits.
+        # Keep the pool small to stay within the managed Postgres connection limit.
         # pool_pre_ping drops stale connections before reuse.
         pool_kwargs = {
             "pool_size": 3,

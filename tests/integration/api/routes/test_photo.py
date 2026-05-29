@@ -1,5 +1,6 @@
-"""Tests for photo upload/delete endpoints."""
+"""Tests for photo upload, delete, and proxy endpoints."""
 
+import uuid
 from unittest.mock import MagicMock
 
 import pytest
@@ -8,33 +9,32 @@ from sqlmodel import Session
 
 from api.db.session import get_session
 from api.dependencies import get_storage_service
+from api.services.storage.base import StorageService
 from api.services.storage.exceptions import StorageDeleteError, StorageUploadError
-from api.services.storage.supabase_storage_service import SupabaseStorageService
 from tests.integration.api.conftest import auth_header, create_test_app, register_and_login
 
 # Valid JPEG magic bytes (minimal valid JPEG header)
 VALID_JPEG_BYTES = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00" + b"\x00" * 100
 
-# Valid PNG magic bytes
-VALID_PNG_BYTES = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
-
 # Invalid file (text pretending to be JPEG)
 INVALID_FILE_BYTES = b"This is not an image file"
+
+# Object key the mocked storage returns for an upload.
+UPLOADED_KEY = "profiles/test/deadbeef0001.jpg"
 
 
 @pytest.fixture
 def client_with_mock_storage(test_engine):
-    """Create test client with mocked storage service."""
+    """Create a test client with a mocked storage service."""
     test_app = create_test_app()
 
     def override_get_session():
         with Session(test_engine) as session:
             yield session
 
-    mock_storage = MagicMock(spec=SupabaseStorageService)
-    mock_storage.upload_file.return_value = (
-        "https://test.supabase.co/storage/v1/object/public/photos/test.jpg"
-    )
+    mock_storage = MagicMock(spec=StorageService)
+    mock_storage.upload.return_value = UPLOADED_KEY
+    mock_storage.open.return_value = (VALID_JPEG_BYTES, "image/jpeg")
 
     test_app.dependency_overrides[get_session] = override_get_session
     test_app.dependency_overrides[get_storage_service] = lambda: mock_storage
@@ -48,7 +48,7 @@ def client_with_mock_storage(test_engine):
 
 @pytest.fixture
 def client_without_storage(test_engine):
-    """Create test client with storage service returning None."""
+    """Create a test client with the storage service disabled (None)."""
     test_app = create_test_app()
 
     def override_get_session():
@@ -69,7 +69,7 @@ class TestPhotoUpload:
     """Tests for POST /api/v1/users/me/photo."""
 
     def test_upload_photo_success(self, client_with_mock_storage):
-        """Successful photo upload returns updated user with photo_url."""
+        """Successful upload returns the user with a photo proxy URL."""
         # GIVEN
         client, mock_storage = client_with_mock_storage
         token = register_and_login(client, "photo@example.com")
@@ -83,14 +83,13 @@ class TestPhotoUpload:
 
         # THEN
         assert response.status_code == 200
-        data = response.json()
-        assert (
-            data["photo_url"] == "https://test.supabase.co/storage/v1/object/public/photos/test.jpg"
-        )
-        mock_storage.upload_file.assert_called_once()
+        url = response.json()["photo_url"]
+        assert "/api/v1/users/" in url
+        assert url.endswith("/photo?v=deadbeef0001")
+        mock_storage.upload.assert_called_once()
 
     def test_upload_photo_invalid_content_type(self, client_with_mock_storage):
-        """Upload with invalid content type returns 400."""
+        """Upload with an invalid content type returns 400."""
         # GIVEN
         client, _ = client_with_mock_storage
         token = register_and_login(client, "photo@example.com")
@@ -107,7 +106,7 @@ class TestPhotoUpload:
         assert "Invalid file type" in response.json()["detail"]
 
     def test_upload_photo_content_mismatch(self, client_with_mock_storage):
-        """Upload where content doesn't match claimed type returns 400."""
+        """Upload where content does not match the claimed type returns 400."""
         # GIVEN
         client, _ = client_with_mock_storage
         token = register_and_login(client, "photo@example.com")
@@ -142,7 +141,7 @@ class TestPhotoUpload:
         assert "too large" in response.json()["detail"]
 
     def test_upload_photo_storage_unavailable(self, client_without_storage):
-        """Upload when storage not configured returns 503."""
+        """Upload when storage is not configured returns 503."""
         # GIVEN
         client = client_without_storage
         token = register_and_login(client, "photo@example.com")
@@ -159,10 +158,10 @@ class TestPhotoUpload:
         assert "not available" in response.json()["detail"]
 
     def test_upload_photo_storage_error(self, client_with_mock_storage):
-        """Upload failure from storage returns 503."""
+        """An upload failure from storage returns 503."""
         # GIVEN
         client, mock_storage = client_with_mock_storage
-        mock_storage.upload_file.side_effect = StorageUploadError("Supabase error")
+        mock_storage.upload.side_effect = StorageUploadError("bucket error")
         token = register_and_login(client, "photo@example.com")
 
         # WHEN
@@ -177,7 +176,7 @@ class TestPhotoUpload:
         assert "Failed to upload" in response.json()["detail"]
 
     def test_upload_photo_replaces_old_photo(self, client_with_mock_storage):
-        """Uploading new photo deletes old one."""
+        """Uploading a new photo deletes the previous object."""
         # GIVEN
         client, mock_storage = client_with_mock_storage
         token = register_and_login(client, "photo@example.com")
@@ -189,10 +188,7 @@ class TestPhotoUpload:
             files={"file": ("photo1.jpg", VALID_JPEG_BYTES, "image/jpeg")},
         )
 
-        # WHEN - upload second photo
-        mock_storage.upload_file.return_value = (
-            "https://test.supabase.co/storage/v1/object/public/photos/test2.jpg"
-        )
+        # WHEN - upload a second photo
         response = client.post(
             "/api/v1/users/me/photo",
             headers=auth_header(token),
@@ -201,10 +197,10 @@ class TestPhotoUpload:
 
         # THEN
         assert response.status_code == 200
-        mock_storage.delete_file.assert_called_once()  # Old photo deleted
+        mock_storage.delete.assert_called_once()  # Old object deleted
 
     def test_upload_photo_unauthorized(self, client_with_mock_storage):
-        """Upload without auth token returns 401."""
+        """Upload without an auth token returns 401."""
         # GIVEN
         client, _ = client_with_mock_storage
 
@@ -222,12 +218,10 @@ class TestPhotoDelete:
     """Tests for DELETE /api/v1/users/me/photo."""
 
     def test_delete_photo_success(self, client_with_mock_storage):
-        """Delete photo removes from storage and clears DB."""
+        """Deleting a photo removes it from storage and clears the DB."""
         # GIVEN
         client, mock_storage = client_with_mock_storage
         token = register_and_login(client, "photo@example.com")
-
-        # Upload photo first
         client.post(
             "/api/v1/users/me/photo",
             headers=auth_header(token),
@@ -235,72 +229,49 @@ class TestPhotoDelete:
         )
 
         # WHEN
-        response = client.delete(
-            "/api/v1/users/me/photo",
-            headers=auth_header(token),
-        )
+        response = client.delete("/api/v1/users/me/photo", headers=auth_header(token))
 
         # THEN
         assert response.status_code == 204
-        mock_storage.delete_file.assert_called()
-
-        # Verify photo_url is cleared
-        profile = client.get(
-            "/api/v1/users/me",
-            headers=auth_header(token),
-        )
+        mock_storage.delete.assert_called()
+        profile = client.get("/api/v1/users/me", headers=auth_header(token))
         assert profile.json()["photo_url"] is None
 
     def test_delete_photo_no_photo(self, client_with_mock_storage):
-        """Delete when no photo exists returns 204 (no-op)."""
+        """Deleting when no photo exists is a no-op returning 204."""
         # GIVEN
         client, mock_storage = client_with_mock_storage
         token = register_and_login(client, "photo@example.com")
 
         # WHEN
-        response = client.delete(
-            "/api/v1/users/me/photo",
-            headers=auth_header(token),
-        )
+        response = client.delete("/api/v1/users/me/photo", headers=auth_header(token))
 
         # THEN
         assert response.status_code == 204
-        mock_storage.delete_file.assert_not_called()
+        mock_storage.delete.assert_not_called()
 
     def test_delete_photo_storage_error_still_clears_db(self, client_with_mock_storage):
-        """Delete continues even if storage deletion fails."""
+        """Deletion continues even when storage removal fails."""
         # GIVEN
         client, mock_storage = client_with_mock_storage
         token = register_and_login(client, "photo@example.com")
-
-        # Upload photo first
         client.post(
             "/api/v1/users/me/photo",
             headers=auth_header(token),
             files={"file": ("photo.jpg", VALID_JPEG_BYTES, "image/jpeg")},
         )
-
-        # Make delete_file raise error
-        mock_storage.delete_file.side_effect = StorageDeleteError("Supabase error")
+        mock_storage.delete.side_effect = StorageDeleteError("bucket error")
 
         # WHEN
-        response = client.delete(
-            "/api/v1/users/me/photo",
-            headers=auth_header(token),
-        )
+        response = client.delete("/api/v1/users/me/photo", headers=auth_header(token))
 
-        # THEN - should still succeed
+        # THEN
         assert response.status_code == 204
-
-        # Verify photo_url is cleared in DB
-        profile = client.get(
-            "/api/v1/users/me",
-            headers=auth_header(token),
-        )
+        profile = client.get("/api/v1/users/me", headers=auth_header(token))
         assert profile.json()["photo_url"] is None
 
     def test_delete_photo_unauthorized(self, client_with_mock_storage):
-        """Delete without auth token returns 401."""
+        """Delete without an auth token returns 401."""
         # GIVEN
         client, _ = client_with_mock_storage
 
@@ -311,25 +282,50 @@ class TestPhotoDelete:
         assert response.status_code == 401
 
 
-class TestMagicBytesValidation:
-    """Tests for magic bytes validation."""
+class TestPhotoProxy:
+    """Tests for GET /api/v1/users/{user_id}/photo."""
 
-    def test_valid_jpeg(self):
-        """Valid JPEG passes validation."""
-        assert SupabaseStorageService.validate_image_content(VALID_JPEG_BYTES, "image/jpeg")
+    def test_streams_photo_bytes(self, client_with_mock_storage):
+        """The proxy streams the stored object with its content type."""
+        # GIVEN
+        client, mock_storage = client_with_mock_storage
+        token = register_and_login(client, "proxy@example.com")
+        user_id = client.get("/api/v1/users/me", headers=auth_header(token)).json()["id"]
+        client.post(
+            "/api/v1/users/me/photo",
+            headers=auth_header(token),
+            files={"file": ("photo.jpg", VALID_JPEG_BYTES, "image/jpeg")},
+        )
 
-    def test_valid_png(self):
-        """Valid PNG passes validation."""
-        assert SupabaseStorageService.validate_image_content(VALID_PNG_BYTES, "image/png")
+        # WHEN - public endpoint, no auth header
+        response = client.get(f"/api/v1/users/{user_id}/photo")
 
-    def test_invalid_content(self):
-        """Invalid content fails validation."""
-        assert not SupabaseStorageService.validate_image_content(INVALID_FILE_BYTES, "image/jpeg")
+        # THEN
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("image/jpeg")
+        assert response.content == VALID_JPEG_BYTES
+        mock_storage.open.assert_called_with(UPLOADED_KEY)
 
-    def test_mismatched_type(self):
-        """JPEG bytes with PNG claimed type fails."""
-        assert not SupabaseStorageService.validate_image_content(VALID_JPEG_BYTES, "image/png")
+    def test_returns_404_when_user_has_no_photo(self, client_with_mock_storage):
+        """The proxy returns 404 when the user has no photo set."""
+        # GIVEN
+        client, _ = client_with_mock_storage
+        token = register_and_login(client, "nophoto@example.com")
+        user_id = client.get("/api/v1/users/me", headers=auth_header(token)).json()["id"]
 
-    def test_empty_content(self):
-        """Empty content fails validation."""
-        assert not SupabaseStorageService.validate_image_content(b"", "image/jpeg")
+        # WHEN
+        response = client.get(f"/api/v1/users/{user_id}/photo")
+
+        # THEN
+        assert response.status_code == 404
+
+    def test_returns_404_when_storage_unavailable(self, client_without_storage):
+        """The proxy returns 404 when storage is not configured."""
+        # GIVEN
+        client = client_without_storage
+
+        # WHEN
+        response = client.get(f"/api/v1/users/{uuid.uuid4()}/photo")
+
+        # THEN
+        assert response.status_code == 404

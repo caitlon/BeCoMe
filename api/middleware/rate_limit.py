@@ -32,3 +32,4 @@ LIMIT_AUTH_ENDPOINTS = "5/minute"  # Login, register - strict to prevent brute-f
 LIMIT_PWD_RESET = "3/minute"  # Password reset/change - very strict
 LIMIT_STANDARD = "60/minute"  # Normal API endpoints
 LIMIT_UPLOAD = "10/minute"  # File uploads - prevent abuse
+LIMIT_PHOTO = "120/minute"  # Public photo proxy reads (browser-cached avatars)

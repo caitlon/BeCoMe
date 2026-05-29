@@ -10,7 +10,7 @@ class TestPhotoUploadWithoutStorage:
     """Photo upload without configured storage returns 503."""
 
     def test_upload_returns_503_without_storage(self, http_client):
-        """POST /users/me/photo → 503 when Supabase storage is not configured."""
+        """POST /users/me/photo -> 503 when storage is not configured."""
         # GIVEN — authenticated user
         email = unique_email("photo")
         token = register_user(http_client, email)
