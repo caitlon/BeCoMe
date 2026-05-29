@@ -51,9 +51,7 @@ def _resolve_environment() -> Environment:
     if raw is None:
         stray = os.environ.get("ENVIRONMENT")
         if stray:
-            raise ValueError(
-                f"Select the profile with APP_ENV, not ENVIRONMENT (got {stray!r})"
-            )
+            raise ValueError(f"Select the profile with APP_ENV, not ENVIRONMENT (got {stray!r})")
         return Environment.DEV
     return Environment(raw.strip().lower())
 
