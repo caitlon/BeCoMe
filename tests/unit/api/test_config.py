@@ -98,6 +98,7 @@ class TestEnvironmentResolution:
         # GIVEN
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("APP_ENV", raising=False)
+        monkeypatch.delenv("ENVIRONMENT", raising=False)
         monkeypatch.setenv("SECRET_KEY", "irrelevant-for-dev")
 
         # WHEN
@@ -156,6 +157,22 @@ class TestEnvironmentResolution:
 
         # THEN
         assert settings.testing is True
+
+    def test_rejects_environment_var_without_app_env(self, monkeypatch, tmp_path):
+        """
+        GIVEN ENVIRONMENT is set but APP_ENV is not
+        WHEN Settings is constructed
+        THEN a ValueError points the operator at APP_ENV
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("APP_ENV", raising=False)
+        monkeypatch.setenv("ENVIRONMENT", "prod")
+        monkeypatch.setenv("SECRET_KEY", "irrelevant")
+
+        # WHEN / THEN
+        with pytest.raises(ValueError):
+            Settings()
 
 
 class TestEnvFileLayering:
@@ -237,3 +254,19 @@ class TestProductionInvariants:
 
         # THEN
         assert settings.environment is Environment.PROD
+
+    def test_rejects_short_secret_in_production(self, monkeypatch, tmp_path):
+        """
+        GIVEN the production profile with a short secret not in the blocklist
+        WHEN Settings is constructed
+        THEN validation fails
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("APP_ENV", "prod")
+        monkeypatch.setenv("SECRET_KEY", "short-but-not-listed")
+        monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@host:5432/db")
+
+        # WHEN / THEN
+        with pytest.raises(ValidationError):
+            Settings()

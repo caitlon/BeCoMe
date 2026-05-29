@@ -17,6 +17,9 @@ except PackageNotFoundError:
 # Secret values rejected in production (development defaults must never ship).
 _INSECURE_SECRET_KEYS = frozenset({"", "changeme", "test-secret-key", "test-secret-key-for-ci"})
 
+# Shortest secret accepted in production (openssl rand -hex 32 yields 64 characters).
+_MIN_SECRET_KEY_LENGTH = 32
+
 _APP_ENV_VAR = "APP_ENV"
 
 
@@ -36,14 +39,21 @@ class Environment(StrEnum):
 def _resolve_environment() -> Environment:
     """Resolve the active profile from the ``APP_ENV`` variable.
 
-    ``APP_ENV`` is the single environment selector. When unset, the local
-    development profile is assumed.
+    ``APP_ENV`` is the single environment selector. When it is unset, the local
+    development profile is assumed. Setting the conventional ``ENVIRONMENT``
+    variable instead is rejected with a clear error rather than silently ignored.
 
     :return: Resolved environment profile.
-    :raises ValueError: If ``APP_ENV`` holds a value outside the enum.
+    :raises ValueError: If ``APP_ENV`` holds a value outside the enum, or if
+        ``ENVIRONMENT`` is set while ``APP_ENV`` is not.
     """
     raw = os.environ.get(_APP_ENV_VAR)
     if raw is None:
+        stray = os.environ.get("ENVIRONMENT")
+        if stray:
+            raise ValueError(
+                f"Select the profile with APP_ENV, not ENVIRONMENT (got {stray!r})"
+            )
         return Environment.DEV
     return Environment(raw.strip().lower())
 
@@ -124,8 +134,14 @@ class Settings(BaseSettings):
         :raises ValueError: If production uses an insecure secret or SQLite.
         """
         if self.environment is Environment.PROD:
-            if self.secret_key in _INSECURE_SECRET_KEYS:
-                raise ValueError("secret_key must be a strong non-default value in production")
+            if (
+                self.secret_key in _INSECURE_SECRET_KEYS
+                or len(self.secret_key) < _MIN_SECRET_KEY_LENGTH
+            ):
+                raise ValueError(
+                    "secret_key must be a strong non-default value of at least "
+                    f"{_MIN_SECRET_KEY_LENGTH} characters in production"
+                )
             if self.database_url.startswith("sqlite"):
                 raise ValueError("SQLite is not allowed in production; use PostgreSQL")
         return self
