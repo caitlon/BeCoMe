@@ -80,13 +80,13 @@ Each environment tracks one git branch, and a push to that branch redeploys the 
 
 | Branch | Environment | Profile | Services |
 |--------|-------------|---------|----------|
-| `develop` | dev | `APP_ENV=dev` | `dev-backend`, `dev-frontend`, `dev-db` |
-| `staging` | test | `APP_ENV=test` | staging backend, frontend, Postgres |
-| `main` | production | `APP_ENV=prod` | `prod-backend`, `prod-frontend` (database on Supabase) |
+| `develop` | dev | `APP_ENV=dev` | `dev-backend`, `dev-frontend`, `dev-db`, `dev-photos` |
+| `staging` | test | `APP_ENV=test` | `test-backend`, `test-frontend`, `test-db`, `test-photos` |
+| `main` | production | `APP_ENV=prod` | `prod-backend`, `prod-frontend`, `prod-db`, `prod-photos` |
 
 Work moves in one direction. Cut a feature branch from `develop`, open a pull request back into `develop`, and the merge auto-deploys to dev for a first live check. When a slice is ready for QA, promote `develop` to `staging`; that deploy runs the `test` profile with production-like settings (rate limiting on, debug off), so manual testing is realistic. Promote `staging` to `main` to release, which deploys the `prod` profile and serves the public site. Hotfixes travel the same path instead of landing on `main` directly.
 
-dev and test each use their own Railway Postgres, isolated from one another and from production. Production keeps its external Supabase database.
+Each environment has its own isolated Railway Postgres (`*-db`) and its own Railway Storage Bucket for profile photos (`*-photos`). Supabase is no longer used for the database or for file storage.
 
 ## Railway deployment
 
@@ -99,17 +99,23 @@ The root `railway.toml` carries the API build and deploy settings: it points at 
 | `DATABASE_URL` | staging PostgreSQL | production PostgreSQL |
 | `CORS_ORIGINS` | staging origin(s) | production origin(s) |
 | `DEBUG` | `false` | `false` |
+| `API_PUBLIC_URL` | staging API URL | production API URL |
 | `VITE_API_URL` (frontend build arg) | staging API URL | production API URL |
+| `BUCKET_NAME` / `BUCKET_ENDPOINT` / `BUCKET_ACCESS_KEY_ID` / `BUCKET_SECRET_ACCESS_KEY` | injected from `test-photos` | injected from `prod-photos` |
 
 If `APP_ENV` is left unset on a deployed service, it falls back to dev, which turns debug on and opens CORS. Production must set `APP_ENV=prod` so the startup guard runs.
 
+## Photo storage
+
+Profile photos live in a per-environment Railway Storage Bucket (`dev-photos`, `test-photos`, `prod-photos`), reached over the S3 API. Buckets are private, so the backend serves each image itself through the public proxy `GET /api/v1/users/{id}/photo`; the `users.photo_url` column stores the object key, and responses carry the proxy URL built from `API_PUBLIC_URL`. Attaching a bucket to a service auto-injects `BUCKET_NAME`, `BUCKET_ENDPOINT`, `BUCKET_ACCESS_KEY_ID`, and `BUCKET_SECRET_ACCESS_KEY`; when they are absent (plain local runs), photo upload is disabled and the rest of the API keeps working.
+
 ## Current status
 
-All three environments run on Railway, each with its own isolated Railway Postgres:
+All three environments run entirely on Railway, each with its own isolated Postgres and photo bucket:
 
-- **prod** is live: https://www.becomify.app (frontend) and https://api.becomify.app (API), `APP_ENV=prod`. Its database is **Railway Postgres** (`prod-db`), migrated off Supabase with `pg_dump`/`pg_restore`. Supabase is retained only for file storage (user photos), not for the database.
-- **test / staging** is live from `staging`: https://test-backend-staging.up.railway.app (API) and https://test-frontend-staging.up.railway.app, on its own Railway Postgres (`test-db`), `APP_ENV=test`.
-- **dev** is deployed from `develop`: https://become-dev.up.railway.app (API) plus the dev frontend, on its own Railway Postgres (`dev-db`). It also runs locally with no setup, since dev is the default profile.
+- **prod** is live: https://www.becomify.app (frontend) and https://api.becomify.app (API), `APP_ENV=prod`. Database is **Railway Postgres** (`prod-db`); profile photos live in a **Railway Storage Bucket** (`prod-photos`) served through the API photo proxy. Supabase is fully retired -- neither the database nor file storage uses it anymore.
+- **test / staging** is live from `staging`: https://test-backend-staging.up.railway.app (API) and https://test-frontend-staging.up.railway.app, on its own Railway Postgres (`test-db`) and bucket (`test-photos`), `APP_ENV=test`.
+- **dev** is deployed from `develop`: https://become-dev.up.railway.app (API) plus the dev frontend, on its own Railway Postgres (`dev-db`) and bucket (`dev-photos`). It also runs locally with no setup, since dev is the default profile.
 
 ## Where the code lives
 

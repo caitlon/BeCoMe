@@ -53,7 +53,7 @@ api/
 │   ├── opinion_service.py
 │   ├── invitation_service.py
 │   ├── calculation_service.py
-│   └── storage/            # File storage (Supabase)
+│   └── storage/            # File storage (Railway bucket, S3)
 ├── utils/              # Utilities
 │   └── sanitization.py     # HTML sanitization
 ├── config.py           # Settings (Pydantic Settings)
@@ -141,10 +141,13 @@ Environment variables (can use `.env` file):
 | `DEBUG` | `false` | Debug mode |
 | `API_VERSION` | `1.0.0b1` | API version (auto-read from pyproject.toml) |
 | `CORS_ORIGINS` | `http://localhost:3000,http://localhost:8080` | Allowed CORS origins |
-| `SUPABASE_URL` | *optional* | Supabase project URL |
-| `SUPABASE_KEY` | *optional* | Supabase service key |
+| `API_PUBLIC_URL` | `http://localhost:8000` | Public base URL of this API, used to build profile photo proxy links |
+| `BUCKET_NAME` | *optional* | Railway Storage Bucket name (auto-injected when a bucket is attached) |
+| `BUCKET_ENDPOINT` | *optional* | S3-compatible bucket endpoint |
+| `BUCKET_ACCESS_KEY_ID` | *optional* | Bucket access key |
+| `BUCKET_SECRET_ACCESS_KEY` | *optional* | Bucket secret key |
 
-**Note:** When Supabase credentials are not provided or invalid, file storage features (user photos) are disabled. The API continues to function with all other features available.
+**Note:** Profile photos are stored in a private Railway Storage Bucket (S3-compatible) and served through the `GET /api/v1/users/{id}/photo` proxy. When the bucket variables are absent, photo upload is disabled and the API continues to function with all other features available.
 
 ## Testing
 
