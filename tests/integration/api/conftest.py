@@ -5,7 +5,7 @@ import os
 # Select the test profile before importing api modules (settings are cached on first use)
 os.environ.setdefault("APP_ENV", "test")
 os.environ.setdefault("SECRET_KEY", "test-secret-key")
-os.environ.setdefault("TESTING", "1")
+os.environ["TESTING"] = "1"  # Must always be set; rate limiter reads it at import time
 
 import pytest
 from fastapi import FastAPI
