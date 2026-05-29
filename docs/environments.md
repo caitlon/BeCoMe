@@ -74,9 +74,23 @@ The `api` service in `docker/docker-compose.yml` reads `APP_ENV` with `${APP_ENV
 
 `.github/workflows/ci.yml` sets `APP_ENV=test` on the `python-tests`, `backend-e2e`, and `e2e` jobs, including the steps that start a live server. `scripts/ci/e2e-local.sh` sets the same value for local end-to-end runs.
 
+## Development workflow
+
+Each environment tracks one git branch, and a push to that branch redeploys the environment's Railway services.
+
+| Branch | Environment | Profile | Services |
+|--------|-------------|---------|----------|
+| `develop` | dev | `APP_ENV=dev` | `dev-backend`, `dev-frontend`, `dev-db` |
+| `staging` | test | `APP_ENV=test` | staging backend, frontend, Postgres |
+| `main` | production | `APP_ENV=prod` | `prod-backend`, `prod-frontend` (database on Supabase) |
+
+Work moves in one direction. Cut a feature branch from `develop`, open a pull request back into `develop`, and the merge auto-deploys to dev for a first live check. When a slice is ready for QA, promote `develop` to `staging`; that deploy runs the `test` profile with production-like settings (rate limiting on, debug off), so manual testing is realistic. Promote `staging` to `main` to release, which deploys the `prod` profile and serves the public site. Hotfixes travel the same path instead of landing on `main` directly.
+
+dev and test each use their own Railway Postgres, isolated from one another and from production. Production keeps its external Supabase database.
+
 ## Railway deployment
 
-`railway.toml` holds only build and deploy settings and stays the same across environments. The differences live in service variables, set per environment in the Railway dashboard.
+The root `railway.toml` carries the API build and deploy settings: it points at `docker/Dockerfile` and the `/api/v1/health` check. Railway reads that file from the repository root for every service in the project, so the frontend cannot share it without trying to build the API image. The frontend service therefore has its own config file, `frontend/railway.json`, chosen per service through the Railway "Railway Config File" setting (the absolute path `/frontend/railway.json`); it pins `frontend/Dockerfile` and a `/` health check. Everything else that differs between environments lives in per-environment service variables.
 
 | Variable | staging (test) | production (prod) |
 |----------|----------------|-------------------|
@@ -91,9 +105,11 @@ If `APP_ENV` is left unset on a deployed service, it falls back to dev, which tu
 
 ## Current status
 
-- **prod** is live at https://www.becomify.app on Railway, built from `docker/Dockerfile`.
-- **dev** is local only.
-- **test / staging** is wired in code and CI but not deployed yet. To bring it up, create a second Railway environment with `APP_ENV=test` and the variables above.
+- **prod** is live: https://www.becomify.app (frontend) and https://api.becomify.app (API), with the database on Supabase.
+- **dev** is deployed on Railway from `develop`: https://become-dev.up.railway.app (API) plus the dev frontend, each backed by an isolated Railway Postgres. It also runs locally with no setup, since dev is the default profile.
+- **test / staging** has its Railway environment and Postgres; the backend and frontend services are still being wired up.
+
+Two production follow-ups remain: set `APP_ENV=prod` on the prod API so the startup guard runs (it currently falls back to dev), and point the prod frontend at `frontend/railway.json` so its builds stop reaching for the API Dockerfile.
 
 ## Where the code lives
 
