@@ -190,7 +190,9 @@ class TestTokenBlacklistCleanupExpired:
         """Cleanup handles naive datetime in store."""
         # GIVEN
         jti = "naive-cleanup-jti"
-        TokenBlacklist._memory_store[jti] = datetime.now() - timedelta(hours=1)  # Naive
+        # The store treats naive datetimes as UTC, so use a past naive UTC instant.
+        past_naive = datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=1)
+        TokenBlacklist._memory_store[jti] = past_naive
 
         # WHEN
         removed = TokenBlacklist.cleanup_expired()
