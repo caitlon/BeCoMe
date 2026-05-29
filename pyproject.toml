@@ -20,6 +20,7 @@ dev = [
     "ruff>=0.13",
     "mypy>=1.18",
     "pip-audit>=2.7",
+    "pip>=26.1",
     "types-passlib>=1.7",
     "types-regex>=2024.0",
     "mutmut>=2.0,<4.0",

@@ -45,7 +45,12 @@ node_modules/
 
 # Environment variables
 .env
+/.env.dev
+/.env.test
+/.env.prod
 docker/.env
+frontend/.env.local
+frontend/.env.*.local
 
 # SQLite database
 *.db

@@ -1,10 +1,10 @@
 """Rate limiting configuration for API endpoints."""
 
-import os
-
 from fastapi import Request
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+
+from api.config import get_settings
 
 
 def _get_client_ip(request: Request) -> str:
@@ -23,11 +23,9 @@ def _get_client_ip(request: Request) -> str:
     return get_remote_address(request)
 
 
-# Disable rate limiting during tests (TESTING env var set by pytest)
-_is_testing = os.environ.get("TESTING", "").lower() in ("1", "true", "yes")
-
-# Global limiter instance - use in route decorators
-limiter = Limiter(key_func=_get_client_ip, enabled=not _is_testing)
+# Disable rate limiting only while the automated test suite runs (TESTING flag).
+# Deployed profiles, including staging, keep limiting enabled.
+limiter = Limiter(key_func=_get_client_ip, enabled=not get_settings().testing)
 
 # Rate limit constants for different endpoint types
 LIMIT_AUTH_ENDPOINTS = "5/minute"  # Login, register - strict to prevent brute-force

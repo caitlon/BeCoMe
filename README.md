@@ -100,6 +100,39 @@ cd frontend && npm install && npm run dev
 
 See [api/README.md](api/README.md) for API documentation.
 
+### Environment profiles
+
+The backend selects a profile from the `APP_ENV` variable: `dev` (default), `test`, or `prod`. Settings load the shared `.env` first, then `.env.<APP_ENV>` on top, so the profile file overrides the base. `APP_ENV` is read from the process environment (shell, Docker, Railway, CI), not from the dotenv file, because it decides which file to load.
+
+| Profile | APP_ENV | Use | Database | Debug |
+|---------|---------|-----|----------|-------|
+| dev | unset or `dev` | Local development | SQLite | on |
+| test | `test` | Deployed staging and the test suite | PostgreSQL | off |
+| prod | `prod` | Production (Railway) | PostgreSQL | off |
+
+Copy the matching template and fill it in (the real files are gitignored):
+
+```bash
+cp .env.dev.example .env.dev      # local development
+cp .env.test.example .env.test    # staging
+cp .env.prod.example .env.prod    # production-like local run
+```
+
+Run a specific profile by exporting `APP_ENV`:
+
+```bash
+APP_ENV=dev uv run uvicorn api.main:app --reload
+APP_ENV=prod uv run uvicorn api.main:app
+```
+
+The `prod` profile refuses to start with a default or empty `SECRET_KEY` or a SQLite `DATABASE_URL`, so a misconfigured deployment fails immediately at startup.
+
+The `TESTING` flag is separate from the profile. The test suite sets `APP_ENV=test` together with `TESTING=1`; `TESTING` disables rate limiting and is never set on a deployed profile, so staging keeps the same limits as production.
+
+On Railway, set the profile and secrets as service variables per environment: `APP_ENV`, `SECRET_KEY`, `DATABASE_URL`, `CORS_ORIGINS`, `DEBUG`. The staging service uses `APP_ENV=test`; production uses `APP_ENV=prod`. The frontend reads its API URL from `VITE_API_URL`, injected at build time (see the frontend Dockerfile), so staging and production differ only by that value.
+
+See [docs/environments.md](docs/environments.md) for the full reference: per-profile details, Railway variables, and current deployment status.
+
 ## Methodology
 
 ### Method Overview
