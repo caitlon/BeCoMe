@@ -1,0 +1,19 @@
+{
+  "files": [
+    {
+      "path": "README.md",
+      "description": "BeCoMe method and algorithm overview -- reference for verifying calculator correctness against the documented aggregation steps.",
+      "scope": ["src/**"]
+    },
+    {
+      "path": "docs/method-description.md",
+      "description": "Formal description of the BeCoMe aggregation steps and fuzzy-number formulas.",
+      "scope": ["src/**"]
+    },
+    {
+      "path": "api/README.md",
+      "description": "REST API reference -- endpoints, request/response schemas, and auth flow.",
+      "scope": ["api/**"]
+    }
+  ]
+}

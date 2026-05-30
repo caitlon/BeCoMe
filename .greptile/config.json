@@ -1,0 +1,107 @@
+{
+  "strictness": 2,
+  "commentTypes": ["logic", "syntax"],
+  "triggerOnUpdates": true,
+  "fixWithAI": true,
+  "excludeAuthors": ["dependabot[bot]", "*-bot"],
+  "excludeBranches": ["dependabot/**"],
+  "ignorePatterns": "CLAUDE.md\nuv.lock\nfrontend/package-lock.json\nfrontend/src/components/ui/**\nfrontend/src/vite-env.d.ts\nfrontend/dist/**\nfrontend/coverage/**\nhtmlcov/**\ncoverage.xml\nnode_modules/**\n**/__pycache__/**\nexamples/visualizations/**/*.ipynb\n**/*.min.js\n**/*.generated.*",
+  "rules": [
+    {
+      "id": "src-oop-solid",
+      "rule": "Follow OOP and SOLID. Value objects are immutable: declare them with @dataclass(frozen=True) and validate invariants on construction. Prefer composition over inheritance, and depend on abstractions (ABC or Protocol) injected through the constructor rather than on concrete classes.",
+      "scope": ["src/**/*.py"],
+      "severity": "high"
+    },
+    {
+      "id": "src-value-object-immutability",
+      "rule": "Domain value objects such as FuzzyTriangleNumber and ExpertOpinion must be immutable and fully validated when constructed. Flag added setters, in-place mutation, or fields left unvalidated.",
+      "scope": ["src/models/**/*.py"],
+      "severity": "high"
+    },
+    {
+      "id": "src-strategy-contract",
+      "rule": "Every median calculation strategy must fully implement the strategy contract for both the odd and the even expert-count case. Flag a strategy subclass that leaves a branch unimplemented or silently returns a partial result.",
+      "scope": ["src/calculators/median_strategies.py"],
+      "severity": "medium"
+    },
+    {
+      "id": "src-template-method-order",
+      "rule": "Subclasses of the base aggregation calculator must honor the template-method skeleton: call the defined steps in order and do not skip a step that affects the computed result.",
+      "scope": ["src/calculators/**/*.py"],
+      "severity": "medium"
+    },
+    {
+      "id": "api-thin-endpoints",
+      "rule": "Keep endpoints thin. Business logic belongs in service classes injected via Annotated[Service, Depends(get_service)] -- never instantiate a service directly inside a route. Accept and return Pydantic schemas, not raw SQLModel table models. Raise custom domain exceptions rather than a bare HTTPException.",
+      "scope": ["api/routes/**/*.py"],
+      "severity": "high"
+    },
+    {
+      "id": "api-domain-exceptions",
+      "rule": "Service-layer errors must raise domain-specific exceptions (for example UserExistsError, ProjectNotFoundError), never a bare Exception or ValueError. Document every raised exception in the docstring with :raises:.",
+      "scope": ["api/services/**/*.py"],
+      "severity": "high"
+    },
+    {
+      "id": "api-service-composition",
+      "rule": "Services collaborate through constructor injection (composition), not by inheriting from one another. The only inheritance allowed is from BaseService for session access.",
+      "scope": ["api/services/**/*.py"],
+      "severity": "medium"
+    },
+    {
+      "id": "api-storage-protocol",
+      "rule": "Storage backends are interchangeable (Railway bucket, S3, local). Any implementation must satisfy the full storage Protocol with matching method signatures; flag a missing or diverging method that would only fail at runtime.",
+      "scope": ["api/services/storage/**/*.py"],
+      "severity": "medium"
+    },
+    {
+      "id": "i18n-parallel-locales",
+      "rule": "Translations must stay parallel: every key added under locales/en must have a matching key with identical structure under locales/cs, and vice versa. Flag a key added to one language but missing in the other.",
+      "scope": ["frontend/src/i18n/locales/**/*.json"],
+      "severity": "high"
+    },
+    {
+      "id": "no-hardcoded-ui-strings",
+      "rule": "User-facing text, including aria-label and placeholder values, must come from i18n via t() or tCommon. Flag hardcoded display-string literals in components and pages.",
+      "scope": ["frontend/src/**/*.tsx"],
+      "severity": "high"
+    },
+    {
+      "id": "frontend-a11y-sr-only",
+      "rule": "Screen-reader-only content must use the Tailwind sr-only class, not a hand-rolled visually-hidden style. Radix UI already provides the ARIA base, so do not reinvent accessibility primitives.",
+      "scope": ["frontend/src/**/*.tsx"],
+      "severity": "medium"
+    },
+    {
+      "id": "frontend-tcommon",
+      "rule": "When a component's primary namespace is not common, general UI text (buttons, labels, validation messages) should be read through tCommon, reserving t for namespace-specific keys.",
+      "scope": ["frontend/src/pages/**/*.tsx", "frontend/src/components/**/*.tsx"],
+      "severity": "low"
+    },
+    {
+      "id": "py-absolute-imports",
+      "rule": "Use absolute imports only (for example: from api.services.case_service import CaseService). Flag relative imports such as from .services import ... -- they are not caught by the linter.",
+      "scope": ["src/**/*.py", "api/**/*.py"],
+      "severity": "medium"
+    },
+    {
+      "id": "py-docstring-contracts",
+      "rule": "Public classes, methods, and functions need a reStructuredText docstring with :param:, :return:, and :raises: as applicable. The docstring states what the object does and how to use it, not its internal implementation.",
+      "scope": ["src/**/*.py", "api/**/*.py"],
+      "severity": "medium"
+    },
+    {
+      "id": "py-ascii-only",
+      "rule": "Keep code, comments, and docstrings ASCII-only. Use -> instead of an arrow glyph, -- instead of an em dash, and straight quotes instead of typographic quotes.",
+      "scope": ["**/*.py"],
+      "severity": "low"
+    },
+    {
+      "id": "tests-unit-isolation",
+      "rule": "Unit tests must isolate the component under test by mocking external dependencies -- database session, other services, and storage. A unit test that opens a real Session() or hits the database is an integration test and belongs under tests/integration.",
+      "scope": ["tests/unit/**/*.py"],
+      "severity": "high"
+    }
+  ]
+}
