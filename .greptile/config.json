@@ -64,7 +64,7 @@
     {
       "id": "no-hardcoded-ui-strings",
       "rule": "User-facing text, including aria-label and placeholder values, must come from i18n via t() or tCommon. Flag hardcoded display-string literals in components and pages.",
-      "scope": ["frontend/src/**/*.tsx"],
+      "scope": ["frontend/src/**/*.tsx", "frontend/src/**/*.ts"],
       "severity": "high"
     },
     {
