@@ -10,6 +10,7 @@ changes.
 
 import os
 from logging.config import fileConfig
+from typing import Literal
 
 from alembic import context
 from sqlalchemy import engine_from_config, pool
@@ -39,7 +40,7 @@ def _database_url() -> str:
     return settings.migration_database_url or settings.database_url
 
 
-def _render_item(type_, obj, autogen_context):
+def _render_item(type_: str, obj: object, autogen_context: object) -> str | Literal[False]:
     """Render SQLModel string types as plain SQLAlchemy strings.
 
     ``AutoString`` is equivalent to ``sa.String`` for DDL, so rendering it
