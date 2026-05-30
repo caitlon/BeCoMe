@@ -33,6 +33,26 @@ def _make_project(session, user: User) -> Project:
     return project
 
 
+def _make_calc(project_id, **overrides) -> CalculationResult:
+    """Build a CalculationResult with valid fuzzy ordering; override to break one rule."""
+    fields: dict[str, object] = {
+        "project_id": project_id,
+        "best_compromise_lower": 1.0,
+        "best_compromise_peak": 2.0,
+        "best_compromise_upper": 3.0,
+        "arithmetic_mean_lower": 1.0,
+        "arithmetic_mean_peak": 2.0,
+        "arithmetic_mean_upper": 3.0,
+        "median_lower": 1.0,
+        "median_peak": 2.0,
+        "median_upper": 3.0,
+        "max_error": 0.0,
+        "num_experts": 3,
+    }
+    fields.update(overrides)
+    return CalculationResult(**fields)
+
+
 class TestCheckConstraints:
     """The database enforces the domain CHECK constraints."""
 
@@ -83,22 +103,68 @@ class TestCheckConstraints:
         # GIVEN
         user = _make_user(session)
         project = _make_project(session, user)
-        result = CalculationResult(
-            project_id=project.id,
-            best_compromise_lower=1.0,
-            best_compromise_peak=2.0,
-            best_compromise_upper=3.0,
-            arithmetic_mean_lower=1.0,
-            arithmetic_mean_peak=2.0,
-            arithmetic_mean_upper=3.0,
-            median_lower=1.0,
-            median_peak=2.0,
-            median_upper=3.0,
-            max_error=0.0,
-            num_experts=0,
-        )
 
         # WHEN / THEN
-        session.add(result)
+        session.add(_make_calc(project.id, num_experts=0))
+        with pytest.raises(IntegrityError):
+            session.commit()
+
+    def test_calculation_best_compromise_order_rejected(self, session):
+        """
+        GIVEN a result whose best_compromise bounds violate lower <= peak <= upper
+        WHEN it is committed
+        THEN the database rejects it with IntegrityError
+        """
+        # GIVEN
+        user = _make_user(session)
+        project = _make_project(session, user)
+
+        # WHEN / THEN
+        session.add(_make_calc(project.id, best_compromise_lower=5.0))
+        with pytest.raises(IntegrityError):
+            session.commit()
+
+    def test_calculation_arithmetic_mean_order_rejected(self, session):
+        """
+        GIVEN a result whose arithmetic_mean bounds violate lower <= peak <= upper
+        WHEN it is committed
+        THEN the database rejects it with IntegrityError
+        """
+        # GIVEN
+        user = _make_user(session)
+        project = _make_project(session, user)
+
+        # WHEN / THEN
+        session.add(_make_calc(project.id, arithmetic_mean_lower=5.0))
+        with pytest.raises(IntegrityError):
+            session.commit()
+
+    def test_calculation_median_order_rejected(self, session):
+        """
+        GIVEN a result whose median bounds violate lower <= peak <= upper
+        WHEN it is committed
+        THEN the database rejects it with IntegrityError
+        """
+        # GIVEN
+        user = _make_user(session)
+        project = _make_project(session, user)
+
+        # WHEN / THEN
+        session.add(_make_calc(project.id, median_lower=5.0))
+        with pytest.raises(IntegrityError):
+            session.commit()
+
+    def test_calculation_likert_value_out_of_range_rejected(self, session):
+        """
+        GIVEN a result with likert_value outside 0..100
+        WHEN it is committed
+        THEN the database rejects it with IntegrityError
+        """
+        # GIVEN
+        user = _make_user(session)
+        project = _make_project(session, user)
+
+        # WHEN / THEN
+        session.add(_make_calc(project.id, likert_value=150))
         with pytest.raises(IntegrityError):
             session.commit()
