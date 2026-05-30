@@ -49,6 +49,7 @@ api = [
     "pydantic-settings>=2.7",
     "httpx>=0.28",
     "sqlmodel>=0.0.24",
+    "alembic>=1.13",
     "psycopg2>=2.9",
     "PyJWT>=2.9",
     "passlib[bcrypt]>=1.7",
@@ -102,6 +103,7 @@ strict = true
 show_error_codes = true
 exclude = [
     "examples/visualizations/",
+    "migrations/",
 ]
 
 [[tool.mypy.overrides]]
