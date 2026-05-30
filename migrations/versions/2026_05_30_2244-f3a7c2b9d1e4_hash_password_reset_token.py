@@ -40,9 +40,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """Downgrade schema."""
-    op.drop_index(
-        op.f("ix_password_reset_tokens_token_hash"), table_name="password_reset_tokens"
-    )
+    op.drop_index(op.f("ix_password_reset_tokens_token_hash"), table_name="password_reset_tokens")
     op.drop_column("password_reset_tokens", "token_hash")
     op.add_column(
         "password_reset_tokens",

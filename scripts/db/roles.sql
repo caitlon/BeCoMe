@@ -30,8 +30,13 @@ $$;
 ALTER ROLE become_app NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
 
 -- 2. Connect + schema usage (deliberately NO create) ------------------------------
--- Database name is the Railway default `railway`; adjust if an environment differs.
-GRANT CONNECT ON DATABASE railway TO become_app;
+-- Grant CONNECT on whichever database this script is connected to, so the file does
+-- not hardcode a database name that differs between Railway environments.
+DO $$
+BEGIN
+  EXECUTE format('GRANT CONNECT ON DATABASE %I TO become_app', current_database());
+END
+$$;
 GRANT USAGE ON SCHEMA public TO become_app;
 
 -- 3. DML on existing objects ------------------------------------------------------
