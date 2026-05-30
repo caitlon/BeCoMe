@@ -314,6 +314,7 @@ class TestUserCascadeDelete:
 
         token = PasswordResetToken(
             user_id=user.id,
+            token_hash="a" * 64,
             expires_at=datetime.now(UTC) + timedelta(hours=1),
         )
         session.add(token)
