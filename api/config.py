@@ -83,6 +83,11 @@ class Settings(BaseSettings):
     # Database
     database_url: str = "sqlite:///./become.db"
 
+    # Privileged URL used only by Alembic for schema changes (DDL). When unset it
+    # falls back to database_url, so the running app can use a least-privilege
+    # role while migrations run as a privileged role.
+    migration_database_url: str | None = None
+
     # Auth
     secret_key: str  # Required, load from .env
     access_token_expire_minutes: int = 15  # Short-lived access token

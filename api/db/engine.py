@@ -57,10 +57,15 @@ def get_engine() -> Engine:
 
 
 def create_db_and_tables() -> None:
-    """Create all tables defined in models.
+    """Create tables for SQLite (local development and tests) only.
 
-    Call this on application startup to ensure database schema exists.
+    PostgreSQL schemas are owned by Alembic migrations, so this is a no-op on
+    Postgres: it avoids racing ``create_all`` across uvicorn workers and keeps
+    migrations the single source of schema truth. SQLite keeps using
+    ``create_all`` for a zero-setup, isolated schema in dev and the test suite.
     """
     from api.db import models  # noqa: F401 — registers models with SQLModel.metadata
 
+    if not get_settings().database_url.startswith("sqlite"):
+        return
     SQLModel.metadata.create_all(get_engine())

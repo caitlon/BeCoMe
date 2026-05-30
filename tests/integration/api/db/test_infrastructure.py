@@ -141,6 +141,26 @@ class TestCreateDbAndTables:
         finally:
             _dispose_and_clear_engine()
 
+    @patch("api.db.engine.get_settings")
+    @patch("api.db.engine.SQLModel.metadata.create_all")
+    def test_create_db_and_tables_skips_create_all_on_postgres(
+        self, mock_create_all: MagicMock, mock_get_settings: MagicMock
+    ) -> None:
+        """create_db_and_tables should be a no-op on PostgreSQL (Alembic owns the schema)."""
+        # GIVEN: settings point at PostgreSQL
+        mock_get_settings.return_value.database_url = "postgresql://u:p@h:5432/db"
+        mock_get_settings.return_value.debug = False
+        get_engine.cache_clear()
+
+        try:
+            # WHEN
+            create_db_and_tables()
+
+            # THEN: create_all must not run -- migrations manage the Postgres schema
+            mock_create_all.assert_not_called()
+        finally:
+            _dispose_and_clear_engine()
+
 
 class TestLifespan:
     """Tests for FastAPI lifespan context manager."""
