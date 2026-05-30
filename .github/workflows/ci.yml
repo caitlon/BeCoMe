@@ -304,4 +304,4 @@ jobs:
 
       - name: SonarQube Cloud Scan
         if: env.SONAR_TOKEN != ''
-        uses: SonarSource/sonarqube-scan-action@v7
+        uses: SonarSource/sonarqube-scan-action@v8
