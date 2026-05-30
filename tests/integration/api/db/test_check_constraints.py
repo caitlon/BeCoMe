@@ -4,7 +4,7 @@ These verify the database independently rejects domain-invalid rows, even when a
 write bypasses the application-layer Pydantic validators (defense in depth).
 """
 
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy.exc import IntegrityError
@@ -33,7 +33,7 @@ def _make_project(session, user: User) -> Project:
     return project
 
 
-def _make_calc(project_id, **overrides) -> CalculationResult:
+def _make_calc(project_id: UUID, **overrides: object) -> CalculationResult:
     """Build a CalculationResult with valid fuzzy ordering; override to break one rule."""
     fields: dict[str, object] = {
         "project_id": project_id,
@@ -154,9 +154,10 @@ class TestCheckConstraints:
         with pytest.raises(IntegrityError):
             session.commit()
 
-    def test_calculation_likert_value_out_of_range_rejected(self, session):
+    @pytest.mark.parametrize("value", [150, -1])
+    def test_calculation_likert_value_out_of_range_rejected(self, session, value):
         """
-        GIVEN a result with likert_value outside 0..100
+        GIVEN a result with likert_value outside 0..100 (either bound)
         WHEN it is committed
         THEN the database rejects it with IntegrityError
         """
@@ -165,6 +166,6 @@ class TestCheckConstraints:
         project = _make_project(session, user)
 
         # WHEN / THEN
-        session.add(_make_calc(project.id, likert_value=150))
+        session.add(_make_calc(project.id, likert_value=value))
         with pytest.raises(IntegrityError):
             session.commit()
