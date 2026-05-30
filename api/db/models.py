@@ -6,7 +6,7 @@ from typing import Optional, Self
 from uuid import UUID, uuid4
 
 from pydantic import model_validator
-from sqlalchemy import UniqueConstraint
+from sqlalchemy import CheckConstraint, UniqueConstraint
 from sqlmodel import Field, Relationship, SQLModel
 
 from api.db.utils import EMAIL_REGEX, utc_now
@@ -68,6 +68,7 @@ class Project(SQLModel, table=True):
     """A project for group decision-making."""
 
     __tablename__ = "projects"
+    __table_args__ = (CheckConstraint("scale_min < scale_max", name="ck_projects_scale_order"),)
 
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     name: str = Field(max_length=255)
@@ -159,7 +160,13 @@ class ExpertOpinion(SQLModel, table=True):
     """
 
     __tablename__ = "expert_opinions"
-    __table_args__ = (UniqueConstraint("project_id", "user_id"),)
+    __table_args__ = (
+        UniqueConstraint("project_id", "user_id"),
+        CheckConstraint(
+            "lower_bound <= peak AND peak <= upper_bound",
+            name="ck_expert_opinions_fuzzy_order",
+        ),
+    )
 
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     project_id: UUID = Field(foreign_key=_PROJECTS_FK, index=True, ondelete="CASCADE")
@@ -205,6 +212,27 @@ class CalculationResult(SQLModel, table=True):
     """Cached BeCoMe calculation result for a project."""
 
     __tablename__ = "calculation_results"
+    __table_args__ = (
+        CheckConstraint(
+            "best_compromise_lower <= best_compromise_peak "
+            "AND best_compromise_peak <= best_compromise_upper",
+            name="ck_calculation_results_best_compromise_order",
+        ),
+        CheckConstraint(
+            "arithmetic_mean_lower <= arithmetic_mean_peak "
+            "AND arithmetic_mean_peak <= arithmetic_mean_upper",
+            name="ck_calculation_results_arithmetic_mean_order",
+        ),
+        CheckConstraint(
+            "median_lower <= median_peak AND median_peak <= median_upper",
+            name="ck_calculation_results_median_order",
+        ),
+        CheckConstraint("num_experts > 0", name="ck_calculation_results_num_experts_positive"),
+        CheckConstraint(
+            "likert_value IS NULL OR (likert_value >= 0 AND likert_value <= 100)",
+            name="ck_calculation_results_likert_range",
+        ),
+    )
 
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     project_id: UUID = Field(foreign_key=_PROJECTS_FK, unique=True, index=True, ondelete="CASCADE")
