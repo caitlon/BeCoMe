@@ -29,12 +29,14 @@ def _create_engine() -> Engine:
     if settings.database_url.startswith("sqlite"):
         connect_args["check_same_thread"] = False
     else:
-        # Harden the PostgreSQL connection: require TLS, fail fast on a slow
-        # connect, tag connections for observability, and cap runaway work with
-        # per-session statement and idle-in-transaction timeouts (milliseconds)
-        # so a single query cannot exhaust the managed database.
+        # Harden the PostgreSQL connection: require TLS on deployed databases
+        # (test runs fall back to "prefer" for an ephemeral local Postgres
+        # without SSL), fail fast on a slow connect, tag connections for
+        # observability, and cap runaway work with per-session statement and
+        # idle-in-transaction timeouts (milliseconds) so a single query cannot
+        # exhaust the managed database.
         connect_args = {
-            "sslmode": "require",
+            "sslmode": "prefer" if settings.testing else "require",
             "connect_timeout": 10,
             "application_name": f"become-{settings.environment.value}",
             "options": "-c statement_timeout=30000 -c idle_in_transaction_session_timeout=60000",
@@ -69,15 +71,17 @@ def get_engine() -> Engine:
 
 
 def create_db_and_tables() -> None:
-    """Create tables for SQLite (local development and tests) only.
+    """Create tables for SQLite and ephemeral test databases.
 
-    PostgreSQL schemas are owned by Alembic migrations, so this is a no-op on
-    Postgres: it avoids racing ``create_all`` across uvicorn workers and keeps
-    migrations the single source of schema truth. SQLite keeps using
-    ``create_all`` for a zero-setup, isolated schema in dev and the test suite.
+    Deployed PostgreSQL schemas are owned by Alembic migrations, so this is a
+    no-op there: it avoids racing ``create_all`` across uvicorn workers and keeps
+    migrations the single source of schema truth. SQLite (local development) and
+    test runs (``TESTING=1``, including the e2e PostgreSQL) keep using
+    ``create_all`` for a zero-setup, isolated schema.
     """
     from api.db import models  # noqa: F401 — registers models with SQLModel.metadata
 
-    if not get_settings().database_url.startswith("sqlite"):
+    settings = get_settings()
+    if not (settings.database_url.startswith("sqlite") or settings.testing):
         return
     SQLModel.metadata.create_all(get_engine())

@@ -146,10 +146,11 @@ class TestCreateDbAndTables:
     def test_create_db_and_tables_skips_create_all_on_postgres(
         self, mock_create_all: MagicMock, mock_get_settings: MagicMock
     ) -> None:
-        """create_db_and_tables should be a no-op on PostgreSQL (Alembic owns the schema)."""
-        # GIVEN: settings point at PostgreSQL
+        """create_db_and_tables should be a no-op on deployed PostgreSQL."""
+        # GIVEN: deployed PostgreSQL, not a test run
         mock_get_settings.return_value.database_url = "postgresql://u:p@h:5432/db"
         mock_get_settings.return_value.debug = False
+        mock_get_settings.return_value.testing = False
         get_engine.cache_clear()
 
         try:
@@ -158,6 +159,27 @@ class TestCreateDbAndTables:
 
             # THEN: create_all must not run -- migrations manage the Postgres schema
             mock_create_all.assert_not_called()
+        finally:
+            _dispose_and_clear_engine()
+
+    @patch("api.db.engine.get_settings")
+    @patch("api.db.engine.SQLModel.metadata.create_all")
+    def test_create_db_and_tables_runs_create_all_on_test_postgres(
+        self, mock_create_all: MagicMock, mock_get_settings: MagicMock
+    ) -> None:
+        """create_db_and_tables should call create_all on PostgreSQL under TESTING=1."""
+        # GIVEN: an ephemeral PostgreSQL test database (e.g. the e2e service container)
+        mock_get_settings.return_value.database_url = "postgresql://u:p@h:5432/db"
+        mock_get_settings.return_value.debug = False
+        mock_get_settings.return_value.testing = True
+        get_engine.cache_clear()
+
+        try:
+            # WHEN
+            create_db_and_tables()
+
+            # THEN: create_all runs so the ephemeral test schema exists
+            mock_create_all.assert_called_once()
         finally:
             _dispose_and_clear_engine()
 
