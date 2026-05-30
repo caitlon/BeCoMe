@@ -72,7 +72,7 @@ The `api` service in `docker/docker-compose.yml` reads `APP_ENV` with `${APP_ENV
 
 ## CI
 
-`.github/workflows/ci.yml` sets `APP_ENV=test` on the `python-tests`, `backend-e2e`, and `e2e` jobs, including the steps that start a live server. `scripts/ci/e2e-local.sh` sets the same value for local end-to-end runs.
+`.github/workflows/ci.yml` runs on every push and pull request to `main`, `develop`, and `staging`, so the deploy branches get the same full pipeline as `main`: lint, Python and frontend tests, backend and Playwright end-to-end tests, and SonarCloud (the last on pull requests only). It sets `APP_ENV=test` on the `python-tests`, `backend-e2e`, and `e2e` jobs, including the steps that start a live server. `scripts/ci/e2e-local.sh` sets the same value for local end-to-end runs.
 
 ## Development workflow
 
@@ -96,7 +96,8 @@ The root `railway.toml` carries the API build and deploy settings: it points at 
 |----------|----------------|-------------------|
 | `APP_ENV` | `test` | `prod` |
 | `SECRET_KEY` | strong value (`openssl rand -hex 32`) | strong value |
-| `DATABASE_URL` | staging PostgreSQL | production PostgreSQL |
+| `DATABASE_URL` | staging `become_app` role | production `become_app` role |
+| `MIGRATION_DATABASE_URL` | privileged role, Alembic only | privileged role, Alembic only |
 | `CORS_ORIGINS` | staging origin(s) | production origin(s) |
 | `DEBUG` | `false` | `false` |
 | `API_PUBLIC_URL` | staging API URL | production API URL |
@@ -105,13 +106,21 @@ The root `railway.toml` carries the API build and deploy settings: it points at 
 
 If `APP_ENV` is left unset on a deployed service, it falls back to dev, which turns debug on and opens CORS. Production must set `APP_ENV=prod` so the startup guard runs.
 
+## Database schema and access
+
+The schema is versioned with **Alembic**. Migrations live in `migrations/`; `migrations/env.py` reads its target from `MIGRATION_DATABASE_URL` (falling back to `DATABASE_URL`) and treats `SQLModel.metadata` as the source of truth. Every deploy runs `alembic upgrade head` once through the `preDeployCommand` in `railway.toml`, before the new version goes live, so a failed migration blocks the release instead of starting a broken one. `create_db_and_tables()` still builds the schema directly, but only for SQLite (local development) and `TESTING=1` runs (the end-to-end PostgreSQL); on a deployed database it is a no-op and Alembic stays in charge.
+
+The application connects through a **least-privilege role**, `become_app`. It reads and writes the application tables but cannot create, alter, or drop objects, is not a superuser, and cannot bypass row-level security. Each backend therefore carries two database URLs: `DATABASE_URL` points at `become_app` for the running app, while `MIGRATION_DATABASE_URL` points at the privileged role that Alembic uses for DDL. The connection is hardened in `api/db/engine.py` -- TLS is required on deployed databases, each connection is tagged with an `application_name`, and per-session statement and idle-in-transaction timeouts stop a single query from monopolising the database. The schema also carries domain `CHECK` constraints (fuzzy-number ordering, positive expert counts, scale bounds) so the database rejects invalid rows on its own.
+
+On production and staging each Postgres instance is reachable only over Railway's internal network: the public TCP proxies were removed, so those databases are no longer exposed to the internet. A proxy can be recreated briefly when a laptop needs direct access for a migration or a dump.
+
 ## Photo storage
 
 Profile photos live in a per-environment Railway Storage Bucket (`dev-photos`, `test-photos`, `prod-photos`), reached over the S3 API. Buckets are private, so the backend serves each image itself through the public proxy `GET /api/v1/users/{id}/photo`; the `users.photo_url` column stores the object key, and responses carry the proxy URL built from `API_PUBLIC_URL`. Attaching a bucket to a service auto-injects `BUCKET_NAME`, `BUCKET_ENDPOINT`, `BUCKET_ACCESS_KEY_ID`, and `BUCKET_SECRET_ACCESS_KEY`; when they are absent (plain local runs), photo upload is disabled and the rest of the API keeps working.
 
 ## Current status
 
-All three environments run entirely on Railway, each with its own isolated Postgres and photo bucket:
+All three environments run entirely on Railway, each with its own isolated Postgres and photo bucket. The database layer is hardened the same way across them: Alembic owns the schema, the app connects as the least-privilege `become_app` role, and the production and staging databases are internal-only.
 
 - **prod** is live: https://www.becomify.app (frontend) and https://api.becomify.app (API), `APP_ENV=prod`. Database is **Railway Postgres** (`prod-db`); profile photos live in a **Railway Storage Bucket** (`prod-photos`) served through the API photo proxy. Supabase is fully retired -- neither the database nor file storage uses it anymore.
 - **test / staging** is live from `staging`: https://test-backend-staging.up.railway.app (API) and https://test-frontend-staging.up.railway.app, on its own Railway Postgres (`test-db`) and bucket (`test-photos`), `APP_ENV=test`.

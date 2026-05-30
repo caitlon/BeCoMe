@@ -134,7 +134,8 @@ Environment variables (can use `.env` file):
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `APP_ENV` | `dev` | Deployment profile: `dev`, `test`, or `prod`. Selects the `.env.<APP_ENV>` overlay; `prod` rejects a default secret or SQLite. See the root README "Environment profiles". |
-| `DATABASE_URL` | `sqlite:///./become.db` | Database connection string |
+| `DATABASE_URL` | `sqlite:///./become.db` | Database connection string. On deployed environments this is the least-privilege `become_app` role. |
+| `MIGRATION_DATABASE_URL` | *optional* | Privileged connection used only by Alembic migrations (DDL); falls back to `DATABASE_URL` when unset. |
 | `SECRET_KEY` | *required* | JWT signing key (generate with `openssl rand -hex 32`) |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | `15` | Access token TTL |
 | `REFRESH_TOKEN_EXPIRE_DAYS` | `7` | Refresh token TTL |
@@ -148,6 +149,8 @@ Environment variables (can use `.env` file):
 | `BUCKET_SECRET_ACCESS_KEY` | *optional* | Bucket secret key |
 
 **Note:** Profile photos are stored in a private Railway Storage Bucket (S3-compatible) and served through the `GET /api/v1/users/{id}/photo` proxy. When the bucket variables are absent, photo upload is disabled and the API continues to function with all other features available.
+
+**Migrations:** The PostgreSQL schema is managed by Alembic (`migrations/`). `alembic upgrade head` runs automatically before each Railway deploy; to apply it manually against a specific database use `ALEMBIC_DATABASE_URL=<url> uv run alembic upgrade head`. SQLite (local development and the test suite) keeps using `create_all`, so no migration step is needed there.
 
 ## Testing
 
