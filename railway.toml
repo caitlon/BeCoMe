@@ -3,6 +3,9 @@ builder = "DOCKERFILE"
 dockerfilePath = "docker/Dockerfile"
 
 [deploy]
+# Apply database migrations once per deploy, before the new version goes live.
+# Runs as a single one-off (no per-worker race); a failure blocks the deploy.
+preDeployCommand = "alembic upgrade head"
 healthcheckPath = "/api/v1/health"
 healthcheckTimeout = 30
 restartPolicyType = "ON_FAILURE"

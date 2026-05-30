@@ -65,6 +65,10 @@ COPY --chown=appuser:appgroup src/ ./src/
 COPY --chown=appuser:appgroup api/ ./api/
 COPY --chown=appuser:appgroup pyproject.toml ./
 
+# Copy Alembic config and migrations so the pre-deploy command can run them
+COPY --chown=appuser:appgroup alembic.ini ./
+COPY --chown=appuser:appgroup migrations/ ./migrations/
+
 # Switch to non-root user
 USER appuser
 
