@@ -33,7 +33,7 @@ _TABLES: tuple[str, ...] = (
 
 def upgrade() -> None:
     """Drop the inherited forced row-level security (PostgreSQL only)."""
-    if op.get_bind().dialect.name != "postgresql":
+    if op.get_context().dialect.name != "postgresql":
         return
     for table in _TABLES:
         op.execute(f"ALTER TABLE {table} NO FORCE ROW LEVEL SECURITY")
@@ -42,7 +42,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """Restore forced row-level security without policies (PostgreSQL only)."""
-    if op.get_bind().dialect.name != "postgresql":
+    if op.get_context().dialect.name != "postgresql":
         return
     for table in _TABLES:
         op.execute(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY")
