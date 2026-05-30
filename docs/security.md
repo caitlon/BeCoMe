@@ -61,10 +61,24 @@ workable substitute.
 
 ## Backups
 
-Railway takes scheduled volume backups of each Postgres service. Confirm the schedule and
-retention for `prod-db` (and `test-db`) under the service's **Backups** tab in the Railway
-dashboard, and keep a periodic restore drill -- the Supabase-to-Railway migration recipe in
-`environments.md` doubles as the restore procedure, since it is the same dump/restore path.
+Railway's managed backups require the Pro plan, so on the current (free) plan the Postgres
+volumes are **not** backed up automatically. Until that changes, take manual dumps with
+`scripts/db/backup.sh`, which opens a temporary proxy, runs `pg_dump`, and removes the proxy
+again:
+
+```bash
+./scripts/db/backup.sh prod      # writes backups/prod-<timestamp>.dump
+```
+
+Run it before risky migrations and on a regular cadence. The dumps stay out of the repo
+(`backups/` is gitignored -- they contain user data). Restore into any database with:
+
+```bash
+pg_restore --no-owner --no-privileges -d <target-url> backups/<dump>
+```
+
+Upgrading the prod service to the Railway Pro plan would replace this with scheduled backups
+plus point-in-time recovery.
 
 ## Secret rotation
 

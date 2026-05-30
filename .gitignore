@@ -77,3 +77,6 @@ examples/visualizations/*/output/
 # Deployment logs
 logs/
 logs.zip
+
+# Database backups (contain user data -- never commit)
+/backups/
