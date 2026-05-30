@@ -1,7 +1,6 @@
 """Tests for User and PasswordResetToken models."""
 
 from datetime import UTC, datetime, timedelta
-from uuid import uuid4
 
 import pytest
 from pydantic import ValidationError

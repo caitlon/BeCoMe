@@ -209,8 +209,8 @@ class PasswordResetToken(SQLModel, table=True):
 
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     user_id: UUID = Field(foreign_key=_USERS_FK, index=True, ondelete="CASCADE")
-    # SHA-256 hex digest of the raw token (64 chars); the raw token is never stored.
-    token_hash: str = Field(unique=True, index=True, max_length=64)
+    # SHA-256 hex digest of the raw token (exactly 64 chars); the raw token is never stored.
+    token_hash: str = Field(unique=True, index=True, min_length=64, max_length=64)
     created_at: datetime = Field(default_factory=utc_now)
     expires_at: datetime
     used_at: datetime | None = Field(default=None)
