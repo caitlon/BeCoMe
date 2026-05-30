@@ -109,6 +109,7 @@ class TestPasswordResetTokenModel:
         # WHEN
         token = PasswordResetToken(
             user_id=user.id,
+            token_hash="a" * 64,
             expires_at=datetime.now(UTC) + timedelta(hours=1),
         )
         session.add(token)
@@ -116,7 +117,7 @@ class TestPasswordResetTokenModel:
         session.refresh(token)
 
         # THEN
-        assert token.token is not None
+        assert token.token_hash == "a" * 64
         assert token.used_at is None
         assert token.user_id == user.id
 
@@ -131,20 +132,20 @@ class TestPasswordResetTokenModel:
         session.add(user)
         session.commit()
 
-        shared_token = uuid4()
+        shared_hash = "b" * 64
 
         token1 = PasswordResetToken(
             user_id=user.id,
-            token=shared_token,
+            token_hash=shared_hash,
             expires_at=datetime.now(UTC) + timedelta(hours=1),
         )
         session.add(token1)
         session.commit()
 
-        # WHEN/THEN - duplicate token should fail
+        # WHEN/THEN - duplicate token hash should fail
         token2 = PasswordResetToken(
             user_id=user.id,
-            token=shared_token,
+            token_hash=shared_hash,
             expires_at=datetime.now(UTC) + timedelta(hours=1),
         )
         session.add(token2)
@@ -165,10 +166,12 @@ class TestPasswordResetTokenModel:
         # WHEN - multiple tokens for same user (e.g., requested reset twice)
         token1 = PasswordResetToken(
             user_id=user.id,
+            token_hash="c" * 64,
             expires_at=datetime.now(UTC) + timedelta(hours=1),
         )
         token2 = PasswordResetToken(
             user_id=user.id,
+            token_hash="d" * 64,
             expires_at=datetime.now(UTC) + timedelta(hours=2),
         )
         session.add_all([token1, token2])

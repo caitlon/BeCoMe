@@ -194,13 +194,23 @@ class ExpertOpinion(SQLModel, table=True):
 
 
 class PasswordResetToken(SQLModel, table=True):
-    """Token for password reset via email."""
+    """Token for password reset via email.
+
+    Only the SHA-256 hash of the reset token is stored, never the raw value. The
+    reset flow is expected to generate a high-entropy token (for example via
+    ``secrets.token_urlsafe``), email the RAW token to the user, and persist only
+    ``hashlib.sha256(raw.encode()).hexdigest()`` in ``token_hash``. Validation
+    re-hashes the incoming token and looks it up by ``token_hash``, so a database
+    leak never exposes a usable token. (The reset flow itself is not implemented
+    yet; this schema is secure by default for when it is.)
+    """
 
     __tablename__ = "password_reset_tokens"
 
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     user_id: UUID = Field(foreign_key=_USERS_FK, index=True, ondelete="CASCADE")
-    token: UUID = Field(default_factory=uuid4, unique=True, index=True)
+    # SHA-256 hex digest of the raw token (64 chars); the raw token is never stored.
+    token_hash: str = Field(unique=True, index=True, max_length=64)
     created_at: datetime = Field(default_factory=utc_now)
     expires_at: datetime
     used_at: datetime | None = Field(default=None)
