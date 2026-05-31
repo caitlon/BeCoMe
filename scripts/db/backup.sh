@@ -44,11 +44,12 @@ ENV_ID=$(printf '%s' "$META" | jq -r --arg n "$RW_ENV" '.data.project.environmen
 SVC_ID=$(printf '%s' "$META" | jq -r --arg n "$DB_SVC" '.data.project.services.edges[].node | select(.name==$n) | .id')
 { [ -z "$ENV_ID" ] || [ -z "$SVC_ID" ]; } && { echo "could not resolve $RW_ENV / $DB_SVC"; exit 1; }
 
-# Password + database name from the internal DATABASE_URL (password is shared with the proxy).
-INTURL=$(gql "$(jq -n --arg p "$PROJECT_ID" --arg e "$ENV_ID" --arg s "$SVC_ID" '{query:"query($p:String!,$e:String!,$s:String!){variables(projectId:$p,environmentId:$e,serviceId:$s)}",variables:{p:$p,e:$e,s:$s}}')" | jq -r '.data.variables.DATABASE_URL // empty')
-[ -z "$INTURL" ] && { echo "no DATABASE_URL for $DB_SVC"; exit 1; }
-PW=$(printf '%s' "$INTURL" | sed -E 's#^postgres(ql)?://[^:]+:([^@]+)@.*#\2#')
-DBN=$(printf '%s' "$INTURL" | sed -E 's#.*/([^/?]+)(\?.*)?$#\1#')
+# Password + database name from the service's canonical Postgres variables.
+VARS=$(gql "$(jq -n --arg p "$PROJECT_ID" --arg e "$ENV_ID" --arg s "$SVC_ID" '{query:"query($p:String!,$e:String!,$s:String!){variables(projectId:$p,environmentId:$e,serviceId:$s)}",variables:{p:$p,e:$e,s:$s}}')")
+printf '%s' "$VARS" | jq -e '.errors' >/dev/null 2>&1 && { echo "Railway API error: $(printf '%s' "$VARS" | jq -c '.errors')"; exit 1; }
+PW=$(printf '%s' "$VARS" | jq -r '.data.variables.PGPASSWORD // .data.variables.POSTGRES_PASSWORD // empty')
+DBN=$(printf '%s' "$VARS" | jq -r '.data.variables.PGDATABASE // .data.variables.POSTGRES_DB // "railway"')
+[ -z "$PW" ] && { echo "could not read DB password for $DB_SVC (got vars: $(printf '%s' "$VARS" | jq -r '.data.variables|keys|join(",")' 2>/dev/null))"; exit 1; }
 
 # Open a temporary public proxy (torn down by the trap above).
 CR=$(gql "$(jq -n --arg e "$ENV_ID" --arg s "$SVC_ID" '{query:"mutation($i:TCPProxyCreateInput!){tcpProxyCreate(input:$i){id domain proxyPort}}",variables:{i:{environmentId:$e,serviceId:$s,applicationPort:5432}}}')")
