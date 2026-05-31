@@ -10,6 +10,7 @@ from slowapi.errors import RateLimitExceeded
 
 from api.config import get_settings
 from api.db.engine import create_db_and_tables
+from api.logging_config import setup_logging
 from api.middleware.exception_handlers import register_exception_handlers
 from api.middleware.rate_limit import limiter
 from api.middleware.security_headers import SecurityHeadersMiddleware
@@ -30,6 +31,7 @@ def create_app() -> FastAPI:
     centrally in middleware, routes don't need try-except blocks.
     """
     settings = get_settings()
+    setup_logging(settings)
 
     app = FastAPI(
         title="BeCoMe API",

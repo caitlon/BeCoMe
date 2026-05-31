@@ -97,6 +97,10 @@ class Settings(BaseSettings):
     debug: bool = False
     api_version: str = _version
 
+    # Logging
+    log_level: str = "INFO"
+    log_file: str | None = None
+
     # CORS
     cors_origins: list[str] = [
         "http://localhost:3000",

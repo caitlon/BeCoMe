@@ -258,3 +258,49 @@ class TestProductionInvariants:
         # WHEN / THEN
         with pytest.raises(ValidationError):
             Settings()
+
+
+class TestLoggingSettings:
+    """Tests for logging-related settings."""
+
+    def test_log_level_defaults_to_info(self):
+        """
+        GIVEN Settings without an explicit log level
+        WHEN constructed
+        THEN log_level defaults to INFO
+        """
+        # GIVEN / WHEN
+        settings = Settings(secret_key="test-secret-key")
+
+        # THEN
+        assert settings.log_level == "INFO"
+
+    def test_log_file_defaults_to_none(self):
+        """
+        GIVEN Settings without an explicit log file
+        WHEN constructed
+        THEN log_file defaults to None
+        """
+        # GIVEN / WHEN
+        settings = Settings(secret_key="test-secret-key")
+
+        # THEN
+        assert settings.log_file is None
+
+    def test_reads_log_level_from_env(self, monkeypatch, tmp_path):
+        """
+        GIVEN LOG_LEVEL is set in the environment
+        WHEN Settings is constructed
+        THEN log_level reflects the env value
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("APP_ENV", "dev")
+        monkeypatch.setenv("SECRET_KEY", "irrelevant-for-dev")
+        monkeypatch.setenv("LOG_LEVEL", "DEBUG")
+
+        # WHEN
+        settings = Settings()
+
+        # THEN
+        assert settings.log_level == "DEBUG"
