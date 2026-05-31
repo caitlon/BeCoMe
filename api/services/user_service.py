@@ -49,7 +49,6 @@ class UserService(BaseService):
             extra={
                 "event": "user_created",
                 "user_id": str(saved.id),
-                "email": normalized_email,
             },
         )
         return saved

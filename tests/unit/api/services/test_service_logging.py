@@ -54,8 +54,8 @@ class TestProjectServiceLogging:
 class TestUserServiceLogging:
     """User mutations are logged at INFO without secrets."""
 
-    def test_create_user_logs_event_without_password(self):
-        """create_user logs a user_created event and never the password."""
+    def test_create_user_logs_event_without_pii(self):
+        """create_user logs a user_created event without the password or email."""
         # GIVEN
         session = MagicMock()
         session.exec.return_value.first.return_value = None
@@ -68,7 +68,10 @@ class TestUserServiceLogging:
         # THEN
         extra = mock_logger.info.call_args[1]["extra"]
         assert extra["event"] == "user_created"
-        assert "super-secret-pw" not in str(mock_logger.info.call_args)
+        assert "email" not in extra
+        logged = str(mock_logger.info.call_args)
+        assert "super-secret-pw" not in logged
+        assert "user@example.com" not in logged
 
     def test_delete_user_logs_event(self):
         """delete_user logs a user_deleted event."""
