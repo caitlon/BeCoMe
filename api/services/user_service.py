@@ -1,5 +1,6 @@
 """User business logic service."""
 
+import logging
 from uuid import UUID
 
 from sqlmodel import select
@@ -8,6 +9,8 @@ from api.auth.password import hash_password, verify_password
 from api.db.models import User
 from api.exceptions import InvalidCredentialsError, UserExistsError
 from api.services.base import BaseService
+
+logger = logging.getLogger("api.service.user")
 
 
 class UserService(BaseService):
@@ -40,7 +43,16 @@ class UserService(BaseService):
             first_name=first_name,
             last_name=last_name,
         )
-        return self._save_and_refresh(user)
+        saved = self._save_and_refresh(user)
+        logger.info(
+            "User created",
+            extra={
+                "event": "user_created",
+                "user_id": str(saved.id),
+                "email": normalized_email,
+            },
+        )
+        return saved
 
     def get_by_email(self, email: str) -> User | None:
         """Find user by email address.
@@ -123,6 +135,10 @@ class UserService(BaseService):
         :param user: User to delete
         """
         self._delete_and_commit(user)
+        logger.info(
+            "User deleted",
+            extra={"event": "user_deleted", "user_id": str(user.id)},
+        )
 
     def update_photo_url(self, user: User, photo_key: str | None) -> User:
         """Update the user's stored profile photo key.

@@ -1,5 +1,6 @@
 """BeCoMe calculation business logic service."""
 
+import logging
 from uuid import UUID
 
 from sqlmodel import Session, select
@@ -13,6 +14,8 @@ from src.interpreters.likert_interpreter import LikertDecisionInterpreter
 from src.models.become_result import BeCoMeResult
 from src.models.expert_opinion import ExpertOpinion as DomainExpertOpinion
 from src.models.fuzzy_number import FuzzyTriangleNumber
+
+logger = logging.getLogger("api.service.calculation")
 
 
 class CalculationService(BaseService):
@@ -64,6 +67,10 @@ class CalculationService(BaseService):
 
         if not opinions:
             self._delete_result(project_id)
+            logger.info(
+                "Recalculation cleared",
+                extra={"event": "recalculation_cleared", "project_id": str(project_id)},
+            )
             return None
 
         domain_opinions = [
@@ -89,12 +96,21 @@ class CalculationService(BaseService):
             likert_value = likert_result.likert_value
             likert_decision = likert_result.decision_text
 
-        return self._save_result(
+        saved = self._save_result(
             project_id=project_id,
             result=result,
             likert_value=likert_value,
             likert_decision=likert_decision,
         )
+        logger.info(
+            "Recalculation completed",
+            extra={
+                "event": "recalculation_completed",
+                "project_id": str(project_id),
+                "num_experts": len(opinions),
+            },
+        )
+        return saved
 
     def _get_opinions(self, project_id: UUID) -> list[ExpertOpinion]:
         """Get all opinions for a project."""

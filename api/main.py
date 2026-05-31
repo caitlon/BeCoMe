@@ -5,14 +5,13 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from api.config import get_settings
 from api.db.engine import create_db_and_tables
 from api.logging_config import setup_logging
 from api.middleware.exception_handlers import register_exception_handlers
-from api.middleware.rate_limit import limiter
+from api.middleware.rate_limit import limiter, rate_limit_handler
 from api.middleware.request_logging import RequestLoggingMiddleware
 from api.middleware.security_headers import SecurityHeadersMiddleware
 from api.routes import auth, calculate, health, invitations, opinions, projects, users
@@ -43,7 +42,7 @@ def create_app() -> FastAPI:
 
     # Rate limiting setup
     app.state.limiter = limiter
-    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(RateLimitExceeded, rate_limit_handler)  # type: ignore[arg-type]
 
     # Security headers middleware (added first, executes last)
     app.add_middleware(SecurityHeadersMiddleware)
