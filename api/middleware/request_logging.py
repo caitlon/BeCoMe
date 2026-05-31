@@ -9,6 +9,8 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
+from api.utils.client_ip import get_client_ip
+
 logger = logging.getLogger("api.request")
 
 REQUEST_ID_HEADER = "X-Request-ID"
@@ -34,7 +36,13 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         request: Request,
         call_next: Callable[[Request], Awaitable[Response]],
     ) -> Response:
-        """Log the request, delegate, then log the timed response."""
+        """Log the request, delegate, then log the timed response.
+
+        :param request: Incoming request; its ``X-Request-ID`` header is reused
+            as the correlation ID when present, otherwise a new one is generated.
+        :param call_next: Downstream handler that produces the response.
+        :return: The downstream response with the ``X-Request-ID`` header set.
+        """
         request_id = request.headers.get(REQUEST_ID_HEADER) or str(uuid.uuid4())
         request.state.request_id = request_id
         path = request.url.path
@@ -52,7 +60,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
                 "request_id": request_id,
                 "method": request.method,
                 "path": path,
-                "ip": _client_ip(request),
+                "ip": get_client_ip(request),
             },
         )
 
@@ -77,17 +85,3 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
 
         response.headers[REQUEST_ID_HEADER] = request_id
         return response
-
-
-def _client_ip(request: Request) -> str:
-    """Extract the client IP, honouring a reverse-proxy forwarded header.
-
-    :param request: Incoming request.
-    :return: Client IP address, or ``"unknown"`` when unavailable.
-    """
-    forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    if request.client:
-        return request.client.host
-    return "unknown"

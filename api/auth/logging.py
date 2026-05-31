@@ -4,6 +4,8 @@ import logging
 from typing import TYPE_CHECKING
 from uuid import UUID
 
+from api.utils.client_ip import get_client_ip
+
 if TYPE_CHECKING:
     from fastapi import Request
 
@@ -18,7 +20,7 @@ def log_login_success(user_id: UUID, email: str, request: "Request | None" = Non
     :param email: User's email address
     :param request: FastAPI request (for IP extraction)
     """
-    ip = _get_client_ip(request) if request else "unknown"
+    ip = get_client_ip(request)
     logger.info(
         "Login successful",
         extra={
@@ -37,7 +39,7 @@ def log_login_failure(email: str, reason: str, request: "Request | None" = None)
     :param reason: Failure reason
     :param request: FastAPI request (for IP extraction)
     """
-    ip = _get_client_ip(request) if request else "unknown"
+    ip = get_client_ip(request)
     logger.warning(
         "Login failed",
         extra={
@@ -56,7 +58,7 @@ def log_registration(user_id: UUID, email: str, request: "Request | None" = None
     :param email: User's email address
     :param request: FastAPI request (for IP extraction)
     """
-    ip = _get_client_ip(request) if request else "unknown"
+    ip = get_client_ip(request)
     logger.info(
         "User registered",
         extra={
@@ -74,7 +76,7 @@ def log_password_change(user_id: UUID, request: "Request | None" = None) -> None
     :param user_id: User's ID
     :param request: FastAPI request (for IP extraction)
     """
-    ip = _get_client_ip(request) if request else "unknown"
+    ip = get_client_ip(request)
     logger.info(
         "Password changed",
         extra={
@@ -92,7 +94,7 @@ def log_account_deletion(user_id: UUID, email: str, request: "Request | None" = 
     :param email: User's email address
     :param request: FastAPI request (for IP extraction)
     """
-    ip = _get_client_ip(request) if request else "unknown"
+    ip = get_client_ip(request)
     logger.info(
         "Account deleted",
         extra={
@@ -102,22 +104,3 @@ def log_account_deletion(user_id: UUID, email: str, request: "Request | None" = 
             "ip": ip,
         },
     )
-
-
-def _get_client_ip(request: "Request | None") -> str:
-    """Extract client IP from request, considering proxies.
-
-    :param request: FastAPI request object
-    :return: Client IP address string
-    """
-    if not request:
-        return "unknown"
-
-    forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-
-    if request.client:
-        return request.client.host
-
-    return "unknown"
