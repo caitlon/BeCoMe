@@ -150,8 +150,9 @@ class InvitationService(BaseService):
             self._delete_and_commit(invitation)
             raise UserAlreadyMemberError("User is already a member of this project")
 
+        project_id = invitation.project_id
         membership = ProjectMember(
-            project_id=invitation.project_id,
+            project_id=project_id,
             user_id=user_id,
             role=MemberRole.EXPERT,
         )
@@ -164,7 +165,7 @@ class InvitationService(BaseService):
             extra={
                 "event": "invitation_accepted",
                 "invitation_id": str(invitation_id),
-                "project_id": str(invitation.project_id),
+                "project_id": str(project_id),
             },
         )
         return membership
