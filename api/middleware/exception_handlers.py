@@ -5,6 +5,8 @@ a single place to handle all API exceptions. Adding new exception types
 requires only adding a new entry to EXCEPTION_MAP, not modifying route handlers.
 """
 
+import logging
+
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 
@@ -25,6 +27,8 @@ from api.exceptions import (
     ValidationError,
     ValuesOutOfRangeError,
 )
+
+logger = logging.getLogger("api.exception")
 
 # Exception to HTTP status code and message mapping
 # Following OCP: extend by adding entries, not modifying handlers
@@ -103,6 +107,20 @@ def become_api_error_handler(request: Request, exc: BeCoMeAPIError) -> JSONRespo
     """
     status_code, detail = _get_status_and_detail(exc)
 
+    # Server faults are logged as errors, client faults as warnings.
+    log = logger.error if status_code >= status.HTTP_500_INTERNAL_SERVER_ERROR else logger.warning
+    log(
+        "%s -> %d",
+        type(exc).__name__,
+        status_code,
+        extra={
+            "request_id": getattr(request.state, "request_id", None),
+            "status_code": status_code,
+            "path": request.url.path,
+            "exception_type": type(exc).__name__,
+        },
+    )
+
     # Special handling for auth errors
     headers = None
     if isinstance(exc, InvalidCredentialsError):
@@ -118,6 +136,31 @@ def become_api_error_handler(request: Request, exc: BeCoMeAPIError) -> JSONRespo
     )
 
 
+def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Handle any exception not covered by a more specific handler.
+
+    Logs the full traceback at ERROR level and returns an opaque 500 so internal
+    details never leak to the client.
+
+    :param request: FastAPI request
+    :param exc: The unhandled exception
+    :return: Generic 500 JSON response
+    """
+    logger.error(
+        "Unhandled exception",
+        exc_info=True,
+        extra={
+            "request_id": getattr(request.state, "request_id", None),
+            "path": request.url.path,
+            "exception_type": type(exc).__name__,
+        },
+    )
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={"detail": "Internal server error"},
+    )
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     """Register all exception handlers with the FastAPI app.
 
@@ -126,3 +169,4 @@ def register_exception_handlers(app: FastAPI) -> None:
     :param app: FastAPI application instance
     """
     app.add_exception_handler(BeCoMeAPIError, become_api_error_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(Exception, unhandled_exception_handler)
