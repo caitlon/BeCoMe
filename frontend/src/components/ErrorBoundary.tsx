@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
+import i18n from '@/i18n';
 import { logger } from '@/lib/logger';
 
 interface ErrorBoundaryProps {
@@ -12,8 +13,10 @@ interface ErrorBoundaryState {
 /**
  * Catches rendering errors anywhere below it and shows a recovery screen.
  *
- * The fallback text is hardcoded in English rather than translated: i18n itself
- * could be the thing that failed, so the boundary must not depend on it.
+ * Fallback text is read from the i18n singleton via `i18n.t` rather than the
+ * `useTranslation` hook: a class component cannot call hooks, and reading the
+ * singleton directly keeps the boundary independent of React context, so it
+ * still renders correctly even if a context provider is what failed.
  */
 export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   state: ErrorBoundaryState = { hasError: false };
@@ -41,16 +44,14 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
           role="alert"
           className="min-h-screen flex flex-col items-center justify-center gap-4 p-6 text-center"
         >
-          <h1 className="text-2xl font-semibold">Something went wrong</h1>
-          <p className="text-muted-foreground">
-            An unexpected error occurred. Please reload the page to continue.
-          </p>
+          <h1 className="text-2xl font-semibold">{i18n.t('errorBoundary.title')}</h1>
+          <p className="text-muted-foreground">{i18n.t('errorBoundary.description')}</p>
           <button
             type="button"
             onClick={this.handleReload}
             className="rounded-md bg-primary px-4 py-2 text-primary-foreground"
           >
-            Reload page
+            {i18n.t('errorBoundary.reload')}
           </button>
         </main>
       );
