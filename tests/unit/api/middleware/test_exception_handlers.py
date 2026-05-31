@@ -300,7 +300,7 @@ class TestUnhandledExceptionHandler:
 
         # THEN
         mock_logger.error.assert_called_once()
-        assert mock_logger.error.call_args[1]["exc_info"] is True
+        assert mock_logger.error.call_args[1]["exc_info"] is exc
 
     def test_register_adds_catch_all_handler(self):
         """

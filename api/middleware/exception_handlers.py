@@ -148,7 +148,7 @@ def unhandled_exception_handler(request: Request, exc: Exception) -> JSONRespons
     """
     logger.error(
         "Unhandled exception",
-        exc_info=True,
+        exc_info=exc,
         extra={
             "request_id": getattr(request.state, "request_id", None),
             "path": request.url.path,
