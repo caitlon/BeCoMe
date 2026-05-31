@@ -13,6 +13,7 @@ from api.db.engine import create_db_and_tables
 from api.logging_config import setup_logging
 from api.middleware.exception_handlers import register_exception_handlers
 from api.middleware.rate_limit import limiter
+from api.middleware.request_logging import RequestLoggingMiddleware
 from api.middleware.security_headers import SecurityHeadersMiddleware
 from api.routes import auth, calculate, health, invitations, opinions, projects, users
 
@@ -53,9 +54,18 @@ def create_app() -> FastAPI:
         allow_origins=settings.cors_origins,
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["Content-Type", "Authorization", "Accept", "Accept-Language"],
+        allow_headers=[
+            "Content-Type",
+            "Authorization",
+            "Accept",
+            "Accept-Language",
+            "X-Request-ID",
+        ],
         max_age=600,  # Cache preflight requests for 10 minutes
     )
+
+    # Request/response logging with correlation IDs (outermost: wraps everything)
+    app.add_middleware(RequestLoggingMiddleware)
 
     # Register exception handlers (OCP: centralized error handling)
     register_exception_handlers(app)
