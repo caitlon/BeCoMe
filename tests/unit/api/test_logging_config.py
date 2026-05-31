@@ -260,3 +260,48 @@ class TestCreateAppLogging:
             create_app()
 
         mock_setup.assert_called_once()
+
+
+class TestSentryInit:
+    """Tests for the Sentry initialisation guard."""
+
+    def test_initializes_when_dsn_set(self):
+        """
+        GIVEN settings carrying a Sentry DSN
+        WHEN _init_sentry runs
+        THEN sentry_sdk.init is called once
+        """
+        # GIVEN
+        from unittest.mock import MagicMock, patch
+
+        from api.main import _init_sentry
+
+        settings = MagicMock()
+        settings.sentry_dsn = "https://key@o0.ingest.sentry.io/1"
+        settings.environment = Environment.PROD
+
+        # WHEN / THEN
+        with patch("api.main.sentry_sdk.init") as mock_init:
+            _init_sentry(settings)
+
+        mock_init.assert_called_once()
+
+    def test_skipped_when_dsn_absent(self):
+        """
+        GIVEN settings without a Sentry DSN
+        WHEN _init_sentry runs
+        THEN sentry_sdk.init is not called
+        """
+        # GIVEN
+        from unittest.mock import MagicMock, patch
+
+        from api.main import _init_sentry
+
+        settings = MagicMock()
+        settings.sentry_dsn = None
+
+        # WHEN / THEN
+        with patch("api.main.sentry_sdk.init") as mock_init:
+            _init_sentry(settings)
+
+        mock_init.assert_not_called()

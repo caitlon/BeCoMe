@@ -304,3 +304,15 @@ class TestLoggingSettings:
 
         # THEN
         assert settings.log_level == "DEBUG"
+
+    def test_sentry_dsn_defaults_to_none(self):
+        """
+        GIVEN Settings without an explicit Sentry DSN
+        WHEN constructed
+        THEN sentry_dsn defaults to None
+        """
+        # GIVEN / WHEN
+        settings = Settings(secret_key="test-secret-key")
+
+        # THEN
+        assert settings.sentry_dsn is None

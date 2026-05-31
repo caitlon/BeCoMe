@@ -101,6 +101,9 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     log_file: str | None = None
 
+    # Observability (Sentry error tracking; disabled when unset)
+    sentry_dsn: str | None = None
+
     # CORS
     cors_origins: list[str] = [
         "http://localhost:3000",

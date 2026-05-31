@@ -253,6 +253,7 @@ api = [
     { name = "pyjwt" },
     { name = "python-multipart" },
     { name = "regex" },
+    { name = "sentry-sdk", extra = ["fastapi"] },
     { name = "slowapi" },
     { name = "sqlmodel" },
     { name = "uvicorn", extra = ["standard"] },
@@ -325,6 +326,7 @@ requires-dist = [
     { name = "regex", marker = "extra == 'api'", specifier = "==2026.1.15" },
     { name = "ruff", marker = "extra == 'dev'", specifier = "==0.13.2" },
     { name = "seaborn", marker = "extra == 'viz'", specifier = "==0.13.2" },
+    { name = "sentry-sdk", extras = ["fastapi"], marker = "extra == 'api'", specifier = "==2.61.0" },
     { name = "slowapi", marker = "extra == 'api'", specifier = "==0.1.9" },
     { name = "sqlmodel", marker = "extra == 'api'", specifier = "==0.0.31" },
     { name = "types-passlib", marker = "extra == 'dev'", specifier = "==1.7.7.20250602" },
@@ -3076,6 +3078,24 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/fd/3a/aec9b02217bb79b87bbc1a21bc6abc51e3d5dcf65c30487ac96c0908c722/Send2Trash-1.8.3.tar.gz", hash = "sha256:b18e7a3966d99871aefeb00cfbcfdced55ce4871194810fc71f4aa484b953abf", size = 17394, upload-time = "2024-04-07T00:01:09.267Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/40/b0/4562db6223154aa4e22f939003cb92514c79f3d4dccca3444253fd17f902/Send2Trash-1.8.3-py3-none-any.whl", hash = "sha256:0c31227e0bd08961c7665474a3d1ef7193929fedda4233843689baa056be46c9", size = 18072, upload-time = "2024-04-07T00:01:07.438Z" },
+]
+
+[[package]]
+name = "sentry-sdk"
+version = "2.61.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "certifi" },
+    { name = "urllib3" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/52/4d/3c66e6045bd2071256b6b6fdcb0cc02b86ce54b2acc2ceac79af8e0efbb5/sentry_sdk-2.61.0.tar.gz", hash = "sha256:1ca9b4bb777eb5be67004edab7eb894f21c6301f1d05ed64966719ad5d1764ce", size = 458510, upload-time = "2026-05-28T09:40:28.917Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/21/5a/9794736d5802689c1a48862e6afe6b7f3e86cc37c15d4a84bc0143877dc1/sentry_sdk-2.61.0-py3-none-any.whl", hash = "sha256:ec4d30273909cb1d198e03208b16ee70e2bc5d90a16fd9f1fb2fc6a72e1f03dc", size = 483111, upload-time = "2026-05-28T09:40:27.027Z" },
+]
+
+[package.optional-dependencies]
+fastapi = [
+    { name = "fastapi" },
 ]
 
 [[package]]

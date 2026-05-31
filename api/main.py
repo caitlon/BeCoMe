@@ -3,11 +3,12 @@
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
+import sentry_sdk
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi.errors import RateLimitExceeded
 
-from api.config import get_settings
+from api.config import Settings, get_settings
 from api.db.engine import create_db_and_tables
 from api.logging_config import setup_logging
 from api.middleware.exception_handlers import register_exception_handlers
@@ -24,6 +25,23 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     yield
 
 
+def _init_sentry(settings: Settings) -> None:
+    """Initialise Sentry error tracking when a DSN is configured.
+
+    The FastAPI integration is auto-detected, so unhandled exceptions and
+    request context are reported without extra wiring. A no-op when the DSN is
+    unset, which keeps development and tests offline.
+
+    :param settings: Application settings.
+    """
+    if settings.sentry_dsn:
+        sentry_sdk.init(
+            dsn=settings.sentry_dsn,
+            traces_sample_rate=0.1,
+            environment=settings.environment.value,
+        )
+
+
 def create_app() -> FastAPI:
     """Create and configure FastAPI application.
 
@@ -32,6 +50,7 @@ def create_app() -> FastAPI:
     """
     settings = get_settings()
     setup_logging(settings)
+    _init_sentry(settings)
 
     app = FastAPI(
         title="BeCoMe API",
