@@ -27,32 +27,40 @@ PROJECT_ID="${RAILWAY_PROJECT_ID:-$(railway status --json 2>/dev/null | jq -r '.
 [ -z "$PROJECT_ID" ] && { echo "Set RAILWAY_PROJECT_ID, or run 'railway link' in this repo first"; exit 1; }
 TOKEN=$(python3 -c "import json,os;print(json.load(open(os.path.expanduser('~/.railway/config.json')))['user']['accessToken'])" 2>/dev/null)
 [ -z "$TOKEN" ] && { echo "No Railway token -- run 'railway login' (or 'railway whoami' to refresh)"; exit 1; }
-gql() { curl -s -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" https://backboard.railway.com/graphql/v2 -d "$1"; }
+
+# GraphQL helper. The query is passed to jq as DATA (--arg), never embedded in the jq
+# program, so the braces/`$vars` in the query can't be mis-parsed by any jq version.
+api() {  # $1 = query/mutation string; $2 = variables JSON object (default {})
+  local vars="${2:-}"; [ -z "$vars" ] && vars='{}'
+  curl -s -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+    https://backboard.railway.com/graphql/v2 \
+    -d "$(jq -n --arg q "$1" --argjson v "$vars" '{query:$q,variables:$v}')"
+}
 
 # Always clean up: remove the temporary proxy (if opened) and the stderr scratch file.
 ERRFILE=$(mktemp)
 PROXY_ID=""
 cleanup() {
-  [ -n "$PROXY_ID" ] && gql "$(jq -n --arg id "$PROXY_ID" '{query:"mutation($id:String!){tcpProxyDelete(id:$id)}",variables:{id:$id}}')" >/dev/null && echo "temporary proxy removed"
+  [ -n "$PROXY_ID" ] && api 'mutation($id:String!){tcpProxyDelete(id:$id)}' "$(jq -n --arg id "$PROXY_ID" '{id:$id}')" >/dev/null && echo "temporary proxy removed"
   rm -f "$ERRFILE"
 }
 trap cleanup EXIT
 
 # Resolve environment + service ids by name.
-META=$(gql "$(jq -n --arg id "$PROJECT_ID" '{query:"query($id:String!){project(id:$id){environments{edges{node{id name}}}services{edges{node{id name}}}}}",variables:{id:$id}}')")
+META=$(api 'query($id:String!){project(id:$id){environments{edges{node{id name}}}services{edges{node{id name}}}}}' "$(jq -n --arg id "$PROJECT_ID" '{id:$id}')")
 ENV_ID=$(printf '%s' "$META" | jq -r --arg n "$RW_ENV" '.data.project.environments.edges[].node | select(.name==$n) | .id')
 SVC_ID=$(printf '%s' "$META" | jq -r --arg n "$DB_SVC" '.data.project.services.edges[].node | select(.name==$n) | .id')
 { [ -z "$ENV_ID" ] || [ -z "$SVC_ID" ]; } && { echo "could not resolve $RW_ENV / $DB_SVC"; exit 1; }
 
 # Password + database name from the service's canonical Postgres variables.
-VARS=$(gql "$(jq -n --arg p "$PROJECT_ID" --arg e "$ENV_ID" --arg s "$SVC_ID" '{query:"query($p:String!,$e:String!,$s:String!){variables(projectId:$p,environmentId:$e,serviceId:$s)}",variables:{p:$p,e:$e,s:$s}}')")
+VARS=$(api 'query($p:String!,$e:String!,$s:String!){variables(projectId:$p,environmentId:$e,serviceId:$s)}' "$(jq -n --arg p "$PROJECT_ID" --arg e "$ENV_ID" --arg s "$SVC_ID" '{p:$p,e:$e,s:$s}')")
 printf '%s' "$VARS" | jq -e '.errors' >/dev/null 2>&1 && { echo "Railway API error: $(printf '%s' "$VARS" | jq -c '.errors')"; exit 1; }
 PW=$(printf '%s' "$VARS" | jq -r '.data.variables.PGPASSWORD // .data.variables.POSTGRES_PASSWORD // empty')
 DBN=$(printf '%s' "$VARS" | jq -r '.data.variables.PGDATABASE // .data.variables.POSTGRES_DB // "railway"')
 [ -z "$PW" ] && { echo "could not read DB password for $DB_SVC (got vars: $(printf '%s' "$VARS" | jq -r '.data.variables|keys|join(",")' 2>/dev/null))"; exit 1; }
 
 # Open a temporary public proxy (torn down by the trap above).
-CR=$(gql "$(jq -n --arg e "$ENV_ID" --arg s "$SVC_ID" '{query:"mutation($i:TCPProxyCreateInput!){tcpProxyCreate(input:$i){id domain proxyPort}}",variables:{i:{environmentId:$e,serviceId:$s,applicationPort:5432}}}')")
+CR=$(api 'mutation($i:TCPProxyCreateInput!){tcpProxyCreate(input:$i){id domain proxyPort}}' "$(jq -n --arg e "$ENV_ID" --arg s "$SVC_ID" '{i:{environmentId:$e,serviceId:$s,applicationPort:5432}}')")
 PROXY_ID=$(printf '%s' "$CR" | jq -r '.data.tcpProxyCreate.id // empty')
 DOMAIN=$(printf '%s' "$CR" | jq -r '.data.tcpProxyCreate.domain // empty')
 PORT=$(printf '%s' "$CR" | jq -r '.data.tcpProxyCreate.proxyPort // empty')
