@@ -152,12 +152,14 @@ Environment variables (can use `.env` file):
 | `LOG_LEVEL` | `INFO` | Log verbosity (`DEBUG`/`INFO`/`WARNING`/`ERROR`); dev emits text, test/prod emit JSON |
 | `LOG_FILE` | *optional* | Path for a rotating log file (console logging is always on) |
 | `SENTRY_DSN` | *optional* | Sentry DSN for backend error tracking (disabled when unset) |
+| `BETTERSTACK_SOURCE_TOKEN` | *optional* | Better Stack log source token (ships `api.*` logs when set together with the host below) |
+| `BETTERSTACK_INGESTING_HOST` | *optional* | Better Stack ingesting host for log shipping (per-environment source) |
 
 **Note:** Profile photos are stored in a private Railway Storage Bucket (S3-compatible) and served through the `GET /api/v1/users/{id}/photo` proxy. When the bucket variables are absent, photo upload is disabled and the API continues to function with all other features available.
 
 **Migrations:** The PostgreSQL schema is managed by Alembic (`migrations/`). `alembic upgrade head` runs automatically before each Railway deploy; to apply it manually against a specific database use `ALEMBIC_DATABASE_URL=<url> uv run alembic upgrade head`. SQLite (local development and the test suite) keeps using `create_all`, so no migration step is needed there.
 
-**Observability:** Every request gets an `X-Request-ID` response header (generated, or echoed from the client's header) for log correlation. Requests, unhandled exceptions, and rate-limit violations are logged under the `api.*` loggers; in `test`/`prod` the output is JSON so a log drain can index fields like `request_id` and `status_code`. Unhandled exceptions return an opaque 500 and are reported to Sentry when `SENTRY_DSN` is set.
+**Observability:** Every request gets an `X-Request-ID` response header (generated, or echoed from the client's header) for log correlation. Requests, unhandled exceptions, and rate-limit violations are logged under the `api.*` loggers; in `test`/`prod` the output is JSON so a log drain can index fields like `request_id` and `status_code`. Unhandled exceptions return an opaque 500 and are reported to Sentry when `SENTRY_DSN` is set. When the `BETTERSTACK_*` variables are set, the `api.*` logs are also shipped to Better Stack (a per-environment source) via `logtail-python`.
 
 ## Testing
 
