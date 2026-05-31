@@ -8,13 +8,22 @@ from api.config import Environment, Settings
 from api.logging_config import JsonLogFormatter, setup_logging
 
 
-def _settings(environment=Environment.DEV, log_level="INFO", log_file=None, debug=False):
+def _settings(
+    environment=Environment.DEV,
+    log_level="INFO",
+    log_file=None,
+    debug=False,
+    betterstack_source_token=None,
+    betterstack_ingesting_host=None,
+):
     """Build a Settings instance valid across all environment profiles."""
     return Settings(
         environment=environment,
         log_level=log_level,
         log_file=log_file,
         debug=debug,
+        betterstack_source_token=betterstack_source_token,
+        betterstack_ingesting_host=betterstack_ingesting_host,
         secret_key="a-sufficiently-strong-secret-value-for-tests",
         database_url="postgresql://user:pass@host:5432/db",
     )
@@ -239,6 +248,46 @@ class TestSetupLogging:
 
         # THEN
         assert logging.getLogger("api.security").getEffectiveLevel() == logging.WARNING
+
+    def test_adds_betterstack_handler_when_configured(self):
+        """
+        GIVEN settings with both Better Stack fields set
+        WHEN setup_logging runs
+        THEN a LogtailHandler is attached to the 'api' logger
+        """
+        # GIVEN
+        from unittest.mock import patch
+
+        settings = _settings(
+            betterstack_source_token="tok",
+            betterstack_ingesting_host="s1.example.betterstackdata.com",
+        )
+
+        # WHEN
+        with patch("api.logging_config.LogtailHandler") as mock_handler:
+            setup_logging(settings)
+
+        # THEN
+        mock_handler.assert_called_once()
+        assert mock_handler.return_value in logging.getLogger("api").handlers
+
+    def test_skips_betterstack_handler_when_unconfigured(self):
+        """
+        GIVEN settings without Better Stack fields
+        WHEN setup_logging runs
+        THEN no LogtailHandler is created
+        """
+        # GIVEN
+        from unittest.mock import patch
+
+        settings = _settings()
+
+        # WHEN
+        with patch("api.logging_config.LogtailHandler") as mock_handler:
+            setup_logging(settings)
+
+        # THEN
+        mock_handler.assert_not_called()
 
 
 class TestCreateAppLogging:

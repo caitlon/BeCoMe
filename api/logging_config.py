@@ -4,6 +4,8 @@ import json
 import logging
 from logging.handlers import RotatingFileHandler
 
+from logtail import LogtailHandler  # type: ignore[import-untyped]
+
 from api.config import Environment, Settings
 
 # Rotating file handler sizing, used only when LOG_FILE is configured.
@@ -118,3 +120,10 @@ def setup_logging(settings: Settings) -> None:
         )
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)
+
+    if settings.betterstack_source_token and settings.betterstack_ingesting_host:
+        logtail_handler = LogtailHandler(
+            source_token=settings.betterstack_source_token,
+            host=f"https://{settings.betterstack_ingesting_host}",
+        )
+        logger.addHandler(logtail_handler)

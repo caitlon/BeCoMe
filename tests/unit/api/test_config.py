@@ -316,3 +316,16 @@ class TestLoggingSettings:
 
         # THEN
         assert settings.sentry_dsn is None
+
+    def test_betterstack_fields_default_to_none(self):
+        """
+        GIVEN Settings without Better Stack variables
+        WHEN constructed
+        THEN both Better Stack fields default to None
+        """
+        # GIVEN / WHEN
+        settings = Settings(secret_key="test-secret-key")
+
+        # THEN
+        assert settings.betterstack_source_token is None
+        assert settings.betterstack_ingesting_host is None

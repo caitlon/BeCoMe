@@ -104,6 +104,10 @@ class Settings(BaseSettings):
     # Observability (Sentry error tracking; disabled when unset)
     sentry_dsn: str | None = None
 
+    # Better Stack log shipping (disabled unless both are set)
+    betterstack_source_token: str | None = None
+    betterstack_ingesting_host: str | None = None
+
     # CORS
     cors_origins: list[str] = [
         "http://localhost:3000",
