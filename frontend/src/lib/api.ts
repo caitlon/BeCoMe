@@ -16,6 +16,7 @@ import {
   ChangePasswordInput,
   ApiError,
 } from '@/types/api';
+import { logger } from '@/lib/logger';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
 
@@ -50,14 +51,19 @@ class ApiClient {
     endpoint: string,
     options: RequestInit = {}
   ): Promise<T> {
+    const requestId = crypto.randomUUID();
+    const method = options.method ?? 'GET';
     const headers: HeadersInit = {
       'Content-Type': 'application/json',
+      'X-Request-ID': requestId,
       ...options.headers,
     };
 
     if (this.token) {
       (headers as Record<string, string>)['Authorization'] = `Bearer ${this.token}`;
     }
+
+    logger.debug('API request', { method, endpoint, requestId });
 
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
       ...options,
@@ -73,14 +79,17 @@ class ApiClient {
       const error: ApiError = await response.json().catch(() => ({
         detail: 'An unexpected error occurred',
       }));
-      
-      throw new HttpError(
+
+      const detail =
         typeof error.detail === 'string'
           ? error.detail
-          : error.detail[0]?.msg || 'Validation error',
-        response.status
-      );
+          : error.detail[0]?.msg || 'Validation error';
+      logger.error('API error', { method, endpoint, status: response.status, requestId, detail });
+
+      throw new HttpError(detail, response.status);
     }
+
+    logger.debug('API response', { method, endpoint, status: response.status, requestId });
 
     if (response.status === 204) {
       return undefined as T;
@@ -114,6 +123,7 @@ class ApiClient {
       const error = await response.json().catch(() => ({
         detail: 'Invalid credentials',
       }));
+      logger.error('Login failed', { status: response.status });
       throw new Error(error.detail || 'Login failed');
     }
 
@@ -172,6 +182,7 @@ class ApiClient {
         globalThis.location.href = '/login';
       }
       const error = await response.json().catch(() => ({ detail: 'Upload failed' }));
+      logger.error('Photo upload failed', { status: response.status });
       throw new Error(error.detail || 'Failed to upload photo');
     }
 
@@ -278,7 +289,11 @@ class ApiClient {
   async getResult(projectId: string): Promise<CalculationResult | null> {
     try {
       return await this.request<CalculationResult>(`/projects/${projectId}/result`);
-    } catch {
+    } catch (error) {
+      logger.warn('Failed to fetch calculation result', {
+        projectId,
+        error: error instanceof Error ? error.message : String(error),
+      });
       return null;
     }
   }

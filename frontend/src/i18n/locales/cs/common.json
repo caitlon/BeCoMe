@@ -138,5 +138,10 @@
     "faq": "Časté dotazy",
     "caseStudies": "Případové studie",
     "notFound": "Stránka nenalezena"
+  },
+  "errorBoundary": {
+    "title": "Něco se pokazilo",
+    "description": "Došlo k neočekávané chybě. Pro pokračování prosím obnovte stránku.",
+    "reload": "Obnovit stránku"
   }
 }

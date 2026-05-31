@@ -138,5 +138,10 @@
     "faq": "FAQ",
     "caseStudies": "Case Studies",
     "notFound": "Page Not Found"
+  },
+  "errorBoundary": {
+    "title": "Something went wrong",
+    "description": "An unexpected error occurred. Please reload the page to continue.",
+    "reload": "Reload page"
   }
 }
