@@ -305,6 +305,34 @@ class TestLoggingSettings:
         # THEN
         assert settings.log_level == "DEBUG"
 
+    def test_normalizes_lowercase_log_level(self, monkeypatch, tmp_path):
+        """
+        GIVEN LOG_LEVEL set in lowercase
+        WHEN Settings is constructed
+        THEN log_level is upper-cased to a valid level
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("APP_ENV", "dev")
+        monkeypatch.setenv("SECRET_KEY", "irrelevant-for-dev")
+        monkeypatch.setenv("LOG_LEVEL", "debug")
+
+        # WHEN
+        settings = Settings()
+
+        # THEN
+        assert settings.log_level == "DEBUG"
+
+    def test_rejects_invalid_log_level(self):
+        """
+        GIVEN an unsupported log level
+        WHEN Settings is constructed
+        THEN a validation error is raised at load time
+        """
+        # GIVEN / WHEN / THEN
+        with pytest.raises(ValidationError):
+            Settings(secret_key="test-secret-key", log_level="VERBOSE")
+
     def test_sentry_dsn_defaults_to_none(self):
         """
         GIVEN Settings without an explicit Sentry DSN

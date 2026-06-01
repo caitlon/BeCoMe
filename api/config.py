@@ -4,15 +4,28 @@ import os
 from enum import StrEnum
 from functools import lru_cache
 from importlib.metadata import PackageNotFoundError, version
-from typing import Any
+from typing import Annotated, Any, Literal
 
-from pydantic import Field, model_validator
+from pydantic import BeforeValidator, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 try:
     _version = version("become")
 except PackageNotFoundError:
     _version = "0.0.0"
+
+
+def _normalize_log_level(value: Any) -> Any:
+    """Upper-case string log levels so lowercase env input still validates."""
+    return value.upper() if isinstance(value, str) else value
+
+
+# Accepted logging levels; an invalid LOG_LEVEL is rejected when settings load
+# rather than crashing later inside logging.setLevel().
+LogLevel = Annotated[
+    Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+    BeforeValidator(_normalize_log_level),
+]
 
 # Secret values rejected in production (development defaults must never ship).
 _INSECURE_SECRET_KEYS = frozenset({"", "changeme", "test-secret-key", "test-secret-key-for-ci"})
@@ -98,7 +111,7 @@ class Settings(BaseSettings):
     api_version: str = _version
 
     # Logging
-    log_level: str = "INFO"
+    log_level: LogLevel = "INFO"
     log_file: str | None = None
 
     # Observability (Sentry error tracking; disabled when unset)
