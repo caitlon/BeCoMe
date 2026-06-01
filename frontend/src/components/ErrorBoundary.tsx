@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
+import * as Sentry from '@sentry/react';
 import i18n from '@/i18n';
 import { logger } from '@/lib/logger';
 
@@ -29,6 +30,11 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     logger.error('React rendering error', {
       error: error.message,
       componentStack: info.componentStack,
+    });
+    // Forward to Sentry: a caught render error never reaches the global handler,
+    // so without this the most catastrophic frontend failures stay invisible.
+    Sentry.captureException(error, {
+      contexts: { react: { componentStack: info.componentStack } },
     });
   }
 
