@@ -133,10 +133,11 @@ class UserService(BaseService):
 
         :param user: User to delete
         """
+        user_id = str(user.id)
         self._delete_and_commit(user)
         logger.info(
             "User deleted",
-            extra={"event": "user_deleted", "user_id": str(user.id)},
+            extra={"event": "user_deleted", "user_id": user_id},
         )
 
     def update_photo_url(self, user: User, photo_key: str | None) -> User:
