@@ -92,14 +92,15 @@ def _build_formatter(settings: Settings) -> logging.Formatter:
 def _betterstack_host(raw: str) -> str:
     """Normalise a Better Stack ingesting host into a bare hostname.
 
-    The Better Stack dashboard shows the ingesting host as a full ``https://``
-    URL, so an operator may copy it verbatim. Strip any scheme and trailing slash
-    so the handler URL is always well-formed rather than ``https://https://...``.
+    The Better Stack dashboard shows the ingesting host as a full URL, so an
+    operator may copy it verbatim. Strip any scheme and trailing slash so the
+    handler URL is always well-formed rather than carrying a duplicated scheme.
 
     :param raw: Configured host, with or without a scheme or trailing slash.
     :return: Bare hostname.
     """
-    return raw.removeprefix("https://").removeprefix("http://").rstrip("/")
+    _, _, host = raw.rpartition("://")
+    return host.rstrip("/")
 
 
 def setup_logging(settings: Settings) -> None:
