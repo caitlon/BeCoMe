@@ -24,23 +24,16 @@ SOFTWARE.
 
 ACADEMIC ATTRIBUTION
 
-This software was developed as part of a bachelor thesis at Czech University
+This software implements the BeCoMe method and was developed at Czech University
 of Life Sciences Prague, Faculty of Economics and Management.
 
 Author: Ekaterina Kuzmina
-Supervisor: doc. Ing. Jan Tyrychtr, Ph.D.
 Year: 2025/2026
 
-CITATION
+ORIGINAL METHOD AND CITATION
 
-If you use this software in academic work, please cite:
-
-Kuzmina, E. (2026). Implementation of the BeCoMe method in Python.
-Bachelor thesis, Czech University of Life Sciences Prague.
-
-ORIGINAL METHOD
-
-This implementation is based on the BeCoMe method:
+This implementation is based on the BeCoMe method. If you use this software in
+academic work, please cite the original paper:
 
 Vrana, I., Tyrychtr, J., & Pelikán, M. (2021). BeCoMe: Easy-to-implement
 optimized method for best-compromise group decision making: Flood-prevention
