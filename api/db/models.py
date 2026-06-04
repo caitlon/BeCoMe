@@ -16,7 +16,7 @@ _PROJECTS_FK = "projects.id"
 _CASCADE_ALL_DELETE_ORPHAN = "all, delete-orphan"
 
 
-class MemberRole(str, enum.Enum):
+class MemberRole(enum.StrEnum):
     """Role of a member within a project."""
 
     ADMIN = "admin"
