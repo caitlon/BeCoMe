@@ -13,7 +13,7 @@ Full-stack web application for group decision-making under fuzzy uncertainty usi
 
 ## Table of Contents
 
-- [Project Information](#project-information)
+- [About](#about)
 - [Abstract](#abstract)
 - [Features](#features)
 - [Quick Start](#quick-start)
@@ -26,20 +26,18 @@ Full-stack web application for group decision-making under fuzzy uncertainty usi
 - [License](#license)
 - [References](#references)
 
-## Project Information
+## About
+
+A Python implementation of the **BeCoMe** (Best Compromise Mean) group decision-making method introduced by Vrana, Tyrychtr, and Pelikán (2021), packaged as a reusable library and a full-stack web application.
 
 - **Author**: Ekaterina Kuzmina
 - **University**: Czech University of Life Sciences Prague
-- **Faculty**: Faculty of Economics and Management (Provozně ekonomická fakulta)
-- **Thesis Type**: Bachelor Thesis
-- **Supervisor**: doc. Ing. Jan Tyrychtr, Ph.D.
-- **Academic Year**: 2025/2026
+- **Source method**: Vrana et al. (2021), *Environmental Modelling & Software* (see [References](#references))
 - **Language**: English
-- **Thesis Text**: Will be published upon completion
 
 ## Abstract
 
-**BeCoMe** (Best Compromise Mean) is a group decision-making method that aggregates expert opinions expressed as fuzzy triangular numbers. This Python implementation combines arithmetic mean and median approaches to produce consensus estimates balancing central tendency with outlier resistance.
+**BeCoMe** (Best Compromise Mean) is a group decision-making method that aggregates expert opinions expressed as fuzzy triangular numbers. This project implements the method — originally published by Vrana et al. (2021) — in Python, combining arithmetic mean and median approaches to produce consensus estimates that balance central tendency with outlier resistance.
 
 Validated on three Czech case studies (COVID-19 budget allocation, flood prevention, cross-border travel policy). Results verified against original Excel implementation with 100% test coverage.
 
@@ -204,7 +202,7 @@ Expert2 | 12.0 | 18.0 | 25.0
 ### Data Availability
 
 - **Location**: `examples/data/` directory in this repository
-- **License**: Academic use only (part of bachelor thesis)
+- **License**: Academic and research use
 - **Access**: Public (GitHub repository)
 
 ## Quick Start
@@ -408,7 +406,7 @@ Documentation is available in the `docs/` directory:
 | Document | Description |
 |----------|-------------|
 | [Method Description](docs/method-description.md) | Mathematical foundation with formulas and worked examples |
-| [UML Diagrams](docs/uml-diagrams/en/README.md) | Visual architecture (class, sequence, activity diagrams) |
+| [UML Diagrams](docs/uml-diagrams/README.md) | Visual architecture (class, sequence, activity diagrams) |
 | [Quality Report](docs/quality-report.md) | Code quality metrics and test coverage details |
 | [Source Code](src/README.md) | API documentation and module descriptions |
 
@@ -418,9 +416,9 @@ The implementation follows object-oriented design principles:
 
 ### Class Diagram
 
-![Class Diagram](docs/uml-diagrams/en/diagrams/png/class-diagram.png)
+![Class Diagram](docs/uml-diagrams/diagrams/png/class-diagram.png)
 
-*Complete architecture with sequence and activity diagrams available in [UML Documentation](docs/uml-diagrams/en/README.md)*
+*Complete architecture with sequence and activity diagrams available in [UML Documentation](docs/uml-diagrams/README.md)*
 
 ### Design Patterns
 
@@ -448,9 +446,7 @@ See [examples/README.md](examples/README.md) for details.
 
 ## License
 
-This implementation is part of a bachelor thesis at the Faculty of Economics and Management, Czech University of Life Sciences Prague.
-
-**Academic Use**: This code is provided for academic and research purposes. If you use this implementation in academic work, please cite the thesis (full citation will be added upon publication).
+**Academic Use**: This code is provided for academic and research purposes. If you build on this implementation, please cite the original BeCoMe paper by Vrana et al. (2021) — see [References](#references).
 
 **Copyright**: © 2025-2026 Ekaterina Kuzmina
 
@@ -464,18 +460,18 @@ For questions or collaboration inquiries:
 
 ## References
 
-### Thesis Publication
+### Source Method
 
-Full thesis text will be available after publication and defense.
-
-### Related Research
-
-The BeCoMe method was developed by I. Vrana, J. Tyrychtr, and M. Pelikán at the Faculty of Economics and Management, Czech University of Life Sciences Prague.
+This project implements the BeCoMe method developed by I. Vrana, J. Tyrychtr, and M. Pelikán at the Faculty of Economics and Management, Czech University of Life Sciences Prague.
 
 **Key reference:**
 - Vrana, I., Tyrychtr, J., & Pelikán, M. (2021). BeCoMe: Easy-to-implement optimized method for best-compromise group decision making: Flood-prevention and COVID-19 case studies. *Environmental Modelling & Software*, 136, 104953. https://doi.org/10.1016/j.envsoft.2020.104953
 
-The thesis bibliography includes fuzzy logic foundations (Zadeh 1965, Bellman & Zadeh 1970), software engineering references, and all sources cited in the research.
+Foundational background: fuzzy logic (Zadeh 1965; Bellman & Zadeh 1970).
+
+### Project Report
+
+A detailed write-up of the implementation is available in [thesis/main.pdf](thesis/main.pdf).
 
 ### Datasets
 
@@ -485,4 +481,4 @@ See [examples/data/README.md](examples/data/README.md) for format specifications
 
 ## Acknowledgments
 
-This work was supervised by doc. Ing. Jan Tyrychtr, Ph.D., at the Faculty of Economics and Management, Czech University of Life Sciences Prague.
+Thanks to the authors of the BeCoMe method — I. Vrana, J. Tyrychtr, and M. Pelikán — at the Faculty of Economics and Management, Czech University of Life Sciences Prague.
