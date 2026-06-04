@@ -271,6 +271,27 @@ class TestSetupLogging:
         mock_handler.assert_called_once()
         assert mock_handler.return_value in logging.getLogger("api").handlers
 
+    def test_normalizes_betterstack_host_with_scheme(self):
+        """
+        GIVEN a Better Stack host copied as a full https URL with a trailing slash
+        WHEN setup_logging runs
+        THEN LogtailHandler receives a single-scheme, bare host
+        """
+        # GIVEN
+        from unittest.mock import patch
+
+        settings = _settings(
+            betterstack_source_token="tok",
+            betterstack_ingesting_host="https://s1.example.betterstackdata.com/",
+        )
+
+        # WHEN
+        with patch("api.logging_config.LogtailHandler") as mock_handler:
+            setup_logging(settings)
+
+        # THEN
+        assert mock_handler.call_args.kwargs["host"] == "https://s1.example.betterstackdata.com"
+
     def test_skips_betterstack_handler_when_unconfigured(self):
         """
         GIVEN settings without Better Stack fields

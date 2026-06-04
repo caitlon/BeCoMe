@@ -89,6 +89,19 @@ def _build_formatter(settings: Settings) -> logging.Formatter:
     return JsonLogFormatter()
 
 
+def _betterstack_host(raw: str) -> str:
+    """Normalise a Better Stack ingesting host into a bare hostname.
+
+    The Better Stack dashboard shows the ingesting host as a full ``https://``
+    URL, so an operator may copy it verbatim. Strip any scheme and trailing slash
+    so the handler URL is always well-formed rather than ``https://https://...``.
+
+    :param raw: Configured host, with or without a scheme or trailing slash.
+    :return: Bare hostname.
+    """
+    return raw.removeprefix("https://").removeprefix("http://").rstrip("/")
+
+
 def setup_logging(settings: Settings) -> None:
     """Configure the parent ``api`` logger from application settings.
 
@@ -124,6 +137,6 @@ def setup_logging(settings: Settings) -> None:
     if settings.betterstack_source_token and settings.betterstack_ingesting_host:
         logtail_handler = LogtailHandler(
             source_token=settings.betterstack_source_token,
-            host=f"https://{settings.betterstack_ingesting_host}",
+            host=f"https://{_betterstack_host(settings.betterstack_ingesting_host)}",
         )
         logger.addHandler(logtail_handler)
