@@ -73,6 +73,13 @@ results_*.csv
 
 # Generated visualizations
 examples/visualizations/*/output/
+examples/visualizations/output/
+
+# Czech localization kept local only (English is the published default)
+docs/uml-diagrams/cs/
+examples/cs/
+examples/data/cs/
+examples/visualizations/cs/
 
 # Deployment logs
 logs/
