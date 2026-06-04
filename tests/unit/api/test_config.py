@@ -258,3 +258,102 @@ class TestProductionInvariants:
         # WHEN / THEN
         with pytest.raises(ValidationError):
             Settings()
+
+
+class TestLoggingSettings:
+    """Tests for logging-related settings."""
+
+    def test_log_level_defaults_to_info(self):
+        """
+        GIVEN Settings without an explicit log level
+        WHEN constructed
+        THEN log_level defaults to INFO
+        """
+        # GIVEN / WHEN
+        settings = Settings(secret_key="test-secret-key")
+
+        # THEN
+        assert settings.log_level == "INFO"
+
+    def test_log_file_defaults_to_none(self):
+        """
+        GIVEN Settings without an explicit log file
+        WHEN constructed
+        THEN log_file defaults to None
+        """
+        # GIVEN / WHEN
+        settings = Settings(secret_key="test-secret-key")
+
+        # THEN
+        assert settings.log_file is None
+
+    def test_reads_log_level_from_env(self, monkeypatch, tmp_path):
+        """
+        GIVEN LOG_LEVEL is set in the environment
+        WHEN Settings is constructed
+        THEN log_level reflects the env value
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("APP_ENV", "dev")
+        monkeypatch.setenv("SECRET_KEY", "irrelevant-for-dev")
+        monkeypatch.setenv("LOG_LEVEL", "DEBUG")
+
+        # WHEN
+        settings = Settings()
+
+        # THEN
+        assert settings.log_level == "DEBUG"
+
+    def test_normalizes_lowercase_log_level(self, monkeypatch, tmp_path):
+        """
+        GIVEN LOG_LEVEL set in lowercase
+        WHEN Settings is constructed
+        THEN log_level is upper-cased to a valid level
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("APP_ENV", "dev")
+        monkeypatch.setenv("SECRET_KEY", "irrelevant-for-dev")
+        monkeypatch.setenv("LOG_LEVEL", "debug")
+
+        # WHEN
+        settings = Settings()
+
+        # THEN
+        assert settings.log_level == "DEBUG"
+
+    def test_rejects_invalid_log_level(self):
+        """
+        GIVEN an unsupported log level
+        WHEN Settings is constructed
+        THEN a validation error is raised at load time
+        """
+        # GIVEN / WHEN / THEN
+        with pytest.raises(ValidationError):
+            Settings(secret_key="test-secret-key", log_level="VERBOSE")
+
+    def test_sentry_dsn_defaults_to_none(self):
+        """
+        GIVEN Settings without an explicit Sentry DSN
+        WHEN constructed
+        THEN sentry_dsn defaults to None
+        """
+        # GIVEN / WHEN
+        settings = Settings(secret_key="test-secret-key")
+
+        # THEN
+        assert settings.sentry_dsn is None
+
+    def test_betterstack_fields_default_to_none(self):
+        """
+        GIVEN Settings without Better Stack variables
+        WHEN constructed
+        THEN both Better Stack fields default to None
+        """
+        # GIVEN / WHEN
+        settings = Settings(secret_key="test-secret-key")
+
+        # THEN
+        assert settings.betterstack_source_token is None
+        assert settings.betterstack_ingesting_host is None

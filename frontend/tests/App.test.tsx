@@ -50,10 +50,16 @@ vi.mock('@/components/ui/tooltip', () => ({
 }));
 vi.mock('@/components/RouteAnnouncer', () => ({ RouteAnnouncer: () => null }));
 
-// 5. Mock i18next and lucide-react for PageLoader
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
-}));
+// 5. Mock i18next and lucide-react for PageLoader.
+// Keep the real initReactI18next so the transitively-imported @/i18n singleton
+// (pulled in via ErrorBoundary) still initialises; only stub useTranslation.
+vi.mock('react-i18next', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('react-i18next')>();
+  return {
+    ...actual,
+    useTranslation: () => ({ t: (key: string) => key }),
+  };
+});
 vi.mock('lucide-react', () => ({ Loader2: () => null }));
 
 import App from '@/App';

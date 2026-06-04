@@ -3,15 +3,17 @@
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
+import sentry_sdk
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
-from api.config import get_settings
+from api.config import Settings, get_settings
 from api.db.engine import create_db_and_tables
+from api.logging_config import setup_logging
 from api.middleware.exception_handlers import register_exception_handlers
-from api.middleware.rate_limit import limiter
+from api.middleware.rate_limit import limiter, rate_limit_handler
+from api.middleware.request_logging import RequestLoggingMiddleware
 from api.middleware.security_headers import SecurityHeadersMiddleware
 from api.routes import auth, calculate, health, invitations, opinions, projects, users
 
@@ -23,6 +25,23 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     yield
 
 
+def _init_sentry(settings: Settings) -> None:
+    """Initialise Sentry error tracking when a DSN is configured.
+
+    The FastAPI integration is auto-detected, so unhandled exceptions and
+    request context are reported without extra wiring. A no-op when the DSN is
+    unset, which keeps development and tests offline.
+
+    :param settings: Application settings.
+    """
+    if settings.sentry_dsn:
+        sentry_sdk.init(
+            dsn=settings.sentry_dsn,
+            traces_sample_rate=0.1,
+            environment=settings.environment.value,
+        )
+
+
 def create_app() -> FastAPI:
     """Create and configure FastAPI application.
 
@@ -30,6 +49,8 @@ def create_app() -> FastAPI:
     centrally in middleware, routes don't need try-except blocks.
     """
     settings = get_settings()
+    setup_logging(settings)
+    _init_sentry(settings)
 
     app = FastAPI(
         title="BeCoMe API",
@@ -40,7 +61,7 @@ def create_app() -> FastAPI:
 
     # Rate limiting setup
     app.state.limiter = limiter
-    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(RateLimitExceeded, rate_limit_handler)  # type: ignore[arg-type]
 
     # Security headers middleware (added first, executes last)
     app.add_middleware(SecurityHeadersMiddleware)
@@ -51,9 +72,18 @@ def create_app() -> FastAPI:
         allow_origins=settings.cors_origins,
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["Content-Type", "Authorization", "Accept", "Accept-Language"],
+        allow_headers=[
+            "Content-Type",
+            "Authorization",
+            "Accept",
+            "Accept-Language",
+            "X-Request-ID",
+        ],
         max_age=600,  # Cache preflight requests for 10 minutes
     )
+
+    # Request/response logging with correlation IDs (outermost: wraps everything)
+    app.add_middleware(RequestLoggingMiddleware)
 
     # Register exception handlers (OCP: centralized error handling)
     register_exception_handlers(app)

@@ -1,5 +1,6 @@
 """Invitation business logic service for email-based invitations."""
 
+import logging
 from dataclasses import dataclass
 from uuid import UUID
 
@@ -14,6 +15,8 @@ from api.exceptions import (
 )
 from api.services.base import BaseService
 from api.services.query_helpers import MemberCountSubquery
+
+logger = logging.getLogger("api.service.invitation")
 
 
 @dataclass(frozen=True)
@@ -74,7 +77,16 @@ class InvitationService(BaseService):
             invitee_id=invitee.id,
             inviter_id=inviter_id,
         )
-        return self._save_and_refresh(invitation), invitee
+        saved = self._save_and_refresh(invitation)
+        logger.info(
+            "Invitation created",
+            extra={
+                "event": "invitation_created",
+                "invitation_id": str(saved.id),
+                "project_id": str(project_id),
+            },
+        )
+        return saved, invitee
 
     def get_user_invitations(self, user_id: UUID) -> list[InvitationWithDetails]:
         """Get all pending invitations for a user.
@@ -138,8 +150,9 @@ class InvitationService(BaseService):
             self._delete_and_commit(invitation)
             raise UserAlreadyMemberError("User is already a member of this project")
 
+        project_id = invitation.project_id
         membership = ProjectMember(
-            project_id=invitation.project_id,
+            project_id=project_id,
             user_id=user_id,
             role=MemberRole.EXPERT,
         )
@@ -147,6 +160,14 @@ class InvitationService(BaseService):
         self._session.delete(invitation)
         self._session.commit()
         self._session.refresh(membership)
+        logger.info(
+            "Invitation accepted",
+            extra={
+                "event": "invitation_accepted",
+                "invitation_id": str(invitation_id),
+                "project_id": str(project_id),
+            },
+        )
         return membership
 
     def get_project_invitations(self, project_id: UUID) -> list[tuple[Invitation, User]]:
@@ -175,3 +196,7 @@ class InvitationService(BaseService):
             raise InvitationNotFoundError("Invitation not found")
 
         self._delete_and_commit(invitation)
+        logger.info(
+            "Invitation declined",
+            extra={"event": "invitation_declined", "invitation_id": str(invitation_id)},
+        )

@@ -16,6 +16,7 @@ from api.middleware.exception_handlers import (
     _get_status_and_detail,
     become_api_error_handler,
     register_exception_handlers,
+    unhandled_exception_handler,
 )
 
 
@@ -228,3 +229,115 @@ class TestRegisterExceptionHandlers:
         # THEN
         assert BeCoMeAPIError in app.exception_handlers
         assert app.exception_handlers[BeCoMeAPIError] == become_api_error_handler
+
+
+class TestExceptionLogging:
+    """Tests that handled API errors are logged with context."""
+
+    def test_logs_client_error_as_warning(self):
+        """
+        GIVEN a 4xx BeCoMeAPIError
+        WHEN become_api_error_handler runs
+        THEN it logs a WARNING carrying request_id, status, path and type
+        """
+        # GIVEN
+        request = MagicMock()
+        request.state.request_id = "rid-1"
+        request.url.path = "/projects/123"
+        exc = ProjectNotFoundError("Project 123 not found")
+
+        # WHEN
+        with patch("api.middleware.exception_handlers.logger") as mock_logger:
+            become_api_error_handler(request, exc)
+
+        # THEN
+        mock_logger.warning.assert_called_once()
+        extra = mock_logger.warning.call_args[1]["extra"]
+        assert extra["status_code"] == status.HTTP_404_NOT_FOUND
+        assert extra["request_id"] == "rid-1"
+        assert extra["path"] == "/projects/123"
+        assert extra["exception_type"] == "ProjectNotFoundError"
+
+
+class TestUnhandledExceptionHandler:
+    """Tests for the catch-all exception handler."""
+
+    def test_returns_500_with_generic_detail(self):
+        """
+        GIVEN an unexpected exception
+        WHEN unhandled_exception_handler runs
+        THEN it returns a 500 response with a generic detail
+        """
+        # GIVEN
+        request = MagicMock()
+        request.state.request_id = "rid-2"
+        request.url.path = "/boom"
+        exc = RuntimeError("kaboom")
+
+        # WHEN
+        with patch("api.middleware.exception_handlers.logger"):
+            response = unhandled_exception_handler(request, exc)
+
+        # THEN
+        assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
+        assert response.body == b'{"detail":"Internal server error"}'
+
+    def test_logs_error_with_traceback(self):
+        """
+        GIVEN an unexpected exception
+        WHEN unhandled_exception_handler runs
+        THEN it logs at ERROR level with the traceback attached
+        """
+        # GIVEN
+        request = MagicMock()
+        request.state.request_id = "rid-2"
+        request.url.path = "/boom"
+        exc = RuntimeError("kaboom")
+
+        # WHEN
+        with patch("api.middleware.exception_handlers.logger") as mock_logger:
+            unhandled_exception_handler(request, exc)
+
+        # THEN
+        mock_logger.error.assert_called_once()
+        assert mock_logger.error.call_args[1]["exc_info"] is exc
+
+    def test_register_adds_catch_all_handler(self):
+        """
+        GIVEN a FastAPI app
+        WHEN register_exception_handlers runs
+        THEN a handler is registered for the base Exception type
+        """
+        # GIVEN
+        app = FastAPI()
+
+        # WHEN
+        register_exception_handlers(app)
+
+        # THEN
+        assert Exception in app.exception_handlers
+
+    def test_catch_all_handles_unexpected_error_end_to_end(self):
+        """
+        GIVEN an app whose endpoint raises an unexpected error
+        WHEN the endpoint is called through the full stack
+        THEN the catch-all returns a 500 JSON response
+        """
+        # GIVEN
+        from fastapi.testclient import TestClient
+
+        app = FastAPI()
+        register_exception_handlers(app)
+
+        @app.get("/explode")
+        def explode():
+            raise RuntimeError("kaboom")
+
+        live_client = TestClient(app, raise_server_exceptions=False)
+
+        # WHEN
+        response = live_client.get("/explode")
+
+        # THEN
+        assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
+        assert response.json() == {"detail": "Internal server error"}

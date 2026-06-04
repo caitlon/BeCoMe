@@ -1,5 +1,6 @@
 """Project business logic service."""
 
+import logging
 from uuid import UUID
 
 from sqlmodel import func, select
@@ -8,6 +9,8 @@ from api.db.models import MemberRole, Project, ProjectMember
 from api.exceptions import ProjectNotFoundError, ScaleRangeError
 from api.schemas.project import ProjectCreate, ProjectUpdate
 from api.services.base import BaseService
+
+logger = logging.getLogger("api.service.project")
 
 
 class ProjectService(BaseService):
@@ -43,6 +46,14 @@ class ProjectService(BaseService):
         self._session.add(membership)
         self._session.commit()
         self._session.refresh(project)
+        logger.info(
+            "Project created",
+            extra={
+                "event": "project_created",
+                "project_id": str(project.id),
+                "user_id": str(user_id),
+            },
+        )
         return project
 
     def get_project(self, project_id: UUID) -> Project | None:
@@ -86,7 +97,12 @@ class ProjectService(BaseService):
         if "scale_unit" in update_data:
             project.scale_unit = update_data["scale_unit"]
 
-        return self._save_and_refresh(project)
+        saved = self._save_and_refresh(project)
+        logger.info(
+            "Project updated",
+            extra={"event": "project_updated", "project_id": str(project_id)},
+        )
+        return saved
 
     def delete_project(self, project_id: UUID) -> None:
         """Delete project and all related data (cascade).
@@ -99,6 +115,10 @@ class ProjectService(BaseService):
             raise ProjectNotFoundError(f"Project {project_id} not found")
 
         self._delete_and_commit(project)
+        logger.info(
+            "Project deleted",
+            extra={"event": "project_deleted", "project_id": str(project_id)},
+        )
 
     def get_member_count(self, project_id: UUID) -> int:
         """Get number of members in a project.

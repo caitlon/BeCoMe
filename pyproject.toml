@@ -59,6 +59,8 @@ api = [
     "boto3==1.43.18",
     "slowapi==0.1.9",
     "bleach==6.3.0",
+    "sentry-sdk[fastapi]==2.61.0",
+    "logtail-python==0.3.4",
 ]
 
 [build-system]

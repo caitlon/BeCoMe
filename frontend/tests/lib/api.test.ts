@@ -853,4 +853,38 @@ describe('ApiClient', () => {
       expect(data).toBeNull();
     });
   });
+
+  describe('Request ID and Logging', () => {
+    beforeEach(() => {
+      api.setToken('valid-token');
+    });
+
+    it('adds an X-Request-ID header to requests', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ id: '1' }),
+      });
+
+      await api.getCurrentUser();
+
+      const options = mockFetch.mock.calls[0][1] as RequestInit;
+      const headers = options.headers as Record<string, string>;
+      expect(headers['X-Request-ID']).toBeTruthy();
+    });
+
+    it('logs a warning when getResult fails', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+        json: () => Promise.resolve({ detail: 'Not enough opinions' }),
+      });
+
+      const data = await api.getResult('proj-1');
+
+      expect(data).toBeNull();
+      expect(warnSpy).toHaveBeenCalled();
+    });
+  });
 });

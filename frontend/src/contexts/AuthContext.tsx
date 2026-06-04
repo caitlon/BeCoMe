@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { User } from '@/types/api';
 import { api } from '@/lib/api';
+import { logger } from '@/lib/logger';
 
 interface AuthContextType {
   readonly user: User | null;
@@ -29,7 +30,10 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
     try {
       const userData = await api.getCurrentUser();
       setUser(userData);
-    } catch {
+    } catch (err) {
+      logger.warn('Session refresh failed', {
+        error: err instanceof Error ? err.message : String(err),
+      });
       api.logout();
       setUser(null);
     } finally {

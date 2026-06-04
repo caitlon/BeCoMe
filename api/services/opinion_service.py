@@ -1,5 +1,6 @@
 """Expert opinion business logic service."""
 
+import logging
 from uuid import UUID
 
 from sqlalchemy import func
@@ -9,6 +10,8 @@ from api.db.models import ExpertOpinion, Project, User
 from api.exceptions import OpinionNotFoundError, ValuesOutOfRangeError
 from api.schemas.internal import OpinionWithUser, UpsertResult
 from api.services.base import BaseService
+
+logger = logging.getLogger("api.service.opinion")
 
 
 class OpinionService(BaseService):
@@ -68,17 +71,28 @@ class OpinionService(BaseService):
             existing.lower_bound = lower_bound
             existing.peak = peak
             existing.upper_bound = upper_bound
-            return UpsertResult(opinion=self._save_and_refresh(existing), is_new=False)
+            result = UpsertResult(opinion=self._save_and_refresh(existing), is_new=False)
+        else:
+            opinion = ExpertOpinion(
+                project_id=project_id,
+                user_id=user_id,
+                position=position,
+                lower_bound=lower_bound,
+                peak=peak,
+                upper_bound=upper_bound,
+            )
+            result = UpsertResult(opinion=self._save_and_refresh(opinion), is_new=True)
 
-        opinion = ExpertOpinion(
-            project_id=project_id,
-            user_id=user_id,
-            position=position,
-            lower_bound=lower_bound,
-            peak=peak,
-            upper_bound=upper_bound,
+        logger.info(
+            "Opinion upserted",
+            extra={
+                "event": "opinion_upserted",
+                "project_id": str(project_id),
+                "user_id": str(user_id),
+                "is_new": result.is_new,
+            },
         )
-        return UpsertResult(opinion=self._save_and_refresh(opinion), is_new=True)
+        return result
 
     def delete_opinion(self, project_id: UUID, user_id: UUID) -> None:
         """Delete user's opinion for a project.
@@ -92,6 +106,14 @@ class OpinionService(BaseService):
             raise OpinionNotFoundError("Opinion not found")
 
         self._delete_and_commit(opinion)
+        logger.info(
+            "Opinion deleted",
+            extra={
+                "event": "opinion_deleted",
+                "project_id": str(project_id),
+                "user_id": str(user_id),
+            },
+        )
 
     def count_opinions(self, project_id: UUID) -> int:
         """Count opinions for a project.

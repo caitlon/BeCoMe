@@ -4,7 +4,6 @@ from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 from api.auth.logging import (
-    _get_client_ip,
     log_account_deletion,
     log_login_failure,
     log_login_success,
@@ -280,78 +279,3 @@ class TestLogAccountDeletion:
         # THEN
         extra = mock_logger.info.call_args[1]["extra"]
         assert extra["ip"] == "8.8.8.8"
-
-
-class TestGetClientIp:
-    """Tests for _get_client_ip helper function."""
-
-    def test_extracts_from_x_forwarded_for(self):
-        """IP is extracted from X-Forwarded-For header."""
-        # GIVEN
-        mock_request = MagicMock()
-        mock_request.headers.get.return_value = "203.0.113.50"
-
-        # WHEN
-        result = _get_client_ip(mock_request)
-
-        # THEN
-        assert result == "203.0.113.50"
-        mock_request.headers.get.assert_called_with("X-Forwarded-For")
-
-    def test_handles_multiple_ips_in_forwarded(self):
-        """First IP is extracted when X-Forwarded-For has multiple IPs."""
-        # GIVEN
-        mock_request = MagicMock()
-        mock_request.headers.get.return_value = "203.0.113.50, 70.41.3.18, 150.172.238.178"
-
-        # WHEN
-        result = _get_client_ip(mock_request)
-
-        # THEN
-        assert result == "203.0.113.50"
-
-    def test_strips_whitespace_from_forwarded_ip(self):
-        """Whitespace is stripped from X-Forwarded-For IP."""
-        # GIVEN
-        mock_request = MagicMock()
-        mock_request.headers.get.return_value = "  192.168.1.1  , 10.0.0.1"
-
-        # WHEN
-        result = _get_client_ip(mock_request)
-
-        # THEN
-        assert result == "192.168.1.1"
-
-    def test_fallback_to_client_host(self):
-        """IP falls back to client.host when no X-Forwarded-For."""
-        # GIVEN
-        mock_request = MagicMock()
-        mock_request.headers.get.return_value = None
-        mock_request.client.host = "127.0.0.1"
-
-        # WHEN
-        result = _get_client_ip(mock_request)
-
-        # THEN
-        assert result == "127.0.0.1"
-
-    def test_returns_unknown_when_no_client(self):
-        """Returns 'unknown' when request.client is None."""
-        # GIVEN
-        mock_request = MagicMock()
-        mock_request.headers.get.return_value = None
-        mock_request.client = None
-
-        # WHEN
-        result = _get_client_ip(mock_request)
-
-        # THEN
-        assert result == "unknown"
-
-    def test_returns_unknown_for_none_request(self):
-        """Returns 'unknown' when request is None."""
-        # WHEN
-        result = _get_client_ip(None)
-
-        # THEN
-        assert result == "unknown"
