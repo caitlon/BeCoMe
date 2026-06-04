@@ -38,10 +38,14 @@ def generate_diagram(plantuml_bin: str, puml_file: Path, output_file: Path) -> N
 
 
 def main() -> None:
-    """Generate all UML diagrams for both language versions (cs, en)."""
+    """Generate all UML diagrams.
+
+    English diagrams live at the top level; the Czech localization (kept local
+    only) is regenerated into ``cs/`` when that directory is present.
+    """
     plantuml_bin = _check_plantuml()
     base_dir = Path(__file__).parent
-    languages = ["cs", "en"]
+    lang_roots = {"en": base_dir, "cs": base_dir / "cs"}
     diagrams = [
         "class-diagram",
         "class-diagram-patterns",
@@ -51,10 +55,10 @@ def main() -> None:
     ]
     failed = False
 
-    for lang in languages:
+    for lang, root in lang_roots.items():
         print(f"\n[{lang.upper()}] Generating diagrams...")
-        puml_dir = base_dir / lang / "diagrams" / "puml"
-        png_dir = base_dir / lang / "diagrams" / "png"
+        puml_dir = root / "diagrams" / "puml"
+        png_dir = root / "diagrams" / "png"
 
         if not puml_dir.exists():
             print(f"  ⚠ Directory {puml_dir} not found, skipping")

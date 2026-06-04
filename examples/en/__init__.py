@@ -1,1 +1,0 @@
-"""English localized BeCoMe examples."""
