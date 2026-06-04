@@ -41,7 +41,7 @@ class TestRunAnalysisWithEnglish:
     def test_budget_case(self) -> None:
         """Test analysis of budget case returns correct structure."""
         # GIVEN
-        data_file = str(DATA_DIR / "en" / "budget_case.txt")
+        data_file = str(DATA_DIR / "budget_case.txt")
 
         # WHEN
         result = run_analysis(
@@ -62,7 +62,7 @@ class TestRunAnalysisWithEnglish:
     def test_floods_case(self) -> None:
         """Test analysis of floods case returns correct structure."""
         # GIVEN
-        data_file = str(DATA_DIR / "en" / "floods_case.txt")
+        data_file = str(DATA_DIR / "floods_case.txt")
 
         # WHEN
         result = run_analysis(
@@ -84,7 +84,7 @@ class TestRunAnalysisWithCzech:
     def test_czech_budget_case(self) -> None:
         """Test analysis with Czech labels produces valid results."""
         # GIVEN
-        data_file = str(DATA_DIR / "cs" / "budget_case.txt")
+        data_file = str(DATA_DIR / "budget_case.txt")
 
         # WHEN
         result = run_analysis(
@@ -102,7 +102,7 @@ class TestRunAnalysisWithCzech:
     def test_czech_floods_case(self) -> None:
         """Test analysis with Czech labels on floods case (odd expert count)."""
         # GIVEN
-        data_file = str(DATA_DIR / "cs" / "floods_case.txt")
+        data_file = str(DATA_DIR / "floods_case.txt")
 
         # WHEN
         result = run_analysis(
@@ -124,7 +124,7 @@ class TestRunAnalysisLikert:
     def test_pendlers_case_is_likert(self) -> None:
         """Test analysis of Likert scale pendlers case."""
         # GIVEN
-        data_file = str(DATA_DIR / "en" / "pendlers_case.txt")
+        data_file = str(DATA_DIR / "pendlers_case.txt")
 
         # WHEN
         result = run_analysis(
@@ -147,7 +147,7 @@ class TestRunAnalysisConsistency:
     def test_best_compromise_is_average_of_mean_and_median(self) -> None:
         """Test that best_compromise = (mean + median) / 2 component-wise."""
         # GIVEN
-        data_file = str(DATA_DIR / "en" / "budget_case.txt")
+        data_file = str(DATA_DIR / "budget_case.txt")
 
         # WHEN
         result = run_analysis(
@@ -169,7 +169,7 @@ class TestRunAnalysisConsistency:
     def test_max_error_formula(self) -> None:
         """Test that max_error = |mean_centroid - median_centroid| / 2."""
         # GIVEN
-        data_file = str(DATA_DIR / "en" / "floods_case.txt")
+        data_file = str(DATA_DIR / "floods_case.txt")
 
         # WHEN
         result = run_analysis(
@@ -186,7 +186,7 @@ class TestRunAnalysisConsistency:
     def test_centroid_formula(self) -> None:
         """Test that centroids are (lower + peak + upper) / 3."""
         # GIVEN
-        data_file = str(DATA_DIR / "en" / "budget_case.txt")
+        data_file = str(DATA_DIR / "budget_case.txt")
 
         # WHEN
         result = run_analysis(
