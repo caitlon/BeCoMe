@@ -5,7 +5,7 @@ This module provides:
 - Authorization dependencies following DRY (single parameterized class)
 """
 
-from enum import Enum
+from enum import StrEnum
 from typing import Annotated
 from uuid import UUID
 
@@ -106,7 +106,7 @@ def get_storage_service() -> StorageService | None:
 # --- Authorization Dependencies ---
 
 
-class AccessLevel(str, Enum):
+class AccessLevel(StrEnum):
     """Access level for project authorization.
 
     Following DRY: single enum instead of multiple classes.
