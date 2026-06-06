@@ -30,10 +30,6 @@ jobs:
       - name: Install Python dependencies
         run: uv sync --locked --extra dev --extra api
 
-      # Security: dependency audit
-      - name: Audit Python dependencies
-        run: uv run pip-audit
-
       # Python linting
       - name: Check code formatting
         run: uv run ruff format --check .
@@ -56,14 +52,63 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      - name: Audit npm dependencies
-        working-directory: frontend
-        run: npm audit --omit=dev --audit-level=moderate
-
       # TypeScript linting
       - name: Run ESLint
         working-directory: frontend
         run: npm run lint
+
+  dependency-audit:
+    name: Dependency Audit
+    runs-on: ubuntu-24.04
+    # Network-bound audits (pip-audit -> pypi.org, npm audit -> npm registry) live here,
+    # not in the required "Code Quality Checks" job, so a transient registry timeout cannot
+    # fail the required lint check or skip the test jobs that depend on it. Retries absorb
+    # flaky network; a real vulnerability still fails the job after all attempts.
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.13.7
+
+      - name: Install Python dependencies
+        run: uv sync --locked --extra dev --extra api
+
+      - name: Audit Python dependencies (pip-audit)
+        run: |
+          for attempt in 1 2 3; do
+            uv run pip-audit --timeout 30 && exit 0
+            echo "::warning::pip-audit attempt $attempt failed (network?); retrying in 15s"
+            sleep 15
+          done
+          echo "::error::pip-audit failed after 3 attempts"
+          exit 1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Audit npm dependencies
+        working-directory: frontend
+        run: |
+          for attempt in 1 2 3; do
+            npm audit --omit=dev --audit-level=moderate && exit 0
+            echo "::warning::npm audit attempt $attempt failed (network?); retrying in 15s"
+            sleep 15
+          done
+          echo "::error::npm audit failed after 3 attempts"
+          exit 1
 
   python-tests:
     name: Python Tests
