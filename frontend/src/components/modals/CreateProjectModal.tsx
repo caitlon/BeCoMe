@@ -56,7 +56,7 @@ export function CreateProjectModal({
             .max(50),
         })
         .refine((data) => data.scale_max > data.scale_min, {
-          message: t("create.validation.maxGreaterMin"),
+          error: t("create.validation.maxGreaterMin"),
           path: ["scale_max"],
         }),
     [t]

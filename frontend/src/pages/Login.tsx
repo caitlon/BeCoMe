@@ -32,7 +32,7 @@ const Login = () => {
   const loginSchema = useMemo(
     () =>
       z.object({
-        email: z.string().email(t("validation.emailInvalid")),
+        email: z.email(t("validation.emailInvalid")),
         password: z.string().min(1, t("validation.passwordRequired")),
       }),
     [t]

@@ -62,11 +62,10 @@ const Register = () => {
       z
         .object({
           email: z
-            .string()
             .email(t("validation.emailInvalid"))
             .max(255, t("validation.emailMaxLength"))
             .refine((val) => /^[\x20-\x7E]*$/.test(val), {
-              message: t("validation.emailAsciiOnly"),
+              error: t("validation.emailAsciiOnly"),
             }),
           password: z
             .string()
@@ -89,7 +88,7 @@ const Register = () => {
             .regex(/^[\p{L}\s'-]+$/u, t("validation.nameFormat")),
         })
         .refine((data) => data.password === data.confirmPassword, {
-          message: t("validation.passwordsMatch"),
+          error: t("validation.passwordsMatch"),
           path: ["confirmPassword"],
         }),
     [t]
