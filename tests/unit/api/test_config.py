@@ -77,6 +77,24 @@ class TestStorageEnabled:
 class TestEmailEnabled:
     """Tests for email settings defaults and the email_enabled property."""
 
+    @pytest.fixture(autouse=True)
+    def _isolate_email_env(self, monkeypatch, tmp_path):
+        """Isolate from the local .env file and any EMAIL_* process variables.
+
+        Without this, a developer's local .env (which may set EMAIL_PROVIDER and
+        EMAIL_API_KEY for real sending) leaks into these default-value tests and
+        breaks them, even though CI -- with no .env -- stays green.
+        """
+        monkeypatch.chdir(tmp_path)
+        for var in (
+            "EMAIL_PROVIDER",
+            "EMAIL_API_KEY",
+            "EMAIL_FROM",
+            "EMAIL_FROM_NAME",
+            "FRONTEND_BASE_URL",
+        ):
+            monkeypatch.delenv(var, raising=False)
+
     def test_email_provider_defaults_to_console(self):
         """
         GIVEN Settings without an explicit email provider
