@@ -129,6 +129,8 @@
     "about": "About the Method",
     "login": "Sign In",
     "register": "Create Account",
+    "forgotPassword": "Reset Password",
+    "resetPassword": "New Password",
     "projects": "Projects",
     "projectDetail": "Project: {{name}}",
     "profile": "Profile",
