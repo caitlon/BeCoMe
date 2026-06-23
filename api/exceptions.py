@@ -85,3 +85,12 @@ class ValuesOutOfRangeError(ValidationError):
 
 class ScaleRangeError(ValidationError):
     """Raised when scale_min >= scale_max."""
+
+
+# Password-reset exceptions
+class InvalidResetTokenError(ValidationError):
+    """Raised when a password reset token is unknown or already used."""
+
+
+class ResetTokenExpiredError(ValidationError):
+    """Raised when a password reset token has expired."""
