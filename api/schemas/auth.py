@@ -155,3 +155,30 @@ class ChangePasswordRequest(BaseModel):
     def password_strength(cls, v: str) -> str:
         """Validate password strength."""
         return validate_password_strength(v)
+
+
+class ForgotPasswordRequest(BaseModel):
+    """Password reset request by email."""
+
+    email: EmailStr = Field(..., max_length=255, description="Email address")
+
+    @field_validator("email")
+    @classmethod
+    def email_ascii_only(cls, v: str) -> str:
+        """Validate email contains only ASCII characters."""
+        if not v.isascii():
+            raise ValueError("Email must contain only ASCII characters")
+        return v
+
+
+class ResetPasswordRequest(BaseModel):
+    """Password reset confirmation with a token and the new password."""
+
+    token: str = Field(..., min_length=1, max_length=512, description="Reset token")
+    new_password: str = Field(..., min_length=12, max_length=128, description="New password")
+
+    @field_validator("new_password")
+    @classmethod
+    def password_strength(cls, v: str) -> str:
+        """Validate password strength."""
+        return validate_password_strength(v)

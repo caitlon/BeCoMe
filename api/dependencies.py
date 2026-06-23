@@ -17,8 +17,12 @@ from api.config import get_settings
 from api.db.models import Project
 from api.db.session import get_session
 from api.services.calculation_service import CalculationService
+from api.services.email.base import EmailSender
+from api.services.email.console_email_sender import ConsoleEmailSender
+from api.services.email.resend_email_sender import ResendEmailSender
 from api.services.invitation_service import InvitationService
 from api.services.opinion_service import OpinionService
+from api.services.password_reset_service import PasswordResetService
 from api.services.project_membership_service import ProjectMembershipService
 from api.services.project_query_service import ProjectQueryService
 from api.services.project_service import ProjectService
@@ -84,6 +88,29 @@ def get_calculation_service(
 def get_invitation_service(session: Annotated[Session, Depends(get_session)]) -> InvitationService:
     """Create InvitationService instance."""
     return InvitationService(session)
+
+
+def get_password_reset_service(
+    session: Annotated[Session, Depends(get_session)],
+) -> PasswordResetService:
+    """Create PasswordResetService instance."""
+    return PasswordResetService(session)
+
+
+def get_email_service() -> EmailSender:
+    """Create the email sender for the configured provider.
+
+    Always returns a usable sender: when the HTTP provider is selected and
+    configured it sends for real; otherwise it falls back to the console sender
+    that logs the link. The forgot-password flow must never 503 (that would leak
+    account existence), so there is no None / unconfigured branch here.
+
+    :return: An EmailSender implementation.
+    """
+    settings = get_settings()
+    if settings.email_provider == "http" and settings.email_enabled:
+        return ResendEmailSender(settings)
+    return ConsoleEmailSender(settings)
 
 
 def get_storage_service() -> StorageService | None:

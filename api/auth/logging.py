@@ -87,6 +87,40 @@ def log_password_change(user_id: UUID, request: "Request | None" = None) -> None
     )
 
 
+def log_password_reset_requested(email: str, request: "Request | None" = None) -> None:
+    """Log a password reset request (forgot-password).
+
+    :param email: Email address from the request
+    :param request: FastAPI request (for IP extraction)
+    """
+    ip = get_client_ip(request)
+    logger.info(
+        "Password reset requested",
+        extra={
+            "event": "password_reset_requested",
+            "email": email,
+            "ip": ip,
+        },
+    )
+
+
+def log_password_reset_completed(user_id: UUID, request: "Request | None" = None) -> None:
+    """Log a completed password reset.
+
+    :param user_id: User's ID
+    :param request: FastAPI request (for IP extraction)
+    """
+    ip = get_client_ip(request)
+    logger.info(
+        "Password reset completed",
+        extra={
+            "event": "password_reset_completed",
+            "user_id": str(user_id),
+            "ip": ip,
+        },
+    )
+
+
 def log_account_deletion(user_id: UUID, email: str, request: "Request | None" = None) -> None:
     """Log account deletion event.
 
