@@ -42,7 +42,7 @@ export function InviteExpertModal({
   const inviteSchema = useMemo(
     () =>
       z.object({
-        email: z.string().email(t("invite.validation.emailInvalid")),
+        email: z.email(t("invite.validation.emailInvalid")),
       }),
     [t]
   );

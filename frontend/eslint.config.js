@@ -20,7 +20,10 @@ export default tseslint.config(
       "jsx-a11y": jsxA11y,
     },
     rules: {
-      ...reactHooks.configs.recommended.rules,
+      // react-hooks 7 bundles new React Compiler rules into its recommended
+      // preset; keep the two classic rules here and adopt the rest separately.
+      "react-hooks/rules-of-hooks": "error",
+      "react-hooks/exhaustive-deps": "warn",
       ...jsxA11y.flatConfigs.recommended.rules,
       "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
       "@typescript-eslint/no-unused-vars": "off",
