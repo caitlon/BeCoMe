@@ -74,6 +74,74 @@ class TestStorageEnabled:
         assert settings.storage_enabled is False
 
 
+class TestEmailEnabled:
+    """Tests for email settings defaults and the email_enabled property."""
+
+    def test_email_provider_defaults_to_console(self):
+        """
+        GIVEN Settings without an explicit email provider
+        WHEN constructed
+        THEN email_provider defaults to "console"
+        """
+        # GIVEN / WHEN
+        settings = Settings(secret_key="test-secret-key")
+
+        # THEN
+        assert settings.email_provider == "console"
+
+    def test_token_ttl_defaults_to_60_minutes(self):
+        """
+        GIVEN Settings without an explicit reset-token TTL
+        WHEN constructed
+        THEN password_reset_token_ttl_minutes defaults to 60
+        """
+        # GIVEN / WHEN
+        settings = Settings(secret_key="test-secret-key")
+
+        # THEN
+        assert settings.password_reset_token_ttl_minutes == 60
+
+    def test_returns_false_for_console_provider(self):
+        """
+        GIVEN the default console email provider
+        WHEN email_enabled is accessed
+        THEN it returns False (console never counts as a real send)
+        """
+        # GIVEN
+        settings = Settings(secret_key="test-secret-key")
+
+        # WHEN / THEN
+        assert settings.email_enabled is False
+
+    def test_returns_false_for_http_without_api_key(self):
+        """
+        GIVEN the http email provider but no API key
+        WHEN email_enabled is accessed
+        THEN it returns False
+        """
+        # GIVEN
+        settings = Settings(secret_key="test-secret-key", email_provider="http")
+
+        # WHEN / THEN
+        assert settings.email_enabled is False
+
+    def test_returns_true_for_http_with_api_key(self):
+        """
+        GIVEN the http email provider with an API key set
+        WHEN email_enabled is accessed
+        THEN it returns True
+        """
+        # GIVEN
+        settings = Settings(
+            secret_key="test-secret-key",
+            email_provider="http",
+            email_api_key="re_test_key",
+        )
+
+        # WHEN / THEN
+        assert settings.email_enabled is True
+
+
 class TestEnvironmentResolution:
     """Tests for APP_ENV profile resolution."""
 

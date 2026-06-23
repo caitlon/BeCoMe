@@ -138,6 +138,19 @@ class Settings(BaseSettings):
     bucket_secret_access_key: str | None = None
     bucket_region: str = "auto"
 
+    # Email (transactional password reset). When the provider is "console" or the
+    # selected provider's credentials are unset, the reset link is logged rather
+    # than sent, so the flow still works offline in dev/CI/tests.
+    email_provider: Literal["console", "http"] = "console"
+    email_from: str = "no-reply@become.app"
+    email_from_name: str = "BeCoMe"
+    # Public base URL of the FRONTEND, used to build the reset link in emails.
+    frontend_base_url: str = "http://localhost:5173"
+    password_reset_token_ttl_minutes: int = 60
+    # HTTP transactional provider (Resend-style API).
+    email_api_key: str | None = None
+    email_api_url: str = "https://api.resend.com/emails"
+
     def __init__(self, **kwargs: Any) -> None:
         """Load ``.env`` then ``.env.<APP_ENV>`` and inject the resolved profile.
 
@@ -163,6 +176,19 @@ class Settings(BaseSettings):
             and self.bucket_access_key_id
             and self.bucket_secret_access_key
         )
+
+    @property
+    def email_enabled(self) -> bool:
+        """Check if a real email provider is fully configured.
+
+        The console provider always returns False: it logs reset links instead
+        of sending them, so it never counts as a real send.
+
+        :return: True when the HTTP provider is selected and its API key is set.
+        """
+        if self.email_provider == "http":
+            return bool(self.email_api_key)
+        return False
 
     @model_validator(mode="after")
     def _validate_production_invariants(self) -> "Settings":
