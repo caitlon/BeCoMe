@@ -21,10 +21,16 @@ vi.mock('react-router-dom', async (importOriginal) => {
   };
 });
 
-// 2. Mock all 13 lazy-loaded pages as synchronous stubs
+// 2. Mock all 15 lazy-loaded pages as synchronous stubs
 vi.mock('@/pages/Landing', () => ({ default: () => <div data-testid="landing" /> }));
 vi.mock('@/pages/Login', () => ({ default: () => <div data-testid="login" /> }));
 vi.mock('@/pages/Register', () => ({ default: () => <div data-testid="register" /> }));
+vi.mock('@/pages/ForgotPassword', () => ({
+  default: () => <div data-testid="forgot-password" />,
+}));
+vi.mock('@/pages/ResetPassword', () => ({
+  default: () => <div data-testid="reset-password" />,
+}));
 vi.mock('@/pages/Projects', () => ({ default: () => <div data-testid="projects" /> }));
 vi.mock('@/pages/ProjectDetail', () => ({ default: () => <div data-testid="project-detail" /> }));
 vi.mock('@/pages/Profile', () => ({ default: () => <div data-testid="profile" /> }));
@@ -132,6 +138,24 @@ describe('App - public routes', () => {
 
     await waitFor(() => {
       expect(screen.getByTestId('register')).toBeInTheDocument();
+    });
+  });
+
+  it('renders ForgotPassword page at /forgot-password', async () => {
+    routeRef.value = '/forgot-password';
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('forgot-password')).toBeInTheDocument();
+    });
+  });
+
+  it('renders ResetPassword page at /reset-password', async () => {
+    routeRef.value = '/reset-password';
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('reset-password')).toBeInTheDocument();
     });
   });
 

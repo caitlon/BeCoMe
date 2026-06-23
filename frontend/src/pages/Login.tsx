@@ -68,6 +68,15 @@ const Login = () => {
           {...register("password")}
         />
 
+        <div className="text-right -mt-2">
+          <Link
+            to="/forgot-password"
+            className="text-sm text-muted-foreground hover:underline"
+          >
+            {t("login.forgotPassword")}
+          </Link>
+        </div>
+
         <SubmitButton
           className="w-full"
           isLoading={isLoading}
