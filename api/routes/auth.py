@@ -4,6 +4,7 @@ Exception handling follows OCP: all exceptions are handled
 by centralized middleware, routes focus on business logic only.
 """
 
+import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -18,14 +19,31 @@ from api.auth.jwt import (
     decode_refresh_token,
     revoke_token,
 )
-from api.auth.logging import log_login_success, log_registration
+from api.auth.logging import (
+    log_login_success,
+    log_password_reset_completed,
+    log_password_reset_requested,
+    log_registration,
+)
 from api.config import get_settings
-from api.dependencies import get_user_service
-from api.middleware.rate_limit import LIMIT_AUTH_ENDPOINTS, limiter
-from api.schemas.auth import RefreshTokenRequest, RegisterRequest, TokenResponse, UserResponse
+from api.dependencies import get_email_service, get_password_reset_service, get_user_service
+from api.middleware.rate_limit import LIMIT_AUTH_ENDPOINTS, LIMIT_PWD_RESET, limiter
+from api.schemas.auth import (
+    ForgotPasswordRequest,
+    RefreshTokenRequest,
+    RegisterRequest,
+    ResetPasswordRequest,
+    TokenResponse,
+    UserResponse,
+)
+from api.services.email.base import EmailSender
+from api.services.email.exceptions import EmailSendError
+from api.services.password_reset_service import PasswordResetService
 from api.services.user_service import UserService
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
+
+logger = logging.getLogger("api.route.auth")
 
 
 @router.post(
@@ -147,6 +165,70 @@ def logout(
     :param token_payload: Current token payload from JWT
     """
     revoke_token(token_payload.jti)
+
+
+@router.post(
+    "/forgot-password",
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Request a password reset email",
+)
+@limiter.limit(LIMIT_PWD_RESET)
+async def forgot_password(
+    request: Request,
+    data: ForgotPasswordRequest,
+    service: Annotated[PasswordResetService, Depends(get_password_reset_service)],
+    email_service: Annotated[EmailSender, Depends(get_email_service)],
+) -> dict[str, str]:
+    """Start the password reset flow for the given email.
+
+    Always returns the same 202 response whether or not the email is registered,
+    so the endpoint cannot reveal which addresses have accounts. When a user
+    exists a reset link is emailed; send failures are swallowed for the same
+    reason. Rate limited to slow abuse.
+
+    :param request: FastAPI request (for rate limiting and logging)
+    :param data: Email to send the reset link to
+    :param service: Password reset service
+    :param email_service: Email sender
+    :return: A fixed acknowledgement message
+    """
+    raw_token = service.create_reset_token(data.email)
+    if raw_token is not None:
+        reset_url = f"{get_settings().frontend_base_url}/reset-password?token={raw_token}"
+        try:
+            await email_service.send_password_reset(to_email=data.email, reset_url=reset_url)
+        except EmailSendError:
+            logger.warning(
+                "Failed to send password reset email",
+                extra={"event": "password_reset_email_failed"},
+            )
+
+    log_password_reset_requested(data.email, request)
+    return {"detail": "If that email is registered, a reset link has been sent."}
+
+
+@router.post(
+    "/reset-password",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Reset password using a token",
+)
+@limiter.limit(LIMIT_PWD_RESET)
+def reset_password(
+    request: Request,
+    data: ResetPasswordRequest,
+    service: Annotated[PasswordResetService, Depends(get_password_reset_service)],
+) -> None:
+    """Set a new password using a valid reset token.
+
+    InvalidResetTokenError and ResetTokenExpiredError are handled by centralized
+    middleware and both map to 400 with the same opaque message. Rate limited.
+
+    :param request: FastAPI request (for rate limiting and logging)
+    :param data: Reset token and new password
+    :param service: Password reset service
+    """
+    user = service.reset_password(data.token, data.new_password)
+    log_password_reset_completed(user.id, request)
 
 
 @router.get("/me", summary="Get current user profile")
