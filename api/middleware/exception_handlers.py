@@ -14,6 +14,7 @@ from api.auth.logging import log_login_failure
 from api.exceptions import (
     BeCoMeAPIError,
     InvalidCredentialsError,
+    InvalidResetTokenError,
     InvitationAlreadyUsedError,
     InvitationExpiredError,
     InvitationNotFoundError,
@@ -21,6 +22,7 @@ from api.exceptions import (
     NotFoundError,
     OpinionNotFoundError,
     ProjectNotFoundError,
+    ResetTokenExpiredError,
     ScaleRangeError,
     UserAlreadyMemberError,
     UserExistsError,
@@ -51,6 +53,9 @@ EXCEPTION_MAP: dict[type[BeCoMeAPIError], tuple[int, str | None]] = {
         status.HTTP_400_BAD_REQUEST,
         "Invitation has already been used",
     ),
+    # Same opaque message for invalid and expired so neither can be distinguished.
+    InvalidResetTokenError: (status.HTTP_400_BAD_REQUEST, "Invalid or expired reset token"),
+    ResetTokenExpiredError: (status.HTTP_400_BAD_REQUEST, "Invalid or expired reset token"),
     # 401 Unauthorized
     InvalidCredentialsError: (
         status.HTTP_401_UNAUTHORIZED,
