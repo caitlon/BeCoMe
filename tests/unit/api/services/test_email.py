@@ -124,3 +124,34 @@ class TestResendEmailSender:
                     reset_url="https://app.example/reset",
                 )
             )
+
+    def test_creates_own_client_when_none_injected(self):
+        """
+        GIVEN a Resend sender with no injected client
+        WHEN a password reset email is sent
+        THEN it opens its own AsyncClient and posts through it
+        """
+        # GIVEN
+        sender = ResendEmailSender(_settings())
+        response = MagicMock()
+        response.raise_for_status = MagicMock()
+        own_client = MagicMock()
+        own_client.post = AsyncMock(return_value=response)
+        async_cm = MagicMock()
+        async_cm.__aenter__ = AsyncMock(return_value=own_client)
+        async_cm.__aexit__ = AsyncMock(return_value=None)
+
+        # WHEN
+        with patch(
+            "api.services.email.resend_email_sender.httpx.AsyncClient",
+            return_value=async_cm,
+        ):
+            asyncio.run(
+                sender.send_password_reset(
+                    to_email="user@example.com",
+                    reset_url="https://app.example/reset",
+                )
+            )
+
+        # THEN
+        own_client.post.assert_awaited_once()
