@@ -129,6 +129,8 @@
     "about": "O metodě",
     "login": "Přihlášení",
     "register": "Vytvoření účtu",
+    "forgotPassword": "Obnovení hesla",
+    "resetPassword": "Nové heslo",
     "projects": "Projekty",
     "projectDetail": "Projekt: {{name}}",
     "profile": "Profil",
