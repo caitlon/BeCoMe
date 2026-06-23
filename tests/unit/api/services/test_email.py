@@ -1,8 +1,7 @@
 """Unit tests for the email sender implementations."""
 
 import asyncio
-import logging
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
@@ -27,7 +26,7 @@ def _settings(**overrides: object) -> MagicMock:
 class TestConsoleEmailSender:
     """Tests for the development console email sender."""
 
-    def test_logs_reset_link_without_network(self, caplog):
+    def test_logs_reset_link_without_network(self):
         """
         GIVEN a console email sender
         WHEN a password reset email is sent
@@ -37,7 +36,7 @@ class TestConsoleEmailSender:
         sender = ConsoleEmailSender(_settings())
 
         # WHEN
-        with caplog.at_level(logging.INFO, logger="api.service.email"):
+        with patch("api.services.email.console_email_sender.logger") as mock_logger:
             asyncio.run(
                 sender.send_password_reset(
                     to_email="user@example.com",
@@ -46,7 +45,8 @@ class TestConsoleEmailSender:
             )
 
         # THEN
-        assert "https://app.example/reset-password?token=abc123" in caplog.text
+        mock_logger.info.assert_called_once()
+        assert "https://app.example/reset-password?token=abc123" in str(mock_logger.info.call_args)
 
 
 class TestResendEmailSender:
