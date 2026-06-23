@@ -59,7 +59,7 @@ describe('DeleteConfirmModal', () => {
 
   it('shows loading state during confirmation', async () => {
     const user = userEvent.setup()
-    let resolveConfirm: () => void
+    let resolveConfirm: (value?: unknown) => void
     const onConfirm = vi.fn().mockImplementation(
       () => new Promise((resolve) => { resolveConfirm = resolve })
     )

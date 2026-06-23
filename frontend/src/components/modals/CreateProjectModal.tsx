@@ -67,7 +67,7 @@ export function CreateProjectModal({
     handleSubmit,
     reset,
     formState: { errors },
-  } = useForm<CreateProjectFormData>({
+  } = useForm<z.input<typeof createProjectSchema>, unknown, CreateProjectFormData>({
     resolver: zodResolver(createProjectSchema),
     defaultValues: {
       scale_min: 0,

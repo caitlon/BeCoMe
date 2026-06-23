@@ -29,7 +29,7 @@ export interface CustomRenderOptions extends Omit<RenderOptions, 'wrapper'> {
 
 function AllTheProviders({ children }: { children: ReactNode }) {
   return (
-    <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+    <MemoryRouter>
       <I18nextProvider i18n={i18n}>
         {children}
       </I18nextProvider>
@@ -43,10 +43,7 @@ function AllTheProviders({ children }: { children: ReactNode }) {
 function createWrapper(initialEntries?: MemoryRouterProps['initialEntries']) {
   return function Wrapper({ children }: { children: ReactNode }) {
     return (
-      <MemoryRouter
-        initialEntries={initialEntries}
-        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
-      >
+      <MemoryRouter initialEntries={initialEntries}>
         <I18nextProvider i18n={i18n}>
           {children}
         </I18nextProvider>
@@ -91,7 +88,7 @@ export const filterMotionProps = (props: Record<string, unknown>) => {
  * Covers all motion elements used across the app:
  * div, section, nav, span, h1, h2, p, polygon, circle, line.
  */
-const makeMotionComponent = (Tag: string) => {
+const makeMotionComponent = (Tag: keyof React.JSX.IntrinsicElements) => {
   const Component = ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) => {
     const filtered = filterMotionProps(props);
     return <Tag {...filtered}>{children}</Tag>;
@@ -100,7 +97,7 @@ const makeMotionComponent = (Tag: string) => {
   return Component;
 };
 
-const makeMotionVoidComponent = (Tag: string) => {
+const makeMotionVoidComponent = (Tag: keyof React.JSX.IntrinsicElements) => {
   const Component = (props: Record<string, unknown>) => {
     const filtered = filterMotionProps(props);
     return <Tag {...filtered} />;

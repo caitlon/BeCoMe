@@ -1,22 +1,17 @@
-import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { CheckCircle2, Rocket } from "lucide-react";
 import { fadeInUp } from "@/lib/motion";
 
+// Decorative particle positions, computed once at module load so render stays pure
+const particlePositions = Array.from({ length: 6 }).map(() => ({
+  x: 50 + (Math.random() - 0.5) * 60,
+  y: 50 + (Math.random() - 0.5) * 60,
+}));
+
 export function StepComplete() {
   const { t } = useTranslation("onboarding");
-
-  // Memoize particle positions to prevent recalculation on every render
-  const particlePositions = useMemo(
-    () =>
-      Array.from({ length: 6 }).map(() => ({
-        x: 50 + (Math.random() - 0.5) * 60,
-        y: 50 + (Math.random() - 0.5) * 60,
-      })),
-    []
-  );
 
   return (
     <div className="flex flex-col items-center justify-center text-center px-6 py-12">

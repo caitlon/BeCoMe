@@ -3,6 +3,7 @@ import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { describe, it, expect, vi } from 'vitest'
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute'
 import * as AuthContext from '@/contexts/AuthContext'
+import { createUser } from '@tests/factories/user'
 
 vi.mock('@/contexts/AuthContext', () => ({
   useAuth: vi.fn(),
@@ -34,7 +35,7 @@ describe('ProtectedRoute', () => {
     vi.mocked(AuthContext.useAuth).mockReturnValue({
       isLoading: false,
       isAuthenticated: true,
-      user: { id: '1', email: 'test@example.com', first_name: 'Test' },
+      user: createUser({ id: '1', email: 'test@example.com', first_name: 'Test' }),
       login: vi.fn(),
       register: vi.fn(),
       logout: vi.fn(),
@@ -62,10 +63,7 @@ describe('ProtectedRoute', () => {
     })
 
     render(
-      <MemoryRouter
-        initialEntries={['/protected']}
-        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
-      >
+      <MemoryRouter initialEntries={['/protected']}>
         <Routes>
           <Route
             path="/protected"

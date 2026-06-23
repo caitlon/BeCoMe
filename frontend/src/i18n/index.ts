@@ -68,7 +68,6 @@ i18n
     interpolation: {
       escapeValue: false,
     },
-    showSupportNotice: false,
   });
 
 // Update HTML lang attribute for screen readers

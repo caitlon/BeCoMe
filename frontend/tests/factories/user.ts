@@ -29,6 +29,7 @@ export function createMember(overrides: Partial<Member> = {}): Member {
     email: `member${userCounter}@example.com`,
     first_name: 'Member',
     last_name: 'User',
+    photo_url: null,
     role: 'expert',
     joined_at: '2024-01-01T00:00:00Z',
     ...overrides,

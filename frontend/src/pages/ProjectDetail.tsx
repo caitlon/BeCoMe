@@ -136,6 +136,7 @@ const ProjectDetail = () => {
   }, [id, user?.id, toast, navigate, t]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial data load on mount
     fetchData();
   }, [fetchData]);
 
