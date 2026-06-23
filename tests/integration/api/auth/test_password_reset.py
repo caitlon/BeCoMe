@@ -13,6 +13,7 @@ from sqlmodel import select
 from api.db.models import PasswordResetToken, User
 from api.db.utils import utc_now
 from api.dependencies import get_email_service
+from api.services.email.exceptions import EmailSendError
 from tests.shared.helpers import DEFAULT_TEST_PASSWORD
 
 NEW_PASSWORD = "BrandNewPass456!"
@@ -93,6 +94,23 @@ class TestForgotPassword:
         # THEN
         assert known.status_code == unknown.status_code == 202
         assert known.json() == unknown.json()
+
+    def test_returns_202_even_when_email_send_fails(self, client):
+        """A provider send failure is swallowed; the response is still 202."""
+
+        # GIVEN — an email sender that raises on send
+        class FailingEmailSender:
+            async def send_password_reset(self, **_kwargs: object) -> None:
+                raise EmailSendError("send failed")
+
+        client.app.dependency_overrides[get_email_service] = lambda: FailingEmailSender()
+        _register(client, "user@example.com")
+
+        # WHEN
+        response = client.post("/api/v1/auth/forgot-password", json={"email": "user@example.com"})
+
+        # THEN
+        assert response.status_code == 202
 
 
 class TestResetPassword:

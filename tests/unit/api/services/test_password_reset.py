@@ -2,6 +2,7 @@
 
 import hashlib
 from datetime import timedelta
+from uuid import uuid4
 
 import pytest
 from sqlalchemy.pool import StaticPool
@@ -183,4 +184,26 @@ class TestResetPassword:
 
         # WHEN / THEN
         with pytest.raises(ResetTokenExpiredError):
+            service.reset_password(raw, "NewSecurePass123!")
+
+    def test_raises_when_user_missing_for_valid_token(self, session):
+        """
+        GIVEN a non-expired token whose user no longer exists
+        WHEN the password reset is attempted
+        THEN InvalidResetTokenError is raised
+        """
+        # GIVEN — a token row pointing at a user id that was never created
+        raw = "orphan-token-value"
+        session.add(
+            PasswordResetToken(
+                user_id=uuid4(),
+                token_hash=_hash(raw),
+                expires_at=utc_now() + timedelta(hours=1),
+            )
+        )
+        session.commit()
+        service = PasswordResetService(session)
+
+        # WHEN / THEN
+        with pytest.raises(InvalidResetTokenError):
             service.reset_password(raw, "NewSecurePass123!")
