@@ -42,6 +42,7 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial auth load on mount
     refreshUser();
   }, [refreshUser]);
 

@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
@@ -8,14 +8,12 @@ import { fadeInUp } from "@/lib/motion";
 export function StepComplete() {
   const { t } = useTranslation("onboarding");
 
-  // Memoize particle positions to prevent recalculation on every render
-  const particlePositions = useMemo(
-    () =>
-      Array.from({ length: 6 }).map(() => ({
-        x: 50 + (Math.random() - 0.5) * 60,
-        y: 50 + (Math.random() - 0.5) * 60,
-      })),
-    []
+  // Decorative particle positions, randomised once per mount via lazy initializer
+  const [particlePositions] = useState(() =>
+    Array.from({ length: 6 }).map(() => ({
+      x: 50 + (Math.random() - 0.5) * 60,
+      y: 50 + (Math.random() - 0.5) * 60,
+    }))
   );
 
   return (

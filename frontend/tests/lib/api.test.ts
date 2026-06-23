@@ -24,7 +24,7 @@ Object.defineProperty(window, 'localStorage', { value: localStorageMock });
 
 // Mock fetch
 const mockFetch = vi.fn();
-global.fetch = mockFetch;
+globalThis.fetch = mockFetch;
 
 // Import api after mocks are set up
 // We need to re-import to get a fresh instance each test
@@ -673,6 +673,7 @@ describe('ApiClient', () => {
       });
 
       await api.createOrUpdateOpinion('proj-1', {
+        position: '0',
         lower_bound: 30,
         peak: 50,
         upper_bound: 70,
@@ -682,7 +683,7 @@ describe('ApiClient', () => {
         expect.stringContaining('/projects/proj-1/opinions'),
         expect.objectContaining({
           method: 'POST',
-          body: JSON.stringify({ lower_bound: 30, peak: 50, upper_bound: 70 }),
+          body: JSON.stringify({ position: '0', lower_bound: 30, peak: 50, upper_bound: 70 }),
         })
       );
     });

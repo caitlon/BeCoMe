@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { render } from '@tests/utils';
 import ProjectDetail from '@/pages/ProjectDetail';
 import { HttpError } from '@/lib/api';
-import { createProject, createOpinion, createMember, createCalculationResult, createProjectInvitation } from '@tests/factories/project';
+import { createProject, createProjectWithRole, createOpinion, createMember, createCalculationResult, createProjectInvitation } from '@tests/factories/project';
 
 // Use vi.hoisted for mock variables
 const { mockApi, mockToast, mockUser, mockNavigate } = vi.hoisted(() => ({
@@ -93,7 +93,7 @@ vi.mock('framer-motion', () => ({
 }));
 
 const defaultSetup = () => {
-  const project = createProject({
+  const project = createProjectWithRole({
     id: 'project-1',
     name: 'Test Project',
     description: 'Test Description',
@@ -156,7 +156,7 @@ describe('ProjectDetail', () => {
   });
 
   it('hides admin buttons for expert users', async () => {
-    mockApi.getProject.mockResolvedValue(createProject({ role: 'expert' }));
+    mockApi.getProject.mockResolvedValue(createProjectWithRole({ role: 'expert' }));
 
     render(<ProjectDetail />);
 
@@ -876,7 +876,7 @@ describe('ProjectDetail - Invitations 403 handling', () => {
   });
 
   it('renders page normally when invitations endpoint returns 403', async () => {
-    const project = createProject({ id: 'project-1', name: 'Test Project', role: 'member' });
+    const project = createProjectWithRole({ id: 'project-1', name: 'Test Project', role: 'expert' });
     mockApi.getProject.mockResolvedValue(project);
     mockApi.getOpinions.mockResolvedValue([]);
     mockApi.getResult.mockResolvedValue(null);
@@ -891,7 +891,7 @@ describe('ProjectDetail - Invitations 403 handling', () => {
   });
 
   it('shows error toast and navigates away on non-403 invitation error', async () => {
-    const project = createProject({ id: 'project-1', name: 'Test Project', role: 'admin' });
+    const project = createProjectWithRole({ id: 'project-1', name: 'Test Project', role: 'admin' });
     mockApi.getProject.mockResolvedValue(project);
     mockApi.getOpinions.mockResolvedValue([]);
     mockApi.getResult.mockResolvedValue(null);

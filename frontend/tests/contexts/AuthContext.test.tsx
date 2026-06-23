@@ -2,6 +2,7 @@ import { renderHook, act, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { AuthProvider, useAuth } from '@/contexts/AuthContext'
 import { api } from '@/lib/api'
+import { createUser } from '@tests/factories/user'
 
 vi.mock('@/lib/api', () => ({
   api: {
@@ -32,7 +33,7 @@ describe('AuthContext', () => {
   })
 
   it('sets isAuthenticated to true when user exists', async () => {
-    const mockUser = { id: '1', email: 'test@example.com', first_name: 'Test' }
+    const mockUser = createUser({ id: '1', email: 'test@example.com', first_name: 'Test' })
     vi.mocked(api.getToken).mockReturnValue('valid-token')
     vi.mocked(api.getCurrentUser).mockResolvedValue(mockUser)
 
@@ -64,9 +65,9 @@ describe('AuthContext', () => {
   })
 
   it('login calls api.login and refreshes user', async () => {
-    const mockUser = { id: '1', email: 'test@example.com', first_name: 'Test' }
+    const mockUser = createUser({ id: '1', email: 'test@example.com', first_name: 'Test' })
     vi.mocked(api.getToken).mockReturnValue(null)
-    vi.mocked(api.login).mockResolvedValue({ access_token: 'new-token' })
+    vi.mocked(api.login).mockResolvedValue({ access_token: 'new-token', token_type: 'bearer' })
     vi.mocked(api.getCurrentUser).mockResolvedValue(mockUser)
 
     const { result } = renderHook(() => useAuth(), {
@@ -85,7 +86,7 @@ describe('AuthContext', () => {
   })
 
   it('logout clears user and calls api.logout', async () => {
-    const mockUser = { id: '1', email: 'test@example.com', first_name: 'Test' }
+    const mockUser = createUser({ id: '1', email: 'test@example.com', first_name: 'Test' })
     vi.mocked(api.getToken).mockReturnValue('valid-token')
     vi.mocked(api.getCurrentUser).mockResolvedValue(mockUser)
 
@@ -144,7 +145,7 @@ describe('AuthContext', () => {
   })
 
   it('register calls api.register, api.login, and refreshes user', async () => {
-    const mockUser = { id: '1', email: 'new@example.com', first_name: 'New' }
+    const mockUser = createUser({ id: '1', email: 'new@example.com', first_name: 'New' })
     vi.mocked(api.getToken).mockReturnValue(null)
 
     const { result } = renderHook(() => useAuth(), {

@@ -40,7 +40,7 @@ vi.mock('recharts', async (importOriginal) => {
     ReferenceLine: ({ x, stroke }: { x?: number; stroke?: string }) => (
       <div data-testid="reference-line" data-x={x} data-stroke={stroke} />
     ),
-    Tooltip: ({ content }: { content?: React.ReactElement }) => {
+    Tooltip: ({ content }: { content?: React.ReactElement<Record<string, unknown>> }) => {
       if (!tooltipFlag.renderContent || !content) return null;
       return (
         <div data-testid="tooltip-wrapper">

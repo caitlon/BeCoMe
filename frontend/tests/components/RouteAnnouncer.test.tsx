@@ -15,10 +15,7 @@ function NavigateHelper() {
 // Helper to render with router at a given path
 function renderAnnouncer(initialPath = '/') {
   return render(
-    <MemoryRouter
-      initialEntries={[initialPath]}
-      future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
-    >
+    <MemoryRouter initialEntries={[initialPath]}>
       <RouteAnnouncer />
     </MemoryRouter>
   );
@@ -27,10 +24,7 @@ function renderAnnouncer(initialPath = '/') {
 // Helper to render with router + NavigateHelper (for route change tests)
 function renderWithNavigate(initialPath = '/') {
   return render(
-    <MemoryRouter
-      initialEntries={[initialPath]}
-      future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
-    >
+    <MemoryRouter initialEntries={[initialPath]}>
       <RouteAnnouncer />
       <NavigateHelper />
     </MemoryRouter>

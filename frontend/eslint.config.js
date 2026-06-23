@@ -20,10 +20,7 @@ export default tseslint.config(
       "jsx-a11y": jsxA11y,
     },
     rules: {
-      // react-hooks 7 bundles new React Compiler rules into its recommended
-      // preset; keep the two classic rules here and adopt the rest separately.
-      "react-hooks/rules-of-hooks": "error",
-      "react-hooks/exhaustive-deps": "warn",
+      ...reactHooks.configs["recommended-latest"].rules,
       ...jsxA11y.flatConfigs.recommended.rules,
       "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
       "@typescript-eslint/no-unused-vars": "off",
@@ -37,6 +34,9 @@ export default tseslint.config(
       "react-refresh/only-export-components": "off",
       "jsx-a11y/heading-has-content": "off",
       "jsx-a11y/anchor-has-content": "off",
+      // shadcn/ui boilerplate trips React Compiler rules that do not apply here
+      "react-hooks/set-state-in-effect": "off",
+      "react-hooks/purity": "off",
     },
   },
   // Context providers co-export hooks by design
@@ -51,6 +51,8 @@ export default tseslint.config(
     files: ["tests/**/*.{ts,tsx}"],
     rules: {
       "react-refresh/only-export-components": "off",
+      // test helpers intentionally reassign module-level refs across renders
+      "react-hooks/globals": "off",
     },
   },
 );
