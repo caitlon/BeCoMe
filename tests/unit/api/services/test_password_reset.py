@@ -20,6 +20,11 @@ def _hash(raw: str) -> str:
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
+def _token_from_url(url: str) -> str:
+    """Extract the raw token from a reset URL (the part after ``token=``)."""
+    return url.split("token=")[1]
+
+
 @pytest.fixture
 def session():
     """In-memory SQLite session with all tables created."""
@@ -51,25 +56,27 @@ def _make_user(session: Session, email: str = "user@example.com") -> User:
 class TestCreateResetToken:
     """Tests for issuing reset tokens."""
 
-    def test_returns_raw_token_and_stores_only_hash(self, session):
+    def test_returns_reset_url_and_stores_only_hash(self, session):
         """
         GIVEN an existing user
         WHEN a reset token is created
-        THEN a raw token is returned and only its SHA-256 hash is stored
+        THEN a reset URL is returned and only the token's SHA-256 hash is stored
         """
         # GIVEN
         user = _make_user(session)
         service = PasswordResetService(session)
 
         # WHEN
-        raw = service.create_reset_token(user.email)
+        url = service.create_reset_token(user.email)
 
         # THEN
-        assert raw
+        assert url
+        assert "/reset-password?token=" in url
+        token = _token_from_url(url)
         stored = session.exec(select(PasswordResetToken)).all()
         assert len(stored) == 1
-        assert stored[0].token_hash == _hash(raw)
-        assert raw != stored[0].token_hash
+        assert stored[0].token_hash == _hash(token)
+        assert token != stored[0].token_hash
 
     def test_returns_none_for_unknown_email(self, session):
         """
@@ -96,14 +103,16 @@ class TestCreateResetToken:
         # GIVEN
         user = _make_user(session)
         service = PasswordResetService(session)
-        first_raw = service.create_reset_token(user.email)
+        first_url = service.create_reset_token(user.email)
 
         # WHEN
         service.create_reset_token(user.email)
 
         # THEN
         first = session.exec(
-            select(PasswordResetToken).where(PasswordResetToken.token_hash == _hash(first_raw))
+            select(PasswordResetToken).where(
+                PasswordResetToken.token_hash == _hash(_token_from_url(first_url))
+            )
         ).first()
         assert first is not None
         assert first.used_at is not None
@@ -121,15 +130,15 @@ class TestResetPassword:
         # GIVEN
         user = _make_user(session)
         service = PasswordResetService(session)
-        raw = service.create_reset_token(user.email)
+        token = _token_from_url(service.create_reset_token(user.email))
 
         # WHEN
-        updated = service.reset_password(raw, "NewSecurePass123!")
+        updated = service.reset_password(token, "NewSecurePass123!")
 
         # THEN
         assert verify_password("NewSecurePass123!", updated.hashed_password)
         record = session.exec(
-            select(PasswordResetToken).where(PasswordResetToken.token_hash == _hash(raw))
+            select(PasswordResetToken).where(PasswordResetToken.token_hash == _hash(token))
         ).first()
         assert record is not None
         assert record.used_at is not None
@@ -156,12 +165,12 @@ class TestResetPassword:
         # GIVEN
         user = _make_user(session)
         service = PasswordResetService(session)
-        raw = service.create_reset_token(user.email)
-        service.reset_password(raw, "NewSecurePass123!")
+        token = _token_from_url(service.create_reset_token(user.email))
+        service.reset_password(token, "NewSecurePass123!")
 
         # WHEN / THEN
         with pytest.raises(InvalidResetTokenError):
-            service.reset_password(raw, "AnotherPass123!")
+            service.reset_password(token, "AnotherPass123!")
 
     def test_raises_for_expired_token(self, session):
         """
