@@ -12,6 +12,14 @@
     "confirmPassword": "Potvrdit nové heslo",
     "update": "Aktualizovat heslo"
   },
+  "dataExport": {
+    "title": "Stáhnout vaše data",
+    "description": "Exportujte všechna svá osobní data (profil, projekty, názory a pozvánky) do strojově čitelného souboru JSON.",
+    "button": "Stáhnout data",
+    "downloading": "Příprava stahování...",
+    "success": "Vaše data byla stažena",
+    "error": "Nepodařilo se exportovat vaše data"
+  },
   "dangerZone": {
     "title": "Nebezpečná zóna",
     "warning": "Po smazání účtu již není cesty zpět. Buďte si prosím jisti.",

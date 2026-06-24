@@ -48,23 +48,45 @@ class TestRightOfAccess:
         # Cleanup
         http_client.delete("/users/me", headers=auth_headers(token))
 
-    def test_data_export_endpoint_not_implemented(self, http_client):
-        """No data export endpoint exists yet (GDPR Article 20 gap)."""
-        # GIVEN — registered user
+    def test_user_can_export_their_data(self, http_client):
+        """GET /users/me/export returns the user's data (GDPR Article 20)."""
+        # GIVEN — user with an owned project and a submitted opinion
         email = unique_email("gdpr-export")
-        token = register_user(http_client, email)
+        token = register_user_with_name(http_client, email, "Export", "Tester")
+        project = create_project(http_client, token, "Export Project")
+        project_id = project["id"]
+        submit_opinion(http_client, token, project_id, 20.0, 50.0, 80.0)
 
-        # WHEN — user attempts to export their data
+        # WHEN — user exports their data
         response = http_client.get(
             "/users/me/export",
             headers=auth_headers(token),
         )
 
-        # THEN — endpoint does not exist
-        assert response.status_code in (404, 405)
+        # THEN — the export carries the profile, the project, and the opinion
+        assert response.status_code == 200
+        data = response.json()
+        assert "export_metadata" in data
+        assert data["profile"]["email"] == email
+        assert data["profile"]["first_name"] == "Export"
+        assert any(p["name"] == "Export Project" for p in data["owned_projects"])
+        assert any(o["project_id"] == project_id for o in data["opinions"])
+
+        # AND — password material is never exported
+        assert "hashed_password" not in response.text
+        assert "hashed_password" not in data["profile"]
 
         # Cleanup
+        http_client.delete(f"/projects/{project_id}", headers=auth_headers(token))
         http_client.delete("/users/me", headers=auth_headers(token))
+
+    def test_data_export_requires_authentication(self, http_client):
+        """The export endpoint rejects unauthenticated requests."""
+        # WHEN — the export is requested without a token
+        response = http_client.get("/users/me/export")
+
+        # THEN — access is denied
+        assert response.status_code == 401
 
 
 @pytest.mark.e2e

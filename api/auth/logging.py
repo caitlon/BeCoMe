@@ -138,3 +138,20 @@ def log_account_deletion(user_id: UUID, email: str, request: "Request | None" = 
             "ip": ip,
         },
     )
+
+
+def log_data_export(user_id: UUID, request: "Request | None" = None) -> None:
+    """Log a GDPR data export download (Article 20).
+
+    :param user_id: ID of the user who exported their data
+    :param request: FastAPI request (for IP extraction)
+    """
+    ip = get_client_ip(request)
+    logger.info(
+        "Data export downloaded",
+        extra={
+            "event": "data_export",
+            "user_id": str(user_id),
+            "ip": ip,
+        },
+    )

@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
-import { Loader2, AlertTriangle, Camera, Trash2 } from "lucide-react";
+import { Loader2, AlertTriangle, Camera, Trash2, Download } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,6 +14,7 @@ import { DeleteConfirmModal } from "@/components/modals/DeleteConfirmModal";
 import { ValidationChecklist } from "@/components/forms";
 import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/lib/api";
+import { downloadJson } from "@/lib/download";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
@@ -69,6 +70,9 @@ const Profile = () => {
 
   // Delete account
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+
+  // Data export (GDPR Article 20)
+  const [isExporting, setIsExporting] = useState(false);
 
   // Photo upload
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
@@ -191,6 +195,25 @@ const Profile = () => {
       });
     } finally {
       setIsChangingPassword(false);
+    }
+  };
+
+  const handleExportData = async () => {
+    setIsExporting(true);
+    try {
+      const data = await api.exportData();
+      const today = new Date().toISOString().slice(0, 10);
+      downloadJson(data, `become-data-export-${today}.json`);
+      toast({ title: t("dataExport.success") });
+    } catch (error) {
+      toast({
+        title: t("toast.error"),
+        description:
+          error instanceof Error ? error.message : t("dataExport.error"),
+        variant: "destructive",
+      });
+    } finally {
+      setIsExporting(false);
     }
   };
 
@@ -393,6 +416,35 @@ const Profile = () => {
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
                   t("changePassword.update")
+                )}
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* Data Export (GDPR Article 20) */}
+          <Card>
+            <CardHeader>
+              <CardTitle>{t("dataExport.title")}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground mb-4">
+                {t("dataExport.description")}
+              </p>
+              <Button
+                variant="outline"
+                onClick={handleExportData}
+                disabled={isExporting}
+              >
+                {isExporting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    {t("dataExport.downloading")}
+                  </>
+                ) : (
+                  <>
+                    <Download className="mr-2 h-4 w-4" />
+                    {t("dataExport.button")}
+                  </>
                 )}
               </Button>
             </CardContent>
