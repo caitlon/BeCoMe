@@ -48,12 +48,13 @@ class PasswordResetService(BaseService):
         """Issue a reset token for the given email, if a matching user exists.
 
         Any outstanding tokens for the user are invalidated first, so only the
-        newest link works. The raw token is returned for delivery and never
-        persisted.
+        newest link works. Only the token hash is persisted; the raw token lives
+        only inside the returned URL.
 
         :param email: Email address from the forgot-password request.
-        :return: The raw reset token, or None when no user has that email. The
-            caller must respond identically either way to avoid user enumeration.
+        :return: The full password-reset URL to email, or None when no user has
+            that email. The caller must respond identically either way to avoid
+            user enumeration.
         """
         user = self._get_user_by_email(email)
         if user is None:
@@ -65,8 +66,9 @@ class PasswordResetService(BaseService):
 
         self._invalidate_outstanding(user)
 
+        settings = get_settings()
         raw_token = secrets.token_urlsafe(_TOKEN_BYTES)
-        ttl = timedelta(minutes=get_settings().password_reset_token_ttl_minutes)
+        ttl = timedelta(minutes=settings.password_reset_token_ttl_minutes)
         token = PasswordResetToken(
             user_id=user.id,
             token_hash=_hash_token(raw_token),
@@ -78,7 +80,7 @@ class PasswordResetService(BaseService):
             "Password reset token created",
             extra={"event": "password_reset_token_created", "user_id": str(user.id)},
         )
-        return raw_token
+        return f"{settings.frontend_base_url}/reset-password?token={raw_token}"
 
     def reset_password(self, token: str, new_password: str) -> User:
         """Consume a reset token and set the user's new password.

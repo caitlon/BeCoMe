@@ -192,9 +192,8 @@ async def forgot_password(
     :param email_service: Email sender
     :return: A fixed acknowledgement message
     """
-    raw_token = service.create_reset_token(data.email)
-    if raw_token is not None:
-        reset_url = f"{get_settings().frontend_base_url}/reset-password?token={raw_token}"
+    reset_url = service.create_reset_token(data.email)
+    if reset_url is not None:
         try:
             await email_service.send_password_reset(to_email=data.email, reset_url=reset_url)
         except EmailSendError:
