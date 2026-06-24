@@ -13,6 +13,19 @@ if TYPE_CHECKING:
     from api.config import Settings
 
 _TIMEOUT_SECONDS = 10.0
+_MINUTES_PER_HOUR = 60
+
+
+def _format_ttl_window(minutes: int) -> str:
+    """Render a token TTL in minutes as a human-friendly expiry window.
+
+    :param minutes: Token lifetime in minutes.
+    :return: ``"1 hour"`` / ``"N hours"`` for whole hours, else ``"N minutes"``.
+    """
+    if minutes % _MINUTES_PER_HOUR == 0:
+        hours = minutes // _MINUTES_PER_HOUR
+        return "1 hour" if hours == 1 else f"{hours} hours"
+    return f"{minutes} minutes"
 
 
 class ResendEmailSender(EmailSender):
@@ -49,18 +62,18 @@ class ResendEmailSender(EmailSender):
         except httpx.HTTPError as exc:
             raise EmailSendError(f"Failed to send password reset email: {exc}") from exc
 
-    @staticmethod
-    def _build_html(reset_url: str) -> str:
+    def _build_html(self, reset_url: str) -> str:
         """Render the reset-email HTML body.
 
         :param reset_url: Full frontend reset link.
-        :return: HTML message body.
+        :return: HTML message body, with the expiry window matching the config.
         """
+        window = _format_ttl_window(self._settings.password_reset_token_ttl_minutes)
         return (
             "<p>We received a request to reset your BeCoMe password.</p>"
             f'<p><a href="{reset_url}">Reset your password</a></p>'
             "<p>If you did not request this you can ignore this email. "
-            "The link expires in one hour.</p>"
+            f"The link expires in {window}.</p>"
         )
 
     async def _post(self, payload: dict[str, object], headers: dict[str, str]) -> httpx.Response:
