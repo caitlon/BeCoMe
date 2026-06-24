@@ -31,6 +31,17 @@ EXPORT_DESCRIPTION = (
 )
 
 
+def _centroid(lower: float, peak: float, upper: float) -> float:
+    """Compute the centroid of a triangular fuzzy number from its three vertices.
+
+    :param lower: Lower bound (pessimistic estimate).
+    :param peak: Peak value (most likely).
+    :param upper: Upper bound (optimistic estimate).
+    :return: The centroid, i.e. the mean of the triangle's three vertices.
+    """
+    return (lower + peak + upper) / 3
+
+
 def _fuzzy(lower: float, peak: float, upper: float) -> FuzzyNumberOutput:
     """Build a fuzzy-number output with a centroid from raw bounds.
 
@@ -43,7 +54,7 @@ def _fuzzy(lower: float, peak: float, upper: float) -> FuzzyNumberOutput:
         lower=lower,
         peak=peak,
         upper=upper,
-        centroid=(lower + peak + upper) / 3,
+        centroid=_centroid(lower, peak, upper),
     )
 
 
@@ -217,7 +228,7 @@ class ExportOpinion(BaseModel):
             lower_bound=opinion.lower_bound,
             peak=opinion.peak,
             upper_bound=opinion.upper_bound,
-            centroid=(opinion.lower_bound + opinion.peak + opinion.upper_bound) / 3,
+            centroid=_centroid(opinion.lower_bound, opinion.peak, opinion.upper_bound),
             created_at=opinion.created_at,
             updated_at=opinion.updated_at,
         )
