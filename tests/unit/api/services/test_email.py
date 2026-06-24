@@ -18,6 +18,7 @@ def _settings(**overrides: object) -> MagicMock:
     settings.email_from_name = "BeCoMe"
     settings.email_api_key = "re_test_key"
     settings.email_api_url = "https://api.resend.com/emails"
+    settings.password_reset_token_ttl_minutes = 60
     for key, value in overrides.items():
         setattr(settings, key, value)
     return settings
@@ -80,6 +81,32 @@ class TestResendEmailSender:
         assert call.kwargs["headers"]["Authorization"] == "Bearer re_test_key"
         assert call.kwargs["json"]["to"] == ["user@example.com"]
         assert "https://app.example/reset-password?token=abc" in call.kwargs["json"]["html"]
+
+    def test_email_body_reflects_configured_ttl(self):
+        """
+        GIVEN a Resend sender whose token TTL is 30 minutes
+        WHEN a password reset email is sent
+        THEN the email body states the matching expiry window, not a hardcoded one
+        """
+        # GIVEN
+        response = MagicMock()
+        response.raise_for_status = MagicMock()
+        client = MagicMock()
+        client.post = AsyncMock(return_value=response)
+        sender = ResendEmailSender(_settings(password_reset_token_ttl_minutes=30), client=client)
+
+        # WHEN
+        asyncio.run(
+            sender.send_password_reset(
+                to_email="user@example.com",
+                reset_url="https://app.example/reset",
+            )
+        )
+
+        # THEN
+        html = client.post.call_args.kwargs["json"]["html"]
+        assert "30 minutes" in html
+        assert "one hour" not in html
 
     def test_raises_send_error_on_http_status_error(self):
         """
