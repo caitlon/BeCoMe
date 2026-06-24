@@ -74,6 +74,8 @@ api/
 | POST | `/api/v1/auth/login` | Login, get tokens |
 | POST | `/api/v1/auth/logout` | Revoke refresh token |
 | POST | `/api/v1/auth/refresh` | Refresh access token |
+| POST | `/api/v1/auth/forgot-password` | Request a password reset email |
+| POST | `/api/v1/auth/reset-password` | Reset password using a token |
 | GET | `/api/v1/auth/me` | Get current user profile |
 
 ### Users
