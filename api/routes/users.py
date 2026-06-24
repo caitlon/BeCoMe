@@ -7,10 +7,18 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile, status
 
 from api.auth.dependencies import CurrentUser
-from api.auth.logging import log_account_deletion, log_password_change
-from api.dependencies import get_storage_service, get_user_service
-from api.middleware.rate_limit import LIMIT_PHOTO, LIMIT_PWD_RESET, LIMIT_UPLOAD, limiter
+from api.auth.logging import log_account_deletion, log_data_export, log_password_change
+from api.dependencies import get_data_export_service, get_storage_service, get_user_service
+from api.middleware.rate_limit import (
+    LIMIT_PHOTO,
+    LIMIT_PWD_RESET,
+    LIMIT_STANDARD,
+    LIMIT_UPLOAD,
+    limiter,
+)
 from api.schemas.auth import ChangePasswordRequest, UpdateUserRequest, UserResponse
+from api.schemas.data_export import DataExportResponse
+from api.services.data_export_service import DataExportService
 from api.services.storage import validation
 from api.services.storage.base import StorageService
 from api.services.storage.exceptions import StorageDeleteError, StorageUploadError
@@ -27,6 +35,32 @@ def get_current_user_profile(current_user: CurrentUser) -> UserResponse:
     :return: User profile data
     """
     return UserResponse.from_user(current_user)
+
+
+@router.get(
+    "/me/export",
+    summary="Export current user's personal data (GDPR Article 20)",
+)
+@limiter.limit(LIMIT_STANDARD)
+def export_current_user_data(
+    request: Request,
+    current_user: CurrentUser,
+    service: Annotated[DataExportService, Depends(get_data_export_service)],
+) -> DataExportResponse:
+    """Return all of the authenticated user's data in machine-readable form.
+
+    Serves the GDPR Article 20 right to data portability: profile, owned
+    projects with results, memberships, submitted opinions, and pending
+    invitations. Password material is never included.
+
+    :param request: FastAPI request (for rate limiting and audit logging)
+    :param current_user: User from JWT token
+    :param service: Data export service
+    :return: The user's full data export
+    """
+    export = service.build_export(current_user)
+    log_data_export(current_user.id, request)
+    return export
 
 
 @router.put("/me", summary="Update current user profile")

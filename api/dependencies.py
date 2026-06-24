@@ -17,6 +17,7 @@ from api.config import get_settings
 from api.db.models import Project
 from api.db.session import get_session
 from api.services.calculation_service import CalculationService
+from api.services.data_export_service import DataExportService
 from api.services.email.base import EmailSender
 from api.services.email.console_email_sender import ConsoleEmailSender
 from api.services.email.resend_email_sender import ResendEmailSender
@@ -83,6 +84,13 @@ def get_calculation_service(
 ) -> CalculationService:
     """Create CalculationService instance."""
     return CalculationService(session)
+
+
+def get_data_export_service(
+    session: Annotated[Session, Depends(get_session)],
+) -> DataExportService:
+    """Create DataExportService instance."""
+    return DataExportService(session)
 
 
 def get_invitation_service(session: Annotated[Session, Depends(get_session)]) -> InvitationService:

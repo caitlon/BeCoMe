@@ -12,6 +12,14 @@
     "confirmPassword": "Confirm New Password",
     "update": "Update Password"
   },
+  "dataExport": {
+    "title": "Download Your Data",
+    "description": "Export all your personal data (profile, projects, opinions, and invitations) in a machine-readable JSON file.",
+    "button": "Download Data",
+    "downloading": "Preparing download...",
+    "success": "Your data has been downloaded",
+    "error": "Failed to export your data"
+  },
   "dangerZone": {
     "title": "Danger Zone",
     "warning": "Once you delete your account, there is no going back. Please be certain.",

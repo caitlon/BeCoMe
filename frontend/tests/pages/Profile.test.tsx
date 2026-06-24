@@ -22,6 +22,7 @@ const mockApi = {
   deleteAccount: vi.fn(),
   uploadPhoto: vi.fn(),
   deletePhoto: vi.fn(),
+  exportData: vi.fn(),
 };
 vi.mock('@/lib/api', () => ({
   api: {
@@ -30,7 +31,14 @@ vi.mock('@/lib/api', () => ({
     deleteAccount: () => mockApi.deleteAccount(),
     uploadPhoto: (file: File) => mockApi.uploadPhoto(file),
     deletePhoto: () => mockApi.deletePhoto(),
+    exportData: () => mockApi.exportData(),
   },
+}));
+
+// Mock the file-download helper so no real Blob/anchor is exercised here
+const mockDownloadJson = vi.fn();
+vi.mock('@/lib/download', () => ({
+  downloadJson: (data: unknown, filename: string) => mockDownloadJson(data, filename),
 }));
 
 // Mock useToast
@@ -707,6 +715,79 @@ describe('Profile - Profile Update Error', () => {
         expect.objectContaining({
           title: 'Error',
           description: 'Failed to update profile',
+          variant: 'destructive',
+        })
+      );
+    });
+  });
+});
+
+describe('Profile - Data Export', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('renders Data Export section', () => {
+    render(<Profile />);
+
+    expect(screen.getByText('Download Your Data')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /download data/i })).toBeInTheDocument();
+  });
+
+  it('exports data and triggers a dated download with a success toast', async () => {
+    const user = userEvent.setup();
+    const payload = { profile: { email: 'john@example.com' } };
+    mockApi.exportData.mockResolvedValueOnce(payload);
+
+    render(<Profile />);
+
+    await user.click(screen.getByRole('button', { name: /download data/i }));
+
+    await waitFor(() => {
+      expect(mockApi.exportData).toHaveBeenCalled();
+      expect(mockDownloadJson).toHaveBeenCalledWith(
+        payload,
+        expect.stringMatching(/^become-data-export-\d{4}-\d{2}-\d{2}\.json$/)
+      );
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'Your data has been downloaded' })
+      );
+    });
+  });
+
+  it('shows error toast and skips download when export fails with Error', async () => {
+    const user = userEvent.setup();
+    mockApi.exportData.mockRejectedValueOnce(new Error('Export boom'));
+
+    render(<Profile />);
+
+    await user.click(screen.getByRole('button', { name: /download data/i }));
+
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Error',
+          description: 'Export boom',
+          variant: 'destructive',
+        })
+      );
+    });
+    expect(mockDownloadJson).not.toHaveBeenCalled();
+  });
+
+  it('shows fallback error toast when export throws non-Error', async () => {
+    const user = userEvent.setup();
+    mockApi.exportData.mockRejectedValueOnce('unknown');
+
+    render(<Profile />);
+
+    await user.click(screen.getByRole('button', { name: /download data/i }));
+
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Error',
+          description: 'Failed to export your data',
           variant: 'destructive',
         })
       );

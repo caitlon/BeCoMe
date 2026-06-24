@@ -83,6 +83,7 @@ api/
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/api/v1/users/me` | Get profile |
+| GET | `/api/v1/users/me/export` | Export all personal data as JSON (GDPR Art. 20) |
 | PUT | `/api/v1/users/me` | Update profile |
 | PUT | `/api/v1/users/me/password` | Change password |
 | POST | `/api/v1/users/me/photo` | Upload photo |

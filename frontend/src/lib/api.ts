@@ -155,6 +155,13 @@ class ApiClient {
     return this.request<User>('/users/me');
   }
 
+  // Returns the user's full GDPR data export. The payload is only downloaded as
+  // a file (never rendered), so it stays an opaque record instead of mirroring
+  // the backend schema and risking drift.
+  async exportData(): Promise<Record<string, unknown>> {
+    return this.request<Record<string, unknown>>('/users/me/export');
+  }
+
   async updateCurrentUser(data: UpdateUserInput): Promise<User> {
     return this.request<User>('/users/me', {
       method: 'PUT',
