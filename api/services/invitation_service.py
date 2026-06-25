@@ -84,6 +84,8 @@ class InvitationService(BaseService):
                 "event": "invitation_created",
                 "invitation_id": str(saved.id),
                 "project_id": str(project_id),
+                "inviter_id": str(inviter_id),
+                "invitee_id": str(saved.invitee_id),
             },
         )
         return saved, invitee
@@ -151,6 +153,7 @@ class InvitationService(BaseService):
             raise UserAlreadyMemberError("User is already a member of this project")
 
         project_id = invitation.project_id
+        inviter_id = invitation.inviter_id
         membership = ProjectMember(
             project_id=project_id,
             user_id=user_id,
@@ -166,6 +169,8 @@ class InvitationService(BaseService):
                 "event": "invitation_accepted",
                 "invitation_id": str(invitation_id),
                 "project_id": str(project_id),
+                "inviter_id": str(inviter_id),
+                "user_id": str(user_id),
             },
         )
         return membership
@@ -195,8 +200,16 @@ class InvitationService(BaseService):
         if not invitation or invitation.invitee_id != user_id:
             raise InvitationNotFoundError("Invitation not found")
 
+        project_id = invitation.project_id
+        inviter_id = invitation.inviter_id
         self._delete_and_commit(invitation)
         logger.info(
             "Invitation declined",
-            extra={"event": "invitation_declined", "invitation_id": str(invitation_id)},
+            extra={
+                "event": "invitation_declined",
+                "invitation_id": str(invitation_id),
+                "project_id": str(project_id),
+                "inviter_id": str(inviter_id),
+                "user_id": str(user_id),
+            },
         )

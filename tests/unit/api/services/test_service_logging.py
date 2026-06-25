@@ -143,56 +143,75 @@ class TestOpinionServiceLogging:
 
 
 class TestInvitationServiceLogging:
-    """Invitation lifecycle events are logged at INFO."""
+    """Invitation lifecycle events are logged at INFO with actor context."""
 
-    def test_invite_logs_event(self):
-        """invite_by_email logs an invitation_created event."""
+    def test_invite_logs_event_with_actor_context(self):
+        """invite_by_email logs invitation_created with inviter, invitee, and project."""
         # GIVEN
+        project_id, inviter_id, invitee_id = uuid4(), uuid4(), uuid4()
+        invitee = MagicMock()
+        invitee.id = invitee_id
         session = MagicMock()
-        session.exec.return_value.first.side_effect = [MagicMock(), None, None]
+        session.exec.return_value.first.side_effect = [invitee, None, None]
         service = InvitationService(session)
 
         # WHEN
         with patch("api.services.invitation_service.logger") as mock_logger:
-            service.invite_by_email(uuid4(), uuid4(), "user@example.com")
+            service.invite_by_email(project_id, inviter_id, "user@example.com")
 
         # THEN
-        assert mock_logger.info.call_args[1]["extra"]["event"] == "invitation_created"
+        extra = mock_logger.info.call_args[1]["extra"]
+        assert extra["event"] == "invitation_created"
+        assert extra["inviter_id"] == str(inviter_id)
+        assert extra["invitee_id"] == str(invitee_id)
+        assert extra["project_id"] == str(project_id)
 
-    def test_accept_logs_event(self):
-        """accept_invitation logs an invitation_accepted event."""
+    def test_accept_logs_event_with_actor_context(self):
+        """accept_invitation logs invitation_accepted with the acceptor and inviter."""
         # GIVEN
-        session = MagicMock()
-        user_id = uuid4()
+        invitation_id, user_id, inviter_id, project_id = uuid4(), uuid4(), uuid4(), uuid4()
         invitation = MagicMock()
         invitation.invitee_id = user_id
+        invitation.inviter_id = inviter_id
+        invitation.project_id = project_id
+        session = MagicMock()
         session.get.return_value = invitation
         session.exec.return_value.first.return_value = None
         service = InvitationService(session)
 
         # WHEN
         with patch("api.services.invitation_service.logger") as mock_logger:
-            service.accept_invitation(uuid4(), user_id)
+            service.accept_invitation(invitation_id, user_id)
 
         # THEN
-        assert mock_logger.info.call_args[1]["extra"]["event"] == "invitation_accepted"
+        extra = mock_logger.info.call_args[1]["extra"]
+        assert extra["event"] == "invitation_accepted"
+        assert extra["user_id"] == str(user_id)
+        assert extra["inviter_id"] == str(inviter_id)
+        assert extra["project_id"] == str(project_id)
 
-    def test_decline_logs_event(self):
-        """decline_invitation logs an invitation_declined event."""
+    def test_decline_logs_event_with_actor_context(self):
+        """decline_invitation logs invitation_declined with the decliner and inviter."""
         # GIVEN
-        session = MagicMock()
-        user_id = uuid4()
+        invitation_id, user_id, inviter_id, project_id = uuid4(), uuid4(), uuid4(), uuid4()
         invitation = MagicMock()
         invitation.invitee_id = user_id
+        invitation.inviter_id = inviter_id
+        invitation.project_id = project_id
+        session = MagicMock()
         session.get.return_value = invitation
         service = InvitationService(session)
 
         # WHEN
         with patch("api.services.invitation_service.logger") as mock_logger:
-            service.decline_invitation(uuid4(), user_id)
+            service.decline_invitation(invitation_id, user_id)
 
         # THEN
-        assert mock_logger.info.call_args[1]["extra"]["event"] == "invitation_declined"
+        extra = mock_logger.info.call_args[1]["extra"]
+        assert extra["event"] == "invitation_declined"
+        assert extra["user_id"] == str(user_id)
+        assert extra["inviter_id"] == str(inviter_id)
+        assert extra["project_id"] == str(project_id)
 
 
 class TestCalculationServiceLogging:
