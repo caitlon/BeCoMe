@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 
 import { Navbar } from "@/components/layout/Navbar";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { logger } from "@/lib/logger";
 
 const NotFound = () => {
   const { t } = useTranslation();
@@ -11,10 +12,7 @@ const NotFound = () => {
   useDocumentTitle(t("pageTitle.notFound"));
 
   useEffect(() => {
-    console.error(
-      "404 Error: User attempted to access non-existent route:",
-      location.pathname
-    );
+    logger.error("404 Error: route not found", { path: location.pathname });
   }, [location.pathname]);
 
   return (
