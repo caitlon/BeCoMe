@@ -88,7 +88,7 @@ api/
 | PUT | `/api/v1/users/me/password` | Change password |
 | POST | `/api/v1/users/me/photo` | Upload photo |
 | DELETE | `/api/v1/users/me/photo` | Delete photo |
-| DELETE | `/api/v1/users/me` | Delete account |
+| DELETE | `/api/v1/users/me` | Delete account (409 while you still admin any project) |
 
 ### Projects
 
@@ -101,6 +101,7 @@ api/
 | DELETE | `/api/v1/projects/{id}` | Delete project |
 | GET | `/api/v1/projects/{id}/members` | List members |
 | DELETE | `/api/v1/projects/{id}/members/{user_id}` | Remove member |
+| POST | `/api/v1/projects/{id}/transfer-ownership` | Transfer ownership to another member |
 | POST | `/api/v1/projects/{id}/invite` | Invite user |
 
 ### Opinions
