@@ -210,6 +210,27 @@ class TestBecomeApiErrorHandler:
             # THEN
             mock_log.assert_not_called()
 
+    def test_invalid_current_password_logs_password_change_failure(self):
+        """
+        GIVEN an InvalidCredentialsError flagged as a wrong current password
+        WHEN become_api_error_handler is called
+        THEN it logs a password-change failure, not a login failure
+        """
+        # GIVEN
+        request = MagicMock()
+        exc = InvalidCredentialsError(reason="invalid_current_password")
+
+        with (
+            patch("api.middleware.exception_handlers.log_password_change_failure") as mock_pcf,
+            patch("api.middleware.exception_handlers.log_login_failure") as mock_lf,
+        ):
+            # WHEN
+            become_api_error_handler(request, exc)
+
+            # THEN
+            mock_pcf.assert_called_once_with(request)
+            mock_lf.assert_not_called()
+
 
 class TestRegisterExceptionHandlers:
     """Tests for register_exception_handlers function."""

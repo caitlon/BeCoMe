@@ -464,7 +464,7 @@ class TestUserServiceChangePassword:
         mock_session.refresh.assert_called_once_with(user)
 
     def test_raises_error_on_wrong_current_password(self):
-        """InvalidCredentialsError is raised when current password is wrong."""
+        """InvalidCredentialsError with a labelling reason is raised when current is wrong."""
         # GIVEN
         user = User(
             id=uuid4(),
@@ -478,9 +478,12 @@ class TestUserServiceChangePassword:
         # WHEN / THEN
         with (
             patch("api.services.user_service.verify_password", return_value=False),
-            pytest.raises(InvalidCredentialsError, match="Current password is incorrect"),
+            pytest.raises(
+                InvalidCredentialsError, match="Current password is incorrect"
+            ) as exc_info,
         ):
             service.change_password(user, "wrong_pass", "new_pass")
+        assert exc_info.value.reason == "invalid_current_password"
 
     def test_new_password_is_hashed(self):
         """New password is hashed before storing."""
