@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+from time import perf_counter
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
@@ -17,7 +19,18 @@ from api.services.storage.validation import extension_for
 if TYPE_CHECKING:
     from api.config import Settings
 
+logger = logging.getLogger("api.service.storage")
+
 _NOT_FOUND_CODES = frozenset({"NoSuchKey", "NoSuchBucket", "404", "NotFound"})
+
+
+def _elapsed_ms(start: float) -> float:
+    """Return milliseconds elapsed since ``start``, rounded to one decimal.
+
+    :param start: ``perf_counter`` reading taken before the operation.
+    :return: Elapsed time in milliseconds.
+    """
+    return round((perf_counter() - start) * 1000.0, 1)
 
 
 class RailwayBucketStorageService(StorageService):
@@ -82,12 +95,33 @@ class RailwayBucketStorageService(StorageService):
         :raises StorageUploadError: If the upload fails.
         """
         key = self.build_key(user_id, content_type)
+        start = perf_counter()
         try:
             self._client.put_object(
                 Bucket=self._bucket, Key=key, Body=content, ContentType=content_type
             )
         except Exception as exc:
+            logger.error(
+                "S3 upload failed",
+                exc_info=exc,
+                extra={
+                    "event": "s3_upload_failed",
+                    "user_id": user_id,
+                    "key": key,
+                    "duration_ms": _elapsed_ms(start),
+                },
+            )
             raise StorageUploadError(f"Failed to upload file: {exc}") from exc
+        logger.info(
+            "S3 upload",
+            extra={
+                "event": "s3_upload",
+                "user_id": user_id,
+                "key": key,
+                "size_bytes": len(content),
+                "duration_ms": _elapsed_ms(start),
+            },
+        )
         return key
 
     def open(self, key: str) -> tuple[bytes, str] | None:
@@ -97,14 +131,41 @@ class RailwayBucketStorageService(StorageService):
         :return: ``(bytes, content_type)`` or None when the object is absent.
         :raises StorageError: If the fetch fails for a reason other than absence.
         """
+        start = perf_counter()
         try:
             response = self._client.get_object(Bucket=self._bucket, Key=key)
         except Exception as exc:
             if self._is_not_found(exc):
+                logger.info(
+                    "S3 object missing",
+                    extra={
+                        "event": "s3_open_miss",
+                        "key": key,
+                        "duration_ms": _elapsed_ms(start),
+                    },
+                )
                 return None
+            logger.error(
+                "S3 read failed",
+                exc_info=exc,
+                extra={
+                    "event": "s3_open_failed",
+                    "key": key,
+                    "duration_ms": _elapsed_ms(start),
+                },
+            )
             raise StorageError(f"Failed to read file: {exc}") from exc
         body: bytes = response["Body"].read()
         content_type: str = response.get("ContentType") or "application/octet-stream"
+        logger.info(
+            "S3 open",
+            extra={
+                "event": "s3_open",
+                "key": key,
+                "size_bytes": len(body),
+                "duration_ms": _elapsed_ms(start),
+            },
+        )
         return body, content_type
 
     def delete(self, key: str) -> bool:
@@ -114,10 +175,24 @@ class RailwayBucketStorageService(StorageService):
         :return: True when the delete request was issued.
         :raises StorageDeleteError: If deletion fails.
         """
+        start = perf_counter()
         try:
             self._client.delete_object(Bucket=self._bucket, Key=key)
         except Exception as exc:
+            logger.error(
+                "S3 delete failed",
+                exc_info=exc,
+                extra={
+                    "event": "s3_delete_failed",
+                    "key": key,
+                    "duration_ms": _elapsed_ms(start),
+                },
+            )
             raise StorageDeleteError(f"Failed to delete file: {exc}") from exc
+        logger.info(
+            "S3 delete",
+            extra={"event": "s3_delete", "key": key, "duration_ms": _elapsed_ms(start)},
+        )
         return True
 
     @staticmethod

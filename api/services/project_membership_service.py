@@ -1,5 +1,6 @@
 """Project membership business logic service."""
 
+import logging
 from uuid import UUID
 
 from sqlmodel import col, select
@@ -8,6 +9,8 @@ from api.db.models import MemberRole, ProjectMember, User
 from api.exceptions import MemberNotFoundError
 from api.schemas.internal import MemberWithUser
 from api.services.base import BaseService
+
+logger = logging.getLogger("api.service.membership")
 
 
 class ProjectMembershipService(BaseService):
@@ -43,6 +46,14 @@ class ProjectMembershipService(BaseService):
             raise MemberNotFoundError(f"User {user_id} is not a member of project {project_id}")
 
         self._delete_and_commit(membership)
+        logger.info(
+            "Member removed",
+            extra={
+                "event": "member_removed",
+                "project_id": str(project_id),
+                "user_id": str(user_id),
+            },
+        )
 
     def is_member(self, project_id: UUID, user_id: UUID) -> bool:
         """Check if user is a member of the project.

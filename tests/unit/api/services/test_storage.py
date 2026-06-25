@@ -122,6 +122,40 @@ class TestUpload:
         with pytest.raises(StorageUploadError, match="Failed to upload"):
             service.upload(b"image data", "image/jpeg", "user-123")
 
+    def test_logs_success_with_size_and_duration(self):
+        """A successful upload logs an s3_upload event with size and timing."""
+        # GIVEN
+        client = MagicMock()
+        service = RailwayBucketStorageService(_settings(), client=client)
+
+        # WHEN
+        with patch("api.services.storage.railway_bucket_storage_service.logger") as mock_logger:
+            service.upload(b"image data", "image/jpeg", "user-123")
+
+        # THEN
+        extra = mock_logger.info.call_args[1]["extra"]
+        assert extra["event"] == "s3_upload"
+        assert extra["size_bytes"] == len(b"image data")
+        assert "duration_ms" in extra
+
+    def test_logs_failure_with_exc_info(self):
+        """A failed upload logs an error carrying exc_info before raising."""
+        # GIVEN
+        client = MagicMock()
+        client.put_object.side_effect = Exception("boom")
+        service = RailwayBucketStorageService(_settings(), client=client)
+
+        # WHEN
+        with (
+            patch("api.services.storage.railway_bucket_storage_service.logger") as mock_logger,
+            pytest.raises(StorageUploadError),
+        ):
+            service.upload(b"image data", "image/jpeg", "user-123")
+
+        # THEN
+        assert mock_logger.error.call_args[1]["extra"]["event"] == "s3_upload_failed"
+        assert mock_logger.error.call_args[1]["exc_info"] is not None
+
 
 class TestOpen:
     """Tests for fetching an object."""
@@ -166,6 +200,50 @@ class TestOpen:
         with pytest.raises(StorageError, match="Failed to read"):
             service.open("profiles/user/denied.jpg")
 
+    def test_raises_storage_error_on_non_client_error(self):
+        """A non-ClientError failure is treated as a real error, not absence."""
+        # GIVEN
+        client = MagicMock()
+        client.get_object.side_effect = RuntimeError("connection reset")
+        service = RailwayBucketStorageService(_settings(), client=client)
+
+        # WHEN / THEN
+        with pytest.raises(StorageError, match="Failed to read"):
+            service.open("profiles/user/x.jpg")
+
+    def test_logs_miss_event_when_absent(self):
+        """A missing object logs an s3_open_miss event, not an error."""
+        # GIVEN
+        client = MagicMock()
+        client.get_object.side_effect = _client_error("NoSuchKey")
+        service = RailwayBucketStorageService(_settings(), client=client)
+
+        # WHEN
+        with patch("api.services.storage.railway_bucket_storage_service.logger") as mock_logger:
+            service.open("profiles/user/missing.jpg")
+
+        # THEN
+        assert mock_logger.info.call_args[1]["extra"]["event"] == "s3_open_miss"
+        mock_logger.error.assert_not_called()
+
+    def test_logs_failure_with_exc_info(self):
+        """A non-absence failure logs an error carrying exc_info."""
+        # GIVEN
+        client = MagicMock()
+        client.get_object.side_effect = _client_error("AccessDenied")
+        service = RailwayBucketStorageService(_settings(), client=client)
+
+        # WHEN
+        with (
+            patch("api.services.storage.railway_bucket_storage_service.logger") as mock_logger,
+            pytest.raises(StorageError),
+        ):
+            service.open("profiles/user/denied.jpg")
+
+        # THEN
+        assert mock_logger.error.call_args[1]["extra"]["event"] == "s3_open_failed"
+        assert mock_logger.error.call_args[1]["exc_info"] is not None
+
 
 class TestDelete:
     """Tests for deleting an object."""
@@ -195,3 +273,34 @@ class TestDelete:
         # WHEN / THEN
         with pytest.raises(StorageDeleteError, match="Failed to delete"):
             service.delete("profiles/user/abc.jpg")
+
+    def test_logs_success_event(self):
+        """A successful delete logs an s3_delete event."""
+        # GIVEN
+        client = MagicMock()
+        service = RailwayBucketStorageService(_settings(), client=client)
+
+        # WHEN
+        with patch("api.services.storage.railway_bucket_storage_service.logger") as mock_logger:
+            service.delete("profiles/user/abc.jpg")
+
+        # THEN
+        assert mock_logger.info.call_args[1]["extra"]["event"] == "s3_delete"
+
+    def test_logs_failure_with_exc_info(self):
+        """A failed delete logs an error carrying exc_info before raising."""
+        # GIVEN
+        client = MagicMock()
+        client.delete_object.side_effect = Exception("boom")
+        service = RailwayBucketStorageService(_settings(), client=client)
+
+        # WHEN
+        with (
+            patch("api.services.storage.railway_bucket_storage_service.logger") as mock_logger,
+            pytest.raises(StorageDeleteError),
+        ):
+            service.delete("profiles/user/abc.jpg")
+
+        # THEN
+        assert mock_logger.error.call_args[1]["extra"]["event"] == "s3_delete_failed"
+        assert mock_logger.error.call_args[1]["exc_info"] is not None
