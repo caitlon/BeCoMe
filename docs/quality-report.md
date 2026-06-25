@@ -4,10 +4,10 @@
 
 | Check | Status | Result |
 |-------|--------|--------|
-| mypy (strict) | Pass | No errors in 32 files |
+| mypy (strict) | Pass | No errors in 28 files |
 | ruff check | Pass | No issues |
 | ruff format | Pass | All files formatted |
-| pytest | Pass | 953 tests passed |
+| pytest | Pass | 1112 tests passed |
 | coverage | Pass | 100% on `src/` |
 
 ## Running Checks
@@ -34,14 +34,14 @@ uv run mypy src/ examples/ && uv run ruff check . && uv run pytest --cov=src
 | interpreters/likert_interpreter.py | 24 | 100% |
 | models/become_result.py | 24 | 100% |
 | models/expert_opinion.py | 36 | 100% |
-| models/fuzzy_number.py | 46 | 100% |
-| **Total** | **201** | **100%** |
+| models/fuzzy_number.py | 49 | 100% |
+| **Total** | **204** | **100%** |
 
 HTML report: `uv run pytest --cov=src --cov-report=html` generates `htmlcov/index.html`.
 
 ## Test Breakdown
 
-Unit tests (571) cover models, calculators, interpreters, utilities, and API components (auth, schemas, services, middleware). Integration tests (329) validate core calculations against Excel reference data for all three case studies and test API routes with a real database. End-to-end tests (53) exercise full API workflows. Edge cases include single expert, identical opinions, empty lists, and boundary values.
+Unit tests (694) cover models, calculators, interpreters, utilities, and API components (auth, schemas, services, middleware, logging). Integration tests (359) validate core calculations against Excel reference data for all three case studies and test API routes with a real database. End-to-end tests (59) exercise full API workflows. Edge cases include single expert, identical opinions, empty lists, and boundary values.
 
 ## Mutation Testing
 
