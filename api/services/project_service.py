@@ -165,10 +165,11 @@ class ProjectService(BaseService):
                 f"User {new_admin_id} is not a member of project {project.id}"
             )
 
+        old_admin_id = project.admin_id
         old_admin_membership = self._session.exec(
             select(ProjectMember).where(
                 ProjectMember.project_id == project.id,
-                ProjectMember.user_id == project.admin_id,
+                ProjectMember.user_id == old_admin_id,
             )
         ).first()
 
@@ -186,6 +187,7 @@ class ProjectService(BaseService):
             extra={
                 "event": "ownership_transferred",
                 "project_id": str(project.id),
+                "old_admin_id": str(old_admin_id),
                 "new_admin_id": str(new_admin_id),
             },
         )

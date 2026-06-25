@@ -3,6 +3,7 @@
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
+from api.db.models import MemberRole, Project, ProjectMember
 from api.schemas.project import ProjectCreate, ProjectUpdate
 from api.services.calculation_service import CalculationService
 from api.services.invitation_service import InvitationService
@@ -49,6 +50,29 @@ class TestProjectServiceLogging:
 
         # THEN
         assert mock_logger.info.call_args[1]["extra"]["event"] == "project_deleted"
+
+    def test_transfer_ownership_logs_event(self):
+        """transfer_ownership logs the event with both the old and new admin IDs."""
+        # GIVEN
+        old_admin_id = uuid4()
+        new_admin_id = uuid4()
+        project = Project(id=uuid4(), name="P", admin_id=old_admin_id, scale_min=0, scale_max=10)
+        mock_session = MagicMock()
+        mock_session.exec.return_value.first.side_effect = [
+            ProjectMember(project_id=project.id, user_id=new_admin_id, role=MemberRole.EXPERT),
+            ProjectMember(project_id=project.id, user_id=old_admin_id, role=MemberRole.ADMIN),
+        ]
+        service = ProjectService(mock_session)
+
+        # WHEN
+        with patch("api.services.project_service.logger") as mock_logger:
+            service.transfer_ownership(project, new_admin_id)
+
+        # THEN
+        extra = mock_logger.info.call_args[1]["extra"]
+        assert extra["event"] == "ownership_transferred"
+        assert extra["old_admin_id"] == str(old_admin_id)
+        assert extra["new_admin_id"] == str(new_admin_id)
 
 
 class TestUserServiceLogging:
