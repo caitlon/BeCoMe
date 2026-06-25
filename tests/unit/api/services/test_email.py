@@ -27,27 +27,45 @@ def _settings(**overrides: object) -> MagicMock:
 class TestConsoleEmailSender:
     """Tests for the development console email sender."""
 
-    def test_logs_reset_link_without_network(self):
+    _RAW_TOKEN = "S3cret-Reset-Token-abcdefghijklmnop-1234567890"
+    _RESET_URL = f"https://app.example/reset-password?token={_RAW_TOKEN}"
+
+    def _send(self, mock_logger_attr: str = "logger"):
+        """Send a reset email through the console sender with the logger patched."""
+        sender = ConsoleEmailSender(_settings())
+        with patch("api.services.email.console_email_sender.logger") as mock_logger:
+            asyncio.run(
+                sender.send_password_reset(to_email="user@example.com", reset_url=self._RESET_URL)
+            )
+        return mock_logger
+
+    def test_info_log_masks_the_raw_token(self):
         """
         GIVEN a console email sender
         WHEN a password reset email is sent
-        THEN the reset link is logged and no network call is made
+        THEN the INFO record never carries the full raw token
         """
-        # GIVEN
-        sender = ConsoleEmailSender(_settings())
-
         # WHEN
-        with patch("api.services.email.console_email_sender.logger") as mock_logger:
-            asyncio.run(
-                sender.send_password_reset(
-                    to_email="user@example.com",
-                    reset_url="https://app.example/reset-password?token=abc123",
-                )
-            )
+        mock_logger = self._send()
 
         # THEN
         mock_logger.info.assert_called_once()
-        assert "https://app.example/reset-password?token=abc123" in str(mock_logger.info.call_args)
+        info_str = str(mock_logger.info.call_args)
+        assert self._RAW_TOKEN not in info_str
+        assert "..." in info_str
+
+    def test_debug_log_keeps_the_full_link_for_local_dev(self):
+        """
+        GIVEN a console email sender
+        WHEN a password reset email is sent
+        THEN the full link stays available at DEBUG so the dev flow still works
+        """
+        # WHEN
+        mock_logger = self._send()
+
+        # THEN
+        mock_logger.debug.assert_called_once()
+        assert self._RESET_URL in str(mock_logger.debug.call_args)
 
 
 class TestResendEmailSender:
