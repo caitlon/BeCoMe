@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { screen } from '@testing-library/react';
 import { render } from '@tests/utils';
 import NotFound from '@/pages/NotFound';
+import { logger } from '@/lib/logger';
 
 // Mock useAuth
 vi.mock('@/contexts/AuthContext', () => ({
@@ -13,15 +14,13 @@ vi.mock('@/contexts/AuthContext', () => ({
 }));
 
 describe('NotFound', () => {
-  const originalConsoleError = console.error;
-
   beforeEach(() => {
-    // Suppress the expected 404 console.error log
-    console.error = vi.fn();
+    // Silence and observe the expected 404 log emitted on mount
+    vi.spyOn(logger, 'error').mockImplementation(() => {});
   });
 
   afterEach(() => {
-    console.error = originalConsoleError;
+    vi.restoreAllMocks();
   });
 
   it('renders 404 heading', () => {
@@ -41,5 +40,14 @@ describe('NotFound', () => {
 
     const homeLink = screen.getByRole('link', { name: /home|back/i });
     expect(homeLink).toHaveAttribute('href', '/');
+  });
+
+  it('logs the 404 through the app logger', () => {
+    render(<NotFound />);
+
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.stringContaining('404'),
+      expect.objectContaining({ path: expect.any(String) })
+    );
   });
 });
