@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from typing import TYPE_CHECKING, Self
+from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -58,6 +59,12 @@ class ProjectUpdate(BaseModel):
     def sanitize_text_fields(cls, v: str | None) -> str | None:
         """Remove HTML from text fields."""
         return sanitize_text_or_none(v)
+
+
+class TransferOwnershipRequest(BaseModel):
+    """Request to transfer project ownership to another project member."""
+
+    new_admin_id: UUID = Field(..., description="User ID of the member to promote to admin")
 
 
 class ProjectResponse(BaseModel):

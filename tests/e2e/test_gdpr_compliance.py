@@ -252,6 +252,54 @@ class TestDataErasure:
         # THEN — login is rejected
         assert login_resp.status_code == 401
 
+    def test_owner_cannot_delete_account_while_admin(self, http_client):
+        """An account that still admins a project cannot be deleted (409)."""
+        # GIVEN — a user who owns a project
+        email = unique_email("gdpr-own-block")
+        token = register_user(http_client, email)
+        project = create_project(http_client, token, "Owned Project")
+        project_id = project["id"]
+
+        # WHEN — the owner tries to delete their account
+        response = http_client.delete("/users/me", headers=auth_headers(token))
+
+        # THEN — deletion is blocked
+        assert response.status_code == 409
+
+        # Cleanup
+        http_client.delete(f"/projects/{project_id}", headers=auth_headers(token))
+        http_client.delete("/users/me", headers=auth_headers(token))
+
+    def test_owner_can_delete_after_transferring_ownership(self, http_client):
+        """After transferring ownership, the former owner can delete their account."""
+        # GIVEN — owner with a project and an expert member
+        owner_email = unique_email("gdpr-xfer-own")
+        expert_email = unique_email("gdpr-xfer-exp")
+        owner_token = register_user(http_client, owner_email)
+        expert_token = register_user(http_client, expert_email)
+        project = create_project(http_client, owner_token, "Transferred Project")
+        project_id = project["id"]
+        invite_and_accept(http_client, owner_token, expert_token, expert_email, project_id)
+        expert_id = http_client.get("/users/me", headers=auth_headers(expert_token)).json()["id"]
+
+        # WHEN — owner transfers ownership, then deletes their account
+        transfer = http_client.post(
+            f"/projects/{project_id}/transfer-ownership",
+            json={"new_admin_id": expert_id},
+            headers=auth_headers(owner_token),
+        )
+        assert transfer.status_code == 200
+        assert transfer.json()["admin_id"] == expert_id
+
+        delete_resp = http_client.delete("/users/me", headers=auth_headers(owner_token))
+
+        # THEN — deletion now succeeds
+        assert delete_resp.status_code == 204
+
+        # Cleanup — the new owner removes the project and their own account
+        http_client.delete(f"/projects/{project_id}", headers=auth_headers(expert_token))
+        http_client.delete("/users/me", headers=auth_headers(expert_token))
+
 
 @pytest.mark.e2e
 class TestDeletionAudit:

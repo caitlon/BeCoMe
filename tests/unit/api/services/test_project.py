@@ -5,8 +5,8 @@ from uuid import uuid4
 
 import pytest
 
-from api.db.models import Project
-from api.exceptions import ProjectNotFoundError, ScaleRangeError
+from api.db.models import MemberRole, Project, ProjectMember
+from api.exceptions import MemberNotFoundError, ProjectNotFoundError, ScaleRangeError
 from api.schemas.project import ProjectCreate, ProjectUpdate
 from api.services.base import BaseService
 from api.services.project_service import ProjectService
@@ -329,3 +329,80 @@ class TestProjectServiceGetMemberCount:
 
         # THEN
         assert result == 0
+
+
+class TestProjectServiceGetOwnedProjects:
+    """Tests for ProjectService.get_owned_projects method."""
+
+    def test_returns_projects_where_user_is_admin(self):
+        """Returns projects the user owns (is admin of)."""
+        # GIVEN
+        user_id = uuid4()
+        owned = [
+            Project(id=uuid4(), name="A", admin_id=user_id, scale_min=0, scale_max=100),
+            Project(id=uuid4(), name="B", admin_id=user_id, scale_min=0, scale_max=100),
+        ]
+        mock_session = MagicMock()
+        mock_session.exec.return_value.all.return_value = owned
+        service = ProjectService(mock_session)
+
+        # WHEN
+        result = service.get_owned_projects(user_id)
+
+        # THEN
+        assert result == owned
+
+    def test_returns_empty_list_when_no_owned_projects(self):
+        """Returns empty list when the user owns no projects."""
+        # GIVEN
+        mock_session = MagicMock()
+        mock_session.exec.return_value.all.return_value = []
+        service = ProjectService(mock_session)
+
+        # WHEN
+        result = service.get_owned_projects(uuid4())
+
+        # THEN
+        assert result == []
+
+
+class TestProjectServiceTransferOwnership:
+    """Tests for ProjectService.transfer_ownership method."""
+
+    def test_transfers_ownership_and_swaps_roles(self):
+        """admin_id moves to the new owner and the two roles are swapped."""
+        # GIVEN
+        admin_id = uuid4()
+        new_admin_id = uuid4()
+        project_id = uuid4()
+        project = Project(id=project_id, name="P", admin_id=admin_id, scale_min=0, scale_max=100)
+        new_membership = ProjectMember(
+            project_id=project_id, user_id=new_admin_id, role=MemberRole.EXPERT
+        )
+        old_membership = ProjectMember(
+            project_id=project_id, user_id=admin_id, role=MemberRole.ADMIN
+        )
+        mock_session = MagicMock()
+        mock_session.exec.return_value.first.side_effect = [new_membership, old_membership]
+        service = ProjectService(mock_session)
+
+        # WHEN
+        result = service.transfer_ownership(project, new_admin_id)
+
+        # THEN
+        assert result.admin_id == new_admin_id
+        assert new_membership.role == MemberRole.ADMIN
+        assert old_membership.role == MemberRole.EXPERT
+        mock_session.commit.assert_called_once()
+
+    def test_raises_when_new_admin_not_member(self):
+        """MemberNotFoundError is raised when the target user is not a member."""
+        # GIVEN
+        project = Project(id=uuid4(), name="P", admin_id=uuid4(), scale_min=0, scale_max=100)
+        mock_session = MagicMock()
+        mock_session.exec.return_value.first.return_value = None
+        service = ProjectService(mock_session)
+
+        # WHEN / THEN
+        with pytest.raises(MemberNotFoundError):
+            service.transfer_ownership(project, uuid4())

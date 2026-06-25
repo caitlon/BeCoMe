@@ -40,6 +40,10 @@ class InvalidCredentialsError(BeCoMeAPIError):
         self.reason = reason
 
 
+class AccountHasOwnedProjectsError(BeCoMeAPIError):
+    """Raised when account deletion is blocked because the user still owns projects."""
+
+
 # Project-related exceptions
 class ProjectNotFoundError(NotFoundError):
     """Raised when project is not found."""

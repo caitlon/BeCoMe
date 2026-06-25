@@ -193,13 +193,15 @@ class TestProjectCascadeDelete:
 class TestUserCascadeDelete:
     """Tests for user deletion behavior with passive_deletes=True.
 
-    User relationships use passive_deletes=True, which delegates cascade
-    deletion to the database engine. In SQLite (no FK enforcement by default),
-    the ORM simply deletes the user row without touching child records.
-    In PostgreSQL, the database-level ondelete="CASCADE" handles cleanup.
+    User relationships use passive_deletes=True, which delegates referential
+    cleanup to the database. In SQLite (no FK enforcement by default) the ORM
+    just deletes the user row without touching child records, so these tests
+    only assert that the raw delete does not error.
 
-    For actual CASCADE behavior, see PostgreSQL integration tests:
-    test_db_postgres_integration.py::TestCascadeDeleteWithFKEnforcement
+    In PostgreSQL the database enforces the foreign keys: memberships, opinions,
+    and reset tokens are cascade-deleted, while a user who still admins a project
+    is blocked by ON DELETE RESTRICT (the API rejects that with 409 first). For
+    the enforced behavior see test_postgres_integration.py::TestForeignKeyEnforcement.
     """
 
     def test_deleting_user_with_memberships_succeeds_in_sqlite(self, session):
@@ -332,9 +334,11 @@ class TestUserCascadeDelete:
         """
         GIVEN a user who owns projects (is admin)
         WHEN the user is deleted in SQLite
-        THEN deletion succeeds (passive_deletes delegates to DB)
+        THEN the raw delete succeeds because SQLite does not enforce FKs
 
-        In PostgreSQL, Project rows are cascade-deleted by the DB.
+        In PostgreSQL this delete is blocked by ON DELETE RESTRICT on
+        projects.admin_id (see test_postgres_integration.py); the API rejects it
+        with 409 before it reaches the database.
         """
         # GIVEN
         admin = User(
