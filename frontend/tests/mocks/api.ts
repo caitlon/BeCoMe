@@ -38,6 +38,7 @@ export function createMockApi(overrides: Record<string, unknown> = {}) {
     // Members
     getMembers: vi.fn().mockResolvedValue([]),
     removeMember: vi.fn().mockResolvedValue(undefined),
+    transferOwnership: vi.fn().mockResolvedValue({}),
 
     // Opinions
     getOpinions: vi.fn().mockResolvedValue([]),

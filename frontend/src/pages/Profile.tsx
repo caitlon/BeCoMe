@@ -13,7 +13,7 @@ import { Navbar } from "@/components/layout/Navbar";
 import { DeleteConfirmModal } from "@/components/modals/DeleteConfirmModal";
 import { ValidationChecklist } from "@/components/forms";
 import { useAuth } from "@/contexts/AuthContext";
-import { api } from "@/lib/api";
+import { api, HttpError } from "@/lib/api";
 import { downloadJson } from "@/lib/download";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -224,10 +224,15 @@ const Profile = () => {
       navigate("/");
       toast({ title: t("toast.accountDeleted") });
     } catch (error) {
+      const description =
+        error instanceof HttpError && error.status === 409
+          ? t("dangerZone.ownsProjects")
+          : error instanceof Error
+            ? error.message
+            : t("toast.deleteFailed");
       toast({
         title: t("toast.error"),
-        description:
-          error instanceof Error ? error.message : t("toast.deleteFailed"),
+        description,
         variant: "destructive",
       });
     }

@@ -3,6 +3,7 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { render, framerMotionMock } from '@tests/utils';
 import Profile from '@/pages/Profile';
+import { HttpError } from '@/lib/api';
 import { createUser } from '@tests/factories/user';
 
 // Mock useNavigate
@@ -24,16 +25,20 @@ const mockApi = {
   deletePhoto: vi.fn(),
   exportData: vi.fn(),
 };
-vi.mock('@/lib/api', () => ({
-  api: {
-    updateCurrentUser: (data: unknown) => mockApi.updateCurrentUser(data),
-    changePassword: (data: unknown) => mockApi.changePassword(data),
-    deleteAccount: () => mockApi.deleteAccount(),
-    uploadPhoto: (file: File) => mockApi.uploadPhoto(file),
-    deletePhoto: () => mockApi.deletePhoto(),
-    exportData: () => mockApi.exportData(),
-  },
-}));
+vi.mock('@/lib/api', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/api')>();
+  return {
+    ...actual,
+    api: {
+      updateCurrentUser: (data: unknown) => mockApi.updateCurrentUser(data),
+      changePassword: (data: unknown) => mockApi.changePassword(data),
+      deleteAccount: () => mockApi.deleteAccount(),
+      uploadPhoto: (file: File) => mockApi.uploadPhoto(file),
+      deletePhoto: () => mockApi.deletePhoto(),
+      exportData: () => mockApi.exportData(),
+    },
+  };
+});
 
 // Mock the file-download helper so no real Blob/anchor is exercised here
 const mockDownloadJson = vi.fn();
@@ -355,6 +360,31 @@ describe('Profile - Delete Account', () => {
         })
       );
     });
+  });
+
+  it('shows ownership warning when deletion is blocked by owned projects (409)', async () => {
+    const user = userEvent.setup();
+    mockApi.deleteAccount.mockRejectedValueOnce(new HttpError('conflict', 409));
+
+    render(<Profile />);
+
+    await user.click(screen.getByRole('button', { name: 'Delete Account' }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Delete My Account' }));
+
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          variant: 'destructive',
+          description: expect.stringContaining('still admin'),
+        })
+      );
+    });
+    expect(mockLogout).not.toHaveBeenCalled();
   });
 });
 

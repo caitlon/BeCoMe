@@ -70,7 +70,9 @@
     "deleteFailed": "Failed to delete project",
     "createFailed": "Failed to create project",
     "memberRemoved": "Member removed",
-    "removeMemberFailed": "Failed to remove member"
+    "removeMemberFailed": "Failed to remove member",
+    "ownershipTransferred": "Ownership transferred",
+    "transferOwnershipFailed": "Failed to transfer ownership"
   },
   "detail": {
     "backToProjects": "Back to Projects",
@@ -127,7 +129,13 @@
     "name": "Name",
     "email": "Email",
     "role": "Role",
-    "joined": "Joined"
+    "joined": "Joined",
+    "transferOwnershipLabel": "Make {{name}} the owner"
+  },
+  "transferOwnership": {
+    "title": "Transfer ownership?",
+    "description": "{{name}} will become the project admin and you will become an expert. You will no longer be able to manage the project.",
+    "confirm": "Transfer ownership"
   },
   "memberProfile": {
     "position": "Position",

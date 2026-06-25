@@ -18,6 +18,7 @@ const { mockApi, mockToast, mockUser, mockNavigate } = vi.hoisted(() => ({
     deleteOpinion: vi.fn(),
     deleteProject: vi.fn(),
     removeMember: vi.fn(),
+    transferOwnership: vi.fn(),
   },
   mockToast: vi.fn(),
   mockUser: {
@@ -514,6 +515,33 @@ describe('ProjectDetail - Team Section', () => {
       // JD appears in both Navbar avatar and team table avatar (team section open by default)
       const initials = screen.getAllByText('JD');
       expect(initials.length).toBeGreaterThanOrEqual(2);
+    });
+  });
+
+  it('transfers ownership to a member after confirmation', async () => {
+    const user = userEvent.setup();
+    const members = [
+      createMember({ user_id: 'user-1', first_name: 'John', last_name: 'Doe', role: 'admin' }),
+      createMember({ user_id: 'user-2', first_name: 'Jane', last_name: 'Smith', role: 'expert' }),
+    ];
+    mockApi.getMembers.mockResolvedValue(members);
+    mockApi.transferOwnership.mockResolvedValue(createProject({ id: 'project-1' }));
+
+    render(<ProjectDetail />);
+
+    // The "make owner" action is shown for non-admin members in the admin view
+    const transferButtons = await screen.findAllByRole('button', {
+      name: /make jane smith the owner/i,
+    });
+    await user.click(transferButtons[0]);
+
+    await waitFor(() => {
+      expect(screen.getByText('Transfer ownership?')).toBeInTheDocument();
+    });
+    await user.click(screen.getByRole('button', { name: 'Transfer ownership' }));
+
+    await waitFor(() => {
+      expect(mockApi.transferOwnership).toHaveBeenCalledWith('project-1', 'user-2');
     });
   });
 });
