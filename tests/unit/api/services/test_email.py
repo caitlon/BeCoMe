@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
-from api.services.email.console_email_sender import ConsoleEmailSender
+from api.services.email.console_email_sender import ConsoleEmailSender, _mask_token
 from api.services.email.exceptions import EmailSendError
 from api.services.email.resend_email_sender import ResendEmailSender
 
@@ -66,6 +66,27 @@ class TestConsoleEmailSender:
         # THEN
         mock_logger.debug.assert_called_once()
         assert self._RESET_URL in str(mock_logger.debug.call_args)
+
+
+class TestMaskToken:
+    """Tests for the reset-link token masking helper."""
+
+    def test_fully_masks_a_short_token(self):
+        """A token at or below the prefix length is hidden entirely."""
+        # WHEN
+        masked = _mask_token("https://app.example/reset-password?token=short")
+
+        # THEN
+        assert "short" not in masked
+        assert "token=..." in masked
+
+    def test_returns_url_unchanged_without_a_token(self):
+        """A URL without a token query parameter is returned as-is."""
+        # GIVEN
+        url = "https://app.example/reset-password"
+
+        # WHEN / THEN
+        assert _mask_token(url) == url
 
 
 class TestResendEmailSender:
