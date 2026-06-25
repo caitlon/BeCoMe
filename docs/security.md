@@ -59,6 +59,17 @@ read/write auditing would need the `pgaudit` extension, but that requires
 `shared_preload_libraries`, which Railway's image does not expose; `log_statement = 'ddl'` is the
 workable substitute.
 
+## Account deletion and data integrity
+
+Deleting a user must not silently destroy other people's work. Most child rows clear themselves
+through `ON DELETE CASCADE` (memberships, opinions, sent and received invitations, reset tokens),
+but a project a user **admins** is shared data -- it holds other experts' opinions. So
+`projects.admin_id` uses `ON DELETE RESTRICT`: the database refuses to delete a user who still
+owns a project. The API enforces the same rule first and returns `409 Conflict` from
+`DELETE /api/v1/users/me`; the owner must delete those projects or transfer ownership
+(`POST /api/v1/projects/{id}/transfer-ownership`) before erasing their account. This serves the
+GDPR right to erasure without letting one deletion cascade away a whole panel's contributions.
+
 ## Backups
 
 Railway's managed backups require the Pro plan, so on the current (free) plan the Postgres
