@@ -1,5 +1,6 @@
 """FastAPI application entry point."""
 
+import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
@@ -17,12 +18,23 @@ from api.middleware.request_logging import RequestLoggingMiddleware
 from api.middleware.security_headers import SecurityHeadersMiddleware
 from api.routes import auth, calculate, health, invitations, opinions, projects, users
 
+logger = logging.getLogger("api.main")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
-    """Initialize database tables on startup."""
+    """Initialize database tables and log the application lifecycle.
+
+    The startup and shutdown records carry the running version and active
+    profile so the journal pins which build and environment served the run.
+    """
+    settings = get_settings()
+    lifecycle = {"api_version": settings.api_version, "environment": settings.environment.value}
+
     create_db_and_tables()
+    logger.info("Application started", extra={"event": "app_startup", **lifecycle})
     yield
+    logger.info("Application stopped", extra={"event": "app_shutdown", **lifecycle})
 
 
 def _init_sentry(settings: Settings) -> None:

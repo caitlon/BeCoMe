@@ -392,3 +392,70 @@ class TestSentryInit:
             _init_sentry(settings)
 
         mock_init.assert_not_called()
+
+
+class TestLifespanLogging:
+    """Tests that the lifespan logs application start and stop."""
+
+    @staticmethod
+    def _run_lifespan():
+        """Start and stop the app under TestClient, returning the captured logger mock."""
+        from unittest.mock import patch
+
+        from fastapi.testclient import TestClient
+
+        from api.main import create_app
+
+        with (
+            patch("api.main.create_db_and_tables"),
+            patch("api.main.logger") as mock_logger,
+        ):
+            app = create_app()
+            with TestClient(app):
+                pass
+        return mock_logger
+
+    @staticmethod
+    def _events(mock_logger):
+        """Collect the ``event`` field from every info call carrying an extra mapping."""
+        return [
+            call.kwargs["extra"]["event"]
+            for call in mock_logger.info.call_args_list
+            if "extra" in call.kwargs
+        ]
+
+    @staticmethod
+    def _record_for(mock_logger, event):
+        """Return the extra mapping of the info call matching the given event."""
+        for call in mock_logger.info.call_args_list:
+            extra = call.kwargs.get("extra", {})
+            if extra.get("event") == event:
+                return extra
+        raise AssertionError(f"No info log with event={event!r}")
+
+    def test_logs_startup_event_with_version_and_environment(self):
+        """
+        GIVEN the application factory
+        WHEN the app starts under lifespan
+        THEN an app_startup record carries the api_version and environment
+        """
+        # WHEN
+        mock_logger = self._run_lifespan()
+
+        # THEN
+        assert "app_startup" in self._events(mock_logger)
+        extra = self._record_for(mock_logger, "app_startup")
+        assert extra["api_version"]
+        assert extra["environment"]
+
+    def test_logs_shutdown_event(self):
+        """
+        GIVEN the application factory
+        WHEN the app stops after lifespan
+        THEN an app_shutdown record is emitted
+        """
+        # WHEN
+        mock_logger = self._run_lifespan()
+
+        # THEN
+        assert "app_shutdown" in self._events(mock_logger)
