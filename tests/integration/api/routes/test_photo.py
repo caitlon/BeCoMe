@@ -329,3 +329,22 @@ class TestPhotoProxy:
 
         # THEN
         assert response.status_code == 404
+
+    def test_returns_404_when_stored_object_missing(self, client_with_mock_storage):
+        """The proxy returns 404 when the key is set but the object is gone from storage."""
+        # GIVEN - a user with a photo whose backing object has since disappeared
+        client, mock_storage = client_with_mock_storage
+        token = register_and_login(client, "gone@example.com")
+        user_id = client.get("/api/v1/users/me", headers=auth_header(token)).json()["id"]
+        client.post(
+            "/api/v1/users/me/photo",
+            headers=auth_header(token),
+            files={"file": ("photo.jpg", VALID_JPEG_BYTES, "image/jpeg")},
+        )
+        mock_storage.open.return_value = None
+
+        # WHEN
+        response = client.get(f"/api/v1/users/{user_id}/photo")
+
+        # THEN
+        assert response.status_code == 404
