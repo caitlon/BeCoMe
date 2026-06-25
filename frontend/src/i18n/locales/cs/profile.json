@@ -23,7 +23,8 @@
   "dangerZone": {
     "title": "Nebezpečná zóna",
     "warning": "Po smazání účtu již není cesty zpět. Buďte si prosím jisti.",
-    "deleteButton": "Smazat účet"
+    "deleteButton": "Smazat účet",
+    "ownsProjects": "Stále spravujete jeden nebo více projektů. Před smazáním účtu předejte vlastnictví nebo je smažte."
   },
   "deleteModal": {
     "title": "Smazat účet?",

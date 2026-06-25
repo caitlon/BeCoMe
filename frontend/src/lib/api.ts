@@ -285,6 +285,13 @@ class ApiClient {
     });
   }
 
+  async transferOwnership(projectId: string, newAdminId: string): Promise<Project> {
+    return this.request<Project>(`/projects/${projectId}/transfer-ownership`, {
+      method: 'POST',
+      body: JSON.stringify({ new_admin_id: newAdminId }),
+    });
+  }
+
   // Opinions
   async getOpinions(projectId: string): Promise<Opinion[]> {
     return this.request<Opinion[]>(`/projects/${projectId}/opinions`);

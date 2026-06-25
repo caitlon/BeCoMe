@@ -640,6 +640,26 @@ describe('ApiClient', () => {
         expect.objectContaining({ method: 'DELETE' })
       );
     });
+
+    it('transferOwnership sends POST to /projects/:id/transfer-ownership', async () => {
+      const project = { id: 'proj-1', admin_id: 'user-1' };
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(project),
+      });
+
+      const result = await api.transferOwnership('proj-1', 'user-1');
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/projects/proj-1/transfer-ownership'),
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ new_admin_id: 'user-1' }),
+        })
+      );
+      expect(result).toEqual(project);
+    });
   });
 
   describe('Opinion Endpoints', () => {

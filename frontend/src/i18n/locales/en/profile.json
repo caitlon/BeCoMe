@@ -23,7 +23,8 @@
   "dangerZone": {
     "title": "Danger Zone",
     "warning": "Once you delete your account, there is no going back. Please be certain.",
-    "deleteButton": "Delete Account"
+    "deleteButton": "Delete Account",
+    "ownsProjects": "You still admin one or more projects. Transfer ownership or delete them before deleting your account."
   },
   "deleteModal": {
     "title": "Delete Account?",

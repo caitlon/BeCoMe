@@ -9,6 +9,7 @@ import {
   Edit,
   UserPlus,
   Trash2,
+  Crown,
   ChevronDown,
   ChevronUp,
   X,
@@ -83,6 +84,7 @@ const ProjectDetail = () => {
   const [lower, setLower] = useState("");
   const [peak, setPeak] = useState("");
   const [upper, setUpper] = useState("");
+  const [transferTarget, setTransferTarget] = useState<Member | null>(null);
   useDocumentTitle(project ? tCommon("pageTitle.projectDetail", { name: project.name }) : tCommon("common.loading"));
 
   const myOpinion = opinions.find((o) => o.user_id === user?.id);
@@ -245,6 +247,23 @@ const ProjectDetail = () => {
       toast({
         title: t("toast.error"),
         description: t("toast.removeMemberFailed"),
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleTransferOwnership = async () => {
+    /* v8 ignore next -- defensive guard: id and target are always set when invoked */
+    if (!id || !transferTarget) return;
+    try {
+      await api.transferOwnership(id, transferTarget.user_id);
+      toast({ title: t("toast.ownershipTransferred") });
+      setTransferTarget(null);
+      fetchData();
+    } catch {
+      toast({
+        title: t("toast.error"),
+        description: t("toast.transferOwnershipFailed"),
         variant: "destructive",
       });
     }
@@ -416,6 +435,7 @@ const ProjectDetail = () => {
                 currentUserId={user?.id}
                 selectedMemberId={profileMember?.user_id}
                 onRemove={handleRemoveMember}
+                onTransfer={(member) => setTransferTarget(member)}
                 onMemberClick={(member) => setProfileMember(member)}
               />
             </TabsContent>
@@ -449,6 +469,7 @@ const ProjectDetail = () => {
                 currentUserId={user?.id}
                 selectedMemberId={profileMember?.user_id}
                 onRemove={handleRemoveMember}
+                onTransfer={(member) => setTransferTarget(member)}
                 onMemberClick={(member) => setProfileMember(member)}
               />
             </CollapsibleContent>
@@ -474,6 +495,19 @@ const ProjectDetail = () => {
           t("deleteModal.details.invitations"),
         ]}
         onConfirm={handleDeleteProject}
+      />
+
+      <DeleteConfirmModal
+        open={!!transferTarget}
+        onOpenChange={(open) => !open && setTransferTarget(null)}
+        title={t("transferOwnership.title")}
+        description={t("transferOwnership.description", {
+          name: transferTarget
+            ? `${transferTarget.first_name} ${transferTarget.last_name ?? ""}`.trim()
+            : "",
+        })}
+        onConfirm={handleTransferOwnership}
+        confirmText={t("transferOwnership.confirm")}
       />
 
       <MemberProfileDialog
@@ -1178,6 +1212,7 @@ interface TeamTableProps {
   currentUserId?: string;
   selectedMemberId?: string;
   onRemove: (userId: string) => void;
+  onTransfer: (member: Member) => void;
   onMemberClick: (member: Member) => void;
 }
 
@@ -1188,6 +1223,7 @@ const TeamTable = ({
   currentUserId,
   selectedMemberId,
   onRemove,
+  onTransfer,
   onMemberClick,
 }: TeamTableProps) => {
   const { t, i18n } = useTranslation("projects");
@@ -1256,18 +1292,32 @@ const TeamTable = ({
                     <TableCell>
                       {member.role !== "admin" &&
                         member.user_id !== currentUserId && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-destructive hover:text-destructive"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onRemove(member.user_id);
-                            }}
-                            aria-label={tCommon("a11y.removeTeamMember", { name: fullName })}
-                          >
-                            <X className="h-4 w-4" />
-                          </Button>
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onTransfer(member);
+                              }}
+                              aria-label={t("team.transferOwnershipLabel", { name: fullName })}
+                            >
+                              <Crown className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-destructive hover:text-destructive"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onRemove(member.user_id);
+                              }}
+                              aria-label={tCommon("a11y.removeTeamMember", { name: fullName })}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
                         )}
                     </TableCell>
                   )}

@@ -70,7 +70,9 @@
     "deleteFailed": "Nepodařilo se smazat projekt",
     "createFailed": "Nepodařilo se vytvořit projekt",
     "memberRemoved": "Člen odebrán",
-    "removeMemberFailed": "Nepodařilo se odebrat člena"
+    "removeMemberFailed": "Nepodařilo se odebrat člena",
+    "ownershipTransferred": "Vlastnictví předáno",
+    "transferOwnershipFailed": "Předání vlastnictví se nezdařilo"
   },
   "detail": {
     "backToProjects": "Zpět na projekty",
@@ -127,7 +129,13 @@
     "name": "Jméno",
     "email": "E-mail",
     "role": "Role",
-    "joined": "Přidal se"
+    "joined": "Přidal se",
+    "transferOwnershipLabel": "Učinit uživatele {{name}} vlastníkem"
+  },
+  "transferOwnership": {
+    "title": "Předat vlastnictví?",
+    "description": "{{name}} se stane správcem projektu a vy se stanete expertem. Projekt už nebudete moci spravovat.",
+    "confirm": "Předat vlastnictví"
   },
   "memberProfile": {
     "position": "Pozice",
