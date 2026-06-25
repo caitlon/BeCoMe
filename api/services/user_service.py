@@ -123,7 +123,10 @@ class UserService(BaseService):
         :raises InvalidCredentialsError: If current password is incorrect
         """
         if not verify_password(current_password, user.hashed_password):
-            raise InvalidCredentialsError("Current password is incorrect")
+            raise InvalidCredentialsError(
+                "Current password is incorrect",
+                reason="invalid_current_password",
+            )
 
         user.hashed_password = hash_password(new_password)
         return self._save_and_refresh(user)

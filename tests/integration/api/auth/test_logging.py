@@ -8,6 +8,7 @@ from api.auth.logging import (
     log_login_failure,
     log_login_success,
     log_password_change,
+    log_password_change_failure,
     log_registration,
 )
 
@@ -242,6 +243,46 @@ class TestLogPasswordChange:
         # THEN
         extra = mock_logger.info.call_args[1]["extra"]
         assert extra["ip"] == "172.16.0.1"
+
+
+class TestLogPasswordChangeFailure:
+    """Tests for log_password_change_failure function."""
+
+    def test_logs_warning_with_event(self):
+        """A failed password change is logged at WARNING with its own event type."""
+        # WHEN
+        with patch("api.auth.logging.logger") as mock_logger:
+            log_password_change_failure()
+
+        # THEN
+        mock_logger.warning.assert_called_once()
+        extra = mock_logger.warning.call_args[1]["extra"]
+        assert extra["event"] == "password_change_failure"
+
+    def test_extracts_ip_from_request(self):
+        """Failed password change extracts IP from request."""
+        # GIVEN
+        mock_request = MagicMock()
+        mock_request.headers.get.return_value = "10.0.0.7"
+
+        # WHEN
+        with patch("api.auth.logging.logger") as mock_logger:
+            log_password_change_failure(mock_request)
+
+        # THEN
+        extra = mock_logger.warning.call_args[1]["extra"]
+        assert extra["ip"] == "10.0.0.7"
+
+    def test_handles_none_request(self):
+        """Failed password change handles None request gracefully."""
+        # WHEN
+        with patch("api.auth.logging.logger") as mock_logger:
+            log_password_change_failure(None)
+
+        # THEN
+        extra = mock_logger.warning.call_args[1]["extra"]
+        assert extra["event"] == "password_change_failure"
+        assert extra["ip"] == "unknown"
 
 
 class TestLogAccountDeletion:

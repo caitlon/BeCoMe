@@ -10,7 +10,7 @@ import logging
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 
-from api.auth.logging import log_login_failure
+from api.auth.logging import log_login_failure, log_password_change_failure
 from api.exceptions import (
     AccountHasOwnedProjectsError,
     BeCoMeAPIError,
@@ -136,8 +136,11 @@ def become_api_error_handler(request: Request, exc: BeCoMeAPIError) -> JSONRespo
     headers = None
     if isinstance(exc, InvalidCredentialsError):
         headers = {"WWW-Authenticate": "Bearer"}
-        # Log failed authentication attempt
-        if exc.email:
+        # A wrong current password is a distinct security event from a failed
+        # login, so it does not pollute brute-force alerting on login_failure.
+        if exc.reason == "invalid_current_password":
+            log_password_change_failure(request)
+        elif exc.email:
             log_login_failure(exc.email, exc.reason, request)
 
     return JSONResponse(

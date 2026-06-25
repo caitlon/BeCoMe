@@ -87,6 +87,25 @@ def log_password_change(user_id: UUID, request: "Request | None" = None) -> None
     )
 
 
+def log_password_change_failure(request: "Request | None" = None) -> None:
+    """Log a failed password change (wrong current password).
+
+    Kept as a distinct event so brute-force alerting on ``login_failure`` is not
+    polluted by password-change attempts. The acting ``user_id`` is bound by the
+    logging ContextFilter from the authenticated request.
+
+    :param request: FastAPI request (for IP extraction)
+    """
+    ip = get_client_ip(request)
+    logger.warning(
+        "Password change failed",
+        extra={
+            "event": "password_change_failure",
+            "ip": ip,
+        },
+    )
+
+
 def log_password_reset_requested(email: str, request: "Request | None" = None) -> None:
     """Log a password reset request (forgot-password).
 
