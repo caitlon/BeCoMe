@@ -59,6 +59,7 @@ api/
 │   └── sanitization.py     # HTML sanitization
 ├── config.py           # Settings (Pydantic Settings)
 ├── logging_config.py   # Centralized logging + JSON formatter (test/prod)
+├── logging_context.py  # Request-scoped correlation (request_id/user_id) via contextvars
 ├── dependencies.py     # DI factories + authorization
 ├── exceptions.py       # API exception hierarchy
 └── main.py             # FastAPI application (+ setup_logging, Sentry init)
@@ -163,7 +164,7 @@ Environment variables (can use `.env` file):
 
 **Migrations:** The PostgreSQL schema is managed by Alembic (`migrations/`). `alembic upgrade head` runs automatically before each Railway deploy; to apply it manually against a specific database use `ALEMBIC_DATABASE_URL=<url> uv run alembic upgrade head`. SQLite (local development and the test suite) keeps using `create_all`, so no migration step is needed there.
 
-**Observability:** Every request gets an `X-Request-ID` response header (generated, or echoed from the client's header) for log correlation. Requests, unhandled exceptions, and rate-limit violations are logged under the `api.*` loggers; in `test`/`prod` the output is JSON so a log drain can index fields like `request_id` and `status_code`. Unhandled exceptions return an opaque 500 and are reported to Sentry when `SENTRY_DSN` is set. When the `BETTERSTACK_*` variables are set, the `api.*` logs are also shipped to Better Stack (a per-environment source) via `logtail-python`.
+**Observability:** Every request gets an `X-Request-ID` response header (generated, or echoed from the client's header) for log correlation. A `ContextFilter` binds that ID and the acting user through contextvars, so every `api.*` record -- service and security logs included -- carries `request_id` and `user_id`, not just the request line. Requests, unhandled exceptions, and rate-limit violations are logged under the `api.*` loggers; in `test`/`prod` the output is JSON so a log drain can index fields like `request_id` and `status_code`. Unhandled exceptions return an opaque 500 and are reported to Sentry when `SENTRY_DSN` is set. When the `BETTERSTACK_*` variables are set, the `api.*` logs are also shipped to Better Stack (a per-environment source) via `logtail-python`.
 
 ## Testing
 
