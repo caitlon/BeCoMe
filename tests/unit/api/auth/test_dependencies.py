@@ -1,5 +1,6 @@
 """Unit tests for authentication dependencies."""
 
+import asyncio
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
@@ -11,6 +12,7 @@ from api.auth.dependencies import get_current_token_payload, get_current_user
 from api.auth.jwt import ALGORITHM, create_access_token, revoke_token
 from api.auth.token_blacklist import TokenBlacklist
 from api.config import get_settings
+from api.logging_context import get_user_id
 
 
 class TestGetCurrentUser:
@@ -35,11 +37,34 @@ class TestGetCurrentUser:
             mock_service.get_by_id.return_value = mock_user
             mock_service_class.return_value = mock_service
 
-            result = get_current_user(token, mock_session)
+            result = asyncio.run(get_current_user(token, mock_session))
 
         # THEN
         assert result == mock_user
         mock_service.get_by_id.assert_called_once_with(user_id)
+
+    def test_binds_user_id_to_logging_context(self):
+        """A successful resolution binds the acting user ID to the context."""
+        # GIVEN
+        user_id = uuid4()
+        token = create_access_token(user_id)
+        mock_session = MagicMock()
+        mock_user = MagicMock()
+        mock_user.id = user_id
+
+        async def resolve_then_read() -> str | None:
+            with patch("api.auth.dependencies.UserService") as mock_service_class:
+                mock_service = MagicMock()
+                mock_service.get_by_id.return_value = mock_user
+                mock_service_class.return_value = mock_service
+                await get_current_user(token, mock_session)
+            return get_user_id()
+
+        # WHEN
+        bound = asyncio.run(resolve_then_read())
+
+        # THEN
+        assert bound == str(user_id)
 
     def test_raises_401_for_invalid_token(self):
         """Invalid token raises HTTPException 401."""
@@ -49,7 +74,7 @@ class TestGetCurrentUser:
 
         # WHEN / THEN
         with pytest.raises(HTTPException) as exc_info:
-            get_current_user(invalid_token, mock_session)
+            asyncio.run(get_current_user(invalid_token, mock_session))
 
         assert exc_info.value.status_code == 401
         assert "Could not validate credentials" in exc_info.value.detail
@@ -69,7 +94,7 @@ class TestGetCurrentUser:
 
             # THEN
             with pytest.raises(HTTPException) as exc_info:
-                get_current_user(token, mock_session)
+                asyncio.run(get_current_user(token, mock_session))
 
         assert exc_info.value.status_code == 401
         assert "Could not validate credentials" in exc_info.value.detail
@@ -88,7 +113,7 @@ class TestGetCurrentUser:
 
         # WHEN / THEN
         with pytest.raises(HTTPException) as exc_info:
-            get_current_user(token, mock_session)
+            asyncio.run(get_current_user(token, mock_session))
 
         assert exc_info.value.status_code == 401
 

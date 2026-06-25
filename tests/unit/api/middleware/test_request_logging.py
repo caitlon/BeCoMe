@@ -7,6 +7,7 @@ import pytest
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 
+from api.logging_context import get_request_id
 from api.middleware.request_logging import RequestLoggingMiddleware
 
 
@@ -23,6 +24,10 @@ def app() -> FastAPI:
     @application.get("/whoami")
     def whoami(request: Request):
         return {"request_id": request.state.request_id}
+
+    @application.get("/ctx")
+    def ctx():
+        return {"request_id": get_request_id()}
 
     @application.get("/api/v1/health")
     def health():
@@ -72,6 +77,18 @@ class TestRequestId:
         """
         # WHEN
         response = client.get("/whoami")
+
+        # THEN
+        assert response.json()["request_id"] == response.headers["X-Request-ID"]
+
+    def test_binds_request_id_to_logging_context(self, client: TestClient):
+        """
+        GIVEN a request handled through the middleware
+        WHEN the endpoint reads the request ID from the logging context
+        THEN it matches the response header, proving the contextvar propagates
+        """
+        # WHEN
+        response = client.get("/ctx")
 
         # THEN
         assert response.json()["request_id"] == response.headers["X-Request-ID"]

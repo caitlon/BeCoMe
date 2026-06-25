@@ -7,6 +7,7 @@ from logging.handlers import RotatingFileHandler
 from logtail import LogtailHandler  # type: ignore[import-untyped]
 
 from api.config import Environment, Settings
+from api.logging_context import ContextFilter
 
 # Rotating file handler sizing, used only when LOG_FILE is configured.
 _LOG_FILE_MAX_BYTES = 10 * 1024 * 1024
@@ -108,9 +109,11 @@ def setup_logging(settings: Settings) -> None:
 
     Sets the level from ``LOG_LEVEL``, attaches a console handler (and a rotating
     file handler when ``LOG_FILE`` is set), and disables propagation so uvicorn
-    and SQLAlchemy logs stay separate. Child loggers such as ``api.security``
-    inherit this configuration. Safe to call repeatedly: existing ``api``
-    handlers are cleared first, so reloads and tests do not stack duplicates.
+    and SQLAlchemy logs stay separate. Every handler carries a
+    :class:`~api.logging_context.ContextFilter`, so the request-scoped
+    ``request_id`` and ``user_id`` reach records from child loggers such as
+    ``api.security`` too. Safe to call repeatedly: existing ``api`` handlers are
+    cleared first, so reloads and tests do not stack duplicates.
 
     :param settings: Application settings.
     """
@@ -121,9 +124,11 @@ def setup_logging(settings: Settings) -> None:
     for handler in list(logger.handlers):
         logger.removeHandler(handler)
 
+    context_filter = ContextFilter()
     formatter = _build_formatter(settings)
     stream_handler = logging.StreamHandler()
     stream_handler.setFormatter(formatter)
+    stream_handler.addFilter(context_filter)
     logger.addHandler(stream_handler)
 
     if settings.log_file:
@@ -133,6 +138,7 @@ def setup_logging(settings: Settings) -> None:
             backupCount=_LOG_FILE_BACKUP_COUNT,
         )
         file_handler.setFormatter(formatter)
+        file_handler.addFilter(context_filter)
         logger.addHandler(file_handler)
 
     if settings.betterstack_source_token and settings.betterstack_ingesting_host:
@@ -140,4 +146,5 @@ def setup_logging(settings: Settings) -> None:
             source_token=settings.betterstack_source_token,
             host=f"https://{_betterstack_host(settings.betterstack_ingesting_host)}",
         )
+        logtail_handler.addFilter(context_filter)
         logger.addHandler(logtail_handler)
