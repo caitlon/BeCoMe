@@ -5,6 +5,7 @@ This module provides:
 - Authorization dependencies following DRY (single parameterized class)
 """
 
+import logging
 from enum import StrEnum
 from typing import Annotated
 from uuid import UUID
@@ -32,6 +33,8 @@ from api.services.storage.exceptions import StorageConfigurationError
 from api.services.storage.railway_bucket_storage_service import RailwayBucketStorageService
 from api.services.user_service import UserService
 from src.calculators.become_calculator import BeCoMeCalculator
+
+logger = logging.getLogger("api.security")
 
 # --- Calculator Factories ---
 
@@ -195,6 +198,15 @@ class RequireProjectAccess:
         has_access = self._check_access(membership_service, project_id, current_user.id)
         if not has_access:
             detail = self._get_error_detail()
+            logger.warning(
+                "Project access denied",
+                extra={
+                    "event": "access_denied",
+                    "project_id": str(project_id),
+                    "user_id": str(current_user.id),
+                    "required_level": self._access_level.value,
+                },
+            )
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=detail,

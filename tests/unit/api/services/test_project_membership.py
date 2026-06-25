@@ -1,6 +1,6 @@
 """Unit tests for ProjectMembershipService."""
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -87,6 +87,26 @@ class TestProjectMembershipServiceRemoveMember:
         # WHEN / THEN
         with pytest.raises(MemberNotFoundError, match="not a member"):
             service.remove_member(uuid4(), uuid4())
+
+    def test_logs_member_removed_event(self):
+        """A successful removal logs a member_removed event with both IDs."""
+        # GIVEN
+        project_id = uuid4()
+        user_id = uuid4()
+        membership = ProjectMember(project_id=project_id, user_id=user_id, role=MemberRole.EXPERT)
+        mock_session = MagicMock()
+        mock_session.exec.return_value.first.return_value = membership
+        service = ProjectMembershipService(mock_session)
+
+        # WHEN
+        with patch("api.services.project_membership_service.logger") as mock_logger:
+            service.remove_member(project_id, user_id)
+
+        # THEN
+        extra = mock_logger.info.call_args[1]["extra"]
+        assert extra["event"] == "member_removed"
+        assert extra["project_id"] == str(project_id)
+        assert extra["user_id"] == str(user_id)
 
 
 class TestProjectMembershipServiceIsMember:

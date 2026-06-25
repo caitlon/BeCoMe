@@ -1,9 +1,15 @@
 """Tests for centralized FastAPI dependencies."""
 
 from unittest.mock import MagicMock, patch
+from uuid import uuid4
+
+import pytest
+from fastapi import HTTPException
 
 from api.config import Settings
 from api.dependencies import (
+    AccessLevel,
+    RequireProjectAccess,
     get_email_service,
     get_password_reset_service,
     get_storage_service,
@@ -159,3 +165,68 @@ class TestGetPasswordResetService:
         # THEN
         assert isinstance(result, PasswordResetService)
         assert result.session is mock_session
+
+
+class TestRequireProjectAccess:
+    """Tests for the parameterized project access dependency."""
+
+    def test_returns_project_when_access_granted(self):
+        """Returns the project when the user has the required access level."""
+        # GIVEN
+        project = MagicMock()
+        project_service = MagicMock()
+        project_service.get_project.return_value = project
+        membership_service = MagicMock()
+        membership_service.is_admin.return_value = True
+        current_user = MagicMock()
+        current_user.id = uuid4()
+        dependency = RequireProjectAccess(AccessLevel.ADMIN)
+
+        # WHEN
+        result = dependency(uuid4(), current_user, project_service, membership_service)
+
+        # THEN
+        assert result is project
+
+    def test_raises_404_when_project_missing(self):
+        """Raises 404 when the project does not exist."""
+        # GIVEN
+        project_service = MagicMock()
+        project_service.get_project.return_value = None
+        current_user = MagicMock()
+        current_user.id = uuid4()
+        dependency = RequireProjectAccess(AccessLevel.MEMBER)
+
+        # WHEN / THEN
+        with pytest.raises(HTTPException) as exc_info:
+            dependency(uuid4(), current_user, project_service, MagicMock())
+
+        assert exc_info.value.status_code == 404
+
+    def test_logs_and_raises_403_when_access_denied(self):
+        """Logs an access_denied warning and raises 403 when access is insufficient."""
+        # GIVEN
+        project_id = uuid4()
+        user_id = uuid4()
+        project_service = MagicMock()
+        project_service.get_project.return_value = MagicMock()
+        membership_service = MagicMock()
+        membership_service.is_admin.return_value = False
+        current_user = MagicMock()
+        current_user.id = user_id
+        dependency = RequireProjectAccess(AccessLevel.ADMIN)
+
+        # WHEN
+        with (
+            patch("api.dependencies.logger") as mock_logger,
+            pytest.raises(HTTPException) as exc_info,
+        ):
+            dependency(project_id, current_user, project_service, membership_service)
+
+        # THEN
+        assert exc_info.value.status_code == 403
+        extra = mock_logger.warning.call_args[1]["extra"]
+        assert extra["event"] == "access_denied"
+        assert extra["project_id"] == str(project_id)
+        assert extra["user_id"] == str(user_id)
+        assert extra["required_level"] == "admin"
