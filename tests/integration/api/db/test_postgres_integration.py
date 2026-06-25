@@ -182,6 +182,35 @@ class TestForeignKeyEnforcement:
         assert pg_session.get(ExpertOpinion, opinion_id) is None
         assert pg_session.get(CalculationResult, result_id) is None
 
+    def test_deleting_admin_with_project_is_restricted(self, pg_session):
+        """
+        GIVEN a user who admins a project
+        WHEN the user is deleted in PostgreSQL
+        THEN IntegrityError is raised (ON DELETE RESTRICT on projects.admin_id)
+
+        This is the database backstop behind the API's 409: erasing an owner must
+        not silently cascade away the project and other experts' contributions.
+        """
+        # GIVEN
+        admin = User(
+            email="restrict-admin@example.com",
+            hashed_password="hash",
+            first_name="Admin",
+            last_name="User",
+        )
+        pg_session.add(admin)
+        pg_session.commit()
+
+        project = Project(name="Owned Project", admin_id=admin.id)
+        pg_session.add(project)
+        pg_session.commit()
+
+        # WHEN / THEN - RESTRICT blocks deleting an owner who still has a project
+        pg_session.delete(admin)
+        with pytest.raises(IntegrityError):
+            pg_session.commit()
+        pg_session.rollback()
+
 
 class TestConcurrentAccess:
     """Tests for concurrent database access patterns."""

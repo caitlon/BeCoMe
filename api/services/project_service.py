@@ -6,7 +6,7 @@ from uuid import UUID
 from sqlmodel import func, select
 
 from api.db.models import MemberRole, Project, ProjectMember
-from api.exceptions import ProjectNotFoundError, ScaleRangeError
+from api.exceptions import MemberNotFoundError, ProjectNotFoundError, ScaleRangeError
 from api.schemas.project import ProjectCreate, ProjectUpdate
 from api.services.base import BaseService
 
@@ -132,3 +132,61 @@ class ProjectService(BaseService):
             .where(ProjectMember.project_id == project_id)
         )
         return self._session.exec(statement).one()
+
+    def get_owned_projects(self, user_id: UUID) -> list[Project]:
+        """Get all projects the user owns (is admin of).
+
+        :param user_id: User ID
+        :return: Projects whose admin is the user
+        """
+        statement = select(Project).where(Project.admin_id == user_id)
+        return list(self._session.exec(statement).all())
+
+    def transfer_ownership(self, project: Project, new_admin_id: UUID) -> Project:
+        """Transfer project ownership to another member.
+
+        Keeps both ownership sources in sync atomically: ``Project.admin_id`` and
+        the ``ProjectMember`` role rows -- the new owner becomes admin and the
+        former owner is demoted to expert.
+
+        :param project: Project to transfer (current admin already verified)
+        :param new_admin_id: User ID of the member to promote to admin
+        :return: Updated project
+        :raises MemberNotFoundError: If the target user is not a project member
+        """
+        new_admin_membership = self._session.exec(
+            select(ProjectMember).where(
+                ProjectMember.project_id == project.id,
+                ProjectMember.user_id == new_admin_id,
+            )
+        ).first()
+        if not new_admin_membership:
+            raise MemberNotFoundError(
+                f"User {new_admin_id} is not a member of project {project.id}"
+            )
+
+        old_admin_membership = self._session.exec(
+            select(ProjectMember).where(
+                ProjectMember.project_id == project.id,
+                ProjectMember.user_id == project.admin_id,
+            )
+        ).first()
+
+        project.admin_id = new_admin_id
+        new_admin_membership.role = MemberRole.ADMIN
+        self._session.add(project)
+        self._session.add(new_admin_membership)
+        if old_admin_membership:
+            old_admin_membership.role = MemberRole.EXPERT
+            self._session.add(old_admin_membership)
+        self._session.commit()
+        self._session.refresh(project)
+        logger.info(
+            "Project ownership transferred",
+            extra={
+                "event": "ownership_transferred",
+                "project_id": str(project.id),
+                "new_admin_id": str(new_admin_id),
+            },
+        )
+        return project

@@ -8,7 +8,13 @@ from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, 
 
 from api.auth.dependencies import CurrentUser
 from api.auth.logging import log_account_deletion, log_data_export, log_password_change
-from api.dependencies import get_data_export_service, get_storage_service, get_user_service
+from api.dependencies import (
+    get_data_export_service,
+    get_project_service,
+    get_storage_service,
+    get_user_service,
+)
+from api.exceptions import AccountHasOwnedProjectsError
 from api.middleware.rate_limit import (
     LIMIT_PHOTO,
     LIMIT_PWD_RESET,
@@ -19,6 +25,7 @@ from api.middleware.rate_limit import (
 from api.schemas.auth import ChangePasswordRequest, UpdateUserRequest, UserResponse
 from api.schemas.data_export import DataExportResponse
 from api.services.data_export_service import DataExportService
+from api.services.project_service import ProjectService
 from api.services.storage import validation
 from api.services.storage.base import StorageService
 from api.services.storage.exceptions import StorageDeleteError, StorageUploadError
@@ -124,13 +131,23 @@ def delete_current_user(
     request: Request,
     current_user: CurrentUser,
     service: Annotated[UserService, Depends(get_user_service)],
+    project_service: Annotated[ProjectService, Depends(get_project_service)],
 ) -> None:
     """Delete the authenticated user's account.
+
+    Rejected with 409 while the user is the admin of any project, so erasure never
+    silently cascades away other experts' contributions; the user must transfer
+    ownership or delete those projects first.
 
     :param request: FastAPI request (for logging)
     :param current_user: User from JWT token
     :param service: User service
+    :param project_service: Project service for the ownership check
+    :raises AccountHasOwnedProjectsError: If the user still admins a project
     """
+    if project_service.get_owned_projects(current_user.id):
+        raise AccountHasOwnedProjectsError("Account still owns one or more projects.")
+
     user_id = current_user.id
     email = current_user.email
 

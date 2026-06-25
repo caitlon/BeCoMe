@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse
 
 from api.auth.logging import log_login_failure
 from api.exceptions import (
+    AccountHasOwnedProjectsError,
     BeCoMeAPIError,
     InvalidCredentialsError,
     InvalidResetTokenError,
@@ -62,6 +63,11 @@ EXCEPTION_MAP: dict[type[BeCoMeAPIError], tuple[int, str | None]] = {
         "Incorrect email or password",
     ),
     # 409 Conflict
+    AccountHasOwnedProjectsError: (
+        status.HTTP_409_CONFLICT,
+        "Cannot delete your account while you are the admin of one or more projects. "
+        "Transfer ownership or delete those projects first.",
+    ),
     UserExistsError: (status.HTTP_409_CONFLICT, "Email already registered"),
     UserAlreadyMemberError: (
         status.HTTP_409_CONFLICT,

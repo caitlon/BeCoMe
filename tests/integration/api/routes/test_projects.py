@@ -3,7 +3,23 @@
 from unittest.mock import patch
 
 from api.services.project_membership_service import ProjectMembershipService
-from tests.integration.api.conftest import auth_header, register_and_login
+from tests.integration.api.conftest import auth_header, create_project, register_and_login
+
+
+def _add_expert(client, owner_token, project_id, email):
+    """Invite an expert into the project, accept, and return (token, user_id)."""
+    expert_token = register_and_login(client, email)
+    client.post(
+        f"/api/v1/projects/{project_id}/invite",
+        json={"email": email},
+        headers=auth_header(owner_token),
+    )
+    invitations = client.get("/api/v1/invitations", headers=auth_header(expert_token)).json()
+    accept = client.post(
+        f"/api/v1/invitations/{invitations[0]['id']}/accept",
+        headers=auth_header(expert_token),
+    )
+    return expert_token, accept.json()["user_id"]
 
 
 class TestCreateProject:
@@ -513,3 +529,105 @@ class TestRemoveMember:
 
         # THEN
         assert response.status_code == 403
+
+
+class TestTransferOwnership:
+    """Tests for POST /api/v1/projects/{id}/transfer-ownership."""
+
+    def test_transfer_ownership_success(self, client):
+        """Admin transfers ownership; admin_id moves and roles are swapped."""
+        # GIVEN
+        owner = register_and_login(client, "owner@example.com")
+        project = create_project(client, owner, "Shared")
+        project_id = project["id"]
+        owner_id = project["admin_id"]
+        _expert_token, expert_id = _add_expert(client, owner, project_id, "expert@example.com")
+
+        # WHEN
+        response = client.post(
+            f"/api/v1/projects/{project_id}/transfer-ownership",
+            json={"new_admin_id": expert_id},
+            headers=auth_header(owner),
+        )
+
+        # THEN
+        assert response.status_code == 200
+        assert response.json()["admin_id"] == expert_id
+        members = client.get(
+            f"/api/v1/projects/{project_id}/members", headers=auth_header(owner)
+        ).json()
+        roles = {m["user_id"]: m["role"] for m in members}
+        assert roles[expert_id] == "admin"
+        assert roles[owner_id] == "expert"
+
+    def test_transfer_to_non_member_returns_404(self, client):
+        """Transferring to a user who is not a member returns 404."""
+        # GIVEN
+        owner = register_and_login(client, "owner@example.com")
+        project = create_project(client, owner, "Solo")
+        fake_id = "00000000-0000-0000-0000-000000000000"
+
+        # WHEN
+        response = client.post(
+            f"/api/v1/projects/{project['id']}/transfer-ownership",
+            json={"new_admin_id": fake_id},
+            headers=auth_header(owner),
+        )
+
+        # THEN
+        assert response.status_code == 404
+
+    def test_transfer_to_self_returns_400(self, client):
+        """Transferring ownership to yourself returns 400."""
+        # GIVEN
+        owner = register_and_login(client, "owner@example.com")
+        project = create_project(client, owner, "Solo")
+        owner_id = project["admin_id"]
+
+        # WHEN
+        response = client.post(
+            f"/api/v1/projects/{project['id']}/transfer-ownership",
+            json={"new_admin_id": owner_id},
+            headers=auth_header(owner),
+        )
+
+        # THEN
+        assert response.status_code == 400
+
+    def test_transfer_not_admin_returns_403(self, client):
+        """A non-admin cannot transfer ownership."""
+        # GIVEN
+        owner = register_and_login(client, "owner@example.com")
+        outsider = register_and_login(client, "outsider@example.com")
+        project = create_project(client, owner, "Shared")
+        project_id = project["id"]
+        _expert_token, expert_id = _add_expert(client, owner, project_id, "expert@example.com")
+
+        # WHEN
+        response = client.post(
+            f"/api/v1/projects/{project_id}/transfer-ownership",
+            json={"new_admin_id": expert_id},
+            headers=auth_header(outsider),
+        )
+
+        # THEN
+        assert response.status_code == 403
+
+    def test_transfer_unblocks_account_deletion(self, client):
+        """The former owner can delete their account once ownership is transferred."""
+        # GIVEN
+        owner = register_and_login(client, "owner@example.com")
+        project = create_project(client, owner, "Shared")
+        project_id = project["id"]
+        _expert_token, expert_id = _add_expert(client, owner, project_id, "expert@example.com")
+        client.post(
+            f"/api/v1/projects/{project_id}/transfer-ownership",
+            json={"new_admin_id": expert_id},
+            headers=auth_header(owner),
+        )
+
+        # WHEN
+        response = client.delete("/api/v1/users/me", headers=auth_header(owner))
+
+        # THEN
+        assert response.status_code == 204

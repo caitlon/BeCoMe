@@ -23,6 +23,7 @@ from api.schemas.project import (
     ProjectResponse,
     ProjectUpdate,
     ProjectWithRoleResponse,
+    TransferOwnershipRequest,
 )
 from api.services.project_membership_service import ProjectMembershipService
 from api.services.project_query_service import ProjectQueryService
@@ -139,6 +140,38 @@ def delete_project(
     :param service: Project service
     """
     service.delete_project(project.id)
+
+
+@router.post(
+    "/{project_id}/transfer-ownership",
+    summary="Transfer project ownership to another member",
+)
+def transfer_ownership(
+    project_id: UUID,
+    project: ProjectAdmin,
+    request: TransferOwnershipRequest,
+    current_user: CurrentUser,
+    service: Annotated[ProjectService, Depends(get_project_service)],
+) -> ProjectResponse:
+    """Transfer project ownership to another member. Only the current admin can do this.
+
+    The new admin must already be a member of the project. MemberNotFoundError
+    (target not a member) is handled by centralized exception middleware as 404.
+
+    :param project: Project (verified admin)
+    :param request: New admin's user ID
+    :param current_user: Authenticated user (the current admin)
+    :param service: Project service
+    :return: Updated project
+    :raises HTTPException: 400 if transferring ownership to self
+    """
+    if request.new_admin_id == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You are already the project admin.",
+        )
+    updated = service.transfer_ownership(project, request.new_admin_id)
+    return ProjectResponse.from_model(updated, service.get_member_count(updated.id))
 
 
 @router.get("/{project_id}/members", summary="List project members")

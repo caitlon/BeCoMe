@@ -73,7 +73,11 @@ class Project(SQLModel, table=True):
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     name: str = Field(max_length=255)
     description: str | None = Field(default=None)
-    admin_id: UUID = Field(foreign_key=_USERS_FK, ondelete="CASCADE")
+    # RESTRICT (not CASCADE): deleting a user who still admins a project is blocked
+    # at the DB level, so account erasure cannot silently wipe other experts' work.
+    # The API rejects such deletes with 409 first (see delete_current_user); this is
+    # the defense-in-depth backstop. Ownership transfer keeps admin_id in sync.
+    admin_id: UUID = Field(foreign_key=_USERS_FK, ondelete="RESTRICT")
     scale_min: float = Field(default=0.0)
     scale_max: float = Field(default=100.0)
     scale_unit: str = Field(default="", max_length=50)
