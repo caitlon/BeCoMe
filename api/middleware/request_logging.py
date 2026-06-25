@@ -9,6 +9,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
+from api.logging_context import reset_request_id, set_request_id
 from api.utils.client_ip import get_client_ip
 
 logger = logging.getLogger("api.request")
@@ -26,9 +27,10 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
     """Assign a correlation ID, log each request/response, and time it.
 
     A request ID is taken from the inbound ``X-Request-ID`` header or generated,
-    stored on ``request.state.request_id`` for downstream handlers, and echoed
-    back on the response. Request bodies and the ``Authorization`` header are
-    never logged.
+    stored on ``request.state.request_id`` for downstream handlers, bound to the
+    logging context so every ``api.*`` record of this request carries it, and
+    echoed back on the response. Request bodies and the ``Authorization`` header
+    are never logged.
     """
 
     async def dispatch(
@@ -46,42 +48,45 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         request_id = request.headers.get(REQUEST_ID_HEADER) or str(uuid.uuid4())
         request.state.request_id = request_id
         path = request.url.path
+        token = set_request_id(request_id)
+        try:
+            if path in _SKIP_PATHS:
+                response = await call_next(request)
+                response.headers[REQUEST_ID_HEADER] = request_id
+                return response
 
-        if path in _SKIP_PATHS:
+            logger.info(
+                "%s %s",
+                request.method,
+                path,
+                extra={
+                    "request_id": request_id,
+                    "method": request.method,
+                    "path": path,
+                    "ip": get_client_ip(request),
+                },
+            )
+
+            start = perf_counter()
             response = await call_next(request)
+            duration_ms = (perf_counter() - start) * 1000.0
+
+            level = logging.WARNING if duration_ms > _SLOW_REQUEST_MS else logging.INFO
+            logger.log(
+                level,
+                "%s %s %d %.0fms",
+                request.method,
+                path,
+                response.status_code,
+                duration_ms,
+                extra={
+                    "request_id": request_id,
+                    "status_code": response.status_code,
+                    "duration_ms": round(duration_ms, 1),
+                },
+            )
+
             response.headers[REQUEST_ID_HEADER] = request_id
             return response
-
-        logger.info(
-            "%s %s",
-            request.method,
-            path,
-            extra={
-                "request_id": request_id,
-                "method": request.method,
-                "path": path,
-                "ip": get_client_ip(request),
-            },
-        )
-
-        start = perf_counter()
-        response = await call_next(request)
-        duration_ms = (perf_counter() - start) * 1000.0
-
-        level = logging.WARNING if duration_ms > _SLOW_REQUEST_MS else logging.INFO
-        logger.log(
-            level,
-            "%s %s %d %.0fms",
-            request.method,
-            path,
-            response.status_code,
-            duration_ms,
-            extra={
-                "request_id": request_id,
-                "status_code": response.status_code,
-                "duration_ms": round(duration_ms, 1),
-            },
-        )
-
-        response.headers[REQUEST_ID_HEADER] = request_id
-        return response
+        finally:
+            reset_request_id(token)

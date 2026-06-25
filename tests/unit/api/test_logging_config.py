@@ -6,6 +6,7 @@ from logging.handlers import RotatingFileHandler
 
 from api.config import Environment, Settings
 from api.logging_config import JsonLogFormatter, setup_logging
+from api.logging_context import ContextFilter
 
 
 def _settings(
@@ -217,6 +218,22 @@ class TestSetupLogging:
 
         # THEN
         assert len(logging.getLogger("api").handlers) == first_count
+
+    def test_attaches_context_filter_to_handlers(self):
+        """
+        GIVEN application settings
+        WHEN setup_logging runs
+        THEN the stream handler carries a ContextFilter
+        """
+        # GIVEN
+        settings = _settings()
+
+        # WHEN
+        setup_logging(settings)
+
+        # THEN
+        handler = logging.getLogger("api").handlers[0]
+        assert any(isinstance(log_filter, ContextFilter) for log_filter in handler.filters)
 
     def test_adds_rotating_file_handler_when_log_file_set(self, tmp_path):
         """

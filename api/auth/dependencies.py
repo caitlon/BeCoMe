@@ -14,19 +14,22 @@ from sqlmodel import Session
 from api.auth.jwt import TokenError, TokenPayload, decode_access_token, decode_token
 from api.db.models import User
 from api.db.session import get_session
+from api.logging_context import set_user_id
 from api.services.user_service import UserService
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
 
-def get_current_user(
+async def get_current_user(
     token: Annotated[str, Depends(oauth2_scheme)],
     session: Annotated[Session, Depends(get_session)],
 ) -> User:
     """Extract and validate current user from JWT token.
 
-    Session is injected via DI, UserService is created with
-    the injected session (following DIP).
+    Session is injected via DI, UserService is created with the injected session
+    (following DIP). The dependency is async so that ``set_user_id`` binds the
+    acting user in the event-loop context: sync endpoints and services run in a
+    threadpool that copies that context, so their logs carry the user ID too.
 
     :param token: JWT access token from Authorization header
     :param session: Injected database session
@@ -47,6 +50,7 @@ def get_current_user(
     user = user_service.get_by_id(user_id)
     if user is None:
         raise credentials_exception
+    set_user_id(str(user.id))
     return user
 
 
