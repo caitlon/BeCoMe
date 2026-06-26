@@ -43,6 +43,9 @@ jobs:
       - name: Run type checking
         run: uv run mypy src/ api/
 
+      - name: Scan for secrets (detect-secrets)
+        run: uv run detect-secrets-hook --baseline .secrets.baseline $(git ls-files -- ':!:migrations' ':!:frontend/src/i18n' ':!:uv.lock' ':!:frontend/package-lock.json')
+
       # Node.js setup
       - name: Setup Node.js
         uses: actions/setup-node@v6

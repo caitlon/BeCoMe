@@ -1,0 +1,22 @@
+# Pre-commit hooks for BeCoMe. Enable locally once with:
+#   uv run pre-commit install
+# detect-secrets blocks commits that introduce a secret not already recorded in
+# .secrets.baseline. After an intentional change to a flagged line, refresh it with:
+#   uv run detect-secrets scan --baseline .secrets.baseline
+# CI runs the same hook on every push/PR, so the check holds for manual and
+# non-owner commits that the Claude-harness check-secrets.sh hook never sees.
+repos:
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args: ["--baseline", ".secrets.baseline"]
+        # Alembic revision ids (high-entropy hex) and i18n password labels are not
+        # secrets; lock files carry machine hashes. Skip them to keep the gate quiet.
+        exclude: |
+          (?x)^(
+            migrations/.*|
+            frontend/src/i18n/.*|
+            uv\.lock|
+            frontend/package-lock\.json
+          )$

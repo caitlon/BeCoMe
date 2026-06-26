@@ -257,12 +257,18 @@ source .venv/bin/activate  # On macOS/Linux
 .venv\Scripts\activate     # On Windows
 ```
 
+After installing the `dev` extra, enable the local secret-scanning git hook:
+
+```bash
+uv run pre-commit install
+```
+
 ### Dependency Groups
 
 | Group | Contents | Use Case |
 |-------|----------|----------|
 | (core) | pydantic | Minimal installation for using the library |
-| `dev` | pytest, mypy, ruff, pytest-cov | Development and testing |
+| `dev` | pytest, mypy, ruff, bandit, detect-secrets, pre-commit | Development, testing, security |
 | `viz` | numpy, pandas, matplotlib, plotly, seaborn | Visualization and data analysis |
 | `notebook` | jupyter, ipykernel, ipywidgets | Interactive notebooks |
 | `docs` | plantuml | UML diagram generation |
