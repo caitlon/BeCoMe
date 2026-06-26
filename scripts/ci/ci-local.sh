@@ -23,6 +23,7 @@ run_lint() {
   cd "$PROJECT_ROOT"
   uv run ruff format --check .
   uv run ruff check .
+  uv run bandit -c pyproject.toml -r src api --severity-level medium
   uv run mypy src/ api/
   cd "$PROJECT_ROOT/frontend" && npm run lint
   echo ""

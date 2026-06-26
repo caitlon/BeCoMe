@@ -23,7 +23,7 @@ def generate_diagram(plantuml_bin: str, puml_file: Path, output_file: Path) -> N
     """Generate PNG from PlantUML source using local CLI with pipe mode."""
     print(f"  Generating {output_file.name}...")
     with open(puml_file, "rb") as src, open(output_file, "wb") as dst:
-        result = subprocess.run(
+        result = subprocess.run(  # noqa: S603 -- fixed plantuml argv, no shell, no user input
             [plantuml_bin, "-tpng", "-pipe"],
             stdin=src,
             stdout=dst,
