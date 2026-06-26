@@ -18,7 +18,7 @@ limiter = Limiter(key_func=get_client_ip, enabled=not get_settings().testing)
 
 # Rate limit constants for different endpoint types
 LIMIT_AUTH_ENDPOINTS = "5/minute"  # Login, register - strict to prevent brute-force
-LIMIT_PWD_RESET = "3/minute"  # Password reset/change - very strict
+LIMIT_PWD_RESET = "3/minute"  # noqa: S105 -- password-reset rate window, not a credential
 LIMIT_STANDARD = "60/minute"  # Normal API endpoints
 LIMIT_UPLOAD = "10/minute"  # File uploads - prevent abuse
 LIMIT_PHOTO = "120/minute"  # Public photo proxy reads (browser-cached avatars)

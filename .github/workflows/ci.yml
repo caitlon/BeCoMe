@@ -37,6 +37,9 @@ jobs:
       - name: Run linting
         run: uv run ruff check .
 
+      - name: Run security linting (bandit)
+        run: uv run bandit -c pyproject.toml -r src api --severity-level medium
+
       - name: Run type checking
         run: uv run mypy src/ api/
 
