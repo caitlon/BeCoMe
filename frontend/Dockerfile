@@ -31,11 +31,11 @@ RUN npm run build
 # nginx-unprivileged runs as the non-root "nginx" user (UID 101) and listens on 8080.
 FROM nginxinc/nginx-unprivileged:alpine
 
-# Copy built files from builder stage
-COPY --from=builder /app/dist /usr/share/nginx/html
+# Copy built files from builder stage (owned by the non-root nginx user)
+COPY --from=builder --chown=nginx:nginx /app/dist /usr/share/nginx/html
 
-# Copy nginx configuration
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# Copy nginx configuration (nginx user must be able to read it at startup)
+COPY --chown=nginx:nginx nginx.conf /etc/nginx/conf.d/default.conf
 
 # Expose port 8080 (non-root nginx cannot bind privileged port 80)
 EXPOSE 8080
