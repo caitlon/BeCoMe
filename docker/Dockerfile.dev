@@ -27,6 +27,14 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 COPY src/ ./src/
 COPY api/ ./api/
 
+# Create non-root user (matches the production image UID/GID) and own the app dir.
+# Mounted volumes keep their host ownership; hot-reload only reads them.
+RUN groupadd --system --gid 10001 appgroup && \
+    useradd --system --gid 10001 --uid 10001 --create-home appuser && \
+    chown -R appuser:appgroup /app
+
+USER appuser
+
 # Environment variables
 ENV PATH="/app/.venv/bin:$PATH"
 ENV PYTHONUNBUFFERED=1
