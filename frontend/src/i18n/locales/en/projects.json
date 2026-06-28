@@ -125,6 +125,14 @@
       "low": "Low agreement"
     }
   },
+  "resultExport": {
+    "button": "Export",
+    "pdf": "PDF report",
+    "csv": "CSV data",
+    "exporting": "Exporting...",
+    "success": "Export downloaded",
+    "error": "Failed to export results"
+  },
   "team": {
     "name": "Name",
     "email": "Email",

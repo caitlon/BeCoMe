@@ -13,6 +13,9 @@ import {
   ChevronDown,
   ChevronUp,
   X,
+  Download,
+  FileText,
+  FileSpreadsheet,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -45,11 +48,18 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Navbar } from "@/components/layout/Navbar";
 import { SubmitButton } from "@/components/forms";
 import { InviteExpertModal } from "@/components/modals/InviteExpertModal";
 import { DeleteConfirmModal } from "@/components/modals/DeleteConfirmModal";
 import { api, HttpError } from "@/lib/api";
+import { downloadBlob } from "@/lib/download";
 import { ProjectWithRole, Opinion, CalculationResult, Member, ProjectInvitation } from "@/types/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
@@ -878,8 +888,34 @@ const ResultsSection = ({
   setShowIndividual,
   opinions,
 }: ResultsSectionProps) => {
-  const { t } = useTranslation("projects");
+  const { t, i18n } = useTranslation("projects");
   const { t: tFuzzy } = useTranslation();
+  const { toast } = useToast();
+  const [exporting, setExporting] = useState<"pdf" | "csv" | null>(null);
+
+  const handleExport = async (format: "pdf" | "csv") => {
+    setExporting(format);
+    try {
+      const lang = i18n.language.startsWith("cs") ? "cs" : "en";
+      const blob = await api.exportProjectResult(project.id, format, lang);
+      const slug =
+        project.name
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-+|-+$/g, "") || "project";
+      downloadBlob(blob, `${slug}-results.${format}`);
+      toast({ title: t("resultExport.success") });
+    } catch (error) {
+      toast({
+        title: t("toast.error"),
+        description:
+          error instanceof Error ? error.message : t("resultExport.error"),
+        variant: "destructive",
+      });
+    } finally {
+      setExporting(null);
+    }
+  };
 
   if (!result || opinions.length === 0) {
     return (
@@ -912,6 +948,34 @@ const ResultsSection = ({
 
   return (
     <div className="space-y-6">
+      <div className="flex justify-end">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm" disabled={exporting !== null}>
+              {exporting !== null ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Download className="mr-2 h-4 w-4" />
+              )}
+              {exporting !== null
+                ? t("resultExport.exporting")
+                : t("resultExport.button")}
+              <ChevronDown className="ml-2 h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => void handleExport("pdf")}>
+              <FileText className="mr-2 h-4 w-4" />
+              {t("resultExport.pdf")}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => void handleExport("csv")}>
+              <FileSpreadsheet className="mr-2 h-4 w-4" />
+              {t("resultExport.csv")}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+
       {/* Best Compromise */}
       <Card className="border-2 border-primary">
         <CardHeader>
