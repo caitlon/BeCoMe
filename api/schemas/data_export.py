@@ -13,6 +13,7 @@ from pydantic import BaseModel
 
 from api.schemas.calculation import FuzzyNumberOutput
 from api.utils.photo_links import build_photo_url
+from src.models.fuzzy_number import triangular_centroid
 
 if TYPE_CHECKING:
     from api.db.models import (
@@ -29,33 +30,6 @@ EXPORT_DESCRIPTION = (
     "Personal data export under GDPR Article 20 (right to data portability). "
     "Contains all data associated with your BeCoMe account."
 )
-
-
-def _centroid(lower: float, peak: float, upper: float) -> float:
-    """Compute the centroid of a triangular fuzzy number from its three vertices.
-
-    :param lower: Lower bound (pessimistic estimate).
-    :param peak: Peak value (most likely).
-    :param upper: Upper bound (optimistic estimate).
-    :return: The centroid, i.e. the mean of the triangle's three vertices.
-    """
-    return (lower + peak + upper) / 3
-
-
-def _fuzzy(lower: float, peak: float, upper: float) -> FuzzyNumberOutput:
-    """Build a fuzzy-number output with a centroid from raw bounds.
-
-    :param lower: Lower bound (pessimistic estimate).
-    :param peak: Peak value (most likely).
-    :param upper: Upper bound (optimistic estimate).
-    :return: FuzzyNumberOutput with the computed centroid.
-    """
-    return FuzzyNumberOutput(
-        lower=lower,
-        peak=peak,
-        upper=upper,
-        centroid=_centroid(lower, peak, upper),
-    )
 
 
 class ExportMetadata(BaseModel):
@@ -113,17 +87,17 @@ class ExportResult(BaseModel):
         :return: ExportResult with grouped fuzzy components.
         """
         return cls(
-            best_compromise=_fuzzy(
+            best_compromise=FuzzyNumberOutput.from_bounds(
                 result.best_compromise_lower,
                 result.best_compromise_peak,
                 result.best_compromise_upper,
             ),
-            arithmetic_mean=_fuzzy(
+            arithmetic_mean=FuzzyNumberOutput.from_bounds(
                 result.arithmetic_mean_lower,
                 result.arithmetic_mean_peak,
                 result.arithmetic_mean_upper,
             ),
-            median=_fuzzy(
+            median=FuzzyNumberOutput.from_bounds(
                 result.median_lower,
                 result.median_peak,
                 result.median_upper,
@@ -228,7 +202,7 @@ class ExportOpinion(BaseModel):
             lower_bound=opinion.lower_bound,
             peak=opinion.peak,
             upper_bound=opinion.upper_bound,
-            centroid=_centroid(opinion.lower_bound, opinion.peak, opinion.upper_bound),
+            centroid=triangular_centroid(opinion.lower_bound, opinion.peak, opinion.upper_bound),
             created_at=opinion.created_at,
             updated_at=opinion.updated_at,
         )

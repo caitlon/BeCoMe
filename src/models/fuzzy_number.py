@@ -4,6 +4,28 @@ import statistics
 from typing import Protocol, runtime_checkable
 
 
+def triangular_centroid(lower_bound: float, peak: float, upper_bound: float) -> float:
+    """
+    Centroid of a triangular fuzzy number from its three vertices.
+
+    The centroid (center of gravity) is the arithmetic mean of the lower
+    bound, peak, and upper bound. Shared by the domain value object and the
+    API response schemas so the formula lives in exactly one place.
+
+    Formula (from article, equation 9):
+        Gx = (A + C + B) / 3
+
+    :param lower_bound: Minimum value (pessimistic estimate)
+    :param peak: Most likely value
+    :param upper_bound: Maximum value (optimistic estimate)
+    :return: The centroid value as a float
+
+    >>> triangular_centroid(5.0, 10.0, 15.0)
+    10.0
+    """
+    return (lower_bound + peak + upper_bound) / 3.0
+
+
 @runtime_checkable
 class FuzzyNumber(Protocol):
     """Structural interface for fuzzy number types.
@@ -113,7 +135,7 @@ class FuzzyTriangleNumber:
         >>> fuzzy.centroid
         10.0
         """
-        return (self._lower_bound + self._peak + self._upper_bound) / 3.0
+        return triangular_centroid(self._lower_bound, self._peak, self._upper_bound)
 
     @staticmethod
     def average(fuzzy_numbers: list["FuzzyTriangleNumber"]) -> "FuzzyTriangleNumber":

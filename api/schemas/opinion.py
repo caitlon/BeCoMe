@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from api.schemas.validators import validate_fuzzy_constraints
 from api.utils.sanitization import sanitize_text
+from src.models.fuzzy_number import triangular_centroid
 
 if TYPE_CHECKING:
     from api.db.models import ExpertOpinion, User
@@ -71,7 +72,7 @@ class OpinionResponse(BaseModel):
             lower_bound=opinion.lower_bound,
             peak=opinion.peak,
             upper_bound=opinion.upper_bound,
-            centroid=(opinion.lower_bound + opinion.peak + opinion.upper_bound) / 3,
+            centroid=triangular_centroid(opinion.lower_bound, opinion.peak, opinion.upper_bound),
             created_at=opinion.created_at,
             updated_at=opinion.updated_at,
         )
