@@ -118,6 +118,13 @@ class TestPdfResultRenderer:
         content = PdfResultRenderer().render(data, get_labels(ReportLang.CS))
         assert content.startswith(b"%PDF")
 
+    def test_render_wraps_long_expert_text(self, export_data: ResultExportData):
+        """Long expert names/positions are wrapped (Paragraph), not clipped."""
+        long_text = "Very long expert identification text that exceeds the cell " * 3
+        data = replace(export_data, opinions=(OpinionRow(long_text, long_text, 10.0, 20.0, 30.0),))
+        content = PdfResultRenderer().render(data, get_labels(ReportLang.EN))
+        assert content.startswith(b"%PDF")
+
 
 class TestRendererFactory:
     """Tests for the renderer factory."""
