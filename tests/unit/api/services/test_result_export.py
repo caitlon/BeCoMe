@@ -76,6 +76,30 @@ class TestCsvResultRenderer:
         content = CsvResultRenderer().render(export_data, get_labels(ReportLang.EN))
         assert content.startswith(b"\xef\xbb\xbf")
 
+    def test_render_neutralizes_formula_injection(self):
+        """Expert text starting with a formula trigger is quoted as inert text."""
+        data = ResultExportData(
+            project_name="P",
+            project_description=None,
+            scale_min=0.0,
+            scale_max=100.0,
+            scale_unit="",
+            generated_at=datetime(2026, 6, 28, tzinfo=UTC),
+            num_experts=1,
+            max_error=1.0,
+            best_compromise=FuzzyTriple(1.0, 2.0, 3.0),
+            arithmetic_mean=FuzzyTriple(1.0, 2.0, 3.0),
+            median=FuzzyTriple(1.0, 2.0, 3.0),
+            likert_value=None,
+            likert_decision=None,
+            opinions=(OpinionRow("=HYPERLINK(1)", "@evil", 1.0, 2.0, 3.0),),
+        )
+
+        text = CsvResultRenderer().render(data, get_labels(ReportLang.EN)).decode("utf-8-sig")
+
+        assert "'=HYPERLINK(1)" in text
+        assert "'@evil" in text
+
 
 class TestPdfResultRenderer:
     """Tests for the PDF renderer."""
