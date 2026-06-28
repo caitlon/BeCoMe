@@ -51,6 +51,25 @@ def _escape(text: str) -> str:
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
+_CSV_FORMULA_TRIGGERS = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _csv_safe(value: str) -> str:
+    """Neutralize spreadsheet formula injection in a CSV cell value.
+
+    Excel and Google Sheets evaluate a cell whose text starts with ``=``, ``+``,
+    ``-`` or ``@`` (or a leading tab/CR) as a formula, so a crafted expert name or
+    position could run when an admin opens the export. Prefixing such values with
+    a single quote forces the spreadsheet to read them as plain text.
+
+    :param value: Raw cell text.
+    :return: The value, quote-prefixed when it could be read as a formula.
+    """
+    if value and value[0] in _CSV_FORMULA_TRIGGERS:
+        return "'" + value
+    return value
+
+
 class ResultRenderer(ABC):
     """Strategy that serializes result data into downloadable file bytes."""
 
@@ -83,8 +102,11 @@ class CsvResultRenderer(ResultRenderer):
         buffer = io.StringIO()
         writer = csv.writer(buffer)
 
-        writer.writerow([labels.opinions_heading])
-        writer.writerow(
+        def write_row(cells: list[str]) -> None:
+            writer.writerow([_csv_safe(cell) for cell in cells])
+
+        write_row([labels.opinions_heading])
+        write_row(
             [
                 labels.col_expert,
                 labels.col_position,
@@ -95,7 +117,7 @@ class CsvResultRenderer(ResultRenderer):
             ]
         )
         for opinion in data.opinions:
-            writer.writerow(
+            write_row(
                 [
                     opinion.expert_name,
                     opinion.position,
@@ -106,17 +128,15 @@ class CsvResultRenderer(ResultRenderer):
                 ]
             )
 
-        writer.writerow([])
-        writer.writerow([labels.results_heading])
-        writer.writerow(
-            ["", labels.col_lower, labels.col_peak, labels.col_upper, labels.col_centroid]
-        )
+        write_row([])
+        write_row([labels.results_heading])
+        write_row(["", labels.col_lower, labels.col_peak, labels.col_upper, labels.col_centroid])
         for label, triple in (
             (labels.best_compromise, data.best_compromise),
             (labels.arithmetic_mean, data.arithmetic_mean),
             (labels.median, data.median),
         ):
-            writer.writerow(
+            write_row(
                 [
                     label,
                     _n4(triple.lower),
@@ -126,12 +146,12 @@ class CsvResultRenderer(ResultRenderer):
                 ]
             )
 
-        writer.writerow([])
-        writer.writerow([labels.max_error, _n4(data.max_error)])
-        writer.writerow([labels.experts, str(data.num_experts)])
+        write_row([])
+        write_row([labels.max_error, _n4(data.max_error)])
+        write_row([labels.experts, str(data.num_experts)])
         decision = _decision(data, labels)
         if decision is not None:
-            writer.writerow([labels.likert_decision, decision])
+            write_row([labels.likert_decision, decision])
 
         return buffer.getvalue().encode("utf-8-sig")
 
