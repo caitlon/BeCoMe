@@ -7,17 +7,21 @@ by centralized middleware, routes focus on business logic only.
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 
 from api.auth.dependencies import CurrentUser
 from api.dependencies import (
     ProjectMember,
     get_calculation_service,
     get_opinion_service,
+    get_result_export_service,
 )
+from api.middleware.rate_limit import LIMIT_STANDARD, limiter
 from api.schemas.calculation import CalculationResultResponse, FuzzyNumberOutput
 from api.schemas.opinion import OpinionCreate, OpinionResponse
 from api.services.calculation_service import CalculationService
+from api.services.export.data import ExportFormat, ReportLang
+from api.services.export.result_export_service import ResultExportService
 from api.services.opinion_service import OpinionService
 
 router = APIRouter(prefix="/api/v1/projects", tags=["opinions"])
@@ -146,4 +150,43 @@ def get_result(
         likert_value=result.likert_value,
         likert_decision=result.likert_decision,
         calculated_at=result.calculated_at,
+    )
+
+
+@router.get(
+    "/{project_id}/result/export",
+    summary="Export calculation result as PDF or CSV",
+)
+@limiter.limit(LIMIT_STANDARD)
+def export_result(
+    request: Request,
+    project_id: UUID,
+    project: ProjectMember,
+    service: Annotated[ResultExportService, Depends(get_result_export_service)],
+    export_format: Annotated[ExportFormat, Query(alias="format", description="File format")],
+    lang: Annotated[ReportLang, Query(description="Report language")] = ReportLang.EN,
+) -> Response:
+    """Export a project's BeCoMe result as a downloadable PDF or CSV file.
+
+    Members only, with the same tenant-isolation guard as the result endpoint.
+    Returns 404 when the project has no calculated result yet.
+
+    :param request: FastAPI request (for rate limiting).
+    :param project_id: Project UUID from the path.
+    :param project: Project (verified membership).
+    :param service: Result export service.
+    :param export_format: Requested file format (the ``format`` query parameter).
+    :param lang: Report language (defaults to English).
+    :return: The rendered file as an attachment download.
+    """
+    exported = service.export(project, export_format, lang)
+    if exported is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No calculation result to export",
+        )
+    return Response(
+        content=exported.content,
+        media_type=exported.media_type,
+        headers={"Content-Disposition": f'attachment; filename="{exported.filename}"'},
     )
