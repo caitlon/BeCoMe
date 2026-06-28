@@ -126,33 +126,20 @@ def get_result(
         return None
 
     return CalculationResultResponse(
-        best_compromise=FuzzyNumberOutput(
-            lower=result.best_compromise_lower,
-            peak=result.best_compromise_peak,
-            upper=result.best_compromise_upper,
-            centroid=(
-                result.best_compromise_lower
-                + result.best_compromise_peak
-                + result.best_compromise_upper
-            )
-            / 3,
+        best_compromise=FuzzyNumberOutput.from_bounds(
+            result.best_compromise_lower,
+            result.best_compromise_peak,
+            result.best_compromise_upper,
         ),
-        arithmetic_mean=FuzzyNumberOutput(
-            lower=result.arithmetic_mean_lower,
-            peak=result.arithmetic_mean_peak,
-            upper=result.arithmetic_mean_upper,
-            centroid=(
-                result.arithmetic_mean_lower
-                + result.arithmetic_mean_peak
-                + result.arithmetic_mean_upper
-            )
-            / 3,
+        arithmetic_mean=FuzzyNumberOutput.from_bounds(
+            result.arithmetic_mean_lower,
+            result.arithmetic_mean_peak,
+            result.arithmetic_mean_upper,
         ),
-        median=FuzzyNumberOutput(
-            lower=result.median_lower,
-            peak=result.median_peak,
-            upper=result.median_upper,
-            centroid=(result.median_lower + result.median_peak + result.median_upper) / 3,
+        median=FuzzyNumberOutput.from_bounds(
+            result.median_lower,
+            result.median_peak,
+            result.median_upper,
         ),
         max_error=result.max_error,
         num_experts=result.num_experts,

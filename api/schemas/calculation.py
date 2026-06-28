@@ -6,7 +6,7 @@ from typing import Self
 from pydantic import BaseModel, Field, model_validator
 
 from api.schemas.validators import validate_fuzzy_constraints
-from src.models.fuzzy_number import FuzzyTriangleNumber
+from src.models.fuzzy_number import FuzzyTriangleNumber, triangular_centroid
 
 
 class ExpertInput(BaseModel):
@@ -49,6 +49,22 @@ class FuzzyNumberOutput(BaseModel):
             peak=fuzzy.peak,
             upper=fuzzy.upper_bound,
             centroid=fuzzy.centroid,
+        )
+
+    @classmethod
+    def from_bounds(cls, lower: float, peak: float, upper: float) -> "FuzzyNumberOutput":
+        """Create from raw triangular bounds, computing the centroid.
+
+        :param lower: Lower bound (pessimistic estimate).
+        :param peak: Peak value (most likely).
+        :param upper: Upper bound (optimistic estimate).
+        :return: FuzzyNumberOutput with the centroid computed from the bounds.
+        """
+        return cls(
+            lower=lower,
+            peak=peak,
+            upper=upper,
+            centroid=triangular_centroid(lower, peak, upper),
         )
 
 
