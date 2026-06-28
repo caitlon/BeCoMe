@@ -278,22 +278,27 @@ class PdfResultRenderer(ResultRenderer):
 
     @staticmethod
     def _opinions_table(data: ResultExportData, labels: ResultLabels) -> Table:
-        """Build the per-expert opinions table."""
-        rows = [
-            [
-                labels.col_expert,
-                labels.col_position,
-                labels.col_lower,
-                labels.col_peak,
-                labels.col_upper,
-                labels.col_centroid,
-            ]
+        """Build the per-expert opinions table.
+
+        Expert names and positions are user-controlled and can be long (up to
+        255 chars), so they are wrapped in Paragraphs that flow within the
+        column rather than plain strings that would overflow or clip the cell.
+        """
+        cell_style = ParagraphStyle("opinion_cell", fontName=FONT_NAME, fontSize=9, leading=11)
+        header: list[object] = [
+            labels.col_expert,
+            labels.col_position,
+            labels.col_lower,
+            labels.col_peak,
+            labels.col_upper,
+            labels.col_centroid,
         ]
+        rows: list[list[object]] = [header]
         for opinion in data.opinions:
             rows.append(
                 [
-                    opinion.expert_name,
-                    opinion.position,
+                    Paragraph(_escape(opinion.expert_name), cell_style),
+                    Paragraph(_escape(opinion.position), cell_style),
                     _n2(opinion.lower),
                     _n2(opinion.peak),
                     _n2(opinion.upper),
