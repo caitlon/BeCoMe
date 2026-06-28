@@ -22,6 +22,7 @@ from api.services.data_export_service import DataExportService
 from api.services.email.base import EmailSender
 from api.services.email.console_email_sender import ConsoleEmailSender
 from api.services.email.resend_email_sender import ResendEmailSender
+from api.services.export.result_export_service import ResultExportService
 from api.services.invitation_service import InvitationService
 from api.services.opinion_service import OpinionService
 from api.services.password_reset_service import PasswordResetService
@@ -94,6 +95,13 @@ def get_data_export_service(
 ) -> DataExportService:
     """Create DataExportService instance."""
     return DataExportService(session)
+
+
+def get_result_export_service(
+    session: Annotated[Session, Depends(get_session)],
+) -> ResultExportService:
+    """Create ResultExportService instance."""
+    return ResultExportService(session)
 
 
 def get_invitation_service(session: Annotated[Session, Depends(get_session)]) -> InvitationService:

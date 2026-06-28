@@ -64,6 +64,7 @@ api = [
     "bleach==6.4.0",
     "sentry-sdk[fastapi]==2.61.1",
     "logtail-python==0.3.4",
+    "reportlab==5.0.0",
 ]
 
 [build-system]
@@ -124,6 +125,10 @@ exclude = [
 [[tool.mypy.overrides]]
 module = "tests.*"
 disallow_untyped_defs = false
+
+[[tool.mypy.overrides]]
+module = "reportlab.*"
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
