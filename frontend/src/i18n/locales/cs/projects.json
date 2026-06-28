@@ -125,6 +125,14 @@
       "low": "Nízká shoda"
     }
   },
+  "resultExport": {
+    "button": "Export",
+    "pdf": "PDF zpráva",
+    "csv": "CSV data",
+    "exporting": "Exportování...",
+    "success": "Export stažen",
+    "error": "Nepodařilo se exportovat výsledky"
+  },
   "team": {
     "name": "Jméno",
     "email": "E-mail",

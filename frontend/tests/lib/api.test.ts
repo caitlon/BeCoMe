@@ -875,6 +875,65 @@ describe('ApiClient', () => {
     });
   });
 
+  describe('Result Export Endpoint', () => {
+    beforeEach(() => {
+      api.setToken('valid-token');
+    });
+
+    it('fetches the export endpoint with format and lang query params', async () => {
+      const blob = new Blob(['data'], { type: 'text/csv' });
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        blob: () => Promise.resolve(blob),
+      });
+
+      const result = await api.exportProjectResult('proj-1', 'csv', 'cs');
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/projects/proj-1/result/export?format=csv&lang=cs'),
+        expect.objectContaining({
+          headers: expect.objectContaining({ Authorization: 'Bearer valid-token' }),
+        })
+      );
+      expect(result).toBe(blob);
+    });
+
+    it('throws HttpError with the server detail on failure', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+        json: () => Promise.resolve({ detail: 'No calculation result to export' }),
+      });
+
+      await expect(api.exportProjectResult('proj-1', 'pdf', 'en')).rejects.toThrow(
+        'No calculation result to export'
+      );
+    });
+
+    it('redirects to /login and clears the token on 401', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        json: () => Promise.resolve({ detail: 'Unauthorized' }),
+      });
+
+      await expect(api.exportProjectResult('proj-1', 'pdf', 'en')).rejects.toThrow();
+      expect(api.getToken()).toBeNull();
+      expect(window.location.href).toBe('/login');
+    });
+
+    it('falls back to "Export failed" when the error body is unreadable', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        json: () => Promise.reject(new Error('no json')),
+      });
+
+      await expect(api.exportProjectResult('proj-1', 'csv', 'en')).rejects.toThrow('Export failed');
+    });
+  });
+
   describe('Request ID and Logging', () => {
     beforeEach(() => {
       api.setToken('valid-token');

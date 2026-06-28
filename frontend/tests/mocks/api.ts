@@ -47,6 +47,7 @@ export function createMockApi(overrides: Record<string, unknown> = {}) {
 
     // Results
     getResult: vi.fn().mockResolvedValue(null),
+    exportProjectResult: vi.fn().mockResolvedValue(new Blob()),
 
     ...overrides,
   };

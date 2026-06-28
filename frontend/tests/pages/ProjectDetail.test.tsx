@@ -7,7 +7,7 @@ import { HttpError } from '@/lib/api';
 import { createProject, createProjectWithRole, createOpinion, createMember, createCalculationResult, createProjectInvitation } from '@tests/factories/project';
 
 // Use vi.hoisted for mock variables
-const { mockApi, mockToast, mockUser, mockNavigate } = vi.hoisted(() => ({
+const { mockApi, mockToast, mockUser, mockNavigate, mockDownloadBlob } = vi.hoisted(() => ({
   mockApi: {
     getProject: vi.fn(),
     getOpinions: vi.fn(),
@@ -19,8 +19,10 @@ const { mockApi, mockToast, mockUser, mockNavigate } = vi.hoisted(() => ({
     deleteProject: vi.fn(),
     removeMember: vi.fn(),
     transferOwnership: vi.fn(),
+    exportProjectResult: vi.fn(),
   },
   mockToast: vi.fn(),
+  mockDownloadBlob: vi.fn(),
   mockUser: {
     id: 'user-1',
     email: 'john@example.com',
@@ -54,6 +56,12 @@ vi.mock('@/lib/api', async () => {
 // Mock useToast
 vi.mock('@/hooks/use-toast', () => ({
   useToast: () => ({ toast: mockToast }),
+}));
+
+// Mock the download helper so clicking export does not touch DOM/URL APIs
+vi.mock('@/lib/download', () => ({
+  downloadBlob: mockDownloadBlob,
+  downloadJson: vi.fn(),
 }));
 
 // Mock useAuth
@@ -1724,6 +1732,70 @@ describe('ProjectDetail - Invite Modal', () => {
     await waitFor(() => {
       // InviteExpertModal renders a dialog with invite-related content
       expect(screen.getByRole('dialog')).toBeInTheDocument();
+    });
+  });
+});
+
+describe('ProjectDetail - Result Export', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    defaultSetup();
+    mockApi.getOpinions.mockResolvedValue([createOpinion({ user_id: 'other' })]);
+    mockApi.getResult.mockResolvedValue(createCalculationResult());
+  });
+
+  it('renders the export dropdown trigger when results are available', async () => {
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      expect(screen.getAllByRole('button', { name: /export/i }).length).toBeGreaterThan(0);
+    });
+  });
+
+  it('exports the result as PDF and downloads the file', async () => {
+    const user = userEvent.setup();
+    mockApi.exportProjectResult.mockResolvedValue(
+      new Blob(['pdf'], { type: 'application/pdf' }),
+    );
+
+    render(<ProjectDetail />);
+
+    const triggers = await screen.findAllByRole('button', { name: /export/i });
+    await user.click(triggers[0]);
+
+    const pdfItem = await screen.findByRole('menuitem', { name: /pdf report/i });
+    await user.click(pdfItem);
+
+    await waitFor(() => {
+      expect(mockApi.exportProjectResult).toHaveBeenCalledWith('project-1', 'pdf', 'en');
+      expect(mockDownloadBlob).toHaveBeenCalledWith(
+        expect.any(Blob),
+        'test-project-results.pdf',
+      );
+      expect(mockToast).toHaveBeenCalledWith({ title: 'Export downloaded' });
+    });
+  });
+
+  it('shows an error toast when the export fails', async () => {
+    const user = userEvent.setup();
+    mockApi.exportProjectResult.mockRejectedValue(new Error('Export boom'));
+
+    render(<ProjectDetail />);
+
+    const triggers = await screen.findAllByRole('button', { name: /export/i });
+    await user.click(triggers[0]);
+
+    const csvItem = await screen.findByRole('menuitem', { name: /csv data/i });
+    await user.click(csvItem);
+
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Error',
+          description: 'Export boom',
+          variant: 'destructive',
+        }),
+      );
     });
   });
 });

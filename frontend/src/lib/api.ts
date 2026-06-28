@@ -325,6 +325,41 @@ class ApiClient {
       return null;
     }
   }
+
+  // Downloads a project's BeCoMe result as a PDF or CSV file. Bearer auth means
+  // it is fetched as a blob and saved client-side rather than via a plain link.
+  async exportProjectResult(
+    projectId: string,
+    format: 'pdf' | 'csv',
+    lang: string
+  ): Promise<Blob> {
+    const headers: HeadersInit = { 'X-Request-ID': crypto.randomUUID() };
+    if (this.token) {
+      (headers as Record<string, string>)['Authorization'] = `Bearer ${this.token}`;
+    }
+
+    const response = await fetch(
+      `${API_BASE_URL}/projects/${projectId}/result/export?format=${format}&lang=${lang}`,
+      { headers }
+    );
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        this.setToken(null);
+        globalThis.location.href = '/login';
+      }
+      const error = await response.json().catch(() => ({ detail: 'Export failed' }));
+      const detail = typeof error.detail === 'string' ? error.detail : 'Export failed';
+      logger.error('Result export failed', {
+        projectId,
+        format,
+        status: response.status,
+      });
+      throw new HttpError(detail, response.status);
+    }
+
+    return response.blob();
+  }
 }
 
 export const api = new ApiClient();
