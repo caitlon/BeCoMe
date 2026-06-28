@@ -902,7 +902,7 @@ const ResultsSection = ({
         project.name
           .toLowerCase()
           .replace(/[^a-z0-9]+/g, "-")
-          .replace(/^-+|-+$/g, "") || "project";
+          .replace(/^-|-$/g, "") || "project";
       downloadBlob(blob, `${slug}-results.${format}`);
       toast({ title: t("resultExport.success") });
     } catch (error) {
@@ -952,14 +952,14 @@ const ResultsSection = ({
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" size="sm" disabled={exporting !== null}>
-              {exporting !== null ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
+              {exporting === null ? (
                 <Download className="mr-2 h-4 w-4" />
+              ) : (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               )}
-              {exporting !== null
-                ? t("resultExport.exporting")
-                : t("resultExport.button")}
+              {exporting === null
+                ? t("resultExport.button")
+                : t("resultExport.exporting")}
               <ChevronDown className="ml-2 h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>
