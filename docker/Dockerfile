@@ -90,5 +90,9 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')" || exit 1
 
-# Run with uvicorn (worker count configurable via UVICORN_WORKERS env var)
-CMD uvicorn api.main:app --host 0.0.0.0 --port 8000 --workers ${UVICORN_WORKERS}
+# Run with uvicorn (worker count configurable via UVICORN_WORKERS env var).
+# --proxy-headers + --forwarded-allow-ips='*': trust X-Forwarded-Proto/For from the
+# Railway edge (the only path that can reach the container; Cloudflare sits in front
+# of it). Without this uvicorn treats the internal hop as http, so request.url.scheme
+# is wrong and the HSTS response header is never emitted.
+CMD uvicorn api.main:app --host 0.0.0.0 --port 8000 --workers ${UVICORN_WORKERS} --proxy-headers --forwarded-allow-ips='*'
