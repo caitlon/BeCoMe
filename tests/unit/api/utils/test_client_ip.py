@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 from api.utils.client_ip import get_client_ip
 
-_SECRET = "s3cret-origin-token"
+_SECRET = "s3cret-origin-token"  # pragma: allowlist secret
 
 
 def _request(
