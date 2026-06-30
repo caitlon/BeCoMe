@@ -130,6 +130,13 @@ class Settings(BaseSettings):
     # Public base URL of this API, used to build profile photo proxy links.
     api_public_url: str = "http://localhost:8000"
 
+    # Cloudflare origin lock: shared secret that Cloudflare injects (via a Transform
+    # Rule) as the X-Origin-Verify request header. When set, only requests carrying it
+    # are trusted to have transited Cloudflare, so CF-Connecting-IP is honoured only for
+    # them; direct hits on the bare origin are keyed under a single constant instead.
+    # Leave unset where Cloudflare is not in front (local/dev/staging).
+    cloudflare_origin_secret: str = ""
+
     # Railway Storage Bucket (S3-compatible; photo upload disabled if not set).
     # Railway injects these when a bucket is attached to the service.
     bucket_name: str | None = None
