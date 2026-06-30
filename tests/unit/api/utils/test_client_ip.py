@@ -1,8 +1,10 @@
 """Tests for the shared client-IP extraction helper."""
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from api.utils.client_ip import get_client_ip
+
+_SECRET = "s3cret-origin-token"
 
 
 def _request(
@@ -24,66 +26,85 @@ def _request(
     return request
 
 
-class TestGetClientIp:
-    """get_client_ip resolves the caller IP across proxy and direct setups."""
+def _with_secret(secret: str) -> object:
+    """Patch get_settings so cloudflare_origin_secret returns ``secret``."""
+    settings = MagicMock()
+    settings.cloudflare_origin_secret = secret
+    return patch("api.utils.client_ip.get_settings", return_value=settings)
 
-    def test_prefers_cf_connecting_ip_over_forwarded(self):
-        """GIVEN both CF and forwarded headers WHEN extracting THEN Cloudflare wins."""
-        # GIVEN -- X-Forwarded-For is client-spoofable, CF-Connecting-IP is not
-        request = _request({"CF-Connecting-IP": "203.0.113.50", "X-Forwarded-For": "1.2.3.4"})
 
-        # WHEN / THEN
-        assert get_client_ip(request) == "203.0.113.50"
+class TestNoOriginSecret:
+    """Without a Cloudflare secret (dev/staging/local), use XFF then the peer."""
 
-    def test_strips_whitespace_from_cf_connecting_ip(self):
-        """GIVEN whitespace around the CF IP WHEN extracting THEN it is trimmed."""
-        # GIVEN
-        request = _request({"CF-Connecting-IP": "  203.0.113.50  "})
+    def test_returns_first_forwarded_ip(self):
+        """GIVEN no secret and an XFF header WHEN extracting THEN the first IP wins."""
+        with _with_secret(""):
+            request = _request({"X-Forwarded-For": "203.0.113.50, 70.41.3.18"})
+            assert get_client_ip(request) == "203.0.113.50"
 
-        # WHEN / THEN
-        assert get_client_ip(request) == "203.0.113.50"
+    def test_strips_whitespace(self):
+        """GIVEN no secret and padded XFF WHEN extracting THEN it is trimmed."""
+        with _with_secret(""):
+            request = _request({"X-Forwarded-For": "  192.168.1.1  , 10.0.0.1"})
+            assert get_client_ip(request) == "192.168.1.1"
 
-    def test_returns_forwarded_ip_when_no_cf_header(self):
-        """GIVEN only an X-Forwarded-For header WHEN extracting THEN the header wins."""
-        # GIVEN
-        request = _request({"X-Forwarded-For": "203.0.113.50"})
+    def test_ignores_cf_connecting_ip_without_secret(self):
+        """GIVEN no secret WHEN only CF-Connecting-IP is set THEN it is not trusted."""
+        with _with_secret(""):
+            request = _request({"CF-Connecting-IP": "9.9.9.9"}, client_host="127.0.0.1")
+            assert get_client_ip(request) == "127.0.0.1"
 
-        # WHEN / THEN
-        assert get_client_ip(request) == "203.0.113.50"
+    def test_falls_back_to_peer(self):
+        """GIVEN no secret and no headers WHEN extracting THEN the peer host is used."""
+        with _with_secret(""):
+            assert get_client_ip(_request(client_host="127.0.0.1")) == "127.0.0.1"
 
-    def test_returns_first_ip_from_comma_list(self):
-        """GIVEN a multi-hop forwarded header WHEN extracting THEN the first IP wins."""
-        # GIVEN
-        request = _request({"X-Forwarded-For": "203.0.113.50, 70.41.3.18, 150.172.238.178"})
+    def test_unknown_without_client(self):
+        """GIVEN no secret, no headers, no client WHEN extracting THEN it is 'unknown'."""
+        with _with_secret(""):
+            assert get_client_ip(_request()) == "unknown"
 
-        # WHEN / THEN
-        assert get_client_ip(request) == "203.0.113.50"
 
-    def test_strips_whitespace_from_forwarded_ip(self):
-        """GIVEN whitespace around the forwarded IP WHEN extracting THEN it is trimmed."""
-        # GIVEN
-        request = _request({"X-Forwarded-For": "  192.168.1.1  , 10.0.0.1"})
+class TestOriginSecretConfigured:
+    """With a Cloudflare secret, trust CF-Connecting-IP only for verified requests."""
 
-        # WHEN / THEN
-        assert get_client_ip(request) == "192.168.1.1"
+    def test_verified_request_uses_cf_connecting_ip(self):
+        """GIVEN the matching secret WHEN extracting THEN CF-Connecting-IP wins."""
+        with _with_secret(_SECRET):
+            request = _request(
+                {
+                    "X-Origin-Verify": _SECRET,
+                    "CF-Connecting-IP": "203.0.113.50",
+                    "X-Forwarded-For": "1.2.3.4",
+                }
+            )
+            assert get_client_ip(request) == "203.0.113.50"
 
-    def test_falls_back_to_client_host(self):
-        """GIVEN no proxy headers WHEN extracting THEN the direct peer host is used."""
-        # GIVEN
-        request = _request(client_host="127.0.0.1")
+    def test_verified_request_strips_whitespace(self):
+        """GIVEN the matching secret WHEN the CF IP is padded THEN it is trimmed."""
+        with _with_secret(_SECRET):
+            request = _request({"X-Origin-Verify": _SECRET, "CF-Connecting-IP": "  203.0.113.50  "})
+            assert get_client_ip(request) == "203.0.113.50"
 
-        # WHEN / THEN
-        assert get_client_ip(request) == "127.0.0.1"
+    def test_verified_without_cf_ip_falls_back_to_peer(self):
+        """GIVEN the secret but no CF IP WHEN extracting THEN the peer host is used."""
+        with _with_secret(_SECRET):
+            request = _request({"X-Origin-Verify": _SECRET}, client_host="10.0.0.9")
+            assert get_client_ip(request) == "10.0.0.9"
 
-    def test_returns_unknown_when_no_client(self):
-        """GIVEN no headers and no client WHEN extracting THEN it is 'unknown'."""
-        # GIVEN
-        request = _request()
+    def test_missing_verify_header_is_unverified(self):
+        """GIVEN no verify header WHEN extracting THEN the sentinel is returned."""
+        with _with_secret(_SECRET):
+            request = _request({"CF-Connecting-IP": "1.2.3.4", "X-Forwarded-For": "5.6.7.8"})
+            assert get_client_ip(request) == "unverified-origin"
 
-        # WHEN / THEN
-        assert get_client_ip(request) == "unknown"
+    def test_wrong_verify_header_is_unverified(self):
+        """GIVEN a wrong verify header WHEN extracting THEN the sentinel is returned."""
+        with _with_secret(_SECRET):
+            request = _request({"X-Origin-Verify": "nope", "CF-Connecting-IP": "1.2.3.4"})
+            assert get_client_ip(request) == "unverified-origin"
 
-    def test_returns_unknown_for_none_request(self):
-        """GIVEN no request WHEN extracting THEN it is 'unknown'."""
-        # WHEN / THEN
-        assert get_client_ip(None) == "unknown"
+
+def test_returns_unknown_for_none_request():
+    """GIVEN no request WHEN extracting THEN it is 'unknown'."""
+    assert get_client_ip(None) == "unknown"
