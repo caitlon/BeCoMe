@@ -1,0 +1,5 @@
+# Security policy for becomify.app -- see https://www.rfc-editor.org/rfc/rfc9116
+Contact: mailto:caiton@pm.me
+Expires: 2027-06-30T00:00:00.000Z
+Preferred-Languages: en, cs
+Canonical: https://www.becomify.app/.well-known/security.txt
