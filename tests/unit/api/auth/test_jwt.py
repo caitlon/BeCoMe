@@ -16,7 +16,7 @@ from api.auth.jwt import (
     decode_refresh_token,
     revoke_token,
 )
-from api.auth.revocation_store import InMemoryRevocationStore
+from api.auth.revocation_store import InMemoryRevocationStore, RevocationStoreError
 from tests.unit.api.conftest import mock_datetime_offset
 
 
@@ -430,3 +430,15 @@ class TestRevokeToken:
         # THEN
         with pytest.raises(TokenError, match="Token has been revoked"):
             decode_access_token(pair.access_token, store)
+
+
+def test_decode_fails_closed_when_store_unavailable():
+    """A store error during the revocation check surfaces as a 401-mapped TokenError."""
+
+    class Down:
+        def is_jti_revoked(self, _jti):
+            raise RevocationStoreError("down")
+
+    token = create_access_token(uuid4())
+    with pytest.raises(TokenError, match="unavailable"):
+        decode_access_token(token, Down())

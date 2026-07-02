@@ -1,6 +1,7 @@
 """Tests for the RevocationStore in-memory implementation."""
 
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from uuid import uuid4
 
 import fakeredis
@@ -72,3 +73,29 @@ def test_redis_error_raises_store_unavailable():
 
     with pytest.raises(RevocationStoreError):
         RedisRevocationStore(Boom()).is_jti_revoked("x")
+
+
+def test_get_revocation_store_uses_redis_when_configured(monkeypatch):
+    get_revocation_store.cache_clear()
+    fake = fakeredis.FakeStrictRedis()
+    monkeypatch.setattr(redis, "from_url", lambda *_a, **_k: fake)
+    monkeypatch.setattr(
+        "api.auth.revocation_store.get_settings",
+        lambda: SimpleNamespace(redis_url="redis://localhost:6379/0"),
+    )
+    try:
+        assert isinstance(get_revocation_store(), RedisRevocationStore)
+    finally:
+        get_revocation_store.cache_clear()
+
+
+def test_get_revocation_store_uses_in_memory_without_url(monkeypatch):
+    get_revocation_store.cache_clear()
+    monkeypatch.setattr(
+        "api.auth.revocation_store.get_settings",
+        lambda: SimpleNamespace(redis_url=""),
+    )
+    try:
+        assert isinstance(get_revocation_store(), InMemoryRevocationStore)
+    finally:
+        get_revocation_store.cache_clear()

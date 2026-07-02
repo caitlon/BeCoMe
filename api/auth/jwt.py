@@ -7,7 +7,7 @@ from uuid import UUID, uuid4
 import jwt
 from jwt import InvalidTokenError
 
-from api.auth.revocation_store import RevocationStore
+from api.auth.revocation_store import RevocationStore, RevocationStoreError
 from api.config import get_settings
 
 ALGORITHM = "HS256"
@@ -125,8 +125,12 @@ def decode_token(token: str, expected_type: str, store: RevocationStore) -> Toke
         if not jti:
             raise TokenError("Missing token ID")
 
-        # Check revocation store
-        if store.is_jti_revoked(jti):
+        # Check revocation store (fail-closed: a store error becomes a 401)
+        try:
+            revoked = store.is_jti_revoked(jti)
+        except RevocationStoreError as e:
+            raise TokenError("Revocation store unavailable") from e
+        if revoked:
             raise TokenError("Token has been revoked")
 
         user_id_str: str | None = payload.get("sub")

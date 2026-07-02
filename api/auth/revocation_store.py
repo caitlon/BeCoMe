@@ -2,10 +2,13 @@
 
 import threading
 from datetime import UTC, datetime, timedelta
+from functools import lru_cache
 from typing import Protocol, runtime_checkable
 from uuid import UUID
 
 import redis
+
+from api.config import get_settings
 
 
 @runtime_checkable
@@ -99,12 +102,17 @@ class RedisRevocationStore:
         return datetime.fromisoformat(text)
 
 
-_revocation_store: RevocationStore = InMemoryRevocationStore()
-
-
+@lru_cache
 def get_revocation_store() -> RevocationStore:
-    """Return the process-wide revocation store.
+    """Return the process-wide revocation store, Redis-backed when configured.
 
-    In-memory until PR 2 wires a Redis-backed store selected by settings.
+    Selected once per process: a `RedisRevocationStore` when `redis_url` is set
+    (production), otherwise an in-memory store for dev and tests.
     """
-    return _revocation_store
+    settings = get_settings()
+    if settings.redis_url:
+        client = redis.from_url(  # type: ignore[no-untyped-call]
+            settings.redis_url, socket_connect_timeout=2, socket_timeout=2
+        )
+        return RedisRevocationStore(client)
+    return InMemoryRevocationStore()
