@@ -192,6 +192,7 @@ class TestEnvironmentResolution:
         monkeypatch.setenv("APP_ENV", "prod")
         monkeypatch.setenv("SECRET_KEY", "a-sufficiently-strong-secret-value")
         monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@host:5432/db")
+        monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
 
         # WHEN
         settings = Settings()
@@ -322,12 +323,30 @@ class TestProductionInvariants:
         monkeypatch.setenv("APP_ENV", "prod")
         monkeypatch.setenv("SECRET_KEY", "a-sufficiently-strong-secret-value")
         monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@host:5432/db")
+        monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
 
         # WHEN
         settings = Settings()
 
         # THEN
         assert settings.environment is Environment.PROD
+
+    def test_rejects_missing_redis_url_in_production(self, monkeypatch, tmp_path):
+        """
+        GIVEN the production profile with no REDIS_URL
+        WHEN Settings is constructed
+        THEN validation fails
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("APP_ENV", "prod")
+        monkeypatch.setenv("SECRET_KEY", "a-sufficiently-strong-secret-value")
+        monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@host:5432/db")
+        monkeypatch.delenv("REDIS_URL", raising=False)
+
+        # WHEN / THEN
+        with pytest.raises(ValidationError, match="redis_url is required"):
+            Settings()
 
     def test_rejects_short_secret_in_production(self, monkeypatch, tmp_path):
         """

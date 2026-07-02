@@ -29,6 +29,7 @@ dev = [
     "boto3-stubs[s3]==1.43.22",
     "mutmut==3.5.0",
     "locust==2.44.1",
+    "fakeredis==2.26.1",
 ]
 viz = [
     "numpy==2.4.6",
@@ -65,6 +66,7 @@ api = [
     "sentry-sdk[fastapi]==2.61.1",
     "logtail-python==0.3.4",
     "reportlab==5.0.0",
+    "redis==5.2.1",
 ]
 
 [build-system]

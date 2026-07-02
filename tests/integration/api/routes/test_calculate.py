@@ -289,6 +289,23 @@ class TestValidation:
         assert response.status_code == 400
         assert response.json()["detail"] == error_message
 
+    def test_too_many_experts_returns_422(self, client: TestClient):
+        """
+        GIVEN more experts than the allowed maximum
+        WHEN POST /api/v1/calculate is called
+        THEN response status is 422 (validation error)
+        """
+        # GIVEN
+        experts = [
+            {"name": f"E{i}", "lower": 0.0, "peak": 10.0, "upper": 20.0} for i in range(1001)
+        ]
+
+        # WHEN
+        response = client.post("/api/v1/calculate", json={"experts": experts})
+
+        # THEN
+        assert response.status_code == 422
+
 
 class TestCalculateEdgeCases:
     """Edge case tests for /calculate endpoint."""

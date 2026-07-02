@@ -16,8 +16,14 @@ from api.auth.jwt import (
     decode_refresh_token,
     revoke_token,
 )
-from api.auth.token_blacklist import TokenBlacklist
+from api.auth.revocation_store import InMemoryRevocationStore, RevocationStoreError
 from tests.unit.api.conftest import mock_datetime_offset
+
+
+@pytest.fixture
+def store() -> InMemoryRevocationStore:
+    """Provide a fresh in-memory revocation store per test."""
+    return InMemoryRevocationStore()
 
 
 class TestCreateAccessToken:
@@ -51,37 +57,37 @@ class TestCreateAccessToken:
 class TestDecodeAccessToken:
     """Tests for decode_access_token function."""
 
-    def test_decodes_valid_token(self):
+    def test_decodes_valid_token(self, store):
         """Valid token returns correct user_id."""
         # GIVEN
         user_id = uuid4()
         token = create_access_token(user_id)
 
         # WHEN
-        decoded_id = decode_access_token(token)
+        decoded_id = decode_access_token(token, store)
 
         # THEN
         assert decoded_id == user_id
 
-    def test_invalid_token_raises_error(self):
+    def test_invalid_token_raises_error(self, store):
         """Invalid token string raises TokenError."""
         # GIVEN
         invalid_token = "invalid.token.string"
 
         # WHEN / THEN
         with pytest.raises(TokenError, match="Invalid or expired token"):
-            decode_access_token(invalid_token)
+            decode_access_token(invalid_token, store)
 
-    def test_malformed_token_raises_error(self):
+    def test_malformed_token_raises_error(self, store):
         """Malformed token raises TokenError."""
         # GIVEN
         malformed_token = "not-a-jwt"
 
         # WHEN / THEN
         with pytest.raises(TokenError, match="Invalid or expired token"):
-            decode_access_token(malformed_token)
+            decode_access_token(malformed_token, store)
 
-    def test_expired_token_raises_error(self):
+    def test_expired_token_raises_error(self, store):
         """Expired token raises TokenError."""
         # GIVEN
         user_id = uuid4()
@@ -92,9 +98,9 @@ class TestDecodeAccessToken:
 
         # WHEN / THEN
         with pytest.raises(TokenError, match="Invalid or expired token"):
-            decode_access_token(token)
+            decode_access_token(token, store)
 
-    def test_token_with_invalid_uuid_raises_error(self):
+    def test_token_with_invalid_uuid_raises_error(self, store):
         """Token with invalid UUID in sub claim raises TokenError."""
         from api.config import get_settings
 
@@ -111,9 +117,9 @@ class TestDecodeAccessToken:
 
         # WHEN / THEN
         with pytest.raises(TokenError, match="Invalid user ID in token"):
-            decode_access_token(token)
+            decode_access_token(token, store)
 
-    def test_token_with_wrong_type_raises_error(self):
+    def test_token_with_wrong_type_raises_error(self, store):
         """Token with wrong type claim raises TokenError."""
         from api.config import get_settings
 
@@ -131,9 +137,9 @@ class TestDecodeAccessToken:
 
         # WHEN / THEN
         with pytest.raises(TokenError, match="Invalid token type"):
-            decode_access_token(token)
+            decode_access_token(token, store)
 
-    def test_token_without_sub_raises_error(self):
+    def test_token_without_sub_raises_error(self, store):
         """Token missing sub claim raises TokenError."""
         from api.config import get_settings
 
@@ -149,9 +155,9 @@ class TestDecodeAccessToken:
 
         # WHEN / THEN
         with pytest.raises(TokenError, match="Missing user ID in token"):
-            decode_access_token(token)
+            decode_access_token(token, store)
 
-    def test_token_without_jti_raises_error(self):
+    def test_token_without_jti_raises_error(self, store):
         """Token missing jti claim raises TokenError."""
         from api.config import get_settings
 
@@ -169,9 +175,9 @@ class TestDecodeAccessToken:
 
         # WHEN / THEN
         with pytest.raises(TokenError, match="Missing token ID"):
-            decode_access_token(token)
+            decode_access_token(token, store)
 
-    def test_token_without_exp_raises_error(self):
+    def test_token_without_exp_raises_error(self, store):
         """Token missing exp claim raises TokenError."""
         from api.config import get_settings
 
@@ -189,7 +195,7 @@ class TestDecodeAccessToken:
 
         # WHEN / THEN - PyJWT raises InvalidTokenError for missing exp due to require=["exp"]
         with pytest.raises(TokenError, match="Invalid or expired token"):
-            decode_access_token(token)
+            decode_access_token(token, store)
 
 
 class TestCreateRefreshToken:
@@ -335,21 +341,21 @@ class TestCreateTokenPair:
 class TestDecodeRefreshToken:
     """Tests for decode_refresh_token function."""
 
-    def test_decodes_valid_refresh_token(self):
+    def test_decodes_valid_refresh_token(self, store):
         """Valid refresh token returns TokenPayload with correct data."""
         # GIVEN
         user_id = uuid4()
         token, expected_jti = create_refresh_token(user_id)
 
         # WHEN
-        payload = decode_refresh_token(token)
+        payload = decode_refresh_token(token, store)
 
         # THEN
         assert payload.user_id == user_id
         assert payload.jti == expected_jti
         assert payload.token_type == "refresh"
 
-    def test_rejects_access_token(self):
+    def test_rejects_access_token(self, store):
         """Access token is rejected when decoded as refresh token."""
         # GIVEN
         user_id = uuid4()
@@ -357,9 +363,9 @@ class TestDecodeRefreshToken:
 
         # WHEN / THEN
         with pytest.raises(TokenError, match="Invalid token type"):
-            decode_refresh_token(access_token)
+            decode_refresh_token(access_token, store)
 
-    def test_rejects_expired_refresh_token(self):
+    def test_rejects_expired_refresh_token(self, store):
         """Expired refresh token raises TokenError."""
         # GIVEN
         user_id = uuid4()
@@ -370,41 +376,37 @@ class TestDecodeRefreshToken:
 
         # WHEN / THEN
         with pytest.raises(TokenError, match="Invalid or expired token"):
-            decode_refresh_token(token)
+            decode_refresh_token(token, store)
 
 
 class TestRevokeToken:
     """Tests for revoke_token function."""
 
-    def setup_method(self):
-        """Reset blacklist before each test."""
-        TokenBlacklist.reset()
-
-    def test_adds_to_blacklist(self):
-        """Revoked token JTI is added to blacklist."""
+    def test_adds_jti_to_store(self, store):
+        """Revoked token JTI is recorded in the store."""
         # GIVEN
         jti = "test-jti-revoke-123"
 
         # WHEN
-        revoke_token(jti)
+        revoke_token(jti, store)
 
         # THEN
-        assert TokenBlacklist.is_blacklisted(jti) is True
+        assert store.is_jti_revoked(jti) is True
 
-    def test_revoked_token_cannot_be_decoded(self):
+    def test_revoked_token_cannot_be_decoded(self, store):
         """Token with revoked JTI cannot be decoded."""
         # GIVEN
         user_id = uuid4()
         token, jti = create_refresh_token(user_id)
 
         # WHEN
-        revoke_token(jti)
+        revoke_token(jti, store)
 
         # THEN
         with pytest.raises(TokenError, match="Token has been revoked"):
-            decode_refresh_token(token)
+            decode_refresh_token(token, store)
 
-    def test_revoked_access_token_cannot_be_decoded(self):
+    def test_revoked_access_token_cannot_be_decoded(self, store):
         """Access token sharing revoked JTI cannot be decoded."""
         # GIVEN
         user_id = uuid4()
@@ -423,8 +425,38 @@ class TestRevokeToken:
         jti = payload["jti"]
 
         # WHEN
-        revoke_token(jti)
+        revoke_token(jti, store)
 
         # THEN
         with pytest.raises(TokenError, match="Token has been revoked"):
-            decode_access_token(pair.access_token)
+            decode_access_token(pair.access_token, store)
+
+
+def test_decode_fails_closed_when_store_unavailable():
+    """A store error during the revocation check surfaces as a 401-mapped TokenError."""
+
+    class Down:
+        def is_jti_revoked(self, _jti):
+            raise RevocationStoreError("down")
+
+    token = create_access_token(uuid4())
+    with pytest.raises(TokenError, match="unavailable"):
+        decode_access_token(token, Down())
+
+
+def test_decode_rejects_token_older_than_valid_after(store):
+    """A token issued before the user's valid_after cutoff is rejected (M1)."""
+    user_id = uuid4()
+    token = create_access_token(user_id)
+    # Password changed "after" this token was issued.
+    store.set_user_valid_after(user_id, datetime.now(UTC) + timedelta(seconds=5))
+    with pytest.raises(TokenError, match="revoked"):
+        decode_access_token(token, store)
+
+
+def test_decode_accepts_token_newer_than_valid_after(store):
+    """A token issued after the valid_after cutoff still works (M1)."""
+    user_id = uuid4()
+    store.set_user_valid_after(user_id, datetime.now(UTC) - timedelta(seconds=5))
+    token = create_access_token(user_id)
+    assert decode_access_token(token, store) == user_id
