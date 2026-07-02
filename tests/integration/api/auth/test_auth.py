@@ -855,6 +855,45 @@ class TestRefreshToken:
         assert response.status_code == 401
 
 
+class TestLoginLockout:
+    """Repeated failed logins lock the account for a cooldown."""
+
+    def test_locks_account_after_repeated_failures(self, client):
+        """After too many wrong-password attempts, further logins return 429."""
+        from api.auth.login_throttle import InMemoryLoginThrottle, get_login_throttle
+
+        throttle = InMemoryLoginThrottle(max_failures=3, window_seconds=3600)
+        client.app.dependency_overrides[get_login_throttle] = lambda: throttle
+        try:
+            client.post(
+                "/api/v1/auth/register",
+                json={
+                    "email": "lockout@example.com",
+                    "password": "SecurePass123!",
+                    "first_name": "Lock",
+                    "last_name": "Out",
+                },
+            )
+            # GIVEN three failed attempts, each rejected with 401
+            for _ in range(3):
+                failed = client.post(
+                    "/api/v1/auth/login",
+                    data={"username": "lockout@example.com", "password": "WrongPass999!"},
+                )
+                assert failed.status_code == 401
+
+            # WHEN a fourth attempt is made, even with the correct password
+            locked = client.post(
+                "/api/v1/auth/login",
+                data={"username": "lockout@example.com", "password": "SecurePass123!"},
+            )
+
+            # THEN the account is locked out
+            assert locked.status_code == 429
+        finally:
+            client.app.dependency_overrides.pop(get_login_throttle, None)
+
+
 class TestLogout:
     """Tests for POST /api/v1/auth/logout."""
 

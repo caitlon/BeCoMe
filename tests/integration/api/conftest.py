@@ -160,6 +160,20 @@ def session(test_engine):
         yield session
 
 
+@pytest.fixture(autouse=True)
+def _reset_login_throttle():
+    """Give each test a fresh login throttle so failures do not accumulate globally.
+
+    ``get_login_throttle`` is an lru_cache singleton keyed by nothing, so its
+    in-memory failure counts would otherwise leak between tests that reuse an email.
+    """
+    from api.auth.login_throttle import get_login_throttle
+
+    get_login_throttle.cache_clear()
+    yield
+    get_login_throttle.cache_clear()
+
+
 @pytest.fixture
 def client(test_engine):
     """Create test client with in-memory database."""
