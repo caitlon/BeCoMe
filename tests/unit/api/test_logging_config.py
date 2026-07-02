@@ -358,7 +358,7 @@ class TestSentryInit:
         """
         GIVEN settings carrying a Sentry DSN
         WHEN _init_sentry runs
-        THEN sentry_sdk.init is called once
+        THEN sentry_sdk.init is called once with PII sending disabled
         """
         # GIVEN
         from unittest.mock import MagicMock, patch
@@ -374,6 +374,7 @@ class TestSentryInit:
             _init_sentry(settings)
 
         mock_init.assert_called_once()
+        assert mock_init.call_args.kwargs["send_default_pii"] is False
 
     def test_skipped_when_dsn_absent(self):
         """

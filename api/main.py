@@ -57,6 +57,9 @@ def _init_sentry(settings: Settings) -> None:
             dsn=settings.sentry_dsn,
             traces_sample_rate=0.1,
             environment=settings.environment.value,
+            # Never attach PII (client IP, cookies, headers, request bodies) to events,
+            # so passwords and emails on auth requests are not shipped to the tracker.
+            send_default_pii=False,
         )
 
 
