@@ -136,12 +136,22 @@ def decode_token(token: str, expected_type: str, store: RevocationStore) -> Toke
         user_id_str: str | None = payload.get("sub")
         if not user_id_str:
             raise TokenError("Missing user ID in token")
+        user_id = UUID(user_id_str)
+
+        # Reject tokens issued before the user's valid_after cutoff (M1): a password
+        # change or reset invalidates every token minted earlier.
+        try:
+            valid_after = store.get_user_valid_after(user_id)
+        except RevocationStoreError as e:
+            raise TokenError("Revocation store unavailable") from e
+        if valid_after is not None and datetime.fromtimestamp(payload["iat"], tz=UTC) < valid_after:
+            raise TokenError("Token has been revoked")
 
         # exp is guaranteed by PyJWT with require=["exp"]
         exp_datetime = datetime.fromtimestamp(payload["exp"], tz=UTC)
 
         return TokenPayload(
-            user_id=UUID(user_id_str),
+            user_id=user_id,
             jti=jti,
             token_type=token_type,
             exp=exp_datetime,

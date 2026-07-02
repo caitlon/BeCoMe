@@ -14,7 +14,7 @@ from api.db.models import PasswordResetToken, User
 from api.db.utils import utc_now
 from api.dependencies import get_email_service
 from api.services.email.exceptions import EmailSendError
-from tests.shared.helpers import DEFAULT_TEST_PASSWORD
+from tests.shared.helpers import DEFAULT_TEST_PASSWORD, auth_header
 
 NEW_PASSWORD = "BrandNewPass456!"
 
@@ -141,6 +141,29 @@ class TestResetPassword:
             data={"username": "user@example.com", "password": NEW_PASSWORD},
         )
         assert new_login.status_code == 200
+
+    def test_reset_revokes_existing_access_tokens(self, client, fake_email):
+        """A password reset invalidates access tokens issued before it (M1)."""
+        # GIVEN a logged-in user with a working access token
+        _register(client, "resetrevoke@example.com")
+        login = client.post(
+            "/api/v1/auth/login",
+            data={"username": "resetrevoke@example.com", "password": DEFAULT_TEST_PASSWORD},
+        )
+        access = login.json()["access_token"]
+        assert client.get("/api/v1/auth/me", headers=auth_header(access)).status_code == 200
+
+        # WHEN the password is reset
+        client.post("/api/v1/auth/forgot-password", json={"email": "resetrevoke@example.com"})
+        token = _captured_token(fake_email)
+        reset = client.post(
+            "/api/v1/auth/reset-password",
+            json={"token": token, "new_password": NEW_PASSWORD},
+        )
+        assert reset.status_code == 204
+
+        # THEN the old access token is rejected
+        assert client.get("/api/v1/auth/me", headers=auth_header(access)).status_code == 401
 
     def test_rejects_unknown_token(self, client):
         """An unknown token is rejected with 400."""
