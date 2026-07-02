@@ -193,6 +193,7 @@ class TestEnvironmentResolution:
         monkeypatch.setenv("SECRET_KEY", "a-sufficiently-strong-secret-value")
         monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@host:5432/db")
         monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
+        monkeypatch.setenv("CLOUDFLARE_ORIGIN_SECRET", "an-origin-verify-secret")
 
         # WHEN
         settings = Settings()
@@ -324,6 +325,7 @@ class TestProductionInvariants:
         monkeypatch.setenv("SECRET_KEY", "a-sufficiently-strong-secret-value")
         monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@host:5432/db")
         monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
+        monkeypatch.setenv("CLOUDFLARE_ORIGIN_SECRET", "an-origin-verify-secret")
 
         # WHEN
         settings = Settings()
@@ -346,6 +348,24 @@ class TestProductionInvariants:
 
         # WHEN / THEN
         with pytest.raises(ValidationError, match="redis_url is required"):
+            Settings()
+
+    def test_rejects_missing_cloudflare_secret_in_production(self, monkeypatch, tmp_path):
+        """
+        GIVEN the production profile with no CLOUDFLARE_ORIGIN_SECRET
+        WHEN Settings is constructed
+        THEN validation fails so the client IP cannot be spoofed at the origin
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("APP_ENV", "prod")
+        monkeypatch.setenv("SECRET_KEY", "a-sufficiently-strong-secret-value")
+        monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@host:5432/db")
+        monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
+        monkeypatch.delenv("CLOUDFLARE_ORIGIN_SECRET", raising=False)
+
+        # WHEN / THEN
+        with pytest.raises(ValidationError, match="cloudflare_origin_secret"):
             Settings()
 
     def test_rejects_short_secret_in_production(self, monkeypatch, tmp_path):

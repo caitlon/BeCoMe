@@ -34,19 +34,26 @@ def _with_secret(secret: str) -> object:
 
 
 class TestNoOriginSecret:
-    """Without a Cloudflare secret (dev/staging/local), use XFF then the peer."""
+    """Without a Cloudflare secret (local dev only), key off the direct peer.
 
-    def test_returns_first_forwarded_ip(self):
-        """GIVEN no secret and an XFF header WHEN extracting THEN the first IP wins."""
-        with _with_secret(""):
-            request = _request({"X-Forwarded-For": "203.0.113.50, 70.41.3.18"})
-            assert get_client_ip(request) == "203.0.113.50"
+    Client-supplied forwarding headers are untrusted here -- X-Forwarded-For and
+    CF-Connecting-IP are ignored -- because deployed profiles must set the secret,
+    so a spoofed header can no longer mint fresh rate-limit buckets or poison logs.
+    """
 
-    def test_strips_whitespace(self):
-        """GIVEN no secret and padded XFF WHEN extracting THEN it is trimmed."""
+    def test_ignores_forwarded_for_uses_peer(self):
+        """GIVEN no secret and a spoofable XFF WHEN extracting THEN the peer wins."""
         with _with_secret(""):
-            request = _request({"X-Forwarded-For": "  192.168.1.1  , 10.0.0.1"})
-            assert get_client_ip(request) == "192.168.1.1"
+            request = _request(
+                {"X-Forwarded-For": "203.0.113.50, 70.41.3.18"}, client_host="127.0.0.1"
+            )
+            assert get_client_ip(request) == "127.0.0.1"
+
+    def test_ignores_forwarded_for_without_peer_is_unknown(self):
+        """GIVEN no secret and only a spoofable XFF WHEN extracting THEN it is unused."""
+        with _with_secret(""):
+            request = _request({"X-Forwarded-For": "203.0.113.50"})
+            assert get_client_ip(request) == "unknown"
 
     def test_ignores_cf_connecting_ip_without_secret(self):
         """GIVEN no secret WHEN only CF-Connecting-IP is set THEN it is not trusted."""

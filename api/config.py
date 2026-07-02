@@ -220,6 +220,11 @@ class Settings(BaseSettings):
                 raise ValueError("SQLite is not allowed in production; use PostgreSQL")
             if not self.redis_url:
                 raise ValueError("redis_url is required in production")
+            if not self.cloudflare_origin_secret:
+                raise ValueError(
+                    "cloudflare_origin_secret is required in production so the client IP "
+                    "cannot be spoofed at the origin (Cloudflare injects X-Origin-Verify)"
+                )
         return self
 
 
