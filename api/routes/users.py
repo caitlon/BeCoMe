@@ -1,6 +1,7 @@
 """User management routes: profile, password, photo, account deletion."""
 
 from contextlib import suppress
+from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID
 
@@ -8,6 +9,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, 
 
 from api.auth.dependencies import CurrentUser
 from api.auth.logging import log_account_deletion, log_data_export, log_password_change
+from api.auth.revocation_store import RevocationStore, get_revocation_store
 from api.dependencies import (
     get_data_export_service,
     get_project_service,
@@ -102,22 +104,26 @@ def change_password(
     current_user: CurrentUser,
     data: ChangePasswordRequest,
     service: Annotated[UserService, Depends(get_user_service)],
+    store: Annotated[RevocationStore, Depends(get_revocation_store)],
 ) -> None:
     """Change the authenticated user's password.
 
     InvalidCredentialsError is handled by centralized exception middleware.
-    Rate limited to prevent password guessing attacks.
+    Rate limited to prevent password guessing attacks. Every token issued before
+    the change is invalidated (M1).
 
     :param request: FastAPI request (for rate limiting)
     :param current_user: User from JWT token
     :param data: Current and new password
     :param service: User service
+    :param store: Revocation store (invalidates sessions issued before the change)
     """
     service.change_password(
         user=current_user,
         current_password=data.current_password,
         new_password=data.new_password,
     )
+    store.set_user_valid_after(current_user.id, datetime.now(UTC))
 
     log_password_change(current_user.id, request)
 

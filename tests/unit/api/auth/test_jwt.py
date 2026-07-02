@@ -442,3 +442,21 @@ def test_decode_fails_closed_when_store_unavailable():
     token = create_access_token(uuid4())
     with pytest.raises(TokenError, match="unavailable"):
         decode_access_token(token, Down())
+
+
+def test_decode_rejects_token_older_than_valid_after(store):
+    """A token issued before the user's valid_after cutoff is rejected (M1)."""
+    user_id = uuid4()
+    token = create_access_token(user_id)
+    # Password changed "after" this token was issued.
+    store.set_user_valid_after(user_id, datetime.now(UTC) + timedelta(seconds=5))
+    with pytest.raises(TokenError, match="revoked"):
+        decode_access_token(token, store)
+
+
+def test_decode_accepts_token_newer_than_valid_after(store):
+    """A token issued after the valid_after cutoff still works (M1)."""
+    user_id = uuid4()
+    store.set_user_valid_after(user_id, datetime.now(UTC) - timedelta(seconds=5))
+    token = create_access_token(user_id)
+    assert decode_access_token(token, store) == user_id

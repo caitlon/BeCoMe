@@ -5,6 +5,7 @@ by centralized middleware, routes focus on business logic only.
 """
 
 import logging
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -219,17 +220,21 @@ def reset_password(
     request: Request,
     data: ResetPasswordRequest,
     service: Annotated[PasswordResetService, Depends(get_password_reset_service)],
+    store: Annotated[RevocationStore, Depends(get_revocation_store)],
 ) -> None:
     """Set a new password using a valid reset token.
 
     InvalidResetTokenError and ResetTokenExpiredError are handled by centralized
     middleware and both map to 400 with the same opaque message. Rate limited.
+    Every token issued before the reset is invalidated (M1).
 
     :param request: FastAPI request (for rate limiting and logging)
     :param data: Reset token and new password
     :param service: Password reset service
+    :param store: Revocation store (invalidates sessions issued before the reset)
     """
     user = service.reset_password(data.token, data.new_password)
+    store.set_user_valid_after(user.id, datetime.now(UTC))
     log_password_reset_completed(user.id, request)
 
 
