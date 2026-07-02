@@ -781,7 +781,40 @@ class TestRefreshToken:
         assert response.status_code == 200
         data = response.json()
         assert "access_token" in data
+        assert data["refresh_token"]  # rotation returns a fresh refresh token
         assert data["expires_in"] > 0
+
+    def test_refresh_rotates_and_revokes_old_token(self, client):
+        """Refresh issues a new pair, revokes the old refresh token, and detects reuse."""
+        # GIVEN - register and login
+        client.post(
+            "/api/v1/auth/register",
+            json={
+                "email": "rotate@example.com",
+                "password": "SecurePass123!",
+                "first_name": "Rot",
+                "last_name": "Ate",
+            },
+        )
+        login = client.post(
+            "/api/v1/auth/login",
+            data={"username": "rotate@example.com", "password": "SecurePass123!"},
+        )
+        old_refresh = login.json()["refresh_token"]
+
+        # WHEN - first refresh returns a fresh pair
+        first = client.post("/api/v1/auth/refresh", json={"refresh_token": old_refresh})
+        assert first.status_code == 200
+        new_refresh = first.json()["refresh_token"]
+        assert new_refresh and new_refresh != old_refresh
+
+        # THEN - reusing the old refresh token is rejected (revoked on rotation)
+        reused = client.post("/api/v1/auth/refresh", json={"refresh_token": old_refresh})
+        assert reused.status_code == 401
+
+        # AND - the rotated refresh token still works
+        again = client.post("/api/v1/auth/refresh", json={"refresh_token": new_refresh})
+        assert again.status_code == 200
 
     def test_refresh_with_invalid_token_fails(self, client):
         """Refresh with invalid token returns 401."""
