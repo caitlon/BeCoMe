@@ -828,10 +828,6 @@ class TestLogout:
     def test_logout_revokes_token(self, client):
         """Logout revokes the current token."""
         # GIVEN - register and login
-        from api.auth.token_blacklist import TokenBlacklist
-
-        TokenBlacklist.reset()
-
         client.post(
             "/api/v1/auth/register",
             json={
@@ -869,10 +865,6 @@ class TestLogout:
     def test_refresh_after_logout_fails(self, client):
         """Refresh token cannot be used after logout."""
         # GIVEN - register and login
-        from api.auth.token_blacklist import TokenBlacklist
-
-        TokenBlacklist.reset()
-
         client.post(
             "/api/v1/auth/register",
             json={
