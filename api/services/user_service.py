@@ -12,6 +12,10 @@ from api.services.base import BaseService
 
 logger = logging.getLogger("api.service.user")
 
+# Precomputed bcrypt hash verified when an account is missing, so a login for an unknown
+# email costs the same time as a wrong password and cannot be told apart by timing.
+_DUMMY_PASSWORD_HASH = hash_password("not-a-real-password-timing-equalizer")
+
 
 class UserService(BaseService):
     """Service for user-related operations."""
@@ -80,6 +84,9 @@ class UserService(BaseService):
         """
         user = self.get_by_email(email)
         if not user:
+            # Run a bcrypt verification anyway so a missing account is indistinguishable
+            # from a wrong password by response time (no user-enumeration oracle).
+            verify_password(password, _DUMMY_PASSWORD_HASH)
             raise InvalidCredentialsError(
                 "Invalid email or password",
                 email=email,
