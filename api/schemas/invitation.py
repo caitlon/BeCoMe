@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 class InviteByEmailRequest(BaseModel):
     """Request to invite a user by email."""
 
-    email: EmailStr = Field(..., description="Email of user to invite")
+    email: EmailStr = Field(..., max_length=255, description="Email of user to invite")
 
 
 class InvitationResponse(BaseModel):
