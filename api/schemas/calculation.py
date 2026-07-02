@@ -27,7 +27,9 @@ class ExpertInput(BaseModel):
 class CalculateRequest(BaseModel):
     """Request body for calculation endpoint."""
 
-    experts: list[ExpertInput] = Field(..., min_length=1, description="List of expert opinions")
+    experts: list[ExpertInput] = Field(
+        ..., min_length=1, max_length=1000, description="List of expert opinions"
+    )
 
 
 class FuzzyNumberOutput(BaseModel):
