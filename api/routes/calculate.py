@@ -6,9 +6,10 @@ Uses dependency injection for calculator following DIP.
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from api.dependencies import get_calculator
+from api.middleware.rate_limit import LIMIT_STANDARD, limiter
 from api.schemas.calculation import CalculateRequest, CalculateResponse, FuzzyNumberOutput
 from src.calculators.become_calculator import BeCoMeCalculator
 from src.exceptions import BeCoMeError
@@ -22,13 +23,16 @@ router = APIRouter(prefix="/api/v1", tags=["calculation"])
     "/calculate",
     responses={400: {"description": "Invalid input or calculation error"}},
 )
+@limiter.limit(LIMIT_STANDARD)
 def calculate(
-    request: CalculateRequest,
+    request: Request,
+    payload: CalculateRequest,
     calculator: Annotated[BeCoMeCalculator, Depends(get_calculator)],
 ) -> CalculateResponse:
     """Calculate BeCoMe result from expert opinions.
 
-    :param request: Expert opinions to aggregate
+    :param request: FastAPI request (for rate limiting)
+    :param payload: Expert opinions to aggregate
     :param calculator: Injected BeCoMeCalculator instance
     :return: Calculation result with fuzzy numbers
     """
@@ -41,7 +45,7 @@ def calculate(
                 upper_bound=expert.upper,
             ),
         )
-        for expert in request.experts
+        for expert in payload.experts
     ]
 
     try:
