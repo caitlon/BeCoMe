@@ -8,6 +8,7 @@ import sentry_sdk
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 from api.config import Settings, get_settings
 from api.db.engine import create_db_and_tables
@@ -77,6 +78,12 @@ def create_app() -> FastAPI:
 
     # Security headers middleware (added first, executes last)
     app.add_middleware(SecurityHeadersMiddleware)
+
+    # Rate limiting: SlowAPIMiddleware enforces the limiter's default_limits on every
+    # route, not just the @limiter.limit-decorated ones, so no endpoint is unthrottled.
+    # It executes after CORS (CORS is added later, so it wraps this), letting preflight
+    # OPTIONS be answered before any limit check.
+    app.add_middleware(SlowAPIMiddleware)
 
     # CORS middleware for frontend integration (restricted for security)
     app.add_middleware(
