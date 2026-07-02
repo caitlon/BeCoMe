@@ -1,8 +1,9 @@
 """Tests for rate limiting middleware."""
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from api.middleware.rate_limit import rate_limit_handler
+from api.middleware.rate_limit import build_limiter, rate_limit_handler
 
 
 class TestRateLimitHandler:
@@ -79,3 +80,29 @@ class TestRateLimitWiring:
 
         # THEN
         assert app.exception_handlers[RateLimitExceeded] is rate_limit_handler
+
+
+class TestBuildLimiter:
+    """Tests that build_limiter wires the storage backend and fail-open flag."""
+
+    def test_uses_redis_storage_when_configured(self):
+        """
+        GIVEN settings with a redis_url
+        WHEN build_limiter runs
+        THEN the limiter uses that storage URI and swallows storage errors (fail-open)
+        """
+        settings = SimpleNamespace(testing=False, redis_url="redis://localhost:6379/0")
+        limiter = build_limiter(settings)
+        assert limiter._storage_uri == "redis://localhost:6379/0"
+        assert limiter._swallow_errors is True
+
+    def test_no_storage_uri_without_redis(self):
+        """
+        GIVEN settings without a redis_url
+        WHEN build_limiter runs
+        THEN no storage URI is set (slowapi defaults to in-memory) and it still fails open
+        """
+        settings = SimpleNamespace(testing=True, redis_url="")
+        limiter = build_limiter(settings)
+        assert limiter._storage_uri is None
+        assert limiter._swallow_errors is True

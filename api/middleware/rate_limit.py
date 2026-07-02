@@ -7,14 +7,34 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from starlette.responses import Response
 
-from api.config import get_settings
+from api.config import Settings, get_settings
 from api.utils.client_ip import get_client_ip
 
 logger = logging.getLogger("api.ratelimit")
 
-# Disable rate limiting only while the automated test suite runs (TESTING flag).
+
+def build_limiter(settings: Settings) -> Limiter:
+    """Create the slowapi Limiter, backed by Redis when configured.
+
+    Uses ``settings.redis_url`` as the storage backend so counters are shared
+    across replicas (M6); without it slowapi falls back to in-memory. Fails open
+    (``swallow_errors``): a storage outage skips the limit rather than blocking
+    requests such as login. Limiting is disabled only under the TESTING flag.
+
+    :param settings: Application settings.
+    :return: A configured slowapi Limiter.
+    """
+    return Limiter(
+        key_func=get_client_ip,
+        enabled=not settings.testing,
+        storage_uri=settings.redis_url or None,
+        swallow_errors=True,
+    )
+
+
+# Rate limiting is disabled only while the automated test suite runs (TESTING flag).
 # Deployed profiles, including staging, keep limiting enabled.
-limiter = Limiter(key_func=get_client_ip, enabled=not get_settings().testing)
+limiter = build_limiter(get_settings())
 
 # Rate limit constants for different endpoint types
 LIMIT_AUTH_ENDPOINTS = "5/minute"  # Login, register - strict to prevent brute-force
