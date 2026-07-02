@@ -5,6 +5,8 @@ from datetime import UTC, datetime, timedelta
 from typing import Protocol, runtime_checkable
 from uuid import UUID
 
+import redis
+
 
 @runtime_checkable
 class RevocationStore(Protocol):
@@ -56,6 +58,45 @@ class InMemoryRevocationStore:
         with self._lock:
             self._revoked_jti.clear()
             self._user_valid_after.clear()
+
+
+class RevocationStoreError(Exception):
+    """Raised when the revocation store cannot be reached (fail-closed)."""
+
+
+class RedisRevocationStore:
+    """Redis-backed RevocationStore shared across replicas and workers."""
+
+    def __init__(self, client: redis.Redis) -> None:
+        self._client = client
+
+    def revoke_jti(self, jti: str, ttl_seconds: int) -> None:
+        try:
+            self._client.set(f"revoked:jti:{jti}", "1", ex=max(ttl_seconds, 1))
+        except redis.RedisError as e:
+            raise RevocationStoreError(str(e)) from e
+
+    def is_jti_revoked(self, jti: str) -> bool:
+        try:
+            return bool(self._client.exists(f"revoked:jti:{jti}"))
+        except redis.RedisError as e:
+            raise RevocationStoreError(str(e)) from e
+
+    def set_user_valid_after(self, user_id: UUID, valid_after: datetime) -> None:
+        try:
+            self._client.set(f"user:valid_after:{user_id}", valid_after.isoformat())
+        except redis.RedisError as e:
+            raise RevocationStoreError(str(e)) from e
+
+    def get_user_valid_after(self, user_id: UUID) -> datetime | None:
+        try:
+            raw = self._client.get(f"user:valid_after:{user_id}")
+        except redis.RedisError as e:
+            raise RevocationStoreError(str(e)) from e
+        if raw is None:
+            return None
+        text = raw.decode() if isinstance(raw, bytes) else str(raw)
+        return datetime.fromisoformat(text)
 
 
 _revocation_store: RevocationStore = InMemoryRevocationStore()
