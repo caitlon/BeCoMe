@@ -2,6 +2,7 @@
 
 import fakeredis
 import redis
+
 from api.auth.login_throttle import InMemoryLoginThrottle, RedisLoginThrottle
 
 

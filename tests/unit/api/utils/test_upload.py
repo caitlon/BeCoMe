@@ -4,8 +4,9 @@ import asyncio
 from io import BytesIO
 
 import pytest
-from api.utils.upload import UploadTooLarge, read_within_limit
 from starlette.datastructures import UploadFile
+
+from api.utils.upload import UploadTooLarge, read_within_limit
 
 
 def _upload(data: bytes) -> UploadFile:
