@@ -32,6 +32,7 @@ from api.services.storage import validation
 from api.services.storage.base import StorageService
 from api.services.storage.exceptions import StorageDeleteError, StorageUploadError
 from api.services.user_service import UserService
+from api.utils.upload import UploadTooLarge, read_within_limit
 
 router = APIRouter(prefix="/api/v1/users", tags=["users"])
 
@@ -211,13 +212,14 @@ async def upload_photo(
             detail="Invalid file type. Allowed: JPEG, PNG, GIF, WebP",
         )
 
-    # Read and validate size
-    content = await file.read()
-    if len(content) > validation.MAX_FILE_SIZE_BYTES:
+    # Read the upload in bounded chunks so an over-large file never fully buffers.
+    try:
+        content = await read_within_limit(file, validation.MAX_FILE_SIZE_BYTES)
+    except UploadTooLarge:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="File too large. Maximum size is 5 MB",
-        )
+        ) from None
 
     # Validate actual file content matches claimed type (magic bytes check)
     if not validation.validate_image_content(content, content_type):
