@@ -348,3 +348,59 @@ class TestPhotoProxy:
 
         # THEN
         assert response.status_code == 404
+
+
+class TestAccountDeletionRemovesPhoto:
+    """Deleting an account must also remove its photo blob (GDPR Art. 17)."""
+
+    def test_delete_account_removes_photo_from_storage(self, client_with_mock_storage):
+        """Deleting the account deletes the user's photo object from storage."""
+        # GIVEN a user with an uploaded photo
+        client, mock_storage = client_with_mock_storage
+        token = register_and_login(client, "erase@example.com")
+        client.post(
+            "/api/v1/users/me/photo",
+            headers=auth_header(token),
+            files={"file": ("photo.jpg", VALID_JPEG_BYTES, "image/jpeg")},
+        )
+
+        # WHEN the account is deleted
+        response = client.delete("/api/v1/users/me", headers=auth_header(token))
+
+        # THEN the photo object is removed from storage
+        assert response.status_code == 204
+        mock_storage.delete.assert_called_once_with(UPLOADED_KEY)
+
+    def test_delete_account_without_photo_skips_storage(self, client_with_mock_storage):
+        """Deleting an account that has no photo never calls storage."""
+        # GIVEN a user with no uploaded photo
+        client, mock_storage = client_with_mock_storage
+        token = register_and_login(client, "nophoto-erase@example.com")
+
+        # WHEN the account is deleted
+        response = client.delete("/api/v1/users/me", headers=auth_header(token))
+
+        # THEN storage is never asked to delete anything
+        assert response.status_code == 204
+        mock_storage.delete.assert_not_called()
+
+    def test_delete_account_succeeds_when_storage_delete_fails(self, client_with_mock_storage):
+        """Account deletion completes even when the photo blob removal fails."""
+        # GIVEN a user with a photo whose storage removal will error
+        client, mock_storage = client_with_mock_storage
+        token = register_and_login(client, "brokenstorage@example.com")
+        client.post(
+            "/api/v1/users/me/photo",
+            headers=auth_header(token),
+            files={"file": ("photo.jpg", VALID_JPEG_BYTES, "image/jpeg")},
+        )
+        mock_storage.delete.side_effect = StorageDeleteError("bucket error")
+
+        # WHEN the account is deleted
+        response = client.delete("/api/v1/users/me", headers=auth_header(token))
+
+        # THEN the account is still removed (the storage failure is suppressed)
+        assert response.status_code == 204
+        mock_storage.delete.assert_called_once_with(UPLOADED_KEY)
+        profile = client.get("/api/v1/users/me", headers=auth_header(token))
+        assert profile.status_code == 401

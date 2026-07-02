@@ -132,17 +132,20 @@ def delete_current_user(
     current_user: CurrentUser,
     service: Annotated[UserService, Depends(get_user_service)],
     project_service: Annotated[ProjectService, Depends(get_project_service)],
+    storage_service: Annotated[StorageService | None, Depends(get_storage_service)],
 ) -> None:
     """Delete the authenticated user's account.
 
     Rejected with 409 while the user is the admin of any project, so erasure never
     silently cascades away other experts' contributions; the user must transfer
-    ownership or delete those projects first.
+    ownership or delete those projects first. The profile photo blob is removed from
+    object storage as well, so erasure also covers stored media (GDPR Article 17).
 
     :param request: FastAPI request (for logging)
     :param current_user: User from JWT token
     :param service: User service
     :param project_service: Project service for the ownership check
+    :param storage_service: Storage service (None when not configured)
     :raises AccountHasOwnedProjectsError: If the user still admins a project
     """
     if project_service.get_owned_projects(current_user.id):
@@ -150,6 +153,11 @@ def delete_current_user(
 
     user_id = current_user.id
     email = current_user.email
+
+    # Remove the profile photo blob so erasure also covers object storage (GDPR Art. 17).
+    if current_user.photo_url and storage_service:
+        with suppress(StorageDeleteError):
+            storage_service.delete(current_user.photo_url)
 
     service.delete_user(current_user)
 
