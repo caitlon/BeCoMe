@@ -137,6 +137,9 @@ class Settings(BaseSettings):
     # Leave unset where Cloudflare is not in front (local/dev/staging).
     cloudflare_origin_secret: str = ""
 
+    # Shared revocation / rate-limit store. Empty -> in-memory (dev/test); required in prod.
+    redis_url: str = ""
+
     # Railway Storage Bucket (S3-compatible; photo upload disabled if not set).
     # Railway injects these when a bucket is attached to the service.
     bucket_name: str | None = None
@@ -215,6 +218,8 @@ class Settings(BaseSettings):
                 )
             if self.database_url.startswith("sqlite"):
                 raise ValueError("SQLite is not allowed in production; use PostgreSQL")
+            if not self.redis_url:
+                raise ValueError("redis_url is required in production")
         return self
 
 

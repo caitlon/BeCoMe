@@ -2,8 +2,13 @@
 
 import threading
 from datetime import UTC, datetime, timedelta
+from functools import lru_cache
 from typing import Protocol, runtime_checkable
 from uuid import UUID
+
+import redis
+
+from api.config import get_settings
 
 
 @runtime_checkable
@@ -58,12 +63,56 @@ class InMemoryRevocationStore:
             self._user_valid_after.clear()
 
 
-_revocation_store: RevocationStore = InMemoryRevocationStore()
+class RevocationStoreError(Exception):
+    """Raised when the revocation store cannot be reached (fail-closed)."""
 
 
+class RedisRevocationStore:
+    """Redis-backed RevocationStore shared across replicas and workers."""
+
+    def __init__(self, client: redis.Redis) -> None:
+        self._client = client
+
+    def revoke_jti(self, jti: str, ttl_seconds: int) -> None:
+        try:
+            self._client.set(f"revoked:jti:{jti}", "1", ex=max(ttl_seconds, 1))
+        except redis.RedisError as e:
+            raise RevocationStoreError(str(e)) from e
+
+    def is_jti_revoked(self, jti: str) -> bool:
+        try:
+            return bool(self._client.exists(f"revoked:jti:{jti}"))
+        except redis.RedisError as e:
+            raise RevocationStoreError(str(e)) from e
+
+    def set_user_valid_after(self, user_id: UUID, valid_after: datetime) -> None:
+        try:
+            self._client.set(f"user:valid_after:{user_id}", valid_after.isoformat())
+        except redis.RedisError as e:
+            raise RevocationStoreError(str(e)) from e
+
+    def get_user_valid_after(self, user_id: UUID) -> datetime | None:
+        try:
+            raw = self._client.get(f"user:valid_after:{user_id}")
+        except redis.RedisError as e:
+            raise RevocationStoreError(str(e)) from e
+        if raw is None:
+            return None
+        text = raw.decode() if isinstance(raw, bytes) else str(raw)
+        return datetime.fromisoformat(text)
+
+
+@lru_cache
 def get_revocation_store() -> RevocationStore:
-    """Return the process-wide revocation store.
+    """Return the process-wide revocation store, Redis-backed when configured.
 
-    In-memory until PR 2 wires a Redis-backed store selected by settings.
+    Selected once per process: a `RedisRevocationStore` when `redis_url` is set
+    (production), otherwise an in-memory store for dev and tests.
     """
-    return _revocation_store
+    settings = get_settings()
+    if settings.redis_url:
+        client = redis.from_url(  # type: ignore[no-untyped-call]
+            settings.redis_url, socket_connect_timeout=2, socket_timeout=2
+        )
+        return RedisRevocationStore(client)
+    return InMemoryRevocationStore()
