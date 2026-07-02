@@ -15,7 +15,6 @@ from api.auth.dependencies import CurrentUser, get_current_token_payload
 from api.auth.jwt import (
     TokenError,
     TokenPayload,
-    create_access_token,
     create_token_pair,
     decode_refresh_token,
     revoke_token,
@@ -27,7 +26,6 @@ from api.auth.logging import (
     log_registration,
 )
 from api.auth.revocation_store import RevocationStore, get_revocation_store
-from api.config import get_settings
 from api.dependencies import get_email_service, get_password_reset_service, get_user_service
 from api.middleware.rate_limit import LIMIT_AUTH_ENDPOINTS, LIMIT_PWD_RESET, limiter
 from api.schemas.auth import (
@@ -124,15 +122,17 @@ def refresh_token(
     data: RefreshTokenRequest,
     store: Annotated[RevocationStore, Depends(get_revocation_store)],
 ) -> TokenResponse:
-    """Get new access token using refresh token.
+    """Exchange a refresh token for a new access + refresh pair (rotation).
 
-    The refresh token remains valid until expiration.
-    Rate limited to prevent token abuse.
+    The presented refresh token is revoked and a fresh pair is issued, so a
+    stolen or reused refresh token stops working after its first use. Rate
+    limited to prevent token abuse.
 
     :param request: FastAPI request (for rate limiting)
     :param data: Refresh token request
-    :return: New access token
-    :raises HTTPException: If refresh token is invalid
+    :param store: Revocation store (revokes the old jti, detects reuse)
+    :return: New access and refresh tokens
+    :raises HTTPException: If the refresh token is invalid, expired, or revoked
     """
     try:
         payload = decode_refresh_token(data.refresh_token, store)
@@ -143,12 +143,16 @@ def refresh_token(
             headers={"WWW-Authenticate": "Bearer"},
         ) from None
 
-    settings = get_settings()
-    new_access_token = create_access_token(payload.user_id, payload.jti)
+    # Rotate: revoke the presented refresh token and issue a fresh pair. A reused
+    # (already-rotated) refresh token is then rejected by the revocation check in
+    # decode_refresh_token, which surfaces refresh-token theft.
+    revoke_token(payload.jti, store)
+    token_pair = create_token_pair(payload.user_id)
 
     return TokenResponse(
-        access_token=new_access_token,
-        expires_in=settings.access_token_expire_minutes * 60,
+        access_token=token_pair.access_token,
+        refresh_token=token_pair.refresh_token,
+        expires_in=token_pair.expires_in,
     )
 
 
