@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
-from api.config import Settings, get_settings
+from api.config import Environment, Settings, get_settings
 from api.db.engine import create_db_and_tables
 from api.logging_config import setup_logging
 from api.middleware.body_size import (
@@ -70,11 +70,17 @@ def create_app() -> FastAPI:
     setup_logging(settings)
     _init_sentry(settings)
 
+    # Hide interactive docs and the OpenAPI schema in production so the full API
+    # surface (every route and schema) is not publicly enumerable.
+    docs_hidden = settings.environment is Environment.PROD
     app = FastAPI(
         title="BeCoMe API",
         description="Best Compromise Mean — Group Decision Making under Fuzzy Uncertainty",
         version=settings.api_version,
         lifespan=lifespan,
+        docs_url=None if docs_hidden else "/docs",
+        redoc_url=None if docs_hidden else "/redoc",
+        openapi_url=None if docs_hidden else "/openapi.json",
     )
 
     # Rate limiting setup
