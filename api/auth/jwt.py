@@ -7,7 +7,7 @@ from uuid import UUID, uuid4
 import jwt
 from jwt import InvalidTokenError
 
-from api.auth.token_blacklist import TokenBlacklist
+from api.auth.revocation_store import RevocationStore
 from api.config import get_settings
 
 ALGORITHM = "HS256"
@@ -95,13 +95,14 @@ def create_token_pair(user_id: UUID) -> TokenPair:
     )
 
 
-def decode_token(token: str, expected_type: str) -> TokenPayload:
+def decode_token(token: str, expected_type: str, store: RevocationStore) -> TokenPayload:
     """Decode and validate a JWT token.
 
     :param token: JWT token string
     :param expected_type: Expected token type ('access' or 'refresh')
+    :param store: Revocation store consulted for the token's JTI
     :return: TokenPayload with decoded data
-    :raises TokenError: If token is invalid, expired, or blacklisted
+    :raises TokenError: If token is invalid, expired, or revoked
     """
     settings = get_settings()
     try:
@@ -124,8 +125,8 @@ def decode_token(token: str, expected_type: str) -> TokenPayload:
         if not jti:
             raise TokenError("Missing token ID")
 
-        # Check blacklist
-        if TokenBlacklist.is_blacklisted(jti):
+        # Check revocation store
+        if store.is_jti_revoked(jti):
             raise TokenError("Token has been revoked")
 
         user_id_str: str | None = payload.get("sub")
@@ -147,36 +148,38 @@ def decode_token(token: str, expected_type: str) -> TokenPayload:
         raise TokenError("Invalid user ID in token") from e
 
 
-def decode_access_token(token: str) -> UUID:
+def decode_access_token(token: str, store: RevocationStore) -> UUID:
     """Decode and validate a JWT access token.
 
     :param token: JWT token string
+    :param store: Revocation store consulted for the token's JTI
     :return: User UUID from token
-    :raises TokenError: If token is invalid or expired
+    :raises TokenError: If token is invalid, expired, or revoked
     """
-    payload = decode_token(token, "access")
+    payload = decode_token(token, "access", store)
     return payload.user_id
 
 
-def decode_refresh_token(token: str) -> TokenPayload:
+def decode_refresh_token(token: str, store: RevocationStore) -> TokenPayload:
     """Decode and validate a JWT refresh token.
 
     :param token: JWT token string
+    :param store: Revocation store consulted for the token's JTI
     :return: TokenPayload with user_id, jti, and exp
-    :raises TokenError: If token is invalid or expired
+    :raises TokenError: If token is invalid, expired, or revoked
     """
-    return decode_token(token, "refresh")
+    return decode_token(token, "refresh", store)
 
 
-def revoke_token(jti: str) -> None:
-    """Revoke a token by adding its JTI to the blacklist.
+def revoke_token(jti: str, store: RevocationStore) -> None:
+    """Revoke a token by recording its JTI in the revocation store.
 
-    Blacklists for the full refresh token lifetime to ensure that any
-    refresh token sharing this JTI cannot be used after revocation,
-    even if revocation was initiated using an access token.
+    Revokes for the full refresh token lifetime so that any refresh token
+    sharing this JTI cannot be used after revocation, even if revocation was
+    initiated using an access token.
 
     :param jti: JWT ID to revoke
+    :param store: Revocation store to record the JTI in
     """
-    settings = get_settings()
-    blacklist_exp = datetime.now(UTC) + timedelta(days=settings.refresh_token_expire_days)
-    TokenBlacklist.add(jti, blacklist_exp)
+    ttl_seconds = get_settings().refresh_token_expire_days * 86400
+    store.revoke_jti(jti, ttl_seconds)
