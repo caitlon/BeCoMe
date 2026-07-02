@@ -81,6 +81,23 @@ class TestRateLimitWiring:
         # THEN
         assert app.exception_handlers[RateLimitExceeded] is rate_limit_handler
 
+    def test_app_registers_slowapi_middleware(self):
+        """
+        GIVEN the full application
+        WHEN it is created
+        THEN SlowAPIMiddleware is installed so default_limits apply to every route
+        """
+        # GIVEN
+        from slowapi.middleware import SlowAPIMiddleware
+
+        from api.main import create_app
+
+        # WHEN
+        app = create_app()
+
+        # THEN
+        assert any(middleware.cls is SlowAPIMiddleware for middleware in app.user_middleware)
+
 
 class TestBuildLimiter:
     """Tests that build_limiter wires the storage backend and fail-open flag."""
@@ -106,3 +123,24 @@ class TestBuildLimiter:
         limiter = build_limiter(settings)
         assert limiter._storage_uri is None
         assert limiter._swallow_errors is True
+
+    def test_applies_a_global_default_limit(self):
+        """
+        GIVEN any settings
+        WHEN build_limiter runs
+        THEN a non-empty default limit is configured so no route is left unthrottled
+        """
+        settings = SimpleNamespace(testing=False, redis_url="redis://localhost:6379/0")
+        limiter = build_limiter(settings)
+        assert limiter._default_limits
+
+    def test_enables_in_memory_fallback(self):
+        """
+        GIVEN settings with a redis_url
+        WHEN build_limiter runs
+        THEN in-memory fallback is enabled so a Redis outage still enforces a limit
+        rather than letting every request through unthrottled
+        """
+        settings = SimpleNamespace(testing=False, redis_url="redis://localhost:6379/0")
+        limiter = build_limiter(settings)
+        assert limiter._in_memory_fallback_enabled is True
