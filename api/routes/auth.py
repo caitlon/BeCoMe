@@ -26,8 +26,10 @@ from api.auth.logging import (
     log_password_reset_requested,
     log_registration,
 )
+from api.auth.login_throttle import LoginThrottle, get_login_throttle
 from api.auth.revocation_store import RevocationStore, get_revocation_store
 from api.dependencies import get_email_service, get_password_reset_service, get_user_service
+from api.exceptions import InvalidCredentialsError
 from api.middleware.rate_limit import LIMIT_AUTH_ENDPOINTS, LIMIT_PWD_RESET, limiter
 from api.schemas.auth import (
     ForgotPasswordRequest,
@@ -92,6 +94,7 @@ def login(
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
     service: Annotated[UserService, Depends(get_user_service)],
     store: Annotated[RevocationStore, Depends(get_revocation_store)],
+    throttle: Annotated[LoginThrottle, Depends(get_login_throttle)],
 ) -> TokenResponse:
     """Authenticate user and return JWT tokens.
 
@@ -99,6 +102,8 @@ def login(
     Returns both access token (short-lived) and refresh token (long-lived).
     A fresh session (rotation family) is registered so later refreshes can be
     rotated atomically and a reused refresh token can be contained.
+    Failed attempts are counted per account and the account is locked for a cooldown
+    once the threshold is passed, so guesses cannot simply be spread across many IPs.
     InvalidCredentialsError is handled by centralized exception middleware.
     Rate limited to prevent brute-force password attacks.
 
@@ -106,9 +111,20 @@ def login(
     :param form_data: OAuth2 form with username (email) and password
     :param service: User service
     :param store: Revocation store (records the new session's current token)
+    :param throttle: Per-account login throttle (lockout after repeated failures)
     :return: JWT access and refresh tokens
     """
-    user = service.authenticate(form_data.username, form_data.password)
+    if throttle.is_locked(form_data.username):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many failed login attempts. Please try again later.",
+        )
+    try:
+        user = service.authenticate(form_data.username, form_data.password)
+    except InvalidCredentialsError:
+        throttle.record_failure(form_data.username)
+        raise
+    throttle.reset(form_data.username)
     token_pair = create_token_pair(user.id)
     store.start_session(token_pair.sid, token_pair.jti, refresh_token_ttl_seconds())
 
