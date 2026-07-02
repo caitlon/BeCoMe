@@ -133,8 +133,11 @@ class RedisRevocationStore:
             raise RevocationStoreError(str(e)) from e
 
     def set_user_valid_after(self, user_id: UUID, valid_after: datetime) -> None:
+        # Expire a bit after the longest-lived token so the cutoff outlives every token
+        # it must invalidate, yet the key does not accumulate forever per user.
+        ttl = get_settings().refresh_token_expire_days * 86400 + 3600
         try:
-            self._client.set(f"user:valid_after:{user_id}", valid_after.isoformat())
+            self._client.set(f"user:valid_after:{user_id}", valid_after.isoformat(), ex=ttl)
         except redis.RedisError as e:
             raise RevocationStoreError(str(e)) from e
 
