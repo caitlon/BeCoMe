@@ -117,7 +117,8 @@ class TestLogLoginFailure:
         email = "test@example.com"
         reason = "Wrong password"
         mock_request = MagicMock()
-        mock_request.headers.get.return_value = "10.0.0.50"
+        mock_request.headers.get.return_value = None
+        mock_request.client.host = "10.0.0.50"
 
         # WHEN
         with patch("api.auth.logging.logger") as mock_logger:
@@ -185,7 +186,8 @@ class TestLogRegistration:
         user_id = uuid4()
         email = "newuser@example.com"
         mock_request = MagicMock()
-        mock_request.headers.get.return_value = "203.0.113.100"
+        mock_request.headers.get.return_value = None
+        mock_request.client.host = "203.0.113.100"
 
         # WHEN
         with patch("api.auth.logging.logger") as mock_logger:
@@ -263,7 +265,8 @@ class TestLogPasswordChangeFailure:
         """Failed password change extracts IP from request."""
         # GIVEN
         mock_request = MagicMock()
-        mock_request.headers.get.return_value = "10.0.0.7"
+        mock_request.headers.get.return_value = None
+        mock_request.client.host = "10.0.0.7"
 
         # WHEN
         with patch("api.auth.logging.logger") as mock_logger:
@@ -311,7 +314,8 @@ class TestLogAccountDeletion:
         user_id = uuid4()
         email = "user@example.com"
         mock_request = MagicMock()
-        mock_request.headers.get.return_value = "8.8.8.8"
+        mock_request.headers.get.return_value = None
+        mock_request.client.host = "8.8.8.8"
 
         # WHEN
         with patch("api.auth.logging.logger") as mock_logger:
