@@ -3,11 +3,12 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from api.auth.dependencies import CurrentUser
 from api.dependencies import ProjectAdmin, ProjectMember, get_invitation_service
 from api.exceptions import AlreadyInvitedError, UserNotFoundForInvitationError
+from api.middleware.rate_limit import LIMIT_WRITE, limiter
 from api.schemas.invitation import (
     InvitationListItemResponse,
     InvitationResponse,
@@ -25,17 +26,22 @@ router = APIRouter(prefix="/api/v1", tags=["invitations"])
     status_code=status.HTTP_201_CREATED,
     summary="Invite user by email",
 )
+@limiter.limit(LIMIT_WRITE)
 def invite_by_email(
+    request: Request,
     project_id: UUID,
     project: ProjectAdmin,
-    request: InviteByEmailRequest,
+    data: InviteByEmailRequest,
     current_user: CurrentUser,
     invitation_service: Annotated[InvitationService, Depends(get_invitation_service)],
 ) -> InvitationResponse:
     """Invite a registered user to a project by email. Only admin can invite.
 
+    Rate limited so the endpoint cannot be used to enumerate registered emails at speed.
+
+    :param request: FastAPI request (for rate limiting)
     :param project: Project (verified admin)
-    :param request: Email of user to invite
+    :param data: Email of user to invite
     :param current_user: Authenticated admin user
     :param invitation_service: Invitation service
     :return: Created invitation
@@ -45,7 +51,7 @@ def invite_by_email(
         invitation, invitee = invitation_service.invite_by_email(
             project_id=project.id,
             inviter_id=current_user.id,
-            invitee_email=request.email,
+            invitee_email=data.email,
         )
     except UserNotFoundForInvitationError as err:
         raise HTTPException(
