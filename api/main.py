@@ -13,6 +13,11 @@ from slowapi.middleware import SlowAPIMiddleware
 from api.config import Settings, get_settings
 from api.db.engine import create_db_and_tables
 from api.logging_config import setup_logging
+from api.middleware.body_size import (
+    BodySizeLimitMiddleware,
+    RequestBodyTooLarge,
+    body_too_large_handler,
+)
 from api.middleware.exception_handlers import register_exception_handlers
 from api.middleware.rate_limit import limiter, rate_limit_handler
 from api.middleware.request_logging import RequestLoggingMiddleware
@@ -75,6 +80,7 @@ def create_app() -> FastAPI:
     # Rate limiting setup
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, rate_limit_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(RequestBodyTooLarge, body_too_large_handler)
 
     # Security headers middleware (added first, executes last)
     app.add_middleware(SecurityHeadersMiddleware)
@@ -101,8 +107,12 @@ def create_app() -> FastAPI:
         max_age=600,  # Cache preflight requests for 10 minutes
     )
 
-    # Request/response logging with correlation IDs (outermost: wraps everything)
+    # Request/response logging with correlation IDs.
     app.add_middleware(RequestLoggingMiddleware)
+
+    # Body-size guard (outermost: added last so it runs first and drops an over-large
+    # request body before any other middleware buffers or logs it).
+    app.add_middleware(BodySizeLimitMiddleware)
 
     # Register exception handlers (OCP: centralized error handling)
     register_exception_handlers(app)
