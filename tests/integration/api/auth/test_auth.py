@@ -784,8 +784,8 @@ class TestRefreshToken:
         assert data["refresh_token"]  # rotation returns a fresh refresh token
         assert data["expires_in"] > 0
 
-    def test_refresh_rotates_and_revokes_old_token(self, client):
-        """Refresh issues a new pair, revokes the old refresh token, and detects reuse."""
+    def test_refresh_rotates_and_reuse_revokes_the_family(self, client):
+        """Refresh rotates the pair; reusing the old token revokes the whole family."""
         # GIVEN - register and login
         client.post(
             "/api/v1/auth/register",
@@ -808,13 +808,13 @@ class TestRefreshToken:
         new_refresh = first.json()["refresh_token"]
         assert new_refresh and new_refresh != old_refresh
 
-        # THEN - reusing the old refresh token is rejected (revoked on rotation)
+        # THEN - reusing the old refresh token is rejected and revokes the whole family
         reused = client.post("/api/v1/auth/refresh", json={"refresh_token": old_refresh})
         assert reused.status_code == 401
 
-        # AND - the rotated refresh token still works
+        # AND - reuse detection revoked the session, so the rotated token also stops working
         again = client.post("/api/v1/auth/refresh", json={"refresh_token": new_refresh})
-        assert again.status_code == 200
+        assert again.status_code == 401
 
     def test_refresh_with_invalid_token_fails(self, client):
         """Refresh with invalid token returns 401."""

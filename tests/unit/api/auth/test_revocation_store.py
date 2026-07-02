@@ -66,6 +66,44 @@ def test_redis_store_valid_after_roundtrip():
     assert store.get_user_valid_after(uid) == ts
 
 
+def test_session_rotation_consumes_the_current_jti():
+    store = InMemoryRevocationStore()
+    store.start_session("sid-1", "jti-1", 3600)
+    # The current jti rotates to a new one exactly once.
+    assert store.rotate_session("sid-1", "jti-1", "jti-2", 3600) is True
+    # Replaying the now-consumed jti is refused (reuse).
+    assert store.rotate_session("sid-1", "jti-1", "jti-3", 3600) is False
+    # The freshly rotated jti is the new current one.
+    assert store.rotate_session("sid-1", "jti-2", "jti-3", 3600) is True
+
+
+def test_session_rotation_refuses_unknown_session():
+    store = InMemoryRevocationStore()
+    assert store.rotate_session("missing", "jti-1", "jti-2", 3600) is False
+
+
+def test_session_revoke_and_check():
+    store = InMemoryRevocationStore()
+    assert store.is_session_revoked("sid-1") is False
+    store.revoke_session("sid-1", 3600)
+    assert store.is_session_revoked("sid-1") is True
+
+
+def test_redis_session_rotation_is_atomic():
+    store = RedisRevocationStore(fakeredis.FakeStrictRedis())
+    store.start_session("sid-1", "jti-1", 3600)
+    assert store.rotate_session("sid-1", "jti-1", "jti-2", 3600) is True
+    assert store.rotate_session("sid-1", "jti-1", "jti-3", 3600) is False
+    assert store.rotate_session("sid-1", "jti-2", "jti-3", 3600) is True
+
+
+def test_redis_session_revoke_and_check():
+    store = RedisRevocationStore(fakeredis.FakeStrictRedis())
+    assert store.is_session_revoked("sid-1") is False
+    store.revoke_session("sid-1", 3600)
+    assert store.is_session_revoked("sid-1") is True
+
+
 def test_redis_error_raises_store_unavailable():
     class Boom:
         def exists(self, *_args):

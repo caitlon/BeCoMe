@@ -338,6 +338,68 @@ class TestCreateTokenPair:
         assert pair.token_type == "bearer"
 
 
+class TestSessionBinding:
+    """Tokens carry a session id (sid) so a reused refresh token can be contained."""
+
+    def test_pair_shares_a_session_id(self):
+        """Access and refresh in a pair carry the same sid, exposed on the pair."""
+        from api.config import get_settings
+
+        pair = create_token_pair(uuid4())
+        settings = get_settings()
+        access = jwt.decode(
+            pair.access_token,
+            settings.secret_key,
+            algorithms=[ALGORITHM],
+            options={"verify_exp": False},
+        )
+        refresh = jwt.decode(
+            pair.refresh_token,
+            settings.secret_key,
+            algorithms=[ALGORITHM],
+            options={"verify_exp": False},
+        )
+        assert pair.sid
+        assert access["sid"] == refresh["sid"] == pair.sid
+
+    def test_pair_exposes_its_jti(self):
+        """The pair exposes the shared jti so the caller can seed the session."""
+        from api.config import get_settings
+
+        pair = create_token_pair(uuid4())
+        settings = get_settings()
+        refresh = jwt.decode(
+            pair.refresh_token,
+            settings.secret_key,
+            algorithms=[ALGORITHM],
+            options={"verify_exp": False},
+        )
+        assert pair.jti
+        assert refresh["jti"] == pair.jti
+
+    def test_decode_rejects_a_revoked_session(self, store):
+        """A token whose session was revoked is rejected."""
+        pair = create_token_pair(uuid4())
+        store.revoke_session(pair.sid, 3600)
+        with pytest.raises(TokenError, match="revoked"):
+            decode_access_token(pair.access_token, store)
+
+    def test_decode_allows_a_token_without_a_session_id(self, store):
+        """A legacy token minted before sessions existed still decodes."""
+        from api.config import get_settings
+
+        settings = get_settings()
+        payload = {
+            "sub": str(uuid4()),
+            "exp": datetime.now(UTC) + timedelta(hours=1),
+            "iat": datetime.now(UTC),
+            "jti": "legacy-jti",
+            "type": "access",
+        }
+        token = jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM)
+        assert decode_access_token(token, store) is not None
+
+
 class TestDecodeRefreshToken:
     """Tests for decode_refresh_token function."""
 
