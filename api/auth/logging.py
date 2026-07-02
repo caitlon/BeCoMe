@@ -1,5 +1,6 @@
 """Security event logging for authentication operations."""
 
+import hashlib
 import logging
 from typing import TYPE_CHECKING
 from uuid import UUID
@@ -11,6 +12,19 @@ if TYPE_CHECKING:
 
 # Configure security logger
 logger = logging.getLogger("api.security")
+
+
+def _hash_email(email: str) -> str:
+    """Return a short, non-reversible tag for an email.
+
+    Security events log this instead of the raw address so a log drain or Sentry
+    breach cannot harvest a registry of user emails, while repeated attempts on the
+    same account can still be correlated (log data-minimization, GDPR).
+
+    :param email: The email address to tag.
+    :return: A truncated SHA-256 hex digest of the normalized email.
+    """
+    return hashlib.sha256(email.strip().lower().encode()).hexdigest()[:16]
 
 
 def log_login_success(user_id: UUID, email: str, request: "Request | None" = None) -> None:
@@ -26,7 +40,7 @@ def log_login_success(user_id: UUID, email: str, request: "Request | None" = Non
         extra={
             "event": "login_success",
             "user_id": str(user_id),
-            "email": email,
+            "email_hash": _hash_email(email),
             "ip": ip,
         },
     )
@@ -44,7 +58,7 @@ def log_login_failure(email: str, reason: str, request: "Request | None" = None)
         "Login failed",
         extra={
             "event": "login_failure",
-            "email": email,
+            "email_hash": _hash_email(email),
             "reason": reason,
             "ip": ip,
         },
@@ -64,7 +78,7 @@ def log_registration(user_id: UUID, email: str, request: "Request | None" = None
         extra={
             "event": "registration",
             "user_id": str(user_id),
-            "email": email,
+            "email_hash": _hash_email(email),
             "ip": ip,
         },
     )
@@ -117,7 +131,7 @@ def log_password_reset_requested(email: str, request: "Request | None" = None) -
         "Password reset requested",
         extra={
             "event": "password_reset_requested",
-            "email": email,
+            "email_hash": _hash_email(email),
             "ip": ip,
         },
     )
@@ -153,7 +167,7 @@ def log_account_deletion(user_id: UUID, email: str, request: "Request | None" = 
         extra={
             "event": "account_deletion",
             "user_id": str(user_id),
-            "email": email,
+            "email_hash": _hash_email(email),
             "ip": ip,
         },
     )

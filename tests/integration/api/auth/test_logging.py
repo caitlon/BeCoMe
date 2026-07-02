@@ -44,7 +44,8 @@ class TestLogLoginSuccess:
         # THEN
         extra = mock_logger.info.call_args[1]["extra"]
         assert extra["user_id"] == str(user_id)
-        assert extra["email"] == email
+        assert "email" not in extra  # raw email is never logged (GDPR)
+        assert "email_hash" in extra
 
     def test_extracts_ip_from_request(self):
         """Login success extracts IP from request object."""
@@ -108,7 +109,8 @@ class TestLogLoginFailure:
 
         # THEN
         extra = mock_logger.warning.call_args[1]["extra"]
-        assert extra["email"] == email
+        assert "email" not in extra  # raw email is never logged (GDPR)
+        assert "email_hash" in extra
         assert extra["reason"] == reason
 
     def test_extracts_ip_from_request(self):
@@ -142,7 +144,8 @@ class TestLogLoginFailure:
         mock_logger.warning.assert_called_once()
         extra = mock_logger.warning.call_args[1]["extra"]
         assert extra["event"] == "login_failure"
-        assert extra["email"] == email
+        assert "email" not in extra  # raw email is never logged (GDPR)
+        assert "email_hash" in extra
         assert extra["reason"] == reason
         assert extra["ip"] == "unknown"
 
@@ -178,7 +181,8 @@ class TestLogRegistration:
         # THEN
         extra = mock_logger.info.call_args[1]["extra"]
         assert extra["user_id"] == str(user_id)
-        assert extra["email"] == email
+        assert "email" not in extra  # raw email is never logged (GDPR)
+        assert "email_hash" in extra
 
     def test_extracts_ip_from_request(self):
         """Registration extracts IP from request."""
@@ -306,7 +310,8 @@ class TestLogAccountDeletion:
         extra = mock_logger.info.call_args[1]["extra"]
         assert extra["event"] == "account_deletion"
         assert extra["user_id"] == str(user_id)
-        assert extra["email"] == email
+        assert "email" not in extra  # raw email is never logged (GDPR)
+        assert "email_hash" in extra
 
     def test_extracts_ip_from_request(self):
         """Account deletion extracts IP from request."""
