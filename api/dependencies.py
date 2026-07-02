@@ -14,7 +14,6 @@ from fastapi import Depends, HTTPException, status
 from sqlmodel import Session
 
 from api.auth.dependencies import CurrentUser
-from api.auth.revocation_store import InMemoryRevocationStore, RevocationStore
 from api.config import get_settings
 from api.db.models import Project
 from api.db.session import get_session
@@ -148,19 +147,6 @@ def get_storage_service() -> StorageService | None:
         return RailwayBucketStorageService(settings)
     except StorageConfigurationError:
         return None
-
-
-# --- Revocation Store ---
-
-_revocation_store: RevocationStore = InMemoryRevocationStore()
-
-
-def get_revocation_store() -> RevocationStore:
-    """Return the process-wide revocation store.
-
-    In-memory until PR 2 wires a Redis-backed store selected by settings.
-    """
-    return _revocation_store
 
 
 # --- Authorization Dependencies ---

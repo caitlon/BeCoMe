@@ -3,7 +3,11 @@
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from api.auth.revocation_store import InMemoryRevocationStore
+from api.auth.revocation_store import (
+    InMemoryRevocationStore,
+    RevocationStore,
+    get_revocation_store,
+)
 
 
 def test_revoked_jti_is_reported_revoked():
@@ -30,3 +34,10 @@ def test_valid_after_roundtrip():
     ts = datetime.now(UTC)
     store.set_user_valid_after(uid, ts)
     assert store.get_user_valid_after(uid) == ts
+
+
+def test_get_revocation_store_returns_singleton():
+    first = get_revocation_store()
+    second = get_revocation_store()
+    assert first is second
+    assert isinstance(first, RevocationStore)

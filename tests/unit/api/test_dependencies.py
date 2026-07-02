@@ -6,14 +6,12 @@ from uuid import uuid4
 import pytest
 from fastapi import HTTPException
 
-from api.auth.revocation_store import RevocationStore
 from api.config import Settings
 from api.dependencies import (
     AccessLevel,
     RequireProjectAccess,
     get_email_service,
     get_password_reset_service,
-    get_revocation_store,
     get_storage_service,
 )
 from api.services.email.console_email_sender import ConsoleEmailSender
@@ -232,21 +230,3 @@ class TestRequireProjectAccess:
         assert extra["project_id"] == str(project_id)
         assert extra["user_id"] == str(user_id)
         assert extra["required_level"] == "admin"
-
-
-class TestGetRevocationStore:
-    """Tests for the get_revocation_store factory function."""
-
-    def test_returns_singleton_implementing_the_protocol(self):
-        """
-        GIVEN the revocation store provider
-        WHEN get_revocation_store is called twice
-        THEN it returns the same RevocationStore instance
-        """
-        # WHEN
-        first = get_revocation_store()
-        second = get_revocation_store()
-
-        # THEN
-        assert first is second
-        assert isinstance(first, RevocationStore)

@@ -25,6 +25,7 @@ from api.auth.logging import (
     log_password_reset_requested,
     log_registration,
 )
+from api.auth.revocation_store import RevocationStore, get_revocation_store
 from api.config import get_settings
 from api.dependencies import get_email_service, get_password_reset_service, get_user_service
 from api.middleware.rate_limit import LIMIT_AUTH_ENDPOINTS, LIMIT_PWD_RESET, limiter
@@ -120,6 +121,7 @@ def login(
 def refresh_token(
     request: Request,
     data: RefreshTokenRequest,
+    store: Annotated[RevocationStore, Depends(get_revocation_store)],
 ) -> TokenResponse:
     """Get new access token using refresh token.
 
@@ -132,7 +134,7 @@ def refresh_token(
     :raises HTTPException: If refresh token is invalid
     """
     try:
-        payload = decode_refresh_token(data.refresh_token)
+        payload = decode_refresh_token(data.refresh_token, store)
     except TokenError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -156,6 +158,7 @@ def refresh_token(
 )
 def logout(
     token_payload: Annotated[TokenPayload, Depends(get_current_token_payload)],
+    store: Annotated[RevocationStore, Depends(get_revocation_store)],
 ) -> None:
     """Revoke current access token.
 
@@ -164,7 +167,7 @@ def logout(
 
     :param token_payload: Current token payload from JWT
     """
-    revoke_token(token_payload.jti)
+    revoke_token(token_payload.jti, store)
 
 
 @router.post(

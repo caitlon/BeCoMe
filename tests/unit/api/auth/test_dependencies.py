@@ -10,19 +10,21 @@ from fastapi import HTTPException
 
 from api.auth.dependencies import get_current_token_payload, get_current_user
 from api.auth.jwt import ALGORITHM, create_access_token, revoke_token
-from api.auth.token_blacklist import TokenBlacklist
+from api.auth.revocation_store import InMemoryRevocationStore
 from api.config import get_settings
 from api.logging_context import get_user_id
+
+
+@pytest.fixture
+def store() -> InMemoryRevocationStore:
+    """Provide a fresh in-memory revocation store per test."""
+    return InMemoryRevocationStore()
 
 
 class TestGetCurrentUser:
     """Tests for get_current_user dependency."""
 
-    def setup_method(self):
-        """Reset blacklist before each test."""
-        TokenBlacklist.reset()
-
-    def test_returns_user_for_valid_token(self):
+    def test_returns_user_for_valid_token(self, store):
         """Valid token returns corresponding user."""
         # GIVEN
         user_id = uuid4()
@@ -37,13 +39,13 @@ class TestGetCurrentUser:
             mock_service.get_by_id.return_value = mock_user
             mock_service_class.return_value = mock_service
 
-            result = asyncio.run(get_current_user(token, mock_session))
+            result = asyncio.run(get_current_user(token, mock_session, store))
 
         # THEN
         assert result == mock_user
         mock_service.get_by_id.assert_called_once_with(user_id)
 
-    def test_binds_user_id_to_logging_context(self):
+    def test_binds_user_id_to_logging_context(self, store):
         """A successful resolution binds the acting user ID to the context."""
         # GIVEN
         user_id = uuid4()
@@ -57,7 +59,7 @@ class TestGetCurrentUser:
                 mock_service = MagicMock()
                 mock_service.get_by_id.return_value = mock_user
                 mock_service_class.return_value = mock_service
-                await get_current_user(token, mock_session)
+                await get_current_user(token, mock_session, store)
             return get_user_id()
 
         # WHEN
@@ -66,7 +68,7 @@ class TestGetCurrentUser:
         # THEN
         assert bound == str(user_id)
 
-    def test_raises_401_for_invalid_token(self):
+    def test_raises_401_for_invalid_token(self, store):
         """Invalid token raises HTTPException 401."""
         # GIVEN
         invalid_token = "invalid.token.here"
@@ -74,12 +76,12 @@ class TestGetCurrentUser:
 
         # WHEN / THEN
         with pytest.raises(HTTPException) as exc_info:
-            asyncio.run(get_current_user(invalid_token, mock_session))
+            asyncio.run(get_current_user(invalid_token, mock_session, store))
 
         assert exc_info.value.status_code == 401
         assert "Could not validate credentials" in exc_info.value.detail
 
-    def test_raises_401_for_nonexistent_user(self):
+    def test_raises_401_for_nonexistent_user(self, store):
         """Valid token but non-existent user raises HTTPException 401."""
         # GIVEN
         user_id = uuid4()
@@ -94,12 +96,12 @@ class TestGetCurrentUser:
 
             # THEN
             with pytest.raises(HTTPException) as exc_info:
-                asyncio.run(get_current_user(token, mock_session))
+                asyncio.run(get_current_user(token, mock_session, store))
 
         assert exc_info.value.status_code == 401
         assert "Could not validate credentials" in exc_info.value.detail
 
-    def test_raises_401_for_revoked_token(self):
+    def test_raises_401_for_revoked_token(self, store):
         """Revoked token raises HTTPException 401."""
         # GIVEN
         user_id = uuid4()
@@ -109,11 +111,11 @@ class TestGetCurrentUser:
         # Extract JTI and revoke
         settings = get_settings()
         payload = jwt.decode(token, settings.secret_key, algorithms=[ALGORITHM])
-        revoke_token(payload["jti"])
+        revoke_token(payload["jti"], store)
 
         # WHEN / THEN
         with pytest.raises(HTTPException) as exc_info:
-            asyncio.run(get_current_user(token, mock_session))
+            asyncio.run(get_current_user(token, mock_session, store))
 
         assert exc_info.value.status_code == 401
 
@@ -121,48 +123,44 @@ class TestGetCurrentUser:
 class TestGetCurrentTokenPayload:
     """Tests for get_current_token_payload dependency."""
 
-    def setup_method(self):
-        """Reset blacklist before each test."""
-        TokenBlacklist.reset()
-
-    def test_returns_payload_for_valid_token(self):
+    def test_returns_payload_for_valid_token(self, store):
         """Valid token returns TokenPayload."""
         # GIVEN
         user_id = uuid4()
         token = create_access_token(user_id)
 
         # WHEN
-        payload = get_current_token_payload(token)
+        payload = get_current_token_payload(token, store)
 
         # THEN
         assert payload.user_id == user_id
         assert payload.token_type == "access"
         assert payload.jti is not None
 
-    def test_raises_401_for_invalid_token(self):
+    def test_raises_401_for_invalid_token(self, store):
         """Invalid token raises HTTPException 401."""
         # GIVEN
         invalid_token = "invalid.token.here"
 
         # WHEN / THEN
         with pytest.raises(HTTPException) as exc_info:
-            get_current_token_payload(invalid_token)
+            get_current_token_payload(invalid_token, store)
 
         assert exc_info.value.status_code == 401
         assert "Could not validate credentials" in exc_info.value.detail
 
-    def test_raises_401_for_malformed_token(self):
+    def test_raises_401_for_malformed_token(self, store):
         """Malformed token raises HTTPException 401."""
         # GIVEN
         malformed_token = "not-a-jwt"
 
         # WHEN / THEN
         with pytest.raises(HTTPException) as exc_info:
-            get_current_token_payload(malformed_token)
+            get_current_token_payload(malformed_token, store)
 
         assert exc_info.value.status_code == 401
 
-    def test_raises_401_for_revoked_token(self):
+    def test_raises_401_for_revoked_token(self, store):
         """Revoked token raises HTTPException 401."""
         # GIVEN
         user_id = uuid4()
@@ -171,10 +169,10 @@ class TestGetCurrentTokenPayload:
         # Extract JTI and revoke
         settings = get_settings()
         payload = jwt.decode(token, settings.secret_key, algorithms=[ALGORITHM])
-        revoke_token(payload["jti"])
+        revoke_token(payload["jti"], store)
 
         # WHEN / THEN
         with pytest.raises(HTTPException) as exc_info:
-            get_current_token_payload(token)
+            get_current_token_payload(token, store)
 
         assert exc_info.value.status_code == 401

@@ -56,3 +56,14 @@ class InMemoryRevocationStore:
         with self._lock:
             self._revoked_jti.clear()
             self._user_valid_after.clear()
+
+
+_revocation_store: RevocationStore = InMemoryRevocationStore()
+
+
+def get_revocation_store() -> RevocationStore:
+    """Return the process-wide revocation store.
+
+    In-memory until PR 2 wires a Redis-backed store selected by settings.
+    """
+    return _revocation_store
