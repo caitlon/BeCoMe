@@ -19,13 +19,13 @@ class TestRateLimitHandler:
         request = MagicMock()
         request.url.path = "/auth/login"
         request.state.request_id = "rid-9"
-        request.headers.get.return_value = "203.0.113.7"
         exc = MagicMock()
 
         # WHEN
         with (
             patch("api.middleware.rate_limit.logger") as mock_logger,
             patch("api.middleware.rate_limit._rate_limit_exceeded_handler"),
+            patch("api.middleware.rate_limit.get_client_ip", return_value="203.0.113.7"),
         ):
             rate_limit_handler(request, exc)
 

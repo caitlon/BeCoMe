@@ -28,6 +28,7 @@ def _settings(
         secret_key="a-sufficiently-strong-secret-value-for-tests",
         database_url="postgresql://user:pass@host:5432/db",
         redis_url="redis://localhost:6379/0",
+        cloudflare_origin_secret="an-origin-verify-secret-for-tests",
     )
 
 
