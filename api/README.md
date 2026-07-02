@@ -21,7 +21,7 @@ api/
 │   ├── jwt.py              # Token creation/validation
 │   ├── password.py         # Password hashing (bcrypt)
 │   ├── dependencies.py     # CurrentUser dependency
-│   ├── token_blacklist.py  # Revoked tokens storage
+│   ├── revocation_store.py # Token revocation store (in-memory / Redis)
 │   └── logging.py          # Auth event logging
 ├── db/                 # Database layer
 │   ├── models.py           # SQLModel entities
