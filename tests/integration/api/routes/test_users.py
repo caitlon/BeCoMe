@@ -117,3 +117,24 @@ class TestDeleteAccountWithOwnedProjects:
 
         # THEN
         assert response.status_code == status.HTTP_204_NO_CONTENT
+
+
+class TestChangePasswordRevokesSessions:
+    """Changing the password invalidates tokens issued earlier (M1)."""
+
+    def test_change_password_revokes_existing_tokens(self, client):
+        """After a password change, a previously issued access token is rejected."""
+        # GIVEN a logged-in user whose token works
+        token = register_and_login(client, "changepw@example.com")
+        assert client.get("/api/v1/auth/me", headers=auth_header(token)).status_code == 200
+
+        # WHEN the password is changed
+        resp = client.put(
+            "/api/v1/users/me/password",
+            headers=auth_header(token),
+            json={"current_password": DEFAULT_TEST_PASSWORD, "new_password": "NewSecurePass456!"},
+        )
+        assert resp.status_code == 204
+
+        # THEN the old token no longer works
+        assert client.get("/api/v1/auth/me", headers=auth_header(token)).status_code == 401

@@ -27,6 +27,7 @@ def _settings(
         betterstack_ingesting_host=betterstack_ingesting_host,
         secret_key="a-sufficiently-strong-secret-value-for-tests",
         database_url="postgresql://user:pass@host:5432/db",
+        redis_url="redis://localhost:6379/0",
     )
 
 

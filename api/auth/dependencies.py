@@ -13,6 +13,7 @@ from fastapi.security import OAuth2PasswordBearer
 from sqlmodel import Session
 
 from api.auth.jwt import TokenError, TokenPayload, decode_access_token, decode_token
+from api.auth.revocation_store import RevocationStore, get_revocation_store
 from api.db.models import User
 from api.db.session import get_session
 from api.logging_context import set_user_id
@@ -24,6 +25,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 async def get_current_user(
     token: Annotated[str, Depends(oauth2_scheme)],
     session: Annotated[Session, Depends(get_session)],
+    store: Annotated[RevocationStore, Depends(get_revocation_store)],
 ) -> User:
     """Extract and validate current user from JWT token.
 
@@ -36,6 +38,7 @@ async def get_current_user(
 
     :param token: JWT access token from Authorization header
     :param session: Injected database session
+    :param store: Revocation store consulted during token validation
     :return: Authenticated User
     :raises HTTPException: 401 if token invalid or user not found
     """
@@ -45,7 +48,7 @@ async def get_current_user(
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
-        user_id = decode_access_token(token)
+        user_id = decode_access_token(token, store)
     except TokenError as e:
         raise credentials_exception from e
 
@@ -62,12 +65,14 @@ CurrentUser = Annotated[User, Depends(get_current_user)]
 
 def get_current_token_payload(
     token: Annotated[str, Depends(oauth2_scheme)],
+    store: Annotated[RevocationStore, Depends(get_revocation_store)],
 ) -> TokenPayload:
     """Extract and validate token payload from JWT.
 
     Used for logout to get JTI without loading user from DB.
 
     :param token: JWT access token from Authorization header
+    :param store: Revocation store consulted during token validation
     :return: TokenPayload with jti, exp, and user_id
     :raises HTTPException: 401 if token invalid
     """
@@ -77,6 +82,6 @@ def get_current_token_payload(
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
-        return decode_token(token, "access")
+        return decode_token(token, "access", store)
     except TokenError as e:
         raise credentials_exception from e
