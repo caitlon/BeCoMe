@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Self
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from api.utils.photo_links import build_photo_url
 from api.utils.sanitization import sanitize_text, sanitize_text_or_none
@@ -15,6 +15,8 @@ if TYPE_CHECKING:
 
 class ProjectCreate(BaseModel):
     """Request to create a new project."""
+
+    model_config = ConfigDict(extra="forbid")
 
     name: str = Field(..., min_length=1, max_length=255, description="Project name")
     description: str | None = Field(None, max_length=2000, description="Project description")
@@ -48,6 +50,8 @@ class ProjectCreate(BaseModel):
 class ProjectUpdate(BaseModel):
     """Request to update a project (partial update)."""
 
+    model_config = ConfigDict(extra="forbid")
+
     name: str | None = Field(None, min_length=1, max_length=255)
     description: str | None = Field(None, max_length=2000)
     scale_min: float | None = None
@@ -63,6 +67,8 @@ class ProjectUpdate(BaseModel):
 
 class TransferOwnershipRequest(BaseModel):
     """Request to transfer project ownership to another project member."""
+
+    model_config = ConfigDict(extra="forbid")
 
     new_admin_id: UUID = Field(..., description="User ID of the member to promote to admin")
 
