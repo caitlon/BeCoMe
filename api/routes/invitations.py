@@ -9,6 +9,7 @@ from api.auth.dependencies import CurrentUser
 from api.dependencies import ProjectAdmin, ProjectMember, get_invitation_service
 from api.exceptions import AlreadyInvitedError, UserNotFoundForInvitationError
 from api.middleware.rate_limit import LIMIT_WRITE, limiter
+from api.pagination import PaginationParams
 from api.schemas.invitation import (
     InvitationListItemResponse,
     InvitationResponse,
@@ -75,14 +76,18 @@ def list_project_invitations(
     project_id: UUID,
     project: ProjectMember,
     invitation_service: Annotated[InvitationService, Depends(get_invitation_service)],
+    pagination: Annotated[PaginationParams, Depends()],
 ) -> list[ProjectInvitationResponse]:
-    """Get all pending invitations for a project. Accessible to project members.
+    """Get pending invitations for a project. Accessible to project members.
 
     :param project: Project (verified member access)
     :param invitation_service: Invitation service
+    :param pagination: Bounded limit/offset (capped at MAX_PAGE_SIZE)
     :return: List of pending invitations with invitee details
     """
-    invitations = invitation_service.get_project_invitations(project.id)
+    invitations = invitation_service.get_project_invitations(
+        project.id, limit=pagination.limit, offset=pagination.offset
+    )
     return [ProjectInvitationResponse.from_model(inv, invitee) for inv, invitee in invitations]
 
 
@@ -90,14 +95,18 @@ def list_project_invitations(
 def list_my_invitations(
     current_user: CurrentUser,
     invitation_service: Annotated[InvitationService, Depends(get_invitation_service)],
+    pagination: Annotated[PaginationParams, Depends()],
 ) -> list[InvitationListItemResponse]:
-    """Get all pending invitations for the current user.
+    """Get pending invitations for the current user.
 
     :param current_user: Authenticated user
     :param invitation_service: Invitation service
+    :param pagination: Bounded limit/offset (capped at MAX_PAGE_SIZE)
     :return: List of pending invitations with project details
     """
-    invitations = invitation_service.get_user_invitations(current_user.id)
+    invitations = invitation_service.get_user_invitations(
+        current_user.id, limit=pagination.limit, offset=pagination.offset
+    )
     return [
         InvitationListItemResponse.from_model(
             item.invitation,

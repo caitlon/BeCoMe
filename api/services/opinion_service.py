@@ -17,10 +17,15 @@ logger = logging.getLogger("api.service.opinion")
 class OpinionService(BaseService):
     """Service for expert opinion operations."""
 
-    def get_opinions_for_project(self, project_id: UUID) -> list[OpinionWithUser]:
-        """Get all opinions for a project with user details.
+    def get_opinions_for_project(
+        self, project_id: UUID, limit: int | None = None, offset: int = 0
+    ) -> list[OpinionWithUser]:
+        """Get opinions for a project with user details.
 
         :param project_id: Project UUID
+        :param limit: Max rows to return; ``None`` returns every opinion (the
+            aggregation and export paths need to see all experts).
+        :param offset: Rows to skip when a limit is set.
         :return: List of OpinionWithUser instances ordered by creation date
         """
         statement = (
@@ -29,6 +34,8 @@ class OpinionService(BaseService):
             .where(ExpertOpinion.project_id == project_id)
             .order_by(col(ExpertOpinion.created_at))
         )
+        if limit is not None:
+            statement = statement.limit(limit).offset(offset)
         results = self._session.exec(statement).all()
         return [OpinionWithUser(opinion=opinion, user=user) for opinion, user in results]
 
