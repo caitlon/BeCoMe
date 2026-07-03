@@ -142,4 +142,4 @@ class TestInvitationDecline:
             f"/projects/{project['id']}",
             headers=auth_headers(expert_token),
         )
-        assert project_resp.status_code == 403
+        assert project_resp.status_code == 404

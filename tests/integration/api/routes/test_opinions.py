@@ -63,7 +63,7 @@ class TestListOpinions:
         assert response.status_code == 401
 
     def test_requires_membership(self, client):
-        """Returns 403 for non-members."""
+        """Returns 404 for non-members (project existence stays hidden)."""
         # GIVEN
         admin_token = register_and_login(client, "admin@example.com")
         other_token = register_and_login(client, "other@example.com")
@@ -76,7 +76,7 @@ class TestListOpinions:
         )
 
         # THEN
-        assert response.status_code == 403
+        assert response.status_code == 404
 
     def test_returns_404_for_nonexistent_project(self, client):
         """Returns 404 for non-existent project."""
@@ -284,7 +284,7 @@ class TestSubmitOpinion:
         assert "within project scale" in response.json()["detail"]
 
     def test_requires_membership(self, client):
-        """Returns 403 for non-members."""
+        """Returns 404 for non-members (project existence stays hidden)."""
         # GIVEN
         admin_token = register_and_login(client, "admin@example.com")
         other_token = register_and_login(client, "other@example.com")
@@ -303,7 +303,7 @@ class TestSubmitOpinion:
         )
 
         # THEN
-        assert response.status_code == 403
+        assert response.status_code == 404
 
     def test_triggers_calculation(self, client):
         """Triggers recalculation after submitting opinion."""
@@ -367,7 +367,7 @@ class TestDeleteOpinion:
         assert response.status_code == 404
 
     def test_requires_membership(self, client):
-        """Returns 403 for non-members."""
+        """Returns 404 for non-members (project existence stays hidden)."""
         # GIVEN
         admin_token = register_and_login(client, "admin@example.com")
         other_token = register_and_login(client, "other@example.com")
@@ -380,7 +380,7 @@ class TestDeleteOpinion:
         )
 
         # THEN
-        assert response.status_code == 403
+        assert response.status_code == 404
 
     def test_triggers_recalculation(self, client):
         """Triggers recalculation after deleting opinion."""
@@ -537,7 +537,7 @@ class TestGetResult:
         assert data["likert_decision"] is None
 
     def test_requires_membership(self, client):
-        """Returns 403 for non-members."""
+        """Returns 404 for non-members (project existence stays hidden)."""
         # GIVEN
         admin_token = register_and_login(client, "admin@example.com")
         other_token = register_and_login(client, "other@example.com")
@@ -550,7 +550,7 @@ class TestGetResult:
         )
 
         # THEN
-        assert response.status_code == 403
+        assert response.status_code == 404
 
 
 class TestOpinionFlow:

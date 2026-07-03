@@ -16,7 +16,7 @@ class TestNonMemberAccess:
     """Users who are not project members must be denied access."""
 
     def test_non_member_cannot_access_project(self, http_client):
-        """GET project by a non-member returns 403."""
+        """GET project by a non-member returns 404 (existence hidden)."""
         # GIVEN — two users, one owns a project
         owner_email = unique_email("owner")
         outsider_email = unique_email("outsider")
@@ -31,10 +31,10 @@ class TestNonMemberAccess:
         )
 
         # THEN
-        assert response.status_code == 403
+        assert response.status_code == 404
 
     def test_non_member_cannot_submit_opinion(self, http_client):
-        """POST opinion by a non-member returns 403."""
+        """POST opinion by a non-member returns 404 (existence hidden)."""
         # GIVEN
         owner_email = unique_email("owner")
         outsider_email = unique_email("outsider")
@@ -55,7 +55,7 @@ class TestNonMemberAccess:
         )
 
         # THEN
-        assert response.status_code == 403
+        assert response.status_code == 404
 
 
 @pytest.mark.e2e
