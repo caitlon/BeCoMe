@@ -27,6 +27,7 @@ from api.auth.logging import (
     log_registration,
 )
 from api.auth.login_throttle import LoginThrottle, get_login_throttle
+from api.auth.reset_throttle import ResetEmailThrottle, get_reset_email_throttle
 from api.auth.revocation_store import RevocationStore, get_revocation_store
 from api.dependencies import get_email_service, get_password_reset_service, get_user_service
 from api.exceptions import InvalidCredentialsError, LoginThrottledError
@@ -233,6 +234,7 @@ async def forgot_password(
     data: ForgotPasswordRequest,
     service: Annotated[PasswordResetService, Depends(get_password_reset_service)],
     email_service: Annotated[EmailSender, Depends(get_email_service)],
+    throttle: Annotated[ResetEmailThrottle, Depends(get_reset_email_throttle)],
 ) -> dict[str, str]:
     """Start the password reset flow for the given email.
 
@@ -247,15 +249,19 @@ async def forgot_password(
     :param email_service: Email sender
     :return: A fixed acknowledgement message
     """
-    reset_url = service.create_reset_token(data.email)
-    if reset_url is not None:
-        try:
-            await email_service.send_password_reset(to_email=data.email, reset_url=reset_url)
-        except EmailSendError:
-            logger.warning(
-                "Failed to send password reset email",
-                extra={"event": "password_reset_email_failed"},
-            )
+    # Cap reset emails per address (a hashed key) so a known inbox cannot be flooded by
+    # rotating IPs past the per-IP limiter. The response is unchanged whether or not a
+    # send happens, preserving the anti-enumeration guarantee.
+    if throttle.allow(data.email):
+        reset_url = service.create_reset_token(data.email)
+        if reset_url is not None:
+            try:
+                await email_service.send_password_reset(to_email=data.email, reset_url=reset_url)
+            except EmailSendError:
+                logger.warning(
+                    "Failed to send password reset email",
+                    extra={"event": "password_reset_email_failed"},
+                )
 
     log_password_reset_requested(data.email, request)
     return {"detail": "If that email is registered, a reset link has been sent."}
