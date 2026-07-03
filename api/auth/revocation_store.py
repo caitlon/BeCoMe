@@ -111,8 +111,6 @@ def get_revocation_store() -> RevocationStore:
     """
     settings = get_settings()
     if settings.redis_url:
-        client = redis.from_url(  # type: ignore[no-untyped-call]
-            settings.redis_url, socket_connect_timeout=2, socket_timeout=2
-        )
+        client = redis.from_url(settings.redis_url, socket_connect_timeout=2, socket_timeout=2)
         return RedisRevocationStore(client)
     return InMemoryRevocationStore()
