@@ -9,6 +9,7 @@ def _prod_env(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@host:5432/db")
     monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
     monkeypatch.setenv("CLOUDFLARE_ORIGIN_SECRET", "an-origin-verify-secret")
+    monkeypatch.setenv("CORS_ORIGINS", '["https://app.example.com"]')
 
 
 class TestDocsExposure:

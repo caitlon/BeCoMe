@@ -29,6 +29,7 @@ def _settings(
         database_url="postgresql://user:pass@host:5432/db",
         redis_url="redis://localhost:6379/0",
         cloudflare_origin_secret="an-origin-verify-secret-for-tests",
+        cors_origins=["https://app.example.com"],
     )
 
 
