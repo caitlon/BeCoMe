@@ -459,6 +459,31 @@ class TestListMembers:
         # THEN
         assert response.status_code == 404
 
+    def test_list_members_respects_pagination(self, client):
+        """limit/offset bound the members page; the default returns every member."""
+        # GIVEN a project with two members (admin + expert)
+        owner = register_and_login(client, "owner@example.com")
+        project = create_project(client, owner)
+        _add_expert(client, owner, project["id"], "expert@example.com")
+
+        # THEN the default returns both, while limit/offset page through them
+        everyone = client.get(
+            f"/api/v1/projects/{project['id']}/members", headers=auth_header(owner)
+        )
+        assert len(everyone.json()) == 2
+
+        first = client.get(
+            f"/api/v1/projects/{project['id']}/members?limit=1", headers=auth_header(owner)
+        )
+        assert len(first.json()) == 1
+
+        second = client.get(
+            f"/api/v1/projects/{project['id']}/members?limit=1&offset=1",
+            headers=auth_header(owner),
+        )
+        assert len(second.json()) == 1
+        assert first.json()[0]["user_id"] != second.json()[0]["user_id"]
+
 
 class TestRemoveMember:
     """Tests for DELETE /api/v1/projects/{id}/members/{user_id}."""

@@ -17,6 +17,7 @@ from api.dependencies import (
     get_result_export_service,
 )
 from api.middleware.rate_limit import LIMIT_STANDARD, LIMIT_WRITE, limiter
+from api.pagination import PaginationParams
 from api.schemas.calculation import CalculationResultResponse, FuzzyNumberOutput
 from api.schemas.opinion import OpinionCreate, OpinionResponse
 from api.services.calculation_service import CalculationService
@@ -32,14 +33,18 @@ def list_opinions(
     project_id: UUID,
     project: ProjectMember,
     opinion_service: Annotated[OpinionService, Depends(get_opinion_service)],
+    pagination: Annotated[PaginationParams, Depends()],
 ) -> list[OpinionResponse]:
-    """Get all opinions for a project. Only members can access.
+    """Get opinions for a project. Only members can access.
 
     :param project: Project (verified membership)
     :param opinion_service: Opinion service
+    :param pagination: Bounded limit/offset (capped at MAX_PAGE_SIZE)
     :return: List of opinions with user details
     """
-    opinions = opinion_service.get_opinions_for_project(project.id)
+    opinions = opinion_service.get_opinions_for_project(
+        project.id, limit=pagination.limit, offset=pagination.offset
+    )
     return [OpinionResponse.from_model(item.opinion, item.user) for item in opinions]
 
 
