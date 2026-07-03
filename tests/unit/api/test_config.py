@@ -194,6 +194,7 @@ class TestEnvironmentResolution:
         monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@host:5432/db")
         monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
         monkeypatch.setenv("CLOUDFLARE_ORIGIN_SECRET", "an-origin-verify-secret")
+        monkeypatch.setenv("CORS_ORIGINS", '["https://app.example.com"]')
 
         # WHEN
         settings = Settings()
@@ -326,6 +327,7 @@ class TestProductionInvariants:
         monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@host:5432/db")
         monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
         monkeypatch.setenv("CLOUDFLARE_ORIGIN_SECRET", "an-origin-verify-secret")
+        monkeypatch.setenv("CORS_ORIGINS", '["https://app.example.com"]')
 
         # WHEN
         settings = Settings()
@@ -382,6 +384,115 @@ class TestProductionInvariants:
 
         # WHEN / THEN
         with pytest.raises(ValidationError):
+            Settings()
+
+    def test_rejects_localhost_cors_in_production(self, monkeypatch, tmp_path):
+        """
+        GIVEN the production profile with only localhost CORS origins
+        WHEN Settings is constructed
+        THEN validation fails so a forgotten frontend origin is caught at boot
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("APP_ENV", "prod")
+        monkeypatch.setenv("SECRET_KEY", "a-sufficiently-strong-secret-value")
+        monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@host:5432/db")
+        monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
+        monkeypatch.setenv("CLOUDFLARE_ORIGIN_SECRET", "an-origin-verify-secret")
+        monkeypatch.setenv("CORS_ORIGINS", '["http://localhost:3000"]')
+
+        # WHEN / THEN
+        with pytest.raises(ValidationError, match="cors_origins"):
+            Settings()
+
+
+class TestStagingInvariants:
+    """The staging (TEST) profile enforces the same core invariants as prod."""
+
+    def _configure_staging(self, monkeypatch, tmp_path):
+        """Set a fully valid *deployed* staging environment; each test weakens one part.
+
+        The conftest sets TESTING=1 for the whole suite, but the real staging deploy
+        does not, so it is cleared here for the TEST-profile invariants to fire.
+        """
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("TESTING", raising=False)
+        monkeypatch.setenv("APP_ENV", "test")
+        monkeypatch.setenv("SECRET_KEY", "a-sufficiently-strong-secret-value")
+        monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@host:5432/db")
+        monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
+        monkeypatch.setenv("CORS_ORIGINS", '["https://staging.example.com"]')
+
+    def test_accepts_fully_configured_staging_without_cloudflare(self, monkeypatch, tmp_path):
+        """
+        GIVEN a fully configured staging profile with no Cloudflare secret
+        WHEN Settings is constructed
+        THEN validation passes (the origin lock is production-only)
+        """
+        # GIVEN
+        self._configure_staging(monkeypatch, tmp_path)
+        monkeypatch.delenv("CLOUDFLARE_ORIGIN_SECRET", raising=False)
+
+        # WHEN
+        settings = Settings()
+
+        # THEN
+        assert settings.environment is Environment.TEST
+
+    def test_rejects_insecure_secret_in_staging(self, monkeypatch, tmp_path):
+        """
+        GIVEN the staging profile with a default secret key
+        WHEN Settings is constructed
+        THEN validation fails
+        """
+        # GIVEN
+        self._configure_staging(monkeypatch, tmp_path)
+        monkeypatch.setenv("SECRET_KEY", "changeme")
+
+        # WHEN / THEN
+        with pytest.raises(ValidationError, match="secret_key"):
+            Settings()
+
+    def test_rejects_missing_redis_url_in_staging(self, monkeypatch, tmp_path):
+        """
+        GIVEN the staging profile with no REDIS_URL
+        WHEN Settings is constructed
+        THEN validation fails
+        """
+        # GIVEN
+        self._configure_staging(monkeypatch, tmp_path)
+        monkeypatch.delenv("REDIS_URL", raising=False)
+
+        # WHEN / THEN
+        with pytest.raises(ValidationError, match="redis_url is required"):
+            Settings()
+
+    def test_rejects_localhost_cors_in_staging(self, monkeypatch, tmp_path):
+        """
+        GIVEN the staging profile with only localhost CORS origins
+        WHEN Settings is constructed
+        THEN validation fails
+        """
+        # GIVEN
+        self._configure_staging(monkeypatch, tmp_path)
+        monkeypatch.setenv("CORS_ORIGINS", '["http://localhost:3000"]')
+
+        # WHEN / THEN
+        with pytest.raises(ValidationError, match="cors_origins"):
+            Settings()
+
+    def test_rejects_sqlite_in_staging(self, monkeypatch, tmp_path):
+        """
+        GIVEN the staging profile with a SQLite database URL
+        WHEN Settings is constructed
+        THEN validation fails
+        """
+        # GIVEN
+        self._configure_staging(monkeypatch, tmp_path)
+        monkeypatch.setenv("DATABASE_URL", "sqlite:///./staging.db")
+
+        # WHEN / THEN
+        with pytest.raises(ValidationError, match="SQLite"):
             Settings()
 
 

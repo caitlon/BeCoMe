@@ -5,6 +5,7 @@ from enum import StrEnum
 from functools import lru_cache
 from importlib.metadata import PackageNotFoundError, version
 from typing import Annotated, Any, Literal
+from urllib.parse import urlparse
 
 from pydantic import BeforeValidator, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -79,6 +80,18 @@ def _env_files_for(environment: Environment) -> tuple[str, ...]:
     :return: Ordered tuple of dotenv paths (later entries override earlier).
     """
     return (".env", f".env.{environment.value}")
+
+
+_LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", ""})
+
+
+def _has_remote_cors_origin(origins: list[str]) -> bool:
+    """Return whether any CORS origin targets a non-loopback (deployed) host.
+
+    :param origins: Configured CORS origins.
+    :return: True if at least one origin points at a remote host.
+    """
+    return any((urlparse(origin).hostname or "") not in _LOOPBACK_HOSTS for origin in origins)
 
 
 class Settings(BaseSettings):
@@ -201,30 +214,53 @@ class Settings(BaseSettings):
         return False
 
     @model_validator(mode="after")
-    def _validate_production_invariants(self) -> "Settings":
-        """Reject insecure development defaults when running in production.
+    def _validate_deploy_invariants(self) -> "Settings":
+        """Reject development defaults on the deployed (TEST/PROD) profiles.
+
+        A strong secret, real PostgreSQL database, Redis-backed store, and a real
+        (non-loopback) CORS origin are required on both the staging (TEST) and
+        production (PROD) deploys, since both serve real browser traffic and
+        share the rate-limit / revocation store. The Cloudflare origin lock is
+        required only in production, where the app sits behind Cloudflare.
 
         :return: The validated settings instance.
-        :raises ValueError: If production uses an insecure secret or SQLite.
+        :raises ValueError: If a deployed profile still carries a development
+            default, or production lacks the Cloudflare origin secret.
         """
-        if self.environment is Environment.PROD:
-            if (
-                self.secret_key in _INSECURE_SECRET_KEYS
-                or len(self.secret_key) < _MIN_SECRET_KEY_LENGTH
-            ):
-                raise ValueError(
-                    "secret_key must be a strong non-default value of at least "
-                    f"{_MIN_SECRET_KEY_LENGTH} characters in production"
-                )
-            if self.database_url.startswith("sqlite"):
-                raise ValueError("SQLite is not allowed in production; use PostgreSQL")
-            if not self.redis_url:
-                raise ValueError("redis_url is required in production")
-            if not self.cloudflare_origin_secret:
-                raise ValueError(
-                    "cloudflare_origin_secret is required in production so the client IP "
-                    "cannot be spoofed at the origin (Cloudflare injects X-Origin-Verify)"
-                )
+        # Environment.TEST doubles as the pytest-runner profile (the conftests set
+        # APP_ENV=test with TESTING=1 and weak throwaway secrets), so its invariants
+        # apply only to the real deployed staging, where TESTING is unset. Production
+        # is never used by the test runner, so it is always enforced.
+        is_deploy = self.environment is Environment.PROD or (
+            self.environment is Environment.TEST and not self.testing
+        )
+        if not is_deploy:
+            return self
+
+        profile = self.environment.value
+        if (
+            self.secret_key in _INSECURE_SECRET_KEYS
+            or len(self.secret_key) < _MIN_SECRET_KEY_LENGTH
+        ):
+            raise ValueError(
+                "secret_key must be a strong non-default value of at least "
+                f"{_MIN_SECRET_KEY_LENGTH} characters in the {profile} profile"
+            )
+        if self.database_url.startswith("sqlite"):
+            raise ValueError(f"SQLite is not allowed in the {profile} profile; use PostgreSQL")
+        if not self.redis_url:
+            raise ValueError(f"redis_url is required in the {profile} profile")
+
+        if self.environment is Environment.PROD and not self.cloudflare_origin_secret:
+            raise ValueError(
+                "cloudflare_origin_secret is required in production so the client IP "
+                "cannot be spoofed at the origin (Cloudflare injects X-Origin-Verify)"
+            )
+        if not _has_remote_cors_origin(self.cors_origins):
+            raise ValueError(
+                f"cors_origins must include the deployed frontend origin in the {profile} "
+                "profile; the localhost defaults cannot serve real browser traffic"
+            )
         return self
 
 
