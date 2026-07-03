@@ -189,12 +189,18 @@ class RequireProjectAccess:
     ) -> Project:
         """Verify access level and return project.
 
+        A non-member gets the same 404 as a missing project, so the endpoint
+        never reveals that a project exists to someone with no access to it. A
+        member who merely lacks the required level gets a 403, since being a
+        member already tells them the project exists.
+
         :param project_id: Project UUID from path
         :param current_user: Authenticated user
         :param project_service: Project service for fetching project
         :param membership_service: Membership service for access checks
         :return: Project if user has required access
-        :raises HTTPException: 404 if not found, 403 if insufficient access
+        :raises HTTPException: 404 if the project is missing or the caller is not
+            a member, 403 if the caller is a member without the required level
         """
         project = project_service.get_project(project_id)
         if not project:
@@ -203,46 +209,40 @@ class RequireProjectAccess:
                 detail="Project not found",
             )
 
-        has_access = self._check_access(membership_service, project_id, current_user.id)
-        if not has_access:
-            detail = self._get_error_detail()
-            logger.warning(
-                "Project access denied",
-                extra={
-                    "event": "access_denied",
-                    "project_id": str(project_id),
-                    "user_id": str(current_user.id),
-                    "required_level": self._access_level.value,
-                },
+        if not membership_service.is_member(project_id, current_user.id):
+            self._log_denied(project_id, current_user.id, "not_member")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Project not found",
             )
+
+        if self._access_level == AccessLevel.ADMIN and not membership_service.is_admin(
+            project_id, current_user.id
+        ):
+            self._log_denied(project_id, current_user.id, "insufficient_level")
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=detail,
+                detail="Only project admin can perform this action",
             )
         return project
 
-    def _check_access(
-        self, service: ProjectMembershipService, project_id: UUID, user_id: UUID
-    ) -> bool:
-        """Check if user has required access level.
+    def _log_denied(self, project_id: UUID, user_id: UUID, reason: str) -> None:
+        """Log a project access denial with structured context.
 
-        :param service: Membership service
-        :param project_id: Project ID
-        :param user_id: User ID
-        :return: True if user has required access
+        :param project_id: Project the caller tried to access
+        :param user_id: Caller's user ID
+        :param reason: Why access was denied (not_member or insufficient_level)
         """
-        if self._access_level == AccessLevel.ADMIN:
-            return service.is_admin(project_id, user_id)
-        return service.is_member(project_id, user_id)
-
-    def _get_error_detail(self) -> str:
-        """Get error message for insufficient access.
-
-        :return: Error detail string
-        """
-        if self._access_level == AccessLevel.ADMIN:
-            return "Only project admin can perform this action"
-        return "Not a member of this project"
+        logger.warning(
+            "Project access denied",
+            extra={
+                "event": "access_denied",
+                "project_id": str(project_id),
+                "user_id": str(user_id),
+                "required_level": self._access_level.value,
+                "reason": reason,
+            },
+        )
 
 
 # Pre-configured instances for common use cases

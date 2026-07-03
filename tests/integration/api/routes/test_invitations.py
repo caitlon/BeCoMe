@@ -102,8 +102,8 @@ class TestInviteByEmail:
         # THEN
         assert response.status_code == 404
 
-    def test_invite_not_admin(self, client):
-        """403 returned when non-admin tries to invite."""
+    def test_invite_not_member(self, client):
+        """404 returned when a non-member tries to invite (existence hidden)."""
         # GIVEN
         admin_token = register_and_login(client, "admin@example.com")
         other_token = register_and_login(client, "other@example.com")
@@ -118,7 +118,7 @@ class TestInviteByEmail:
         )
 
         # THEN
-        assert response.status_code == 403
+        assert response.status_code == 404
 
     def test_invite_without_auth(self, client):
         """401 returned when not authenticated."""
@@ -611,7 +611,7 @@ class TestListProjectInvitations:
         )
 
         # THEN
-        assert response.status_code == 403
+        assert response.status_code == 404
 
     def test_requires_authentication(self, client):
         """401 returned when not authenticated."""

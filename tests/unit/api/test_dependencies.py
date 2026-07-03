@@ -203,14 +203,15 @@ class TestRequireProjectAccess:
 
         assert exc_info.value.status_code == 404
 
-    def test_logs_and_raises_403_when_access_denied(self):
-        """Logs an access_denied warning and raises 403 when access is insufficient."""
+    def test_logs_and_raises_403_when_member_lacks_level(self):
+        """A member without the required level gets a logged 403, not a 404."""
         # GIVEN
         project_id = uuid4()
         user_id = uuid4()
         project_service = MagicMock()
         project_service.get_project.return_value = MagicMock()
         membership_service = MagicMock()
+        membership_service.is_member.return_value = True
         membership_service.is_admin.return_value = False
         current_user = MagicMock()
         current_user.id = user_id
@@ -230,3 +231,23 @@ class TestRequireProjectAccess:
         assert extra["project_id"] == str(project_id)
         assert extra["user_id"] == str(user_id)
         assert extra["required_level"] == "admin"
+        assert extra["reason"] == "insufficient_level"
+
+    def test_returns_404_when_not_member(self):
+        """A non-member gets a 404 so project existence stays hidden."""
+        # GIVEN
+        project_id = uuid4()
+        user_id = uuid4()
+        project_service = MagicMock()
+        project_service.get_project.return_value = MagicMock()
+        membership_service = MagicMock()
+        membership_service.is_member.return_value = False
+        current_user = MagicMock()
+        current_user.id = user_id
+        dependency = RequireProjectAccess(AccessLevel.MEMBER)
+
+        # WHEN / THEN
+        with pytest.raises(HTTPException) as exc_info:
+            dependency(project_id, current_user, project_service, membership_service)
+
+        assert exc_info.value.status_code == 404
