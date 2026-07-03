@@ -40,6 +40,10 @@ class InvalidCredentialsError(BeCoMeAPIError):
         self.reason = reason
 
 
+class LoginThrottledError(BeCoMeAPIError):
+    """Raised when an account is temporarily locked after too many failed logins."""
+
+
 class AccountHasOwnedProjectsError(BeCoMeAPIError):
     """Raised when account deletion is blocked because the user still owns projects."""
 

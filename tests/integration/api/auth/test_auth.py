@@ -894,6 +894,37 @@ class TestLoginLockout:
             client.app.dependency_overrides.pop(get_login_throttle, None)
 
 
+class TestLoginStoreUnavailable:
+    """Login fails cleanly with 503 when the session store is down, never a raw 500."""
+
+    def test_login_returns_503_when_session_store_is_down(self, client):
+        """A RevocationStoreError while starting the session becomes a clean 503."""
+        from unittest.mock import MagicMock
+
+        from api.auth.revocation_store import RevocationStoreError, get_revocation_store
+
+        client.post(
+            "/api/v1/auth/register",
+            json={
+                "email": "storedown@example.com",
+                "password": "SecurePass123!",
+                "first_name": "Store",
+                "last_name": "Down",
+            },
+        )
+        broken = MagicMock()
+        broken.start_session.side_effect = RevocationStoreError("redis down")
+        client.app.dependency_overrides[get_revocation_store] = lambda: broken
+        try:
+            response = client.post(
+                "/api/v1/auth/login",
+                data={"username": "storedown@example.com", "password": "SecurePass123!"},
+            )
+            assert response.status_code == 503
+        finally:
+            client.app.dependency_overrides.pop(get_revocation_store, None)
+
+
 class TestLogout:
     """Tests for POST /api/v1/auth/logout."""
 

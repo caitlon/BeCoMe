@@ -11,6 +11,7 @@ from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 
 from api.auth.logging import log_login_failure, log_password_change_failure
+from api.auth.revocation_store import RevocationStoreError
 from api.exceptions import (
     AccountHasOwnedProjectsError,
     BeCoMeAPIError,
@@ -19,6 +20,7 @@ from api.exceptions import (
     InvitationAlreadyUsedError,
     InvitationExpiredError,
     InvitationNotFoundError,
+    LoginThrottledError,
     MemberNotFoundError,
     NotFoundError,
     OpinionNotFoundError,
@@ -61,6 +63,11 @@ EXCEPTION_MAP: dict[type[BeCoMeAPIError], tuple[int, str | None]] = {
     InvalidCredentialsError: (
         status.HTTP_401_UNAUTHORIZED,
         "Incorrect email or password",
+    ),
+    # 429 Too Many Requests
+    LoginThrottledError: (
+        status.HTTP_429_TOO_MANY_REQUESTS,
+        "Too many failed login attempts. Please try again later.",
     ),
     # 409 Conflict
     AccountHasOwnedProjectsError: (
@@ -175,6 +182,32 @@ def unhandled_exception_handler(request: Request, exc: Exception) -> JSONRespons
     )
 
 
+def revocation_store_unavailable_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Return 503 when the revocation/session store (Redis) is unreachable.
+
+    The store is fail-closed, so a Redis fault raises ``RevocationStoreError``. Token
+    validation already converts that to a 401, but the session-write calls in login,
+    refresh, and logout would otherwise surface a raw 500; this maps them to a clean 503.
+
+    :param request: FastAPI request.
+    :param exc: The raised ``RevocationStoreError``.
+    :return: A 503 JSON response.
+    """
+    logger.error(
+        "Revocation store unavailable",
+        exc_info=exc,
+        extra={
+            "request_id": getattr(request.state, "request_id", None),
+            "path": request.url.path,
+            "exception_type": type(exc).__name__,
+        },
+    )
+    return JSONResponse(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        content={"detail": "Service temporarily unavailable, please try again"},
+    )
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     """Register all exception handlers with the FastAPI app.
 
@@ -183,4 +216,5 @@ def register_exception_handlers(app: FastAPI) -> None:
     :param app: FastAPI application instance
     """
     app.add_exception_handler(BeCoMeAPIError, become_api_error_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(RevocationStoreError, revocation_store_unavailable_handler)
     app.add_exception_handler(Exception, unhandled_exception_handler)
