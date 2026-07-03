@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import TYPE_CHECKING, Self
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from api.schemas.validators import validate_fuzzy_constraints
 from api.utils.sanitization import sanitize_text
@@ -15,6 +15,8 @@ if TYPE_CHECKING:
 
 class OpinionCreate(BaseModel):
     """Request to create or update an expert opinion."""
+
+    model_config = ConfigDict(extra="forbid")
 
     position: str = Field(..., min_length=1, max_length=255, description="Expert's position/role")
     lower_bound: float = Field(..., description="Lower bound (pessimistic estimate)")

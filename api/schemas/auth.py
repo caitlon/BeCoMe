@@ -4,7 +4,7 @@ import re
 from typing import TYPE_CHECKING
 
 import regex
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from api.utils.photo_links import build_photo_url
 
@@ -48,6 +48,8 @@ def validate_name_format(name: str) -> str:
 
 class RegisterRequest(BaseModel):
     """User registration request."""
+
+    model_config = ConfigDict(extra="forbid")
 
     email: EmailStr = Field(..., max_length=255, description="Email address")
     password: str = Field(..., min_length=12, max_length=128, description="Password")
@@ -93,6 +95,8 @@ class TokenResponse(BaseModel):
 class RefreshTokenRequest(BaseModel):
     """Token refresh request."""
 
+    model_config = ConfigDict(extra="forbid")
+
     refresh_token: str = Field(..., description="Refresh token")
 
 
@@ -124,6 +128,8 @@ class UserResponse(BaseModel):
 class UpdateUserRequest(BaseModel):
     """User profile update request."""
 
+    model_config = ConfigDict(extra="forbid")
+
     first_name: str | None = Field(None, max_length=100)
     last_name: str | None = Field(None, max_length=100)
 
@@ -147,6 +153,8 @@ class UpdateUserRequest(BaseModel):
 class ChangePasswordRequest(BaseModel):
     """Password change request."""
 
+    model_config = ConfigDict(extra="forbid")
+
     current_password: str = Field(..., min_length=1, description="Current password")
     new_password: str = Field(..., min_length=12, max_length=128, description="New password")
 
@@ -159,6 +167,8 @@ class ChangePasswordRequest(BaseModel):
 
 class ForgotPasswordRequest(BaseModel):
     """Password reset request by email."""
+
+    model_config = ConfigDict(extra="forbid")
 
     email: EmailStr = Field(..., max_length=255, description="Email address")
 
@@ -173,6 +183,8 @@ class ForgotPasswordRequest(BaseModel):
 
 class ResetPasswordRequest(BaseModel):
     """Password reset confirmation with a token and the new password."""
+
+    model_config = ConfigDict(extra="forbid")
 
     token: str = Field(..., min_length=1, max_length=512, description="Reset token")
     new_password: str = Field(..., min_length=12, max_length=128, description="New password")
