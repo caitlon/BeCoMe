@@ -161,17 +161,21 @@ def session(test_engine):
 
 
 @pytest.fixture(autouse=True)
-def _reset_login_throttle():
-    """Give each test a fresh login throttle so failures do not accumulate globally.
+def _reset_auth_throttles():
+    """Give each test fresh login and reset-email throttles.
 
-    ``get_login_throttle`` is an lru_cache singleton keyed by nothing, so its
-    in-memory failure counts would otherwise leak between tests that reuse an email.
+    Both ``get_login_throttle`` and ``get_reset_email_throttle`` are lru_cache
+    singletons, so their in-memory state would otherwise leak between tests that
+    reuse an email address.
     """
     from api.auth.login_throttle import get_login_throttle
+    from api.auth.reset_throttle import get_reset_email_throttle
 
     get_login_throttle.cache_clear()
+    get_reset_email_throttle.cache_clear()
     yield
     get_login_throttle.cache_clear()
+    get_reset_email_throttle.cache_clear()
 
 
 @pytest.fixture
