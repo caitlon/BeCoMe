@@ -97,7 +97,7 @@ class RedisLoginThrottle:
             pipe = self._client.pipeline()
             pipe.incr(key)
             pipe.expire(key, self._window)
-            pipe.execute()  # type: ignore[no-untyped-call]
+            pipe.execute()
         except redis.RedisError:
             # Fail open: never block a login because the throttle store hiccupped.
             return
@@ -128,8 +128,6 @@ def get_login_throttle() -> LoginThrottle:
     """Return the process-wide login throttle, Redis-backed when configured."""
     settings = get_settings()
     if settings.redis_url:
-        client = redis.from_url(  # type: ignore[no-untyped-call]
-            settings.redis_url, socket_connect_timeout=2, socket_timeout=2
-        )
+        client = redis.from_url(settings.redis_url, socket_connect_timeout=2, socket_timeout=2)
         return RedisLoginThrottle(client)
     return InMemoryLoginThrottle()

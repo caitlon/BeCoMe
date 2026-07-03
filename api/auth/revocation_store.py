@@ -171,7 +171,7 @@ class RedisRevocationStore:
                             return False
                         pipe.multi()
                         pipe.set(key, new_jti, ex=max(ttl_seconds, 1))
-                        pipe.execute()  # type: ignore[no-untyped-call]
+                        pipe.execute()
                         return True
                     except redis.WatchError:
                         continue
@@ -183,7 +183,7 @@ class RedisRevocationStore:
             pipe = self._client.pipeline()
             pipe.set(f"session:revoked:{sid}", "1", ex=max(ttl_seconds, 1))
             pipe.delete(f"session:current:{sid}")
-            pipe.execute()  # type: ignore[no-untyped-call]
+            pipe.execute()
         except redis.RedisError as e:
             raise RevocationStoreError(str(e)) from e
 
