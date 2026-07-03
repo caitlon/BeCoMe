@@ -1,8 +1,12 @@
 """Tests for per-address password-reset email throttling."""
 
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
+
 import fakeredis
 import redis
 
+from api.auth import reset_throttle
 from api.auth.reset_throttle import InMemoryResetEmailThrottle, RedisResetEmailThrottle
 
 
@@ -57,3 +61,23 @@ class TestRedisResetEmailThrottle:
 
         # A store outage must not suppress a legitimate reset email.
         assert RedisResetEmailThrottle(Boom()).allow("user@example.com") is True
+
+
+class TestGetResetEmailThrottle:
+    """The factory selects the Redis backend when a redis_url is configured."""
+
+    def test_uses_redis_when_configured(self):
+        reset_throttle.get_reset_email_throttle.cache_clear()
+        with (
+            patch.object(
+                reset_throttle,
+                "get_settings",
+                return_value=SimpleNamespace(redis_url="redis://cache:6379/0"),
+            ),
+            patch.object(reset_throttle.redis, "from_url", return_value=MagicMock()) as from_url,
+        ):
+            throttle = reset_throttle.get_reset_email_throttle()
+        reset_throttle.get_reset_email_throttle.cache_clear()
+
+        assert isinstance(throttle, RedisResetEmailThrottle)
+        from_url.assert_called_once()
