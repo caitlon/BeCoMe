@@ -29,7 +29,7 @@ from api.auth.logging import (
 from api.auth.login_throttle import LoginThrottle, get_login_throttle
 from api.auth.revocation_store import RevocationStore, get_revocation_store
 from api.dependencies import get_email_service, get_password_reset_service, get_user_service
-from api.exceptions import InvalidCredentialsError
+from api.exceptions import InvalidCredentialsError, LoginThrottledError
 from api.middleware.rate_limit import LIMIT_AUTH_ENDPOINTS, LIMIT_PWD_RESET, limiter
 from api.schemas.auth import (
     ForgotPasswordRequest,
@@ -115,10 +115,7 @@ def login(
     :return: JWT access and refresh tokens
     """
     if throttle.is_locked(form_data.username):
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Too many failed login attempts. Please try again later.",
-        )
+        raise LoginThrottledError
     try:
         user = service.authenticate(form_data.username, form_data.password)
     except InvalidCredentialsError:
