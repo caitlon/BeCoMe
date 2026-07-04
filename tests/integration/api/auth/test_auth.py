@@ -998,13 +998,13 @@ class TestLogout:
 
 
 class TestCookieAuth:
-    """Login issues session cookies; the access cookie authenticates without a Bearer header."""
+    """Login issues session cookies; the cookie authenticates and CSRF guards mutations."""
 
     PASSWORD = "SecurePass123!"
 
-    def _register_and_login(self, client, email="cookie@example.com"):
+    def _register_and_login(self, cookie_client, email="cookie@example.com"):
         """Register a user and log in, leaving the session cookies in the client jar."""
-        client.post(
+        cookie_client.post(
             "/api/v1/auth/register",
             json={
                 "email": email,
@@ -1013,14 +1013,18 @@ class TestCookieAuth:
                 "last_name": "User",
             },
         )
-        return client.post(
+        return cookie_client.post(
             "/api/v1/auth/login",
             data={"username": email, "password": self.PASSWORD},
         )
 
-    def test_login_sets_httponly_session_cookies(self, client):
+    def _csrf_header(self, cookie_client):
+        """Echo the readable csrf_token cookie back as the X-CSRF-Token header."""
+        return {"X-CSRF-Token": cookie_client.cookies.get("csrf_token")}
+
+    def test_login_sets_httponly_session_cookies(self, cookie_client):
         """Login sets access/refresh/csrf cookies; token cookies are HttpOnly + SameSite=Strict."""
-        resp = self._register_and_login(client)
+        resp = self._register_and_login(cookie_client)
 
         assert resp.status_code == 200
         assert "access_token" in resp.cookies
@@ -1030,21 +1034,52 @@ class TestCookieAuth:
         assert "httponly" in raw
         assert "samesite=strict" in raw
 
-    def test_access_cookie_authenticates_without_bearer(self, client):
+    def test_access_cookie_authenticates_without_bearer(self, cookie_client):
         """A request carrying only the session cookie (no Authorization header) authenticates."""
-        self._register_and_login(client)  # the client jar now holds the session cookies
+        self._register_and_login(cookie_client)  # the jar now holds the session cookies
 
-        resp = client.get("/api/v1/auth/me")
+        resp = cookie_client.get("/api/v1/auth/me")
 
         assert resp.status_code == 200
         assert resp.json()["email"] == "cookie@example.com"
 
-    def test_logout_clears_cookies(self, client):
-        """Logout instructs the browser to delete the session cookies."""
-        self._register_and_login(client)  # authenticated via the ambient cookie
+    def test_logout_with_csrf_clears_cookies(self, cookie_client):
+        """A logout carrying the CSRF header succeeds and clears the session cookies."""
+        self._register_and_login(cookie_client)
 
-        resp = client.post("/api/v1/auth/logout")
+        resp = cookie_client.post("/api/v1/auth/logout", headers=self._csrf_header(cookie_client))
 
         assert resp.status_code == 204
         raw = " ".join(resp.headers.get_list("set-cookie")).lower()
         assert "access_token=" in raw
+
+    def test_cookie_mutation_without_csrf_header_is_rejected(self, cookie_client):
+        """A cookie-authenticated mutation without the CSRF header is rejected with 403."""
+        self._register_and_login(cookie_client)
+
+        resp = cookie_client.post("/api/v1/auth/logout")
+
+        assert resp.status_code == 403
+
+    def test_cookie_mutation_with_wrong_csrf_header_is_rejected(self, cookie_client):
+        """A cookie-authenticated mutation with a mismatched CSRF token is rejected with 403."""
+        self._register_and_login(cookie_client)
+
+        resp = cookie_client.post("/api/v1/auth/logout", headers={"X-CSRF-Token": "wrong"})
+
+        assert resp.status_code == 403
+
+    def test_refresh_via_cookie_without_body(self, cookie_client):
+        """The SPA refreshes using only the refresh cookie (no body) plus the CSRF header."""
+        self._register_and_login(cookie_client)
+
+        resp = cookie_client.post("/api/v1/auth/refresh", headers=self._csrf_header(cookie_client))
+
+        assert resp.status_code == 200
+        assert resp.json()["access_token"]
+
+    def test_refresh_without_cookie_or_body_is_unauthorized(self, client):
+        """A refresh with neither the refresh cookie nor a body token is rejected with 401."""
+        resp = client.post("/api/v1/auth/refresh")
+
+        assert resp.status_code == 401
