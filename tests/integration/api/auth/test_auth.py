@@ -995,3 +995,56 @@ class TestLogout:
             json={"refresh_token": refresh_token},
         )
         assert refresh_response.status_code == 401
+
+
+class TestCookieAuth:
+    """Login issues session cookies; the access cookie authenticates without a Bearer header."""
+
+    PASSWORD = "SecurePass123!"
+
+    def _register_and_login(self, client, email="cookie@example.com"):
+        """Register a user and log in, leaving the session cookies in the client jar."""
+        client.post(
+            "/api/v1/auth/register",
+            json={
+                "email": email,
+                "password": self.PASSWORD,
+                "first_name": "Cookie",
+                "last_name": "User",
+            },
+        )
+        return client.post(
+            "/api/v1/auth/login",
+            data={"username": email, "password": self.PASSWORD},
+        )
+
+    def test_login_sets_httponly_session_cookies(self, client):
+        """Login sets access/refresh/csrf cookies; token cookies are HttpOnly + SameSite=Strict."""
+        resp = self._register_and_login(client)
+
+        assert resp.status_code == 200
+        assert "access_token" in resp.cookies
+        assert "refresh_token" in resp.cookies
+        assert "csrf_token" in resp.cookies
+        raw = " ".join(resp.headers.get_list("set-cookie")).lower()
+        assert "httponly" in raw
+        assert "samesite=strict" in raw
+
+    def test_access_cookie_authenticates_without_bearer(self, client):
+        """A request carrying only the session cookie (no Authorization header) authenticates."""
+        self._register_and_login(client)  # the client jar now holds the session cookies
+
+        resp = client.get("/api/v1/auth/me")
+
+        assert resp.status_code == 200
+        assert resp.json()["email"] == "cookie@example.com"
+
+    def test_logout_clears_cookies(self, client):
+        """Logout instructs the browser to delete the session cookies."""
+        self._register_and_login(client)  # authenticated via the ambient cookie
+
+        resp = client.post("/api/v1/auth/logout")
+
+        assert resp.status_code == 204
+        raw = " ".join(resp.headers.get_list("set-cookie")).lower()
+        assert "access_token=" in raw
