@@ -18,6 +18,7 @@ from api.middleware.body_size import (
     RequestBodyTooLarge,
     body_too_large_handler,
 )
+from api.middleware.csrf import CSRFMiddleware
 from api.middleware.exception_handlers import register_exception_handlers
 from api.middleware.rate_limit import limiter, rate_limit_handler
 from api.middleware.request_logging import RequestLoggingMiddleware
@@ -112,9 +113,13 @@ def create_app() -> FastAPI:
             "Accept",
             "Accept-Language",
             "X-Request-ID",
+            "X-CSRF-Token",
         ],
         max_age=600,  # Cache preflight requests for 10 minutes
     )
+
+    # CSRF double-submit check for cookie-authenticated mutations (no-op for Bearer clients).
+    app.add_middleware(CSRFMiddleware)
 
     # Request/response logging with correlation IDs.
     app.add_middleware(RequestLoggingMiddleware)

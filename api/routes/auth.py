@@ -8,10 +8,15 @@ import logging
 from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
 
-from api.auth.cookies import clear_auth_cookies, new_csrf_token, set_auth_cookies
+from api.auth.cookies import (
+    REFRESH_COOKIE,
+    clear_auth_cookies,
+    new_csrf_token,
+    set_auth_cookies,
+)
 from api.auth.dependencies import CurrentUser, get_current_token_payload
 from api.auth.jwt import (
     TokenError,
@@ -160,8 +165,9 @@ def login(
 def refresh_token(
     request: Request,
     response: Response,
-    data: RefreshTokenRequest,
     store: Annotated[RevocationStore, Depends(get_revocation_store)],
+    data: RefreshTokenRequest | None = None,
+    refresh_cookie: Annotated[str | None, Cookie(alias=REFRESH_COOKIE)] = None,
 ) -> TokenResponse:
     """Exchange a refresh token for a new access + refresh pair (rotation).
 
@@ -176,8 +182,17 @@ def refresh_token(
     :return: New access and refresh tokens
     :raises HTTPException: If the refresh token is invalid, expired, revoked, or reused
     """
+    # The SPA sends the refresh token via the HttpOnly cookie (which it cannot read into
+    # a body); programmatic clients still post it in the request body.
+    refresh = refresh_cookie or (data.refresh_token if data else None)
+    if refresh is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired refresh token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     try:
-        payload = decode_refresh_token(data.refresh_token, store)
+        payload = decode_refresh_token(refresh, store)
     except TokenError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
