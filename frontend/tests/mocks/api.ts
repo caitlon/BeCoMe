@@ -6,13 +6,10 @@ import { vi } from 'vitest';
  */
 export function createMockApi(overrides: Record<string, unknown> = {}) {
   return {
-    getToken: vi.fn().mockReturnValue(null),
-    setToken: vi.fn(),
-
     // Auth
     register: vi.fn().mockResolvedValue({ id: '1', email: 'test@example.com' }),
     login: vi.fn().mockResolvedValue({ access_token: 'mock-token', token_type: 'bearer' }),
-    logout: vi.fn(),
+    logout: vi.fn().mockResolvedValue(undefined),
 
     // Users
     getCurrentUser: vi.fn().mockResolvedValue(null),

@@ -6,7 +6,6 @@ import { createUser } from '@tests/factories/user'
 
 vi.mock('@/lib/api', () => ({
   api: {
-    getToken: vi.fn(),
     getCurrentUser: vi.fn(),
     login: vi.fn(),
     register: vi.fn(),
@@ -34,7 +33,6 @@ describe('AuthContext', () => {
 
   it('sets isAuthenticated to true when user exists', async () => {
     const mockUser = createUser({ id: '1', email: 'test@example.com', first_name: 'Test' })
-    vi.mocked(api.getToken).mockReturnValue('valid-token')
     vi.mocked(api.getCurrentUser).mockResolvedValue(mockUser)
 
     const { result } = renderHook(() => useAuth(), {
@@ -49,8 +47,8 @@ describe('AuthContext', () => {
     expect(result.current.user).toEqual(mockUser)
   })
 
-  it('sets isAuthenticated to false when no token', async () => {
-    vi.mocked(api.getToken).mockReturnValue(null)
+  it('sets isAuthenticated to false when there is no active session', async () => {
+    vi.mocked(api.getCurrentUser).mockRejectedValue(new Error('401'))
 
     const { result } = renderHook(() => useAuth(), {
       wrapper: AuthProvider,
@@ -66,7 +64,6 @@ describe('AuthContext', () => {
 
   it('login calls api.login and refreshes user', async () => {
     const mockUser = createUser({ id: '1', email: 'test@example.com', first_name: 'Test' })
-    vi.mocked(api.getToken).mockReturnValue(null)
     vi.mocked(api.login).mockResolvedValue({ access_token: 'new-token', token_type: 'bearer' })
     vi.mocked(api.getCurrentUser).mockResolvedValue(mockUser)
 
@@ -87,7 +84,6 @@ describe('AuthContext', () => {
 
   it('logout clears user and calls api.logout', async () => {
     const mockUser = createUser({ id: '1', email: 'test@example.com', first_name: 'Test' })
-    vi.mocked(api.getToken).mockReturnValue('valid-token')
     vi.mocked(api.getCurrentUser).mockResolvedValue(mockUser)
 
     const { result } = renderHook(() => useAuth(), {
@@ -98,8 +94,8 @@ describe('AuthContext', () => {
       expect(result.current.isAuthenticated).toBe(true)
     })
 
-    act(() => {
-      result.current.logout()
+    await act(async () => {
+      await result.current.logout()
     })
 
     expect(api.logout).toHaveBeenCalled()
@@ -107,8 +103,7 @@ describe('AuthContext', () => {
     expect(result.current.isAuthenticated).toBe(false)
   })
 
-  it('clears user and calls api.logout when refreshUser fails', async () => {
-    vi.mocked(api.getToken).mockReturnValue('expired-token')
+  it('clears the user when the session probe fails', async () => {
     vi.mocked(api.getCurrentUser).mockRejectedValue(new Error('Token expired'))
 
     const { result } = renderHook(() => useAuth(), {
@@ -119,13 +114,12 @@ describe('AuthContext', () => {
       expect(result.current.isLoading).toBe(false)
     })
 
-    expect(api.logout).toHaveBeenCalled()
     expect(result.current.user).toBeNull()
     expect(result.current.isAuthenticated).toBe(false)
   })
 
   it('propagates login error to caller', async () => {
-    vi.mocked(api.getToken).mockReturnValue(null)
+    vi.mocked(api.getCurrentUser).mockRejectedValue(new Error('401'))
 
     const { result } = renderHook(() => useAuth(), {
       wrapper: AuthProvider,
@@ -146,7 +140,7 @@ describe('AuthContext', () => {
 
   it('register calls api.register, api.login, and refreshes user', async () => {
     const mockUser = createUser({ id: '1', email: 'new@example.com', first_name: 'New' })
-    vi.mocked(api.getToken).mockReturnValue(null)
+    vi.mocked(api.getCurrentUser).mockRejectedValue(new Error('401'))
 
     const { result } = renderHook(() => useAuth(), {
       wrapper: AuthProvider,
@@ -158,7 +152,6 @@ describe('AuthContext', () => {
 
     vi.mocked(api.register).mockResolvedValue(mockUser)
     vi.mocked(api.login).mockResolvedValue({ access_token: 'new-token', token_type: 'bearer' })
-    vi.mocked(api.getToken).mockReturnValue('new-token')
     vi.mocked(api.getCurrentUser).mockResolvedValue(mockUser)
 
     await act(async () => {
@@ -175,7 +168,7 @@ describe('AuthContext', () => {
   })
 
   it('propagates register error to caller', async () => {
-    vi.mocked(api.getToken).mockReturnValue(null)
+    vi.mocked(api.getCurrentUser).mockRejectedValue(new Error('401'))
 
     const { result } = renderHook(() => useAuth(), {
       wrapper: AuthProvider,
