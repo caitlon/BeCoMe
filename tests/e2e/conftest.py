@@ -31,14 +31,29 @@ def api_url():
     pytest.skip("API server not running at localhost:8000")
 
 
+class _HeaderOnlyClient(httpx.Client):
+    """httpx client that drops response cookies after each request.
+
+    The E2E suite authenticates with the Authorization header; discarding the session
+    cookies the app now sets keeps a valid ambient cookie from overriding a Bearer token
+    or tripping the CSRF check. A cookie-flow E2E test, if added, should use a plain
+    ``httpx.Client`` instead.
+    """
+
+    def request(self, *args, **kwargs):
+        response = super().request(*args, **kwargs)
+        self.cookies.clear()
+        return response
+
+
 @pytest.fixture
 def http_client(api_url):
-    """Create httpx client scoped to a single test.
+    """Create a header-auth httpx client scoped to a single test (cookies not retained).
 
     :param api_url: Base API URL from session fixture
     :return: httpx.Client instance
     """
-    with httpx.Client(base_url=api_url, timeout=10) as client:
+    with _HeaderOnlyClient(base_url=api_url, timeout=10) as client:
         yield client
 
 
