@@ -54,37 +54,8 @@ describe('ApiClient', () => {
     });
   });
 
-  describe('Token Management', () => {
-    it('reads token from localStorage on initialization', async () => {
-      localStorageMock.setItem('become_token', 'stored-token');
-      vi.resetModules();
-      const module = await import('@/lib/api');
-      expect(module.api.getToken()).toBe('stored-token');
-    });
-
-    it('setToken stores token in localStorage', () => {
-      api.setToken('new-token');
-      expect(localStorageMock.setItem).toHaveBeenCalledWith('become_token', 'new-token');
-      expect(api.getToken()).toBe('new-token');
-    });
-
-    it('setToken(null) removes token from localStorage', () => {
-      api.setToken('token');
-      api.setToken(null);
-      expect(localStorageMock.removeItem).toHaveBeenCalledWith('become_token');
-      expect(api.getToken()).toBeNull();
-    });
-
-    it('getToken returns current token', () => {
-      expect(api.getToken()).toBeNull();
-      api.setToken('my-token');
-      expect(api.getToken()).toBe('my-token');
-    });
-  });
-
   describe('Request Handling', () => {
-    it('adds Authorization header when token exists', async () => {
-      api.setToken('bearer-token');
+    it('sends credentials so the session cookie is included, without an Authorization header', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
@@ -95,25 +66,21 @@ describe('ApiClient', () => {
 
       expect(mockFetch).toHaveBeenCalledWith(
         expect.any(String),
-        expect.objectContaining({
-          headers: expect.objectContaining({
-            Authorization: 'Bearer bearer-token',
-          }),
-        })
+        expect.objectContaining({ credentials: 'include' })
       );
-    });
-
-    it('omits Authorization header when no token', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: () => Promise.resolve([]),
-      });
-
-      await api.getProjects();
-
       const [, options] = mockFetch.mock.calls[0];
       expect(options.headers.Authorization).toBeUndefined();
+    });
+
+    it('echoes the csrf_token cookie as X-CSRF-Token on mutating requests', async () => {
+      document.cookie = 'csrf_token=csrf-abc';
+      mockFetch.mockResolvedValueOnce({ ok: true, status: 204 });
+
+      await api.deleteProject('1');
+
+      const [, options] = mockFetch.mock.calls[0];
+      expect((options.headers as Record<string, string>)['X-CSRF-Token']).toBe('csrf-abc');
+      document.cookie = 'csrf_token=; expires=Thu, 01 Jan 1970 00:00:00 GMT';
     });
 
     it('handles successful JSON response', async () => {
@@ -124,7 +91,6 @@ describe('ApiClient', () => {
         json: () => Promise.resolve(userData),
       });
 
-      api.setToken('token');
       const result = await api.getCurrentUser();
       expect(result).toEqual(userData);
     });
@@ -135,7 +101,6 @@ describe('ApiClient', () => {
         status: 204,
       });
 
-      api.setToken('token');
       const result = await api.deleteProject('1');
       expect(result).toBeUndefined();
     });
@@ -147,7 +112,6 @@ describe('ApiClient', () => {
         json: () => Promise.resolve({ detail: 'Bad request message' }),
       });
 
-      api.setToken('token');
       await expect(api.getProjects()).rejects.toThrow('Bad request message');
     });
 
@@ -161,12 +125,10 @@ describe('ApiClient', () => {
           }),
       });
 
-      api.setToken('token');
       await expect(api.getProjects()).rejects.toThrow('Invalid email format');
     });
 
-    it('redirects to /login on 401 and clears token', async () => {
-      api.setToken('expired-token');
+    it('redirects to /login on 401', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: false,
         status: 401,
@@ -174,7 +136,6 @@ describe('ApiClient', () => {
       });
 
       await expect(api.getProjects()).rejects.toThrow();
-      expect(api.getToken()).toBeNull();
       expect(window.location.href).toBe('/login');
     });
 
@@ -185,7 +146,6 @@ describe('ApiClient', () => {
         json: () => Promise.reject(new Error('Invalid JSON')),
       });
 
-      api.setToken('token');
       await expect(api.getProjects()).rejects.toThrow('An unexpected error occurred');
     });
 
@@ -196,7 +156,6 @@ describe('ApiClient', () => {
         json: () => Promise.resolve({ detail: 'Bad request' }),
       });
 
-      api.setToken('token');
       try {
         await api.getProjects();
         expect.fail('Expected HttpError to be thrown');
@@ -215,7 +174,6 @@ describe('ApiClient', () => {
         json: () => Promise.resolve({ detail: 'Forbidden' }),
       });
 
-      api.setToken('token');
       try {
         await api.getProjects();
         expect.fail('Expected HttpError to be thrown');
@@ -233,7 +191,6 @@ describe('ApiClient', () => {
         json: () => Promise.reject(new Error('Invalid JSON')),
       });
 
-      api.setToken('token');
       try {
         await api.getProjects();
         expect.fail('Expected HttpError to be thrown');
@@ -275,7 +232,7 @@ describe('ApiClient', () => {
       expect(result).toEqual(userData);
     });
 
-    it('login sends form-urlencoded POST and stores token', async () => {
+    it('login sends a form-urlencoded POST with credentials', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
@@ -288,11 +245,11 @@ describe('ApiClient', () => {
         expect.stringContaining('/auth/login'),
         expect.objectContaining({
           method: 'POST',
+          credentials: 'include',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         })
       );
       expect(result.access_token).toBe('new-token');
-      expect(api.getToken()).toBe('new-token');
     });
 
     it('login throws on invalid credentials', async () => {
@@ -305,18 +262,19 @@ describe('ApiClient', () => {
       await expect(api.login('wrong@example.com', 'wrong')).rejects.toThrow('Invalid credentials');
     });
 
-    it('logout clears token', () => {
-      api.setToken('token-to-clear');
-      api.logout();
-      expect(api.getToken()).toBeNull();
+    it('logout posts to /auth/logout to clear the server session', async () => {
+      mockFetch.mockResolvedValueOnce({ ok: true, status: 204 });
+
+      await api.logout();
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/auth/logout'),
+        expect.objectContaining({ method: 'POST' })
+      );
     });
   });
 
   describe('User Endpoints', () => {
-    beforeEach(() => {
-      api.setToken('valid-token');
-    });
-
     it('getCurrentUser fetches /users/me', async () => {
       const user = { id: '1', email: 'me@example.com' };
       mockFetch.mockResolvedValueOnce({
@@ -399,7 +357,7 @@ describe('ApiClient', () => {
         expect.stringContaining('/users/me/photo'),
         expect.objectContaining({
           method: 'POST',
-          headers: { Authorization: 'Bearer valid-token' },
+          credentials: 'include',
         })
       );
       const [, options] = mockFetch.mock.calls[0];
@@ -422,10 +380,6 @@ describe('ApiClient', () => {
   });
 
   describe('Project Endpoints', () => {
-    beforeEach(() => {
-      api.setToken('valid-token');
-    });
-
     it('getProjects fetches /projects', async () => {
       const projects = [{ id: '1', name: 'Project 1' }];
       mockFetch.mockResolvedValueOnce({
@@ -523,7 +477,6 @@ describe('ApiClient', () => {
         status: 200,
         json: () => Promise.resolve([{ id: 'inv-1' }]),
       });
-      api.setToken('token');
       const result = await api.getProjectInvitations('proj-1');
       expect(mockFetch).toHaveBeenCalledWith(
         expect.stringContaining('/projects/proj-1/invitations'),
@@ -534,10 +487,6 @@ describe('ApiClient', () => {
   });
 
   describe('Invitation Endpoints', () => {
-    beforeEach(() => {
-      api.setToken('valid-token');
-    });
-
     it('inviteExpert sends POST to /projects/:id/invite', async () => {
       const invitation = { id: 'inv-1', project_id: 'proj-1' };
       mockFetch.mockResolvedValueOnce({
@@ -606,10 +555,6 @@ describe('ApiClient', () => {
   });
 
   describe('Member Endpoints', () => {
-    beforeEach(() => {
-      api.setToken('valid-token');
-    });
-
     it('getMembers fetches /projects/:id/members', async () => {
       const members = [{ user_id: '1', role: 'admin' }];
       mockFetch.mockResolvedValueOnce({
@@ -663,10 +608,6 @@ describe('ApiClient', () => {
   });
 
   describe('Opinion Endpoints', () => {
-    beforeEach(() => {
-      api.setToken('valid-token');
-    });
-
     it('getOpinions fetches /projects/:id/opinions', async () => {
       const opinions = [{ id: 'op-1', lower_bound: 30 }];
       mockFetch.mockResolvedValueOnce({
@@ -724,10 +665,6 @@ describe('ApiClient', () => {
   });
 
   describe('Upload Photo Error Handling', () => {
-    beforeEach(() => {
-      api.setToken('valid-token');
-    });
-
     it('throws error on uploadPhoto 500 response', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: false,
@@ -739,7 +676,7 @@ describe('ApiClient', () => {
       await expect(api.uploadPhoto(file)).rejects.toThrow('Server error');
     });
 
-    it('redirects to /login and clears token on uploadPhoto 401', async () => {
+    it('redirects to /login on uploadPhoto 401', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: false,
         status: 401,
@@ -748,7 +685,6 @@ describe('ApiClient', () => {
 
       const file = new File(['test'], 'photo.jpg', { type: 'image/jpeg' });
       await expect(api.uploadPhoto(file)).rejects.toThrow();
-      expect(api.getToken()).toBeNull();
       expect(window.location.href).toBe('/login');
     });
 
@@ -764,7 +700,6 @@ describe('ApiClient', () => {
     });
 
     it('uses fallback message when uploadPhoto error has no detail', async () => {
-      api.setToken('token');
       mockFetch.mockResolvedValueOnce({
         ok: false,
         status: 500,
@@ -775,8 +710,7 @@ describe('ApiClient', () => {
       await expect(api.uploadPhoto(file)).rejects.toThrow('Failed to upload photo');
     });
 
-    it('omits Authorization header when no token for uploadPhoto', async () => {
-      api.setToken(null);
+    it('uploadPhoto sends credentials and no Authorization header', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
@@ -787,15 +721,12 @@ describe('ApiClient', () => {
       await api.uploadPhoto(file);
 
       const [, options] = mockFetch.mock.calls[0];
+      expect(options.credentials).toBe('include');
       expect(options.headers['Authorization']).toBeUndefined();
     });
   });
 
   describe('Error Detail Edge Cases', () => {
-    beforeEach(() => {
-      api.setToken('valid-token');
-    });
-
     it('falls back to "Validation error" when detail is empty array', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: false,
@@ -842,10 +773,6 @@ describe('ApiClient', () => {
   });
 
   describe('Results Endpoint', () => {
-    beforeEach(() => {
-      api.setToken('valid-token');
-    });
-
     it('getResult fetches /projects/:id/result', async () => {
       const result = { best_compromise: { lower: 30, peak: 50, upper: 70 } };
       mockFetch.mockResolvedValueOnce({
@@ -876,10 +803,6 @@ describe('ApiClient', () => {
   });
 
   describe('Result Export Endpoint', () => {
-    beforeEach(() => {
-      api.setToken('valid-token');
-    });
-
     it('fetches the export endpoint with format and lang query params', async () => {
       const blob = new Blob(['data'], { type: 'text/csv' });
       mockFetch.mockResolvedValueOnce({
@@ -892,9 +815,7 @@ describe('ApiClient', () => {
 
       expect(mockFetch).toHaveBeenCalledWith(
         expect.stringContaining('/projects/proj-1/result/export?format=csv&lang=cs'),
-        expect.objectContaining({
-          headers: expect.objectContaining({ Authorization: 'Bearer valid-token' }),
-        })
+        expect.objectContaining({ credentials: 'include' })
       );
       expect(result).toBe(blob);
     });
@@ -911,7 +832,7 @@ describe('ApiClient', () => {
       );
     });
 
-    it('redirects to /login and clears the token on 401', async () => {
+    it('redirects to /login on export 401', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: false,
         status: 401,
@@ -919,7 +840,6 @@ describe('ApiClient', () => {
       });
 
       await expect(api.exportProjectResult('proj-1', 'pdf', 'en')).rejects.toThrow();
-      expect(api.getToken()).toBeNull();
       expect(window.location.href).toBe('/login');
     });
 
@@ -935,10 +855,6 @@ describe('ApiClient', () => {
   });
 
   describe('Request ID and Logging', () => {
-    beforeEach(() => {
-      api.setToken('valid-token');
-    });
-
     it('adds an X-Request-ID header to requests', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,

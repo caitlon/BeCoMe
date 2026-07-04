@@ -220,7 +220,7 @@ const Profile = () => {
   const handleDeleteAccount = async () => {
     try {
       await api.deleteAccount();
-      logout();
+      await logout();
       navigate("/");
       toast({ title: t("toast.accountDeleted") });
     } catch (error) {

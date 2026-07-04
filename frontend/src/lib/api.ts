@@ -27,52 +27,47 @@ export class HttpError extends Error {
   }
 }
 
+const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+
+function readCsrfToken(): string | null {
+  const match = document.cookie.match(/(?:^|; )csrf_token=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
 class ApiClient {
-  private token: string | null = null;
-
-  constructor() {
-    this.token = localStorage.getItem('become_token');
-  }
-
-  setToken(token: string | null) {
-    this.token = token;
-    if (token) {
-      localStorage.setItem('become_token', token);
-    } else {
-      localStorage.removeItem('become_token');
-    }
-  }
-
-  getToken(): string | null {
-    return this.token;
-  }
-
   private async request<T>(
     endpoint: string,
-    options: RequestInit = {}
+    options: RequestInit = {},
+    silent = false
   ): Promise<T> {
     const requestId = crypto.randomUUID();
     const method = options.method ?? 'GET';
-    const headers: HeadersInit = {
+    const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       'X-Request-ID': requestId,
-      ...options.headers,
+      ...(options.headers as Record<string, string>),
     };
 
-    if (this.token) {
-      (headers as Record<string, string>)['Authorization'] = `Bearer ${this.token}`;
+    // Cookie-based session: echo the readable csrf_token cookie on mutating requests.
+    if (MUTATING_METHODS.has(method.toUpperCase())) {
+      const csrf = readCsrfToken();
+      if (csrf) {
+        headers['X-CSRF-Token'] = csrf;
+      }
     }
 
     logger.debug('API request', { method, endpoint, requestId });
 
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
       ...options,
+      credentials: 'include',
       headers,
     });
 
     if (!response.ok) {
-      if (response.status === 401) {
-        this.setToken(null);
+      // A session-expiry 401 sends the user to login; the mount-time auth probe passes
+      // silent=true so an anonymous visitor on a public page is not bounced there.
+      if (response.status === 401 && !silent) {
         globalThis.location.href = '/login';
       }
 
@@ -113,6 +108,7 @@ class ApiClient {
 
     const response = await fetch(`${API_BASE_URL}/auth/login`, {
       method: 'POST',
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
       },
@@ -127,13 +123,18 @@ class ApiClient {
       throw new Error(error.detail || 'Login failed');
     }
 
-    const data: AuthResponse = await response.json();
-    this.setToken(data.access_token);
-    return data;
+    // The session now lives in HttpOnly cookies set by the server; the body token is
+    // ignored here and kept only for programmatic (non-browser) clients.
+    return response.json();
   }
 
-  logout() {
-    this.setToken(null);
+  async logout(): Promise<void> {
+    // Hit the server so it revokes the session and clears the HttpOnly cookies.
+    try {
+      await this.request<void>('/auth/logout', { method: 'POST' });
+    } catch {
+      // Ignore: the user is logging out regardless of a network hiccup.
+    }
   }
 
   async forgotPassword(email: string): Promise<void> {
@@ -151,8 +152,8 @@ class ApiClient {
   }
 
   // Users
-  async getCurrentUser(): Promise<User> {
-    return this.request<User>('/users/me');
+  async getCurrentUser(silent = false): Promise<User> {
+    return this.request<User>('/users/me', {}, silent);
   }
 
   // Returns the user's full GDPR data export. The payload is only downloaded as
@@ -186,20 +187,21 @@ class ApiClient {
     const formData = new FormData();
     formData.append('file', file);
 
-    const headers: HeadersInit = {};
-    if (this.token) {
-      headers['Authorization'] = `Bearer ${this.token}`;
+    const headers: Record<string, string> = {};
+    const csrf = readCsrfToken();
+    if (csrf) {
+      headers['X-CSRF-Token'] = csrf;
     }
 
     const response = await fetch(`${API_BASE_URL}/users/me/photo`, {
       method: 'POST',
+      credentials: 'include',
       headers,
       body: formData,
     });
 
     if (!response.ok) {
       if (response.status === 401) {
-        this.setToken(null);
         globalThis.location.href = '/login';
       }
       const error = await response.json().catch(() => ({ detail: 'Upload failed' }));
@@ -333,19 +335,15 @@ class ApiClient {
     format: 'pdf' | 'csv',
     lang: string
   ): Promise<Blob> {
-    const headers: HeadersInit = { 'X-Request-ID': crypto.randomUUID() };
-    if (this.token) {
-      (headers as Record<string, string>)['Authorization'] = `Bearer ${this.token}`;
-    }
+    const headers: Record<string, string> = { 'X-Request-ID': crypto.randomUUID() };
 
     const response = await fetch(
       `${API_BASE_URL}/projects/${projectId}/result/export?format=${format}&lang=${lang}`,
-      { headers }
+      { credentials: 'include', headers }
     );
 
     if (!response.ok) {
       if (response.status === 401) {
-        this.setToken(null);
         globalThis.location.href = '/login';
       }
       const error = await response.json().catch(() => ({ detail: 'Export failed' }));
