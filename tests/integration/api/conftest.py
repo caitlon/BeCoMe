@@ -84,6 +84,10 @@ def register_and_login(client: TestClient, email: str = "test@example.com") -> s
         "/api/v1/auth/login",
         data={"username": email, "password": DEFAULT_TEST_PASSWORD},
     )
+    # Drop the session cookies the login set, so header-based tests authenticate purely
+    # via the returned token; otherwise an ambient cookie would override an explicit
+    # Authorization header (e.g. a later login as another user).
+    client.cookies.clear()
     return response.json()["access_token"]
 
 

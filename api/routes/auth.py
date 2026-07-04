@@ -8,12 +8,14 @@ import logging
 from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
 
+from api.auth.cookies import clear_auth_cookies, new_csrf_token, set_auth_cookies
 from api.auth.dependencies import CurrentUser, get_current_token_payload
 from api.auth.jwt import (
     TokenError,
+    TokenPair,
     TokenPayload,
     create_token_pair,
     decode_refresh_token,
@@ -48,6 +50,22 @@ from api.services.user_service import UserService
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
 logger = logging.getLogger("api.route.auth")
+
+
+def _set_session_cookies(response: Response, token_pair: TokenPair) -> None:
+    """Attach the access, refresh, and CSRF cookies for a freshly issued token pair.
+
+    :param response: The response to set cookies on.
+    :param token_pair: The newly minted access/refresh pair.
+    """
+    set_auth_cookies(
+        response,
+        access_token=token_pair.access_token,
+        refresh_token=token_pair.refresh_token,
+        csrf_token=new_csrf_token(),
+        access_ttl=token_pair.expires_in,
+        refresh_ttl=refresh_token_ttl_seconds(),
+    )
 
 
 @router.post(
@@ -92,6 +110,7 @@ def register(
 @limiter.limit(LIMIT_AUTH_ENDPOINTS)
 def login(
     request: Request,
+    response: Response,
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
     service: Annotated[UserService, Depends(get_user_service)],
     store: Annotated[RevocationStore, Depends(get_revocation_store)],
@@ -125,6 +144,7 @@ def login(
     throttle.reset(form_data.username)
     token_pair = create_token_pair(user.id)
     store.start_session(token_pair.sid, token_pair.jti, refresh_token_ttl_seconds())
+    _set_session_cookies(response, token_pair)
 
     log_login_success(user.id, user.email, request)
 
@@ -139,6 +159,7 @@ def login(
 @limiter.limit(LIMIT_AUTH_ENDPOINTS)
 def refresh_token(
     request: Request,
+    response: Response,
     data: RefreshTokenRequest,
     store: Annotated[RevocationStore, Depends(get_revocation_store)],
 ) -> TokenResponse:
@@ -182,6 +203,7 @@ def refresh_token(
                 detail="Invalid or expired refresh token",
                 headers={"WWW-Authenticate": "Bearer"},
             )
+        _set_session_cookies(response, token_pair)
         return TokenResponse(
             access_token=token_pair.access_token,
             refresh_token=token_pair.refresh_token,
@@ -193,6 +215,7 @@ def refresh_token(
     revoke_token(payload.jti, store)
     token_pair = create_token_pair(payload.user_id)
     store.start_session(token_pair.sid, token_pair.jti, ttl)
+    _set_session_cookies(response, token_pair)
     return TokenResponse(
         access_token=token_pair.access_token,
         refresh_token=token_pair.refresh_token,
@@ -206,21 +229,24 @@ def refresh_token(
     summary="Logout and revoke current token",
 )
 def logout(
+    response: Response,
     token_payload: Annotated[TokenPayload, Depends(get_current_token_payload)],
     store: Annotated[RevocationStore, Depends(get_revocation_store)],
 ) -> None:
-    """Revoke the current session.
+    """Revoke the current session and clear the auth cookies.
 
     Blacklists the token's JTI and revokes its whole session, so every access and
     refresh token in the family stops working -- even a still-valid access token
     issued before an earlier rotation.
 
+    :param response: Response used to clear the auth cookies.
     :param token_payload: Current token payload from JWT
     :param store: Revocation store
     """
     revoke_token(token_payload.jti, store)
     if token_payload.sid:
         store.revoke_session(token_payload.sid, refresh_token_ttl_seconds())
+    clear_auth_cookies(response)
 
 
 @router.post(

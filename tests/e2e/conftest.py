@@ -74,6 +74,9 @@ def register_user(client: httpx.Client, email: str) -> str:
         data={"username": email, "password": DEFAULT_PASSWORD},
     )
     response.raise_for_status()
+    # Drop the session cookies the login set, so header-based tests authenticate purely
+    # via the returned token and no ambient cookie overrides an explicit Authorization.
+    client.cookies.clear()
     return response.json()["access_token"]
 
 
@@ -167,6 +170,9 @@ def register_user_with_name(
         data={"username": email, "password": DEFAULT_PASSWORD},
     )
     response.raise_for_status()
+    # Drop the session cookies the login set, so header-based tests authenticate purely
+    # via the returned token and no ambient cookie overrides an explicit Authorization.
+    client.cookies.clear()
     return response.json()["access_token"]
 
 

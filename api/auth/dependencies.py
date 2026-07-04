@@ -7,11 +7,12 @@ injected, and UserService is created with this injected dependency.
 
 from typing import Annotated
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Cookie, Depends, HTTPException, status
 from fastapi.concurrency import run_in_threadpool
 from fastapi.security import OAuth2PasswordBearer
 from sqlmodel import Session
 
+from api.auth.cookies import ACCESS_COOKIE
 from api.auth.jwt import TokenError, TokenPayload, decode_access_token, decode_token
 from api.auth.revocation_store import RevocationStore, get_revocation_store
 from api.db.models import User
@@ -19,11 +20,35 @@ from api.db.session import get_session
 from api.logging_context import set_user_id
 from api.services.user_service import UserService
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
+
+
+def _get_access_token(
+    cookie_token: Annotated[str | None, Cookie(alias=ACCESS_COOKIE)] = None,
+    bearer_token: Annotated[str | None, Depends(oauth2_scheme)] = None,
+) -> str:
+    """Return the access token from the session cookie, else the Bearer header.
+
+    The cookie is the primary transport for the browser SPA; the Authorization header
+    stays as a fallback for programmatic clients and the test suite.
+
+    :param cookie_token: Access token from the HttpOnly session cookie.
+    :param bearer_token: Access token from the Authorization header.
+    :return: The access token to validate.
+    :raises HTTPException: 401 when neither transport carries a token.
+    """
+    token = cookie_token or bearer_token
+    if token is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return token
 
 
 async def get_current_user(
-    token: Annotated[str, Depends(oauth2_scheme)],
+    token: Annotated[str, Depends(_get_access_token)],
     session: Annotated[Session, Depends(get_session)],
     store: Annotated[RevocationStore, Depends(get_revocation_store)],
 ) -> User:
@@ -64,7 +89,7 @@ CurrentUser = Annotated[User, Depends(get_current_user)]
 
 
 def get_current_token_payload(
-    token: Annotated[str, Depends(oauth2_scheme)],
+    token: Annotated[str, Depends(_get_access_token)],
     store: Annotated[RevocationStore, Depends(get_revocation_store)],
 ) -> TokenPayload:
     """Extract and validate token payload from JWT.
