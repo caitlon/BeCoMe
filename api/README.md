@@ -79,6 +79,15 @@ api/
 | POST | `/api/v1/auth/reset-password` | Reset password using a token |
 | GET | `/api/v1/auth/me` | Get current user profile |
 
+**Session transport.** Login and refresh set the access and refresh tokens as
+`Secure; HttpOnly; SameSite=Strict` cookies (the refresh cookie is scoped to
+`/api/v1/auth`) plus a readable `csrf_token` cookie; the tokens are also returned in the
+response body so programmatic clients can keep using the `Authorization: Bearer` header.
+A cookie-authenticated mutating request (POST/PUT/PATCH/DELETE) must echo the
+`csrf_token` cookie back in an `X-CSRF-Token` header (double-submit CSRF); Bearer-header
+requests are exempt. `/auth/refresh` reads the refresh token from the cookie or the body,
+and logout revokes the session and clears the cookies.
+
 ### Users
 
 | Method | Endpoint | Description |
