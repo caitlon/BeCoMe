@@ -14,6 +14,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from api.auth.cookies import (
     REFRESH_COOKIE,
     clear_auth_cookies,
+    cookies_secure,
     new_csrf_token,
     set_auth_cookies,
 )
@@ -57,11 +58,12 @@ router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 logger = logging.getLogger("api.route.auth")
 
 
-def _set_session_cookies(response: Response, token_pair: TokenPair) -> None:
+def _set_session_cookies(response: Response, token_pair: TokenPair, request: Request) -> None:
     """Attach the access, refresh, and CSRF cookies for a freshly issued token pair.
 
     :param response: The response to set cookies on.
     :param token_pair: The newly minted access/refresh pair.
+    :param request: The incoming request, used to decide the cookie Secure flag.
     """
     set_auth_cookies(
         response,
@@ -70,6 +72,7 @@ def _set_session_cookies(response: Response, token_pair: TokenPair) -> None:
         csrf_token=new_csrf_token(),
         access_ttl=token_pair.expires_in,
         refresh_ttl=refresh_token_ttl_seconds(),
+        secure=cookies_secure(request),
     )
 
 
@@ -149,7 +152,7 @@ def login(
     throttle.reset(form_data.username)
     token_pair = create_token_pair(user.id)
     store.start_session(token_pair.sid, token_pair.jti, refresh_token_ttl_seconds())
-    _set_session_cookies(response, token_pair)
+    _set_session_cookies(response, token_pair, request)
 
     log_login_success(user.id, user.email, request)
 
@@ -218,7 +221,7 @@ def refresh_token(
                 detail="Invalid or expired refresh token",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        _set_session_cookies(response, token_pair)
+        _set_session_cookies(response, token_pair, request)
         return TokenResponse(
             access_token=token_pair.access_token,
             refresh_token=token_pair.refresh_token,
@@ -230,7 +233,7 @@ def refresh_token(
     revoke_token(payload.jti, store)
     token_pair = create_token_pair(payload.user_id)
     store.start_session(token_pair.sid, token_pair.jti, ttl)
-    _set_session_cookies(response, token_pair)
+    _set_session_cookies(response, token_pair, request)
     return TokenResponse(
         access_token=token_pair.access_token,
         refresh_token=token_pair.refresh_token,

@@ -10,7 +10,7 @@ response body so programmatic clients and the test suite can keep using the
 
 import secrets
 
-from fastapi import Response
+from fastapi import Request, Response
 
 from api.config import Environment, get_settings
 
@@ -24,17 +24,20 @@ CSRF_HEADER = "X-CSRF-Token"
 REFRESH_COOKIE_PATH = "/api/v1/auth"
 
 
-def cookies_secure() -> bool:
+def cookies_secure(request: Request) -> bool:
     """Return whether auth cookies should carry the ``Secure`` flag.
 
-    Secure on the deployed profiles (served over HTTPS); off for local dev and the
-    pytest client, which both speak plain HTTP so the cookie would otherwise never
-    round-trip.
+    Always on in production; otherwise on only when the request itself arrived over
+    HTTPS. This keeps cookies working over plain HTTP for local dev, the pytest client,
+    and the HTTP e2e stack (a ``Secure`` cookie is dropped by the browser over HTTP),
+    while production behind TLS always gets ``Secure`` cookies.
 
+    :param request: The incoming request, used to read the connection scheme.
     :return: True when cookies must be HTTPS-only.
     """
-    settings = get_settings()
-    return settings.environment is not Environment.DEV and not settings.testing
+    if get_settings().environment is Environment.PROD:
+        return True
+    return request.url.scheme == "https"
 
 
 def new_csrf_token() -> str:
@@ -50,6 +53,7 @@ def set_auth_cookies(
     csrf_token: str,
     access_ttl: int,
     refresh_ttl: int,
+    secure: bool,
 ) -> None:
     """Attach the access, refresh, and CSRF cookies to a response.
 
@@ -59,8 +63,8 @@ def set_auth_cookies(
     :param csrf_token: Double-submit CSRF token (readable cookie).
     :param access_ttl: Access-cookie lifetime in seconds.
     :param refresh_ttl: Refresh- and CSRF-cookie lifetime in seconds.
+    :param secure: Whether to set the ``Secure`` flag (see :func:`cookies_secure`).
     """
-    secure = cookies_secure()
     response.set_cookie(
         ACCESS_COOKIE,
         access_token,
