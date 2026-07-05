@@ -65,7 +65,9 @@ test.describe('Error States', () => {
     const email = `err-session-${uniqueId()}@test.com`;
     await registerUser(page, email, 'Session', 'Test');
 
-    // Clear auth tokens from localStorage (simulate expired session)
+    // Simulate an expired session. The session lives in HttpOnly cookies now, so the
+    // cookies must be cleared -- localStorage no longer holds the token.
+    await page.context().clearCookies();
     await page.evaluate(() => {
       const lang = localStorage.getItem('become-language');
       localStorage.clear();
