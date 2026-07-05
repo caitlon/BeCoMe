@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import statistics
 from typing import TYPE_CHECKING
 
 from src.calculators.base_calculator import BaseAggregationCalculator
@@ -69,6 +68,10 @@ class BeCoMeCalculator(BaseAggregationCalculator):
         - Odd (M = 2n + 1): middle element after sorting by centroid
         - Even (M = 2n): average of two middle elements after sorting
 
+        The middle elements are taken by position from the canonically sorted
+        list, so the result does not depend on the input order even when
+        several opinions share a centroid.
+
         :param opinions: List of expert opinions as fuzzy triangular numbers
         :return: Median as FuzzyTriangleNumber(rho, omega, sigma)
         :raises EmptyOpinionsError: If opinions list is empty
@@ -78,14 +81,11 @@ class BeCoMeCalculator(BaseAggregationCalculator):
         sorted_opinions: list[ExpertOpinion] = self.sort_by_centroid(opinions)
         m: int = len(sorted_opinions)
 
-        centroids = [op.centroid for op in sorted_opinions]
-        median_centroid = statistics.median(centroids)
-
         strategy: MedianCalculationStrategy = (
             OddMedianStrategy() if m % 2 == 1 else EvenMedianStrategy()
         )
 
-        return strategy.calculate(sorted_opinions, median_centroid)
+        return strategy.calculate(sorted_opinions)
 
     def calculate_compromise(self, opinions: list[ExpertOpinion]) -> BeCoMeResult:
         """
@@ -113,9 +113,19 @@ class BeCoMeCalculator(BaseAggregationCalculator):
         """
         Sort expert opinions by centroid values in ascending order.
 
-        Sorting is stable and maintains original order for equal centroids.
+        Equal centroids are ordered by the triangle bounds (lower, peak,
+        upper), which makes the order canonical: it depends only on the
+        opinion values, never on the order they arrived in.
 
         :param opinions: List of expert opinions to sort
         :return: New list of opinions sorted by ascending centroid
         """
-        return sorted(opinions, key=lambda op: op.centroid)
+        return sorted(
+            opinions,
+            key=lambda op: (
+                op.centroid,
+                op.opinion.lower_bound,
+                op.opinion.peak,
+                op.opinion.upper_bound,
+            ),
+        )
