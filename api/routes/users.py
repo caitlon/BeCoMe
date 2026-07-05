@@ -10,13 +10,15 @@ from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, 
 from api.auth.dependencies import CurrentUser
 from api.auth.logging import log_account_deletion, log_data_export, log_password_change
 from api.auth.revocation_store import RevocationStore, get_revocation_store
+from api.db.models import Project
 from api.dependencies import (
     get_data_export_service,
+    get_project_membership_service,
     get_project_service,
     get_storage_service,
     get_user_service,
 )
-from api.exceptions import AccountHasOwnedProjectsError
+from api.exceptions import AccountHasOwnedProjectsError, InvalidProjectDispositionError
 from api.middleware.rate_limit import (
     LIMIT_PHOTO,
     LIMIT_PWD_RESET,
@@ -24,9 +26,15 @@ from api.middleware.rate_limit import (
     LIMIT_UPLOAD,
     limiter,
 )
-from api.schemas.auth import ChangePasswordRequest, UpdateUserRequest, UserResponse
+from api.schemas.auth import (
+    ChangePasswordRequest,
+    DeleteAccountRequest,
+    UpdateUserRequest,
+    UserResponse,
+)
 from api.schemas.data_export import DataExportResponse
 from api.services.data_export_service import DataExportService
+from api.services.project_membership_service import ProjectMembershipService
 from api.services.project_service import ProjectService
 from api.services.storage import validation
 from api.services.storage.base import StorageService
@@ -139,24 +147,61 @@ def delete_current_user(
     current_user: CurrentUser,
     service: Annotated[UserService, Depends(get_user_service)],
     project_service: Annotated[ProjectService, Depends(get_project_service)],
+    membership_service: Annotated[
+        ProjectMembershipService, Depends(get_project_membership_service)
+    ],
     storage_service: Annotated[StorageService | None, Depends(get_storage_service)],
+    data: DeleteAccountRequest | None = None,
 ) -> None:
-    """Delete the authenticated user's account.
+    """Delete the authenticated user's account (GDPR Article 17, right to erasure).
 
-    Rejected with 409 while the user is the admin of any project, so erasure never
-    silently cascades away other experts' contributions; the user must transfer
-    ownership or delete those projects first. The profile photo blob is removed from
-    object storage as well, so erasure also covers stored media (GDPR Article 17).
+    Every project the user still admins must be handled first via ``data``: transfer it
+    to another member, or delete it (its opinions and invitations cascade away). This
+    keeps erasure from silently destroying other experts' contributions while still
+    letting the user leave. The profile photo blob is removed from object storage too.
 
     :param request: FastAPI request (for logging)
     :param current_user: User from JWT token
     :param service: User service
-    :param project_service: Project service for the ownership check
+    :param project_service: Project service (ownership handling)
+    :param membership_service: Membership service (validates transfer targets)
     :param storage_service: Storage service (None when not configured)
-    :raises AccountHasOwnedProjectsError: If the user still admins a project
+    :param data: Per-owned-project dispositions (transfer or delete)
+    :raises AccountHasOwnedProjectsError: If an owned project has no disposition
+    :raises InvalidProjectDispositionError: If a transfer target is not another member
     """
-    if project_service.get_owned_projects(current_user.id):
-        raise AccountHasOwnedProjectsError("Account still owns one or more projects.")
+    dispositions = data.project_dispositions if data else []
+    owned_by_id = {p.id: p for p in project_service.get_owned_projects(current_user.id)}
+
+    # Each owned project must be handled exactly once; no disposition may name a project
+    # the user does not own.
+    if {d.project_id for d in dispositions} != set(owned_by_id) or len(dispositions) != len(
+        owned_by_id
+    ):
+        raise AccountHasOwnedProjectsError(
+            "Provide a disposition (transfer or delete) for each project you own."
+        )
+
+    # Validate everything before mutating anything, so a bad disposition cannot leave the
+    # account half-erased.
+    transfers: list[tuple[Project, UUID]] = []
+    deletes: list[UUID] = []
+    for d in dispositions:
+        if d.action == "delete":
+            deletes.append(d.project_id)
+        elif d.new_admin_id is None or d.new_admin_id == current_user.id:
+            raise InvalidProjectDispositionError(
+                "A transfer must name another member as the new admin."
+            )
+        elif not membership_service.is_member(d.project_id, d.new_admin_id):
+            raise InvalidProjectDispositionError("The new admin must be a member of the project.")
+        else:
+            transfers.append((owned_by_id[d.project_id], d.new_admin_id))
+
+    for project, new_admin_id in transfers:
+        project_service.transfer_ownership(project, new_admin_id)
+    for project_id in deletes:
+        project_service.delete_project(project_id)
 
     user_id = current_user.id
     email = current_user.email

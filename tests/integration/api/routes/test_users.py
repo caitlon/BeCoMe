@@ -2,7 +2,28 @@
 
 from fastapi import status
 
-from tests.integration.api.conftest import DEFAULT_TEST_PASSWORD, auth_header, register_and_login
+from tests.integration.api.conftest import (
+    DEFAULT_TEST_PASSWORD,
+    auth_header,
+    create_project,
+    register_and_login,
+)
+
+
+def _add_expert(client, owner_token, project_id, email):
+    """Invite an expert into the project, accept, and return (token, user_id)."""
+    expert_token = register_and_login(client, email)
+    client.post(
+        f"/api/v1/projects/{project_id}/invite",
+        json={"email": email},
+        headers=auth_header(owner_token),
+    )
+    invitations = client.get("/api/v1/invitations", headers=auth_header(expert_token)).json()
+    accept = client.post(
+        f"/api/v1/invitations/{invitations[0]['id']}/accept",
+        headers=auth_header(expert_token),
+    )
+    return expert_token, accept.json()["user_id"]
 
 
 class TestDeleteAccount:
@@ -117,6 +138,122 @@ class TestDeleteAccountWithOwnedProjects:
 
         # THEN
         assert response.status_code == status.HTTP_204_NO_CONTENT
+
+
+class TestDeleteAccountDispositions:
+    """Guided erasure: each owned project is transferred or deleted (GDPR Art. 17)."""
+
+    def test_transfer_owned_project_then_delete_account(self, client):
+        """Owner transfers a project to a member, then the account is erased."""
+        # GIVEN an owner, a member, and an owned project
+        owner = register_and_login(client, "leaving-owner@example.com")
+        project = create_project(client, owner, "Handover")
+        project_id = project["id"]
+        expert_token, expert_id = _add_expert(client, owner, project_id, "heir@example.com")
+
+        # WHEN the owner deletes their account, transferring the project to the member
+        response = client.request(
+            "DELETE",
+            "/api/v1/users/me",
+            json={
+                "project_dispositions": [
+                    {"project_id": project_id, "action": "transfer", "new_admin_id": expert_id}
+                ]
+            },
+            headers=auth_header(owner),
+        )
+
+        # THEN the account is gone but the project survives under the new admin
+        assert response.status_code == status.HTTP_204_NO_CONTENT
+        fetched = client.get(f"/api/v1/projects/{project_id}", headers=auth_header(expert_token))
+        assert fetched.status_code == status.HTTP_200_OK
+        assert fetched.json()["admin_id"] == expert_id
+
+    def test_delete_owned_project_then_delete_account(self, client):
+        """Owner deletes their project as part of erasing the account."""
+        # GIVEN an owner with an owned project
+        owner = register_and_login(client, "purging-owner@example.com")
+        project = create_project(client, owner, "Doomed")
+
+        # WHEN the owner deletes their account, deleting the project too
+        response = client.request(
+            "DELETE",
+            "/api/v1/users/me",
+            json={"project_dispositions": [{"project_id": project["id"], "action": "delete"}]},
+            headers=auth_header(owner),
+        )
+
+        # THEN the account is erased
+        assert response.status_code == status.HTTP_204_NO_CONTENT
+
+    def test_deleting_project_cascades_opinions(self, client_with_session):
+        """Deleting an owned project during erasure removes its opinions (no orphans)."""
+        from sqlmodel import select
+
+        from api.db.models import ExpertOpinion
+
+        client, session = client_with_session
+        # GIVEN an owned project carrying an opinion
+        owner = register_and_login(client, "cascade-owner@example.com")
+        project = create_project(client, owner, "WithOpinion")
+        project_id = project["id"]
+        client.post(
+            f"/api/v1/projects/{project_id}/opinions",
+            json={"position": "Expert", "lower_bound": 40.0, "peak": 60.0, "upper_bound": 80.0},
+            headers=auth_header(owner),
+        )
+
+        # WHEN the account is erased, deleting the project
+        response = client.request(
+            "DELETE",
+            "/api/v1/users/me",
+            json={"project_dispositions": [{"project_id": project_id, "action": "delete"}]},
+            headers=auth_header(owner),
+        )
+
+        # THEN no opinions are left orphaned
+        assert response.status_code == status.HTTP_204_NO_CONTENT
+        assert session.exec(select(ExpertOpinion)).all() == []
+
+    def test_partial_dispositions_returns_409(self, client):
+        """An owned project left without a disposition blocks the deletion."""
+        # GIVEN an owner of two projects
+        owner = register_and_login(client, "two-projects@example.com")
+        create_project(client, owner, "First")
+        second = create_project(client, owner, "Second")
+
+        # WHEN only one project is given a disposition
+        response = client.request(
+            "DELETE",
+            "/api/v1/users/me",
+            json={"project_dispositions": [{"project_id": second["id"], "action": "delete"}]},
+            headers=auth_header(owner),
+        )
+
+        # THEN the deletion is rejected
+        assert response.status_code == status.HTTP_409_CONFLICT
+
+    def test_transfer_to_non_member_rejected(self, client):
+        """A transfer to someone who is not a project member is rejected."""
+        # GIVEN an owner of a project with no other members
+        owner = register_and_login(client, "solo-owner@example.com")
+        project = create_project(client, owner, "Solo")
+        stranger = "00000000-0000-0000-0000-000000000000"
+
+        # WHEN the owner tries to transfer to a non-member
+        response = client.request(
+            "DELETE",
+            "/api/v1/users/me",
+            json={
+                "project_dispositions": [
+                    {"project_id": project["id"], "action": "transfer", "new_admin_id": stranger}
+                ]
+            },
+            headers=auth_header(owner),
+        )
+
+        # THEN the disposition is rejected as invalid
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
 
 
 class TestChangePasswordRevokesSessions:

@@ -1,7 +1,8 @@
 """Authentication schemas."""
 
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
+from uuid import UUID
 
 import regex
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
@@ -194,3 +195,23 @@ class ResetPasswordRequest(BaseModel):
     def password_strength(cls, v: str) -> str:
         """Validate password strength."""
         return validate_password_strength(v)
+
+
+class ProjectDisposition(BaseModel):
+    """How to handle one project the departing user still owns (GDPR Art. 17)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    project_id: UUID
+    action: Literal["transfer", "delete"]
+    new_admin_id: UUID | None = Field(
+        None, description="Member to promote to admin; required when action is 'transfer'"
+    )
+
+
+class DeleteAccountRequest(BaseModel):
+    """Account-deletion payload: a disposition for each project the user still owns."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    project_dispositions: list[ProjectDisposition] = Field(default_factory=list)
