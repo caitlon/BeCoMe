@@ -2,7 +2,9 @@
 
 The check is enforced only when the request carries the readable ``csrf_token`` cookie,
 i.e. a cookie-based browser client. Programmatic clients that authenticate with a Bearer
-header (and requests made before login) send no such cookie and are unaffected.
+header send no such cookie and are unaffected. Pre-session auth endpoints (login,
+register, refresh, password reset) are always exempt, so a stale cookie left by a revoked
+session (e.g. after a password change) cannot block re-authentication.
 
 ``SameSite=Strict`` already stops the session cookies from being sent on cross-site
 requests; this double-submit check is defense-in-depth: an attacker who cannot read the
@@ -22,6 +24,18 @@ from api.auth.cookies import CSRF_COOKIE, CSRF_HEADER
 # working, since a cross-origin preflight carries no cookies or custom headers).
 _SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "TRACE"})
 
+# Pre-session auth endpoints must work without a CSRF token: a client can hold a stale
+# ``csrf_token`` cookie from a revoked session, and these requests establish or refresh a
+# session rather than act on one. Logout is excluded -- it acts on a live session and the
+# browser client sends the matching token.
+_AUTH_PREFIX = "/api/v1/auth/"
+_CSRF_PROTECTED_AUTH_PATHS = frozenset({"/api/v1/auth/logout"})
+
+
+def _csrf_exempt(path: str) -> bool:
+    """Return whether a path is a pre-session auth endpoint exempt from the CSRF check."""
+    return path.startswith(_AUTH_PREFIX) and path not in _CSRF_PROTECTED_AUTH_PATHS
+
 
 class CSRFMiddleware(BaseHTTPMiddleware):
     """Reject cookie-authenticated mutating requests that lack a matching CSRF token."""
@@ -34,7 +48,7 @@ class CSRFMiddleware(BaseHTTPMiddleware):
         :return: A 403 response when the CSRF token is missing or wrong, else the
             downstream response.
         """
-        if request.method not in _SAFE_METHODS:
+        if request.method not in _SAFE_METHODS and not _csrf_exempt(request.url.path):
             cookie = request.cookies.get(CSRF_COOKIE)
             if cookie is not None:
                 header = request.headers.get(CSRF_HEADER)
