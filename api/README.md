@@ -98,7 +98,21 @@ and logout revokes the session and clears the cookies.
 | PUT | `/api/v1/users/me/password` | Change password |
 | POST | `/api/v1/users/me/photo` | Upload photo |
 | DELETE | `/api/v1/users/me/photo` | Delete photo |
-| DELETE | `/api/v1/users/me` | Delete account (409 while you still admin any project) |
+| DELETE | `/api/v1/users/me` | Delete account, handling each owned project (GDPR Art. 17) |
+
+Deleting the account (`DELETE /api/v1/users/me`) accepts an optional body that says what
+to do with every project the user still admins -- `transfer` it to another member or
+`delete` it -- so erasure never silently drops other experts' contributions:
+
+```json
+{ "project_dispositions": [
+  { "project_id": "<uuid>", "action": "transfer", "new_admin_id": "<member-uuid>" },
+  { "project_id": "<uuid>", "action": "delete" }
+] }
+```
+
+An owned project left without a disposition returns `409`; a transfer to a non-member
+returns `422`. The profile photo blob is removed from object storage as part of erasure.
 
 ### Projects
 
