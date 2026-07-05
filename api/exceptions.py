@@ -48,6 +48,10 @@ class AccountHasOwnedProjectsError(BeCoMeAPIError):
     """Raised when account deletion is blocked because the user still owns projects."""
 
 
+class InvalidProjectDispositionError(ValidationError):
+    """Raised when an account-deletion project disposition is invalid (bad transfer target)."""
+
+
 # Project-related exceptions
 class ProjectNotFoundError(NotFoundError):
     """Raised when project is not found."""
