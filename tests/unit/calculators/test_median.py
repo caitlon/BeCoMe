@@ -1,5 +1,7 @@
 """Unit tests for median calculation in BeCoMeCalculator."""
 
+from itertools import permutations
+
 import pytest
 
 from src.exceptions import EmptyOpinionsError
@@ -239,3 +241,64 @@ class TestBeCoMeCalculatorMedian:
         assert result.lower_bound == 9.0
         assert result.peak == 12.0
         assert result.upper_bound == 15.0
+
+
+class TestMedianOrderIndependence:
+    """Tied centroids and duplicate opinions must not make the result order-dependent."""
+
+    def test_odd_median_with_tied_centroids_is_input_order_independent(self, calculator):
+        """Every input ordering yields the same median when centroids tie."""
+        # GIVEN - X and Y share centroid 2.0 with different triangles; Z sits far away
+        x = ExpertOpinion("X", FuzzyTriangleNumber(lower_bound=0.0, peak=3.0, upper_bound=3.0))
+        y = ExpertOpinion("Y", FuzzyTriangleNumber(lower_bound=1.0, peak=2.0, upper_bound=3.0))
+        z = ExpertOpinion("Z", FuzzyTriangleNumber(lower_bound=10.0, peak=10.0, upper_bound=10.0))
+
+        # WHEN - the median is computed for every permutation of the input
+        medians = {
+            (m.lower_bound, m.peak, m.upper_bound)
+            for perm in permutations([x, y, z])
+            for m in [calculator.calculate_median(list(perm))]
+        }
+
+        # THEN - all orderings agree, and ties resolve canonically (by triangle bounds)
+        assert medians == {(1.0, 2.0, 3.0)}
+
+    def test_compromise_with_tied_centroids_is_input_order_independent(self, calculator):
+        """The full compromise result is identical for every input ordering."""
+        # GIVEN - two opinions tie on centroid with different triangles
+        x = ExpertOpinion("X", FuzzyTriangleNumber(lower_bound=0.0, peak=3.0, upper_bound=3.0))
+        y = ExpertOpinion("Y", FuzzyTriangleNumber(lower_bound=1.0, peak=2.0, upper_bound=3.0))
+        z = ExpertOpinion("Z", FuzzyTriangleNumber(lower_bound=10.0, peak=10.0, upper_bound=10.0))
+
+        # WHEN
+        results = {
+            (
+                r.best_compromise.lower_bound,
+                r.best_compromise.peak,
+                r.best_compromise.upper_bound,
+                r.max_error,
+            )
+            for perm in permutations([x, y, z])
+            for r in [calculator.calculate_compromise(list(perm))]
+        }
+
+        # THEN
+        assert len(results) == 1
+
+    def test_even_median_with_identical_middle_duplicates(self, calculator):
+        """Two identical middle opinions average to themselves, not to a neighbour."""
+        # GIVEN - the two middle opinions are exact duplicates (same id, same triangle)
+        opinions = [
+            ExpertOpinion("L", FuzzyTriangleNumber(lower_bound=1.0, peak=1.0, upper_bound=1.0)),
+            ExpertOpinion("M", FuzzyTriangleNumber(lower_bound=4.0, peak=5.0, upper_bound=6.0)),
+            ExpertOpinion("M", FuzzyTriangleNumber(lower_bound=4.0, peak=5.0, upper_bound=6.0)),
+            ExpertOpinion("H", FuzzyTriangleNumber(lower_bound=9.0, peak=9.0, upper_bound=9.0)),
+        ]
+
+        # WHEN
+        result = calculator.calculate_median(opinions)
+
+        # THEN - the median is exactly the duplicated middle triangle
+        assert result.lower_bound == 4.0
+        assert result.peak == 5.0
+        assert result.upper_bound == 6.0

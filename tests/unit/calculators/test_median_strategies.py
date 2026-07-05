@@ -162,12 +162,9 @@ class TestOddMedianStrategy:
 
     def test_odd_strategy_with_single_expert(self, one_expert_for_odd_strategy):
         """Test odd median strategy with single expert returns unchanged opinion."""
-        # GIVEN
-        median_centroid = 10.0
-
         # WHEN
         strategy = OddMedianStrategy()
-        result = strategy.calculate(one_expert_for_odd_strategy, median_centroid)
+        result = strategy.calculate(one_expert_for_odd_strategy)
 
         # THEN
         assert result.lower_bound == 5.0
@@ -176,12 +173,9 @@ class TestOddMedianStrategy:
 
     def test_odd_strategy_with_three_experts(self, three_experts_for_odd_strategy):
         """Test odd median strategy with three experts returns middle element."""
-        # GIVEN
-        median_centroid = 9.0
-
         # WHEN
         strategy = OddMedianStrategy()
-        result = strategy.calculate(three_experts_for_odd_strategy, median_centroid)
+        result = strategy.calculate(three_experts_for_odd_strategy)
 
         # THEN
         assert result.lower_bound == 6.0
@@ -190,12 +184,9 @@ class TestOddMedianStrategy:
 
     def test_odd_strategy_with_five_experts(self, five_experts_for_odd_strategy):
         """Test odd median strategy with five experts returns middle element."""
-        # GIVEN
-        median_centroid = 8.0
-
         # WHEN
         strategy = OddMedianStrategy()
-        result = strategy.calculate(five_experts_for_odd_strategy, median_centroid)
+        result = strategy.calculate(five_experts_for_odd_strategy)
 
         # THEN
         assert result.lower_bound == 5.0
@@ -208,12 +199,9 @@ class TestEvenMedianStrategy:
 
     def test_even_strategy_with_two_experts(self, two_experts_for_even_strategy):
         """Test even median strategy with two experts returns average."""
-        # GIVEN
-        median_centroid = 9.0
-
         # WHEN
         strategy = EvenMedianStrategy()
-        result = strategy.calculate(two_experts_for_even_strategy, median_centroid)
+        result = strategy.calculate(two_experts_for_even_strategy)
 
         # THEN
         assert result.lower_bound == 6.0
@@ -222,12 +210,9 @@ class TestEvenMedianStrategy:
 
     def test_even_strategy_with_four_experts(self, four_experts_for_even_strategy):
         """Test even median strategy with four experts returns average of middle two."""
-        # GIVEN
-        median_centroid = 8.5
-
         # WHEN
         strategy = EvenMedianStrategy()
-        result = strategy.calculate(four_experts_for_even_strategy, median_centroid)
+        result = strategy.calculate(four_experts_for_even_strategy)
 
         # THEN
         assert result.lower_bound == 5.0
@@ -236,12 +221,9 @@ class TestEvenMedianStrategy:
 
     def test_even_strategy_with_six_experts(self, six_experts_for_even_strategy):
         """Test even median strategy with six experts returns average of middle two."""
-        # GIVEN
-        median_centroid = 9.5
-
         # WHEN
         strategy = EvenMedianStrategy()
-        result = strategy.calculate(six_experts_for_even_strategy, median_centroid)
+        result = strategy.calculate(six_experts_for_even_strategy)
 
         # THEN
         assert result.lower_bound == 6.0
@@ -268,7 +250,7 @@ class TestEvenMedianStrategyEdgeCases:
         strategy = EvenMedianStrategy()
 
         # WHEN
-        result = strategy.calculate(opinions, median_centroid=10.0)
+        result = strategy.calculate(opinions)
 
         # THEN - average of (5,10,15) and (8,10,12) = (6.5, 10, 13.5)
         assert result.lower_bound == 6.5
@@ -299,7 +281,7 @@ class TestEvenMedianStrategyEdgeCases:
         strategy = EvenMedianStrategy()
 
         # WHEN
-        result = strategy.calculate(opinions, median_centroid=10.0)
+        result = strategy.calculate(opinions)
 
         # THEN - both middle elements have centroid=10, averages E2 and E3
         assert result.lower_bound == 6.5
@@ -330,11 +312,12 @@ class TestEvenMedianStrategyEdgeCases:
         strategy = EvenMedianStrategy()
 
         # WHEN
-        result = strategy.calculate(opinions, median_centroid=10.0)
+        result = strategy.calculate(opinions)
 
-        # THEN - strategy picks first two closest (E1 and E2 due to list order)
-        # Result is average of two opinions picked by _find_closest_opinion
+        # THEN - the two middle opinions of the list (E2 and E3) are averaged
+        assert result.lower_bound == 7.5
         assert result.peak == 10.0
+        assert result.upper_bound == 12.5
 
     def test_clustered_centroids_near_median(self):
         """Multiple opinions clustered near median centroid."""
@@ -368,10 +351,12 @@ class TestEvenMedianStrategyEdgeCases:
         strategy = EvenMedianStrategy()
 
         # WHEN
-        result = strategy.calculate(opinions, median_centroid=10.0)
+        result = strategy.calculate(opinions)
 
-        # THEN - peak is always 10.0 since all middle opinions have centroid=10
+        # THEN - the two middle opinions (E3 and E4) are averaged
+        assert result.lower_bound == 9.65
         assert result.peak == 10.0
+        assert result.upper_bound == 10.35
 
 
 class TestOddMedianStrategyEdgeCases:
@@ -397,9 +382,9 @@ class TestOddMedianStrategyEdgeCases:
         strategy = OddMedianStrategy()
 
         # WHEN
-        result = strategy.calculate(opinions, median_centroid=10.0)
+        result = strategy.calculate(opinions)
 
-        # THEN - _find_closest_opinion returns first match (E1)
+        # THEN - the middle element of the list (E2) is the median
+        assert result.lower_bound == 7.0
         assert result.peak == 10.0
-        assert result.lower_bound == 5.0
-        assert result.upper_bound == 15.0
+        assert result.upper_bound == 13.0
