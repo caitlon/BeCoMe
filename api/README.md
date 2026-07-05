@@ -18,10 +18,13 @@ The API runs at `http://localhost:8000`. Interactive documentation:
 ```text
 api/
 ├── auth/               # Authentication & authorization
-│   ├── jwt.py              # Token creation/validation
+│   ├── jwt.py              # Token creation/validation (rotation family / sid)
 │   ├── password.py         # Password hashing (bcrypt)
-│   ├── dependencies.py     # CurrentUser dependency
+│   ├── cookies.py          # HttpOnly session cookies + CSRF token helpers
+│   ├── dependencies.py     # CurrentUser dependency (cookie or Bearer)
 │   ├── revocation_store.py # Token revocation store (in-memory / Redis)
+│   ├── login_throttle.py   # Per-account lockout after failed logins
+│   ├── reset_throttle.py   # Per-email cooldown for password-reset emails
 │   └── logging.py          # Auth event logging
 ├── db/                 # Database layer
 │   ├── models.py           # SQLModel entities
@@ -30,6 +33,8 @@ api/
 │   └── utils.py            # UTC helpers, email regex
 ├── middleware/         # Request processing
 │   ├── rate_limit.py       # SlowAPI rate limiting (logs violations)
+│   ├── csrf.py             # Double-submit CSRF check on cookie mutations
+│   ├── body_size.py        # Request body size limit (413)
 │   ├── security_headers.py # Security response headers
 │   ├── request_logging.py  # Request/response logging + X-Request-ID
 │   └── exception_handlers.py  # Centralized errors + catch-all 500
@@ -50,14 +55,22 @@ api/
 │   └── ...
 ├── services/           # Business logic
 │   ├── user_service.py
-│   ├── project_service.py
+│   ├── project_service.py         # + membership / query services
 │   ├── opinion_service.py
 │   ├── invitation_service.py
 │   ├── calculation_service.py
+│   ├── password_reset_service.py
+│   ├── data_export_service.py     # GDPR export
+│   ├── email/              # Email delivery (console / HTTP provider)
+│   ├── export/             # Result export renderers
 │   └── storage/            # File storage (Railway bucket, S3)
 ├── utils/              # Utilities
-│   └── sanitization.py     # HTML sanitization
-├── config.py           # Settings (Pydantic Settings)
+│   ├── sanitization.py     # HTML sanitization
+│   ├── client_ip.py        # Real client IP behind trusted proxies
+│   ├── upload.py           # Size-capped streaming reads
+│   └── photo_links.py      # Photo proxy URL builder
+├── config.py           # Settings (Pydantic Settings) + deploy invariants
+├── pagination.py       # Shared limit/offset params (cap 100)
 ├── logging_config.py   # Centralized logging + JSON formatter (test/prod)
 ├── logging_context.py  # Request-scoped correlation (request_id/user_id) via contextvars
 ├── dependencies.py     # DI factories + authorization
@@ -157,13 +170,18 @@ returns `422`. The profile photo blob is removed from object storage as part of 
 |--------|----------|-------------|
 | GET | `/api/v1/health` | API health check |
 
+**Pagination.** List endpoints (projects, opinions, members, invitations) accept optional
+`limit`/`offset` query parameters; `limit` is capped at 100 and defaults to the first page,
+so responses stay bounded. The GDPR export is the one exception -- it always returns the
+full dataset.
+
 ## Configuration
 
 Environment variables (can use `.env` file):
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `APP_ENV` | `dev` | Deployment profile: `dev`, `test`, or `prod`. Selects the `.env.<APP_ENV>` overlay; `prod` rejects a default secret or SQLite. See the root README "Environment profiles". |
+| `APP_ENV` | `dev` | Deployment profile: `dev`, `test`, or `prod`. Selects the `.env.<APP_ENV>` overlay; deployed profiles reject a weak secret, SQLite, a missing Redis, or localhost CORS at startup. See the root README "Environment profiles". |
 | `DATABASE_URL` | `sqlite:///./become.db` | Database connection string. On deployed environments this is the least-privilege `become_app` role. |
 | `MIGRATION_DATABASE_URL` | *optional* | Privileged connection used only by Alembic migrations (DDL); falls back to `DATABASE_URL` when unset. |
 | `SECRET_KEY` | *required* | JWT signing key (generate with `openssl rand -hex 32`) |
@@ -172,6 +190,10 @@ Environment variables (can use `.env` file):
 | `DEBUG` | `false` | Debug mode |
 | `API_VERSION` | `1.0.0b1` | API version (auto-read from pyproject.toml) |
 | `CORS_ORIGINS` | `http://localhost:3000,http://localhost:8080` | Allowed CORS origins |
+| `REDIS_URL` | *required when deployed* | Redis for rate limiting, token revocation, and auth throttles |
+| `CLOUDFLARE_ORIGIN_SECRET` | *required in prod* | Shared secret proving the request came through Cloudflare |
+| `EMAIL_PROVIDER` | `console` | Password-reset email delivery: `console` (log) or `http` (Resend) |
+| `EMAIL_API_KEY` | *optional* | API key for the `http` email provider |
 | `API_PUBLIC_URL` | `http://localhost:8000` | Public base URL of this API, used to build profile photo proxy links |
 | `BUCKET_NAME` | *optional* | Railway Storage Bucket name (auto-injected when a bucket is attached) |
 | `BUCKET_ENDPOINT` | *optional* | S3-compatible bucket endpoint |
@@ -207,5 +229,6 @@ uv run pytest tests/unit/api/ tests/integration/api/ --cov=api --cov-report=term
 ## Related Documentation
 
 - [Main README](../README.md) — project overview
+- [docs/security.md](../docs/security.md) — application and database security posture
 - [docs/environments.md](../docs/environments.md) — dev/test/prod profiles, Railway deployment, database topology
 - [CLAUDE.md](../CLAUDE.md) — development guidelines

@@ -40,7 +40,11 @@ from api.db.engine import create_db_and_tables
 create_db_and_tables()
 ```
 
-Tables are created automatically on application startup via FastAPI lifespan.
+On SQLite (local development and the test suite) tables are created automatically on
+application startup via FastAPI lifespan. Deployed PostgreSQL schemas are managed by
+Alembic instead: migrations live in `migrations/` and run before each Railway deploy, and
+`create_db_and_tables()` is a no-op there. See
+[docs/environments.md](../../docs/environments.md) for the full schema-management story.
 
 ### Session Dependency
 

@@ -1,6 +1,6 @@
 # BeCoMe Test Suite
 
-Tests for the BeCoMe implementation: 953 tests total, 100% code coverage.
+Tests for the BeCoMe implementation: 1,249 backend tests, 100% coverage on the core library and 99% overall.
 
 ## Overview
 
@@ -23,7 +23,7 @@ uv run pytest --cov=src --cov-report=term-missing
 uv run pytest --cov=src --cov-report=html          # generates htmlcov/
 ```
 
-Current coverage: 100% (all statements and branches).
+Current coverage: 100% on `src/`, 99% across `src/`+`api/` overall (the gap is Redis-backed store variants that need a live Redis).
 
 ## Test Structure
 
@@ -55,7 +55,7 @@ tests/
     └── pendlers_case.py  # 22 experts, Likert scale
 ```
 
-**Unit tests** (571) check individual components in isolation, including API auth, schemas, services, and middleware. **Integration tests** (329) validate core calculations against Excel results (tolerance: 0.001) and test API routes with a real database. **End-to-end tests** (53) exercise complete API workflows including auth, projects, and invitations. **Reference data** contains expected values from the original Excel implementation.
+**Unit tests** (797) check individual components in isolation, including API auth, schemas, services, and middleware. **Integration tests** (393) validate core calculations against Excel results (tolerance: 0.001) and test API routes with a real database. **End-to-end tests** (59) exercise complete API workflows including auth, projects, and invitations. **Reference data** contains expected values from the original Excel implementation.
 
 ## Writing Tests
 
