@@ -1083,3 +1083,17 @@ class TestCookieAuth:
         resp = client.post("/api/v1/auth/refresh")
 
         assert resp.status_code == 401
+
+    def test_login_is_csrf_exempt_with_stale_cookie(self, cookie_client):
+        """Re-login succeeds despite a stale csrf_token cookie and no header (post-revocation)."""
+        self._register_and_login(cookie_client)
+        # A revoked session can leave a stale csrf cookie behind with no matching header; the
+        # login endpoint must still let the user re-authenticate rather than answer 403.
+        cookie_client.cookies.set("csrf_token", "stale-value")
+
+        resp = cookie_client.post(
+            "/api/v1/auth/login",
+            data={"username": "cookie@example.com", "password": self.PASSWORD},
+        )
+
+        assert resp.status_code == 200
