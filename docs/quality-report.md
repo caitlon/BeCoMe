@@ -4,11 +4,11 @@
 
 | Check | Status | Result |
 |-------|--------|--------|
-| mypy (strict) | Pass | No errors in 28 files |
+| mypy (strict) | Pass | No errors (28 files in `src/`+`examples/`, 83 in `api/`) |
 | ruff check | Pass | No issues |
 | ruff format | Pass | All files formatted |
-| pytest | Pass | 1112 tests passed |
-| coverage | Pass | 100% on `src/` |
+| pytest | Pass | 1249 tests passed |
+| coverage | Pass | 100% on `src/`, 99% on `src/`+`api/` overall |
 
 ## Running Checks
 
@@ -41,7 +41,7 @@ HTML report: `uv run pytest --cov=src --cov-report=html` generates `htmlcov/inde
 
 ## Test Breakdown
 
-Unit tests (694) cover models, calculators, interpreters, utilities, and API components (auth, schemas, services, middleware, logging). Integration tests (359) validate core calculations against Excel reference data for all three case studies and test API routes with a real database. End-to-end tests (59) exercise full API workflows. Edge cases include single expert, identical opinions, empty lists, and boundary values.
+Unit tests (797) cover models, calculators, interpreters, utilities, and API components (auth, schemas, services, middleware, logging). Integration tests (393) validate core calculations against Excel reference data for all three case studies and test API routes with a real database. End-to-end tests (59) exercise full API workflows. The frontend adds 733 Vitest tests and 76 Playwright scenarios run on three browsers. Edge cases include single expert, identical opinions, empty lists, and boundary values.
 
 ## Mutation Testing
 
