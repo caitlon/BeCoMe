@@ -10,10 +10,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Navbar } from "@/components/layout/Navbar";
-import { DeleteConfirmModal } from "@/components/modals/DeleteConfirmModal";
+import { DeleteAccountDialog } from "@/components/modals/DeleteAccountDialog";
 import { ValidationChecklist } from "@/components/forms";
 import { useAuth } from "@/contexts/AuthContext";
-import { api, HttpError } from "@/lib/api";
+import { api } from "@/lib/api";
 import { downloadJson } from "@/lib/download";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -217,25 +217,10 @@ const Profile = () => {
     }
   };
 
-  const handleDeleteAccount = async () => {
-    try {
-      await api.deleteAccount();
-      await logout();
-      navigate("/");
-      toast({ title: t("toast.accountDeleted") });
-    } catch (error) {
-      const description =
-        error instanceof HttpError && error.status === 409
-          ? t("dangerZone.ownsProjects")
-          : error instanceof Error
-            ? error.message
-            : t("toast.deleteFailed");
-      toast({
-        title: t("toast.error"),
-        description,
-        variant: "destructive",
-      });
-    }
+  const handleAccountDeleted = async () => {
+    await logout();
+    navigate("/");
+    toast({ title: t("toast.accountDeleted") });
   };
 
   if (!user) {
@@ -478,19 +463,11 @@ const Profile = () => {
         </motion.div>
       </main>
 
-      <DeleteConfirmModal
+      <DeleteAccountDialog
         open={deleteModalOpen}
         onOpenChange={setDeleteModalOpen}
-        title={t("deleteModal.title")}
-        description={t("deleteModal.description")}
-        details={[
-          t("deleteModal.details.projects"),
-          t("deleteModal.details.opinions"),
-          t("deleteModal.details.noUndo"),
-        ]}
-        onConfirm={handleDeleteAccount}
-        confirmText={t("deleteModal.confirm")}
-        loadingText={t("deleteModal.deleting")}
+        currentUserId={user.id}
+        onConfirmed={handleAccountDeleted}
       />
     </div>
   );
