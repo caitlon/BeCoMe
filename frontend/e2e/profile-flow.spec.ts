@@ -69,8 +69,10 @@ test.describe.serial('Profile Page Flow', () => {
     await expect(dialog).toBeVisible();
     await expect(dialog.getByText('Delete Account?')).toBeVisible();
 
-    // Confirm deletion
-    await dialog.getByRole('button', { name: 'Delete My Account' }).click();
+    // Confirm deletion (wait for the dialog to finish loading owned projects)
+    const confirmButton = dialog.getByRole('button', { name: 'Delete My Account' });
+    await expect(confirmButton).toBeEnabled();
+    await confirmButton.click();
 
     // Redirected to login page after account deletion
     await expect(page).toHaveURL('/login', { timeout: 10000 });
