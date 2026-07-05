@@ -8,6 +8,7 @@ import {
   Invitation,
   Member,
   ProjectInvitation,
+  ProjectDisposition,
   CreateProjectInput,
   UpdateProjectInput,
   CreateOpinionInput,
@@ -177,9 +178,10 @@ class ApiClient {
     });
   }
 
-  async deleteAccount(): Promise<void> {
+  async deleteAccount(dispositions: ProjectDisposition[] = []): Promise<void> {
     return this.request<void>('/users/me', {
       method: 'DELETE',
+      body: JSON.stringify({ project_dispositions: dispositions }),
     });
   }
 
