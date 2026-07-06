@@ -58,9 +58,15 @@ export const OtherOpinionsTable = ({
           <TableHeader>
             <TableRow>
               <TableHead>{t("detail.expert")}</TableHead>
-              <TableHead className="text-right font-mono">L</TableHead>
-              <TableHead className="text-right font-mono">P</TableHead>
-              <TableHead className="text-right font-mono">U</TableHead>
+              <TableHead className="text-right font-mono" aria-label={tFuzzy("fuzzy.lower")}>
+                {tFuzzy("fuzzy.lowerAbbr")}
+              </TableHead>
+              <TableHead className="text-right font-mono" aria-label={tFuzzy("fuzzy.peak")}>
+                {tFuzzy("fuzzy.peakAbbr")}
+              </TableHead>
+              <TableHead className="text-right font-mono" aria-label={tFuzzy("fuzzy.upper")}>
+                {tFuzzy("fuzzy.upperAbbr")}
+              </TableHead>
               <TableHead className="text-right font-mono">{tFuzzy("fuzzy.centroid")}</TableHead>
             </TableRow>
           </TableHeader>
