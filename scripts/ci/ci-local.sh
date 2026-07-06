@@ -26,7 +26,7 @@ run_lint() {
   uv run bandit -c pyproject.toml -r src api --severity-level medium
   uv run mypy src/ api/
   uv run detect-secrets-hook --baseline .secrets.baseline $(git ls-files -- ':!:migrations' ':!:frontend/src/i18n' ':!:uv.lock' ':!:frontend/package-lock.json')
-  cd "$PROJECT_ROOT/frontend" && npm run lint
+  cd "$PROJECT_ROOT/frontend" && npm run lint && npm run typecheck
   echo ""
   echo "Lint passed."
 }

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { resources } from '@/i18n';
 
-const namespaces = Object.keys(resources.en);
+const namespaces = Object.keys(resources.en) as (keyof typeof resources.en)[];
 
 function collectKeys(obj: Record<string, unknown>, prefix = ''): string[] {
   const keys: string[] = [];
