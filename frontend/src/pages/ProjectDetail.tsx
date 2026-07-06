@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { motion } from "framer-motion";
 import {
@@ -34,7 +35,8 @@ import {
   useOpinionForm,
 } from "@/components/project";
 import { api, HttpError } from "@/lib/api";
-import { ProjectWithRole, Opinion, CalculationResult, Member, ProjectInvitation } from "@/types/api";
+import { queryKeys } from "@/lib/queryKeys";
+import { Member, ProjectInvitation } from "@/types/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
@@ -47,13 +49,7 @@ const ProjectDetail = () => {
   const { t } = useTranslation("projects");
   const { t: tCommon } = useTranslation();
 
-  const [project, setProject] = useState<ProjectWithRole | null>(null);
-  const [opinions, setOpinions] = useState<Opinion[]>([]);
-  const [result, setResult] = useState<CalculationResult | null>(null);
-  const [members, setMembers] = useState<Member[]>([]);
-  const [pendingInvitations, setPendingInvitations] = useState<ProjectInvitation[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSavingOpinion, setIsSavingOpinion] = useState(false);
+  const queryClient = useQueryClient();
 
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -62,7 +58,73 @@ const ProjectDetail = () => {
   const [profileMember, setProfileMember] = useState<Member | null>(null);
 
   const [transferTarget, setTransferTarget] = useState<Member | null>(null);
+
+  /* v8 ignore next -- defensive fallback: id always provided by route params */
+  const projectId = id ?? "";
+
+  const projectQuery = useQuery({
+    queryKey: queryKeys.project(projectId),
+    queryFn: () => api.getProject(projectId),
+    enabled: !!id,
+  });
+  const opinionsQuery = useQuery({
+    queryKey: queryKeys.projectOpinions(projectId),
+    queryFn: () => api.getOpinions(projectId),
+    enabled: !!id,
+  });
+  const resultQuery = useQuery({
+    queryKey: queryKeys.projectResult(projectId),
+    queryFn: () => api.getResult(projectId),
+    enabled: !!id,
+  });
+  const membersQuery = useQuery({
+    queryKey: queryKeys.projectMembers(projectId),
+    queryFn: () => api.getMembers(projectId),
+    enabled: !!id,
+  });
+  const invitationsQuery = useQuery({
+    queryKey: queryKeys.projectInvitations(projectId),
+    queryFn: () =>
+      api.getProjectInvitations(projectId).catch((error: unknown) => {
+        // Experts may not list invitations; treat forbidden as "none".
+        if (error instanceof HttpError && error.status === 403) {
+          return [] as ProjectInvitation[];
+        }
+        throw error;
+      }),
+    enabled: !!id,
+  });
+
+  const project = projectQuery.data ?? null;
+  const opinions = opinionsQuery.data ?? [];
+  const result = resultQuery.data ?? null;
+  const members = membersQuery.data ?? [];
+  const pendingInvitations = invitationsQuery.data ?? [];
+  const isLoading =
+    projectQuery.isPending ||
+    opinionsQuery.isPending ||
+    resultQuery.isPending ||
+    membersQuery.isPending ||
+    invitationsQuery.isPending;
+  const hasLoadError =
+    projectQuery.isError ||
+    opinionsQuery.isError ||
+    resultQuery.isError ||
+    membersQuery.isError ||
+    invitationsQuery.isError;
+
   useDocumentTitle(project ? tCommon("pageTitle.projectDetail", { name: project.name }) : tCommon("common.loading"));
+
+  useEffect(() => {
+    if (hasLoadError) {
+      toast({
+        title: t("toast.error"),
+        description: t("toast.loadProjectFailed"),
+        variant: "destructive",
+      });
+      navigate("/projects");
+    }
+  }, [hasLoadError, toast, navigate, t]);
 
   const myOpinion = opinions.find((o) => o.user_id === user?.id);
   const opinionForm = useOpinionForm(project, myOpinion);
@@ -72,77 +134,41 @@ const ProjectDetail = () => {
     ? opinions.find((o) => o.user_id === profileMember.user_id) ?? null
     : null;
 
-  const fetchData = useCallback(async () => {
-    /* v8 ignore next -- defensive guard: id always provided by route params */
-    if (!id) return;
-    try {
-      const [projectData, opinionsData, resultData, membersData, invitationsData] =
-        await Promise.all([
-          api.getProject(id),
-          api.getOpinions(id),
-          api.getResult(id),
-          api.getMembers(id),
-          api.getProjectInvitations(id).catch((error: unknown) => {
-            if (error instanceof HttpError && error.status === 403) {
-              return [] as ProjectInvitation[];
-            }
-            throw error;
-          }),
-        ]);
-      setProject(projectData);
-      setOpinions(opinionsData);
-      setResult(resultData);
-      setMembers(membersData);
-      setPendingInvitations(invitationsData);
-    } catch {
-      toast({
-        title: t("toast.error"),
-        description: t("toast.loadProjectFailed"),
-        variant: "destructive",
-      });
-      navigate("/projects");
-    } finally {
-      setIsLoading(false);
-    }
-  }, [id, toast, navigate, t]);
+  const invalidateProject = () =>
+    queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId) });
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial data load on mount
-    fetchData();
-  }, [fetchData]);
-
-  const handleSaveOpinion = async (values: OpinionFormOutput) => {
-    /* v8 ignore next -- defensive guard: id always provided by route params */
-    if (!id) return;
-
-    setIsSavingOpinion(true);
-    try {
-      await api.createOrUpdateOpinion(id, {
+  const saveOpinion = useMutation({
+    mutationFn: (values: OpinionFormOutput) =>
+      api.createOrUpdateOpinion(projectId, {
         position: values.position,
         lower_bound: values.lower,
         peak: values.peak,
         upper_bound: values.upper,
-      });
+      }),
+    onSuccess: () => {
       toast({ title: t("toast.opinionSaved") });
-      fetchData();
-    } catch (error) {
+      invalidateProject();
+    },
+    onError: (error) => {
       toast({
         title: t("toast.error"),
         description: error instanceof Error ? error.message : t("toast.saveFailed"),
         variant: "destructive",
       });
-    } finally {
-      setIsSavingOpinion(false);
-    }
+    },
+  });
+
+  const handleSaveOpinion = async (values: OpinionFormOutput) => {
+    await saveOpinion.mutateAsync(values).catch(() => {
+      // errors are surfaced via the mutation's onError toast
+    });
   };
 
   const handleDeleteOpinion = async () => {
-    /* v8 ignore next -- defensive guard: id always provided by route params */
-    if (!id) return;
     try {
-      await api.deleteOpinion(id);
+      await api.deleteOpinion(projectId);
       toast({ title: t("toast.opinionDeleted") });
-      fetchData();
+      invalidateProject();
     } catch {
       toast({
         title: t("toast.error"),
@@ -153,11 +179,11 @@ const ProjectDetail = () => {
   };
 
   const handleDeleteProject = async () => {
-    /* v8 ignore next -- defensive guard: id always provided by route params */
-    if (!id) return;
     try {
-      await api.deleteProject(id);
+      await api.deleteProject(projectId);
       toast({ title: t("toast.projectDeleted") });
+      queryClient.removeQueries({ queryKey: queryKeys.project(projectId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.projects, exact: true });
       navigate("/projects");
     } catch {
       toast({
@@ -169,12 +195,10 @@ const ProjectDetail = () => {
   };
 
   const handleRemoveMember = async (userId: string) => {
-    /* v8 ignore next -- defensive guard: id always provided by route params */
-    if (!id) return;
     try {
-      await api.removeMember(id, userId);
+      await api.removeMember(projectId, userId);
       toast({ title: t("toast.memberRemoved") });
-      fetchData();
+      invalidateProject();
     } catch {
       toast({
         title: t("toast.error"),
@@ -185,13 +209,13 @@ const ProjectDetail = () => {
   };
 
   const handleTransferOwnership = async () => {
-    /* v8 ignore next -- defensive guard: id and target are always set when invoked */
-    if (!id || !transferTarget) return;
+    /* v8 ignore next -- defensive guard: target is always set when invoked */
+    if (!transferTarget) return;
     try {
-      await api.transferOwnership(id, transferTarget.user_id);
+      await api.transferOwnership(projectId, transferTarget.user_id);
       toast({ title: t("toast.ownershipTransferred") });
       setTransferTarget(null);
-      fetchData();
+      invalidateProject();
     } catch {
       toast({
         title: t("toast.error"),
@@ -296,7 +320,7 @@ const ProjectDetail = () => {
               form={opinionForm}
               project={project}
               myOpinion={myOpinion}
-              isSaving={isSavingOpinion}
+              isSaving={saveOpinion.isPending}
               onSubmit={handleSaveOpinion}
               onDelete={handleDeleteOpinion}
             />
@@ -338,7 +362,7 @@ const ProjectDetail = () => {
                 form={opinionForm}
                 project={project}
                 myOpinion={myOpinion}
-                isSaving={isSavingOpinion}
+                isSaving={saveOpinion.isPending}
                 onSubmit={handleSaveOpinion}
                 onDelete={handleDeleteOpinion}
               />

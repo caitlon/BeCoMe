@@ -12,6 +12,7 @@ const mockApi = {
   acceptInvitation: vi.fn(),
   declineInvitation: vi.fn(),
   deleteProject: vi.fn(),
+  createProject: vi.fn(),
 };
 
 vi.mock('@/lib/api', () => ({
@@ -21,6 +22,7 @@ vi.mock('@/lib/api', () => ({
     acceptInvitation: (id: string) => mockApi.acceptInvitation(id),
     declineInvitation: (id: string) => mockApi.declineInvitation(id),
     deleteProject: (id: string) => mockApi.deleteProject(id),
+    createProject: (data: unknown) => mockApi.createProject(data),
   },
 }));
 
@@ -600,6 +602,36 @@ describe('Projects', () => {
           })
         );
       });
+    });
+  });
+});
+
+describe('Projects - Create Project', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockApi.getProjects.mockResolvedValue([]);
+    mockApi.getInvitations.mockResolvedValue([]);
+    mockApi.createProject.mockResolvedValue({});
+  });
+
+  it('refetches the project list after creating a project', async () => {
+    const user = userEvent.setup();
+    render(<Projects />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /new project/i })).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole('button', { name: /new project/i }));
+    await user.type(screen.getByLabelText(/project name/i), 'My Project');
+    await user.type(screen.getByLabelText(/unit/i), '%');
+    await user.click(screen.getByRole('button', { name: 'Create Project' }));
+
+    await waitFor(() => {
+      expect(mockApi.createProject).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(mockApi.getProjects).toHaveBeenCalledTimes(2);
     });
   });
 });
