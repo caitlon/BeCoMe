@@ -25,7 +25,7 @@ export function StepComplete() {
         className="mb-8"
       >
         <div className="w-24 h-24 rounded-full bg-success/10 flex items-center justify-center">
-          <CheckCircle2 className="h-12 w-12 text-success" role="img" aria-label="Completed" />
+          <CheckCircle2 className="h-12 w-12 text-success" role="img" aria-label={t("steps.complete.iconLabel")} />
         </div>
       </motion.div>
 
