@@ -26,10 +26,12 @@ import { DeleteConfirmModal } from "@/components/modals/DeleteConfirmModal";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import {
   OpinionForm,
+  OpinionFormOutput,
   OtherOpinionsTable,
   ResultsSection,
   TeamTable,
   MemberProfileDialog,
+  useOpinionForm,
 } from "@/components/project";
 import { api, HttpError } from "@/lib/api";
 import { ProjectWithRole, Opinion, CalculationResult, Member, ProjectInvitation } from "@/types/api";
@@ -59,15 +61,11 @@ const ProjectDetail = () => {
   const [showIndividual, setShowIndividual] = useState(false);
   const [profileMember, setProfileMember] = useState<Member | null>(null);
 
-  // Opinion form state
-  const [position, setPosition] = useState("");
-  const [lower, setLower] = useState("");
-  const [peak, setPeak] = useState("");
-  const [upper, setUpper] = useState("");
   const [transferTarget, setTransferTarget] = useState<Member | null>(null);
   useDocumentTitle(project ? tCommon("pageTitle.projectDetail", { name: project.name }) : tCommon("common.loading"));
 
   const myOpinion = opinions.find((o) => o.user_id === user?.id);
+  const opinionForm = useOpinionForm(project, myOpinion);
   const otherOpinions = opinions.filter((o) => o.user_id !== user?.id);
   const isAdmin = project?.role === "admin";
   const profileOpinion = profileMember
@@ -96,15 +94,6 @@ const ProjectDetail = () => {
       setResult(resultData);
       setMembers(membersData);
       setPendingInvitations(invitationsData);
-
-      // Pre-fill form if user has opinion
-      const existing = opinionsData.find((o) => o.user_id === user?.id);
-      if (existing) {
-        setPosition(existing.position || "");
-        setLower(String(existing.lower_bound));
-        setPeak(String(existing.peak));
-        setUpper(String(existing.upper_bound));
-      }
     } catch {
       toast({
         title: t("toast.error"),
@@ -115,57 +104,24 @@ const ProjectDetail = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [id, user?.id, toast, navigate, t]);
+  }, [id, toast, navigate, t]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- initial data load on mount
     fetchData();
   }, [fetchData]);
 
-  const handleSaveOpinion = async () => {
-    /* v8 ignore next -- defensive guard: id and project always present when form is shown */
-    if (!id || !project) return;
-
-    const lowerNum = Number.parseFloat(lower);
-    const peakNum = Number.parseFloat(peak);
-    const upperNum = Number.parseFloat(upper);
-
-    // Validation
-    /* v8 ignore next 7 -- defensive guard: button is disabled when fields are empty */
-    if (Number.isNaN(lowerNum) || Number.isNaN(peakNum) || Number.isNaN(upperNum)) {
-      toast({
-        title: t("toast.validationError"),
-        description: t("toast.invalidNumbers"),
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (lowerNum > peakNum || peakNum > upperNum) {
-      toast({
-        title: t("toast.validationError"),
-        description: t("toast.lowerPeakUpper"),
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (lowerNum < project.scale_min || upperNum > project.scale_max) {
-      toast({
-        title: t("toast.validationError"),
-        description: t("toast.scaleRange", { min: project.scale_min, max: project.scale_max }),
-        variant: "destructive",
-      });
-      return;
-    }
+  const handleSaveOpinion = async (values: OpinionFormOutput) => {
+    /* v8 ignore next -- defensive guard: id always provided by route params */
+    if (!id) return;
 
     setIsSavingOpinion(true);
     try {
       await api.createOrUpdateOpinion(id, {
-        position,
-        lower_bound: lowerNum,
-        peak: peakNum,
-        upper_bound: upperNum,
+        position: values.position,
+        lower_bound: values.lower,
+        peak: values.peak,
+        upper_bound: values.upper,
       });
       toast({ title: t("toast.opinionSaved") });
       fetchData();
@@ -185,10 +141,6 @@ const ProjectDetail = () => {
     if (!id) return;
     try {
       await api.deleteOpinion(id);
-      setPosition("");
-      setLower("");
-      setPeak("");
-      setUpper("");
       toast({ title: t("toast.opinionDeleted") });
       fetchData();
     } catch {
@@ -341,18 +293,11 @@ const ProjectDetail = () => {
           {/* Left Column - Opinions */}
           <div className="space-y-6">
             <OpinionForm
-              position={position}
-              setPosition={setPosition}
-              lower={lower}
-              setLower={setLower}
-              peak={peak}
-              setPeak={setPeak}
-              upper={upper}
-              setUpper={setUpper}
+              form={opinionForm}
               project={project}
               myOpinion={myOpinion}
               isSaving={isSavingOpinion}
-              onSave={handleSaveOpinion}
+              onSubmit={handleSaveOpinion}
               onDelete={handleDeleteOpinion}
             />
 
@@ -390,18 +335,11 @@ const ProjectDetail = () => {
 
             <TabsContent value="opinions" className="space-y-6">
               <OpinionForm
-                position={position}
-                setPosition={setPosition}
-                lower={lower}
-                setLower={setLower}
-                peak={peak}
-                setPeak={setPeak}
-                upper={upper}
-                setUpper={setUpper}
+                form={opinionForm}
                 project={project}
                 myOpinion={myOpinion}
                 isSaving={isSavingOpinion}
-                onSave={handleSaveOpinion}
+                onSubmit={handleSaveOpinion}
                 onDelete={handleDeleteOpinion}
               />
               <OtherOpinionsTable opinions={otherOpinions} members={members} currentUserId={user?.id} />
