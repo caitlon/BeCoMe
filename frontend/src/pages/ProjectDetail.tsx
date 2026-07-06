@@ -275,7 +275,7 @@ const ProjectDetail = () => {
           animate={{ opacity: 1, y: 0 }}
           className="mb-8"
         >
-          <h1 className="font-display text-3xl md:text-4xl font-light mb-2">
+          <h1 className="font-display text-3xl md:text-4xl font-normal mb-2">
             {project.name}
           </h1>
           {project.description && (
