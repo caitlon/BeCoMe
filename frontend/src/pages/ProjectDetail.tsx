@@ -940,10 +940,19 @@ const ResultsSection = ({
   } else {
     agreementLevel = "low";
   }
-  const agreementColorClass = {
-    high: "[&>div]:bg-green-700",
-    moderate: "[&>div]:bg-amber-500",
-    low: "[&>div]:bg-red-700",
+  const agreementClasses = {
+    high: {
+      badge: "bg-success text-success-foreground hover:bg-success/90",
+      progress: "[&>div]:bg-success",
+    },
+    moderate: {
+      badge: "bg-warning text-warning-foreground hover:bg-warning/90",
+      progress: "[&>div]:bg-warning",
+    },
+    low: {
+      badge: "bg-error text-error-foreground hover:bg-error/90",
+      progress: "[&>div]:bg-error",
+    },
   }[agreementLevel];
 
   return (
@@ -1056,14 +1065,7 @@ const ResultsSection = ({
           <div className="flex justify-between items-center mb-2">
             <span className="text-sm">{t("detail.maxError")}</span>
             <div className="flex items-center gap-2">
-              <Badge
-                className={cn(
-                  "text-xs",
-                  agreementLevel === "high" && "bg-green-700 text-white hover:bg-green-800",
-                  agreementLevel === "moderate" && "bg-amber-200 text-amber-900 hover:bg-amber-300",
-                  agreementLevel === "low" && "bg-red-700 text-white hover:bg-red-800",
-                )}
-              >
+              <Badge className={cn("text-xs", agreementClasses.badge)}>
                 {t(`detail.agreement.${agreementLevel}`)}
               </Badge>
               <span className="font-mono font-medium">
@@ -1071,7 +1073,7 @@ const ResultsSection = ({
               </span>
             </div>
           </div>
-          <Progress value={Math.min(errorPercent, 100)} className={cn("h-2", agreementColorClass)} />
+          <Progress value={Math.min(errorPercent, 100)} className={cn("h-2", agreementClasses.progress)} />
           <div className="flex justify-between items-center mt-4 text-sm text-muted-foreground">
             <span>{t("detail.experts")}</span>
             <span className="font-mono">{result.num_experts}</span>
@@ -1105,11 +1107,11 @@ const ResultsSection = ({
               <div className="flex items-center justify-between mt-4">
                 <div className="flex gap-4 text-xs">
                   <div className="flex items-center gap-1">
-                    <div className="w-3 h-0.5 bg-blue-500" />
+                    <div className="w-3 h-0.5 bg-chart-mean" />
                     <span>{tFuzzy("fuzzy.mean")}</span>
                   </div>
                   <div className="flex items-center gap-1">
-                    <div className="w-3 h-0.5 bg-green-500" />
+                    <div className="w-3 h-0.5 bg-chart-median" />
                     <span>{tFuzzy("fuzzy.median")}</span>
                   </div>
                   <div className="flex items-center gap-1">
@@ -1220,22 +1222,22 @@ const TriangleVisualization = ({
           />
         ))}
 
-      {/* Arithmetic Mean - Blue */}
+      {/* Arithmetic Mean */}
       <polygon
         points={`${scaleToX(result.arithmetic_mean.lower)},${baseY} ${scaleToX(result.arithmetic_mean.peak)},${peakY + 10} ${scaleToX(result.arithmetic_mean.upper)},${baseY}`}
-        fill="rgb(59, 130, 246)"
+        fill="hsl(var(--chart-mean))"
         fillOpacity="0.1"
-        stroke="rgb(59, 130, 246)"
+        stroke="hsl(var(--chart-mean))"
         strokeWidth="1.5"
         strokeDasharray="4,4"
       />
 
-      {/* Median - Green */}
+      {/* Median */}
       <polygon
         points={`${scaleToX(result.median.lower)},${baseY} ${scaleToX(result.median.peak)},${peakY + 10} ${scaleToX(result.median.upper)},${baseY}`}
-        fill="rgb(34, 197, 94)"
+        fill="hsl(var(--chart-median))"
         fillOpacity="0.1"
-        stroke="rgb(34, 197, 94)"
+        stroke="hsl(var(--chart-median))"
         strokeWidth="1.5"
         strokeDasharray="4,4"
       />

@@ -334,8 +334,8 @@ const Documentation = () => {
                         { key: "xAxis", color: null },
                         { key: "yAxis", color: null },
                         { key: "gray", color: "bg-muted-foreground/30" },
-                        { key: "blue", color: "bg-blue-500" },
-                        { key: "green", color: "bg-green-500" },
+                        { key: "blue", color: "bg-chart-mean" },
+                        { key: "green", color: "bg-chart-median" },
                         { key: "black", color: "bg-foreground" },
                       ].map((item) => (
                         <li
