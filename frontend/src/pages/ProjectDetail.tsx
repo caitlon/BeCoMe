@@ -13,6 +13,7 @@ import {
   ChevronUp,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Collapsible,
@@ -22,6 +23,7 @@ import {
 import { Navbar } from "@/components/layout/Navbar";
 import { InviteExpertModal } from "@/components/modals/InviteExpertModal";
 import { DeleteConfirmModal } from "@/components/modals/DeleteConfirmModal";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import {
   OpinionForm,
   OtherOpinionsTable,
@@ -265,6 +267,14 @@ const ProjectDetail = () => {
     return null;
   }
 
+  const resultsErrorFallback = (
+    <Card>
+      <CardContent className="py-16 text-center">
+        <p className="text-muted-foreground">{t("detail.resultsError")}</p>
+      </CardContent>
+    </Card>
+  );
+
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
@@ -351,13 +361,15 @@ const ProjectDetail = () => {
 
           {/* Right Column - Results */}
           <div className="space-y-6">
-            <ResultsSection
-              result={result}
-              project={project}
-              showIndividual={showIndividual}
-              setShowIndividual={setShowIndividual}
-              opinions={opinions}
-            />
+            <ErrorBoundary fallback={resultsErrorFallback}>
+              <ResultsSection
+                result={result}
+                project={project}
+                showIndividual={showIndividual}
+                setShowIndividual={setShowIndividual}
+                opinions={opinions}
+              />
+            </ErrorBoundary>
           </div>
         </div>
 
@@ -396,13 +408,15 @@ const ProjectDetail = () => {
             </TabsContent>
 
             <TabsContent value="results">
-              <ResultsSection
-                result={result}
-                project={project}
-                showIndividual={showIndividual}
-                setShowIndividual={setShowIndividual}
-                opinions={opinions}
-              />
+              <ErrorBoundary fallback={resultsErrorFallback}>
+                <ResultsSection
+                  result={result}
+                  project={project}
+                  showIndividual={showIndividual}
+                  setShowIndividual={setShowIndividual}
+                  opinions={opinions}
+                />
+              </ErrorBoundary>
             </TabsContent>
 
             <TabsContent value="team">
