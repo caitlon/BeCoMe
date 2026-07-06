@@ -12,9 +12,11 @@ export const PASSWORD_MAX_LENGTH = 128;
  * checklist and the zod schemas are derived from this list, so the rules can
  * never drift apart.
  */
+const MIN_LENGTH_KEY = "passwordRequirements.minLength";
+
 const PASSWORD_RULES = [
   {
-    i18nKey: "passwordRequirements.minLength",
+    i18nKey: MIN_LENGTH_KEY,
     test: (password: string) => password.length >= PASSWORD_MIN_LENGTH,
   },
   {
@@ -44,8 +46,16 @@ export const getPasswordRequirements = (
     met: rule.test(password),
   }));
 
+// The length bounds use native .min()/.max() so their issues carry the
+// standard zod codes (too_small/too_big); only the character-class rules
+// need custom refinements.
 export const buildPasswordSchema = (t: (key: string) => string): z.ZodType<string, string> =>
-  PASSWORD_RULES.reduce<z.ZodType<string, string>>(
+  PASSWORD_RULES.filter((rule) => rule.i18nKey !== MIN_LENGTH_KEY).reduce<
+    z.ZodType<string, string>
+  >(
     (schema, rule) => schema.refine(rule.test, { error: t(rule.i18nKey) }),
-    z.string().max(PASSWORD_MAX_LENGTH, t("validation.passwordMaxLength"))
+    z
+      .string()
+      .min(PASSWORD_MIN_LENGTH, t(MIN_LENGTH_KEY))
+      .max(PASSWORD_MAX_LENGTH, t("validation.passwordMaxLength"))
   );
