@@ -410,7 +410,7 @@ describe('ProjectDetail - Opinion Form Validations', () => {
     defaultSetup();
   });
 
-  it('shows error toast when peak > upper (order violation)', async () => {
+  it('blocks save and shows an inline error when peak > upper (order violation)', async () => {
     const user = userEvent.setup();
     render(<ProjectDetail />);
 
@@ -434,17 +434,14 @@ describe('ProjectDetail - Opinion Form Validations', () => {
     await user.click(saveButtons[0]);
 
     await waitFor(() => {
-      expect(mockToast).toHaveBeenCalledWith(
-        expect.objectContaining({
-          title: 'Validation Error',
-          description: 'Values must satisfy: lower ≤ peak ≤ upper',
-          variant: 'destructive',
-        }),
-      );
+      expect(
+        screen.getAllByText('Values must satisfy: lower ≤ peak ≤ upper').length
+      ).toBeGreaterThan(0);
     });
+    expect(mockApi.createOrUpdateOpinion).not.toHaveBeenCalled();
   });
 
-  it('shows error toast when lower > peak', async () => {
+  it('blocks save and shows an inline error when lower > peak', async () => {
     const user = userEvent.setup();
     render(<ProjectDetail />);
 
@@ -468,17 +465,14 @@ describe('ProjectDetail - Opinion Form Validations', () => {
     await user.click(saveButtons[0]);
 
     await waitFor(() => {
-      expect(mockToast).toHaveBeenCalledWith(
-        expect.objectContaining({
-          title: 'Validation Error',
-          description: 'Values must satisfy: lower ≤ peak ≤ upper',
-          variant: 'destructive',
-        }),
-      );
+      expect(
+        screen.getAllByText('Values must satisfy: lower ≤ peak ≤ upper').length
+      ).toBeGreaterThan(0);
     });
+    expect(mockApi.createOrUpdateOpinion).not.toHaveBeenCalled();
   });
 
-  it('shows error toast when values outside scale range', async () => {
+  it('blocks save and shows an inline error when values outside scale range', async () => {
     const user = userEvent.setup();
     render(<ProjectDetail />);
 
@@ -503,13 +497,11 @@ describe('ProjectDetail - Opinion Form Validations', () => {
     await user.click(saveButtons[0]);
 
     await waitFor(() => {
-      expect(mockToast).toHaveBeenCalledWith(
-        expect.objectContaining({
-          title: 'Validation Error',
-          variant: 'destructive',
-        }),
-      );
+      expect(
+        screen.getAllByText('Values must be within scale range: 0 — 100').length
+      ).toBeGreaterThan(0);
     });
+    expect(mockApi.createOrUpdateOpinion).not.toHaveBeenCalled();
   });
 });
 
