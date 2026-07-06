@@ -40,7 +40,7 @@ export const MemberProfileDialog = ({
             )}
             <AvatarFallback className="text-xl">{initials}</AvatarFallback>
           </Avatar>
-          <DialogTitle className="text-xl font-light">{fullName}</DialogTitle>
+          <DialogTitle className="text-xl font-normal">{fullName}</DialogTitle>
           <div className="flex flex-col items-center gap-1">
             <Badge
               variant={member.role === "admin" ? "default" : "secondary"}

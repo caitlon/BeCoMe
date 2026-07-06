@@ -287,7 +287,7 @@ const Profile = () => {
                 )}
               </div>
             </div>
-            <h1 className="font-display text-3xl font-light">
+            <h1 className="font-display text-3xl font-normal">
               {user.first_name} {user.last_name}
             </h1>
             <p className="text-muted-foreground">{user.email}</p>
