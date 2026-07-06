@@ -1,6 +1,7 @@
 import { useId } from "react";
 import { useTranslation } from "react-i18next";
 import { ProjectWithRole, Opinion, CalculationResult } from "@/types/api";
+import { scaleToX as scaleToXHelper, trianglePoints, type TriangleScale } from "./triangle-geometry";
 
 export interface TriangleVisualizationProps {
   result: CalculationResult;
@@ -17,12 +18,14 @@ export const TriangleVisualization = ({
 }: TriangleVisualizationProps) => {
   const { t: tCommon } = useTranslation();
   const resultsTitleId = useId();
-  const scaleToX = (value: number) => {
-    return (
-      40 +
-      ((value - project.scale_min) / (project.scale_max - project.scale_min)) * 320
-    );
+
+  const scale: TriangleScale = {
+    scaleMin: project.scale_min,
+    scaleMax: project.scale_max,
+    x0: 40,
+    width: 320,
   };
+  const scaleToX = (value: number) => scaleToXHelper(value, scale);
 
   const baseY = 160;
   const peakY = 30;
@@ -73,7 +76,7 @@ export const TriangleVisualization = ({
         opinions.map((op) => (
           <polygon
             key={op.id}
-            points={`${scaleToX(op.lower_bound)},${baseY} ${scaleToX(op.peak)},${peakY + 20} ${scaleToX(op.upper_bound)},${baseY}`}
+            points={trianglePoints(op.lower_bound, op.peak, op.upper_bound, baseY, peakY + 20, scale)}
             fill="currentColor"
             fillOpacity="0.05"
             stroke="currentColor"
@@ -84,7 +87,14 @@ export const TriangleVisualization = ({
 
       {/* Arithmetic Mean */}
       <polygon
-        points={`${scaleToX(result.arithmetic_mean.lower)},${baseY} ${scaleToX(result.arithmetic_mean.peak)},${peakY + 10} ${scaleToX(result.arithmetic_mean.upper)},${baseY}`}
+        points={trianglePoints(
+          result.arithmetic_mean.lower,
+          result.arithmetic_mean.peak,
+          result.arithmetic_mean.upper,
+          baseY,
+          peakY + 10,
+          scale,
+        )}
         fill="hsl(var(--chart-mean))"
         fillOpacity="0.1"
         stroke="hsl(var(--chart-mean))"
@@ -94,7 +104,14 @@ export const TriangleVisualization = ({
 
       {/* Median */}
       <polygon
-        points={`${scaleToX(result.median.lower)},${baseY} ${scaleToX(result.median.peak)},${peakY + 10} ${scaleToX(result.median.upper)},${baseY}`}
+        points={trianglePoints(
+          result.median.lower,
+          result.median.peak,
+          result.median.upper,
+          baseY,
+          peakY + 10,
+          scale,
+        )}
         fill="hsl(var(--chart-median))"
         fillOpacity="0.1"
         stroke="hsl(var(--chart-median))"
@@ -104,7 +121,14 @@ export const TriangleVisualization = ({
 
       {/* Best Compromise - Black/White (theme-aware) */}
       <polygon
-        points={`${scaleToX(result.best_compromise.lower)},${baseY} ${scaleToX(result.best_compromise.peak)},${peakY} ${scaleToX(result.best_compromise.upper)},${baseY}`}
+        points={trianglePoints(
+          result.best_compromise.lower,
+          result.best_compromise.peak,
+          result.best_compromise.upper,
+          baseY,
+          peakY,
+          scale,
+        )}
         fill="currentColor"
         fillOpacity="0.1"
         stroke="currentColor"
