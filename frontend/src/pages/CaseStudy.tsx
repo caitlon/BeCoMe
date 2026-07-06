@@ -35,7 +35,7 @@ const CaseStudy = () => {
       <div className="min-h-screen bg-background">
         <Navbar />
         <div className="container mx-auto px-6 py-20 text-center">
-          <h1 className="font-display text-3xl md:text-4xl font-light mb-4">
+          <h1 className="font-display text-3xl md:text-4xl font-normal mb-4">
             {tCommon("notFound.title")}
           </h1>
           <Button variant="outline" asChild>
