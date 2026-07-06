@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SubmitButton } from "@/components/forms";
 import { ProjectWithRole, Opinion } from "@/types/api";
+import { scaleToX, trianglePoints } from "./triangle-geometry";
 
 export interface OpinionFormProps {
   position: string;
@@ -54,6 +55,13 @@ export const OpinionForm = ({
     lower !== String(myOpinion.lower_bound) ||
     peak !== String(myOpinion.peak) ||
     upper !== String(myOpinion.upper_bound);
+
+  const previewScale = {
+    scaleMin: project.scale_min,
+    scaleMax: project.scale_max,
+    x0: 10,
+    width: 180,
+  };
 
   return (
     <Card className="border-2 border-primary/20" aria-busy={isSaving}>
@@ -138,19 +146,14 @@ export const OpinionForm = ({
                 strokeOpacity="0.2"
               />
               <polygon
-                points={`${10 + ((lowerNum - project.scale_min) / (project.scale_max - project.scale_min)) * 180},50 ${10 + ((peakNum - project.scale_min) / (project.scale_max - project.scale_min)) * 180},10 ${10 + ((upperNum - project.scale_min) / (project.scale_max - project.scale_min)) * 180},50`}
+                points={trianglePoints(lowerNum, peakNum, upperNum, 50, 10, previewScale)}
                 fill="currentColor"
                 fillOpacity="0.1"
                 stroke="currentColor"
                 strokeWidth="1.5"
               />
               <text
-                x={
-                  10 +
-                  ((lowerNum - project.scale_min) /
-                    (project.scale_max - project.scale_min)) *
-                    180
-                }
+                x={scaleToX(lowerNum, previewScale)}
                 y="58"
                 className="fill-muted-foreground"
                 fontSize="8"
@@ -159,12 +162,7 @@ export const OpinionForm = ({
                 {lowerNum}
               </text>
               <text
-                x={
-                  10 +
-                  ((peakNum - project.scale_min) /
-                    (project.scale_max - project.scale_min)) *
-                    180
-                }
+                x={scaleToX(peakNum, previewScale)}
                 y="8"
                 className="fill-muted-foreground"
                 fontSize="8"
@@ -173,12 +171,7 @@ export const OpinionForm = ({
                 {peakNum}
               </text>
               <text
-                x={
-                  10 +
-                  ((upperNum - project.scale_min) /
-                    (project.scale_max - project.scale_min)) *
-                    180
-                }
+                x={scaleToX(upperNum, previewScale)}
                 y="58"
                 className="fill-muted-foreground"
                 fontSize="8"
