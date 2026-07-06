@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { User } from '@/types/api';
 import { api } from '@/lib/api';
 import { logger } from '@/lib/logger';
@@ -16,6 +17,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { readonly children: React.ReactNode }) {
+  const queryClient = useQueryClient();
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -59,7 +61,9 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
   const logout = useCallback(async () => {
     await api.logout();
     setUser(null);
-  }, []);
+    // Drop cached queries so the next account on this tab cannot see them.
+    queryClient.clear();
+  }, [queryClient]);
 
   const value = useMemo(() => ({
     user,
