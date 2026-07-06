@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { SPECIAL_CHAR_REGEX, getPasswordRequirements } from '@/lib/validation';
+import { SPECIAL_CHAR_REGEX, buildPasswordSchema, getPasswordRequirements } from '@/lib/validation';
 
 describe('SPECIAL_CHAR_REGEX', () => {
   it.each(['!', '@', '#', '$', '%', '^', '&', '*', '(', ')', '-', '_', '=', '+', '[', ']', '{', '}', '|', '\\', ';', "'", ':', '"', ',', '.', '<', '>', '/', '?', '`', '~'])(
@@ -83,5 +83,38 @@ describe('getPasswordRequirements', () => {
 
     const withSpecial = getPasswordRequirements('Abcdefghij1!', t);
     expect(withSpecial[4].met).toBe(true);
+  });
+});
+
+describe('buildPasswordSchema', () => {
+  const t = vi.fn((key: string) => key);
+  const schema = buildPasswordSchema(t);
+
+  it('accepts a password satisfying every rule', () => {
+    expect(schema.safeParse('StrongPass12!').success).toBe(true);
+  });
+
+  it.each([
+    ['too short', 'Sp12!aa', 'passwordRequirements.minLength'],
+    ['no uppercase', 'weakpassword12!', 'passwordRequirements.uppercase'],
+    ['no lowercase', 'WEAKPASSWORD12!', 'passwordRequirements.lowercase'],
+    ['no digit', 'WeakPassword!!!!', 'passwordRequirements.number'],
+    ['no special char', 'WeakPassword1234', 'passwordRequirements.specialChar'],
+  ])('rejects a password that is %s', (_label, password, expectedKey) => {
+    const result = schema.safeParse(password);
+    expect(result.success).toBe(false);
+    expect(result.error?.issues.map((issue) => issue.message)).toContain(expectedKey);
+  });
+
+  it('rejects a password over the maximum length', () => {
+    const result = schema.safeParse(`Aa1!${'x'.repeat(128)}`);
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0].message).toBe('validation.passwordMaxLength');
+  });
+
+  it('mirrors the checklist rules exactly', () => {
+    const password = 'Abcdefghij1!';
+    const checklist = getPasswordRequirements(password, t);
+    expect(checklist.every((req) => req.met)).toBe(schema.safeParse(password).success);
   });
 });

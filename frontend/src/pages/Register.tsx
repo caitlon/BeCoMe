@@ -16,7 +16,7 @@ import { AuthLayout } from "@/components/layout/AuthLayout";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAuthSubmit } from "@/hooks/use-auth-submit";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
-import { SPECIAL_CHAR_REGEX, getPasswordRequirements } from "@/lib/validation";
+import { buildPasswordSchema, getPasswordRequirements } from "@/lib/validation";
 
 type RegisterFormData = {
   email: string;
@@ -67,14 +67,7 @@ const Register = () => {
             .refine((val) => /^[\x20-\x7E]*$/.test(val), {
               error: t("validation.emailAsciiOnly"),
             }),
-          password: z
-            .string()
-            .min(12, t("passwordRequirements.minLength"))
-            .max(128, t("validation.passwordMaxLength"))
-            .regex(/[A-Z]/, t("passwordRequirements.uppercase"))
-            .regex(/[a-z]/, t("passwordRequirements.lowercase"))
-            .regex(/\d/, t("passwordRequirements.number"))
-            .regex(SPECIAL_CHAR_REGEX, t("passwordRequirements.specialChar")),
+          password: buildPasswordSchema(t),
           confirmPassword: z.string().min(1, t("validation.passwordRequired")),
           firstName: z
             .string()

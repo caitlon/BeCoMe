@@ -15,7 +15,7 @@ import { AuthLayout } from "@/components/layout/AuthLayout";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { useToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
-import { SPECIAL_CHAR_REGEX, getPasswordRequirements } from "@/lib/validation";
+import { buildPasswordSchema, getPasswordRequirements } from "@/lib/validation";
 
 type ResetPasswordFormData = {
   password: string;
@@ -37,14 +37,7 @@ const ResetPassword = () => {
     () =>
       z
         .object({
-          password: z
-            .string()
-            .min(12, t("passwordRequirements.minLength"))
-            .max(128, t("validation.passwordMaxLength"))
-            .regex(/[A-Z]/, t("passwordRequirements.uppercase"))
-            .regex(/[a-z]/, t("passwordRequirements.lowercase"))
-            .regex(/\d/, t("passwordRequirements.number"))
-            .regex(SPECIAL_CHAR_REGEX, t("passwordRequirements.specialChar")),
+          password: buildPasswordSchema(t),
           confirmPassword: z.string().min(1, t("validation.passwordRequired")),
         })
         .refine((data) => data.password === data.confirmPassword, {
