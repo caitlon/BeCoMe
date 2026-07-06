@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Users, Key, MoreHorizontal, Loader2, Mail, Inbox } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -24,6 +24,9 @@ import { queryKeys } from "@/lib/queryKeys";
 import { ProjectWithRole } from "@/types/api";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+
+// Multiple of the 1/2/3-column grid so every full page fills whole rows.
+const PAGE_SIZE = 24;
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -53,16 +56,21 @@ const Projects = () => {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [selectedProject, setSelectedProject] = useState<ProjectWithRole | null>(null);
 
-  const projectsQuery = useQuery({
+  const projectsQuery = useInfiniteQuery({
     queryKey: queryKeys.projects,
-    queryFn: () => api.getProjects(),
+    queryFn: ({ pageParam }) => api.getProjects({ limit: PAGE_SIZE, offset: pageParam }),
+    initialPageParam: 0,
+    // The list endpoint returns no total count: a full page means there may
+    // be more, a short page means the end was reached.
+    getNextPageParam: (lastPage, allPages) =>
+      lastPage.length === PAGE_SIZE ? allPages.flat().length : undefined,
   });
   const invitationsQuery = useQuery({
     queryKey: queryKeys.invitations,
     queryFn: () => api.getInvitations(),
   });
 
-  const projects = projectsQuery.data ?? [];
+  const projects = projectsQuery.data?.pages.flat() ?? [];
   const invitations = invitationsQuery.data ?? [];
   const isLoading = projectsQuery.isPending || invitationsQuery.isPending;
   const hasLoadError = projectsQuery.isError || invitationsQuery.isError;
@@ -197,6 +205,7 @@ const Projects = () => {
                 </Button>
               </motion.div>
             ) : (
+              <>
               <motion.div
                 className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
                 variants={containerVariants}
@@ -282,6 +291,22 @@ const Projects = () => {
                   </motion.div>
                 ))}
               </motion.div>
+              {projectsQuery.hasNextPage && (
+                <div className="flex justify-center pt-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => projectsQuery.fetchNextPage()}
+                    disabled={projectsQuery.isFetchingNextPage}
+                    className="gap-2"
+                  >
+                    {projectsQuery.isFetchingNextPage && (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    )}
+                    {t("buttons.loadMore")}
+                  </Button>
+                </div>
+              )}
+              </>
             )}
           </TabsContent>
 

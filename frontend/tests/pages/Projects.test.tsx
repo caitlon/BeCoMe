@@ -17,7 +17,7 @@ const mockApi = {
 
 vi.mock('@/lib/api', () => ({
   api: {
-    getProjects: () => mockApi.getProjects(),
+    getProjects: (params?: { limit?: number; offset?: number }) => mockApi.getProjects(params),
     getInvitations: () => mockApi.getInvitations(),
     acceptInvitation: (id: string) => mockApi.acceptInvitation(id),
     declineInvitation: (id: string) => mockApi.declineInvitation(id),
@@ -603,6 +603,61 @@ describe('Projects', () => {
         );
       });
     });
+  });
+});
+
+describe('Projects - Pagination', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockApi.getInvitations.mockResolvedValue([]);
+  });
+
+  it('shows the load-more button when a full page is returned', async () => {
+    mockApi.getProjects.mockResolvedValue(
+      Array.from({ length: 24 }, () => createProjectWithRole())
+    );
+
+    render(<Projects />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /load more/i })).toBeInTheDocument();
+    });
+  });
+
+  it('hides the load-more button when a short page is returned', async () => {
+    mockApi.getProjects.mockResolvedValue([createProjectWithRole()]);
+
+    render(<Projects />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /new project/i })).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('button', { name: /load more/i })).not.toBeInTheDocument();
+  });
+
+  it('appends the next page when load more is clicked', async () => {
+    const firstPage = Array.from({ length: 24 }, (_, i) =>
+      createProjectWithRole({ name: `Project ${i + 1}` })
+    );
+    const secondPage = [createProjectWithRole({ name: 'Project 25' })];
+    mockApi.getProjects
+      .mockResolvedValueOnce(firstPage)
+      .mockResolvedValueOnce(secondPage);
+
+    const user = userEvent.setup();
+    render(<Projects />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /load more/i })).toBeInTheDocument();
+    });
+    await user.click(screen.getByRole('button', { name: /load more/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Project 25')).toBeInTheDocument();
+    });
+    expect(mockApi.getProjects).toHaveBeenNthCalledWith(1, { limit: 24, offset: 0 });
+    expect(mockApi.getProjects).toHaveBeenNthCalledWith(2, { limit: 24, offset: 24 });
+    expect(screen.getByText('Project 1')).toBeInTheDocument();
   });
 });
 
