@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { render, screen } from '@tests/utils';
 import { ThemeToggle } from '@/components/ThemeToggle';
 
 const mockSetTheme = vi.fn();
