@@ -21,6 +21,12 @@ export default defineConfig({
         'src/components/onboarding/index.ts',
         'src/components/forms/index.ts',
       ],
+      thresholds: {
+        statements: 98,
+        branches: 95,
+        functions: 97,
+        lines: 98,
+      },
     },
   },
   resolve: {
