@@ -65,6 +65,9 @@
   --color-warning: hsl(var(--warning));
   --color-warning-foreground: hsl(var(--warning-foreground));
 
+  --color-chart-mean: hsl(var(--chart-mean));
+  --color-chart-median: hsl(var(--chart-median));
+
   --color-sidebar: hsl(var(--sidebar-background));
   --color-sidebar-foreground: hsl(var(--sidebar-foreground));
   --color-sidebar-primary: hsl(var(--sidebar-primary));
@@ -210,9 +213,14 @@
     --success-foreground: 0 0% 100%;
     --error: 0 65% 47%;
     --error-foreground: 0 0% 100%;
-    --warning: 27 95% 49%;
+    /* 40% lightness keeps white-on-warning text at >= 4.5:1 */
+    --warning: 27 95% 40%;
     --warning-foreground: 0 0% 100%;
-    
+
+    /* Chart series (mean/median in visualizations) */
+    --chart-mean: 217 91% 60%;
+    --chart-median: 142 71% 45%;
+
     --destructive: 0 65% 47%;
     --destructive-foreground: 0 0% 100%;
     
@@ -263,9 +271,13 @@
     --success-foreground: 0 0% 100%;
     --error: 0 65% 51%;
     --error-foreground: 0 0% 100%;
-    --warning: 27 95% 49%;
-    --warning-foreground: 0 0% 100%;
-    
+    /* Brighter warning with black text: readable on the badge and against the dark bg */
+    --warning: 27 95% 55%;
+    --warning-foreground: 0 0% 0%;
+
+    --chart-mean: 213 94% 68%;
+    --chart-median: 142 69% 58%;
+
     --destructive: 0 65% 51%;
     --destructive-foreground: 0 0% 100%;
     
