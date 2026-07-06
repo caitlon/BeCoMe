@@ -65,7 +65,9 @@ const Projects = () => {
   const projects = projectsQuery.data ?? [];
   const invitations = invitationsQuery.data ?? [];
   const isLoading = projectsQuery.isPending || invitationsQuery.isPending;
-  const hasLoadError = projectsQuery.isError || invitationsQuery.isError;
+  // isLoadingError only: a failed background refetch keeps cached data on
+  // screen and should not surface a destructive toast over an intact page.
+  const hasLoadError = projectsQuery.isLoadingError || invitationsQuery.isLoadingError;
 
   useEffect(() => {
     if (hasLoadError) {
