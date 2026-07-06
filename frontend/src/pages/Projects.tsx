@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Users, Key, MoreHorizontal, Loader2, Mail, Inbox } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -19,7 +20,8 @@ import { CreateProjectModal } from "@/components/modals/CreateProjectModal";
 import { InviteExpertModal } from "@/components/modals/InviteExpertModal";
 import { DeleteConfirmModal } from "@/components/modals/DeleteConfirmModal";
 import { api } from "@/lib/api";
-import { ProjectWithRole, Invitation } from "@/types/api";
+import { queryKeys } from "@/lib/queryKeys";
+import { ProjectWithRole } from "@/types/api";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
@@ -45,82 +47,94 @@ const Projects = () => {
   const { t: tCommon } = useTranslation();
   const { toast } = useToast();
   useDocumentTitle(tCommon("pageTitle.projects"));
-  const [projects, setProjects] = useState<ProjectWithRole[]>([]);
-  const [invitations, setInvitations] = useState<Invitation[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [selectedProject, setSelectedProject] = useState<ProjectWithRole | null>(null);
 
-  const fetchData = useCallback(async () => {
-    try {
-      const [projectsData, invitationsData] = await Promise.all([
-        api.getProjects(),
-        api.getInvitations(),
-      ]);
-      setProjects(projectsData);
-      setInvitations(invitationsData);
-    } catch {
+  const projectsQuery = useQuery({
+    queryKey: queryKeys.projects,
+    queryFn: () => api.getProjects(),
+  });
+  const invitationsQuery = useQuery({
+    queryKey: queryKeys.invitations,
+    queryFn: () => api.getInvitations(),
+  });
+
+  const projects = projectsQuery.data ?? [];
+  const invitations = invitationsQuery.data ?? [];
+  const isLoading = projectsQuery.isPending || invitationsQuery.isPending;
+  const hasLoadError = projectsQuery.isError || invitationsQuery.isError;
+
+  useEffect(() => {
+    if (hasLoadError) {
       toast({
         title: t("toast.error"),
         description: t("toast.loadFailed"),
         variant: "destructive",
       });
-    } finally {
-      setIsLoading(false);
     }
-  }, [toast, t]);
+  }, [hasLoadError, toast, t]);
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial data load on mount
-    fetchData();
-  }, [fetchData]);
+  const invalidateLists = () => {
+    queryClient.invalidateQueries({ queryKey: queryKeys.projects });
+    queryClient.invalidateQueries({ queryKey: queryKeys.invitations });
+  };
 
-  const handleAcceptInvitation = async (invitationId: string) => {
-    try {
-      await api.acceptInvitation(invitationId);
+  const acceptInvitation = useMutation({
+    mutationFn: (invitationId: string) => api.acceptInvitation(invitationId),
+    onSuccess: () => {
       toast({ title: t("toast.invitationAccepted") });
-      fetchData();
-    } catch (error) {
+      invalidateLists();
+    },
+    onError: (error) => {
       toast({
         title: t("toast.error"),
         description: error instanceof Error ? error.message : t("toast.acceptFailed"),
         variant: "destructive",
       });
-    }
-  };
+    },
+  });
 
-  const handleDeclineInvitation = async (invitationId: string) => {
-    try {
-      await api.declineInvitation(invitationId);
+  const declineInvitation = useMutation({
+    mutationFn: (invitationId: string) => api.declineInvitation(invitationId),
+    onSuccess: () => {
       toast({ title: t("toast.invitationDeclined") });
-      fetchData();
-    } catch (error) {
+      invalidateLists();
+    },
+    onError: (error) => {
       toast({
         title: t("toast.error"),
         description: error instanceof Error ? error.message : t("toast.declineFailed"),
         variant: "destructive",
       });
-    }
-  };
+    },
+  });
 
-  const handleDeleteProject = async () => {
-    /* v8 ignore next */
-    if (!selectedProject) return;
-    try {
-      await api.deleteProject(selectedProject.id);
+  const deleteProject = useMutation({
+    mutationFn: (projectId: string) => api.deleteProject(projectId),
+    onSuccess: () => {
       toast({ title: t("toast.projectDeleted") });
       setDeleteModalOpen(false);
       setSelectedProject(null);
-      fetchData();
-    } catch (error) {
+      queryClient.invalidateQueries({ queryKey: queryKeys.projects });
+    },
+    onError: (error) => {
       toast({
         title: t("toast.error"),
         description: error instanceof Error ? error.message : t("toast.deleteFailed"),
         variant: "destructive",
       });
-    }
+    },
+  });
+
+  const handleDeleteProject = async () => {
+    /* v8 ignore next */
+    if (!selectedProject) return;
+    await deleteProject.mutateAsync(selectedProject.id).catch(() => {
+      // errors are surfaced via the mutation's onError toast
+    });
   };
 
   if (isLoading) {
@@ -338,13 +352,13 @@ const Projects = () => {
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => handleDeclineInvitation(invitation.id)}
+                                onClick={() => declineInvitation.mutate(invitation.id)}
                               >
                                 {t("buttons.decline")}
                               </Button>
                               <Button
                                 size="sm"
-                                onClick={() => handleAcceptInvitation(invitation.id)}
+                                onClick={() => acceptInvitation.mutate(invitation.id)}
                               >
                                 {t("buttons.accept")}
                               </Button>
@@ -364,7 +378,7 @@ const Projects = () => {
       <CreateProjectModal
         open={createModalOpen}
         onOpenChange={setCreateModalOpen}
-        onSuccess={fetchData}
+        onSuccess={() => queryClient.invalidateQueries({ queryKey: queryKeys.projects })}
       />
 
       <InviteExpertModal
