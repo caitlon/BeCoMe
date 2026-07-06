@@ -106,12 +106,14 @@ const ProjectDetail = () => {
     resultQuery.isPending ||
     membersQuery.isPending ||
     invitationsQuery.isPending;
+  // isLoadingError only: a failed background refetch keeps cached data on
+  // screen and must not eject the user from the page.
   const hasLoadError =
-    projectQuery.isError ||
-    opinionsQuery.isError ||
-    resultQuery.isError ||
-    membersQuery.isError ||
-    invitationsQuery.isError;
+    projectQuery.isLoadingError ||
+    opinionsQuery.isLoadingError ||
+    resultQuery.isLoadingError ||
+    membersQuery.isLoadingError ||
+    invitationsQuery.isLoadingError;
 
   useDocumentTitle(project ? tCommon("pageTitle.projectDetail", { name: project.name }) : tCommon("common.loading"));
 
