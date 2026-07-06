@@ -120,6 +120,7 @@ export const framerMotionMock = {
     line: makeMotionVoidComponent('line'),
   },
   AnimatePresence: ({ children }: React.PropsWithChildren<object>) => <>{children}</>,
+  MotionConfig: ({ children }: React.PropsWithChildren<object>) => <>{children}</>,
 };
 
 /**
