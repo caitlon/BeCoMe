@@ -3,13 +3,14 @@ import { useTranslation } from "react-i18next";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { MotionConfig } from "framer-motion";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { RouteAnnouncer } from "@/components/RouteAnnouncer";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { createQueryClient } from "@/lib/queryClient";
 import { Loader2 } from "lucide-react";
 
 const Landing = lazy(() => import("./pages/Landing"));
@@ -28,7 +29,7 @@ const FaqPage = lazy(() => import("./pages/FAQ"));
 const Onboarding = lazy(() => import("./pages/Onboarding"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
-const queryClient = new QueryClient();
+const queryClient = createQueryClient();
 
 function PageLoader() {
   const { t } = useTranslation();
