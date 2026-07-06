@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import i18n, { defaultNS, resources } from '@/i18n';
 
-const expectedNamespaces = [
+const expectedNamespaces: (keyof typeof resources.en)[] = [
   'common', 'landing', 'auth', 'about', 'projects',
   'profile', 'caseStudies', 'docs', 'onboarding', 'faq',
 ];

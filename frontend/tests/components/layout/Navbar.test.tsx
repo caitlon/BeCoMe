@@ -11,7 +11,7 @@ const { mockUser, mockLogout, mockPathname } = vi.hoisted(() => ({
     email: 'john@example.com',
     first_name: 'John',
     last_name: 'Doe',
-    photo_url: null,
+    photo_url: null as string | null,
     created_at: '2024-01-01T00:00:00Z',
   },
   mockLogout: vi.fn(),
