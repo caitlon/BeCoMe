@@ -24,8 +24,8 @@ export function StepComplete() {
         transition={{ type: "spring", duration: 0.8, bounce: 0.5 }}
         className="mb-8"
       >
-        <div className="w-24 h-24 rounded-full bg-green-500/10 flex items-center justify-center">
-          <CheckCircle2 className="h-12 w-12 text-green-500" role="img" aria-label="Completed" />
+        <div className="w-24 h-24 rounded-full bg-success/10 flex items-center justify-center">
+          <CheckCircle2 className="h-12 w-12 text-success" role="img" aria-label="Completed" />
         </div>
       </motion.div>
 
@@ -86,9 +86,9 @@ export function StepComplete() {
             className="absolute w-3 h-3 rounded-full"
             style={{
               backgroundColor: [
-                "hsl(var(--success, 142 71% 45%))",
+                "hsl(var(--success))",
                 "hsl(var(--primary))",
-                "hsl(var(--warning, 38 92% 50%))",
+                "hsl(var(--warning))",
                 "hsl(var(--destructive))",
               ][i % 4],
             }}
