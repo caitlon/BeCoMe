@@ -1208,7 +1208,7 @@ const TriangleVisualization = ({
 
       {/* Individual opinions */}
       {showIndividual &&
-        opinions.map((op, i) => (
+        opinions.map((op) => (
           <polygon
             key={op.id}
             points={`${scaleToX(op.lower_bound)},${baseY} ${scaleToX(op.peak)},${peakY + 20} ${scaleToX(op.upper_bound)},${baseY}`}

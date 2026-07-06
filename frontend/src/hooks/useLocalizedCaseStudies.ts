@@ -1,21 +1,10 @@
 import { useTranslation } from "react-i18next";
 import { caseStudies, CaseStudy } from "@/data/caseStudies";
 
-export interface LocalizedCaseStudy extends Omit<CaseStudy, "title" | "shortTitle" | "description" | "fullDescription" | "question" | "context" | "methodology" | "note" | "result"> {
-  title: string;
-  shortTitle: string;
-  description: string;
-  fullDescription: string;
-  question: string;
-  context: string;
-  methodology: string;
-  note?: string;
-  result: {
-    bestCompromise: number;
-    maxError: number;
-    interpretation: string;
-  };
-}
+// Localization swaps the text fields for translated strings at runtime; their
+// types stay the same, so the CaseStudy union is reused as-is. An Omit-based
+// interface would collapse the dataType/opinions discrimination.
+export type LocalizedCaseStudy = CaseStudy;
 
 export function useLocalizedCaseStudies(): LocalizedCaseStudy[] {
   const { t } = useTranslation("caseStudies");
