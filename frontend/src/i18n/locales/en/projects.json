@@ -90,6 +90,7 @@
     "team": "Team",
     "teamMembers": "Team ({{count}} members)",
     "noResults": "Results will appear once experts submit their opinions.",
+    "resultsError": "Results could not be displayed. Try reloading the page.",
     "bestCompromise": "Best Compromise",
     "arithmeticMean": "Arithmetic Mean (Γ)",
     "median": "Median (Ω)",

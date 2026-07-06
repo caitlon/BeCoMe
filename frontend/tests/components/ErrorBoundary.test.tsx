@@ -84,4 +84,37 @@ describe('ErrorBoundary', () => {
       expect.anything()
     );
   });
+
+  it('renders the custom fallback instead of the default recovery screen when provided', () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    render(
+      <ErrorBoundary fallback={<p>custom fallback</p>}>
+        <Boom />
+      </ErrorBoundary>
+    );
+
+    expect(screen.getByText('custom fallback')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.queryByText(/something went wrong/i)).not.toBeInTheDocument();
+  });
+
+  it('still logs and forwards to Sentry when a custom fallback is provided', () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    render(
+      <ErrorBoundary fallback={<p>custom fallback</p>}>
+        <Boom />
+      </ErrorBoundary>
+    );
+
+    const loggedReactError = errorSpy.mock.calls.some(
+      (call) => typeof call[0] === 'string' && call[0].includes('React rendering error')
+    );
+    expect(loggedReactError).toBe(true);
+    expect(Sentry.captureException).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'render explosion' }),
+      expect.anything()
+    );
+  });
 });

@@ -90,6 +90,7 @@
     "team": "Tým",
     "teamMembers": "Tým ({{count}} členů)",
     "noResults": "Výsledky se zobrazí po odeslání názorů experty.",
+    "resultsError": "Výsledky se nepodařilo zobrazit. Zkuste stránku znovu načíst.",
     "bestCompromise": "Nejlepší kompromis",
     "arithmeticMean": "Aritmetický průměr (Γ)",
     "median": "Medián (Ω)",
