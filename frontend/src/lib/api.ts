@@ -221,8 +221,12 @@ class ApiClient {
   }
 
   // Projects
-  async getProjects(): Promise<ProjectWithRole[]> {
-    return this.request<ProjectWithRole[]>('/projects');
+  async getProjects(params?: { limit?: number; offset?: number }): Promise<ProjectWithRole[]> {
+    const query = new URLSearchParams();
+    if (params?.limit !== undefined) query.set('limit', String(params.limit));
+    if (params?.offset !== undefined) query.set('offset', String(params.offset));
+    const suffix = query.size > 0 ? `?${query.toString()}` : '';
+    return this.request<ProjectWithRole[]>(`/projects${suffix}`);
   }
 
   async getProject(id: string): Promise<ProjectWithRole> {
