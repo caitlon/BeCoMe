@@ -1,8 +1,18 @@
+import { ReactNode } from 'react'
 import { renderHook, act, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AuthProvider, useAuth } from '@/contexts/AuthContext'
 import { api } from '@/lib/api'
 import { createUser } from '@tests/factories/user'
+
+function AuthTestProviders({ children }: { children: ReactNode }) {
+  return (
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <AuthProvider>{children}</AuthProvider>
+    </QueryClientProvider>
+  )
+}
 
 vi.mock('@/lib/api', () => ({
   api: {
@@ -36,7 +46,7 @@ describe('AuthContext', () => {
     vi.mocked(api.getCurrentUser).mockResolvedValue(mockUser)
 
     const { result } = renderHook(() => useAuth(), {
-      wrapper: AuthProvider,
+      wrapper: AuthTestProviders,
     })
 
     await waitFor(() => {
@@ -51,7 +61,7 @@ describe('AuthContext', () => {
     vi.mocked(api.getCurrentUser).mockRejectedValue(new Error('401'))
 
     const { result } = renderHook(() => useAuth(), {
-      wrapper: AuthProvider,
+      wrapper: AuthTestProviders,
     })
 
     await waitFor(() => {
@@ -68,7 +78,7 @@ describe('AuthContext', () => {
     vi.mocked(api.getCurrentUser).mockResolvedValue(mockUser)
 
     const { result } = renderHook(() => useAuth(), {
-      wrapper: AuthProvider,
+      wrapper: AuthTestProviders,
     })
 
     await waitFor(() => {
@@ -87,7 +97,7 @@ describe('AuthContext', () => {
     vi.mocked(api.getCurrentUser).mockResolvedValue(mockUser)
 
     const { result } = renderHook(() => useAuth(), {
-      wrapper: AuthProvider,
+      wrapper: AuthTestProviders,
     })
 
     await waitFor(() => {
@@ -103,11 +113,37 @@ describe('AuthContext', () => {
     expect(result.current.isAuthenticated).toBe(false)
   })
 
+  it('drops cached queries on logout so the next account cannot see them', async () => {
+    const mockUser = createUser({ id: '1', email: 'test@example.com', first_name: 'Test' })
+    vi.mocked(api.getCurrentUser).mockResolvedValue(mockUser)
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>{children}</AuthProvider>
+      </QueryClientProvider>
+    )
+
+    const { result } = renderHook(() => useAuth(), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.isAuthenticated).toBe(true)
+    })
+
+    queryClient.setQueryData(['projects'], [{ id: 'p1' }])
+
+    await act(async () => {
+      await result.current.logout()
+    })
+
+    expect(queryClient.getQueryData(['projects'])).toBeUndefined()
+  })
+
   it('clears the user when the session probe fails', async () => {
     vi.mocked(api.getCurrentUser).mockRejectedValue(new Error('Token expired'))
 
     const { result } = renderHook(() => useAuth(), {
-      wrapper: AuthProvider,
+      wrapper: AuthTestProviders,
     })
 
     await waitFor(() => {
@@ -122,7 +158,7 @@ describe('AuthContext', () => {
     vi.mocked(api.getCurrentUser).mockRejectedValue(new Error('401'))
 
     const { result } = renderHook(() => useAuth(), {
-      wrapper: AuthProvider,
+      wrapper: AuthTestProviders,
     })
 
     await waitFor(() => {
@@ -143,7 +179,7 @@ describe('AuthContext', () => {
     vi.mocked(api.getCurrentUser).mockRejectedValue(new Error('401'))
 
     const { result } = renderHook(() => useAuth(), {
-      wrapper: AuthProvider,
+      wrapper: AuthTestProviders,
     })
 
     await waitFor(() => {
@@ -171,7 +207,7 @@ describe('AuthContext', () => {
     vi.mocked(api.getCurrentUser).mockRejectedValue(new Error('401'))
 
     const { result } = renderHook(() => useAuth(), {
-      wrapper: AuthProvider,
+      wrapper: AuthTestProviders,
     })
 
     await waitFor(() => {
