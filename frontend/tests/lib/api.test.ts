@@ -883,4 +883,39 @@ describe('ApiClient', () => {
       expect(warnSpy).toHaveBeenCalled();
     });
   });
+
+  describe('getProjects pagination params', () => {
+    beforeEach(() => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve([]),
+      });
+    });
+
+    it('requests /projects without a query string when no params are given', async () => {
+      await api.getProjects();
+
+      const [url] = mockFetch.mock.calls[0];
+      expect(url).toMatch(/\/projects$/);
+    });
+
+    it('appends limit and offset when provided', async () => {
+      await api.getProjects({ limit: 24, offset: 48 });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/projects?limit=24&offset=48'),
+        expect.anything()
+      );
+    });
+
+    it('appends only the provided param', async () => {
+      await api.getProjects({ limit: 10 });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/projects?limit=10'),
+        expect.anything()
+      );
+    });
+  });
 });

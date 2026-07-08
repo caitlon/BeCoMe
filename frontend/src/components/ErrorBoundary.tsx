@@ -5,6 +5,8 @@ import { logger } from '@/lib/logger';
 
 interface ErrorBoundaryProps {
   readonly children: ReactNode;
+  /** Rendered instead of the default full-page recovery screen when the boundary catches. */
+  readonly fallback?: ReactNode;
 }
 
 interface ErrorBoundaryState {
@@ -44,6 +46,10 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
   render(): ReactNode {
     if (this.state.hasError) {
+      if (this.props.fallback !== undefined) {
+        return this.props.fallback;
+      }
+
       return (
         <main
           id="main-content"

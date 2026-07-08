@@ -12,6 +12,7 @@ import "@fontsource/playfair-display/500.css";
 import "@fontsource/playfair-display/600.css";
 import "@fontsource/jetbrains-mono/400.css";
 import "@fontsource/jetbrains-mono/500.css";
+import "@fontsource/jetbrains-mono/700.css";
 import "./index.css";
 
 if (import.meta.env.VITE_SENTRY_DSN) {

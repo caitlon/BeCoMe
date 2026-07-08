@@ -85,6 +85,7 @@
       "hint": "Výsledky se automaticky aktualizují"
     },
     "complete": {
+      "iconLabel": "Dokončeno",
       "title": "Jste připraveni!",
       "description": "Nyní znáte základy BeCoMe. Založte svůj první projekt a shromážděte expertní názory.",
       "cta": "Vytvořit první projekt",

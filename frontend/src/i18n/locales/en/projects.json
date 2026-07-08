@@ -7,7 +7,8 @@
   "buttons": {
     "newProject": "New Project",
     "decline": "Decline",
-    "accept": "Accept Invitation"
+    "accept": "Accept Invitation",
+    "loadMore": "Load more"
   },
   "empty": {
     "title": "No projects yet",
@@ -90,6 +91,7 @@
     "team": "Team",
     "teamMembers": "Team ({{count}} members)",
     "noResults": "Results will appear once experts submit their opinions.",
+    "resultsError": "Results could not be displayed. Try reloading the page.",
     "bestCompromise": "Best Compromise",
     "arithmeticMean": "Arithmetic Mean (Γ)",
     "median": "Median (Ω)",

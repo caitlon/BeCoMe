@@ -1,9 +1,21 @@
-import { ReactElement, ReactNode } from 'react'
+import { ReactElement, ReactNode, useState } from 'react'
 import { render, RenderOptions, screen } from '@testing-library/react'
 import { MemoryRouter, MemoryRouterProps } from 'react-router-dom'
 import { I18nextProvider } from 'react-i18next'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import i18n from '@/i18n'
 import { User } from '@/types/api'
+
+/**
+ * Fresh client per render: a shared client would leak cached data between
+ * tests. Retries are off so error paths fail fast instead of timing out.
+ */
+const createTestQueryClient = () =>
+  new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, gcTime: Infinity },
+    },
+  })
 
 /**
  * Mock AuthContext value for testing.
@@ -28,12 +40,15 @@ export interface CustomRenderOptions extends Omit<RenderOptions, 'wrapper'> {
 }
 
 function AllTheProviders({ children }: { children: ReactNode }) {
+  const [queryClient] = useState(createTestQueryClient)
   return (
-    <MemoryRouter>
-      <I18nextProvider i18n={i18n}>
-        {children}
-      </I18nextProvider>
-    </MemoryRouter>
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>
+        <I18nextProvider i18n={i18n}>
+          {children}
+        </I18nextProvider>
+      </MemoryRouter>
+    </QueryClientProvider>
   )
 }
 
@@ -42,12 +57,15 @@ function AllTheProviders({ children }: { children: ReactNode }) {
  */
 function createWrapper(initialEntries?: MemoryRouterProps['initialEntries']) {
   return function Wrapper({ children }: { children: ReactNode }) {
+    const [queryClient] = useState(createTestQueryClient)
     return (
-      <MemoryRouter initialEntries={initialEntries}>
-        <I18nextProvider i18n={i18n}>
-          {children}
-        </I18nextProvider>
-      </MemoryRouter>
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={initialEntries}>
+          <I18nextProvider i18n={i18n}>
+            {children}
+          </I18nextProvider>
+        </MemoryRouter>
+      </QueryClientProvider>
     )
   }
 }
@@ -120,6 +138,7 @@ export const framerMotionMock = {
     line: makeMotionVoidComponent('line'),
   },
   AnimatePresence: ({ children }: React.PropsWithChildren<object>) => <>{children}</>,
+  MotionConfig: ({ children }: React.PropsWithChildren<object>) => <>{children}</>,
 };
 
 /**

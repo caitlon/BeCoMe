@@ -7,7 +7,8 @@
   "buttons": {
     "newProject": "Nový projekt",
     "decline": "Odmítnout",
-    "accept": "Přijmout pozvánku"
+    "accept": "Přijmout pozvánku",
+    "loadMore": "Načíst další"
   },
   "empty": {
     "title": "Zatím žádné projekty",
@@ -90,6 +91,7 @@
     "team": "Tým",
     "teamMembers": "Tým ({{count}} členů)",
     "noResults": "Výsledky se zobrazí po odeslání názorů experty.",
+    "resultsError": "Výsledky se nepodařilo zobrazit. Zkuste stránku znovu načíst.",
     "bestCompromise": "Nejlepší kompromis",
     "arithmeticMean": "Aritmetický průměr (Γ)",
     "median": "Medián (Ω)",
