@@ -3,11 +3,13 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from api.auth.dependencies import CurrentUser
 from api.dependencies import ProjectAdmin, ProjectMember, get_invitation_service
 from api.exceptions import AlreadyInvitedError, UserNotFoundForInvitationError
+from api.middleware.rate_limit import LIMIT_WRITE, limiter
+from api.pagination import PaginationParams
 from api.schemas.invitation import (
     InvitationListItemResponse,
     InvitationResponse,
@@ -25,17 +27,22 @@ router = APIRouter(prefix="/api/v1", tags=["invitations"])
     status_code=status.HTTP_201_CREATED,
     summary="Invite user by email",
 )
+@limiter.limit(LIMIT_WRITE)
 def invite_by_email(
+    request: Request,
     project_id: UUID,
     project: ProjectAdmin,
-    request: InviteByEmailRequest,
+    data: InviteByEmailRequest,
     current_user: CurrentUser,
     invitation_service: Annotated[InvitationService, Depends(get_invitation_service)],
 ) -> InvitationResponse:
     """Invite a registered user to a project by email. Only admin can invite.
 
+    Rate limited so the endpoint cannot be used to enumerate registered emails at speed.
+
+    :param request: FastAPI request (for rate limiting)
     :param project: Project (verified admin)
-    :param request: Email of user to invite
+    :param data: Email of user to invite
     :param current_user: Authenticated admin user
     :param invitation_service: Invitation service
     :return: Created invitation
@@ -45,7 +52,7 @@ def invite_by_email(
         invitation, invitee = invitation_service.invite_by_email(
             project_id=project.id,
             inviter_id=current_user.id,
-            invitee_email=request.email,
+            invitee_email=data.email,
         )
     except UserNotFoundForInvitationError as err:
         raise HTTPException(
@@ -69,14 +76,18 @@ def list_project_invitations(
     project_id: UUID,
     project: ProjectMember,
     invitation_service: Annotated[InvitationService, Depends(get_invitation_service)],
+    pagination: Annotated[PaginationParams, Depends()],
 ) -> list[ProjectInvitationResponse]:
-    """Get all pending invitations for a project. Accessible to project members.
+    """Get pending invitations for a project. Accessible to project members.
 
     :param project: Project (verified member access)
     :param invitation_service: Invitation service
+    :param pagination: Bounded limit/offset (capped at MAX_PAGE_SIZE)
     :return: List of pending invitations with invitee details
     """
-    invitations = invitation_service.get_project_invitations(project.id)
+    invitations = invitation_service.get_project_invitations(
+        project.id, limit=pagination.limit, offset=pagination.offset
+    )
     return [ProjectInvitationResponse.from_model(inv, invitee) for inv, invitee in invitations]
 
 
@@ -84,14 +95,18 @@ def list_project_invitations(
 def list_my_invitations(
     current_user: CurrentUser,
     invitation_service: Annotated[InvitationService, Depends(get_invitation_service)],
+    pagination: Annotated[PaginationParams, Depends()],
 ) -> list[InvitationListItemResponse]:
-    """Get all pending invitations for the current user.
+    """Get pending invitations for the current user.
 
     :param current_user: Authenticated user
     :param invitation_service: Invitation service
+    :param pagination: Bounded limit/offset (capped at MAX_PAGE_SIZE)
     :return: List of pending invitations with project details
     """
-    invitations = invitation_service.get_user_invitations(current_user.id)
+    invitations = invitation_service.get_user_invitations(
+        current_user.id, limit=pagination.limit, offset=pagination.offset
+    )
     return [
         InvitationListItemResponse.from_model(
             item.invitation,

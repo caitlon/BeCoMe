@@ -28,6 +28,8 @@ def _settings(
         secret_key="a-sufficiently-strong-secret-value-for-tests",
         database_url="postgresql://user:pass@host:5432/db",
         redis_url="redis://localhost:6379/0",
+        cloudflare_origin_secret="an-origin-verify-secret-for-tests",
+        cors_origins=["https://app.example.com"],
     )
 
 
@@ -357,7 +359,7 @@ class TestSentryInit:
         """
         GIVEN settings carrying a Sentry DSN
         WHEN _init_sentry runs
-        THEN sentry_sdk.init is called once
+        THEN sentry_sdk.init is called once with PII sending disabled
         """
         # GIVEN
         from unittest.mock import MagicMock, patch
@@ -373,6 +375,7 @@ class TestSentryInit:
             _init_sentry(settings)
 
         mock_init.assert_called_once()
+        assert mock_init.call_args.kwargs["send_default_pii"] is False
 
     def test_skipped_when_dsn_absent(self):
         """

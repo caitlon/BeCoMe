@@ -73,6 +73,19 @@ class TestForgotPassword:
         assert len(fake_email.calls) == 1
         assert fake_email.calls[0]["to_email"] == "user@example.com"
 
+    def test_second_rapid_request_is_throttled(self, client, fake_email):
+        """A second forgot-password for the same address within the cooldown sends no email."""
+        # GIVEN
+        _register(client, "user@example.com")
+
+        # WHEN two requests fire back to back
+        first = client.post("/api/v1/auth/forgot-password", json={"email": "user@example.com"})
+        second = client.post("/api/v1/auth/forgot-password", json={"email": "user@example.com"})
+
+        # THEN both look identical to the caller, but only the first email is sent
+        assert first.status_code == second.status_code == 202
+        assert len(fake_email.calls) == 1
+
     def test_returns_202_without_sending_for_unknown_email(self, client, fake_email):
         """An unknown email gets a 202 but triggers no send (anti-enumeration)."""
         # WHEN

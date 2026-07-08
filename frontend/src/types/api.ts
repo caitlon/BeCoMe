@@ -95,6 +95,12 @@ export interface ProjectWithRole extends Project {
   role: 'admin' | 'expert';
 }
 
+export interface ProjectDisposition {
+  project_id: string;
+  action: 'transfer' | 'delete';
+  new_admin_id?: string;
+}
+
 export interface CreateProjectInput {
   name: string;
   description?: string;

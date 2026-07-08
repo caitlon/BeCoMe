@@ -16,8 +16,8 @@ The backend runs under one of three profiles, chosen by the `APP_ENV` variable: 
 
 `APP_ENV` and `TESTING` answer different questions and never substitute for each other.
 
-- **`APP_ENV`** (`dev` / `test` / `prod`) is the deployment profile. It drives debug output, CORS origins, the database that is expected, and the production startup guard.
-- **`TESTING`** (`1`/`true`) marks an automated test run. Only pytest and CI set it. It disables rate limiting and is never present on a deployed service.
+- **`APP_ENV`** (`dev` / `test` / `prod`) is the deployment profile. It drives debug output, CORS origins, the database that is expected, and the deploy startup guard.
+- **`TESTING`** (`1`/`true`) marks an automated test run. Only pytest and CI set it. It disables rate limiting and the deploy startup checks, and is never present on a deployed service.
 
 This separation is what lets staging be realistic. A staging deploy sets `APP_ENV=test` with no `TESTING`, so its rate limits match production. The pytest suite sets `APP_ENV=test` together with `TESTING=1`, which keeps tests fast and lets them use in-memory SQLite.
 
@@ -33,11 +33,11 @@ uv run uvicorn api.main:app --reload
 
 ### test (staging and the test suite)
 
-Two consumers share this profile. A deployed staging service uses PostgreSQL with debug off and rate limiting on, which mirrors production for manual QA. The automated suite runs the same profile but adds `TESTING=1`, so it uses in-memory SQLite and turns rate limiting off. The test conftests set both variables before any `api` import.
+Two consumers share this profile. A deployed staging service uses PostgreSQL with debug off and rate limiting on, which mirrors production for manual QA -- and it is held to the same startup invariants as production (strong secret, PostgreSQL, Redis, non-localhost CORS). The automated suite runs the same profile but adds `TESTING=1`, so it uses in-memory SQLite, turns rate limiting off, and skips the startup guard. The test conftests set both variables before any `api` import.
 
 ### prod
 
-PostgreSQL, debug off. The profile adds a startup guard: it rejects an empty or default `SECRET_KEY` and any `sqlite` `DATABASE_URL`. A misconfigured deploy fails immediately at startup instead of running with insecure defaults.
+PostgreSQL, debug off. Both deployed profiles run a startup guard (`_validate_deploy_invariants` in `api/config.py`): a weak or default `SECRET_KEY`, a `sqlite` `DATABASE_URL`, a missing `REDIS_URL`, or localhost-only `CORS_ORIGINS` fails startup immediately instead of running with insecure defaults. Production additionally requires `CLOUDFLARE_ORIGIN_SECRET`, which proves requests came through the Cloudflare edge.
 
 ## Configuration files
 
@@ -99,12 +99,14 @@ The root `railway.toml` carries the API build and deploy settings: it points at 
 | `DATABASE_URL` | staging `become_app` role | production `become_app` role |
 | `MIGRATION_DATABASE_URL` | privileged role, Alembic only | privileged role, Alembic only |
 | `CORS_ORIGINS` | staging origin(s) | production origin(s) |
+| `REDIS_URL` | staging Redis | production Redis |
+| `CLOUDFLARE_ORIGIN_SECRET` | — | shared secret matching the Cloudflare Transform Rule |
 | `DEBUG` | `false` | `false` |
 | `API_PUBLIC_URL` | staging API URL | production API URL |
 | `VITE_API_URL` (frontend build arg) | staging API URL | production API URL |
 | `BUCKET_NAME` / `BUCKET_ENDPOINT` / `BUCKET_ACCESS_KEY_ID` / `BUCKET_SECRET_ACCESS_KEY` | injected from `test-photos` | injected from `prod-photos` |
 
-If `APP_ENV` is left unset on a deployed service, it falls back to dev, which turns debug on and opens CORS. Production must set `APP_ENV=prod` so the startup guard runs.
+If `APP_ENV` is left unset on a deployed service, it falls back to dev, which turns debug on and opens CORS. Every deployed service must set its profile explicitly (`test` or `prod`) so the startup guard runs.
 
 ## Database schema and access
 
@@ -128,4 +130,4 @@ All three environments run entirely on Railway, each with its own isolated Postg
 
 ## Where the code lives
 
-The selector and guard are in `api/config.py`: `Environment` (the enum), `_resolve_environment()` (reads `APP_ENV`), `_env_files_for()` (builds the `.env` plus `.env.<stage>` list), and the `_validate_production_invariants` model validator (the prod guard). Rate limiting reads `settings.testing` in `api/middleware/rate_limit.py`.
+The selector and guard are in `api/config.py`: `Environment` (the enum), `_resolve_environment()` (reads `APP_ENV`), `_env_files_for()` (builds the `.env` plus `.env.<stage>` list), and the `_validate_deploy_invariants` model validator (the deploy guard, applied to `prod` and to a deployed `test`). Rate limiting reads `settings.testing` in `api/middleware/rate_limit.py`.

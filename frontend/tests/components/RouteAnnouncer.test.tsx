@@ -109,7 +109,7 @@ describe('RouteAnnouncer', () => {
     const main = document.getElementById('main-content')!;
     main.remove();
 
-    const rAFSpy = vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) => {
+    const rAFSpy = vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((_cb) => {
       // Don't actually call callback to avoid infinite loop
       return 1;
     });

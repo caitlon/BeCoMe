@@ -19,10 +19,14 @@ class ProjectMembershipService(BaseService):
     Handles member queries, role checks, and membership mutations.
     """
 
-    def get_members(self, project_id: UUID) -> list[MemberWithUser]:
-        """Get all members of a project with user details.
+    def get_members(
+        self, project_id: UUID, limit: int | None = None, offset: int = 0
+    ) -> list[MemberWithUser]:
+        """Get members of a project with user details.
 
         :param project_id: Project ID
+        :param limit: Max rows to return; ``None`` returns every member.
+        :param offset: Rows to skip when a limit is set.
         :return: List of MemberWithUser instances
         """
         statement = (
@@ -31,6 +35,8 @@ class ProjectMembershipService(BaseService):
             .where(ProjectMember.project_id == project_id)
             .order_by(col(ProjectMember.joined_at))
         )
+        if limit is not None:
+            statement = statement.limit(limit).offset(offset)
         results = self._session.exec(statement).all()
         return [MemberWithUser(membership=membership, user=user) for membership, user in results]
 

@@ -44,7 +44,8 @@ class TestLogLoginSuccess:
         # THEN
         extra = mock_logger.info.call_args[1]["extra"]
         assert extra["user_id"] == str(user_id)
-        assert extra["email"] == email
+        assert "email" not in extra  # raw email is never logged (GDPR)
+        assert "email_hash" in extra
 
     def test_extracts_ip_from_request(self):
         """Login success extracts IP from request object."""
@@ -108,7 +109,8 @@ class TestLogLoginFailure:
 
         # THEN
         extra = mock_logger.warning.call_args[1]["extra"]
-        assert extra["email"] == email
+        assert "email" not in extra  # raw email is never logged (GDPR)
+        assert "email_hash" in extra
         assert extra["reason"] == reason
 
     def test_extracts_ip_from_request(self):
@@ -117,7 +119,8 @@ class TestLogLoginFailure:
         email = "test@example.com"
         reason = "Wrong password"
         mock_request = MagicMock()
-        mock_request.headers.get.return_value = "10.0.0.50"
+        mock_request.headers.get.return_value = None
+        mock_request.client.host = "10.0.0.50"
 
         # WHEN
         with patch("api.auth.logging.logger") as mock_logger:
@@ -141,7 +144,8 @@ class TestLogLoginFailure:
         mock_logger.warning.assert_called_once()
         extra = mock_logger.warning.call_args[1]["extra"]
         assert extra["event"] == "login_failure"
-        assert extra["email"] == email
+        assert "email" not in extra  # raw email is never logged (GDPR)
+        assert "email_hash" in extra
         assert extra["reason"] == reason
         assert extra["ip"] == "unknown"
 
@@ -177,7 +181,8 @@ class TestLogRegistration:
         # THEN
         extra = mock_logger.info.call_args[1]["extra"]
         assert extra["user_id"] == str(user_id)
-        assert extra["email"] == email
+        assert "email" not in extra  # raw email is never logged (GDPR)
+        assert "email_hash" in extra
 
     def test_extracts_ip_from_request(self):
         """Registration extracts IP from request."""
@@ -185,7 +190,8 @@ class TestLogRegistration:
         user_id = uuid4()
         email = "newuser@example.com"
         mock_request = MagicMock()
-        mock_request.headers.get.return_value = "203.0.113.100"
+        mock_request.headers.get.return_value = None
+        mock_request.client.host = "203.0.113.100"
 
         # WHEN
         with patch("api.auth.logging.logger") as mock_logger:
@@ -263,7 +269,8 @@ class TestLogPasswordChangeFailure:
         """Failed password change extracts IP from request."""
         # GIVEN
         mock_request = MagicMock()
-        mock_request.headers.get.return_value = "10.0.0.7"
+        mock_request.headers.get.return_value = None
+        mock_request.client.host = "10.0.0.7"
 
         # WHEN
         with patch("api.auth.logging.logger") as mock_logger:
@@ -303,7 +310,8 @@ class TestLogAccountDeletion:
         extra = mock_logger.info.call_args[1]["extra"]
         assert extra["event"] == "account_deletion"
         assert extra["user_id"] == str(user_id)
-        assert extra["email"] == email
+        assert "email" not in extra  # raw email is never logged (GDPR)
+        assert "email_hash" in extra
 
     def test_extracts_ip_from_request(self):
         """Account deletion extracts IP from request."""
@@ -311,7 +319,8 @@ class TestLogAccountDeletion:
         user_id = uuid4()
         email = "user@example.com"
         mock_request = MagicMock()
-        mock_request.headers.get.return_value = "8.8.8.8"
+        mock_request.headers.get.return_value = None
+        mock_request.client.host = "8.8.8.8"
 
         # WHEN
         with patch("api.auth.logging.logger") as mock_logger:

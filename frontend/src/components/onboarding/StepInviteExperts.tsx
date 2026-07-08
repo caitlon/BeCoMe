@@ -94,7 +94,7 @@ export function StepInviteExperts() {
                   {t("steps.inviteExperts.samples.1.email")}
                 </p>
               </div>
-              <span className="text-xs text-green-600">
+              <span className="text-xs text-success">
                 {t("steps.inviteExperts.samples.1.status")}
               </span>
             </motion.div>

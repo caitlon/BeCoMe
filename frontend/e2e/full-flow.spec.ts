@@ -60,7 +60,9 @@ test.describe.serial('Full Application Flow', () => {
   });
 
   test('logout and login with created account', async () => {
-    // Clear auth state, keep language
+    // Clear auth state, keep language. The session lives in HttpOnly cookies now, so
+    // clearing localStorage alone is not enough -- clear the cookies to actually log out.
+    await page.context().clearCookies();
     await page.evaluate(() => {
       const lang = localStorage.getItem('become-language');
       localStorage.clear();

@@ -25,6 +25,8 @@ class TokenPair:
     refresh_token: str
     token_type: str = "bearer"  # noqa: S105 -- OAuth2 scheme name, not a credential
     expires_in: int = 0  # Access token lifetime in seconds
+    jti: str = ""  # Shared jti of this access/refresh pair
+    sid: str = ""  # Session id shared across the whole rotation family
 
 
 @dataclass(frozen=True)
@@ -35,12 +37,14 @@ class TokenPayload:
     jti: str
     token_type: str
     exp: datetime
+    sid: str = ""  # Session id, empty for legacy tokens minted before sessions
 
 
-def create_access_token(user_id: UUID, jti: str | None = None) -> str:
+def create_access_token(user_id: UUID, sid: str | None = None, jti: str | None = None) -> str:
     """Create a JWT access token for a user.
 
     :param user_id: User's UUID
+    :param sid: Session id shared with the paired refresh token (generated if omitted)
     :param jti: Optional JWT ID (generated if not provided)
     :return: Encoded JWT token string
     """
@@ -52,16 +56,18 @@ def create_access_token(user_id: UUID, jti: str | None = None) -> str:
         "exp": expire,
         "iat": now,
         "jti": jti or uuid4().hex,
+        "sid": sid or uuid4().hex,
         "type": "access",
     }
     encoded: str = jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM)
     return encoded
 
 
-def create_refresh_token(user_id: UUID) -> tuple[str, str]:
+def create_refresh_token(user_id: UUID, sid: str | None = None) -> tuple[str, str]:
     """Create a JWT refresh token for a user.
 
     :param user_id: User's UUID
+    :param sid: Session id for the rotation family (generated if omitted)
     :return: Tuple of (encoded token, jti)
     """
     settings = get_settings()
@@ -73,25 +79,34 @@ def create_refresh_token(user_id: UUID) -> tuple[str, str]:
         "exp": expire,
         "iat": now,
         "jti": jti,
+        "sid": sid or uuid4().hex,
         "type": "refresh",
     }
     encoded: str = jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM)
     return encoded, jti
 
 
-def create_token_pair(user_id: UUID) -> TokenPair:
+def create_token_pair(user_id: UUID, sid: str | None = None) -> TokenPair:
     """Create both access and refresh tokens for a user.
 
+    Both tokens share one ``sid`` (the rotation family) and one ``jti``. Pass an
+    existing ``sid`` to keep a rotated pair in the same family; omit it at login to
+    start a fresh family.
+
     :param user_id: User's UUID
-    :return: TokenPair with both tokens
+    :param sid: Session id to continue, or ``None`` to start a new family
+    :return: TokenPair with both tokens plus the shared jti and sid
     """
     settings = get_settings()
-    refresh_token, jti = create_refresh_token(user_id)
-    access_token = create_access_token(user_id, jti)
+    session_id = sid or uuid4().hex
+    refresh_token, jti = create_refresh_token(user_id, session_id)
+    access_token = create_access_token(user_id, session_id, jti)
     return TokenPair(
         access_token=access_token,
         refresh_token=refresh_token,
         expires_in=settings.access_token_expire_minutes * 60,
+        jti=jti,
+        sid=session_id,
     )
 
 
@@ -133,6 +148,17 @@ def decode_token(token: str, expected_type: str, store: RevocationStore) -> Toke
         if revoked:
             raise TokenError("Token has been revoked")
 
+        # Reject any token whose session (sid) was revoked. Refresh-token reuse
+        # revokes the whole family, so a stolen token cannot outlive detection.
+        sid: str | None = payload.get("sid")
+        if sid:
+            try:
+                session_revoked = store.is_session_revoked(sid)
+            except RevocationStoreError as e:
+                raise TokenError("Revocation store unavailable") from e
+            if session_revoked:
+                raise TokenError("Token has been revoked")
+
         user_id_str: str | None = payload.get("sub")
         if not user_id_str:
             raise TokenError("Missing user ID in token")
@@ -155,6 +181,7 @@ def decode_token(token: str, expected_type: str, store: RevocationStore) -> Toke
             jti=jti,
             token_type=token_type,
             exp=exp_datetime,
+            sid=sid or "",
         )
     except InvalidTokenError as e:
         raise TokenError("Invalid or expired token") from e
@@ -185,6 +212,17 @@ def decode_refresh_token(token: str, store: RevocationStore) -> TokenPayload:
     return decode_token(token, "refresh", store)
 
 
+def refresh_token_ttl_seconds() -> int:
+    """Return the refresh-token lifetime in seconds.
+
+    Used as the TTL for revocation and session records so they outlive every token
+    they must invalidate but do not linger in the store forever.
+
+    :return: Refresh-token lifetime in seconds.
+    """
+    return get_settings().refresh_token_expire_days * 86400
+
+
 def revoke_token(jti: str, store: RevocationStore) -> None:
     """Revoke a token by recording its JTI in the revocation store.
 
@@ -195,5 +233,4 @@ def revoke_token(jti: str, store: RevocationStore) -> None:
     :param jti: JWT ID to revoke
     :param store: Revocation store to record the JTI in
     """
-    ttl_seconds = get_settings().refresh_token_expire_days * 86400
-    store.revoke_jti(jti, ttl_seconds)
+    store.revoke_jti(jti, refresh_token_ttl_seconds())

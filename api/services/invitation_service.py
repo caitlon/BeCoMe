@@ -90,10 +90,14 @@ class InvitationService(BaseService):
         )
         return saved, invitee
 
-    def get_user_invitations(self, user_id: UUID) -> list[InvitationWithDetails]:
-        """Get all pending invitations for a user.
+    def get_user_invitations(
+        self, user_id: UUID, limit: int | None = None, offset: int = 0
+    ) -> list[InvitationWithDetails]:
+        """Get pending invitations for a user.
 
         :param user_id: ID of the user
+        :param limit: Max rows to return; ``None`` returns every invitation.
+        :param offset: Rows to skip when a limit is set.
         :return: List of invitations with project and inviter details
         """
         member_count_subquery = MemberCountSubquery.build()
@@ -109,6 +113,8 @@ class InvitationService(BaseService):
             .where(Invitation.invitee_id == user_id)
             .order_by(col(Invitation.created_at).desc())
         )
+        if limit is not None:
+            statement = statement.limit(limit).offset(offset)
 
         results = self._session.exec(statement).all()
         return [
@@ -175,10 +181,14 @@ class InvitationService(BaseService):
         )
         return membership
 
-    def get_project_invitations(self, project_id: UUID) -> list[tuple[Invitation, User]]:
-        """Get all pending invitations for a project with invitee details.
+    def get_project_invitations(
+        self, project_id: UUID, limit: int | None = None, offset: int = 0
+    ) -> list[tuple[Invitation, User]]:
+        """Get pending invitations for a project with invitee details.
 
         :param project_id: Project UUID
+        :param limit: Max rows to return; ``None`` returns every invitation.
+        :param offset: Rows to skip when a limit is set.
         :return: List of (invitation, invitee) tuples ordered by creation date
         """
         statement = (
@@ -187,6 +197,8 @@ class InvitationService(BaseService):
             .where(Invitation.project_id == project_id)
             .order_by(col(Invitation.created_at))
         )
+        if limit is not None:
+            statement = statement.limit(limit).offset(offset)
         return list(self._session.exec(statement).all())
 
     def decline_invitation(self, invitation_id: UUID, user_id: UUID) -> None:

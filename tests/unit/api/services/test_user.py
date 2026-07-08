@@ -261,6 +261,23 @@ class TestUserServiceAuthenticate:
         ):
             service.authenticate("auth@example.com", "wrong_password")
 
+    def test_runs_a_password_check_on_unknown_email(self):
+        """A missing account still runs a bcrypt check so timing cannot reveal it."""
+        # GIVEN a session that finds no user
+        mock_session = MagicMock()
+        mock_session.exec.return_value.first.return_value = None
+        service = UserService(mock_session)
+
+        # WHEN authenticating an unknown email
+        with (
+            patch("api.services.user_service.verify_password", return_value=False) as mock_verify,
+            pytest.raises(InvalidCredentialsError),
+        ):
+            service.authenticate("unknown@example.com", "anypassword")
+
+        # THEN a password verification still ran (against the dummy hash), equalizing timing
+        mock_verify.assert_called_once()
+
     def test_verifies_password_with_stored_hash(self):
         """Password verification uses stored hash."""
         # GIVEN

@@ -61,6 +61,16 @@ test.describe.serial('Profile Page Flow', () => {
   });
 
   test('delete account redirects to home', async () => {
+    // The password change above revoked the session, so log back in for a clean flow --
+    // the deletion dialog loads the owned projects and needs a live session.
+    await page.goto('/login');
+    await page.getByPlaceholder('you@example.com').fill(testEmail);
+    await page.getByPlaceholder('Enter your password').fill(NEW_PASSWORD);
+    await page.getByRole('button', { name: /sign in/i }).click();
+    await expect(page).toHaveURL('/projects', { timeout: 15000 });
+
+    await page.goto('/profile');
+
     // Click delete button in Danger Zone
     await page.getByRole('button', { name: 'Delete Account' }).click();
 
@@ -69,10 +79,12 @@ test.describe.serial('Profile Page Flow', () => {
     await expect(dialog).toBeVisible();
     await expect(dialog.getByText('Delete Account?')).toBeVisible();
 
-    // Confirm deletion
-    await dialog.getByRole('button', { name: 'Delete My Account' }).click();
+    // Confirm deletion (wait for the dialog to finish loading owned projects)
+    const confirmButton = dialog.getByRole('button', { name: 'Delete My Account' });
+    await expect(confirmButton).toBeEnabled();
+    await confirmButton.click();
 
-    // Redirected to login page after account deletion
-    await expect(page).toHaveURL('/login', { timeout: 10000 });
+    // After erasure the user is logged out and returned to the public landing page.
+    await expect(page).toHaveURL(/\/(login)?$/, { timeout: 10000 });
   });
 });

@@ -37,6 +37,13 @@
     "confirm": "Smazat můj účet",
     "deleting": "Mazání..."
   },
+  "deleteAccount": {
+    "ownedIntro": "Stále vlastníte níže uvedené projekty. Před smazáním účtu zvolte, co se s každým z nich stane.",
+    "deleteProject": "Smazat tento projekt",
+    "transferTo": "Převést na {{name}}",
+    "loadFailed": "Vaše projekty se nepodařilo načíst. Zkuste to prosím znovu.",
+    "failed": "Smazání účtu se nepodařilo. Zkuste to prosím znovu."
+  },
   "photo": {
     "label": "Profilová fotka",
     "upload": "Nahrát fotku",

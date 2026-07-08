@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Self
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from api.schemas.validators import validate_fuzzy_constraints
 from src.models.fuzzy_number import FuzzyTriangleNumber, triangular_centroid
@@ -12,7 +12,9 @@ from src.models.fuzzy_number import FuzzyTriangleNumber, triangular_centroid
 class ExpertInput(BaseModel):
     """Single expert opinion input."""
 
-    name: str = Field(..., min_length=1, description="Expert name or identifier")
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(..., min_length=1, max_length=200, description="Expert name or identifier")
     lower: float = Field(..., description="Lower bound (pessimistic estimate)")
     peak: float = Field(..., description="Peak value (most likely)")
     upper: float = Field(..., description="Upper bound (optimistic estimate)")
@@ -26,6 +28,8 @@ class ExpertInput(BaseModel):
 
 class CalculateRequest(BaseModel):
     """Request body for calculation endpoint."""
+
+    model_config = ConfigDict(extra="forbid")
 
     experts: list[ExpertInput] = Field(
         ..., min_length=1, max_length=1000, description="List of expert opinions"

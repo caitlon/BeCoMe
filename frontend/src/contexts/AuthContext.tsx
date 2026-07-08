@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { User } from '@/types/api';
 import { api } from '@/lib/api';
 import { logger } from '@/lib/logger';
@@ -9,32 +10,27 @@ interface AuthContextType {
   readonly isAuthenticated: boolean;
   readonly login: (email: string, password: string) => Promise<void>;
   readonly register: (email: string, password: string, firstName: string, lastName?: string) => Promise<void>;
-  readonly logout: () => void;
+  readonly logout: () => Promise<void>;
   readonly refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { readonly children: React.ReactNode }) {
+  const queryClient = useQueryClient();
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   const refreshUser = useCallback(async () => {
-    const token = api.getToken();
-    if (!token) {
-      setUser(null);
-      setIsLoading(false);
-      return;
-    }
-
     try {
-      const userData = await api.getCurrentUser();
+      // Probe the session via the HttpOnly cookie; silent so an anonymous visitor is
+      // not redirected away from a public page.
+      const userData = await api.getCurrentUser(true);
       setUser(userData);
     } catch (err) {
-      logger.warn('Session refresh failed', {
+      logger.debug('No active session', {
         error: err instanceof Error ? err.message : String(err),
       });
-      api.logout();
       setUser(null);
     } finally {
       setIsLoading(false);
@@ -62,10 +58,12 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
     await refreshUser();
   }, [refreshUser]);
 
-  const logout = useCallback(() => {
-    api.logout();
+  const logout = useCallback(async () => {
+    await api.logout();
     setUser(null);
-  }, []);
+    // Drop cached queries so the next account on this tab cannot see them.
+    queryClient.clear();
+  }, [queryClient]);
 
   const value = useMemo(() => ({
     user,

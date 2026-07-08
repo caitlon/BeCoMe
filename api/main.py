@@ -8,10 +8,17 @@ import sentry_sdk
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
-from api.config import Settings, get_settings
+from api.config import Environment, Settings, get_settings
 from api.db.engine import create_db_and_tables
 from api.logging_config import setup_logging
+from api.middleware.body_size import (
+    BodySizeLimitMiddleware,
+    RequestBodyTooLarge,
+    body_too_large_handler,
+)
+from api.middleware.csrf import CSRFMiddleware
 from api.middleware.exception_handlers import register_exception_handlers
 from api.middleware.rate_limit import limiter, rate_limit_handler
 from api.middleware.request_logging import RequestLoggingMiddleware
@@ -51,6 +58,9 @@ def _init_sentry(settings: Settings) -> None:
             dsn=settings.sentry_dsn,
             traces_sample_rate=0.1,
             environment=settings.environment.value,
+            # Never attach PII (client IP, cookies, headers, request bodies) to events,
+            # so passwords and emails on auth requests are not shipped to the tracker.
+            send_default_pii=False,
         )
 
 
@@ -64,19 +74,32 @@ def create_app() -> FastAPI:
     setup_logging(settings)
     _init_sentry(settings)
 
+    # Hide interactive docs and the OpenAPI schema in production so the full API
+    # surface (every route and schema) is not publicly enumerable.
+    docs_hidden = settings.environment is Environment.PROD
     app = FastAPI(
         title="BeCoMe API",
         description="Best Compromise Mean — Group Decision Making under Fuzzy Uncertainty",
         version=settings.api_version,
         lifespan=lifespan,
+        docs_url=None if docs_hidden else "/docs",
+        redoc_url=None if docs_hidden else "/redoc",
+        openapi_url=None if docs_hidden else "/openapi.json",
     )
 
     # Rate limiting setup
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, rate_limit_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(RequestBodyTooLarge, body_too_large_handler)
 
     # Security headers middleware (added first, executes last)
     app.add_middleware(SecurityHeadersMiddleware)
+
+    # Rate limiting: SlowAPIMiddleware enforces the limiter's default_limits on every
+    # route, not just the @limiter.limit-decorated ones, so no endpoint is unthrottled.
+    # It executes after CORS (CORS is added later, so it wraps this), letting preflight
+    # OPTIONS be answered before any limit check.
+    app.add_middleware(SlowAPIMiddleware)
 
     # CORS middleware for frontend integration (restricted for security)
     app.add_middleware(
@@ -90,12 +113,20 @@ def create_app() -> FastAPI:
             "Accept",
             "Accept-Language",
             "X-Request-ID",
+            "X-CSRF-Token",
         ],
         max_age=600,  # Cache preflight requests for 10 minutes
     )
 
-    # Request/response logging with correlation IDs (outermost: wraps everything)
+    # CSRF double-submit check for cookie-authenticated mutations (no-op for Bearer clients).
+    app.add_middleware(CSRFMiddleware)
+
+    # Request/response logging with correlation IDs.
     app.add_middleware(RequestLoggingMiddleware)
+
+    # Body-size guard (outermost: added last so it runs first and drops an over-large
+    # request body before any other middleware buffers or logs it).
+    app.add_middleware(BodySizeLimitMiddleware)
 
     # Register exception handlers (OCP: centralized error handling)
     register_exception_handlers(app)

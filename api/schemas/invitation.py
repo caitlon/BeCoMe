@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 if TYPE_CHECKING:
     from api.db.models import Invitation, Project, User
@@ -12,7 +12,9 @@ if TYPE_CHECKING:
 class InviteByEmailRequest(BaseModel):
     """Request to invite a user by email."""
 
-    email: EmailStr = Field(..., description="Email of user to invite")
+    model_config = ConfigDict(extra="forbid")
+
+    email: EmailStr = Field(..., max_length=255, description="Email of user to invite")
 
 
 class InvitationResponse(BaseModel):

@@ -12,15 +12,17 @@ const mockApi = {
   acceptInvitation: vi.fn(),
   declineInvitation: vi.fn(),
   deleteProject: vi.fn(),
+  createProject: vi.fn(),
 };
 
 vi.mock('@/lib/api', () => ({
   api: {
-    getProjects: () => mockApi.getProjects(),
+    getProjects: (params?: { limit?: number; offset?: number }) => mockApi.getProjects(params),
     getInvitations: () => mockApi.getInvitations(),
     acceptInvitation: (id: string) => mockApi.acceptInvitation(id),
     declineInvitation: (id: string) => mockApi.declineInvitation(id),
     deleteProject: (id: string) => mockApi.deleteProject(id),
+    createProject: (data: unknown) => mockApi.createProject(data),
   },
 }));
 
@@ -600,6 +602,91 @@ describe('Projects', () => {
           })
         );
       });
+    });
+  });
+});
+
+describe('Projects - Pagination', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockApi.getInvitations.mockResolvedValue([]);
+  });
+
+  it('shows the load-more button when a full page is returned', async () => {
+    mockApi.getProjects.mockResolvedValue(
+      Array.from({ length: 24 }, () => createProjectWithRole())
+    );
+
+    render(<Projects />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /load more/i })).toBeInTheDocument();
+    });
+  });
+
+  it('hides the load-more button when a short page is returned', async () => {
+    mockApi.getProjects.mockResolvedValue([createProjectWithRole()]);
+
+    render(<Projects />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /new project/i })).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('button', { name: /load more/i })).not.toBeInTheDocument();
+  });
+
+  it('appends the next page when load more is clicked', async () => {
+    const firstPage = Array.from({ length: 24 }, (_, i) =>
+      createProjectWithRole({ name: `Project ${i + 1}` })
+    );
+    const secondPage = [createProjectWithRole({ name: 'Project 25' })];
+    mockApi.getProjects
+      .mockResolvedValueOnce(firstPage)
+      .mockResolvedValueOnce(secondPage);
+
+    const user = userEvent.setup();
+    render(<Projects />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /load more/i })).toBeInTheDocument();
+    });
+    await user.click(screen.getByRole('button', { name: /load more/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Project 25')).toBeInTheDocument();
+    });
+    expect(mockApi.getProjects).toHaveBeenNthCalledWith(1, { limit: 24, offset: 0 });
+    expect(mockApi.getProjects).toHaveBeenNthCalledWith(2, { limit: 24, offset: 24 });
+    expect(screen.getByText('Project 1')).toBeInTheDocument();
+  });
+});
+
+describe('Projects - Create Project', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockApi.getProjects.mockResolvedValue([]);
+    mockApi.getInvitations.mockResolvedValue([]);
+    mockApi.createProject.mockResolvedValue({});
+  });
+
+  it('refetches the project list after creating a project', async () => {
+    const user = userEvent.setup();
+    render(<Projects />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /new project/i })).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole('button', { name: /new project/i }));
+    await user.type(screen.getByLabelText(/project name/i), 'My Project');
+    await user.type(screen.getByLabelText(/unit/i), '%');
+    await user.click(screen.getByRole('button', { name: 'Create Project' }));
+
+    await waitFor(() => {
+      expect(mockApi.createProject).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(mockApi.getProjects).toHaveBeenCalledTimes(2);
     });
   });
 });

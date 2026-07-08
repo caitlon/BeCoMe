@@ -8,8 +8,8 @@ Full-stack web application for group decision-making under fuzzy uncertainty usi
 ![TypeScript](https://img.shields.io/badge/typescript-5.0+-blue.svg)
 ![FastAPI](https://img.shields.io/badge/fastapi-0.115+-green.svg)
 ![React](https://img.shields.io/badge/react-18+-blue.svg)
-![Tests](https://img.shields.io/badge/tests-953%20passed-brightgreen)
-![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)
+![Tests](https://img.shields.io/badge/tests-1982%20passed-brightgreen)
+![Coverage](https://img.shields.io/badge/coverage-99%25-brightgreen)
 
 ## Table of Contents
 
@@ -57,7 +57,7 @@ Validated on three Czech case studies (COVID-19 budget allocation, flood prevent
 - **Likert Scale Support**: Ordinal data as special case of fuzzy numbers
 
 ### Quality
-- **100% Test Coverage**: 950+ tests for API, frontend, and core library
+- **100% Test Coverage**: 1,980+ tests for API, frontend, and core library
 - **Type Safety**: mypy strict mode, TypeScript strict
 - **Three Case Studies**: COVID-19 budget, flood prevention, cross-border travel
 
@@ -75,7 +75,7 @@ The project includes a full-stack web application for collaborative decision-mak
 
 ### Key Features
 
-- **User Authentication**: JWT-based auth with refresh tokens
+- **User Authentication**: JWT auth with rotating refresh tokens, delivered as HttpOnly session cookies with CSRF protection
 - **Project Management**: Create projects with custom scales, invite experts by email
 - **Opinion Collection**: Experts submit fuzzy triangular numbers (lower, peak, upper)
 - **Automatic Calculation**: BeCoMe result computed when opinions are submitted
@@ -123,11 +123,11 @@ APP_ENV=dev uv run uvicorn api.main:app --reload
 APP_ENV=prod uv run uvicorn api.main:app
 ```
 
-The `prod` profile refuses to start with a default or empty `SECRET_KEY` or a SQLite `DATABASE_URL`, so a misconfigured deployment fails immediately at startup.
+Both deployed profiles (`test`, `prod`) refuse to start misconfigured: a weak or default `SECRET_KEY`, a SQLite `DATABASE_URL`, a missing `REDIS_URL`, or localhost-only `CORS_ORIGINS` fails startup immediately. Production additionally requires `CLOUDFLARE_ORIGIN_SECRET`.
 
-The `TESTING` flag is separate from the profile. The test suite sets `APP_ENV=test` together with `TESTING=1`; `TESTING` disables rate limiting and is never set on a deployed profile, so staging keeps the same limits as production.
+The `TESTING` flag is separate from the profile. The test suite sets `APP_ENV=test` together with `TESTING=1`; `TESTING` disables rate limiting and the deploy startup checks, and is never set on a deployed profile, so staging keeps the same limits as production.
 
-On Railway, set the profile and secrets as service variables per environment: `APP_ENV`, `SECRET_KEY`, `DATABASE_URL`, `CORS_ORIGINS`, `DEBUG`. The staging service uses `APP_ENV=test`; production uses `APP_ENV=prod`. The frontend reads its API URL from `VITE_API_URL`, injected at build time (see the frontend Dockerfile), so staging and production differ only by that value.
+On Railway, set the profile and secrets as service variables per environment: `APP_ENV`, `SECRET_KEY`, `DATABASE_URL`, `REDIS_URL`, `CORS_ORIGINS`, `DEBUG`. The staging service uses `APP_ENV=test`; production uses `APP_ENV=prod`. The frontend reads its API URL from `VITE_API_URL`, injected at build time (see the frontend Dockerfile), so staging and production differ only by that value.
 
 See [docs/environments.md](docs/environments.md) for the full reference: per-profile details, Railway variables, and current deployment status.
 
@@ -331,8 +331,9 @@ See [src/README.md](src/README.md) for API documentation.
 ```text
 BeCoMe/
 ├── api/                    # REST API (FastAPI)
-│   ├── auth/                   # Authentication (JWT, passwords)
+│   ├── auth/                   # Authentication (JWT, passwords, session cookies, throttles)
 │   ├── db/                     # Database models (SQLModel)
+│   ├── middleware/             # Rate limit, CSRF, body size, security headers, logging
 │   ├── routes/                 # HTTP endpoints
 │   ├── schemas/                # Pydantic DTOs
 │   ├── services/               # Business logic
@@ -348,7 +349,7 @@ BeCoMe/
 │   ├── models/                 # Fuzzy number, expert opinion
 │   ├── calculators/            # BeCoMe algorithm
 │   └── interpreters/           # Likert scale support
-├── tests/                  # Test suite (950+ tests)
+├── tests/                  # Test suite (1,200+ backend tests)
 │   ├── unit/                   # Unit tests (models, calculators, API)
 │   ├── integration/            # Integration tests (Excel validation, API routes, DB)
 │   ├── e2e/                    # End-to-end API tests
@@ -379,9 +380,9 @@ uv run pytest tests/unit/models/       # Model tests only
 
 ### Test Coverage
 
-Current test coverage: **100%** (all source code lines covered).
+Current test coverage: **100%** on the core library (`src/`) and **99%** across the backend overall — the remaining lines are Redis-backed store variants exercised against a live Redis rather than in the unit suite.
 
-The test suite contains 571 unit tests (models, calculators, interpreters, utilities, API) and 329 integration tests (Excel validation, API routes, database). Another 53 end-to-end tests cover full API workflows. Edge cases like single expert, identical opinions, and extreme values are covered. Property-based tests verify fuzzy number arithmetic.
+The test suite contains 797 unit tests (models, calculators, interpreters, utilities, API) and 393 integration tests (Excel validation, API routes, database). Another 59 end-to-end tests cover full API workflows, and the frontend adds 733 Vitest tests plus 76 Playwright browser scenarios. Edge cases like single expert, identical opinions, and extreme values are covered. Property-based tests verify fuzzy number arithmetic.
 
 See [Quality Report](docs/quality-report.md) for detailed metrics.
 
@@ -414,6 +415,8 @@ Documentation is available in the `docs/` directory:
 | [Method Description](docs/method-description.md) | Mathematical foundation with formulas and worked examples |
 | [UML Diagrams](docs/uml-diagrams/README.md) | Visual architecture (class, sequence, activity diagrams) |
 | [Quality Report](docs/quality-report.md) | Code quality metrics and test coverage details |
+| [Security](docs/security.md) | Application and database security posture |
+| [Environments](docs/environments.md) | dev/test/prod profiles and Railway deployment |
 | [Source Code](src/README.md) | API documentation and module descriptions |
 
 ## Architecture

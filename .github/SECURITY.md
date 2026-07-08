@@ -53,7 +53,8 @@ The parts of BeCoMe most worth probing:
 
 ## Related documentation
 
-The database security posture — least-privilege roles, network isolation, audit logging, and
-secret rotation — is written up in [`docs/security.md`](../docs/security.md). Deployment
-topology and per-environment configuration live in
-[`docs/environments.md`](../docs/environments.md).
+The application security posture — authentication and session transport, tenant isolation,
+rate limiting, GDPR handling, and the database layer (least-privilege roles, network
+isolation, audit logging, secret rotation) — is written up in
+[`docs/security.md`](../docs/security.md). Deployment topology and per-environment
+configuration live in [`docs/environments.md`](../docs/environments.md).

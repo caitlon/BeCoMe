@@ -55,6 +55,20 @@ class TestExpertInputValidation:
             ExpertInput(name="Test", lower=-math.inf, peak=10.0, upper=15.0)
 
 
+class TestExpertInputSizeLimits:
+    """ExpertInput bounds string and numeric input to keep payloads sane."""
+
+    def test_name_over_max_length_rejected(self):
+        """GIVEN an over-long expert name WHEN ExpertInput is created THEN it is rejected."""
+        with pytest.raises(ValidationError):
+            ExpertInput(name="x" * 201, lower=5.0, peak=10.0, upper=15.0)
+
+    def test_extreme_magnitude_rejected(self):
+        """GIVEN a value beyond the accepted magnitude WHEN created THEN it is rejected."""
+        with pytest.raises(ValidationError):
+            ExpertInput(name="Test", lower=0.0, peak=0.0, upper=1e16)
+
+
 class TestExpertInputConstraints:
     """Tests for ExpertInput fuzzy constraints validation."""
 

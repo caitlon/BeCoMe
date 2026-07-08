@@ -25,8 +25,9 @@ def get_client_ip(request: Request | None) -> str:
       and a client cannot forge). A request without the secret reached the bare origin
       directly, bypassing Cloudflare, so its client-supplied headers are untrusted and
       it is keyed under a single constant instead of a spoofable address.
-    - **No secret** (local/dev/staging, no Cloudflare in front): use the first
-      ``X-Forwarded-For`` entry, then the direct peer.
+    - **No secret** (local development only; deployed profiles reject a missing
+      secret at startup): client-supplied forwarding headers are untrusted, so key
+      off the direct transport peer rather than a spoofable ``X-Forwarded-For``.
 
     :param request: Incoming request, or ``None`` when unavailable.
     :return: Client IP, the unverified-origin sentinel, or ``"unknown"``.
@@ -42,7 +43,7 @@ def get_client_ip(request: Request | None) -> str:
                 return cloudflare_ip.strip()
             return request.client.host if request.client else "unknown"
         return _UNVERIFIED_ORIGIN
-    forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
+    # No secret: this is local development (deployed profiles require the secret).
+    # X-Forwarded-For is attacker-controlled, so it must never seed the rate-limit
+    # key or the log IP; the transport peer is the real client here.
     return request.client.host if request.client else "unknown"

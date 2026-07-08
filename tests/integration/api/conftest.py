@@ -26,6 +26,7 @@ from api.db.models import (  # noqa: F401 - models required for SQLModel.metadat
     User,
 )
 from api.db.session import get_session
+from api.middleware.csrf import CSRFMiddleware
 from api.middleware.exception_handlers import register_exception_handlers
 from api.middleware.rate_limit import limiter
 from api.routes import auth, calculate, health, invitations, opinions, projects, users
@@ -50,6 +51,9 @@ def create_test_app() -> FastAPI:
     # Rate limiting setup (required for auth routes)
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
+
+    # CSRF double-submit guard (dormant unless the request carries the csrf_token cookie).
+    app.add_middleware(CSRFMiddleware)
 
     # Register exception handlers (OCP: centralized error handling)
     register_exception_handlers(app)
@@ -84,6 +88,10 @@ def register_and_login(client: TestClient, email: str = "test@example.com") -> s
         "/api/v1/auth/login",
         data={"username": email, "password": DEFAULT_TEST_PASSWORD},
     )
+    # Drop the session cookies the login set, so header-based tests authenticate purely
+    # via the returned token; otherwise an ambient cookie would override an explicit
+    # Authorization header (e.g. a later login as another user).
+    client.cookies.clear()
     return response.json()["access_token"]
 
 
@@ -160,9 +168,57 @@ def session(test_engine):
         yield session
 
 
+@pytest.fixture(autouse=True)
+def _reset_auth_throttles():
+    """Give each test fresh login and reset-email throttles.
+
+    Both ``get_login_throttle`` and ``get_reset_email_throttle`` are lru_cache
+    singletons, so their in-memory state would otherwise leak between tests that
+    reuse an email address.
+    """
+    from api.auth.login_throttle import get_login_throttle
+    from api.auth.reset_throttle import get_reset_email_throttle
+
+    get_login_throttle.cache_clear()
+    get_reset_email_throttle.cache_clear()
+    yield
+    get_login_throttle.cache_clear()
+    get_reset_email_throttle.cache_clear()
+
+
+class _HeaderOnlyClient(TestClient):
+    """Test client that discards response cookies after each request.
+
+    Existing tests authenticate with an explicit Authorization header. Dropping the
+    session cookies the app now sets keeps them isolated from cookie/CSRF behaviour: no
+    ambient cookie overrides the header, and the CSRF check stays dormant. The cookie and
+    CSRF flow is exercised through the plain ``cookie_client`` fixture instead.
+    """
+
+    def request(self, *args, **kwargs):
+        response = super().request(*args, **kwargs)
+        self.cookies.clear()
+        return response
+
+
 @pytest.fixture
 def client(test_engine):
-    """Create test client with in-memory database."""
+    """Create a header-auth test client (session cookies are not retained)."""
+    test_app = create_test_app()
+
+    def override_get_session():
+        with Session(test_engine) as session:
+            yield session
+
+    test_app.dependency_overrides[get_session] = override_get_session
+
+    with _HeaderOnlyClient(test_app) as test_client:
+        yield test_client
+
+
+@pytest.fixture
+def cookie_client(test_engine):
+    """Create a cookie-retaining test client for the cookie + CSRF session flow."""
     test_app = create_test_app()
 
     def override_get_session():
@@ -192,5 +248,5 @@ def client_with_session(test_engine):
 
         test_app.dependency_overrides[get_session] = override_get_session
 
-        with TestClient(test_app) as test_client:
+        with _HeaderOnlyClient(test_app) as test_client:
             yield test_client, session

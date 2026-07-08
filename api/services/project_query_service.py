@@ -42,12 +42,16 @@ class ProjectQueryService(BaseService):
             for project, count in results
         ]
 
-    def get_user_projects_with_roles(self, user_id: UUID) -> list[ProjectWithMemberCountAndRole]:
-        """Get all projects where user is a member, with member counts and role.
+    def get_user_projects_with_roles(
+        self, user_id: UUID, limit: int | None = None, offset: int = 0
+    ) -> list[ProjectWithMemberCountAndRole]:
+        """Get projects where user is a member, with member counts and role.
 
         Uses a single query with subquery to avoid N+1 problem.
 
         :param user_id: User ID
+        :param limit: Max rows to return; ``None`` returns every project.
+        :param offset: Rows to skip when a limit is set.
         :return: List of ProjectWithMemberCountAndRole instances
         """
         member_count_subquery = MemberCountSubquery.build()
@@ -62,6 +66,8 @@ class ProjectQueryService(BaseService):
             .where(ProjectMember.user_id == user_id)
             .order_by(col(Project.created_at).desc())
         )
+        if limit is not None:
+            statement = statement.limit(limit).offset(offset)
         results = self._session.exec(statement).all()
         return [
             ProjectWithMemberCountAndRole(

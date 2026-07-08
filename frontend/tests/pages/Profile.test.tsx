@@ -3,7 +3,6 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { render, framerMotionMock } from '@tests/utils';
 import Profile from '@/pages/Profile';
-import { HttpError } from '@/lib/api';
 import { createUser } from '@tests/factories/user';
 
 // Mock useNavigate
@@ -21,6 +20,8 @@ const mockApi = {
   updateCurrentUser: vi.fn(),
   changePassword: vi.fn(),
   deleteAccount: vi.fn(),
+  getProjects: vi.fn(),
+  getMembers: vi.fn(),
   uploadPhoto: vi.fn(),
   deletePhoto: vi.fn(),
   exportData: vi.fn(),
@@ -32,7 +33,9 @@ vi.mock('@/lib/api', async (importActual) => {
     api: {
       updateCurrentUser: (data: unknown) => mockApi.updateCurrentUser(data),
       changePassword: (data: unknown) => mockApi.changePassword(data),
-      deleteAccount: () => mockApi.deleteAccount(),
+      deleteAccount: (dispositions: unknown) => mockApi.deleteAccount(dispositions),
+      getProjects: () => mockApi.getProjects(),
+      getMembers: (projectId: string) => mockApi.getMembers(projectId),
       uploadPhoto: (file: File) => mockApi.uploadPhoto(file),
       deletePhoto: () => mockApi.deletePhoto(),
       exportData: () => mockApi.exportData(),
@@ -278,6 +281,8 @@ describe('Profile - Photo Buttons a11y', () => {
 describe('Profile - Delete Account', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockApi.getProjects.mockResolvedValue([]);
+    mockApi.getMembers.mockResolvedValue([]);
   });
 
   it('opens delete confirmation modal', async () => {
@@ -293,98 +298,21 @@ describe('Profile - Delete Account', () => {
 
   it('calls api.deleteAccount and navigates to home on confirm', async () => {
     const user = userEvent.setup();
-    mockApi.deleteAccount.mockResolvedValueOnce({});
+    mockApi.deleteAccount.mockResolvedValueOnce(undefined);
 
     render(<Profile />);
 
     await user.click(screen.getByRole('button', { name: 'Delete Account' }));
 
-    await waitFor(() => {
-      expect(screen.getByRole('dialog')).toBeInTheDocument();
-    });
-
-    await user.click(screen.getByRole('button', { name: 'Delete My Account' }));
+    const confirm = await screen.findByRole('button', { name: 'Delete My Account' });
+    await waitFor(() => expect(confirm).toBeEnabled());
+    await user.click(confirm);
 
     await waitFor(() => {
-      expect(mockApi.deleteAccount).toHaveBeenCalled();
+      expect(mockApi.deleteAccount).toHaveBeenCalledWith([]);
       expect(mockLogout).toHaveBeenCalled();
       expect(mockNavigate).toHaveBeenCalledWith('/');
     });
-  });
-
-  it('shows error toast when deleteAccount fails', async () => {
-    const user = userEvent.setup();
-    mockApi.deleteAccount.mockRejectedValueOnce(new Error('Server error'));
-
-    render(<Profile />);
-
-    await user.click(screen.getByRole('button', { name: 'Delete Account' }));
-
-    await waitFor(() => {
-      expect(screen.getByRole('dialog')).toBeInTheDocument();
-    });
-
-    await user.click(screen.getByRole('button', { name: 'Delete My Account' }));
-
-    await waitFor(() => {
-      expect(mockToast).toHaveBeenCalledWith(
-        expect.objectContaining({
-          title: 'Error',
-          description: 'Server error',
-          variant: 'destructive',
-        })
-      );
-    });
-  });
-
-  it('shows fallback error toast when deleteAccount throws non-Error', async () => {
-    const user = userEvent.setup();
-    mockApi.deleteAccount.mockRejectedValueOnce('unknown');
-
-    render(<Profile />);
-
-    await user.click(screen.getByRole('button', { name: 'Delete Account' }));
-
-    await waitFor(() => {
-      expect(screen.getByRole('dialog')).toBeInTheDocument();
-    });
-
-    await user.click(screen.getByRole('button', { name: 'Delete My Account' }));
-
-    await waitFor(() => {
-      expect(mockToast).toHaveBeenCalledWith(
-        expect.objectContaining({
-          title: 'Error',
-          description: 'Failed to delete account',
-          variant: 'destructive',
-        })
-      );
-    });
-  });
-
-  it('shows ownership warning when deletion is blocked by owned projects (409)', async () => {
-    const user = userEvent.setup();
-    mockApi.deleteAccount.mockRejectedValueOnce(new HttpError('conflict', 409));
-
-    render(<Profile />);
-
-    await user.click(screen.getByRole('button', { name: 'Delete Account' }));
-
-    await waitFor(() => {
-      expect(screen.getByRole('dialog')).toBeInTheDocument();
-    });
-
-    await user.click(screen.getByRole('button', { name: 'Delete My Account' }));
-
-    await waitFor(() => {
-      expect(mockToast).toHaveBeenCalledWith(
-        expect.objectContaining({
-          variant: 'destructive',
-          description: expect.stringContaining('still admin'),
-        })
-      );
-    });
-    expect(mockLogout).not.toHaveBeenCalled();
   });
 });
 

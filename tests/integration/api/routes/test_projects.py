@@ -214,7 +214,7 @@ class TestGetProject:
         assert response.status_code == 404
 
     def test_get_project_not_member(self, client):
-        """403 returned when user is not a member."""
+        """404 returned when the caller is not a member (existence hidden)."""
         # GIVEN
         token1 = register_and_login(client, "owner@example.com")
         token2 = register_and_login(client, "other@example.com")
@@ -230,7 +230,7 @@ class TestGetProject:
         response = client.get(f"/api/v1/projects/{project_id}", headers=auth_header(token2))
 
         # THEN
-        assert response.status_code == 403
+        assert response.status_code == 404
 
     def test_get_project_role_not_found(self, client):
         """404 returned when role lookup fails (race condition edge case)."""
@@ -303,10 +303,9 @@ class TestUpdateProject:
         assert data["name"] == "Test"
         assert data["description"] == "Updated"
 
-    def test_update_project_not_admin(self, client):
-        """Non-admin cannot update project."""
-        # GIVEN - would need invitation flow to test properly
-        # For now, test that non-member gets 403
+    def test_update_project_not_member(self, client):
+        """A non-member cannot update a project and gets a 404 (existence hidden)."""
+        # GIVEN
         token1 = register_and_login(client, "owner@example.com")
         token2 = register_and_login(client, "other@example.com")
 
@@ -325,7 +324,7 @@ class TestUpdateProject:
         )
 
         # THEN
-        assert response.status_code == 403
+        assert response.status_code == 404
 
     def test_update_project_invalid_scale(self, client):
         """Update fails if scale range becomes invalid."""
@@ -394,8 +393,8 @@ class TestDeleteProject:
         get_resp = client.get(f"/api/v1/projects/{project_id}", headers=auth_header(token))
         assert get_resp.status_code == 404
 
-    def test_delete_project_not_admin(self, client):
-        """Non-admin cannot delete project."""
+    def test_delete_project_not_member(self, client):
+        """A non-member cannot delete a project and gets a 404 (existence hidden)."""
         # GIVEN
         token1 = register_and_login(client, "owner@example.com")
         token2 = register_and_login(client, "other@example.com")
@@ -411,7 +410,7 @@ class TestDeleteProject:
         response = client.delete(f"/api/v1/projects/{project_id}", headers=auth_header(token2))
 
         # THEN
-        assert response.status_code == 403
+        assert response.status_code == 404
 
 
 class TestListMembers:
@@ -439,7 +438,7 @@ class TestListMembers:
         assert data[0]["role"] == "admin"
 
     def test_list_members_not_member(self, client):
-        """Non-member cannot see members list."""
+        """Non-member cannot see members list (404, existence hidden)."""
         # GIVEN
         token1 = register_and_login(client, "owner@example.com")
         token2 = register_and_login(client, "other@example.com")
@@ -458,7 +457,32 @@ class TestListMembers:
         )
 
         # THEN
-        assert response.status_code == 403
+        assert response.status_code == 404
+
+    def test_list_members_respects_pagination(self, client):
+        """limit/offset bound the members page; the default returns every member."""
+        # GIVEN a project with two members (admin + expert)
+        owner = register_and_login(client, "owner@example.com")
+        project = create_project(client, owner)
+        _add_expert(client, owner, project["id"], "expert@example.com")
+
+        # THEN the default returns both, while limit/offset page through them
+        everyone = client.get(
+            f"/api/v1/projects/{project['id']}/members", headers=auth_header(owner)
+        )
+        assert len(everyone.json()) == 2
+
+        first = client.get(
+            f"/api/v1/projects/{project['id']}/members?limit=1", headers=auth_header(owner)
+        )
+        assert len(first.json()) == 1
+
+        second = client.get(
+            f"/api/v1/projects/{project['id']}/members?limit=1&offset=1",
+            headers=auth_header(owner),
+        )
+        assert len(second.json()) == 1
+        assert first.json()[0]["user_id"] != second.json()[0]["user_id"]
 
 
 class TestRemoveMember:
@@ -507,8 +531,8 @@ class TestRemoveMember:
         # THEN
         assert response.status_code == 404
 
-    def test_remove_member_not_admin(self, client):
-        """Non-admin cannot remove members."""
+    def test_remove_member_not_member(self, client):
+        """A non-member cannot remove members and gets a 404 (existence hidden)."""
         # GIVEN
         token1 = register_and_login(client, "owner@example.com")
         token2 = register_and_login(client, "other@example.com")
@@ -528,7 +552,7 @@ class TestRemoveMember:
         )
 
         # THEN
-        assert response.status_code == 403
+        assert response.status_code == 404
 
 
 class TestTransferOwnership:
@@ -594,20 +618,19 @@ class TestTransferOwnership:
         # THEN
         assert response.status_code == 400
 
-    def test_transfer_not_admin_returns_403(self, client):
-        """A non-admin cannot transfer ownership."""
+    def test_transfer_member_not_admin_returns_403(self, client):
+        """A member who is not the admin cannot transfer ownership (403, not 404)."""
         # GIVEN
         owner = register_and_login(client, "owner@example.com")
-        outsider = register_and_login(client, "outsider@example.com")
         project = create_project(client, owner, "Shared")
         project_id = project["id"]
-        _expert_token, expert_id = _add_expert(client, owner, project_id, "expert@example.com")
+        expert_token, expert_id = _add_expert(client, owner, project_id, "expert@example.com")
 
         # WHEN
         response = client.post(
             f"/api/v1/projects/{project_id}/transfer-ownership",
             json={"new_admin_id": expert_id},
-            headers=auth_header(outsider),
+            headers=auth_header(expert_token),
         )
 
         # THEN

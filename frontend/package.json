@@ -9,6 +9,7 @@
     "build:dev": "vite build --mode development",
     "build:staging": "vite build --mode staging",
     "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.app.json --noEmit",
     "preview": "vite preview",
     "test": "vitest",
     "test:run": "vitest run",

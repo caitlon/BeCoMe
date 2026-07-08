@@ -34,8 +34,8 @@ export function Navbar() {
     return () => globalThis.removeEventListener("scroll", handleScroll);
   }, []);
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     globalThis.location.href = '/';
   };
 

@@ -89,7 +89,7 @@ class TestResultExport:
             headers=auth_header(outsider),
         )
 
-        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert response.status_code == status.HTTP_404_NOT_FOUND
 
     def test_export_without_result_returns_404(self, client):
         """Exporting a project that has no computed result returns 404."""

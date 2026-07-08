@@ -784,8 +784,8 @@ class TestRefreshToken:
         assert data["refresh_token"]  # rotation returns a fresh refresh token
         assert data["expires_in"] > 0
 
-    def test_refresh_rotates_and_revokes_old_token(self, client):
-        """Refresh issues a new pair, revokes the old refresh token, and detects reuse."""
+    def test_refresh_rotates_and_reuse_revokes_the_family(self, client):
+        """Refresh rotates the pair; reusing the old token revokes the whole family."""
         # GIVEN - register and login
         client.post(
             "/api/v1/auth/register",
@@ -808,13 +808,13 @@ class TestRefreshToken:
         new_refresh = first.json()["refresh_token"]
         assert new_refresh and new_refresh != old_refresh
 
-        # THEN - reusing the old refresh token is rejected (revoked on rotation)
+        # THEN - reusing the old refresh token is rejected and revokes the whole family
         reused = client.post("/api/v1/auth/refresh", json={"refresh_token": old_refresh})
         assert reused.status_code == 401
 
-        # AND - the rotated refresh token still works
+        # AND - reuse detection revoked the session, so the rotated token also stops working
         again = client.post("/api/v1/auth/refresh", json={"refresh_token": new_refresh})
-        assert again.status_code == 200
+        assert again.status_code == 401
 
     def test_refresh_with_invalid_token_fails(self, client):
         """Refresh with invalid token returns 401."""
@@ -853,6 +853,76 @@ class TestRefreshToken:
 
         # THEN
         assert response.status_code == 401
+
+
+class TestLoginLockout:
+    """Repeated failed logins lock the account for a cooldown."""
+
+    def test_locks_account_after_repeated_failures(self, client):
+        """After too many wrong-password attempts, further logins return 429."""
+        from api.auth.login_throttle import InMemoryLoginThrottle, get_login_throttle
+
+        throttle = InMemoryLoginThrottle(max_failures=3, window_seconds=3600)
+        client.app.dependency_overrides[get_login_throttle] = lambda: throttle
+        try:
+            client.post(
+                "/api/v1/auth/register",
+                json={
+                    "email": "lockout@example.com",
+                    "password": "SecurePass123!",
+                    "first_name": "Lock",
+                    "last_name": "Out",
+                },
+            )
+            # GIVEN three failed attempts, each rejected with 401
+            for _ in range(3):
+                failed = client.post(
+                    "/api/v1/auth/login",
+                    data={"username": "lockout@example.com", "password": "WrongPass999!"},
+                )
+                assert failed.status_code == 401
+
+            # WHEN a fourth attempt is made, even with the correct password
+            locked = client.post(
+                "/api/v1/auth/login",
+                data={"username": "lockout@example.com", "password": "SecurePass123!"},
+            )
+
+            # THEN the account is locked out
+            assert locked.status_code == 429
+        finally:
+            client.app.dependency_overrides.pop(get_login_throttle, None)
+
+
+class TestLoginStoreUnavailable:
+    """Login fails cleanly with 503 when the session store is down, never a raw 500."""
+
+    def test_login_returns_503_when_session_store_is_down(self, client):
+        """A RevocationStoreError while starting the session becomes a clean 503."""
+        from unittest.mock import MagicMock
+
+        from api.auth.revocation_store import RevocationStoreError, get_revocation_store
+
+        client.post(
+            "/api/v1/auth/register",
+            json={
+                "email": "storedown@example.com",
+                "password": "SecurePass123!",
+                "first_name": "Store",
+                "last_name": "Down",
+            },
+        )
+        broken = MagicMock()
+        broken.start_session.side_effect = RevocationStoreError("redis down")
+        client.app.dependency_overrides[get_revocation_store] = lambda: broken
+        try:
+            response = client.post(
+                "/api/v1/auth/login",
+                data={"username": "storedown@example.com", "password": "SecurePass123!"},
+            )
+            assert response.status_code == 503
+        finally:
+            client.app.dependency_overrides.pop(get_revocation_store, None)
 
 
 class TestLogout:
@@ -925,3 +995,105 @@ class TestLogout:
             json={"refresh_token": refresh_token},
         )
         assert refresh_response.status_code == 401
+
+
+class TestCookieAuth:
+    """Login issues session cookies; the cookie authenticates and CSRF guards mutations."""
+
+    PASSWORD = "SecurePass123!"
+
+    def _register_and_login(self, cookie_client, email="cookie@example.com"):
+        """Register a user and log in, leaving the session cookies in the client jar."""
+        cookie_client.post(
+            "/api/v1/auth/register",
+            json={
+                "email": email,
+                "password": self.PASSWORD,
+                "first_name": "Cookie",
+                "last_name": "User",
+            },
+        )
+        return cookie_client.post(
+            "/api/v1/auth/login",
+            data={"username": email, "password": self.PASSWORD},
+        )
+
+    def _csrf_header(self, cookie_client):
+        """Echo the readable csrf_token cookie back as the X-CSRF-Token header."""
+        return {"X-CSRF-Token": cookie_client.cookies.get("csrf_token")}
+
+    def test_login_sets_httponly_session_cookies(self, cookie_client):
+        """Login sets access/refresh/csrf cookies; token cookies are HttpOnly + SameSite=Strict."""
+        resp = self._register_and_login(cookie_client)
+
+        assert resp.status_code == 200
+        assert "access_token" in resp.cookies
+        assert "refresh_token" in resp.cookies
+        assert "csrf_token" in resp.cookies
+        raw = " ".join(resp.headers.get_list("set-cookie")).lower()
+        assert "httponly" in raw
+        assert "samesite=strict" in raw
+
+    def test_access_cookie_authenticates_without_bearer(self, cookie_client):
+        """A request carrying only the session cookie (no Authorization header) authenticates."""
+        self._register_and_login(cookie_client)  # the jar now holds the session cookies
+
+        resp = cookie_client.get("/api/v1/auth/me")
+
+        assert resp.status_code == 200
+        assert resp.json()["email"] == "cookie@example.com"
+
+    def test_logout_with_csrf_clears_cookies(self, cookie_client):
+        """A logout carrying the CSRF header succeeds and clears the session cookies."""
+        self._register_and_login(cookie_client)
+
+        resp = cookie_client.post("/api/v1/auth/logout", headers=self._csrf_header(cookie_client))
+
+        assert resp.status_code == 204
+        raw = " ".join(resp.headers.get_list("set-cookie")).lower()
+        assert "access_token=" in raw
+
+    def test_cookie_mutation_without_csrf_header_is_rejected(self, cookie_client):
+        """A cookie-authenticated mutation without the CSRF header is rejected with 403."""
+        self._register_and_login(cookie_client)
+
+        resp = cookie_client.post("/api/v1/auth/logout")
+
+        assert resp.status_code == 403
+
+    def test_cookie_mutation_with_wrong_csrf_header_is_rejected(self, cookie_client):
+        """A cookie-authenticated mutation with a mismatched CSRF token is rejected with 403."""
+        self._register_and_login(cookie_client)
+
+        resp = cookie_client.post("/api/v1/auth/logout", headers={"X-CSRF-Token": "wrong"})
+
+        assert resp.status_code == 403
+
+    def test_refresh_via_cookie_without_body(self, cookie_client):
+        """The SPA refreshes using only the refresh cookie (no body) plus the CSRF header."""
+        self._register_and_login(cookie_client)
+
+        resp = cookie_client.post("/api/v1/auth/refresh", headers=self._csrf_header(cookie_client))
+
+        assert resp.status_code == 200
+        assert resp.json()["access_token"]
+
+    def test_refresh_without_cookie_or_body_is_unauthorized(self, client):
+        """A refresh with neither the refresh cookie nor a body token is rejected with 401."""
+        resp = client.post("/api/v1/auth/refresh")
+
+        assert resp.status_code == 401
+
+    def test_login_is_csrf_exempt_with_stale_cookie(self, cookie_client):
+        """Re-login succeeds despite a stale csrf_token cookie and no header (post-revocation)."""
+        self._register_and_login(cookie_client)
+        # A revoked session can leave a stale csrf cookie behind with no matching header; the
+        # login endpoint must still let the user re-authenticate rather than answer 403.
+        cookie_client.cookies.set("csrf_token", "stale-value")
+
+        resp = cookie_client.post(
+            "/api/v1/auth/login",
+            data={"username": "cookie@example.com", "password": self.PASSWORD},
+        )
+
+        assert resp.status_code == 200

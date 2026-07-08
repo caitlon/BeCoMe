@@ -17,6 +17,7 @@ from api.dependencies import (
     get_project_query_service,
     get_project_service,
 )
+from api.pagination import PaginationParams
 from api.schemas.project import (
     MemberResponse,
     ProjectCreate,
@@ -36,14 +37,18 @@ router = APIRouter(prefix="/api/v1/projects", tags=["projects"])
 def list_projects(
     current_user: CurrentUser,
     query_service: Annotated[ProjectQueryService, Depends(get_project_query_service)],
+    pagination: Annotated[PaginationParams, Depends()],
 ) -> list[ProjectWithRoleResponse]:
-    """Get all projects where the current user is a member.
+    """Get projects where the current user is a member.
 
     :param current_user: Authenticated user
     :param query_service: Project query service
+    :param pagination: Bounded limit/offset (capped at MAX_PAGE_SIZE)
     :return: List of projects with member counts and user's role
     """
-    projects_with_roles = query_service.get_user_projects_with_roles(current_user.id)
+    projects_with_roles = query_service.get_user_projects_with_roles(
+        current_user.id, limit=pagination.limit, offset=pagination.offset
+    )
     return [
         ProjectWithRoleResponse.from_model_with_role(
             item.project, item.member_count, item.role.value
@@ -181,14 +186,18 @@ def list_members(
     membership_service: Annotated[
         ProjectMembershipService, Depends(get_project_membership_service)
     ],
+    pagination: Annotated[PaginationParams, Depends()],
 ) -> list[MemberResponse]:
-    """List all members of a project. Only members can access.
+    """List members of a project. Only members can access.
 
     :param project: Project (verified membership)
     :param membership_service: Membership service
+    :param pagination: Bounded limit/offset (capped at MAX_PAGE_SIZE)
     :return: List of members with their roles
     """
-    members = membership_service.get_members(project.id)
+    members = membership_service.get_members(
+        project.id, limit=pagination.limit, offset=pagination.offset
+    )
     return [MemberResponse.from_model(member.membership, member.user) for member in members]
 
 

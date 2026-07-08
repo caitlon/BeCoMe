@@ -16,7 +16,8 @@ from api.dependencies import (
     get_opinion_service,
     get_result_export_service,
 )
-from api.middleware.rate_limit import LIMIT_STANDARD, limiter
+from api.middleware.rate_limit import LIMIT_STANDARD, LIMIT_WRITE, limiter
+from api.pagination import PaginationParams
 from api.schemas.calculation import CalculationResultResponse, FuzzyNumberOutput
 from api.schemas.opinion import OpinionCreate, OpinionResponse
 from api.services.calculation_service import CalculationService
@@ -32,14 +33,18 @@ def list_opinions(
     project_id: UUID,
     project: ProjectMember,
     opinion_service: Annotated[OpinionService, Depends(get_opinion_service)],
+    pagination: Annotated[PaginationParams, Depends()],
 ) -> list[OpinionResponse]:
-    """Get all opinions for a project. Only members can access.
+    """Get opinions for a project. Only members can access.
 
     :param project: Project (verified membership)
     :param opinion_service: Opinion service
+    :param pagination: Bounded limit/offset (capped at MAX_PAGE_SIZE)
     :return: List of opinions with user details
     """
-    opinions = opinion_service.get_opinions_for_project(project.id)
+    opinions = opinion_service.get_opinions_for_project(
+        project.id, limit=pagination.limit, offset=pagination.offset
+    )
     return [OpinionResponse.from_model(item.opinion, item.user) for item in opinions]
 
 
@@ -48,10 +53,12 @@ def list_opinions(
     status_code=status.HTTP_201_CREATED,
     summary="Submit or update opinion",
 )
+@limiter.limit(LIMIT_WRITE)
 def submit_opinion(
+    request: Request,
     project_id: UUID,
     project: ProjectMember,
-    request: OpinionCreate,
+    data: OpinionCreate,
     current_user: CurrentUser,
     opinion_service: Annotated[OpinionService, Depends(get_opinion_service)],
     calculation_service: Annotated[CalculationService, Depends(get_calculation_service)],
@@ -59,26 +66,26 @@ def submit_opinion(
     """Submit or update own opinion for a project.
 
     If opinion already exists, it will be updated. Auto-triggers recalculation.
-    ValuesOutOfRangeError is handled by centralized exception middleware.
+    ValuesOutOfRangeError is handled by centralized exception middleware. Rate
+    limited because each call also writes to the database and recomputes the result.
 
+    :param request: FastAPI request (for rate limiting)
     :param project: Project (verified membership)
-    :param request: Opinion data
+    :param data: Opinion data
     :param current_user: Authenticated user
     :param opinion_service: Opinion service
     :param calculation_service: Calculation service
     :return: Created or updated opinion
     """
-    opinion_service.validate_values_in_range(
-        project, request.lower_bound, request.peak, request.upper_bound
-    )
+    opinion_service.validate_values_in_range(project, data.lower_bound, data.peak, data.upper_bound)
 
     result = opinion_service.upsert_opinion(
         project_id=project.id,
         user_id=current_user.id,
-        position=request.position,
-        lower_bound=request.lower_bound,
-        peak=request.peak,
-        upper_bound=request.upper_bound,
+        position=data.position,
+        lower_bound=data.lower_bound,
+        peak=data.peak,
+        upper_bound=data.upper_bound,
     )
 
     calculation_service.recalculate(project.id)
@@ -91,7 +98,9 @@ def submit_opinion(
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete own opinion",
 )
+@limiter.limit(LIMIT_WRITE)
 def delete_opinion(
+    request: Request,
     project_id: UUID,
     project: ProjectMember,
     current_user: CurrentUser,
@@ -100,8 +109,10 @@ def delete_opinion(
 ) -> None:
     """Delete own opinion from a project. Auto-triggers recalculation.
 
-    OpinionNotFoundError is handled by centralized exception middleware.
+    OpinionNotFoundError is handled by centralized exception middleware. Rate
+    limited because each call also writes to the database and recomputes the result.
 
+    :param request: FastAPI request (for rate limiting)
     :param project: Project (verified membership)
     :param current_user: Authenticated user
     :param opinion_service: Opinion service
