@@ -43,7 +43,11 @@ RUN uv sync --locked --no-dev --extra api
 # ============================================
 # Stage 2: Runtime
 # ============================================
-FROM python:3.13 AS runtime
+# Slim base: the runtime only needs the prebuilt venv plus libpq5, so the full
+# Debian image is unnecessary. Slim maps fewer shared libraries and produces a
+# much smaller image (lower disk + slightly lower resident memory on Railway).
+# The builder above stays full so psycopg2 still compiles.
+FROM python:3.13-slim AS runtime
 
 WORKDIR /app
 
@@ -79,9 +83,11 @@ ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 
 # Default worker count (can be overridden via environment)
-# Railway: set to 1 (horizontal scaling via Railway replicas)
-# Local/self-hosted: set to 4 or more
-ENV UVICORN_WORKERS=4
+# Railway: 1 is the intended value (scale horizontally via Railway replicas, not
+# in-container workers). Each extra worker is a full interpreter holding a copy of
+# the app; Redis-backed auth state (throttle/revocation) is shared, so 1 is safe.
+# Local/self-hosted may override to 4 or more.
+ENV UVICORN_WORKERS=1
 
 # Expose port
 EXPOSE 8000

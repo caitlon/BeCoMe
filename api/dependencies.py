@@ -7,6 +7,7 @@ This module provides:
 
 import logging
 from enum import StrEnum
+from functools import lru_cache
 from typing import Annotated
 from uuid import UUID
 
@@ -132,8 +133,14 @@ def get_email_service() -> EmailSender:
     return ConsoleEmailSender(settings)
 
 
+@lru_cache(maxsize=1)
 def get_storage_service() -> StorageService | None:
     """Create the storage service when bucket storage is configured.
+
+    Cached as a process singleton: configuration is fixed for the process, so the
+    underlying boto3 S3 client is built once and reused instead of being rebuilt on
+    every request (the public avatar endpoint is hit frequently). The boto3 client
+    is thread-safe, so sharing it across the threadpool is safe.
 
     Returns None when storage is not configured or initialization fails,
     which disables photo upload while leaving the rest of the API working.
