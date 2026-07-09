@@ -33,6 +33,7 @@ from api.services.project_service import ProjectService
 from api.services.storage.base import StorageService
 from api.services.storage.exceptions import StorageConfigurationError
 from api.services.storage.railway_bucket_storage_service import RailwayBucketStorageService
+from api.services.user_cache import get_user_cache
 from api.services.user_service import UserService
 from src.calculators.become_calculator import BeCoMeCalculator
 
@@ -57,7 +58,7 @@ def get_calculator() -> BeCoMeCalculator:
 
 def get_user_service(session: Annotated[Session, Depends(get_session)]) -> UserService:
     """Create UserService instance."""
-    return UserService(session)
+    return UserService(session, get_user_cache())
 
 
 def get_project_service(session: Annotated[Session, Depends(get_session)]) -> ProjectService:
@@ -114,7 +115,7 @@ def get_password_reset_service(
     session: Annotated[Session, Depends(get_session)],
 ) -> PasswordResetService:
     """Create PasswordResetService instance."""
-    return PasswordResetService(session)
+    return PasswordResetService(session, get_user_cache())
 
 
 def get_email_service() -> EmailSender:
