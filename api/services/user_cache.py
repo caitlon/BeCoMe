@@ -205,6 +205,7 @@ class RedisUserCache:
         except redis.RedisError:
             logger.warning(
                 "user cache read failed",
+                exc_info=True,
                 extra={
                     "event": "user_cache_error",
                     "op": "get",
@@ -214,10 +215,10 @@ class RedisUserCache:
             return None
         if raw is None:
             return None
-        text = raw.decode() if isinstance(raw, bytes) else str(raw)
         try:
+            text = raw.decode() if isinstance(raw, bytes) else str(raw)
             return CachedUserData.from_json(text)
-        except (ValueError, KeyError):
+        except (ValueError, KeyError, TypeError):
             return None
 
     def set(self, data: CachedUserData, ttl_seconds: int) -> None:
@@ -231,6 +232,7 @@ class RedisUserCache:
         except redis.RedisError:
             logger.warning(
                 "user cache write failed",
+                exc_info=True,
                 extra={
                     "event": "user_cache_error",
                     "op": "set",
@@ -248,6 +250,7 @@ class RedisUserCache:
         except redis.RedisError:
             logger.warning(
                 "user cache invalidate failed",
+                exc_info=True,
                 extra={
                     "event": "user_cache_error",
                     "op": "invalidate",
