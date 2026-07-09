@@ -7,11 +7,13 @@ import logging
 import threading
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from functools import lru_cache
 from typing import Protocol, runtime_checkable
 from uuid import UUID
 
 import redis
 
+from api.config import get_settings
 from api.db.models import User
 
 logger = logging.getLogger("api.service.user_cache")
@@ -264,3 +266,19 @@ class RedisUserCache:
                     "user_id": str(user_id),
                 },
             )
+
+
+@lru_cache
+def get_user_cache() -> UserCacheStore:
+    """Return the process-wide user cache, Redis-backed when configured.
+
+    A ``RedisUserCache`` when ``redis_url`` is set (production), otherwise an
+    in-memory store for dev and tests. Mirrors ``get_revocation_store``.
+
+    :return: The process-wide user cache store.
+    """
+    settings = get_settings()
+    if settings.redis_url:
+        client = redis.from_url(settings.redis_url, socket_connect_timeout=2, socket_timeout=2)
+        return RedisUserCache(client)
+    return InMemoryUserCache()

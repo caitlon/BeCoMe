@@ -153,6 +153,10 @@ class Settings(BaseSettings):
     # Shared revocation / rate-limit store. Empty -> in-memory (dev/test); required in prod.
     redis_url: str = ""
 
+    # TTL for the cached user-profile snapshot; a short value bounds the cache-aside
+    # staleness window (see the user-caching spec).
+    user_cache_ttl_seconds: int = 60
+
     # Railway Storage Bucket (S3-compatible; photo upload disabled if not set).
     # Railway injects these when a bucket is attached to the service.
     bucket_name: str | None = None
