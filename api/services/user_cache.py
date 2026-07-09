@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import threading
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
+from typing import Protocol, runtime_checkable
 from uuid import UUID
 
 from api.db.models import User
@@ -93,3 +95,81 @@ class CachedUserData:
             photo_url=self.photo_url,
             created_at=self.created_at,
         )
+
+
+@runtime_checkable
+class UserCacheStore(Protocol):
+    """Cache backend for the per-request user profile lookup."""
+
+    def get(self, user_id: UUID) -> CachedUserData | None:
+        """Return the cached snapshot if present and unexpired, else ``None``.
+
+        :param user_id: The user ID to look up.
+        :return: The cached snapshot or ``None`` if absent or expired.
+        """
+        ...
+
+    def set(self, data: CachedUserData, ttl_seconds: int) -> None:
+        """Store ``data`` under its own id for ``ttl_seconds``.
+
+        :param data: The snapshot to cache.
+        :param ttl_seconds: Time to live in seconds.
+        """
+        ...
+
+    def invalidate(self, user_id: UUID) -> None:
+        """Drop the cached snapshot for ``user_id`` if any.
+
+        :param user_id: The user ID to invalidate.
+        """
+        ...
+
+
+class InMemoryUserCache:
+    """Process-local UserCacheStore for dev and tests (not shared across replicas)."""
+
+    def __init__(self) -> None:
+        self._entries: dict[UUID, tuple[CachedUserData, datetime]] = {}
+        self._lock = threading.Lock()
+
+    def get(self, user_id: UUID) -> CachedUserData | None:
+        """Return the cached snapshot if present and unexpired, else ``None``.
+
+        :param user_id: The user ID to look up.
+        :return: The cached snapshot or ``None`` if absent or expired.
+        """
+        with self._lock:
+            entry = self._entries.get(user_id)
+            if entry is None:
+                return None
+            data, expires_at = entry
+            if expires_at <= datetime.now(UTC):
+                del self._entries[user_id]
+                return None
+            return data
+
+    def set(self, data: CachedUserData, ttl_seconds: int) -> None:
+        """Store ``data`` under its own id for ``ttl_seconds``.
+
+        :param data: The snapshot to cache.
+        :param ttl_seconds: Time to live in seconds.
+        """
+        expires_at = datetime.now(UTC) + timedelta(seconds=max(ttl_seconds, 0))
+        with self._lock:
+            self._entries[data.id] = (data, expires_at)
+
+    def invalidate(self, user_id: UUID) -> None:
+        """Drop the cached snapshot for ``user_id`` if any.
+
+        :param user_id: The user ID to invalidate.
+        """
+        with self._lock:
+            self._entries.pop(user_id, None)
+
+    def clear(self) -> None:
+        """Drop all cached snapshots (test helper).
+
+        :return: None
+        """
+        with self._lock:
+            self._entries.clear()
