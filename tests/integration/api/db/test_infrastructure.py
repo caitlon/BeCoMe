@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 from sqlalchemy import Engine
 from sqlmodel import Session
 
-from api.db.engine import create_db_and_tables, get_engine
+from api.db.engine import create_db_and_tables, get_engine, warm_up_connection_pool
 from api.db.session import get_session
 
 
@@ -214,3 +214,147 @@ class TestLifespan:
             mock_create.assert_called()
         finally:
             _dispose_and_clear_engine()
+
+    @patch("api.main.warm_up_connection_pool")
+    @patch("api.main.create_db_and_tables")
+    def test_lifespan_warms_up_connection_pool(
+        self, mock_create: MagicMock, mock_warmup: MagicMock
+    ) -> None:
+        """Lifespan should warm up the connection pool on startup."""
+        from fastapi.testclient import TestClient
+
+        from api.main import create_app
+
+        # GIVEN: create_db_and_tables and warm-up are mocked to isolate lifespan wiring
+        try:
+            # WHEN: app is created and started
+            app = create_app()
+            with TestClient(app):
+                pass
+
+            # THEN: warm-up should have run during startup
+            mock_warmup.assert_called_once()
+        finally:
+            _dispose_and_clear_engine()
+
+
+class TestEngineHardening:
+    """Tests for PostgreSQL connection-pool and connect-arg hardening."""
+
+    @patch("api.db.engine.create_engine")
+    @patch("api.db.engine.get_settings")
+    def test_postgres_engine_sets_pool_timeout_and_keepalives(
+        self, mock_get_settings: MagicMock, mock_create_engine: MagicMock
+    ) -> None:
+        """PostgreSQL engines get an explicit pool_timeout and TCP keepalives."""
+        # GIVEN: a deployed PostgreSQL profile
+        mock_get_settings.return_value.database_url = "postgresql://u:p@h:5432/db"
+        mock_get_settings.return_value.debug = False
+        mock_get_settings.return_value.testing = False
+        mock_get_settings.return_value.environment.value = "production"
+        get_engine.cache_clear()
+
+        try:
+            # WHEN
+            get_engine()
+
+            # THEN: pool_timeout is explicit and keepalives are configured
+            _, kwargs = mock_create_engine.call_args
+            assert kwargs["pool_timeout"] == 10
+            connect_args = kwargs["connect_args"]
+            assert connect_args["keepalives"] == 1
+            assert connect_args["keepalives_idle"] == 30
+            assert connect_args["keepalives_interval"] == 10
+            assert connect_args["keepalives_count"] == 5
+        finally:
+            get_engine.cache_clear()
+
+    @patch("api.db.engine.create_engine")
+    @patch("api.db.engine.get_settings")
+    def test_sqlite_engine_has_no_pool_tuning(
+        self, mock_get_settings: MagicMock, mock_create_engine: MagicMock
+    ) -> None:
+        """SQLite engines get neither pool tuning nor libpq keepalives."""
+        # GIVEN: an in-memory SQLite profile
+        mock_get_settings.return_value.database_url = "sqlite:///:memory:"
+        mock_get_settings.return_value.debug = False
+        get_engine.cache_clear()
+
+        try:
+            # WHEN
+            get_engine()
+
+            # THEN: only check_same_thread is passed, no pool_timeout
+            _, kwargs = mock_create_engine.call_args
+            assert "pool_timeout" not in kwargs
+            assert kwargs["connect_args"] == {"check_same_thread": False}
+        finally:
+            get_engine.cache_clear()
+
+
+class TestWarmUpConnectionPool:
+    """Tests for startup connection-pool warm-up."""
+
+    @patch("api.db.engine.get_engine")
+    @patch("api.db.engine.get_settings")
+    def test_warmup_skipped_for_sqlite(
+        self, mock_get_settings: MagicMock, mock_get_engine: MagicMock
+    ) -> None:
+        """Warm-up is a no-op for SQLite (no meaningful connection latency)."""
+        # GIVEN: SQLite
+        mock_get_settings.return_value.database_url = "sqlite:///:memory:"
+        mock_get_settings.return_value.testing = False
+
+        # WHEN
+        warm_up_connection_pool()
+
+        # THEN: no connection is opened
+        mock_get_engine.assert_not_called()
+
+    @patch("api.db.engine.get_engine")
+    @patch("api.db.engine.get_settings")
+    def test_warmup_skipped_when_testing(
+        self, mock_get_settings: MagicMock, mock_get_engine: MagicMock
+    ) -> None:
+        """Warm-up is a no-op under TESTING=1 even on PostgreSQL."""
+        # GIVEN: PostgreSQL but a test run
+        mock_get_settings.return_value.database_url = "postgresql://u:p@h:5432/db"
+        mock_get_settings.return_value.testing = True
+
+        # WHEN
+        warm_up_connection_pool()
+
+        # THEN
+        mock_get_engine.assert_not_called()
+
+    @patch("api.db.engine.get_engine")
+    @patch("api.db.engine.get_settings")
+    def test_warmup_executes_select_1_on_postgres(
+        self, mock_get_settings: MagicMock, mock_get_engine: MagicMock
+    ) -> None:
+        """Warm-up opens a connection and runs SELECT 1 on deployed PostgreSQL."""
+        # GIVEN: deployed PostgreSQL
+        mock_get_settings.return_value.database_url = "postgresql://u:p@h:5432/db"
+        mock_get_settings.return_value.testing = False
+        connection = MagicMock()
+        mock_get_engine.return_value.connect.return_value.__enter__.return_value = connection
+
+        # WHEN
+        warm_up_connection_pool()
+
+        # THEN: a query was executed to establish the connection
+        connection.execute.assert_called_once()
+
+    @patch("api.db.engine.get_engine")
+    @patch("api.db.engine.get_settings")
+    def test_warmup_swallows_connection_errors(
+        self, mock_get_settings: MagicMock, mock_get_engine: MagicMock
+    ) -> None:
+        """A failed warm-up must not raise -- startup should continue."""
+        # GIVEN: connecting raises
+        mock_get_settings.return_value.database_url = "postgresql://u:p@h:5432/db"
+        mock_get_settings.return_value.testing = False
+        mock_get_engine.return_value.connect.side_effect = OSError("boom")
+
+        # WHEN / THEN: does not raise
+        warm_up_connection_pool()
