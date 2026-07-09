@@ -177,3 +177,21 @@ def test_redis_cache_satisfies_protocol():
     from api.services.user_cache import RedisUserCache, UserCacheStore
 
     assert isinstance(RedisUserCache(fakeredis.FakeStrictRedis()), UserCacheStore)
+
+
+def test_ttl_setting_defaults_to_60():
+    """TTL setting defaults to 60 seconds."""
+    from api.config import get_settings
+
+    assert get_settings().user_cache_ttl_seconds == 60
+
+
+def test_get_user_cache_is_singleton():
+    """get_user_cache returns the same instance (singleton pattern)."""
+    from api.services.user_cache import UserCacheStore, get_user_cache
+
+    get_user_cache.cache_clear()
+    first = get_user_cache()
+    second = get_user_cache()
+    assert first is second
+    assert isinstance(first, UserCacheStore)
