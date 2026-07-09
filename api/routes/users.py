@@ -7,7 +7,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile, status
 
-from api.auth.dependencies import CurrentUser
+from api.auth.dependencies import CurrentUser, CurrentUserFresh
 from api.auth.logging import log_account_deletion, log_data_export, log_password_change
 from api.auth.revocation_store import RevocationStore, get_revocation_store
 from api.db.models import Project
@@ -62,7 +62,7 @@ def get_current_user_profile(current_user: CurrentUser) -> UserResponse:
 @limiter.limit(LIMIT_STANDARD)
 def export_current_user_data(
     request: Request,
-    current_user: CurrentUser,
+    current_user: CurrentUserFresh,
     service: Annotated[DataExportService, Depends(get_data_export_service)],
 ) -> DataExportResponse:
     """Return all of the authenticated user's data in machine-readable form.
@@ -83,7 +83,7 @@ def export_current_user_data(
 
 @router.put("/me", summary="Update current user profile")
 def update_current_user(
-    current_user: CurrentUser,
+    current_user: CurrentUserFresh,
     request: UpdateUserRequest,
     service: Annotated[UserService, Depends(get_user_service)],
 ) -> UserResponse:
@@ -110,7 +110,7 @@ def update_current_user(
 @limiter.limit(LIMIT_PWD_RESET)
 def change_password(
     request: Request,
-    current_user: CurrentUser,
+    current_user: CurrentUserFresh,
     data: ChangePasswordRequest,
     service: Annotated[UserService, Depends(get_user_service)],
     store: Annotated[RevocationStore, Depends(get_revocation_store)],
@@ -144,13 +144,14 @@ def change_password(
 )
 def delete_current_user(
     request: Request,
-    current_user: CurrentUser,
+    current_user: CurrentUserFresh,
     service: Annotated[UserService, Depends(get_user_service)],
     project_service: Annotated[ProjectService, Depends(get_project_service)],
     membership_service: Annotated[
         ProjectMembershipService, Depends(get_project_membership_service)
     ],
     storage_service: Annotated[StorageService | None, Depends(get_storage_service)],
+    store: Annotated[RevocationStore, Depends(get_revocation_store)],
     data: DeleteAccountRequest | None = None,
 ) -> None:
     """Delete the authenticated user's account (GDPR Article 17, right to erasure).
@@ -159,6 +160,8 @@ def delete_current_user(
     to another member, or delete it (its opinions and invitations cascade away). This
     keeps erasure from silently destroying other experts' contributions while still
     letting the user leave. The profile photo blob is removed from object storage too.
+    Every token issued for this account is invalidated (M2), so a still-warm cache
+    entry cannot serve the deleted account past this request.
 
     :param request: FastAPI request (for logging)
     :param current_user: User from JWT token
@@ -166,6 +169,7 @@ def delete_current_user(
     :param project_service: Project service (ownership handling)
     :param membership_service: Membership service (validates transfer targets)
     :param storage_service: Storage service (None when not configured)
+    :param store: Revocation store (invalidates tokens issued before the deletion)
     :param data: Per-owned-project dispositions (transfer or delete)
     :raises AccountHasOwnedProjectsError: If an owned project has no disposition
     :raises InvalidProjectDispositionError: If a transfer target is not another member
@@ -213,6 +217,10 @@ def delete_current_user(
 
     service.delete_user(current_user)
 
+    # M2: revoke the deleted user's tokens so the account cannot outlive its data
+    # via a still-warm cache entry (decode rejects the token before the cache).
+    store.set_user_valid_after(user_id, datetime.now(UTC))
+
     log_account_deletion(user_id, email, request)
 
 
@@ -227,7 +235,7 @@ def delete_current_user(
 @limiter.limit(LIMIT_UPLOAD)
 async def upload_photo(
     request: Request,
-    current_user: CurrentUser,
+    current_user: CurrentUserFresh,
     file: Annotated[UploadFile, File(description="Profile photo (JPEG, PNG, GIF, WebP, max 5MB)")],
     user_service: Annotated[UserService, Depends(get_user_service)],
     storage_service: Annotated[StorageService | None, Depends(get_storage_service)],
@@ -297,7 +305,7 @@ async def upload_photo(
     summary="Delete profile photo",
 )
 def delete_photo(
-    current_user: CurrentUser,
+    current_user: CurrentUserFresh,
     user_service: Annotated[UserService, Depends(get_user_service)],
     storage_service: Annotated[StorageService | None, Depends(get_storage_service)],
 ) -> None:
