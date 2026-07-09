@@ -11,7 +11,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
 from api.config import Environment, Settings, get_settings
-from api.db.engine import create_db_and_tables
+from api.db.engine import create_db_and_tables, warm_up_connection_pool
 from api.logging_config import setup_logging
 from api.middleware.body_size import (
     BodySizeLimitMiddleware,
@@ -39,6 +39,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     lifecycle = {"api_version": settings.api_version, "environment": settings.environment.value}
 
     create_db_and_tables()
+    # Establish one live connection now so the first real request hits a warm pool
+    # instead of paying the TCP + TLS + auth cost (a no-op for SQLite/test runs).
+    warm_up_connection_pool()
     logger.info("Application started", extra={"event": "app_startup", **lifecycle})
     yield
     logger.info("Application stopped", extra={"event": "app_shutdown", **lifecycle})
