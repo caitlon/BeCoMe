@@ -11,3 +11,7 @@ healthcheckTimeout = 30
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 3
 region = "europe-west4"
+# Pin to a single replica: scale intentionally, never accidentally. One uvicorn
+# worker per replica (see UVICORN_WORKERS in docker/Dockerfile) keeps the memory
+# footprint predictable and bounded on Railway.
+numReplicas = 1
