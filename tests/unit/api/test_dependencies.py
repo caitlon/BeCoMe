@@ -24,6 +24,17 @@ from api.services.storage.railway_bucket_storage_service import RailwayBucketSto
 class TestGetStorageService:
     """Tests for the get_storage_service factory function."""
 
+    @pytest.fixture(autouse=True)
+    def _clear_cache(self):
+        """Reset the cached singleton so each case exercises the factory fresh.
+
+        get_storage_service is an ``lru_cache`` process singleton; without this
+        the first call's result would be reused by the others.
+        """
+        get_storage_service.cache_clear()
+        yield
+        get_storage_service.cache_clear()
+
     def test_returns_none_when_storage_disabled(self):
         """
         GIVEN bucket storage is not configured
