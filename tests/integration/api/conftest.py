@@ -186,6 +186,23 @@ def _reset_auth_throttles():
     get_reset_email_throttle.cache_clear()
 
 
+@pytest.fixture(autouse=True)
+def _reset_user_cache():
+    """Give each test a fresh user cache.
+
+    ``get_user_cache`` is an lru_cache singleton whose in-memory state would
+    otherwise leak between tests reusing a user id.
+    """
+    from api.services.user_cache import InMemoryUserCache, get_user_cache
+
+    get_user_cache.cache_clear()
+    store = get_user_cache()
+    if isinstance(store, InMemoryUserCache):
+        store.clear()
+    yield
+    get_user_cache.cache_clear()
+
+
 class _HeaderOnlyClient(TestClient):
     """Test client that discards response cookies after each request.
 
