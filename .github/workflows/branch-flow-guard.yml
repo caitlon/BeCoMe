@@ -1,0 +1,43 @@
+name: Branch Flow Guard
+
+# Enforces the promotion chain: feature/fix -> develop -> staging -> main.
+#
+# GitHub branch protection cannot restrict a PR's SOURCE branch natively, so this
+# required check fails any PR into `staging` or `main` that does not come from the
+# allowed upstream branch. Feature/fix PRs into `develop` are unrestricted.
+
+on:
+  pull_request:
+    branches:
+      - main
+      - staging
+
+permissions:
+  contents: read
+
+jobs:
+  enforce-flow:
+    name: Enforce promotion chain
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check base/head branch pair
+        env:
+          BASE: ${{ github.base_ref }}
+          HEAD: ${{ github.head_ref }}
+        run: |
+          echo "PR: $HEAD -> $BASE"
+          case "$BASE" in
+            main)
+              if [ "$HEAD" != "staging" ]; then
+                echo "::error::PRs into 'main' (production) must come from 'staging'. Got '$HEAD'. Allowed flow: develop -> staging -> main."
+                exit 1
+              fi
+              ;;
+            staging)
+              if [ "$HEAD" != "develop" ]; then
+                echo "::error::PRs into 'staging' (test) must come from 'develop'. Got '$HEAD'. Allowed flow: develop -> staging -> main."
+                exit 1
+              fi
+              ;;
+          esac
+          echo "Promotion chain respected."
