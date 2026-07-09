@@ -121,3 +121,43 @@ def test_redis_cache_is_fail_open_on_errors():
     assert cache.get(data.id) is None
     cache.set(data, ttl_seconds=60)
     cache.invalidate(data.id)
+
+
+def test_redis_cache_treats_corrupted_value_as_miss():
+    """Corrupted cached values (non-JSON, null, number, invalid UTF-8) return None."""
+    import fakeredis
+
+    from api.services.user_cache import RedisUserCache
+
+    client = fakeredis.FakeStrictRedis()
+    cache = RedisUserCache(client)
+    key_template = RedisUserCache._key
+
+    # Test non-JSON bytes
+    user_id = uuid4()
+    client.set(key_template(user_id), b"not json")
+    assert cache.get(user_id) is None
+
+    # Test JSON null
+    user_id = uuid4()
+    client.set(key_template(user_id), b"null")
+    assert cache.get(user_id) is None
+
+    # Test JSON number
+    user_id = uuid4()
+    client.set(key_template(user_id), b"42")
+    assert cache.get(user_id) is None
+
+    # Test invalid UTF-8
+    user_id = uuid4()
+    client.set(key_template(user_id), b"\xff\xfe")
+    assert cache.get(user_id) is None
+
+
+def test_redis_cache_satisfies_protocol():
+    """RedisUserCache implements the UserCacheStore protocol."""
+    import fakeredis
+
+    from api.services.user_cache import RedisUserCache, UserCacheStore
+
+    assert isinstance(RedisUserCache(fakeredis.FakeStrictRedis()), UserCacheStore)
