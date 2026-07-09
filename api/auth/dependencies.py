@@ -5,6 +5,7 @@ the Dependency Inversion Principle (DIP). The Session dependency is
 injected, and UserService is created with this injected dependency.
 """
 
+import logging
 from typing import Annotated
 
 from fastapi import Cookie, Depends, HTTPException, status
@@ -21,6 +22,8 @@ from api.db.session import get_session
 from api.logging_context import set_user_id
 from api.services.user_cache import CachedUserData, UserCacheStore, get_user_cache
 from api.services.user_service import UserService
+
+logger = logging.getLogger("api.security")
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
 
@@ -80,6 +83,12 @@ async def get_current_user(
         raise credentials_exception from e
 
     cached = cache.get(user_id)
+    if cached is not None and cached.id != user_id:
+        logger.warning(
+            "user cache id mismatch; treating as miss",
+            extra={"event": "user_cache_id_mismatch", "user_id": str(user_id)},
+        )
+        cached = None
     if cached is not None:
         user = cached.to_user()
     else:
