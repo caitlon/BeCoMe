@@ -153,6 +153,22 @@ def test_redis_cache_treats_corrupted_value_as_miss():
     client.set(key_template(user_id), b"\xff\xfe")
     assert cache.get(user_id) is None
 
+    # Test wrong-typed id (integer instead of string)
+    user_id = uuid4()
+    client.set(
+        key_template(user_id),
+        b'{"id": 42, "email": "e@x.com", "first_name": "A", "last_name": "B", "photo_url": null, "created_at": "2026-01-01T00:00:00+00:00"}',
+    )
+    assert cache.get(user_id) is None
+
+    # Test unparseable uuid
+    user_id = uuid4()
+    client.set(
+        key_template(user_id),
+        b'{"id": "not-a-uuid", "email": "e@x.com", "first_name": "A", "last_name": "B", "photo_url": null, "created_at": "2026-01-01T00:00:00+00:00"}',
+    )
+    assert cache.get(user_id) is None
+
 
 def test_redis_cache_satisfies_protocol():
     """RedisUserCache implements the UserCacheStore protocol."""

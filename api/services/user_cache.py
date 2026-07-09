@@ -68,20 +68,27 @@ class CachedUserData:
     def from_json(cls, raw: str) -> CachedUserData:
         """Parse a JSON string produced by :meth:`to_json`.
 
+        This is the untrusted-input boundary: any malformed or wrong-typed
+        value raises ``ValueError`` so the caller can treat it as a cache miss.
+
         :param raw: JSON text from Redis.
         :return: The reconstructed snapshot.
-        :raises ValueError: If the text is not valid JSON for this shape.
-        :raises KeyError: If a required field is missing.
+        :raises ValueError: If the text is not a valid object for this shape.
         """
         data = json.loads(raw)
-        return cls(
-            id=UUID(data["id"]),
-            email=data["email"],
-            first_name=data["first_name"],
-            last_name=data["last_name"],
-            photo_url=data["photo_url"],
-            created_at=datetime.fromisoformat(data["created_at"]),
-        )
+        if not isinstance(data, dict):
+            raise ValueError("cached user data must be a JSON object")
+        try:
+            return cls(
+                id=UUID(data["id"]),
+                email=data["email"],
+                first_name=data["first_name"],
+                last_name=data["last_name"],
+                photo_url=data["photo_url"],
+                created_at=datetime.fromisoformat(data["created_at"]),
+            )
+        except (KeyError, TypeError, AttributeError) as e:
+            raise ValueError(f"invalid cached user data: {e}") from e
 
     def to_user(self) -> User:
         """Rebuild a transient ``User`` (not bound to any session).
@@ -218,7 +225,7 @@ class RedisUserCache:
         try:
             text = raw.decode() if isinstance(raw, bytes) else str(raw)
             return CachedUserData.from_json(text)
-        except (ValueError, KeyError, TypeError):
+        except ValueError:
             return None
 
     def set(self, data: CachedUserData, ttl_seconds: int) -> None:
