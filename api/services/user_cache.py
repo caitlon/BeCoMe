@@ -3,13 +3,18 @@
 from __future__ import annotations
 
 import json
+import logging
 import threading
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Protocol, runtime_checkable
 from uuid import UUID
 
+import redis
+
 from api.db.models import User
+
+logger = logging.getLogger("api.service.user_cache")
 
 
 @dataclass(frozen=True)
@@ -173,3 +178,79 @@ class InMemoryUserCache:
         """
         with self._lock:
             self._entries.clear()
+
+
+class RedisUserCache:
+    """Redis-backed UserCacheStore shared across replicas.
+
+    Fail-open: a ``redis.RedisError`` is logged and swallowed so a degraded Redis
+    never fails a request (the request falls back to the database).
+    """
+
+    def __init__(self, client: redis.Redis) -> None:
+        self._client = client
+
+    @staticmethod
+    def _key(user_id: UUID) -> str:
+        return f"user:profile:v1:{user_id}"
+
+    def get(self, user_id: UUID) -> CachedUserData | None:
+        """Return the cached snapshot, or ``None`` on miss/error/corruption.
+
+        :param user_id: The user ID to look up.
+        :return: The cached snapshot or ``None`` if absent, expired, or on error.
+        """
+        try:
+            raw = self._client.get(self._key(user_id))
+        except redis.RedisError:
+            logger.warning(
+                "user cache read failed",
+                extra={
+                    "event": "user_cache_error",
+                    "op": "get",
+                    "user_id": str(user_id),
+                },
+            )
+            return None
+        if raw is None:
+            return None
+        text = raw.decode() if isinstance(raw, bytes) else str(raw)
+        try:
+            return CachedUserData.from_json(text)
+        except (ValueError, KeyError):
+            return None
+
+    def set(self, data: CachedUserData, ttl_seconds: int) -> None:
+        """Store the snapshot under its user id with a TTL; no-op on error.
+
+        :param data: The snapshot to cache.
+        :param ttl_seconds: Time to live in seconds.
+        """
+        try:
+            self._client.set(self._key(data.id), data.to_json(), ex=max(ttl_seconds, 1))
+        except redis.RedisError:
+            logger.warning(
+                "user cache write failed",
+                extra={
+                    "event": "user_cache_error",
+                    "op": "set",
+                    "user_id": str(data.id),
+                },
+            )
+
+    def invalidate(self, user_id: UUID) -> None:
+        """Delete the cached snapshot; no-op on error (TTL is the backstop).
+
+        :param user_id: The user ID to invalidate.
+        """
+        try:
+            self._client.delete(self._key(user_id))
+        except redis.RedisError:
+            logger.warning(
+                "user cache invalidate failed",
+                extra={
+                    "event": "user_cache_error",
+                    "op": "invalidate",
+                    "user_id": str(user_id),
+                },
+            )
