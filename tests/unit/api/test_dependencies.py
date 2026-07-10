@@ -169,9 +169,10 @@ class TestGetPasswordResetService:
         """
         # GIVEN
         mock_session = MagicMock()
+        mock_cache = MagicMock()
 
         # WHEN
-        result = get_password_reset_service(mock_session)
+        result = get_password_reset_service(mock_session, mock_cache)
 
         # THEN
         assert isinstance(result, PasswordResetService)

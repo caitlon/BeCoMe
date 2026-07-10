@@ -65,6 +65,23 @@ def test_in_memory_cache_expires_entries():
     assert cache.get(data.id) is None
 
 
+def test_caches_skip_nonpositive_ttl():
+    """A TTL below 1 is not stored by either backend, giving a consistent miss."""
+    import fakeredis
+
+    from api.services.user_cache import InMemoryUserCache, RedisUserCache
+
+    data = CachedUserData.from_user(_sample_user())
+
+    in_memory = InMemoryUserCache()
+    in_memory.set(data, ttl_seconds=0)
+    assert in_memory.get(data.id) is None
+
+    redis_cache = RedisUserCache(fakeredis.FakeStrictRedis())
+    redis_cache.set(data, ttl_seconds=0)
+    assert redis_cache.get(data.id) is None
+
+
 def test_in_memory_cache_satisfies_protocol():
     """InMemoryUserCache implements the UserCacheStore protocol."""
     from api.services.user_cache import InMemoryUserCache, UserCacheStore
