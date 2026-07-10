@@ -165,10 +165,15 @@ class InMemoryUserCache:
     def set(self, data: CachedUserData, ttl_seconds: int) -> None:
         """Store ``data`` under its own id for ``ttl_seconds``.
 
+        A non-positive TTL is not stored (the entry would expire immediately),
+        keeping behaviour identical to ``RedisUserCache``.
+
         :param data: The snapshot to cache.
-        :param ttl_seconds: Time to live in seconds.
+        :param ttl_seconds: Time to live in seconds; values below 1 are not stored.
         """
-        expires_at = datetime.now(UTC) + timedelta(seconds=max(ttl_seconds, 0))
+        if ttl_seconds < 1:
+            return
+        expires_at = datetime.now(UTC) + timedelta(seconds=ttl_seconds)
         with self._lock:
             self._entries[data.id] = (data, expires_at)
 
@@ -233,11 +238,16 @@ class RedisUserCache:
     def set(self, data: CachedUserData, ttl_seconds: int) -> None:
         """Store the snapshot under its user id with a TTL; no-op on error.
 
+        A non-positive TTL is not stored (Redis ``EX`` requires a positive value),
+        keeping behaviour identical to ``InMemoryUserCache``.
+
         :param data: The snapshot to cache.
-        :param ttl_seconds: Time to live in seconds.
+        :param ttl_seconds: Time to live in seconds; values below 1 are not stored.
         """
+        if ttl_seconds < 1:
+            return
         try:
-            self._client.set(self._key(data.id), data.to_json(), ex=max(ttl_seconds, 1))
+            self._client.set(self._key(data.id), data.to_json(), ex=ttl_seconds)
         except redis.RedisError:
             logger.warning(
                 "user cache write failed",
