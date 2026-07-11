@@ -75,6 +75,7 @@ scripts/seed_db.py
 .mcp.json
 CLAUDE.md
 .claude
+.worktreeinclude
 .github/ISSUE_TEMPLATE
 
 # Mutation testing
