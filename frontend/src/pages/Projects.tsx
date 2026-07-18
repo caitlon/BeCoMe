@@ -1,9 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Users, Key, MoreHorizontal, Loader2, Mail, Inbox } from "lucide-react";
+import { Plus, Users, Key, MoreHorizontal, Loader2, Mail, Inbox, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -22,6 +22,7 @@ import { DeleteConfirmModal } from "@/components/modals/DeleteConfirmModal";
 import { api } from "@/lib/api";
 import { queryKeys } from "@/lib/queryKeys";
 import { ProjectWithRole } from "@/types/api";
+import { isUnauthorized } from "@/lib/errors";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
@@ -74,18 +75,8 @@ const Projects = () => {
   const invitations = invitationsQuery.data ?? [];
   const isLoading = projectsQuery.isPending || invitationsQuery.isPending;
   // isLoadingError only: a failed background refetch keeps cached data on
-  // screen and should not surface a destructive toast over an intact page.
+  // screen and should not replace it with the inline error state.
   const hasLoadError = projectsQuery.isLoadingError || invitationsQuery.isLoadingError;
-
-  useEffect(() => {
-    if (hasLoadError) {
-      toast({
-        title: t("toast.error"),
-        description: t("toast.loadFailed"),
-        variant: "destructive",
-      });
-    }
-  }, [hasLoadError, toast, t]);
 
   const invalidateLists = () => {
     queryClient.invalidateQueries({ queryKey: queryKeys.projects });
@@ -99,6 +90,9 @@ const Projects = () => {
       invalidateLists();
     },
     onError: (error) => {
+      // A 401 here already triggered the silent-refresh/session-expired flow in
+      // the ApiClient; that toast is the single source of truth, so skip this one.
+      if (isUnauthorized(error)) return;
       toast({
         title: t("toast.error"),
         description: error instanceof Error ? error.message : t("toast.acceptFailed"),
@@ -114,6 +108,7 @@ const Projects = () => {
       invalidateLists();
     },
     onError: (error) => {
+      if (isUnauthorized(error)) return;
       toast({
         title: t("toast.error"),
         description: error instanceof Error ? error.message : t("toast.declineFailed"),
@@ -131,6 +126,7 @@ const Projects = () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.projects });
     },
     onError: (error) => {
+      if (isUnauthorized(error)) return;
       toast({
         title: t("toast.error"),
         description: error instanceof Error ? error.message : t("toast.deleteFailed"),
@@ -156,6 +152,31 @@ const Projects = () => {
             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             <span className="sr-only">{tCommon("common.loading")}</span>
           </output>
+        </main>
+      </div>
+    );
+  }
+
+  if (hasLoadError) {
+    return (
+      <div className="min-h-screen">
+        <Navbar />
+        <main
+          id="main-content"
+          role="alert"
+          className="pt-24 flex flex-col items-center justify-center gap-4 p-6 text-center"
+        >
+          <AlertTriangle className="h-8 w-8 text-muted-foreground" />
+          <h1 className="font-display font-medium text-lg">{t("error.title")}</h1>
+          <p className="text-muted-foreground max-w-sm">{t("error.description")}</p>
+          <Button
+            onClick={() => {
+              projectsQuery.refetch();
+              invitationsQuery.refetch();
+            }}
+          >
+            {tCommon("errors.retry")}
+          </Button>
         </main>
       </div>
     );

@@ -3,6 +3,7 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { render } from '@tests/utils';
 import Login from '@/pages/Login';
+import { ServerError, RateLimitError } from '@/lib/errors';
 
 // Mock useAuth
 const mockLogin = vi.fn();
@@ -128,6 +129,46 @@ describe('Login', () => {
         expect.objectContaining({
           variant: 'destructive',
           description: 'Invalid credentials',
+        })
+      );
+    });
+  });
+
+  it('shows a service-unavailable toast when login fails with a ServerError', async () => {
+    const user = userEvent.setup();
+    mockLogin.mockRejectedValueOnce(new ServerError());
+
+    render(<Login />);
+
+    await user.type(getEmailInput(), 'test@example.com');
+    await user.type(getPasswordInput(), 'password123');
+    await user.click(screen.getByRole('button', { name: /sign in/i }));
+
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          variant: 'destructive',
+          description: 'The service is temporarily unavailable. Please try again in a moment.',
+        })
+      );
+    });
+  });
+
+  it('shows a too-many-attempts toast when login fails with a RateLimitError', async () => {
+    const user = userEvent.setup();
+    mockLogin.mockRejectedValueOnce(new RateLimitError());
+
+    render(<Login />);
+
+    await user.type(getEmailInput(), 'test@example.com');
+    await user.type(getPasswordInput(), 'password123');
+    await user.click(screen.getByRole('button', { name: /sign in/i }));
+
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          variant: 'destructive',
+          description: 'Too many attempts. Please wait a moment and try again.',
         })
       );
     });

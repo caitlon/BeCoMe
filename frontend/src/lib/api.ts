@@ -18,15 +18,19 @@ import {
   ApiError,
 } from '@/types/api';
 import { logger } from '@/lib/logger';
+import {
+  HttpError,
+  NetworkError,
+  UnauthorizedError,
+  ForbiddenError,
+  RateLimitError,
+  ServerError,
+  isUnauthorized,
+} from '@/lib/errors';
+
+export { HttpError } from '@/lib/errors';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
-
-export class HttpError extends Error {
-  constructor(message: string, public readonly status: number) {
-    super(message);
-    this.name = 'HttpError';
-  }
-}
 
 const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
@@ -35,12 +39,121 @@ function readCsrfToken(): string | null {
   return match ? decodeURIComponent(match[1]) : null;
 }
 
+/**
+ * Reads the `detail` field off an error response body, matching FastAPI's
+ * error shape: either a plain string, or a validation array whose first
+ * entry's `msg` is shown.
+ *
+ * An unparseable body (not JSON at all) gets the generic fallback text,
+ * since nothing about the failure is known at that point. A body that
+ * parses fine but simply omits `detail` returns an empty string instead,
+ * so callers building a typed error can fall back to that error class's
+ * own, more specific default message.
+ */
+export async function parseDetail(response: Response): Promise<string> {
+  const error: ApiError | undefined = await response.json().catch(() => undefined);
+
+  if (error === undefined) {
+    return 'An unexpected error occurred';
+  }
+  if (typeof error.detail === 'string') {
+    return error.detail;
+  }
+  if (Array.isArray(error.detail)) {
+    return error.detail[0]?.msg || 'Validation error';
+  }
+  return '';
+}
+
+/** Classifies a non-ok response into the typed error taxonomy. */
+export async function toHttpError(response: Response): Promise<HttpError> {
+  const detail = await parseDetail(response);
+  const message = detail || undefined;
+
+  if (response.status === 401) {
+    return new UnauthorizedError(message);
+  }
+  if (response.status === 403) {
+    return new ForbiddenError(message);
+  }
+  if (response.status === 429) {
+    const retryAfterHeader = response.headers.get('Retry-After');
+    const retryAfter = retryAfterHeader ? Number(retryAfterHeader) : undefined;
+    return new RateLimitError(message, retryAfter);
+  }
+  if (response.status >= 500) {
+    return new ServerError(message, response.status);
+  }
+  return new HttpError(detail || 'An unexpected error occurred', response.status);
+}
+
+/** Wraps fetch() so a network-level failure (offline, DNS, CORS) surfaces as a NetworkError. */
+export async function safeFetch(input: string, init: RequestInit): Promise<Response> {
+  try {
+    return await fetch(input, init);
+  } catch (cause) {
+    const message = cause instanceof Error ? cause.message : 'Network request failed';
+    throw new NetworkError(message, { cause });
+  }
+}
+
 class ApiClient {
+  private refreshInFlight: Promise<void> | null = null;
+  private sessionExpiredNotified = false;
+  private onSessionExpired: (() => void) | null = null;
+
+  /** Registers the callback fired when a session cannot be recovered by a silent refresh. */
+  setOnSessionExpired(fn: (() => void) | null): void {
+    this.sessionExpiredNotified = false;
+    this.onSessionExpired = fn;
+  }
+
+  /**
+   * Refreshes the session via the HttpOnly refresh cookie. Concurrent callers
+   * share a single in-flight request instead of each firing their own POST.
+   */
+  private refreshSession(): Promise<void> {
+    this.refreshInFlight ??= (async () => {
+      const res = await safeFetch(`${API_BASE_URL}/auth/refresh`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'X-Request-ID': crypto.randomUUID() },
+      });
+      if (!res.ok) {
+        throw await toHttpError(res);
+      }
+    })().finally(() => {
+      this.refreshInFlight = null;
+    });
+    return this.refreshInFlight;
+  }
+
+  /**
+   * A 401 that survives a silent-refresh attempt is terminal: log it, and for
+   * anything other than the mount-time auth probe, tell subscribers the
+   * session is gone so they can react (clear user state, show a toast).
+   *
+   * Notification is idempotent: concurrent requests can all land here for the
+   * same expired session, but onSessionExpired should fire once, not once per
+   * request. sessionExpiredNotified latches after the first call and is
+   * cleared again by setOnSessionExpired (new subscriber) or by the next
+   * successful response (the session is alive again, so a future expiry is a
+   * new event worth notifying about).
+   */
+  private handleTerminalUnauthorized(isAuthProbe: boolean, endpoint: string): void {
+    logger.debug('Session unauthorized', { endpoint, isAuthProbe });
+    if (isAuthProbe) return;
+    if (this.sessionExpiredNotified) return;
+    this.sessionExpiredNotified = true;
+    this.onSessionExpired?.();
+  }
+
   private async request<T>(
     endpoint: string,
     options: RequestInit = {},
-    silent = false
+    opts: { isAuthProbe?: boolean; isRetry?: boolean } = {}
   ): Promise<T> {
+    const { isAuthProbe = false, isRetry = false } = opts;
     const requestId = crypto.randomUUID();
     const method = options.method ?? 'GET';
     const headers: Record<string, string> = {
@@ -59,31 +172,44 @@ class ApiClient {
 
     logger.debug('API request', { method, endpoint, requestId });
 
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    const response = await safeFetch(`${API_BASE_URL}${endpoint}`, {
       ...options,
       credentials: 'include',
       headers,
     });
 
     if (!response.ok) {
-      // A session-expiry 401 sends the user to login; the mount-time auth probe passes
-      // silent=true so an anonymous visitor on a public page is not bounced there.
-      if (response.status === 401 && !silent) {
-        globalThis.location.href = '/login';
+      // A 401 gets one silent-refresh-and-retry attempt before it is treated as
+      // terminal. isAuthProbe only changes what happens once refresh also fails:
+      // a probe (mount-time "am I logged in?" check) stays silent, everything
+      // else notifies onSessionExpired.
+      if (response.status === 401 && !isRetry) {
+        try {
+          await this.refreshSession();
+        } catch {
+          this.handleTerminalUnauthorized(isAuthProbe, endpoint);
+          throw new UnauthorizedError();
+        }
+        return this.request<T>(endpoint, options, { isAuthProbe, isRetry: true });
       }
 
-      const error: ApiError = await response.json().catch(() => ({
-        detail: 'An unexpected error occurred',
-      }));
+      const error = await toHttpError(response);
+      if (isUnauthorized(error)) {
+        this.handleTerminalUnauthorized(isAuthProbe, endpoint);
+      } else {
+        logger.error('API error', {
+          method,
+          endpoint,
+          status: error.status,
+          requestId,
+          detail: error.message,
+        });
+      }
 
-      const detail =
-        typeof error.detail === 'string'
-          ? error.detail
-          : error.detail[0]?.msg || 'Validation error';
-      logger.error('API error', { method, endpoint, status: response.status, requestId, detail });
-
-      throw new HttpError(detail, response.status);
+      throw error;
     }
+
+    this.sessionExpiredNotified = false;
 
     logger.debug('API response', { method, endpoint, status: response.status, requestId });
 
@@ -92,6 +218,47 @@ class ApiClient {
     }
 
     return response.json();
+  }
+
+  /**
+   * Shared 401-retry-with-refresh wrapper for the two endpoints that build
+   * their own fetch calls instead of going through request() (FormData/Blob
+   * bodies do not fit the JSON request() contract). Returns the raw Response
+   * either way so the caller keeps its own success parsing (.json()/.blob())
+   * and its own non-401 error fallback text.
+   *
+   * buildInit is a thunk rather than a static RequestInit so a retry after a
+   * successful refresh reads a fresh CSRF token and request ID, not stale ones
+   * captured before the refresh ran.
+   */
+  private async fetchWithRefresh(
+    input: string,
+    buildInit: () => RequestInit
+  ): Promise<Response> {
+    const response = await safeFetch(input, buildInit());
+
+    if (response.status !== 401) {
+      if (response.ok) {
+        this.sessionExpiredNotified = false;
+      }
+      return response;
+    }
+
+    try {
+      await this.refreshSession();
+    } catch {
+      this.handleTerminalUnauthorized(false, input);
+      return response;
+    }
+
+    const retried = await safeFetch(input, buildInit());
+    if (retried.status === 401) {
+      this.handleTerminalUnauthorized(false, input);
+    }
+    if (retried.ok) {
+      this.sessionExpiredNotified = false;
+    }
+    return retried;
   }
 
   // Auth
@@ -107,7 +274,7 @@ class ApiClient {
     formData.append('username', email);
     formData.append('password', password);
 
-    const response = await fetch(`${API_BASE_URL}/auth/login`, {
+    const response = await safeFetch(`${API_BASE_URL}/auth/login`, {
       method: 'POST',
       credentials: 'include',
       headers: {
@@ -117,11 +284,8 @@ class ApiClient {
     });
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({
-        detail: 'Invalid credentials',
-      }));
       logger.error('Login failed', { status: response.status });
-      throw new Error(error.detail || 'Login failed');
+      throw await toHttpError(response);
     }
 
     // The session now lives in HttpOnly cookies set by the server; the body token is
@@ -132,7 +296,7 @@ class ApiClient {
   async logout(): Promise<void> {
     // Hit the server so it revokes the session and clears the HttpOnly cookies.
     try {
-      await this.request<void>('/auth/logout', { method: 'POST' });
+      await this.request<void>('/auth/logout', { method: 'POST' }, { isAuthProbe: true });
     } catch {
       // Ignore: the user is logging out regardless of a network hiccup.
     }
@@ -153,8 +317,8 @@ class ApiClient {
   }
 
   // Users
-  async getCurrentUser(silent = false): Promise<User> {
-    return this.request<User>('/users/me', {}, silent);
+  async getCurrentUser(isAuthProbe = false): Promise<User> {
+    return this.request<User>('/users/me', {}, { isAuthProbe });
   }
 
   // Returns the user's full GDPR data export. The payload is only downloaded as
@@ -189,26 +353,18 @@ class ApiClient {
     const formData = new FormData();
     formData.append('file', file);
 
-    const headers: Record<string, string> = {};
-    const csrf = readCsrfToken();
-    if (csrf) {
-      headers['X-CSRF-Token'] = csrf;
-    }
-
-    const response = await fetch(`${API_BASE_URL}/users/me/photo`, {
-      method: 'POST',
-      credentials: 'include',
-      headers,
-      body: formData,
+    const response = await this.fetchWithRefresh(`${API_BASE_URL}/users/me/photo`, () => {
+      const headers: Record<string, string> = {};
+      const csrf = readCsrfToken();
+      if (csrf) {
+        headers['X-CSRF-Token'] = csrf;
+      }
+      return { method: 'POST', credentials: 'include', headers, body: formData };
     });
 
     if (!response.ok) {
-      if (response.status === 401) {
-        globalThis.location.href = '/login';
-      }
-      const error = await response.json().catch(() => ({ detail: 'Upload failed' }));
       logger.error('Photo upload failed', { status: response.status });
-      throw new Error(error.detail || 'Failed to upload photo');
+      throw await toHttpError(response);
     }
 
     return response.json();
@@ -341,25 +497,15 @@ class ApiClient {
     format: 'pdf' | 'csv',
     lang: string
   ): Promise<Blob> {
-    const headers: Record<string, string> = { 'X-Request-ID': crypto.randomUUID() };
-
-    const response = await fetch(
-      `${API_BASE_URL}/projects/${projectId}/result/export?format=${format}&lang=${lang}`,
-      { credentials: 'include', headers }
-    );
+    const url = `${API_BASE_URL}/projects/${projectId}/result/export?format=${format}&lang=${lang}`;
+    const response = await this.fetchWithRefresh(url, () => ({
+      credentials: 'include',
+      headers: { 'X-Request-ID': crypto.randomUUID() },
+    }));
 
     if (!response.ok) {
-      if (response.status === 401) {
-        globalThis.location.href = '/login';
-      }
-      const error = await response.json().catch(() => ({ detail: 'Export failed' }));
-      const detail = typeof error.detail === 'string' ? error.detail : 'Export failed';
-      logger.error('Result export failed', {
-        projectId,
-        format,
-        status: response.status,
-      });
-      throw new HttpError(detail, response.status);
+      logger.error('Result export failed', { projectId, format, status: response.status });
+      throw await toHttpError(response);
     }
 
     return response.blob();

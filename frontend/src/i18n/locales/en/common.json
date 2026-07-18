@@ -153,5 +153,12 @@
     "title": "Something went wrong",
     "description": "An unexpected error occurred. Please reload the page to continue.",
     "reload": "Reload page"
+  },
+  "errors": {
+    "serviceUnavailable": "The service is temporarily unavailable. Please try again in a moment.",
+    "sessionExpired": "Your session has expired. Please sign in again.",
+    "sessionExpiredTitle": "Session expired",
+    "tooManyAttempts": "Too many attempts. Please wait a moment and try again.",
+    "retry": "Try again"
   }
 }
