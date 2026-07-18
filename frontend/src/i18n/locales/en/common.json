@@ -3,6 +3,7 @@
     "name": "BeCoMe"
   },
   "cancel": "Cancel",
+  "switchToLanguage": "Switch to {{language}}",
   "deleteModal": {
     "permanentlyDelete": "This will permanently delete:",
     "cannotUndo": "This action cannot be undone.",

@@ -35,6 +35,18 @@ describe('TeamTable - Rendering', () => {
     // in the test environment), so the initials fallback is what actually renders.
     expect(screen.getByText('JS')).toBeInTheDocument();
   });
+
+  it('renders the joined date through the shared formatDate helper', () => {
+    const members = [
+      createMember({ user_id: 'user-2', first_name: 'Jane', last_name: 'Smith', joined_at: '2024-03-15T12:00:00Z' }),
+    ];
+
+    render(<TeamTable {...baseProps} members={members} pendingInvitations={[]} />);
+
+    // Spelled-out month, not a bare numeric date (AUD-031): unambiguous
+    // regardless of DD/MM vs MM/DD locale conventions.
+    expect(screen.getByText('Mar 15, 2024')).toBeInTheDocument();
+  });
 });
 
 describe('TeamTable - Pending Invitations', () => {

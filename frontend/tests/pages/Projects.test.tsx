@@ -293,6 +293,20 @@ describe('Projects', () => {
       });
     });
 
+    it('renders the invited date through the shared formatDate helper', async () => {
+      mockApi.getInvitations.mockResolvedValue([
+        createInvitation({ invited_at: '2024-03-15T12:00:00Z' }),
+      ]);
+
+      await openInvitationsTab();
+
+      // Spelled-out month, not a bare numeric date (AUD-031): unambiguous
+      // regardless of DD/MM vs MM/DD locale conventions.
+      await waitFor(() => {
+        expect(screen.getByText(/Mar 15, 2024/)).toBeInTheDocument();
+      });
+    });
+
     it('accept invitation calls API and refreshes', async () => {
       mockApi.getInvitations.mockResolvedValue([createInvitation({ id: 'inv-123' })]);
       mockApi.acceptInvitation.mockResolvedValue({});
