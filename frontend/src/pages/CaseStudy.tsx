@@ -19,6 +19,8 @@ import {
 } from "@/hooks/useLocalizedCaseStudies";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
+const VISIBLE_BARS = 8;
+
 const CaseStudy = () => {
   const { t } = useTranslation("caseStudies");
   const { t: tCommon } = useTranslation();
@@ -307,8 +309,15 @@ const CaseStudy = () => {
                       </CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <div className="space-y-2">
-                        {caseStudy.opinions.slice(0, 8).map((opinion, index) => {
+                      <figure className="space-y-2">
+                        <figcaption className="sr-only">
+                          {t("common.opinionDistributionCaption", {
+                            min: caseStudy.scaleMin,
+                            max: caseStudy.scaleMax,
+                            unit: caseStudy.scaleUnit,
+                          })}
+                        </figcaption>
+                        {caseStudy.opinions.slice(0, VISIBLE_BARS).map((opinion, index) => {
                           const range =
                             caseStudy.scaleMax - caseStudy.scaleMin;
                           const leftPct =
@@ -330,8 +339,17 @@ const CaseStudy = () => {
                               className="relative h-6"
                               data-testid="opinion-bar"
                             >
+                              <span className="sr-only">
+                                {t("common.opinionBarDescription", {
+                                  role: opinion.role,
+                                  lower: opinion.lowerLimit,
+                                  upper: opinion.upperLimit,
+                                  unit: caseStudy.scaleUnit,
+                                  peak: opinion.bestProposal,
+                                })}
+                              </span>
                               <div
-                                className="absolute h-2 bg-secondary rounded-full top-2"
+                                className="absolute h-2 bg-primary/30 rounded-full top-2"
                                 style={{
                                   left: `${leftPct}%`,
                                   width: `${widthPct}%`,
@@ -352,7 +370,15 @@ const CaseStudy = () => {
                             {caseStudy.scaleMax} {caseStudy.scaleUnit}
                           </span>
                         </div>
-                      </div>
+                      </figure>
+                      {caseStudy.opinions.length > VISIBLE_BARS && (
+                        <p className="text-xs text-muted-foreground text-center mt-2">
+                          {t("common.opinionsShown", {
+                            shown: VISIBLE_BARS,
+                            total: caseStudy.opinions.length,
+                          })}
+                        </p>
+                      )}
                     </CardContent>
                   </Card>
                 )}
