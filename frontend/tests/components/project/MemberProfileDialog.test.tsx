@@ -63,6 +63,22 @@ describe('MemberProfileDialog - Basic Rendering', () => {
 
     expect(screen.getByRole('heading', { name: 'Jane Smith' })).toBeInTheDocument();
   });
+
+  it('renders the joined date through the shared formatDate helper', () => {
+    const member = createMember({
+      first_name: 'Jane',
+      last_name: 'Smith',
+      role: 'expert',
+      joined_at: '2024-03-15T12:00:00Z',
+    });
+
+    render(<MemberProfileDialog member={member} opinion={null} onOpenChange={vi.fn()} />);
+
+    // Spelled-out month, not a bare numeric date (AUD-031): unambiguous
+    // regardless of DD/MM vs MM/DD locale conventions.
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByText('Mar 15, 2024')).toBeInTheDocument();
+  });
 });
 
 describe('MemberProfileDialog - Opinion Content', () => {

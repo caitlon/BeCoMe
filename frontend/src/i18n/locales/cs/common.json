@@ -3,6 +3,7 @@
     "name": "BeCoMe"
   },
   "cancel": "Zrušit",
+  "switchToLanguage": "Přepnout na {{language}}",
   "deleteModal": {
     "permanentlyDelete": "Trvale smaže:",
     "cannotUndo": "Tuto akci nelze vrátit zpět.",

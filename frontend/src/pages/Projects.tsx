@@ -24,6 +24,7 @@ import { queryKeys } from "@/lib/queryKeys";
 import { ProjectWithRole } from "@/types/api";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { formatDate } from "@/lib/formatDate";
 
 // Multiple of the 1/2/3-column grid so every full page fills whole rows.
 const PAGE_SIZE = 24;
@@ -46,7 +47,7 @@ const itemVariants = {
 };
 
 const Projects = () => {
-  const { t } = useTranslation("projects");
+  const { t, i18n } = useTranslation("projects");
   const { t: tCommon } = useTranslation();
   const { toast } = useToast();
   useDocumentTitle(tCommon("pageTitle.projects"));
@@ -371,7 +372,7 @@ const Projects = () => {
                                 {invitation.current_experts_count} {t("card.experts")}
                               </span>
                               <span>
-                                {t("invitations.invitedDate")}: {new Date(invitation.invited_at).toLocaleDateString()}
+                                {t("invitations.invitedDate")}: {formatDate(invitation.invited_at, i18n.language)}
                               </span>
                             </div>
 
