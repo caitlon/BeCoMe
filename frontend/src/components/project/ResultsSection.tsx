@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Loader2, ChevronDown, Download, FileText, FileSpreadsheet } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -41,6 +41,7 @@ export const ResultsSection = ({
   const { t: tFuzzy } = useTranslation();
   const { toast } = useToast();
   const [exporting, setExporting] = useState<"pdf" | "csv" | null>(null);
+  const showIndividualId = useId();
 
   const handleExport = async (format: "pdf" | "csv") => {
     setExporting(format);
@@ -175,15 +176,14 @@ export const ResultsSection = ({
       </Card>
 
       {/* Arithmetic Mean & Median */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm">{t("detail.arithmeticMean")}</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="font-mono text-sm">
-              {result.arithmetic_mean.lower.toFixed(2)} |{" "}
-              {result.arithmetic_mean.peak.toFixed(2)} |{" "}
+            <div className="font-mono text-sm whitespace-nowrap tabular-nums overflow-x-auto">
+              {result.arithmetic_mean.lower.toFixed(2)} | {result.arithmetic_mean.peak.toFixed(2)} |{" "}
               {result.arithmetic_mean.upper.toFixed(2)}
             </div>
             <div className="text-xs text-muted-foreground mt-1">
@@ -197,7 +197,7 @@ export const ResultsSection = ({
             <CardTitle className="text-sm">{t("detail.median")}</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="font-mono text-sm">
+            <div className="font-mono text-sm whitespace-nowrap tabular-nums overflow-x-auto">
               {result.median.lower.toFixed(2)} | {result.median.peak.toFixed(2)} |{" "}
               {result.median.upper.toFixed(2)}
             </div>
@@ -270,11 +270,11 @@ export const ResultsSection = ({
                 </div>
                 <div className="flex items-center gap-2">
                   <Checkbox
-                    id="showIndividual"
+                    id={showIndividualId}
                     checked={showIndividual}
                     onCheckedChange={(checked) => setShowIndividual(!!checked)}
                   />
-                  <Label htmlFor="showIndividual" className="text-xs cursor-pointer">
+                  <Label htmlFor={showIndividualId} className="text-xs cursor-pointer">
                     {t("detail.showIndividual")}
                   </Label>
                 </div>

@@ -124,6 +124,36 @@ describe('ResultsSection - Results Display', () => {
     expect(screen.getByRole('tab', { name: /triangle/i })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /centroid/i })).toBeInTheDocument();
   });
+
+  it('labels the show-individual checkbox with a generated id, not a hardcoded one', () => {
+    const { project, opinions } = setup();
+    const result = createCalculationResult();
+
+    render(<ResultsSection result={result} project={project} showIndividual={false} setShowIndividual={vi.fn()} opinions={opinions} />);
+
+    // The label/checkbox association still works ...
+    const checkbox = screen.getByRole('checkbox', { name: /individual/i });
+    // ... but the collision-prone hardcoded id is gone (it duplicated when the
+    // section was mounted for both the desktop and mobile layouts at once).
+    expect(document.querySelector('#showIndividual')).toBeNull();
+    expect(checkbox.id).not.toBe('showIndividual');
+    expect(checkbox.id).not.toBe('');
+  });
+
+  it('keeps the arithmetic mean and median values on a single non-wrapping line', () => {
+    const { project, opinions } = setup();
+    const result = createCalculationResult();
+
+    render(<ResultsSection result={result} project={project} showIndividual={false} setShowIndividual={vi.fn()} opinions={opinions} />);
+
+    // Factory values: arithmetic_mean 32 | 50 | 70, median 38 | 54 | 66.
+    const meanValue = screen.getByText('32.00 | 50.00 | 70.00');
+    const medianValue = screen.getByText('38.00 | 54.00 | 66.00');
+    for (const el of [meanValue, medianValue]) {
+      expect(el).toHaveClass('whitespace-nowrap');
+      expect(el).toHaveClass('tabular-nums');
+    }
+  });
 });
 
 describe('ResultsSection - Result Export', () => {

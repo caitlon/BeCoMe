@@ -40,6 +40,7 @@ import { Member, ProjectInvitation } from "@/types/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { useMediaQuery } from "@/hooks/use-media-query";
 
 const ProjectDetail = () => {
   const { id } = useParams<{ id: string }>();
@@ -50,6 +51,12 @@ const ProjectDetail = () => {
   const { t: tCommon } = useTranslation();
 
   const queryClient = useQueryClient();
+
+  // Render one layout for the active breakpoint (lg = 1024px) instead of
+  // mounting the desktop grid and the mobile tabs together and toggling CSS
+  // visibility: a dual mount duplicates the opinion form, so a hidden copy
+  // would own the input refs and steal error focus on submit.
+  const isDesktop = useMediaQuery("(min-width: 1024px)");
 
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -253,6 +260,47 @@ const ProjectDetail = () => {
     </Card>
   );
 
+  // Single instances shared between the desktop grid and the mobile tabs. Only
+  // one layout mounts at a time, so each block renders exactly once.
+  const opinionsColumn = (
+    <div className="space-y-6">
+      <OpinionForm
+        form={opinionForm}
+        project={project}
+        myOpinion={myOpinion}
+        isSaving={saveOpinion.isPending}
+        onSubmit={handleSaveOpinion}
+        onDelete={handleDeleteOpinion}
+      />
+      <OtherOpinionsTable opinions={otherOpinions} members={members} currentUserId={user?.id} />
+    </div>
+  );
+
+  const resultsColumn = (
+    <ErrorBoundary fallback={resultsErrorFallback}>
+      <ResultsSection
+        result={result}
+        project={project}
+        showIndividual={showIndividual}
+        setShowIndividual={setShowIndividual}
+        opinions={opinions}
+      />
+    </ErrorBoundary>
+  );
+
+  const teamTable = (
+    <TeamTable
+      members={members}
+      pendingInvitations={pendingInvitations}
+      isAdmin={isAdmin}
+      currentUserId={user?.id}
+      selectedMemberId={profileMember?.user_id}
+      onRemove={handleRemoveMember}
+      onTransfer={(member) => setTransferTarget(member)}
+      onMemberClick={(member) => setProfileMember(member)}
+    />
+  );
+
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
@@ -314,38 +362,42 @@ const ProjectDetail = () => {
           </div>
         </motion.div>
 
-        {/* Main Content - Two Columns on Desktop */}
-        <div className="hidden lg:grid lg:grid-cols-2 gap-8">
-          {/* Left Column - Opinions */}
-          <div className="space-y-6">
-            <OpinionForm
-              form={opinionForm}
-              project={project}
-              myOpinion={myOpinion}
-              isSaving={saveOpinion.isPending}
-              onSubmit={handleSaveOpinion}
-              onDelete={handleDeleteOpinion}
-            />
+        {isDesktop ? (
+          <>
+            {/* Main Content - Two Columns on Desktop */}
+            <div className="grid grid-cols-2 gap-8">
+              {/* Left Column - Opinions */}
+              {opinionsColumn}
 
-            <OtherOpinionsTable opinions={otherOpinions} members={members} currentUserId={user?.id} />
-          </div>
+              {/* Right Column - Results */}
+              <div className="space-y-6">{resultsColumn}</div>
+            </div>
 
-          {/* Right Column - Results */}
-          <div className="space-y-6">
-            <ErrorBoundary fallback={resultsErrorFallback}>
-              <ResultsSection
-                result={result}
-                project={project}
-                showIndividual={showIndividual}
-                setShowIndividual={setShowIndividual}
-                opinions={opinions}
-              />
-            </ErrorBoundary>
-          </div>
-        </div>
-
-        {/* Mobile - Tabs */}
-        <div className="lg:hidden">
+            {/* Team Section - Desktop Collapsible */}
+            <div className="mt-8">
+              <Collapsible open={teamOpen} onOpenChange={setTeamOpen}>
+                <CollapsibleTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-between p-4 h-auto bg-muted rounded-lg hover:bg-muted/70"
+                  >
+                    <span className="flex items-center gap-2">
+                      <Users className="h-4 w-4" />
+                      {t("detail.teamMembers", { count: members.length })}
+                    </span>
+                    {teamOpen ? (
+                      <ChevronUp className="h-4 w-4" />
+                    ) : (
+                      <ChevronDown className="h-4 w-4" />
+                    )}
+                  </Button>
+                </CollapsibleTrigger>
+                <CollapsibleContent>{teamTable}</CollapsibleContent>
+              </Collapsible>
+            </div>
+          </>
+        ) : (
+          /* Mobile - Tabs */
           <Tabs defaultValue="opinions" className="space-y-6">
             <TabsList className="w-full">
               <TabsTrigger value="opinions" className="flex-1">
@@ -359,78 +411,13 @@ const ProjectDetail = () => {
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="opinions" className="space-y-6">
-              <OpinionForm
-                form={opinionForm}
-                project={project}
-                myOpinion={myOpinion}
-                isSaving={saveOpinion.isPending}
-                onSubmit={handleSaveOpinion}
-                onDelete={handleDeleteOpinion}
-              />
-              <OtherOpinionsTable opinions={otherOpinions} members={members} currentUserId={user?.id} />
-            </TabsContent>
+            <TabsContent value="opinions">{opinionsColumn}</TabsContent>
 
-            <TabsContent value="results">
-              <ErrorBoundary fallback={resultsErrorFallback}>
-                <ResultsSection
-                  result={result}
-                  project={project}
-                  showIndividual={showIndividual}
-                  setShowIndividual={setShowIndividual}
-                  opinions={opinions}
-                />
-              </ErrorBoundary>
-            </TabsContent>
+            <TabsContent value="results">{resultsColumn}</TabsContent>
 
-            <TabsContent value="team">
-              <TeamTable
-                members={members}
-                pendingInvitations={pendingInvitations}
-                isAdmin={isAdmin}
-                currentUserId={user?.id}
-                selectedMemberId={profileMember?.user_id}
-                onRemove={handleRemoveMember}
-                onTransfer={(member) => setTransferTarget(member)}
-                onMemberClick={(member) => setProfileMember(member)}
-              />
-            </TabsContent>
+            <TabsContent value="team">{teamTable}</TabsContent>
           </Tabs>
-        </div>
-
-        {/* Team Section - Desktop Collapsible */}
-        <div className="hidden lg:block mt-8">
-          <Collapsible open={teamOpen} onOpenChange={setTeamOpen}>
-            <CollapsibleTrigger asChild>
-              <Button
-                variant="ghost"
-                className="w-full justify-between p-4 h-auto bg-muted rounded-lg hover:bg-muted/70"
-              >
-                <span className="flex items-center gap-2">
-                  <Users className="h-4 w-4" />
-                  {t("detail.teamMembers", { count: members.length })}
-                </span>
-                {teamOpen ? (
-                  <ChevronUp className="h-4 w-4" />
-                ) : (
-                  <ChevronDown className="h-4 w-4" />
-                )}
-              </Button>
-            </CollapsibleTrigger>
-            <CollapsibleContent>
-              <TeamTable
-                members={members}
-                pendingInvitations={pendingInvitations}
-                isAdmin={isAdmin}
-                currentUserId={user?.id}
-                selectedMemberId={profileMember?.user_id}
-                onRemove={handleRemoveMember}
-                onTransfer={(member) => setTransferTarget(member)}
-                onMemberClick={(member) => setProfileMember(member)}
-              />
-            </CollapsibleContent>
-          </Collapsible>
-        </div>
+        )}
       </main>
 
       <InviteExpertModal
