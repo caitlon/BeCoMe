@@ -7,7 +7,7 @@
     "question": "Na základě předložených analýz Ministerstva průmyslu a obchodu a České národní banky o dopadu opatření na státní rozpočet České republiky navrhněte celkovou finanční podporu v rozmezí 0–100 miliard Kč pro podnikatele postižené pandemií COVID-19.",
     "context": "Pandemie COVID-19 vytvořila bezprecedentní ekonomické výzvy. Podniky napříč odvětvími čelily uzavírkám a sníženým příjmům kvůli vládou nařízeným omezením. Vláda potřebovala vyvážit fiskální odpovědnost s naléhavou potřebou podpořit postižené podnikatele a udržet ekonomickou stabilitu.",
     "methodology": "Každý expert poskytl svůj názor jako fuzzy trojúhelníkové číslo se třemi hodnotami: nejlepší návrh (nejpravděpodobnější hodnota), dolní limit (pesimistický odhad) a horní limit (optimistický odhad). Metoda BeCoMe agregovala tyto názory pro nalezení nejlepšího kompromisu.",
-    "interpretation": "Nejlepší kompromis navrhuje finanční podporu přibližně 56,74 miliardy Kč s maximální chybou odhadu pouhých ±0,76 miliardy Kč. Aritmetický průměr a medián se téměř shodují ve stejném centroidu. Tato těsná shoda ukazuje na silný konsenzus expertního panelu ohledně této částky."
+    "interpretation": "Nejlepší kompromis navrhuje finanční podporu přibližně 56,74 miliardy Kč s maximální chybou odhadu pouhých ±0,76 miliardy Kč. Aritmetický průměr a medián se téměř shodují ve stejném centroidu, což chybu drží tak nízko. Tato shoda je mezi oběma agregačními metodami, nikoli mezi experty samotnými, jejichž jednotlivé návrhy se v rámci panelu značně lišily."
   },
   "pendlers": {
     "title": "Přeshraniční spolupráce",
