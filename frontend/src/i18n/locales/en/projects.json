@@ -15,6 +15,10 @@
     "description": "Create your first project to start collecting expert opinions.",
     "createFirst": "Create Your First Project"
   },
+  "error": {
+    "title": "Couldn't load your projects",
+    "description": "Something went wrong while loading. Check your connection and try again."
+  },
   "dropdown": {
     "openMenu": "Project options",
     "viewProject": "View Project",

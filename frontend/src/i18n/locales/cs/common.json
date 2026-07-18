@@ -153,5 +153,12 @@
     "title": "Něco se pokazilo",
     "description": "Došlo k neočekávané chybě. Pro pokračování prosím obnovte stránku.",
     "reload": "Obnovit stránku"
+  },
+  "errors": {
+    "serviceUnavailable": "Služba je dočasně nedostupná. Zkuste to prosím za chvíli.",
+    "sessionExpired": "Vaše relace vypršela. Přihlaste se prosím znovu.",
+    "sessionExpiredTitle": "Relace vypršela",
+    "tooManyAttempts": "Příliš mnoho pokusů. Chvíli počkejte a zkuste to znovu.",
+    "retry": "Zkusit znovu"
   }
 }

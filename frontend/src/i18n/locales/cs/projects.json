@@ -15,6 +15,10 @@
     "description": "Vytvořte svůj první projekt a začněte sbírat názory expertů.",
     "createFirst": "Vytvořit první projekt"
   },
+  "error": {
+    "title": "Projekty se nepodařilo načíst",
+    "description": "Při načítání došlo k chybě. Zkontrolujte připojení a zkuste to znovu."
+  },
   "dropdown": {
     "openMenu": "Možnosti projektu",
     "viewProject": "Zobrazit projekt",

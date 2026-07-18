@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 
 import { useToast } from "@/hooks/use-toast";
+import { describeError } from "@/lib/errorMessages";
 
 interface AuthSubmitMessages {
   successTitle: string;
@@ -13,6 +15,7 @@ interface AuthSubmitMessages {
 export function useAuthSubmit(messages: AuthSubmitMessages) {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { t: tCommon } = useTranslation();
   const [isLoading, setIsLoading] = useState(false);
 
   const execute = async (action: () => Promise<void>) => {
@@ -27,8 +30,7 @@ export function useAuthSubmit(messages: AuthSubmitMessages) {
     } catch (error) {
       toast({
         title: messages.errorTitle,
-        description:
-          error instanceof Error ? error.message : messages.errorFallback,
+        description: describeError(error, tCommon, messages.errorFallback),
         variant: "destructive",
       });
     } finally {

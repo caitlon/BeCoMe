@@ -335,19 +335,67 @@ describe('Projects', () => {
   });
 
   describe('Error Handling', () => {
-    it('shows error toast when loading fails', async () => {
+    it('shows an inline error state when loading fails, not a toast', async () => {
       mockApi.getProjects.mockRejectedValue(new Error('Network error'));
       mockApi.getInvitations.mockRejectedValue(new Error('Network error'));
 
       render(<Projects />);
 
       await waitFor(() => {
-        expect(mockToast).toHaveBeenCalledWith(
-          expect.objectContaining({
-            variant: 'destructive',
-          })
-        );
+        expect(screen.getByText(/couldn't load your projects/i)).toBeInTheDocument();
       });
+      expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument();
+      expect(mockToast).not.toHaveBeenCalled();
+    });
+
+    it('does not show the empty-state CTA when loading fails', async () => {
+      mockApi.getProjects.mockRejectedValue(new Error('Network error'));
+      mockApi.getInvitations.mockRejectedValue(new Error('Network error'));
+
+      render(<Projects />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument();
+      });
+      expect(screen.queryByText(/no projects yet/i)).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /create.*first|new project/i })
+      ).not.toBeInTheDocument();
+    });
+
+    it('clicking Retry in the error state refetches projects and invitations', async () => {
+      const user = userEvent.setup();
+      mockApi.getProjects.mockRejectedValue(new Error('Network error'));
+      mockApi.getInvitations.mockRejectedValue(new Error('Network error'));
+
+      render(<Projects />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument();
+      });
+
+      const callsBeforeRetry = mockApi.getProjects.mock.calls.length;
+      await user.click(screen.getByRole('button', { name: /try again/i }));
+
+      await waitFor(() => {
+        expect(mockApi.getProjects.mock.calls.length).toBeGreaterThan(callsBeforeRetry);
+      });
+      expect(mockApi.getInvitations.mock.calls.length).toBeGreaterThan(1);
+    });
+
+    it('does not show a toast when accepting an invitation fails with an UnauthorizedError', async () => {
+      const { UnauthorizedError } = await import('@/lib/errors');
+      mockApi.getInvitations.mockResolvedValue([createInvitation({ id: 'inv-401' })]);
+      mockApi.acceptInvitation.mockRejectedValue(new UnauthorizedError());
+
+      await clickInvitationAction(/accept/i);
+
+      await waitFor(() => {
+        expect(mockApi.acceptInvitation).toHaveBeenCalledWith('inv-401');
+      });
+      expect(mockToast).not.toHaveBeenCalledWith(
+        expect.objectContaining({ variant: 'destructive' })
+      );
     });
 
     it('shows error toast when accept invitation fails', async () => {
