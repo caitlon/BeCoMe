@@ -87,9 +87,9 @@ export const caseStudies: CaseStudy[] = [
       { role: "Business Association Rep", bestProposal: 85, lowerLimit: 60, upperLimit: 95 },
     ] as ExpertOpinion[],
     result: {
-      bestCompromise: 57.3,
-      maxError: 8.2,
-      interpretation: "The best compromise suggests financial support of approximately 57.3 billion CZK, with a maximum estimation error of 8.2 billion CZK. This represents a moderate position balancing fiscal caution with the urgent needs of affected businesses.",
+      bestCompromise: 56.74,
+      maxError: 0.76,
+      interpretation: "The best compromise suggests financial support of approximately 56.74 billion CZK, with a maximum estimation error of only ±0.76 billion CZK. Mean and median land on almost the same centroid. That tight overlap points to strong consensus across the expert panel on this figure.",
     },
   },
   {
@@ -132,9 +132,9 @@ export const caseStudies: CaseStudy[] = [
       { role: "Public Health Expert", value: 25 },
     ] as LikertOpinion[],
     result: {
-      bestCompromise: 43.2,
-      maxError: 12.5,
-      interpretation: "The best compromise of 43.2% corresponds to 'Neutral' on the Likert scale. The decision indicates that experts are divided and do not clearly support generally allowing cross-border travel. The high error margin (12.5%) reflects significant polarization among experts.",
+      bestCompromise: 41.48,
+      maxError: 3.98,
+      interpretation: "The best compromise of 41.48% corresponds to 'Neutral' on the Likert scale. Experts lean toward neither clear support nor clear opposition for allowing cross-border travel. The arithmetic mean and median land close together, with an error margin of just ±3.98%. That narrow margin confirms this Neutral reading is a stable summary of the panel.",
     },
     note: "This case study uses illustrative fictional data for demonstration purposes and is not the result of actual research.",
   },
@@ -169,9 +169,9 @@ export const caseStudies: CaseStudy[] = [
       { role: "Land Owner 3", bestProposal: 2, lowerLimit: 0, upperLimit: 3 },
     ] as ExpertOpinion[],
     result: {
-      bestCompromise: 20.4,
-      maxError: 6.8,
-      interpretation: "The best compromise recommends converting approximately 20.4% of arable land in flood areas to retention zones. This reflects a moderate approach that addresses flood risk while limiting impact on agricultural production. The relatively low error (6.8%) indicates reasonable consensus despite the diverse stakeholder interests.",
+      bestCompromise: 14.31,
+      maxError: 5.97,
+      interpretation: "The best compromise recommends converting approximately 14.31% of arable land in flood areas to retention zones. This reflects a moderate approach that addresses flood risk while limiting impact on agricultural production. The relatively low error, ±5.97%, indicates reasonable consensus despite the diverse stakeholder interests.",
     },
   },
 ];
