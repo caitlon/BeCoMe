@@ -112,6 +112,10 @@ class ApiClient {
   /**
    * Refreshes the session via the HttpOnly refresh cookie. Concurrent callers
    * share a single in-flight request instead of each firing their own POST.
+   *
+   * No X-CSRF-Token is sent on purpose: the backend exempts POST /auth/refresh
+   * from CSRF validation (same as POST /auth/login -- see api/middleware/csrf.py),
+   * so a CSRF check can never turn this into a 403 -> false "session expired".
    */
   private refreshSession(): Promise<void> {
     this.refreshInFlight ??= (async () => {
