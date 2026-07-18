@@ -26,6 +26,7 @@ import {
   RateLimitError,
   ServerError,
   isUnauthorized,
+  isServiceUnavailable,
 } from '@/lib/errors';
 
 export { HttpError } from '@/lib/errors';
@@ -186,7 +187,13 @@ class ApiClient {
       if (response.status === 401 && !isRetry) {
         try {
           await this.refreshSession();
-        } catch {
+        } catch (refreshError) {
+          // A network/5xx refresh failure means the service is down, not that the
+          // session is gone -- surface the typed error (so react-query can retry
+          // and AuthContext shows "service unavailable") instead of a false logout.
+          if (isServiceUnavailable(refreshError)) {
+            throw refreshError;
+          }
           this.handleTerminalUnauthorized(isAuthProbe, endpoint);
           throw new UnauthorizedError();
         }
@@ -246,7 +253,10 @@ class ApiClient {
 
     try {
       await this.refreshSession();
-    } catch {
+    } catch (refreshError) {
+      if (isServiceUnavailable(refreshError)) {
+        throw refreshError;
+      }
       this.handleTerminalUnauthorized(false, input);
       return response;
     }
@@ -354,7 +364,7 @@ class ApiClient {
     formData.append('file', file);
 
     const response = await this.fetchWithRefresh(`${API_BASE_URL}/users/me/photo`, () => {
-      const headers: Record<string, string> = {};
+      const headers: Record<string, string> = { 'X-Request-ID': crypto.randomUUID() };
       const csrf = readCsrfToken();
       if (csrf) {
         headers['X-CSRF-Token'] = csrf;

@@ -353,6 +353,49 @@ describe('ApiClient', () => {
 
       expect(onSessionExpired).toHaveBeenCalledTimes(2);
     });
+
+    it('(f) surfaces a ServerError instead of a false logout when refresh itself 5xxs', async () => {
+      const onSessionExpired = vi.fn();
+      api.setOnSessionExpired(onSessionExpired);
+
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 401,
+          json: () => Promise.resolve({ detail: 'Unauthorized' }),
+        })
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 500,
+          json: () => Promise.resolve({ detail: 'Refresh backend down' }),
+        });
+
+      const { ServerError } = await import('@/lib/errors');
+      const error = await api.getProjects().catch((e) => e);
+
+      expect(error).toBeInstanceOf(ServerError);
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(onSessionExpired).not.toHaveBeenCalled();
+    });
+
+    it('(g) surfaces a NetworkError instead of a false logout when refresh fails at the network level', async () => {
+      const onSessionExpired = vi.fn();
+      api.setOnSessionExpired(onSessionExpired);
+
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 401,
+          json: () => Promise.resolve({ detail: 'Unauthorized' }),
+        })
+        .mockRejectedValueOnce(new TypeError('Failed to fetch'));
+
+      const { NetworkError } = await import('@/lib/errors');
+      const error = await api.getProjects().catch((e) => e);
+
+      expect(error).toBeInstanceOf(NetworkError);
+      expect(onSessionExpired).not.toHaveBeenCalled();
+    });
   });
 
   describe('Auth probe handling on 401 (AUD-006)', () => {
@@ -379,6 +422,32 @@ describe('ApiClient', () => {
 
       expect(errorSpy).not.toHaveBeenCalled();
       expect(debugSpy).toHaveBeenCalled();
+      expect(onSessionExpired).not.toHaveBeenCalled();
+
+      api.setOnSessionExpired(null);
+    });
+
+    it('getCurrentUser(true) throws a ServerError, not UnauthorizedError, when refresh 5xxs', async () => {
+      const onSessionExpired = vi.fn();
+      api.setOnSessionExpired(onSessionExpired);
+
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 401,
+          json: () => Promise.resolve({ detail: 'Unauthorized' }),
+        })
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 500,
+          json: () => Promise.resolve({ detail: 'Refresh backend down' }),
+        });
+
+      const { ServerError } = await import('@/lib/errors');
+      const error = await api.getCurrentUser(true).catch((e) => e);
+
+      expect(error).toBeInstanceOf(ServerError);
+      expect(error).not.toBeInstanceOf(UnauthorizedError);
       expect(onSessionExpired).not.toHaveBeenCalled();
 
       api.setOnSessionExpired(null);
@@ -1021,6 +1090,47 @@ describe('ApiClient', () => {
       const [, options] = mockFetch.mock.calls[0];
       expect(options.credentials).toBe('include');
       expect(options.headers['Authorization']).toBeUndefined();
+    });
+
+    it('throws a ServerError instead of a false logout when refresh 5xxs', async () => {
+      const onSessionExpired = vi.fn();
+      api.setOnSessionExpired(onSessionExpired);
+
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 401,
+          json: () => Promise.resolve({ detail: 'Unauthorized' }),
+        })
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 500,
+          json: () => Promise.resolve({ detail: 'Refresh backend down' }),
+        });
+
+      const file = new File(['test'], 'photo.jpg', { type: 'image/jpeg' });
+      const { ServerError } = await import('@/lib/errors');
+      const error = await api.uploadPhoto(file).catch((e) => e);
+
+      expect(error).toBeInstanceOf(ServerError);
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(onSessionExpired).not.toHaveBeenCalled();
+
+      api.setOnSessionExpired(null);
+    });
+
+    it('sends an X-Request-ID header for log/Sentry correlation', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ id: '1', photo_url: 'url' }),
+      });
+
+      const file = new File(['test'], 'photo.jpg', { type: 'image/jpeg' });
+      await api.uploadPhoto(file);
+
+      const [, options] = mockFetch.mock.calls[0];
+      expect((options.headers as Record<string, string>)['X-Request-ID']).toBeTruthy();
     });
   });
 
