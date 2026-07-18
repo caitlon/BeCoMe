@@ -89,7 +89,7 @@ export const caseStudies: CaseStudy[] = [
     result: {
       bestCompromise: 56.74,
       maxError: 0.76,
-      interpretation: "The best compromise suggests financial support of approximately 56.74 billion CZK, with a maximum estimation error of only ±0.76 billion CZK. Mean and median land on almost the same centroid. That tight overlap points to strong consensus across the expert panel on this figure.",
+      interpretation: "The best compromise suggests financial support of approximately 56.74 billion CZK, with a maximum estimation error of only ±0.76 billion CZK. Mean and median land on almost the same centroid, which keeps the error this small. That agreement is between the two aggregation methods themselves, not among the experts, whose individual proposals varied widely.",
     },
   },
   {

@@ -302,10 +302,10 @@ def _format_cs(value: float) -> str:
     return f"{value:.2f}".replace(".", ",")
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def parsed_case_studies() -> dict[str, ParsedCaseStudy]:
     """
-    Parse frontend/src/data/caseStudies.ts once per test.
+    Parse frontend/src/data/caseStudies.ts once per module.
 
     :return: Mapping of case id to its ParsedCaseStudy
     """
