@@ -135,6 +135,7 @@
       "triangle": "Triangle",
       "centroid": "Centroid"
     },
+    "measuresCoincide": "Mean, median, and best compromise coincide for this project.",
     "agreement": {
       "high": "High agreement",
       "moderate": "Moderate agreement",

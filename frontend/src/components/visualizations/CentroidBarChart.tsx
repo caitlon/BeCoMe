@@ -17,6 +17,7 @@ import type { Opinion, CalculationResult } from "@/types/api";
 interface CentroidBarChartProps {
   readonly opinions: Opinion[];
   readonly result: CalculationResult;
+  readonly scaleUnit?: string;
 }
 
 interface ChartDataItem {
@@ -70,7 +71,7 @@ function usePrefersReducedMotion(): boolean {
   return globalThis.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
-export function CentroidBarChart({ opinions, result }: CentroidBarChartProps) {
+export function CentroidBarChart({ opinions, result, scaleUnit }: CentroidBarChartProps) {
   const { t: tCommon } = useTranslation();
   const prefersReducedMotion = usePrefersReducedMotion();
 
@@ -95,11 +96,11 @@ export function CentroidBarChart({ opinions, result }: CentroidBarChartProps) {
     },
     mean: {
       label: tCommon("centroidChart.meanLine"),
-      color: "rgb(59, 130, 246)",
+      color: "hsl(var(--chart-mean))",
     },
     median: {
       label: tCommon("centroidChart.medianLine"),
-      color: "rgb(34, 197, 94)",
+      color: "hsl(var(--chart-median))",
     },
     compromise: {
       label: tCommon("centroidChart.compromiseLine"),
@@ -139,7 +140,8 @@ export function CentroidBarChart({ opinions, result }: CentroidBarChartProps) {
             domain={[minCentroid - padding, maxCentroid + padding]}
             tickLine={false}
             fontSize={11}
-            tickFormatter={(v: number) => v % 1 === 0 ? String(v) : v.toFixed(1)}
+            tickFormatter={(v: number) => (v % 1 === 0 ? String(v) : v.toFixed(1))}
+            label={scaleUnit ? { value: scaleUnit, position: "insideBottomRight", offset: -4, fontSize: 10, fill: "hsl(var(--muted-foreground))" } : undefined}
           />
 
           <YAxis
@@ -194,11 +196,11 @@ export function CentroidBarChart({ opinions, result }: CentroidBarChartProps) {
           <span>{tCommon("centroidChart.centroidValue")}</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <div className="h-0.5 w-3" style={{ borderTop: "2px dashed rgb(59, 130, 246)" }} />
+          <div className="h-0.5 w-3" style={{ borderTop: "2px dashed hsl(var(--chart-mean))" }} />
           <span>{tCommon("centroidChart.meanLine")} ({meanC.toFixed(1)})</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <div className="h-0.5 w-3" style={{ borderTop: "2px dashed rgb(34, 197, 94)" }} />
+          <div className="h-0.5 w-3" style={{ borderTop: "2px dashed hsl(var(--chart-median))" }} />
           <span>{tCommon("centroidChart.medianLine")} ({medianC.toFixed(1)})</span>
         </div>
         <div className="flex items-center gap-1.5">
