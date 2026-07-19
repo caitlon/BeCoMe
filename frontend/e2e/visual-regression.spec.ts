@@ -16,7 +16,10 @@ function createThemeTest(theme: 'light' | 'dark') {
       const page = await context.newPage();
       await page.addInitScript((t: string) => {
         localStorage.setItem('become-language', 'en');
-        localStorage.setItem('vite-ui-theme', t);
+        // The app reads its theme from `become-theme` (main.tsx wires ThemeProvider
+        // with that storageKey); seeding `vite-ui-theme` here was a no-op that left
+        // the dark tests rendering in the default light theme.
+        localStorage.setItem('become-theme', t);
       }, theme);
       await use(page);
       await context.close();
@@ -50,6 +53,11 @@ async function createProjectWithOpinion(page: Page) {
   await expect(page.getByText('Opinion saved', { exact: true })).toBeVisible({
     timeout: 5000,
   });
+
+  // The "Opinion saved" toast never auto-dismisses (shadcn TOAST_REMOVE_DELAY is
+  // ~16 min), so close it explicitly to keep it out of the whole-page snapshots.
+  await page.locator('[toast-close]').click();
+  await expect(page.getByText('Opinion saved', { exact: true })).toBeHidden();
 
   await expect(page.getByRole('heading', { name: /Best Compromise/ })).toBeVisible({
     timeout: 10000,
