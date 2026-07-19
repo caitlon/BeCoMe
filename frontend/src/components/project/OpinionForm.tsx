@@ -62,7 +62,7 @@ const NumericField = ({ form, name, label, placeholder, fieldId }: NumericFieldP
               const group = (["lower", "peak", "upper"] as const).filter(
                 (candidate) => candidate !== name && (isSubmitted || touchedFields[candidate]),
               );
-              void form.trigger(group);
+              if (group.length) void form.trigger(group);
             }}
           />
         )}
