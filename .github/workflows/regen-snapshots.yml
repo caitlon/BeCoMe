@@ -1,13 +1,14 @@
 name: Regenerate Visual Snapshots
 
 # Manually regenerates Playwright visual-regression baselines on the amd64 CI
-# runner (the only environment whose rendering matches the E2E job) and commits
-# the updated *-linux.png files back to the target branch. Use after an
-# intentional layout change shifts the whole-page project-results snapshots.
+# runner (the only environment whose rendering matches the E2E job) and uploads
+# the updated *-linux.png files as an artifact. Use after an intentional layout
+# change shifts the whole-page project-results snapshots; then download the
+# artifact and commit the PNGs onto the feature branch.
 #
 # Run it from the Actions tab (or `gh workflow run regen-snapshots.yml
-# -f branch=<feature-branch>`). Needs the repo's Actions workflow permissions
-# set to "Read and write" so the job can push the regenerated PNGs.
+# -f branch=<feature-branch>`). Uploading an artifact needs only the default
+# read token, so no repository permission change is required.
 
 on:
   workflow_dispatch:
@@ -21,7 +22,7 @@ on:
         default: "project results"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   regen:
@@ -98,16 +99,9 @@ jobs:
           GREP: ${{ inputs.grep }}
         run: npx playwright test visual-regression --update-snapshots -g "$GREP"
 
-      - name: Commit and push regenerated snapshots
-        env:
-          TARGET_BRANCH: ${{ inputs.branch }}
-        run: |
-          if git diff --quiet -- 'frontend/e2e/**/*.png'; then
-            echo "No snapshot changes to commit."
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add frontend/e2e/**/*.png
-          git commit -m "test: regenerate visual-regression snapshots on amd64"
-          git push origin "HEAD:$TARGET_BRANCH"
+      - name: Upload regenerated snapshots
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: regenerated-snapshots
+          path: frontend/e2e/visual-regression.spec.ts-snapshots/*-linux.png
+          if-no-files-found: error
