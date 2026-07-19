@@ -52,6 +52,9 @@ export const ResultsSection = ({
 
   const scaleRange = project.scale_max - project.scale_min;
   const errorPercent = (result.max_error / scaleRange) * 100;
+  const measuresCoincide =
+    Math.abs(result.arithmetic_mean.centroid - result.median.centroid) < 0.01 &&
+    Math.abs(result.median.centroid - result.best_compromise.centroid) < 0.01;
 
   let agreementLevel: "high" | "moderate" | "low";
   if (errorPercent <= 20) {
@@ -260,9 +263,12 @@ export const ResultsSection = ({
             </TabsContent>
 
             <TabsContent value="centroid">
-              <CentroidBarChart opinions={opinions} result={result} />
+              <CentroidBarChart opinions={opinions} result={result} scaleUnit={project.scale_unit} />
             </TabsContent>
           </Tabs>
+          {measuresCoincide && (
+            <p className="mt-3 text-xs text-muted-foreground text-center">{t("detail.measuresCoincide")}</p>
+          )}
         </CardContent>
       </Card>
     </div>

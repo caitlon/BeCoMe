@@ -135,6 +135,7 @@
       "triangle": "Trojúhelník",
       "centroid": "Centroid"
     },
+    "measuresCoincide": "Průměr, medián a nejlepší kompromis se u tohoto projektu shodují.",
     "agreement": {
       "high": "Vysoká shoda",
       "moderate": "Střední shoda",
