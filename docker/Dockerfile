@@ -32,7 +32,7 @@ COPY pyproject.toml uv.lock ./
 # Install dependencies first (without project) for better layer caching.
 # The BuildKit cache mount keeps uv's wheel cache across builds (Railway persists
 # it), so wheels aren't re-downloaded when only the lockfile layer is invalidated.
-RUN --mount=type=cache,target=/root/.cache/uv \
+RUN --mount=type=cache,id=uv-cache,target=/root/.cache/uv \
     uv sync --locked --no-install-project --no-dev --extra api
 
 # Copy application code
@@ -41,7 +41,7 @@ COPY api/ ./api/
 COPY README.md ./
 
 # Install project with dependencies
-RUN --mount=type=cache,target=/root/.cache/uv \
+RUN --mount=type=cache,id=uv-cache,target=/root/.cache/uv \
     uv sync --locked --no-dev --extra api
 
 # ============================================
