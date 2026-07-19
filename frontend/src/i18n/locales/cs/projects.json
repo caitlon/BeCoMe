@@ -173,7 +173,7 @@
     "scaleUnit": "Jednotka",
     "scaleMinPlaceholder": "Min",
     "scaleMaxPlaceholder": "Max",
-    "scaleUnitPlaceholder": "např. miliard Kč, %, bodů",
+    "scaleUnitPlaceholder": "např. Kč, %",
     "cancel": "Zrušit",
     "create": "Vytvořit projekt",
     "creating": "Vytváření...",

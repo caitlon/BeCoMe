@@ -142,6 +142,35 @@ describe('OpinionForm - Submission', () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
+  it('clears the stale lower<=peak<=upper error once a sibling field is corrected', async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(<Harness onSubmit={onSubmit} />);
+
+    await user.type(screen.getByLabelText('Position'), 'Director');
+    await user.type(screen.getByLabelText(/lower/i), '20');
+    await user.type(screen.getByLabelText(/peak/i), '50');
+    await user.type(screen.getByLabelText(/upper/i), '40');
+    await user.click(screen.getByRole('button', { name: 'Save Opinion' }));
+
+    // The ordering error attaches to `peak` (path: ["peak"]), even though
+    // `upper` is the field that needs correcting.
+    await waitFor(() => {
+      expect(screen.getByText('Values must satisfy: lower ≤ peak ≤ upper')).toBeInTheDocument();
+    });
+    expect(onSubmit).not.toHaveBeenCalled();
+
+    const upperInput = screen.getByLabelText(/upper/i);
+    await user.clear(upperInput);
+    await user.type(upperInput, '80');
+
+    await waitFor(() => {
+      expect(
+        screen.queryByText('Values must satisfy: lower ≤ peak ≤ upper')
+      ).not.toBeInTheDocument();
+    });
+  });
+
   it('marks the invalid field with aria-invalid', async () => {
     const user = userEvent.setup();
     render(<Harness onSubmit={vi.fn().mockResolvedValue(undefined)} />);
@@ -154,6 +183,27 @@ describe('OpinionForm - Submission', () => {
 
     await waitFor(() => {
       expect(screen.getByLabelText(/peak/i)).toHaveAttribute('aria-invalid', 'true');
+    });
+  });
+
+  it('does not flash a validation error on the field being typed into before blur', async () => {
+    const user = userEvent.setup();
+    render(<Harness onSubmit={vi.fn().mockResolvedValue(undefined)} />);
+
+    const lowerInput = screen.getByLabelText(/lower/i);
+    // Type an out-of-range value into a pristine field WITHOUT blurring it.
+    // mode:"onTouched" keeps the error hidden until blur, so the group
+    // revalidation must not eagerly validate the field being edited.
+    await user.type(lowerInput, '-5');
+    expect(lowerInput).toHaveAttribute('aria-invalid', 'false');
+    expect(
+      screen.queryByText('Values must be within scale range: 0 — 100')
+    ).not.toBeInTheDocument();
+
+    // Blur -> onTouched now surfaces the error, so validation still works.
+    await user.tab();
+    await waitFor(() => {
+      expect(lowerInput).toHaveAttribute('aria-invalid', 'true');
     });
   });
 });

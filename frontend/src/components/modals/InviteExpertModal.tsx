@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -38,6 +38,7 @@ export function InviteExpertModal({
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const submittingRef = useRef(false);
 
   const inviteSchema = useMemo(
     () =>
@@ -67,6 +68,8 @@ export function InviteExpertModal({
 
   const onSubmit = async (data: InviteFormData) => {
     if (!projectId) return;
+    if (submittingRef.current) return; // ignore re-entrant submits (double-click)
+    submittingRef.current = true;
 
     setIsLoading(true);
     try {
@@ -81,6 +84,7 @@ export function InviteExpertModal({
       });
     } finally {
       setIsLoading(false);
+      submittingRef.current = false;
     }
   };
 
@@ -129,6 +133,7 @@ export function InviteExpertModal({
           </DialogDescription>
         </DialogHeader>
 
+        {/* eslint-disable-next-line react-hooks/refs -- handleSubmit defers to the browser's submit event; submittingRef is only read/written once that event fires, never during render */}
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <FormField
             label={`${t("invite.email")} *`}

@@ -49,6 +49,21 @@ const NumericField = ({ form, name, label, placeholder, fieldId }: NumericFieldP
             aria-invalid={!!error}
             aria-describedby={error ? errorId : undefined}
             {...field}
+            onChange={(event) => {
+              field.onChange(event);
+              // The "lower <= peak <= upper" rule attaches its error to `peak`, so editing
+              // any sibling must re-check the group -- otherwise a corrected value leaves a
+              // stale cross-field error behind. Re-validate only the SIBLINGS already allowed
+              // to show errors (touched, or every field once submitted), never the field being
+              // typed into: form.trigger([name]) validates eagerly and would bypass
+              // mode:"onTouched", flashing an error mid-keystroke. RHF still revalidates the
+              // edited field itself through its own onTouched/reValidate path.
+              const { touchedFields, isSubmitted } = form.formState;
+              const group = (["lower", "peak", "upper"] as const).filter(
+                (candidate) => candidate !== name && (isSubmitted || touchedFields[candidate]),
+              );
+              void form.trigger(group);
+            }}
           />
         )}
       />

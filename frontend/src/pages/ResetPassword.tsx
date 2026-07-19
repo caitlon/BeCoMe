@@ -105,6 +105,7 @@ const ResetPassword = () => {
         <div>
           <PasswordInput
             label={t("resetPassword.password")}
+            autoComplete="new-password"
             placeholder={t("resetPassword.passwordPlaceholder")}
             error={errors.password}
             {...register("password")}
@@ -119,6 +120,7 @@ const ResetPassword = () => {
         <FormField
           label={t("resetPassword.confirmPassword")}
           type="password"
+          autoComplete="new-password"
           placeholder={t("resetPassword.confirmPasswordPlaceholder")}
           error={errors.confirmPassword}
           {...register("confirmPassword")}

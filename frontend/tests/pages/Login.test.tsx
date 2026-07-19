@@ -48,6 +48,13 @@ describe('Login', () => {
     expect(screen.getByRole('button', { name: /sign in/i })).toBeInTheDocument();
   });
 
+  it('sets autocomplete attributes so password managers fill the right field', () => {
+    render(<Login />);
+
+    expect(getEmailInput()).toHaveAttribute('autocomplete', 'email');
+    expect(getPasswordInput()).toHaveAttribute('autocomplete', 'current-password');
+  });
+
   it('shows validation error for invalid email', async () => {
     const user = userEvent.setup();
     render(<Login />);

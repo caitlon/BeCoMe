@@ -160,6 +160,7 @@
     "sessionExpired": "Your session has expired. Please sign in again.",
     "sessionExpiredTitle": "Session expired",
     "tooManyAttempts": "Too many attempts. Please wait a moment and try again.",
+    "tooManyAttemptsRetry": "Too many attempts. Please try again in {{seconds}}s.",
     "retry": "Try again"
   }
 }

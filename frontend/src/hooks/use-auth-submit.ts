@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 
@@ -17,8 +17,11 @@ export function useAuthSubmit(messages: AuthSubmitMessages) {
   const { toast } = useToast();
   const { t: tCommon } = useTranslation();
   const [isLoading, setIsLoading] = useState(false);
+  const submittingRef = useRef(false);
 
   const execute = async (action: () => Promise<void>) => {
+    if (submittingRef.current) return; // ignore re-entrant submits (double-click)
+    submittingRef.current = true;
     setIsLoading(true);
     try {
       await action();
@@ -35,6 +38,7 @@ export function useAuthSubmit(messages: AuthSubmitMessages) {
       });
     } finally {
       setIsLoading(false);
+      submittingRef.current = false;
     }
   };
 

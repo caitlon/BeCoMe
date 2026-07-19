@@ -70,6 +70,13 @@ describe('ResetPassword', () => {
     expect(link).toHaveAttribute('href', '/forgot-password');
   });
 
+  it('sets autocomplete="new-password" on both password fields', () => {
+    render(<ResetPassword />);
+
+    expect(getPasswordInput()).toHaveAttribute('autocomplete', 'new-password');
+    expect(getConfirmInput()).toHaveAttribute('autocomplete', 'new-password');
+  });
+
   it('shows the password requirements checklist when typing', async () => {
     const user = userEvent.setup();
     render(<ResetPassword />);
