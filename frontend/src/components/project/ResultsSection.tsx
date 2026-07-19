@@ -108,19 +108,19 @@ export const ResultsSection = ({
           </div>
           <div className="grid grid-cols-3 gap-4 text-center border-t pt-4">
             <div>
-              <div className="text-xs text-muted-foreground uppercase">{tFuzzy("fuzzy.lower")}</div>
+              <div className="text-xs text-muted-foreground">{tFuzzy("fuzzy.lowerDesc")}</div>
               <div className="font-mono text-sm text-secondary-foreground">
                 {result.best_compromise.lower.toFixed(2)}
               </div>
             </div>
             <div>
-              <div className="text-xs text-muted-foreground uppercase">{tFuzzy("fuzzy.peak")}</div>
+              <div className="text-xs text-muted-foreground">{tFuzzy("fuzzy.peakDesc")}</div>
               <div className="font-mono text-sm text-secondary-foreground">
                 {result.best_compromise.peak.toFixed(2)}
               </div>
             </div>
             <div>
-              <div className="text-xs text-muted-foreground uppercase">{tFuzzy("fuzzy.upper")}</div>
+              <div className="text-xs text-muted-foreground">{tFuzzy("fuzzy.upperDesc")}</div>
               <div className="font-mono text-sm text-secondary-foreground">
                 {result.best_compromise.upper.toFixed(2)}
               </div>
