@@ -9,6 +9,21 @@ name: Regenerate Visual Snapshots
 # Run it from the Actions tab (or `gh workflow run regen-snapshots.yml
 # -f branch=<feature-branch>`). Uploading an artifact needs only the default
 # read token, so no repository permission change is required.
+#
+# FALLBACK -- if this workflow is unavailable, the fresh amd64 renders are
+# already inside the failed E2E run's report, so harvest them instead:
+#   1. gh run download <run-id> -n playwright-report -D <dir>
+#   2. <dir>/index.html embeds the report as a base64 zip in
+#      <template id="playwrightReportBase64">; decode + unzip it. The JSONs
+#      inside list attachments named "<snapshot>-actual/-expected/-diff.png",
+#      each pointing at data/<sha1>.png.
+#   3. The "-actual" files are the new baselines. Sanity-check that each
+#      "-expected" matches the currently committed PNG, then copy the
+#      "-actual" ones over frontend/e2e/visual-regression.spec.ts-snapshots/
+#      <snapshot>-visual-regression-linux.png and commit.
+# Only the *-linux.png baselines are tracked; *-darwin.png are gitignored and
+# are regenerated locally with `npx playwright test --project=visual-regression
+# --update-snapshots`.
 
 on:
   workflow_dispatch:
@@ -16,10 +31,12 @@ on:
       branch:
         description: "Branch to regenerate snapshots on and push the result to"
         required: true
+        type: string
       grep:
         description: "Playwright -g filter selecting which tests to update"
         required: false
         default: "project results"
+        type: string
 
 permissions:
   contents: read
