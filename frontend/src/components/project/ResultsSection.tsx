@@ -17,6 +17,7 @@ import { ProjectWithRole, Opinion, CalculationResult } from "@/types/api";
 import { CentroidBarChart } from "@/components/visualizations/CentroidBarChart";
 import { cn } from "@/lib/utils";
 import { TriangleVisualization } from "./TriangleVisualization";
+import { OpinionLandscape } from "./OpinionLandscape";
 
 export interface ResultsSectionProps {
   result: CalculationResult | null;
@@ -89,30 +90,40 @@ export const ResultsSection = ({
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-3 gap-4 text-center mb-4">
+          <div className="text-center mb-4">
+            <div className="text-xs text-muted-foreground uppercase">{t("detail.resultValue")}</div>
+            <div className="flex items-baseline justify-center gap-2 flex-wrap">
+              <span className="font-mono text-4xl font-bold text-primary">
+                {result.best_compromise.centroid.toFixed(2)}
+              </span>
+              <span className="font-mono text-sm text-muted-foreground">
+                ± {result.max_error.toFixed(2)}
+              </span>
+            </div>
+            <div className="mt-2">
+              <Badge className={cn("text-xs font-normal", agreementClasses.badge)}>
+                {t(`detail.confidenceLevel.${agreementLevel}`)} {t("detail.confidence")}
+              </Badge>
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-4 text-center border-t pt-4">
             <div>
               <div className="text-xs text-muted-foreground uppercase">{tFuzzy("fuzzy.lower")}</div>
-              <div className="font-mono text-2xl font-medium">
+              <div className="font-mono text-sm text-secondary-foreground">
                 {result.best_compromise.lower.toFixed(2)}
               </div>
             </div>
             <div>
               <div className="text-xs text-muted-foreground uppercase">{tFuzzy("fuzzy.peak")}</div>
-              <div className="font-mono text-2xl font-medium">
+              <div className="font-mono text-sm text-secondary-foreground">
                 {result.best_compromise.peak.toFixed(2)}
               </div>
             </div>
             <div>
               <div className="text-xs text-muted-foreground uppercase">{tFuzzy("fuzzy.upper")}</div>
-              <div className="font-mono text-2xl font-medium">
+              <div className="font-mono text-sm text-secondary-foreground">
                 {result.best_compromise.upper.toFixed(2)}
               </div>
-            </div>
-          </div>
-          <div className="text-center border-t pt-4">
-            <div className="text-xs text-muted-foreground uppercase">{tFuzzy("fuzzy.centroid")}</div>
-            <div className="font-mono text-3xl font-medium">
-              {result.best_compromise.centroid.toFixed(2)}
             </div>
           </div>
         </CardContent>
@@ -164,11 +175,14 @@ export const ResultsSection = ({
         </CollapsibleContent>
       </Collapsible>
 
-      {/* Max Error & Experts */}
+      {/* Confidence & Experts */}
       <Card>
         <CardContent className="pt-6">
-          <div className="flex justify-between items-center mb-2">
-            <span className="text-sm">{t("detail.maxError")}</span>
+          <div className="flex justify-between items-center mb-1">
+            <span className="text-sm">
+              {t("detail.confidence")}{" "}
+              <span className="text-xs text-muted-foreground font-normal">(Δmax)</span>
+            </span>
             <div className="flex items-center gap-2">
               <Badge className={cn("text-xs", agreementClasses.badge)}>
                 {t(`detail.agreement.${agreementLevel}`)}
@@ -178,6 +192,7 @@ export const ResultsSection = ({
               </span>
             </div>
           </div>
+          <p className="text-xs text-muted-foreground mb-2">{t("detail.confidenceHint")}</p>
           <Progress value={Math.min(errorPercent, 100)} className={cn("h-2", agreementClasses.progress)} />
           <div className="flex justify-between items-center mt-4 text-sm text-muted-foreground">
             <span>{t("detail.experts")}</span>
@@ -192,8 +207,11 @@ export const ResultsSection = ({
           <CardTitle className="text-lg">{t("detail.visualization")}</CardTitle>
         </CardHeader>
         <CardContent>
-          <Tabs defaultValue="triangle" className="space-y-4">
+          <Tabs defaultValue="landscape" className="space-y-4">
             <TabsList className="w-full">
+              <TabsTrigger value="landscape" className="flex-1">
+                {t("detail.vizTab.landscape")}
+              </TabsTrigger>
               <TabsTrigger value="triangle" className="flex-1">
                 {t("detail.vizTab.triangle")}
               </TabsTrigger>
@@ -201,6 +219,10 @@ export const ResultsSection = ({
                 {t("detail.vizTab.centroid")}
               </TabsTrigger>
             </TabsList>
+
+            <TabsContent value="landscape">
+              <OpinionLandscape result={result} project={project} opinions={opinions} />
+            </TabsContent>
 
             <TabsContent value="triangle">
               <TriangleVisualization

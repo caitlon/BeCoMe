@@ -98,10 +98,17 @@
     "resultsError": "Results could not be displayed. Try reloading the page.",
     "bestCompromise": "Best Compromise",
     "resultBadge": "Result",
+    "resultValue": "Result value",
     "arithmeticMean": "Arithmetic Mean (Γ)",
     "median": "Median (Ω)",
     "supportingCalcs": "Supporting calculations",
-    "maxError": "Max Error (Δmax)",
+    "confidence": "Confidence",
+    "confidenceHint": "How closely the mean and median agree -- a tighter agreement means a more precise compromise.",
+    "confidenceLevel": {
+      "high": "High",
+      "moderate": "Moderate",
+      "low": "Low"
+    },
     "expertOpinions": "Expert Opinions",
     "noOpinions": "No expert opinions yet.",
     "pending": "Pending",
@@ -124,6 +131,7 @@
     "showIndividual": "Show individual opinions",
     "awaitingResponse": "Awaiting response",
     "vizTab": {
+      "landscape": "Landscape",
       "triangle": "Triangle",
       "centroid": "Centroid"
     },
