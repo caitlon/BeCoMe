@@ -13,6 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
+import { NotFoundState } from "@/components/NotFoundState";
 import {
   useLocalizedCaseStudyById,
   useLocalizedLikertLabel,
@@ -33,22 +34,7 @@ const CaseStudy = () => {
   }, [id]);
 
   if (!caseStudy) {
-    return (
-      <div className="min-h-screen bg-background">
-        <Navbar />
-        <div className="container mx-auto px-6 py-20 text-center">
-          <h1 className="font-display text-3xl md:text-4xl font-normal mb-4">
-            {tCommon("notFound.title")}
-          </h1>
-          <Button variant="outline" asChild>
-            <Link to="/">
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              {tCommon("notFound.backHome")}
-            </Link>
-          </Button>
-        </div>
-      </div>
-    );
+    return <NotFoundState />;
   }
 
   const IconComponent = caseStudy.icon;

@@ -1,8 +1,8 @@
-import { Link, useLocation } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 
-import { Navbar } from "@/components/layout/Navbar";
+import { NotFoundState } from "@/components/NotFoundState";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { logger } from "@/lib/logger";
 
@@ -12,25 +12,10 @@ const NotFound = () => {
   useDocumentTitle(t("pageTitle.notFound"));
 
   useEffect(() => {
-    logger.error("404 Error: route not found", { path: location.pathname });
+    logger.warn("404 Error: route not found", { path: location.pathname });
   }, [location.pathname]);
 
-  return (
-    <div className="min-h-screen bg-background">
-      <Navbar />
-      <main id="main-content" className="flex min-h-[calc(100vh-4rem)] items-center justify-center">
-        <div className="text-center">
-          <h1 className="font-display text-4xl font-normal tracking-tight mb-4">{t("notFound.code")}</h1>
-          <p className="mb-4 text-xl text-muted-foreground">
-            {t("notFound.description")}
-          </p>
-          <Link to="/" className="text-primary underline hover:text-primary/80">
-            {t("notFound.backHome")}
-          </Link>
-        </div>
-      </main>
-    </div>
-  );
+  return <NotFoundState />;
 };
 
 export default NotFound;

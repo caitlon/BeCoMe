@@ -50,7 +50,6 @@ vi.mock('@/contexts/AuthContext', () => ({
 
 // 4. Mock UI providers as no-ops
 vi.mock('@/components/ui/toaster', () => ({ Toaster: () => null }));
-vi.mock('@/components/ui/sonner', () => ({ Toaster: () => null }));
 vi.mock('@/components/ui/tooltip', () => ({
   TooltipProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
