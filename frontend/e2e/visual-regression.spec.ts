@@ -86,6 +86,7 @@ lightTest.describe('Visual Regression — Light Theme', () => {
     await createProjectWithOpinion(page);
 
     const triangleTab = page.getByRole('tab', { name: /triangle/i });
+    await triangleTab.click();
     await expect(triangleTab).toHaveAttribute('aria-selected', 'true');
 
     await expect(page).toHaveScreenshot('project-results-triangle-light.png');
@@ -137,6 +138,7 @@ darkTest.describe('Visual Regression — Dark Theme', () => {
     await createProjectWithOpinion(page);
 
     const triangleTab = page.getByRole('tab', { name: /triangle/i });
+    await triangleTab.click();
     await expect(triangleTab).toHaveAttribute('aria-selected', 'true');
 
     await expect(page).toHaveScreenshot('project-results-triangle-dark.png');
