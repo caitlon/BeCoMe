@@ -98,10 +98,17 @@
     "resultsError": "Výsledky se nepodařilo zobrazit. Zkuste stránku znovu načíst.",
     "bestCompromise": "Nejlepší kompromis",
     "resultBadge": "Výsledek",
+    "resultValue": "Výsledná hodnota",
     "arithmeticMean": "Aritmetický průměr (Γ)",
     "median": "Medián (Ω)",
     "supportingCalcs": "Pomocné výpočty",
-    "maxError": "Max. chyba (Δmax)",
+    "confidence": "Spolehlivost",
+    "confidenceHint": "Jak blízko se shodují průměr a medián -- těsnější shoda znamená přesnější kompromis.",
+    "confidenceLevel": {
+      "high": "Vysoká",
+      "moderate": "Střední",
+      "low": "Nízká"
+    },
     "expertOpinions": "Expertní názory",
     "noOpinions": "Zatím žádné expertní názory.",
     "pending": "Čeká",
@@ -124,6 +131,7 @@
     "showIndividual": "Zobrazit jednotlivé názory",
     "awaitingResponse": "Čeká na odpověď",
     "vizTab": {
+      "landscape": "Rozložení",
       "triangle": "Trojúhelník",
       "centroid": "Centroid"
     },

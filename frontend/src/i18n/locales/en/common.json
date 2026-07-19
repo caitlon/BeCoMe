@@ -120,6 +120,7 @@
     "pendingMemberRow": "{{name}} — awaiting response, no opinion submitted yet",
     "pendingInvitationRow": "{{name}} — invitation pending, not yet joined",
     "centroidChartDesc": "Bar chart showing expert opinion centroids sorted by value with reference lines for mean, median, and best compromise",
+    "landscapeChartDesc": "Number line showing individual expert opinion centroids with mean, median, and best compromise markers",
     "memberProfileDialog": "Profile of {{name}}",
     "opinionValues": "Opinion values: Lower {{lower}}, Peak {{peak}}, Upper {{upper}}, Centroid {{centroid}}",
     "opensInNewTab": "opens in new tab"
@@ -131,6 +132,10 @@
     "medianLine": "Median (Ω)",
     "compromiseLine": "Best Compromise (ΓΩMean)",
     "srSummary": "{{count}} experts, centroids from {{min}} to {{max}}. Mean: {{mean}}, Median: {{median}}, Best Compromise: {{compromise}}."
+  },
+  "landscapeChart": {
+    "srSummary": "{{count}} expert opinions spread from {{min}} to {{max}}; the best compromise sits at {{compromise}}.",
+    "srSummaryEmpty": "No expert opinions yet; the best compromise sits at {{compromise}}."
   },
   "pageTitle": {
     "landing": "Home",
