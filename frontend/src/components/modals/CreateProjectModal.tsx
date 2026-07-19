@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useId } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -42,6 +42,7 @@ export function CreateProjectModal({
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const submittingRef = useRef(false);
+  const scaleId = useId();
 
   const createProjectSchema = useMemo(
     () =>
@@ -139,60 +140,60 @@ export function CreateProjectModal({
             <legend className="text-sm font-medium leading-none">{t("create.scaleSettings")}</legend>
             <div className="grid grid-cols-3 gap-3">
               <div>
-                <Label htmlFor="scale-min" className="sr-only">{t("create.scaleMin")}</Label>
+                <Label htmlFor={`${scaleId}-min`} className="sr-only">{t("create.scaleMin")}</Label>
                 <Input
-                  id="scale-min"
+                  id={`${scaleId}-min`}
                   type="number"
                   placeholder={t("create.scaleMinPlaceholder")}
                   {...register("scale_min")}
                   className={cn(/* v8 ignore next */ errors.scale_min && "border-destructive")}
                   aria-invalid={!!errors.scale_min}
-                  aria-describedby={/* v8 ignore next */ errors.scale_min ? "scale-min-error" : undefined}
+                  aria-describedby={/* v8 ignore next */ errors.scale_min ? `${scaleId}-min-error` : undefined}
                 />
                 <span className="text-xs text-muted-foreground mt-1 block" aria-hidden="true">
                   {t("create.scaleMin")}
                 </span>
                 {errors.scale_min && (
-                  <p id="scale-min-error" className="text-xs text-destructive mt-1">
+                  <p id={`${scaleId}-min-error`} className="text-xs text-destructive mt-1">
                     {errors.scale_min.message}
                   </p>
                 )}
               </div>
               <div>
-                <Label htmlFor="scale-max" className="sr-only">{t("create.scaleMax")}</Label>
+                <Label htmlFor={`${scaleId}-max`} className="sr-only">{t("create.scaleMax")}</Label>
                 <Input
-                  id="scale-max"
+                  id={`${scaleId}-max`}
                   type="number"
                   placeholder={t("create.scaleMaxPlaceholder")}
                   {...register("scale_max")}
                   className={cn(errors.scale_max && "border-destructive")}
                   aria-invalid={!!errors.scale_max}
-                  aria-describedby={errors.scale_max ? "scale-max-error" : undefined}
+                  aria-describedby={errors.scale_max ? `${scaleId}-max-error` : undefined}
                 />
                 <span className="text-xs text-muted-foreground mt-1 block" aria-hidden="true">
                   {t("create.scaleMax")}
                 </span>
                 {errors.scale_max && (
-                  <p id="scale-max-error" className="text-xs text-destructive mt-1">
+                  <p id={`${scaleId}-max-error`} className="text-xs text-destructive mt-1">
                     {errors.scale_max.message}
                   </p>
                 )}
               </div>
               <div>
-                <Label htmlFor="scale-unit" className="sr-only">{t("create.scaleUnit")}</Label>
+                <Label htmlFor={`${scaleId}-unit`} className="sr-only">{t("create.scaleUnit")}</Label>
                 <Input
-                  id="scale-unit"
+                  id={`${scaleId}-unit`}
                   placeholder={t("create.scaleUnitPlaceholder")}
                   {...register("scale_unit")}
                   className={cn(errors.scale_unit && "border-destructive")}
                   aria-invalid={!!errors.scale_unit}
-                  aria-describedby={errors.scale_unit ? "scale-unit-error" : undefined}
+                  aria-describedby={errors.scale_unit ? `${scaleId}-unit-error` : undefined}
                 />
                 <span className="text-xs text-muted-foreground mt-1 block" aria-hidden="true">
                   {t("create.scaleUnit")}
                 </span>
                 {errors.scale_unit && (
-                  <p id="scale-unit-error" className="text-xs text-destructive mt-1">
+                  <p id={`${scaleId}-unit-error`} className="text-xs text-destructive mt-1">
                     {errors.scale_unit.message}
                   </p>
                 )}
