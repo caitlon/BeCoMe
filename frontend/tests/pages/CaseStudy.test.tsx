@@ -193,7 +193,7 @@ describe('CaseStudy - Not Found', () => {
   it('renders not-found state for invalid ID', () => {
     render(<CaseStudy />);
 
-    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/not found|nenalezeno/i);
+    expect(screen.getByRole('heading', { level: 1, name: '404' })).toBeInTheDocument();
   });
 
   it('not-found state has link to /', () => {
@@ -215,6 +215,6 @@ describe('CaseStudy - undefined id', () => {
 
   it('renders not found when id is undefined', () => {
     render(<CaseStudy />);
-    expect(screen.getByText(/not found/i)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: '404' })).toBeInTheDocument();
   });
 });
