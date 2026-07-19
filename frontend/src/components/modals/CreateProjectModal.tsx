@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -41,6 +41,7 @@ export function CreateProjectModal({
   const { t } = useTranslation("projects");
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
+  const submittingRef = useRef(false);
 
   const createProjectSchema = useMemo(
     () =>
@@ -77,6 +78,8 @@ export function CreateProjectModal({
   });
 
   const onSubmit = async (data: CreateProjectFormData) => {
+    if (submittingRef.current) return; // ignore re-entrant submits (double-click)
+    submittingRef.current = true;
     setIsLoading(true);
     try {
       await api.createProject({
@@ -100,6 +103,7 @@ export function CreateProjectModal({
       });
     } finally {
       setIsLoading(false);
+      submittingRef.current = false;
     }
   };
 
@@ -115,6 +119,7 @@ export function CreateProjectModal({
           </DialogDescription>
         </DialogHeader>
 
+        {/* eslint-disable-next-line react-hooks/refs -- handleSubmit defers to the browser's submit event; submittingRef is only read/written once that event fires, never during render */}
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <FormField
             label={`${t("create.name")} *`}
@@ -141,10 +146,17 @@ export function CreateProjectModal({
                   placeholder={t("create.scaleMinPlaceholder")}
                   {...register("scale_min")}
                   className={cn(/* v8 ignore next */ errors.scale_min && "border-destructive")}
+                  aria-invalid={!!errors.scale_min}
+                  aria-describedby={/* v8 ignore next */ errors.scale_min ? "scale-min-error" : undefined}
                 />
                 <span className="text-xs text-muted-foreground mt-1 block" aria-hidden="true">
                   {t("create.scaleMin")}
                 </span>
+                {errors.scale_min && (
+                  <p id="scale-min-error" className="text-xs text-destructive mt-1">
+                    {errors.scale_min.message}
+                  </p>
+                )}
               </div>
               <div>
                 <Label htmlFor="scale-max" className="sr-only">{t("create.scaleMax")}</Label>
@@ -154,10 +166,17 @@ export function CreateProjectModal({
                   placeholder={t("create.scaleMaxPlaceholder")}
                   {...register("scale_max")}
                   className={cn(errors.scale_max && "border-destructive")}
+                  aria-invalid={!!errors.scale_max}
+                  aria-describedby={errors.scale_max ? "scale-max-error" : undefined}
                 />
                 <span className="text-xs text-muted-foreground mt-1 block" aria-hidden="true">
                   {t("create.scaleMax")}
                 </span>
+                {errors.scale_max && (
+                  <p id="scale-max-error" className="text-xs text-destructive mt-1">
+                    {errors.scale_max.message}
+                  </p>
+                )}
               </div>
               <div>
                 <Label htmlFor="scale-unit" className="sr-only">{t("create.scaleUnit")}</Label>
@@ -166,17 +185,19 @@ export function CreateProjectModal({
                   placeholder={t("create.scaleUnitPlaceholder")}
                   {...register("scale_unit")}
                   className={cn(errors.scale_unit && "border-destructive")}
+                  aria-invalid={!!errors.scale_unit}
+                  aria-describedby={errors.scale_unit ? "scale-unit-error" : undefined}
                 />
                 <span className="text-xs text-muted-foreground mt-1 block" aria-hidden="true">
                   {t("create.scaleUnit")}
                 </span>
+                {errors.scale_unit && (
+                  <p id="scale-unit-error" className="text-xs text-destructive mt-1">
+                    {errors.scale_unit.message}
+                  </p>
+                )}
               </div>
             </div>
-            {errors.scale_max && (
-              <p className="text-sm text-destructive">
-                {errors.scale_max.message}
-              </p>
-            )}
           </fieldset>
 
           <div className="flex justify-end gap-3 pt-4">

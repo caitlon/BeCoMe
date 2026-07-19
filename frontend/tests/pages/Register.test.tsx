@@ -54,6 +54,16 @@ describe('Register', () => {
     expect(getSubmitButton()).toBeInTheDocument();
   });
 
+  it('sets autocomplete attributes so password managers fill the right field', () => {
+    render(<Register />);
+
+    expect(getEmailInput()).toHaveAttribute('autocomplete', 'email');
+    expect(getPasswordInput()).toHaveAttribute('autocomplete', 'new-password');
+    expect(getConfirmPasswordInput()).toHaveAttribute('autocomplete', 'new-password');
+    expect(getFirstNameInput()).toHaveAttribute('autocomplete', 'given-name');
+    expect(getLastNameInput()).toHaveAttribute('autocomplete', 'family-name');
+  });
+
   it('shows email requirements checklist when email entered', async () => {
     const user = userEvent.setup();
     render(<Register />);

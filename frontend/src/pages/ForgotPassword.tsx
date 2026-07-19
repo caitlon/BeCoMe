@@ -76,6 +76,7 @@ const ForgotPassword = () => {
         <FormField
           label={t("forgotPassword.email")}
           type="email"
+          autoComplete="email"
           placeholder={t("forgotPassword.emailPlaceholder")}
           error={errors.email}
           {...register("email")}

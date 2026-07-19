@@ -40,6 +40,12 @@ describe('ForgotPassword', () => {
     expect(getSubmitButton()).toBeInTheDocument();
   });
 
+  it('sets autocomplete="email" so password managers fill the right field', () => {
+    render(<ForgotPassword />);
+
+    expect(getEmailInput()).toHaveAttribute('autocomplete', 'email');
+  });
+
   it('shows a validation error for an invalid email', async () => {
     const user = userEvent.setup();
     render(<ForgotPassword />);

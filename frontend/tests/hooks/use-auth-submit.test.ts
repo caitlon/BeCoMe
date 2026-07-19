@@ -160,4 +160,29 @@ describe('useAuthSubmit', () => {
 
     expect(result.current.isLoading).toBe(false);
   });
+
+  it('drops a re-entrant execute while one is already in flight (double-submit guard)', async () => {
+    let resolveAction!: () => void;
+    const action = vi.fn(() => new Promise<void>((resolve) => { resolveAction = resolve; }));
+
+    const { result } = renderHook(() => useAuthSubmit(messages));
+
+    // Fire two execute() calls before the first settles; the guard must drop
+    // the second so the wrapped action runs exactly once.
+    let first!: Promise<void>;
+    let second!: Promise<void>;
+    act(() => {
+      first = result.current.execute(action);
+      second = result.current.execute(action);
+    });
+
+    expect(action).toHaveBeenCalledOnce();
+
+    await act(async () => {
+      resolveAction();
+      await Promise.all([first, second]);
+    });
+
+    expect(action).toHaveBeenCalledOnce();
+  });
 });
