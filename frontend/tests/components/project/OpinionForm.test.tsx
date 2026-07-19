@@ -206,6 +206,19 @@ describe('OpinionForm - Submission', () => {
       expect(lowerInput).toHaveAttribute('aria-invalid', 'true');
     });
   });
+
+  it('surfaces the required error on the position field once it is blurred empty', async () => {
+    const user = userEvent.setup();
+    render(<Harness onSubmit={vi.fn().mockResolvedValue(undefined)} />);
+
+    const positionInput = screen.getByLabelText('Position');
+    await user.click(positionInput);
+    await user.tab();
+
+    await waitFor(() => {
+      expect(positionInput).toHaveAttribute('aria-invalid', 'true');
+    });
+  });
 });
 
 describe('OpinionForm - Delete Opinion Link', () => {
