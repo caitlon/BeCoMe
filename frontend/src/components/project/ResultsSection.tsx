@@ -1,6 +1,6 @@
-import { useId, useState } from "react";
+import { useId } from "react";
 import { useTranslation } from "react-i18next";
-import { Loader2, ChevronDown, Download, FileText, FileSpreadsheet } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -9,15 +9,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { api } from "@/lib/api";
-import { downloadBlob } from "@/lib/download";
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { ProjectWithRole, Opinion, CalculationResult } from "@/types/api";
-import { useToast } from "@/hooks/use-toast";
 import { CentroidBarChart } from "@/components/visualizations/CentroidBarChart";
 import { cn } from "@/lib/utils";
 import { TriangleVisualization } from "./TriangleVisualization";
@@ -37,35 +33,9 @@ export const ResultsSection = ({
   setShowIndividual,
   opinions,
 }: ResultsSectionProps) => {
-  const { t, i18n } = useTranslation("projects");
+  const { t } = useTranslation("projects");
   const { t: tFuzzy } = useTranslation();
-  const { toast } = useToast();
-  const [exporting, setExporting] = useState<"pdf" | "csv" | null>(null);
   const showIndividualId = useId();
-
-  const handleExport = async (format: "pdf" | "csv") => {
-    setExporting(format);
-    try {
-      const lang = i18n.language.startsWith("cs") ? "cs" : "en";
-      const blob = await api.exportProjectResult(project.id, format, lang);
-      const slug =
-        project.name
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, "-")
-          .replace(/^-|-$/g, "") || "project";
-      downloadBlob(blob, `${slug}-results.${format}`);
-      toast({ title: t("resultExport.success") });
-    } catch (error) {
-      toast({
-        title: t("toast.error"),
-        description:
-          error instanceof Error ? error.message : t("resultExport.error"),
-        variant: "destructive",
-      });
-    } finally {
-      setExporting(null);
-    }
-  };
 
   if (!result || opinions.length === 0) {
     return (
@@ -107,40 +77,13 @@ export const ResultsSection = ({
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-end">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm" disabled={exporting !== null}>
-              {exporting === null ? (
-                <Download className="mr-2 h-4 w-4" />
-              ) : (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              )}
-              {exporting === null
-                ? t("resultExport.button")
-                : t("resultExport.exporting")}
-              <ChevronDown className="ml-2 h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => void handleExport("pdf")}>
-              <FileText className="mr-2 h-4 w-4" />
-              {t("resultExport.pdf")}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => void handleExport("csv")}>
-              <FileSpreadsheet className="mr-2 h-4 w-4" />
-              {t("resultExport.csv")}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-
       {/* Best Compromise */}
       <Card className="border-2 border-primary">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             {t("detail.bestCompromise")}
-            <span className="text-sm font-normal text-muted-foreground">
+            <Badge className="text-xs">{t("detail.resultBadge")}</Badge>
+            <span className="text-sm font-normal text-muted-foreground ml-auto">
               (ΓΩMean)
             </span>
           </CardTitle>
@@ -176,37 +119,50 @@ export const ResultsSection = ({
       </Card>
 
       {/* Arithmetic Mean & Median */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm">{t("detail.arithmeticMean")}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="font-mono text-sm whitespace-nowrap tabular-nums overflow-x-auto">
-              {result.arithmetic_mean.lower.toFixed(2)} | {result.arithmetic_mean.peak.toFixed(2)} |{" "}
-              {result.arithmetic_mean.upper.toFixed(2)}
-            </div>
-            <div className="text-xs text-muted-foreground mt-1">
-              {tFuzzy("fuzzy.centroid")}: {result.arithmetic_mean.centroid.toFixed(2)}
-            </div>
-          </CardContent>
-        </Card>
+      <Collapsible>
+        <CollapsibleTrigger asChild>
+          <Button
+            variant="ghost"
+            className="w-full justify-between px-2 text-muted-foreground [&[data-state=open]>svg]:rotate-180"
+          >
+            <span className="text-sm font-medium">{t("detail.supportingCalcs")}</span>
+            <ChevronDown className="h-4 w-4 transition-transform" />
+          </Button>
+        </CollapsibleTrigger>
+        <CollapsibleContent className="pt-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">{t("detail.arithmeticMean")}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="font-mono text-sm whitespace-nowrap tabular-nums overflow-x-auto">
+                  {result.arithmetic_mean.lower.toFixed(2)} | {result.arithmetic_mean.peak.toFixed(2)} |{" "}
+                  {result.arithmetic_mean.upper.toFixed(2)}
+                </div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  {tFuzzy("fuzzy.centroid")}: {result.arithmetic_mean.centroid.toFixed(2)}
+                </div>
+              </CardContent>
+            </Card>
 
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm">{t("detail.median")}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="font-mono text-sm whitespace-nowrap tabular-nums overflow-x-auto">
-              {result.median.lower.toFixed(2)} | {result.median.peak.toFixed(2)} |{" "}
-              {result.median.upper.toFixed(2)}
-            </div>
-            <div className="text-xs text-muted-foreground mt-1">
-              {tFuzzy("fuzzy.centroid")}: {result.median.centroid.toFixed(2)}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">{t("detail.median")}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="font-mono text-sm whitespace-nowrap tabular-nums overflow-x-auto">
+                  {result.median.lower.toFixed(2)} | {result.median.peak.toFixed(2)} |{" "}
+                  {result.median.upper.toFixed(2)}
+                </div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  {tFuzzy("fuzzy.centroid")}: {result.median.centroid.toFixed(2)}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
 
       {/* Max Error & Experts */}
       <Card>

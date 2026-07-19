@@ -4,7 +4,13 @@ import userEvent from '@testing-library/user-event';
 import { render } from '@tests/utils';
 import ProjectDetail from '@/pages/ProjectDetail';
 import { HttpError } from '@/lib/api';
-import { createProject, createProjectWithRole, createOpinion, createMember } from '@tests/factories/project';
+import {
+  createProject,
+  createProjectWithRole,
+  createOpinion,
+  createMember,
+  createCalculationResult,
+} from '@tests/factories/project';
 
 // Use vi.hoisted for mock variables
 const { mockApi, mockToast, mockUser, mockNavigate, mockDownloadBlob } = vi.hoisted(() => ({
@@ -983,5 +989,64 @@ describe('ProjectDetail - Responsive single layout', () => {
       screen.getByText('Values must satisfy: lower ≤ peak ≤ upper'),
     ).toBeInTheDocument();
     expect(mockApi.createOrUpdateOpinion).not.toHaveBeenCalled();
+  });
+});
+
+describe('ProjectDetail - Header Result Export', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    defaultSetup();
+  });
+
+  it('hides the export menu while there is no result yet', async () => {
+    // defaultSetup() resolves getResult to null.
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Test Project')).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('button', { name: /export/i })).not.toBeInTheDocument();
+  });
+
+  it('hides the export menu when a result exists but there are no opinions', async () => {
+    mockApi.getOpinions.mockResolvedValue([]);
+    mockApi.getResult.mockResolvedValue(createCalculationResult());
+
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Test Project')).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('button', { name: /export/i })).not.toBeInTheDocument();
+  });
+
+  it('shows the export menu in the header once a result is available', async () => {
+    mockApi.getOpinions.mockResolvedValue([createOpinion({ user_id: 'user-2' })]);
+    mockApi.getResult.mockResolvedValue(createCalculationResult());
+
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /export/i })).toBeInTheDocument();
+    });
+  });
+
+  it('exports a PDF from the header menu', async () => {
+    const user = userEvent.setup();
+    mockApi.getOpinions.mockResolvedValue([createOpinion({ user_id: 'user-2' })]);
+    mockApi.getResult.mockResolvedValue(createCalculationResult());
+    mockApi.exportProjectResult.mockResolvedValue(new Blob(['pdf'], { type: 'application/pdf' }));
+
+    render(<ProjectDetail />);
+
+    const exportButton = await screen.findByRole('button', { name: /export/i });
+    await user.click(exportButton);
+    const pdfItem = await screen.findByRole('menuitem', { name: /pdf report/i });
+    await user.click(pdfItem);
+
+    await waitFor(() => {
+      expect(mockApi.exportProjectResult).toHaveBeenCalledWith('project-1', 'pdf', 'en');
+      expect(mockDownloadBlob).toHaveBeenCalledWith(expect.any(Blob), 'test-project-results.pdf');
+    });
   });
 });

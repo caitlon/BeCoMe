@@ -30,6 +30,7 @@ import {
   OpinionFormOutput,
   OtherOpinionsTable,
   ResultsSection,
+  ResultExportMenu,
   TeamTable,
   MemberProfileDialog,
   useOpinionForm,
@@ -357,6 +358,11 @@ const ProjectDetail = () => {
                   <Trash2 className="h-4 w-4" />
                   {t("detail.delete")}
                 </Button>
+              </div>
+            )}
+            {result && opinions.length > 0 && (
+              <div className="ml-auto">
+                <ResultExportMenu project={project} />
               </div>
             )}
           </div>
