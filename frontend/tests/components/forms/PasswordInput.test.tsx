@@ -27,6 +27,29 @@ describe('PasswordInput', () => {
     expect(input).toHaveAttribute('type', 'password')
   })
 
+  it('is a plain button that never submits the surrounding form', () => {
+    render(<PasswordInput label="Password" name="password" />)
+
+    const toggleButton = screen.getByRole('button', { name: /show|hide/i })
+    expect(toggleButton).toHaveAttribute('type', 'button')
+  })
+
+  it('reflects visibility state via aria-pressed and updates the aria-label on toggle', async () => {
+    const user = userEvent.setup()
+    render(<PasswordInput label="Password" name="password" />)
+
+    const toggleButton = screen.getByRole('button', { name: 'Show password' })
+    expect(toggleButton).toHaveAttribute('aria-pressed', 'false')
+
+    await user.click(toggleButton)
+    expect(toggleButton).toHaveAttribute('aria-pressed', 'true')
+    expect(toggleButton).toHaveAccessibleName('Hide password')
+
+    await user.click(toggleButton)
+    expect(toggleButton).toHaveAttribute('aria-pressed', 'false')
+    expect(toggleButton).toHaveAccessibleName('Show password')
+  })
+
   it('displays error message', () => {
     render(
       <PasswordInput

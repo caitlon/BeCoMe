@@ -81,7 +81,7 @@ test.describe('Project Detail — Edge Cases', () => {
       timeout: 10000,
     });
 
-    // Default tab is Triangle
+    // Landscape is the default tab; Triangle and Centroid are also present.
     const triangleTab = page.getByRole('tab', { name: /triangle/i });
     const centroidTab = page.getByRole('tab', { name: /centroid/i });
 
@@ -119,6 +119,10 @@ test.describe('Project Detail — Edge Cases', () => {
     await expect(page.getByRole('heading', { name: /Best Compromise/ })).toBeVisible({
       timeout: 10000,
     });
+
+    // The "Show individual opinions" control lives in the Triangle tab, which is
+    // no longer the default (Landscape is), so select it before touching the checkbox.
+    await page.getByRole('tab', { name: /triangle/i }).click();
 
     // Find and toggle the checkbox
     const checkbox = page.getByLabel(/show individual/i);

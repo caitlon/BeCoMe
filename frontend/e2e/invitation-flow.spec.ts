@@ -126,6 +126,8 @@ test.describe.serial('Invitation Flow', () => {
     await expect(
       ownerPage.getByRole('heading', { name: /Best Compromise/ }),
     ).toBeVisible({ timeout: 10000 });
+    // Arithmetic Mean and Median live in a collapsed "Supporting calculations" section
+    await ownerPage.getByRole('button', { name: /Supporting calculations/ }).click();
     await expect(ownerPage.getByRole('heading', { name: /Arithmetic Mean/ })).toBeVisible();
     await expect(ownerPage.getByRole('heading', { name: /Median/ })).toBeVisible();
 

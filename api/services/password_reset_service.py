@@ -7,7 +7,7 @@ import logging
 import secrets
 from datetime import timedelta
 
-from sqlmodel import col, select
+from sqlmodel import Session, col, select
 
 from api.auth.password import hash_password
 from api.config import get_settings
@@ -15,6 +15,7 @@ from api.db.models import PasswordResetToken, User
 from api.db.utils import ensure_utc, utc_now
 from api.exceptions import InvalidResetTokenError, ResetTokenExpiredError
 from api.services.base import BaseService
+from api.services.user_cache import UserCacheStore
 
 logger = logging.getLogger("api.service.password_reset")
 
@@ -43,6 +44,15 @@ class PasswordResetService(BaseService):
     access tokens (the JTI blacklist has no per-user revoke); this is acceptable
     given the short access-token lifetime.
     """
+
+    def __init__(self, session: Session, user_cache: UserCacheStore | None = None) -> None:
+        """Initialize with a DB session and an optional user cache.
+
+        :param session: SQLModel session for database operations.
+        :param user_cache: Cache to invalidate after a password reset.
+        """
+        super().__init__(session)
+        self._user_cache = user_cache
 
     def create_reset_token(self, email: str) -> str | None:
         """Issue a reset token for the given email, if a matching user exists.
@@ -110,6 +120,9 @@ class PasswordResetService(BaseService):
         self._session.add(record)
         self._session.commit()
         self._session.refresh(user)
+
+        if self._user_cache is not None:
+            self._user_cache.invalidate(user.id)
 
         logger.info(
             "Password reset completed",

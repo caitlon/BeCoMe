@@ -105,7 +105,7 @@ export function StepEnterOpinion() {
             {/* Triangle Preview */}
             <div className="bg-muted rounded-lg p-4">
               <svg
-                viewBox="0 0 300 120"
+                viewBox="0 0 300 130"
                 className="w-full"
                 aria-labelledby="triangle-preview-title"
               >
@@ -130,35 +130,6 @@ export function StepEnterOpinion() {
                   strokeOpacity="0.2"
                 />
 
-                {/* Scale labels */}
-                <text
-                  x="20"
-                  y="115"
-                  className="fill-muted-foreground"
-                  fontSize="10"
-                  textAnchor="middle"
-                >
-                  0
-                </text>
-                <text
-                  x="150"
-                  y="115"
-                  className="fill-muted-foreground"
-                  fontSize="10"
-                  textAnchor="middle"
-                >
-                  50
-                </text>
-                <text
-                  x="280"
-                  y="115"
-                  className="fill-muted-foreground"
-                  fontSize="10"
-                  textAnchor="middle"
-                >
-                  100
-                </text>
-
                 {/* Y axis label */}
                 <text
                   x="10"
@@ -171,6 +142,17 @@ export function StepEnterOpinion() {
                   {t("steps.enterOpinion.yAxisLabel")}
                 </text>
 
+                {/* X axis label */}
+                <text
+                  x="150"
+                  y="126"
+                  className="fill-muted-foreground"
+                  fontSize="8"
+                  textAnchor="middle"
+                >
+                  {t("steps.enterOpinion.xAxisLabel")}
+                </text>
+
                 {isValid && (
                   <>
                     {/* Triangle */}
@@ -178,7 +160,7 @@ export function StepEnterOpinion() {
                       initial={{ opacity: 0 }}
                       animate={{
                         opacity: 1,
-                        points: `${scaleToX(lowerNum)},88 ${scaleToX(peakNum)},25 ${scaleToX(upperNum)},88`,
+                        points: `${scaleToX(lowerNum)},100 ${scaleToX(peakNum)},25 ${scaleToX(upperNum)},100`,
                       }}
                       transition={{ duration: 0.3 }}
                       fill="currentColor"
@@ -198,12 +180,33 @@ export function StepEnterOpinion() {
                       transition={{ delay: 0.2 }}
                     />
 
+                    {/* Base markers -- where the triangle sits on the axis */}
+                    <motion.circle
+                      cx={scaleToX(lowerNum)}
+                      cy={100}
+                      r="4"
+                      fill="hsl(var(--primary))"
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      transition={{ delay: 0.2 }}
+                    />
+                    <motion.circle
+                      cx={scaleToX(upperNum)}
+                      cy={100}
+                      r="4"
+                      fill="hsl(var(--primary))"
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      transition={{ delay: 0.2 }}
+                    />
+
                     {/* Value labels */}
                     <text
                       x={scaleToX(lowerNum)}
-                      y="100"
-                      className="fill-muted-foreground"
+                      y="113"
+                      className="fill-foreground"
                       fontSize="9"
+                      fontWeight="bold"
                       textAnchor="middle"
                     >
                       {lowerNum}
@@ -220,9 +223,10 @@ export function StepEnterOpinion() {
                     </text>
                     <text
                       x={scaleToX(upperNum)}
-                      y="100"
-                      className="fill-muted-foreground"
+                      y="113"
+                      className="fill-foreground"
                       fontSize="9"
+                      fontWeight="bold"
                       textAnchor="middle"
                     >
                       {upperNum}

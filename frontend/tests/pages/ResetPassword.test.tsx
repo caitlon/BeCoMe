@@ -15,8 +15,8 @@ vi.mock('@/lib/api', () => ({
 // Mock navigation and the reset token read from the URL query string
 const mockNavigate = vi.fn();
 const routeState: { token: string | null } = { token: 'valid-reset-token' };
-vi.mock('react-router-dom', async () => {
-  const actual = await vi.importActual('react-router-dom');
+vi.mock('react-router', async () => {
+  const actual = await vi.importActual('react-router');
   return {
     ...actual,
     useNavigate: () => mockNavigate,
@@ -68,6 +68,13 @@ describe('ResetPassword', () => {
     expect(screen.getByText(/this reset link is invalid/i)).toBeInTheDocument();
     const link = screen.getByRole('link', { name: /request a new link/i });
     expect(link).toHaveAttribute('href', '/forgot-password');
+  });
+
+  it('sets autocomplete="new-password" on both password fields', () => {
+    render(<ResetPassword />);
+
+    expect(getPasswordInput()).toHaveAttribute('autocomplete', 'new-password');
+    expect(getConfirmInput()).toHaveAttribute('autocomplete', 'new-password');
   });
 
   it('shows the password requirements checklist when typing', async () => {

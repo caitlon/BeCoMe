@@ -4,7 +4,13 @@ import userEvent from '@testing-library/user-event';
 import { render } from '@tests/utils';
 import ProjectDetail from '@/pages/ProjectDetail';
 import { HttpError } from '@/lib/api';
-import { createProject, createProjectWithRole, createOpinion, createMember } from '@tests/factories/project';
+import {
+  createProject,
+  createProjectWithRole,
+  createOpinion,
+  createMember,
+  createCalculationResult,
+} from '@tests/factories/project';
 
 // Use vi.hoisted for mock variables
 const { mockApi, mockToast, mockUser, mockNavigate, mockDownloadBlob } = vi.hoisted(() => ({
@@ -35,8 +41,8 @@ const { mockApi, mockToast, mockUser, mockNavigate, mockDownloadBlob } = vi.hois
 }));
 
 // Mock useParams
-vi.mock('react-router-dom', async () => {
-  const actual = await vi.importActual('react-router-dom');
+vi.mock('react-router', async () => {
+  const actual = await vi.importActual('react-router');
   return {
     ...actual,
     useParams: () => ({ id: 'project-1' }),
@@ -73,6 +79,15 @@ vi.mock('@/contexts/AuthContext', () => ({
   }),
 }));
 
+// Drive the responsive layout deterministically. The page renders a single
+// layout for the active breakpoint, so tests choose desktop (grid + collapsible
+// team) or mobile (tabs) by flipping this flag instead of relying on both
+// layouts coexisting in the DOM.
+const { mediaState } = vi.hoisted(() => ({ mediaState: { isDesktop: true } }));
+vi.mock('@/hooks/use-media-query', () => ({
+  useMediaQuery: () => mediaState.isDesktop,
+}));
+
 // Filter out framer-motion props
 const filterMotionProps = (props: Record<string, unknown>) => {
   const motionProps = ['initial', 'animate', 'exit', 'variants', 'transition', 'whileHover', 'whileTap', 'whileInView', 'viewport'];
@@ -100,6 +115,11 @@ vi.mock('framer-motion', () => ({
   },
   AnimatePresence: ({ children }: React.PropsWithChildren<object>) => <>{children}</>,
 }));
+
+// Reset to the desktop layout before every test; mobile-specific tests opt in.
+beforeEach(() => {
+  mediaState.isDesktop = true;
+});
 
 const defaultSetup = () => {
   const project = createProjectWithRole({
@@ -824,6 +844,7 @@ describe('ProjectDetail - Mobile Team Tab', () => {
 
   it('opens profile dialog from mobile team tab member click', async () => {
     const user = userEvent.setup();
+    mediaState.isDesktop = false;
     const members = [
       createMember({ user_id: 'user-1', first_name: 'John', last_name: 'Doe', role: 'admin' }),
       createMember({ user_id: 'user-2', first_name: 'Jane', last_name: 'Smith', role: 'expert' }),
@@ -832,19 +853,17 @@ describe('ProjectDetail - Mobile Team Tab', () => {
 
     render(<ProjectDetail />);
 
+    // Mobile renders tabs; the team tab must be activated before its content mounts.
+    const teamTab = await screen.findByRole('tab', { name: /team/i });
+    await user.click(teamTab);
+
     await waitFor(() => {
-      expect(screen.getAllByText('Jane Smith').length).toBeGreaterThan(0);
+      expect(
+        screen.getByRole('button', { name: /view profile of jane smith/i }),
+      ).toBeInTheDocument();
     });
 
-    // Click the mobile "Team" tab to make mobile team content active
-    const teamTabs = screen.getAllByRole('tab', { name: /team/i });
-    await user.click(teamTabs[0]);
-
-    // Find the mobile team tabpanel and click the member row within it
-    const teamPanels = screen.getAllByRole('tabpanel');
-    const mobileTeamPanel = teamPanels.find(panel => within(panel).queryByRole('button', { name: /view profile of jane smith/i }))!;
-    const mobileRows = within(mobileTeamPanel).getAllByRole('button', { name: /view profile of jane smith/i });
-    await user.click(mobileRows[0]);
+    await user.click(screen.getByRole('button', { name: /view profile of jane smith/i }));
 
     await waitFor(() => {
       expect(screen.getByRole('dialog')).toBeInTheDocument();
@@ -908,6 +927,126 @@ describe('ProjectDetail - Invite Modal', () => {
     await waitFor(() => {
       // InviteExpertModal renders a dialog with invite-related content
       expect(screen.getByRole('dialog')).toBeInTheDocument();
+    });
+  });
+});
+
+describe('ProjectDetail - Responsive single layout', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    defaultSetup();
+  });
+
+  it('mounts the opinion form once on desktop (no duplicated number inputs)', async () => {
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Save Opinion' })).toBeInTheDocument();
+    });
+
+    // One opinion form -> exactly one set of lower/peak/upper number inputs.
+    // The old dual mount (desktop grid + mobile tabs together) rendered six.
+    expect(screen.getAllByRole('spinbutton')).toHaveLength(3);
+    expect(screen.getAllByRole('button', { name: 'Save Opinion' })).toHaveLength(1);
+  });
+
+  it('mounts the opinion form once on mobile (no duplicated number inputs)', async () => {
+    mediaState.isDesktop = false;
+    render(<ProjectDetail />);
+
+    // Opinions is the default-active tab, so its form is the only one mounted.
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Save Opinion' })).toBeInTheDocument();
+    });
+    expect(screen.getAllByRole('spinbutton')).toHaveLength(3);
+  });
+
+  it('focuses the visible invalid field on submit instead of dropping focus to the body', async () => {
+    const user = userEvent.setup();
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Save Opinion' })).toBeInTheDocument();
+    });
+
+    // Singular getByLabelText also asserts each field exists exactly once.
+    await user.type(screen.getByLabelText('Position'), 'Manager');
+    await user.type(screen.getByLabelText(/lower/i), '60');
+    await user.type(screen.getByLabelText(/peak/i), '40');
+    await user.type(screen.getByLabelText(/upper/i), '80');
+
+    const peakInput = screen.getByLabelText(/peak/i);
+    await user.click(screen.getByRole('button', { name: 'Save Opinion' }));
+
+    // The order violation (lower > peak) makes zod flag the peak field; the
+    // single mounted copy is the visible one, so error focus lands on it
+    // rather than on a hidden duplicate (which left activeElement on <body>).
+    await waitFor(() => {
+      expect(document.activeElement).toBe(peakInput);
+    });
+    expect(document.activeElement).not.toBe(document.body);
+    expect(
+      screen.getByText('Values must satisfy: lower ≤ peak ≤ upper'),
+    ).toBeInTheDocument();
+    expect(mockApi.createOrUpdateOpinion).not.toHaveBeenCalled();
+  });
+});
+
+describe('ProjectDetail - Header Result Export', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    defaultSetup();
+  });
+
+  it('hides the export menu while there is no result yet', async () => {
+    // defaultSetup() resolves getResult to null.
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Test Project')).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('button', { name: /export/i })).not.toBeInTheDocument();
+  });
+
+  it('hides the export menu when a result exists but there are no opinions', async () => {
+    mockApi.getOpinions.mockResolvedValue([]);
+    mockApi.getResult.mockResolvedValue(createCalculationResult());
+
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Test Project')).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('button', { name: /export/i })).not.toBeInTheDocument();
+  });
+
+  it('shows the export menu in the header once a result is available', async () => {
+    mockApi.getOpinions.mockResolvedValue([createOpinion({ user_id: 'user-2' })]);
+    mockApi.getResult.mockResolvedValue(createCalculationResult());
+
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /export/i })).toBeInTheDocument();
+    });
+  });
+
+  it('exports a PDF from the header menu', async () => {
+    const user = userEvent.setup();
+    mockApi.getOpinions.mockResolvedValue([createOpinion({ user_id: 'user-2' })]);
+    mockApi.getResult.mockResolvedValue(createCalculationResult());
+    mockApi.exportProjectResult.mockResolvedValue(new Blob(['pdf'], { type: 'application/pdf' }));
+
+    render(<ProjectDetail />);
+
+    const exportButton = await screen.findByRole('button', { name: /export/i });
+    await user.click(exportButton);
+    const pdfItem = await screen.findByRole('menuitem', { name: /pdf report/i });
+    await user.click(pdfItem);
+
+    await waitFor(() => {
+      expect(mockApi.exportProjectResult).toHaveBeenCalledWith('project-1', 'pdf', 'en');
+      expect(mockDownloadBlob).toHaveBeenCalledWith(expect.any(Blob), 'test-project-results.pdf');
     });
   });
 });

@@ -1,0 +1,22 @@
+# Keep the Docker build context small so `COPY . .` (after `npm ci`) doesn't pull
+# in local artifacts and bust the dependency layer cache. Mode env files
+# (.env.production, .env.staging, ...) are intentionally kept — the Vite build
+# reads them; only local overrides are excluded.
+
+# Dependencies and build output — reinstalled/regenerated inside the image.
+node_modules
+dist
+
+# Test output and reports
+coverage
+test-results
+playwright-report
+.playwright-mcp
+
+# Local-only env overrides
+.env.local
+.env.*.local
+
+# Editor / OS cruft
+.vscode
+.DS_Store

@@ -123,4 +123,14 @@ describe('DeleteAccountDialog', () => {
     expect(screen.getByRole('button', { name: 'Delete My Account' })).toBeDisabled();
     expect(mockApi.deleteAccount).not.toHaveBeenCalled();
   });
+
+  it('shows an accessible loading status while owned projects load', () => {
+    mockApi.getProjects.mockReturnValue(new Promise(() => {}));
+    renderDialog();
+
+    // Exact match, not a substring regex: pins the resolved a11y.loading
+    // translation so a broken i18n key (e.g. "aria.loading") fails loudly
+    // instead of accidentally matching on its own literal text.
+    expect(screen.getByRole('status', { name: 'Loading' })).toBeInTheDocument();
+  });
 });

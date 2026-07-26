@@ -9,8 +9,8 @@ const routeRef = vi.hoisted(() => ({ value: '/' }));
 // --- Mocks ---
 
 // 1. Replace BrowserRouter with MemoryRouter for route control
-vi.mock('react-router-dom', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('react-router-dom')>();
+vi.mock('react-router', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('react-router')>();
   return {
     ...actual,
     BrowserRouter: ({ children }: { children: ReactNode }) => (
@@ -50,7 +50,6 @@ vi.mock('@/contexts/AuthContext', () => ({
 
 // 4. Mock UI providers as no-ops
 vi.mock('@/components/ui/toaster', () => ({ Toaster: () => null }));
-vi.mock('@/components/ui/sonner', () => ({ Toaster: () => null }));
 vi.mock('@/components/ui/tooltip', () => ({
   TooltipProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
@@ -73,8 +72,10 @@ import App from '@/App';
 const mockUseAuth = vi.mocked(AuthContext.useAuth);
 
 const unauthenticatedAuth = {
+  status: 'unauthenticated' as const,
   isLoading: false,
   isAuthenticated: false,
+  isServiceUnavailable: false,
   user: null,
   login: vi.fn(),
   register: vi.fn(),
@@ -83,8 +84,10 @@ const unauthenticatedAuth = {
 };
 
 const authenticatedAuth = {
+  status: 'authenticated' as const,
   isLoading: false,
   isAuthenticated: true,
+  isServiceUnavailable: false,
   user: {
     id: '1',
     email: 'test@example.com',

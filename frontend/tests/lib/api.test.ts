@@ -29,6 +29,10 @@ globalThis.fetch = mockFetch;
 // Import api after mocks are set up
 // We need to re-import to get a fresh instance each test
 let api: typeof import('@/lib/api').api;
+// vi.resetModules() below gives api.ts a fresh copy of '@/lib/errors' too, so an
+// error class imported once at module scope would fail instanceof checks against
+// errors thrown by the freshly re-imported api. Re-import alongside it instead.
+let UnauthorizedError: typeof import('@/lib/errors').UnauthorizedError;
 
 describe('ApiClient', () => {
   beforeEach(async () => {
@@ -42,9 +46,10 @@ describe('ApiClient', () => {
       writable: true,
     });
 
-    // Re-import api to get fresh instance
+    // Re-import api (and the matching errors module instance) to get a fresh api client
     const module = await import('@/lib/api');
     api = module.api;
+    UnauthorizedError = (await import('@/lib/errors')).UnauthorizedError;
   });
 
   afterEach(() => {
@@ -52,6 +57,7 @@ describe('ApiClient', () => {
       value: originalLocation,
       writable: true,
     });
+    vi.unstubAllEnvs();
   });
 
   describe('Request Handling', () => {
@@ -128,17 +134,6 @@ describe('ApiClient', () => {
       await expect(api.getProjects()).rejects.toThrow('Invalid email format');
     });
 
-    it('redirects to /login on 401', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 401,
-        json: () => Promise.resolve({ detail: 'Unauthorized' }),
-      });
-
-      await expect(api.getProjects()).rejects.toThrow();
-      expect(window.location.href).toBe('/login');
-    });
-
     it('handles JSON parse error gracefully', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: false,
@@ -203,6 +198,262 @@ describe('ApiClient', () => {
     });
   });
 
+  describe('Network Failures', () => {
+    it('wraps a rejected fetch in a NetworkError instead of an unhandled rejection', async () => {
+      mockFetch.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+
+      const { NetworkError } = await import('@/lib/errors');
+      await expect(api.getProjects()).rejects.toBeInstanceOf(NetworkError);
+    });
+  });
+
+  describe('Silent refresh and retry on 401 (AUD-032)', () => {
+    afterEach(() => {
+      api.setOnSessionExpired(null);
+    });
+
+    it('(a) refreshes the session and retries once, returning the retried result', async () => {
+      const onSessionExpired = vi.fn();
+      api.setOnSessionExpired(onSessionExpired);
+
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 401,
+          json: () => Promise.resolve({ detail: 'Unauthorized' }),
+        })
+        .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve({}) })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve([{ id: '1' }]),
+        });
+
+      const result = await api.getProjects();
+
+      expect(result).toEqual([{ id: '1' }]);
+      expect(mockFetch).toHaveBeenCalledTimes(3);
+      expect(mockFetch.mock.calls[1][0]).toContain('/auth/refresh');
+      expect(onSessionExpired).not.toHaveBeenCalled();
+      expect(window.location.href).toBe('');
+    });
+
+    it('(b) calls onSessionExpired and throws UnauthorizedError when refresh also fails, without a further retry', async () => {
+      const onSessionExpired = vi.fn();
+      api.setOnSessionExpired(onSessionExpired);
+
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 401,
+          json: () => Promise.resolve({ detail: 'Unauthorized' }),
+        })
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 401,
+          json: () => Promise.resolve({ detail: 'Refresh failed' }),
+        });
+
+      await expect(api.getProjects()).rejects.toBeInstanceOf(UnauthorizedError);
+
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(onSessionExpired).toHaveBeenCalledTimes(1);
+      expect(window.location.href).toBe('');
+    });
+
+    it('(c) shares a single in-flight refresh across concurrent 401s and retries every caller', async () => {
+      const onSessionExpired = vi.fn();
+      api.setOnSessionExpired(onSessionExpired);
+
+      let refreshCalls = 0;
+      const callCounts: Record<string, number> = {};
+      mockFetch.mockImplementation((url: string) => {
+        if (url.includes('/auth/refresh')) {
+          refreshCalls += 1;
+          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) });
+        }
+        callCounts[url] = (callCounts[url] ?? 0) + 1;
+        if (callCounts[url] === 1) {
+          return Promise.resolve({
+            ok: false,
+            status: 401,
+            json: () => Promise.resolve({ detail: 'Unauthorized' }),
+          });
+        }
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([]) });
+      });
+
+      const results = await Promise.all([
+        api.getProjects(),
+        api.getInvitations(),
+        api.getProjectInvitations('proj-1'),
+      ]);
+
+      expect(results).toEqual([[], [], []]);
+      expect(refreshCalls).toBe(1);
+      expect(onSessionExpired).not.toHaveBeenCalled();
+    });
+
+    it('(d) does not attempt a second refresh when the retried request is still 401', async () => {
+      const onSessionExpired = vi.fn();
+      api.setOnSessionExpired(onSessionExpired);
+
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 401,
+          json: () => Promise.resolve({ detail: 'Unauthorized' }),
+        })
+        .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve({}) })
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 401,
+          json: () => Promise.resolve({ detail: 'Still unauthorized' }),
+        });
+
+      await expect(api.getProjects()).rejects.toBeInstanceOf(UnauthorizedError);
+
+      expect(mockFetch).toHaveBeenCalledTimes(3);
+      const refreshCalls = mockFetch.mock.calls.filter(([url]) =>
+        String(url).includes('/auth/refresh')
+      );
+      expect(refreshCalls).toHaveLength(1);
+      expect(onSessionExpired).toHaveBeenCalledTimes(1);
+    });
+
+    it('(e) dedupes onSessionExpired across N parallel terminal 401s, then re-notifies after a successful request re-arms it', async () => {
+      const onSessionExpired = vi.fn();
+      api.setOnSessionExpired(onSessionExpired);
+
+      const terminal401 = () =>
+        Promise.resolve({
+          ok: false,
+          status: 401,
+          json: () => Promise.resolve({ detail: 'Unauthorized' }),
+        });
+      mockFetch.mockImplementation(() => terminal401());
+
+      await Promise.all([
+        api.getProjects().catch(() => undefined),
+        api.getInvitations().catch(() => undefined),
+        api.getProjectInvitations('proj-1').catch(() => undefined),
+      ]);
+
+      expect(onSessionExpired).toHaveBeenCalledTimes(1);
+
+      // A successful response re-arms the flag.
+      mockFetch.mockReset();
+      mockFetch.mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve([]) });
+      await api.getProjects();
+
+      // The next terminal-401 round notifies again.
+      mockFetch.mockReset();
+      mockFetch.mockImplementation(() => terminal401());
+      await api.getProjects().catch(() => undefined);
+
+      expect(onSessionExpired).toHaveBeenCalledTimes(2);
+    });
+
+    it('(f) surfaces a ServerError instead of a false logout when refresh itself 5xxs', async () => {
+      const onSessionExpired = vi.fn();
+      api.setOnSessionExpired(onSessionExpired);
+
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 401,
+          json: () => Promise.resolve({ detail: 'Unauthorized' }),
+        })
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 500,
+          json: () => Promise.resolve({ detail: 'Refresh backend down' }),
+        });
+
+      const { ServerError } = await import('@/lib/errors');
+      const error = await api.getProjects().catch((e) => e);
+
+      expect(error).toBeInstanceOf(ServerError);
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(onSessionExpired).not.toHaveBeenCalled();
+    });
+
+    it('(g) surfaces a NetworkError instead of a false logout when refresh fails at the network level', async () => {
+      const onSessionExpired = vi.fn();
+      api.setOnSessionExpired(onSessionExpired);
+
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 401,
+          json: () => Promise.resolve({ detail: 'Unauthorized' }),
+        })
+        .mockRejectedValueOnce(new TypeError('Failed to fetch'));
+
+      const { NetworkError } = await import('@/lib/errors');
+      const error = await api.getProjects().catch((e) => e);
+
+      expect(error).toBeInstanceOf(NetworkError);
+      expect(onSessionExpired).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Auth probe handling on 401 (AUD-006)', () => {
+    it('getCurrentUser(true) logs quietly and does not notify onSessionExpired when refresh also fails', async () => {
+      vi.stubEnv('DEV', true);
+      const onSessionExpired = vi.fn();
+      api.setOnSessionExpired(onSessionExpired);
+      const debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => {});
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 401,
+          json: () => Promise.resolve({ detail: 'Unauthorized' }),
+        })
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 401,
+          json: () => Promise.resolve({ detail: 'Refresh failed' }),
+        });
+
+      await expect(api.getCurrentUser(true)).rejects.toBeInstanceOf(UnauthorizedError);
+
+      expect(errorSpy).not.toHaveBeenCalled();
+      expect(debugSpy).toHaveBeenCalled();
+      expect(onSessionExpired).not.toHaveBeenCalled();
+
+      api.setOnSessionExpired(null);
+    });
+
+    it('getCurrentUser(true) throws a ServerError, not UnauthorizedError, when refresh 5xxs', async () => {
+      const onSessionExpired = vi.fn();
+      api.setOnSessionExpired(onSessionExpired);
+
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 401,
+          json: () => Promise.resolve({ detail: 'Unauthorized' }),
+        })
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 500,
+          json: () => Promise.resolve({ detail: 'Refresh backend down' }),
+        });
+
+      const { ServerError } = await import('@/lib/errors');
+      const error = await api.getCurrentUser(true).catch((e) => e);
+
+      expect(error).toBeInstanceOf(ServerError);
+      expect(error).not.toBeInstanceOf(UnauthorizedError);
+      expect(onSessionExpired).not.toHaveBeenCalled();
+
+      api.setOnSessionExpired(null);
+    });
+  });
+
   describe('Auth Endpoints', () => {
     it('register sends POST to /auth/register', async () => {
       const userData = { id: '1', email: 'new@example.com', first_name: 'New', last_name: null, photo_url: null, created_at: '' };
@@ -252,14 +503,36 @@ describe('ApiClient', () => {
       expect(result.access_token).toBe('new-token');
     });
 
-    it('login throws on invalid credentials', async () => {
-      mockFetch.mockResolvedValueOnce({
+    it('login throws an UnauthorizedError on invalid credentials', async () => {
+      mockFetch.mockResolvedValue({
         ok: false,
         status: 401,
         json: () => Promise.resolve({ detail: 'Invalid credentials' }),
       });
 
       await expect(api.login('wrong@example.com', 'wrong')).rejects.toThrow('Invalid credentials');
+      await expect(api.login('wrong@example.com', 'wrong')).rejects.toBeInstanceOf(
+        UnauthorizedError
+      );
+    });
+
+    it('login throws a RateLimitError on 429', async () => {
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 429,
+        json: () => Promise.resolve({ detail: 'Too many attempts' }),
+        headers: { get: () => null },
+      });
+
+      const { RateLimitError } = await import('@/lib/errors');
+      await expect(api.login('user@example.com', 'pass')).rejects.toBeInstanceOf(RateLimitError);
+    });
+
+    it('login throws a NetworkError when offline', async () => {
+      mockFetch.mockRejectedValue(new TypeError('Failed to fetch'));
+
+      const { NetworkError } = await import('@/lib/errors');
+      await expect(api.login('user@example.com', 'pass')).rejects.toBeInstanceOf(NetworkError);
     });
 
     it('logout posts to /auth/logout to clear the server session', async () => {
@@ -271,6 +544,29 @@ describe('ApiClient', () => {
         expect.stringContaining('/auth/logout'),
         expect.objectContaining({ method: 'POST' })
       );
+    });
+
+    it('does not notify onSessionExpired when the session is already expired on logout', async () => {
+      const onSessionExpired = vi.fn();
+      api.setOnSessionExpired(onSessionExpired);
+
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 401,
+          json: () => Promise.resolve({ detail: 'Unauthorized' }),
+        })
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 401,
+          json: () => Promise.resolve({ detail: 'Refresh failed' }),
+        });
+
+      await expect(api.logout()).resolves.toBeUndefined();
+
+      expect(onSessionExpired).not.toHaveBeenCalled();
+
+      api.setOnSessionExpired(null);
     });
   });
 
@@ -665,7 +961,7 @@ describe('ApiClient', () => {
   });
 
   describe('Upload Photo Error Handling', () => {
-    it('throws error on uploadPhoto 500 response', async () => {
+    it('throws a ServerError on uploadPhoto 500 response', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: false,
         status: 500,
@@ -673,22 +969,85 @@ describe('ApiClient', () => {
       });
 
       const file = new File(['test'], 'photo.jpg', { type: 'image/jpeg' });
-      await expect(api.uploadPhoto(file)).rejects.toThrow('Server error');
+      const { ServerError } = await import('@/lib/errors');
+      const error = await api.uploadPhoto(file).catch((e) => e);
+
+      expect(error).toBeInstanceOf(ServerError);
+      expect(error.message).toBe('Server error');
     });
 
-    it('redirects to /login on uploadPhoto 401', async () => {
+    it('throws a RateLimitError with retryAfter on uploadPhoto 429 response', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: false,
-        status: 401,
-        json: () => Promise.resolve({ detail: 'Unauthorized' }),
+        status: 429,
+        json: () => Promise.resolve({ detail: 'Too many uploads' }),
+        headers: { get: (name: string) => (name === 'Retry-After' ? '42' : null) },
       });
 
       const file = new File(['test'], 'photo.jpg', { type: 'image/jpeg' });
-      await expect(api.uploadPhoto(file)).rejects.toThrow();
-      expect(window.location.href).toBe('/login');
+      const { RateLimitError } = await import('@/lib/errors');
+      const error = await api.uploadPhoto(file).catch((e) => e);
+
+      expect(error).toBeInstanceOf(RateLimitError);
+      expect(error.retryAfter).toBe(42);
     });
 
-    it('handles uploadPhoto JSON parse failure gracefully', async () => {
+    it('silently refreshes and retries once on a 401, succeeding without onSessionExpired', async () => {
+      const onSessionExpired = vi.fn();
+      api.setOnSessionExpired(onSessionExpired);
+
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 401,
+          json: () => Promise.resolve({ detail: 'Unauthorized' }),
+        })
+        .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve({}) })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({ id: '1', photo_url: 'url' }),
+        });
+
+      const file = new File(['test'], 'photo.jpg', { type: 'image/jpeg' });
+      const result = await api.uploadPhoto(file);
+
+      expect(result).toEqual({ id: '1', photo_url: 'url' });
+      expect(mockFetch).toHaveBeenCalledTimes(3);
+      expect(onSessionExpired).not.toHaveBeenCalled();
+      expect(window.location.href).toBe('');
+
+      api.setOnSessionExpired(null);
+    });
+
+    it('throws an UnauthorizedError and calls onSessionExpired instead of redirecting when refresh also fails', async () => {
+      const onSessionExpired = vi.fn();
+      api.setOnSessionExpired(onSessionExpired);
+
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 401,
+          json: () => Promise.resolve({ detail: 'Unauthorized' }),
+        })
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 401,
+          json: () => Promise.resolve({ detail: 'Refresh failed' }),
+        });
+
+      const file = new File(['test'], 'photo.jpg', { type: 'image/jpeg' });
+      const error = await api.uploadPhoto(file).catch((e) => e);
+
+      expect(error).toBeInstanceOf(UnauthorizedError);
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(onSessionExpired).toHaveBeenCalledTimes(1);
+      expect(window.location.href).toBe('');
+
+      api.setOnSessionExpired(null);
+    });
+
+    it('classifies an uploadPhoto JSON parse failure as a ServerError', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: false,
         status: 500,
@@ -696,10 +1055,14 @@ describe('ApiClient', () => {
       });
 
       const file = new File(['test'], 'photo.jpg', { type: 'image/jpeg' });
-      await expect(api.uploadPhoto(file)).rejects.toThrow('Upload failed');
+      const { ServerError } = await import('@/lib/errors');
+      const error = await api.uploadPhoto(file).catch((e) => e);
+
+      expect(error).toBeInstanceOf(ServerError);
+      expect(error.message).toBe('An unexpected error occurred');
     });
 
-    it('uses fallback message when uploadPhoto error has no detail', async () => {
+    it('uses the ServerError default message when uploadPhoto error has no detail', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: false,
         status: 500,
@@ -707,7 +1070,11 @@ describe('ApiClient', () => {
       });
 
       const file = new File(['test'], 'photo.jpg', { type: 'image/jpeg' });
-      await expect(api.uploadPhoto(file)).rejects.toThrow('Failed to upload photo');
+      const { ServerError } = await import('@/lib/errors');
+      const error = await api.uploadPhoto(file).catch((e) => e);
+
+      expect(error).toBeInstanceOf(ServerError);
+      expect(error.message).toBe('Server error');
     });
 
     it('uploadPhoto sends credentials and no Authorization header', async () => {
@@ -723,6 +1090,47 @@ describe('ApiClient', () => {
       const [, options] = mockFetch.mock.calls[0];
       expect(options.credentials).toBe('include');
       expect(options.headers['Authorization']).toBeUndefined();
+    });
+
+    it('throws a ServerError instead of a false logout when refresh 5xxs', async () => {
+      const onSessionExpired = vi.fn();
+      api.setOnSessionExpired(onSessionExpired);
+
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 401,
+          json: () => Promise.resolve({ detail: 'Unauthorized' }),
+        })
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 500,
+          json: () => Promise.resolve({ detail: 'Refresh backend down' }),
+        });
+
+      const file = new File(['test'], 'photo.jpg', { type: 'image/jpeg' });
+      const { ServerError } = await import('@/lib/errors');
+      const error = await api.uploadPhoto(file).catch((e) => e);
+
+      expect(error).toBeInstanceOf(ServerError);
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(onSessionExpired).not.toHaveBeenCalled();
+
+      api.setOnSessionExpired(null);
+    });
+
+    it('sends an X-Request-ID header for log/Sentry correlation', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ id: '1', photo_url: 'url' }),
+      });
+
+      const file = new File(['test'], 'photo.jpg', { type: 'image/jpeg' });
+      await api.uploadPhoto(file);
+
+      const [, options] = mockFetch.mock.calls[0];
+      expect((options.headers as Record<string, string>)['X-Request-ID']).toBeTruthy();
     });
   });
 
@@ -751,24 +1159,42 @@ describe('ApiClient', () => {
   });
 
   describe('Login Error Edge Cases', () => {
-    it('handles login JSON parse failure gracefully', async () => {
-      mockFetch.mockResolvedValueOnce({
+    it('classifies an unreadable 500 body as a ServerError, not a credentials error', async () => {
+      mockFetch.mockResolvedValue({
         ok: false,
         status: 500,
         json: () => Promise.reject(new Error('Invalid JSON')),
       });
 
-      await expect(api.login('user@example.com', 'pass')).rejects.toThrow('Invalid credentials');
+      const { ServerError } = await import('@/lib/errors');
+      await expect(api.login('user@example.com', 'pass')).rejects.toBeInstanceOf(ServerError);
+      await expect(api.login('user@example.com', 'pass')).rejects.not.toThrow(
+        'Invalid credentials'
+      );
     });
 
-    it('falls back to "Login failed" when error.detail is empty', async () => {
+    it('classifies a non-JSON 502 body as a ServerError with the right status', async () => {
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 502,
+        json: () => Promise.reject(new Error('Invalid JSON')),
+      });
+
+      const { ServerError } = await import('@/lib/errors');
+      const error = await api.login('user@example.com', 'pass').catch((e) => e);
+      expect(error).toBeInstanceOf(ServerError);
+      expect(error.status).toBe(502);
+      expect(error.message).not.toBe('Invalid credentials');
+    });
+
+    it('falls back to the UnauthorizedError default message when error.detail is empty', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: false,
         status: 401,
         json: () => Promise.resolve({ detail: '' }),
       });
 
-      await expect(api.login('user@example.com', 'pass')).rejects.toThrow('Login failed');
+      await expect(api.login('user@example.com', 'pass')).rejects.toThrow('Unauthorized');
     });
   });
 
@@ -832,25 +1258,82 @@ describe('ApiClient', () => {
       );
     });
 
-    it('redirects to /login on export 401', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 401,
-        json: () => Promise.resolve({ detail: 'Unauthorized' }),
-      });
+    it('silently refreshes and retries once on a 401, succeeding without onSessionExpired', async () => {
+      const onSessionExpired = vi.fn();
+      api.setOnSessionExpired(onSessionExpired);
+      const blob = new Blob(['data'], { type: 'application/pdf' });
 
-      await expect(api.exportProjectResult('proj-1', 'pdf', 'en')).rejects.toThrow();
-      expect(window.location.href).toBe('/login');
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 401,
+          json: () => Promise.resolve({ detail: 'Unauthorized' }),
+        })
+        .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve({}) })
+        .mockResolvedValueOnce({ ok: true, status: 200, blob: () => Promise.resolve(blob) });
+
+      const result = await api.exportProjectResult('proj-1', 'pdf', 'en');
+
+      expect(result).toBe(blob);
+      expect(mockFetch).toHaveBeenCalledTimes(3);
+      expect(onSessionExpired).not.toHaveBeenCalled();
+      expect(window.location.href).toBe('');
+
+      api.setOnSessionExpired(null);
     });
 
-    it('falls back to "Export failed" when the error body is unreadable', async () => {
+    it('throws an UnauthorizedError and calls onSessionExpired instead of redirecting when refresh also fails', async () => {
+      const onSessionExpired = vi.fn();
+      api.setOnSessionExpired(onSessionExpired);
+
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 401,
+          json: () => Promise.resolve({ detail: 'Unauthorized' }),
+        })
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 401,
+          json: () => Promise.resolve({ detail: 'Refresh failed' }),
+        });
+
+      const error = await api.exportProjectResult('proj-1', 'pdf', 'en').catch((e) => e);
+
+      expect(error).toBeInstanceOf(UnauthorizedError);
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(onSessionExpired).toHaveBeenCalledTimes(1);
+      expect(window.location.href).toBe('');
+
+      api.setOnSessionExpired(null);
+    });
+
+    it('throws a ServerError on a 500 response with a detail message', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        json: () => Promise.resolve({ detail: 'Export blew up' }),
+      });
+
+      const { ServerError } = await import('@/lib/errors');
+      const error = await api.exportProjectResult('proj-1', 'pdf', 'en').catch((e) => e);
+
+      expect(error).toBeInstanceOf(ServerError);
+      expect(error.message).toBe('Export blew up');
+    });
+
+    it('classifies an unreadable export error body as a ServerError', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: false,
         status: 500,
         json: () => Promise.reject(new Error('no json')),
       });
 
-      await expect(api.exportProjectResult('proj-1', 'csv', 'en')).rejects.toThrow('Export failed');
+      const { ServerError } = await import('@/lib/errors');
+      const error = await api.exportProjectResult('proj-1', 'csv', 'en').catch((e) => e);
+
+      expect(error).toBeInstanceOf(ServerError);
+      expect(error.message).toBe('An unexpected error occurred');
     });
   });
 

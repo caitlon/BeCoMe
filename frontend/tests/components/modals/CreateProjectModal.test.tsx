@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { render } from '@tests/utils';
 import { CreateProjectModal } from '@/components/modals/CreateProjectModal';
@@ -30,7 +30,7 @@ describe('CreateProjectModal', () => {
   });
 
   const getNameInput = () => screen.getByPlaceholderText('Enter project name');
-  const getUnitInput = () => screen.getByPlaceholderText(/%, points/i);
+  const getUnitInput = () => screen.getByPlaceholderText(/e\.g\., CZK/i);
   const getSubmitButton = () => screen.getByRole('button', { name: 'Create Project' });
 
   it('renders form fields when open', () => {
@@ -132,6 +132,27 @@ describe('CreateProjectModal', () => {
 
     await waitFor(() => {
       expect(screen.getByText(/creating/i)).toBeInTheDocument();
+    });
+  });
+
+  it('ignores a re-entrant submit from a double-click (calls the API only once)', async () => {
+    const user = userEvent.setup();
+    mockCreateProject.mockImplementation(() => new Promise(() => {}));
+
+    render(<CreateProjectModal {...defaultProps} />);
+
+    await user.type(getNameInput(), 'New Project');
+    await user.type(getUnitInput(), '%');
+
+    const button = getSubmitButton();
+    // Two synchronous submits, mirroring a rapid double-click: the isLoading
+    // state update from the first submit has not re-rendered (and disabled
+    // the button) by the time the second submit event fires.
+    fireEvent.click(button);
+    fireEvent.click(button);
+
+    await waitFor(() => {
+      expect(mockCreateProject).toHaveBeenCalledTimes(1);
     });
   });
 

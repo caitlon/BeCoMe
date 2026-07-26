@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { render } from '@tests/utils';
 import { InviteExpertModal } from '@/components/modals/InviteExpertModal';
@@ -68,6 +68,26 @@ describe('InviteExpertModal', () => {
 
     await waitFor(() => {
       expect(screen.getByText(/sending/i)).toBeInTheDocument();
+    });
+  });
+
+  it('ignores a re-entrant submit from a double-click (calls the API only once)', async () => {
+    const user = userEvent.setup();
+    mockInviteExpert.mockImplementation(() => new Promise(() => {}));
+
+    render(<InviteExpertModal {...defaultProps} />);
+
+    await user.type(getEmailInput(), 'expert@test.com');
+
+    const button = getSubmitButton();
+    // Two synchronous submits, mirroring a rapid double-click: the isLoading
+    // state update from the first submit has not re-rendered (and disabled
+    // the button) by the time the second submit event fires.
+    fireEvent.click(button);
+    fireEvent.click(button);
+
+    await waitFor(() => {
+      expect(mockInviteExpert).toHaveBeenCalledTimes(1);
     });
   });
 
