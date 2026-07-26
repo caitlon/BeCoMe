@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { Loader2, AlertTriangle, Camera, Trash2, Download } from "lucide-react";
 
 import { Button } from "@/components/ui/button";

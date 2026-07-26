@@ -4,8 +4,8 @@ import userEvent from '@testing-library/user-event';
 import { render, framerMotionMock, unauthenticatedAuthMock } from '@tests/utils';
 import { Navbar } from '@/components/layout/Navbar';
 
-vi.mock('react-router-dom', async () => {
-  const actual = await vi.importActual('react-router-dom');
+vi.mock('react-router', async () => {
+  const actual = await vi.importActual('react-router');
   return {
     ...actual,
     useLocation: () => ({ pathname: '/', search: '', hash: '', state: null, key: 'default' }),
