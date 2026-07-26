@@ -3,7 +3,6 @@ import { Link } from "react-router";
 import { motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import {
-  HelpCircle,
   BookOpen,
   Calculator,
   BarChart3,
@@ -72,14 +71,9 @@ const FAQ = () => {
       <section className="pt-24 pb-8 md:pt-32 md:pb-12 bg-secondary/30">
         <div className="container mx-auto px-6">
           <motion.div {...fadeInUp} className="max-w-3xl">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center">
-                <HelpCircle className="h-6 w-6 text-primary" />
-              </div>
-              <h1 className="font-display text-3xl md:text-5xl font-normal">
-                {t("title")}
-              </h1>
-            </div>
+            <h1 className="font-display text-3xl md:text-5xl font-normal mb-4">
+              {t("title")}
+            </h1>
             <p className="text-lg text-muted-foreground">{t("subtitle")}</p>
           </motion.div>
         </div>

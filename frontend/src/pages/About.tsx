@@ -123,43 +123,45 @@ const About = () => {
       {/* Authors */}
       <section className="py-12 md:py-16 bg-card">
         <div className="container mx-auto px-6">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.5 }}
-          >
-            <h2 className="font-display text-2xl md:text-3xl font-normal mb-6">
-              {t("authors.title")}
-            </h2>
-            <Card className="max-w-xl mx-auto">
-              <CardContent className="pt-6">
-                <div className="flex items-start gap-4">
-                  <div className="w-12 h-12 rounded-full bg-secondary flex items-center justify-center">
-                    <BookOpen className="h-6 w-6 text-muted-foreground" />
+          <div className="max-w-3xl mx-auto">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.5 }}
+            >
+              <h2 className="font-display text-2xl md:text-3xl font-normal mb-6">
+                {t("authors.title")}
+              </h2>
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="flex flex-col items-center gap-4 text-center">
+                    <div className="w-12 h-12 rounded-full bg-secondary flex items-center justify-center">
+                      <BookOpen className="h-6 w-6 text-muted-foreground" />
+                    </div>
+                    <div>
+                      <p className="font-medium">{t("authors.vrana")}</p>
+                      <p className="font-medium">{t("authors.tyrychtr")}</p>
+                      <p className="font-medium">{t("authors.pelikan")}</p>
+                      <p className="text-sm text-muted-foreground mt-2">
+                        {t("authors.department")}
+                        <br />
+                        {t("authors.faculty")}
+                        <br />
+                        {t("authors.university")}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="font-medium">{t("authors.vrana")}</p>
-                    <p className="font-medium">{t("authors.tyrychtr")}</p>
-                    <p className="font-medium">{t("authors.pelikan")}</p>
-                    <p className="text-sm text-muted-foreground mt-2">
-                      {t("authors.department")}
-                      <br />
-                      {t("authors.faculty")}
-                      <br />
-                      {t("authors.university")}
+                  <div className="mt-6 pt-4 border-t text-center">
+                    <p className="text-xs text-muted-foreground">
+                      <strong>{t("authors.citation")}</strong>{" "}
+                      {t("authors.citationText")}
                     </p>
                   </div>
-                </div>
-                <div className="mt-6 pt-4 border-t">
-                  <p className="text-xs text-muted-foreground">
-                    <strong>{t("authors.citation")}</strong>{" "}
-                    {t("authors.citationText")}
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
+                </CardContent>
+              </Card>
+            </motion.div>
+          </div>
         </div>
       </section>
 
