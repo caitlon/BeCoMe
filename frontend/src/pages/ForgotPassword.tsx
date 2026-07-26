@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -76,6 +76,7 @@ const ForgotPassword = () => {
         <FormField
           label={t("forgotPassword.email")}
           type="email"
+          autoComplete="email"
           placeholder={t("forgotPassword.emailPlaceholder")}
           error={errors.email}
           {...register("email")}

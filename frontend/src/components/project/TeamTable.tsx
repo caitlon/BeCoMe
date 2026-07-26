@@ -14,6 +14,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Member, ProjectInvitation } from "@/types/api";
+import { formatDate } from "@/lib/formatDate";
 
 export interface TeamTableProps {
   members: Member[];
@@ -96,7 +97,7 @@ export const TeamTable = ({
                     </Badge>
                   </TableCell>
                   <TableCell className="text-muted-foreground">
-                    {new Date(member.joined_at).toLocaleDateString(i18n.language)}
+                    {formatDate(member.joined_at, i18n.language)}
                   </TableCell>
                   {isAdmin && (
                     <TableCell>

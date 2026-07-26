@@ -1,6 +1,7 @@
-import { Navigate, useLocation } from "react-router-dom";
+import { Navigate, useLocation } from "react-router";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/AuthContext";
+import { ServiceUnavailable } from "@/components/auth/ServiceUnavailable";
 import { Loader2 } from "lucide-react";
 
 interface ProtectedRouteProps {
@@ -8,7 +9,7 @@ interface ProtectedRouteProps {
 }
 
 export function ProtectedRoute({ children }: ProtectedRouteProps) {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, isServiceUnavailable, refreshUser } = useAuth();
   const location = useLocation();
   const { t } = useTranslation();
 
@@ -22,6 +23,13 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
       </output>
     );
+  }
+
+  // A network/server failure while probing the session leaves the login state
+  // unknown; offer a retry instead of a redirect, which would incorrectly
+  // sign out anyone who actually has a valid session.
+  if (isServiceUnavailable) {
+    return <ServiceUnavailable onRetry={refreshUser} />;
   }
 
   if (!isAuthenticated) {

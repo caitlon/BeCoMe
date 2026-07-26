@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@tests/utils'
+import { fireEvent, render, screen, waitFor } from '@tests/utils'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import { DeleteConfirmModal } from '@/components/modals/DeleteConfirmModal'
@@ -54,6 +54,23 @@ describe('DeleteConfirmModal', () => {
 
     await waitFor(() => {
       expect(onConfirm).toHaveBeenCalled()
+    })
+  })
+
+  it('ignores a re-entrant confirm from a double-click (calls onConfirm only once)', async () => {
+    const onConfirm = vi.fn().mockImplementation(() => new Promise(() => {}))
+
+    render(<DeleteConfirmModal {...defaultProps} onConfirm={onConfirm} />)
+
+    const button = screen.getByRole('button', { name: /delete/i })
+    // Two synchronous clicks, mirroring a rapid double-click: the isLoading
+    // state update from the first click has not re-rendered (and disabled
+    // the button) by the time the second click event fires.
+    fireEvent.click(button)
+    fireEvent.click(button)
+
+    await waitFor(() => {
+      expect(onConfirm).toHaveBeenCalledTimes(1)
     })
   })
 

@@ -7,7 +7,7 @@ const languages = [
 ] as const;
 
 export function LanguageSwitcher() {
-  const { i18n } = useTranslation();
+  const { t, i18n } = useTranslation();
 
   const resolved = (i18n.resolvedLanguage ?? i18n.language).split("-")[0];
   const currentLang = resolved === "cs" ? "cs" : "en";
@@ -23,7 +23,7 @@ export function LanguageSwitcher() {
       size="sm"
       onClick={toggleLanguage}
       className="h-10 px-3 hover:bg-muted transition-colors duration-300"
-      aria-label={`Switch to ${nextLang.name}`}
+      aria-label={t("switchToLanguage", { language: nextLang.name })}
     >
       <span className="text-sm font-medium">
         {currentLang.toUpperCase()}

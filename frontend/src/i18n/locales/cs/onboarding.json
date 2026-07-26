@@ -69,7 +69,8 @@
       "rule": "Hodnoty musí splňovat: Dolní ≤ Vrchol ≤ Horní",
       "preview": "Váš trojúhelník se zobrazí zde",
       "previewTitle": "Náhled trojúhelníku",
-      "yAxisLabel": "příslušnost"
+      "yAxisLabel": "příslušnost",
+      "xAxisLabel": "hodnota"
     },
     "viewResults": {
       "title": "Zobrazení výsledků",

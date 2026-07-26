@@ -3,6 +3,7 @@
     "name": "BeCoMe"
   },
   "cancel": "Zrušit",
+  "switchToLanguage": "Přepnout na {{language}}",
   "deleteModal": {
     "permanentlyDelete": "Trvale smaže:",
     "cannotUndo": "Tuto akci nelze vrátit zpět.",
@@ -75,7 +76,6 @@
   },
   "notFound": {
     "code": "404",
-    "title": "Stránka nenalezena",
     "description": "Požadovaná stránka nebyla nalezena.",
     "backHome": "Zpět na úvodní stránku"
   },
@@ -120,6 +120,7 @@
     "pendingMemberRow": "{{name}} — čeká na odpověď, názor zatím neodevzdán",
     "pendingInvitationRow": "{{name}} — pozvánka čeká, zatím se nepřidal/a",
     "centroidChartDesc": "Sloupcový graf centroidů expertních názorů s referenčními liniemi pro průměr, medián a nejlepší kompromis",
+    "landscapeChartDesc": "Číselná osa zobrazující centroidy jednotlivých expertních názorů se značkami průměru, mediánu a nejlepšího kompromisu",
     "memberProfileDialog": "Profil {{name}}",
     "opinionValues": "Hodnoty názoru: Dolní {{lower}}, Vrchol {{peak}}, Horní {{upper}}, Centroid {{centroid}}",
     "opensInNewTab": "otevře se v nové záložce"
@@ -131,6 +132,10 @@
     "medianLine": "Medián (Ω)",
     "compromiseLine": "Nejlepší kompromis (ΓΩMean)",
     "srSummary": "{{count}} expertů, centroidy od {{min}} do {{max}}. Průměr: {{mean}}, Medián: {{median}}, Nejlepší kompromis: {{compromise}}."
+  },
+  "landscapeChart": {
+    "srSummary": "{{count}} expertních názorů rozprostřených od {{min}} do {{max}}; nejlepší kompromis leží na hodnotě {{compromise}}.",
+    "srSummaryEmpty": "Zatím žádné expertní názory; nejlepší kompromis leží na hodnotě {{compromise}}."
   },
   "pageTitle": {
     "landing": "Úvod",
@@ -153,5 +158,13 @@
     "title": "Něco se pokazilo",
     "description": "Došlo k neočekávané chybě. Pro pokračování prosím obnovte stránku.",
     "reload": "Obnovit stránku"
+  },
+  "errors": {
+    "serviceUnavailable": "Služba je dočasně nedostupná. Zkuste to prosím za chvíli.",
+    "sessionExpired": "Vaše relace vypršela. Přihlaste se prosím znovu.",
+    "sessionExpiredTitle": "Relace vypršela",
+    "tooManyAttempts": "Příliš mnoho pokusů. Chvíli počkejte a zkuste to znovu.",
+    "tooManyAttemptsRetry": "Příliš mnoho pokusů. Zkuste to znovu za {{seconds}} s.",
+    "retry": "Zkusit znovu"
   }
 }

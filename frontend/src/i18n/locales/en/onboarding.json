@@ -69,7 +69,8 @@
       "rule": "Values must satisfy: Lower ≤ Peak ≤ Upper",
       "preview": "Your triangle will appear here",
       "previewTitle": "Triangle preview",
-      "yAxisLabel": "membership"
+      "yAxisLabel": "membership",
+      "xAxisLabel": "value"
     },
     "viewResults": {
       "title": "View Results",

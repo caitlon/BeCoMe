@@ -17,8 +17,8 @@ vi.mock('@/contexts/AuthContext', () => ({
 
 // Mock useNavigate
 const mockNavigate = vi.fn();
-vi.mock('react-router-dom', async () => {
-  const actual = await vi.importActual('react-router-dom');
+vi.mock('react-router', async () => {
+  const actual = await vi.importActual('react-router');
   return {
     ...actual,
     useNavigate: () => mockNavigate,
@@ -52,6 +52,16 @@ describe('Register', () => {
     expect(getFirstNameInput()).toBeInTheDocument();
     expect(getLastNameInput()).toBeInTheDocument();
     expect(getSubmitButton()).toBeInTheDocument();
+  });
+
+  it('sets autocomplete attributes so password managers fill the right field', () => {
+    render(<Register />);
+
+    expect(getEmailInput()).toHaveAttribute('autocomplete', 'email');
+    expect(getPasswordInput()).toHaveAttribute('autocomplete', 'new-password');
+    expect(getConfirmPasswordInput()).toHaveAttribute('autocomplete', 'new-password');
+    expect(getFirstNameInput()).toHaveAttribute('autocomplete', 'given-name');
+    expect(getLastNameInput()).toHaveAttribute('autocomplete', 'family-name');
   });
 
   it('shows email requirements checklist when email entered', async () => {

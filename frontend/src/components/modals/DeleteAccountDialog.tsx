@@ -125,7 +125,7 @@ export function DeleteAccountDialog({
             <div
               className="flex justify-center py-6"
               role="status"
-              aria-label={tCommon("aria.loading")}
+              aria-label={tCommon("a11y.loading")}
             >
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
@@ -134,13 +134,16 @@ export function DeleteAccountDialog({
               {ownedProjects.length > 0 && (
                 <div className="space-y-3 mb-4">
                   {ownedProjects.map((p) => (
-                    <div key={p.id} className="flex items-center justify-between gap-3">
+                    <div
+                      key={p.id}
+                      className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
+                    >
                       <span className="text-sm font-medium truncate">{p.name}</span>
                       <Select
                         value={choiceFor(p.id)}
                         onValueChange={(v) => setChoices((c) => ({ ...c, [p.id]: v }))}
                       >
-                        <SelectTrigger className="w-56 shrink-0">
+                        <SelectTrigger className="w-full sm:w-56 sm:shrink-0">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>

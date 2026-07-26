@@ -29,7 +29,10 @@ ENV UV_LINK_MODE=copy
 # Copy dependency files first (better caching)
 COPY pyproject.toml uv.lock ./
 
-# Install dependencies first (without project) for better layer caching
+# Install dependencies first (without project) for better layer caching.
+# No BuildKit --mount=type=cache here: Railway's Metal builder rejects custom
+# cache mounts (it does its own layer caching), so this relies on Docker's own
+# layer cache -- the deps layer is only rebuilt when pyproject.toml / uv.lock change.
 RUN uv sync --locked --no-install-project --no-dev --extra api
 
 # Copy application code

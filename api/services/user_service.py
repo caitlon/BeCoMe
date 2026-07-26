@@ -3,12 +3,13 @@
 import logging
 from uuid import UUID
 
-from sqlmodel import select
+from sqlmodel import Session, select
 
 from api.auth.password import hash_password, verify_password
 from api.db.models import User
 from api.exceptions import InvalidCredentialsError, UserExistsError
 from api.services.base import BaseService
+from api.services.user_cache import UserCacheStore
 
 logger = logging.getLogger("api.service.user")
 
@@ -19,6 +20,23 @@ _DUMMY_PASSWORD_HASH = hash_password("not-a-real-password-timing-equalizer")
 
 class UserService(BaseService):
     """Service for user-related operations."""
+
+    def __init__(self, session: Session, user_cache: UserCacheStore | None = None) -> None:
+        """Initialize with a DB session and an optional user cache.
+
+        :param session: SQLModel session for database operations.
+        :param user_cache: Cache to invalidate on mutations; ``None`` disables it.
+        """
+        super().__init__(session)
+        self._user_cache = user_cache
+
+    def _invalidate_cache(self, user_id: UUID) -> None:
+        """Drop the cached snapshot for ``user_id`` when a cache is configured.
+
+        :param user_id: ID of the user whose cached snapshot should be dropped.
+        """
+        if self._user_cache is not None:
+            self._user_cache.invalidate(user_id)
 
     def create_user(
         self,
@@ -118,7 +136,9 @@ class UserService(BaseService):
         if last_name is not None:
             user.last_name = last_name
 
-        return self._save_and_refresh(user)
+        saved = self._save_and_refresh(user)
+        self._invalidate_cache(saved.id)
+        return saved
 
     def change_password(self, user: User, current_password: str, new_password: str) -> User:
         """Change user password.
@@ -136,18 +156,21 @@ class UserService(BaseService):
             )
 
         user.hashed_password = hash_password(new_password)
-        return self._save_and_refresh(user)
+        saved = self._save_and_refresh(user)
+        self._invalidate_cache(saved.id)
+        return saved
 
     def delete_user(self, user: User) -> None:
         """Delete user account.
 
         :param user: User to delete
         """
-        user_id = str(user.id)
+        user_id = user.id
         self._delete_and_commit(user)
+        self._invalidate_cache(user_id)
         logger.info(
             "User deleted",
-            extra={"event": "user_deleted", "user_id": user_id},
+            extra={"event": "user_deleted", "user_id": str(user_id)},
         )
 
     def update_photo_url(self, user: User, photo_key: str | None) -> User:
@@ -158,4 +181,6 @@ class UserService(BaseService):
         :return: Updated User instance
         """
         user.photo_url = photo_key
-        return self._save_and_refresh(user)
+        saved = self._save_and_refresh(user)
+        self._invalidate_cache(saved.id)
+        return saved

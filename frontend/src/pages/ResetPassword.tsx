@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -105,6 +105,7 @@ const ResetPassword = () => {
         <div>
           <PasswordInput
             label={t("resetPassword.password")}
+            autoComplete="new-password"
             placeholder={t("resetPassword.passwordPlaceholder")}
             error={errors.password}
             {...register("password")}
@@ -119,6 +120,7 @@ const ResetPassword = () => {
         <FormField
           label={t("resetPassword.confirmPassword")}
           type="password"
+          autoComplete="new-password"
           placeholder={t("resetPassword.confirmPasswordPlaceholder")}
           error={errors.confirmPassword}
           {...register("confirmPassword")}

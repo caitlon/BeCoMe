@@ -16,7 +16,7 @@ vi.mock('@/contexts/AuthContext', () => ({
 describe('NotFound', () => {
   beforeEach(() => {
     // Silence and observe the expected 404 log emitted on mount
-    vi.spyOn(logger, 'error').mockImplementation(() => {});
+    vi.spyOn(logger, 'warn').mockImplementation(() => {});
   });
 
   afterEach(() => {
@@ -45,7 +45,7 @@ describe('NotFound', () => {
   it('logs the 404 through the app logger', () => {
     render(<NotFound />);
 
-    expect(logger.error).toHaveBeenCalledWith(
+    expect(logger.warn).toHaveBeenCalledWith(
       expect.stringContaining('404'),
       expect.objectContaining({ path: expect.any(String) })
     );
