@@ -334,8 +334,15 @@ def reset_password(
     :param service: Password reset service
     :param store: Revocation store (invalidates sessions issued before the reset)
     """
-    user = service.reset_password(data.token, data.new_password)
+    # Order matters: resolve the token, close the session window, then write. Recording
+    # the cutoff first means a store fault surfaces as a 503 with the password unchanged
+    # and the token unspent, rather than committing a new password while every session
+    # issued before the reset stays valid. Presenting a valid token already proves
+    # takeover capability, so revoking before the write concedes nothing.
+    user = service.resolve_valid_token(data.token)
     store.set_user_valid_after(user.id, datetime.now(UTC))
+    service.reset_password(data.token, data.new_password)
+
     log_password_reset_completed(user.id, request)
 
 
