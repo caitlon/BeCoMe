@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { Loader2, AlertTriangle, Camera, Trash2, Download } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -227,7 +227,7 @@ const Profile = () => {
     return (
       <div className="min-h-screen">
         <Navbar />
-        <div className="pt-24 flex items-center justify-center" role="status" aria-label={tCommon("aria.loading")}>
+        <div className="pt-24 flex items-center justify-center" role="status" aria-label={tCommon("a11y.loading")}>
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
         </div>
       </div>

@@ -3,6 +3,7 @@
     "name": "BeCoMe"
   },
   "cancel": "Cancel",
+  "switchToLanguage": "Switch to {{language}}",
   "deleteModal": {
     "permanentlyDelete": "This will permanently delete:",
     "cannotUndo": "This action cannot be undone.",
@@ -75,7 +76,6 @@
   },
   "notFound": {
     "code": "404",
-    "title": "Page Not Found",
     "description": "The requested page could not be found.",
     "backHome": "Back to Home"
   },
@@ -120,6 +120,7 @@
     "pendingMemberRow": "{{name}} — awaiting response, no opinion submitted yet",
     "pendingInvitationRow": "{{name}} — invitation pending, not yet joined",
     "centroidChartDesc": "Bar chart showing expert opinion centroids sorted by value with reference lines for mean, median, and best compromise",
+    "landscapeChartDesc": "Number line showing individual expert opinion centroids with mean, median, and best compromise markers",
     "memberProfileDialog": "Profile of {{name}}",
     "opinionValues": "Opinion values: Lower {{lower}}, Peak {{peak}}, Upper {{upper}}, Centroid {{centroid}}",
     "opensInNewTab": "opens in new tab"
@@ -131,6 +132,10 @@
     "medianLine": "Median (Ω)",
     "compromiseLine": "Best Compromise (ΓΩMean)",
     "srSummary": "{{count}} experts, centroids from {{min}} to {{max}}. Mean: {{mean}}, Median: {{median}}, Best Compromise: {{compromise}}."
+  },
+  "landscapeChart": {
+    "srSummary": "{{count}} expert opinions spread from {{min}} to {{max}}; the best compromise sits at {{compromise}}.",
+    "srSummaryEmpty": "No expert opinions yet; the best compromise sits at {{compromise}}."
   },
   "pageTitle": {
     "landing": "Home",
@@ -153,5 +158,13 @@
     "title": "Something went wrong",
     "description": "An unexpected error occurred. Please reload the page to continue.",
     "reload": "Reload page"
+  },
+  "errors": {
+    "serviceUnavailable": "The service is temporarily unavailable. Please try again in a moment.",
+    "sessionExpired": "Your session has expired. Please sign in again.",
+    "sessionExpiredTitle": "Session expired",
+    "tooManyAttempts": "Too many attempts. Please wait a moment and try again.",
+    "tooManyAttemptsRetry": "Too many attempts. Please try again in {{seconds}}s.",
+    "retry": "Try again"
   }
 }

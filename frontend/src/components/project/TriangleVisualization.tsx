@@ -68,7 +68,7 @@ export const TriangleVisualization = ({
         fontSize="10"
         textAnchor="middle"
       >
-        {project.scale_max}
+        {project.scale_max}{project.scale_unit ? ` ${project.scale_unit}` : ""}
       </text>
 
       {/* Individual opinions */}

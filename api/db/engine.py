@@ -4,12 +4,15 @@ This module provides lazy initialization of the database engine,
 following the Dependency Inversion Principle (DIP).
 """
 
+import logging
 from functools import lru_cache
 
-from sqlalchemy import Engine
+from sqlalchemy import Engine, text
 from sqlmodel import SQLModel, create_engine
 
 from api.config import get_settings
+
+logger = logging.getLogger("api.db.engine")
 
 
 def _create_engine() -> Engine:
@@ -40,14 +43,25 @@ def _create_engine() -> Engine:
             "connect_timeout": 10,
             "application_name": f"become-{settings.environment.value}",
             "options": "-c statement_timeout=30000 -c idle_in_transaction_session_timeout=60000",
+            # TCP keepalives: the private Railway network can silently drop an idle
+            # socket, which otherwise surfaces as a stalled first query. Keepalives
+            # detect a dead connection promptly and complement pool_pre_ping (which
+            # only checks at checkout).
+            "keepalives": 1,
+            "keepalives_idle": 30,
+            "keepalives_interval": 10,
+            "keepalives_count": 5,
         }
         # Keep the pool small to stay within the managed Postgres connection limit.
-        # pool_pre_ping drops stale connections before reuse.
+        # pool_pre_ping drops stale connections before reuse; pool_timeout fails a
+        # checkout after 10s instead of the 30s default, so pool exhaustion surfaces
+        # as a clear error rather than a long hang that looks like a slow database.
         pool_kwargs = {
             "pool_size": 3,
             "max_overflow": 2,
             "pool_recycle": 300,
             "pool_pre_ping": True,
+            "pool_timeout": 10,
         }
 
     return create_engine(
@@ -68,6 +82,31 @@ def get_engine() -> Engine:
     :return: Database Engine instance
     """
     return _create_engine()
+
+
+def warm_up_connection_pool() -> None:
+    """Open one real connection at startup so the first request hits a warm pool.
+
+    On a networked database the first connection pays the TCP, TLS, and auth
+    cost; doing it during startup moves that off the first user request. This
+    matters on Railway, where App Sleep makes cold starts recur. Skipped for
+    SQLite and test runs (no meaningful connection latency, and the test suite
+    manages its own engine). Never fatal: a transient database blip logs a
+    warning and startup proceeds, so a brief DB outage cannot block a deploy.
+    """
+    settings = get_settings()
+    if settings.database_url.startswith("sqlite") or settings.testing:
+        return
+    try:
+        with get_engine().connect() as connection:
+            connection.execute(text("SELECT 1"))
+        logger.info("Database connection pool warmed up", extra={"event": "db_warmup"})
+    except Exception:
+        logger.warning(
+            "Database pool warm-up failed; continuing startup",
+            extra={"event": "db_warmup_failed"},
+            exc_info=True,
+        )
 
 
 def create_db_and_tables() -> None:

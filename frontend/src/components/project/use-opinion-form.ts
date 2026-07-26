@@ -69,8 +69,9 @@ const toFormValues = (opinion: Opinion | undefined): OpinionFormInput => ({
 
 /**
  * Form state for the opinion editor. Lives in the page container because the
- * form renders twice (desktop column and mobile tab) and both instances must
- * share one set of values.
+ * desktop grid and the mobile tabs are separate subtrees: crossing the layout
+ * breakpoint remounts the form component, and keeping the state here preserves
+ * in-progress edits across that swap.
  */
 export function useOpinionForm(
   project: ProjectWithRole | null,

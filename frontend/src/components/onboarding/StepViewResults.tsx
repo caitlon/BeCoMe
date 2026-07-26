@@ -57,8 +57,8 @@ export function StepViewResults() {
 
         <div className="grid grid-cols-2 gap-4">
           {/* Max Error */}
-          <motion.div variants={fadeInUp}>
-            <Card>
+          <motion.div variants={fadeInUp} className="h-full">
+            <Card className="h-full">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm flex items-center gap-2">
                   <AlertCircle className="h-4 w-4" />
@@ -75,8 +75,8 @@ export function StepViewResults() {
           </motion.div>
 
           {/* Experts */}
-          <motion.div variants={fadeInUp}>
-            <Card>
+          <motion.div variants={fadeInUp} className="h-full">
+            <Card className="h-full">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm flex items-center gap-2">
                   <Users className="h-4 w-4" />

@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 import { Member, Opinion } from "@/types/api";
+import { formatDate } from "@/lib/formatDate";
 
 export interface MemberProfileDialogProps {
   member: Member | null;
@@ -127,7 +128,7 @@ export const MemberProfileDialog = ({
               {t("memberProfile.joined")}
             </p>
             <p className="text-sm">
-              {new Date(member.joined_at).toLocaleDateString(i18n.language)}
+              {formatDate(member.joined_at, i18n.language)}
             </p>
           </div>
         </div>

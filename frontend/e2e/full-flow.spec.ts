@@ -114,9 +114,11 @@ test.describe.serial('Full Application Flow', () => {
 
   test('view calculation results', async () => {
     await expect(page.getByRole('heading', { name: /Best Compromise/ })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(/How closely the mean and median/)).toBeVisible();
+    // Arithmetic Mean and Median live in a collapsed "Supporting calculations" section
+    await page.getByRole('button', { name: /Supporting calculations/ }).click();
     await expect(page.getByRole('heading', { name: /Arithmetic Mean/ })).toBeVisible();
     await expect(page.getByRole('heading', { name: /Median/ })).toBeVisible();
-    await expect(page.getByText(/Max Error/)).toBeVisible();
 
     // Single expert (30, 50, 70): all aggregates equal input
     await expect(page.getByText('30.00').first()).toBeVisible({ timeout: 5000 });

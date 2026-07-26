@@ -1,6 +1,6 @@
 import { ReactElement, ReactNode, useState } from 'react'
 import { render, RenderOptions, screen } from '@testing-library/react'
-import { MemoryRouter, MemoryRouterProps } from 'react-router-dom'
+import { MemoryRouter, MemoryRouterProps } from 'react-router'
 import { I18nextProvider } from 'react-i18next'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import i18n from '@/i18n'
@@ -23,8 +23,10 @@ const createTestQueryClient = () =>
  */
 export interface MockAuthContextValue {
   user: User | null;
+  status: 'loading' | 'authenticated' | 'unauthenticated' | 'serviceUnavailable';
   isLoading: boolean;
   isAuthenticated: boolean;
+  isServiceUnavailable: boolean;
   login: ReturnType<typeof import('vitest').vi.fn>;
   register: ReturnType<typeof import('vitest').vi.fn>;
   logout: ReturnType<typeof import('vitest').vi.fn>;
@@ -148,8 +150,10 @@ export const framerMotionMock = {
 export const unauthenticatedAuthMock = {
   useAuth: () => ({
     user: null,
+    status: 'unauthenticated' as const,
     isLoading: false,
     isAuthenticated: false,
+    isServiceUnavailable: false,
     login: () => Promise.resolve(),
     register: () => Promise.resolve(),
     logout: () => Promise.resolve(),

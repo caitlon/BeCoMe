@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useId } from "react";
 import { useTranslation } from "react-i18next";
-import { Loader2, ChevronDown, Download, FileText, FileSpreadsheet } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -9,18 +9,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { api } from "@/lib/api";
-import { downloadBlob } from "@/lib/download";
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { ProjectWithRole, Opinion, CalculationResult } from "@/types/api";
-import { useToast } from "@/hooks/use-toast";
 import { CentroidBarChart } from "@/components/visualizations/CentroidBarChart";
 import { cn } from "@/lib/utils";
 import { TriangleVisualization } from "./TriangleVisualization";
+import { OpinionLandscape } from "./OpinionLandscape";
 
 export interface ResultsSectionProps {
   result: CalculationResult | null;
@@ -37,34 +34,9 @@ export const ResultsSection = ({
   setShowIndividual,
   opinions,
 }: ResultsSectionProps) => {
-  const { t, i18n } = useTranslation("projects");
+  const { t } = useTranslation("projects");
   const { t: tFuzzy } = useTranslation();
-  const { toast } = useToast();
-  const [exporting, setExporting] = useState<"pdf" | "csv" | null>(null);
-
-  const handleExport = async (format: "pdf" | "csv") => {
-    setExporting(format);
-    try {
-      const lang = i18n.language.startsWith("cs") ? "cs" : "en";
-      const blob = await api.exportProjectResult(project.id, format, lang);
-      const slug =
-        project.name
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, "-")
-          .replace(/^-|-$/g, "") || "project";
-      downloadBlob(blob, `${slug}-results.${format}`);
-      toast({ title: t("resultExport.success") });
-    } catch (error) {
-      toast({
-        title: t("toast.error"),
-        description:
-          error instanceof Error ? error.message : t("resultExport.error"),
-        variant: "destructive",
-      });
-    } finally {
-      setExporting(null);
-    }
-  };
+  const showIndividualId = useId();
 
   if (!result || opinions.length === 0) {
     return (
@@ -80,6 +52,9 @@ export const ResultsSection = ({
 
   const scaleRange = project.scale_max - project.scale_min;
   const errorPercent = (result.max_error / scaleRange) * 100;
+  const measuresCoincide =
+    Math.abs(result.arithmetic_mean.centroid - result.median.centroid) < 0.01 &&
+    Math.abs(result.median.centroid - result.best_compromise.centroid) < 0.01;
 
   let agreementLevel: "high" | "moderate" | "low";
   if (errorPercent <= 20) {
@@ -106,113 +81,111 @@ export const ResultsSection = ({
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-end">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm" disabled={exporting !== null}>
-              {exporting === null ? (
-                <Download className="mr-2 h-4 w-4" />
-              ) : (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              )}
-              {exporting === null
-                ? t("resultExport.button")
-                : t("resultExport.exporting")}
-              <ChevronDown className="ml-2 h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => void handleExport("pdf")}>
-              <FileText className="mr-2 h-4 w-4" />
-              {t("resultExport.pdf")}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => void handleExport("csv")}>
-              <FileSpreadsheet className="mr-2 h-4 w-4" />
-              {t("resultExport.csv")}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-
       {/* Best Compromise */}
       <Card className="border-2 border-primary">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             {t("detail.bestCompromise")}
-            <span className="text-sm font-normal text-muted-foreground">
+            <Badge className="text-xs">{t("detail.resultBadge")}</Badge>
+            <span className="text-sm font-normal text-muted-foreground ml-auto">
               (ΓΩMean)
             </span>
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-3 gap-4 text-center mb-4">
+          <div className="text-center mb-4">
+            <div className="text-xs text-muted-foreground uppercase">{t("detail.resultValue")}</div>
+            <div className="flex items-baseline justify-center gap-2 flex-wrap">
+              <span className="font-mono text-4xl font-bold text-primary">
+                {result.best_compromise.centroid.toFixed(2)}
+              </span>
+              <span className="font-mono text-sm text-muted-foreground">
+                ± {result.max_error.toFixed(2)}
+              </span>
+            </div>
+            <div className="mt-2">
+              <Badge className={cn("text-xs font-normal", agreementClasses.badge)}>
+                {t(`detail.confidenceLevel.${agreementLevel}`)} {t("detail.confidence")}
+              </Badge>
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-4 text-center border-t pt-4">
             <div>
-              <div className="text-xs text-muted-foreground uppercase">{tFuzzy("fuzzy.lower")}</div>
-              <div className="font-mono text-2xl font-medium">
+              <div className="text-xs text-muted-foreground">{tFuzzy("fuzzy.lowerDesc")}</div>
+              <div className="font-mono text-sm text-secondary-foreground">
                 {result.best_compromise.lower.toFixed(2)}
               </div>
             </div>
             <div>
-              <div className="text-xs text-muted-foreground uppercase">{tFuzzy("fuzzy.peak")}</div>
-              <div className="font-mono text-2xl font-medium">
+              <div className="text-xs text-muted-foreground">{tFuzzy("fuzzy.peakDesc")}</div>
+              <div className="font-mono text-sm text-secondary-foreground">
                 {result.best_compromise.peak.toFixed(2)}
               </div>
             </div>
             <div>
-              <div className="text-xs text-muted-foreground uppercase">{tFuzzy("fuzzy.upper")}</div>
-              <div className="font-mono text-2xl font-medium">
+              <div className="text-xs text-muted-foreground">{tFuzzy("fuzzy.upperDesc")}</div>
+              <div className="font-mono text-sm text-secondary-foreground">
                 {result.best_compromise.upper.toFixed(2)}
               </div>
-            </div>
-          </div>
-          <div className="text-center border-t pt-4">
-            <div className="text-xs text-muted-foreground uppercase">{tFuzzy("fuzzy.centroid")}</div>
-            <div className="font-mono text-3xl font-medium">
-              {result.best_compromise.centroid.toFixed(2)}
             </div>
           </div>
         </CardContent>
       </Card>
 
       {/* Arithmetic Mean & Median */}
-      <div className="grid grid-cols-2 gap-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm">{t("detail.arithmeticMean")}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="font-mono text-sm">
-              {result.arithmetic_mean.lower.toFixed(2)} |{" "}
-              {result.arithmetic_mean.peak.toFixed(2)} |{" "}
-              {result.arithmetic_mean.upper.toFixed(2)}
-            </div>
-            <div className="text-xs text-muted-foreground mt-1">
-              {tFuzzy("fuzzy.centroid")}: {result.arithmetic_mean.centroid.toFixed(2)}
-            </div>
-          </CardContent>
-        </Card>
+      <Collapsible>
+        <CollapsibleTrigger asChild>
+          <Button
+            variant="ghost"
+            className="w-full justify-between px-2 text-muted-foreground [&[data-state=open]>svg]:rotate-180"
+          >
+            <span className="text-sm font-medium">{t("detail.supportingCalcs")}</span>
+            <ChevronDown className="h-4 w-4 transition-transform" />
+          </Button>
+        </CollapsibleTrigger>
+        <CollapsibleContent className="pt-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">{t("detail.arithmeticMean")}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="font-mono text-sm whitespace-nowrap tabular-nums overflow-x-auto">
+                  {result.arithmetic_mean.lower.toFixed(2)} | {result.arithmetic_mean.peak.toFixed(2)} |{" "}
+                  {result.arithmetic_mean.upper.toFixed(2)}
+                </div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  {tFuzzy("fuzzy.centroid")}: {result.arithmetic_mean.centroid.toFixed(2)}
+                </div>
+              </CardContent>
+            </Card>
 
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm">{t("detail.median")}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="font-mono text-sm">
-              {result.median.lower.toFixed(2)} | {result.median.peak.toFixed(2)} |{" "}
-              {result.median.upper.toFixed(2)}
-            </div>
-            <div className="text-xs text-muted-foreground mt-1">
-              {tFuzzy("fuzzy.centroid")}: {result.median.centroid.toFixed(2)}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">{t("detail.median")}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="font-mono text-sm whitespace-nowrap tabular-nums overflow-x-auto">
+                  {result.median.lower.toFixed(2)} | {result.median.peak.toFixed(2)} |{" "}
+                  {result.median.upper.toFixed(2)}
+                </div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  {tFuzzy("fuzzy.centroid")}: {result.median.centroid.toFixed(2)}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
 
-      {/* Max Error & Experts */}
+      {/* Confidence & Experts */}
       <Card>
         <CardContent className="pt-6">
-          <div className="flex justify-between items-center mb-2">
-            <span className="text-sm">{t("detail.maxError")}</span>
+          <div className="flex justify-between items-center mb-1">
+            <span className="text-sm">
+              {t("detail.confidence")}{" "}
+              <span className="text-xs text-muted-foreground font-normal">(Δmax)</span>
+            </span>
             <div className="flex items-center gap-2">
               <Badge className={cn("text-xs", agreementClasses.badge)}>
                 {t(`detail.agreement.${agreementLevel}`)}
@@ -222,6 +195,7 @@ export const ResultsSection = ({
               </span>
             </div>
           </div>
+          <p className="text-xs text-muted-foreground mb-2">{t("detail.confidenceHint")}</p>
           <Progress value={Math.min(errorPercent, 100)} className={cn("h-2", agreementClasses.progress)} />
           <div className="flex justify-between items-center mt-4 text-sm text-muted-foreground">
             <span>{t("detail.experts")}</span>
@@ -236,8 +210,11 @@ export const ResultsSection = ({
           <CardTitle className="text-lg">{t("detail.visualization")}</CardTitle>
         </CardHeader>
         <CardContent>
-          <Tabs defaultValue="triangle" className="space-y-4">
+          <Tabs defaultValue="landscape" className="space-y-4">
             <TabsList className="w-full">
+              <TabsTrigger value="landscape" className="flex-1">
+                {t("detail.vizTab.landscape")}
+              </TabsTrigger>
               <TabsTrigger value="triangle" className="flex-1">
                 {t("detail.vizTab.triangle")}
               </TabsTrigger>
@@ -245,6 +222,10 @@ export const ResultsSection = ({
                 {t("detail.vizTab.centroid")}
               </TabsTrigger>
             </TabsList>
+
+            <TabsContent value="landscape">
+              <OpinionLandscape result={result} project={project} opinions={opinions} />
+            </TabsContent>
 
             <TabsContent value="triangle">
               <TriangleVisualization
@@ -270,11 +251,11 @@ export const ResultsSection = ({
                 </div>
                 <div className="flex items-center gap-2">
                   <Checkbox
-                    id="showIndividual"
+                    id={showIndividualId}
                     checked={showIndividual}
                     onCheckedChange={(checked) => setShowIndividual(!!checked)}
                   />
-                  <Label htmlFor="showIndividual" className="text-xs cursor-pointer">
+                  <Label htmlFor={showIndividualId} className="text-xs cursor-pointer">
                     {t("detail.showIndividual")}
                   </Label>
                 </div>
@@ -282,9 +263,12 @@ export const ResultsSection = ({
             </TabsContent>
 
             <TabsContent value="centroid">
-              <CentroidBarChart opinions={opinions} result={result} />
+              <CentroidBarChart opinions={opinions} result={result} scaleUnit={project.scale_unit} />
             </TabsContent>
           </Tabs>
+          {measuresCoincide && (
+            <p className="mt-3 text-xs text-muted-foreground text-center">{t("detail.measuresCoincide")}</p>
+          )}
         </CardContent>
       </Card>
     </div>
