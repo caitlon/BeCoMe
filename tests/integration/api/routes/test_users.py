@@ -1,7 +1,10 @@
 """Tests for DELETE /api/v1/users/me endpoint."""
 
+from unittest.mock import patch
+
 from fastapi import status
 
+from api.auth.revocation_store import RevocationStoreError
 from tests.integration.api.conftest import (
     DEFAULT_TEST_PASSWORD,
     auth_header,
@@ -275,3 +278,35 @@ class TestChangePasswordRevokesSessions:
 
         # THEN the old token no longer works
         assert client.get("/api/v1/auth/me", headers=auth_header(token)).status_code == 401
+
+    def test_store_fault_leaves_the_old_password_in_place(self, client):
+        """When the session cutoff cannot be written, the password is not changed either.
+
+        Otherwise the caller sees a failure while the new password is already live and
+        every session issued before it stays valid.
+        """
+        # GIVEN a logged-in user and a revocation store that cannot record the cutoff
+        token = register_and_login(client, "storefault@example.com")
+
+        # WHEN the password change runs into the store fault
+        with patch(
+            "api.auth.revocation_store.InMemoryRevocationStore.set_user_valid_after",
+            side_effect=RevocationStoreError("store is down"),
+        ):
+            resp = client.put(
+                "/api/v1/users/me/password",
+                headers=auth_header(token),
+                json={
+                    "current_password": DEFAULT_TEST_PASSWORD,
+                    "new_password": "NewSecurePass456!",
+                },
+            )
+
+        # THEN the request fails and the original password still authenticates
+        assert resp.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+
+        login = client.post(
+            "/api/v1/auth/login",
+            data={"username": "storefault@example.com", "password": DEFAULT_TEST_PASSWORD},
+        )
+        assert login.status_code == status.HTTP_200_OK

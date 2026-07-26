@@ -53,7 +53,7 @@ class RegisterRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     email: EmailStr = Field(..., max_length=255, description="Email address")
-    password: str = Field(..., min_length=12, max_length=128, description="Password")
+    password: str = Field(..., min_length=12, max_length=128, description="Password", repr=False)
     first_name: str = Field(..., min_length=1, max_length=100, description="First name")
     last_name: str = Field(..., min_length=1, max_length=100, description="Last name")
 
@@ -85,10 +85,14 @@ class RegisterRequest(BaseModel):
 
 
 class TokenResponse(BaseModel):
-    """JWT token response with optional refresh token."""
+    """JWT token response with optional refresh token.
 
-    access_token: str
-    refresh_token: str | None = None
+    The token values carry ``repr=False`` so a frame local holding this response
+    cannot leak a session into a log record or an error-tracker event.
+    """
+
+    access_token: str = Field(..., repr=False)
+    refresh_token: str | None = Field(None, repr=False)
     token_type: str = "bearer"  # noqa: S105 -- OAuth2 scheme name, not a credential
     expires_in: int = 0  # Access token lifetime in seconds
 
@@ -98,7 +102,7 @@ class RefreshTokenRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    refresh_token: str = Field(..., description="Refresh token")
+    refresh_token: str = Field(..., description="Refresh token", repr=False)
 
 
 class UserResponse(BaseModel):
@@ -156,8 +160,10 @@ class ChangePasswordRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    current_password: str = Field(..., min_length=1, description="Current password")
-    new_password: str = Field(..., min_length=12, max_length=128, description="New password")
+    current_password: str = Field(..., min_length=1, description="Current password", repr=False)
+    new_password: str = Field(
+        ..., min_length=12, max_length=128, description="New password", repr=False
+    )
 
     @field_validator("new_password")
     @classmethod
@@ -187,8 +193,10 @@ class ResetPasswordRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    token: str = Field(..., min_length=1, max_length=512, description="Reset token")
-    new_password: str = Field(..., min_length=12, max_length=128, description="New password")
+    token: str = Field(..., min_length=1, max_length=512, description="Reset token", repr=False)
+    new_password: str = Field(
+        ..., min_length=12, max_length=128, description="New password", repr=False
+    )
 
     @field_validator("new_password")
     @classmethod

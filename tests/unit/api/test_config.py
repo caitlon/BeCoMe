@@ -195,6 +195,8 @@ class TestEnvironmentResolution:
         monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
         monkeypatch.setenv("CLOUDFLARE_ORIGIN_SECRET", "an-origin-verify-secret")
         monkeypatch.setenv("CORS_ORIGINS", '["https://app.example.com"]')
+        monkeypatch.setenv("EMAIL_PROVIDER", "http")
+        monkeypatch.setenv("EMAIL_API_KEY", "a-resend-api-key")
 
         # WHEN
         settings = Settings()
@@ -328,6 +330,8 @@ class TestProductionInvariants:
         monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
         monkeypatch.setenv("CLOUDFLARE_ORIGIN_SECRET", "an-origin-verify-secret")
         monkeypatch.setenv("CORS_ORIGINS", '["https://app.example.com"]')
+        monkeypatch.setenv("EMAIL_PROVIDER", "http")
+        monkeypatch.setenv("EMAIL_API_KEY", "a-resend-api-key")
 
         # WHEN
         settings = Settings()
@@ -405,6 +409,48 @@ class TestProductionInvariants:
         with pytest.raises(ValidationError, match="cors_origins"):
             Settings()
 
+    def test_rejects_unconfigured_email_in_production(self, monkeypatch, tmp_path):
+        """
+        GIVEN the production profile with the HTTP email provider but no API key
+        WHEN Settings is constructed
+        THEN validation fails, so the console sender cannot silently take over and
+            write reset links to the log instead of delivering them
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("APP_ENV", "prod")
+        monkeypatch.setenv("SECRET_KEY", "a-sufficiently-strong-secret-value")
+        monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@host:5432/db")
+        monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
+        monkeypatch.setenv("CLOUDFLARE_ORIGIN_SECRET", "an-origin-verify-secret")
+        monkeypatch.setenv("CORS_ORIGINS", '["https://app.example.com"]')
+        monkeypatch.setenv("EMAIL_PROVIDER", "http")
+        monkeypatch.delenv("EMAIL_API_KEY", raising=False)
+
+        # WHEN / THEN
+        with pytest.raises(ValidationError, match="email_api_key is required"):
+            Settings()
+
+    def test_rejects_console_email_provider_in_production(self, monkeypatch, tmp_path):
+        """
+        GIVEN the production profile left on the console email provider
+        WHEN Settings is constructed
+        THEN validation fails
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("APP_ENV", "prod")
+        monkeypatch.setenv("SECRET_KEY", "a-sufficiently-strong-secret-value")
+        monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@host:5432/db")
+        monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
+        monkeypatch.setenv("CLOUDFLARE_ORIGIN_SECRET", "an-origin-verify-secret")
+        monkeypatch.setenv("CORS_ORIGINS", '["https://app.example.com"]')
+        monkeypatch.setenv("EMAIL_PROVIDER", "console")
+
+        # WHEN / THEN
+        with pytest.raises(ValidationError, match="email_api_key is required"):
+            Settings()
+
 
 class TestStagingInvariants:
     """The staging (TEST) profile enforces the same core invariants as prod."""
@@ -422,6 +468,8 @@ class TestStagingInvariants:
         monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@host:5432/db")
         monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
         monkeypatch.setenv("CORS_ORIGINS", '["https://staging.example.com"]')
+        monkeypatch.setenv("EMAIL_PROVIDER", "http")
+        monkeypatch.setenv("EMAIL_API_KEY", "a-resend-api-key")
 
     def test_accepts_fully_configured_staging_without_cloudflare(self, monkeypatch, tmp_path):
         """
@@ -493,6 +541,20 @@ class TestStagingInvariants:
 
         # WHEN / THEN
         with pytest.raises(ValidationError, match="SQLite"):
+            Settings()
+
+    def test_rejects_unconfigured_email_in_staging(self, monkeypatch, tmp_path):
+        """
+        GIVEN the deployed staging profile with no email API key
+        WHEN Settings is constructed
+        THEN validation fails
+        """
+        # GIVEN
+        self._configure_staging(monkeypatch, tmp_path)
+        monkeypatch.delenv("EMAIL_API_KEY", raising=False)
+
+        # WHEN / THEN
+        with pytest.raises(ValidationError, match="email_api_key is required"):
             Settings()
 
 

@@ -52,7 +52,9 @@ class CSRFMiddleware(BaseHTTPMiddleware):
             cookie = request.cookies.get(CSRF_COOKIE)
             if cookie is not None:
                 header = request.headers.get(CSRF_HEADER)
-                if header is None or not secrets.compare_digest(header, cookie):
+                # Compare as bytes: compare_digest raises TypeError on a non-ASCII str,
+                # which would turn a junk header into a 500 instead of this 403.
+                if header is None or not secrets.compare_digest(header.encode(), cookie.encode()):
                     return JSONResponse(
                         status_code=status.HTTP_403_FORBIDDEN,
                         content={"detail": "CSRF token missing or invalid"},
