@@ -1,5 +1,5 @@
 import { render, screen } from '@tests/utils'
-import { MemoryRouter, Routes, Route } from 'react-router-dom'
+import { MemoryRouter, Routes, Route } from 'react-router'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute'

@@ -1,6 +1,6 @@
 import { ReactElement, ReactNode, useState } from 'react'
 import { render, RenderOptions, screen } from '@testing-library/react'
-import { MemoryRouter, MemoryRouterProps } from 'react-router-dom'
+import { MemoryRouter, MemoryRouterProps } from 'react-router'
 import { I18nextProvider } from 'react-i18next'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import i18n from '@/i18n'
