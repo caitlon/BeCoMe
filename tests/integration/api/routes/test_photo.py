@@ -10,7 +10,11 @@ from sqlmodel import Session
 from api.db.session import get_session
 from api.dependencies import get_storage_service
 from api.services.storage.base import StorageService
-from api.services.storage.exceptions import StorageDeleteError, StorageUploadError
+from api.services.storage.exceptions import (
+    StorageDeleteError,
+    StorageError,
+    StorageUploadError,
+)
 from tests.integration.api.conftest import auth_header, create_test_app, register_and_login
 
 # Valid JPEG magic bytes (minimal valid JPEG header)
@@ -348,6 +352,34 @@ class TestPhotoProxy:
 
         # THEN
         assert response.status_code == 404
+
+    def test_storage_fault_does_not_leak_the_bucket_details(self, client_with_mock_storage):
+        """A storage read fault answers 404 without echoing the underlying error.
+
+        This endpoint is public (image tags cannot send auth headers), and the wrapped
+        botocore message carries the bucket host and object key.
+        """
+        # GIVEN - a user with a photo, and storage that fails on read
+        client, mock_storage = client_with_mock_storage
+        token = register_and_login(client, "fault@example.com")
+        user_id = client.get("/api/v1/users/me", headers=auth_header(token)).json()["id"]
+        client.post(
+            "/api/v1/users/me/photo",
+            headers=auth_header(token),
+            files={"file": ("photo.jpg", VALID_JPEG_BYTES, "image/jpeg")},
+        )
+        mock_storage.open.side_effect = StorageError(
+            "Failed to read file: Could not connect to the endpoint URL: "
+            f"https://private-bucket.example/{UPLOADED_KEY}"
+        )
+
+        # WHEN
+        response = client.get(f"/api/v1/users/{user_id}/photo")
+
+        # THEN
+        assert response.status_code == 404
+        assert response.json() == {"detail": "Photo not found"}
+        assert "private-bucket" not in response.text
 
 
 class TestAccountDeletionRemovesPhoto:

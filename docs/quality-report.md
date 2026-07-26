@@ -8,7 +8,7 @@
 | ruff check | Pass | No issues |
 | ruff format | Pass | All files formatted |
 | pytest | Pass | 1249 tests passed |
-| coverage | Pass | 100% on `src/`, 99% on `src/`+`api/` overall |
+| coverage | Pass | 100% on `src/` (197 statements), 98% on `src/`+`api/` (3414 statements, 53 uncovered) |
 
 ## Running Checks
 

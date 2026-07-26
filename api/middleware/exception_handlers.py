@@ -32,6 +32,12 @@ from api.exceptions import (
     ValidationError,
     ValuesOutOfRangeError,
 )
+from api.services.storage.exceptions import (
+    StorageConfigurationError,
+    StorageDeleteError,
+    StorageError,
+    StorageUploadError,
+)
 
 logger = logging.getLogger("api.exception")
 
@@ -83,6 +89,15 @@ EXCEPTION_MAP: dict[type[BeCoMeAPIError], tuple[int, str | None]] = {
     # 422 Unprocessable Content
     ValuesOutOfRangeError: (status.HTTP_422_UNPROCESSABLE_CONTENT, None),  # Use exception message
     ScaleRangeError: (status.HTTP_422_UNPROCESSABLE_CONTENT, None),  # Use exception message
+    # 503 Service Unavailable -- storage faults.
+    # These carry the raw botocore text (bucket host, object key, S3 error code), and the
+    # lookup below matches types exactly, so every subclass needs its own entry: without
+    # one it falls through to BeCoMeAPIError and returns str(exc) to the caller. The photo
+    # endpoint is public, so that text would be world-readable.
+    StorageError: (status.HTTP_503_SERVICE_UNAVAILABLE, "Storage temporarily unavailable"),
+    StorageConfigurationError: (status.HTTP_503_SERVICE_UNAVAILABLE, "Storage is not available"),
+    StorageUploadError: (status.HTTP_503_SERVICE_UNAVAILABLE, "Failed to upload photo"),
+    StorageDeleteError: (status.HTTP_503_SERVICE_UNAVAILABLE, "Failed to delete photo"),
 }
 
 # Default mappings for base exception classes

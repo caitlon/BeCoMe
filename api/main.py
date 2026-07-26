@@ -61,9 +61,13 @@ def _init_sentry(settings: Settings) -> None:
             dsn=settings.sentry_dsn,
             traces_sample_rate=0.1,
             environment=settings.environment.value,
-            # Never attach PII (client IP, cookies, headers, request bodies) to events,
-            # so passwords and emails on auth requests are not shipped to the tracker.
+            # Never attach PII (client IP, cookies, headers, request bodies) to events.
             send_default_pii=False,
+            # Frame locals are a separate switch that send_default_pii does not cover, and
+            # they default to on. Auth handlers bind the parsed body to a local, so a fault
+            # anywhere in the request would ship repr(ChangePasswordRequest) -- i.e. the
+            # plaintext passwords, or a still-valid reset token -- to the tracker.
+            include_local_variables=False,
         )
 
 

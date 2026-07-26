@@ -37,7 +37,9 @@ def get_client_ip(request: Request | None) -> str:
     secret = get_settings().cloudflare_origin_secret
     if secret:
         verify = request.headers.get("X-Origin-Verify")
-        if verify and hmac.compare_digest(verify, secret):
+        # Compare as bytes: compare_digest raises TypeError on a non-ASCII str, which
+        # would turn a junk header into a 500 instead of the unverified-origin path.
+        if verify and hmac.compare_digest(verify.encode(), secret.encode()):
             cloudflare_ip = request.headers.get("CF-Connecting-IP")
             if cloudflare_ip:
                 return cloudflare_ip.strip()

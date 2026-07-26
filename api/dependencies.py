@@ -130,6 +130,10 @@ def get_email_service() -> EmailSender:
     that logs the link. The forgot-password flow must never 503 (that would leak
     account existence), so there is no None / unconfigured branch here.
 
+    The fallback is a development affordance only. The deployed profiles reject an
+    unconfigured provider at startup (``Settings._validate_deploy_invariants``), so a
+    deploy cannot silently end up logging reset links instead of sending them.
+
     :return: An EmailSender implementation.
     """
     settings = get_settings()

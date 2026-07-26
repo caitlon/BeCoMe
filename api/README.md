@@ -137,7 +137,7 @@ returns `422`. The profile photo blob is removed from object storage as part of 
 | PATCH | `/api/v1/projects/{id}` | Update project |
 | DELETE | `/api/v1/projects/{id}` | Delete project |
 | GET | `/api/v1/projects/{id}/members` | List members |
-| DELETE | `/api/v1/projects/{id}/members/{user_id}` | Remove member |
+| DELETE | `/api/v1/projects/{id}/members/{user_id}` | Remove member (discards their opinion and recalculates) |
 | POST | `/api/v1/projects/{id}/transfer-ownership` | Transfer ownership to another member |
 | POST | `/api/v1/projects/{id}/invite` | Invite user |
 
@@ -193,7 +193,7 @@ Environment variables (can use `.env` file):
 | `REDIS_URL` | *required when deployed* | Redis for rate limiting, token revocation, and auth throttles |
 | `CLOUDFLARE_ORIGIN_SECRET` | *required in prod* | Shared secret proving the request came through Cloudflare |
 | `EMAIL_PROVIDER` | `console` | Password-reset email delivery: `console` (log) or `http` (Resend) |
-| `EMAIL_API_KEY` | *optional* | API key for the `http` email provider |
+| `EMAIL_API_KEY` | *required when deployed* | API key for the `http` email provider; startup fails without it on the staging and production profiles, where the console fallback would log reset links instead of sending them |
 | `API_PUBLIC_URL` | `http://localhost:8000` | Public base URL of this API, used to build profile photo proxy links |
 | `BUCKET_NAME` | *optional* | Railway Storage Bucket name (auto-injected when a bucket is attached) |
 | `BUCKET_ENDPOINT` | *optional* | S3-compatible bucket endpoint |

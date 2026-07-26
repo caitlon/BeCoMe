@@ -132,9 +132,19 @@ Logs are structured JSON in the deployed profiles. Each request is tagged with a
 `api.*` log record through contextvars (`api/logging_context.py`), so a service or security
 log line can be traced back to a request without threading identifiers by hand. Personal
 data is kept out of the logs: email addresses are recorded as a truncated SHA-256 hash
-(`email_hash`), not in the clear. Unhandled errors hit a catch-all `500` handler and, when `SENTRY_DSN` is
-configured, Sentry -- with `send_default_pii=False` so request bodies and headers are not
-shipped to the error tracker.
+(`email_hash`), not in the clear. Unhandled errors hit a catch-all `500` handler and, when
+`SENTRY_DSN` is configured, Sentry.
+
+Two separate switches keep credentials out of the tracker, and both are needed.
+`send_default_pii=False` drops the client IP, cookies, headers, and request bodies.
+`include_local_variables=False` drops the frame locals of every traceback frame, which
+`send_default_pii` does not cover and which default to on: the auth handlers bind the parsed
+request body to a local, so with locals enabled a fault anywhere under `register`,
+`change-password`, or `reset-password` would ship `repr()` of that model -- the plaintext
+passwords, or a reset token that is still redeemable -- to the tracker. Sentry's own scrubber
+does not catch this, because it matches local *names* against a denylist and the leaking
+local is called `data`. As a second layer, the credential fields in `api/schemas/auth.py` are
+declared `repr=False`, so those values stay out of any `repr()` regardless of who calls it.
 
 ## Secrets
 
@@ -166,6 +176,35 @@ still admins -- transfer it to another member, or delete it -- and the account i
 only once each owned project has been dealt with. That keeps one person's erasure from
 silently taking a whole panel's opinions with it. The profile-photo blob is deleted from
 object storage as part of the same operation, so erasure covers stored media too.
+
+When an admin removes a member from a project, that member's opinion is deleted in the same
+transaction and the project result is recalculated without it (`remove_member` in
+`api/services/project_membership_service.py`). Otherwise the row would outlive the
+membership: it carries the person's name, email, and stated position, it is served to every
+remaining member and embedded in every export, and `RequireProjectAccess` would no longer
+let the person concerned withdraw it themselves.
+
+## Accepted risks
+
+Two properties are known, deliberate, and reviewed. They are recorded here so a future audit
+does not re-litigate them.
+
+**Registration and invitation disclose whether an address has an account.** `POST /auth/register`
+answers `409 Email already registered` for a taken address, and inviting by email answers
+`404` for an address that has no account. Both are inherent to the flows: registration has to
+tell a returning user that they already have an account, and an invitation cannot be created
+for a user row that does not exist. Closing them means a deferred-activation signup with
+email verification, where the distinguishing branch moves into the mailbox -- a feature, not
+a patch. The bit disclosed is one the caller already supplied, and the login path is
+separately hardened against enumeration (uniform 401, equalized timing), as is
+forgot-password (uniform 202).
+
+**Login and refresh also return the refresh token in the JSON body.** The browser client
+never reads it -- it uses the `HttpOnly` cookie -- but programmatic clients can only obtain
+the token this way, and `POST /auth/refresh` accepts it in the request body for exactly that
+reason. Reading the body value requires script execution on the origin, which the CSP
+(`script-src 'self'`), the explicit CORS allow-list, and `SameSite=Strict` are there to
+prevent; rotation with reuse detection then caps the value of a token that does leak.
 
 ## Database
 

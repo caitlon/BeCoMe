@@ -5,7 +5,7 @@ from uuid import UUID
 
 from sqlmodel import col, select
 
-from api.db.models import MemberRole, ProjectMember, User
+from api.db.models import ExpertOpinion, MemberRole, ProjectMember, User
 from api.exceptions import MemberNotFoundError
 from api.schemas.internal import MemberWithUser
 from api.services.base import BaseService
@@ -40,26 +40,45 @@ class ProjectMembershipService(BaseService):
         results = self._session.exec(statement).all()
         return [MemberWithUser(membership=membership, user=user) for membership, user in results]
 
-    def remove_member(self, project_id: UUID, user_id: UUID) -> None:
-        """Remove a member from project.
+    def remove_member(self, project_id: UUID, user_id: UUID) -> bool:
+        """Remove a member from project, discarding the opinion they submitted.
+
+        The opinion goes in the same transaction as the membership. It carries the
+        member's identity -- name, email, position -- and is served to every remaining
+        member and embedded in every export, while ``RequireProjectAccess`` stops the
+        ex-member from withdrawing it themselves once their membership row is gone.
 
         :param project_id: Project ID
         :param user_id: User ID to remove
+        :return: True when an opinion was discarded, so the caller can recalculate
         :raises MemberNotFoundError: If user is not a member of the project
         """
         membership = self._get_membership(project_id, user_id)
         if not membership:
             raise MemberNotFoundError(f"User {user_id} is not a member of project {project_id}")
 
-        self._delete_and_commit(membership)
+        opinion = self._session.exec(
+            select(ExpertOpinion).where(
+                ExpertOpinion.project_id == project_id,
+                ExpertOpinion.user_id == user_id,
+            )
+        ).first()
+
+        self._session.delete(membership)
+        if opinion is not None:
+            self._session.delete(opinion)
+        self._session.commit()
+
         logger.info(
             "Member removed",
             extra={
                 "event": "member_removed",
                 "project_id": str(project_id),
                 "user_id": str(user_id),
+                "opinion_discarded": opinion is not None,
             },
         )
+        return opinion is not None
 
     def is_member(self, project_id: UUID, user_id: UUID) -> bool:
         """Check if user is a member of the project.

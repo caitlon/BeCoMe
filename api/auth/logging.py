@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger("api.security")
 
 
-def _hash_email(email: str) -> str:
+def hash_email(email: str) -> str:
     """Return a short, non-reversible tag for an email.
 
     Security events log this instead of the raw address so a log drain or Sentry
@@ -40,7 +40,7 @@ def log_login_success(user_id: UUID, email: str, request: "Request | None" = Non
         extra={
             "event": "login_success",
             "user_id": str(user_id),
-            "email_hash": _hash_email(email),
+            "email_hash": hash_email(email),
             "ip": ip,
         },
     )
@@ -58,7 +58,7 @@ def log_login_failure(email: str, reason: str, request: "Request | None" = None)
         "Login failed",
         extra={
             "event": "login_failure",
-            "email_hash": _hash_email(email),
+            "email_hash": hash_email(email),
             "reason": reason,
             "ip": ip,
         },
@@ -78,7 +78,7 @@ def log_registration(user_id: UUID, email: str, request: "Request | None" = None
         extra={
             "event": "registration",
             "user_id": str(user_id),
-            "email_hash": _hash_email(email),
+            "email_hash": hash_email(email),
             "ip": ip,
         },
     )
@@ -131,7 +131,7 @@ def log_password_reset_requested(email: str, request: "Request | None" = None) -
         "Password reset requested",
         extra={
             "event": "password_reset_requested",
-            "email_hash": _hash_email(email),
+            "email_hash": hash_email(email),
             "ip": ip,
         },
     )
@@ -167,7 +167,7 @@ def log_account_deletion(user_id: UUID, email: str, request: "Request | None" = 
         extra={
             "event": "account_deletion",
             "user_id": str(user_id),
-            "email_hash": _hash_email(email),
+            "email_hash": hash_email(email),
             "ip": ip,
         },
     )

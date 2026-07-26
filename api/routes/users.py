@@ -38,7 +38,11 @@ from api.services.project_membership_service import ProjectMembershipService
 from api.services.project_service import ProjectService
 from api.services.storage import validation
 from api.services.storage.base import StorageService
-from api.services.storage.exceptions import StorageDeleteError, StorageUploadError
+from api.services.storage.exceptions import (
+    StorageDeleteError,
+    StorageError,
+    StorageUploadError,
+)
 from api.services.user_service import UserService
 from api.utils.upload import UploadTooLarge, read_within_limit
 
@@ -127,12 +131,13 @@ def change_password(
     :param service: User service
     :param store: Revocation store (invalidates sessions issued before the change)
     """
-    service.change_password(
-        user=current_user,
-        current_password=data.current_password,
-        new_password=data.new_password,
-    )
+    # Order matters: verify, then close the session window, then write. Revoking before
+    # the write means a store fault surfaces as a 503 with the password unchanged, rather
+    # than committing the new password while old sessions stay valid. Verifying first
+    # keeps a mistyped current password from logging the user out everywhere.
+    service.verify_current_password(current_user, data.current_password)
     store.set_user_valid_after(current_user.id, datetime.now(UTC))
+    service.set_password(current_user, data.new_password)
 
     log_password_change(current_user.id, request)
 
@@ -357,7 +362,15 @@ def get_user_photo(
     if user is None or not user.photo_url:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Photo not found")
 
-    result = storage_service.open(user.photo_url)
+    # A storage fault must not surface here: this endpoint is public, and the raw
+    # exception text carries the bucket host and object key.
+    try:
+        result = storage_service.open(user.photo_url)
+    except StorageError as err:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Photo not found"
+        ) from err
+
     if result is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Photo not found")
 

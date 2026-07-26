@@ -5,7 +5,9 @@ from pydantic import ValidationError
 
 from api.schemas.auth import (
     ChangePasswordRequest,
+    RefreshTokenRequest,
     RegisterRequest,
+    ResetPasswordRequest,
     UpdateUserRequest,
     validate_name_format,
     validate_password_strength,
@@ -339,3 +341,87 @@ class TestChangePasswordRequest:
                 current_password="old_password",
                 new_password="weakpassword1!",
             )
+
+
+class TestCredentialFieldsStayOutOfRepr:
+    """Credential values must never appear in a model repr.
+
+    Anything that reprs a request model -- a log record, a debugger, a traceback frame
+    shipped to an error tracker -- would otherwise carry live credentials. The field
+    values stay reachable through attribute access, only the repr drops them.
+    """
+
+    def test_register_request_hides_password(self):
+        """
+        GIVEN a registration request carrying a password
+        WHEN the model is repr'd
+        THEN the password value is absent while the email is still shown
+        """
+        # GIVEN
+        request = RegisterRequest(
+            email="user@example.com",
+            password="SecurePass123!",
+            first_name="Test",
+            last_name="User",
+        )
+
+        # WHEN
+        rendered = repr(request)
+
+        # THEN
+        assert "SecurePass123!" not in rendered
+        assert "user@example.com" in rendered
+        assert request.password == "SecurePass123!"
+
+    def test_change_password_request_hides_both_passwords(self):
+        """
+        GIVEN a password-change request
+        WHEN the model is repr'd
+        THEN neither the current nor the new password appears
+        """
+        # GIVEN
+        request = ChangePasswordRequest(
+            current_password="old_password",
+            new_password="NewSecure123!",
+        )
+
+        # WHEN
+        rendered = repr(request)
+
+        # THEN
+        assert "old_password" not in rendered
+        assert "NewSecure123!" not in rendered
+
+    def test_reset_password_request_hides_token_and_password(self):
+        """
+        GIVEN a reset-password request carrying a single-use token
+        WHEN the model is repr'd
+        THEN neither the token nor the new password appears
+        """
+        # GIVEN
+        request = ResetPasswordRequest(
+            token="a-live-single-use-reset-token",
+            new_password="NewSecure123!",
+        )
+
+        # WHEN
+        rendered = repr(request)
+
+        # THEN
+        assert "a-live-single-use-reset-token" not in rendered
+        assert "NewSecure123!" not in rendered
+
+    def test_refresh_token_request_hides_the_token(self):
+        """
+        GIVEN a refresh request carrying a long-lived token
+        WHEN the model is repr'd
+        THEN the token value is absent
+        """
+        # GIVEN
+        request = RefreshTokenRequest(refresh_token="a-long-lived-refresh-token")
+
+        # WHEN
+        rendered = repr(request)
+
+        # THEN
+        assert "a-long-lived-refresh-token" not in rendered

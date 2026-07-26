@@ -6,6 +6,7 @@ import logging
 from typing import TYPE_CHECKING
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
+from api.auth.logging import hash_email
 from api.services.email.base import EmailSender
 
 if TYPE_CHECKING:
@@ -42,9 +43,11 @@ class ConsoleEmailSender(EmailSender):
     """Log the password-reset link instead of sending an email.
 
     Used in development, CI, and tests: the flow works offline and the reset
-    link is read straight from the application log. Never selected in
-    production, so the link (and its token) only ever reaches a
-    developer-visible log.
+    link is read straight from the application log. The deployed profiles reject
+    an unconfigured email provider at startup (``Settings._validate_deploy_invariants``),
+    so this sender cannot be selected there -- the link and its token only ever
+    reach a developer-visible log. Recipients are tagged with the same
+    :func:`hash_email` digest the security log uses, never the raw address.
 
     :param settings: Application settings (kept for a uniform sender signature).
     """
@@ -62,15 +65,16 @@ class ConsoleEmailSender(EmailSender):
         :param to_email: Recipient email address.
         :param reset_url: Full frontend reset link (carries the raw token).
         """
+        email_hash = hash_email(to_email)
         logger.info(
             "Password reset link (console sender) for %s: %s",
-            to_email,
+            email_hash,
             _mask_token(reset_url),
-            extra={"event": "password_reset_email", "to_email": to_email},
+            extra={"event": "password_reset_email", "email_hash": email_hash},
         )
         logger.debug(
             "Password reset link (full, console sender) for %s: %s",
-            to_email,
+            email_hash,
             reset_url,
-            extra={"event": "password_reset_email", "to_email": to_email},
+            extra={"event": "password_reset_email", "email_hash": email_hash},
         )

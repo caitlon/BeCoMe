@@ -221,15 +221,17 @@ class Settings(BaseSettings):
     def _validate_deploy_invariants(self) -> "Settings":
         """Reject development defaults on the deployed (TEST/PROD) profiles.
 
-        A strong secret, real PostgreSQL database, Redis-backed store, and a real
-        (non-loopback) CORS origin are required on both the staging (TEST) and
-        production (PROD) deploys, since both serve real browser traffic and
-        share the rate-limit / revocation store. The Cloudflare origin lock is
-        required only in production, where the app sits behind Cloudflare.
+        A strong secret, real PostgreSQL database, Redis-backed store, a real
+        (non-loopback) CORS origin, and a configured email provider are required on
+        both the staging (TEST) and production (PROD) deploys, since both serve real
+        browser traffic and share the rate-limit / revocation store. The Cloudflare
+        origin lock is required only in production, where the app sits behind
+        Cloudflare.
 
         :return: The validated settings instance.
         :raises ValueError: If a deployed profile still carries a development
-            default, or production lacks the Cloudflare origin secret.
+            default, lacks a real email provider, or production lacks the
+            Cloudflare origin secret.
         """
         # Environment.TEST doubles as the pytest-runner profile (the conftests set
         # APP_ENV=test with TESTING=1 and weak throwaway secrets), so its invariants
@@ -264,6 +266,12 @@ class Settings(BaseSettings):
             raise ValueError(
                 f"cors_origins must include the deployed frontend origin in the {profile} "
                 "profile; the localhost defaults cannot serve real browser traffic"
+            )
+        if not self.email_enabled:
+            raise ValueError(
+                f"email_api_key is required in the {profile} profile with "
+                "email_provider=http; without it the sender falls back to the console one, "
+                "which delivers no mail and writes reset links to the log instead"
             )
         return self
 

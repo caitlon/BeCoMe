@@ -1069,6 +1069,19 @@ class TestCookieAuth:
 
         assert resp.status_code == 403
 
+    def test_cookie_mutation_with_high_byte_csrf_header_is_rejected(self, cookie_client):
+        """A CSRF header carrying bytes above ASCII is rejected with 403, not a 500.
+
+        Sent as raw bytes because that is how it arrives on the wire; Starlette decodes
+        the header as latin-1, yielding a non-ASCII str. compare_digest raises TypeError
+        on such a str, which would turn a junk header into a 500.
+        """
+        self._register_and_login(cookie_client)
+
+        resp = cookie_client.post("/api/v1/auth/logout", headers={"X-CSRF-Token": b"wr\xc3\xb8ng"})
+
+        assert resp.status_code == 403
+
     def test_refresh_via_cookie_without_body(self, cookie_client):
         """The SPA refreshes using only the refresh cookie (no body) plus the CSRF header."""
         self._register_and_login(cookie_client)
