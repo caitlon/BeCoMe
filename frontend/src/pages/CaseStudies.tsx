@@ -22,12 +22,16 @@ const CaseStudies = () => {
     <div className="min-h-screen flex flex-col">
       <Navbar />
       <main id="main-content">
-        <HeroSection title={t("listing.title")} subtitle={t("listing.subtitle")} />
+        <HeroSection
+          title={t("listing.title")}
+          subtitle={t("listing.subtitle")}
+          align="left"
+        />
 
         {/* Case Study Cards */}
         <section className="py-12 md:py-16">
           <div className="container mx-auto px-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {studies.map((study, index) => (
                 <motion.div
                   key={study.id}

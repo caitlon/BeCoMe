@@ -34,7 +34,7 @@ export function Footer() {
         </div>
 
         {/* 3-column grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 md:justify-items-center gap-8 mb-8">
           {/* Product */}
           <div>
             <h4 className="font-medium text-sm mb-4">{t("footer.product")}</h4>
