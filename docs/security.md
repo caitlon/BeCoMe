@@ -30,7 +30,10 @@ access token and a longer-lived refresh token. Refresh tokens rotate: each refre
 fresh pair tied to a rotation family (a `sid` claim). Presenting a refresh token that has
 already been rotated is treated as theft and revokes the entire family, so a stolen token
 stops working the moment the legitimate client refreshes. Changing the password stamps a
-per-user cutoff that rejects every token issued before it, and the cutoff itself expires
+per-user cutoff that rejects every token issued before it. Both the change and the reset
+route record that cutoff *before* they write the new password, so a revocation-store fault
+aborts the operation instead of leaving a fresh password with every old session still
+alive. The cutoff itself expires
 once the longest-lived token would have, so it is not stored forever.
 
 Passwords are hashed with bcrypt. Because bcrypt silently truncates input at 72 bytes, the

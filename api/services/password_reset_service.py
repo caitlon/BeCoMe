@@ -92,8 +92,28 @@ class PasswordResetService(BaseService):
         )
         return f"{settings.frontend_base_url}/reset-password?token={raw_token}"
 
+    def resolve_valid_token(self, token: str) -> User:
+        """Resolve a reset token to its user without consuming it.
+
+        Split out of :meth:`reset_password` so a caller can place its own side effects
+        between validation and the write. The reset route records the session cutoff in
+        that gap: doing it first means a revocation-store fault leaves the password
+        unchanged and the token unspent, instead of committing a new password while
+        every pre-reset session stays valid.
+
+        :param token: The raw reset token from the reset link.
+        :return: The user the token belongs to.
+        :raises InvalidResetTokenError: If the token is unknown or already used.
+        :raises ResetTokenExpiredError: If the token has expired.
+        """
+        record = self._get_valid_record(token)
+        return self._get_token_user(record)
+
     def reset_password(self, token: str, new_password: str) -> User:
         """Consume a reset token and set the user's new password.
+
+        The token is re-validated here, so a caller that already ran
+        :meth:`resolve_valid_token` still cannot redeem one that was spent in between.
 
         :param token: The raw reset token from the reset link.
         :param new_password: The new plaintext password (already strength-checked).
@@ -101,18 +121,8 @@ class PasswordResetService(BaseService):
         :raises InvalidResetTokenError: If the token is unknown or already used.
         :raises ResetTokenExpiredError: If the token has expired.
         """
-        record = self._session.exec(
-            select(PasswordResetToken).where(PasswordResetToken.token_hash == _hash_token(token))
-        ).first()
-
-        if record is None or record.used_at is not None:
-            raise InvalidResetTokenError(_INVALID_MESSAGE)
-        if ensure_utc(record.expires_at) < utc_now():
-            raise ResetTokenExpiredError(_INVALID_MESSAGE)
-
-        user = self._session.get(User, record.user_id)
-        if user is None:
-            raise InvalidResetTokenError(_INVALID_MESSAGE)
+        record = self._get_valid_record(token)
+        user = self._get_token_user(record)
 
         user.hashed_password = hash_password(new_password)
         record.used_at = utc_now()
@@ -128,6 +138,36 @@ class PasswordResetService(BaseService):
             "Password reset completed",
             extra={"event": "password_reset_completed", "user_id": str(user.id)},
         )
+        return user
+
+    def _get_valid_record(self, token: str) -> PasswordResetToken:
+        """Look up a reset token and reject it unless it is unused and unexpired.
+
+        :param token: The raw reset token from the reset link.
+        :return: The matching token record.
+        :raises InvalidResetTokenError: If the token is unknown or already used.
+        :raises ResetTokenExpiredError: If the token has expired.
+        """
+        record = self._session.exec(
+            select(PasswordResetToken).where(PasswordResetToken.token_hash == _hash_token(token))
+        ).first()
+
+        if record is None or record.used_at is not None:
+            raise InvalidResetTokenError(_INVALID_MESSAGE)
+        if ensure_utc(record.expires_at) < utc_now():
+            raise ResetTokenExpiredError(_INVALID_MESSAGE)
+        return record
+
+    def _get_token_user(self, record: PasswordResetToken) -> User:
+        """Load the user a token record points at.
+
+        :param record: A validated reset-token record.
+        :return: The user that requested the reset.
+        :raises InvalidResetTokenError: If the user no longer exists.
+        """
+        user = self._session.get(User, record.user_id)
+        if user is None:
+            raise InvalidResetTokenError(_INVALID_MESSAGE)
         return user
 
     def _get_user_by_email(self, email: str) -> User | None:

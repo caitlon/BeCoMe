@@ -193,7 +193,7 @@ Environment variables (can use `.env` file):
 | `REDIS_URL` | *required when deployed* | Redis for rate limiting, token revocation, and auth throttles |
 | `CLOUDFLARE_ORIGIN_SECRET` | *required in prod* | Shared secret proving the request came through Cloudflare |
 | `EMAIL_PROVIDER` | `console` | Password-reset email delivery: `console` (log) or `http` (Resend) |
-| `EMAIL_API_KEY` | *required when deployed* | API key for the `http` email provider; startup fails without it on the staging and production profiles, where the console fallback would log reset links instead of sending them |
+| `EMAIL_API_KEY` | *required when deployed* | API key for the `http` email provider; startup fails without it on the staging and production profiles, where the console fallback would print reset links to stdout instead of sending them |
 | `API_PUBLIC_URL` | `http://localhost:8000` | Public base URL of this API, used to build profile photo proxy links |
 | `BUCKET_NAME` | *optional* | Railway Storage Bucket name (auto-injected when a bucket is attached) |
 | `BUCKET_ENDPOINT` | *optional* | S3-compatible bucket endpoint |

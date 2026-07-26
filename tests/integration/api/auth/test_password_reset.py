@@ -6,10 +6,12 @@ sender captures the raw reset token, which the API never returns in a response.
 
 import hashlib
 from datetime import timedelta
+from unittest.mock import patch
 
 import pytest
 from sqlmodel import select
 
+from api.auth.revocation_store import RevocationStoreError
 from api.db.models import PasswordResetToken, User
 from api.db.utils import utc_now
 from api.dependencies import get_email_service
@@ -177,6 +179,43 @@ class TestResetPassword:
 
         # THEN the old access token is rejected
         assert client.get("/api/v1/auth/me", headers=auth_header(access)).status_code == 401
+
+    def test_store_fault_leaves_the_password_and_token_untouched(self, client, fake_email):
+        """A revocation-store fault aborts the reset instead of half-applying it.
+
+        Writing the password first would leave it changed with every pre-reset session
+        still valid -- the exact outcome someone resetting a compromised account is
+        trying to avoid. Recording the cutoff first makes the fault a clean abort.
+        """
+        # GIVEN a user holding a valid reset link, and a store that cannot record the cutoff
+        _register(client, "resetfault@example.com")
+        client.post("/api/v1/auth/forgot-password", json={"email": "resetfault@example.com"})
+        token = _captured_token(fake_email)
+
+        # WHEN the reset runs into the store fault
+        with patch(
+            "api.auth.revocation_store.InMemoryRevocationStore.set_user_valid_after",
+            side_effect=RevocationStoreError("store is down"),
+        ):
+            response = client.post(
+                "/api/v1/auth/reset-password",
+                json={"token": token, "new_password": NEW_PASSWORD},
+            )
+
+        # THEN the request fails, the old password still works, and the link is unspent
+        assert response.status_code == 503
+
+        old_login = client.post(
+            "/api/v1/auth/login",
+            data={"username": "resetfault@example.com", "password": DEFAULT_TEST_PASSWORD},
+        )
+        assert old_login.status_code == 200
+
+        retry = client.post(
+            "/api/v1/auth/reset-password",
+            json={"token": token, "new_password": NEW_PASSWORD},
+        )
+        assert retry.status_code == 204
 
     def test_rejects_unknown_token(self, client):
         """An unknown token is rejected with 400."""

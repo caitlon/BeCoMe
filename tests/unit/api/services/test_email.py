@@ -30,7 +30,7 @@ class TestConsoleEmailSender:
     _RAW_TOKEN = "S3cret-Reset-Token-abcdefghijklmnop-1234567890"
     _RESET_URL = f"https://app.example/reset-password?token={_RAW_TOKEN}"
 
-    def _send(self, mock_logger_attr: str = "logger"):
+    def _send(self):
         """Send a reset email through the console sender with the logger patched."""
         sender = ConsoleEmailSender(_settings())
         with patch("api.services.email.console_email_sender.logger") as mock_logger:
@@ -54,18 +54,39 @@ class TestConsoleEmailSender:
         assert self._RAW_TOKEN not in info_str
         assert "..." in info_str
 
-    def test_debug_log_keeps_the_full_link_for_local_dev(self):
+    def test_no_log_record_carries_the_redeemable_link(self):
         """
         GIVEN a console email sender
         WHEN a password reset email is sent
-        THEN the full link stays available at DEBUG so the dev flow still works
+        THEN no record reaches the logger with the full link
+
+        Records travel to the rotating file handler and, when configured, to the
+        Better Stack drain. A redeemable token must not ride along on either.
         """
         # WHEN
         mock_logger = self._send()
 
         # THEN
-        mock_logger.debug.assert_called_once()
-        assert self._RESET_URL in str(mock_logger.debug.call_args)
+        for method in (mock_logger.debug, mock_logger.info, mock_logger.warning):
+            for call in method.call_args_list:
+                assert self._RAW_TOKEN not in str(call)
+
+    def test_full_link_goes_to_stdout_for_local_dev(self, capsys):
+        """
+        GIVEN a console email sender
+        WHEN a password reset email is sent
+        THEN the full link is printed, so the offline dev flow still works
+        """
+        # GIVEN
+        sender = ConsoleEmailSender(_settings())
+
+        # WHEN
+        asyncio.run(
+            sender.send_password_reset(to_email="user@example.com", reset_url=self._RESET_URL)
+        )
+
+        # THEN
+        assert self._RESET_URL in capsys.readouterr().out
 
 
 class TestMaskToken:

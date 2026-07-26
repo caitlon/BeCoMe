@@ -118,6 +118,86 @@ class TestCreateResetToken:
         assert first.used_at is not None
 
 
+class TestResolveValidToken:
+    """Tests for resolving a reset token without consuming it."""
+
+    def test_returns_the_user_without_touching_the_token(self, session):
+        """
+        GIVEN a valid reset token
+        WHEN the token is resolved
+        THEN its user is returned, the password is unchanged, and the token stays unused
+        """
+        # GIVEN
+        user = _make_user(session)
+        original_hash = user.hashed_password
+        service = PasswordResetService(session)
+        token = _token_from_url(service.create_reset_token(user.email))
+
+        # WHEN
+        resolved = service.resolve_valid_token(token)
+
+        # THEN
+        assert resolved.id == user.id
+        assert resolved.hashed_password == original_hash
+        record = session.exec(
+            select(PasswordResetToken).where(PasswordResetToken.token_hash == _hash(token))
+        ).first()
+        assert record is not None
+        assert record.used_at is None
+
+    def test_raises_for_unknown_token(self, session):
+        """
+        GIVEN a token that does not exist
+        WHEN it is resolved
+        THEN InvalidResetTokenError is raised
+        """
+        # GIVEN
+        service = PasswordResetService(session)
+
+        # WHEN / THEN
+        with pytest.raises(InvalidResetTokenError):
+            service.resolve_valid_token("garbage-token")
+
+    def test_raises_for_already_used_token(self, session):
+        """
+        GIVEN a token that has already been redeemed
+        WHEN it is resolved
+        THEN InvalidResetTokenError is raised
+        """
+        # GIVEN
+        user = _make_user(session)
+        service = PasswordResetService(session)
+        token = _token_from_url(service.create_reset_token(user.email))
+        service.reset_password(token, "NewSecurePass123!")
+
+        # WHEN / THEN
+        with pytest.raises(InvalidResetTokenError):
+            service.resolve_valid_token(token)
+
+    def test_raises_for_expired_token(self, session):
+        """
+        GIVEN a token whose expiry is in the past
+        WHEN it is resolved
+        THEN ResetTokenExpiredError is raised
+        """
+        # GIVEN
+        user = _make_user(session)
+        raw = "expired-raw-token-value"
+        session.add(
+            PasswordResetToken(
+                user_id=user.id,
+                token_hash=_hash(raw),
+                expires_at=utc_now() - timedelta(hours=1),
+            )
+        )
+        session.commit()
+        service = PasswordResetService(session)
+
+        # WHEN / THEN
+        with pytest.raises(ResetTokenExpiredError):
+            service.resolve_valid_token(raw)
+
+
 class TestResetPassword:
     """Tests for redeeming reset tokens."""
 

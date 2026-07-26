@@ -59,8 +59,10 @@ class ConsoleEmailSender(EmailSender):
     async def send_password_reset(self, *, to_email: str, reset_url: str) -> None:
         """Log the reset link; perform no network call.
 
-        The INFO record masks the single-use token so an aggregated log never
-        captures it; the full link stays at DEBUG for the local dev flow.
+        The log record masks the single-use token, so a rotating file or a log drain
+        never captures a redeemable link. The dev flow still needs a usable one, so the
+        full link is written straight to stdout instead of through the ``api`` logger
+        tree -- no handler, present or future, can ship it off the machine.
 
         :param to_email: Recipient email address.
         :param reset_url: Full frontend reset link (carries the raw token).
@@ -72,9 +74,5 @@ class ConsoleEmailSender(EmailSender):
             _mask_token(reset_url),
             extra={"event": "password_reset_email", "email_hash": email_hash},
         )
-        logger.debug(
-            "Password reset link (full, console sender) for %s: %s",
-            email_hash,
-            reset_url,
-            extra={"event": "password_reset_email", "email_hash": email_hash},
-        )
+        # Deliberately not a log record -- see the docstring.
+        print(f"[console email] password reset link for {email_hash}: {reset_url}")
