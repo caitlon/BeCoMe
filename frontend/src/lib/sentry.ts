@@ -20,7 +20,9 @@ const REDACTED = "[redacted]";
 export function scrubUrl(raw: string): string {
   let parsed: URL;
   try {
-    parsed = new URL(raw, "http://placeholder.invalid");
+    // Base only so relative URLs parse; nothing is ever requested from it. The
+    // .invalid TLD is reserved and can never resolve.
+    parsed = new URL(raw, "https://placeholder.invalid");
   } catch {
     return raw;
   }
