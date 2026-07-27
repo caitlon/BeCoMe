@@ -111,13 +111,20 @@ Article 20 requires the full dataset -- and that is documented at the call site.
 ## Configuration and profiles
 
 The app runs under one of three profiles selected by `APP_ENV`: `dev`, `test`, `prod`
-(`api/config.py`). Deployed profiles are held to invariants that fail startup rather than
+(`api/config.py`). Deployed services are held to invariants that fail startup rather than
 boot insecurely (`_validate_deploy_invariants`): the `SECRET_KEY` must be strong, SQLite is
-rejected in favor of PostgreSQL, `redis_url` must be set, and `CORS_ORIGINS` may not be
-localhost. Production additionally requires `cloudflare_origin_secret`. The pytest runner is
-distinguished from a deployed `test` (staging) environment by a `TESTING` flag, so the
-invariants guard staging without breaking the local suite. Interactive API docs (`/docs`)
-are served only outside production.
+rejected in favor of PostgreSQL, `redis_url` must be set, `CORS_ORIGINS` may not be
+localhost, a real email provider must be configured, `DEBUG` must be off, and
+`MIGRATION_DATABASE_URL` must be set explicitly so migrations keep running as the
+privileged role. Production additionally requires `cloudflare_origin_secret`.
+
+"Deployed" is not the same as "not dev". The dev *service* has its own database and a
+public URL, so it is held to the same invariants: anything running with a
+`RAILWAY_ENVIRONMENT_NAME` counts, whatever its `APP_ENV`. A laptop and a CI runner carry
+no such marker and stay unconstrained. The pytest runner is distinguished from a deployed
+`test` (staging) environment by a `TESTING` flag, so the invariants guard staging without
+breaking the local suite. Interactive API docs (`/docs`) are served only outside
+production.
 
 ## Network and edge
 
@@ -125,8 +132,23 @@ The public origin is `becomify.app`, served through Cloudflare. A Cloudflare Tra
 injects a shared secret header that the origin then requires (`cloudflare_origin_secret`),
 so the Railway origin cannot be reached directly, bypassing the edge. CORS is configured
 with explicit allowed origins and `allow_credentials=True` (required for the cookie
-session), and permits the `X-CSRF-Token` header. Standard security response headers are set
-by middleware.
+session), and permits the `X-CSRF-Token` header.
+
+Both tiers send security response headers: the API from middleware
+(`api/middleware/security_headers.py`), the SPA from nginx (`frontend/nginx.conf`). Their
+Content-Security-Policies match except where the SPA genuinely needs more -- its
+`connect-src` also names the API origin, which is cross-origin on the deploys, and the
+Sentry ingest hosts the browser SDK reports to. That origin is baked into the policy when
+the image is built, from the same `VITE_API_URL` build argument the bundle uses, so the
+served policy cannot drift from the URL the app actually calls. `X-XSS-Protection` is set
+to `0` on both tiers on purpose: the legacy auditor it enables is unreliable, browsers have
+dropped it, and its blocking mode has itself leaked cross-origin information. The CSP is
+what constrains injection.
+
+The correlation ID is not taken on trust either. An inbound `X-Request-ID` is echoed on the
+response and written to every log record of the request, so it is reused only when it looks
+like an ID -- a short, conservative alphabet -- and replaced with a fresh UUID otherwise
+(`api/middleware/request_logging.py`).
 
 ## Logging, observability, and privacy
 
@@ -134,9 +156,15 @@ Logs are structured JSON in the deployed profiles. Each request is tagged with a
 `X-Request-ID`, and a context filter binds that request id and the acting user id onto every
 `api.*` log record through contextvars (`api/logging_context.py`), so a service or security
 log line can be traced back to a request without threading identifiers by hand. Personal
-data is kept out of the logs: email addresses are recorded as a truncated SHA-256 hash
-(`email_hash`), not in the clear. Unhandled errors hit a catch-all `500` handler and, when
-`SENTRY_DSN` is configured, Sentry.
+data is kept out of the logs: email addresses are recorded as a truncated keyed digest
+(`email_hash`), not in the clear. The key matters -- a plain SHA-256 of an address is
+reproducible by anyone holding the logs, so they could confirm whether a given person has
+an account by hashing a guess. The tag is an HMAC keyed with `LOG_HASH_KEY` (falling back
+to `SECRET_KEY`), which makes it meaningless outside the application while still
+correlating repeated attempts on one account. Rotating the fallback re-tags every later
+record, so set `LOG_HASH_KEY` explicitly where that correlation has to survive a rotation.
+
+Unhandled errors hit a catch-all `500` handler and, when `SENTRY_DSN` is configured, Sentry.
 
 Two separate switches keep credentials out of the tracker, and both are needed.
 `send_default_pii=False` drops the client IP, cookies, headers, and request bodies.
@@ -148,6 +176,11 @@ passwords, or a reset token that is still redeemable -- to the tracker. Sentry's
 does not catch this, because it matches local *names* against a denylist and the leaking
 local is called `data`. As a second layer, the credential fields in `api/schemas/auth.py` are
 declared `repr=False`, so those values stay out of any `repr()` regardless of who calls it.
+
+The browser SDK needs its own guard, since the reset link carries its token in the query
+string: `frontend/src/main.tsx` installs `beforeSend` and `beforeBreadcrumb` hooks
+(`frontend/src/lib/sentry.ts`) that redact `token`, `access_token`, and `refresh_token`
+from event URLs and from navigation and fetch breadcrumbs.
 
 ## Secrets
 

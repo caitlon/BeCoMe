@@ -1,10 +1,12 @@
 """Security event logging for authentication operations."""
 
-import hashlib
+import hmac
 import logging
+from hashlib import sha256
 from typing import TYPE_CHECKING
 from uuid import UUID
 
+from api.config import get_settings
 from api.utils.client_ip import get_client_ip
 
 if TYPE_CHECKING:
@@ -13,18 +15,32 @@ if TYPE_CHECKING:
 # Configure security logger
 logger = logging.getLogger("api.security")
 
+# Length of the hex tag written to logs. Enough to correlate attempts on one account
+# without carrying the full digest around.
+_EMAIL_TAG_LENGTH = 16
+
 
 def hash_email(email: str) -> str:
-    """Return a short, non-reversible tag for an email.
+    """Return a short, keyed tag for an email.
 
     Security events log this instead of the raw address so a log drain or Sentry
     breach cannot harvest a registry of user emails, while repeated attempts on the
     same account can still be correlated (log data-minimization, GDPR).
 
+    The tag is an HMAC, not a plain digest: a plain SHA-256 of an address is
+    reproducible by anyone holding the logs, so they could confirm whether a given
+    person has an account by hashing a guess. Keying it makes the tag meaningless
+    outside this application. The key is ``log_hash_key`` when set, otherwise
+    ``secret_key`` -- note that rotating the fallback also re-tags every future
+    record, so set ``LOG_HASH_KEY`` explicitly to keep tags stable across a rotation.
+
     :param email: The email address to tag.
-    :return: A truncated SHA-256 hex digest of the normalized email.
+    :return: A truncated hex HMAC-SHA-256 of the normalized email.
     """
-    return hashlib.sha256(email.strip().lower().encode()).hexdigest()[:16]
+    settings = get_settings()
+    key = settings.log_hash_key or settings.secret_key
+    tag = hmac.new(key.encode(), email.strip().lower().encode(), sha256)
+    return tag.hexdigest()[:_EMAIL_TAG_LENGTH]
 
 
 def log_login_success(user_id: UUID, email: str, request: "Request | None" = None) -> None:

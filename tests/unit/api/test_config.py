@@ -8,6 +8,21 @@ from pydantic import ValidationError
 from api.config import Environment, Settings
 
 
+def _configure_prod(monkeypatch, tmp_path) -> None:
+    """Set a fully valid production environment; each test then weakens one part."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("APP_ENV", "prod")
+    monkeypatch.setenv("SECRET_KEY", "a-sufficiently-strong-secret-value")
+    monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@host:5432/db")
+    monkeypatch.setenv("MIGRATION_DATABASE_URL", "postgresql://migrator:pass@host:5432/db")
+    monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
+    monkeypatch.setenv("CLOUDFLARE_ORIGIN_SECRET", "an-origin-verify-secret")
+    monkeypatch.setenv("CORS_ORIGINS", '["https://app.example.com"]')
+    monkeypatch.setenv("EMAIL_PROVIDER", "http")
+    monkeypatch.setenv("EMAIL_API_KEY", "a-resend-api-key")
+    monkeypatch.setenv("DEBUG", "false")
+
+
 class TestStorageEnabled:
     """Tests for the storage_enabled property."""
 
@@ -197,6 +212,7 @@ class TestEnvironmentResolution:
         monkeypatch.setenv("CORS_ORIGINS", '["https://app.example.com"]')
         monkeypatch.setenv("EMAIL_PROVIDER", "http")
         monkeypatch.setenv("EMAIL_API_KEY", "a-resend-api-key")
+        monkeypatch.setenv("MIGRATION_DATABASE_URL", "postgresql://migrator:pass@host:5432/db")
 
         # WHEN
         settings = Settings()
@@ -332,6 +348,7 @@ class TestProductionInvariants:
         monkeypatch.setenv("CORS_ORIGINS", '["https://app.example.com"]')
         monkeypatch.setenv("EMAIL_PROVIDER", "http")
         monkeypatch.setenv("EMAIL_API_KEY", "a-resend-api-key")
+        monkeypatch.setenv("MIGRATION_DATABASE_URL", "postgresql://migrator:pass@host:5432/db")
 
         # WHEN
         settings = Settings()
@@ -451,6 +468,126 @@ class TestProductionInvariants:
         with pytest.raises(ValidationError, match="email_api_key is required"):
             Settings()
 
+    def test_rejects_debug_in_production(self, monkeypatch, tmp_path):
+        """
+        GIVEN a fully configured production profile with DEBUG on
+        WHEN Settings is constructed
+        THEN validation fails
+        """
+        # GIVEN
+        _configure_prod(monkeypatch, tmp_path)
+        monkeypatch.setenv("DEBUG", "true")
+
+        # WHEN / THEN
+        with pytest.raises(ValidationError, match="debug must be off"):
+            Settings()
+
+    def test_rejects_missing_migration_url_in_production(self, monkeypatch, tmp_path):
+        """
+        GIVEN a production profile with no MIGRATION_DATABASE_URL
+        WHEN Settings is constructed
+        THEN validation fails, so migrations cannot silently run as the app role
+        """
+        # GIVEN
+        _configure_prod(monkeypatch, tmp_path)
+        monkeypatch.delenv("MIGRATION_DATABASE_URL", raising=False)
+
+        # WHEN / THEN
+        with pytest.raises(ValidationError, match="migration_database_url is required"):
+            Settings()
+
+
+class TestDeployedDevInvariants:
+    """The dev profile is held to the deploy invariants when it runs on Railway.
+
+    A dev *service* has its own database and a public URL, so "dev" there means the
+    data is separate, not that the service may be weakly configured. A laptop and a
+    CI runner carry no RAILWAY_* marker and stay unconstrained.
+    """
+
+    def test_local_dev_stays_unconstrained(self, monkeypatch, tmp_path):
+        """
+        GIVEN the dev profile with development defaults and no Railway marker
+        WHEN Settings is constructed
+        THEN validation passes
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("RAILWAY_ENVIRONMENT_NAME", raising=False)
+        monkeypatch.setenv("APP_ENV", "dev")
+        monkeypatch.setenv("SECRET_KEY", "weak")
+        monkeypatch.setenv("DATABASE_URL", "sqlite:///./become.db")
+
+        # WHEN
+        settings = Settings()
+
+        # THEN
+        assert settings.environment is Environment.DEV
+
+    def test_railway_dev_rejects_weak_secret(self, monkeypatch, tmp_path):
+        """
+        GIVEN the dev profile on a Railway service with a weak secret
+        WHEN Settings is constructed
+        THEN validation fails
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("TESTING", raising=False)
+        monkeypatch.setenv("RAILWAY_ENVIRONMENT_NAME", "dev")
+        monkeypatch.setenv("APP_ENV", "dev")
+        monkeypatch.setenv("SECRET_KEY", "weak")
+        monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@host:5432/db")
+
+        # WHEN / THEN
+        with pytest.raises(ValidationError, match="secret_key"):
+            Settings()
+
+    def test_railway_dev_accepts_a_full_configuration(self, monkeypatch, tmp_path):
+        """
+        GIVEN the dev profile on Railway configured like a real deploy
+        WHEN Settings is constructed
+        THEN validation passes
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("TESTING", raising=False)
+        monkeypatch.delenv("CLOUDFLARE_ORIGIN_SECRET", raising=False)
+        monkeypatch.setenv("RAILWAY_ENVIRONMENT_NAME", "dev")
+        monkeypatch.setenv("APP_ENV", "dev")
+        monkeypatch.setenv("SECRET_KEY", "a-sufficiently-strong-secret-value")
+        monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@host:5432/db")
+        monkeypatch.setenv("MIGRATION_DATABASE_URL", "postgresql://migrator:pass@host:5432/db")
+        monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
+        monkeypatch.setenv("CORS_ORIGINS", '["https://dev.your-domain.example"]')
+        monkeypatch.setenv("EMAIL_PROVIDER", "http")
+        monkeypatch.setenv("EMAIL_API_KEY", "a-resend-api-key")
+
+        # WHEN
+        settings = Settings()
+
+        # THEN
+        assert settings.environment is Environment.DEV
+
+    def test_pytest_profile_is_exempt_on_railway(self, monkeypatch, tmp_path):
+        """
+        GIVEN TESTING=1 alongside a Railway marker on the dev profile
+        WHEN Settings is constructed
+        THEN validation passes, so a CI job on Railway is not held to deploy rules
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("TESTING", "1")
+        monkeypatch.setenv("RAILWAY_ENVIRONMENT_NAME", "dev")
+        monkeypatch.setenv("APP_ENV", "dev")
+        monkeypatch.setenv("SECRET_KEY", "weak")
+        monkeypatch.setenv("DATABASE_URL", "sqlite:///./become.db")
+
+        # WHEN
+        settings = Settings()
+
+        # THEN
+        assert settings.environment is Environment.DEV
+
 
 class TestStagingInvariants:
     """The staging (TEST) profile enforces the same core invariants as prod."""
@@ -470,6 +607,7 @@ class TestStagingInvariants:
         monkeypatch.setenv("CORS_ORIGINS", '["https://staging.example.com"]')
         monkeypatch.setenv("EMAIL_PROVIDER", "http")
         monkeypatch.setenv("EMAIL_API_KEY", "a-resend-api-key")
+        monkeypatch.setenv("MIGRATION_DATABASE_URL", "postgresql://migrator:pass@host:5432/db")
 
     def test_accepts_fully_configured_staging_without_cloudflare(self, monkeypatch, tmp_path):
         """

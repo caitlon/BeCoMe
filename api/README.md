@@ -183,11 +183,12 @@ Environment variables (can use `.env` file):
 |----------|---------|-------------|
 | `APP_ENV` | `dev` | Deployment profile: `dev`, `test`, or `prod`. Selects the `.env.<APP_ENV>` overlay; deployed profiles reject a weak secret, SQLite, a missing Redis, or localhost CORS at startup. See the root README "Environment profiles". |
 | `DATABASE_URL` | `sqlite:///./become.db` | Database connection string. On deployed environments this is the least-privilege `become_app` role. |
-| `MIGRATION_DATABASE_URL` | *optional* | Privileged connection used only by Alembic migrations (DDL); falls back to `DATABASE_URL` when unset. |
+| `MIGRATION_DATABASE_URL` | *required when deployed* | Privileged connection used only by Alembic migrations (DDL); falls back to `DATABASE_URL` locally, but startup fails without it on a deployed service so the least-privilege split is never silently lost. |
 | `SECRET_KEY` | *required* | JWT signing key (generate with `openssl rand -hex 32`) |
+| `LOG_HASH_KEY` | *optional* | Key for the email tags in security logs; falls back to `SECRET_KEY`. Set it separately to keep tags comparable across a secret rotation. |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | `15` | Access token TTL |
 | `REFRESH_TOKEN_EXPIRE_DAYS` | `7` | Refresh token TTL |
-| `DEBUG` | `false` | Debug mode |
+| `DEBUG` | `false` | Debug mode; must stay off on a deployed service (startup fails otherwise) |
 | `API_VERSION` | `1.0.0b1` | API version (auto-read from pyproject.toml) |
 | `CORS_ORIGINS` | `http://localhost:3000,http://localhost:8080` | Allowed CORS origins |
 | `REDIS_URL` | *required when deployed* | Redis for rate limiting, token revocation, and auth throttles |

@@ -59,17 +59,20 @@ class TestSecurityHeadersMiddleware:
         # THEN
         assert response.headers.get("X-Content-Type-Options") == "nosniff"
 
-    def test_adds_x_xss_protection(self, http_client: TestClient):
+    def test_disables_the_legacy_xss_auditor(self, http_client: TestClient):
         """
         GIVEN a request to any endpoint
         WHEN the response is returned
-        THEN it includes X-XSS-Protection: 1; mode=block
+        THEN it includes X-XSS-Protection: 0
+
+        The legacy auditor is unreliable and its blocking mode has itself leaked
+        cross-origin information; the CSP is what constrains injection here.
         """
         # WHEN
         response = http_client.get("/test")
 
         # THEN
-        assert response.headers.get("X-XSS-Protection") == "1; mode=block"
+        assert response.headers.get("X-XSS-Protection") == "0"
 
     def test_skips_hsts_for_http(self, http_client: TestClient):
         """
