@@ -17,6 +17,7 @@ def _prod_env(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("CORS_ORIGINS", '["https://app.example.com"]')
     monkeypatch.setenv("EMAIL_PROVIDER", "http")
     monkeypatch.setenv("EMAIL_API_KEY", "a-resend-api-key")
+    monkeypatch.setenv("MIGRATION_DATABASE_URL", "postgresql://migrator:pass@host:5432/db")
 
 
 class TestDocsExposure:

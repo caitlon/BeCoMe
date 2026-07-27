@@ -31,8 +31,10 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         # Prevent MIME type sniffing
         response.headers["X-Content-Type-Options"] = "nosniff"
 
-        # XSS protection for older browsers
-        response.headers["X-XSS-Protection"] = "1; mode=block"
+        # Explicitly off. The legacy auditor this enables is unreliable, browsers have
+        # dropped it, and its blocking mode has itself been an information-leak vector.
+        # The Content-Security-Policy below is what actually constrains injection.
+        response.headers["X-XSS-Protection"] = "0"
 
         # HTTP Strict Transport Security - only for HTTPS requests
         # Sending HSTS on HTTP can cause issues in dev/staging

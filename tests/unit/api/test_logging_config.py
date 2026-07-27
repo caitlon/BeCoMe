@@ -32,6 +32,7 @@ def _settings(
         cors_origins=["https://app.example.com"],
         email_provider="http",
         email_api_key="a-resend-api-key-for-tests",
+        migration_database_url="postgresql://migrator:pass@host:5432/db",
     )
 
 
