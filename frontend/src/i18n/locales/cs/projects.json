@@ -15,6 +15,10 @@
     "description": "Vytvořte svůj první projekt a začněte sbírat názory expertů.",
     "createFirst": "Vytvořit první projekt"
   },
+  "error": {
+    "title": "Projekty se nepodařilo načíst",
+    "description": "Při načítání došlo k chybě. Zkontrolujte připojení a zkuste to znovu."
+  },
   "dropdown": {
     "openMenu": "Možnosti projektu",
     "viewProject": "Zobrazit projekt",
@@ -93,9 +97,18 @@
     "noResults": "Výsledky se zobrazí po odeslání názorů experty.",
     "resultsError": "Výsledky se nepodařilo zobrazit. Zkuste stránku znovu načíst.",
     "bestCompromise": "Nejlepší kompromis",
+    "resultBadge": "Výsledek",
+    "resultValue": "Výsledná hodnota",
     "arithmeticMean": "Aritmetický průměr (Γ)",
     "median": "Medián (Ω)",
-    "maxError": "Max. chyba (Δmax)",
+    "supportingCalcs": "Pomocné výpočty",
+    "confidence": "Spolehlivost",
+    "confidenceHint": "Jak blízko se shodují průměr a medián -- těsnější shoda znamená přesnější kompromis.",
+    "confidenceLevel": {
+      "high": "Vysoká",
+      "moderate": "Střední",
+      "low": "Nízká"
+    },
     "expertOpinions": "Expertní názory",
     "noOpinions": "Zatím žádné expertní názory.",
     "pending": "Čeká",
@@ -118,9 +131,11 @@
     "showIndividual": "Zobrazit jednotlivé názory",
     "awaitingResponse": "Čeká na odpověď",
     "vizTab": {
+      "landscape": "Rozložení",
       "triangle": "Trojúhelník",
       "centroid": "Centroid"
     },
+    "measuresCoincide": "Průměr, medián a nejlepší kompromis se u tohoto projektu shodují.",
     "agreement": {
       "high": "Vysoká shoda",
       "moderate": "Střední shoda",
@@ -169,7 +184,7 @@
     "scaleUnit": "Jednotka",
     "scaleMinPlaceholder": "Min",
     "scaleMaxPlaceholder": "Max",
-    "scaleUnitPlaceholder": "např. miliard Kč, %, bodů",
+    "scaleUnitPlaceholder": "např. Kč, %",
     "cancel": "Zrušit",
     "create": "Vytvořit projekt",
     "creating": "Vytváření...",

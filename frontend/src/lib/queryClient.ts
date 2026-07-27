@@ -1,14 +1,14 @@
 import { QueryClient } from "@tanstack/react-query";
 
-import { HttpError } from "@/lib/api";
+import { isRetryable } from "@/lib/errors";
 
 /**
- * 4xx responses will not succeed on retry, and the ApiClient already
- * redirects to /login on 401 before throwing. Transient 5xx and network
- * failures get two extra attempts.
+ * 4xx responses will not succeed on retry, and a 401 is already handled by
+ * the ApiClient's silent-refresh flow before it ever reaches here. Transient
+ * failures -- a NetworkError or a ServerError (5xx) -- get two extra attempts.
  */
 export const shouldRetryQuery = (failureCount: number, error: Error): boolean =>
-  !(error instanceof HttpError && error.status < 500) && failureCount < 2;
+  isRetryable(error) && failureCount < 2;
 
 export const createQueryClient = (): QueryClient =>
   new QueryClient({

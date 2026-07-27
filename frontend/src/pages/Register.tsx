@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -114,6 +114,7 @@ const Register = () => {
           <FormField
             label={`${t("register.email")} *`}
             type="email"
+            autoComplete="email"
             placeholder={t("register.emailPlaceholder")}
             error={errors.email}
             {...register("email")}
@@ -128,6 +129,7 @@ const Register = () => {
         <div>
           <PasswordInput
             label={`${t("register.password")} *`}
+            autoComplete="new-password"
             placeholder={t("register.passwordPlaceholder")}
             error={errors.password}
             {...register("password")}
@@ -142,6 +144,7 @@ const Register = () => {
         <FormField
           label={`${t("register.confirmPassword")} *`}
           type="password"
+          autoComplete="new-password"
           placeholder={t("register.confirmPasswordPlaceholder")}
           error={errors.confirmPassword}
           {...register("confirmPassword")}
@@ -149,6 +152,7 @@ const Register = () => {
 
         <FormField
           label={`${t("register.firstName")} *`}
+          autoComplete="given-name"
           placeholder={t("register.firstNamePlaceholder")}
           error={errors.firstName}
           {...register("firstName")}
@@ -156,6 +160,7 @@ const Register = () => {
 
         <FormField
           label={`${t("register.lastName")} *`}
+          autoComplete="family-name"
           placeholder={t("register.lastNamePlaceholder")}
           error={errors.lastName}
           {...register("lastName")}

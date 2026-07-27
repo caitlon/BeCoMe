@@ -4,8 +4,8 @@ import { render, framerMotionMock } from '@tests/utils';
 import Profile from '@/pages/Profile';
 
 // Mock useNavigate
-vi.mock('react-router-dom', async () => {
-  const actual = await vi.importActual('react-router-dom');
+vi.mock('react-router', async () => {
+  const actual = await vi.importActual('react-router');
   return {
     ...actual,
     useNavigate: () => vi.fn(),
@@ -45,7 +45,10 @@ describe('Profile - Loading State', () => {
   it('shows loading spinner when user is null', () => {
     render(<Profile />);
 
-    expect(screen.getByRole('status', { name: /loading/i })).toBeInTheDocument();
+    // Exact match, not a substring regex: pins the resolved a11y.loading
+    // translation so a broken i18n key (e.g. "aria.loading") fails loudly
+    // instead of accidentally matching on its own literal text.
+    expect(screen.getByRole('status', { name: 'Loading' })).toBeInTheDocument();
   });
 
   it('does not render profile form when user is null', () => {

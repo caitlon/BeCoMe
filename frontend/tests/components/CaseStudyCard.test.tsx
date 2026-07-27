@@ -24,8 +24,8 @@ const mockStudy: LocalizedCaseStudy = {
   methodology: 'Methodology text',
   opinions: [],
   result: {
-    bestCompromise: 57.3,
-    maxError: 8.2,
+    bestCompromise: 56.74,
+    maxError: 0.76,
     interpretation: 'Interpretation text',
   },
 };

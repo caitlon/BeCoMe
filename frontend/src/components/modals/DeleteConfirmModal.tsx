@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AlertTriangle } from "lucide-react";
 import {
@@ -34,13 +34,17 @@ export function DeleteConfirmModal({
 }: DeleteConfirmModalProps) {
   const { t } = useTranslation("common");
   const [isLoading, setIsLoading] = useState(false);
+  const submittingRef = useRef(false);
 
   const handleConfirm = async () => {
+    if (submittingRef.current) return; // ignore re-entrant submits (double-click)
+    submittingRef.current = true;
     setIsLoading(true);
     try {
       await onConfirm();
     } finally {
       setIsLoading(false);
+      submittingRef.current = false;
     }
   };
 

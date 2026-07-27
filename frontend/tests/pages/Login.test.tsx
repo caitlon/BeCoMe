@@ -3,6 +3,7 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { render } from '@tests/utils';
 import Login from '@/pages/Login';
+import { ServerError, RateLimitError } from '@/lib/errors';
 
 // Mock useAuth
 const mockLogin = vi.fn();
@@ -17,8 +18,8 @@ vi.mock('@/contexts/AuthContext', () => ({
 
 // Mock useNavigate
 const mockNavigate = vi.fn();
-vi.mock('react-router-dom', async () => {
-  const actual = await vi.importActual('react-router-dom');
+vi.mock('react-router', async () => {
+  const actual = await vi.importActual('react-router');
   return {
     ...actual,
     useNavigate: () => mockNavigate,
@@ -45,6 +46,13 @@ describe('Login', () => {
     expect(getEmailInput()).toBeInTheDocument();
     expect(getPasswordInput()).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /sign in/i })).toBeInTheDocument();
+  });
+
+  it('sets autocomplete attributes so password managers fill the right field', () => {
+    render(<Login />);
+
+    expect(getEmailInput()).toHaveAttribute('autocomplete', 'email');
+    expect(getPasswordInput()).toHaveAttribute('autocomplete', 'current-password');
   });
 
   it('shows validation error for invalid email', async () => {
@@ -128,6 +136,46 @@ describe('Login', () => {
         expect.objectContaining({
           variant: 'destructive',
           description: 'Invalid credentials',
+        })
+      );
+    });
+  });
+
+  it('shows a service-unavailable toast when login fails with a ServerError', async () => {
+    const user = userEvent.setup();
+    mockLogin.mockRejectedValueOnce(new ServerError());
+
+    render(<Login />);
+
+    await user.type(getEmailInput(), 'test@example.com');
+    await user.type(getPasswordInput(), 'password123');
+    await user.click(screen.getByRole('button', { name: /sign in/i }));
+
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          variant: 'destructive',
+          description: 'The service is temporarily unavailable. Please try again in a moment.',
+        })
+      );
+    });
+  });
+
+  it('shows a too-many-attempts toast when login fails with a RateLimitError', async () => {
+    const user = userEvent.setup();
+    mockLogin.mockRejectedValueOnce(new RateLimitError());
+
+    render(<Login />);
+
+    await user.type(getEmailInput(), 'test@example.com');
+    await user.type(getPasswordInput(), 'password123');
+    await user.click(screen.getByRole('button', { name: /sign in/i }));
+
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          variant: 'destructive',
+          description: 'Too many attempts. Please wait a moment and try again.',
         })
       );
     });

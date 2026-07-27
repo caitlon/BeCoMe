@@ -43,6 +43,18 @@ node_modules/
 # VS Code
 .vscode/
 
+# Other editors / IDEs
+.idea/
+*.sw?
+
+# Windows system files
+Thumbs.db
+
+# Stray logs and backup/patch files
+*.log
+*.bak
+*.orig
+
 # Environment variables
 .env
 /.env.dev
@@ -63,6 +75,7 @@ scripts/seed_db.py
 .mcp.json
 CLAUDE.md
 .claude
+.worktreeinclude
 .github/ISSUE_TEMPLATE
 
 # Mutation testing

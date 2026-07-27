@@ -7,8 +7,8 @@ const { mockParams } = vi.hoisted(() => ({
   mockParams: { value: { id: 'budget' } },
 }));
 
-vi.mock('react-router-dom', async () => {
-  const actual = await vi.importActual('react-router-dom');
+vi.mock('react-router', async () => {
+  const actual = await vi.importActual('react-router');
   return {
     ...actual,
     useParams: () => mockParams.value,
@@ -56,7 +56,7 @@ describe('CaseStudy - Budget', () => {
   it('renders results card with best compromise', () => {
     render(<CaseStudy />);
 
-    expect(screen.getByText('57.3')).toBeInTheDocument();
+    expect(screen.getByText('56.74')).toBeInTheDocument();
   });
 
   it('renders opinion table with expert rows', () => {
@@ -116,7 +116,7 @@ describe('CaseStudy - Pendlers (Likert)', () => {
   it('renders LikertInterpretation in results card', () => {
     render(<CaseStudy />);
 
-    // bestCompromise = 43.2 => "Neutral" (37.5-62.5)
+    // bestCompromise = 41.48 => "Neutral" (37.5-62.5)
     const interpHeading = screen.getByText(/likert interpretation/i);
     expect(interpHeading).toBeInTheDocument();
     // LikertInterpretation renders heading + label as siblings inside a wrapper div
@@ -142,6 +142,35 @@ describe('CaseStudy - Opinion Distribution', () => {
     const bars = screen.getAllByTestId('opinion-bar');
     expect(bars.length).toBe(8);
   });
+
+  it('shows a "shown of total" count when opinions exceed the visible bar limit', () => {
+    render(<CaseStudy />);
+
+    // Budget has 22 opinions, only 8 bars are rendered
+    expect(screen.getByText(/showing 8 of 22 opinions/i)).toBeInTheDocument();
+  });
+
+  it('wraps the bar chart in a figure with an sr-only figcaption', () => {
+    render(<CaseStudy />);
+
+    const figure = screen.getByRole('figure');
+    const caption = figure.querySelector('figcaption');
+    expect(caption).toBeInTheDocument();
+    expect(caption).toHaveClass('sr-only');
+    expect(caption?.textContent).toBeTruthy();
+  });
+
+  it('gives each opinion bar an sr-only description with role and range', () => {
+    render(<CaseStudy />);
+
+    const bars = screen.getAllByTestId('opinion-bar');
+    // First budget opinion is the Chairman: bestProposal 70, lowerLimit 40, upperLimit 90
+    const description = bars[0].querySelector('.sr-only');
+    expect(description).toBeInTheDocument();
+    expect(description?.textContent).toMatch(/chairman/i);
+    expect(description?.textContent).toMatch(/40/);
+    expect(description?.textContent).toMatch(/90/);
+  });
 });
 
 describe('CaseStudy - scrollTo', () => {
@@ -164,7 +193,7 @@ describe('CaseStudy - Not Found', () => {
   it('renders not-found state for invalid ID', () => {
     render(<CaseStudy />);
 
-    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/not found|nenalezeno/i);
+    expect(screen.getByRole('heading', { level: 1, name: '404' })).toBeInTheDocument();
   });
 
   it('not-found state has link to /', () => {
@@ -186,6 +215,6 @@ describe('CaseStudy - undefined id', () => {
 
   it('renders not found when id is undefined', () => {
     render(<CaseStudy />);
-    expect(screen.getByText(/not found/i)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: '404' })).toBeInTheDocument();
   });
 });

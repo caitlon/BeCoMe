@@ -4,8 +4,8 @@ import { TriangleVisualization } from '@/components/project';
 import { createProjectWithRole, createOpinion, createCalculationResult } from '@tests/factories/project';
 
 describe('TriangleVisualization - Scale Labels', () => {
-  it('renders the scale min and max labels', () => {
-    const project = createProjectWithRole({ scale_min: 0, scale_max: 100 });
+  it('renders the scale min and max labels with the unit appended to the max', () => {
+    const project = createProjectWithRole({ scale_min: 0, scale_max: 100, scale_unit: '%' });
     const result = createCalculationResult();
 
     const { container } = render(
@@ -14,6 +14,18 @@ describe('TriangleVisualization - Scale Labels', () => {
 
     const texts = Array.from(container.querySelectorAll('text')).map((el) => el.textContent);
     expect(texts).toContain('0');
+    expect(texts).toContain('100 %');
+  });
+
+  it('omits the unit suffix when the scale has no unit', () => {
+    const project = createProjectWithRole({ scale_min: 0, scale_max: 100, scale_unit: '' });
+    const result = createCalculationResult();
+
+    const { container } = render(
+      <TriangleVisualization result={result} project={project} showIndividual={false} opinions={[]} />
+    );
+
+    const texts = Array.from(container.querySelectorAll('text')).map((el) => el.textContent);
     expect(texts).toContain('100');
   });
 

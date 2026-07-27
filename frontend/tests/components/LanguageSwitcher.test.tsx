@@ -3,6 +3,7 @@ import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { render } from '@tests/utils';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
+import i18n from '@/i18n';
 
 // Mock i18n with hoisted variables
 const { mockI18n, mockChangeLanguage } = vi.hoisted(() => {
@@ -17,12 +18,15 @@ const { mockI18n, mockChangeLanguage } = vi.hoisted(() => {
   };
 });
 
+// Only the resolvedLanguage/language/changeLanguage trio is faked (so the
+// resolvedLanguage-fallback branches below stay easy to drive); `t` stays
+// the real hook so the aria-label is checked against the actual translations.
 vi.mock('react-i18next', async () => {
-  const actual = await vi.importActual('react-i18next');
+  const actual = await vi.importActual<typeof import('react-i18next')>('react-i18next');
   return {
     ...actual,
-    useTranslation: () => ({
-      t: (key: string) => key,
+    useTranslation: (...args: Parameters<typeof actual.useTranslation>) => ({
+      ...actual.useTranslation(...args),
       i18n: mockI18n,
     }),
   };
@@ -46,6 +50,22 @@ describe('LanguageSwitcher', () => {
 
     const button = screen.getByRole('button');
     expect(button).toHaveAttribute('aria-label', 'Switch to Čeština');
+  });
+
+  it('translates the accessible label when the UI language is Czech', async () => {
+    await i18n.changeLanguage('cs');
+    try {
+      const { unmount } = render(<LanguageSwitcher />);
+
+      const button = screen.getByRole('button');
+      expect(button).toHaveAttribute('aria-label', 'Přepnout na Čeština');
+
+      // Unmount before reverting the language so the language change below
+      // does not re-render this already-asserted component outside act().
+      unmount();
+    } finally {
+      await i18n.changeLanguage('en');
+    }
   });
 
   it('calls changeLanguage with "cs" when current is "en"', async () => {
