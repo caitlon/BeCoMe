@@ -144,9 +144,9 @@ jobs:
       TESTING: "1"
 
     steps:
+      # A shallow clone is enough here; only the SonarCloud job needs full history for
+      # its blame data, and it does its own checkout.
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
-        with:
-          fetch-depth: 0
 
       - name: Set up uv
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
@@ -212,7 +212,9 @@ jobs:
   backend-e2e:
     name: Backend E2E Tests
     runs-on: ubuntu-24.04
-    needs: lint
+    # Deliberately not gated on lint: E2E exercises a running server and does not care
+    # whether ruff or mypy is happy, so waiting for that job only adds a minute of idle
+    # time to the pipeline's critical path.
     env:
       APP_ENV: "test"
       TESTING: "1"
@@ -272,7 +274,8 @@ jobs:
   e2e:
     name: E2E Tests (Playwright)
     runs-on: ubuntu-24.04
-    needs: lint
+    # Not gated on lint either -- this is the longest job in the pipeline, so starting it
+    # a minute earlier shortens the whole run by that minute.
     env:
       APP_ENV: "test"
       TESTING: "1"

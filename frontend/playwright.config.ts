@@ -5,7 +5,11 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : undefined,
+  // The CI runner has 4 cores and fullyParallel is on, so a single worker left three
+  // idle and made this the longest job in the pipeline by far. Two is deliberate rather
+  // than maximal: the visual-regression project compares screenshots, and rendering
+  // under heavy load is where those start to flake.
+  workers: process.env.CI ? 2 : undefined,
   reporter: 'html',
   expect: {
     toHaveScreenshot: {
