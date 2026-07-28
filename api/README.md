@@ -109,7 +109,7 @@ and logout revokes the session and clears the cookies.
 | GET | `/api/v1/users/me/export` | Export all personal data as JSON (GDPR Art. 20) |
 | PUT | `/api/v1/users/me` | Update profile |
 | PUT | `/api/v1/users/me/password` | Change password |
-| POST | `/api/v1/users/me/photo` | Upload photo |
+| POST | `/api/v1/users/me/photo` | Upload photo (JPEG/PNG/GIF/WebP, max 5 MB and 4096x4096 px) |
 | DELETE | `/api/v1/users/me/photo` | Delete photo |
 | DELETE | `/api/v1/users/me` | Delete account, handling each owned project (GDPR Art. 17) |
 

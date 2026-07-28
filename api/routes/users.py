@@ -286,6 +286,14 @@ async def upload_photo(
             detail="File content does not match declared type",
         )
 
+    # The byte cap above says nothing about the pixel canvas: a small, highly
+    # compressible file can declare a gigapixel image whose decode would exhaust memory.
+    if not validation.validate_image_dimensions(content):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Image dimensions are too large. Maximum is 4096x4096 pixels",
+        )
+
     # Delete the previous photo if any (ignore errors so the upload can proceed)
     if current_user.photo_url:
         with suppress(StorageDeleteError):

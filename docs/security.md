@@ -99,6 +99,14 @@ way around the per-IP limits. Auth rate limiting fails closed. Request bodies ov
 configured ceiling are rejected with `413` before they are buffered, and profile-photo
 uploads are streamed and size-capped rather than read whole into memory.
 
+A photo upload passes three independent checks (`api/services/storage/validation.py`): the
+declared content type must be one of four image types, the leading magic bytes must match
+that declaration, and the pixel canvas must fit the avatar budget (4096x4096, no side over
+8192). The last one exists because bytes and pixels are not the same limit: image formats
+compress uniform areas so well that a 35 KB PNG can declare a 25-megapixel canvas, which
+costs hundreds of megabytes the moment anything decodes it. Only the header is parsed, so
+rejecting such a file is free.
+
 ## Input validation
 
 Request DTOs are Pydantic models with `extra="forbid"` (`api/schemas/`), so an unexpected
