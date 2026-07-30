@@ -81,20 +81,82 @@ def log_login_failure(email: str, reason: str, request: "Request | None" = None)
     )
 
 
-def log_registration(user_id: UUID, email: str, request: "Request | None" = None) -> None:
-    """Log new user registration.
+def log_registration_attempt(email: str, request: "Request | None" = None) -> None:
+    """Log a registration submission, whatever the endpoint decided to do with it.
 
-    :param user_id: New user's ID
-    :param email: User's email address
+    Deliberately identical for all three branches (new account, replaced unverified
+    account, notice to an existing verified account) and carries no ``user_id``: the
+    endpoint answers the same way in every case, and a log line that gave the branch
+    away would turn the security log itself into an account-existence oracle for
+    anyone who can read it. The account that actually gets created is recorded
+    separately by ``UserService.create_user`` as ``user_created``.
+
+    :param email: Email address the registration was submitted for
     :param request: FastAPI request (for IP extraction)
     """
     ip = get_client_ip(request)
     logger.info(
-        "User registered",
+        "Registration attempted",
         extra={
-            "event": "registration",
-            "user_id": str(user_id),
+            "event": "registration_attempt",
             "email_hash": hash_email(email),
+            "ip": ip,
+        },
+    )
+
+
+def log_login_blocked_unverified(user_id: UUID, request: "Request | None" = None) -> None:
+    """Log a login refused because the account's address is still unverified.
+
+    Kept apart from ``login_failure``: the password was correct, so counting it as a
+    failed attempt would distort brute-force alerting.
+
+    :param user_id: ID of the account that was refused
+    :param request: FastAPI request (for IP extraction)
+    """
+    ip = get_client_ip(request)
+    logger.warning(
+        "Login blocked for an unverified account",
+        extra={
+            "event": "login_blocked_unverified",
+            "user_id": str(user_id),
+            "ip": ip,
+        },
+    )
+
+
+def log_verification_email_requested(email: str, request: "Request | None" = None) -> None:
+    """Log a resend-verification request.
+
+    Carries no ``user_id`` for the same reason as the registration attempt: the
+    endpoint answers identically for a known and an unknown address.
+
+    :param email: Email address from the request
+    :param request: FastAPI request (for IP extraction)
+    """
+    ip = get_client_ip(request)
+    logger.info(
+        "Verification email requested",
+        extra={
+            "event": "verification_email_requested",
+            "email_hash": hash_email(email),
+            "ip": ip,
+        },
+    )
+
+
+def log_email_verified(user_id: UUID, request: "Request | None" = None) -> None:
+    """Log a redeemed activation link.
+
+    :param user_id: ID of the account that was activated
+    :param request: FastAPI request (for IP extraction)
+    """
+    ip = get_client_ip(request)
+    logger.info(
+        "Email address verified",
+        extra={
+            "event": "email_verified",
+            "user_id": str(user_id),
             "ip": ip,
         },
     )

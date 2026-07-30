@@ -24,6 +24,7 @@ from api.services.email.base import EmailSender
 from api.services.email.console_email_sender import ConsoleEmailSender
 from api.services.email.resend_email_sender import ResendEmailSender
 from api.services.email_policy import EmailAddressPolicy
+from api.services.email_verification_service import EmailVerificationService
 from api.services.export.result_export_service import ResultExportService
 from api.services.invitation_service import InvitationService
 from api.services.opinion_service import OpinionService
@@ -31,6 +32,7 @@ from api.services.password_reset_service import PasswordResetService
 from api.services.project_membership_service import ProjectMembershipService
 from api.services.project_query_service import ProjectQueryService
 from api.services.project_service import ProjectService
+from api.services.registration_service import RegistrationService
 from api.services.storage.base import StorageService
 from api.services.storage.exceptions import StorageConfigurationError
 from api.services.storage.railway_bucket_storage_service import RailwayBucketStorageService
@@ -121,6 +123,21 @@ def get_password_reset_service(
 ) -> PasswordResetService:
     """Create PasswordResetService instance."""
     return PasswordResetService(session, cache)
+
+
+def get_email_verification_service(
+    session: Annotated[Session, Depends(get_session)],
+    cache: Annotated[UserCacheStore, Depends(get_user_cache)],
+) -> EmailVerificationService:
+    """Create EmailVerificationService instance."""
+    return EmailVerificationService(session, cache)
+
+
+def get_registration_service(
+    users: Annotated[UserService, Depends(get_user_service)],
+) -> RegistrationService:
+    """Create RegistrationService instance."""
+    return RegistrationService(users)
 
 
 def get_email_service() -> EmailSender:

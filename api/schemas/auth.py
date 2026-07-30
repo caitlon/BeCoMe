@@ -205,6 +205,32 @@ class ResetPasswordRequest(BaseModel):
         return validate_password_strength(v)
 
 
+class VerifyEmailRequest(BaseModel):
+    """Activation request carrying the token from the emailed link."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    token: str = Field(
+        ..., min_length=1, max_length=512, description="Verification token", repr=False
+    )
+
+
+class ResendVerificationRequest(BaseModel):
+    """Request for a fresh activation link to be emailed."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    email: EmailStr = Field(..., max_length=255, description="Email address")
+
+    @field_validator("email")
+    @classmethod
+    def email_ascii_only(cls, v: str) -> str:
+        """Validate email contains only ASCII characters."""
+        if not v.isascii():
+            raise ValueError("Email must contain only ASCII characters")
+        return v
+
+
 class ProjectDisposition(BaseModel):
     """How to handle one project the departing user still owns (GDPR Art. 17)."""
 

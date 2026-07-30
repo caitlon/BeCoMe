@@ -5,11 +5,14 @@ from uuid import uuid4
 
 from api.auth.logging import (
     log_account_deletion,
+    log_email_verified,
+    log_login_blocked_unverified,
     log_login_failure,
     log_login_success,
     log_password_change,
     log_password_change_failure,
-    log_registration,
+    log_registration_attempt,
+    log_verification_email_requested,
 )
 
 
@@ -150,44 +153,46 @@ class TestLogLoginFailure:
         assert extra["ip"] == "unknown"
 
 
-class TestLogRegistration:
-    """Tests for log_registration function."""
+class TestLogRegistrationAttempt:
+    """Tests for log_registration_attempt function."""
 
-    def test_logs_info_with_registration_event(self):
-        """Registration is logged at INFO level with correct event type."""
+    def test_logs_info_with_registration_attempt_event(self):
+        """A registration submission is logged at INFO level with the right event type."""
         # GIVEN
-        user_id = uuid4()
         email = "newuser@example.com"
 
         # WHEN
         with patch("api.auth.logging.logger") as mock_logger:
-            log_registration(user_id, email)
+            log_registration_attempt(email)
 
         # THEN
         mock_logger.info.assert_called_once()
         extra = mock_logger.info.call_args[1]["extra"]
-        assert extra["event"] == "registration"
+        assert extra["event"] == "registration_attempt"
 
-    def test_includes_new_user_details(self):
-        """Registration log includes user_id and email."""
+    def test_records_only_a_hashed_address_and_no_user_id(self):
+        """The record carries a hashed address and never names the account.
+
+        The endpoint answers the same way for a free, an unverified, and a verified
+        address; a user_id in this record would give the branch away and turn the
+        security log into an account-existence oracle for whoever can read it.
+        """
         # GIVEN
-        user_id = uuid4()
         email = "newbie@example.com"
 
         # WHEN
         with patch("api.auth.logging.logger") as mock_logger:
-            log_registration(user_id, email)
+            log_registration_attempt(email)
 
         # THEN
         extra = mock_logger.info.call_args[1]["extra"]
-        assert extra["user_id"] == str(user_id)
         assert "email" not in extra  # raw email is never logged (GDPR)
         assert "email_hash" in extra
+        assert "user_id" not in extra
 
     def test_extracts_ip_from_request(self):
-        """Registration extracts IP from request."""
+        """A registration attempt extracts the IP from the request."""
         # GIVEN
-        user_id = uuid4()
         email = "newuser@example.com"
         mock_request = MagicMock()
         mock_request.headers.get.return_value = None
@@ -195,25 +200,131 @@ class TestLogRegistration:
 
         # WHEN
         with patch("api.auth.logging.logger") as mock_logger:
-            log_registration(user_id, email, mock_request)
+            log_registration_attempt(email, mock_request)
 
         # THEN
         extra = mock_logger.info.call_args[1]["extra"]
         assert extra["ip"] == "203.0.113.100"
 
     def test_handles_none_request(self):
-        """Registration handles None request gracefully."""
+        """A registration attempt handles a None request gracefully."""
         # GIVEN
-        user_id = uuid4()
         email = "newuser@example.com"
 
         # WHEN
         with patch("api.auth.logging.logger") as mock_logger:
-            log_registration(user_id, email, None)
+            log_registration_attempt(email, None)
 
         # THEN
         extra = mock_logger.info.call_args[1]["extra"]
         assert extra["ip"] == "unknown"
+
+
+class TestLogLoginBlockedUnverified:
+    """Tests for log_login_blocked_unverified function."""
+
+    def test_logs_warning_with_its_own_event(self):
+        """A login refused for being unverified is a warning under its own event name.
+
+        Kept apart from login_failure so a correct password on an unverified account
+        never inflates brute-force alerting.
+        """
+        # GIVEN
+        user_id = uuid4()
+
+        # WHEN
+        with patch("api.auth.logging.logger") as mock_logger:
+            log_login_blocked_unverified(user_id)
+
+        # THEN
+        mock_logger.warning.assert_called_once()
+        extra = mock_logger.warning.call_args[1]["extra"]
+        assert extra["event"] == "login_blocked_unverified"
+        assert extra["user_id"] == str(user_id)
+        assert extra["ip"] == "unknown"
+
+    def test_extracts_ip_from_request(self):
+        """The blocked-login record carries the caller IP."""
+        # GIVEN
+        mock_request = MagicMock()
+        mock_request.headers.get.return_value = None
+        mock_request.client.host = "203.0.113.55"
+
+        # WHEN
+        with patch("api.auth.logging.logger") as mock_logger:
+            log_login_blocked_unverified(uuid4(), mock_request)
+
+        # THEN
+        assert mock_logger.warning.call_args[1]["extra"]["ip"] == "203.0.113.55"
+
+
+class TestLogVerificationEmailRequested:
+    """Tests for log_verification_email_requested function."""
+
+    def test_records_only_a_hashed_address_and_no_user_id(self):
+        """A resend request logs a hashed address and never names the account."""
+        # GIVEN
+        email = "resend@example.com"
+
+        # WHEN
+        with patch("api.auth.logging.logger") as mock_logger:
+            log_verification_email_requested(email)
+
+        # THEN
+        mock_logger.info.assert_called_once()
+        extra = mock_logger.info.call_args[1]["extra"]
+        assert extra["event"] == "verification_email_requested"
+        assert "email" not in extra
+        assert "email_hash" in extra
+        assert "user_id" not in extra
+
+    def test_extracts_ip_from_request(self):
+        """The resend record carries the caller IP."""
+        # GIVEN
+        mock_request = MagicMock()
+        mock_request.headers.get.return_value = None
+        mock_request.client.host = "203.0.113.77"
+
+        # WHEN
+        with patch("api.auth.logging.logger") as mock_logger:
+            log_verification_email_requested("resend@example.com", mock_request)
+
+        # THEN
+        assert mock_logger.info.call_args[1]["extra"]["ip"] == "203.0.113.77"
+
+
+class TestLogEmailVerified:
+    """Tests for log_email_verified function."""
+
+    def test_logs_info_with_email_verified_event(self):
+        """A redeemed activation link is logged with the account it activated."""
+        # GIVEN
+        user_id = uuid4()
+
+        # WHEN
+        with patch("api.auth.logging.logger") as mock_logger:
+            log_email_verified(user_id)
+
+        # THEN
+        mock_logger.info.assert_called_once()
+        extra = mock_logger.info.call_args[1]["extra"]
+        assert extra["event"] == "email_verified"
+        assert extra["user_id"] == str(user_id)
+        assert extra["ip"] == "unknown"
+
+    def test_extracts_ip_from_request(self):
+        """The activation record carries the caller IP."""
+        # GIVEN
+        mock_request = MagicMock()
+        mock_request.headers.get.return_value = None
+        mock_request.client.host = "203.0.113.90"
+
+        # WHEN
+        with patch("api.auth.logging.logger") as mock_logger:
+            log_email_verified(uuid4(), mock_request)
+
+        # THEN
+        assert mock_logger.info.call_args[1]["extra"]["ip"] == "203.0.113.90"
 
 
 class TestLogPasswordChange:

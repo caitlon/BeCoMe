@@ -16,8 +16,10 @@ from api.exceptions import (
     AccountHasOwnedProjectsError,
     BeCoMeAPIError,
     DisposableEmailDomainError,
+    EmailNotVerifiedError,
     InvalidCredentialsError,
     InvalidResetTokenError,
+    InvalidVerificationTokenError,
     InvitationAlreadyUsedError,
     InvitationExpiredError,
     InvitationNotFoundError,
@@ -33,6 +35,7 @@ from api.exceptions import (
     UserExistsError,
     ValidationError,
     ValuesOutOfRangeError,
+    VerificationTokenExpiredError,
 )
 from api.services.storage.exceptions import (
     StorageConfigurationError,
@@ -42,6 +45,11 @@ from api.services.storage.exceptions import (
 )
 
 logger = logging.getLogger("api.exception")
+
+# The 403 an unverified account gets when its password was correct. Kept distinct from
+# every other 403 wording so the SPA can recognize this one case and offer to resend the
+# activation link instead of showing a generic "forbidden".
+EMAIL_NOT_VERIFIED_DETAIL = "Email address not verified. Check your inbox for the activation link."
 
 # Exception to HTTP status code and message mapping
 # Following OCP: extend by adding entries, not modifying handlers
@@ -67,6 +75,15 @@ EXCEPTION_MAP: dict[type[BeCoMeAPIError], tuple[int, str | None]] = {
     # Same opaque message for invalid and expired so neither can be distinguished.
     InvalidResetTokenError: (status.HTTP_400_BAD_REQUEST, "Invalid or expired reset token"),
     ResetTokenExpiredError: (status.HTTP_400_BAD_REQUEST, "Invalid or expired reset token"),
+    # Same treatment for the activation link: unknown, spent, and expired are one message.
+    InvalidVerificationTokenError: (
+        status.HTTP_400_BAD_REQUEST,
+        "Invalid or expired verification link",
+    ),
+    VerificationTokenExpiredError: (
+        status.HTTP_400_BAD_REQUEST,
+        "Invalid or expired verification link",
+    ),
     # Email-policy rejections (api/services/email_policy.py). Each carries its own
     # distinguishable copy: both depend solely on the domain string, never on
     # database state, so neither can leak whether an account already exists.
@@ -83,6 +100,8 @@ EXCEPTION_MAP: dict[type[BeCoMeAPIError], tuple[int, str | None]] = {
         status.HTTP_401_UNAUTHORIZED,
         "Incorrect email or password",
     ),
+    # 403 Forbidden
+    EmailNotVerifiedError: (status.HTTP_403_FORBIDDEN, EMAIL_NOT_VERIFIED_DETAIL),
     # 429 Too Many Requests
     LoginThrottledError: (
         status.HTTP_429_TOO_MANY_REQUESTS,

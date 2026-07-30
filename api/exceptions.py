@@ -108,6 +108,20 @@ class ResetTokenExpiredError(ValidationError):
     """Raised when a password reset token has expired."""
 
 
+# Email-verification exceptions. Both map to the same opaque 400, so a caller
+# cannot use the response to tell an unknown link from a spent or expired one.
+class InvalidVerificationTokenError(ValidationError):
+    """Raised when an email verification token is unknown or already used."""
+
+
+class VerificationTokenExpiredError(ValidationError):
+    """Raised when an email verification token has expired."""
+
+
+class EmailNotVerifiedError(BeCoMeAPIError):
+    """Raised when a correct password is presented for an account still unverified."""
+
+
 # Email-policy exceptions (api/services/email_policy.py). Both depend solely on
 # the domain string, never on database state, so neither can leak whether an
 # account already exists for the address.
