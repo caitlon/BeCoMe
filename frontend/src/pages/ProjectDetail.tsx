@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { useParams, Link, useNavigate } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { motion } from "framer-motion";
 import {
   ArrowLeft,
   Loader2,
@@ -20,7 +19,8 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { Navbar } from "@/components/layout/Navbar";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { PageShell } from "@/components/layout/PageShell";
 import { InviteExpertModal } from "@/components/modals/InviteExpertModal";
 import { DeleteConfirmModal } from "@/components/modals/DeleteConfirmModal";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -236,15 +236,12 @@ const ProjectDetail = () => {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen">
-        <Navbar />
-        <main id="main-content" className="pt-24 flex items-center justify-center">
-          <output aria-label={tCommon("a11y.loading")}>
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-            <span className="sr-only">{tCommon("common.loading")}</span>
-          </output>
-        </main>
-      </div>
+      <PageShell variant="centered">
+        <output aria-label={tCommon("a11y.loading")}>
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          <span className="sr-only">{tCommon("common.loading")}</span>
+        </output>
+      </PageShell>
     );
   }
 
@@ -302,10 +299,7 @@ const ProjectDetail = () => {
   );
 
   return (
-    <div className="min-h-screen bg-background">
-      <Navbar />
-
-      <main id="main-content" className="container mx-auto px-6 pt-24 pb-16">
+    <PageShell>
         {/* Breadcrumb */}
         <div className="mb-6">
           <Link
@@ -317,18 +311,7 @@ const ProjectDetail = () => {
           </Link>
         </div>
 
-        {/* Header */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mb-8"
-        >
-          <h1 className="font-display text-3xl md:text-4xl font-normal mb-2">
-            {project.name}
-          </h1>
-          {project.description && (
-            <p className="text-muted-foreground mb-4">{project.description}</p>
-          )}
+        <PageHeader title={project.name} description={project.description ?? undefined}>
           <div className="flex flex-wrap items-center gap-4">
             <span className="font-mono text-sm bg-muted px-3 py-1 rounded">
               {t("detail.scale")}: {project.scale_min} — {project.scale_max} {project.scale_unit}
@@ -361,7 +344,7 @@ const ProjectDetail = () => {
               </div>
             )}
           </div>
-        </motion.div>
+        </PageHeader>
 
         {isDesktop ? (
           <>
@@ -419,7 +402,6 @@ const ProjectDetail = () => {
             <TabsContent value="team">{teamTable}</TabsContent>
           </Tabs>
         )}
-      </main>
 
       <InviteExpertModal
         open={inviteModalOpen}
@@ -459,7 +441,7 @@ const ProjectDetail = () => {
         opinion={profileOpinion}
         onOpenChange={(open) => !open && setProfileMember(null)}
       />
-    </div>
+    </PageShell>
   );
 };
 

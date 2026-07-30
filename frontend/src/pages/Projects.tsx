@@ -15,7 +15,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Navbar } from "@/components/layout/Navbar";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { PageShell } from "@/components/layout/PageShell";
 import { CreateProjectModal } from "@/components/modals/CreateProjectModal";
 import { InviteExpertModal } from "@/components/modals/InviteExpertModal";
 import { DeleteConfirmModal } from "@/components/modals/DeleteConfirmModal";
@@ -146,27 +147,19 @@ const Projects = () => {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen">
-        <Navbar />
-        <main id="main-content" className="pt-24 flex items-center justify-center">
-          <output aria-label={tCommon("a11y.loading")}>
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-            <span className="sr-only">{tCommon("common.loading")}</span>
-          </output>
-        </main>
-      </div>
+      <PageShell variant="centered">
+        <output aria-label={tCommon("a11y.loading")}>
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          <span className="sr-only">{tCommon("common.loading")}</span>
+        </output>
+      </PageShell>
     );
   }
 
   if (hasLoadError) {
     return (
-      <div className="min-h-screen">
-        <Navbar />
-        <main
-          id="main-content"
-          role="alert"
-          className="pt-24 flex flex-col items-center justify-center gap-4 p-6 text-center"
-        >
+      <PageShell variant="centered">
+        <div role="alert" className="flex flex-col items-center gap-4 p-6 text-center">
           <AlertTriangle className="h-8 w-8 text-muted-foreground" />
           <h1 className="font-display font-medium text-lg">{t("error.title")}</h1>
           <p className="text-muted-foreground max-w-sm">{t("error.description")}</p>
@@ -178,17 +171,14 @@ const Projects = () => {
           >
             {tCommon("errors.retry")}
           </Button>
-        </main>
-      </div>
+        </div>
+      </PageShell>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <Navbar />
-      
-      <main id="main-content" className="container mx-auto px-6 pt-24 pb-16">
-        <h1 className="sr-only">{t("heading")}</h1>
+    <PageShell>
+        <PageHeader title={t("heading")} />
         <Tabs defaultValue="projects" className="space-y-6">
           <div className="flex items-center justify-between">
             <TabsList>
@@ -422,7 +412,6 @@ const Projects = () => {
             )}
           </TabsContent>
         </Tabs>
-      </main>
 
       <CreateProjectModal
         open={createModalOpen}
@@ -451,7 +440,7 @@ const Projects = () => {
         confirmText={t("deleteModal.confirm")}
         loadingText={t("deleteModal.deleting")}
       />
-    </div>
+    </PageShell>
   );
 };
 

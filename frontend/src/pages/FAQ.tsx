@@ -19,12 +19,11 @@ import {
 } from "@/components/ui/accordion";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Navbar } from "@/components/layout/Navbar";
-import { Footer } from "@/components/layout/Footer";
+import { HeroSection } from "@/components/layout/HeroSection";
+import { PageShell } from "@/components/layout/PageShell";
 import { SidebarNav, type SidebarNavItem } from "@/components/layout/SidebarNav";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { useScrollSpy } from "@/hooks/useScrollSpy";
-import { fadeInUp } from "@/lib/motion";
 
 const categories = [
   { id: "method", icon: BookOpen, labelKey: "categories.method" },
@@ -64,20 +63,8 @@ const FAQ = () => {
   }));
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <Navbar />
-
-      {/* Hero Section */}
-      <section className="pt-24 pb-8 md:pt-32 md:pb-12 bg-secondary/30">
-        <div className="container mx-auto px-6">
-          <motion.div {...fadeInUp} className="max-w-3xl">
-            <h1 className="font-display text-3xl md:text-5xl font-normal mb-4">
-              {t("title")}
-            </h1>
-            <p className="text-lg text-muted-foreground">{t("subtitle")}</p>
-          </motion.div>
-        </div>
-      </section>
+    <PageShell variant="content" footer mainClassName="flex-1 flex flex-col">
+      <HeroSection title={t("title")} subtitle={t("subtitle")} align="left" spacing="compact" />
 
       {/* Main Content */}
       <section className="flex-1 py-8 md:py-12">
@@ -91,7 +78,7 @@ const FAQ = () => {
             />
 
             {/* FAQ Content */}
-            <main id="main-content" className="flex-1 max-w-3xl">
+            <div className="flex-1 max-w-3xl">
               {categories.map((cat) => (
                 <motion.section
                   key={cat.id}
@@ -102,7 +89,7 @@ const FAQ = () => {
                   viewport={{ once: true }}
                   transition={{ duration: 0.5 }}
                 >
-                  <h2 className="font-display text-2xl md:text-3xl font-normal mb-4 flex items-center gap-3">
+                  <h2 className="text-section-title mb-4 flex items-center gap-3">
                     <cat.icon className="h-6 w-6 text-primary" />
                     {t(cat.labelKey)}
                   </h2>
@@ -127,7 +114,7 @@ const FAQ = () => {
                   </Card>
                 </motion.section>
               ))}
-            </main>
+            </div>
           </div>
         </div>
       </section>
@@ -135,7 +122,7 @@ const FAQ = () => {
       {/* CTA Section */}
       <section className="py-16 bg-primary text-primary-foreground">
         <div className="container mx-auto px-6 text-center">
-          <h2 className="font-display text-2xl md:text-3xl font-normal mb-4">
+          <h2 className="text-section-title mb-4">
             {t("cta.title")}
           </h2>
           <p className="text-primary-foreground/80 mb-8 max-w-xl mx-auto">
@@ -163,9 +150,7 @@ const FAQ = () => {
           </div>
         </div>
       </section>
-
-      <Footer />
-    </div>
+    </PageShell>
   );
 };
 
