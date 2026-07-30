@@ -159,6 +159,21 @@ jobs:
       - name: Install Python dependencies
         run: uv sync --locked --extra dev --extra api
 
+      # ubuntu-24.04 installs postgresql-16 (see the runner-images toolset manifest)
+      # but does not put its version-specific binaries on PATH, so
+      # shutil.which("pg_ctl") returns None and the PostgreSQL-gated tests (the
+      # migration test plus test_postgres_integration.py, 11 tests total) silently
+      # skip instead of running.
+      - name: Add PostgreSQL 16 binaries to PATH
+        run: echo "/usr/lib/postgresql/16/bin" >> "$GITHUB_PATH"
+
+      # Fail loudly if the binaries are not where expected, instead of letting a
+      # wrong path silently reintroduce the skip this step exists to prevent.
+      - name: Verify PostgreSQL binaries are on PATH
+        run: |
+          command -v pg_ctl || { echo "::error::pg_ctl not found on PATH; PostgreSQL-gated tests would silently skip"; exit 1; }
+          pg_ctl --version
+
       - name: Run Python tests with coverage
         run: uv run pytest tests/unit/ tests/integration/ -n auto --cov=src --cov=api --cov-report=term-missing --cov-report=html --cov-report=xml:coverage.xml
 
