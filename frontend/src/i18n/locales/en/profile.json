@@ -3,14 +3,16 @@
     "title": "Edit Profile",
     "firstName": "First Name",
     "lastName": "Last Name",
-    "save": "Save Changes"
+    "save": "Save Changes",
+    "saving": "Saving..."
   },
   "changePassword": {
     "title": "Change Password",
     "currentPassword": "Current Password",
     "newPassword": "New Password",
     "confirmPassword": "Confirm New Password",
-    "update": "Update Password"
+    "update": "Update Password",
+    "updating": "Updating..."
   },
   "dataExport": {
     "title": "Download Your Data",
@@ -53,7 +55,6 @@
     "error": "Error",
     "profileUpdated": "Profile updated",
     "updateFailed": "Failed to update profile",
-    "passwordsNoMatch": "Passwords do not match",
     "passwordUpdated": "Password updated",
     "passwordFailed": "Failed to change password",
     "accountDeleted": "Account deleted",

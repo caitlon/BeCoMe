@@ -176,8 +176,9 @@ describe('Profile - Edit Profile', () => {
     const firstNameInput = screen.getByLabelText('First Name');
     await user.clear(firstNameInput);
     await user.type(firstNameInput, 'John123');
+    await user.tab();
 
-    expect(screen.getByText(/can only contain letters/i)).toBeInTheDocument();
+    expect(await screen.findByText(/can only contain letters/i)).toBeInTheDocument();
   });
 
   it('disables save button when first name is empty', async () => {
@@ -216,24 +217,19 @@ describe('Profile - Change Password', () => {
     });
   });
 
-  it('shows error toast when passwords do not match', async () => {
+  it('shows an inline error when passwords do not match', async () => {
     const user = userEvent.setup();
     render(<Profile />);
 
     await user.type(screen.getByLabelText('Current Password'), 'oldPassword123!');
     await user.type(screen.getByLabelText('New Password'), 'NewPassword1!@#');
     await user.type(screen.getByLabelText('Confirm New Password'), 'DiffPassword1!@#');
+    await user.tab();
 
-    await user.click(screen.getByRole('button', { name: 'Update Password' }));
-
-    await waitFor(() => {
-      expect(mockToast).toHaveBeenCalledWith(
-        expect.objectContaining({
-          variant: 'destructive',
-          description: 'Passwords do not match',
-        })
-      );
-    });
+    // The mismatch is reported under the field, not as a toast, so it stays
+    // next to the input the user has to correct.
+    expect(await screen.findByText('Passwords must match')).toBeInTheDocument();
+    expect(mockApi.changePassword).not.toHaveBeenCalled();
   });
 
   it('shows password requirements when typing new password', async () => {
@@ -484,14 +480,19 @@ describe('Profile - Name Validation', () => {
     const firstNameInput = screen.getByLabelText('First Name');
     await user.clear(firstNameInput);
     await user.type(firstNameInput, 'John123');
+    // Validation runs onTouched, so the field has to be blurred once before
+    // errors appear; after that it revalidates as the user types.
+    await user.tab();
 
-    expect(screen.getByText(/can only contain letters/i)).toBeInTheDocument();
+    expect(await screen.findByText(/can only contain letters/i)).toBeInTheDocument();
     expect(firstNameInput).toHaveAttribute('aria-invalid', 'true');
 
     await user.clear(firstNameInput);
     await user.type(firstNameInput, 'John');
 
-    expect(screen.queryByText(/can only contain letters/i)).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByText(/can only contain letters/i)).not.toBeInTheDocument();
+    });
     expect(firstNameInput).toHaveAttribute('aria-invalid', 'false');
   });
 
@@ -502,14 +503,21 @@ describe('Profile - Name Validation', () => {
     const lastNameInput = screen.getByLabelText('Last Name');
     await user.clear(lastNameInput);
     await user.type(lastNameInput, 'Doe@!');
+    await user.tab();
 
-    const alerts = screen.getAllByRole('alert');
-    expect(alerts.length).toBeGreaterThan(0);
+    // Assert on this field's own message: tabbing lands in the password form
+    // below, which touches its first field and raises an unrelated alert.
+    const error = await screen.findByText(/can only contain letters/i);
+    expect(error).toHaveAttribute('role', 'alert');
+    expect(lastNameInput).toHaveAttribute('aria-invalid', 'true');
 
     await user.clear(lastNameInput);
     await user.type(lastNameInput, 'Doe');
 
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByText(/can only contain letters/i)).not.toBeInTheDocument();
+    });
+    expect(lastNameInput).toHaveAttribute('aria-invalid', 'false');
   });
 
   it('disables save button when name has validation errors', async () => {
@@ -614,25 +622,20 @@ describe('Profile - Password Change Success/Error', () => {
     expect(screen.getByRole('button', { name: 'Update Password' })).toBeDisabled();
   });
 
-  it('shows error toast when passwords do not match but requirements met', async () => {
+  it('blocks submission when passwords do not match but requirements are met', async () => {
     const user = userEvent.setup();
     render(<Profile />);
 
     await user.type(screen.getByLabelText('Current Password'), 'OldPassword1!@#');
     await user.type(screen.getByLabelText('New Password'), 'NewPassword1!@#');
     await user.type(screen.getByLabelText('Confirm New Password'), 'DiffPassword1!@#');
+    await user.tab();
 
-    // Both meet requirements so button should be clickable
-    await user.click(screen.getByRole('button', { name: 'Update Password' }));
-
-    await waitFor(() => {
-      expect(mockToast).toHaveBeenCalledWith(
-        expect.objectContaining({
-          description: 'Passwords do not match',
-          variant: 'destructive',
-        })
-      );
-    });
+    // The mismatch is a schema error now, so the form never submits and the
+    // message sits under the field rather than in a toast.
+    expect(await screen.findByText('Passwords must match')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Update Password' })).toBeDisabled();
+    expect(mockApi.changePassword).not.toHaveBeenCalled();
   });
 });
 

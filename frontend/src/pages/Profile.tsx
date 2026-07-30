@@ -1,4 +1,7 @@
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
+import { useForm, useWatch } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import * as z from "zod";
 import { motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
@@ -6,22 +9,35 @@ import { Loader2, AlertTriangle, Camera, Trash2, Download } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { PageSpinner } from "@/components/PageSpinner";
 import { PageShell } from "@/components/layout/PageShell";
 import { DeleteAccountDialog } from "@/components/modals/DeleteAccountDialog";
-import { ValidationChecklist } from "@/components/forms";
+import {
+  FormField,
+  PasswordInput,
+  SubmitButton,
+  ValidationChecklist,
+} from "@/components/forms";
 import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/lib/api";
 import { downloadJson } from "@/lib/download";
 import { useToast } from "@/hooks/use-toast";
-import { cn } from "@/lib/utils";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
-import { getPasswordRequirements } from "@/lib/validation";
+import { buildPasswordSchema, getPasswordRequirements } from "@/lib/validation";
 
 const NAME_REGEX = /^[\p{L}\s'-]+$/u;
-const isValidName = (name: string) => !name || NAME_REGEX.test(name);
+
+interface ProfileFormData {
+  firstName: string;
+  lastName: string;
+}
+
+interface PasswordFormData {
+  currentPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+}
 
 const Profile = () => {
   const { t } = useTranslation("profile");
@@ -33,40 +49,65 @@ const Profile = () => {
   const navigate = useNavigate();
 
   // Profile form
-  const [firstName, setFirstName] = useState(user?.first_name || "");
-  const [lastName, setLastName] = useState(user?.last_name || "");
   const [isSavingProfile, setIsSavingProfile] = useState(false);
-  const [firstNameError, setFirstNameError] = useState<string | null>(null);
-  const [lastNameError, setLastNameError] = useState<string | null>(null);
 
-  const handleFirstNameChange = (value: string) => {
-    setFirstName(value);
-    if (value && !isValidName(value)) {
-      setFirstNameError(tAuth("validation.nameFormat"));
-    } else {
-      setFirstNameError(null);
-    }
-  };
+  const profileSchema = useMemo(
+    () =>
+      z.object({
+        firstName: z
+          .string()
+          .min(1, tAuth("validation.firstNameRequired"))
+          .max(100)
+          .regex(NAME_REGEX, tAuth("validation.nameFormat")),
+        // Optional on this form: the API accepts a user with no surname.
+        lastName: z
+          .string()
+          .max(100)
+          .regex(NAME_REGEX, tAuth("validation.nameFormat"))
+          .or(z.literal("")),
+      }),
+    [tAuth]
+  );
 
-  const handleLastNameChange = (value: string) => {
-    setLastName(value);
-    if (value && !isValidName(value)) {
-      setLastNameError(tAuth("validation.nameFormat"));
-    } else {
-      setLastNameError(null);
-    }
-  };
-
-  const hasNameErrors = firstNameError !== null || lastNameError !== null;
+  const profileForm = useForm<ProfileFormData>({
+    resolver: zodResolver(profileSchema),
+    mode: "onTouched",
+    defaultValues: {
+      firstName: user?.first_name ?? "",
+      lastName: user?.last_name ?? "",
+    },
+  });
 
   // Password form
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
   const [isChangingPassword, setIsChangingPassword] = useState(false);
 
+  const passwordSchema = useMemo(
+    () =>
+      z
+        .object({
+          currentPassword: z.string().min(1, tAuth("validation.passwordRequired")),
+          newPassword: buildPasswordSchema(tAuth),
+          confirmPassword: z.string().min(1, tAuth("validation.passwordRequired")),
+        })
+        .refine((data) => data.newPassword === data.confirmPassword, {
+          error: tAuth("validation.passwordsMatch"),
+          path: ["confirmPassword"],
+        }),
+    [tAuth]
+  );
+
+  const passwordForm = useForm<PasswordFormData>({
+    resolver: zodResolver(passwordSchema),
+    mode: "onTouched",
+    defaultValues: { currentPassword: "", newPassword: "", confirmPassword: "" },
+  });
+
+  const newPassword = useWatch({
+    control: passwordForm.control,
+    name: "newPassword",
+    defaultValue: "",
+  });
   const passwordRequirements = getPasswordRequirements(newPassword, tAuth);
-  const allPasswordRequirementsMet = passwordRequirements.every((req) => req.met);
 
   // Delete account
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -134,13 +175,12 @@ const Profile = () => {
     ? `${user.first_name[0]}${user.last_name?.[0] || ""}`.toUpperCase()
     : "";
 
-  const handleSaveProfile = async () => {
+  const handleSaveProfile = async (data: ProfileFormData) => {
     setIsSavingProfile(true);
     try {
       await api.updateCurrentUser({
-        first_name: firstName,
-        /* v8 ignore next */
-        last_name: lastName || undefined,
+        first_name: data.firstName,
+        last_name: data.lastName || undefined,
       });
       await refreshUser();
       toast({ title: t("toast.profileUpdated") });
@@ -156,35 +196,14 @@ const Profile = () => {
     }
   };
 
-  const handleChangePassword = async () => {
-    if (newPassword !== confirmPassword) {
-      toast({
-        title: t("toast.error"),
-        description: t("toast.passwordsNoMatch"),
-        variant: "destructive",
-      });
-      return;
-    }
-
-    /* v8 ignore next 7 -- button is disabled when requirements are not met */
-    if (!allPasswordRequirementsMet) {
-      toast({
-        title: t("toast.error"),
-        description: tAuth("validation.passwordMin"),
-        variant: "destructive",
-      });
-      return;
-    }
-
+  const handleChangePassword = async (data: PasswordFormData) => {
     setIsChangingPassword(true);
     try {
       await api.changePassword({
-        current_password: currentPassword,
-        new_password: newPassword,
+        current_password: data.currentPassword,
+        new_password: data.newPassword,
       });
-      setCurrentPassword("");
-      setNewPassword("");
-      setConfirmPassword("");
+      passwordForm.reset();
       toast({ title: t("toast.passwordUpdated") });
     } catch (error) {
       toast({
@@ -226,9 +245,7 @@ const Profile = () => {
   if (!user) {
     return (
       <PageShell variant="centered">
-        <output aria-label={tCommon("a11y.loading")}>
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        </output>
+        <PageSpinner />
       </PageShell>
     );
   }
@@ -294,49 +311,35 @@ const Profile = () => {
             <CardHeader>
               <CardTitle>{t("editProfile.title")}</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <Label htmlFor="firstName">{t("editProfile.firstName")}</Label>
-                  <Input
-                    id="firstName"
-                    value={firstName}
-                    onChange={(e) => handleFirstNameChange(e.target.value)}
-                    className={cn(firstNameError && "border-destructive")}
-                    aria-describedby={firstNameError ? "firstName-error" : undefined}
-                    aria-invalid={!!firstNameError}
-                  />
-                  {firstNameError && (
-                    <p id="firstName-error" role="alert" className="text-sm text-destructive">{firstNameError}</p>
-                  )}
-                </div>
-                <div className="space-y-1">
-                  <Label htmlFor="lastName">{t("editProfile.lastName")}</Label>
-                  <Input
-                    id="lastName"
-                    value={lastName}
-                    onChange={(e) => handleLastNameChange(e.target.value)}
-                    className={cn(lastNameError && "border-destructive")}
-                    aria-describedby={lastNameError ? "lastName-error" : undefined}
-                    aria-invalid={!!lastNameError}
-                  />
-                  {lastNameError && (
-                    <p id="lastName-error" role="alert" className="text-sm text-destructive">{lastNameError}</p>
-                  )}
-                </div>
-              </div>
-
-              <Button
-                onClick={handleSaveProfile}
-                disabled={isSavingProfile || !firstName || hasNameErrors}
-                className="w-full"
+            <CardContent>
+              <form
+                onSubmit={profileForm.handleSubmit(handleSaveProfile)}
+                className="space-y-4"
               >
-                {isSavingProfile ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  t("editProfile.save")
-                )}
-              </Button>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <FormField
+                    label={t("editProfile.firstName")}
+                    autoComplete="given-name"
+                    error={profileForm.formState.errors.firstName}
+                    {...profileForm.register("firstName")}
+                  />
+                  <FormField
+                    label={t("editProfile.lastName")}
+                    autoComplete="family-name"
+                    error={profileForm.formState.errors.lastName}
+                    {...profileForm.register("lastName")}
+                  />
+                </div>
+
+                <SubmitButton
+                  className="w-full"
+                  isLoading={isSavingProfile}
+                  loadingText={t("editProfile.saving")}
+                  disabled={!profileForm.formState.isValid}
+                >
+                  {t("editProfile.save")}
+                </SubmitButton>
+              </form>
             </CardContent>
           </Card>
 
@@ -345,65 +348,49 @@ const Profile = () => {
             <CardHeader>
               <CardTitle>{t("changePassword.title")}</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="currentPassword">
-                  {t("changePassword.currentPassword")}
-                </Label>
-                <Input
-                  id="currentPassword"
-                  type="password"
-                  value={currentPassword}
-                  onChange={(e) => setCurrentPassword(e.target.value)}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="newPassword">
-                  {t("changePassword.newPassword")}
-                </Label>
-                <Input
-                  id="newPassword"
-                  type="password"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                />
-                <ValidationChecklist
-                  title={tAuth("passwordRequirements.title")}
-                  requirements={passwordRequirements}
-                  show={!!newPassword}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="confirmPassword">
-                  {t("changePassword.confirmPassword")}
-                </Label>
-                <Input
-                  id="confirmPassword"
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                />
-              </div>
-
-              <Button
-                onClick={handleChangePassword}
-                disabled={
-                  isChangingPassword ||
-                  !currentPassword ||
-                  !newPassword ||
-                  !confirmPassword ||
-                  !allPasswordRequirementsMet
-                }
-                className="w-full"
+            <CardContent>
+              <form
+                onSubmit={passwordForm.handleSubmit(handleChangePassword)}
+                className="space-y-4"
               >
-                {isChangingPassword ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  t("changePassword.update")
-                )}
-              </Button>
+                <PasswordInput
+                  label={t("changePassword.currentPassword")}
+                  autoComplete="current-password"
+                  error={passwordForm.formState.errors.currentPassword}
+                  {...passwordForm.register("currentPassword")}
+                />
+
+                <div>
+                  <PasswordInput
+                    label={t("changePassword.newPassword")}
+                    autoComplete="new-password"
+                    error={passwordForm.formState.errors.newPassword}
+                    {...passwordForm.register("newPassword")}
+                  />
+                  <ValidationChecklist
+                    title={tAuth("passwordRequirements.title")}
+                    requirements={passwordRequirements}
+                    show={!!newPassword}
+                  />
+                </div>
+
+                <FormField
+                  label={t("changePassword.confirmPassword")}
+                  type="password"
+                  autoComplete="new-password"
+                  error={passwordForm.formState.errors.confirmPassword}
+                  {...passwordForm.register("confirmPassword")}
+                />
+
+                <SubmitButton
+                  className="w-full"
+                  isLoading={isChangingPassword}
+                  loadingText={t("changePassword.updating")}
+                  disabled={!passwordForm.formState.isValid}
+                >
+                  {t("changePassword.update")}
+                </SubmitButton>
+              </form>
             </CardContent>
           </Card>
 
