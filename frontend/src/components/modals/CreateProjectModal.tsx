@@ -71,6 +71,7 @@ export function CreateProjectModal({
     formState: { errors },
   } = useForm<z.input<typeof createProjectSchema>, unknown, CreateProjectFormData>({
     resolver: zodResolver(createProjectSchema),
+    mode: "onTouched",
     defaultValues: {
       scale_min: 0,
       scale_max: 100,
@@ -133,6 +134,7 @@ export function CreateProjectModal({
             label={t("create.description")}
             placeholder={t("create.descriptionPlaceholder")}
             rows={3}
+            error={errors.description}
             {...register("description")}
           />
 

@@ -3,14 +3,16 @@
     "title": "Upravit profil",
     "firstName": "Jméno",
     "lastName": "Příjmení",
-    "save": "Uložit změny"
+    "save": "Uložit změny",
+    "saving": "Ukládání..."
   },
   "changePassword": {
     "title": "Změnit heslo",
     "currentPassword": "Současné heslo",
     "newPassword": "Nové heslo",
     "confirmPassword": "Potvrdit nové heslo",
-    "update": "Aktualizovat heslo"
+    "update": "Aktualizovat heslo",
+    "updating": "Aktualizace..."
   },
   "dataExport": {
     "title": "Stáhnout vaše data",
@@ -53,7 +55,6 @@
     "error": "Chyba",
     "profileUpdated": "Profil aktualizován",
     "updateFailed": "Nepodařilo se aktualizovat profil",
-    "passwordsNoMatch": "Hesla se neshodují",
     "passwordUpdated": "Heslo aktualizováno",
     "passwordFailed": "Nepodařilo se změnit heslo",
     "accountDeleted": "Účet smazán",

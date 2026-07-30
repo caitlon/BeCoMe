@@ -4,7 +4,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
   ArrowLeft,
-  Loader2,
   Users,
   UserPlus,
   Trash2,
@@ -19,6 +18,8 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import { NotFoundState } from "@/components/NotFoundState";
+import { PageSpinner } from "@/components/PageSpinner";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { PageShell } from "@/components/layout/PageShell";
 import { InviteExpertModal } from "@/components/modals/InviteExpertModal";
@@ -237,16 +238,16 @@ const ProjectDetail = () => {
   if (isLoading) {
     return (
       <PageShell variant="centered">
-        <output aria-label={tCommon("a11y.loading")}>
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-          <span className="sr-only">{tCommon("common.loading")}</span>
-        </output>
+        <PageSpinner />
       </PageShell>
     );
   }
 
+  // Loading is over and there is still no project: the redirect in the
+  // hasLoadError effect above has not landed yet, or the id resolved to
+  // nothing. Either way, show the not-found screen rather than a blank page.
   if (!project) {
-    return null;
+    return <NotFoundState />;
   }
 
   const resultsErrorFallback = (
