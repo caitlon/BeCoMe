@@ -174,7 +174,7 @@ class TestEmailPolicyExceptionMapping:
 
         # THEN
         assert status_code == status.HTTP_400_BAD_REQUEST
-        assert detail == "We could not find that domain -- check for a typo"
+        assert detail == "We could not find that domain. Check for a typo."
         assert "doesnotexist.invalid" not in detail
 
     def test_the_two_email_policy_messages_are_distinguishable(self):

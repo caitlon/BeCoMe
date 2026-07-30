@@ -76,7 +76,7 @@ EXCEPTION_MAP: dict[type[BeCoMeAPIError], tuple[int, str | None]] = {
     ),
     UnresolvableEmailDomainError: (
         status.HTTP_400_BAD_REQUEST,
-        "We could not find that domain -- check for a typo",
+        "We could not find that domain. Check for a typo.",
     ),
     # 401 Unauthorized
     InvalidCredentialsError: (

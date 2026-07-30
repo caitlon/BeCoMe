@@ -149,12 +149,11 @@ mail.tm
 1secmail.org
 1secmail.net
 
-# Mintemail / Dropmail / Inboxkitten / EmailOnDeck / e4ward
+# Mintemail / Dropmail / Inboxkitten / EmailOnDeck
 mintemail.com
 dropmail.me
 inboxkitten.com
 emailondeck.com
-e4ward.com
 
 # Spambog family
 spambog.com
@@ -184,7 +183,6 @@ emailtemporario.com.br
 # Miscellaneous well-known standalone services
 mailcatch.com
 mailnull.com
-spamgourmet.com
 incognitomail.com
 incognitomail.net
 incognitomail.org
@@ -202,8 +200,6 @@ spamavert.com
 spaml.com
 spaml.de
 shieldedmail.com
-sneakemail.com
-snkmail.com
 spamherelots.com
 noclickemail.com
 kurzepost.de
@@ -326,7 +322,6 @@ wuzupmail.net
 xagloo.com
 xemaps.com
 xents.com
-xoxy.net
 yep.it
 yuurok.com
 zetmail.com

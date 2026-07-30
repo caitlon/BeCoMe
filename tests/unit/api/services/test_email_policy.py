@@ -5,7 +5,7 @@ No test performs real DNS I/O: the resolver is always an injected mock.
 
 import asyncio
 from datetime import timedelta
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import dns.exception
 import dns.resolver
@@ -16,6 +16,7 @@ from api.exceptions import DisposableEmailDomainError, UnresolvableEmailDomainEr
 from api.services.email_policy import (
     DOMAIN_VERDICT_CACHE_TTL_SECONDS,
     MX_LOOKUP_TIMEOUT_SECONDS,
+    NEGATIVE_DOMAIN_VERDICT_CACHE_TTL_SECONDS,
     DomainVerdictCache,
     EmailAddressPolicy,
     InMemoryDomainVerdictCache,
@@ -341,6 +342,199 @@ class TestDomainVerdictCaching:
             asyncio.run(policy.check("second@example.com"))
         resolver.resolve.assert_awaited_once()
 
+    def test_accepting_verdict_is_cached_for_the_full_positive_ttl(self):
+        """
+        GIVEN a domain whose MX query succeeds
+        WHEN check() runs
+        THEN the verdict is cached True for the full positive TTL
+        """
+        # GIVEN
+        resolver = _resolver()
+        cache = MagicMock(spec=DomainVerdictCache)
+        cache.get.return_value = None
+        policy = EmailAddressPolicy(resolver=resolver, cache=cache, disposable_domains=frozenset())
+
+        # WHEN
+        asyncio.run(policy.check("user@example.com"))
+
+        # THEN
+        cache.set.assert_called_once_with("example.com", True, DOMAIN_VERDICT_CACHE_TTL_SECONDS)
+
+    def test_definitive_rejection_is_cached_for_the_shorter_negative_ttl(self):
+        """
+        GIVEN a domain confirmed unable to receive mail (NXDOMAIN)
+        WHEN check() runs
+        THEN the verdict is cached False for the shorter negative TTL, not the
+        full positive TTL
+
+        A definitive rejection must not be pinned for as long as a definitive
+        accept: a domain whose MX record was only just added should not stay
+        locked out for the rest of the day.
+        """
+        # GIVEN
+        resolver = _resolver(side_effect=dns.resolver.NXDOMAIN())
+        cache = MagicMock(spec=DomainVerdictCache)
+        cache.get.return_value = None
+        policy = EmailAddressPolicy(resolver=resolver, cache=cache, disposable_domains=frozenset())
+
+        # WHEN
+        with pytest.raises(UnresolvableEmailDomainError):
+            asyncio.run(policy.check("user@doesnotexist.invalid"))
+
+        # THEN
+        cache.set.assert_called_once_with(
+            "doesnotexist.invalid", False, NEGATIVE_DOMAIN_VERDICT_CACHE_TTL_SECONDS
+        )
+        assert NEGATIVE_DOMAIN_VERDICT_CACHE_TTL_SECONDS < DOMAIN_VERDICT_CACHE_TTL_SECONDS
+
+    def test_inconclusive_outcome_is_not_cached(self):
+        """
+        GIVEN the resolver returns an inconclusive result every time
+        WHEN check() runs twice for the same domain
+        THEN the resolver is consulted both times, since nothing was cached
+
+        Fail-open means "we do not know, so do not block" -- not "we do not know,
+        so stop trying to find out for the rest of the TTL window."
+        """
+        # GIVEN
+        resolver = _resolver(side_effect=dns.exception.Timeout())
+        cache = InMemoryDomainVerdictCache()
+        policy = EmailAddressPolicy(resolver=resolver, cache=cache, disposable_domains=frozenset())
+
+        # WHEN
+        asyncio.run(policy.check("first@example.com"))
+        asyncio.run(policy.check("second@example.com"))
+
+        # THEN
+        assert resolver.resolve.await_count == 2
+        assert cache.get("example.com") is None
+
+    def test_inconclusive_outcome_never_reaches_cache_set(self):
+        """
+        GIVEN the resolver returns an inconclusive result
+        WHEN check() runs
+        THEN cache.set is never called
+        """
+        # GIVEN
+        resolver = _resolver(side_effect=dns.exception.Timeout())
+        cache = MagicMock(spec=DomainVerdictCache)
+        cache.get.return_value = None
+        policy = EmailAddressPolicy(resolver=resolver, cache=cache, disposable_domains=frozenset())
+
+        # WHEN
+        asyncio.run(policy.check("user@example.com"))
+
+        # THEN
+        cache.set.assert_not_called()
+
+
+class TestEmailPolicyLogging:
+    """Tests for the policy's observability logging.
+
+    Match the structured-logging convention used elsewhere in api/: a short
+    message plus extra={"event": ...} carrying the domain.
+    """
+
+    def test_fail_open_branch_logs_a_warning_with_the_domain(self):
+        """
+        GIVEN the resolver returns an inconclusive result
+        WHEN check() runs
+        THEN a warning is logged carrying the domain
+        """
+        # GIVEN
+        policy = _policy(_resolver(side_effect=dns.exception.Timeout()))
+
+        # WHEN
+        with patch("api.services.email_policy.logger") as mock_logger:
+            asyncio.run(policy.check("user@example.com"))
+
+        # THEN
+        mock_logger.warning.assert_called_once()
+        extra = mock_logger.warning.call_args[1]["extra"]
+        assert extra["domain"] == "example.com"
+        assert extra["event"] == "email_policy_fail_open"
+
+    def test_fail_open_branch_does_not_log_when_a_cached_verdict_is_reused(self):
+        """
+        GIVEN a domain whose verdict is already cached
+        WHEN check() runs
+        THEN no fail-open warning is logged (the resolver was never consulted)
+        """
+        # GIVEN
+        cache = InMemoryDomainVerdictCache()
+        cache.set("example.com", True, ttl_seconds=60)
+        policy = EmailAddressPolicy(
+            resolver=_resolver(side_effect=dns.exception.Timeout()),
+            cache=cache,
+            disposable_domains=frozenset(),
+        )
+
+        # WHEN
+        with patch("api.services.email_policy.logger") as mock_logger:
+            asyncio.run(policy.check("user@example.com"))
+
+        # THEN
+        mock_logger.warning.assert_not_called()
+
+    def test_disposable_rejection_logs_an_info_with_the_domain(self):
+        """
+        GIVEN a blocklisted domain
+        WHEN check() runs
+        THEN an info line is logged carrying the domain
+        """
+        # GIVEN
+        policy = _policy(_resolver())
+
+        # WHEN
+        with (
+            patch("api.services.email_policy.logger") as mock_logger,
+            pytest.raises(DisposableEmailDomainError),
+        ):
+            asyncio.run(policy.check("user@mailinator.com"))
+
+        # THEN
+        mock_logger.info.assert_called_once()
+        extra = mock_logger.info.call_args[1]["extra"]
+        assert extra["domain"] == "mailinator.com"
+
+    def test_unresolvable_rejection_logs_an_info_with_the_domain(self):
+        """
+        GIVEN a domain confirmed unable to receive mail
+        WHEN check() runs
+        THEN an info line is logged carrying the domain
+        """
+        # GIVEN
+        policy = _policy(_resolver(side_effect=dns.resolver.NXDOMAIN()))
+
+        # WHEN
+        with (
+            patch("api.services.email_policy.logger") as mock_logger,
+            pytest.raises(UnresolvableEmailDomainError),
+        ):
+            asyncio.run(policy.check("user@doesnotexist.invalid"))
+
+        # THEN
+        mock_logger.info.assert_called_once()
+        extra = mock_logger.info.call_args[1]["extra"]
+        assert extra["domain"] == "doesnotexist.invalid"
+
+    def test_accepted_domain_logs_nothing(self):
+        """
+        GIVEN a domain that passes both checks
+        WHEN check() runs
+        THEN neither warning nor info is logged
+        """
+        # GIVEN
+        policy = _policy(_resolver())
+
+        # WHEN
+        with patch("api.services.email_policy.logger") as mock_logger:
+            asyncio.run(policy.check("user@example.com"))
+
+        # THEN
+        mock_logger.warning.assert_not_called()
+        mock_logger.info.assert_not_called()
+
 
 class TestExtractDomain:
     """Tests for the email-to-domain helper."""
@@ -382,14 +576,16 @@ class TestLoadDisposableDomains:
         monkeypatch.setattr(email_policy_module, "_DISPOSABLE_DOMAINS_PATH", domains_file)
         _load_disposable_domains.cache_clear()
 
-        # WHEN
-        domains = _load_disposable_domains()
+        try:
+            # WHEN
+            domains = _load_disposable_domains()
 
-        # THEN
-        assert domains == frozenset({"mailinator.com", "example.test", "foo.bar"})
-
-        # Cleanup: do not leak the patched path into later tests.
-        _load_disposable_domains.cache_clear()
+            # THEN
+            assert domains == frozenset({"mailinator.com", "example.test", "foo.bar"})
+        finally:
+            # Cleanup: do not leak the patched path into later tests, even if the
+            # assertion above fails.
+            _load_disposable_domains.cache_clear()
 
     def test_real_vendored_file_contains_well_known_providers(self):
         """
@@ -415,6 +611,30 @@ class TestLoadDisposableDomains:
             "trashmail.com",
         ):
             assert provider in domains
+
+    def test_real_vendored_file_excludes_forwarding_alias_services(self):
+        """
+        GIVEN the real vendored blocklist file
+        WHEN _load_disposable_domains runs
+        THEN it excludes alias/forwarding services that deliver to a real inbox
+
+        The file's own header states paid privacy and forwarding services are
+        deliberately excluded, since blocking them would punish real paying
+        users. These providers forward to a real inbox rather than offering a
+        disposable one, so they belong to that excluded category.
+        """
+        # GIVEN / WHEN
+        domains = _load_disposable_domains()
+
+        # THEN
+        for provider in (
+            "spamgourmet.com",
+            "sneakemail.com",
+            "snkmail.com",
+            "e4ward.com",
+            "xoxy.net",
+        ):
+            assert provider not in domains
 
 
 class TestInMemoryDomainVerdictCache:

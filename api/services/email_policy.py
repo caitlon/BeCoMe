@@ -15,9 +15,13 @@ Two independent, domain-only checks combine into a single policy:
    the address through. Only a definitive negative -- NXDOMAIN, or a confirmed
    absence of both MX and A/AAAA records -- rejects. This is deliberate and is
    the opposite of what a reader instinctively expects from a validation
-   function: our resolver having a bad day must never block a real signup. The
-   verdict is cached per domain (see ``DomainVerdictCache``) since the same
-   domains repeat heavily across registrations.
+   function: our resolver having a bad day must never block a real signup. A
+   definitive verdict is cached per domain (see ``DomainVerdictCache``) since
+   the same domains repeat heavily across registrations: an accept for the
+   full positive TTL, a rejection for a shorter one, since a domain can gain an
+   MX record within the hour. An inconclusive lookup is never cached, so a
+   brief resolver outage cannot pass every domain seen during it for the rest
+   of the day.
 
 Neither check reads any database state: both rejection reasons depend solely
 on the domain string, so neither can leak whether an account already exists
@@ -50,8 +54,14 @@ _DISPOSABLE_DOMAINS_PATH = (
 # Total time budget (seconds) for a single MX/A/AAAA lookup, retries included.
 MX_LOOKUP_TIMEOUT_SECONDS = 2.0
 
-# How long a resolved domain verdict is trusted before it is looked up again.
+# How long a resolved accepting verdict is trusted before it is looked up again.
 DOMAIN_VERDICT_CACHE_TTL_SECONDS = 24 * 60 * 60
+
+# How long a definitive rejection is trusted. Shorter than the positive TTL on
+# purpose: DNS negative-caching conventions cap negative TTLs well below positive
+# ones, since a domain can gain an MX record at any time -- a freshly registered
+# company domain must not stay locked out for the rest of the day.
+NEGATIVE_DOMAIN_VERDICT_CACHE_TTL_SECONDS = 30 * 60
 
 
 @lru_cache
@@ -245,6 +255,7 @@ class EmailAddressPolicy:
         mx_check_enabled: bool = True,
         timeout_seconds: float = MX_LOOKUP_TIMEOUT_SECONDS,
         cache_ttl_seconds: int = DOMAIN_VERDICT_CACHE_TTL_SECONDS,
+        negative_cache_ttl_seconds: int = NEGATIVE_DOMAIN_VERDICT_CACHE_TTL_SECONDS,
     ) -> None:
         """Build the policy, wiring production defaults for anything not injected.
 
@@ -257,7 +268,11 @@ class EmailAddressPolicy:
         :param disposable_check_enabled: Kill switch for the blocklist check.
         :param mx_check_enabled: Kill switch for the MX/A/AAAA check.
         :param timeout_seconds: Per-lookup DNS timeout budget, in seconds.
-        :param cache_ttl_seconds: How long a resolved verdict is cached, in seconds.
+        :param cache_ttl_seconds: How long a confirmed-accepting verdict is
+            cached, in seconds.
+        :param negative_cache_ttl_seconds: How long a definitive rejection is
+            cached, in seconds. Shorter than ``cache_ttl_seconds`` since a
+            domain can gain an MX record at any time.
         """
         self._disposable_domains = (
             disposable_domains if disposable_domains is not None else _load_disposable_domains()
@@ -268,6 +283,7 @@ class EmailAddressPolicy:
         self._mx_check_enabled = mx_check_enabled
         self._timeout_seconds = timeout_seconds
         self._cache_ttl_seconds = cache_ttl_seconds
+        self._negative_cache_ttl_seconds = negative_cache_ttl_seconds
 
     async def check(self, email: str) -> None:
         """Raise if the address is unacceptable for registration.
@@ -280,12 +296,28 @@ class EmailAddressPolicy:
         """
         domain = _extract_domain(email)
         if self._disposable_check_enabled and domain in self._disposable_domains:
+            logger.info(
+                "email policy rejected a disposable domain",
+                extra={"event": "email_policy_rejected", "reason": "disposable", "domain": domain},
+            )
             raise DisposableEmailDomainError(f"disposable email domain: {domain}")
         if self._mx_check_enabled and not await self._domain_accepts_mail(domain):
+            logger.info(
+                "email policy rejected an unresolvable domain",
+                extra={
+                    "event": "email_policy_rejected",
+                    "reason": "unresolvable",
+                    "domain": domain,
+                },
+            )
             raise UnresolvableEmailDomainError(f"domain has no mail-capable DNS records: {domain}")
 
     async def _domain_accepts_mail(self, domain: str) -> bool:
         """Return the cached verdict for ``domain``, resolving it on a cache miss.
+
+        A definitive verdict (accept or reject) is cached; an inconclusive
+        lookup is not cached at all, so a transient resolver fault does not
+        pin that domain's verdict for the rest of the TTL window.
 
         :param domain: The lowercased domain to check.
         :return: Whether the domain can plausibly receive mail.
@@ -293,26 +325,38 @@ class EmailAddressPolicy:
         cached = self._cache.get(domain)
         if cached is not None:
             return cached
-        verdict = await self._resolve_domain(domain)
-        self._cache.set(domain, verdict, self._cache_ttl_seconds)
+
+        outcome = await self._resolve_domain(domain)
+        if outcome is _LookupOutcome.INCONCLUSIVE:
+            logger.warning(
+                "email policy DNS lookup was inconclusive, failing open",
+                extra={"event": "email_policy_fail_open", "domain": domain},
+            )
+            return True
+
+        verdict = outcome is _LookupOutcome.FOUND
+        ttl = self._cache_ttl_seconds if verdict else self._negative_cache_ttl_seconds
+        self._cache.set(domain, verdict, ttl)
         return verdict
 
-    async def _resolve_domain(self, domain: str) -> bool:
+    async def _resolve_domain(self, domain: str) -> _LookupOutcome:
         """Resolve whether ``domain`` can plausibly receive mail.
 
         Fails open: only a definitive negative rejects. See the module docstring.
 
         :param domain: The lowercased domain to resolve.
-        :return: True unless the domain is confirmed unable to receive mail.
+        :return: ``FOUND`` if some record accepts mail, ``DOMAIN_MISSING`` if the
+            domain itself does not exist or MX, A, and AAAA are all confirmed
+            absent, or ``INCONCLUSIVE`` if the resolver never gave a definitive
+            answer.
         """
         mx_result = await self._lookup(domain, "MX")
         if mx_result is _LookupOutcome.FOUND:
-            return True
+            return _LookupOutcome.FOUND
         if mx_result is _LookupOutcome.DOMAIN_MISSING:
-            return False
+            return _LookupOutcome.DOMAIN_MISSING
         if mx_result is _LookupOutcome.INCONCLUSIVE:
-            # Fail open: the resolver could not give a definitive answer.
-            return True
+            return _LookupOutcome.INCONCLUSIVE
 
         # mx_result is ABSENT: the domain exists but carries no MX record. Some
         # domains still receive mail straight to their A/AAAA address, so check
@@ -320,13 +364,12 @@ class EmailAddressPolicy:
         for rdtype in ("A", "AAAA"):
             record_result = await self._lookup(domain, rdtype)
             if record_result is _LookupOutcome.FOUND:
-                return True
+                return _LookupOutcome.FOUND
             if record_result is _LookupOutcome.INCONCLUSIVE:
-                # Fail open here too.
-                return True
+                return _LookupOutcome.INCONCLUSIVE
 
         # Confirmed absence of MX, A, and AAAA records for an existing domain.
-        return False
+        return _LookupOutcome.DOMAIN_MISSING
 
     async def _lookup(self, domain: str, rdtype: str) -> _LookupOutcome:
         """Run one DNS query and classify the result.
