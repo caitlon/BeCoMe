@@ -363,7 +363,7 @@ class TestUserCascadeDelete:
         session.delete(user)
         session.commit()
 
-        # THEN — user is deleted
+        # THEN - user is deleted
         assert session.get(User, user_id) is None
 
     def test_deleting_admin_with_projects_succeeds_in_sqlite(self, session):
