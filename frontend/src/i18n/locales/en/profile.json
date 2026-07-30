@@ -54,7 +54,6 @@
     "profileUpdated": "Profile updated",
     "updateFailed": "Failed to update profile",
     "passwordsNoMatch": "Passwords do not match",
-    "passwordMin": "Password must be at least 8 characters",
     "passwordUpdated": "Password updated",
     "passwordFailed": "Failed to change password",
     "accountDeleted": "Account deleted",
