@@ -277,6 +277,9 @@ jobs:
           SECRET_KEY: test-secret-key-for-ci
           CORS_ORIGINS: '["http://localhost:8080"]'
           DEBUG: "false"
+          # E2E signs up under a synthetic domain that has no DNS records, and CI
+          # runners should not depend on a live resolver anyway.
+          MX_CHECK_ENABLED: "false"
 
       - name: Run backend E2E tests
         # E2E exercises a separate uvicorn process, so in-process coverage measures
@@ -361,6 +364,9 @@ jobs:
           SECRET_KEY: test-secret-key-for-ci
           CORS_ORIGINS: '["http://localhost:8080"]'
           DEBUG: "false"
+          # E2E signs up under a synthetic domain that has no DNS records, and CI
+          # runners should not depend on a live resolver anyway.
+          MX_CHECK_ENABLED: "false"
 
       - name: Run E2E tests
         working-directory: frontend

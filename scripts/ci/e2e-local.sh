@@ -76,11 +76,15 @@ done
 
 # 2. Start API server
 echo "[2/3] Starting API server..."
-APP_ENV="test" \
-DATABASE_URL="postgresql://$DB_USER:$DB_PASS@localhost:$DB_PORT/$DB_NAME" \
-SECRET_KEY="e2e-local-test-secret-key" \
+export APP_ENV="test"
+export DATABASE_URL="postgresql://$DB_USER:$DB_PASS@localhost:$DB_PORT/$DB_NAME"
+export SECRET_KEY="e2e-local-test-secret-key"
+export TESTING="1"
+# E2E signs up under a synthetic domain with no DNS records, so the address policy's
+# resolver check is switched off for this run.
+export MX_CHECK_ENABLED="false"
+
 CORS_ORIGINS='["http://localhost:8080"]' \
-TESTING="1" \
 DEBUG="false" \
   uv run --project "$PROJECT_ROOT" uvicorn api.main:app \
     --host 0.0.0.0 --port "$API_PORT" \
