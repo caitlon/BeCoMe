@@ -1,6 +1,10 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
 
+/* Tailwind v4 registers plugins from CSS; without this the `prose` classes on
+   About are silently inert. */
+@plugin '@tailwindcss/typography';
+
 @custom-variant dark (&:is(.dark *));
 
 @utility container {

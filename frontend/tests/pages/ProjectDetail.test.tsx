@@ -178,7 +178,6 @@ describe('ProjectDetail', () => {
     render(<ProjectDetail />);
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /edit/i })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: /invite experts/i })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: /delete/i })).toBeInTheDocument();
     });
@@ -190,7 +189,7 @@ describe('ProjectDetail', () => {
     render(<ProjectDetail />);
 
     await waitFor(() => {
-      expect(screen.queryByRole('button', { name: /edit/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /invite experts/i })).not.toBeInTheDocument();
     });
   });
 

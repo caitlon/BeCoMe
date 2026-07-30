@@ -7,7 +7,6 @@ import {
   ArrowLeft,
   Loader2,
   Users,
-  Edit,
   UserPlus,
   Trash2,
   ChevronDown,
@@ -336,10 +335,6 @@ const ProjectDetail = () => {
             </span>
             {isAdmin && (
               <div className="flex gap-2">
-                <Button variant="outline" size="sm" className="gap-2">
-                  <Edit className="h-4 w-4" />
-                  {t("detail.edit")}
-                </Button>
                 <Button
                   variant="outline"
                   size="sm"

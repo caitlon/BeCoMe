@@ -54,7 +54,6 @@
     "profileUpdated": "Profil aktualizován",
     "updateFailed": "Nepodařilo se aktualizovat profil",
     "passwordsNoMatch": "Hesla se neshodují",
-    "passwordMin": "Heslo musí mít alespoň 8 znaků",
     "passwordUpdated": "Heslo aktualizováno",
     "passwordFailed": "Nepodařilo se změnit heslo",
     "accountDeleted": "Účet smazán",

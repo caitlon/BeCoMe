@@ -87,7 +87,7 @@ export function Navbar() {
           to="/"
           className="font-display text-2xl font-medium tracking-tight"
         >
-          BeCoMe
+          {t("brand.name")}
         </Link>
 
         {/* Desktop Navigation */}
@@ -198,7 +198,7 @@ export function Navbar() {
                 to={to}
                 /* v8 ignore next */
                 aria-current={isActive(to) ? "page" : undefined}
-                className={cn("block py-2 hover:text-foreground", /* v8 ignore next */ isActive(to) ? "text-foreground font-medium" : "text-muted-foreground")}
+                className={cn("block py-2 pl-3 border-l-2 hover:text-foreground", /* v8 ignore next */ isActive(to) ? "text-foreground font-medium border-primary" : "text-muted-foreground border-transparent")}
                 onClick={() => setIsMenuOpen(false)}
               >
                 {label}
@@ -212,7 +212,7 @@ export function Navbar() {
                     to={to}
                     /* v8 ignore next */
                     aria-current={isActive(to) ? "page" : undefined}
-                    className={cn("block py-2 hover:text-foreground", /* v8 ignore next */ isActive(to) ? "text-foreground font-medium" : "text-muted-foreground")}
+                    className={cn("block py-2 pl-3 border-l-2 hover:text-foreground", /* v8 ignore next */ isActive(to) ? "text-foreground font-medium border-primary" : "text-muted-foreground border-transparent")}
                     onClick={() => setIsMenuOpen(false)}
                   >
                     {label}

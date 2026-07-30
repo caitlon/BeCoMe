@@ -170,7 +170,7 @@ const Profile = () => {
     if (!allPasswordRequirementsMet) {
       toast({
         title: t("toast.error"),
-        description: t("toast.passwordMin"),
+        description: tAuth("validation.passwordMin"),
         variant: "destructive",
       });
       return;
@@ -299,7 +299,7 @@ const Profile = () => {
               <CardTitle>{t("editProfile.title")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <Label htmlFor="firstName">{t("editProfile.firstName")}</Label>
                   <Input
@@ -350,7 +350,7 @@ const Profile = () => {
               <CardTitle>{t("changePassword.title")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div>
+              <div className="space-y-2">
                 <Label htmlFor="currentPassword">
                   {t("changePassword.currentPassword")}
                 </Label>
@@ -379,7 +379,7 @@ const Profile = () => {
                 />
               </div>
 
-              <div>
+              <div className="space-y-2">
                 <Label htmlFor="confirmPassword">
                   {t("changePassword.confirmPassword")}
                 </Label>
