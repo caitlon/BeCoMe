@@ -31,7 +31,7 @@ export function StepComplete() {
 
       <motion.h1
         {...fadeInUp}
-        className="font-display text-3xl md:text-4xl font-normal mb-4"
+        className="text-app-title mb-4"
       >
         {t("steps.complete.title")}
       </motion.h1>

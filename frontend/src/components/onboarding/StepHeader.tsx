@@ -25,7 +25,7 @@ export function StepHeader({ icon: Icon, titleKey, descriptionKey }: StepHeaderP
 
       <motion.h2
         {...fadeInUp}
-        className="font-display text-2xl md:text-3xl font-normal mb-2 text-center"
+        className="text-section-title mb-2 text-center"
       >
         {t(titleKey)}
       </motion.h2>

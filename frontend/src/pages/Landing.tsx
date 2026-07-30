@@ -4,8 +4,7 @@ import { useTranslation } from "react-i18next";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Navbar } from "@/components/layout/Navbar";
-import { Footer } from "@/components/layout/Footer";
+import { PageShell } from "@/components/layout/PageShell";
 import { FuzzyTriangleSVG } from "@/components/visualizations/FuzzyTriangleSVG";
 import { CaseStudyCard } from "@/components/CaseStudyCard";
 import { ArrowRight, Users, Calculator, Target } from "lucide-react";
@@ -44,9 +43,7 @@ const Landing = () => {
   }, [location.hash]);
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <Navbar />
-      <main id="main-content">
+    <PageShell variant="content" footer>
       
       {/* Hero Section */}
       <section className="pt-32 pb-20 md:pt-40 md:pb-32 bg-gradient-to-b from-background via-background to-muted/20">
@@ -58,7 +55,7 @@ const Landing = () => {
             variants={stagger}
           >
             <motion.h1
-              className="font-display text-4xl md:text-6xl lg:text-7xl font-normal tracking-tight mb-6"
+              className="text-page-hero mb-6"
               variants={fadeInUp}
             >
               {t("hero.title1")}
@@ -105,7 +102,7 @@ const Landing = () => {
             viewport={{ once: true }}
             transition={{ duration: 0.5 }}
           >
-            <h2 className="font-display text-3xl md:text-4xl font-normal mb-4">
+            <h2 className="text-section-title-lg mb-4">
               {t("howItWorks.title")}
             </h2>
             <p className="text-muted-foreground max-w-xl mx-auto">
@@ -182,7 +179,7 @@ const Landing = () => {
             viewport={{ once: true }}
             transition={{ duration: 0.5 }}
           >
-            <h2 className="font-display text-3xl md:text-4xl font-normal mb-4">
+            <h2 className="text-section-title-lg mb-4">
               {t("caseStudies.title")}
             </h2>
             <p className="text-muted-foreground max-w-xl mx-auto">
@@ -220,7 +217,7 @@ const Landing = () => {
             viewport={{ once: true }}
             transition={{ duration: 0.5 }}
           >
-            <h2 className="font-display text-3xl md:text-4xl font-normal mb-6">
+            <h2 className="text-section-title-lg mb-6">
               {t("cta.title")}
             </h2>
             <p className="text-primary-foreground/80 mb-8">{t("cta.subtitle")}</p>
@@ -233,10 +230,7 @@ const Landing = () => {
           </motion.div>
         </div>
       </section>
-
-      </main>
-      <Footer />
-    </div>
+    </PageShell>
   );
 };
 

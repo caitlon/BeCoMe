@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Navbar } from "@/components/layout/Navbar";
+import { PageShell } from "@/components/layout/PageShell";
 import { DeleteAccountDialog } from "@/components/modals/DeleteAccountDialog";
 import { ValidationChecklist } from "@/components/forms";
 import { useAuth } from "@/contexts/AuthContext";
@@ -225,20 +225,16 @@ const Profile = () => {
 
   if (!user) {
     return (
-      <div className="min-h-screen">
-        <Navbar />
-        <div className="pt-24 flex items-center justify-center" role="status" aria-label={tCommon("a11y.loading")}>
+      <PageShell variant="centered">
+        <output aria-label={tCommon("a11y.loading")}>
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        </div>
-      </div>
+        </output>
+      </PageShell>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <Navbar />
-
-      <main id="main-content" className="container mx-auto px-6 pt-24 pb-16">
+    <PageShell>
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -287,7 +283,7 @@ const Profile = () => {
                 )}
               </div>
             </div>
-            <h1 className="font-display text-3xl font-normal">
+            <h1 className="text-app-title">
               {user.first_name} {user.last_name}
             </h1>
             <p className="text-muted-foreground">{user.email}</p>
@@ -461,7 +457,6 @@ const Profile = () => {
             </CardContent>
           </Card>
         </motion.div>
-      </main>
 
       <DeleteAccountDialog
         open={deleteModalOpen}
@@ -469,7 +464,7 @@ const Profile = () => {
         currentUserId={user.id}
         onConfirmed={handleAccountDeleted}
       />
-    </div>
+    </PageShell>
   );
 };
 
