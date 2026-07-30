@@ -134,6 +134,18 @@ class TestEmailEnabled:
         # THEN
         assert settings.password_reset_token_ttl_minutes == 60
 
+    def test_verification_token_ttl_defaults_to_24_hours(self):
+        """
+        GIVEN Settings without an explicit verification-token TTL
+        WHEN constructed
+        THEN email_verification_token_ttl_hours defaults to 24
+        """
+        # GIVEN / WHEN
+        settings = Settings(secret_key="test-secret-key")
+
+        # THEN
+        assert settings.email_verification_token_ttl_hours == 24
+
     def test_returns_false_for_console_provider(self):
         """
         GIVEN the default console email provider

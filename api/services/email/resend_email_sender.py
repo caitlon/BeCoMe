@@ -28,6 +28,15 @@ def _format_ttl_window(minutes: int) -> str:
     return f"{minutes} minutes"
 
 
+def _format_ttl_hours(hours: int) -> str:
+    """Render a token TTL in hours as a human-friendly expiry window.
+
+    :param hours: Token lifetime in hours.
+    :return: ``"1 hour"`` for a single hour, else ``"N hours"``.
+    """
+    return "1 hour" if hours == 1 else f"{hours} hours"
+
+
 class ResendEmailSender(EmailSender):
     """Send transactional email through the Resend HTTP API.
 
@@ -62,6 +71,49 @@ class ResendEmailSender(EmailSender):
         except httpx.HTTPError as exc:
             raise EmailSendError(f"Failed to send password reset email: {exc}") from exc
 
+    async def send_email_verification(self, *, to_email: str, verify_url: str) -> None:
+        """Send an account-verification email via Resend.
+
+        :param to_email: Recipient email address.
+        :param verify_url: Full frontend activation link.
+        :raises EmailSendError: If the API rejects the request or transport fails.
+        """
+        payload: dict[str, object] = {
+            "from": f"{self._settings.email_from_name} <{self._settings.email_from}>",
+            "to": [to_email],
+            "subject": "Confirm your BeCoMe email",
+            "html": self._build_verification_html(verify_url),
+        }
+        headers = {"Authorization": f"Bearer {self._settings.email_api_key}"}
+        try:
+            response = await self._post(payload, headers)
+            response.raise_for_status()
+        except httpx.HTTPError as exc:
+            raise EmailSendError(f"Failed to send verification email: {exc}") from exc
+
+    async def send_registration_attempt_notice(
+        self, *, to_email: str, login_url: str, reset_url: str
+    ) -> None:
+        """Send a registration-attempt notice via Resend.
+
+        :param to_email: Recipient email address (the existing account's address).
+        :param login_url: Full frontend sign-in link.
+        :param reset_url: Full frontend password-reset link.
+        :raises EmailSendError: If the API rejects the request or transport fails.
+        """
+        payload: dict[str, object] = {
+            "from": f"{self._settings.email_from_name} <{self._settings.email_from}>",
+            "to": [to_email],
+            "subject": "Someone tried to sign up with your BeCoMe email",
+            "html": self._build_registration_attempt_html(login_url=login_url, reset_url=reset_url),
+        }
+        headers = {"Authorization": f"Bearer {self._settings.email_api_key}"}
+        try:
+            response = await self._post(payload, headers)
+            response.raise_for_status()
+        except httpx.HTTPError as exc:
+            raise EmailSendError(f"Failed to send registration attempt notice: {exc}") from exc
+
     def _build_html(self, reset_url: str) -> str:
         """Render the reset-email HTML body.
 
@@ -74,6 +126,37 @@ class ResendEmailSender(EmailSender):
             f'<p><a href="{reset_url}">Reset your password</a></p>'
             "<p>If you did not request this you can ignore this email. "
             f"The link expires in {window}.</p>"
+        )
+
+    def _build_verification_html(self, verify_url: str) -> str:
+        """Render the verification-email HTML body.
+
+        :param verify_url: Full frontend activation link.
+        :return: HTML message body, with the expiry window matching the config.
+        """
+        window = _format_ttl_hours(self._settings.email_verification_token_ttl_hours)
+        return (
+            "<p>Thanks for creating a BeCoMe account. The account stays inactive "
+            "until you confirm this email address.</p>"
+            f'<p><a href="{verify_url}">Confirm your email</a></p>'
+            f"<p>The link expires in {window}. If you did not create this account, "
+            "ignore this email.</p>"
+        )
+
+    def _build_registration_attempt_html(self, *, login_url: str, reset_url: str) -> str:
+        """Render the registration-attempt-notice HTML body.
+
+        :param login_url: Full frontend sign-in link.
+        :param reset_url: Full frontend password-reset link.
+        :return: HTML message body.
+        """
+        return (
+            "<p>Someone tried to create a BeCoMe account with this email address. "
+            "Your existing account is untouched.</p>"
+            f'<p><a href="{login_url}">Sign in</a>, or '
+            f'<a href="{reset_url}">reset your password</a> if you no longer '
+            "remember it.</p>"
+            "<p>You do not have to do anything unless you want to.</p>"
         )
 
     async def _post(self, payload: dict[str, object], headers: dict[str, str]) -> httpx.Response:
