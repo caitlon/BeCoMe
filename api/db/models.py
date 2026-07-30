@@ -39,7 +39,7 @@ class User(SQLModel, table=True):
     created_at: datetime = Field(default_factory=utc_now)
     # NULL means the address is unverified; the login route refuses to authenticate
     # such accounts until this is set by the email verification flow.
-    email_verified_at: datetime | None = Field(default=None, index=True)
+    email_verified_at: datetime | None = Field(default=None)
 
     owned_projects: list["Project"] = Relationship(
         back_populates="admin",

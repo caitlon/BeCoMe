@@ -30,9 +30,6 @@ def upgrade() -> None:
     activation token.
     """
     op.add_column("users", sa.Column("email_verified_at", sa.DateTime(), nullable=True))
-    op.create_index(
-        op.f("ix_users_email_verified_at"), "users", ["email_verified_at"], unique=False
-    )
 
     op.execute(
         sa.text("UPDATE users SET email_verified_at = created_at WHERE email_verified_at IS NULL")
@@ -72,5 +69,4 @@ def downgrade() -> None:
         op.f("ix_email_verification_tokens_token_hash"), table_name="email_verification_tokens"
     )
     op.drop_table("email_verification_tokens")
-    op.drop_index(op.f("ix_users_email_verified_at"), table_name="users")
     op.drop_column("users", "email_verified_at")
