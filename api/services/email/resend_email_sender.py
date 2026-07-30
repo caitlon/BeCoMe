@@ -28,15 +28,6 @@ def _format_ttl_window(minutes: int) -> str:
     return f"{minutes} minutes"
 
 
-def _format_ttl_hours(hours: int) -> str:
-    """Render a token TTL in hours as a human-friendly expiry window.
-
-    :param hours: Token lifetime in hours.
-    :return: ``"1 hour"`` for a single hour, else ``"N hours"``.
-    """
-    return "1 hour" if hours == 1 else f"{hours} hours"
-
-
 class ResendEmailSender(EmailSender):
     """Send transactional email through the Resend HTTP API.
 
@@ -104,7 +95,7 @@ class ResendEmailSender(EmailSender):
         payload: dict[str, object] = {
             "from": f"{self._settings.email_from_name} <{self._settings.email_from}>",
             "to": [to_email],
-            "subject": "Someone tried to sign up with your BeCoMe email",
+            "subject": "You already have a BeCoMe account",
             "html": self._build_registration_attempt_html(login_url=login_url, reset_url=reset_url),
         }
         headers = {"Authorization": f"Bearer {self._settings.email_api_key}"}
@@ -134,13 +125,15 @@ class ResendEmailSender(EmailSender):
         :param verify_url: Full frontend activation link.
         :return: HTML message body, with the expiry window matching the config.
         """
-        window = _format_ttl_hours(self._settings.email_verification_token_ttl_hours)
+        window = _format_ttl_window(
+            self._settings.email_verification_token_ttl_hours * _MINUTES_PER_HOUR
+        )
         return (
-            "<p>Thanks for creating a BeCoMe account. The account stays inactive "
+            "<p>Thanks for creating a BeCoMe account. Your account stays inactive "
             "until you confirm this email address.</p>"
             f'<p><a href="{verify_url}">Confirm your email</a></p>'
             f"<p>The link expires in {window}. If you did not create this account, "
-            "ignore this email.</p>"
+            "you can ignore this email.</p>"
         )
 
     def _build_registration_attempt_html(self, *, login_url: str, reset_url: str) -> str:
@@ -151,8 +144,8 @@ class ResendEmailSender(EmailSender):
         :return: HTML message body.
         """
         return (
-            "<p>Someone tried to create a BeCoMe account with this email address. "
-            "Your existing account is untouched.</p>"
+            "<p>Someone tried to sign up using this email address. "
+            "Your account is untouched.</p>"
             f'<p><a href="{login_url}">Sign in</a>, or '
             f'<a href="{reset_url}">reset your password</a> if you no longer '
             "remember it.</p>"

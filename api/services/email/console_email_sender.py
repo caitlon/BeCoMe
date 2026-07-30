@@ -92,7 +92,7 @@ class ConsoleEmailSender(EmailSender):
             "Email verification link (console sender) for %s: %s",
             email_hash,
             _mask_token(verify_url),
-            extra={"event": "email_verification_email", "email_hash": email_hash},
+            extra={"event": "verification_email", "email_hash": email_hash},
         )
         # Deliberately not a log record -- see the docstring on send_password_reset.
         print(f"[console email] verification link for {email_hash}: {verify_url}")

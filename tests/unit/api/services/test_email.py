@@ -30,6 +30,8 @@ class TestConsoleEmailSender:
 
     _RAW_TOKEN = "S3cret-Reset-Token-abcdefghijklmnop-1234567890"
     _RESET_URL = f"https://app.example/reset-password?token={_RAW_TOKEN}"
+    _VERIFY_URL = f"https://app.example/verify-email?token={_RAW_TOKEN}"
+    _LOGIN_URL = "https://app.example/login"
 
     def _send(self):
         """Send a reset email through the console sender with the logger patched."""
@@ -68,9 +70,7 @@ class TestConsoleEmailSender:
         mock_logger = self._send()
 
         # THEN
-        for method in (mock_logger.debug, mock_logger.info, mock_logger.warning):
-            for call in method.call_args_list:
-                assert self._RAW_TOKEN not in str(call)
+        assert self._RAW_TOKEN not in str(mock_logger.method_calls)
 
     def test_full_link_goes_to_stdout_for_local_dev(self, capsys):
         """
@@ -88,9 +88,6 @@ class TestConsoleEmailSender:
 
         # THEN
         assert self._RESET_URL in capsys.readouterr().out
-
-    _VERIFY_URL = f"https://app.example/verify-email?token={_RAW_TOKEN}"
-    _LOGIN_URL = "https://app.example/login"
 
     def _send_verification(self):
         """Send a verification email through the console sender with the logger patched."""
@@ -141,9 +138,7 @@ class TestConsoleEmailSender:
         mock_logger = self._send_verification()
 
         # THEN
-        for method in (mock_logger.debug, mock_logger.info, mock_logger.warning):
-            for call in method.call_args_list:
-                assert self._RAW_TOKEN not in str(call)
+        assert self._RAW_TOKEN not in str(mock_logger.method_calls)
 
     def test_verification_full_link_goes_to_stdout_for_local_dev(self, capsys):
         """
@@ -187,9 +182,7 @@ class TestConsoleEmailSender:
         mock_logger = self._send_registration_attempt_notice()
 
         # THEN
-        for method in (mock_logger.debug, mock_logger.info, mock_logger.warning):
-            for call in method.call_args_list:
-                assert self._RAW_TOKEN not in str(call)
+        assert self._RAW_TOKEN not in str(mock_logger.method_calls)
 
     def test_registration_attempt_notice_full_links_go_to_stdout_for_local_dev(self, capsys):
         """
@@ -213,6 +206,33 @@ class TestConsoleEmailSender:
         out = capsys.readouterr().out
         assert self._LOGIN_URL in out
         assert self._RESET_URL in out
+
+    def test_registration_attempt_notice_static_reset_link_is_not_masked(self, capsys):
+        """
+        GIVEN a registration-attempt notice carrying a static forgot-password link --
+        the shape the product actually sends, since minting a real reset token for an
+        unauthenticated registration attempt would let anyone flood a victim's inbox
+        with working reset links
+        WHEN the notice is sent
+        THEN the link appears verbatim in both the log record and stdout
+        """
+        # GIVEN
+        static_reset_url = "https://app.example/forgot-password"
+        sender = ConsoleEmailSender(_settings())
+
+        # WHEN
+        with patch("api.services.email.console_email_sender.logger") as mock_logger:
+            asyncio.run(
+                sender.send_registration_attempt_notice(
+                    to_email="user@example.com",
+                    login_url=self._LOGIN_URL,
+                    reset_url=static_reset_url,
+                )
+            )
+
+        # THEN
+        assert static_reset_url in str(mock_logger.info.call_args)
+        assert static_reset_url in capsys.readouterr().out
 
 
 class TestMaskToken:
@@ -429,7 +449,7 @@ class TestResendEmailSender:
         """
         GIVEN a Resend sender whose response is a non-2xx status
         WHEN an email verification message is sent
-        THEN EmailSendError is raised
+        THEN EmailSendError is raised with an operator-facing message
         """
         # GIVEN
         response = MagicMock()
@@ -441,7 +461,7 @@ class TestResendEmailSender:
         sender = ResendEmailSender(_settings(), client=client)
 
         # WHEN / THEN
-        with pytest.raises(EmailSendError):
+        with pytest.raises(EmailSendError, match="Failed to send verification email"):
             asyncio.run(
                 sender.send_email_verification(
                     to_email="user@example.com",
@@ -477,7 +497,7 @@ class TestResendEmailSender:
         assert call.args[0] == "https://api.resend.com/emails"
         assert call.kwargs["headers"]["Authorization"] == "Bearer re_test_key"
         assert call.kwargs["json"]["to"] == ["user@example.com"]
-        assert call.kwargs["json"]["subject"] == "Someone tried to sign up with your BeCoMe email"
+        assert call.kwargs["json"]["subject"] == "You already have a BeCoMe account"
         html = call.kwargs["json"]["html"]
         assert "https://app.example/login" in html
         assert "https://app.example/reset-password?token=abc" in html
@@ -486,7 +506,7 @@ class TestResendEmailSender:
         """
         GIVEN a Resend sender whose client fails to connect
         WHEN a registration-attempt notice is sent
-        THEN EmailSendError is raised
+        THEN EmailSendError is raised with an operator-facing message
         """
         # GIVEN
         client = MagicMock()
@@ -494,7 +514,7 @@ class TestResendEmailSender:
         sender = ResendEmailSender(_settings(), client=client)
 
         # WHEN / THEN
-        with pytest.raises(EmailSendError):
+        with pytest.raises(EmailSendError, match="Failed to send registration attempt notice"):
             asyncio.run(
                 sender.send_registration_attempt_notice(
                     to_email="user@example.com",
