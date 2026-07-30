@@ -120,8 +120,11 @@ class TestEmailVerificationMigration:
                     },
                 )
 
-            # WHEN - the email verification migration is applied
-            command.upgrade(config, "head")
+            # WHEN - the email verification migration is applied. Pinned to its own
+            # revision id rather than "head" for the same reason as the RESTRICT
+            # migration above: a later migration landing on top would otherwise
+            # silently change what this test exercises.
+            command.upgrade(config, "21261c13bb2b")
 
             # THEN - the pre-existing row is backfilled to its own created_at
             with engine.connect() as conn:
@@ -131,8 +134,9 @@ class TestEmailVerificationMigration:
                 ).one()
             assert row.email_verified_at == row.created_at
 
-            # WHEN - the migration is rolled back
-            command.downgrade(config, "-1")
+            # WHEN - the migration is rolled back to its own down_revision (pinned,
+            # not "-1", for the same reason)
+            command.downgrade(config, "b1d9f4a2c7e3")
 
             # THEN - the column and the token table are gone (downgrade works)
             inspector = inspect(engine)
@@ -141,7 +145,7 @@ class TestEmailVerificationMigration:
             assert "email_verification_tokens" not in inspector.get_table_names()
 
             # WHEN - re-applied (reversibility holds)
-            command.upgrade(config, "head")
+            command.upgrade(config, "21261c13bb2b")
 
             # THEN
             assert "email_verification_tokens" in inspect(engine).get_table_names()
