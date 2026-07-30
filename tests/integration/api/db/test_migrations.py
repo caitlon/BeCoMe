@@ -6,11 +6,13 @@ PostgreSQL is not installed.
 """
 
 import shutil
+from datetime import UTC, datetime
+from uuid import uuid4
 
 import pytest
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, inspect, text
 
 pytestmark = pytest.mark.skipif(
     not shutil.which("pg_ctl"),
@@ -57,22 +59,91 @@ class TestProjectAdminRestrictMigration:
         engine = create_engine(url)
 
         try:
-            # WHEN - the full migration chain is applied
-            command.upgrade(config, "head")
+            # WHEN - migrated up to (and including) this migration. Pinned to its
+            # own revision id rather than "head": later migrations land on top of
+            # this one, and "head"/"-1" addressing would silently start exercising
+            # them instead of the RESTRICT change this test is about.
+            command.upgrade(config, "b1d9f4a2c7e3")
 
             # THEN - admin_id is protected by RESTRICT
             assert _delete_rule(engine, "projects_admin_id_fkey") == "RESTRICT"
 
-            # WHEN - the RESTRICT migration is rolled back one step
-            command.downgrade(config, "-1")
+            # WHEN - this migration is rolled back to its own down_revision
+            command.downgrade(config, "f3a7c2b9d1e4")
 
             # THEN - the constraint reverts to CASCADE (downgrade works)
             assert _delete_rule(engine, "projects_admin_id_fkey") == "CASCADE"
 
             # WHEN - re-applied (reversibility holds)
-            command.upgrade(config, "head")
+            command.upgrade(config, "b1d9f4a2c7e3")
 
             # THEN
             assert _delete_rule(engine, "projects_admin_id_fkey") == "RESTRICT"
+        finally:
+            engine.dispose()
+
+
+class TestEmailVerificationMigration:
+    """The migration adding email_verified_at and email_verification_tokens."""
+
+    def test_upgrade_backfills_existing_users_and_downgrade_reverts(
+        self, migration_pg, monkeypatch
+    ):
+        """A pre-existing user is backfilled to verified, and the migration reverses cleanly."""
+        # GIVEN - a database migrated up to the revision just before this one
+        url = _url(migration_pg)
+        monkeypatch.setenv("ALEMBIC_DATABASE_URL", url)
+        config = Config("alembic.ini")
+        engine = create_engine(url)
+
+        try:
+            command.upgrade(config, "b1d9f4a2c7e3")
+
+            # A user row as it existed before email_verified_at was added
+            user_id = uuid4()
+            created_at = datetime(2026, 1, 1, tzinfo=UTC)
+            with engine.begin() as conn:
+                conn.execute(
+                    text(
+                        "INSERT INTO users "
+                        "(id, email, hashed_password, first_name, last_name, created_at) "
+                        "VALUES (:id, :email, :hashed_password, :first_name, :last_name, "
+                        ":created_at)"
+                    ),
+                    {
+                        "id": str(user_id),
+                        "email": "preexisting@example.com",
+                        "hashed_password": "hash",
+                        "first_name": "Pre",
+                        "last_name": "Existing",
+                        "created_at": created_at,
+                    },
+                )
+
+            # WHEN - the email verification migration is applied
+            command.upgrade(config, "head")
+
+            # THEN - the pre-existing row is backfilled to its own created_at
+            with engine.connect() as conn:
+                row = conn.execute(
+                    text("SELECT email_verified_at, created_at FROM users WHERE id = :id"),
+                    {"id": str(user_id)},
+                ).one()
+            assert row.email_verified_at == row.created_at
+
+            # WHEN - the migration is rolled back
+            command.downgrade(config, "-1")
+
+            # THEN - the column and the token table are gone (downgrade works)
+            inspector = inspect(engine)
+            columns = [c["name"] for c in inspector.get_columns("users")]
+            assert "email_verified_at" not in columns
+            assert "email_verification_tokens" not in inspector.get_table_names()
+
+            # WHEN - re-applied (reversibility holds)
+            command.upgrade(config, "head")
+
+            # THEN
+            assert "email_verification_tokens" in inspect(engine).get_table_names()
         finally:
             engine.dispose()

@@ -33,6 +33,7 @@ class CachedUserData:
     last_name: str
     photo_url: str | None
     created_at: datetime
+    email_verified_at: datetime | None
 
     @classmethod
     def from_user(cls, user: User) -> CachedUserData:
@@ -48,6 +49,7 @@ class CachedUserData:
             last_name=user.last_name,
             photo_url=user.photo_url,
             created_at=user.created_at,
+            email_verified_at=user.email_verified_at,
         )
 
     def to_json(self) -> str:
@@ -63,6 +65,11 @@ class CachedUserData:
                 "last_name": self.last_name,
                 "photo_url": self.photo_url,
                 "created_at": self.created_at.isoformat(),
+                "email_verified_at": (
+                    self.email_verified_at.isoformat()
+                    if self.email_verified_at is not None
+                    else None
+                ),
             }
         )
 
@@ -81,6 +88,7 @@ class CachedUserData:
         if not isinstance(data, dict):
             raise ValueError("cached user data must be a JSON object")
         try:
+            email_verified_at = data["email_verified_at"]
             return cls(
                 id=UUID(data["id"]),
                 email=data["email"],
@@ -88,6 +96,11 @@ class CachedUserData:
                 last_name=data["last_name"],
                 photo_url=data["photo_url"],
                 created_at=datetime.fromisoformat(data["created_at"]),
+                email_verified_at=(
+                    datetime.fromisoformat(email_verified_at)
+                    if email_verified_at is not None
+                    else None
+                ),
             )
         except (KeyError, TypeError, AttributeError) as e:
             raise ValueError(f"invalid cached user data: {e}") from e
@@ -108,6 +121,7 @@ class CachedUserData:
             last_name=self.last_name,
             photo_url=self.photo_url,
             created_at=self.created_at,
+            email_verified_at=self.email_verified_at,
         )
 
 
@@ -206,7 +220,7 @@ class RedisUserCache:
 
     @staticmethod
     def _key(user_id: UUID) -> str:
-        return f"user:profile:v1:{user_id}"
+        return f"user:profile:v2:{user_id}"
 
     def get(self, user_id: UUID) -> CachedUserData | None:
         """Return the cached snapshot, or ``None`` on miss/error/corruption.
