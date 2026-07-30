@@ -47,6 +47,50 @@ credential stuffing against a single account. And an unknown email still runs a 
 so a wrong-email response takes the same time as a wrong-password one -- login timing
 cannot be used to enumerate which addresses have accounts.
 
+## Registration and email verification
+
+An account is created unverified and cannot log in until the address is confirmed. Login
+checks `email_verified_at` only *after* the password verifies, and answers `403`; checking
+first would answer differently for an address that has an account and one that does not,
+which is the enumeration oracle the uniform `401` exists to prevent.
+
+`POST /auth/register` always answers `202` with one fixed body. Behind it,
+`RegistrationService` picks one of three branches: a free address creates an unverified
+account, a taken-but-unverified address has its stored password and names replaced by the
+new submission, and a taken-and-verified address is left untouched while its owner is
+emailed a notice that someone tried to sign up with it.
+
+The middle branch is a security requirement. If a taken-but-unverified address only re-sent
+the existing link, an attacker could pre-register `victim@example.com` with a password of
+their own choosing; the real owner would later receive a legitimate-looking activation mail,
+click it, and land in an account whose password the attacker knows. Nobody has proven control
+of the address yet, so the newest registrant's credentials win and only whoever holds the
+mailbox can activate them. The notice mail carries a static `/forgot-password` link, never a
+minted reset token -- an unauthenticated registration attempt must not be able to mail anyone
+a working reset link.
+
+Two side channels are closed alongside the response body. The branch that writes nothing
+still runs bcrypt on the submitted password and discards the result, so it cannot be
+identified by answering hundreds of milliseconds faster. And every email the flow can trigger
+-- activation links, resends, and notices -- shares one per-address budget
+(`api/auth/email_throttle.py`, keyed by a hash of the address), so submitting a victim's
+address in a loop from rotating IPs cannot flood their inbox past the per-IP limiter.
+Suppression never changes the response.
+
+Activation tokens follow the password-reset design exactly: `secrets.token_urlsafe(32)`,
+only the SHA-256 hash stored, single use, expiring after
+`EMAIL_VERIFICATION_TOKEN_TTL_HOURS` (24 by default), and issuing a new one retires the
+outstanding ones. Unknown, spent, and expired tokens all get one opaque `400`.
+`POST /auth/resend-verification` answers `202` identically for an unknown address, an
+unverified one, and an already-verified one.
+
+Before any of that touches the database, the submitted address goes through
+`EmailAddressPolicy` (`api/services/email_policy.py`): a vendored disposable-domain
+blocklist and an MX/A/AAAA reachability check that fails open. Both verdicts depend only on
+the domain string, never on database state, so their `400` leaks nothing about account
+existence. Each has a runtime kill switch (`DISPOSABLE_EMAIL_BLOCKING_ENABLED`,
+`MX_CHECK_ENABLED`) in case either starts rejecting real users.
+
 ## Session transport (cookies and CSRF)
 
 The browser client keeps no token in JavaScript-readable storage. Login and refresh set the
@@ -87,7 +131,7 @@ own limit. On top of that, routes carry tighter limits by risk:
 | Limit | Value | Applied to |
 |-------|-------|-----------|
 | Auth | `5/minute` | Login, register |
-| Password reset | `3/minute` | Forgot / reset password |
+| Password reset | `3/minute` | Forgot / reset password, verify / resend verification |
 | Write | `30/minute` | Mutations that also recalculate |
 | Upload | `10/minute` | File uploads |
 | Standard | `60/minute` | Everything else |
@@ -233,15 +277,12 @@ let the person concerned withdraw it themselves.
 Two properties are known, deliberate, and reviewed. They are recorded here so a future audit
 does not re-litigate them.
 
-**Registration and invitation disclose whether an address has an account.** `POST /auth/register`
-answers `409 Email already registered` for a taken address, and inviting by email answers
-`404` for an address that has no account. Both are inherent to the flows: registration has to
-tell a returning user that they already have an account, and an invitation cannot be created
-for a user row that does not exist. Closing them means a deferred-activation signup with
-email verification, where the distinguishing branch moves into the mailbox -- a feature, not
-a patch. The bit disclosed is one the caller already supplied, and the login path is
-separately hardened against enumeration (uniform 401, equalized timing), as is
-forgot-password (uniform 202).
+**Inviting by email discloses whether an address has an account.** Inviting an address that
+has no account answers `404`, which is inherent to the flow: an invitation cannot be created
+for a user row that does not exist. The bit disclosed is one the caller already supplied, and
+the caller is an authenticated project admin rather than an anonymous prober. Registration
+used to disclose the same bit through a `409`; deferred activation closed it (see
+"Registration and email verification" below).
 
 **Login and refresh also return the refresh token in the JSON body.** The browser client
 never reads it -- it uses the `HttpOnly` cookie -- but programmatic clients can only obtain

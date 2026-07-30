@@ -84,13 +84,23 @@ api/
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/api/v1/auth/register` | Register new user |
+| POST | `/api/v1/auth/register` | Register new user, email an activation link |
+| POST | `/api/v1/auth/verify-email` | Confirm an address using an activation token |
+| POST | `/api/v1/auth/resend-verification` | Request a fresh activation link |
 | POST | `/api/v1/auth/login` | Login, get tokens |
 | POST | `/api/v1/auth/logout` | Revoke refresh token |
 | POST | `/api/v1/auth/refresh` | Refresh access token |
 | POST | `/api/v1/auth/forgot-password` | Request a password reset email |
 | POST | `/api/v1/auth/reset-password` | Reset password using a token |
 | GET | `/api/v1/auth/me` | Get current user profile |
+
+**Registration and activation.** `POST /auth/register` always answers `202` with the same
+body, whether the address is free, already registered but unverified, or already registered
+and verified -- the response never reveals which. The account it creates cannot log in until
+the emailed link is redeemed through `POST /auth/verify-email`; until then `POST /auth/login`
+answers `403` with a distinct `detail` so a client can offer a resend. `POST
+/auth/resend-verification` answers `202` for any address. See `docs/security.md` for why
+each branch behaves as it does.
 
 **Session transport.** Login and refresh set the access and refresh tokens as
 `Secure; HttpOnly; SameSite=Strict` cookies (the refresh cookie is scoped to
