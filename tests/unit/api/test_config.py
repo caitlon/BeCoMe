@@ -175,6 +175,70 @@ class TestEmailEnabled:
         assert settings.email_enabled is True
 
 
+class TestEmailPolicySettings:
+    """Tests for the registration email-address policy kill switches."""
+
+    def test_disposable_email_blocking_defaults_to_enabled(self):
+        """
+        GIVEN Settings without an explicit override
+        WHEN constructed
+        THEN disposable_email_blocking_enabled defaults to True
+        """
+        # GIVEN / WHEN
+        settings = Settings(secret_key="test-secret-key")
+
+        # THEN
+        assert settings.disposable_email_blocking_enabled is True
+
+    def test_mx_check_defaults_to_enabled(self):
+        """
+        GIVEN Settings without an explicit override
+        WHEN constructed
+        THEN mx_check_enabled defaults to True
+        """
+        # GIVEN / WHEN
+        settings = Settings(secret_key="test-secret-key")
+
+        # THEN
+        assert settings.mx_check_enabled is True
+
+    def test_disposable_email_blocking_can_be_disabled_via_env(self, monkeypatch, tmp_path):
+        """
+        GIVEN DISPOSABLE_EMAIL_BLOCKING_ENABLED=false in the environment
+        WHEN Settings is constructed
+        THEN the kill switch is off, with no code deploy required
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("APP_ENV", "dev")
+        monkeypatch.setenv("SECRET_KEY", "irrelevant-for-dev")
+        monkeypatch.setenv("DISPOSABLE_EMAIL_BLOCKING_ENABLED", "false")
+
+        # WHEN
+        settings = Settings()
+
+        # THEN
+        assert settings.disposable_email_blocking_enabled is False
+
+    def test_mx_check_can_be_disabled_via_env(self, monkeypatch, tmp_path):
+        """
+        GIVEN MX_CHECK_ENABLED=false in the environment
+        WHEN Settings is constructed
+        THEN the kill switch is off, with no code deploy required
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("APP_ENV", "dev")
+        monkeypatch.setenv("SECRET_KEY", "irrelevant-for-dev")
+        monkeypatch.setenv("MX_CHECK_ENABLED", "false")
+
+        # WHEN
+        settings = Settings()
+
+        # THEN
+        assert settings.mx_check_enabled is False
+
+
 class TestEnvironmentResolution:
     """Tests for APP_ENV profile resolution."""
 

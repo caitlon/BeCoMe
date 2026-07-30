@@ -190,6 +190,12 @@ class Settings(BaseSettings):
     email_api_key: str | None = None
     email_api_url: str = "https://api.resend.com/emails"
 
+    # Kill switches for the registration email-address policy
+    # (api/services/email_policy.py). Both default on; flip either to false via
+    # a Railway env var -- no deploy needed -- if it starts rejecting real users.
+    disposable_email_blocking_enabled: bool = True
+    mx_check_enabled: bool = True
+
     def __init__(self, **kwargs: Any) -> None:
         """Load ``.env`` then ``.env.<APP_ENV>`` and inject the resolved profile.
 

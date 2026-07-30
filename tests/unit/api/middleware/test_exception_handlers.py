@@ -6,9 +6,11 @@ from fastapi import FastAPI, status
 
 from api.exceptions import (
     BeCoMeAPIError,
+    DisposableEmailDomainError,
     InvalidCredentialsError,
     NotFoundError,
     ProjectNotFoundError,
+    UnresolvableEmailDomainError,
     ValidationError,
     ValuesOutOfRangeError,
 )
@@ -130,6 +132,67 @@ class TestGetStatusAndDetail:
         # THEN
         assert status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
         assert detail == "Values 1, 5, 10 are outside range [0, 7]"
+
+
+class TestEmailPolicyExceptionMapping:
+    """Tests for the disposable/MX email-policy exception mappings.
+
+    Both map to 400 with their own distinguishable copy, and neither reveals
+    the underlying exception message (which carries the raw domain).
+    """
+
+    def test_disposable_email_domain_error_maps_to_400_with_its_own_copy(self):
+        """
+        GIVEN a DisposableEmailDomainError
+        WHEN _get_status_and_detail is called
+        THEN it maps to 400 with the disposable-address copy, not the raw message
+        """
+        # GIVEN
+        exc = DisposableEmailDomainError("disposable email domain: mailinator.com")
+
+        # WHEN
+        status_code, detail = _get_status_and_detail(exc)
+
+        # THEN
+        assert status_code == status.HTTP_400_BAD_REQUEST
+        assert detail == "That looks like a temporary address"
+        assert "mailinator.com" not in detail
+
+    def test_unresolvable_email_domain_error_maps_to_400_with_its_own_copy(self):
+        """
+        GIVEN an UnresolvableEmailDomainError
+        WHEN _get_status_and_detail is called
+        THEN it maps to 400 with the unresolvable-domain copy, not the raw message
+        """
+        # GIVEN
+        exc = UnresolvableEmailDomainError(
+            "domain has no mail-capable DNS records: doesnotexist.invalid"
+        )
+
+        # WHEN
+        status_code, detail = _get_status_and_detail(exc)
+
+        # THEN
+        assert status_code == status.HTTP_400_BAD_REQUEST
+        assert detail == "We could not find that domain -- check for a typo"
+        assert "doesnotexist.invalid" not in detail
+
+    def test_the_two_email_policy_messages_are_distinguishable(self):
+        """
+        GIVEN both email-policy exceptions
+        WHEN mapped to a detail message
+        THEN the two messages differ, so the caller can tell the reasons apart
+        """
+        # GIVEN
+        disposable = DisposableEmailDomainError("disposable email domain: mailinator.com")
+        unresolvable = UnresolvableEmailDomainError("domain has no mail-capable DNS records: x")
+
+        # WHEN
+        _, disposable_detail = _get_status_and_detail(disposable)
+        _, unresolvable_detail = _get_status_and_detail(unresolvable)
+
+        # THEN
+        assert disposable_detail != unresolvable_detail
 
 
 class TestBecomeApiErrorHandler:

@@ -106,3 +106,14 @@ class InvalidResetTokenError(ValidationError):
 
 class ResetTokenExpiredError(ValidationError):
     """Raised when a password reset token has expired."""
+
+
+# Email-policy exceptions (api/services/email_policy.py). Both depend solely on
+# the domain string, never on database state, so neither can leak whether an
+# account already exists for the address.
+class DisposableEmailDomainError(ValidationError):
+    """Raised when a registration address uses a known disposable-mail domain."""
+
+
+class UnresolvableEmailDomainError(ValidationError):
+    """Raised when a registration address's domain has no mail-capable DNS records."""
