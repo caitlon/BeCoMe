@@ -18,6 +18,7 @@ def _configure_prod(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
     monkeypatch.setenv("CLOUDFLARE_ORIGIN_SECRET", "an-origin-verify-secret")
     monkeypatch.setenv("CORS_ORIGINS", '["https://app.example.com"]')
+    monkeypatch.setenv("FRONTEND_BASE_URL", "https://app.example.com")
     monkeypatch.setenv("EMAIL_PROVIDER", "http")
     monkeypatch.setenv("EMAIL_API_KEY", "a-resend-api-key")
     monkeypatch.setenv("DEBUG", "false")
@@ -286,6 +287,7 @@ class TestEnvironmentResolution:
         monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
         monkeypatch.setenv("CLOUDFLARE_ORIGIN_SECRET", "an-origin-verify-secret")
         monkeypatch.setenv("CORS_ORIGINS", '["https://app.example.com"]')
+        monkeypatch.setenv("FRONTEND_BASE_URL", "https://app.example.com")
         monkeypatch.setenv("EMAIL_PROVIDER", "http")
         monkeypatch.setenv("EMAIL_API_KEY", "a-resend-api-key")
         monkeypatch.setenv("MIGRATION_DATABASE_URL", "postgresql://migrator:pass@host:5432/db")
@@ -422,6 +424,7 @@ class TestProductionInvariants:
         monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
         monkeypatch.setenv("CLOUDFLARE_ORIGIN_SECRET", "an-origin-verify-secret")
         monkeypatch.setenv("CORS_ORIGINS", '["https://app.example.com"]')
+        monkeypatch.setenv("FRONTEND_BASE_URL", "https://app.example.com")
         monkeypatch.setenv("EMAIL_PROVIDER", "http")
         monkeypatch.setenv("EMAIL_API_KEY", "a-resend-api-key")
         monkeypatch.setenv("MIGRATION_DATABASE_URL", "postgresql://migrator:pass@host:5432/db")
@@ -502,6 +505,34 @@ class TestProductionInvariants:
         with pytest.raises(ValidationError, match="cors_origins"):
             Settings()
 
+    def test_rejects_loopback_frontend_base_url_in_production(self, monkeypatch, tmp_path):
+        """
+        GIVEN a fully configured production profile still on the default frontend URL
+        WHEN Settings is constructed
+        THEN validation fails, so a deploy cannot mail activation links to localhost
+        """
+        # GIVEN
+        _configure_prod(monkeypatch, tmp_path)
+        monkeypatch.setenv("FRONTEND_BASE_URL", "http://localhost:5173")
+
+        # WHEN / THEN
+        with pytest.raises(ValidationError, match="frontend_base_url"):
+            Settings()
+
+    def test_rejects_unparseable_frontend_base_url_in_production(self, monkeypatch, tmp_path):
+        """
+        GIVEN a production profile whose frontend URL has no host at all
+        WHEN Settings is constructed
+        THEN validation fails, since a hostless value builds links to nowhere
+        """
+        # GIVEN
+        _configure_prod(monkeypatch, tmp_path)
+        monkeypatch.setenv("FRONTEND_BASE_URL", "app.example.com")
+
+        # WHEN / THEN
+        with pytest.raises(ValidationError, match="frontend_base_url"):
+            Settings()
+
     def test_rejects_unconfigured_email_in_production(self, monkeypatch, tmp_path):
         """
         GIVEN the production profile with the HTTP email provider but no API key
@@ -517,6 +548,7 @@ class TestProductionInvariants:
         monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
         monkeypatch.setenv("CLOUDFLARE_ORIGIN_SECRET", "an-origin-verify-secret")
         monkeypatch.setenv("CORS_ORIGINS", '["https://app.example.com"]')
+        monkeypatch.setenv("FRONTEND_BASE_URL", "https://app.example.com")
         monkeypatch.setenv("EMAIL_PROVIDER", "http")
         monkeypatch.delenv("EMAIL_API_KEY", raising=False)
 
@@ -538,6 +570,7 @@ class TestProductionInvariants:
         monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
         monkeypatch.setenv("CLOUDFLARE_ORIGIN_SECRET", "an-origin-verify-secret")
         monkeypatch.setenv("CORS_ORIGINS", '["https://app.example.com"]')
+        monkeypatch.setenv("FRONTEND_BASE_URL", "https://app.example.com")
         monkeypatch.setenv("EMAIL_PROVIDER", "console")
 
         # WHEN / THEN
@@ -635,6 +668,7 @@ class TestDeployedDevInvariants:
         monkeypatch.setenv("MIGRATION_DATABASE_URL", "postgresql://migrator:pass@host:5432/db")
         monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
         monkeypatch.setenv("CORS_ORIGINS", '["https://dev.your-domain.example"]')
+        monkeypatch.setenv("FRONTEND_BASE_URL", "https://dev.your-domain.example")
         monkeypatch.setenv("EMAIL_PROVIDER", "http")
         monkeypatch.setenv("EMAIL_API_KEY", "a-resend-api-key")
 
@@ -681,6 +715,7 @@ class TestStagingInvariants:
         monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@host:5432/db")
         monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
         monkeypatch.setenv("CORS_ORIGINS", '["https://staging.example.com"]')
+        monkeypatch.setenv("FRONTEND_BASE_URL", "https://staging.example.com")
         monkeypatch.setenv("EMAIL_PROVIDER", "http")
         monkeypatch.setenv("EMAIL_API_KEY", "a-resend-api-key")
         monkeypatch.setenv("MIGRATION_DATABASE_URL", "postgresql://migrator:pass@host:5432/db")

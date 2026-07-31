@@ -15,6 +15,7 @@ def _prod_env(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
     monkeypatch.setenv("CLOUDFLARE_ORIGIN_SECRET", "an-origin-verify-secret")
     monkeypatch.setenv("CORS_ORIGINS", '["https://app.example.com"]')
+    monkeypatch.setenv("FRONTEND_BASE_URL", "https://app.example.com")
     monkeypatch.setenv("EMAIL_PROVIDER", "http")
     monkeypatch.setenv("EMAIL_API_KEY", "a-resend-api-key")
     monkeypatch.setenv("MIGRATION_DATABASE_URL", "postgresql://migrator:pass@host:5432/db")

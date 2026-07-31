@@ -293,6 +293,13 @@ class Settings(BaseSettings):
                 f"cors_origins must include the deployed frontend origin in the {profile} "
                 "profile; the localhost defaults cannot serve real browser traffic"
             )
+        if (urlparse(self.frontend_base_url).hostname or "") in _LOOPBACK_HOSTS:
+            raise ValueError(
+                f"frontend_base_url must point at the deployed frontend in the {profile} "
+                "profile; every activation and password-reset link is built from it, so a "
+                "loopback default mails out links nobody can open and no account can be "
+                "activated"
+            )
         if not self.email_enabled:
             raise ValueError(
                 f"email_api_key is required in the {profile} profile with "

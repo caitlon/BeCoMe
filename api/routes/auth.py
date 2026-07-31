@@ -156,7 +156,12 @@ async def _send_quietly(send: Awaitable[None], event: str) -> None:
     try:
         await send
     except EmailSendError:
-        logger.warning("Transactional email send failed", extra={"event": event})
+        # ERROR, not WARNING: Sentry is initialised without a LoggingIntegration, so
+        # the SDK's default event_level of ERROR decides what becomes an issue and a
+        # warning would only ever be a breadcrumb on some later event. Every endpoint
+        # here answers 2xx regardless, so a provider outage is otherwise invisible --
+        # signup would be down indefinitely with nothing to alert on.
+        logger.error("Transactional email send failed", exc_info=True, extra={"event": event})
 
 
 @router.post(
@@ -339,14 +344,22 @@ def verify_email(
     unchanged -- only each endpoint's own lockout decision is now independent. Rate
     limited.
 
+    Both counters are cleared once the token is redeemed. Clearing the login one is
+    what stops a user who mistyped a few times from being told their address is
+    confirmed and then refused at the sign-in that was the whole point: their own
+    mismatches spent from a counter that no successful login can reach while the
+    account is locked. Handing that clearance to an activation is safe -- it takes a
+    live single-use token mailed to the address plus the password that token carries,
+    which is stronger evidence of ownership than the password alone.
+
     :param request: FastAPI request (for rate limiting and logging)
     :param data: The raw token from the activation link and its password
     :param service: Email verification service
     :param throttle: Per-account activation-guess throttle (lockout after repeated
         mismatches on this endpoint)
     :param login_throttle: Per-account login throttle; a mismatch spends from it too so
-        the combined guessing bound between the two endpoints does not grow, but it is
-        never consulted here
+        the combined guessing bound between the two endpoints does not grow, and a
+        redemption clears it, but it is never consulted here
     :return: A fixed confirmation message
     :raises InvalidVerificationTokenError: If the token is unknown, spent, or its
         account is already verified
@@ -371,6 +384,10 @@ def verify_email(
         log_verification_password_mismatch(pending.user_id, request)
         raise
     throttle.reset(pending.email)
+    # And the login counter this endpoint's own mismatches spent from, or a user who
+    # fumbled the password a few times would be told their address is confirmed and
+    # then locked out of the sign-in that follows.
+    login_throttle.reset(pending.email)
 
     log_email_verified(user.id, request)
     return {"detail": _VERIFICATION_COMPLETE}

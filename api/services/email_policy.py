@@ -261,8 +261,8 @@ class EmailAddressPolicy:
 
         :param disposable_domains: Blocklist to match against; defaults to the
             vendored list.
-        :param resolver: DNS resolver used for the MX/A/AAAA check; defaults to
-            a new ``dns.asyncresolver.Resolver``.
+        :param resolver: DNS resolver used for the MX/A/AAAA check; when omitted
+            a ``dns.asyncresolver.Resolver`` is built on first use, not here.
         :param cache: Domain-verdict cache; defaults to the process-wide cache
             (Redis-backed when configured, in-memory otherwise).
         :param disposable_check_enabled: Kill switch for the blocklist check.
@@ -277,7 +277,13 @@ class EmailAddressPolicy:
         self._disposable_domains = (
             disposable_domains if disposable_domains is not None else _load_disposable_domains()
         )
-        self._resolver = resolver if resolver is not None else dns.asyncresolver.Resolver()
+        # Deliberately not built here. dns.asyncresolver.Resolver() reads the host's
+        # resolver configuration and raises NoResolverConfiguration when it finds
+        # none, so building it in __init__ turns every POST /register into a 500 --
+        # and MX_CHECK_ENABLED=false, the switch that exists for exactly that
+        # emergency, could not rescue it, because the object was built whether or not
+        # the check ran. Built on first lookup instead, which the switch can prevent.
+        self._resolver = resolver
         self._cache = cache if cache is not None else get_domain_verdict_cache()
         self._disposable_check_enabled = disposable_check_enabled
         self._mx_check_enabled = mx_check_enabled
@@ -371,6 +377,22 @@ class EmailAddressPolicy:
         # Confirmed absence of MX, A, and AAAA records for an existing domain.
         return _LookupOutcome.DOMAIN_MISSING
 
+    def _get_resolver(self) -> dns.asyncresolver.Resolver:
+        """Return the DNS resolver, building it on first use.
+
+        A second builder racing this one would only construct a resolver that is
+        immediately discarded, so no locking is needed: the whole method runs on the
+        event loop with no ``await`` between the check and the assignment.
+
+        :return: The resolver used for MX/A/AAAA lookups.
+        :raises dns.resolver.NoResolverConfiguration: If the host has no usable
+            resolver configuration. Reaching this means the MX check is switched on;
+            turn ``MX_CHECK_ENABLED`` off and no lookup is attempted at all.
+        """
+        if self._resolver is None:
+            self._resolver = dns.asyncresolver.Resolver()
+        return self._resolver
+
     async def _lookup(self, domain: str, rdtype: str) -> _LookupOutcome:
         """Run one DNS query and classify the result.
 
@@ -379,7 +401,7 @@ class EmailAddressPolicy:
         :return: The classified outcome.
         """
         try:
-            await self._resolver.resolve(domain, rdtype, lifetime=self._timeout_seconds)
+            await self._get_resolver().resolve(domain, rdtype, lifetime=self._timeout_seconds)
         except dns.resolver.NXDOMAIN:
             return _LookupOutcome.DOMAIN_MISSING
         except dns.resolver.NoAnswer:
