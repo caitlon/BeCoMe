@@ -61,47 +61,76 @@ address is left untouched while its owner is emailed a notice that someone tried
 with it.
 
 **A submission is bound to the link it mints, never to the account.** The activation token
-carries the submitted password hash and names (`email_verification_tokens`), and they are
-written to the account only when that specific token is redeemed. The alternative -- storing
-the newest submission on the account row -- is an unauthenticated account-takeover primitive
-in both directions. Whoever submits last would decide what every outstanding link opens: an
-attacker submits `victim@example.com` after the real owner signed up, the owner clicks the
-link they already have, and the account activates on the attacker's password. Binding the
-credentials to the token makes each link activate the submission it belongs to.
+carries the submitted password hash and names (`email_verification_tokens`, all three
+columns `NOT NULL`), and they are written to the account only when that specific token is
+redeemed. The alternative -- storing the newest submission on the account row -- is an
+unauthenticated account-takeover primitive: whoever submits last would decide what every
+outstanding link opens, so an attacker submits `victim@example.com` after the real owner
+signed up, the owner clicks the link they already have, and the account activates on the
+attacker's password.
 
-Two consequences follow from that. Issuing a link does **not** retire the outstanding ones,
-unlike password reset -- several live links for one unconfirmed address is the correct state,
-since each is single-use and carries its own submission, and retiring them is exactly how one
-submitter would kill another's pending link. And redemption is refused once the address is
+**Redemption also requires the password the token carries.** `POST /auth/verify-email` takes
+`{token, password}` and checks the password against the token's `hashed_password`, never
+against the `users` row. That is what closes the class the binding above only narrows.
+Anyone can cause an activation link to arrive at an address they do not control -- a repeat
+registration puts a fresh one at the top of the victim's inbox, and nothing distinguishes it
+from their own. With the password required, the stranger's link is dead in both hands: the
+recipient does not know the submitted password, and the submitter never sees the link. The
+victim's own link, with the victim's own password, still works. Neither party can activate
+the other's submission.
+
+Three consequences follow. Issuing a link does **not** retire the outstanding ones, unlike
+password reset -- several live links for one unconfirmed address is the correct state, since
+each is single-use and carries its own submission, and retiring them is exactly how one
+submitter would kill another's pending link. Redemption is refused once the address is
 verified, with the same opaque `400` an unknown token gets: a token minted while the account
 was unconfirmed carries a password, so redeeming it afterwards would rewrite the credentials
-of an account somebody is already using.
+of an account somebody is already using -- and refusing before the password is weighed also
+keeps the endpoint from being able to lock a live account out of its own login. And a
+completed password reset sets `email_verified_at` too, which retires every outstanding
+activation link in one move; a reset link proves control of the address exactly as an
+activation link does, so reclaiming an address somebody pre-registered is one step.
+
+A wrong password answers `403` with its own wording, not the opaque `400` the token errors
+share. Whoever reaches that point already holds a live link, so admitting the link is fine
+tells them nothing new -- while telling a user who mistyped that their link is broken would
+send them round the loop asking for another one that would fail the same way. The guessing
+oracle that opens is capped: the endpoint keeps its rate limit, and each mismatch is recorded
+against the same per-account lockout a failed login uses (`api/auth/login_throttle.py`), so
+guesses run out exactly as they do on `/login`.
 
 The notice mail carries a static `/forgot-password` link, never a minted reset token -- an
 unauthenticated registration attempt must not be able to mail anyone a working reset link.
 
-Two side channels are closed alongside the response body. The branch that writes nothing
-still runs bcrypt on the submitted password and discards the result, so it cannot be
-identified by answering hundreds of milliseconds faster. And the emails the flow can trigger
-share one per-address budget (`api/auth/email_throttle.py`, keyed by a hash of the address),
-so submitting a victim's address in a loop from rotating IPs cannot flood their inbox past
-the per-IP limiter. Suppression never changes the response.
+Two side channels are closed alongside the response body. Every branch runs bcrypt on the
+submitted password, including the one that writes nothing, so none can be identified by
+answering hundreds of milliseconds faster. And the emails the flow can trigger share one
+per-address budget (`api/auth/email_throttle.py`, keyed by a hash of the address), so
+submitting a victim's address in a loop from rotating IPs cannot flood their inbox past the
+per-IP limiter. Suppression never changes the response.
 
-That budget covers repeat submissions, notices, and resends -- but **not** the branch that
-creates the account, and a resend request for an address with nothing to send spends none of
-it. Both exemptions close a denial rather than opening a flood: the creating branch fires at
-most once per address (a second submission is by definition no longer free), so charging it
-to a budget a stranger can drain with five unauthenticated `resend-verification` calls would
-let anyone pre-empt a signup that has not happened yet -- the victim would register, get the
-normal `202`, receive nothing, and be left with an account that cannot log in.
+Every send spends from that budget, including the one on the branch that creates the account
+-- which is the only branch never *denied* by it. The distinction matters in both directions.
+Never denied, because that branch fires at most once per address (a second submission is by
+definition no longer free), so charging it would let a stranger drain the allowance with five
+unauthenticated `resend-verification` calls and pre-empt a signup that has not happened yet:
+the victim would register, get the normal `202`, receive nothing, and be left with an account
+that cannot log in. Still spending, because a send that left the budget clean would make two
+back-to-back submissions separate a free address from a taken one -- the free one mailing on
+both probes, the taken one going quiet after the first -- and the awaited round trip to the
+mail provider is exactly the difference the uniform `202` exists to hide. A resend request
+for an address with nothing to send spends nothing, for the same anti-denial reason as the
+creating branch, and it mails nothing either, so it opens no timing difference.
 
 Activation tokens otherwise follow the password-reset design: `secrets.token_urlsafe(32)`,
 only the SHA-256 hash stored, single use, expiring after
 `EMAIL_VERIFICATION_TOKEN_TTL_HOURS` (24 by default). Unknown, spent, and expired tokens all
-get one opaque `400`. `POST /auth/resend-verification` answers `202` identically for an
-unknown address, an unverified one, and an already-verified one; the link it mails carries no
-submission of its own, so following it confirms the address without touching the stored
-password.
+get one opaque `400`. `POST /auth/resend-verification` takes `{email, password}` and answers
+`202` identically for an unknown address, an unverified one, and an already-verified one.
+Taking the password makes it a repeat registration minus the names: the link it mails carries
+that password like any other, and the names come from the account, which is all a resend
+request can know. An address-only resend would mint a link with nothing to prove, which
+anyone receiving the mail could follow.
 
 Before any of that touches the database, the submitted address goes through
 `EmailAddressPolicy` (`api/services/email_policy.py`): a vendored disposable-domain
@@ -303,28 +332,28 @@ the caller is an authenticated project admin rather than an anonymous prober. Re
 used to disclose the same bit through a `409`; deferred activation closed it (see
 "Registration and email verification" above).
 
-**A link obtained from `resend-verification` activates the account on the password it was
-created with.** That endpoint takes an address and nothing else, so it has no submission to
-bind to the link it mails, and confirming the address leaves the stored password alone. If
-somebody else created the account -- pre-registering a stranger's address is not something we
-can prevent -- then activating through a *resend* rather than through the link your own
-signup mailed you opens the account on their password. Two things bound it. Your own password
-will not work afterwards, so the situation announces itself at the first login attempt, and
-`forgot-password` takes the account back. And the same pre-registration also mailed you a
-signup link at the time, which is the shorter path to the same outcome for an attacker: the
-mitigation for both is not clicking activation mail for a signup you did not make. Binding
-credentials to a resend would be worse, not better: whatever rule picked them (the newest
-pending submission, the stored ones) is a rule an attacker can arrange to satisfy by
-resubmitting, which is the account-takeover primitive this design removed.
+**A stranger's signup still puts an activation link in your inbox, and it looks like any
+other.** Pre-registering somebody else's address is not something an unauthenticated endpoint
+can prevent, and the mail it triggers comes from us, to you, worded exactly as your own
+would be. What it no longer does is anything: following it requires the password behind the
+submission, which the stranger chose and you do not know, so the link is inert in your hands
+and unreachable in theirs (see "Registration and email verification" above). The residue is
+one unexplained email, plus a pending unverified account holding your address. Registering
+normally, or completing a password reset, takes the address over and kills every outstanding
+link. Nothing about it is worth acting on, but a support question about "why did I get this"
+is a legitimate one and the answer is here.
 
 **`POST /auth/register` still has a timing signal, of one bit and only once.** A submission
 whose email is suppressed by the per-address budget skips an awaited round trip to the mail
 provider, so it comes back measurably sooner than one that sends. A first probe can therefore
 learn that mail was recently triggered for that address. It is weak and self-consuming: the
 probe is itself a submission, so it spends from the same budget and changes the answer the
-next probe gets, and it reports on recent activity rather than on whether an account exists.
-Closing it means making the send fire-and-forget, which is the same queue change
-`forgot-password` needs for the identical property.
+next probe gets, and it reports on recent activity rather than on whether an account exists
+-- every branch spends a slot, so no sequence of probes separates a free address from a taken
+one. `POST /auth/resend-verification` has the narrower version of the same property: it
+awaits a send only when the address has a pending signup, so a first probe against a clean
+budget distinguishes that case. Closing either means making the send fire-and-forget, which
+is the same queue change `forgot-password` needs for the identical property.
 
 **Login and refresh also return the refresh token in the JSON body.** The browser client
 never reads it -- it uses the `HttpOnly` cookie -- but programmatic clients can only obtain

@@ -85,8 +85,8 @@ api/
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | POST | `/api/v1/auth/register` | Register new user, email an activation link |
-| POST | `/api/v1/auth/verify-email` | Confirm an address using an activation token |
-| POST | `/api/v1/auth/resend-verification` | Request a fresh activation link |
+| POST | `/api/v1/auth/verify-email` | Confirm an address with an activation token and its password |
+| POST | `/api/v1/auth/resend-verification` | Request a fresh activation link for a password |
 | POST | `/api/v1/auth/login` | Login, get tokens |
 | POST | `/api/v1/auth/logout` | Revoke refresh token |
 | POST | `/api/v1/auth/refresh` | Refresh access token |
@@ -98,12 +98,19 @@ api/
 body, whether the address is free, already registered but unverified, or already registered
 and verified -- the response never reveals which. The account it creates cannot log in until
 the emailed link is redeemed through `POST /auth/verify-email`; until then `POST /auth/login`
-answers `403` with a distinct `detail` so a client can offer a resend. `POST
-/auth/resend-verification` answers `202` for any address. A submission takes effect only when
-its own link is followed: the password and names travel on the activation token, so
-registering an unconfirmed address twice leaves two working links, and whichever is redeemed
-first decides the credentials the account opens with. See `docs/security.md` for why each
-branch behaves as it does.
+answers `403` with a distinct `detail` so a client can offer a resend.
+
+A submission takes effect only when its own link is followed *and* its own password is
+restated. The password hash and names travel on the activation token, so registering an
+unconfirmed address twice leaves two working links, and whichever is redeemed first decides
+the credentials the account opens with. `POST /auth/verify-email` therefore takes
+`{token, password}`: an unknown, spent, or expired token gets one opaque `400`, while a
+password that does not match the token gets a `403` with its own `detail`, so a client can
+ask the user to retype instead of sending them off for a new link. Mismatches count against
+the same per-account lockout a failed login does. `POST /auth/resend-verification` takes
+`{email, password}` and answers `202` for any address; the link it mails carries the
+submitted password like any other. See `docs/security.md` for why each branch behaves as it
+does.
 
 **Session transport.** Login and refresh set the access and refresh tokens as
 `Secure; HttpOnly; SameSite=Strict` cookies (the refresh cookie is scoped to
