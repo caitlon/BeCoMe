@@ -1,8 +1,7 @@
 import { useEffect } from "react";
 import { motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
-import { Navbar } from "@/components/layout/Navbar";
-import { Footer } from "@/components/layout/Footer";
+import { PageShell } from "@/components/layout/PageShell";
 import { HeroSection } from "@/components/layout/HeroSection";
 import { CaseStudyCard } from "@/components/CaseStudyCard";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
@@ -19,9 +18,7 @@ const CaseStudies = () => {
   }, []);
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <Navbar />
-      <main id="main-content">
+    <PageShell variant="content" footer>
         <HeroSection
           title={t("listing.title")}
           subtitle={t("listing.subtitle")}
@@ -47,9 +44,7 @@ const CaseStudies = () => {
             </div>
           </div>
         </section>
-      </main>
-      <Footer />
-    </div>
+    </PageShell>
   );
 };
 

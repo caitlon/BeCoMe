@@ -1,6 +1,10 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
 
+/* Tailwind v4 registers plugins from CSS; without this the `prose` classes on
+   About are silently inert. */
+@plugin '@tailwindcss/typography';
+
 @custom-variant dark (&:is(.dark *));
 
 @utility container {
@@ -14,21 +18,37 @@
   }
 }
 
+/*
+  Heading scale. Two registers: the marketing page (Landing) runs one step larger
+  than the working pages, so hero and section each get their own entry. Every
+  page heading picks one of these -- no page sets a size of its own.
+*/
+@utility text-page-hero {
+  @apply font-display font-normal tracking-tight text-4xl md:text-6xl lg:text-7xl;
+}
+
+@utility text-page-title {
+  @apply font-display font-normal text-3xl md:text-5xl;
+}
+
+@utility text-app-title {
+  @apply font-display font-normal text-3xl md:text-4xl;
+}
+
+@utility text-section-title {
+  @apply font-display font-normal text-2xl md:text-3xl;
+}
+
+/* Landing's sections, sized to sit under its larger hero. Matches text-app-title
+   today; kept separate so the two registers can move independently. */
+@utility text-section-title-lg {
+  @apply font-display font-normal text-3xl md:text-4xl;
+}
+
 @theme {
   --font-sans: Inter, system-ui, sans-serif;
   --font-display: Playfair Display, Georgia, serif;
   --font-mono: JetBrains Mono, monospace;
-
-  --text-display-1: 3rem;
-  --text-display-1--line-height: 1.1;
-  /* Playfair Display has no 300 weight; 400 is its lightest cut */
-  --text-display-1--font-weight: 400;
-  --text-display-2: 2rem;
-  --text-display-2--line-height: 1.2;
-  --text-display-2--font-weight: 400;
-  --text-display-3: 1.5rem;
-  --text-display-3--line-height: 1.3;
-  --text-display-3--font-weight: 500;
 
   --color-border: hsl(var(--border));
   --color-input: hsl(var(--input));
@@ -357,19 +377,18 @@
     font-family: 'JetBrains Mono', monospace;
   }
   
-  /* Heading Styles */
-  h1, .h1 {
-    @apply font-display text-5xl font-normal tracking-tight;
+  /*
+    Headings inherit the display family and nothing else. Sizes come from the
+    text-page-hero / text-page-title / text-app-title / text-section-title
+    utilities above, so a heading that forgets one reads at body size and the
+    omission is visible rather than papered over by a global default.
+  */
+  h1,
+  h2,
+  h3 {
+    @apply font-display font-normal;
   }
-  
-  h2, .h2 {
-    @apply font-display text-3xl font-normal;
-  }
-  
-  h3, .h3 {
-    @apply font-display text-2xl font-medium;
-  }
-  
+
   /* Focus styles */
   .focus-ring {
     @apply focus:outline-hidden focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background;

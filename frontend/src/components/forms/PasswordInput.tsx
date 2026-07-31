@@ -52,7 +52,7 @@ const PasswordInput = React.forwardRef<HTMLInputElement, PasswordInputProps>(
           </button>
         </div>
         {error && (
-          <p id={errorId} className="text-sm text-destructive">
+          <p id={errorId} role="alert" className="text-sm text-destructive">
             {error.message}
           </p>
         )}

@@ -1,8 +1,7 @@
 import { Navigate, useLocation } from "react-router";
-import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/AuthContext";
 import { ServiceUnavailable } from "@/components/auth/ServiceUnavailable";
-import { Loader2 } from "lucide-react";
+import { PageSpinner } from "@/components/PageSpinner";
 
 interface ProtectedRouteProps {
   readonly children: React.ReactNode;
@@ -11,17 +10,12 @@ interface ProtectedRouteProps {
 export function ProtectedRoute({ children }: ProtectedRouteProps) {
   const { isAuthenticated, isLoading, isServiceUnavailable, refreshUser } = useAuth();
   const location = useLocation();
-  const { t } = useTranslation();
 
   if (isLoading) {
     return (
-      <output
-        aria-label={t("a11y.loading")}
-        aria-live="polite"
-        className="min-h-screen flex items-center justify-center"
-      >
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </output>
+      <div className="min-h-screen flex items-center justify-center">
+        <PageSpinner />
+      </div>
     );
   }
 

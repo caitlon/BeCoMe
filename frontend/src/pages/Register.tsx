@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -12,10 +12,12 @@ import {
   ValidationChecklist,
   Requirement,
 } from "@/components/forms";
+import { ResendVerification } from "@/components/auth/ResendVerification";
 import { AuthLayout } from "@/components/layout/AuthLayout";
-import { useAuth } from "@/contexts/AuthContext";
-import { useAuthSubmit } from "@/hooks/use-auth-submit";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { useToast } from "@/hooks/use-toast";
+import { api } from "@/lib/api";
+import { describeError } from "@/lib/errorMessages";
 import { buildPasswordSchema, getPasswordRequirements } from "@/lib/validation";
 
 type RegisterFormData = {
@@ -47,15 +49,17 @@ const getEmailRequirements = (
 const Register = () => {
   const { t } = useTranslation("auth");
   const { t: tCommon } = useTranslation();
-  const { register: registerUser } = useAuth();
   useDocumentTitle(tCommon("pageTitle.register"));
+  const { toast } = useToast();
 
-  const { isLoading, execute } = useAuthSubmit({
-    successTitle: t("register.successTitle"),
-    successDescription: t("register.successMessage"),
-    errorTitle: t("register.errorTitle"),
-    errorFallback: t("register.errorMessage"),
-  });
+  const [isLoading, setIsLoading] = useState(false);
+  // Carries the address and password the user just typed into the
+  // check-your-inbox state, so the resend control there can call
+  // api.resendVerification without asking the user to type the password
+  // again -- kept only in this component's state, never persisted.
+  const [submitted, setSubmitted] = useState<{ email: string; password: string } | null>(
+    null
+  );
 
   const registerSchema = useMemo(
     () =>
@@ -102,10 +106,47 @@ const Register = () => {
   const emailRequirements = getEmailRequirements(email, t);
   const passwordRequirements = getPasswordRequirements(password, t);
 
-  const onSubmit = (data: RegisterFormData) =>
-    execute(() =>
-      registerUser(data.email, data.password, data.firstName, data.lastName)
+  const onSubmit = async (data: RegisterFormData) => {
+    setIsLoading(true);
+    try {
+      await api.register({
+        email: data.email,
+        password: data.password,
+        first_name: data.firstName,
+        last_name: data.lastName,
+      });
+      // 202 identically for a free, unverified, or already-verified address --
+      // the "check your inbox" state is the whole flow's success state, there
+      // is no user object and no session to move to /projects with.
+      setSubmitted({ email: data.email, password: data.password });
+    } catch (error) {
+      toast({
+        title: t("register.errorTitle"),
+        description: describeError(error, tCommon, t("register.errorMessage")),
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  if (submitted) {
+    return (
+      <AuthLayout title={t("register.checkInboxTitle")}>
+        <p className="text-center text-sm text-muted-foreground">
+          {t("register.checkInboxMessage", { email: submitted.email })}
+        </p>
+        <div className="mt-6">
+          <ResendVerification email={submitted.email} password={submitted.password} />
+        </div>
+        <p className="text-center text-sm text-muted-foreground mt-6">
+          <Link to="/login" className="text-foreground hover:underline">
+            {t("register.backToLogin")}
+          </Link>
+        </p>
+      </AuthLayout>
     );
+  }
 
   return (
     <AuthLayout title={t("register.title")}>

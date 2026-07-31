@@ -1,21 +1,26 @@
 """Tests for centralized FastAPI dependencies."""
 
-from unittest.mock import MagicMock, patch
+import asyncio
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
+import dns.resolver
 import pytest
 from fastapi import HTTPException
 
-from api.config import Settings
+from api.config import Settings, get_settings
 from api.dependencies import (
     AccessLevel,
     RequireProjectAccess,
+    get_email_address_policy,
     get_email_service,
     get_password_reset_service,
     get_storage_service,
 )
+from api.exceptions import DisposableEmailDomainError, UnresolvableEmailDomainError
 from api.services.email.console_email_sender import ConsoleEmailSender
 from api.services.email.resend_email_sender import ResendEmailSender
+from api.services.email_policy import get_domain_verdict_cache
 from api.services.password_reset_service import PasswordResetService
 from api.services.storage.exceptions import StorageConfigurationError
 from api.services.storage.railway_bucket_storage_service import RailwayBucketStorageService
@@ -156,6 +161,144 @@ class TestGetEmailService:
 
         # THEN
         assert isinstance(result, ConsoleEmailSender)
+
+
+class TestGetEmailAddressPolicy:
+    """Tests for the get_email_address_policy factory function.
+
+    These exercise the real factory end-to-end so a setting change is proven to
+    reach the constructed policy's actual behaviour, not just the constructor
+    kwarg it is passed to. The DNS resolver is always mocked; no test performs
+    real DNS I/O.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _clear_caches(self, monkeypatch):
+        """Reset every process-singleton cache the factory reaches into.
+
+        get_email_address_policy is itself an lru_cache singleton, and building
+        one with no explicit cache= override reaches get_domain_verdict_cache
+        (another lru_cache singleton keyed on the real, separately-cached
+        Settings). REDIS_URL is forced empty so that cache backend is always the
+        deterministic in-memory one, never a real Redis client.
+        """
+        monkeypatch.setenv("REDIS_URL", "")
+        get_email_address_policy.cache_clear()
+        get_domain_verdict_cache.cache_clear()
+        get_settings.cache_clear()
+        yield
+        get_email_address_policy.cache_clear()
+        get_domain_verdict_cache.cache_clear()
+        get_settings.cache_clear()
+
+    def test_disposable_check_enabled_true_rejects_a_blocklisted_domain(self):
+        """
+        GIVEN disposable_email_blocking_enabled=True in settings
+        WHEN the factory-built policy checks a well-known disposable domain
+        THEN DisposableEmailDomainError is raised
+        """
+        # GIVEN
+        mock_settings = MagicMock(spec=Settings)
+        mock_settings.disposable_email_blocking_enabled = True
+        mock_settings.mx_check_enabled = False  # isolate the disposable switch
+
+        # WHEN / THEN
+        # The resolver is still constructed (mx_check_enabled only skips using
+        # it), so it is stubbed here too even though nothing calls .resolve().
+        with (
+            patch("api.dependencies.get_settings", return_value=mock_settings),
+            patch("dns.asyncresolver.Resolver", return_value=MagicMock()),
+        ):
+            policy = get_email_address_policy()
+            with pytest.raises(DisposableEmailDomainError):
+                asyncio.run(policy.check("user@mailinator.com"))
+
+    def test_disposable_check_enabled_false_lets_a_blocklisted_domain_through(self):
+        """
+        GIVEN disposable_email_blocking_enabled=False in settings
+        WHEN the factory-built policy checks the same well-known disposable domain
+        THEN no error is raised
+
+        This is the behaviour the setting must actually control -- not merely a
+        value it parses into.
+        """
+        # GIVEN
+        mock_settings = MagicMock(spec=Settings)
+        mock_settings.disposable_email_blocking_enabled = False
+        mock_settings.mx_check_enabled = False  # isolate the disposable switch
+
+        # WHEN / THEN (no raise)
+        # The resolver is still constructed (mx_check_enabled only skips using
+        # it), so it is stubbed here too even though nothing calls .resolve().
+        with (
+            patch("api.dependencies.get_settings", return_value=mock_settings),
+            patch("dns.asyncresolver.Resolver", return_value=MagicMock()),
+        ):
+            policy = get_email_address_policy()
+            asyncio.run(policy.check("user@mailinator.com"))
+
+    def test_mx_check_enabled_true_rejects_an_unresolvable_domain(self):
+        """
+        GIVEN mx_check_enabled=True in settings
+        WHEN the factory-built policy checks a domain the resolver cannot find
+        THEN UnresolvableEmailDomainError is raised
+        """
+        # GIVEN
+        mock_settings = MagicMock(spec=Settings)
+        mock_settings.disposable_email_blocking_enabled = False
+        mock_settings.mx_check_enabled = True
+        stub_resolver = MagicMock()
+        stub_resolver.resolve = AsyncMock(side_effect=dns.resolver.NXDOMAIN())
+
+        # WHEN / THEN
+        with (
+            patch("api.dependencies.get_settings", return_value=mock_settings),
+            patch("dns.asyncresolver.Resolver", return_value=stub_resolver),
+        ):
+            policy = get_email_address_policy()
+            with pytest.raises(UnresolvableEmailDomainError):
+                asyncio.run(policy.check("user@example.com"))
+
+    def test_mx_check_enabled_false_skips_the_dns_lookup_entirely(self):
+        """
+        GIVEN mx_check_enabled=False in settings
+        WHEN the factory-built policy checks a domain that would otherwise be
+        rejected
+        THEN no error is raised and the resolver is never consulted
+
+        This is the behaviour the setting must actually control -- not merely a
+        value it parses into.
+        """
+        # GIVEN
+        mock_settings = MagicMock(spec=Settings)
+        mock_settings.disposable_email_blocking_enabled = False
+        mock_settings.mx_check_enabled = False
+        stub_resolver = MagicMock()
+        stub_resolver.resolve = AsyncMock(side_effect=dns.resolver.NXDOMAIN())
+
+        # WHEN
+        with (
+            patch("api.dependencies.get_settings", return_value=mock_settings),
+            patch("dns.asyncresolver.Resolver", return_value=stub_resolver),
+        ):
+            policy = get_email_address_policy()
+            asyncio.run(policy.check("user@example.com"))
+
+        # THEN
+        stub_resolver.resolve.assert_not_awaited()
+
+    def test_is_a_singleton(self):
+        """
+        GIVEN two calls to get_email_address_policy()
+        WHEN compared
+        THEN they return the identical instance, so the resolver is built once
+        """
+        # GIVEN / WHEN
+        first = get_email_address_policy()
+        second = get_email_address_policy()
+
+        # THEN
+        assert first is second
 
 
 class TestGetPasswordResetService:

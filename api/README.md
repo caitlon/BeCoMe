@@ -24,7 +24,7 @@ api/
 │   ├── dependencies.py     # CurrentUser dependency (cookie or Bearer)
 │   ├── revocation_store.py # Token revocation store (in-memory / Redis)
 │   ├── login_throttle.py   # Per-account lockout after failed logins
-│   ├── reset_throttle.py   # Per-email cooldown for password-reset emails
+│   ├── email_throttle.py   # Per-address cooldown for reset and activation emails
 │   └── logging.py          # Auth event logging
 ├── db/                 # Database layer
 │   ├── models.py           # SQLModel entities
@@ -84,22 +84,58 @@ api/
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/api/v1/auth/register` | Register new user |
+| POST | `/api/v1/auth/register` | Register new user, email an activation link |
+| POST | `/api/v1/auth/verify-email` | Confirm an address with an activation token and its password |
+| POST | `/api/v1/auth/resend-verification` | Request a fresh activation link for a password |
 | POST | `/api/v1/auth/login` | Login, get tokens |
 | POST | `/api/v1/auth/logout` | Revoke refresh token |
 | POST | `/api/v1/auth/refresh` | Refresh access token |
 | POST | `/api/v1/auth/forgot-password` | Request a password reset email |
 | POST | `/api/v1/auth/reset-password` | Reset password using a token |
-| GET | `/api/v1/auth/me` | Get current user profile |
+| GET | `/api/v1/auth/me` | Get current user profile, plus the session's CSRF token as a header |
+
+**Registration and activation.** `POST /auth/register` always answers `202` with the same
+body, whether the address is free, already registered but unverified, or already registered
+and verified -- the response never reveals which. The account it creates cannot log in until
+the emailed link is redeemed through `POST /auth/verify-email`; until then `POST /auth/login`
+answers `403` with a distinct `detail` so a client can offer a resend.
+
+A submission takes effect only when its own link is followed *and* its own password is
+restated. The password hash and names travel on the activation token, so registering an
+unconfirmed address twice leaves two working links, and whichever is redeemed first decides
+the credentials the account opens with. `POST /auth/verify-email` therefore takes
+`{token, password}`: an unknown, spent, or expired token gets one opaque `400`, while a
+password that does not match the token gets a `403` with its own `detail`, so a client can
+ask the user to retype instead of sending them off for a new link. Mismatches count against
+their own per-token lockout, namespaced apart from login's -- a run of failed logins can
+never deny someone their own activation, and burning one token's budget can never lock a
+different, freshly resent token for the same account. The two budgets are independent, so
+they add up: 10 failures each per 15 minutes, and only a caller already holding a live
+emailed token can spend the activation half. A mismatch also spends from the login lockout,
+which costs the guesser rather than capping the pair. A completed password reset clears the
+login lockout, and answers the same opaque `400` an unusable token gets when an activation
+confirmed the account while the reset was in flight. `POST /auth/resend-verification` takes
+`{email, password}` and answers `202` for any address; the link it mails carries the
+submitted password like any other. See `docs/security.md` for why each branch behaves as it
+does.
 
 **Session transport.** Login and refresh set the access and refresh tokens as
 `Secure; HttpOnly; SameSite=Strict` cookies (the refresh cookie is scoped to
 `/api/v1/auth`) plus a readable `csrf_token` cookie; the tokens are also returned in the
 response body so programmatic clients can keep using the `Authorization: Bearer` header.
 A cookie-authenticated mutating request (POST/PUT/PATCH/DELETE) must echo the
-`csrf_token` cookie back in an `X-CSRF-Token` header (double-submit CSRF); Bearer-header
+`csrf_token` value back in an `X-CSRF-Token` header (double-submit CSRF); Bearer-header
 requests are exempt. `/auth/refresh` reads the refresh token from the cookie or the body,
 and logout revokes the session and clears the cookies.
+
+Login and refresh also return that value in an `X-CSRF-Token` **response** header, and
+`GET /auth/me` returns whatever the request's own `csrf_token` cookie holds -- nothing is
+minted there, and a request without the cookie gets no header. This is not redundancy: the
+cookie has no `Domain` attribute, so it belongs to the API host, and a browser app served
+from any other host cannot read it out of `document.cookie` even though the browser keeps
+sending it. The header is that app's only copy of the value, which is why
+`CORSMiddleware` lists it under `expose_headers` as well as `allow_headers`. See
+`docs/security.md` for why the cookie is not widened with a `Domain` instead.
 
 ### Users
 
@@ -109,7 +145,7 @@ and logout revokes the session and clears the cookies.
 | GET | `/api/v1/users/me/export` | Export all personal data as JSON (GDPR Art. 20) |
 | PUT | `/api/v1/users/me` | Update profile |
 | PUT | `/api/v1/users/me/password` | Change password |
-| POST | `/api/v1/users/me/photo` | Upload photo |
+| POST | `/api/v1/users/me/photo` | Upload photo (JPEG/PNG/GIF/WebP, max 5 MB and 4096x4096 px) |
 | DELETE | `/api/v1/users/me/photo` | Delete photo |
 | DELETE | `/api/v1/users/me` | Delete account, handling each owned project (GDPR Art. 17) |
 
@@ -137,7 +173,7 @@ returns `422`. The profile photo blob is removed from object storage as part of 
 | PATCH | `/api/v1/projects/{id}` | Update project |
 | DELETE | `/api/v1/projects/{id}` | Delete project |
 | GET | `/api/v1/projects/{id}/members` | List members |
-| DELETE | `/api/v1/projects/{id}/members/{user_id}` | Remove member |
+| DELETE | `/api/v1/projects/{id}/members/{user_id}` | Remove member (discards their opinion and recalculates) |
 | POST | `/api/v1/projects/{id}/transfer-ownership` | Transfer ownership to another member |
 | POST | `/api/v1/projects/{id}/invite` | Invite user |
 
@@ -183,17 +219,18 @@ Environment variables (can use `.env` file):
 |----------|---------|-------------|
 | `APP_ENV` | `dev` | Deployment profile: `dev`, `test`, or `prod`. Selects the `.env.<APP_ENV>` overlay; deployed profiles reject a weak secret, SQLite, a missing Redis, or localhost CORS at startup. See the root README "Environment profiles". |
 | `DATABASE_URL` | `sqlite:///./become.db` | Database connection string. On deployed environments this is the least-privilege `become_app` role. |
-| `MIGRATION_DATABASE_URL` | *optional* | Privileged connection used only by Alembic migrations (DDL); falls back to `DATABASE_URL` when unset. |
+| `MIGRATION_DATABASE_URL` | *required when deployed* | Privileged connection used only by Alembic migrations (DDL); falls back to `DATABASE_URL` locally, but startup fails without it on a deployed service so the least-privilege split is never silently lost. |
 | `SECRET_KEY` | *required* | JWT signing key (generate with `openssl rand -hex 32`) |
+| `LOG_HASH_KEY` | *optional* | Key for the email tags in security logs; falls back to `SECRET_KEY`. Set it separately to keep tags comparable across a secret rotation. |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | `15` | Access token TTL |
 | `REFRESH_TOKEN_EXPIRE_DAYS` | `7` | Refresh token TTL |
-| `DEBUG` | `false` | Debug mode |
+| `DEBUG` | `false` | Debug mode; must stay off on a deployed service (startup fails otherwise) |
 | `API_VERSION` | `1.0.0b1` | API version (auto-read from pyproject.toml) |
 | `CORS_ORIGINS` | `http://localhost:3000,http://localhost:8080` | Allowed CORS origins |
 | `REDIS_URL` | *required when deployed* | Redis for rate limiting, token revocation, and auth throttles |
 | `CLOUDFLARE_ORIGIN_SECRET` | *required in prod* | Shared secret proving the request came through Cloudflare |
 | `EMAIL_PROVIDER` | `console` | Password-reset email delivery: `console` (log) or `http` (Resend) |
-| `EMAIL_API_KEY` | *optional* | API key for the `http` email provider |
+| `EMAIL_API_KEY` | *required when deployed* | API key for the `http` email provider; startup fails without it on the staging and production profiles, where the console fallback would print reset links to stdout instead of sending them |
 | `API_PUBLIC_URL` | `http://localhost:8000` | Public base URL of this API, used to build profile photo proxy links |
 | `BUCKET_NAME` | *optional* | Railway Storage Bucket name (auto-injected when a bucket is attached) |
 | `BUCKET_ENDPOINT` | *optional* | S3-compatible bucket endpoint |

@@ -13,6 +13,7 @@ from api.auth.dependencies import CurrentUser
 from api.dependencies import (
     ProjectAdmin,
     ProjectMember,
+    get_calculation_service,
     get_project_membership_service,
     get_project_query_service,
     get_project_service,
@@ -26,6 +27,7 @@ from api.schemas.project import (
     ProjectWithRoleResponse,
     TransferOwnershipRequest,
 )
+from api.services.calculation_service import CalculationService
 from api.services.project_membership_service import ProjectMembershipService
 from api.services.project_query_service import ProjectQueryService
 from api.services.project_service import ProjectService
@@ -214,16 +216,19 @@ def remove_member(
     membership_service: Annotated[
         ProjectMembershipService, Depends(get_project_membership_service)
     ],
+    calculation_service: Annotated[CalculationService, Depends(get_calculation_service)],
 ) -> None:
     """Remove a member from project. Only admin can remove members.
 
-    Admin cannot remove themselves (use delete project instead).
+    Admin cannot remove themselves (use delete project instead). The member's opinion
+    is discarded along with their membership, so the result is recalculated without it.
     MemberNotFoundError is handled by centralized exception middleware.
 
     :param project: Project (verified admin)
     :param user_id: User UUID to remove
     :param current_user: Authenticated user
     :param membership_service: Membership service
+    :param calculation_service: Calculation service (result no longer counts the member)
     :raises HTTPException: 400 if removing self
     """
     if user_id == current_user.id:
@@ -232,4 +237,5 @@ def remove_member(
             detail="Admin cannot remove themselves. Delete the project instead.",
         )
 
-    membership_service.remove_member(project.id, user_id)
+    if membership_service.remove_member(project.id, user_id):
+        calculation_service.recalculate(project.id)

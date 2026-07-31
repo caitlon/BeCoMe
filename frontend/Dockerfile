@@ -27,6 +27,16 @@ COPY . .
 # Build the application
 RUN npm run build
 
+# Bake the API origin into the SPA's Content-Security-Policy. VITE_API_URL is
+# cross-origin on the deploys (https://api.<domain>/api/v1) and a relative path
+# locally, in which case the placeholder collapses to nothing and connect-src
+# stays at 'self'. Done here rather than at runtime so the served policy is fixed
+# in the image and cannot drift with the container environment.
+RUN API_ORIGIN="$(printf '%s' "${VITE_API_URL}" | sed -n 's#^\(https\{0,1\}://[^/]*\).*#\1#p')" && \
+    if [ -n "${API_ORIGIN}" ]; then REPLACEMENT=" ${API_ORIGIN}"; else REPLACEMENT=""; fi && \
+    sed -i "s#__API_ORIGIN__#${REPLACEMENT}#g" nginx.conf && \
+    ! grep -q '__API_ORIGIN__' nginx.conf
+
 # Production stage
 # nginx-unprivileged runs as the non-root "nginx" user (UID 101) and listens on 8080.
 FROM nginxinc/nginx-unprivileged:alpine
@@ -34,8 +44,9 @@ FROM nginxinc/nginx-unprivileged:alpine
 # Copy built files from builder stage (owned by the non-root nginx user)
 COPY --from=builder --chown=nginx:nginx /app/dist /usr/share/nginx/html
 
-# Copy nginx configuration (nginx user must be able to read it at startup)
-COPY --chown=nginx:nginx nginx.conf /etc/nginx/conf.d/default.conf
+# Copy nginx configuration from the builder, where the CSP placeholder was resolved
+# (nginx user must be able to read it at startup)
+COPY --from=builder --chown=nginx:nginx /app/nginx.conf /etc/nginx/conf.d/default.conf
 
 # Expose port 8080 (non-root nginx cannot bind privileged port 80)
 EXPOSE 8080

@@ -1,22 +1,34 @@
 """Tests for authentication endpoints.
 
-Uses shared fixtures from conftest.py (client, test_engine).
+Uses shared fixtures from conftest.py (client, test_engine). Registration only creates
+an unverified account and login refuses those, so anything that logs in registers
+through ``register_verified``. The activation flow itself lives in
+test_email_verification.py.
 """
 
 from sqlmodel import select
 
 from api.db.models import User
+from tests.integration.api.conftest import (
+    auth_header,
+    register,
+    register_and_login,
+    register_verified,
+    stored_accounts,
+)
+
+PASSWORD = "SecurePass123!"
 
 
 class TestRegister:
     """Tests for POST /api/v1/auth/register."""
 
-    def test_register_creates_user(self, client):
-        """Registration with valid data creates user and returns profile."""
+    def test_register_creates_an_unverified_account(self, client):
+        """Registration with valid data creates an account that still needs activating."""
         # GIVEN
         payload = {
             "email": "test@example.com",
-            "password": "SecurePass123!",
+            "password": PASSWORD,
             "first_name": "John",
             "last_name": "Doe",
         }
@@ -24,22 +36,23 @@ class TestRegister:
         # WHEN
         response = client.post("/api/v1/auth/register", json=payload)
 
-        # THEN
-        assert response.status_code == 201
-        data = response.json()
-        assert data["email"] == "test@example.com"
-        assert data["first_name"] == "John"
-        assert data["last_name"] == "Doe"
-        assert "id" in data
-        assert "password" not in data
-        assert "hashed_password" not in data
+        # THEN - the response carries no profile at all, only the fixed acknowledgement
+        assert response.status_code == 202
+        assert list(response.json()) == ["detail"]
+
+        # AND - the account exists, unverified
+        accounts = stored_accounts(client, "test@example.com")
+        assert len(accounts) == 1
+        assert accounts[0]["first_name"] == "John"
+        assert accounts[0]["last_name"] == "Doe"
+        assert accounts[0]["email_verified_at"] is None
 
     def test_register_without_last_name_fails(self, client):
         """Registration without last_name returns 422."""
         # GIVEN
         payload = {
             "email": "jane@example.com",
-            "password": "SecurePass123!",
+            "password": PASSWORD,
             "first_name": "Jane",
         }
 
@@ -49,51 +62,41 @@ class TestRegister:
         # THEN
         assert response.status_code == 422
 
-    def test_register_duplicate_email_fails(self, client):
-        """Registration with existing email returns 409."""
+    def test_register_answers_identically_for_a_taken_address(self, client):
+        """A second registration for the same address is indistinguishable from the first.
+
+        This replaces the old 409: telling the caller the address is taken is exactly
+        the account-existence disclosure the deferred-activation flow removes.
+        """
         # GIVEN - first registration
-        payload = {
-            "email": "duplicate@example.com",
-            "password": "SecurePass123!",
-            "first_name": "First",
-            "last_name": "User",
-        }
-        client.post("/api/v1/auth/register", json=payload)
+        first = register(client, "duplicate@example.com", first_name="First")
 
         # WHEN - second registration with same email
-        response = client.post("/api/v1/auth/register", json=payload)
+        second = register(client, "duplicate@example.com", first_name="Second")
 
-        # THEN
-        assert response.status_code == 409
-        assert "already registered" in response.json()["detail"]
+        # THEN - same status, same body
+        assert first.status_code == second.status_code == 202
+        assert first.json() == second.json()
 
-    def test_register_duplicate_email_different_case_fails(self, client):
-        """Registration with same email in different case returns 409."""
+        # AND - no second account was created
+        assert len(stored_accounts(client, "duplicate@example.com")) == 1
+
+    def test_register_matches_a_taken_address_case_insensitively(self, client):
+        """A mixed-case repeat lands on the existing account rather than a new one."""
         # GIVEN - first registration with mixed case email
-        client.post(
-            "/api/v1/auth/register",
-            json={
-                "email": "Test@Example.COM",
-                "password": "SecurePass123!",
-                "first_name": "First",
-                "last_name": "User",
-            },
-        )
+        register(client, "Test@Example.COM", first_name="First")
 
         # WHEN - second registration with lowercase email
-        response = client.post(
-            "/api/v1/auth/register",
-            json={
-                "email": "test@example.com",
-                "password": "SecurePass123!",
-                "first_name": "Second",
-                "last_name": "User",
-            },
-        )
+        response = register(client, "test@example.com", first_name="Second")
 
         # THEN
-        assert response.status_code == 409
-        assert "already registered" in response.json()["detail"]
+        assert response.status_code == 202
+
+        # AND - still one account, and the repeat left the stored row alone: an
+        # unactivated submission takes effect only when its own link is followed
+        accounts = stored_accounts(client, "test@example.com")
+        assert len(accounts) == 1
+        assert accounts[0]["first_name"] == "First"
 
     def test_register_short_password_fails(self, client):
         """Registration with password < 12 chars returns 422."""
@@ -184,7 +187,7 @@ class TestRegister:
         # GIVEN
         payload = {
             "email": "not-an-email",
-            "password": "SecurePass123!",
+            "password": PASSWORD,
             "first_name": "Bad",
             "last_name": "Email",
         }
@@ -201,21 +204,13 @@ class TestLogin:
 
     def test_login_returns_token(self, client):
         """Login with valid credentials returns JWT token."""
-        # GIVEN - register user first
-        client.post(
-            "/api/v1/auth/register",
-            json={
-                "email": "login@example.com",
-                "password": "SecurePass123!",
-                "first_name": "Login",
-                "last_name": "User",
-            },
-        )
+        # GIVEN - an activated user
+        register_verified(client, "login@example.com", password=PASSWORD)
 
         # WHEN - login with OAuth2 form data
         response = client.post(
             "/api/v1/auth/login",
-            data={"username": "login@example.com", "password": "SecurePass123!"},
+            data={"username": "login@example.com", "password": PASSWORD},
         )
 
         # THEN
@@ -227,15 +222,7 @@ class TestLogin:
     def test_login_wrong_password_fails(self, client):
         """Login with incorrect password returns 401."""
         # GIVEN
-        client.post(
-            "/api/v1/auth/register",
-            json={
-                "email": "wrongpass@example.com",
-                "password": "CorrectPass1!",
-                "first_name": "Wrong",
-                "last_name": "Pass",
-            },
-        )
+        register_verified(client, "wrongpass@example.com", password="CorrectPass1!")
 
         # WHEN
         response = client.post(
@@ -261,20 +248,12 @@ class TestLogin:
     def test_login_with_different_case_email_works(self, client):
         """Login works with email in different case than registered."""
         # GIVEN - register with mixed case
-        client.post(
-            "/api/v1/auth/register",
-            json={
-                "email": "CaseTest@Example.COM",
-                "password": "SecurePass123!",
-                "first_name": "Case",
-                "last_name": "Test",
-            },
-        )
+        register_verified(client, "CaseTest@Example.COM", password=PASSWORD)
 
         # WHEN - login with lowercase
         response = client.post(
             "/api/v1/auth/login",
-            data={"username": "casetest@example.com", "password": "SecurePass123!"},
+            data={"username": "casetest@example.com", "password": PASSWORD},
         )
 
         # THEN
@@ -288,18 +267,10 @@ class TestMe:
     def test_me_returns_profile(self, client):
         """Authenticated request returns user profile."""
         # GIVEN - register and login
-        client.post(
-            "/api/v1/auth/register",
-            json={
-                "email": "me@example.com",
-                "password": "SecurePass123!",
-                "first_name": "Me",
-                "last_name": "User",
-            },
-        )
+        register_verified(client, "me@example.com", password=PASSWORD, first_name="Me")
         login_response = client.post(
             "/api/v1/auth/login",
-            data={"username": "me@example.com", "password": "SecurePass123!"},
+            data={"username": "me@example.com", "password": PASSWORD},
         )
         token = login_response.json()["access_token"]
 
@@ -338,18 +309,10 @@ class TestMe:
     def test_me_with_deleted_user_fails(self, client):
         """Request with valid token but deleted user returns 401."""
         # GIVEN - register, login, then delete user
-        client.post(
-            "/api/v1/auth/register",
-            json={
-                "email": "deleted@example.com",
-                "password": "SecurePass123!",
-                "first_name": "Deleted",
-                "last_name": "User",
-            },
-        )
+        register_verified(client, "deleted@example.com", password=PASSWORD)
         login_response = client.post(
             "/api/v1/auth/login",
-            data={"username": "deleted@example.com", "password": "SecurePass123!"},
+            data={"username": "deleted@example.com", "password": PASSWORD},
         )
         token = login_response.json()["access_token"]
 
@@ -380,7 +343,7 @@ class TestEmailValidation:
         # GIVEN
         payload = {
             "email": "тест@example.com",
-            "password": "SecurePass123!",
+            "password": PASSWORD,
             "first_name": "Test",
             "last_name": "User",
         }
@@ -397,7 +360,7 @@ class TestEmailValidation:
         # GIVEN
         payload = {
             "email": "test.user+tag@example.com",
-            "password": "SecurePass123!",
+            "password": PASSWORD,
             "first_name": "Test",
             "last_name": "User",
         }
@@ -406,8 +369,8 @@ class TestEmailValidation:
         response = client.post("/api/v1/auth/register", json=payload)
 
         # THEN
-        assert response.status_code == 201
-        assert response.json()["email"] == "test.user+tag@example.com"
+        assert response.status_code == 202
+        assert stored_accounts(client, "test.user+tag@example.com")
 
 
 class TestNameValidation:
@@ -418,7 +381,7 @@ class TestNameValidation:
         # GIVEN
         payload = {
             "email": "digits@example.com",
-            "password": "SecurePass123!",
+            "password": PASSWORD,
             "first_name": "John123",
             "last_name": "Doe",
         }
@@ -435,7 +398,7 @@ class TestNameValidation:
         # GIVEN
         payload = {
             "email": "special@example.com",
-            "password": "SecurePass123!",
+            "password": PASSWORD,
             "first_name": "John@#$",
             "last_name": "Doe",
         }
@@ -448,79 +411,54 @@ class TestNameValidation:
 
     def test_register_name_with_hyphen_succeeds(self, client):
         """Registration with hyphenated name succeeds."""
-        # GIVEN
-        payload = {
-            "email": "hyphen@example.com",
-            "password": "SecurePass123!",
-            "first_name": "Jean-Pierre",
-            "last_name": "Dupont",
-        }
-
         # WHEN
-        response = client.post("/api/v1/auth/register", json=payload)
+        response = register(
+            client, "hyphen@example.com", first_name="Jean-Pierre", last_name="Dupont"
+        )
 
         # THEN
-        assert response.status_code == 201
-        assert response.json()["first_name"] == "Jean-Pierre"
+        assert response.status_code == 202
+        assert stored_accounts(client, "hyphen@example.com")[0]["first_name"] == "Jean-Pierre"
 
     def test_register_name_with_apostrophe_succeeds(self, client):
         """Registration with apostrophe in name succeeds."""
-        # GIVEN
-        payload = {
-            "email": "apostrophe@example.com",
-            "password": "SecurePass123!",
-            "first_name": "O'Brien",
-            "last_name": "Smith",
-        }
-
         # WHEN
-        response = client.post("/api/v1/auth/register", json=payload)
+        response = register(
+            client, "apostrophe@example.com", first_name="O'Brien", last_name="Smith"
+        )
 
         # THEN
-        assert response.status_code == 201
-        assert response.json()["first_name"] == "O'Brien"
+        assert response.status_code == 202
+        assert stored_accounts(client, "apostrophe@example.com")[0]["first_name"] == "O'Brien"
 
     def test_register_cyrillic_name_succeeds(self, client):
         """Registration with Cyrillic name succeeds."""
-        # GIVEN
-        payload = {
-            "email": "cyrillic@example.com",
-            "password": "SecurePass123!",
-            "first_name": "Олег",
-            "last_name": "Петров",
-        }
-
         # WHEN
-        response = client.post("/api/v1/auth/register", json=payload)
+        response = register(client, "cyrillic@example.com", first_name="Олег", last_name="Петров")
 
         # THEN
-        assert response.status_code == 201
-        assert response.json()["first_name"] == "Олег"
-        assert response.json()["last_name"] == "Петров"
+        assert response.status_code == 202
+        stored = stored_accounts(client, "cyrillic@example.com")[0]
+        assert stored["first_name"] == "Олег"
+        assert stored["last_name"] == "Петров"
 
     def test_register_name_with_space_succeeds(self, client):
         """Registration with space in name succeeds."""
-        # GIVEN
-        payload = {
-            "email": "space@example.com",
-            "password": "SecurePass123!",
-            "first_name": "Anna Maria",
-            "last_name": "Kowalski",
-        }
-
         # WHEN
-        response = client.post("/api/v1/auth/register", json=payload)
+        response = register(
+            client, "space@example.com", first_name="Anna Maria", last_name="Kowalski"
+        )
 
         # THEN
-        assert response.status_code == 201
-        assert response.json()["first_name"] == "Anna Maria"
+        assert response.status_code == 202
+        assert stored_accounts(client, "space@example.com")[0]["first_name"] == "Anna Maria"
 
     def test_register_last_name_with_digits_fails(self, client):
         """Registration with digits in last name returns 422."""
         # GIVEN
         payload = {
             "email": "lastdigits@example.com",
-            "password": "SecurePass123!",
+            "password": PASSWORD,
             "first_name": "John",
             "last_name": "Doe123",
         }
@@ -536,7 +474,7 @@ class TestNameValidation:
         # GIVEN
         payload = {
             "email": "emptylast@example.com",
-            "password": "SecurePass123!",
+            "password": PASSWORD,
             "first_name": "John",
             "last_name": "",
         }
@@ -552,19 +490,11 @@ class TestProfileUpdate:
     """Tests for PUT /api/v1/users/me profile update validation."""
 
     def _get_auth_header(self, client) -> dict:
-        """Register and login, return auth header."""
-        client.post(
-            "/api/v1/auth/register",
-            json={
-                "email": "profile@example.com",
-                "password": "SecurePass123!",
-                "first_name": "Profile",
-                "last_name": "User",
-            },
-        )
+        """Register an activated user and log in, returning the auth header."""
+        register_verified(client, "profile@example.com", password=PASSWORD, first_name="Profile")
         login = client.post(
             "/api/v1/auth/login",
-            data={"username": "profile@example.com", "password": "SecurePass123!"},
+            data={"username": "profile@example.com", "password": PASSWORD},
         )
         return {"Authorization": f"Bearer {login.json()['access_token']}"}
 
@@ -653,20 +583,14 @@ class TestProfileUpdate:
 class TestPasswordChange:
     """Tests for PUT /api/v1/users/me/password validation."""
 
+    OLD_PASSWORD = "OldSecure123!"
+
     def _get_auth_header(self, client) -> dict:
-        """Register and login, return auth header."""
-        client.post(
-            "/api/v1/auth/register",
-            json={
-                "email": "pwchange@example.com",
-                "password": "OldSecure123!",
-                "first_name": "Password",
-                "last_name": "Change",
-            },
-        )
+        """Register an activated user and log in, returning the auth header."""
+        register_verified(client, "pwchange@example.com", password=self.OLD_PASSWORD)
         login = client.post(
             "/api/v1/auth/login",
-            data={"username": "pwchange@example.com", "password": "OldSecure123!"},
+            data={"username": "pwchange@example.com", "password": self.OLD_PASSWORD},
         )
         return {"Authorization": f"Bearer {login.json()['access_token']}"}
 
@@ -678,7 +602,7 @@ class TestPasswordChange:
         # WHEN
         response = client.put(
             "/api/v1/users/me/password",
-            json={"current_password": "OldSecure123!", "new_password": "newpassword1!"},
+            json={"current_password": self.OLD_PASSWORD, "new_password": "newpassword1!"},
             headers=headers,
         )
 
@@ -694,7 +618,7 @@ class TestPasswordChange:
         # WHEN
         response = client.put(
             "/api/v1/users/me/password",
-            json={"current_password": "OldSecure123!", "new_password": "NEWPASSWORD1!"},
+            json={"current_password": self.OLD_PASSWORD, "new_password": "NEWPASSWORD1!"},
             headers=headers,
         )
 
@@ -710,7 +634,7 @@ class TestPasswordChange:
         # WHEN
         response = client.put(
             "/api/v1/users/me/password",
-            json={"current_password": "OldSecure123!", "new_password": "NewPasswordAB!"},
+            json={"current_password": self.OLD_PASSWORD, "new_password": "NewPasswordAB!"},
             headers=headers,
         )
 
@@ -726,7 +650,7 @@ class TestPasswordChange:
         # WHEN
         response = client.put(
             "/api/v1/users/me/password",
-            json={"current_password": "OldSecure123!", "new_password": "NewPassword123"},
+            json={"current_password": self.OLD_PASSWORD, "new_password": "NewPassword123"},
             headers=headers,
         )
 
@@ -742,7 +666,7 @@ class TestPasswordChange:
         # WHEN
         response = client.put(
             "/api/v1/users/me/password",
-            json={"current_password": "OldSecure123!", "new_password": "NewSecure456!"},
+            json={"current_password": self.OLD_PASSWORD, "new_password": "NewSecure456!"},
             headers=headers,
         )
 
@@ -756,18 +680,10 @@ class TestRefreshToken:
     def test_refresh_returns_new_access_token(self, client):
         """Refresh with valid refresh token returns new access token."""
         # GIVEN - register and login
-        client.post(
-            "/api/v1/auth/register",
-            json={
-                "email": "refresh@example.com",
-                "password": "SecurePass123!",
-                "first_name": "Refresh",
-                "last_name": "User",
-            },
-        )
+        register_verified(client, "refresh@example.com", password=PASSWORD)
         login_response = client.post(
             "/api/v1/auth/login",
-            data={"username": "refresh@example.com", "password": "SecurePass123!"},
+            data={"username": "refresh@example.com", "password": PASSWORD},
         )
         refresh_token = login_response.json()["refresh_token"]
 
@@ -787,18 +703,10 @@ class TestRefreshToken:
     def test_refresh_rotates_and_reuse_revokes_the_family(self, client):
         """Refresh rotates the pair; reusing the old token revokes the whole family."""
         # GIVEN - register and login
-        client.post(
-            "/api/v1/auth/register",
-            json={
-                "email": "rotate@example.com",
-                "password": "SecurePass123!",
-                "first_name": "Rot",
-                "last_name": "Ate",
-            },
-        )
+        register_verified(client, "rotate@example.com", password=PASSWORD)
         login = client.post(
             "/api/v1/auth/login",
-            data={"username": "rotate@example.com", "password": "SecurePass123!"},
+            data={"username": "rotate@example.com", "password": PASSWORD},
         )
         old_refresh = login.json()["refresh_token"]
 
@@ -830,18 +738,10 @@ class TestRefreshToken:
     def test_refresh_with_access_token_fails(self, client):
         """Refresh with access token (wrong type) returns 401."""
         # GIVEN - register and login
-        client.post(
-            "/api/v1/auth/register",
-            json={
-                "email": "wrongtype@example.com",
-                "password": "SecurePass123!",
-                "first_name": "Wrong",
-                "last_name": "Type",
-            },
-        )
+        register_verified(client, "wrongtype@example.com", password=PASSWORD)
         login_response = client.post(
             "/api/v1/auth/login",
-            data={"username": "wrongtype@example.com", "password": "SecurePass123!"},
+            data={"username": "wrongtype@example.com", "password": PASSWORD},
         )
         access_token = login_response.json()["access_token"]
 
@@ -865,15 +765,7 @@ class TestLoginLockout:
         throttle = InMemoryLoginThrottle(max_failures=3, window_seconds=3600)
         client.app.dependency_overrides[get_login_throttle] = lambda: throttle
         try:
-            client.post(
-                "/api/v1/auth/register",
-                json={
-                    "email": "lockout@example.com",
-                    "password": "SecurePass123!",
-                    "first_name": "Lock",
-                    "last_name": "Out",
-                },
-            )
+            register_verified(client, "lockout@example.com", password=PASSWORD)
             # GIVEN three failed attempts, each rejected with 401
             for _ in range(3):
                 failed = client.post(
@@ -885,7 +777,7 @@ class TestLoginLockout:
             # WHEN a fourth attempt is made, even with the correct password
             locked = client.post(
                 "/api/v1/auth/login",
-                data={"username": "lockout@example.com", "password": "SecurePass123!"},
+                data={"username": "lockout@example.com", "password": PASSWORD},
             )
 
             # THEN the account is locked out
@@ -903,22 +795,14 @@ class TestLoginStoreUnavailable:
 
         from api.auth.revocation_store import RevocationStoreError, get_revocation_store
 
-        client.post(
-            "/api/v1/auth/register",
-            json={
-                "email": "storedown@example.com",
-                "password": "SecurePass123!",
-                "first_name": "Store",
-                "last_name": "Down",
-            },
-        )
+        register_verified(client, "storedown@example.com", password=PASSWORD)
         broken = MagicMock()
         broken.start_session.side_effect = RevocationStoreError("redis down")
         client.app.dependency_overrides[get_revocation_store] = lambda: broken
         try:
             response = client.post(
                 "/api/v1/auth/login",
-                data={"username": "storedown@example.com", "password": "SecurePass123!"},
+                data={"username": "storedown@example.com", "password": PASSWORD},
             )
             assert response.status_code == 503
         finally:
@@ -931,18 +815,10 @@ class TestLogout:
     def test_logout_revokes_token(self, client):
         """Logout revokes the current token."""
         # GIVEN - register and login
-        client.post(
-            "/api/v1/auth/register",
-            json={
-                "email": "logout@example.com",
-                "password": "SecurePass123!",
-                "first_name": "Logout",
-                "last_name": "User",
-            },
-        )
+        register_verified(client, "logout@example.com", password=PASSWORD)
         login_response = client.post(
             "/api/v1/auth/login",
-            data={"username": "logout@example.com", "password": "SecurePass123!"},
+            data={"username": "logout@example.com", "password": PASSWORD},
         )
         access_token = login_response.json()["access_token"]
         headers = {"Authorization": f"Bearer {access_token}"}
@@ -968,18 +844,10 @@ class TestLogout:
     def test_refresh_after_logout_fails(self, client):
         """Refresh token cannot be used after logout."""
         # GIVEN - register and login
-        client.post(
-            "/api/v1/auth/register",
-            json={
-                "email": "logoutrefresh@example.com",
-                "password": "SecurePass123!",
-                "first_name": "Logout",
-                "last_name": "Refresh",
-            },
-        )
+        register_verified(client, "logoutrefresh@example.com", password=PASSWORD)
         login_response = client.post(
             "/api/v1/auth/login",
-            data={"username": "logoutrefresh@example.com", "password": "SecurePass123!"},
+            data={"username": "logoutrefresh@example.com", "password": PASSWORD},
         )
         tokens = login_response.json()
         access_token = tokens["access_token"]
@@ -1003,16 +871,8 @@ class TestCookieAuth:
     PASSWORD = "SecurePass123!"
 
     def _register_and_login(self, cookie_client, email="cookie@example.com"):
-        """Register a user and log in, leaving the session cookies in the client jar."""
-        cookie_client.post(
-            "/api/v1/auth/register",
-            json={
-                "email": email,
-                "password": self.PASSWORD,
-                "first_name": "Cookie",
-                "last_name": "User",
-            },
-        )
+        """Register an activated user and log in, leaving the cookies in the client jar."""
+        register_verified(cookie_client, email, password=self.PASSWORD, first_name="Cookie")
         return cookie_client.post(
             "/api/v1/auth/login",
             data={"username": email, "password": self.PASSWORD},
@@ -1069,6 +929,19 @@ class TestCookieAuth:
 
         assert resp.status_code == 403
 
+    def test_cookie_mutation_with_high_byte_csrf_header_is_rejected(self, cookie_client):
+        """A CSRF header carrying bytes above ASCII is rejected with 403, not a 500.
+
+        Sent as raw bytes because that is how it arrives on the wire; Starlette decodes
+        the header as latin-1, yielding a non-ASCII str. compare_digest raises TypeError
+        on such a str, which would turn a junk header into a 500.
+        """
+        self._register_and_login(cookie_client)
+
+        resp = cookie_client.post("/api/v1/auth/logout", headers={"X-CSRF-Token": b"wr\xc3\xb8ng"})
+
+        assert resp.status_code == 403
+
     def test_refresh_via_cookie_without_body(self, cookie_client):
         """The SPA refreshes using only the refresh cookie (no body) plus the CSRF header."""
         self._register_and_login(cookie_client)
@@ -1097,3 +970,93 @@ class TestCookieAuth:
         )
 
         assert resp.status_code == 200
+
+
+class TestCsrfTokenHeader:
+    """The CSRF token also travels as a response header, for an SPA on another host.
+
+    Every deployed environment serves the SPA and the API from separate hosts, and the
+    csrf_token cookie carries no Domain attribute, so it belongs to the API host alone:
+    the browser keeps sending it, while document.cookie hides it from the app. Reading
+    the cookie is therefore not something the SPA can do, and without another copy of the
+    value it cannot produce the X-CSRF-Token header logout requires. These tests pin the
+    header path end to end, never touching the cookie jar for the value.
+    """
+
+    PASSWORD = "SecurePass123!"
+
+    def _login(self, cookie_client, email):
+        """Register an activated user and log in, leaving the cookies in the client jar."""
+        register_verified(cookie_client, email, password=self.PASSWORD)
+        return cookie_client.post(
+            "/api/v1/auth/login",
+            data={"username": email, "password": self.PASSWORD},
+        )
+
+    def test_login_returns_the_token_it_just_set(self, cookie_client):
+        """The login response header carries the same value as the cookie it sets."""
+        resp = self._login(cookie_client, "csrflogin@example.com")
+
+        assert resp.status_code == 200
+        assert resp.headers["X-CSRF-Token"] == cookie_client.cookies.get("csrf_token")
+
+    def test_refresh_returns_the_rotated_token(self, cookie_client):
+        """A refresh mints a fresh CSRF cookie, so the header must carry the new value.
+
+        A client left holding the token from login would send a superseded one on the
+        next mutation and be refused.
+        """
+        issued = self._login(cookie_client, "csrfrefresh@example.com").headers["X-CSRF-Token"]
+
+        resp = cookie_client.post("/api/v1/auth/refresh")
+
+        assert resp.status_code == 200
+        rotated = resp.headers["X-CSRF-Token"]
+        assert rotated != issued
+        assert rotated == cookie_client.cookies.get("csrf_token")
+
+    def test_profile_echoes_the_token_from_the_request_cookie(self, cookie_client):
+        """The session probe is how the SPA picks the token back up after a page reload."""
+        self._login(cookie_client, "csrfme@example.com")
+
+        resp = cookie_client.get("/api/v1/auth/me")
+
+        assert resp.status_code == 200
+        assert resp.headers["X-CSRF-Token"] == cookie_client.cookies.get("csrf_token")
+
+    def test_profile_omits_the_header_for_a_bearer_client(self, client):
+        """No CSRF cookie on the request, no header on the response."""
+        token = register_and_login(client, "csrfbearer@example.com")
+
+        resp = client.get("/api/v1/auth/me", headers=auth_header(token))
+
+        assert resp.status_code == 200
+        assert "X-CSRF-Token" not in resp.headers
+
+    def test_logout_succeeds_on_the_header_value_alone(self, cookie_client):
+        """The deployed shape: the token comes from the response, never from the cookie.
+
+        The browser still sends the cookie, which is what arms the double-submit check;
+        the client only ever sees the value the API handed back.
+        """
+        issued = self._login(cookie_client, "csrfsplit@example.com").headers["X-CSRF-Token"]
+
+        resp = cookie_client.post("/api/v1/auth/logout", headers={"X-CSRF-Token": issued})
+
+        assert resp.status_code == 204
+
+    def test_profile_refuses_to_echo_a_cookie_that_would_split_the_response(self, cookie_client):
+        """A cookie value carrying a newline is dropped instead of written to a header.
+
+        Every character sent below is legal in a Cookie header, and Starlette's RFC 2109
+        unescape turns it into a real newline. uvicorn writes response headers without
+        validating them, so echoing the value unchecked would let the client inject one.
+        """
+        self._login(cookie_client, "csrfjunk@example.com")
+        cookie_client.cookies.set("csrf_token", '"\\012X-Injected: 1"')
+
+        resp = cookie_client.get("/api/v1/auth/me")
+
+        assert resp.status_code == 200
+        assert "X-CSRF-Token" not in resp.headers
+        assert "X-Injected" not in resp.headers

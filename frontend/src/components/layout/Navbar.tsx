@@ -16,11 +16,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useToast } from "@/hooks/use-toast";
 
 export function Navbar() {
   const { t } = useTranslation();
   const { t: tOnboarding } = useTranslation("onboarding");
   const { isAuthenticated, user, logout } = useAuth();
+  const { toast } = useToast();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
   const location = useLocation();
@@ -35,7 +37,20 @@ export function Navbar() {
   }, []);
 
   const handleLogout = async () => {
-    await logout();
+    try {
+      await logout();
+    } catch {
+      // The local session is already cleared at this point (AuthContext's job) --
+      // only the server-side revoke failed. Stay on the page instead of
+      // navigating home, so the user knows to try again rather than seeing what
+      // looks like a normal sign-out while the session may still be alive.
+      toast({
+        title: t("errors.logoutFailedTitle"),
+        description: t("errors.logoutFailed"),
+        variant: "destructive",
+      });
+      return;
+    }
     globalThis.location.href = '/';
   };
 
@@ -87,7 +102,7 @@ export function Navbar() {
           to="/"
           className="font-display text-2xl font-medium tracking-tight"
         >
-          BeCoMe
+          {t("brand.name")}
         </Link>
 
         {/* Desktop Navigation */}
@@ -198,7 +213,7 @@ export function Navbar() {
                 to={to}
                 /* v8 ignore next */
                 aria-current={isActive(to) ? "page" : undefined}
-                className={cn("block py-2 hover:text-foreground", /* v8 ignore next */ isActive(to) ? "text-foreground font-medium" : "text-muted-foreground")}
+                className={cn("block py-2 pl-3 border-l-2 hover:text-foreground", /* v8 ignore next */ isActive(to) ? "text-foreground font-medium border-primary" : "text-muted-foreground border-transparent")}
                 onClick={() => setIsMenuOpen(false)}
               >
                 {label}
@@ -212,7 +227,7 @@ export function Navbar() {
                     to={to}
                     /* v8 ignore next */
                     aria-current={isActive(to) ? "page" : undefined}
-                    className={cn("block py-2 hover:text-foreground", /* v8 ignore next */ isActive(to) ? "text-foreground font-medium" : "text-muted-foreground")}
+                    className={cn("block py-2 pl-3 border-l-2 hover:text-foreground", /* v8 ignore next */ isActive(to) ? "text-foreground font-medium border-primary" : "text-muted-foreground border-transparent")}
                     onClick={() => setIsMenuOpen(false)}
                   >
                     {label}

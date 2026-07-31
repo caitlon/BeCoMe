@@ -7,6 +7,7 @@ from tests.e2e.conftest import (
     auth_headers,
     register_user,
     unique_email,
+    verify_user_email,
 )
 
 
@@ -16,7 +17,7 @@ class TestTokenRefresh:
 
     def test_refresh_token_returns_new_access_token(self, http_client):
         """Login → use refresh_token → get new access_token → access protected resource."""
-        # GIVEN — a registered user with login tokens
+        # GIVEN — a registered, activated user with login tokens
         email = unique_email("refresh")
         http_client.post(
             "/auth/register",
@@ -27,6 +28,7 @@ class TestTokenRefresh:
                 "last_name": "Tester",
             },
         ).raise_for_status()
+        verify_user_email(email)
 
         login_resp = http_client.post(
             "/auth/login",
@@ -103,7 +105,7 @@ class TestTamperedToken:
 
     def test_tampered_token_returns_401_then_refresh_works(self, http_client):
         """Corrupted access token → 401, then refresh → new valid token."""
-        # GIVEN — a registered user with tokens
+        # GIVEN — a registered, activated user with tokens
         email = unique_email("tamper")
         http_client.post(
             "/auth/register",
@@ -114,6 +116,7 @@ class TestTamperedToken:
                 "last_name": "Tester",
             },
         ).raise_for_status()
+        verify_user_email(email)
 
         login_resp = http_client.post(
             "/auth/login",

@@ -15,7 +15,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Navbar } from "@/components/layout/Navbar";
+import { EmptyState } from "@/components/EmptyState";
+import { PageSpinner } from "@/components/PageSpinner";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { PageShell } from "@/components/layout/PageShell";
 import { CreateProjectModal } from "@/components/modals/CreateProjectModal";
 import { InviteExpertModal } from "@/components/modals/InviteExpertModal";
 import { DeleteConfirmModal } from "@/components/modals/DeleteConfirmModal";
@@ -146,27 +149,16 @@ const Projects = () => {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen">
-        <Navbar />
-        <main id="main-content" className="pt-24 flex items-center justify-center">
-          <output aria-label={tCommon("a11y.loading")}>
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-            <span className="sr-only">{tCommon("common.loading")}</span>
-          </output>
-        </main>
-      </div>
+      <PageShell variant="centered">
+        <PageSpinner />
+      </PageShell>
     );
   }
 
   if (hasLoadError) {
     return (
-      <div className="min-h-screen">
-        <Navbar />
-        <main
-          id="main-content"
-          role="alert"
-          className="pt-24 flex flex-col items-center justify-center gap-4 p-6 text-center"
-        >
+      <PageShell variant="centered">
+        <div role="alert" className="flex flex-col items-center gap-4 p-6 text-center">
           <AlertTriangle className="h-8 w-8 text-muted-foreground" />
           <h1 className="font-display font-medium text-lg">{t("error.title")}</h1>
           <p className="text-muted-foreground max-w-sm">{t("error.description")}</p>
@@ -178,17 +170,14 @@ const Projects = () => {
           >
             {tCommon("errors.retry")}
           </Button>
-        </main>
-      </div>
+        </div>
+      </PageShell>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <Navbar />
-      
-      <main id="main-content" className="container mx-auto px-6 pt-24 pb-16">
-        <h1 className="sr-only">{t("heading")}</h1>
+    <PageShell>
+        <PageHeader title={t("heading")} />
         <Tabs defaultValue="projects" className="space-y-6">
           <div className="flex items-center justify-between">
             <TabsList>
@@ -211,23 +200,16 @@ const Projects = () => {
 
           <TabsContent value="projects" className="space-y-6">
             {projects.length === 0 ? (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="text-center py-16"
+              <EmptyState
+                icon={Inbox}
+                title={t("empty.title")}
+                description={t("empty.description")}
               >
-                <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
-                  <Inbox className="h-8 w-8 text-muted-foreground" />
-                </div>
-                <h3 className="font-display font-medium text-lg mb-2">{t("empty.title")}</h3>
-                <p className="text-muted-foreground mb-6">
-                  {t("empty.description")}
-                </p>
                 <Button onClick={() => setCreateModalOpen(true)} className="gap-2">
                   <Plus className="h-4 w-4" />
                   {t("empty.createFirst")}
                 </Button>
-              </motion.div>
+              </EmptyState>
             ) : (
               <>
               <motion.div
@@ -336,19 +318,11 @@ const Projects = () => {
 
           <TabsContent value="invitations" className="space-y-6">
             {invitations.length === 0 ? (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="text-center py-16"
-              >
-                <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
-                  <Mail className="h-8 w-8 text-muted-foreground" />
-                </div>
-                <h3 className="font-display font-medium text-lg mb-2">{t("invitations.empty.title")}</h3>
-                <p className="text-muted-foreground">
-                  {t("invitations.empty.description")}
-                </p>
-              </motion.div>
+              <EmptyState
+                icon={Mail}
+                title={t("invitations.empty.title")}
+                description={t("invitations.empty.description")}
+              />
             ) : (
               <motion.div
                 className="space-y-4 max-w-2xl"
@@ -422,7 +396,6 @@ const Projects = () => {
             )}
           </TabsContent>
         </Tabs>
-      </main>
 
       <CreateProjectModal
         open={createModalOpen}
@@ -451,7 +424,7 @@ const Projects = () => {
         confirmText={t("deleteModal.confirm")}
         loadingText={t("deleteModal.deleting")}
       />
-    </div>
+    </PageShell>
   );
 };
 

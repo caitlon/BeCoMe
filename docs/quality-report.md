@@ -4,11 +4,11 @@
 
 | Check | Status | Result |
 |-------|--------|--------|
-| mypy (strict) | Pass | No errors (28 files in `src/`+`examples/`, 83 in `api/`) |
+| mypy (strict) | Pass | No errors (28 files in `src/`+`examples/`, 87 in `api/`) |
 | ruff check | Pass | No issues |
 | ruff format | Pass | All files formatted |
-| pytest | Pass | 1249 tests passed |
-| coverage | Pass | 100% on `src/`, 99% on `src/`+`api/` overall |
+| pytest | Pass | 1474 tests passed |
+| coverage | Pass | 100% on `src/` (197 statements), 99% on `src/`+`api/` (3962 statements, 49 uncovered) |
 
 ## Running Checks
 

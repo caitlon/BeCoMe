@@ -16,7 +16,6 @@ interface AuthContextType {
   readonly isAuthenticated: boolean;
   readonly isServiceUnavailable: boolean;
   readonly login: (email: string, password: string) => Promise<void>;
-  readonly register: (email: string, password: string, firstName: string, lastName?: string) => Promise<void>;
   readonly logout: () => Promise<void>;
   readonly refreshUser: () => Promise<void>;
 }
@@ -80,23 +79,29 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
     await refreshUser();
   }, [refreshUser]);
 
-  const register = useCallback(async (email: string, password: string, firstName: string, lastName?: string) => {
-    await api.register({
-      email,
-      password,
-      first_name: firstName,
-      last_name: lastName,
-    });
-    await api.login(email, password);
-    await refreshUser();
-  }, [refreshUser]);
-
   const logout = useCallback(async () => {
-    await api.logout();
+    let logoutFailed = false;
+    let logoutError: unknown;
+    try {
+      await api.logout();
+    } catch (err) {
+      // A server that refuses the sign-out is no reason to leave the user holding a
+      // session they believe they closed -- on a shared machine that is the worse
+      // outcome of the two. Clear the local session below regardless, but keep the
+      // failure and re-throw once it is clean: swallowing it entirely would make a
+      // failed sign-out look identical to a real one, and the caller is what can
+      // tell the user the server session may still be alive.
+      logoutFailed = true;
+      logoutError = err;
+      logger.debug('Logout request failed; clearing the local session anyway', { error: err });
+    }
     setUser(null);
     setStatus('unauthenticated');
     // Drop cached queries so the next account on this tab cannot see them.
     queryClient.clear();
+    if (logoutFailed) {
+      throw logoutError;
+    }
   }, [queryClient]);
 
   const value = useMemo(() => ({
@@ -106,10 +111,9 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
     isAuthenticated: status === 'authenticated',
     isServiceUnavailable: status === 'serviceUnavailable',
     login,
-    register,
     logout,
     refreshUser,
-  }), [user, status, login, register, logout, refreshUser]);
+  }), [user, status, login, logout, refreshUser]);
 
   return (
     <AuthContext.Provider value={value}>

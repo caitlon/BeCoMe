@@ -13,10 +13,10 @@ from tests.e2e.conftest import (
 
 @pytest.mark.e2e
 class TestDuplicateRegistration:
-    """Registration with an already-used email must fail."""
+    """Registration with an already-used email must be indistinguishable from a new one."""
 
-    def test_duplicate_registration_returns_409(self, http_client):
-        """Second registration with the same email returns 409 Conflict."""
+    def test_duplicate_registration_is_accepted_like_any_other(self, http_client):
+        """Second registration with the same email is accepted with 202, same as the first."""
         # GIVEN — a registered user
         email = unique_email("dup")
         register_user(http_client, email)
@@ -32,8 +32,9 @@ class TestDuplicateRegistration:
             },
         )
 
-        # THEN
-        assert response.status_code == 409
+        # THEN — the same 202 a free address gets: the endpoint never reveals that an
+        # address is taken. The owner is told by email instead.
+        assert response.status_code == 202
 
 
 @pytest.mark.e2e

@@ -34,7 +34,7 @@ function FormFieldWrapper({ label, error, description, fieldId, children }: Form
         </p>
       )}
       {error && (
-        <p id={errorId} className="text-sm text-destructive">
+        <p id={errorId} role="alert" className="text-sm text-destructive">
           {error.message}
         </p>
       )}

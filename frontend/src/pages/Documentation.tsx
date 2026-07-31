@@ -1,5 +1,4 @@
 import { useEffect } from "react";
-import { motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import {
   BookOpen,
@@ -10,12 +9,11 @@ import {
   FileText,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Navbar } from "@/components/layout/Navbar";
-import { Footer } from "@/components/layout/Footer";
+import { HeroSection } from "@/components/layout/HeroSection";
+import { PageShell } from "@/components/layout/PageShell";
 import { SidebarNav, type SidebarNavItem } from "@/components/layout/SidebarNav";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { useScrollSpy } from "@/hooks/useScrollSpy";
-import { fadeInUp } from "@/lib/motion";
 
 const sectionIds = ["getting-started", "expert-opinions", "results", "visualization", "glossary"] as const;
 
@@ -39,20 +37,8 @@ const Documentation = () => {
   ];
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <Navbar />
-
-      {/* Hero Section */}
-      <section className="pt-24 pb-8 md:pt-32 md:pb-12 bg-secondary/30">
-        <div className="container mx-auto px-6">
-          <motion.div {...fadeInUp} className="max-w-3xl">
-            <h1 className="font-display text-3xl md:text-5xl font-normal mb-4">
-              {t("title")}
-            </h1>
-            <p className="text-lg text-muted-foreground">{t("subtitle")}</p>
-          </motion.div>
-        </div>
-      </section>
+    <PageShell variant="content" footer mainClassName="flex-1 flex flex-col">
+      <HeroSection title={t("title")} subtitle={t("subtitle")} align="left" spacing="compact" />
 
       {/* Main Content */}
       <section className="flex-1 py-8 md:py-12">
@@ -66,10 +52,10 @@ const Documentation = () => {
             />
 
             {/* Content */}
-            <main id="main-content" className="flex-1 max-w-3xl">
+            <div className="flex-1 max-w-3xl">
               {/* Getting Started */}
               <section id="getting-started" className="mb-12">
-                <h2 className="font-display text-2xl md:text-3xl font-normal mb-4">
+                <h2 className="text-section-title mb-4">
                   {t("gettingStarted.title")}
                 </h2>
                 <p className="text-muted-foreground mb-6">
@@ -130,7 +116,7 @@ const Documentation = () => {
 
               {/* Expert Opinions */}
               <section id="expert-opinions" className="mb-12">
-                <h2 className="font-display text-2xl md:text-3xl font-normal mb-4">
+                <h2 className="text-section-title mb-4">
                   {t("expertOpinions.title")}
                 </h2>
                 <p className="text-muted-foreground mb-6">
@@ -250,7 +236,7 @@ const Documentation = () => {
 
               {/* Results */}
               <section id="results" className="mb-12">
-                <h2 className="font-display text-2xl md:text-3xl font-normal mb-4">
+                <h2 className="text-section-title mb-4">
                   {t("results.title")}
                 </h2>
                 <p className="text-muted-foreground mb-6">{t("results.intro")}</p>
@@ -320,7 +306,7 @@ const Documentation = () => {
 
               {/* Visualization */}
               <section id="visualization" className="mb-12">
-                <h2 className="font-display text-2xl md:text-3xl font-normal mb-4">
+                <h2 className="text-section-title mb-4">
                   {t("visualization.title")}
                 </h2>
                 <p className="text-muted-foreground mb-6">
@@ -359,7 +345,7 @@ const Documentation = () => {
 
               {/* Glossary */}
               <section id="glossary" className="mb-12">
-                <h2 className="font-display text-2xl md:text-3xl font-normal mb-4">
+                <h2 className="text-section-title mb-4">
                   {t("glossary.title")}
                 </h2>
 
@@ -382,13 +368,11 @@ const Documentation = () => {
                   )}
                 </div>
               </section>
-            </main>
+            </div>
           </div>
         </div>
       </section>
-
-      <Footer />
-    </div>
+    </PageShell>
   );
 };
 

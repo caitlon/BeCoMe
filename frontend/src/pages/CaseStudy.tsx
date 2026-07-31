@@ -11,8 +11,7 @@ import {
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Navbar } from "@/components/layout/Navbar";
-import { Footer } from "@/components/layout/Footer";
+import { PageShell } from "@/components/layout/PageShell";
 import { NotFoundState } from "@/components/NotFoundState";
 import {
   useLocalizedCaseStudyById,
@@ -40,9 +39,7 @@ const CaseStudy = () => {
   const IconComponent = caseStudy.icon;
 
   return (
-    <div className="min-h-screen flex flex-col bg-background">
-      <Navbar />
-      <main id="main-content">
+    <PageShell variant="content" footer>
       {/* Hero Section */}
       <section className="pt-24 pb-12 md:pt-32 md:pb-16 bg-secondary/30">
         <div className="container mx-auto px-6">
@@ -73,7 +70,7 @@ const CaseStudy = () => {
               </div>
             </div>
 
-            <h1 className="font-display text-3xl md:text-5xl font-normal mb-4">
+            <h1 className="text-page-title mb-4">
               {caseStudy.title}
             </h1>
             <p className="text-lg text-muted-foreground max-w-3xl">
@@ -377,7 +374,7 @@ const CaseStudy = () => {
       {/* CTA Section */}
       <section className="py-16 bg-secondary/30">
         <div className="container mx-auto px-6 text-center">
-          <h2 className="font-display text-2xl md:text-3xl font-normal mb-4">
+          <h2 className="text-section-title mb-4">
             {t("common.ctaTitle")}
           </h2>
           <p className="text-muted-foreground mb-8 max-w-xl mx-auto">
@@ -388,10 +385,7 @@ const CaseStudy = () => {
           </Button>
         </div>
       </section>
-
-      </main>
-      <Footer />
-    </div>
+    </PageShell>
   );
 };
 

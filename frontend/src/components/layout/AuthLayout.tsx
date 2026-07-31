@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Navbar } from "@/components/layout/Navbar";
+import { PageShell } from "@/components/layout/PageShell";
 
 interface AuthLayoutProps {
   title: string;
@@ -10,9 +10,7 @@ interface AuthLayoutProps {
 
 export function AuthLayout({ title, children }: Readonly<AuthLayoutProps>) {
   return (
-    <div className="min-h-screen flex flex-col">
-      <Navbar />
-      <main id="main-content" className="flex-1 flex items-center justify-center py-12 px-6">
+    <PageShell variant="content" mainClassName="flex-1 flex items-center justify-center py-12 px-6">
         <motion.div
           className="w-full max-w-md"
           initial={{ opacity: 0, y: 20 }}
@@ -28,7 +26,6 @@ export function AuthLayout({ title, children }: Readonly<AuthLayoutProps>) {
             <CardContent className="pt-6">{children}</CardContent>
           </Card>
         </motion.div>
-      </main>
-    </div>
+    </PageShell>
   );
 }

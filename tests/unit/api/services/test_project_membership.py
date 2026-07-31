@@ -1,11 +1,11 @@
 """Unit tests for ProjectMembershipService."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 from uuid import uuid4
 
 import pytest
 
-from api.db.models import MemberRole, ProjectMember, User
+from api.db.models import ExpertOpinion, MemberRole, ProjectMember, User
 from api.exceptions import MemberNotFoundError
 from api.services.project_membership_service import ProjectMembershipService
 
@@ -67,15 +67,42 @@ class TestProjectMembershipServiceRemoveMember:
             role=MemberRole.EXPERT,
         )
         mock_session = MagicMock()
-        mock_session.exec.return_value.first.return_value = membership
+        # Second lookup is the member's opinion; this member submitted none.
+        mock_session.exec.return_value.first.side_effect = [membership, None]
         service = ProjectMembershipService(mock_session)
 
         # WHEN
-        service.remove_member(project_id, user_id)
+        discarded = service.remove_member(project_id, user_id)
 
         # THEN
         mock_session.delete.assert_called_once_with(membership)
         mock_session.commit.assert_called_once()
+        assert discarded is False
+
+    def test_discards_opinion_with_the_membership(self):
+        """The removed member's opinion is deleted in the same transaction."""
+        # GIVEN
+        project_id = uuid4()
+        user_id = uuid4()
+        membership = ProjectMember(project_id=project_id, user_id=user_id, role=MemberRole.EXPERT)
+        opinion = ExpertOpinion(
+            project_id=project_id,
+            user_id=user_id,
+            lower_bound=1.0,
+            peak=2.0,
+            upper_bound=3.0,
+        )
+        mock_session = MagicMock()
+        mock_session.exec.return_value.first.side_effect = [membership, opinion]
+        service = ProjectMembershipService(mock_session)
+
+        # WHEN
+        discarded = service.remove_member(project_id, user_id)
+
+        # THEN
+        assert mock_session.delete.call_args_list == [call(membership), call(opinion)]
+        mock_session.commit.assert_called_once()
+        assert discarded is True
 
     def test_raises_error_when_not_member(self):
         """MemberNotFoundError is raised when user is not a member."""
@@ -95,7 +122,7 @@ class TestProjectMembershipServiceRemoveMember:
         user_id = uuid4()
         membership = ProjectMember(project_id=project_id, user_id=user_id, role=MemberRole.EXPERT)
         mock_session = MagicMock()
-        mock_session.exec.return_value.first.return_value = membership
+        mock_session.exec.return_value.first.side_effect = [membership, None]
         service = ProjectMembershipService(mock_session)
 
         # WHEN
@@ -107,6 +134,7 @@ class TestProjectMembershipServiceRemoveMember:
         assert extra["event"] == "member_removed"
         assert extra["project_id"] == str(project_id)
         assert extra["user_id"] == str(user_id)
+        assert extra["opinion_discarded"] is False
 
 
 class TestProjectMembershipServiceIsMember:

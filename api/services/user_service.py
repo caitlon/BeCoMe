@@ -140,6 +140,35 @@ class UserService(BaseService):
         self._invalidate_cache(saved.id)
         return saved
 
+    def verify_current_password(self, user: User, current_password: str) -> None:
+        """Check a password against the stored hash without writing anything.
+
+        Split out of :meth:`change_password` so a caller can place its own side effects
+        between the check and the write -- the password-change route revokes existing
+        sessions in that gap, which must not happen when the check fails.
+
+        :param user: User whose password to verify
+        :param current_password: Password to compare against the stored hash
+        :raises InvalidCredentialsError: If current password is incorrect
+        """
+        if not verify_password(current_password, user.hashed_password):
+            raise InvalidCredentialsError(
+                "Current password is incorrect",
+                reason="invalid_current_password",
+            )
+
+    def set_password(self, user: User, new_password: str) -> User:
+        """Store a new password hash without verifying the previous one.
+
+        :param user: User to update
+        :param new_password: New password
+        :return: Updated User instance
+        """
+        user.hashed_password = hash_password(new_password)
+        saved = self._save_and_refresh(user)
+        self._invalidate_cache(saved.id)
+        return saved
+
     def change_password(self, user: User, current_password: str, new_password: str) -> User:
         """Change user password.
 
@@ -149,16 +178,8 @@ class UserService(BaseService):
         :return: Updated User instance
         :raises InvalidCredentialsError: If current password is incorrect
         """
-        if not verify_password(current_password, user.hashed_password):
-            raise InvalidCredentialsError(
-                "Current password is incorrect",
-                reason="invalid_current_password",
-            )
-
-        user.hashed_password = hash_password(new_password)
-        saved = self._save_and_refresh(user)
-        self._invalidate_cache(saved.id)
-        return saved
+        self.verify_current_password(user, current_password)
+        return self.set_password(user, new_password)
 
     def delete_user(self, user: User) -> None:
         """Delete user account.

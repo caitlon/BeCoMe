@@ -35,7 +35,15 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
 
 const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
-function readCsrfToken(): string | null {
+const CSRF_HEADER = 'X-CSRF-Token';
+
+/**
+ * Reads the csrf_token cookie, which only works when the API answers on this
+ * app's own origin -- local development, where Vite proxies /api/v1. On the
+ * deploys the cookie belongs to the API host and document.cookie shows nothing,
+ * which is why the token also arrives as a response header.
+ */
+function readCsrfCookie(): string | null {
   const match = document.cookie.match(/(?:^|; )csrf_token=([^;]*)/);
   return match ? decodeURIComponent(match[1]) : null;
 }
@@ -102,11 +110,31 @@ class ApiClient {
   private refreshInFlight: Promise<void> | null = null;
   private sessionExpiredNotified = false;
   private onSessionExpired: (() => void) | null = null;
+  /**
+   * The CSRF token as last handed back by the API, in an X-CSRF-Token response
+   * header on login, refresh, and the session probe. On every deployed
+   * environment this is the only copy the app can reach: the cookie holding the
+   * same value belongs to the API host, not to this one.
+   */
+  private csrfToken: string | null = null;
 
   /** Registers the callback fired when a session cannot be recovered by a silent refresh. */
   setOnSessionExpired(fn: (() => void) | null): void {
     this.sessionExpiredNotified = false;
     this.onSessionExpired = fn;
+  }
+
+  /** Picks up the CSRF token from a response that carries one, ignoring the rest. */
+  private captureCsrfToken(response: Response): void {
+    const token = response.headers.get(CSRF_HEADER);
+    if (token) {
+      this.csrfToken = token;
+    }
+  }
+
+  /** The token to echo on a mutation: the API's own copy, or the cookie same-origin. */
+  private currentCsrfToken(): string | null {
+    return this.csrfToken ?? readCsrfCookie();
   }
 
   /**
@@ -124,6 +152,9 @@ class ApiClient {
         credentials: 'include',
         headers: { 'X-Request-ID': crypto.randomUUID() },
       });
+      // A refresh rotates the CSRF token, so the retry that follows must send the
+      // new one; the value this replaces is already dead on the server.
+      this.captureCsrfToken(res);
       if (!res.ok) {
         throw await toHttpError(res);
       }
@@ -167,11 +198,11 @@ class ApiClient {
       ...(options.headers as Record<string, string>),
     };
 
-    // Cookie-based session: echo the readable csrf_token cookie on mutating requests.
+    // Cookie-based session: echo the current CSRF token on mutating requests.
     if (MUTATING_METHODS.has(method.toUpperCase())) {
-      const csrf = readCsrfToken();
+      const csrf = this.currentCsrfToken();
       if (csrf) {
-        headers['X-CSRF-Token'] = csrf;
+        headers[CSRF_HEADER] = csrf;
       }
     }
 
@@ -182,6 +213,8 @@ class ApiClient {
       credentials: 'include',
       headers,
     });
+
+    this.captureCsrfToken(response);
 
     if (!response.ok) {
       // A 401 gets one silent-refresh-and-retry attempt before it is treated as
@@ -276,8 +309,10 @@ class ApiClient {
   }
 
   // Auth
-  async register(data: RegisterInput): Promise<User> {
-    return this.request<User>('/auth/register', {
+  // Registration no longer signs anyone in: it only queues an activation
+  // email, so there is no user object to return.
+  async register(data: RegisterInput): Promise<void> {
+    return this.request<void>('/auth/register', {
       method: 'POST',
       body: JSON.stringify(data),
     });
@@ -297,6 +332,10 @@ class ApiClient {
       body: formData,
     });
 
+    // Sign-in is where the CSRF token starts; without picking it up here the first
+    // mutation of the session would have to wait for a refresh or a reload.
+    this.captureCsrfToken(response);
+
     if (!response.ok) {
       logger.error('Login failed', { status: response.status });
       throw await toHttpError(response);
@@ -307,12 +346,20 @@ class ApiClient {
     return response.json();
   }
 
+  /**
+   * Revokes the session server-side and clears the HttpOnly cookies.
+   *
+   * Failure is reported, not swallowed: whether a sign-out that the server
+   * refused should still empty the local session is AuthContext's call, and it
+   * cannot make it if this reports success either way.
+   */
   async logout(): Promise<void> {
-    // Hit the server so it revokes the session and clears the HttpOnly cookies.
     try {
       await this.request<void>('/auth/logout', { method: 'POST' }, { isAuthProbe: true });
-    } catch {
-      // Ignore: the user is logging out regardless of a network hiccup.
+    } finally {
+      // The token dies with the session, and holding it would only feed a stale
+      // value to whatever the next account on this tab does.
+      this.csrfToken = null;
     }
   }
 
@@ -330,9 +377,26 @@ class ApiClient {
     });
   }
 
+  async verifyEmail(token: string, password: string): Promise<void> {
+    return this.request<void>('/auth/verify-email', {
+      method: 'POST',
+      body: JSON.stringify({ token, password }),
+    });
+  }
+
+  async resendVerification(email: string, password: string): Promise<void> {
+    return this.request<void>('/auth/resend-verification', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    });
+  }
+
   // Users
+  // Probes the session against /auth/me rather than the identical /users/me: it
+  // returns the CSRF token alongside the profile, which is how a page reload gets
+  // the token back before the user reaches for anything that mutates.
   async getCurrentUser(isAuthProbe = false): Promise<User> {
-    return this.request<User>('/users/me', {}, { isAuthProbe });
+    return this.request<User>('/auth/me', {}, { isAuthProbe });
   }
 
   // Returns the user's full GDPR data export. The payload is only downloaded as
@@ -369,9 +433,9 @@ class ApiClient {
 
     const response = await this.fetchWithRefresh(`${API_BASE_URL}/users/me/photo`, () => {
       const headers: Record<string, string> = { 'X-Request-ID': crypto.randomUUID() };
-      const csrf = readCsrfToken();
+      const csrf = this.currentCsrfToken();
       if (csrf) {
-        headers['X-CSRF-Token'] = csrf;
+        headers[CSRF_HEADER] = csrf;
       }
       return { method: 'POST', credentials: 'include', headers, body: formData };
     });

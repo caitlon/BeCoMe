@@ -7,6 +7,7 @@ import logging
 import secrets
 from datetime import timedelta
 
+from sqlalchemy import update
 from sqlmodel import Session, col, select
 
 from api.auth.password import hash_password
@@ -92,31 +93,52 @@ class PasswordResetService(BaseService):
         )
         return f"{settings.frontend_base_url}/reset-password?token={raw_token}"
 
+    def resolve_valid_token(self, token: str) -> User:
+        """Resolve a reset token to its user without consuming it.
+
+        Split out of :meth:`reset_password` so a caller can place its own side effects
+        between validation and the write. The reset route records the session cutoff in
+        that gap: doing it first means a revocation-store fault leaves the password
+        unchanged and the token unspent, instead of committing a new password while
+        every pre-reset session stays valid.
+
+        :param token: The raw reset token from the reset link.
+        :return: The user the token belongs to.
+        :raises InvalidResetTokenError: If the token is unknown or already used.
+        :raises ResetTokenExpiredError: If the token has expired.
+        """
+        record = self._get_valid_record(token)
+        return self._get_token_user(record)
+
     def reset_password(self, token: str, new_password: str) -> User:
         """Consume a reset token and set the user's new password.
+
+        The token is re-validated here, so a caller that already ran
+        :meth:`resolve_valid_token` still cannot redeem one that was spent in between.
+
+        A completed reset also confirms the address. Receiving the link proves control
+        of the inbox exactly as an activation link does, so demanding a second proof
+        would be ceremony -- and it is what makes reclaiming an account somebody else
+        pre-registered a single step. It also retires every outstanding activation
+        token in one move, since redemption is refused once the address is verified;
+        leaving them live would let a link minted before the reset put the password and
+        names back afterwards.
+
+        Which makes an activation the one operation this can collide with, so the write
+        goes through :meth:`_claim_account` rather than straight onto the loaded row.
 
         :param token: The raw reset token from the reset link.
         :param new_password: The new plaintext password (already strength-checked).
         :return: The updated user.
-        :raises InvalidResetTokenError: If the token is unknown or already used.
+        :raises InvalidResetTokenError: If the token is unknown, already used, or an
+            activation confirmed the account first.
         :raises ResetTokenExpiredError: If the token has expired.
         """
-        record = self._session.exec(
-            select(PasswordResetToken).where(PasswordResetToken.token_hash == _hash_token(token))
-        ).first()
+        record = self._get_valid_record(token)
+        user = self._get_token_user(record)
 
-        if record is None or record.used_at is not None:
-            raise InvalidResetTokenError(_INVALID_MESSAGE)
-        if ensure_utc(record.expires_at) < utc_now():
-            raise ResetTokenExpiredError(_INVALID_MESSAGE)
-
-        user = self._session.get(User, record.user_id)
-        if user is None:
-            raise InvalidResetTokenError(_INVALID_MESSAGE)
-
-        user.hashed_password = hash_password(new_password)
+        self._claim_account(user, hash_password(new_password))
         record.used_at = utc_now()
-        self._session.add(user)
         self._session.add(record)
         self._session.commit()
         self._session.refresh(user)
@@ -128,6 +150,73 @@ class PasswordResetService(BaseService):
             "Password reset completed",
             extra={"event": "password_reset_completed", "user_id": str(user.id)},
         )
+        return user
+
+    def _claim_account(self, user: User, hashed_password: str) -> None:
+        """Write the new password, unless an activation confirmed the account first.
+
+        A conditional UPDATE rather than a read-then-write, the same discipline
+        :meth:`api.services.email_verification_service.EmailVerificationService.activate`
+        uses. A reset and an activation both prove control of the same mailbox and both
+        set ``email_verified_at``, so an activation can commit in the gap between the
+        row being loaded and this write -- bcrypt alone holds that gap open for a few
+        hundred milliseconds. Writing by primary key would replace the password the
+        activation had just chosen, after its caller was told the account was confirmed
+        and could sign in, leaving them with credentials that no longer work.
+
+        The extra predicate is added only when the row looked unverified. An account
+        that was already confirmed when the token resolved has no activation in flight
+        against it -- redemption is refused once ``email_verified_at`` is set -- so
+        there is no race to lose and the plain write by id is correct.
+
+        :param user: The account the reset token belongs to.
+        :param hashed_password: bcrypt hash of the new password.
+        :raises InvalidResetTokenError: If an activation confirmed the account first.
+        """
+        values: dict[str, object] = {"hashed_password": hashed_password}
+        claim = update(User).where(col(User.id) == user.id)
+        if user.email_verified_at is None:
+            values["email_verified_at"] = utc_now()
+            claim = claim.where(col(User.email_verified_at).is_(None))
+
+        result = self._session.exec(claim.values(**values))
+        if result.rowcount != 1:
+            # The activation got there first, so it decided the credentials and this
+            # reset must leave them alone. Reporting success would be worse than the
+            # refusal: the caller would be told a password was set that they then
+            # cannot sign in with. The token is deliberately left unspent, so following
+            # the same link again works -- the account is verified by now, which puts
+            # the retry on the uncontested branch above.
+            raise InvalidResetTokenError(_INVALID_MESSAGE)
+
+    def _get_valid_record(self, token: str) -> PasswordResetToken:
+        """Look up a reset token and reject it unless it is unused and unexpired.
+
+        :param token: The raw reset token from the reset link.
+        :return: The matching token record.
+        :raises InvalidResetTokenError: If the token is unknown or already used.
+        :raises ResetTokenExpiredError: If the token has expired.
+        """
+        record = self._session.exec(
+            select(PasswordResetToken).where(PasswordResetToken.token_hash == _hash_token(token))
+        ).first()
+
+        if record is None or record.used_at is not None:
+            raise InvalidResetTokenError(_INVALID_MESSAGE)
+        if ensure_utc(record.expires_at) < utc_now():
+            raise ResetTokenExpiredError(_INVALID_MESSAGE)
+        return record
+
+    def _get_token_user(self, record: PasswordResetToken) -> User:
+        """Load the user a token record points at.
+
+        :param record: A validated reset-token record.
+        :return: The user that requested the reset.
+        :raises InvalidResetTokenError: If the user no longer exists.
+        """
+        user = self._session.get(User, record.user_id)
+        if user is None:
+            raise InvalidResetTokenError(_INVALID_MESSAGE)
         return user
 
     def _get_user_by_email(self, email: str) -> User | None:

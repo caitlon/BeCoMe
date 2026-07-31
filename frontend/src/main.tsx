@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import * as Sentry from "@sentry/react";
 import App from "./App.tsx";
+import { scrubBreadcrumb, scrubEvent } from "@/lib/sentry";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import "@/i18n";
 import "@fontsource/inter/400.css";
@@ -20,6 +21,10 @@ if (import.meta.env.VITE_SENTRY_DSN) {
     dsn: import.meta.env.VITE_SENTRY_DSN,
     environment: import.meta.env.VITE_APP_ENV ?? (import.meta.env.DEV ? "development" : "production"),
     tracesSampleRate: 0.1,
+    // The reset link carries a redeemable token in the query string, and it would
+    // otherwise reach the tracker through the event URL and the navigation crumbs.
+    beforeSend: scrubEvent,
+    beforeBreadcrumb: scrubBreadcrumb,
   });
 }
 

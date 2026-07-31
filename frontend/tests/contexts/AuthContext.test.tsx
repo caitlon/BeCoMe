@@ -25,7 +25,6 @@ vi.mock('@/lib/api', () => ({
   api: {
     getCurrentUser: vi.fn(),
     login: vi.fn(),
-    register: vi.fn(),
     logout: vi.fn(),
     setOnSessionExpired: vi.fn(),
   },
@@ -203,6 +202,48 @@ describe('AuthContext', () => {
     expect(result.current.status).toBe('unauthenticated')
   })
 
+  it('clears the local session and propagates the failure when the logout request fails', async () => {
+    // A server that refuses the sign-out must not leave the user signed in. This is
+    // what a cookie-authenticated logout looked like on every deploy: the SPA could
+    // not read the csrf_token cookie, so the request came back 403. Clearing the
+    // local session is not enough on its own though -- a caller that never learns
+    // the server-side session survived would show the exact same success state as
+    // a real sign-out, which is worse than an error on a shared machine.
+    const mockUser = createUser({ id: '1', email: 'test@example.com', first_name: 'Test' })
+    vi.mocked(api.getCurrentUser).mockResolvedValue(mockUser)
+    // Once, not for the rest of the file: clearAllMocks resets recorded calls but
+    // leaves an implementation in place, and the cases after this one expect a
+    // logout that succeeds.
+    vi.mocked(api.logout).mockRejectedValueOnce(new ForbiddenError('CSRF token missing or invalid'))
+
+    const { result } = renderHook(() => useAuth(), {
+      wrapper: AuthTestProviders,
+    })
+
+    await waitFor(() => {
+      expect(result.current.isAuthenticated).toBe(true)
+    })
+
+    // Catch inside act() rather than asserting on the rejected act() promise itself:
+    // act() only flushes the state updates queued before the throw when its own
+    // callback settles without rejecting, so the throw is captured here and
+    // checked on the side, letting the surrounding act() see a normal resolution.
+    let caughtError: unknown
+    await act(async () => {
+      try {
+        await result.current.logout()
+      } catch (err) {
+        caughtError = err
+      }
+    })
+
+    expect(caughtError).toBeInstanceOf(Error)
+    expect((caughtError as Error).message).toBe('CSRF token missing or invalid')
+    expect(result.current.user).toBeNull()
+    expect(result.current.isAuthenticated).toBe(false)
+    expect(result.current.status).toBe('unauthenticated')
+  })
+
   it('drops cached queries on logout so the next account cannot see them', async () => {
     const mockUser = createUser({ id: '1', email: 'test@example.com', first_name: 'Test' })
     vi.mocked(api.getCurrentUser).mockResolvedValue(mockUser)
@@ -264,55 +305,6 @@ describe('AuthContext', () => {
         await result.current.login('bad@example.com', 'wrong')
       })
     ).rejects.toThrow('Invalid credentials')
-  })
-
-  it('register calls api.register, api.login, and refreshes user', async () => {
-    const mockUser = createUser({ id: '1', email: 'new@example.com', first_name: 'New' })
-    vi.mocked(api.getCurrentUser).mockRejectedValue(new UnauthorizedError())
-
-    const { result } = renderHook(() => useAuth(), {
-      wrapper: AuthTestProviders,
-    })
-
-    await waitFor(() => {
-      expect(result.current.isLoading).toBe(false)
-    })
-
-    vi.mocked(api.register).mockResolvedValue(mockUser)
-    vi.mocked(api.login).mockResolvedValue({ access_token: 'new-token', token_type: 'bearer' })
-    vi.mocked(api.getCurrentUser).mockResolvedValue(mockUser)
-
-    await act(async () => {
-      await result.current.register('new@example.com', 'password123', 'New', undefined)
-    })
-
-    expect(api.register).toHaveBeenCalledWith({
-      email: 'new@example.com',
-      password: 'password123',
-      first_name: 'New',
-      last_name: undefined,
-    })
-    expect(api.login).toHaveBeenCalledWith('new@example.com', 'password123')
-  })
-
-  it('propagates register error to caller', async () => {
-    vi.mocked(api.getCurrentUser).mockRejectedValue(new UnauthorizedError())
-
-    const { result } = renderHook(() => useAuth(), {
-      wrapper: AuthTestProviders,
-    })
-
-    await waitFor(() => {
-      expect(result.current.isLoading).toBe(false)
-    })
-
-    vi.mocked(api.register).mockRejectedValue(new Error('Email already exists'))
-
-    await expect(
-      act(async () => {
-        await result.current.register('dup@example.com', 'pass', 'Dup')
-      })
-    ).rejects.toThrow('Email already exists')
   })
 
   describe('onSessionExpired bridge', () => {

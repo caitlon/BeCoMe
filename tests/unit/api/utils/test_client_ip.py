@@ -111,6 +111,16 @@ class TestOriginSecretConfigured:
             request = _request({"X-Origin-Verify": "nope", "CF-Connecting-IP": "1.2.3.4"})
             assert get_client_ip(request) == "unverified-origin"
 
+    def test_non_ascii_verify_header_is_unverified(self):
+        """GIVEN a non-ASCII verify header WHEN extracting THEN the sentinel is returned.
+
+        compare_digest raises TypeError on a non-ASCII str, which would surface as a
+        500 from every request carrying such a header instead of this quiet rejection.
+        """
+        with _with_secret(_SECRET):
+            request = _request({"X-Origin-Verify": "secrét", "CF-Connecting-IP": "1.2.3.4"})
+            assert get_client_ip(request) == "unverified-origin"
+
 
 def test_returns_unknown_for_none_request():
     """GIVEN no request WHEN extracting THEN it is 'unknown'."""

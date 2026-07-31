@@ -3,7 +3,12 @@
 from unittest.mock import patch
 
 from api.services.project_membership_service import ProjectMembershipService
-from tests.integration.api.conftest import auth_header, create_project, register_and_login
+from tests.integration.api.conftest import (
+    auth_header,
+    create_project,
+    register_and_login,
+    submit_opinion,
+)
 
 
 def _add_expert(client, owner_token, project_id, email):
@@ -487,6 +492,44 @@ class TestListMembers:
 
 class TestRemoveMember:
     """Tests for DELETE /api/v1/projects/{id}/members/{user_id}."""
+
+    def test_removal_discards_the_opinion_and_recalculates(self, client):
+        """Removing a member drops their opinion and the result stops counting them.
+
+        The opinion carries the ex-member's email, name, and position, it is served
+        to every remaining member and embedded in exports, and after removal the
+        person concerned can no longer delete it themselves (the project 404s for them).
+        """
+        # GIVEN a project where both the admin and an expert submitted an opinion
+        owner = register_and_login(client, "owner@example.com")
+        project = create_project(client, owner)
+        submit_opinion(client, owner, project["id"], 30.0, 50.0, 70.0)
+        expert, expert_id = _add_expert(client, owner, project["id"], "expert@example.com")
+        submit_opinion(client, expert, project["id"], 10.0, 20.0, 30.0)
+
+        before = client.get(
+            f"/api/v1/projects/{project['id']}/result", headers=auth_header(owner)
+        ).json()
+        assert before["num_experts"] == 2
+
+        # WHEN the admin removes the expert
+        response = client.delete(
+            f"/api/v1/projects/{project['id']}/members/{expert_id}",
+            headers=auth_header(owner),
+        )
+
+        # THEN the opinion is gone from the listing and from the recalculated result
+        assert response.status_code == 204
+
+        opinions = client.get(
+            f"/api/v1/projects/{project['id']}/opinions", headers=auth_header(owner)
+        ).json()
+        assert [item["user_email"] for item in opinions] == ["owner@example.com"]
+
+        after = client.get(
+            f"/api/v1/projects/{project['id']}/result", headers=auth_header(owner)
+        ).json()
+        assert after["num_experts"] == 1
 
     def test_remove_member_self_fails(self, client):
         """Admin cannot remove themselves."""

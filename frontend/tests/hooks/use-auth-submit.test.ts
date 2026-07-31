@@ -185,4 +185,37 @@ describe('useAuthSubmit', () => {
 
     expect(action).toHaveBeenCalledOnce();
   });
+
+  it('suppresses the default error toast when onError reports the error as handled', async () => {
+    const action = vi.fn().mockRejectedValue(new Error('Account not verified'));
+    const onError = vi.fn().mockReturnValue(true);
+
+    const { result } = renderHook(() => useAuthSubmit(messages));
+
+    await act(async () => {
+      await result.current.execute(action, onError);
+    });
+
+    expect(onError).toHaveBeenCalledWith(expect.any(Error));
+    expect(mockToast).not.toHaveBeenCalled();
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('still shows the default error toast when onError reports the error as unhandled', async () => {
+    const action = vi.fn().mockRejectedValue(new Error('Invalid credentials'));
+    const onError = vi.fn().mockReturnValue(false);
+
+    const { result } = renderHook(() => useAuthSubmit(messages));
+
+    await act(async () => {
+      await result.current.execute(action, onError);
+    });
+
+    expect(onError).toHaveBeenCalledWith(expect.any(Error));
+    expect(mockToast).toHaveBeenCalledWith({
+      title: 'Error',
+      description: 'Invalid credentials',
+      variant: 'destructive',
+    });
+  });
 });

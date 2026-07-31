@@ -30,6 +30,10 @@ def _settings(
         redis_url="redis://localhost:6379/0",
         cloudflare_origin_secret="an-origin-verify-secret-for-tests",
         cors_origins=["https://app.example.com"],
+        frontend_base_url="https://app.example.com",
+        email_provider="http",
+        email_api_key="a-resend-api-key-for-tests",
+        migration_database_url="postgresql://migrator:pass@host:5432/db",
     )
 
 

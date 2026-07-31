@@ -106,6 +106,14 @@ class Settings(BaseSettings):
     environment: Environment = Environment.DEV
     testing: bool = Field(default=False, validation_alias="TESTING")
 
+    # Set by Railway on every deployed service, absent locally and in CI. Used to
+    # decide whether the dev profile is a laptop or an internet-reachable service:
+    # the dev deploy has its own database and public URL, so it has to satisfy the
+    # same invariants as staging and production.
+    railway_environment_name: str | None = Field(
+        default=None, validation_alias="RAILWAY_ENVIRONMENT_NAME"
+    )
+
     # Database
     database_url: str = "sqlite:///./become.db"
 
@@ -113,6 +121,10 @@ class Settings(BaseSettings):
     # falls back to database_url, so the running app can use a least-privilege
     # role while migrations run as a privileged role.
     migration_database_url: str | None = None
+
+    # Key for the email tags in security logs (api/auth/logging.py). Falls back to
+    # secret_key; set it separately to keep tags comparable across a secret rotation.
+    log_hash_key: str | None = None
 
     # Auth
     secret_key: str  # Required, load from .env
@@ -165,18 +177,28 @@ class Settings(BaseSettings):
     bucket_secret_access_key: str | None = None
     bucket_region: str = "auto"
 
-    # Email (transactional password reset). When the provider is "console" or the
-    # selected provider's credentials are unset, the reset link is logged rather
-    # than sent, so the flow still works offline in dev/CI/tests.
+    # Email (transactional: password reset, account verification). When the
+    # provider is "console" or the selected provider's credentials are unset, the
+    # link is logged rather than sent, so the flow still works offline in dev/CI/tests.
     email_provider: Literal["console", "http"] = "console"
     email_from: str = "no-reply@become.app"
     email_from_name: str = "BeCoMe"
-    # Public base URL of the FRONTEND, used to build the reset link in emails.
+    # Public base URL of the FRONTEND, used to build email links.
     frontend_base_url: str = "http://localhost:5173"
     password_reset_token_ttl_minutes: int = 60
+    # Longer than the password-reset window: an activation email is routinely opened
+    # the next morning, while a password reset is something the user is actively
+    # waiting for.
+    email_verification_token_ttl_hours: int = 24
     # HTTP transactional provider (Resend-style API).
     email_api_key: str | None = None
     email_api_url: str = "https://api.resend.com/emails"
+
+    # Kill switches for the registration email-address policy
+    # (api/services/email_policy.py). Both default on; flip either to false via
+    # a Railway env var -- no deploy needed -- if it starts rejecting real users.
+    disposable_email_blocking_enabled: bool = True
+    mx_check_enabled: bool = True
 
     def __init__(self, **kwargs: Any) -> None:
         """Load ``.env`` then ``.env.<APP_ENV>`` and inject the resolved profile.
@@ -219,24 +241,30 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _validate_deploy_invariants(self) -> "Settings":
-        """Reject development defaults on the deployed (TEST/PROD) profiles.
+        """Reject development defaults on every deployed service.
 
-        A strong secret, real PostgreSQL database, Redis-backed store, and a real
-        (non-loopback) CORS origin are required on both the staging (TEST) and
-        production (PROD) deploys, since both serve real browser traffic and
-        share the rate-limit / revocation store. The Cloudflare origin lock is
-        required only in production, where the app sits behind Cloudflare.
+        A strong secret, real PostgreSQL database, Redis-backed store, a real
+        (non-loopback) CORS origin, a configured email provider, debug off, and an
+        explicit migration URL are required on anything that serves real traffic,
+        since those services share the rate-limit / revocation store and are reachable
+        from the internet. The Cloudflare origin lock is required only in production,
+        where the app sits behind Cloudflare.
 
         :return: The validated settings instance.
         :raises ValueError: If a deployed profile still carries a development
-            default, or production lacks the Cloudflare origin secret.
+            default, lacks a real email provider, runs with debug on, has no
+            migration URL, or production lacks the Cloudflare origin secret.
         """
         # Environment.TEST doubles as the pytest-runner profile (the conftests set
         # APP_ENV=test with TESTING=1 and weak throwaway secrets), so its invariants
         # apply only to the real deployed staging, where TESTING is unset. Production
-        # is never used by the test runner, so it is always enforced.
+        # is never used by the test runner, so it is always enforced. The dev profile
+        # counts too when it runs on Railway: that service has its own database and a
+        # public URL, so "dev" there means the data is separate, not that the service
+        # may be weakly configured. A laptop or a CI runner has no RAILWAY_* marker.
         is_deploy = self.environment is Environment.PROD or (
-            self.environment is Environment.TEST and not self.testing
+            not self.testing
+            and (self.environment is Environment.TEST or self.railway_environment_name is not None)
         )
         if not is_deploy:
             return self
@@ -264,6 +292,30 @@ class Settings(BaseSettings):
             raise ValueError(
                 f"cors_origins must include the deployed frontend origin in the {profile} "
                 "profile; the localhost defaults cannot serve real browser traffic"
+            )
+        if (urlparse(self.frontend_base_url).hostname or "") in _LOOPBACK_HOSTS:
+            raise ValueError(
+                f"frontend_base_url must point at the deployed frontend in the {profile} "
+                "profile; every activation and password-reset link is built from it, so a "
+                "loopback default mails out links nobody can open and no account can be "
+                "activated"
+            )
+        if not self.email_enabled:
+            raise ValueError(
+                f"email_api_key is required in the {profile} profile with "
+                "email_provider=http; without it the sender falls back to the console one, "
+                "which delivers no mail and prints reset links to stdout instead"
+            )
+        if self.debug:
+            raise ValueError(
+                f"debug must be off in the {profile} profile; it turns on verbose "
+                "framework output that does not belong on a service serving real traffic"
+            )
+        if not self.migration_database_url:
+            raise ValueError(
+                f"migration_database_url is required in the {profile} profile so Alembic "
+                "runs as the privileged role and the app keeps its least-privilege one; "
+                "set it explicitly even when it matches database_url"
             )
         return self
 

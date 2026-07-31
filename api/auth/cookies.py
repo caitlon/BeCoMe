@@ -3,9 +3,11 @@
 Access and refresh tokens are delivered as ``Secure; HttpOnly; SameSite=Strict``
 cookies so JavaScript cannot read them (blunts token theft via XSS). A separate,
 readable ``csrf_token`` cookie backs the double-submit CSRF check: the SPA echoes it
-in the ``X-CSRF-Token`` header on mutating requests. The token also stays in the login
-response body so programmatic clients and the test suite can keep using the
-``Authorization: Bearer`` header.
+in the ``X-CSRF-Token`` header on mutating requests. The same value goes out in an
+``X-CSRF-Token`` *response* header, which is the only copy a cross-host SPA can reach
+(see :func:`set_csrf_header`). The token also stays in the login response body so
+programmatic clients and the test suite can keep using the ``Authorization: Bearer``
+header.
 """
 
 import secrets
@@ -91,6 +93,38 @@ def set_auth_cookies(
         secure=secure,
         samesite="strict",
     )
+
+
+def set_csrf_header(response: Response, csrf_token: str | None) -> None:
+    """Repeat the CSRF token in a response header so a cross-host SPA can read it.
+
+    The ``csrf_token`` cookie carries no ``Domain`` attribute, so it belongs to the API
+    host alone. In every deployed environment the SPA is served from a different host and
+    ``document.cookie`` shows it nothing, which leaves it unable to fill in the
+    ``X-CSRF-Token`` request header the double-submit check demands. The header is the
+    copy it can reach; ``CORSMiddleware`` must name it in ``expose_headers`` for the
+    browser to hand it over.
+
+    This gives away nothing. The value was always meant to be readable by the client that
+    owns the cookie -- that is what makes double-submit work -- and CORS answers against an
+    explicit origin allow-list, so a hostile origin can no more read the header than the
+    cookie. Setting ``Domain=becomify.app`` on the cookie instead would look simpler and
+    break the deploys: dev, staging, and production all live under that parent and would
+    overwrite each other's token.
+
+    Only printable ASCII is echoed, because on the ``/auth/me`` path the value is a
+    cookie the client chose. Starlette unescapes cookies the RFC 2109 way, so
+    ``csrf_token="\\012X-Injected: 1"`` -- every character of it legal in a ``Cookie``
+    header -- parses into a value carrying a real newline, and uvicorn's httptools writer
+    concatenates response headers without validating them. Echoing that unchecked would
+    hand the client a response-splitting primitive. A minted token is 43 URL-safe
+    characters and always passes.
+
+    :param response: The response to set the header on.
+    :param csrf_token: Token to echo, or None when the request carried no CSRF cookie.
+    """
+    if csrf_token and csrf_token.isascii() and csrf_token.isprintable():
+        response.headers[CSRF_HEADER] = csrf_token
 
 
 def clear_auth_cookies(response: Response) -> None:
