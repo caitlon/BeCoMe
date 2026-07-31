@@ -22,9 +22,21 @@ const localStorageMock = (() => {
 
 Object.defineProperty(window, 'localStorage', { value: localStorageMock });
 
-// Mock fetch
+// Mock fetch. The cases below describe responses as plain objects and mostly leave
+// `headers` out, while a real Response always has one and the client reads the CSRF
+// token off it -- so fill an empty Headers in where a case did not supply its own.
 const mockFetch = vi.fn();
-globalThis.fetch = mockFetch;
+globalThis.fetch = ((...args: Parameters<typeof fetch>) =>
+  Promise.resolve(mockFetch(...args)).then((response) =>
+    response && typeof response === 'object' && !('headers' in response)
+      ? Object.assign(response, { headers: new Headers() })
+      : response
+  )) as typeof fetch;
+
+/** Builds the response headers for a case that needs the API to hand back a CSRF token. */
+function csrfHeaders(token: string): Headers {
+  return new Headers({ 'X-CSRF-Token': token });
+}
 
 // Import api after mocks are set up
 // We need to re-import to get a fresh instance each test
@@ -39,6 +51,9 @@ describe('ApiClient', () => {
     vi.resetModules();
     localStorageMock.clear();
     mockFetch.mockReset();
+    // The DOM environment keeps document.cookie for the whole file, so a case that
+    // plants one would otherwise decide what the next case reads.
+    document.cookie = 'csrf_token=; expires=Thu, 01 Jan 1970 00:00:00 GMT';
 
     // Mock window.location
     Object.defineProperty(window, 'location', {
@@ -78,7 +93,9 @@ describe('ApiClient', () => {
       expect(options.headers.Authorization).toBeUndefined();
     });
 
-    it('echoes the csrf_token cookie as X-CSRF-Token on mutating requests', async () => {
+    it('falls back to the csrf_token cookie when the API has returned no token yet', async () => {
+      // Only reachable same-origin, which is how local development runs: Vite
+      // proxies /api/v1, so the cookie belongs to this origin and is readable.
       document.cookie = 'csrf_token=csrf-abc';
       mockFetch.mockResolvedValueOnce({ ok: true, status: 204 });
 
@@ -86,9 +103,103 @@ describe('ApiClient', () => {
 
       const [, options] = mockFetch.mock.calls[0];
       expect((options.headers as Record<string, string>)['X-CSRF-Token']).toBe('csrf-abc');
-      document.cookie = 'csrf_token=; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+    });
+  });
+
+  // On every deployed environment the SPA and the API answer on different hosts, so
+  // the csrf_token cookie belongs to the API and document.cookie shows the app
+  // nothing. The API repeats the value in an X-CSRF-Token response header, and
+  // without picking that up the client cannot produce the header the double-submit
+  // check demands -- which is a 403 on logout and on every other mutation.
+  describe('CSRF token from the response header', () => {
+    it('picks the token up from the login response', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: csrfHeaders('from-login'),
+        json: () => Promise.resolve({ access_token: 'tok', token_type: 'bearer' }),
+      });
+      await api.login('user@example.com', 'pass');
+
+      mockFetch.mockResolvedValueOnce({ ok: true, status: 204 });
+      await api.deleteProject('1');
+
+      const [, options] = mockFetch.mock.calls[1];
+      expect((options.headers as Record<string, string>)['X-CSRF-Token']).toBe('from-login');
     });
 
+    it('recovers the token from the session probe, which is what survives a reload', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: csrfHeaders('from-probe'),
+        json: () => Promise.resolve({ id: '1' }),
+      });
+      await api.getCurrentUser(true);
+
+      mockFetch.mockResolvedValueOnce({ ok: true, status: 204 });
+      await api.deleteProject('1');
+
+      const [, options] = mockFetch.mock.calls[1];
+      expect((options.headers as Record<string, string>)['X-CSRF-Token']).toBe('from-probe');
+    });
+
+    it('prefers the token the API returned over the cookie', async () => {
+      document.cookie = 'csrf_token=cookie-value';
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: csrfHeaders('header-value'),
+        json: () => Promise.resolve({ id: '1' }),
+      });
+      await api.getCurrentUser(true);
+
+      mockFetch.mockResolvedValueOnce({ ok: true, status: 204 });
+      await api.deleteProject('1');
+
+      const [, options] = mockFetch.mock.calls[1];
+      expect((options.headers as Record<string, string>)['X-CSRF-Token']).toBe('header-value');
+    });
+
+    it('sends the rotated token on the retry after a silent refresh', async () => {
+      // A refresh mints a new CSRF cookie, so the retry has to carry the new value
+      // or it trades a 401 for a 403.
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 401,
+          json: () => Promise.resolve({ detail: 'Expired' }),
+        })
+        .mockResolvedValueOnce({ ok: true, status: 200, headers: csrfHeaders('rotated') })
+        .mockResolvedValueOnce({ ok: true, status: 204 });
+
+      await api.deleteProject('1');
+
+      const [, retryOptions] = mockFetch.mock.calls[2];
+      expect((retryOptions.headers as Record<string, string>)['X-CSRF-Token']).toBe('rotated');
+    });
+
+    it('forgets the token on logout so the next account starts clean', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: csrfHeaders('first-session'),
+        json: () => Promise.resolve({ access_token: 'tok', token_type: 'bearer' }),
+      });
+      await api.login('user@example.com', 'pass');
+
+      mockFetch.mockResolvedValueOnce({ ok: true, status: 204 });
+      await api.logout();
+
+      mockFetch.mockResolvedValueOnce({ ok: true, status: 204 });
+      await api.deleteProject('1');
+
+      const [, options] = mockFetch.mock.calls[2];
+      expect((options.headers as Record<string, string>)['X-CSRF-Token']).toBeUndefined();
+    });
+  });
+
+  describe('Response Handling', () => {
     it('handles successful JSON response', async () => {
       const userData = { id: '1', email: 'test@example.com' };
       mockFetch.mockResolvedValueOnce({
@@ -456,14 +567,15 @@ describe('ApiClient', () => {
 
   describe('Auth Endpoints', () => {
     it('register sends POST to /auth/register', async () => {
-      const userData = { id: '1', email: 'new@example.com', first_name: 'New', last_name: null, photo_url: null, created_at: '' };
+      // 202 with a fixed acknowledgement, never a user object: registration no
+      // longer creates a session, so the body content is not the caller's concern.
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        status: 201,
-        json: () => Promise.resolve(userData),
+        status: 202,
+        json: () => Promise.resolve({ detail: 'Check your inbox to finish signing up.' }),
       });
 
-      const result = await api.register({
+      await api.register({
         email: 'new@example.com',
         password: 'password123',
         first_name: 'New',
@@ -480,7 +592,53 @@ describe('ApiClient', () => {
           }),
         })
       );
-      expect(result).toEqual(userData);
+    });
+
+    it('verifyEmail sends POST to /auth/verify-email with the token and password', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ detail: 'Your email address is confirmed. You can sign in now.' }),
+      });
+
+      await api.verifyEmail('a-token', 'CorrectHorse123!');
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/auth/verify-email'),
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ token: 'a-token', password: 'CorrectHorse123!' }),
+        })
+      );
+    });
+
+    it('verifyEmail throws a ForbiddenError on a wrong password', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 403,
+        json: () => Promise.resolve({ detail: 'Password does not match this link' }),
+      });
+
+      const { ForbiddenError } = await import('@/lib/errors');
+      await expect(api.verifyEmail('a-token', 'wrong')).rejects.toBeInstanceOf(ForbiddenError);
+    });
+
+    it('resendVerification sends POST to /auth/resend-verification with the email and password', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 202,
+        json: () => Promise.resolve({ detail: 'If that address still needs confirming, a new link is on its way.' }),
+      });
+
+      await api.resendVerification('user@example.com', 'CorrectHorse123!');
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/auth/resend-verification'),
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ email: 'user@example.com', password: 'CorrectHorse123!' }),
+        })
+      );
     });
 
     it('login sends a form-urlencoded POST with credentials', async () => {
@@ -562,16 +720,29 @@ describe('ApiClient', () => {
           json: () => Promise.resolve({ detail: 'Refresh failed' }),
         });
 
-      await expect(api.logout()).resolves.toBeUndefined();
+      await expect(api.logout()).rejects.toBeInstanceOf(UnauthorizedError);
 
       expect(onSessionExpired).not.toHaveBeenCalled();
 
       api.setOnSessionExpired(null);
     });
+
+    it('reports a refused logout instead of pretending it worked', async () => {
+      // A 403 here used to be swallowed, so the caller could not tell a revoked
+      // session from one still very much alive. AuthContext decides what to do
+      // about it; the client's job is to say what happened.
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 403,
+        json: () => Promise.resolve({ detail: 'CSRF token missing or invalid' }),
+      });
+
+      await expect(api.logout()).rejects.toThrow('CSRF token missing or invalid');
+    });
   });
 
   describe('User Endpoints', () => {
-    it('getCurrentUser fetches /users/me', async () => {
+    it('getCurrentUser probes /auth/me, which also returns the CSRF token', async () => {
       const user = { id: '1', email: 'me@example.com' };
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -582,7 +753,7 @@ describe('ApiClient', () => {
       const result = await api.getCurrentUser();
 
       expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining('/users/me'),
+        expect.stringContaining('/auth/me'),
         expect.objectContaining({ headers: expect.any(Object) })
       );
       expect(result).toEqual(user);
@@ -658,6 +829,28 @@ describe('ApiClient', () => {
       );
       const [, options] = mockFetch.mock.calls[0];
       expect(options.body).toBeInstanceOf(FormData);
+    });
+
+    it('uploadPhoto carries the CSRF token too, though it builds its own request', async () => {
+      // The FormData body does not fit the JSON request() contract, so this path
+      // assembles its own headers and would otherwise miss the token entirely.
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: csrfHeaders('for-upload'),
+        json: () => Promise.resolve({ id: '1' }),
+      });
+      await api.getCurrentUser(true);
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ id: '1', photo_url: 'https://example.com/p.jpg' }),
+      });
+      await api.uploadPhoto(new File(['test'], 'photo.jpg', { type: 'image/jpeg' }));
+
+      const [, options] = mockFetch.mock.calls[1];
+      expect((options.headers as Record<string, string>)['X-CSRF-Token']).toBe('for-upload');
     });
 
     it('deletePhoto sends DELETE to /users/me/photo', async () => {

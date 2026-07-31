@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -6,10 +6,12 @@ import { z } from "zod";
 import { useTranslation } from "react-i18next";
 
 import { FormField, PasswordInput, SubmitButton } from "@/components/forms";
+import { ResendVerification } from "@/components/auth/ResendVerification";
 import { AuthLayout } from "@/components/layout/AuthLayout";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAuthSubmit } from "@/hooks/use-auth-submit";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { ForbiddenError } from "@/lib/errors";
 
 type LoginFormData = {
   email: string;
@@ -21,6 +23,12 @@ const Login = () => {
   const { t: tCommon } = useTranslation();
   const { login } = useAuth();
   useDocumentTitle(tCommon("pageTitle.login"));
+
+  // Set on a 403 (account not verified yet); carries the credentials the user
+  // just typed so the resend control below does not have to ask again.
+  const [notVerified, setNotVerified] = useState<{ email: string; password: string } | null>(
+    null
+  );
 
   const { isLoading, execute } = useAuthSubmit({
     successTitle: t("login.successTitle"),
@@ -48,7 +56,39 @@ const Login = () => {
   });
 
   const onSubmit = (data: LoginFormData) =>
-    execute(() => login(data.email, data.password));
+    execute(
+      () => login(data.email, data.password),
+      (error) => {
+        if (!(error instanceof ForbiddenError)) return false;
+        // An unverified account is not a login failure to explain with the
+        // generic error toast: it has its own recovery path (resend below),
+        // so claim the error and render that instead.
+        setNotVerified({ email: data.email, password: data.password });
+        return true;
+      }
+    );
+
+  if (notVerified) {
+    return (
+      <AuthLayout title={t("login.notVerifiedTitle")}>
+        <p className="text-center text-sm text-muted-foreground">
+          {t("login.notVerifiedMessage")}
+        </p>
+        <div className="mt-6">
+          <ResendVerification email={notVerified.email} password={notVerified.password} />
+        </div>
+        <p className="text-center text-sm mt-6">
+          <button
+            type="button"
+            className="text-foreground hover:underline"
+            onClick={() => setNotVerified(null)}
+          >
+            {t("login.backToSignIn")}
+          </button>
+        </p>
+      </AuthLayout>
+    );
+  }
 
   return (
     <AuthLayout title={t("login.title")}>

@@ -13,6 +13,7 @@ SQLModel-based database layer for BeCoMe API.
 | `expert_opinions` | Fuzzy triangular numbers from experts (unique per user+project) |
 | `calculation_results` | Cached BeCoMe calculation results |
 | `password_reset_tokens` | Tokens for password reset via email |
+| `email_verification_tokens` | Activation tokens for the email verification flow, stored as SHA-256 hashes |
 
 ## Entity Relationships
 
@@ -24,6 +25,8 @@ users (1:N) ──► projects (admin ownership)
       ├─(1:N)─► expert_opinions ◄─(N:1)─ projects
       │
       ├─(1:N)─► password_reset_tokens
+      │
+      ├─(1:N)─► email_verification_tokens
       │
       └─(1:N)─► invitations (used_by) ◄─(N:1)─ projects
 

@@ -28,7 +28,6 @@ export interface MockAuthContextValue {
   isAuthenticated: boolean;
   isServiceUnavailable: boolean;
   login: ReturnType<typeof import('vitest').vi.fn>;
-  register: ReturnType<typeof import('vitest').vi.fn>;
   logout: ReturnType<typeof import('vitest').vi.fn>;
   refreshUser: ReturnType<typeof import('vitest').vi.fn>;
 }
@@ -155,7 +154,6 @@ export const unauthenticatedAuthMock = {
     isAuthenticated: false,
     isServiceUnavailable: false,
     login: () => Promise.resolve(),
-    register: () => Promise.resolve(),
     logout: () => Promise.resolve(),
     refreshUser: () => Promise.resolve(),
   }),

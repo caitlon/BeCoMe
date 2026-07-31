@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { Navbar } from "@/components/layout/Navbar";
+import { PageShell } from "@/components/layout/PageShell";
 import {
   StepWelcome,
   StepCreateProject,
@@ -89,36 +89,85 @@ const Onboarding = () => {
   const CurrentStepComponent = steps[currentStep].component;
 
   return (
-    <div className="min-h-screen flex flex-col bg-background">
-      <Navbar />
-
-      {/* Progress Header */}
-      <div className="fixed top-16 left-0 right-0 z-40 bg-background/95 backdrop-blur-sm border-b">
-        <div className="container mx-auto px-6 py-3">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm text-muted-foreground">
-              {t("progress", { current: currentStep + 1, total: totalSteps })}
-            </span>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={navigateToProjects}
-              className="text-muted-foreground hover:text-foreground"
-            >
-              <X className="h-4 w-4 mr-1" />
-              {t("buttons.skip")}
-            </Button>
+    <PageShell
+      variant="content"
+      mainClassName="flex-1 pt-32 pb-24 overflow-hidden"
+      beforeMain={
+        /* Progress Header */
+        <div className="fixed top-16 left-0 right-0 z-40 bg-background/95 backdrop-blur-sm border-b">
+          <div className="container mx-auto px-6 py-3">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm text-muted-foreground">
+                {t("progress", { current: currentStep + 1, total: totalSteps })}
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={navigateToProjects}
+                className="text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-4 w-4 mr-1" />
+                {t("buttons.skip")}
+              </Button>
+            </div>
+            <Progress
+              value={((currentStep + 1) / totalSteps) * 100}
+              className="h-1"
+              aria-label={t("progress", { current: currentStep + 1, total: totalSteps })}
+            />
           </div>
-          <Progress
-            value={((currentStep + 1) / totalSteps) * 100}
-            className="h-1"
-            aria-label={t("progress", { current: currentStep + 1, total: totalSteps })}
-          />
         </div>
-      </div>
+      }
+      afterMain={
+        /* Navigation Footer */
+        <div className="fixed bottom-0 left-0 right-0 bg-background/95 backdrop-blur-sm border-t">
+          <div className="container mx-auto px-6 py-4">
+            <div className="flex items-center justify-between">
+              <Button
+                variant="outline"
+                onClick={goToPrevious}
+                disabled={isFirstStep}
+                className="gap-2"
+              >
+                <ChevronLeft className="h-4 w-4" />
+                {t("buttons.previous")}
+              </Button>
 
-      {/* Step Content */}
-      <main id="main-content" className="flex-1 pt-32 pb-24 overflow-hidden">
+              {/* Step indicators */}
+              <nav aria-label={tCommon("a11y.stepNavigation")} className="hidden sm:flex items-center gap-1">
+                {steps.map((step, index) => (
+                  <button
+                    key={step.id}
+                    type="button"
+                    onClick={() => {
+                      setDirection(index > currentStep ? 1 : -1);
+                      setCurrentStep(index);
+                    }}
+                    className="p-2 rounded-full"
+                    aria-label={t("buttons.goToStep", { step: index + 1 })}
+                    aria-current={index === currentStep ? "step" : undefined}
+                  >
+                    <span className={`block h-2 rounded-full transition-all ${getStepIndicatorClass(index, currentStep)}`} />
+                  </button>
+                ))}
+              </nav>
+
+              {isLastStep ? (
+                <Button onClick={navigateToProjects} className="gap-2">
+                  {t("buttons.finish")}
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              ) : (
+                <Button onClick={goToNext} className="gap-2">
+                  {isFirstStep ? t("buttons.getStarted") : t("buttons.next")}
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+      }
+    >
         <div className="container mx-auto px-6 h-full">
           <AnimatePresence mode="wait" custom={direction}>
             <motion.div
@@ -138,56 +187,7 @@ const Onboarding = () => {
             </motion.div>
           </AnimatePresence>
         </div>
-      </main>
-
-      {/* Navigation Footer */}
-      <div className="fixed bottom-0 left-0 right-0 bg-background/95 backdrop-blur-sm border-t">
-        <div className="container mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <Button
-              variant="outline"
-              onClick={goToPrevious}
-              disabled={isFirstStep}
-              className="gap-2"
-            >
-              <ChevronLeft className="h-4 w-4" />
-              {t("buttons.previous")}
-            </Button>
-
-            {/* Step indicators */}
-            <nav aria-label={tCommon("a11y.stepNavigation")} className="hidden sm:flex items-center gap-1">
-              {steps.map((step, index) => (
-                <button
-                  key={step.id}
-                  type="button"
-                  onClick={() => {
-                    setDirection(index > currentStep ? 1 : -1);
-                    setCurrentStep(index);
-                  }}
-                  className="p-2 rounded-full"
-                  aria-label={t("buttons.goToStep", { step: index + 1 })}
-                  aria-current={index === currentStep ? "step" : undefined}
-                >
-                  <span className={`block h-2 rounded-full transition-all ${getStepIndicatorClass(index, currentStep)}`} />
-                </button>
-              ))}
-            </nav>
-
-            {isLastStep ? (
-              <Button onClick={navigateToProjects} className="gap-2">
-                {t("buttons.finish")}
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            ) : (
-              <Button onClick={goToNext} className="gap-2">
-                {isFirstStep ? t("buttons.getStarted") : t("buttons.next")}
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
+    </PageShell>
   );
 };
 

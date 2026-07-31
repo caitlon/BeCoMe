@@ -23,6 +23,8 @@ from api.services.data_export_service import DataExportService
 from api.services.email.base import EmailSender
 from api.services.email.console_email_sender import ConsoleEmailSender
 from api.services.email.resend_email_sender import ResendEmailSender
+from api.services.email_policy import EmailAddressPolicy
+from api.services.email_verification_service import EmailVerificationService
 from api.services.export.result_export_service import ResultExportService
 from api.services.invitation_service import InvitationService
 from api.services.opinion_service import OpinionService
@@ -30,6 +32,7 @@ from api.services.password_reset_service import PasswordResetService
 from api.services.project_membership_service import ProjectMembershipService
 from api.services.project_query_service import ProjectQueryService
 from api.services.project_service import ProjectService
+from api.services.registration_service import RegistrationService
 from api.services.storage.base import StorageService
 from api.services.storage.exceptions import StorageConfigurationError
 from api.services.storage.railway_bucket_storage_service import RailwayBucketStorageService
@@ -122,6 +125,21 @@ def get_password_reset_service(
     return PasswordResetService(session, cache)
 
 
+def get_email_verification_service(
+    session: Annotated[Session, Depends(get_session)],
+    cache: Annotated[UserCacheStore, Depends(get_user_cache)],
+) -> EmailVerificationService:
+    """Create EmailVerificationService instance."""
+    return EmailVerificationService(session, cache)
+
+
+def get_registration_service(
+    users: Annotated[UserService, Depends(get_user_service)],
+) -> RegistrationService:
+    """Create RegistrationService instance."""
+    return RegistrationService(users)
+
+
 def get_email_service() -> EmailSender:
     """Create the email sender for the configured provider.
 
@@ -130,12 +148,34 @@ def get_email_service() -> EmailSender:
     that logs the link. The forgot-password flow must never 503 (that would leak
     account existence), so there is no None / unconfigured branch here.
 
+    The fallback is a development affordance only. The deployed profiles reject an
+    unconfigured provider at startup (``Settings._validate_deploy_invariants``), so a
+    deploy cannot silently end up logging reset links instead of sending them.
+
     :return: An EmailSender implementation.
     """
     settings = get_settings()
     if settings.email_provider == "http" and settings.email_enabled:
         return ResendEmailSender(settings)
     return ConsoleEmailSender(settings)
+
+
+@lru_cache
+def get_email_address_policy() -> EmailAddressPolicy:
+    """Create the registration email-address policy, wired to its kill switches.
+
+    Cached as a process singleton: the settings that drive it are fixed for the
+    process, so the same policy (and its single ``dns.asyncresolver.Resolver``) is
+    reused across requests instead of being rebuilt -- and re-risking a
+    construction-time ``NoResolverConfiguration`` -- on every registration.
+
+    :return: An EmailAddressPolicy with both kill switches read from settings.
+    """
+    settings = get_settings()
+    return EmailAddressPolicy(
+        disposable_check_enabled=settings.disposable_email_blocking_enabled,
+        mx_check_enabled=settings.mx_check_enabled,
+    )
 
 
 @lru_cache(maxsize=1)

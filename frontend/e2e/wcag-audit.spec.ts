@@ -102,7 +102,9 @@ test.describe('WCAG Audit — Dark Theme', () => {
     const page = await context.newPage();
     await page.addInitScript(() => {
       localStorage.setItem('become-language', 'en');
-      localStorage.setItem('vite-ui-theme', 'dark');
+      // `main.tsx` wires ThemeProvider with storageKey="become-theme"; seeding
+      // `vite-ui-theme` left these audits running against the light theme.
+      localStorage.setItem('become-theme', 'dark');
     });
 
     await page.goto('/');
@@ -123,7 +125,9 @@ test.describe('WCAG Audit — Dark Theme', () => {
     const page = await context.newPage();
     await page.addInitScript(() => {
       localStorage.setItem('become-language', 'en');
-      localStorage.setItem('vite-ui-theme', 'dark');
+      // `main.tsx` wires ThemeProvider with storageKey="become-theme"; seeding
+      // `vite-ui-theme` left these audits running against the light theme.
+      localStorage.setItem('become-theme', 'dark');
     });
 
     await page.goto('/login');

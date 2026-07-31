@@ -19,7 +19,6 @@ describe('ProtectedRoute', () => {
       isServiceUnavailable: false,
       user: null,
       login: vi.fn(),
-      register: vi.fn(),
       logout: vi.fn(),
       refreshUser: vi.fn(),
     })
@@ -42,7 +41,6 @@ describe('ProtectedRoute', () => {
       isServiceUnavailable: false,
       user: createUser({ id: '1', email: 'test@example.com', first_name: 'Test' }),
       login: vi.fn(),
-      register: vi.fn(),
       logout: vi.fn(),
       refreshUser: vi.fn(),
     })
@@ -64,7 +62,6 @@ describe('ProtectedRoute', () => {
       isServiceUnavailable: false,
       user: null,
       login: vi.fn(),
-      register: vi.fn(),
       logout: vi.fn(),
       refreshUser: vi.fn(),
     })
@@ -102,7 +99,6 @@ describe('ProtectedRoute', () => {
       isServiceUnavailable: true,
       user: null,
       login: vi.fn(),
-      register: vi.fn(),
       logout: vi.fn(),
       refreshUser,
     })
@@ -140,7 +136,6 @@ describe('ProtectedRoute', () => {
       isServiceUnavailable: true,
       user: null,
       login: vi.fn(),
-      register: vi.fn(),
       logout: vi.fn(),
       refreshUser,
     })

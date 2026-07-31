@@ -1,4 +1,4 @@
-"""Tests for User and PasswordResetToken models."""
+"""Tests for User, PasswordResetToken, and EmailVerificationToken models."""
 
 from datetime import UTC, datetime, timedelta
 
@@ -6,7 +6,7 @@ import pytest
 from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 
-from api.db.models import PasswordResetToken, User
+from api.db.models import EmailVerificationToken, PasswordResetToken, User
 
 
 class TestUserModel:
@@ -66,6 +66,7 @@ class TestUserModel:
         assert user.id is not None
         assert user.email == "test@example.com"
         assert user.created_at is not None
+        assert user.email_verified_at is None
 
     def test_user_email_unique(self, session):
         # GIVEN
@@ -179,3 +180,108 @@ class TestPasswordResetTokenModel:
         # THEN
         session.refresh(user)
         assert len(user.reset_tokens) == 2
+
+
+class TestEmailVerificationTokenModel:
+    """Tests for EmailVerificationToken model."""
+
+    def test_create_verification_token(self, session):
+        # GIVEN
+        user = User(
+            email="user@example.com",
+            hashed_password="hash",
+            first_name="Test",
+            last_name="User",
+        )
+        session.add(user)
+        session.commit()
+
+        # WHEN
+        token = EmailVerificationToken(
+            user_id=user.id,
+            token_hash="a" * 64,
+            hashed_password="hash",
+            first_name="Test",
+            last_name="User",
+            expires_at=datetime.now(UTC) + timedelta(hours=1),
+        )
+        session.add(token)
+        session.commit()
+        session.refresh(token)
+
+        # THEN
+        assert token.token_hash == "a" * 64
+        assert token.used_at is None
+        assert token.user_id == user.id
+
+    def test_verification_token_unique(self, session):
+        # GIVEN
+        user = User(
+            email="user@example.com",
+            hashed_password="hash",
+            first_name="Test",
+            last_name="User",
+        )
+        session.add(user)
+        session.commit()
+
+        shared_hash = "b" * 64
+
+        token1 = EmailVerificationToken(
+            user_id=user.id,
+            token_hash=shared_hash,
+            hashed_password="hash",
+            first_name="Test",
+            last_name="User",
+            expires_at=datetime.now(UTC) + timedelta(hours=1),
+        )
+        session.add(token1)
+        session.commit()
+
+        # WHEN/THEN - duplicate token hash should fail
+        token2 = EmailVerificationToken(
+            user_id=user.id,
+            token_hash=shared_hash,
+            hashed_password="hash",
+            first_name="Test",
+            last_name="User",
+            expires_at=datetime.now(UTC) + timedelta(hours=1),
+        )
+        session.add(token2)
+        with pytest.raises(IntegrityError):
+            session.commit()
+
+    def test_user_can_have_multiple_verification_tokens(self, session):
+        # GIVEN
+        user = User(
+            email="user@example.com",
+            hashed_password="hash",
+            first_name="Test",
+            last_name="User",
+        )
+        session.add(user)
+        session.commit()
+
+        # WHEN - multiple tokens for same user (e.g., re-sent verification email)
+        token1 = EmailVerificationToken(
+            user_id=user.id,
+            token_hash="c" * 64,
+            hashed_password="hash",
+            first_name="Test",
+            last_name="User",
+            expires_at=datetime.now(UTC) + timedelta(hours=1),
+        )
+        token2 = EmailVerificationToken(
+            user_id=user.id,
+            token_hash="d" * 64,
+            hashed_password="hash",
+            first_name="Test",
+            last_name="User",
+            expires_at=datetime.now(UTC) + timedelta(hours=2),
+        )
+        session.add_all([token1, token2])
+        session.commit()
+
+        # THEN
+        session.refresh(user)
+        assert len(user.verification_tokens) == 2

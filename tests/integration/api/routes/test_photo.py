@@ -1,20 +1,39 @@
 """Tests for photo upload, delete, and proxy endpoints."""
 
 import uuid
+from io import BytesIO
 from unittest.mock import MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
+from PIL import Image
 from sqlmodel import Session
 
 from api.db.session import get_session
 from api.dependencies import get_storage_service
 from api.services.storage.base import StorageService
-from api.services.storage.exceptions import StorageDeleteError, StorageUploadError
+from api.services.storage.exceptions import (
+    StorageDeleteError,
+    StorageError,
+    StorageUploadError,
+)
 from tests.integration.api.conftest import auth_header, create_test_app, register_and_login
 
-# Valid JPEG magic bytes (minimal valid JPEG header)
-VALID_JPEG_BYTES = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00" + b"\x00" * 100
+
+def _image_bytes(width: int = 8, height: int = 8, image_format: str = "JPEG") -> bytes:
+    """Encode a real image, so uploads face the same decoder the endpoint uses.
+
+    Hand-written magic bytes were enough while only the signature was checked, but the
+    dimension guard actually parses the header -- a fake would be rejected as corrupt
+    and the test would pass for the wrong reason.
+    """
+    buffer = BytesIO()
+    mode = "L" if image_format == "PNG" else "RGB"
+    Image.new(mode, (width, height), 120).save(buffer, format=image_format)
+    return buffer.getvalue()
+
+
+VALID_JPEG_BYTES = _image_bytes()
 
 # Invalid file (text pretending to be JPEG)
 INVALID_FILE_BYTES = b"This is not an image file"
@@ -104,6 +123,30 @@ class TestPhotoUpload:
         # THEN
         assert response.status_code == 400
         assert "Invalid file type" in response.json()["detail"]
+
+    def test_upload_rejects_a_decompression_bomb(self, client_with_mock_storage):
+        """A small file declaring a huge canvas is rejected before it reaches storage.
+
+        The 5 MB byte cap passes this file easily -- the danger is the 25-megapixel
+        canvas it declares, which costs hundreds of megabytes the moment it decodes.
+        """
+        # GIVEN a 5000x5000 PNG that weighs well under the size limit
+        client, mock_storage = client_with_mock_storage
+        token = register_and_login(client, "bomb@example.com")
+        bomb = _image_bytes(5000, 5000, "PNG")
+        assert len(bomb) < 5 * 1024 * 1024
+
+        # WHEN
+        response = client.post(
+            "/api/v1/users/me/photo",
+            headers=auth_header(token),
+            files={"file": ("huge.png", bomb, "image/png")},
+        )
+
+        # THEN
+        assert response.status_code == 400
+        assert "dimensions" in response.json()["detail"].lower()
+        mock_storage.upload.assert_not_called()
 
     def test_upload_photo_content_mismatch(self, client_with_mock_storage):
         """Upload where content does not match the claimed type returns 400."""
@@ -348,6 +391,34 @@ class TestPhotoProxy:
 
         # THEN
         assert response.status_code == 404
+
+    def test_storage_fault_does_not_leak_the_bucket_details(self, client_with_mock_storage):
+        """A storage read fault answers 404 without echoing the underlying error.
+
+        This endpoint is public (image tags cannot send auth headers), and the wrapped
+        botocore message carries the bucket host and object key.
+        """
+        # GIVEN - a user with a photo, and storage that fails on read
+        client, mock_storage = client_with_mock_storage
+        token = register_and_login(client, "fault@example.com")
+        user_id = client.get("/api/v1/users/me", headers=auth_header(token)).json()["id"]
+        client.post(
+            "/api/v1/users/me/photo",
+            headers=auth_header(token),
+            files={"file": ("photo.jpg", VALID_JPEG_BYTES, "image/jpeg")},
+        )
+        mock_storage.open.side_effect = StorageError(
+            "Failed to read file: Could not connect to the endpoint URL: "
+            f"https://private-bucket.example/{UPLOADED_KEY}"
+        )
+
+        # WHEN
+        response = client.get(f"/api/v1/users/{user_id}/photo")
+
+        # THEN
+        assert response.status_code == 404
+        assert response.json() == {"detail": "Photo not found"}
+        assert "private-bucket" not in response.text
 
 
 class TestAccountDeletionRemovesPhoto:

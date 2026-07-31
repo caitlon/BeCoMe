@@ -4,18 +4,32 @@ import userEvent from '@testing-library/user-event';
 import { render } from '@tests/utils';
 import Register from '@/pages/Register';
 
-// Mock useAuth
-const mockRegister = vi.fn();
+// Registration no longer signs anyone in, so the page calls api.register
+// directly instead of going through AuthContext.
+const mockApiRegister = vi.fn();
+const mockResendVerification = vi.fn();
+vi.mock('@/lib/api', () => ({
+  api: {
+    register: (data: unknown) => mockApiRegister(data),
+    resendVerification: (email: string, password: string) =>
+      mockResendVerification(email, password),
+  },
+}));
+
+// AuthLayout renders Navbar, which calls useAuth -> mock it (as the other auth
+// page tests do), even though Register itself no longer reads auth state.
 vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => ({
-    register: mockRegister,
     user: null,
     isLoading: false,
     isAuthenticated: false,
+    login: vi.fn(),
+    logout: vi.fn(),
+    refreshUser: vi.fn(),
   }),
 }));
 
-// Mock useNavigate
+// Mock useNavigate so a regression that reintroduces a redirect is caught.
 const mockNavigate = vi.fn();
 vi.mock('react-router', async () => {
   const actual = await vi.importActual('react-router');
@@ -42,6 +56,15 @@ describe('Register', () => {
   const getFirstNameInput = () => screen.getByPlaceholderText('John');
   const getLastNameInput = () => screen.getByPlaceholderText('Doe');
   const getSubmitButton = () => screen.getByRole('button', { name: /create account/i });
+
+  const fillValidForm = async (user: ReturnType<typeof userEvent.setup>) => {
+    await user.type(getEmailInput(), 'test@example.com');
+    await user.type(getPasswordInput(), 'TestPass123!@#');
+    await user.type(getConfirmPasswordInput(), 'TestPass123!@#');
+    await user.type(getFirstNameInput(), 'John');
+    await user.type(getLastNameInput(), 'Doe');
+    await waitFor(() => expect(getSubmitButton()).not.toBeDisabled());
+  };
 
   it('renders registration form with all fields', () => {
     render(<Register />);
@@ -190,20 +213,10 @@ describe('Register', () => {
 
   it('shows loading state during submission', async () => {
     const user = userEvent.setup();
-    mockRegister.mockImplementation(() => new Promise(() => {}));
+    mockApiRegister.mockImplementation(() => new Promise(() => {}));
 
     render(<Register />);
-
-    await user.type(getEmailInput(), 'test@example.com');
-    await user.type(getPasswordInput(), 'TestPass123!@#');
-    await user.type(getConfirmPasswordInput(), 'TestPass123!@#');
-    await user.type(getFirstNameInput(), 'John');
-    await user.type(getLastNameInput(), 'Doe');
-
-    await waitFor(() => {
-      expect(getSubmitButton()).not.toBeDisabled();
-    });
-
+    await fillValidForm(user);
     await user.click(getSubmitButton());
 
     await waitFor(() => {
@@ -211,62 +224,73 @@ describe('Register', () => {
     });
   });
 
-  it('calls register and navigates to /projects on success', async () => {
+  it('shows the check-your-inbox state on success and does not navigate to /projects', async () => {
     const user = userEvent.setup();
-    mockRegister.mockResolvedValueOnce(undefined);
+    mockApiRegister.mockResolvedValueOnce(undefined);
 
     render(<Register />);
-
-    await user.type(getEmailInput(), 'test@example.com');
-    await user.type(getPasswordInput(), 'TestPass123!@#');
-    await user.type(getConfirmPasswordInput(), 'TestPass123!@#');
-    await user.type(getFirstNameInput(), 'John');
-    await user.type(getLastNameInput(), 'Doe');
-
-    await waitFor(() => {
-      expect(getSubmitButton()).not.toBeDisabled();
-    });
-
+    await fillValidForm(user);
     await user.click(getSubmitButton());
 
     await waitFor(() => {
-      expect(mockRegister).toHaveBeenCalledWith(
-        'test@example.com',
-        'TestPass123!@#',
-        'John',
-        'Doe'
-      );
+      expect(mockApiRegister).toHaveBeenCalledWith({
+        email: 'test@example.com',
+        password: 'TestPass123!@#',
+        first_name: 'John',
+        last_name: 'Doe',
+      });
     });
 
     await waitFor(() => {
-      expect(mockNavigate).toHaveBeenCalledWith('/projects');
+      expect(screen.getByText(/check your inbox/i)).toBeInTheDocument();
     });
+    // The registered address is carried into the inbox message.
+    expect(screen.getByText(/test@example\.com/)).toBeInTheDocument();
+
+    expect(mockNavigate).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: /create account/i })).not.toBeInTheDocument();
   });
 
-  it('shows error toast on registration failure', async () => {
+  it('shows error toast on registration failure and stays on the form', async () => {
     const user = userEvent.setup();
-    mockRegister.mockRejectedValueOnce(new Error('Email already exists'));
+    mockApiRegister.mockRejectedValueOnce(new Error('That domain cannot receive email'));
 
     render(<Register />);
-
-    await user.type(getEmailInput(), 'existing@example.com');
-    await user.type(getPasswordInput(), 'TestPass123!@#');
-    await user.type(getConfirmPasswordInput(), 'TestPass123!@#');
-    await user.type(getFirstNameInput(), 'John');
-    await user.type(getLastNameInput(), 'Doe');
-
-    await waitFor(() => {
-      expect(getSubmitButton()).not.toBeDisabled();
-    });
-
+    await fillValidForm(user);
     await user.click(getSubmitButton());
 
     await waitFor(() => {
       expect(mockToast).toHaveBeenCalledWith(
         expect.objectContaining({
           variant: 'destructive',
-          description: 'Email already exists',
+          description: 'That domain cannot receive email',
         })
+      );
+    });
+
+    expect(screen.queryByText(/check your inbox/i)).not.toBeInTheDocument();
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('offers a resend control in the inbox state that resends with the submitted credentials', async () => {
+    const user = userEvent.setup();
+    mockApiRegister.mockResolvedValueOnce(undefined);
+    mockResendVerification.mockResolvedValueOnce(undefined);
+
+    render(<Register />);
+    await fillValidForm(user);
+    await user.click(getSubmitButton());
+
+    await waitFor(() => {
+      expect(screen.getByText(/check your inbox/i)).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole('button', { name: /resend/i }));
+
+    await waitFor(() => {
+      expect(mockResendVerification).toHaveBeenCalledWith(
+        'test@example.com',
+        'TestPass123!@#'
       );
     });
   });

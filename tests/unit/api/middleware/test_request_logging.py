@@ -69,6 +69,46 @@ class TestRequestId:
         # THEN
         assert response.headers["X-Request-ID"] == "client-123"
 
+    def test_replaces_an_oversized_request_id(self, client: TestClient):
+        """
+        GIVEN a request whose X-Request-ID header is far longer than a correlation ID
+        WHEN it is handled
+        THEN a fresh ID is used instead of echoing the caller's value back
+        """
+        # GIVEN
+        oversized = "a" * 500
+
+        # WHEN
+        response = client.get("/ping", headers={"X-Request-ID": oversized})
+
+        # THEN
+        assert response.headers["X-Request-ID"] != oversized
+        assert len(response.headers["X-Request-ID"]) < len(oversized)
+
+    def test_replaces_a_request_id_with_unexpected_characters(self, client: TestClient):
+        """
+        GIVEN a request whose X-Request-ID carries characters outside the ID alphabet
+        WHEN it is handled
+        THEN a fresh ID is used, so nothing exotic is echoed or written to the log
+        """
+        # WHEN
+        response = client.get("/ping", headers={"X-Request-ID": "id with spaces, and <html>"})
+
+        # THEN
+        assert response.headers["X-Request-ID"] != "id with spaces, and <html>"
+
+    def test_replaces_an_empty_request_id(self, client: TestClient):
+        """
+        GIVEN a request carrying an empty X-Request-ID header
+        WHEN it is handled
+        THEN a generated ID is used
+        """
+        # WHEN
+        response = client.get("/ping", headers={"X-Request-ID": ""})
+
+        # THEN
+        assert response.headers["X-Request-ID"]
+
     def test_exposes_request_id_on_request_state(self, client: TestClient):
         """
         GIVEN a request

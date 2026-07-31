@@ -1,10 +1,12 @@
 """Security event logging for authentication operations."""
 
-import hashlib
+import hmac
 import logging
+from hashlib import sha256
 from typing import TYPE_CHECKING
 from uuid import UUID
 
+from api.config import get_settings
 from api.utils.client_ip import get_client_ip
 
 if TYPE_CHECKING:
@@ -13,18 +15,32 @@ if TYPE_CHECKING:
 # Configure security logger
 logger = logging.getLogger("api.security")
 
+# Length of the hex tag written to logs. Enough to correlate attempts on one account
+# without carrying the full digest around.
+_EMAIL_TAG_LENGTH = 16
 
-def _hash_email(email: str) -> str:
-    """Return a short, non-reversible tag for an email.
+
+def hash_email(email: str) -> str:
+    """Return a short, keyed tag for an email.
 
     Security events log this instead of the raw address so a log drain or Sentry
     breach cannot harvest a registry of user emails, while repeated attempts on the
     same account can still be correlated (log data-minimization, GDPR).
 
+    The tag is an HMAC, not a plain digest: a plain SHA-256 of an address is
+    reproducible by anyone holding the logs, so they could confirm whether a given
+    person has an account by hashing a guess. Keying it makes the tag meaningless
+    outside this application. The key is ``log_hash_key`` when set, otherwise
+    ``secret_key`` -- note that rotating the fallback also re-tags every future
+    record, so set ``LOG_HASH_KEY`` explicitly to keep tags stable across a rotation.
+
     :param email: The email address to tag.
-    :return: A truncated SHA-256 hex digest of the normalized email.
+    :return: A truncated hex HMAC-SHA-256 of the normalized email.
     """
-    return hashlib.sha256(email.strip().lower().encode()).hexdigest()[:16]
+    settings = get_settings()
+    key = settings.log_hash_key or settings.secret_key
+    tag = hmac.new(key.encode(), email.strip().lower().encode(), sha256)
+    return tag.hexdigest()[:_EMAIL_TAG_LENGTH]
 
 
 def log_login_success(user_id: UUID, email: str, request: "Request | None" = None) -> None:
@@ -40,7 +56,7 @@ def log_login_success(user_id: UUID, email: str, request: "Request | None" = Non
         extra={
             "event": "login_success",
             "user_id": str(user_id),
-            "email_hash": _hash_email(email),
+            "email_hash": hash_email(email),
             "ip": ip,
         },
     )
@@ -58,27 +74,122 @@ def log_login_failure(email: str, reason: str, request: "Request | None" = None)
         "Login failed",
         extra={
             "event": "login_failure",
-            "email_hash": _hash_email(email),
+            "email_hash": hash_email(email),
             "reason": reason,
             "ip": ip,
         },
     )
 
 
-def log_registration(user_id: UUID, email: str, request: "Request | None" = None) -> None:
-    """Log new user registration.
+def log_registration_attempt(email: str, request: "Request | None" = None) -> None:
+    """Log a registration submission, whatever the endpoint decided to do with it.
 
-    :param user_id: New user's ID
-    :param email: User's email address
+    Deliberately identical for all three branches (new account, second submission on an
+    unactivated one, notice to an existing verified account) and carries no ``user_id``,
+    so this record on its own names no account.
+
+    That is where the guarantee stops. Account creation and token minting write their
+    own ``api.*`` records inside the same request, and every record carries the request
+    id, so a reader of the full application log can correlate them and still recover
+    which branch ran for a given ``email_hash``. Log access is the trust boundary here;
+    what the endpoint tells its caller is not affected either way.
+
+    :param email: Email address the registration was submitted for
     :param request: FastAPI request (for IP extraction)
     """
     ip = get_client_ip(request)
     logger.info(
-        "User registered",
+        "Registration attempted",
         extra={
-            "event": "registration",
+            "event": "registration_attempt",
+            "email_hash": hash_email(email),
+            "ip": ip,
+        },
+    )
+
+
+def log_login_blocked_unverified(user_id: UUID, request: "Request | None" = None) -> None:
+    """Log a login refused because the account's address is still unverified.
+
+    Kept apart from ``login_failure``: the password was correct, so counting it as a
+    failed attempt would distort brute-force alerting.
+
+    :param user_id: ID of the account that was refused
+    :param request: FastAPI request (for IP extraction)
+    """
+    ip = get_client_ip(request)
+    logger.warning(
+        "Login blocked for an unverified account",
+        extra={
+            "event": "login_blocked_unverified",
             "user_id": str(user_id),
-            "email_hash": _hash_email(email),
+            "ip": ip,
+        },
+    )
+
+
+def log_verification_email_requested(email: str, request: "Request | None" = None) -> None:
+    """Log a resend-verification request.
+
+    Carries no ``user_id`` for the same reason as the registration attempt: the
+    endpoint answers identically for a known and an unknown address, and this record
+    on its own names no account.
+
+    That is where the guarantee stops, exactly as it does for ``log_registration_attempt``.
+    The resend path writes ``verification_resend_noop`` when there was nothing to send
+    and ``verification_token_created`` when there was, both under the same request id
+    as this record, so a reader of the full application log can still recover which
+    branch ran for a given ``email_hash``. Log access is the trust boundary; the
+    response the caller sees is unaffected either way.
+
+    :param email: Email address from the request
+    :param request: FastAPI request (for IP extraction)
+    """
+    ip = get_client_ip(request)
+    logger.info(
+        "Verification email requested",
+        extra={
+            "event": "verification_email_requested",
+            "email_hash": hash_email(email),
+            "ip": ip,
+        },
+    )
+
+
+def log_verification_password_mismatch(user_id: UUID, request: "Request | None" = None) -> None:
+    """Log an activation attempt whose password was not the one the link carries.
+
+    Its own event rather than ``login_failure``: this is a guess against a link, not
+    against the login endpoint, and folding the two together would distort brute-force
+    alerting on either. The account is named because whoever sent the request already
+    holds a live link to it, so the record adds nothing they do not have.
+
+    :param user_id: ID of the account the link belongs to
+    :param request: FastAPI request (for IP extraction)
+    """
+    ip = get_client_ip(request)
+    logger.warning(
+        "Activation password did not match the link",
+        extra={
+            "event": "verification_password_mismatch",
+            "user_id": str(user_id),
+            "ip": ip,
+        },
+    )
+
+
+def log_email_verified(user_id: UUID, request: "Request | None" = None) -> None:
+    """Log a redeemed activation link.
+
+    :param user_id: ID of the account that was activated
+    :param request: FastAPI request (for IP extraction)
+    """
+    ip = get_client_ip(request)
+    logger.info(
+        "Email address verified",
+        extra={
+            "event": "email_verified",
+            "user_id": str(user_id),
             "ip": ip,
         },
     )
@@ -131,7 +242,7 @@ def log_password_reset_requested(email: str, request: "Request | None" = None) -
         "Password reset requested",
         extra={
             "event": "password_reset_requested",
-            "email_hash": _hash_email(email),
+            "email_hash": hash_email(email),
             "ip": ip,
         },
     )
@@ -167,7 +278,7 @@ def log_account_deletion(user_id: UUID, email: str, request: "Request | None" = 
         extra={
             "event": "account_deletion",
             "user_id": str(user_id),
-            "email_hash": _hash_email(email),
+            "email_hash": hash_email(email),
             "ip": ip,
         },
     )

@@ -104,7 +104,9 @@ export function CentroidBarChart({ opinions, result, scaleUnit }: CentroidBarCha
     },
     compromise: {
       label: tCommon("centroidChart.compromiseLine"),
-      theme: { light: "rgb(0, 0, 0)", dark: "rgb(255, 255, 255)" },
+      // `--primary` already resolves to black in light and white in dark, which is
+      // what the literal pair here spelled out by hand.
+      color: "hsl(var(--primary))",
     },
   };
 

@@ -5,8 +5,7 @@ import { useTranslation } from "react-i18next";
 import { ArrowRight, BookOpen, FileText } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Navbar } from "@/components/layout/Navbar";
-import { Footer } from "@/components/layout/Footer";
+import { PageShell } from "@/components/layout/PageShell";
 import { HeroSection } from "@/components/layout/HeroSection";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { fadeInUp } from "@/lib/motion";
@@ -21,9 +20,7 @@ const About = () => {
   }, []);
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <Navbar />
-      <main id="main-content">
+    <PageShell variant="content" footer>
       <HeroSection title={t("hero.title")} subtitle={t("hero.subtitle")} />
 
       {/* Introduction */}
@@ -31,7 +28,7 @@ const About = () => {
         <div className="container mx-auto px-6">
           <div className="max-w-3xl mx-auto">
             <motion.div {...fadeInUp}>
-              <h2 className="font-display text-2xl md:text-3xl font-normal mb-6">
+              <h2 className="text-section-title mb-6">
                 {t("challenge.title")}
               </h2>
               <div className="prose prose-neutral dark:prose-invert">
@@ -57,7 +54,7 @@ const About = () => {
               viewport={{ once: true }}
               transition={{ duration: 0.5 }}
             >
-              <h2 className="font-display text-2xl md:text-3xl font-normal mb-6">
+              <h2 className="text-section-title mb-6">
                 {t("method.title")}
               </h2>
               <div className="prose prose-neutral dark:prose-invert">
@@ -89,7 +86,7 @@ const About = () => {
               viewport={{ once: true }}
               transition={{ duration: 0.5 }}
             >
-              <h2 className="font-display text-2xl md:text-3xl font-normal mb-6">
+              <h2 className="text-section-title mb-6">
                 {t("applications.title")}
               </h2>
               <p className="text-muted-foreground leading-relaxed mb-6">
@@ -130,7 +127,7 @@ const About = () => {
               viewport={{ once: true }}
               transition={{ duration: 0.5 }}
             >
-              <h2 className="font-display text-2xl md:text-3xl font-normal mb-6">
+              <h2 className="text-section-title mb-6">
                 {t("authors.title")}
               </h2>
               <Card>
@@ -168,7 +165,7 @@ const About = () => {
       {/* CTA Section */}
       <section className="py-16 bg-primary text-primary-foreground">
         <div className="container mx-auto px-6 text-center">
-          <h2 className="font-display text-2xl md:text-3xl font-normal mb-4">
+          <h2 className="text-section-title mb-4">
             {t("cta.title")}
           </h2>
           <p className="text-primary-foreground/80 mb-8 max-w-xl mx-auto">
@@ -192,10 +189,7 @@ const About = () => {
           </div>
         </div>
       </section>
-
-      </main>
-      <Footer />
-    </div>
+    </PageShell>
   );
 };
 

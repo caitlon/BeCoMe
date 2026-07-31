@@ -61,9 +61,13 @@ def _init_sentry(settings: Settings) -> None:
             dsn=settings.sentry_dsn,
             traces_sample_rate=0.1,
             environment=settings.environment.value,
-            # Never attach PII (client IP, cookies, headers, request bodies) to events,
-            # so passwords and emails on auth requests are not shipped to the tracker.
+            # Never attach PII (client IP, cookies, headers, request bodies) to events.
             send_default_pii=False,
+            # Frame locals are a separate switch that send_default_pii does not cover, and
+            # they default to on. Auth handlers bind the parsed body to a local, so a fault
+            # anywhere in the request would ship repr(ChangePasswordRequest) -- i.e. the
+            # plaintext passwords, or a still-valid reset token -- to the tracker.
+            include_local_variables=False,
         )
 
 
@@ -118,6 +122,11 @@ def create_app() -> FastAPI:
             "X-Request-ID",
             "X-CSRF-Token",
         ],
+        # allow_headers covers the request direction only. The SPA runs on a different
+        # host than the API, so the CSRF token reaches it as a response header, and a
+        # cross-origin response header stays invisible to JavaScript unless it is named
+        # here (see api/auth/cookies.py::set_csrf_header).
+        expose_headers=["X-CSRF-Token"],
         max_age=600,  # Cache preflight requests for 10 minutes
     )
 

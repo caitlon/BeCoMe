@@ -1,54 +1,37 @@
 """Integration tests for the password reset endpoints.
 
-Uses shared fixtures from conftest.py (client, client_with_session). A fake email
-sender captures the raw reset token, which the API never returns in a response.
+Uses shared fixtures from conftest.py (client, client_with_session) and the recording
+``fake_email`` sender from the auth conftest, which captures the raw reset token the
+API never returns in a response.
 """
 
 import hashlib
 from datetime import timedelta
+from unittest.mock import patch
 
-import pytest
 from sqlmodel import select
 
+from api.auth.login_throttle import InMemoryLoginThrottle, get_login_throttle
+from api.auth.revocation_store import RevocationStoreError
 from api.db.models import PasswordResetToken, User
 from api.db.utils import utc_now
 from api.dependencies import get_email_service
+from api.services.email.base import EmailSender
 from api.services.email.exceptions import EmailSendError
+from tests.integration.api.auth.conftest import FakeEmailSender
+from tests.integration.api.conftest import register_verified
 from tests.shared.helpers import DEFAULT_TEST_PASSWORD, auth_header
 
 NEW_PASSWORD = "BrandNewPass456!"
 
 
-class FakeEmailSender:
-    """Record password-reset sends so a test can read back the raw token."""
-
-    def __init__(self) -> None:
-        self.calls: list[dict[str, str]] = []
-
-    async def send_password_reset(self, *, to_email: str, reset_url: str) -> None:
-        """Capture the call instead of sending an email."""
-        self.calls.append({"to_email": to_email, "reset_url": reset_url})
-
-
-@pytest.fixture
-def fake_email(client):
-    """Install a fake email sender on the app and return it."""
-    sender = FakeEmailSender()
-    client.app.dependency_overrides[get_email_service] = lambda: sender
-    return sender
-
-
 def _register(client, email: str = "user@example.com") -> None:
-    """Register a user with the default test password."""
-    client.post(
-        "/api/v1/auth/register",
-        json={
-            "email": email,
-            "password": DEFAULT_TEST_PASSWORD,
-            "first_name": "Test",
-            "last_name": "User",
-        },
-    )
+    """Register an activated user with the default test password.
+
+    These tests are about the reset flow, not about activation, and reset assumes an
+    account its owner can log into, so the address is marked verified straight away.
+    """
+    register_verified(client, email)
 
 
 def _captured_token(sender: FakeEmailSender) -> str:
@@ -112,8 +95,21 @@ class TestForgotPassword:
         """A provider send failure is swallowed; the response is still 202."""
 
         # GIVEN — an email sender that raises on send
-        class FailingEmailSender:
-            async def send_password_reset(self, **_kwargs: object) -> None:
+        class FailingEmailSender(EmailSender):
+            """Simulate a provider that fails on every send."""
+
+            async def send_password_reset(self, *, to_email: str, reset_url: str) -> None:
+                """Raise to simulate a provider failure."""
+                raise EmailSendError("send failed")
+
+            async def send_email_verification(self, *, to_email: str, verify_url: str) -> None:
+                """Raise to simulate a provider failure."""
+                raise EmailSendError("send failed")
+
+            async def send_registration_attempt_notice(
+                self, *, to_email: str, login_url: str, reset_url: str
+            ) -> None:
+                """Raise to simulate a provider failure."""
                 raise EmailSendError("send failed")
 
         client.app.dependency_overrides[get_email_service] = lambda: FailingEmailSender()
@@ -177,6 +173,43 @@ class TestResetPassword:
 
         # THEN the old access token is rejected
         assert client.get("/api/v1/auth/me", headers=auth_header(access)).status_code == 401
+
+    def test_store_fault_leaves_the_password_and_token_untouched(self, client, fake_email):
+        """A revocation-store fault aborts the reset instead of half-applying it.
+
+        Writing the password first would leave it changed with every pre-reset session
+        still valid -- the exact outcome someone resetting a compromised account is
+        trying to avoid. Recording the cutoff first makes the fault a clean abort.
+        """
+        # GIVEN a user holding a valid reset link, and a store that cannot record the cutoff
+        _register(client, "resetfault@example.com")
+        client.post("/api/v1/auth/forgot-password", json={"email": "resetfault@example.com"})
+        token = _captured_token(fake_email)
+
+        # WHEN the reset runs into the store fault
+        with patch(
+            "api.auth.revocation_store.InMemoryRevocationStore.set_user_valid_after",
+            side_effect=RevocationStoreError("store is down"),
+        ):
+            response = client.post(
+                "/api/v1/auth/reset-password",
+                json={"token": token, "new_password": NEW_PASSWORD},
+            )
+
+        # THEN the request fails, the old password still works, and the link is unspent
+        assert response.status_code == 503
+
+        old_login = client.post(
+            "/api/v1/auth/login",
+            data={"username": "resetfault@example.com", "password": DEFAULT_TEST_PASSWORD},
+        )
+        assert old_login.status_code == 200
+
+        retry = client.post(
+            "/api/v1/auth/reset-password",
+            json={"token": token, "new_password": NEW_PASSWORD},
+        )
+        assert retry.status_code == 204
 
     def test_rejects_unknown_token(self, client):
         """An unknown token is rejected with 400."""
@@ -250,3 +283,48 @@ class TestResetPassword:
 
         # THEN
         assert response.status_code == 400
+
+    def test_a_completed_reset_clears_the_login_lockout(self, client, fake_email):
+        """A reset must not leave its own new password locked out by an attacker's guesses.
+
+        Presenting a valid reset token already proves control of the address. Leaving a
+        stray lockout in place afterwards would let an attacker who tripped it keep the
+        account locked out of login indefinitely, simply by resuming the same failed
+        guesses once the throttle's window reopens -- even though the owner just proved
+        they hold the mailbox and chose a new password.
+        """
+        # GIVEN - a login lockout, tripped by an attacker's wrong guesses
+        throttle = InMemoryLoginThrottle(max_failures=2, window_seconds=3600)
+        client.app.dependency_overrides[get_login_throttle] = lambda: throttle
+        try:
+            _register(client, "relocked@example.com")
+            for _ in range(2):
+                client.post(
+                    "/api/v1/auth/login",
+                    data={"username": "relocked@example.com", "password": "WrongGuess111!"},
+                )
+            locked = client.post(
+                "/api/v1/auth/login",
+                data={"username": "relocked@example.com", "password": DEFAULT_TEST_PASSWORD},
+            )
+            assert locked.status_code == 429
+
+            # WHEN - the owner completes a reset
+            client.post("/api/v1/auth/forgot-password", json={"email": "relocked@example.com"})
+            token = _captured_token(fake_email)
+            reset = client.post(
+                "/api/v1/auth/reset-password",
+                json={"token": token, "new_password": NEW_PASSWORD},
+            )
+            assert reset.status_code == 204
+
+            # THEN - the lockout is gone, not just outrun by a new password: a locked
+            # account would still answer 429 even with the correct password, since the
+            # lockout is checked before the password is
+            response = client.post(
+                "/api/v1/auth/login",
+                data={"username": "relocked@example.com", "password": NEW_PASSWORD},
+            )
+            assert response.status_code == 200
+        finally:
+            client.app.dependency_overrides.pop(get_login_throttle, None)
