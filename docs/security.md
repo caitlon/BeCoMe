@@ -205,8 +205,30 @@ carries the `csrf_token` cookie, so Bearer-token clients and the pre-session aut
 (`login`, `register`, `refresh`, password reset) are unaffected -- a stale cookie left by a
 revoked session can never block a fresh login. Logout stays CSRF-protected.
 
+The SPA gets that value from a response header rather than from the cookie. Login and
+refresh return the token they just issued in an `X-CSRF-Token` **response** header, and
+`GET /auth/me` -- the app's session probe on mount -- hands back whatever the request's own
+cookie holds, so a page reload recovers it (`api/auth/cookies.py::set_csrf_header`). The
+header is what makes the check workable at all on the deploys: the cookie carries no
+`Domain` attribute, so it belongs to the API host, and the app is served from a different
+one, where `document.cookie` shows it nothing while the browser keeps sending it. Reading
+the cookie still works when the two share an origin, which is how local development runs
+behind the Vite proxy, and stays the fallback. `CORSMiddleware` names the header in
+`expose_headers`; without that the browser withholds it from cross-origin JavaScript.
+
+Handing the value back changes nothing about the guarantee. It was always meant to be
+readable by the client that owns the cookie -- that is what double-submit is -- and CORS
+answers against an explicit origin allow-list, so a hostile origin can no more read the
+header than the cookie. Widening the cookie with `Domain=becomify.app` would look like the
+smaller fix and is the one to avoid: dev, staging, and production all sit under that parent
+and would overwrite each other's token, breaking whichever was visited last. The echo on
+`/auth/me` repeats a client-supplied value, so it is dropped unless it is printable ASCII;
+Starlette's RFC 2109 cookie unescape turns `csrf_token="\012..."` into a real newline, and
+uvicorn writes response headers without validating them.
+
 The `Authorization: Bearer` path is kept alongside the cookie path for programmatic clients
 and the test suite; it authenticates the same tokens without the cookie or CSRF machinery.
+Such a client sends no `csrf_token` cookie, so it gets no header back either.
 
 ## Authorization and tenant isolation
 
@@ -281,7 +303,8 @@ The public origin is `becomify.app`, served through Cloudflare. A Cloudflare Tra
 injects a shared secret header that the origin then requires (`cloudflare_origin_secret`),
 so the Railway origin cannot be reached directly, bypassing the edge. CORS is configured
 with explicit allowed origins and `allow_credentials=True` (required for the cookie
-session), and permits the `X-CSRF-Token` header.
+session). It permits the `X-CSRF-Token` header on the way in and exposes it on the way
+out, since the SPA reads the CSRF token off the response.
 
 Both tiers send security response headers: the API from middleware
 (`api/middleware/security_headers.py`), the SPA from nginx (`frontend/nginx.conf`). Their

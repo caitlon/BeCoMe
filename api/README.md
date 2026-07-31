@@ -92,7 +92,7 @@ api/
 | POST | `/api/v1/auth/refresh` | Refresh access token |
 | POST | `/api/v1/auth/forgot-password` | Request a password reset email |
 | POST | `/api/v1/auth/reset-password` | Reset password using a token |
-| GET | `/api/v1/auth/me` | Get current user profile |
+| GET | `/api/v1/auth/me` | Get current user profile, plus the session's CSRF token as a header |
 
 **Registration and activation.** `POST /auth/register` always answers `202` with the same
 body, whether the address is free, already registered but unverified, or already registered
@@ -124,9 +124,18 @@ does.
 `/api/v1/auth`) plus a readable `csrf_token` cookie; the tokens are also returned in the
 response body so programmatic clients can keep using the `Authorization: Bearer` header.
 A cookie-authenticated mutating request (POST/PUT/PATCH/DELETE) must echo the
-`csrf_token` cookie back in an `X-CSRF-Token` header (double-submit CSRF); Bearer-header
+`csrf_token` value back in an `X-CSRF-Token` header (double-submit CSRF); Bearer-header
 requests are exempt. `/auth/refresh` reads the refresh token from the cookie or the body,
 and logout revokes the session and clears the cookies.
+
+Login and refresh also return that value in an `X-CSRF-Token` **response** header, and
+`GET /auth/me` returns whatever the request's own `csrf_token` cookie holds -- nothing is
+minted there, and a request without the cookie gets no header. This is not redundancy: the
+cookie has no `Domain` attribute, so it belongs to the API host, and a browser app served
+from any other host cannot read it out of `document.cookie` even though the browser keeps
+sending it. The header is that app's only copy of the value, which is why
+`CORSMiddleware` lists it under `expose_headers` as well as `allow_headers`. See
+`docs/security.md` for why the cookie is not widened with a `Domain` instead.
 
 ### Users
 
