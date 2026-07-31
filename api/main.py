@@ -122,6 +122,11 @@ def create_app() -> FastAPI:
             "X-Request-ID",
             "X-CSRF-Token",
         ],
+        # allow_headers covers the request direction only. The SPA runs on a different
+        # host than the API, so the CSRF token reaches it as a response header, and a
+        # cross-origin response header stays invisible to JavaScript unless it is named
+        # here (see api/auth/cookies.py::set_csrf_header).
+        expose_headers=["X-CSRF-Token"],
         max_age=600,  # Cache preflight requests for 10 minutes
     )
 

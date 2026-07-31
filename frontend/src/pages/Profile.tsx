@@ -237,7 +237,14 @@ const Profile = () => {
   };
 
   const handleAccountDeleted = async () => {
-    await logout();
+    try {
+      await logout();
+    } catch {
+      // The account no longer exists once we reach here, so there is nothing
+      // left to retry sign-out for. Continue to the success flow regardless --
+      // letting this reject would surface as "Account deletion failed" to a
+      // user whose account was, in fact, already deleted.
+    }
     navigate("/");
     toast({ title: t("toast.accountDeleted") });
   };

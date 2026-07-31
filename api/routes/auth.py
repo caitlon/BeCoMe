@@ -14,11 +14,13 @@ from fastapi.security import OAuth2PasswordRequestForm
 from starlette.concurrency import run_in_threadpool
 
 from api.auth.cookies import (
+    CSRF_COOKIE,
     REFRESH_COOKIE,
     clear_auth_cookies,
     cookies_secure,
     new_csrf_token,
     set_auth_cookies,
+    set_csrf_header,
 )
 from api.auth.dependencies import CurrentUser, get_current_token_payload
 from api.auth.email_throttle import (
@@ -104,19 +106,25 @@ _VERIFICATION_COMPLETE = "Your email address is confirmed. You can sign in now."
 def _set_session_cookies(response: Response, token_pair: TokenPair, request: Request) -> None:
     """Attach the access, refresh, and CSRF cookies for a freshly issued token pair.
 
+    The CSRF token goes out in a response header as well. A refresh rotates it, so a
+    cross-host SPA reading only the header would otherwise keep sending a superseded
+    value; see :func:`~api.auth.cookies.set_csrf_header` for why the header exists.
+
     :param response: The response to set cookies on.
     :param token_pair: The newly minted access/refresh pair.
     :param request: The incoming request, used to decide the cookie Secure flag.
     """
+    csrf_token = new_csrf_token()
     set_auth_cookies(
         response,
         access_token=token_pair.access_token,
         refresh_token=token_pair.refresh_token,
-        csrf_token=new_csrf_token(),
+        csrf_token=csrf_token,
         access_ttl=token_pair.expires_in,
         refresh_ttl=refresh_token_ttl_seconds(),
         secure=cookies_secure(request),
     )
+    set_csrf_header(response, csrf_token)
 
 
 def _may_mail(throttle: EmailSendThrottle, email: str, *, created: bool) -> bool:
@@ -656,10 +664,23 @@ def reset_password(
 
 
 @router.get("/me", summary="Get current user profile")
-def get_me(current_user: CurrentUser) -> UserResponse:
-    """Return the authenticated user's profile.
+def get_me(
+    response: Response,
+    current_user: CurrentUser,
+    csrf_cookie: Annotated[str | None, Cookie(alias=CSRF_COOKIE)] = None,
+) -> UserResponse:
+    """Return the authenticated user's profile, and the session's CSRF token with it.
 
+    The SPA probes this route on mount, which makes it the one place a page reload can
+    pick the CSRF token back up: the token lives in a cookie belonging to the API host,
+    and the SPA cannot read that cookie when the two run on different hosts. Nothing is
+    minted here -- the request's own cookie is handed straight back -- so a Bearer client,
+    which sends no such cookie, gets no header.
+
+    :param response: Response used to echo the CSRF token header.
     :param current_user: User from JWT token
+    :param csrf_cookie: The session's CSRF cookie; absent for Bearer clients
     :return: User profile data
     """
+    set_csrf_header(response, csrf_cookie)
     return UserResponse.from_user(current_user)

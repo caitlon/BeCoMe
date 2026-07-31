@@ -9,7 +9,13 @@ test_email_verification.py.
 from sqlmodel import select
 
 from api.db.models import User
-from tests.integration.api.conftest import register, register_verified, stored_accounts
+from tests.integration.api.conftest import (
+    auth_header,
+    register,
+    register_and_login,
+    register_verified,
+    stored_accounts,
+)
 
 PASSWORD = "SecurePass123!"
 
@@ -964,3 +970,93 @@ class TestCookieAuth:
         )
 
         assert resp.status_code == 200
+
+
+class TestCsrfTokenHeader:
+    """The CSRF token also travels as a response header, for an SPA on another host.
+
+    Every deployed environment serves the SPA and the API from separate hosts, and the
+    csrf_token cookie carries no Domain attribute, so it belongs to the API host alone:
+    the browser keeps sending it, while document.cookie hides it from the app. Reading
+    the cookie is therefore not something the SPA can do, and without another copy of the
+    value it cannot produce the X-CSRF-Token header logout requires. These tests pin the
+    header path end to end, never touching the cookie jar for the value.
+    """
+
+    PASSWORD = "SecurePass123!"
+
+    def _login(self, cookie_client, email):
+        """Register an activated user and log in, leaving the cookies in the client jar."""
+        register_verified(cookie_client, email, password=self.PASSWORD)
+        return cookie_client.post(
+            "/api/v1/auth/login",
+            data={"username": email, "password": self.PASSWORD},
+        )
+
+    def test_login_returns_the_token_it_just_set(self, cookie_client):
+        """The login response header carries the same value as the cookie it sets."""
+        resp = self._login(cookie_client, "csrflogin@example.com")
+
+        assert resp.status_code == 200
+        assert resp.headers["X-CSRF-Token"] == cookie_client.cookies.get("csrf_token")
+
+    def test_refresh_returns_the_rotated_token(self, cookie_client):
+        """A refresh mints a fresh CSRF cookie, so the header must carry the new value.
+
+        A client left holding the token from login would send a superseded one on the
+        next mutation and be refused.
+        """
+        issued = self._login(cookie_client, "csrfrefresh@example.com").headers["X-CSRF-Token"]
+
+        resp = cookie_client.post("/api/v1/auth/refresh")
+
+        assert resp.status_code == 200
+        rotated = resp.headers["X-CSRF-Token"]
+        assert rotated != issued
+        assert rotated == cookie_client.cookies.get("csrf_token")
+
+    def test_profile_echoes_the_token_from_the_request_cookie(self, cookie_client):
+        """The session probe is how the SPA picks the token back up after a page reload."""
+        self._login(cookie_client, "csrfme@example.com")
+
+        resp = cookie_client.get("/api/v1/auth/me")
+
+        assert resp.status_code == 200
+        assert resp.headers["X-CSRF-Token"] == cookie_client.cookies.get("csrf_token")
+
+    def test_profile_omits_the_header_for_a_bearer_client(self, client):
+        """No CSRF cookie on the request, no header on the response."""
+        token = register_and_login(client, "csrfbearer@example.com")
+
+        resp = client.get("/api/v1/auth/me", headers=auth_header(token))
+
+        assert resp.status_code == 200
+        assert "X-CSRF-Token" not in resp.headers
+
+    def test_logout_succeeds_on_the_header_value_alone(self, cookie_client):
+        """The deployed shape: the token comes from the response, never from the cookie.
+
+        The browser still sends the cookie, which is what arms the double-submit check;
+        the client only ever sees the value the API handed back.
+        """
+        issued = self._login(cookie_client, "csrfsplit@example.com").headers["X-CSRF-Token"]
+
+        resp = cookie_client.post("/api/v1/auth/logout", headers={"X-CSRF-Token": issued})
+
+        assert resp.status_code == 204
+
+    def test_profile_refuses_to_echo_a_cookie_that_would_split_the_response(self, cookie_client):
+        """A cookie value carrying a newline is dropped instead of written to a header.
+
+        Every character sent below is legal in a Cookie header, and Starlette's RFC 2109
+        unescape turns it into a real newline. uvicorn writes response headers without
+        validating them, so echoing the value unchecked would let the client inject one.
+        """
+        self._login(cookie_client, "csrfjunk@example.com")
+        cookie_client.cookies.set("csrf_token", '"\\012X-Injected: 1"')
+
+        resp = cookie_client.get("/api/v1/auth/me")
+
+        assert resp.status_code == 200
+        assert "X-CSRF-Token" not in resp.headers
+        assert "X-Injected" not in resp.headers
