@@ -131,8 +131,10 @@ Two settings gate the address checks in `api/services/email_policy.py` that run 
 All three environments run entirely on Railway, each with its own isolated Postgres and photo bucket. The database layer is hardened the same way across them: Alembic owns the schema, the app connects as the least-privilege `become_app` role, and the production and staging databases are internal-only.
 
 - **prod** is live: https://www.becomify.app (frontend) and https://api.becomify.app (API), `APP_ENV=prod`. Database is **Railway Postgres** (`prod-db`); profile photos live in a **Railway Storage Bucket** (`prod-photos`) served through the API photo proxy. Supabase is fully retired -- neither the database nor file storage uses it anymore.
-- **test / staging** is live from `staging`: https://test-backend-staging.up.railway.app (API) and https://test-frontend-staging.up.railway.app, on its own Railway Postgres (`test-db`) and bucket (`test-photos`), `APP_ENV=test`.
-- **dev** is deployed from `develop`: https://become-dev.up.railway.app (API) plus the dev frontend, on its own Railway Postgres (`dev-db`) and bucket (`dev-photos`). It also runs locally with no setup, since dev is the default profile.
+- **test / staging** is live from `staging`: https://harbor.becomify.app (frontend) and https://api-harbor.becomify.app (API), on its own Railway Postgres (`test-db`) and bucket (`test-photos`), `APP_ENV=test`.
+- **dev** is deployed from `develop`: https://atelier.becomify.app (frontend) and https://api-atelier.becomify.app (API), on its own Railway Postgres (`dev-db`) and bucket (`dev-photos`). It also runs locally with no setup, since dev is the default profile.
+
+Dev and staging moved off their generated `*.up.railway.app` hosts on 2026-07-31. They had to: `up.railway.app` is on the Public Suffix List, so a frontend and an API on two of those hosts count as different sites and the `SameSite=Strict` session cookies were never sent between them. Login answered `200` and the next request answered `401`, which looked like a broken session rather than a domain-topology problem. Production was never affected, since `www.becomify.app` and `api.becomify.app` share one registrable domain. The names avoid `dev` and `staging` so the environments are not found by guessing, though certificates are published to Certificate Transparency logs, so that is a speed bump rather than access control. Adding a domain, the `_railway-verify` TXT record a proxied CNAME needs, and the cutover order are covered by the `cloudflare-operations` skill.
 
 ## Where the code lives
 
