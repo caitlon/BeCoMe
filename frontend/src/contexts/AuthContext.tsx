@@ -80,7 +80,14 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
   }, [refreshUser]);
 
   const logout = useCallback(async () => {
-    await api.logout();
+    try {
+      await api.logout();
+    } catch (err) {
+      // A server that refuses the sign-out is no reason to leave the user holding a
+      // session they believe they closed -- on a shared machine that is the worse
+      // outcome of the two, and the session expires on its own regardless.
+      logger.debug('Logout request failed; clearing the local session anyway', { error: err });
+    }
     setUser(null);
     setStatus('unauthenticated');
     // Drop cached queries so the next account on this tab cannot see them.

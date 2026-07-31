@@ -48,6 +48,39 @@ class TestDocsExposure:
             get_settings.cache_clear()
 
 
+class TestCorsExposedHeaders:
+    """The browser is allowed to read the CSRF token header off a cross-origin reply."""
+
+    def test_csrf_token_header_is_readable_cross_origin(self, monkeypatch, tmp_path):
+        """A cross-origin response names X-CSRF-Token in Access-Control-Expose-Headers.
+
+        The SPA and the API sit on separate hosts in every deployed environment, and a
+        response header stays invisible to cross-origin JavaScript unless CORS says
+        otherwise. Listing the header under allow_headers covers only the request
+        direction, so without this the SPA gets the token handed to it and cannot see it.
+        """
+        from fastapi.testclient import TestClient
+
+        from api.config import get_settings
+        from api.main import create_app
+
+        # chdir out of the repository first: the real .env would otherwise decide which
+        # origins are allowed, and this test picks its own.
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("APP_ENV", "dev")
+        monkeypatch.setenv("SECRET_KEY", "a-sufficiently-strong-secret-value")
+        monkeypatch.setenv("CORS_ORIGINS", '["https://app.example.com"]')
+        get_settings.cache_clear()
+        try:
+            client = TestClient(create_app())
+            response = client.get("/api/v1/health", headers={"Origin": "https://app.example.com"})
+        finally:
+            get_settings.cache_clear()
+
+        assert response.status_code == 200
+        assert "X-CSRF-Token" in response.headers["access-control-expose-headers"]
+
+
 class TestSentryInit:
     """Sentry is initialised so no credential can ride along on an event."""
 

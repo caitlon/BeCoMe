@@ -202,6 +202,34 @@ describe('AuthContext', () => {
     expect(result.current.status).toBe('unauthenticated')
   })
 
+  it('clears the local session even when the logout request fails', async () => {
+    // A server that refuses the sign-out must not leave the user signed in. This is
+    // what a cookie-authenticated logout looked like on every deploy: the SPA could
+    // not read the csrf_token cookie, so the request came back 403.
+    const mockUser = createUser({ id: '1', email: 'test@example.com', first_name: 'Test' })
+    vi.mocked(api.getCurrentUser).mockResolvedValue(mockUser)
+    // Once, not for the rest of the file: clearAllMocks resets recorded calls but
+    // leaves an implementation in place, and the cases after this one expect a
+    // logout that succeeds.
+    vi.mocked(api.logout).mockRejectedValueOnce(new ForbiddenError('CSRF token missing or invalid'))
+
+    const { result } = renderHook(() => useAuth(), {
+      wrapper: AuthTestProviders,
+    })
+
+    await waitFor(() => {
+      expect(result.current.isAuthenticated).toBe(true)
+    })
+
+    await act(async () => {
+      await result.current.logout()
+    })
+
+    expect(result.current.user).toBeNull()
+    expect(result.current.isAuthenticated).toBe(false)
+    expect(result.current.status).toBe('unauthenticated')
+  })
+
   it('drops cached queries on logout so the next account cannot see them', async () => {
     const mockUser = createUser({ id: '1', email: 'test@example.com', first_name: 'Test' })
     vi.mocked(api.getCurrentUser).mockResolvedValue(mockUser)
