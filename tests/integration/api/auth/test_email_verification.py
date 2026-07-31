@@ -12,7 +12,11 @@ import dns.resolver
 import pytest
 from sqlmodel import select
 
-from api.auth.email_throttle import InMemoryEmailSendThrottle, get_verification_email_throttle
+from api.auth.email_throttle import (
+    DAILY_CAP,
+    InMemoryEmailSendThrottle,
+    get_verification_email_throttle,
+)
 from api.auth.login_throttle import InMemoryLoginThrottle, get_login_throttle
 from api.db.models import EmailVerificationToken, User
 from api.db.utils import utc_now
@@ -80,42 +84,39 @@ class TestRegistrationBranches:
         assert "/verify-email?token=" in fake_email.verification_calls[0]["verify_url"]
         assert fake_email.notice_calls == []
 
-    def test_taken_unverified_address_is_overwritten_and_relinked(
+    def test_taken_unverified_address_writes_nothing_and_mails_its_own_link(
         self, client, fake_email, unthrottled_email
     ):
-        """A repeat signup on an unverified address replaces the credentials it holds.
+        """A repeat signup leaves the account alone and gets a link of its own.
 
-        Nobody has proven control of the mailbox yet, so letting the first submission
-        stand would let an attacker pre-register a victim's address and know the
-        password of the account the victim later activates.
+        The submission travels on the link it minted instead of being written to the
+        account, so it takes effect only for whoever follows that link.
         """
-        # GIVEN - an unverified account someone else registered first
+        # GIVEN - an unverified account someone registered first
         register(client, "contested@example.com", password=DEFAULT_TEST_PASSWORD)
         first_link = _verify_token(fake_email)
 
         # WHEN - the address is registered again with different credentials and name
         response = register(
-            client, "contested@example.com", password=OTHER_PASSWORD, first_name="Rightful"
+            client, "contested@example.com", password=OTHER_PASSWORD, first_name="Later"
         )
 
-        # THEN - still one account, now carrying the newer submission
+        # THEN - still one account, still carrying what the first submission stored
         assert response.status_code == 202
         accounts = stored_accounts(client, "contested@example.com")
         assert len(accounts) == 1
-        assert accounts[0]["first_name"] == "Rightful"
+        assert accounts[0]["first_name"] == "Test"
 
-        # AND - a fresh link was mailed and the first one is dead
+        # AND - a second link was mailed and the first one is still alive
         assert len(fake_email.verification_calls) == 2
         second_link = _verify_token(fake_email)
         assert second_link != first_link
-        assert client.post("/api/v1/auth/verify-email", json={"token": first_link}).status_code == (
-            400
-        )
 
-        # AND - activating with the newer link opens the account with the newer password
+        # AND - following the second link applies the second submission
         assert (
             client.post("/api/v1/auth/verify-email", json={"token": second_link}).status_code == 200
         )
+        assert stored_accounts(client, "contested@example.com")[0]["first_name"] == "Later"
         assert _login(client, "contested@example.com", DEFAULT_TEST_PASSWORD).status_code == 401
         assert _login(client, "contested@example.com", OTHER_PASSWORD).status_code == 200
 
@@ -209,6 +210,87 @@ class TestRegistrationBranches:
         # THEN - the account still exists, waiting for a resend
         assert response.status_code == 202
         assert stored_accounts(client, "unreachable@example.com")
+
+
+class TestSignupTakeoverAttempts:
+    """A stranger submitting a pending address cannot decide what its link opens.
+
+    Both orderings are covered. Registering first is the familiar one, and registering
+    *after* the owner is the dangerous one: a stored last-write-wins password would let
+    anyone overwrite a pending signup and simply wait for the owner to click the link
+    they already have.
+    """
+
+    def test_the_owners_own_link_opens_the_account_on_the_owners_terms(
+        self, client, fake_email, unthrottled_email
+    ):
+        """A later submission does not change what an already-mailed link activates."""
+        # GIVEN - the rightful owner signs up and gets their link
+        register(client, "target@example.com", password=DEFAULT_TEST_PASSWORD)
+        owners_link = _verify_token(fake_email)
+
+        # WHEN - a stranger submits the same address with a password of their choosing,
+        # then the owner follows the link they were sent
+        register(client, "target@example.com", password=OTHER_PASSWORD, first_name="Stranger")
+        activated = client.post("/api/v1/auth/verify-email", json={"token": owners_link})
+
+        # THEN - the account is live on the owner's password, not the stranger's
+        assert activated.status_code == 200
+        assert _login(client, "target@example.com", DEFAULT_TEST_PASSWORD).status_code == 200
+        assert _login(client, "target@example.com", OTHER_PASSWORD).status_code == 401
+        assert stored_accounts(client, "target@example.com")[0]["first_name"] == "Test"
+
+    def test_a_suppressed_submission_cannot_ride_the_owners_link_either(self, client, fake_email):
+        """Throttling a stranger's mail must not leave their password behind.
+
+        The quiet variant of the same attack: the stranger's second submission is
+        suppressed by the per-address budget, so nothing lands in the owner's inbox to
+        arouse suspicion, and the owner activates with the link they already had.
+        """
+        # GIVEN - the owner signs up, then a stranger submits twice; the second send is
+        # suppressed by the per-address cooldown the first one started
+        register(client, "quiet@example.com", password=DEFAULT_TEST_PASSWORD)
+        owners_link = _verify_token(fake_email)
+        register(client, "quiet@example.com", password=OTHER_PASSWORD)
+        register(client, "quiet@example.com", password="ThirdChoice42!")
+        assert len(fake_email.verification_calls) == 2  # the owner's, and one stranger send
+
+        # WHEN
+        activated = client.post("/api/v1/auth/verify-email", json={"token": owners_link})
+
+        # THEN
+        assert activated.status_code == 200
+        assert _login(client, "quiet@example.com", DEFAULT_TEST_PASSWORD).status_code == 200
+        assert _login(client, "quiet@example.com", OTHER_PASSWORD).status_code == 401
+        assert _login(client, "quiet@example.com", "ThirdChoice42!").status_code == 401
+
+    def test_a_link_minted_before_activation_cannot_reopen_a_live_account(
+        self, client, fake_email, unthrottled_email
+    ):
+        """An unspent link goes dead the moment the address is confirmed.
+
+        It carries a password, so redeeming one after activation would rewrite the
+        credentials of an account somebody is already using.
+        """
+        # GIVEN - the owner's link and a stranger's link, both live
+        register(client, "held@example.com", password=DEFAULT_TEST_PASSWORD)
+        owners_link = _verify_token(fake_email)
+        register(client, "held@example.com", password=OTHER_PASSWORD)
+        strangers_link = _verify_token(fake_email)
+        assert client.post(
+            "/api/v1/auth/verify-email", json={"token": owners_link}
+        ).status_code == (200)
+
+        # WHEN - the stranger tries theirs afterwards
+        response = client.post("/api/v1/auth/verify-email", json={"token": strangers_link})
+
+        # THEN - refused, with the same opaque answer an unknown token gets
+        assert response.status_code == 400
+        assert response.content == (
+            client.post("/api/v1/auth/verify-email", json={"token": "garbage-token"}).content
+        )
+        assert _login(client, "held@example.com", DEFAULT_TEST_PASSWORD).status_code == 200
+        assert _login(client, "held@example.com", OTHER_PASSWORD).status_code == 401
 
 
 class TestRegistrationAddressPolicy:
@@ -427,7 +509,12 @@ class TestResendVerification:
         assert fake_email.verification_calls[-1]["to_email"] == "pending@example.com"
 
     def test_a_resent_link_activates_the_account(self, client, fake_email, unthrottled_email):
-        """The link a resend mails works, and the one it replaced does not."""
+        """The link a resend mails works, and it does not retire the earlier one.
+
+        Retiring outstanding links is how one submitter would kill another's pending
+        activation link, so a resend adds a link rather than replacing one. Whichever
+        is followed first activates the address; the rest go dead with it.
+        """
         # GIVEN
         register(client, "again@example.com")
         first = _verify_token(fake_email)
@@ -438,25 +525,52 @@ class TestResendVerification:
 
         # THEN
         assert second != first
-        assert client.post("/api/v1/auth/verify-email", json={"token": first}).status_code == 400
         assert client.post("/api/v1/auth/verify-email", json={"token": second}).status_code == 200
+        assert client.post("/api/v1/auth/verify-email", json={"token": first}).status_code == 400
+
+    def test_a_resent_link_leaves_the_stored_credentials_alone(
+        self, client, fake_email, unthrottled_email
+    ):
+        """A resend carries no submission, so following it changes no password.
+
+        The endpoint takes an address and nothing else, so it has no submission to
+        bind. Making it re-apply whatever the account happens to hold would undo a
+        password reset the same person had just completed.
+        """
+        # GIVEN - an account that reset its password while still unactivated
+        register(client, "reset-first@example.com", password=DEFAULT_TEST_PASSWORD)
+        client.post("/api/v1/auth/forgot-password", json={"email": "reset-first@example.com"})
+        reset_token = fake_email.calls[-1]["reset_url"].split("token=")[1]
+        assert client.post(
+            "/api/v1/auth/reset-password",
+            json={"token": reset_token, "new_password": OTHER_PASSWORD},
+        ).status_code == (204)
+
+        # WHEN - a resent link is followed
+        client.post("/api/v1/auth/resend-verification", json={"email": "reset-first@example.com"})
+        resent = _verify_token(fake_email)
+        assert client.post("/api/v1/auth/verify-email", json={"token": resent}).status_code == 200
+
+        # THEN - the password from the reset is the one that works
+        assert _login(client, "reset-first@example.com", OTHER_PASSWORD).status_code == 200
+        assert _login(client, "reset-first@example.com", DEFAULT_TEST_PASSWORD).status_code == 401
 
 
 class TestEmailThrottling:
-    """One per-address budget covers registration, notices, and resends."""
+    """One per-address budget covers repeat signups, notices, and resends."""
 
     def test_a_rapid_second_send_is_suppressed_without_changing_the_response(
         self, client, fake_email
     ):
-        """Registration and resend share one budget, and suppression is invisible."""
-        # GIVEN - registering already spent this address's allowance
+        """A resend spends the address's allowance; the next one is suppressed."""
+        # GIVEN - a registered account, its first resend already sent
         register(client, "flooded@example.com")
-        assert len(fake_email.verification_calls) == 1
-
-        # WHEN - two resends follow immediately
         first = client.post(
             "/api/v1/auth/resend-verification", json={"email": "flooded@example.com"}
         )
+        assert len(fake_email.verification_calls) == 2
+
+        # WHEN - another resend follows immediately
         second = client.post(
             "/api/v1/auth/resend-verification", json={"email": "flooded@example.com"}
         )
@@ -464,18 +578,59 @@ class TestEmailThrottling:
         # THEN - identical answers, and nothing more reached the inbox
         assert first.status_code == second.status_code == 202
         assert first.content == second.content
-        assert len(fake_email.verification_calls) == 1
+        assert len(fake_email.verification_calls) == 2
 
     def test_repeated_signups_cannot_flood_a_live_account_with_notices(self, client, fake_email):
         """Submitting a victim's address in a loop does not mail them repeatedly."""
-        # GIVEN - an activated account whose allowance the registration send consumed
+        # GIVEN - an activated account
         register_verified(client, "victim@example.com")
 
         # WHEN - the address is submitted twice more
         first = register(client, "victim@example.com")
         second = register(client, "victim@example.com")
 
-        # THEN
+        # THEN - one notice for the two attempts, and both answers are the same
         assert first.status_code == second.status_code == 202
         assert first.content == second.content
-        assert fake_email.notice_calls == []
+        assert len(fake_email.notice_calls) == 1
+
+    def test_a_first_signup_is_never_suppressed(self, client, fake_email):
+        """Creating an account always mails its link, whatever the budget says.
+
+        The branch that creates an account fires at most once per address, so it can
+        flood nothing. Charging it to the shared budget lets an unauthenticated caller
+        exhaust an address's allowance with resend requests before its owner has even
+        signed up: the signup then answers 202, creates the account, mails nothing, and
+        leaves a person who cannot log in and cannot get a link.
+        """
+        # GIVEN - a stranger burns the whole daily budget for an address with no account
+        for _ in range(DAILY_CAP):
+            client.post("/api/v1/auth/resend-verification", json={"email": "never@example.com"})
+
+        # WHEN - the real person signs up
+        response = register(client, "never@example.com")
+
+        # THEN - their activation link goes out, and it works
+        assert response.status_code == 202
+        assert len(fake_email.verification_calls) == 1
+        assert fake_email.verification_calls[0]["to_email"] == "never@example.com"
+        token = _verify_token(fake_email)
+        assert client.post("/api/v1/auth/verify-email", json={"token": token}).status_code == 200
+
+    def test_a_resend_with_nothing_to_send_spends_nothing(self, client, fake_email):
+        """A request naming an address with no pending signup leaves its budget intact.
+
+        Nobody has to authenticate to name someone else's address here, so a request
+        that sends no mail must not be able to spend the allowance a real one needs.
+        """
+        # GIVEN - an activated account, and a stranger emptying the daily budget at it
+        register_verified(client, "settled@example.com")
+        for _ in range(DAILY_CAP):
+            client.post("/api/v1/auth/resend-verification", json={"email": "settled@example.com"})
+        assert len(fake_email.verification_calls) == 1  # only the original signup
+
+        # WHEN - someone submits that address to the signup form
+        register(client, "settled@example.com")
+
+        # THEN - the owner is still told about it
+        assert len(fake_email.notice_calls) == 1

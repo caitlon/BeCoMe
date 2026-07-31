@@ -13,11 +13,14 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine, inspect, text
+from sqlalchemy.exc import IntegrityError
 
 pytestmark = pytest.mark.skipif(
     not shutil.which("pg_ctl"),
     reason="PostgreSQL not installed (pg_ctl not found in PATH)",
 )
+
+_TOKENS = "email_verification_tokens"
 
 # A clean database with no schema preloaded, so Alembic owns every table.
 try:
@@ -134,6 +137,10 @@ class TestEmailVerificationMigration:
                 ).one()
             assert row.email_verified_at == row.created_at
 
+            # AND - a token can carry the submission it was minted for
+            token_columns = {c["name"] for c in inspect(engine).get_columns(_TOKENS)}
+            assert {"hashed_password", "first_name", "last_name"} <= token_columns
+
             # WHEN - the migration is rolled back to its own down_revision (pinned,
             # not "-1", for the same reason)
             command.downgrade(config, "b1d9f4a2c7e3")
@@ -142,12 +149,54 @@ class TestEmailVerificationMigration:
             inspector = inspect(engine)
             columns = [c["name"] for c in inspector.get_columns("users")]
             assert "email_verified_at" not in columns
-            assert "email_verification_tokens" not in inspector.get_table_names()
+            assert _TOKENS not in inspector.get_table_names()
 
             # WHEN - re-applied (reversibility holds)
             command.upgrade(config, "21261c13bb2b")
 
             # THEN
-            assert "email_verification_tokens" in inspect(engine).get_table_names()
+            assert _TOKENS in inspect(engine).get_table_names()
+        finally:
+            engine.dispose()
+
+    def test_a_token_cannot_carry_half_a_submission(self, migration_pg, monkeypatch):
+        """The three credential columns are written together or not at all.
+
+        Redemption treats them as one value, so a row with only some of them set would
+        activate an account with a password and somebody else's name still on it.
+        """
+        # GIVEN - a database at this migration, holding one account
+        url = _url(migration_pg)
+        monkeypatch.setenv("ALEMBIC_DATABASE_URL", url)
+        engine = create_engine(url)
+
+        try:
+            command.upgrade(Config("alembic.ini"), "21261c13bb2b")
+            user_id = uuid4()
+            with engine.begin() as conn:
+                conn.execute(
+                    text(
+                        "INSERT INTO users "
+                        "(id, email, hashed_password, first_name, last_name, created_at) "
+                        "VALUES (:id, 'partial@example.com', 'hash', 'Part', 'Ial', :created_at)"
+                    ),
+                    {"id": str(user_id), "created_at": datetime(2026, 1, 1, tzinfo=UTC)},
+                )
+
+            # WHEN / THEN - a token with a password but no names is rejected
+            with pytest.raises(IntegrityError, match="credentials_complete"), engine.begin() as c:
+                c.execute(
+                    text(
+                        f"INSERT INTO {_TOKENS} "  # noqa: S608 - constant table name
+                        "(id, user_id, token_hash, hashed_password, created_at, expires_at) "
+                        "VALUES (:id, :user_id, :token_hash, 'a-hash', :now, :now)"
+                    ),
+                    {
+                        "id": str(uuid4()),
+                        "user_id": str(user_id),
+                        "token_hash": "a" * 64,
+                        "now": datetime(2026, 1, 1, tzinfo=UTC),
+                    },
+                )
         finally:
             engine.dispose()

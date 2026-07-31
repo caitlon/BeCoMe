@@ -168,7 +168,7 @@ async def register(
     # Blocking work (bcrypt plus the account write), so it runs in a worker thread
     # rather than freezing every other request on this worker for a few hundred ms.
     # The session is handed to that thread and back sequentially, never shared.
-    pending_user = await run_in_threadpool(
+    result = await run_in_threadpool(
         registration.register,
         email=data.email,
         password=data.password,
@@ -176,29 +176,32 @@ async def register(
         last_name=data.last_name,
     )
 
-    # Cap the emails a single address can be made to receive (a hashed key), so posting
-    # a victim's address to this endpoint from rotating IPs cannot flood their inbox
-    # past the per-IP limiter. Checked in every branch, and the response is unchanged
+    # Every branch that mails a repeat submission is capped per address (a hashed key),
+    # so posting a victim's address here from rotating IPs cannot flood their inbox past
+    # the per-IP limiter. The branch that just created the account is exempt: it fires at
+    # most once per address, since a second submission is by definition no longer free,
+    # and charging it to the shared budget would let five resend requests from a stranger
+    # deny a real signup the only link it will ever be sent. The response is unchanged
     # whether or not a send happens.
-    if throttle.allow(data.email):
-        if pending_user is not None:
-            verify_url = verification.create_verification_url(pending_user)
+    if result.user is not None:
+        if result.created or throttle.allow(data.email):
+            verify_url = verification.create_verification_url(result.user, result.credentials)
             await _send_quietly(
                 email_service.send_email_verification(to_email=data.email, verify_url=verify_url),
                 "verification_email_failed",
             )
-        else:
-            # A static reset link, never a minted token: an unauthenticated registration
-            # attempt must not be able to mail anyone a working password-reset link.
-            frontend = get_settings().frontend_base_url
-            await _send_quietly(
-                email_service.send_registration_attempt_notice(
-                    to_email=data.email,
-                    login_url=f"{frontend}/login",
-                    reset_url=f"{frontend}/forgot-password",
-                ),
-                "registration_notice_email_failed",
-            )
+    elif throttle.allow(data.email):
+        # A static reset link, never a minted token: an unauthenticated registration
+        # attempt must not be able to mail anyone a working password-reset link.
+        frontend = get_settings().frontend_base_url
+        await _send_quietly(
+            email_service.send_registration_attempt_notice(
+                to_email=data.email,
+                login_url=f"{frontend}/login",
+                reset_url=f"{frontend}/forgot-password",
+            ),
+            "registration_notice_email_failed",
+        )
 
     log_registration_attempt(data.email, request)
     return {"detail": _REGISTRATION_ACCEPTED}
@@ -277,14 +280,21 @@ def verify_email(
     """Redeem an activation token and mark the account's address verified.
 
     The emailed link points at the frontend, which posts the token here, so a mail
-    client prefetching the link with a GET cannot burn a single-use token.
+    client prefetching the link with a GET cannot burn a single-use token. Redeeming
+    also writes whatever the token carries -- the password and names of the submission
+    that minted it -- so the account opens on the terms of the person who followed the
+    link, not of whoever submitted the address most recently.
     InvalidVerificationTokenError and VerificationTokenExpiredError are handled by
     centralized middleware and both map to 400 with the same opaque message, so an
     unknown token cannot be told apart from a spent or expired one. Rate limited.
 
     :param request: FastAPI request (for rate limiting and logging)
     :param data: The raw token from the activation link
+    :param service: Email verification service
     :return: A fixed confirmation message
+    :raises InvalidVerificationTokenError: If the token is unknown, spent, or its
+        account is already verified
+    :raises VerificationTokenExpiredError: If the token has expired
     """
     user = service.verify_email(data.token)
     log_email_verified(user.id, request)
@@ -311,6 +321,12 @@ async def resend_verification(
     registration flow's per-address throttle: both land in the same inbox, so an
     attacker must not get a second allowance by switching endpoints. Rate limited.
 
+    The link this mails carries no submission, unlike the one registration mails: an
+    address is all this endpoint receives, so there is nothing to bind, and following
+    the link confirms the address without touching the stored password. See the
+    accepted risk in docs/security.md for what that means for an account somebody else
+    created.
+
     :param request: FastAPI request (for rate limiting and logging)
     :param data: Email address to send the activation link to
     :param service: Email verification service
@@ -318,13 +334,17 @@ async def resend_verification(
     :param throttle: Per-address cap on the emails the registration flow can trigger
     :return: A fixed acknowledgement message
     """
-    if throttle.allow(data.email):
-        verify_url = service.create_verification_url_for_email(data.email)
-        if verify_url is not None:
-            await _send_quietly(
-                email_service.send_email_verification(to_email=data.email, verify_url=verify_url),
-                "verification_email_failed",
-            )
+    # Look first, spend after. A request naming an address with nothing to resend must
+    # not consume that address's budget: it takes no authentication to name someone
+    # else's address here, and a spent budget silently suppresses the mail a genuine
+    # signup depends on.
+    pending = service.find_unverified_account(data.email)
+    if pending is not None and throttle.allow(data.email):
+        verify_url = service.create_verification_url(pending)
+        await _send_quietly(
+            email_service.send_email_verification(to_email=data.email, verify_url=verify_url),
+            "verification_email_failed",
+        )
 
     log_verification_email_requested(data.email, request)
     return {"detail": _RESEND_ACCEPTED}

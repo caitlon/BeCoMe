@@ -1,6 +1,5 @@
 """Unit tests for UserService."""
 
-from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
@@ -557,85 +556,3 @@ class TestUserServiceDeleteUser:
         # THEN
         mock_session.delete.assert_called_once_with(user)
         mock_session.commit.assert_called_once()
-
-
-class TestUserServiceOverwriteUnverifiedAccount:
-    """Tests for UserService.overwrite_unverified_account method."""
-
-    def test_replaces_the_password_and_names(self):
-        """A newer signup on an unverified address wins outright."""
-        # GIVEN
-        user = User(
-            id=uuid4(),
-            email="pending@example.com",
-            hashed_password="first-hash",
-            first_name="First",
-            last_name="Registrant",
-            email_verified_at=None,
-        )
-        mock_session = MagicMock()
-        service = UserService(mock_session)
-
-        # WHEN
-        with patch("api.services.user_service.hash_password", return_value="second-hash"):
-            updated = service.overwrite_unverified_account(
-                user,
-                password="NewPassword123!",
-                first_name="Second",
-                last_name="Registrant",
-            )
-
-        # THEN
-        assert updated.hashed_password == "second-hash"
-        assert updated.first_name == "Second"
-        mock_session.commit.assert_called_once()
-
-    def test_invalidates_the_cached_profile(self):
-        """The stored credentials changed, so the cached snapshot has to go."""
-        # GIVEN
-        user = User(
-            id=uuid4(),
-            email="pending@example.com",
-            hashed_password="first-hash",
-            first_name="First",
-            last_name="Registrant",
-            email_verified_at=None,
-        )
-        cache = MagicMock()
-        service = UserService(MagicMock(), cache)
-
-        # WHEN
-        with patch("api.services.user_service.hash_password", return_value="second-hash"):
-            service.overwrite_unverified_account(
-                user, password="NewPassword123!", first_name="Second", last_name="Registrant"
-            )
-
-        # THEN
-        cache.invalidate.assert_called_once_with(user.id)
-
-    def test_refuses_to_touch_a_verified_account(self):
-        """The precondition is enforced here too, not only at the call site.
-
-        Overwriting a verified account would hand whoever submitted the form a live
-        account belonging to someone else, so a misuse must fail loudly rather than
-        quietly succeed.
-        """
-        # GIVEN
-        user = User(
-            id=uuid4(),
-            email="active@example.com",
-            hashed_password="real-hash",
-            first_name="Real",
-            last_name="Owner",
-            email_verified_at=datetime(2026, 1, 1, tzinfo=UTC),
-        )
-        mock_session = MagicMock()
-        service = UserService(mock_session)
-
-        # WHEN / THEN
-        with pytest.raises(ValueError, match="verified"):
-            service.overwrite_unverified_account(
-                user, password="NewPassword123!", first_name="Imp", last_name="Ostor"
-            )
-        assert user.hashed_password == "real-hash"
-        mock_session.commit.assert_not_called()

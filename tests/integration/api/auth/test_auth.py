@@ -86,10 +86,11 @@ class TestRegister:
         # THEN
         assert response.status_code == 202
 
-        # AND - still one account, now carrying the newer submission's details
+        # AND - still one account, and the repeat left the stored row alone: an
+        # unactivated submission takes effect only when its own link is followed
         accounts = stored_accounts(client, "test@example.com")
         assert len(accounts) == 1
-        assert accounts[0]["first_name"] == "Second"
+        assert accounts[0]["first_name"] == "First"
 
     def test_register_short_password_fails(self, client):
         """Registration with password < 12 chars returns 422."""

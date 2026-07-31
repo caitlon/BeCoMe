@@ -75,45 +75,6 @@ class UserService(BaseService):
         )
         return saved
 
-    def overwrite_unverified_account(
-        self,
-        user: User,
-        password: str,
-        first_name: str,
-        last_name: str,
-    ) -> User:
-        """Replace an unverified account's credentials and names with a newer signup.
-
-        Nobody has proven control of the address yet, so the newest registrant's
-        details win. See :class:`~api.services.registration_service.RegistrationService`
-        for why that is the safe resolution rather than a resend.
-
-        :param user: The existing, still-unverified account.
-        :param password: Plain text password from the new registration (will be hashed)
-        :param first_name: First name from the new registration
-        :param last_name: Last name from the new registration
-        :return: The updated User instance
-        :raises ValueError: If the account's address is already verified. Overwriting
-            one would hand an attacker a live account, so the precondition is checked
-            here as well as at the call site.
-        """
-        if user.email_verified_at is not None:
-            raise ValueError("refusing to overwrite an account whose address is verified")
-
-        user.hashed_password = hash_password(password)
-        user.first_name = first_name
-        user.last_name = last_name
-        saved = self._save_and_refresh(user)
-        self._invalidate_cache(saved.id)
-        logger.info(
-            "Unverified account overwritten by a new registration",
-            extra={
-                "event": "unverified_account_overwritten",
-                "user_id": str(saved.id),
-            },
-        )
-        return saved
-
     def get_by_email(self, email: str) -> User | None:
         """Find user by email address.
 

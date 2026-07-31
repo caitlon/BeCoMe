@@ -29,7 +29,11 @@ def upgrade() -> None:
     ``created_at``, treating pre-existing accounts as verified as of when they
     registered. ``email_verification_tokens``
     mirrors ``password_reset_tokens``, storing only the SHA-256 hash of each
-    activation token.
+    activation token, and additionally the credentials of the submission that
+    minted it. Those are written to the account when the token is redeemed, so an
+    activation link always activates the submission it belongs to. They are NULL
+    together on a token minted by resend-verification, which carries no submission
+    of its own.
     """
     op.add_column("users", sa.Column("email_verified_at", sa.DateTime(), nullable=True))
 
@@ -42,9 +46,17 @@ def upgrade() -> None:
         sa.Column("id", sa.Uuid(), nullable=False),
         sa.Column("user_id", sa.Uuid(), nullable=False),
         sa.Column("token_hash", sa.String(length=64), nullable=False),
+        sa.Column("hashed_password", sa.String(length=255), nullable=True),
+        sa.Column("first_name", sa.String(length=100), nullable=True),
+        sa.Column("last_name", sa.String(length=100), nullable=True),
         sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.Column("expires_at", sa.DateTime(), nullable=False),
         sa.Column("used_at", sa.DateTime(), nullable=True),
+        sa.CheckConstraint(
+            "(hashed_password IS NULL) = (first_name IS NULL) "
+            "AND (hashed_password IS NULL) = (last_name IS NULL)",
+            name="ck_email_verification_tokens_credentials_complete",
+        ),
         sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
