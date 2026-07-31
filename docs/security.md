@@ -465,8 +465,9 @@ plus point-in-time recovery.
 
 Deleting a user must not silently destroy other people's work. Most child rows clear
 themselves through `ON DELETE CASCADE` (memberships, opinions, sent and received
-invitations, reset tokens). A project a user **admins** is shared data, so `projects.admin_id`
-uses `ON DELETE RESTRICT`: the database refuses to orphan or silently erase a shared project,
-which is why the erasure endpoint requires an explicit disposition for each one (see
-[GDPR](#gdpr-export-and-erasure)). Schema changes ship as reversible Alembic migrations run
-through the migration-only superuser URL, keeping DDL off the runtime role.
+invitations, reset tokens, activation tokens). A project a user **admins** is shared
+data, so `projects.admin_id` uses `ON DELETE RESTRICT`: the database refuses to orphan
+or silently erase a shared project, which is why the erasure endpoint requires an
+explicit disposition for each one (see [GDPR](#gdpr-export-and-erasure)). Schema changes
+ship as reversible Alembic migrations run through the migration-only superuser URL,
+keeping DDL off the runtime role.
