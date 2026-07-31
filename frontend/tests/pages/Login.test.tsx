@@ -302,6 +302,7 @@ describe('Login', () => {
       await user.click(screen.getByRole('button', { name: /try signing in again/i }));
 
       expect(getEmailInput()).toBeInTheDocument();
+      expect(getEmailInput()).toHaveValue('unverified@example.com');
       expect(screen.queryByRole('button', { name: /resend/i })).not.toBeInTheDocument();
     });
   });
