@@ -177,18 +177,28 @@ class Settings(BaseSettings):
     bucket_secret_access_key: str | None = None
     bucket_region: str = "auto"
 
-    # Email (transactional password reset). When the provider is "console" or the
-    # selected provider's credentials are unset, the reset link is logged rather
-    # than sent, so the flow still works offline in dev/CI/tests.
+    # Email (transactional: password reset, account verification). When the
+    # provider is "console" or the selected provider's credentials are unset, the
+    # link is logged rather than sent, so the flow still works offline in dev/CI/tests.
     email_provider: Literal["console", "http"] = "console"
     email_from: str = "no-reply@become.app"
     email_from_name: str = "BeCoMe"
-    # Public base URL of the FRONTEND, used to build the reset link in emails.
+    # Public base URL of the FRONTEND, used to build email links.
     frontend_base_url: str = "http://localhost:5173"
     password_reset_token_ttl_minutes: int = 60
+    # Longer than the password-reset window: an activation email is routinely opened
+    # the next morning, while a password reset is something the user is actively
+    # waiting for.
+    email_verification_token_ttl_hours: int = 24
     # HTTP transactional provider (Resend-style API).
     email_api_key: str | None = None
     email_api_url: str = "https://api.resend.com/emails"
+
+    # Kill switches for the registration email-address policy
+    # (api/services/email_policy.py). Both default on; flip either to false via
+    # a Railway env var -- no deploy needed -- if it starts rejecting real users.
+    disposable_email_blocking_enabled: bool = True
+    mx_check_enabled: bool = True
 
     def __init__(self, **kwargs: Any) -> None:
         """Load ``.env`` then ``.env.<APP_ENV>`` and inject the resolved profile.

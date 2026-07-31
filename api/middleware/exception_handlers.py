@@ -15,6 +15,7 @@ from api.auth.revocation_store import RevocationStoreError
 from api.exceptions import (
     AccountHasOwnedProjectsError,
     BeCoMeAPIError,
+    DisposableEmailDomainError,
     InvalidCredentialsError,
     InvalidResetTokenError,
     InvitationAlreadyUsedError,
@@ -27,6 +28,7 @@ from api.exceptions import (
     ProjectNotFoundError,
     ResetTokenExpiredError,
     ScaleRangeError,
+    UnresolvableEmailDomainError,
     UserAlreadyMemberError,
     UserExistsError,
     ValidationError,
@@ -65,6 +67,17 @@ EXCEPTION_MAP: dict[type[BeCoMeAPIError], tuple[int, str | None]] = {
     # Same opaque message for invalid and expired so neither can be distinguished.
     InvalidResetTokenError: (status.HTTP_400_BAD_REQUEST, "Invalid or expired reset token"),
     ResetTokenExpiredError: (status.HTTP_400_BAD_REQUEST, "Invalid or expired reset token"),
+    # Email-policy rejections (api/services/email_policy.py). Each carries its own
+    # distinguishable copy: both depend solely on the domain string, never on
+    # database state, so neither can leak whether an account already exists.
+    DisposableEmailDomainError: (
+        status.HTTP_400_BAD_REQUEST,
+        "That looks like a temporary address",
+    ),
+    UnresolvableEmailDomainError: (
+        status.HTTP_400_BAD_REQUEST,
+        "We could not find that domain. Check for a typo.",
+    ),
     # 401 Unauthorized
     InvalidCredentialsError: (
         status.HTTP_401_UNAUTHORIZED,

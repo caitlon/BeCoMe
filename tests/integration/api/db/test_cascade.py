@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 
 from api.db.models import (
     CalculationResult,
+    EmailVerificationToken,
     ExpertOpinion,
     Invitation,
     MemberRole,
@@ -199,9 +200,10 @@ class TestUserCascadeDelete:
     only assert that the raw delete does not error.
 
     In PostgreSQL the database enforces the foreign keys: memberships, opinions,
-    and reset tokens are cascade-deleted, while a user who still admins a project
-    is blocked by ON DELETE RESTRICT (the API rejects that with 409 first). For
-    the enforced behavior see test_postgres_integration.py::TestForeignKeyEnforcement.
+    reset tokens, and verification tokens are cascade-deleted, while a user who
+    still admins a project is blocked by ON DELETE RESTRICT (the API rejects that
+    with 409 first). For the enforced behavior see
+    test_postgres_integration.py::TestForeignKeyEnforcement.
     """
 
     def test_deleting_user_with_memberships_succeeds_in_sqlite(self, session):
@@ -328,6 +330,40 @@ class TestUserCascadeDelete:
         session.commit()
 
         # THEN — user is deleted
+        assert session.get(User, user_id) is None
+
+    def test_deleting_user_with_verification_tokens_succeeds_in_sqlite(self, session):
+        """
+        GIVEN a user with an email verification token
+        WHEN the user is deleted in SQLite
+        THEN deletion succeeds (passive_deletes delegates to DB)
+
+        In PostgreSQL, EmailVerificationToken rows are cascade-deleted by the DB.
+        """
+        # GIVEN
+        user = User(
+            email="user@example.com",
+            hashed_password="hash",
+            first_name="Test",
+            last_name="User",
+        )
+        session.add(user)
+        session.commit()
+
+        token = EmailVerificationToken(
+            user_id=user.id,
+            token_hash="a" * 64,
+            expires_at=datetime.now(UTC) + timedelta(hours=1),
+        )
+        session.add(token)
+        session.commit()
+        user_id = user.id
+
+        # WHEN
+        session.delete(user)
+        session.commit()
+
+        # THEN - user is deleted
         assert session.get(User, user_id) is None
 
     def test_deleting_admin_with_projects_succeeds_in_sqlite(self, session):

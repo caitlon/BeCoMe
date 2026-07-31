@@ -8,6 +8,7 @@ Run with: uv run pytest tests/integration/api/db/test_postgres_integration.py -v
 
 import shutil
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 import pytest
@@ -18,6 +19,7 @@ from sqlmodel import SQLModel, select
 
 from api.db.models import (
     CalculationResult,
+    EmailVerificationToken,
     ExpertOpinion,
     MemberRole,
     Project,
@@ -181,6 +183,38 @@ class TestForeignKeyEnforcement:
         assert pg_session.get(ProjectMember, membership_id) is None
         assert pg_session.get(ExpertOpinion, opinion_id) is None
         assert pg_session.get(CalculationResult, result_id) is None
+
+    def test_cascade_delete_verification_token_with_fk_enforcement(self, pg_session):
+        """
+        GIVEN a user with an email verification token
+        WHEN the user is deleted in PostgreSQL
+        THEN the token is cascade deleted
+        """
+        # GIVEN
+        user = User(
+            email="verify@example.com",
+            hashed_password="hash",
+            first_name="Verify",
+            last_name="User",
+        )
+        pg_session.add(user)
+        pg_session.commit()
+
+        token = EmailVerificationToken(
+            user_id=user.id,
+            token_hash="e" * 64,
+            expires_at=datetime.now(UTC) + timedelta(hours=1),
+        )
+        pg_session.add(token)
+        pg_session.commit()
+        token_id = token.id
+
+        # WHEN
+        pg_session.delete(user)
+        pg_session.commit()
+
+        # THEN - the token is cascade deleted
+        assert pg_session.get(EmailVerificationToken, token_id) is None
 
     def test_deleting_admin_with_project_is_restricted(self, pg_session):
         """

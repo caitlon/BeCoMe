@@ -134,6 +134,18 @@ class TestEmailEnabled:
         # THEN
         assert settings.password_reset_token_ttl_minutes == 60
 
+    def test_verification_token_ttl_defaults_to_24_hours(self):
+        """
+        GIVEN Settings without an explicit verification-token TTL
+        WHEN constructed
+        THEN email_verification_token_ttl_hours defaults to 24
+        """
+        # GIVEN / WHEN
+        settings = Settings(secret_key="test-secret-key")
+
+        # THEN
+        assert settings.email_verification_token_ttl_hours == 24
+
     def test_returns_false_for_console_provider(self):
         """
         GIVEN the default console email provider
@@ -173,6 +185,70 @@ class TestEmailEnabled:
 
         # WHEN / THEN
         assert settings.email_enabled is True
+
+
+class TestEmailPolicySettings:
+    """Tests for the registration email-address policy kill switches."""
+
+    def test_disposable_email_blocking_defaults_to_enabled(self):
+        """
+        GIVEN Settings without an explicit override
+        WHEN constructed
+        THEN disposable_email_blocking_enabled defaults to True
+        """
+        # GIVEN / WHEN
+        settings = Settings(secret_key="test-secret-key")
+
+        # THEN
+        assert settings.disposable_email_blocking_enabled is True
+
+    def test_mx_check_defaults_to_enabled(self):
+        """
+        GIVEN Settings without an explicit override
+        WHEN constructed
+        THEN mx_check_enabled defaults to True
+        """
+        # GIVEN / WHEN
+        settings = Settings(secret_key="test-secret-key")
+
+        # THEN
+        assert settings.mx_check_enabled is True
+
+    def test_disposable_email_blocking_can_be_disabled_via_env(self, monkeypatch, tmp_path):
+        """
+        GIVEN DISPOSABLE_EMAIL_BLOCKING_ENABLED=false in the environment
+        WHEN Settings is constructed
+        THEN the kill switch is off, with no code deploy required
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("APP_ENV", "dev")
+        monkeypatch.setenv("SECRET_KEY", "irrelevant-for-dev")
+        monkeypatch.setenv("DISPOSABLE_EMAIL_BLOCKING_ENABLED", "false")
+
+        # WHEN
+        settings = Settings()
+
+        # THEN
+        assert settings.disposable_email_blocking_enabled is False
+
+    def test_mx_check_can_be_disabled_via_env(self, monkeypatch, tmp_path):
+        """
+        GIVEN MX_CHECK_ENABLED=false in the environment
+        WHEN Settings is constructed
+        THEN the kill switch is off, with no code deploy required
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("APP_ENV", "dev")
+        monkeypatch.setenv("SECRET_KEY", "irrelevant-for-dev")
+        monkeypatch.setenv("MX_CHECK_ENABLED", "false")
+
+        # WHEN
+        settings = Settings()
+
+        # THEN
+        assert settings.mx_check_enabled is False
 
 
 class TestEnvironmentResolution:

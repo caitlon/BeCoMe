@@ -23,6 +23,7 @@ from api.services.data_export_service import DataExportService
 from api.services.email.base import EmailSender
 from api.services.email.console_email_sender import ConsoleEmailSender
 from api.services.email.resend_email_sender import ResendEmailSender
+from api.services.email_policy import EmailAddressPolicy
 from api.services.export.result_export_service import ResultExportService
 from api.services.invitation_service import InvitationService
 from api.services.opinion_service import OpinionService
@@ -140,6 +141,24 @@ def get_email_service() -> EmailSender:
     if settings.email_provider == "http" and settings.email_enabled:
         return ResendEmailSender(settings)
     return ConsoleEmailSender(settings)
+
+
+@lru_cache
+def get_email_address_policy() -> EmailAddressPolicy:
+    """Create the registration email-address policy, wired to its kill switches.
+
+    Cached as a process singleton: the settings that drive it are fixed for the
+    process, so the same policy (and its single ``dns.asyncresolver.Resolver``) is
+    reused across requests instead of being rebuilt -- and re-risking a
+    construction-time ``NoResolverConfiguration`` -- on every registration.
+
+    :return: An EmailAddressPolicy with both kill switches read from settings.
+    """
+    settings = get_settings()
+    return EmailAddressPolicy(
+        disposable_check_enabled=settings.disposable_email_blocking_enabled,
+        mx_check_enabled=settings.mx_check_enabled,
+    )
 
 
 @lru_cache(maxsize=1)

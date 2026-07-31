@@ -37,6 +37,11 @@ class User(SQLModel, table=True):
     # endpoint; None when unset. The public URL is built at serialization time.
     photo_url: str | None = Field(default=None, max_length=500)
     created_at: datetime = Field(default_factory=utc_now)
+    # NULL means the address is unverified. The email verification flow sets it, and
+    # from the release that wires that flow up the login route refuses to authenticate
+    # an account still carrying NULL. The column ships one release ahead of that and
+    # sits inert until then, so it is read by nothing in between.
+    email_verified_at: datetime | None = Field(default=None)
 
     owned_projects: list["Project"] = Relationship(
         back_populates="admin",
@@ -51,6 +56,10 @@ class User(SQLModel, table=True):
         sa_relationship_kwargs={"passive_deletes": True},
     )
     reset_tokens: list["PasswordResetToken"] = Relationship(
+        back_populates="user",
+        sa_relationship_kwargs={"passive_deletes": True},
+    )
+    verification_tokens: list["EmailVerificationToken"] = Relationship(
         back_populates="user",
         sa_relationship_kwargs={"passive_deletes": True},
     )
@@ -205,8 +214,8 @@ class PasswordResetToken(SQLModel, table=True):
     ``secrets.token_urlsafe``), email the RAW token to the user, and persist only
     ``hashlib.sha256(raw.encode()).hexdigest()`` in ``token_hash``. Validation
     re-hashes the incoming token and looks it up by ``token_hash``, so a database
-    leak never exposes a usable token. (The reset flow itself is not implemented
-    yet; this schema is secure by default for when it is.)
+    leak never exposes a usable token. (The reset flow is implemented in
+    ``PasswordResetService``.)
     """
 
     __tablename__ = "password_reset_tokens"
@@ -220,6 +229,30 @@ class PasswordResetToken(SQLModel, table=True):
     used_at: datetime | None = Field(default=None)
 
     user: User = Relationship(back_populates="reset_tokens")
+
+
+class EmailVerificationToken(SQLModel, table=True):
+    """Token for verifying a user's email address after registration.
+
+    Only the SHA-256 hash of the verification token is stored, never the raw
+    value, mirroring ``PasswordResetToken``: a high-entropy token (for example
+    via ``secrets.token_urlsafe``) is emailed to the user as the activation
+    link, and only ``hashlib.sha256(raw.encode()).hexdigest()`` is persisted in
+    ``token_hash``. Validation re-hashes the incoming token and looks it up by
+    ``token_hash``, so a database leak never hands out a usable activation link.
+    """
+
+    __tablename__ = "email_verification_tokens"
+
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    user_id: UUID = Field(foreign_key=_USERS_FK, index=True, ondelete="CASCADE")
+    # SHA-256 hex digest of the raw token (exactly 64 chars); the raw token is never stored.
+    token_hash: str = Field(unique=True, index=True, min_length=64, max_length=64)
+    created_at: datetime = Field(default_factory=utc_now)
+    expires_at: datetime
+    used_at: datetime | None = Field(default=None)
+
+    user: User = Relationship(back_populates="verification_tokens")
 
 
 class CalculationResult(SQLModel, table=True):

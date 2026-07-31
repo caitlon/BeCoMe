@@ -1,13 +1,16 @@
 """Tests for the user profile cache."""
 
+import json
 from datetime import UTC, datetime
 from uuid import uuid4
+
+import pytest
 
 from api.db.models import User
 from api.services.user_cache import CachedUserData
 
 
-def _sample_user() -> User:
+def _sample_user(email_verified_at: datetime | None = None) -> User:
     return User(
         id=uuid4(),
         email="alice@example.com",
@@ -16,6 +19,7 @@ def _sample_user() -> User:
         last_name="Smith",
         photo_url="key/photo.jpg",
         created_at=datetime(2026, 1, 1, tzinfo=UTC),
+        email_verified_at=email_verified_at,
     )
 
 
@@ -32,6 +36,41 @@ def test_cached_user_data_never_serializes_hashed_password():
     assert "secret-hash" not in data.to_json()
 
 
+def test_cached_user_data_roundtrip_preserves_email_verified_at_when_set():
+    """A verified user's timestamp survives a to_json/from_json roundtrip."""
+    verified_at = datetime(2026, 1, 5, tzinfo=UTC)
+    user = _sample_user(email_verified_at=verified_at)
+    data = CachedUserData.from_user(user)
+    restored = CachedUserData.from_json(data.to_json())
+    assert restored == data
+    assert restored.email_verified_at == verified_at
+
+
+def test_cached_user_data_roundtrip_preserves_email_verified_at_when_none():
+    """An unverified user's None survives a to_json/from_json roundtrip."""
+    user = _sample_user(email_verified_at=None)
+    data = CachedUserData.from_user(user)
+    restored = CachedUserData.from_json(data.to_json())
+    assert restored == data
+    assert restored.email_verified_at is None
+
+
+def test_from_json_missing_email_verified_at_key_raises_value_error():
+    """A payload shaped like the old v1 cache entry lacks the key and must miss, not crash."""
+    payload = json.dumps(
+        {
+            "id": str(uuid4()),
+            "email": "old@example.com",
+            "first_name": "Old",
+            "last_name": "Shape",
+            "photo_url": None,
+            "created_at": datetime(2026, 1, 1, tzinfo=UTC).isoformat(),
+        }
+    )
+    with pytest.raises(ValueError, match="invalid cached user data"):
+        CachedUserData.from_json(payload)
+
+
 def test_to_user_rebuilds_user_with_empty_hash():
     user = _sample_user()
     restored = CachedUserData.from_user(user).to_user()
@@ -40,6 +79,14 @@ def test_to_user_rebuilds_user_with_empty_hash():
     assert restored.email == user.email
     assert restored.first_name == user.first_name
     assert restored.hashed_password == ""
+
+
+def test_to_user_carries_email_verified_at():
+    """to_user() threads email_verified_at through to the rebuilt transient User."""
+    verified_at = datetime(2026, 1, 5, tzinfo=UTC)
+    user = _sample_user(email_verified_at=verified_at)
+    restored = CachedUserData.from_user(user).to_user()
+    assert restored.email_verified_at == verified_at
 
 
 def test_in_memory_cache_get_set_invalidate():
@@ -101,7 +148,7 @@ def test_redis_cache_roundtrip_and_key():
     data = CachedUserData.from_user(_sample_user())
     cache.set(data, ttl_seconds=60)
     assert cache.get(data.id) == data
-    assert client.ttl(f"user:profile:v1:{data.id}") > 0
+    assert client.ttl(f"user:profile:v2:{data.id}") > 0
 
 
 def test_redis_cache_invalidate_removes_key():
@@ -174,7 +221,8 @@ def test_redis_cache_treats_corrupted_value_as_miss():
     user_id = uuid4()
     client.set(
         key_template(user_id),
-        b'{"id": 42, "email": "e@x.com", "first_name": "A", "last_name": "B", "photo_url": null, "created_at": "2026-01-01T00:00:00+00:00"}',
+        b'{"id": 42, "email": "e@x.com", "first_name": "A", "last_name": "B", "photo_url": null, '
+        b'"created_at": "2026-01-01T00:00:00+00:00", "email_verified_at": null}',
     )
     assert cache.get(user_id) is None
 
@@ -182,7 +230,8 @@ def test_redis_cache_treats_corrupted_value_as_miss():
     user_id = uuid4()
     client.set(
         key_template(user_id),
-        b'{"id": "not-a-uuid", "email": "e@x.com", "first_name": "A", "last_name": "B", "photo_url": null, "created_at": "2026-01-01T00:00:00+00:00"}',
+        b'{"id": "not-a-uuid", "email": "e@x.com", "first_name": "A", "last_name": "B", '
+        b'"photo_url": null, "created_at": "2026-01-01T00:00:00+00:00", "email_verified_at": null}',
     )
     assert cache.get(user_id) is None
 
