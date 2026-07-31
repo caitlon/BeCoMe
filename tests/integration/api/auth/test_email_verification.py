@@ -460,6 +460,39 @@ class TestActivationPasswordGuessing:
             client.app.dependency_overrides.pop(get_activation_throttle, None)
             client.app.dependency_overrides.pop(get_login_throttle, None)
 
+    def test_locking_out_one_token_leaves_a_different_token_usable(
+        self, client, fake_email, unthrottled_email
+    ):
+        """Burning one token's budget must not lock a distinct token for the account.
+
+        The counter keys on the token's hash, not the account, so a token obtained
+        without ongoing mailbox access -- forwarded, intercepted, however it got out --
+        can be burned without denying the owner a different, freshly resent link. A
+        bucket shared by every token would let that one token deny every other one,
+        which is a narrower instance of the same denial the login/activation split
+        above already guards against.
+        """
+        # GIVEN - two live tokens for one account, and a lockout that trips after two
+        # failures
+        activation_throttle = InMemoryLoginThrottle(max_failures=2, window_seconds=3600)
+        client.app.dependency_overrides[get_activation_throttle] = lambda: activation_throttle
+        try:
+            register(client, "twotokens@example.com", password=DEFAULT_TEST_PASSWORD)
+            first = _verify_token(fake_email)
+            _resend(client, "twotokens@example.com", OTHER_PASSWORD)
+            second = _verify_token(fake_email)
+            assert second != first
+
+            # WHEN - the first token's budget is burned by repeated wrong guesses
+            assert _activate(client, first, "WrongGuess111!").status_code == 403
+            assert _activate(client, first, "WrongGuess222!").status_code == 403
+            assert _activate(client, first, DEFAULT_TEST_PASSWORD).status_code == 429
+
+            # THEN - the second, distinct token for the same account still activates
+            assert _activate(client, second, OTHER_PASSWORD).status_code == 200
+        finally:
+            client.app.dependency_overrides.pop(get_activation_throttle, None)
+
     def test_failed_logins_do_not_block_the_victims_own_activation(self, client, fake_email):
         """A run of failed /login attempts must not deny someone their own activation.
 

@@ -335,16 +335,29 @@ def verify_email(
     answers 403 instead, on purpose: the caller already holds a live link, and telling
     someone who mistyped that their link is broken would send them off for another one.
 
-    That leaves a guessing oracle, capped by its own per-account lockout -- distinct
-    from the one POST /login uses. A run of failed logins, which anyone who merely
-    knows the address can produce without ever holding a link, never touches this
-    counter, so it can never deny someone their own activation; only a caller who
-    already holds a live token can move it at all. The two budgets are independent and
-    they add up: ten failures each per window, not ten between them. Sharing one counter
-    would bound the total and is precisely what brings the denial back, and the extra
-    guesses are reachable only by someone who has read the mailbox and could already
-    take the account through forgot-password. A mismatch here does spend from the login
-    counter as well, which costs the guesser their login budget. Rate limited.
+    That leaves a guessing oracle, capped by its own lockout -- distinct from the one
+    POST /login uses. A run of failed logins, which anyone who merely knows the address
+    can produce without ever holding a link, never touches this counter, so it can
+    never deny someone their own activation; only a caller who already holds a live
+    token can move it at all. The two budgets are independent and they add up: ten
+    failures each per window, not ten between them. Sharing one counter across the two
+    endpoints would bound the total and is precisely what brings the denial back, and
+    the extra guesses are reachable only by someone who has read the mailbox and could
+    already take the account through forgot-password. A mismatch here does spend from
+    the login counter as well, which costs the guesser their login budget. Rate limited.
+
+    The lockout keys on the token's hash, not the account. Issuing a link never retires
+    an earlier one (several can be outstanding for one unconfirmed address at once), so
+    a bucket shared by every token would reopen the same shape of denial one level down:
+    whoever merely obtains a single token -- forwarded by its recipient, or intercepted,
+    short of reading the mailbox itself -- could spend the account's whole activation
+    budget against it and, because every failure refreshes the window, keep it spent,
+    locking the owner out of a different, freshly resent link. Keying on the token
+    confines that damage to the token it was spent against. It leaves the guessing bound
+    above untouched -- any one token still allows at most ten activation failures
+    against its own password -- and it hands out no extra guesses either: a resend only
+    ever mints a token carrying the password its own caller submitted, so minting more
+    tokens never buys a guess against a password that caller does not already hold.
 
     Both counters are cleared once the token is redeemed. Clearing the login one is
     what stops a user who mistyped a few times from being told their address is
@@ -357,8 +370,8 @@ def verify_email(
     :param request: FastAPI request (for rate limiting and logging)
     :param data: The raw token from the activation link and its password
     :param service: Email verification service
-    :param throttle: Per-account activation-guess throttle (lockout after repeated
-        mismatches on this endpoint)
+    :param throttle: Per-token activation-guess throttle (lockout after repeated
+        mismatches against this token)
     :param login_throttle: Per-account login throttle; a mismatch spends from it too, so
         activation guessing costs the guesser their login budget, and a redemption clears
         it, but it is never consulted here
@@ -366,8 +379,8 @@ def verify_email(
     :raises InvalidVerificationTokenError: If the token is unknown, spent, or its
         account is already verified
     :raises VerificationTokenExpiredError: If the token has expired
-    :raises LoginThrottledError: If the account is locked after repeated activation
-        mismatches
+    :raises LoginThrottledError: If this token is locked after repeated activation
+        mismatches against it
     :raises VerificationPasswordMismatchError: If the password is not the one the
         token carries
     """
@@ -376,16 +389,16 @@ def verify_email(
     # account that is already verified, which is what keeps this endpoint from being
     # able to lock a live account out of its own login.
     pending = service.resolve_pending_activation(data.token)
-    if throttle.is_locked(pending.email):
+    if throttle.is_locked(pending.record.token_hash):
         raise LoginThrottledError
     try:
         user = service.activate(pending, data.password)
     except VerificationPasswordMismatchError:
-        throttle.record_failure(pending.email)
+        throttle.record_failure(pending.record.token_hash)
         login_throttle.record_failure(pending.email)
         log_verification_password_mismatch(pending.user_id, request)
         raise
-    throttle.reset(pending.email)
+    throttle.reset(pending.record.token_hash)
     # And the login counter this endpoint's own mismatches spent from, or a user who
     # fumbled the password a few times would be told their address is confirmed and
     # then locked out of the sign-in that follows.

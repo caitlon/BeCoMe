@@ -1,17 +1,24 @@
-"""Per-account failure throttling, guarding both login and activation password guesses.
+"""Failure throttling guarding both login and activation password guesses.
 
 The per-IP rate limiter only bounds one source; an attacker spreading guesses across
-many IPs can still hammer a single account. This throttle counts failed password
-attempts per account (keyed by a hash of the email) and locks the account for a cooldown
-once the threshold is passed, so the number of guesses per account is capped no matter
+many IPs can still hammer a single target. This throttle counts failed password
+attempts against a caller-chosen identifier and locks that identifier out for a cooldown
+once the threshold is passed, so the number of guesses against it is capped no matter
 how the requests are distributed. It fails open: if the shared store is unreachable the
-account is treated as unlocked, so a store outage never denies every attempt.
+identifier is treated as unlocked, so a store outage never denies every attempt.
 
-Two flows share this mechanism but never a counter. ``POST /login`` and
-``POST /verify-email`` each answer to their own lockout, distinguished by a Redis key
-prefix, so a run of failed logins -- which anyone who merely knows the address can
-produce without ever holding an activation link -- cannot lock someone out of their own
-activation.
+Two flows share this mechanism but never a counter, and each keys it on something
+different. ``POST /login`` hashes the account's normalized email, so the lockout follows
+the address no matter which token, if any, a caller presents. ``POST /verify-email``
+hashes the token's own stored hash instead, so only a caller who already holds a live
+token can move it at all, and a run of failed logins -- which anyone who merely knows
+the address can produce without ever holding an activation link -- cannot lock someone
+out of their own activation. Keying activation on the token rather than the account also
+confines a burned token's damage to itself: an address can carry several live tokens at
+once, and a shared per-account bucket would let one obtained token -- forwarded or
+intercepted, not read from the mailbox -- exhaust the whole account's budget and deny a
+different, freshly resent link along with it. The two flows are further distinguished by
+a Redis key prefix.
 
 The two budgets are therefore independent, and they add up: ``MAX_FAILURES`` each per
 window, not ``MAX_FAILURES`` between them. Sharing one counter is the only thing that
@@ -47,13 +54,13 @@ ACTIVATION_KEY_PREFIX = "activation"
 
 
 def _digest(identifier: str) -> str:
-    """Return the SHA-256 hex digest of a normalized email, so no address is stored."""
+    """Return the SHA-256 hex digest of a normalized identifier, so no raw value is stored."""
     return hashlib.sha256(identifier.strip().lower().encode()).hexdigest()
 
 
 @runtime_checkable
 class LoginThrottle(Protocol):
-    """Backend tracking failed password attempts per account."""
+    """Backend tracking failed password attempts against a caller-chosen identifier."""
 
     def record_failure(self, identifier: str) -> None: ...
     def is_locked(self, identifier: str) -> bool: ...

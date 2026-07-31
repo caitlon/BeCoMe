@@ -107,27 +107,43 @@ A wrong password answers `403` with its own wording, not the opaque `400` the to
 share. Whoever reaches that point already holds a live link, so admitting the link is fine
 tells them nothing new -- while telling a user who mistyped that their link is broken would
 send them round the loop asking for another one that would fail the same way. The guessing
-oracle that opens is capped by its own per-account lockout (`api/auth/login_throttle.py`),
+oracle that opens is capped by its own per-token lockout (`api/auth/login_throttle.py`),
 namespaced apart from the one `/login` uses: this endpoint's lockout can only be tripped by
 someone who already holds a live token, so a run of failed logins -- which anyone who merely
 knows the address can produce -- can never deny someone their own activation.
 
-**The two budgets are independent, and they add up.** Each endpoint allows 10 failures per
-account per 15 minutes and consults only its own counter, so nine failed logins followed by ten
-activation guesses is nineteen wrong passwords against one account inside a window. A shared
-counter is the only thing that would bound the total, and a shared counter is exactly what the
-split exists to prevent. Moving the login counter takes no credential and every failure
-refreshes its expiry, so any endpoint that reads it can be held shut indefinitely by a stranger
-who knows nothing but the address. The activation counter cannot be moved without a live
-single-use token, and that token exists in one place: the mailbox it was sent to. Whoever
-reaches the extra ten guesses has therefore already read the mail, and reading the mail takes
-the account outright through `forgot-password` without guessing at anything. The extra guesses
-hand an attacker a weaker capability than the one they used to get them. A mismatch does still
-spend from the login counter, which costs the guesser instead of bounding them: ten activation
-mismatches lock `/login` too, so the total only grows when the login guesses come first.
+**The lockout keys on the token's hash, not the account.** Issuing a link never retires an
+earlier one (see above), so one unconfirmed address can carry several live tokens at the same
+time. A single bucket shared by all of them would reopen, one level down, the same shape of
+denial the login/activation split above already prevents: anyone who merely obtains a single
+token -- forwarded by its recipient, or intercepted, rather than read from the mailbox itself
+-- could spend the account's entire activation budget against it and, because every failure
+refreshes the window, keep it spent indefinitely, locking the real owner out of a different,
+freshly resent link they hold instead. Keying on the token confines that damage to the token
+it was spent against. It does not widen what one token can be guessed: any single token still
+allows at most ten activation failures against its own password, the same bound described
+below. Nor does it hand an attacker more guesses to spend -- `resend-verification` only ever
+mints a token carrying the password its own caller submitted, and the mail carrying it goes to
+the account's address, not back to whoever asked, so minting more tokens never buys a guess
+against a password the caller does not already know.
+
+**The two budgets are independent, and they add up.** Each endpoint allows 10 failures per 15
+minutes and consults only its own counter -- login's keyed per account, activation's per token
+-- so nine failed logins followed by ten activation guesses against one token is nineteen wrong
+passwords reachable against that token's password inside a window. A shared counter is the only
+thing that would bound the total, and a shared counter is exactly what the split exists to
+prevent. Moving the login counter takes no credential and every failure refreshes its expiry,
+so any endpoint that reads it can be held shut indefinitely by a stranger who knows nothing but
+the address. The activation counter cannot be moved without a live single-use token, and that
+token exists in one place: the mailbox it was sent to. Whoever reaches the extra ten guesses has
+therefore already read the mail, and reading the mail takes the account outright through
+`forgot-password` without guessing at anything. The extra guesses hand an attacker a weaker
+capability than the one they used to get them. A mismatch does still spend from the login
+counter, which costs the guesser instead of bounding them: ten activation mismatches lock
+`/login` too, so the total only grows when the login guesses come first.
 `POST /auth/reset-password` clears the login lockout on success, so an attacker's failed
-guesses cannot keep an account locked out of login after its owner has proven control of the
-address and set a new password.
+guesses cannot keep an account locked out of login after its owner has proven control of
+the address and set a new password.
 
 The notice mail carries a static `/forgot-password` link, never a minted reset token -- an
 unauthenticated registration attempt must not be able to mail anyone a working reset link.
