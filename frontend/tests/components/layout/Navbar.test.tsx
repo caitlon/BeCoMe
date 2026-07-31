@@ -1,8 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen, within, act } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { screen, within, act, waitFor, renderHook } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { render, framerMotionMock } from '@tests/utils';
 import { Navbar } from '@/components/layout/Navbar';
+import { useToast } from '@/hooks/use-toast';
 
 // Use vi.hoisted for mock variables
 const { mockUser, mockLogout, mockPathname } = vi.hoisted(() => ({
@@ -260,5 +261,58 @@ describe('Navbar - Mobile Menu (authenticated)', () => {
     await user.click(logoutButton);
 
     expect(mockLogout).toHaveBeenCalled();
+  });
+});
+
+describe('Navbar - Logout Outcome', () => {
+  const originalLocation = window.location;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // A plain object stand-in avoids happy-dom's real navigation handling, so the
+    // assertions below can tell "navigated" and "stayed put" apart reliably.
+    Object.defineProperty(window, 'location', {
+      value: { href: '' },
+      writable: true,
+    });
+  });
+
+  afterEach(() => {
+    Object.defineProperty(window, 'location', {
+      value: originalLocation,
+      writable: true,
+    });
+  });
+
+  it('navigates home after a successful sign-out', async () => {
+    mockLogout.mockResolvedValueOnce(undefined);
+    const user = userEvent.setup();
+    render(<Navbar />);
+
+    await user.click(screen.getByText('John Doe'));
+    await user.click(screen.getByRole('menuitem', { name: /log out|sign out/i }));
+
+    await waitFor(() => {
+      expect(window.location.href).toBe('/');
+    });
+  });
+
+  it('stays put and shows a destructive toast when sign-out fails', async () => {
+    mockLogout.mockRejectedValueOnce(new Error('Network error'));
+    const user = userEvent.setup();
+    const { result } = renderHook(() => useToast());
+
+    render(<Navbar />);
+    await user.click(screen.getByText('John Doe'));
+    await user.click(screen.getByRole('menuitem', { name: /log out|sign out/i }));
+
+    await waitFor(() => {
+      expect(result.current.toasts[0]).toMatchObject({
+        title: 'Sign-out failed',
+        description: 'Sign-out did not go through. Your session may still be active. Please try again.',
+        variant: 'destructive',
+      });
+    });
+    expect(window.location.href).toBe('');
   });
 });

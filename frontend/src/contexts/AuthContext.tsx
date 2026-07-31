@@ -80,18 +80,28 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
   }, [refreshUser]);
 
   const logout = useCallback(async () => {
+    let logoutFailed = false;
+    let logoutError: unknown;
     try {
       await api.logout();
     } catch (err) {
       // A server that refuses the sign-out is no reason to leave the user holding a
       // session they believe they closed -- on a shared machine that is the worse
-      // outcome of the two, and the session expires on its own regardless.
+      // outcome of the two. Clear the local session below regardless, but keep the
+      // failure and re-throw once it is clean: swallowing it entirely would make a
+      // failed sign-out look identical to a real one, and the caller is what can
+      // tell the user the server session may still be alive.
+      logoutFailed = true;
+      logoutError = err;
       logger.debug('Logout request failed; clearing the local session anyway', { error: err });
     }
     setUser(null);
     setStatus('unauthenticated');
     // Drop cached queries so the next account on this tab cannot see them.
     queryClient.clear();
+    if (logoutFailed) {
+      throw logoutError;
+    }
   }, [queryClient]);
 
   const value = useMemo(() => ({

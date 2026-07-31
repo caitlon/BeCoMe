@@ -202,10 +202,13 @@ describe('AuthContext', () => {
     expect(result.current.status).toBe('unauthenticated')
   })
 
-  it('clears the local session even when the logout request fails', async () => {
+  it('clears the local session and propagates the failure when the logout request fails', async () => {
     // A server that refuses the sign-out must not leave the user signed in. This is
     // what a cookie-authenticated logout looked like on every deploy: the SPA could
-    // not read the csrf_token cookie, so the request came back 403.
+    // not read the csrf_token cookie, so the request came back 403. Clearing the
+    // local session is not enough on its own though -- a caller that never learns
+    // the server-side session survived would show the exact same success state as
+    // a real sign-out, which is worse than an error on a shared machine.
     const mockUser = createUser({ id: '1', email: 'test@example.com', first_name: 'Test' })
     vi.mocked(api.getCurrentUser).mockResolvedValue(mockUser)
     // Once, not for the rest of the file: clearAllMocks resets recorded calls but
@@ -221,10 +224,21 @@ describe('AuthContext', () => {
       expect(result.current.isAuthenticated).toBe(true)
     })
 
+    // Catch inside act() rather than asserting on the rejected act() promise itself:
+    // act() only flushes the state updates queued before the throw when its own
+    // callback settles without rejecting, so the throw is captured here and
+    // checked on the side, letting the surrounding act() see a normal resolution.
+    let caughtError: unknown
     await act(async () => {
-      await result.current.logout()
+      try {
+        await result.current.logout()
+      } catch (err) {
+        caughtError = err
+      }
     })
 
+    expect(caughtError).toBeInstanceOf(Error)
+    expect((caughtError as Error).message).toBe('CSRF token missing or invalid')
     expect(result.current.user).toBeNull()
     expect(result.current.isAuthenticated).toBe(false)
     expect(result.current.status).toBe('unauthenticated')

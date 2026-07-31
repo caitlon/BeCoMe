@@ -310,6 +310,31 @@ describe('Profile - Delete Account', () => {
       expect(mockNavigate).toHaveBeenCalledWith('/');
     });
   });
+
+  it('still navigates home and confirms deletion when the post-deletion sign-out fails', async () => {
+    // The account is already gone by the time this runs, so a failed sign-out
+    // request here has nothing left to protect -- it must not be mistaken for a
+    // failed deletion or leave the dialog stuck open.
+    const user = userEvent.setup();
+    mockApi.deleteAccount.mockResolvedValueOnce(undefined);
+    mockLogout.mockRejectedValueOnce(new Error('Network error'));
+
+    render(<Profile />);
+
+    await user.click(screen.getByRole('button', { name: 'Delete Account' }));
+
+    const confirm = await screen.findByRole('button', { name: 'Delete My Account' });
+    await waitFor(() => expect(confirm).toBeEnabled());
+    await user.click(confirm);
+
+    await waitFor(() => {
+      expect(mockApi.deleteAccount).toHaveBeenCalledWith([]);
+      expect(mockLogout).toHaveBeenCalled();
+      expect(mockNavigate).toHaveBeenCalledWith('/');
+      expect(mockToast).toHaveBeenCalledWith({ title: 'Account deleted' });
+    });
+    expect(screen.queryByText('Account deletion failed. Please try again.')).not.toBeInTheDocument();
+  });
 });
 
 describe('Profile - Photo Upload', () => {
