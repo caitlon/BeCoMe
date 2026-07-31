@@ -329,7 +329,7 @@ let the person concerned withdraw it themselves.
 
 ## Accepted risks
 
-Five properties are known, deliberate, and reviewed. They are recorded here so a future
+Six properties are known, deliberate, and reviewed. They are recorded here so a future
 audit does not re-litigate them.
 
 **Inviting by email discloses whether an address has an account.** Inviting an address that
@@ -373,6 +373,17 @@ one. `POST /auth/resend-verification` has the narrower version of the same prope
 awaits a send only when the address has a pending signup, so a first probe against a clean
 budget distinguishes that case. Closing either means making the send fire-and-forget, which
 is the same queue change `forgot-password` needs for the identical property.
+
+**A stranger who knows a pending address can use up its daily activation mail.** The budget is
+per address and shared by every send the flow can trigger, which is what stops an inbox being
+flooded. The cost is that anyone who knows an address with a signup already pending can spend
+the day's five unauthenticated `resend-verification` calls against it, after which the account
+holder's own resend, and their own re-registration, mail nothing while still answering the
+usual `202`. It cannot be closed by checking the password first, because the check would
+itself become the oracle the uniform response exists to remove. It is not a wedge: whatever
+link was mailed before the drain still works, and `forgot-password` draws on a separate budget
+and now confirms the address on success, so a password reset gets the holder in regardless.
+Support's answer to "I asked for the email again and nothing came" is to use forgot password.
 
 **Login and refresh also return the refresh token in the JSON body.** The browser client
 never reads it -- it uses the `HttpOnly` cookie -- but programmatic clients can only obtain
