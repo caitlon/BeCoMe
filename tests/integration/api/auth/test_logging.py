@@ -174,8 +174,10 @@ class TestLogRegistrationAttempt:
         """The record carries a hashed address and never names the account.
 
         The endpoint answers the same way for a free, an unverified, and a verified
-        address; a user_id in this record would give the branch away and turn the
-        security log into an account-existence oracle for whoever can read it.
+        address, and this record keeps to that. It is not a claim that the branch is
+        unrecoverable from logs in general: the service records written in the same
+        request share its request id and do give the branch away, so log access is the
+        trust boundary. What this pins is that the security log alone names no account.
         """
         # GIVEN
         email = "newbie@example.com"

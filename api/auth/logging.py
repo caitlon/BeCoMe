@@ -84,12 +84,15 @@ def log_login_failure(email: str, reason: str, request: "Request | None" = None)
 def log_registration_attempt(email: str, request: "Request | None" = None) -> None:
     """Log a registration submission, whatever the endpoint decided to do with it.
 
-    Deliberately identical for all three branches (new account, replaced unverified
-    account, notice to an existing verified account) and carries no ``user_id``: the
-    endpoint answers the same way in every case, and a log line that gave the branch
-    away would turn the security log itself into an account-existence oracle for
-    anyone who can read it. The account that actually gets created is recorded
-    separately by ``UserService.create_user`` as ``user_created``.
+    Deliberately identical for all three branches (new account, second submission on an
+    unactivated one, notice to an existing verified account) and carries no ``user_id``,
+    so this record on its own names no account.
+
+    That is where the guarantee stops. Account creation and token minting write their
+    own ``api.*`` records inside the same request, and every record carries the request
+    id, so a reader of the full application log can correlate them and still recover
+    which branch ran for a given ``email_hash``. Log access is the trust boundary here;
+    what the endpoint tells its caller is not affected either way.
 
     :param email: Email address the registration was submitted for
     :param request: FastAPI request (for IP extraction)

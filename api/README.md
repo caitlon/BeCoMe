@@ -24,7 +24,7 @@ api/
 │   ├── dependencies.py     # CurrentUser dependency (cookie or Bearer)
 │   ├── revocation_store.py # Token revocation store (in-memory / Redis)
 │   ├── login_throttle.py   # Per-account lockout after failed logins
-│   ├── reset_throttle.py   # Per-email cooldown for password-reset emails
+│   ├── email_throttle.py   # Per-address cooldown for reset and activation emails
 │   └── logging.py          # Auth event logging
 ├── db/                 # Database layer
 │   ├── models.py           # SQLModel entities
@@ -99,8 +99,11 @@ body, whether the address is free, already registered but unverified, or already
 and verified -- the response never reveals which. The account it creates cannot log in until
 the emailed link is redeemed through `POST /auth/verify-email`; until then `POST /auth/login`
 answers `403` with a distinct `detail` so a client can offer a resend. `POST
-/auth/resend-verification` answers `202` for any address. See `docs/security.md` for why
-each branch behaves as it does.
+/auth/resend-verification` answers `202` for any address. A submission takes effect only when
+its own link is followed: the password and names travel on the activation token, so
+registering an unconfirmed address twice leaves two working links, and whichever is redeemed
+first decides the credentials the account opens with. See `docs/security.md` for why each
+branch behaves as it does.
 
 **Session transport.** Login and refresh set the access and refresh tokens as
 `Secure; HttpOnly; SameSite=Strict` cookies (the refresh cookie is scoped to

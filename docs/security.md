@@ -56,33 +56,52 @@ which is the enumeration oracle the uniform `401` exists to prevent.
 
 `POST /auth/register` always answers `202` with one fixed body. Behind it,
 `RegistrationService` picks one of three branches: a free address creates an unverified
-account, a taken-but-unverified address has its stored password and names replaced by the
-new submission, and a taken-and-verified address is left untouched while its owner is
-emailed a notice that someone tried to sign up with it.
+account, a taken-but-unverified address writes nothing at all, and a taken-and-verified
+address is left untouched while its owner is emailed a notice that someone tried to sign up
+with it.
 
-The middle branch is a security requirement. If a taken-but-unverified address only re-sent
-the existing link, an attacker could pre-register `victim@example.com` with a password of
-their own choosing; the real owner would later receive a legitimate-looking activation mail,
-click it, and land in an account whose password the attacker knows. Nobody has proven control
-of the address yet, so the newest registrant's credentials win and only whoever holds the
-mailbox can activate them. The notice mail carries a static `/forgot-password` link, never a
-minted reset token -- an unauthenticated registration attempt must not be able to mail anyone
-a working reset link.
+**A submission is bound to the link it mints, never to the account.** The activation token
+carries the submitted password hash and names (`email_verification_tokens`), and they are
+written to the account only when that specific token is redeemed. The alternative -- storing
+the newest submission on the account row -- is an unauthenticated account-takeover primitive
+in both directions. Whoever submits last would decide what every outstanding link opens: an
+attacker submits `victim@example.com` after the real owner signed up, the owner clicks the
+link they already have, and the account activates on the attacker's password. Binding the
+credentials to the token makes each link activate the submission it belongs to.
+
+Two consequences follow from that. Issuing a link does **not** retire the outstanding ones,
+unlike password reset -- several live links for one unconfirmed address is the correct state,
+since each is single-use and carries its own submission, and retiring them is exactly how one
+submitter would kill another's pending link. And redemption is refused once the address is
+verified, with the same opaque `400` an unknown token gets: a token minted while the account
+was unconfirmed carries a password, so redeeming it afterwards would rewrite the credentials
+of an account somebody is already using.
+
+The notice mail carries a static `/forgot-password` link, never a minted reset token -- an
+unauthenticated registration attempt must not be able to mail anyone a working reset link.
 
 Two side channels are closed alongside the response body. The branch that writes nothing
 still runs bcrypt on the submitted password and discards the result, so it cannot be
-identified by answering hundreds of milliseconds faster. And every email the flow can trigger
--- activation links, resends, and notices -- shares one per-address budget
-(`api/auth/email_throttle.py`, keyed by a hash of the address), so submitting a victim's
-address in a loop from rotating IPs cannot flood their inbox past the per-IP limiter.
-Suppression never changes the response.
+identified by answering hundreds of milliseconds faster. And the emails the flow can trigger
+share one per-address budget (`api/auth/email_throttle.py`, keyed by a hash of the address),
+so submitting a victim's address in a loop from rotating IPs cannot flood their inbox past
+the per-IP limiter. Suppression never changes the response.
 
-Activation tokens follow the password-reset design exactly: `secrets.token_urlsafe(32)`,
+That budget covers repeat submissions, notices, and resends -- but **not** the branch that
+creates the account, and a resend request for an address with nothing to send spends none of
+it. Both exemptions close a denial rather than opening a flood: the creating branch fires at
+most once per address (a second submission is by definition no longer free), so charging it
+to a budget a stranger can drain with five unauthenticated `resend-verification` calls would
+let anyone pre-empt a signup that has not happened yet -- the victim would register, get the
+normal `202`, receive nothing, and be left with an account that cannot log in.
+
+Activation tokens otherwise follow the password-reset design: `secrets.token_urlsafe(32)`,
 only the SHA-256 hash stored, single use, expiring after
-`EMAIL_VERIFICATION_TOKEN_TTL_HOURS` (24 by default), and issuing a new one retires the
-outstanding ones. Unknown, spent, and expired tokens all get one opaque `400`.
-`POST /auth/resend-verification` answers `202` identically for an unknown address, an
-unverified one, and an already-verified one.
+`EMAIL_VERIFICATION_TOKEN_TTL_HOURS` (24 by default). Unknown, spent, and expired tokens all
+get one opaque `400`. `POST /auth/resend-verification` answers `202` identically for an
+unknown address, an unverified one, and an already-verified one; the link it mails carries no
+submission of its own, so following it confirms the address without touching the stored
+password.
 
 Before any of that touches the database, the submitted address goes through
 `EmailAddressPolicy` (`api/services/email_policy.py`): a vendored disposable-domain
@@ -274,15 +293,38 @@ let the person concerned withdraw it themselves.
 
 ## Accepted risks
 
-Two properties are known, deliberate, and reviewed. They are recorded here so a future audit
-does not re-litigate them.
+Four properties are known, deliberate, and reviewed. They are recorded here so a future
+audit does not re-litigate them.
 
 **Inviting by email discloses whether an address has an account.** Inviting an address that
 has no account answers `404`, which is inherent to the flow: an invitation cannot be created
 for a user row that does not exist. The bit disclosed is one the caller already supplied, and
 the caller is an authenticated project admin rather than an anonymous prober. Registration
 used to disclose the same bit through a `409`; deferred activation closed it (see
-"Registration and email verification" below).
+"Registration and email verification" above).
+
+**A link obtained from `resend-verification` activates the account on the password it was
+created with.** That endpoint takes an address and nothing else, so it has no submission to
+bind to the link it mails, and confirming the address leaves the stored password alone. If
+somebody else created the account -- pre-registering a stranger's address is not something we
+can prevent -- then activating through a *resend* rather than through the link your own
+signup mailed you opens the account on their password. Two things bound it. Your own password
+will not work afterwards, so the situation announces itself at the first login attempt, and
+`forgot-password` takes the account back. And the same pre-registration also mailed you a
+signup link at the time, which is the shorter path to the same outcome for an attacker: the
+mitigation for both is not clicking activation mail for a signup you did not make. Binding
+credentials to a resend would be worse, not better: whatever rule picked them (the newest
+pending submission, the stored ones) is a rule an attacker can arrange to satisfy by
+resubmitting, which is the account-takeover primitive this design removed.
+
+**`POST /auth/register` still has a timing signal, of one bit and only once.** A submission
+whose email is suppressed by the per-address budget skips an awaited round trip to the mail
+provider, so it comes back measurably sooner than one that sends. A first probe can therefore
+learn that mail was recently triggered for that address. It is weak and self-consuming: the
+probe is itself a submission, so it spends from the same budget and changes the answer the
+next probe gets, and it reports on recent activity rather than on whether an account exists.
+Closing it means making the send fire-and-forget, which is the same queue change
+`forgot-password` needs for the identical property.
 
 **Login and refresh also return the refresh token in the JSON body.** The browser client
 never reads it -- it uses the `HttpOnly` cookie -- but programmatic clients can only obtain
