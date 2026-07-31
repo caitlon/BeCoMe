@@ -168,13 +168,13 @@ describe('VerifyEmail', () => {
     await user.click(getSubmitButton());
 
     await waitFor(() => {
-      expect(screen.getByRole('alert')).toHaveTextContent(/wait/i);
+      expect(screen.getByRole('alert')).toHaveTextContent(/too many attempts/i);
     });
 
     expect(mockNavigate).not.toHaveBeenCalled();
   });
 
-  it('disables the submit button once locked out, so a 429 cannot be resubmitted', async () => {
+  it('lets a locked-out attempt be retried, which is what the message tells the user to do', async () => {
     const user = userEvent.setup();
     mockVerifyEmail.mockRejectedValueOnce(new RateLimitError());
     renderAt();
@@ -183,8 +183,19 @@ describe('VerifyEmail', () => {
     await user.click(getSubmitButton());
 
     await waitFor(() => {
-      expect(getSubmitButton()).toBeDisabled();
+      expect(screen.getByRole('alert')).toBeInTheDocument();
     });
+    expect(getSubmitButton()).toBeEnabled();
+
+    // The lockout lifts on its own, so the same form and the same link must be able
+    // to carry the next attempt without a page reload.
+    mockVerifyEmail.mockResolvedValueOnce(undefined);
+    await user.click(getSubmitButton());
+
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith('/login');
+    });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it('shows a generic error toast for an unexpected failure (e.g. service unavailable)', async () => {

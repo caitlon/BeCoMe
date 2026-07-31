@@ -138,11 +138,14 @@ const VerifyEmail = () => {
           </p>
         )}
 
+        {/* The lockout state deliberately leaves the button enabled: it is the one
+            failure the user recovers from by doing exactly what the message says,
+            and disabling the control would leave a page reload as the only way
+            back. An early retry just gets another 429, which costs nothing. */}
         <SubmitButton
           className="w-full"
           isLoading={isLoading}
           loadingText={t("verifyEmail.submitting")}
-          disabled={failure === "lockedOut"}
         >
           {t("verifyEmail.submit")}
         </SubmitButton>
