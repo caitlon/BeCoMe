@@ -13,11 +13,14 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine, inspect, text
+from sqlalchemy.exc import IntegrityError
 
 pytestmark = pytest.mark.skipif(
     not shutil.which("pg_ctl"),
     reason="PostgreSQL not installed (pg_ctl not found in PATH)",
 )
+
+_TOKENS = "email_verification_tokens"
 
 # A clean database with no schema preloaded, so Alembic owns every table.
 try:
@@ -142,12 +145,108 @@ class TestEmailVerificationMigration:
             inspector = inspect(engine)
             columns = [c["name"] for c in inspector.get_columns("users")]
             assert "email_verified_at" not in columns
-            assert "email_verification_tokens" not in inspector.get_table_names()
+            assert _TOKENS not in inspector.get_table_names()
 
             # WHEN - re-applied (reversibility holds)
             command.upgrade(config, "21261c13bb2b")
 
             # THEN
-            assert "email_verification_tokens" in inspect(engine).get_table_names()
+            assert _TOKENS in inspect(engine).get_table_names()
+        finally:
+            engine.dispose()
+
+
+class TestEmailVerificationCredentialsMigration:
+    """The migration adding hashed_password/first_name/last_name to the tokens table.
+
+    Split from the table-creation migration so the two ship in separate pull
+    requests: PR 1 creates the empty table, behaviourally inert, and PR 2 adds
+    these columns once the code that writes and reads them lands.
+    """
+
+    def test_upgrade_adds_not_null_columns_and_downgrade_reverts(self, migration_pg, monkeypatch):
+        """The credential columns land as NOT NULL, and the migration reverses cleanly."""
+        # GIVEN - a database migrated up to the table-creation revision only, the
+        # state PR 1 leaves behind
+        url = _url(migration_pg)
+        monkeypatch.setenv("ALEMBIC_DATABASE_URL", url)
+        config = Config("alembic.ini")
+        engine = create_engine(url)
+
+        try:
+            command.upgrade(config, "21261c13bb2b")
+
+            # THEN - the table exists, but not yet with the credential columns
+            token_columns = {c["name"] for c in inspect(engine).get_columns(_TOKENS)}
+            assert not {"hashed_password", "first_name", "last_name"} & token_columns
+
+            # WHEN - this migration is applied. Pinned to its own revision id rather
+            # than "head" for the same reason as the migrations above: a later
+            # migration landing on top would otherwise silently change what this
+            # test exercises.
+            command.upgrade(config, "5b9977c1b5c1")
+
+            # THEN - the credential columns exist and are NOT NULL
+            columns = {c["name"]: c["nullable"] for c in inspect(engine).get_columns(_TOKENS)}
+            assert columns["hashed_password"] is False
+            assert columns["first_name"] is False
+            assert columns["last_name"] is False
+
+            # WHEN - rolled back to its own down_revision
+            command.downgrade(config, "21261c13bb2b")
+
+            # THEN - the credential columns are gone (downgrade works)
+            token_columns = {c["name"] for c in inspect(engine).get_columns(_TOKENS)}
+            assert not {"hashed_password", "first_name", "last_name"} & token_columns
+
+            # WHEN - re-applied (reversibility holds)
+            command.upgrade(config, "5b9977c1b5c1")
+
+            # THEN
+            columns = {c["name"]: c["nullable"] for c in inspect(engine).get_columns(_TOKENS)}
+            assert columns["last_name"] is False
+        finally:
+            engine.dispose()
+
+    def test_a_token_cannot_exist_without_a_submission(self, migration_pg, monkeypatch):
+        """All three credential columns are required, not merely written together.
+
+        Redemption checks the posted password against ``hashed_password`` and writes
+        all three, so a row missing any of them would be a link nobody has to
+        authenticate against -- which is the takeover the whole flow closes.
+        """
+        # GIVEN - a database at this migration, holding one account
+        url = _url(migration_pg)
+        monkeypatch.setenv("ALEMBIC_DATABASE_URL", url)
+        engine = create_engine(url)
+
+        try:
+            command.upgrade(Config("alembic.ini"), "5b9977c1b5c1")
+            user_id = uuid4()
+            with engine.begin() as conn:
+                conn.execute(
+                    text(
+                        "INSERT INTO users "
+                        "(id, email, hashed_password, first_name, last_name, created_at) "
+                        "VALUES (:id, 'partial@example.com', 'hash', 'Part', 'Ial', :created_at)"
+                    ),
+                    {"id": str(user_id), "created_at": datetime(2026, 1, 1, tzinfo=UTC)},
+                )
+
+            # WHEN / THEN - a token with a password but no names is rejected
+            with pytest.raises(IntegrityError, match="not-null"), engine.begin() as c:
+                c.execute(
+                    text(
+                        f"INSERT INTO {_TOKENS} "  # noqa: S608 - constant table name
+                        "(id, user_id, token_hash, hashed_password, created_at, expires_at) "
+                        "VALUES (:id, :user_id, :token_hash, 'a-hash', :now, :now)"
+                    ),
+                    {
+                        "id": str(uuid4()),
+                        "user_id": str(user_id),
+                        "token_hash": "a" * 64,
+                        "now": datetime(2026, 1, 1, tzinfo=UTC),
+                    },
+                )
         finally:
             engine.dispose()

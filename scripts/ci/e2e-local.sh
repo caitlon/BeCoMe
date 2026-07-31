@@ -76,15 +76,33 @@ done
 
 # 2. Start API server
 echo "[2/3] Starting API server..."
-APP_ENV="test" \
-DATABASE_URL="postgresql://$DB_USER:$DB_PASS@localhost:$DB_PORT/$DB_NAME" \
-SECRET_KEY="e2e-local-test-secret-key" \
+export APP_ENV="test"
+export DATABASE_URL="postgresql://$DB_USER:$DB_PASS@localhost:$DB_PORT/$DB_NAME"
+export SECRET_KEY="e2e-local-test-secret-key"
+export TESTING="1"
+# E2E signs up under a synthetic domain with no DNS records, so the address policy's
+# resolver check is switched off for this run.
+export MX_CHECK_ENABLED="false"
+# Forced, never inherited: this machine's .env points at a live mail provider, and
+# without this every E2E signup would attempt a real send to a made-up address. The
+# console sender is also what makes the activation link readable below.
+export EMAIL_PROVIDER="console"
+# Activation links are built from this, so they point at the app Playwright drives.
+export FRONTEND_BASE_URL="http://localhost:8080"
+# The Playwright helper reads each activation link back out of the API's stdout, which
+# is the only place one exists -- the flow deliberately keeps it out of the response.
+# PYTHONUNBUFFERED because stdout to a file is block-buffered: without it a link can
+# sit unwritten in an 8 KiB buffer for the whole run.
+export E2E_API_LOG="${E2E_API_LOG:-/tmp/become-e2e-api.log}"
+export PYTHONUNBUFFERED=1
+: > "$E2E_API_LOG"
+echo "  API log: $E2E_API_LOG"
+
 CORS_ORIGINS='["http://localhost:8080"]' \
-TESTING="1" \
 DEBUG="false" \
   uv run --project "$PROJECT_ROOT" uvicorn api.main:app \
     --host 0.0.0.0 --port "$API_PORT" \
-    --log-level warning &
+    --log-level warning > "$E2E_API_LOG" 2>&1 &
 API_PID=$!
 
 for i in $(seq 1 30); do
@@ -94,6 +112,7 @@ for i in $(seq 1 30); do
   fi
   if [ "$i" -eq 30 ]; then
     echo "  ERROR: API server failed to start"
+    tail -n 40 "$E2E_API_LOG"
     exit 1
   fi
   sleep 2

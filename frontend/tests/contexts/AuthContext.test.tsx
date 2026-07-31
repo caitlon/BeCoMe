@@ -25,7 +25,6 @@ vi.mock('@/lib/api', () => ({
   api: {
     getCurrentUser: vi.fn(),
     login: vi.fn(),
-    register: vi.fn(),
     logout: vi.fn(),
     setOnSessionExpired: vi.fn(),
   },
@@ -264,55 +263,6 @@ describe('AuthContext', () => {
         await result.current.login('bad@example.com', 'wrong')
       })
     ).rejects.toThrow('Invalid credentials')
-  })
-
-  it('register calls api.register, api.login, and refreshes user', async () => {
-    const mockUser = createUser({ id: '1', email: 'new@example.com', first_name: 'New' })
-    vi.mocked(api.getCurrentUser).mockRejectedValue(new UnauthorizedError())
-
-    const { result } = renderHook(() => useAuth(), {
-      wrapper: AuthTestProviders,
-    })
-
-    await waitFor(() => {
-      expect(result.current.isLoading).toBe(false)
-    })
-
-    vi.mocked(api.register).mockResolvedValue(mockUser)
-    vi.mocked(api.login).mockResolvedValue({ access_token: 'new-token', token_type: 'bearer' })
-    vi.mocked(api.getCurrentUser).mockResolvedValue(mockUser)
-
-    await act(async () => {
-      await result.current.register('new@example.com', 'password123', 'New', undefined)
-    })
-
-    expect(api.register).toHaveBeenCalledWith({
-      email: 'new@example.com',
-      password: 'password123',
-      first_name: 'New',
-      last_name: undefined,
-    })
-    expect(api.login).toHaveBeenCalledWith('new@example.com', 'password123')
-  })
-
-  it('propagates register error to caller', async () => {
-    vi.mocked(api.getCurrentUser).mockRejectedValue(new UnauthorizedError())
-
-    const { result } = renderHook(() => useAuth(), {
-      wrapper: AuthTestProviders,
-    })
-
-    await waitFor(() => {
-      expect(result.current.isLoading).toBe(false)
-    })
-
-    vi.mocked(api.register).mockRejectedValue(new Error('Email already exists'))
-
-    await expect(
-      act(async () => {
-        await result.current.register('dup@example.com', 'pass', 'Dup')
-      })
-    ).rejects.toThrow('Email already exists')
   })
 
   describe('onSessionExpired bridge', () => {

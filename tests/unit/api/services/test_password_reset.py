@@ -8,10 +8,11 @@ import pytest
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine, select
 
-from api.auth.password import verify_password
+from api.auth.password import hash_password, verify_password
 from api.db.models import PasswordResetToken, User
 from api.db.utils import utc_now
 from api.exceptions import InvalidResetTokenError, ResetTokenExpiredError
+from api.services.email_verification_service import EmailVerificationService, PendingCredentials
 from api.services.password_reset_service import PasswordResetService
 
 
@@ -39,13 +40,14 @@ def session():
     engine.dispose()
 
 
-def _make_user(session: Session, email: str = "user@example.com") -> User:
-    """Persist and return a user."""
+def _make_user(session: Session, email: str = "user@example.com", verified: bool = False) -> User:
+    """Persist and return a user, verified or not."""
     user = User(
         email=email,
         hashed_password="old-hash",
         first_name="Test",
         last_name="User",
+        email_verified_at=utc_now() if verified else None,
     )
     session.add(user)
     session.commit()
@@ -296,3 +298,95 @@ class TestResetPassword:
         # WHEN / THEN
         with pytest.raises(InvalidResetTokenError):
             service.reset_password(raw, "NewSecurePass123!")
+
+
+class TestResetPasswordConfirmsTheAddress:
+    """Tests for the address confirmation a completed reset also performs."""
+
+    def test_confirms_an_address_that_was_still_unverified(self, session):
+        """
+        GIVEN an unverified account holding a valid reset token
+        WHEN the password is reset
+        THEN the address is confirmed, which retires its outstanding activation links
+        """
+        # GIVEN
+        user = _make_user(session)
+        service = PasswordResetService(session)
+        token = _token_from_url(service.create_reset_token(user.email))
+
+        # WHEN
+        updated = service.reset_password(token, "NewSecurePass123!")
+
+        # THEN
+        assert updated.email_verified_at is not None
+        assert verify_password("NewSecurePass123!", updated.hashed_password)
+
+    def test_keeps_a_confirmation_the_account_already_had(self, session):
+        """
+        GIVEN an account confirmed at some earlier point
+        WHEN the password is reset
+        THEN the password changes and the original confirmation timestamp survives
+        """
+        # GIVEN
+        user = _make_user(session, verified=True)
+        confirmed_at = user.email_verified_at
+        service = PasswordResetService(session)
+        token = _token_from_url(service.create_reset_token(user.email))
+
+        # WHEN
+        updated = service.reset_password(token, "NewSecurePass123!")
+
+        # THEN
+        assert verify_password("NewSecurePass123!", updated.hashed_password)
+        assert updated.email_verified_at == confirmed_at
+
+    def test_a_reset_that_loses_to_an_activation_writes_nothing(self, session):
+        """An activation committing mid-reset keeps the credentials it chose.
+
+        A reset and an activation both prove control of the same mailbox and both
+        confirm the address, so the two collide on an account that is still
+        unverified. The reset loads the row, spends a few hundred milliseconds in
+        bcrypt, and the activation commits inside that gap; the route holds the same
+        loaded copy across both calls, so nothing re-reads the row in between.
+        Writing by primary key afterwards replaced the password the activation had
+        just applied, while the person who redeemed it had already been told to sign
+        in with it.
+        """
+        # GIVEN - an unverified account whose reset token the service has resolved,
+        # which is the point the route reaches before it starts hashing
+        user = _make_user(session)
+        reset = PasswordResetService(session)
+        reset_token = _token_from_url(reset.create_reset_token(user.email))
+        reset.resolve_valid_token(reset_token)
+
+        # WHEN - an activation redeems its own link first, from its own session, so
+        # the reset still holds the unverified copy of the row
+        activation_password = "ActivationPass1!"
+        with Session(session.get_bind()) as other:
+            verification = EmailVerificationService(other)
+            link = verification.create_verification_url(
+                user,
+                PendingCredentials(
+                    hashed_password=hash_password(activation_password),
+                    first_name="Acti",
+                    last_name="Vated",
+                ),
+            )
+            raw = _token_from_url(link)
+            verification.activate(verification.resolve_pending_activation(raw), activation_password)
+
+        # THEN - the reset is refused rather than reporting a password it did not set
+        with pytest.raises(InvalidResetTokenError):
+            reset.reset_password(reset_token, "NewSecurePass123!")
+        session.rollback()
+        assert verify_password(activation_password, session.get(User, user.id).hashed_password)
+
+        # and its own link is left unspent, so retrying it lands on the uncontested
+        # path instead of stranding whoever asked for the reset
+        record = session.exec(
+            select(PasswordResetToken).where(PasswordResetToken.token_hash == _hash(reset_token))
+        ).first()
+        assert record is not None
+        assert record.used_at is None
+        retried = reset.reset_password(reset_token, "NewSecurePass123!")
+        assert verify_password("NewSecurePass123!", retried.hashed_password)

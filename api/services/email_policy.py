@@ -12,8 +12,10 @@ Two independent, domain-only checks combine into a single policy:
 
 2. An MX / A / AAAA reachability check via ``dns.asyncresolver``. This check
    fails open: a resolver timeout, SERVFAIL, or any other resolver error lets
-   the address through. Only a definitive negative -- NXDOMAIN, or a confirmed
-   absence of both MX and A/AAAA records -- rejects. This is deliberate and is
+   the address through. Only a definitive negative rejects: NXDOMAIN, a
+   confirmed absence of both MX and A/AAAA records, or an RFC 7505 null MX,
+   which is the domain itself stating that it accepts no mail. This is
+   deliberate and is
    the opposite of what a reader instinctively expects from a validation
    function: our resolver having a bad day must never block a real signup. A
    definitive verdict is cached per domain (see ``DomainVerdictCache``) since
@@ -38,6 +40,7 @@ from typing import Protocol, runtime_checkable
 
 import dns.asyncresolver
 import dns.exception
+import dns.name
 import dns.resolver
 import redis
 
@@ -233,7 +236,27 @@ class _LookupOutcome(enum.Enum):
     FOUND = enum.auto()
     ABSENT = enum.auto()  # NoAnswer: the domain exists but has no record of this type
     DOMAIN_MISSING = enum.auto()  # NXDOMAIN: the domain does not exist at all
+    MAIL_REFUSED = enum.auto()  # RFC 7505 null MX: the domain exists and accepts no mail
     INCONCLUSIVE = enum.auto()  # timeout, SERVFAIL, or any other resolver error
+
+
+def _is_null_mx(answer: dns.resolver.Answer) -> bool:
+    """Return whether an MX answer is the RFC 7505 null MX.
+
+    A domain that accepts no mail at all says so with a single MX record of
+    preference 0 pointing at the root label, and RFC 7505 requires that
+    declaration to win over the implicit A/AAAA fallback. The query itself
+    succeeds, so without this the answer would read as an ordinary mail host.
+
+    :param answer: The resolver's answer to an MX query.
+    :return: Whether the answer is exactly the null MX declaration.
+    """
+    records = list(answer)
+    if len(records) != 1:
+        return False
+    record = records[0]
+    # bool(): dnspython's rdata is untyped, so the comparison is Any to mypy.
+    return bool(record.preference == 0 and record.exchange == dns.name.root)
 
 
 class EmailAddressPolicy:
@@ -261,8 +284,8 @@ class EmailAddressPolicy:
 
         :param disposable_domains: Blocklist to match against; defaults to the
             vendored list.
-        :param resolver: DNS resolver used for the MX/A/AAAA check; defaults to
-            a new ``dns.asyncresolver.Resolver``.
+        :param resolver: DNS resolver used for the MX/A/AAAA check; when omitted
+            a ``dns.asyncresolver.Resolver`` is built on first use, not here.
         :param cache: Domain-verdict cache; defaults to the process-wide cache
             (Redis-backed when configured, in-memory otherwise).
         :param disposable_check_enabled: Kill switch for the blocklist check.
@@ -277,7 +300,13 @@ class EmailAddressPolicy:
         self._disposable_domains = (
             disposable_domains if disposable_domains is not None else _load_disposable_domains()
         )
-        self._resolver = resolver if resolver is not None else dns.asyncresolver.Resolver()
+        # Deliberately not built here. dns.asyncresolver.Resolver() reads the host's
+        # resolver configuration and raises NoResolverConfiguration when it finds
+        # none, so building it in __init__ turns every POST /register into a 500 --
+        # and MX_CHECK_ENABLED=false, the switch that exists for exactly that
+        # emergency, could not rescue it, because the object was built whether or not
+        # the check ran. Built on first lookup instead, which the switch can prevent.
+        self._resolver = resolver
         self._cache = cache if cache is not None else get_domain_verdict_cache()
         self._disposable_check_enabled = disposable_check_enabled
         self._mx_check_enabled = mx_check_enabled
@@ -347,14 +376,19 @@ class EmailAddressPolicy:
         :param domain: The lowercased domain to resolve.
         :return: ``FOUND`` if some record accepts mail, ``DOMAIN_MISSING`` if the
             domain itself does not exist or MX, A, and AAAA are all confirmed
-            absent, or ``INCONCLUSIVE`` if the resolver never gave a definitive
-            answer.
+            absent, ``MAIL_REFUSED`` if the domain publishes a null MX, or
+            ``INCONCLUSIVE`` if the resolver never gave a definitive answer.
         """
         mx_result = await self._lookup(domain, "MX")
         if mx_result is _LookupOutcome.FOUND:
             return _LookupOutcome.FOUND
         if mx_result is _LookupOutcome.DOMAIN_MISSING:
             return _LookupOutcome.DOMAIN_MISSING
+        if mx_result is _LookupOutcome.MAIL_REFUSED:
+            # RFC 7505 requires the null MX to override the A/AAAA fallback below:
+            # the domain has stated it accepts no mail, which is as definitive as
+            # an answer gets, so do not go looking for a way to contradict it.
+            return _LookupOutcome.MAIL_REFUSED
         if mx_result is _LookupOutcome.INCONCLUSIVE:
             return _LookupOutcome.INCONCLUSIVE
 
@@ -371,6 +405,22 @@ class EmailAddressPolicy:
         # Confirmed absence of MX, A, and AAAA records for an existing domain.
         return _LookupOutcome.DOMAIN_MISSING
 
+    def _get_resolver(self) -> dns.asyncresolver.Resolver:
+        """Return the DNS resolver, building it on first use.
+
+        A second builder racing this one would only construct a resolver that is
+        immediately discarded, so no locking is needed: the whole method runs on the
+        event loop with no ``await`` between the check and the assignment.
+
+        :return: The resolver used for MX/A/AAAA lookups.
+        :raises dns.resolver.NoResolverConfiguration: If the host has no usable
+            resolver configuration. Reaching this means the MX check is switched on;
+            turn ``MX_CHECK_ENABLED`` off and no lookup is attempted at all.
+        """
+        if self._resolver is None:
+            self._resolver = dns.asyncresolver.Resolver()
+        return self._resolver
+
     async def _lookup(self, domain: str, rdtype: str) -> _LookupOutcome:
         """Run one DNS query and classify the result.
 
@@ -379,7 +429,9 @@ class EmailAddressPolicy:
         :return: The classified outcome.
         """
         try:
-            await self._resolver.resolve(domain, rdtype, lifetime=self._timeout_seconds)
+            answer = await self._get_resolver().resolve(
+                domain, rdtype, lifetime=self._timeout_seconds
+            )
         except dns.resolver.NXDOMAIN:
             return _LookupOutcome.DOMAIN_MISSING
         except dns.resolver.NoAnswer:
@@ -387,4 +439,6 @@ class EmailAddressPolicy:
         except dns.exception.DNSException:
             # Timeout, SERVFAIL (NoNameservers), or any other resolver-side fault.
             return _LookupOutcome.INCONCLUSIVE
+        if rdtype == "MX" and _is_null_mx(answer):
+            return _LookupOutcome.MAIL_REFUSED
         return _LookupOutcome.FOUND

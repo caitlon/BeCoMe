@@ -8,6 +8,7 @@ from datetime import timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import dns.exception
+import dns.name
 import dns.resolver
 import pytest
 import redis
@@ -43,6 +44,29 @@ def _resolver(side_effect: object = None) -> MagicMock:
     else:
         stub.resolve = AsyncMock(return_value=MagicMock())
     return stub
+
+
+def _mx_answer(records: list[tuple[int, str]]) -> list[MagicMock]:
+    """Build a stand-in MX answer; the policy only iterates it.
+
+    :param records: ``(preference, exchange)`` pairs, the exchange in DNS text form.
+    :return: Record stubs carrying those preferences and exchanges.
+    """
+    answer = []
+    for preference, exchange in records:
+        record = MagicMock()
+        record.preference = preference
+        record.exchange = dns.name.from_text(exchange)
+        answer.append(record)
+    return answer
+
+
+def _null_mx_answer() -> list[MagicMock]:
+    """Build the RFC 7505 null MX: one record, preference 0, pointing at the root.
+
+    :return: A one-record answer declaring that the domain accepts no mail.
+    """
+    return _mx_answer([(0, ".")])
 
 
 def _policy(
@@ -195,6 +219,56 @@ class TestMxCheck:
         # WHEN / THEN
         with pytest.raises(UnresolvableEmailDomainError):
             asyncio.run(policy.check("user@doesnotexist.invalid"))
+
+    def test_null_mx_is_rejected_without_falling_back_to_a_records(self):
+        """
+        GIVEN a domain publishing the RFC 7505 null MX
+        WHEN check() runs
+        THEN UnresolvableEmailDomainError is raised after the MX query alone
+
+        The MX query succeeds, so nothing raises: the answer itself is the refusal.
+        RFC 7505 also requires it to override the A/AAAA fallback, so a domain that
+        serves web traffic must not be rescued by its own A record.
+        """
+        # GIVEN
+        resolver = _resolver(side_effect=[_null_mx_answer()])
+        policy = _policy(resolver)
+
+        # WHEN / THEN
+        with pytest.raises(UnresolvableEmailDomainError):
+            asyncio.run(policy.check("user@no-mail.example"))
+        assert resolver.resolve.await_count == 1
+
+    def test_single_mx_at_preference_zero_with_a_real_host_passes(self):
+        """
+        GIVEN a domain with one MX record at preference 0 naming a real host
+        WHEN check() runs
+        THEN no error is raised
+
+        Preference 0 alone does not make a null MX; the root exchange does.
+        """
+        # GIVEN
+        policy = _policy(_resolver(side_effect=[_mx_answer([(0, "mail.example.com.")])]))
+
+        # WHEN / THEN (no raise)
+        asyncio.run(policy.check("user@example.com"))
+
+    def test_null_mx_alongside_another_record_is_not_treated_as_a_refusal(self):
+        """
+        GIVEN a malformed answer carrying both a null MX and a real host
+        WHEN check() runs
+        THEN no error is raised
+
+        RFC 7505 makes the null MX the only record when it is present, so a second
+        one means the domain is not making that declaration. Failing open here keeps
+        a misconfigured zone from blocking its own users.
+        """
+        # GIVEN
+        answer = _mx_answer([(0, "."), (10, "mail.example.com.")])
+        policy = _policy(_resolver(side_effect=[answer]))
+
+        # WHEN / THEN (no raise)
+        asyncio.run(policy.check("user@example.com"))
 
     def test_confirmed_absence_of_mx_a_and_aaaa_is_rejected(self):
         """

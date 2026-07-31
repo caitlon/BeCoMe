@@ -108,6 +108,30 @@ class ResetTokenExpiredError(ValidationError):
     """Raised when a password reset token has expired."""
 
 
+# Email-verification exceptions. Both map to the same opaque 400, so a caller
+# cannot use the response to tell an unknown link from a spent or expired one.
+class InvalidVerificationTokenError(ValidationError):
+    """Raised when an email verification token is unknown or already used."""
+
+
+class VerificationTokenExpiredError(ValidationError):
+    """Raised when an email verification token has expired."""
+
+
+class VerificationPasswordMismatchError(BeCoMeAPIError):
+    """Raised when the password posted with an activation link is not the one it carries.
+
+    Answered distinguishably rather than folded into the opaque 400 above. Whoever
+    reaches this point already holds a live link, so admitting that the link itself is
+    fine tells them nothing new -- while telling a user who simply mistyped that their
+    link is broken would send them round the loop asking for another one.
+    """
+
+
+class EmailNotVerifiedError(BeCoMeAPIError):
+    """Raised when a correct password is presented for an account still unverified."""
+
+
 # Email-policy exceptions (api/services/email_policy.py). Both depend solely on
 # the domain string, never on database state, so neither can leak whether an
 # account already exists for the address.

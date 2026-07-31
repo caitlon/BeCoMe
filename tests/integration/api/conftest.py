@@ -1,23 +1,26 @@
 """Pytest fixtures and helpers for API integration tests."""
 
 import os
+from contextlib import contextmanager
 
 # Select the test profile before importing api modules (settings are cached on first use)
 os.environ.setdefault("APP_ENV", "test")
 os.environ.setdefault("SECRET_KEY", "test-secret-key")
 os.environ["TESTING"] = "1"  # Must always be set; rate limiter reads it at import time
 
+import dns.asyncresolver
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from sqlalchemy.pool import StaticPool
-from sqlmodel import Session, SQLModel, create_engine
+from sqlmodel import Session, SQLModel, create_engine, select
 
 from api.config import get_settings
 from api.db.models import (  # noqa: F401 - models required for SQLModel.metadata.create_all
     CalculationResult,
+    EmailVerificationToken,
     ExpertOpinion,
     Invitation,
     PasswordResetToken,
@@ -26,14 +29,30 @@ from api.db.models import (  # noqa: F401 - models required for SQLModel.metadat
     User,
 )
 from api.db.session import get_session
+from api.db.utils import utc_now
+from api.dependencies import get_email_address_policy
 from api.middleware.csrf import CSRFMiddleware
 from api.middleware.exception_handlers import register_exception_handlers
 from api.middleware.rate_limit import limiter
 from api.routes import auth, calculate, health, invitations, opinions, projects, users
+from api.services.email_policy import EmailAddressPolicy
+from api.services.user_cache import get_user_cache
 from tests.shared.helpers import (  # noqa: F401
     DEFAULT_TEST_PASSWORD,
     auth_header,
     mock_datetime_offset,
+)
+
+# Registration address policy for the integration app, with the DNS half switched off so
+# no test ever depends on a live resolver. The blocklist half stays on: it is a local
+# lookup and the registration tests assert on it. The MX half is covered against a
+# stubbed resolver in tests/unit/api/services/test_email_policy.py, and the tests that
+# need a route-level DNS rejection override this dependency again with their own stub.
+# The resolver is built with configure=False so importing this module never reads
+# /etc/resolv.conf (which is absent in some containers).
+_OFFLINE_EMAIL_POLICY = EmailAddressPolicy(
+    resolver=dns.asyncresolver.Resolver(configure=False),
+    mx_check_enabled=False,
 )
 
 
@@ -47,6 +66,8 @@ def create_test_app() -> FastAPI:
         title="BeCoMe API Test",
         version=settings.api_version,
     )
+
+    app.dependency_overrides[get_email_address_policy] = lambda: _OFFLINE_EMAIL_POLICY
 
     # Rate limiting setup (required for auth routes)
     app.state.limiter = limiter
@@ -68,22 +89,124 @@ def create_test_app() -> FastAPI:
     return app
 
 
+@contextmanager
+def app_session(client: TestClient):
+    """Yield a database session bound to the engine the test app writes through.
+
+    Lets a test set up or inspect state the API exposes no endpoint for, using the
+    same connection the app uses so nothing is hidden behind an open transaction.
+
+    :param client: Test client whose app has get_session overridden.
+    """
+    generator = client.app.dependency_overrides[get_session]()
+    try:
+        yield next(generator)
+    finally:
+        generator.close()
+
+
+def register(
+    client: TestClient,
+    email: str,
+    password: str = DEFAULT_TEST_PASSWORD,
+    first_name: str = "Test",
+    last_name: str = "User",
+):
+    """Post a registration and return the raw response.
+
+    :param client: Test client instance
+    :param email: Email to register
+    :param password: Password to register with
+    :param first_name: First name to register with
+    :param last_name: Last name to register with
+    :return: The registration response
+    """
+    return client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": email,
+            "password": password,
+            "first_name": first_name,
+            "last_name": last_name,
+        },
+    )
+
+
+def mark_email_verified(client: TestClient, email: str) -> None:
+    """Mark a registered address verified straight through the database.
+
+    Registration only creates an unverified account, and login refuses those, so
+    almost every test in the suite needs its fixture user activated. Doing it through
+    the real register-mail-verify round trip would make every unrelated test depend on
+    the verification feature (and on a captured email); writing the column directly is
+    fast, deterministic, and keeps that coupling in one place. The real round trip is
+    exercised in tests/integration/api/auth/test_email_verification.py.
+
+    :param client: Test client instance
+    :param email: Address of an already-registered account
+    """
+    with app_session(client) as session:
+        user = session.exec(select(User).where(User.email == email.lower())).first()
+        assert user is not None, f"no account is registered for {email}"
+        user.email_verified_at = utc_now()
+        session.add(user)
+        session.commit()
+        user_id = user.id
+    get_user_cache().invalidate(user_id)
+
+
+def stored_accounts(client: TestClient, email: str) -> list[dict]:
+    """Return every stored account for an address, as plain field values.
+
+    Registration no longer echoes the created user back, so tests that used to assert
+    on the response body assert on the row instead. Values are copied out while the
+    session is open, so callers never touch a detached ORM instance.
+
+    :param client: Test client instance
+    :param email: Address to look up (case-insensitive)
+    :return: One dict per matching account (at most one -- the column is unique)
+    """
+    with app_session(client) as session:
+        users = session.exec(select(User).where(User.email == email.lower())).all()
+        return [
+            {
+                "id": user.id,
+                "email": user.email,
+                "first_name": user.first_name,
+                "last_name": user.last_name,
+                "email_verified_at": user.email_verified_at,
+            }
+            for user in users
+        ]
+
+
+def register_verified(
+    client: TestClient,
+    email: str,
+    password: str = DEFAULT_TEST_PASSWORD,
+    first_name: str = "Test",
+    last_name: str = "User",
+) -> None:
+    """Register a user and activate the account, ready to log in.
+
+    :param client: Test client instance
+    :param email: Email to register
+    :param password: Password to register with
+    :param first_name: First name to register with
+    :param last_name: Last name to register with
+    """
+    register(client, email, password, first_name, last_name)
+    mark_email_verified(client, email)
+
+
 def register_and_login(client: TestClient, email: str = "test@example.com") -> str:
-    """Register a user and return their access token.
+    """Register a user, activate the account, and return their access token.
 
     :param client: Test client instance
     :param email: User email (default: test@example.com)
     :return: JWT access token
     """
-    client.post(
-        "/api/v1/auth/register",
-        json={
-            "email": email,
-            "password": DEFAULT_TEST_PASSWORD,
-            "first_name": "Test",
-            "last_name": "User",
-        },
-    )
+    register_verified(client, email)
     response = client.post(
         "/api/v1/auth/login",
         data={"username": email, "password": DEFAULT_TEST_PASSWORD},
@@ -170,20 +293,27 @@ def session(test_engine):
 
 @pytest.fixture(autouse=True)
 def _reset_auth_throttles():
-    """Give each test fresh login and reset-email throttles.
+    """Give each test fresh login, activation, reset-email, and verification-email throttles.
 
-    Both ``get_login_throttle`` and ``get_reset_email_throttle`` are lru_cache
-    singletons, so their in-memory state would otherwise leak between tests that
-    reuse an email address.
+    All four factories are lru_cache singletons, so their in-memory state would
+    otherwise leak between tests that reuse an email address -- and every test that
+    registers a user now goes through the verification-email throttle.
     """
-    from api.auth.login_throttle import get_login_throttle
-    from api.auth.reset_throttle import get_reset_email_throttle
+    from api.auth.email_throttle import (
+        get_reset_email_throttle,
+        get_verification_email_throttle,
+    )
+    from api.auth.login_throttle import get_activation_throttle, get_login_throttle
 
-    get_login_throttle.cache_clear()
-    get_reset_email_throttle.cache_clear()
+    def clear_all():
+        get_login_throttle.cache_clear()
+        get_activation_throttle.cache_clear()
+        get_reset_email_throttle.cache_clear()
+        get_verification_email_throttle.cache_clear()
+
+    clear_all()
     yield
-    get_login_throttle.cache_clear()
-    get_reset_email_throttle.cache_clear()
+    clear_all()
 
 
 @pytest.fixture(autouse=True)
@@ -193,7 +323,7 @@ def _reset_user_cache():
     ``get_user_cache`` is an lru_cache singleton whose in-memory state would
     otherwise leak between tests reusing a user id.
     """
-    from api.services.user_cache import InMemoryUserCache, get_user_cache
+    from api.services.user_cache import InMemoryUserCache
 
     get_user_cache.cache_clear()
     store = get_user_cache()

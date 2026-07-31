@@ -24,7 +24,7 @@ api/
 │   ├── dependencies.py     # CurrentUser dependency (cookie or Bearer)
 │   ├── revocation_store.py # Token revocation store (in-memory / Redis)
 │   ├── login_throttle.py   # Per-account lockout after failed logins
-│   ├── reset_throttle.py   # Per-email cooldown for password-reset emails
+│   ├── email_throttle.py   # Per-address cooldown for reset and activation emails
 │   └── logging.py          # Auth event logging
 ├── db/                 # Database layer
 │   ├── models.py           # SQLModel entities
@@ -84,13 +84,40 @@ api/
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/api/v1/auth/register` | Register new user |
+| POST | `/api/v1/auth/register` | Register new user, email an activation link |
+| POST | `/api/v1/auth/verify-email` | Confirm an address with an activation token and its password |
+| POST | `/api/v1/auth/resend-verification` | Request a fresh activation link for a password |
 | POST | `/api/v1/auth/login` | Login, get tokens |
 | POST | `/api/v1/auth/logout` | Revoke refresh token |
 | POST | `/api/v1/auth/refresh` | Refresh access token |
 | POST | `/api/v1/auth/forgot-password` | Request a password reset email |
 | POST | `/api/v1/auth/reset-password` | Reset password using a token |
 | GET | `/api/v1/auth/me` | Get current user profile |
+
+**Registration and activation.** `POST /auth/register` always answers `202` with the same
+body, whether the address is free, already registered but unverified, or already registered
+and verified -- the response never reveals which. The account it creates cannot log in until
+the emailed link is redeemed through `POST /auth/verify-email`; until then `POST /auth/login`
+answers `403` with a distinct `detail` so a client can offer a resend.
+
+A submission takes effect only when its own link is followed *and* its own password is
+restated. The password hash and names travel on the activation token, so registering an
+unconfirmed address twice leaves two working links, and whichever is redeemed first decides
+the credentials the account opens with. `POST /auth/verify-email` therefore takes
+`{token, password}`: an unknown, spent, or expired token gets one opaque `400`, while a
+password that does not match the token gets a `403` with its own `detail`, so a client can
+ask the user to retype instead of sending them off for a new link. Mismatches count against
+their own per-token lockout, namespaced apart from login's -- a run of failed logins can
+never deny someone their own activation, and burning one token's budget can never lock a
+different, freshly resent token for the same account. The two budgets are independent, so
+they add up: 10 failures each per 15 minutes, and only a caller already holding a live
+emailed token can spend the activation half. A mismatch also spends from the login lockout,
+which costs the guesser rather than capping the pair. A completed password reset clears the
+login lockout, and answers the same opaque `400` an unusable token gets when an activation
+confirmed the account while the reset was in flight. `POST /auth/resend-verification` takes
+`{email, password}` and answers `202` for any address; the link it mails carries the
+submitted password like any other. See `docs/security.md` for why each branch behaves as it
+does.
 
 **Session transport.** Login and refresh set the access and refresh tokens as
 `Secure; HttpOnly; SameSite=Strict` cookies (the refresh cookie is scoped to

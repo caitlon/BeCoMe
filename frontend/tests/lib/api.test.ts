@@ -456,14 +456,15 @@ describe('ApiClient', () => {
 
   describe('Auth Endpoints', () => {
     it('register sends POST to /auth/register', async () => {
-      const userData = { id: '1', email: 'new@example.com', first_name: 'New', last_name: null, photo_url: null, created_at: '' };
+      // 202 with a fixed acknowledgement, never a user object: registration no
+      // longer creates a session, so the body content is not the caller's concern.
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        status: 201,
-        json: () => Promise.resolve(userData),
+        status: 202,
+        json: () => Promise.resolve({ detail: 'Check your inbox to finish signing up.' }),
       });
 
-      const result = await api.register({
+      await api.register({
         email: 'new@example.com',
         password: 'password123',
         first_name: 'New',
@@ -480,7 +481,53 @@ describe('ApiClient', () => {
           }),
         })
       );
-      expect(result).toEqual(userData);
+    });
+
+    it('verifyEmail sends POST to /auth/verify-email with the token and password', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ detail: 'Your email address is confirmed. You can sign in now.' }),
+      });
+
+      await api.verifyEmail('a-token', 'CorrectHorse123!');
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/auth/verify-email'),
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ token: 'a-token', password: 'CorrectHorse123!' }),
+        })
+      );
+    });
+
+    it('verifyEmail throws a ForbiddenError on a wrong password', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 403,
+        json: () => Promise.resolve({ detail: 'Password does not match this link' }),
+      });
+
+      const { ForbiddenError } = await import('@/lib/errors');
+      await expect(api.verifyEmail('a-token', 'wrong')).rejects.toBeInstanceOf(ForbiddenError);
+    });
+
+    it('resendVerification sends POST to /auth/resend-verification with the email and password', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 202,
+        json: () => Promise.resolve({ detail: 'If that address still needs confirming, a new link is on its way.' }),
+      });
+
+      await api.resendVerification('user@example.com', 'CorrectHorse123!');
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/auth/resend-verification'),
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ email: 'user@example.com', password: 'CorrectHorse123!' }),
+        })
+      );
     });
 
     it('login sends a form-urlencoded POST with credentials', async () => {

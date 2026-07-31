@@ -5,9 +5,33 @@ from uuid import uuid4
 
 import httpx
 import pytest
+from sqlmodel import Session, select
+
+from api.db.engine import get_engine
+from api.db.models import User
+from api.db.utils import utc_now
 
 E2E_BASE_URL = "http://localhost:8000/api/v1"
 DEFAULT_PASSWORD = "SecurePass123!"
+
+
+def verify_user_email(email: str) -> None:
+    """Mark a registered address verified straight through the E2E database.
+
+    Registration creates an account that cannot log in until its address is confirmed,
+    and the activation token exists only inside the email the API sends -- which no
+    test can read. So the harness writes the column instead, connecting to the same
+    database the running API uses (``DATABASE_URL``). Everything else in the flow still
+    goes through the real endpoints.
+
+    :param email: Address of an already-registered account
+    """
+    with Session(get_engine()) as session:
+        user = session.exec(select(User).where(User.email == email.lower())).first()
+        assert user is not None, f"no account is registered for {email}"
+        user.email_verified_at = utc_now()
+        session.add(user)
+        session.commit()
 
 
 @pytest.fixture(scope="session")
@@ -67,7 +91,7 @@ def unique_email(prefix: str = "user") -> str:
 
 
 def register_user(client: httpx.Client, email: str) -> str:
-    """Register a new user and return their access token.
+    """Register a new user, activate the account, and return their access token.
 
     :param client: httpx.Client instance
     :param email: User email address
@@ -83,6 +107,7 @@ def register_user(client: httpx.Client, email: str) -> str:
         },
     )
     reg_response.raise_for_status()
+    verify_user_email(email)
 
     response = client.post(
         "/auth/login",
@@ -162,7 +187,7 @@ def register_user_with_name(
     first_name: str,
     last_name: str,
 ) -> str:
-    """Register a user with custom names and return their access token.
+    """Register a user with custom names, activate the account, and return their token.
 
     :param client: httpx.Client instance
     :param email: User email address
@@ -179,6 +204,7 @@ def register_user_with_name(
             "last_name": last_name,
         },
     ).raise_for_status()
+    verify_user_email(email)
 
     response = client.post(
         "/auth/login",
