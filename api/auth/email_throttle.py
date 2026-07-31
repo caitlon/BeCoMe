@@ -10,6 +10,12 @@ blocks a legitimate reset or activation.
 
 Each flow gets its own instance with its own Redis key prefix, so requesting a password
 reset does not eat the budget an activation email needs (or the other way round).
+
+Two entry points, deliberately: ``allow`` asks and spends, ``record`` only spends. A
+caller that must send regardless (the branch of ``/register`` that creates the account)
+uses ``record``, because a send that spends nothing would make the endpoint answer a
+second, back-to-back submission differently for a free address than for a taken one --
+rebuilding by timing the account-existence oracle the uniform response removes.
 """
 
 import hashlib
@@ -43,6 +49,7 @@ class EmailSendThrottle(Protocol):
     """Backend deciding whether another email may be sent to an address."""
 
     def allow(self, identifier: str) -> bool: ...
+    def record(self, identifier: str) -> None: ...
 
 
 class InMemoryEmailSendThrottle:
@@ -79,6 +86,15 @@ class InMemoryEmailSendThrottle:
             recent.append(now)
             self._sends[key] = recent
             return True
+
+    def record(self, identifier: str) -> None:
+        """Spend a slot for an email that is sent whatever the budget says."""
+        now = datetime.now(UTC)
+        key = _digest(identifier)
+        with self._lock:
+            recent = [t for t in self._sends.get(key, []) if now - t < self._daily_window]
+            recent.append(now)
+            self._sends[key] = recent
 
 
 class RedisEmailSendThrottle:
@@ -126,6 +142,21 @@ class RedisEmailSendThrottle:
         except redis.RedisError:
             # Fail open: a store outage must never suppress a legitimate email.
             return True
+
+    def record(self, identifier: str) -> None:
+        """Spend a slot for an email that is sent whatever the budget says."""
+        digest = _digest(identifier)
+        try:
+            # No NX: this send happens either way, so the cooldown window is restarted
+            # rather than consulted.
+            self._client.set(f"{self._key_prefix}:cooldown:{digest}", "1", ex=self._cooldown)
+            daily_key = f"{self._key_prefix}:daily:{digest}"
+            if self._client.incr(daily_key) == 1:
+                self._client.expire(daily_key, self._daily_window)
+        except redis.RedisError:
+            # Fail open, as ``allow`` does: a store outage must not turn into an error
+            # on a request whose email has already been decided.
+            return
 
 
 def _build_throttle(key_prefix: str) -> EmailSendThrottle:

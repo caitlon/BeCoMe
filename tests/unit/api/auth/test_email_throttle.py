@@ -47,6 +47,25 @@ class TestInMemoryEmailSendThrottle:
         assert reset.allow("user@example.com") is True
         assert verification.allow("user@example.com") is True
 
+    def test_record_spends_a_slot_without_asking_for_one(self):
+        """A send that must happen anyway still has to cost the address its allowance.
+
+        Without this the caller that always mails would leave a clean budget behind,
+        and a second, back-to-back request would mail again where a gated one had
+        already gone quiet -- which is the timing difference the shared budget hides.
+        """
+        throttle = InMemoryEmailSendThrottle(cooldown_seconds=3600)
+        throttle.record("user@example.com")
+        assert throttle.allow("user@example.com") is False
+
+    def test_record_is_never_denied(self):
+        """Recording past an exhausted budget still records, it does not refuse."""
+        throttle = InMemoryEmailSendThrottle(cooldown_seconds=0, daily_cap=1)
+        assert throttle.allow("user@example.com") is True
+        assert throttle.allow("user@example.com") is False
+        throttle.record("user@example.com")
+        assert throttle.allow("user@example.com") is False
+
 
 class TestRedisEmailSendThrottle:
     """The Redis throttle shares state across replicas and fails open."""
@@ -86,6 +105,32 @@ class TestRedisEmailSendThrottle:
         assert reset.allow("user@example.com") is False
         assert verification.allow("user@example.com") is False
 
+    def test_record_spends_a_slot_without_asking_for_one(self):
+        """The always-mails caller writes the same keys a gated send would."""
+        fake = fakeredis.FakeStrictRedis()
+        throttle = RedisEmailSendThrottle(
+            fake, key_prefix=VERIFICATION_KEY_PREFIX, cooldown_seconds=3600
+        )
+
+        throttle.record("user@example.com")
+
+        assert fake.keys("verify:cooldown:*")
+        assert fake.keys("verify:daily:*")
+        assert throttle.allow("user@example.com") is False
+
+    def test_record_restarts_the_cooldown_rather_than_consulting_it(self):
+        """Recording twice is not an error, and each one counts against the daily cap."""
+        fake = fakeredis.FakeStrictRedis()
+        throttle = RedisEmailSendThrottle(
+            fake, key_prefix=RESET_KEY_PREFIX, cooldown_seconds=3600, daily_cap=2
+        )
+
+        throttle.record("user@example.com")
+        throttle.record("user@example.com")
+
+        digest = next(iter(fake.keys("reset:daily:*")))
+        assert int(fake.get(digest)) == 2
+
     def test_fails_open_when_store_is_unavailable(self):
         class Boom:
             def set(self, *_args, **_kwargs):
@@ -94,6 +139,15 @@ class TestRedisEmailSendThrottle:
         # A store outage must not suppress a legitimate email.
         throttle = RedisEmailSendThrottle(Boom(), key_prefix=RESET_KEY_PREFIX)
         assert throttle.allow("user@example.com") is True
+
+    def test_record_swallows_a_store_outage(self):
+        """A store fault must not turn into an error on a request already decided."""
+
+        class Boom:
+            def set(self, *_args, **_kwargs):
+                raise redis.RedisError("down")
+
+        RedisEmailSendThrottle(Boom(), key_prefix=RESET_KEY_PREFIX).record("user@example.com")
 
 
 class TestThrottleFactories:
