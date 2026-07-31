@@ -339,10 +339,12 @@ def verify_email(
     from the one POST /login uses. A run of failed logins, which anyone who merely
     knows the address can produce without ever holding a link, never touches this
     counter, so it can never deny someone their own activation; only a caller who
-    already holds a live token can move it at all. A mismatch here still spends from
-    the login counter too, so the combined guessing budget across the two endpoints is
-    unchanged -- only each endpoint's own lockout decision is now independent. Rate
-    limited.
+    already holds a live token can move it at all. The two budgets are independent and
+    they add up: ten failures each per window, not ten between them. Sharing one counter
+    would bound the total and is precisely what brings the denial back, and the extra
+    guesses are reachable only by someone who has read the mailbox and could already
+    take the account through forgot-password. A mismatch here does spend from the login
+    counter as well, which costs the guesser their login budget. Rate limited.
 
     Both counters are cleared once the token is redeemed. Clearing the login one is
     what stops a user who mistyped a few times from being told their address is
@@ -357,9 +359,9 @@ def verify_email(
     :param service: Email verification service
     :param throttle: Per-account activation-guess throttle (lockout after repeated
         mismatches on this endpoint)
-    :param login_throttle: Per-account login throttle; a mismatch spends from it too so
-        the combined guessing bound between the two endpoints does not grow, and a
-        redemption clears it, but it is never consulted here
+    :param login_throttle: Per-account login throttle; a mismatch spends from it too, so
+        activation guessing costs the guesser their login budget, and a redemption clears
+        it, but it is never consulted here
     :return: A fixed confirmation message
     :raises InvalidVerificationTokenError: If the token is unknown, spent, or its
         account is already verified
@@ -610,6 +612,11 @@ def reset_password(
     InvalidResetTokenError and ResetTokenExpiredError are handled by centralized
     middleware and both map to 400 with the same opaque message. Rate limited.
     Every token issued before the reset is invalidated (M1).
+
+    A reset confirms the address as well, which puts it in a race with an activation of
+    the same pending account. The service settles that with a conditional write, so a
+    reset that loses answers the same opaque 400 rather than replacing the credentials
+    the activation just applied.
 
     :param request: FastAPI request (for rate limiting and logging)
     :param data: Reset token and new password

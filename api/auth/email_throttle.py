@@ -6,7 +6,11 @@ attacker rotating IPs could still flood a *known* inbox. This throttle caps how 
 such an email is sent to a given address (keyed by a hash of the email, so no address is
 stored): at most one email per short cooldown plus a small daily total. It fails open --
 if the shared store is unreachable the email is still sent, so a store outage never
-blocks a legitimate reset or activation.
+blocks a legitimate reset or activation. The cost is that an outage lifts the cap for
+every flow behind this throttle, registration and resend included. ``docs/security.md``
+records that as an accepted risk, along with why it beats failing closed: these endpoints
+answer the same 202 either way, so a closed throttle would kill every signup and every
+reset silently.
 
 Each flow gets its own instance with its own Redis key prefix, so requesting a password
 reset does not eat the budget an activation email needs (or the other way round).

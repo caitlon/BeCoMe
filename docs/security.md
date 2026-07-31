@@ -92,6 +92,15 @@ activation link in one move; a reset link proves control of the address exactly 
 activation link does, so reclaiming an address somebody pre-registered is one step for the
 credentials. It is not one step for the display name -- see "Accepted risks" below.
 
+That makes an activation and a reset the two operations that can confirm the same account, so
+both write through a conditional `UPDATE ... WHERE email_verified_at IS NULL` and let the
+database pick the winner (`_claim_account` in each service). The loser writes nothing and gets
+the opaque `400`; on the reset side its token is deliberately left unspent, so following the
+same link again succeeds against the now-confirmed account. Reading the row and writing it
+back would instead let a reset that started while the account was still pending overwrite the
+password an activation had just applied, seconds after telling whoever redeemed it to sign in
+-- bcrypt alone holds that window open for a few hundred milliseconds.
+
 A wrong password answers `403` with its own wording, not the opaque `400` the token errors
 share. Whoever reaches that point already holds a live link, so admitting the link is fine
 tells them nothing new -- while telling a user who mistyped that their link is broken would
@@ -99,12 +108,24 @@ send them round the loop asking for another one that would fail the same way. Th
 oracle that opens is capped by its own per-account lockout (`api/auth/login_throttle.py`),
 namespaced apart from the one `/login` uses: this endpoint's lockout can only be tripped by
 someone who already holds a live token, so a run of failed logins -- which anyone who merely
-knows the address can produce -- can never deny someone their own activation. A mismatch
-still spends from the login counter too, so the combined guessing bound across both endpoints
-is the same 10 attempts per 15 minutes it always was; only each endpoint's own lockout
-decision is now independent. `POST /auth/reset-password` clears the login lockout on success,
-so an attacker's failed guesses cannot keep an account locked out of login after its owner
-has proven control of the address and set a new password.
+knows the address can produce -- can never deny someone their own activation.
+
+**The two budgets are independent, and they add up.** Each endpoint allows 10 failures per
+account per 15 minutes and consults only its own counter, so nine failed logins followed by ten
+activation guesses is nineteen wrong passwords against one account inside a window. A shared
+counter is the only thing that would bound the total, and a shared counter is exactly what the
+split exists to prevent. Moving the login counter takes no credential and every failure
+refreshes its expiry, so any endpoint that reads it can be held shut indefinitely by a stranger
+who knows nothing but the address. The activation counter cannot be moved without a live
+single-use token, and that token exists in one place: the mailbox it was sent to. Whoever
+reaches the extra ten guesses has therefore already read the mail, and reading the mail takes
+the account outright through `forgot-password` without guessing at anything. The extra guesses
+hand an attacker a weaker capability than the one they used to get them. A mismatch does still
+spend from the login counter, which costs the guesser instead of bounding them: ten activation
+mismatches lock `/login` too, so the total only grows when the login guesses come first.
+`POST /auth/reset-password` clears the login lockout on success, so an attacker's failed
+guesses cannot keep an account locked out of login after its owner has proven control of the
+address and set a new password.
 
 The notice mail carries a static `/forgot-password` link, never a minted reset token -- an
 unauthenticated registration attempt must not be able to mail anyone a working reset link.
@@ -332,7 +353,7 @@ let the person concerned withdraw it themselves.
 
 ## Accepted risks
 
-Six properties are known, deliberate, and reviewed. They are recorded here so a future
+Seven properties are known, deliberate, and reviewed. They are recorded here so a future
 audit does not re-litigate them.
 
 **Inviting by email discloses whether an address has an account.** Inviting an address that
@@ -387,6 +408,26 @@ itself become the oracle the uniform response exists to remove. It is not a wedg
 link was mailed before the drain still works, and `forgot-password` draws on a separate budget
 and now confirms the address on success, so a password reset gets the holder in regardless.
 Support's answer to "I asked for the email again and nothing came" is to use forgot password.
+
+**A Redis outage lifts the per-address email caps.** `RedisEmailSendThrottle` answers `True` on
+a `RedisError` (`api/auth/email_throttle.py`), so while the store is unreachable neither the
+60-second cooldown nor the five-a-day total applies to `forgot-password`, `register`, or
+`resend-verification`, and someone rotating source addresses can put more mail in one inbox
+than the cap allows. The fail-open predates deferred activation and was written for recovery:
+a store hiccup must never be able to swallow a password-reset email. Deferred activation
+widened its reach, since registration and resend now draw on the same throttle, so an outage
+now lifts the cap on activation mail as well. Failing closed is the worse trade. These
+endpoints answer the same `202` whether or not mail went out, so a closed throttle would stop
+every signup and every reset silently for the duration -- the acknowledgement would look
+normal, nothing would arrive, and no error would be raised to alert on. The flood it would
+prevent stays bounded meanwhile: the per-IP limiter survives a store outage by falling back to
+slowapi's in-memory storage, which caps each source at `LIMIT_FALLBACK`, 60 requests a minute
+per instance (looser than the 3 and 5 a minute those routes normally carry, so the outage does
+widen this too). Redis is a hard requirement in every deployed profile, so an outage here is
+short and is already paging someone. Handing the fallback to `InMemoryEmailSendThrottle`
+instead was considered and dropped: it keeps a dict entry per address it has seen and never
+evicts one, which would open a memory-growth path during exactly the outage it was meant to
+cover.
 
 **Login and refresh also return the refresh token in the JSON body.** The browser client
 never reads it -- it uses the `HttpOnly` cookie -- but programmatic clients can only obtain

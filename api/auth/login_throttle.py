@@ -11,9 +11,17 @@ Two flows share this mechanism but never a counter. ``POST /login`` and
 ``POST /verify-email`` each answer to their own lockout, distinguished by a Redis key
 prefix, so a run of failed logins -- which anyone who merely knows the address can
 produce without ever holding an activation link -- cannot lock someone out of their own
-activation. A wrong activation guess still spends from the login counter too (see
-``verify_email`` in ``api/routes/auth.py``), so the combined guessing budget across both
-endpoints is unchanged; only each endpoint's own lockout *decision* is now independent.
+activation.
+
+The two budgets are therefore independent, and they add up: ``MAX_FAILURES`` each per
+window, not ``MAX_FAILURES`` between them. Sharing one counter is the only thing that
+would bound the total, and sharing is what brings the denial back, because the login half
+takes no credential to move and every failure refreshes its expiry. The activation half
+needs a live single-use token, which exists only in the mailbox it was sent to, and
+whoever has read that mailbox can already take the account through ``forgot-password``
+without guessing. A wrong activation guess does still spend from the login counter (see
+``verify_email`` in ``api/routes/auth.py``), which costs the guesser their login budget
+rather than capping the pair.
 """
 
 import hashlib
@@ -188,10 +196,10 @@ def get_activation_throttle() -> LoginThrottle:
     Gates ``POST /verify-email`` only, under its own Redis key prefix, so this lockout
     can only be tripped by someone who already holds a live activation token. A run of
     failed attempts against ``/login`` requires no such token, so it never counts
-    against this counter and can never deny someone their own activation. Every
-    activation mismatch still also spends from :func:`get_login_throttle`, so the
-    combined guessing budget between the two endpoints is unchanged; only each
-    endpoint's own lockout decision is now independent.
+    against this counter and can never deny someone their own activation. The price of
+    that independence is that the two budgets add up instead of sharing one; the module
+    docstring records why the trade goes this way. Every activation mismatch still also
+    spends from :func:`get_login_throttle`, which costs the guesser their login budget.
 
     :return: The activation-guess throttle.
     """

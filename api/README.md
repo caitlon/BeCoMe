@@ -108,9 +108,12 @@ the credentials the account opens with. `POST /auth/verify-email` therefore take
 password that does not match the token gets a `403` with its own `detail`, so a client can
 ask the user to retype instead of sending them off for a new link. Mismatches count against
 their own per-account lockout, namespaced apart from login's -- a run of failed logins can
-never deny someone their own activation, though a mismatch here still also spends from the
-login lockout so the combined guessing bound is unchanged. A completed password reset clears
-the login lockout. `POST /auth/resend-verification` takes
+never deny someone their own activation. The two budgets are independent, so they add up:
+10 failures each per 15 minutes, and only a caller already holding a live emailed token can
+spend the activation half. A mismatch also spends from the login lockout, which costs the
+guesser rather than capping the pair. A completed password reset clears the login lockout, and
+answers the same opaque `400` an unusable token gets when an activation confirmed the account
+while the reset was in flight. `POST /auth/resend-verification` takes
 `{email, password}` and answers `202` for any address; the link it mails carries the
 submitted password like any other. See `docs/security.md` for why each branch behaves as it
 does.
