@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 from sqlmodel import select
 
+from api.auth.login_throttle import InMemoryLoginThrottle, get_login_throttle
 from api.auth.revocation_store import RevocationStoreError
 from api.db.models import PasswordResetToken, User
 from api.db.utils import utc_now
@@ -282,3 +283,48 @@ class TestResetPassword:
 
         # THEN
         assert response.status_code == 400
+
+    def test_a_completed_reset_clears_the_login_lockout(self, client, fake_email):
+        """A reset must not leave its own new password locked out by an attacker's guesses.
+
+        Presenting a valid reset token already proves control of the address. Leaving a
+        stray lockout in place afterwards would let an attacker who tripped it keep the
+        account locked out of login indefinitely, simply by resuming the same failed
+        guesses once the throttle's window reopens -- even though the owner just proved
+        they hold the mailbox and chose a new password.
+        """
+        # GIVEN - a login lockout, tripped by an attacker's wrong guesses
+        throttle = InMemoryLoginThrottle(max_failures=2, window_seconds=3600)
+        client.app.dependency_overrides[get_login_throttle] = lambda: throttle
+        try:
+            _register(client, "relocked@example.com")
+            for _ in range(2):
+                client.post(
+                    "/api/v1/auth/login",
+                    data={"username": "relocked@example.com", "password": "WrongGuess111!"},
+                )
+            locked = client.post(
+                "/api/v1/auth/login",
+                data={"username": "relocked@example.com", "password": DEFAULT_TEST_PASSWORD},
+            )
+            assert locked.status_code == 429
+
+            # WHEN - the owner completes a reset
+            client.post("/api/v1/auth/forgot-password", json={"email": "relocked@example.com"})
+            token = _captured_token(fake_email)
+            reset = client.post(
+                "/api/v1/auth/reset-password",
+                json={"token": token, "new_password": NEW_PASSWORD},
+            )
+            assert reset.status_code == 204
+
+            # THEN - the lockout is gone, not just outrun by a new password: a locked
+            # account would still answer 429 even with the correct password, since the
+            # lockout is checked before the password is
+            response = client.post(
+                "/api/v1/auth/login",
+                data={"username": "relocked@example.com", "password": NEW_PASSWORD},
+            )
+            assert response.status_code == 200
+        finally:
+            client.app.dependency_overrides.pop(get_login_throttle, None)

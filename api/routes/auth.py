@@ -45,7 +45,11 @@ from api.auth.logging import (
     log_verification_email_requested,
     log_verification_password_mismatch,
 )
-from api.auth.login_throttle import LoginThrottle, get_login_throttle
+from api.auth.login_throttle import (
+    LoginThrottle,
+    get_activation_throttle,
+    get_login_throttle,
+)
 from api.auth.password import hash_password
 from api.auth.revocation_store import RevocationStore, get_revocation_store
 from api.config import get_settings
@@ -306,7 +310,8 @@ def verify_email(
     request: Request,
     data: VerifyEmailRequest,
     service: Annotated[EmailVerificationService, Depends(get_email_verification_service)],
-    throttle: Annotated[LoginThrottle, Depends(get_login_throttle)],
+    throttle: Annotated[LoginThrottle, Depends(get_activation_throttle)],
+    login_throttle: Annotated[LoginThrottle, Depends(get_login_throttle)],
 ) -> dict[str, str]:
     """Redeem an activation token and mark the account's address verified.
 
@@ -324,18 +329,30 @@ def verify_email(
     unknown token cannot be told apart from a spent or expired one. A wrong password
     answers 403 instead, on purpose: the caller already holds a live link, and telling
     someone who mistyped that their link is broken would send them off for another one.
-    That leaves a guessing oracle, so mismatches feed the same per-account lockout a
-    failed login does. Rate limited.
+
+    That leaves a guessing oracle, capped by its own per-account lockout -- distinct
+    from the one POST /login uses. A run of failed logins, which anyone who merely
+    knows the address can produce without ever holding a link, never touches this
+    counter, so it can never deny someone their own activation; only a caller who
+    already holds a live token can move it at all. A mismatch here still spends from
+    the login counter too, so the combined guessing budget across the two endpoints is
+    unchanged -- only each endpoint's own lockout decision is now independent. Rate
+    limited.
 
     :param request: FastAPI request (for rate limiting and logging)
     :param data: The raw token from the activation link and its password
     :param service: Email verification service
-    :param throttle: Per-account login throttle (lockout after repeated failures)
+    :param throttle: Per-account activation-guess throttle (lockout after repeated
+        mismatches on this endpoint)
+    :param login_throttle: Per-account login throttle; a mismatch spends from it too so
+        the combined guessing bound between the two endpoints does not grow, but it is
+        never consulted here
     :return: A fixed confirmation message
     :raises InvalidVerificationTokenError: If the token is unknown, spent, or its
         account is already verified
     :raises VerificationTokenExpiredError: If the token has expired
-    :raises LoginThrottledError: If the account is locked after repeated failures
+    :raises LoginThrottledError: If the account is locked after repeated activation
+        mismatches
     :raises VerificationPasswordMismatchError: If the password is not the one the
         token carries
     """
@@ -350,6 +367,7 @@ def verify_email(
         user = service.activate(pending, data.password)
     except VerificationPasswordMismatchError:
         throttle.record_failure(pending.email)
+        login_throttle.record_failure(pending.email)
         log_verification_password_mismatch(pending.user_id, request)
         raise
     throttle.reset(pending.email)
@@ -568,6 +586,7 @@ def reset_password(
     data: ResetPasswordRequest,
     service: Annotated[PasswordResetService, Depends(get_password_reset_service)],
     store: Annotated[RevocationStore, Depends(get_revocation_store)],
+    throttle: Annotated[LoginThrottle, Depends(get_login_throttle)],
 ) -> None:
     """Set a new password using a valid reset token.
 
@@ -579,6 +598,7 @@ def reset_password(
     :param data: Reset token and new password
     :param service: Password reset service
     :param store: Revocation store (invalidates sessions issued before the reset)
+    :param throttle: Per-account login throttle, cleared once the reset completes
     """
     # Order matters: resolve the token, close the session window, then write. Recording
     # the cutoff first means a store fault surfaces as a 503 with the password unchanged
@@ -588,6 +608,12 @@ def reset_password(
     user = service.resolve_valid_token(data.token)
     store.set_user_valid_after(user.id, datetime.now(UTC))
     service.reset_password(data.token, data.new_password)
+
+    # A login lockout is writable by anyone who merely knows the address, and it would
+    # otherwise survive its owner proving control of the mailbox and choosing a new
+    # password: an attacker who tripped it can just resume the same failed guesses once
+    # the window reopens and keep the account locked out indefinitely.
+    throttle.reset(user.email)
 
     log_password_reset_completed(user.id, request)
 

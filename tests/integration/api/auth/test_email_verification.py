@@ -17,7 +17,11 @@ from api.auth.email_throttle import (
     InMemoryEmailSendThrottle,
     get_verification_email_throttle,
 )
-from api.auth.login_throttle import InMemoryLoginThrottle, get_login_throttle
+from api.auth.login_throttle import (
+    InMemoryLoginThrottle,
+    get_activation_throttle,
+    get_login_throttle,
+)
 from api.auth.password import hash_password
 from api.db.models import EmailVerificationToken, User
 from api.db.utils import utc_now
@@ -424,13 +428,20 @@ class TestSignupTakeoverAttempts:
 
 
 class TestActivationPasswordGuessing:
-    """Holding a link buys a password oracle, so it is capped like the login one."""
+    """Holding a link buys a password oracle, capped by its own lockout.
+
+    That lockout is namespaced apart from login's: guessing wrong here still spends
+    from the login counter too (the combined bound across both endpoints is unchanged),
+    but nothing that happens at /login ever counts against -- or can trip -- this one.
+    """
 
     def test_repeated_mismatches_lock_the_account_out(self, client, fake_email):
-        """Guessing against a link trips the same lockout guessing against login does."""
-        # GIVEN - a lockout that trips after two failures, and a live link
-        throttle = InMemoryLoginThrottle(max_failures=2, window_seconds=3600)
-        client.app.dependency_overrides[get_login_throttle] = lambda: throttle
+        """Guessing against a link trips its own lockout, sized like the login one."""
+        # GIVEN - independent lockouts that trip after two failures, and a live link
+        activation_throttle = InMemoryLoginThrottle(max_failures=2, window_seconds=3600)
+        login_throttle = InMemoryLoginThrottle(max_failures=2, window_seconds=3600)
+        client.app.dependency_overrides[get_activation_throttle] = lambda: activation_throttle
+        client.app.dependency_overrides[get_login_throttle] = lambda: login_throttle
         try:
             register(client, "guessed@example.com", password=DEFAULT_TEST_PASSWORD)
             token = _verify_token(fake_email)
@@ -439,42 +450,76 @@ class TestActivationPasswordGuessing:
             assert _activate(client, token, "WrongGuess111!").status_code == 403
             assert _activate(client, token, "WrongGuess222!").status_code == 403
 
-            # THEN - even the right password is refused now, and so is a login
+            # THEN - even the right password is refused now, and so is a login: each
+            # mismatch spent from both counters
             locked = _activate(client, token, DEFAULT_TEST_PASSWORD)
             assert locked.status_code == 429
             assert _login(client, "guessed@example.com").status_code == 429
             assert stored_accounts(client, "guessed@example.com")[0]["email_verified_at"] is None
         finally:
+            client.app.dependency_overrides.pop(get_activation_throttle, None)
             client.app.dependency_overrides.pop(get_login_throttle, None)
 
-    def test_a_successful_activation_clears_the_failure_count(self, client, fake_email):
-        """Someone who mistypes once and then gets it right is not left near a lockout."""
-        # GIVEN
-        throttle = InMemoryLoginThrottle(max_failures=2, window_seconds=3600)
-        client.app.dependency_overrides[get_login_throttle] = lambda: throttle
+    def test_failed_logins_do_not_block_the_victims_own_activation(self, client, fake_email):
+        """A run of failed /login attempts must not deny someone their own activation.
+
+        The login throttle is writable by anyone who merely knows the address -- no
+        link required. Gating verify-email on it would let that unauthenticated caller
+        lock out an activation they never touched.
+        """
+        # GIVEN - a live activation link, and enough wrong logins to lock the login
+        # throttle for the same account
+        login_throttle = InMemoryLoginThrottle(max_failures=2, window_seconds=3600)
+        client.app.dependency_overrides[get_login_throttle] = lambda: login_throttle
         try:
-            register(client, "fumbled@example.com", password=DEFAULT_TEST_PASSWORD)
+            register(client, "targeted@example.com", password=DEFAULT_TEST_PASSWORD)
             token = _verify_token(fake_email)
-            assert _activate(client, token, "WrongGuess111!").status_code == 403
+            for _ in range(2):
+                assert _login(client, "targeted@example.com", "WrongGuess111!").status_code == 401
+            assert _login(client, "targeted@example.com").status_code == 429
 
-            # WHEN
-            assert _activate(client, token, DEFAULT_TEST_PASSWORD).status_code == 200
+            # WHEN - the victim activates with the correct password anyway
+            activated = _activate(client, token, DEFAULT_TEST_PASSWORD)
 
-            # THEN - the earlier miss is not still counting against the account
-            assert _login(client, "fumbled@example.com", "StillWrong111!").status_code == 401
-            assert _login(client, "fumbled@example.com").status_code == 200
+            # THEN - the login lockout never touched activation
+            assert activated.status_code == 200
         finally:
             client.app.dependency_overrides.pop(get_login_throttle, None)
 
-    def test_a_bad_token_never_reaches_the_lockout(self, client, fake_email):
-        """An unknown token answers before any account is known, so none is charged.
+    def test_a_mismatch_also_counts_against_the_login_throttle(self, client, fake_email):
+        """Guessing wrong at activation still spends from the login budget too.
+
+        Splitting the two lockouts must not double the total guessing budget: a wrong
+        guess here is, in the same act, spending down the budget that would otherwise
+        cover /login guesses against the same account.
+        """
+        # GIVEN - a login lockout that trips after two failures
+        login_throttle = InMemoryLoginThrottle(max_failures=2, window_seconds=3600)
+        client.app.dependency_overrides[get_login_throttle] = lambda: login_throttle
+        try:
+            register(client, "shared@example.com", password=DEFAULT_TEST_PASSWORD)
+            token = _verify_token(fake_email)
+
+            # WHEN - one wrong guess at activation, then one wrong guess at login
+            assert _activate(client, token, "WrongGuess111!").status_code == 403
+            assert _login(client, "shared@example.com", "WrongGuess222!").status_code == 401
+
+            # THEN - together they already spent the login budget
+            assert _login(client, "shared@example.com").status_code == 429
+        finally:
+            client.app.dependency_overrides.pop(get_login_throttle, None)
+
+    def test_a_bad_token_never_reaches_either_lockout(self, client, fake_email):
+        """An unknown token answers before any account is known, so neither is charged.
 
         Charging one would mean an unauthenticated caller could lock an account out by
         posting garbage, and there would be no account to charge in the first place.
         """
         # GIVEN
-        throttle = InMemoryLoginThrottle(max_failures=1, window_seconds=3600)
-        client.app.dependency_overrides[get_login_throttle] = lambda: throttle
+        activation_throttle = InMemoryLoginThrottle(max_failures=1, window_seconds=3600)
+        login_throttle = InMemoryLoginThrottle(max_failures=1, window_seconds=3600)
+        client.app.dependency_overrides[get_activation_throttle] = lambda: activation_throttle
+        client.app.dependency_overrides[get_login_throttle] = lambda: login_throttle
         try:
             register_verified(client, "untouched@example.com")
 
@@ -482,9 +527,10 @@ class TestActivationPasswordGuessing:
             for _ in range(3):
                 assert _activate(client, "garbage-token").status_code == 400
 
-            # THEN
+            # THEN - neither counter was charged, so login still works on the first try
             assert _login(client, "untouched@example.com").status_code == 200
         finally:
+            client.app.dependency_overrides.pop(get_activation_throttle, None)
             client.app.dependency_overrides.pop(get_login_throttle, None)
 
 
