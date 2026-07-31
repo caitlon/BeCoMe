@@ -16,15 +16,14 @@ vi.mock('@/lib/api', () => ({
   },
 }));
 
-// Mock navigation and the token read from the URL query string
+// Mock navigation only; the token itself comes from a real query string via
+// createWrapper's initialEntries below, exercising the real useSearchParams.
 const mockNavigate = vi.fn();
-const routeState: { token: string | null } = { token: 'valid-verify-token' };
 vi.mock('react-router', async () => {
   const actual = await vi.importActual('react-router');
   return {
     ...actual,
     useNavigate: () => mockNavigate,
-    useSearchParams: () => [{ get: () => routeState.token }, vi.fn()],
   };
 });
 
@@ -47,10 +46,19 @@ vi.mock('@/contexts/AuthContext', () => ({
   }),
 }));
 
+const VALID_TOKEN = 'valid-verify-token';
+
+// Starts the page at a specific route, so useSearchParams reads a real query
+// string (createWrapper(initialEntries), per the test conventions this page's
+// tests need).
+const renderAt = (token: string | null = VALID_TOKEN) =>
+  render(<VerifyEmail />, {
+    initialEntries: [token ? `/verify-email?token=${token}` : '/verify-email'],
+  });
+
 describe('VerifyEmail', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    routeState.token = 'valid-verify-token';
   });
 
   const getPasswordInput = () => screen.getByPlaceholderText('Enter your password');
@@ -63,14 +71,14 @@ describe('VerifyEmail', () => {
       .find((link) => link.getAttribute('href') === '/login');
 
   it('renders the password field and submit button when a token is present', () => {
-    render(<VerifyEmail />);
+    renderAt();
 
     expect(getPasswordInput()).toBeInTheDocument();
     expect(getSubmitButton()).toBeInTheDocument();
   });
 
   it('does not call api.verifyEmail on mount', async () => {
-    render(<VerifyEmail />);
+    renderAt();
 
     // Flush a tick so a stray effect-driven auto-submit would have fired.
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -79,8 +87,7 @@ describe('VerifyEmail', () => {
   });
 
   it('shows a missing-link message instead of a form when the token is absent', () => {
-    routeState.token = null;
-    render(<VerifyEmail />);
+    renderAt(null);
 
     expect(screen.queryByPlaceholderText('Enter your password')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /confirm email/i })).not.toBeInTheDocument();
@@ -90,7 +97,7 @@ describe('VerifyEmail', () => {
   it('shows a loading state during submission', async () => {
     const user = userEvent.setup();
     mockVerifyEmail.mockImplementation(() => new Promise(() => {}));
-    render(<VerifyEmail />);
+    renderAt();
 
     await user.type(getPasswordInput(), 'CorrectHorse123!');
     await user.click(getSubmitButton());
@@ -103,13 +110,13 @@ describe('VerifyEmail', () => {
   it('calls api.verifyEmail with the token and password, then navigates to /login on success', async () => {
     const user = userEvent.setup();
     mockVerifyEmail.mockResolvedValueOnce(undefined);
-    render(<VerifyEmail />);
+    renderAt();
 
     await user.type(getPasswordInput(), 'CorrectHorse123!');
     await user.click(getSubmitButton());
 
     await waitFor(() => {
-      expect(mockVerifyEmail).toHaveBeenCalledWith('valid-verify-token', 'CorrectHorse123!');
+      expect(mockVerifyEmail).toHaveBeenCalledWith(VALID_TOKEN, 'CorrectHorse123!');
     });
     await waitFor(() => {
       expect(mockNavigate).toHaveBeenCalledWith('/login');
@@ -122,7 +129,7 @@ describe('VerifyEmail', () => {
   it('keeps the form and token in place on a 403 (wrong password), without navigating away', async () => {
     const user = userEvent.setup();
     mockVerifyEmail.mockRejectedValueOnce(new ForbiddenError());
-    render(<VerifyEmail />);
+    renderAt();
 
     await user.type(getPasswordInput(), 'WrongPassword123!');
     await user.click(getSubmitButton());
@@ -139,7 +146,7 @@ describe('VerifyEmail', () => {
   it('replaces the form with a login link on a 400 (unusable link)', async () => {
     const user = userEvent.setup();
     mockVerifyEmail.mockRejectedValueOnce(new HttpError('Invalid or expired token', 400));
-    render(<VerifyEmail />);
+    renderAt();
 
     await user.type(getPasswordInput(), 'CorrectHorse123!');
     await user.click(getSubmitButton());
@@ -155,7 +162,7 @@ describe('VerifyEmail', () => {
   it('shows a distinct locked-out message on a 429, without navigating away', async () => {
     const user = userEvent.setup();
     mockVerifyEmail.mockRejectedValueOnce(new RateLimitError());
-    render(<VerifyEmail />);
+    renderAt();
 
     await user.type(getPasswordInput(), 'CorrectHorse123!');
     await user.click(getSubmitButton());
@@ -170,7 +177,7 @@ describe('VerifyEmail', () => {
   it('shows a generic error toast for an unexpected failure (e.g. service unavailable)', async () => {
     const user = userEvent.setup();
     mockVerifyEmail.mockRejectedValueOnce(new ServerError());
-    render(<VerifyEmail />);
+    renderAt();
 
     await user.type(getPasswordInput(), 'CorrectHorse123!');
     await user.click(getSubmitButton());
