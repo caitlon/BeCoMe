@@ -200,6 +200,9 @@ class TestEmailVerificationTokenModel:
         token = EmailVerificationToken(
             user_id=user.id,
             token_hash="a" * 64,
+            hashed_password="hash",
+            first_name="Test",
+            last_name="User",
             expires_at=datetime.now(UTC) + timedelta(hours=1),
         )
         session.add(token)
@@ -227,6 +230,9 @@ class TestEmailVerificationTokenModel:
         token1 = EmailVerificationToken(
             user_id=user.id,
             token_hash=shared_hash,
+            hashed_password="hash",
+            first_name="Test",
+            last_name="User",
             expires_at=datetime.now(UTC) + timedelta(hours=1),
         )
         session.add(token1)
@@ -236,6 +242,9 @@ class TestEmailVerificationTokenModel:
         token2 = EmailVerificationToken(
             user_id=user.id,
             token_hash=shared_hash,
+            hashed_password="hash",
+            first_name="Test",
+            last_name="User",
             expires_at=datetime.now(UTC) + timedelta(hours=1),
         )
         session.add(token2)
@@ -257,11 +266,17 @@ class TestEmailVerificationTokenModel:
         token1 = EmailVerificationToken(
             user_id=user.id,
             token_hash="c" * 64,
+            hashed_password="hash",
+            first_name="Test",
+            last_name="User",
             expires_at=datetime.now(UTC) + timedelta(hours=1),
         )
         token2 = EmailVerificationToken(
             user_id=user.id,
             token_hash="d" * 64,
+            hashed_password="hash",
+            first_name="Test",
+            last_name="User",
             expires_at=datetime.now(UTC) + timedelta(hours=2),
         )
         session.add_all([token1, token2])

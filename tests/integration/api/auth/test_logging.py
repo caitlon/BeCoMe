@@ -13,6 +13,7 @@ from api.auth.logging import (
     log_password_change_failure,
     log_registration_attempt,
     log_verification_email_requested,
+    log_verification_password_mismatch,
 )
 
 
@@ -293,6 +294,46 @@ class TestLogVerificationEmailRequested:
 
         # THEN
         assert mock_logger.info.call_args[1]["extra"]["ip"] == "203.0.113.77"
+
+
+class TestLogVerificationPasswordMismatch:
+    """Tests for log_verification_password_mismatch function."""
+
+    def test_logs_a_warning_naming_the_account_the_link_belongs_to(self):
+        """A guess against a live link is its own event, and it names the account.
+
+        Whoever sent the request already holds a link to that account, so the record
+        gives a log reader nothing the requester did not have. Keeping it apart from
+        ``login_failure`` stops it from distorting brute-force alerting on logins.
+        """
+        # GIVEN
+        user_id = uuid4()
+
+        # WHEN
+        with patch("api.auth.logging.logger") as mock_logger:
+            log_verification_password_mismatch(user_id)
+
+        # THEN
+        mock_logger.warning.assert_called_once()
+        extra = mock_logger.warning.call_args[1]["extra"]
+        assert extra["event"] == "verification_password_mismatch"
+        assert extra["user_id"] == str(user_id)
+        assert "email" not in extra
+        assert "token" not in extra
+
+    def test_extracts_ip_from_request(self):
+        """The mismatch record carries the caller IP."""
+        # GIVEN
+        mock_request = MagicMock()
+        mock_request.headers.get.return_value = None
+        mock_request.client.host = "203.0.113.99"
+
+        # WHEN
+        with patch("api.auth.logging.logger") as mock_logger:
+            log_verification_password_mismatch(uuid4(), mock_request)
+
+        # THEN
+        assert mock_logger.warning.call_args[1]["extra"]["ip"] == "203.0.113.99"
 
 
 class TestLogEmailVerified:

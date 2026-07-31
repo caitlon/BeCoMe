@@ -43,8 +43,10 @@ from api.auth.logging import (
     log_password_reset_requested,
     log_registration_attempt,
     log_verification_email_requested,
+    log_verification_password_mismatch,
 )
 from api.auth.login_throttle import LoginThrottle, get_login_throttle
+from api.auth.password import hash_password
 from api.auth.revocation_store import RevocationStore, get_revocation_store
 from api.config import get_settings
 from api.dependencies import (
@@ -55,7 +57,12 @@ from api.dependencies import (
     get_registration_service,
     get_user_service,
 )
-from api.exceptions import EmailNotVerifiedError, InvalidCredentialsError, LoginThrottledError
+from api.exceptions import (
+    EmailNotVerifiedError,
+    InvalidCredentialsError,
+    LoginThrottledError,
+    VerificationPasswordMismatchError,
+)
 from api.middleware.rate_limit import LIMIT_AUTH_ENDPOINTS, LIMIT_PWD_RESET, limiter
 from api.schemas.auth import (
     ForgotPasswordRequest,
@@ -106,6 +113,29 @@ def _set_session_cookies(response: Response, token_pair: TokenPair, request: Req
         refresh_ttl=refresh_token_ttl_seconds(),
         secure=cookies_secure(request),
     )
+
+
+def _may_mail(throttle: EmailSendThrottle, email: str, *, created: bool) -> bool:
+    """Decide whether registration may mail this address, spending a slot either way.
+
+    The branch that created the account is never denied: it fires at most once per
+    address, so it can flood nothing, and charging it to a budget a stranger can drain
+    with five unauthenticated resend requests would let anyone pre-empt a signup that
+    has not happened yet. It still *spends* a slot, though. A send that spent nothing
+    would leave the address's budget clean, so a second, back-to-back submission would
+    mail again for a free address while a taken one had already gone quiet -- and the
+    awaited round trip to the mail provider is exactly the difference the uniform 202
+    exists to hide.
+
+    :param throttle: Per-address cap on the emails this flow can trigger.
+    :param email: Address the email would go to.
+    :param created: Whether this submission is the one that created the account.
+    :return: Whether to send.
+    """
+    if created:
+        throttle.record(email)
+        return True
+    return throttle.allow(email)
 
 
 async def _send_quietly(send: Awaitable[None], event: str) -> None:
@@ -176,15 +206,15 @@ async def register(
         last_name=data.last_name,
     )
 
-    # Every branch that mails a repeat submission is capped per address (a hashed key),
-    # so posting a victim's address here from rotating IPs cannot flood their inbox past
-    # the per-IP limiter. The branch that just created the account is exempt: it fires at
-    # most once per address, since a second submission is by definition no longer free,
-    # and charging it to the shared budget would let five resend requests from a stranger
-    # deny a real signup the only link it will ever be sent. The response is unchanged
-    # whether or not a send happens.
+    # Every branch is capped per address (a hashed key), so posting a victim's address
+    # here from rotating IPs cannot flood their inbox past the per-IP limiter. The
+    # response is unchanged whether or not a send happens; see _may_mail for why the
+    # creating branch spends from the budget without being gated by it.
+    # Do not flatten the two conditions into one: a pending account whose send is
+    # suppressed would then fall into the elif and be mailed a notice instead, which is
+    # both the wrong message and a second charge against the same budget.
     if result.user is not None:
-        if result.created or throttle.allow(data.email):
+        if _may_mail(throttle, data.email, created=result.created):
             verify_url = verification.create_verification_url(result.user, result.credentials)
             await _send_quietly(
                 email_service.send_email_verification(to_email=data.email, verify_url=verify_url),
@@ -276,27 +306,54 @@ def verify_email(
     request: Request,
     data: VerifyEmailRequest,
     service: Annotated[EmailVerificationService, Depends(get_email_verification_service)],
+    throttle: Annotated[LoginThrottle, Depends(get_login_throttle)],
 ) -> dict[str, str]:
     """Redeem an activation token and mark the account's address verified.
 
     The emailed link points at the frontend, which posts the token here, so a mail
-    client prefetching the link with a GET cannot burn a single-use token. Redeeming
-    also writes whatever the token carries -- the password and names of the submission
-    that minted it -- so the account opens on the terms of the person who followed the
-    link, not of whoever submitted the address most recently.
+    client prefetching the link with a GET cannot burn a single-use token. Redemption
+    takes the token *and* the password of the submission that minted it, checked
+    against the token rather than against the stored account: a link that reaches an
+    inbox its submitter does not control is then dead in both hands, since the
+    recipient cannot supply the password and the submitter never sees the link.
+    Redeeming writes what the token carries, so the account opens on the terms of the
+    submission being redeemed, not of whoever submitted the address most recently.
+
     InvalidVerificationTokenError and VerificationTokenExpiredError are handled by
     centralized middleware and both map to 400 with the same opaque message, so an
-    unknown token cannot be told apart from a spent or expired one. Rate limited.
+    unknown token cannot be told apart from a spent or expired one. A wrong password
+    answers 403 instead, on purpose: the caller already holds a live link, and telling
+    someone who mistyped that their link is broken would send them off for another one.
+    That leaves a guessing oracle, so mismatches feed the same per-account lockout a
+    failed login does. Rate limited.
 
     :param request: FastAPI request (for rate limiting and logging)
-    :param data: The raw token from the activation link
+    :param data: The raw token from the activation link and its password
     :param service: Email verification service
+    :param throttle: Per-account login throttle (lockout after repeated failures)
     :return: A fixed confirmation message
     :raises InvalidVerificationTokenError: If the token is unknown, spent, or its
         account is already verified
     :raises VerificationTokenExpiredError: If the token has expired
+    :raises LoginThrottledError: If the account is locked after repeated failures
+    :raises VerificationPasswordMismatchError: If the password is not the one the
+        token carries
     """
-    user = service.verify_email(data.token)
+    # The token is resolved first, so a caller holding a bad one never reaches the
+    # throttle and every bad-token answer stays identical. Resolving also refuses an
+    # account that is already verified, which is what keeps this endpoint from being
+    # able to lock a live account out of its own login.
+    pending = service.resolve_pending_activation(data.token)
+    if throttle.is_locked(pending.email):
+        raise LoginThrottledError
+    try:
+        user = service.activate(pending, data.password)
+    except VerificationPasswordMismatchError:
+        throttle.record_failure(pending.email)
+        log_verification_password_mismatch(pending.user_id, request)
+        raise
+    throttle.reset(pending.email)
+
     log_email_verified(user.id, request)
     return {"detail": _VERIFICATION_COMPLETE}
 
@@ -321,26 +378,31 @@ async def resend_verification(
     registration flow's per-address throttle: both land in the same inbox, so an
     attacker must not get a second allowance by switching endpoints. Rate limited.
 
-    The link this mails carries no submission, unlike the one registration mails: an
-    address is all this endpoint receives, so there is nothing to bind, and following
-    the link confirms the address without touching the stored password. See the
-    accepted risk in docs/security.md for what that means for an account somebody else
-    created.
+    The password makes this a repeat registration minus the names, and the link it
+    mails carries that submission like any other: redeeming it means restating the
+    password, and the names come from the account, which is all a resend can know. An
+    address-only resend would instead hand out a link anybody receiving the mail could
+    follow, which would reopen the takeover the whole flow closes.
 
     :param request: FastAPI request (for rate limiting and logging)
-    :param data: Email address to send the activation link to
+    :param data: Address to send the activation link to, and the password it opens on
     :param service: Email verification service
     :param email_service: Email sender
     :param throttle: Per-address cap on the emails the registration flow can trigger
     :return: A fixed acknowledgement message
     """
+    # Hashed before the lookup and unconditionally, so the branch with nothing to send
+    # spends the same bcrypt as the one that mints a link. In a worker thread because
+    # bcrypt blocks for 100-300 ms and this route runs on the event loop.
+    hashed_password = await run_in_threadpool(hash_password, data.password)
+
     # Look first, spend after. A request naming an address with nothing to resend must
     # not consume that address's budget: it takes no authentication to name someone
     # else's address here, and a spent budget silently suppresses the mail a genuine
     # signup depends on.
     pending = service.find_unverified_account(data.email)
     if pending is not None and throttle.allow(data.email):
-        verify_url = service.create_verification_url(pending)
+        verify_url = service.create_resend_url(pending, hashed_password)
         await _send_quietly(
             email_service.send_email_verification(to_email=data.email, verify_url=verify_url),
             "verification_email_failed",

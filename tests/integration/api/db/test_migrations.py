@@ -159,11 +159,12 @@ class TestEmailVerificationMigration:
         finally:
             engine.dispose()
 
-    def test_a_token_cannot_carry_half_a_submission(self, migration_pg, monkeypatch):
-        """The three credential columns are written together or not at all.
+    def test_a_token_cannot_exist_without_a_submission(self, migration_pg, monkeypatch):
+        """All three credential columns are required, not merely written together.
 
-        Redemption treats them as one value, so a row with only some of them set would
-        activate an account with a password and somebody else's name still on it.
+        Redemption checks the posted password against ``hashed_password`` and writes
+        all three, so a row missing any of them would be a link nobody has to
+        authenticate against -- which is the takeover the whole flow closes.
         """
         # GIVEN - a database at this migration, holding one account
         url = _url(migration_pg)
@@ -184,7 +185,7 @@ class TestEmailVerificationMigration:
                 )
 
             # WHEN / THEN - a token with a password but no names is rejected
-            with pytest.raises(IntegrityError, match="credentials_complete"), engine.begin() as c:
+            with pytest.raises(IntegrityError, match="not-null"), engine.begin() as c:
                 c.execute(
                     text(
                         f"INSERT INTO {_TOKENS} "  # noqa: S608 - constant table name

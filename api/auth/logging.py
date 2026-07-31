@@ -132,7 +132,15 @@ def log_verification_email_requested(email: str, request: "Request | None" = Non
     """Log a resend-verification request.
 
     Carries no ``user_id`` for the same reason as the registration attempt: the
-    endpoint answers identically for a known and an unknown address.
+    endpoint answers identically for a known and an unknown address, and this record
+    on its own names no account.
+
+    That is where the guarantee stops, exactly as it does for ``log_registration_attempt``.
+    The resend path writes ``verification_resend_noop`` when there was nothing to send
+    and ``verification_token_created`` when there was, both under the same request id
+    as this record, so a reader of the full application log can still recover which
+    branch ran for a given ``email_hash``. Log access is the trust boundary; the
+    response the caller sees is unaffected either way.
 
     :param email: Email address from the request
     :param request: FastAPI request (for IP extraction)
@@ -143,6 +151,28 @@ def log_verification_email_requested(email: str, request: "Request | None" = Non
         extra={
             "event": "verification_email_requested",
             "email_hash": hash_email(email),
+            "ip": ip,
+        },
+    )
+
+
+def log_verification_password_mismatch(user_id: UUID, request: "Request | None" = None) -> None:
+    """Log an activation attempt whose password was not the one the link carries.
+
+    Its own event rather than ``login_failure``: this is a guess against a link, not
+    against the login endpoint, and folding the two together would distort brute-force
+    alerting on either. The account is named because whoever sent the request already
+    holds a live link to it, so the record adds nothing they do not have.
+
+    :param user_id: ID of the account the link belongs to
+    :param request: FastAPI request (for IP extraction)
+    """
+    ip = get_client_ip(request)
+    logger.warning(
+        "Activation password did not match the link",
+        extra={
+            "event": "verification_password_mismatch",
+            "user_id": str(user_id),
             "ip": ip,
         },
     )

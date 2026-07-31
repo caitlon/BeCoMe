@@ -7,13 +7,20 @@ import logging
 import secrets
 from dataclasses import dataclass
 from datetime import timedelta
+from uuid import UUID
 
-from sqlmodel import Session, select
+from sqlalchemy import update
+from sqlmodel import Session, col, select
 
+from api.auth.password import verify_password
 from api.config import get_settings
 from api.db.models import EmailVerificationToken, User
 from api.db.utils import ensure_utc, utc_now
-from api.exceptions import InvalidVerificationTokenError, VerificationTokenExpiredError
+from api.exceptions import (
+    InvalidVerificationTokenError,
+    VerificationPasswordMismatchError,
+    VerificationTokenExpiredError,
+)
 from api.services.base import BaseService
 from api.services.user_cache import UserCacheStore
 
@@ -25,6 +32,10 @@ _TOKEN_BYTES = 32
 # One opaque message for unknown, used, and expired tokens so a caller cannot
 # tell them apart (avoids a token-state oracle).
 _INVALID_MESSAGE = "Invalid or expired verification link"
+
+# The password posted with the link is not the one the link carries. Kept separate from
+# the message above on purpose -- see VerificationPasswordMismatchError.
+_MISMATCH_MESSAGE = "Password does not match this activation link"
 
 
 def _hash_token(raw_token: str) -> str:
@@ -41,9 +52,10 @@ class PendingCredentials:
     """The account details one registration submission asked for.
 
     Carried on the activation token instead of being written to the account, so a
-    submission takes effect only when the link minted for *it* is redeemed. Writing
-    them to the account at submission time is an account-takeover primitive: whoever
-    submits last decides what everyone else's outstanding link opens.
+    submission takes effect only when the link minted for *it* is redeemed, and only
+    for someone who can restate its password. Writing them to the account at submission
+    time is an account-takeover primitive: whoever submits last decides what everyone
+    else's outstanding link opens.
 
     :param hashed_password: bcrypt hash of the submitted password.
     :param first_name: Submitted first name.
@@ -55,24 +67,37 @@ class PendingCredentials:
     last_name: str
 
 
-def _carried_credentials(record: EmailVerificationToken) -> PendingCredentials | None:
-    """Return the submission a token carries, if it carries one.
+@dataclass(frozen=True, slots=True)
+class PendingActivation:
+    """A live activation token together with the account it would open.
 
-    The three columns are written together or left NULL together, which the table's
-    ``ck_email_verification_tokens_credentials_complete`` constraint enforces; testing
-    all three here is what lets the caller treat the result as a whole.
+    Resolving and redeeming are two calls rather than one so the route can weigh the
+    account's login lockout in between: the account is only known once the token has
+    been resolved, and a locked account must be refused before another password guess
+    is evaluated.
 
-    :param record: A verification-token record.
-    :return: The credentials to apply on redemption, or None for a link that only
-        confirms the address.
+    :param record: The validated, unspent token record.
+    :param user: The still-unverified account the token belongs to.
     """
-    if record.hashed_password is None or record.first_name is None or record.last_name is None:
-        return None
-    return PendingCredentials(
-        hashed_password=record.hashed_password,
-        first_name=record.first_name,
-        last_name=record.last_name,
-    )
+
+    record: EmailVerificationToken
+    user: User
+
+    @property
+    def email(self) -> str:
+        """Return the address of the account this link would activate.
+
+        :return: The account's normalized email, used to key the login lockout.
+        """
+        return self.user.email
+
+    @property
+    def user_id(self) -> UUID:
+        """Return the id of the account this link would activate.
+
+        :return: The account's id, for the security log.
+        """
+        return self.user.id
 
 
 class EmailVerificationService(BaseService):
@@ -86,6 +111,11 @@ class EmailVerificationService(BaseService):
     submission, and retiring the others would let one submitter kill another's pending
     link. Each token is single-use and the first redemption verifies the address, after
     which the rest are refused.
+
+    Redemption takes the token *and* the password that minted it. A link alone is
+    therefore not enough: an activation mail that reaches an inbox its submitter does
+    not control cannot be followed to completion by the recipient, who does not know
+    the submitted password, nor by the submitter, who never sees the link.
     """
 
     def __init__(self, session: Session, user_cache: UserCacheStore | None = None) -> None:
@@ -97,19 +127,15 @@ class EmailVerificationService(BaseService):
         super().__init__(session)
         self._user_cache = user_cache
 
-    def create_verification_url(
-        self,
-        user: User,
-        credentials: PendingCredentials | None = None,
-    ) -> str:
-        """Issue an activation link for a user, optionally carrying a submission.
+    def create_verification_url(self, user: User, credentials: PendingCredentials) -> str:
+        """Issue an activation link carrying one submission.
 
         Only the token hash is persisted; the raw token lives only inside the
         returned URL.
 
         :param user: The account whose address needs verifying.
-        :param credentials: Details to write to the account when this link is
-            redeemed, or None for a link that only confirms the address.
+        :param credentials: Details to write to the account when this link is redeemed,
+            whose password also has to be restated to redeem it.
         :return: The full activation URL to email.
         """
         settings = get_settings()
@@ -118,9 +144,9 @@ class EmailVerificationService(BaseService):
         token = EmailVerificationToken(
             user_id=user.id,
             token_hash=_hash_token(raw_token),
-            hashed_password=credentials.hashed_password if credentials else None,
-            first_name=credentials.first_name if credentials else None,
-            last_name=credentials.last_name if credentials else None,
+            hashed_password=credentials.hashed_password,
+            first_name=credentials.first_name,
+            last_name=credentials.last_name,
             expires_at=utc_now() + ttl,
         )
         self._save_and_refresh(token)
@@ -130,12 +156,39 @@ class EmailVerificationService(BaseService):
         )
         return f"{settings.frontend_base_url}/verify-email?token={raw_token}"
 
+    def create_resend_url(self, user: User, hashed_password: str) -> str:
+        """Issue an activation link for a resend request.
+
+        A resend carries a submission like any other link: the password comes from the
+        resend request, so redeeming it still requires restating that password, and the
+        names come from the account, which is all a resend request supplies. Without a
+        submission a resend would hand out a link anybody receiving the mail could
+        follow, which is the primitive the whole flow removes.
+
+        :param user: The unverified account the link belongs to.
+        :param hashed_password: bcrypt hash of the password submitted with the request.
+        :return: The full activation URL to email.
+        """
+        return self.create_verification_url(
+            user,
+            PendingCredentials(
+                hashed_password=hashed_password,
+                first_name=user.first_name,
+                last_name=user.last_name,
+            ),
+        )
+
     def find_unverified_account(self, email: str) -> User | None:
         """Return the account still waiting on this address, if there is one.
 
         Kept separate from minting so a caller can consult its own send budget before
         a token exists: charging a resend request for an address with nothing to send
         would let a stranger spend the budget a real signup needs.
+
+        The ``verification_resend_noop`` record this writes names no account, but it
+        does say which branch ran, and it carries the request id every other record in
+        the same request carries. A reader of the full application log can therefore
+        recover whether the address had a pending signup; the response cannot.
 
         :param email: Email address from a resend request.
         :return: The unverified account, or None when no account has that address or
@@ -151,32 +204,45 @@ class EmailVerificationService(BaseService):
             return None
         return user
 
-    def verify_email(self, token: str) -> User:
-        """Consume an activation token, apply what it carries, and verify the address.
+    def resolve_pending_activation(self, token: str) -> PendingActivation:
+        """Resolve an activation token to the account it opens, without redeeming it.
 
-        Redeeming is refused once the address is verified, even for a token that is
-        otherwise live. Without that, a token minted while the account was still
-        unconfirmed could be redeemed later to overwrite the password of an account
-        somebody is already using.
+        Every rejection here is the same opaque error, so a caller holding a bad token
+        learns nothing about which kind of bad it is. Refusing an account that is
+        already verified belongs here too: a token minted while the account was
+        unconfirmed carries a password, so redeeming one afterwards would rewrite the
+        credentials of an account somebody is already using. Refusing before the
+        password is weighed also keeps this endpoint from being able to lock a live
+        account out of its own login.
 
         :param token: The raw token from the activation link.
-        :return: The now-verified user.
+        :return: The token and the account it would activate.
         :raises InvalidVerificationTokenError: If the token is unknown, already used,
-            or its account is already verified.
+            or its account is gone or already verified.
         :raises VerificationTokenExpiredError: If the token has expired.
         """
         record = self._get_valid_record(token)
-        user = self._get_account_to_activate(record)
+        return PendingActivation(record=record, user=self._get_account_to_activate(record))
 
-        credentials = _carried_credentials(record)
-        if credentials is not None:
-            user.hashed_password = credentials.hashed_password
-            user.first_name = credentials.first_name
-            user.last_name = credentials.last_name
+    def activate(self, pending: PendingActivation, password: str) -> User:
+        """Apply a resolved activation, once its password is restated.
 
-        user.email_verified_at = utc_now()
+        :param pending: The resolved token and account, from
+            :meth:`resolve_pending_activation`.
+        :param password: The plaintext password posted with the link.
+        :return: The now-verified user.
+        :raises VerificationPasswordMismatchError: If the password is not the one the
+            token carries.
+        :raises InvalidVerificationTokenError: If a concurrent redemption verified the
+            account first.
+        """
+        record = pending.record
+        user = pending.user
+        if not verify_password(password, record.hashed_password):
+            raise VerificationPasswordMismatchError(_MISMATCH_MESSAGE)
+
+        self._claim_account(user, record)
         record.used_at = utc_now()
-        self._session.add(user)
         self._session.add(record)
         self._session.commit()
         self._session.refresh(user)
@@ -191,6 +257,32 @@ class EmailVerificationService(BaseService):
             extra={"event": "email_verification_completed", "user_id": str(user.id)},
         )
         return user
+
+    def _claim_account(self, user: User, record: EmailVerificationToken) -> None:
+        """Write the token's submission to the account, if no other redemption won.
+
+        A conditional UPDATE rather than a read-then-write: two links for one
+        unconfirmed address can be redeemed at the same moment, and both would pass the
+        ``email_verified_at IS NULL`` check made a few statements earlier. Letting the
+        database decide the winner means the losing redemption writes nothing at all,
+        instead of overwriting the credentials the winner just applied.
+
+        :param user: The account being activated.
+        :param record: The token whose submission is being applied.
+        :raises InvalidVerificationTokenError: If another redemption got there first.
+        """
+        result = self._session.exec(
+            update(User)
+            .where(col(User.id) == user.id, col(User.email_verified_at).is_(None))
+            .values(
+                hashed_password=record.hashed_password,
+                first_name=record.first_name,
+                last_name=record.last_name,
+                email_verified_at=utc_now(),
+            )
+        )
+        if result.rowcount != 1:
+            raise InvalidVerificationTokenError(_INVALID_MESSAGE)
 
     def _get_valid_record(self, token: str) -> EmailVerificationToken:
         """Look up a verification token and reject it unless unused and unexpired.

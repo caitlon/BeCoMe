@@ -206,21 +206,36 @@ class ResetPasswordRequest(BaseModel):
 
 
 class VerifyEmailRequest(BaseModel):
-    """Activation request carrying the token from the emailed link."""
+    """Activation request carrying the token from the emailed link and its password.
+
+    The password is checked against the one the token carries, never against the stored
+    account, which is what stops a link that reached the wrong inbox from being followed
+    to completion. It is not strength-checked here: this restates an existing password
+    rather than setting a new one, and a 422 on a weak guess would answer differently
+    from a wrong one.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     token: str = Field(
         ..., min_length=1, max_length=512, description="Verification token", repr=False
     )
+    password: str = Field(
+        ..., min_length=1, max_length=128, description="Password used to sign up", repr=False
+    )
 
 
 class ResendVerificationRequest(BaseModel):
-    """Request for a fresh activation link to be emailed."""
+    """Request for a fresh activation link, carrying the password it should open on.
+
+    A resend is a repeat registration minus the names, so it takes a password like one:
+    the link it mails carries that password and can only be redeemed by restating it.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     email: EmailStr = Field(..., max_length=255, description="Email address")
+    password: str = Field(..., min_length=12, max_length=128, description="Password", repr=False)
 
     @field_validator("email")
     @classmethod
@@ -229,6 +244,12 @@ class ResendVerificationRequest(BaseModel):
         if not v.isascii():
             raise ValueError("Email must contain only ASCII characters")
         return v
+
+    @field_validator("password")
+    @classmethod
+    def password_strength(cls, v: str) -> str:
+        """Validate password strength."""
+        return validate_password_strength(v)
 
 
 class ProjectDisposition(BaseModel):

@@ -203,6 +203,9 @@ class TestForeignKeyEnforcement:
         token = EmailVerificationToken(
             user_id=user.id,
             token_hash="e" * 64,
+            hashed_password="hash",
+            first_name="Test",
+            last_name="User",
             expires_at=datetime.now(UTC) + timedelta(hours=1),
         )
         pg_session.add(token)

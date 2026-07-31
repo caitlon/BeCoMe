@@ -241,31 +241,25 @@ class EmailVerificationToken(SQLModel, table=True):
     ``token_hash``. Validation re-hashes the incoming token and looks it up by
     ``token_hash``, so a database leak never hands out a usable activation link.
 
-    A token minted by a registration submission also carries the credentials that
-    submission asked for, which are written to the account only when this token is
-    redeemed. Binding them to the token rather than to the account is what keeps one
-    submission from deciding what another submission's activation link opens.
+    Every token carries the credentials of the submission that minted it, and they are
+    written to the account only when this token is redeemed. Binding them to the token
+    rather than to the account is what keeps one submission from deciding what another
+    submission's activation link opens. Redeeming also requires the password the token
+    carries, so a link that reaches the wrong inbox cannot be followed to completion.
     """
 
     __tablename__ = "email_verification_tokens"
-    __table_args__ = (
-        CheckConstraint(
-            "(hashed_password IS NULL) = (first_name IS NULL) "
-            "AND (hashed_password IS NULL) = (last_name IS NULL)",
-            name="ck_email_verification_tokens_credentials_complete",
-        ),
-    )
 
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     user_id: UUID = Field(foreign_key=_USERS_FK, index=True, ondelete="CASCADE")
     # SHA-256 hex digest of the raw token (exactly 64 chars); the raw token is never stored.
     token_hash: str = Field(unique=True, index=True, min_length=64, max_length=64)
-    # The submission this link was minted for, applied to the account on redemption.
-    # All three are NULL together on a token minted by resend-verification, which
-    # carries no submission of its own and only confirms the address.
-    hashed_password: str | None = Field(default=None, max_length=255)
-    first_name: str | None = Field(default=None, max_length=100)
-    last_name: str | None = Field(default=None, max_length=100)
+    # The submission this link was minted for, applied to the account on redemption and
+    # proved by the password posted with the token. Never null: a link nobody has to
+    # authenticate against is a link a stranger's submission can ride.
+    hashed_password: str = Field(max_length=255)
+    first_name: str = Field(max_length=100)
+    last_name: str = Field(max_length=100)
     created_at: datetime = Field(default_factory=utc_now)
     expires_at: datetime
     used_at: datetime | None = Field(default=None)

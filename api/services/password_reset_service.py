@@ -115,6 +115,14 @@ class PasswordResetService(BaseService):
         The token is re-validated here, so a caller that already ran
         :meth:`resolve_valid_token` still cannot redeem one that was spent in between.
 
+        A completed reset also confirms the address. Receiving the link proves control
+        of the inbox exactly as an activation link does, so demanding a second proof
+        would be ceremony -- and it is what makes reclaiming an account somebody else
+        pre-registered a single step. It also retires every outstanding activation
+        token in one move, since redemption is refused once the address is verified;
+        leaving them live would let a link minted before the reset put the password and
+        names back afterwards.
+
         :param token: The raw reset token from the reset link.
         :param new_password: The new plaintext password (already strength-checked).
         :return: The updated user.
@@ -125,6 +133,8 @@ class PasswordResetService(BaseService):
         user = self._get_token_user(record)
 
         user.hashed_password = hash_password(new_password)
+        if user.email_verified_at is None:
+            user.email_verified_at = utc_now()
         record.used_at = utc_now()
         self._session.add(user)
         self._session.add(record)

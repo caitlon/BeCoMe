@@ -353,6 +353,9 @@ class TestUserCascadeDelete:
         token = EmailVerificationToken(
             user_id=user.id,
             token_hash="a" * 64,
+            hashed_password="hash",
+            first_name="Test",
+            last_name="User",
             expires_at=datetime.now(UTC) + timedelta(hours=1),
         )
         session.add(token)

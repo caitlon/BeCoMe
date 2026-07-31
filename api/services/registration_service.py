@@ -15,18 +15,18 @@ from api.services.user_service import UserService
 class RegistrationResult:
     """What a registration submission needs the endpoint to do next.
 
-    ``user`` and ``credentials`` are set together: either there is an account waiting
-    for an activation link and a submission for that link to carry, or neither.
-
     :param user: The account that needs an activation link, or None when a verified
         account already owns the address and should get a notice instead.
-    :param credentials: The submitted details for the activation link to carry, or
-        None when there is nothing to activate.
+    :param credentials: The submitted details for the activation link to carry. Always
+        present, including on the branch that has nothing to activate: hashing the
+        password is what makes that branch cost what the other two cost, and a field
+        every branch has to fill is harder to drop by accident than a line whose only
+        job is to burn time.
     :param created: Whether this submission is the one that created the account.
     """
 
     user: User | None
-    credentials: PendingCredentials | None
+    credentials: PendingCredentials
     created: bool
 
 
@@ -50,7 +50,9 @@ class RegistrationService:
     the account opens with the attacker's password. The submission is therefore carried
     by the activation link it minted and applied only when *that* link is redeemed, so
     a link always activates the submission it belongs to and no submitter decides what
-    another submitter's link opens.
+    another submitter's link opens. Redemption additionally requires the submitted
+    password, so a stranger's link landing in the victim's inbox is not something the
+    victim can complete either.
 
     :param users: User service performing the account writes.
     """
@@ -94,6 +96,8 @@ class RegistrationService:
                 return RegistrationResult(
                     user=created,
                     credentials=PendingCredentials(
+                        # The account write already ran bcrypt on this password, so
+                        # reusing its hash keeps this branch to one hash like the others.
                         hashed_password=created.hashed_password,
                         first_name=first_name,
                         last_name=last_name,
@@ -102,21 +106,16 @@ class RegistrationService:
                 )
             existing = self._users.get_by_email(email)
 
-        if existing is not None and existing.email_verified_at is None:
-            return RegistrationResult(
-                user=existing,
-                credentials=PendingCredentials(
-                    hashed_password=hash_password(password),
-                    first_name=first_name,
-                    last_name=last_name,
-                ),
-                created=False,
-            )
-
-        # Nothing to write. Hash the submitted password and throw the result away so
-        # this branch costs what the other two cost -- see the timing note above.
-        hash_password(password)
-        return RegistrationResult(user=None, credentials=None, created=False)
+        # Hashed before the branch, not inside it: the branch with nothing to activate
+        # has to spend the same bcrypt as the one that mints a link, or it answers
+        # hundreds of milliseconds sooner and re-leaks what the shared body hides.
+        credentials = PendingCredentials(
+            hashed_password=hash_password(password),
+            first_name=first_name,
+            last_name=last_name,
+        )
+        pending = existing if existing is not None and existing.email_verified_at is None else None
+        return RegistrationResult(user=pending, credentials=credentials, created=False)
 
     def _create_account(
         self,
