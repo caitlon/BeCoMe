@@ -93,13 +93,15 @@ activation link does, so reclaiming an address somebody pre-registered is one st
 credentials. It is not one step for the display name -- see "Accepted risks" below.
 
 That makes an activation and a reset the two operations that can confirm the same account, so
-both write through a conditional `UPDATE ... WHERE email_verified_at IS NULL` and let the
-database pick the winner (`_claim_account` in each service). The loser writes nothing and gets
-the opaque `400`; on the reset side its token is deliberately left unspent, so following the
-same link again succeeds against the now-confirmed account. Reading the row and writing it
-back would instead let a reset that started while the account was still pending overwrite the
-password an activation had just applied, seconds after telling whoever redeemed it to sign in
--- bcrypt alone holds that window open for a few hundred milliseconds.
+both go through a `_claim_account` that writes `UPDATE ... WHERE email_verified_at IS NULL`
+whenever the row it loaded was still pending, and lets the database pick the winner. The loser
+writes nothing and gets the opaque `400`; on the reset side its token is deliberately left
+unspent, so following the same link again succeeds against the now-confirmed account. A reset
+whose account was already confirmed when its token resolved has nothing to race -- redemption
+is refused once `email_verified_at` is set -- so it writes by id alone. Reading the row and
+writing it back would instead let a reset that started while the account was still pending
+overwrite the password an activation had just applied, seconds after telling whoever redeemed
+it to sign in; bcrypt alone holds that window open for a few hundred milliseconds.
 
 A wrong password answers `403` with its own wording, not the opaque `400` the token errors
 share. Whoever reaches that point already holds a live link, so admitting the link is fine
