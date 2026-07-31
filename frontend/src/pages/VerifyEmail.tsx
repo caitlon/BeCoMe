@@ -142,6 +142,7 @@ const VerifyEmail = () => {
           className="w-full"
           isLoading={isLoading}
           loadingText={t("verifyEmail.submitting")}
+          disabled={failure === "lockedOut"}
         >
           {t("verifyEmail.submit")}
         </SubmitButton>

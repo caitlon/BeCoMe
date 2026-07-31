@@ -174,6 +174,19 @@ describe('VerifyEmail', () => {
     expect(mockNavigate).not.toHaveBeenCalled();
   });
 
+  it('disables the submit button once locked out, so a 429 cannot be resubmitted', async () => {
+    const user = userEvent.setup();
+    mockVerifyEmail.mockRejectedValueOnce(new RateLimitError());
+    renderAt();
+
+    await user.type(getPasswordInput(), 'CorrectHorse123!');
+    await user.click(getSubmitButton());
+
+    await waitFor(() => {
+      expect(getSubmitButton()).toBeDisabled();
+    });
+  });
+
   it('shows a generic error toast for an unexpected failure (e.g. service unavailable)', async () => {
     const user = userEvent.setup();
     mockVerifyEmail.mockRejectedValueOnce(new ServerError());
