@@ -29,11 +29,7 @@ def upgrade() -> None:
     ``created_at``, treating pre-existing accounts as verified as of when they
     registered. ``email_verification_tokens``
     mirrors ``password_reset_tokens``, storing only the SHA-256 hash of each
-    activation token, and additionally the credentials of the submission that
-    minted it. Those are written to the account when the token is redeemed, so an
-    activation link always activates the submission it belongs to. Every token
-    carries them -- redemption requires the password they hold, so a token without
-    credentials would be one anybody holding the link could redeem.
+    activation token.
     """
     op.add_column("users", sa.Column("email_verified_at", sa.DateTime(), nullable=True))
 
@@ -46,9 +42,6 @@ def upgrade() -> None:
         sa.Column("id", sa.Uuid(), nullable=False),
         sa.Column("user_id", sa.Uuid(), nullable=False),
         sa.Column("token_hash", sa.String(length=64), nullable=False),
-        sa.Column("hashed_password", sa.String(length=255), nullable=False),
-        sa.Column("first_name", sa.String(length=100), nullable=False),
-        sa.Column("last_name", sa.String(length=100), nullable=False),
         sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.Column("expires_at", sa.DateTime(), nullable=False),
         sa.Column("used_at", sa.DateTime(), nullable=True),

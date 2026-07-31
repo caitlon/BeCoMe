@@ -137,10 +137,6 @@ class TestEmailVerificationMigration:
                 ).one()
             assert row.email_verified_at == row.created_at
 
-            # AND - a token can carry the submission it was minted for
-            token_columns = {c["name"] for c in inspect(engine).get_columns(_TOKENS)}
-            assert {"hashed_password", "first_name", "last_name"} <= token_columns
-
             # WHEN - the migration is rolled back to its own down_revision (pinned,
             # not "-1", for the same reason)
             command.downgrade(config, "b1d9f4a2c7e3")
@@ -159,6 +155,59 @@ class TestEmailVerificationMigration:
         finally:
             engine.dispose()
 
+
+class TestEmailVerificationCredentialsMigration:
+    """The migration adding hashed_password/first_name/last_name to the tokens table.
+
+    Split from the table-creation migration so the two ship in separate pull
+    requests: PR 1 creates the empty table, behaviourally inert, and PR 2 adds
+    these columns once the code that writes and reads them lands.
+    """
+
+    def test_upgrade_adds_not_null_columns_and_downgrade_reverts(self, migration_pg, monkeypatch):
+        """The credential columns land as NOT NULL, and the migration reverses cleanly."""
+        # GIVEN - a database migrated up to the table-creation revision only, the
+        # state PR 1 leaves behind
+        url = _url(migration_pg)
+        monkeypatch.setenv("ALEMBIC_DATABASE_URL", url)
+        config = Config("alembic.ini")
+        engine = create_engine(url)
+
+        try:
+            command.upgrade(config, "21261c13bb2b")
+
+            # THEN - the table exists, but not yet with the credential columns
+            token_columns = {c["name"] for c in inspect(engine).get_columns(_TOKENS)}
+            assert not {"hashed_password", "first_name", "last_name"} & token_columns
+
+            # WHEN - this migration is applied. Pinned to its own revision id rather
+            # than "head" for the same reason as the migrations above: a later
+            # migration landing on top would otherwise silently change what this
+            # test exercises.
+            command.upgrade(config, "5b9977c1b5c1")
+
+            # THEN - the credential columns exist and are NOT NULL
+            columns = {c["name"]: c["nullable"] for c in inspect(engine).get_columns(_TOKENS)}
+            assert columns["hashed_password"] is False
+            assert columns["first_name"] is False
+            assert columns["last_name"] is False
+
+            # WHEN - rolled back to its own down_revision
+            command.downgrade(config, "21261c13bb2b")
+
+            # THEN - the credential columns are gone (downgrade works)
+            token_columns = {c["name"] for c in inspect(engine).get_columns(_TOKENS)}
+            assert not {"hashed_password", "first_name", "last_name"} & token_columns
+
+            # WHEN - re-applied (reversibility holds)
+            command.upgrade(config, "5b9977c1b5c1")
+
+            # THEN
+            columns = {c["name"]: c["nullable"] for c in inspect(engine).get_columns(_TOKENS)}
+            assert columns["last_name"] is False
+        finally:
+            engine.dispose()
+
     def test_a_token_cannot_exist_without_a_submission(self, migration_pg, monkeypatch):
         """All three credential columns are required, not merely written together.
 
@@ -172,7 +221,7 @@ class TestEmailVerificationMigration:
         engine = create_engine(url)
 
         try:
-            command.upgrade(Config("alembic.ini"), "21261c13bb2b")
+            command.upgrade(Config("alembic.ini"), "5b9977c1b5c1")
             user_id = uuid4()
             with engine.begin() as conn:
                 conn.execute(
