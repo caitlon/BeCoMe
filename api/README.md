@@ -107,7 +107,10 @@ the credentials the account opens with. `POST /auth/verify-email` therefore take
 `{token, password}`: an unknown, spent, or expired token gets one opaque `400`, while a
 password that does not match the token gets a `403` with its own `detail`, so a client can
 ask the user to retype instead of sending them off for a new link. Mismatches count against
-the same per-account lockout a failed login does. `POST /auth/resend-verification` takes
+their own per-account lockout, namespaced apart from login's -- a run of failed logins can
+never deny someone their own activation, though a mismatch here still also spends from the
+login lockout so the combined guessing bound is unchanged. A completed password reset clears
+the login lockout. `POST /auth/resend-verification` takes
 `{email, password}` and answers `202` for any address; the link it mails carries the
 submitted password like any other. See `docs/security.md` for why each branch behaves as it
 does.

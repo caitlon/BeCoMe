@@ -89,15 +89,22 @@ of an account somebody is already using -- and refusing before the password is w
 keeps the endpoint from being able to lock a live account out of its own login. And a
 completed password reset sets `email_verified_at` too, which retires every outstanding
 activation link in one move; a reset link proves control of the address exactly as an
-activation link does, so reclaiming an address somebody pre-registered is one step.
+activation link does, so reclaiming an address somebody pre-registered is one step for the
+credentials. It is not one step for the display name -- see "Accepted risks" below.
 
 A wrong password answers `403` with its own wording, not the opaque `400` the token errors
 share. Whoever reaches that point already holds a live link, so admitting the link is fine
 tells them nothing new -- while telling a user who mistyped that their link is broken would
 send them round the loop asking for another one that would fail the same way. The guessing
-oracle that opens is capped: the endpoint keeps its rate limit, and each mismatch is recorded
-against the same per-account lockout a failed login uses (`api/auth/login_throttle.py`), so
-guesses run out exactly as they do on `/login`.
+oracle that opens is capped by its own per-account lockout (`api/auth/login_throttle.py`),
+namespaced apart from the one `/login` uses: this endpoint's lockout can only be tripped by
+someone who already holds a live token, so a run of failed logins -- which anyone who merely
+knows the address can produce -- can never deny someone their own activation. A mismatch
+still spends from the login counter too, so the combined guessing bound across both endpoints
+is the same 10 attempts per 15 minutes it always was; only each endpoint's own lockout
+decision is now independent. `POST /auth/reset-password` clears the login lockout on success,
+so an attacker's failed guesses cannot keep an account locked out of login after its owner
+has proven control of the address and set a new password.
 
 The notice mail carries a static `/forgot-password` link, never a minted reset token -- an
 unauthenticated registration attempt must not be able to mail anyone a working reset link.
@@ -322,7 +329,7 @@ let the person concerned withdraw it themselves.
 
 ## Accepted risks
 
-Four properties are known, deliberate, and reviewed. They are recorded here so a future
+Five properties are known, deliberate, and reviewed. They are recorded here so a future
 audit does not re-litigate them.
 
 **Inviting by email discloses whether an address has an account.** Inviting an address that
@@ -339,9 +346,21 @@ would be. What it no longer does is anything: following it requires the password
 submission, which the stranger chose and you do not know, so the link is inert in your hands
 and unreachable in theirs (see "Registration and email verification" above). The residue is
 one unexplained email, plus a pending unverified account holding your address. Registering
-normally, or completing a password reset, takes the address over and kills every outstanding
-link. Nothing about it is worth acting on, but a support question about "why did I get this"
+normally, or completing a password reset, takes the address over for login and kills every
+outstanding link -- though not the display name it was pre-registered under; see the next
+entry. Nothing about it is worth acting on, but a support question about "why did I get this"
 is a legitimate one and the answer is here.
+
+**Reclaiming a pre-registered account through a resend or a reset keeps the name it was
+pre-registered under.** `create_resend_url` takes `first_name`/`last_name` from the account
+row, and a completed password reset never touches them either -- both confirm the address
+and let the new owner set the account's password, but neither writes a name. If a stranger
+pre-registered the address under a name of their choosing, that name is what
+`GET /auth/me` returns afterwards, and what surfaces in project member lists and invitations,
+until the account holder does one of two things: register the address again (which does write
+the submitter's own names, the same as a free address) or edit the profile once signed in.
+Only re-registering closes this in the same step that reclaims the credentials; a resend or a
+reset does not.
 
 **`POST /auth/register` still has a timing signal, of one bit and only once.** A submission
 whose email is suppressed by the per-address budget skips an awaited round trip to the mail
