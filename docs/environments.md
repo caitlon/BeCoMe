@@ -120,6 +120,12 @@ On production and staging each Postgres instance is reachable only over Railway'
 
 Profile photos live in a per-environment Railway Storage Bucket (`dev-photos`, `test-photos`, `prod-photos`), reached over the S3 API. Buckets are private, so the backend serves each image itself through the public proxy `GET /api/v1/users/{id}/photo`; the `users.photo_url` column stores the object key, and responses carry the proxy URL built from `API_PUBLIC_URL`. Attaching a bucket to a service auto-injects `BUCKET_NAME`, `BUCKET_ENDPOINT`, `BUCKET_ACCESS_KEY_ID`, and `BUCKET_SECRET_ACCESS_KEY`; when they are absent (plain local runs), photo upload is disabled and the rest of the API keeps working.
 
+## Email delivery
+
+Registration and password reset both send mail through `EMAIL_PROVIDER` (`console`, which logs the link, or `http`, a Resend-style API; see `api/README.md`). Registration now depends on delivery in a way password reset never did: an account is created unverified and cannot log in until its activation link is opened, so a deployment whose mail provider is broken or misconfigured creates accounts nobody can activate. The deploy guard already required a working provider for password reset (`_validate_deploy_invariants` in `api/config.py` fails startup on a deployed service without one); that same check now also gates whether a fresh signup is usable.
+
+Two settings gate the address checks in `api/services/email_policy.py` that run before a registration reaches the database, both on by default: `DISPOSABLE_EMAIL_BLOCKING_ENABLED` rejects a vendored list of known disposable-mail domains, and `MX_CHECK_ENABLED` rejects a domain with no MX, A, or AAAA record (a resolver timeout or other inconclusive result fails open rather than rejecting). Either can be turned off with a Railway variable and no redeploy if it starts rejecting real signups. `EMAIL_VERIFICATION_TOKEN_TTL_HOURS` (default `24`) sets how long an activation link stays redeemable -- longer than the one-hour password-reset window, since an activation email is routinely opened the next morning rather than acted on right away.
+
 ## Current status
 
 All three environments run entirely on Railway, each with its own isolated Postgres and photo bucket. The database layer is hardened the same way across them: Alembic owns the schema, the app connects as the least-privilege `become_app` role, and the production and staging databases are internal-only.
