@@ -144,6 +144,7 @@
     "register": "Vytvoření účtu",
     "forgotPassword": "Obnovení hesla",
     "resetPassword": "Nové heslo",
+    "verifyEmail": "Potvrzení e-mailu",
     "projects": "Projekty",
     "projectDetail": "Projekt: {{name}}",
     "profile": "Profil",

@@ -3,7 +3,7 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { render } from '@tests/utils';
 import Login from '@/pages/Login';
-import { ServerError, RateLimitError } from '@/lib/errors';
+import { ServerError, RateLimitError, ForbiddenError, UnauthorizedError } from '@/lib/errors';
 
 // Mock useAuth
 const mockLogin = vi.fn();
@@ -14,6 +14,15 @@ vi.mock('@/contexts/AuthContext', () => ({
     isLoading: false,
     isAuthenticated: false,
   }),
+}));
+
+// The not-verified state's resend control calls api.resendVerification directly.
+const mockResendVerification = vi.fn();
+vi.mock('@/lib/api', () => ({
+  api: {
+    resendVerification: (email: string, password: string) =>
+      mockResendVerification(email, password),
+  },
 }));
 
 // Mock useNavigate
@@ -204,6 +213,96 @@ describe('Login', () => {
     await waitFor(() => {
       const loadingButton = screen.getByRole('button', { name: /signing in/i });
       expect(loadingButton).toBeDisabled();
+    });
+  });
+
+  describe('unverified account (403)', () => {
+    beforeEach(() => {
+      mockResendVerification.mockReset();
+    });
+
+    it('shows a not-verified state with a resend control instead of the generic error toast', async () => {
+      const user = userEvent.setup();
+      mockLogin.mockRejectedValueOnce(new ForbiddenError('Account not verified'));
+
+      render(<Login />);
+
+      await user.type(getEmailInput(), 'unverified@example.com');
+      await user.type(getPasswordInput(), 'CorrectHorse123!');
+      await user.click(screen.getByRole('button', { name: /sign in/i }));
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /resend/i })).toBeInTheDocument();
+      });
+
+      expect(mockToast).not.toHaveBeenCalledWith(
+        expect.objectContaining({ variant: 'destructive' })
+      );
+      expect(mockNavigate).not.toHaveBeenCalled();
+    });
+
+    it('does not offer a resend control on a 401 (bad credentials)', async () => {
+      const user = userEvent.setup();
+      mockLogin.mockRejectedValueOnce(new UnauthorizedError('Invalid credentials'));
+
+      render(<Login />);
+
+      await user.type(getEmailInput(), 'test@example.com');
+      await user.type(getPasswordInput(), 'wrongpassword');
+      await user.click(screen.getByRole('button', { name: /sign in/i }));
+
+      await waitFor(() => {
+        expect(mockToast).toHaveBeenCalledWith(
+          expect.objectContaining({ variant: 'destructive' })
+        );
+      });
+
+      expect(screen.queryByRole('button', { name: /resend/i })).not.toBeInTheDocument();
+    });
+
+    it('resends the verification email using the address and password typed into the form', async () => {
+      const user = userEvent.setup();
+      mockLogin.mockRejectedValueOnce(new ForbiddenError());
+      mockResendVerification.mockResolvedValueOnce(undefined);
+
+      render(<Login />);
+
+      await user.type(getEmailInput(), 'unverified@example.com');
+      await user.type(getPasswordInput(), 'CorrectHorse123!');
+      await user.click(screen.getByRole('button', { name: /sign in/i }));
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /resend/i })).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByRole('button', { name: /resend/i }));
+
+      await waitFor(() => {
+        expect(mockResendVerification).toHaveBeenCalledWith(
+          'unverified@example.com',
+          'CorrectHorse123!'
+        );
+      });
+    });
+
+    it('lets the user return to the login form from the not-verified state', async () => {
+      const user = userEvent.setup();
+      mockLogin.mockRejectedValueOnce(new ForbiddenError());
+
+      render(<Login />);
+
+      await user.type(getEmailInput(), 'unverified@example.com');
+      await user.type(getPasswordInput(), 'CorrectHorse123!');
+      await user.click(screen.getByRole('button', { name: /sign in/i }));
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /resend/i })).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByRole('button', { name: /try signing in again/i }));
+
+      expect(getEmailInput()).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /resend/i })).not.toBeInTheDocument();
     });
   });
 });

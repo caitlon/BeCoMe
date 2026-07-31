@@ -144,6 +144,7 @@
     "register": "Create Account",
     "forgotPassword": "Reset Password",
     "resetPassword": "New Password",
+    "verifyEmail": "Confirm Email",
     "projects": "Projects",
     "projectDetail": "Project: {{name}}",
     "profile": "Profile",

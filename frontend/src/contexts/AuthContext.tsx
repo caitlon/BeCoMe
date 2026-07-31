@@ -16,7 +16,6 @@ interface AuthContextType {
   readonly isAuthenticated: boolean;
   readonly isServiceUnavailable: boolean;
   readonly login: (email: string, password: string) => Promise<void>;
-  readonly register: (email: string, password: string, firstName: string, lastName?: string) => Promise<void>;
   readonly logout: () => Promise<void>;
   readonly refreshUser: () => Promise<void>;
 }
@@ -80,17 +79,6 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
     await refreshUser();
   }, [refreshUser]);
 
-  const register = useCallback(async (email: string, password: string, firstName: string, lastName?: string) => {
-    await api.register({
-      email,
-      password,
-      first_name: firstName,
-      last_name: lastName,
-    });
-    await api.login(email, password);
-    await refreshUser();
-  }, [refreshUser]);
-
   const logout = useCallback(async () => {
     await api.logout();
     setUser(null);
@@ -106,10 +94,9 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
     isAuthenticated: status === 'authenticated',
     isServiceUnavailable: status === 'serviceUnavailable',
     login,
-    register,
     logout,
     refreshUser,
-  }), [user, status, login, register, logout, refreshUser]);
+  }), [user, status, login, logout, refreshUser]);
 
   return (
     <AuthContext.Provider value={value}>

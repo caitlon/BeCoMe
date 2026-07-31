@@ -276,8 +276,10 @@ class ApiClient {
   }
 
   // Auth
-  async register(data: RegisterInput): Promise<User> {
-    return this.request<User>('/auth/register', {
+  // Registration no longer signs anyone in: it only queues an activation
+  // email, so there is no user object to return.
+  async register(data: RegisterInput): Promise<void> {
+    return this.request<void>('/auth/register', {
       method: 'POST',
       body: JSON.stringify(data),
     });
@@ -327,6 +329,20 @@ class ApiClient {
     return this.request<void>('/auth/reset-password', {
       method: 'POST',
       body: JSON.stringify({ token, new_password: newPassword }),
+    });
+  }
+
+  async verifyEmail(token: string, password: string): Promise<void> {
+    return this.request<void>('/auth/verify-email', {
+      method: 'POST',
+      body: JSON.stringify({ token, password }),
+    });
+  }
+
+  async resendVerification(email: string, password: string): Promise<void> {
+    return this.request<void>('/auth/resend-verification', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
     });
   }
 

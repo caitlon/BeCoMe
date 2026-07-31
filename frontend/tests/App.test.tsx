@@ -31,6 +31,9 @@ vi.mock('@/pages/ForgotPassword', () => ({
 vi.mock('@/pages/ResetPassword', () => ({
   default: () => <div data-testid="reset-password" />,
 }));
+vi.mock('@/pages/VerifyEmail', () => ({
+  default: () => <div data-testid="verify-email" />,
+}));
 vi.mock('@/pages/Projects', () => ({ default: () => <div data-testid="projects" /> }));
 vi.mock('@/pages/ProjectDetail', () => ({ default: () => <div data-testid="project-detail" /> }));
 vi.mock('@/pages/Profile', () => ({ default: () => <div data-testid="profile" /> }));
@@ -78,7 +81,6 @@ const unauthenticatedAuth = {
   isServiceUnavailable: false,
   user: null,
   login: vi.fn(),
-  register: vi.fn(),
   logout: vi.fn(),
   refreshUser: vi.fn(),
 };
@@ -97,7 +99,6 @@ const authenticatedAuth = {
     created_at: '2024-01-01T00:00:00Z',
   },
   login: vi.fn(),
-  register: vi.fn(),
   logout: vi.fn(),
   refreshUser: vi.fn(),
 };
@@ -159,6 +160,15 @@ describe('App - public routes', () => {
 
     await waitFor(() => {
       expect(screen.getByTestId('reset-password')).toBeInTheDocument();
+    });
+  });
+
+  it('renders VerifyEmail page at /verify-email', async () => {
+    routeRef.value = '/verify-email';
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('verify-email')).toBeInTheDocument();
     });
   });
 
