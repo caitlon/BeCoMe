@@ -37,8 +37,10 @@ class User(SQLModel, table=True):
     # endpoint; None when unset. The public URL is built at serialization time.
     photo_url: str | None = Field(default=None, max_length=500)
     created_at: datetime = Field(default_factory=utc_now)
-    # NULL means the address is unverified; the login route refuses to authenticate
-    # such accounts until this is set by the email verification flow.
+    # NULL means the address is unverified. The email verification flow sets it, and
+    # from the release that wires that flow up the login route refuses to authenticate
+    # an account still carrying NULL. The column ships one release ahead of that and
+    # sits inert until then, so it is read by nothing in between.
     email_verified_at: datetime | None = Field(default=None)
 
     owned_projects: list["Project"] = Relationship(
