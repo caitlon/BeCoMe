@@ -141,10 +141,13 @@ anyone receiving the mail could follow.
 
 Before any of that touches the database, the submitted address goes through
 `EmailAddressPolicy` (`api/services/email_policy.py`): a vendored disposable-domain
-blocklist and an MX/A/AAAA reachability check that fails open. Both verdicts depend only on
-the domain string, never on database state, so their `400` leaks nothing about account
-existence. Each has a runtime kill switch (`DISPOSABLE_EMAIL_BLOCKING_ENABLED`,
-`MX_CHECK_ENABLED`) in case either starts rejecting real users.
+blocklist and an MX/A/AAAA reachability check that fails open. Only a definitive negative
+rejects: NXDOMAIN, a confirmed absence of every record type, or an RFC 7505 null MX, which is
+the domain itself declaring that it accepts no mail and which overrides the A/AAAA fallback
+the way the RFC requires. Both verdicts depend only on the domain string, never on database
+state, so their `400` leaks nothing about account existence. Each has a runtime kill switch
+(`DISPOSABLE_EMAIL_BLOCKING_ENABLED`, `MX_CHECK_ENABLED`) in case either starts rejecting
+real users.
 
 ## Session transport (cookies and CSRF)
 

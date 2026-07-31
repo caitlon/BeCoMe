@@ -12,8 +12,10 @@ Two independent, domain-only checks combine into a single policy:
 
 2. An MX / A / AAAA reachability check via ``dns.asyncresolver``. This check
    fails open: a resolver timeout, SERVFAIL, or any other resolver error lets
-   the address through. Only a definitive negative -- NXDOMAIN, or a confirmed
-   absence of both MX and A/AAAA records -- rejects. This is deliberate and is
+   the address through. Only a definitive negative rejects: NXDOMAIN, a
+   confirmed absence of both MX and A/AAAA records, or an RFC 7505 null MX,
+   which is the domain itself stating that it accepts no mail. This is
+   deliberate and is
    the opposite of what a reader instinctively expects from a validation
    function: our resolver having a bad day must never block a real signup. A
    definitive verdict is cached per domain (see ``DomainVerdictCache``) since
@@ -38,6 +40,7 @@ from typing import Protocol, runtime_checkable
 
 import dns.asyncresolver
 import dns.exception
+import dns.name
 import dns.resolver
 import redis
 
@@ -233,7 +236,27 @@ class _LookupOutcome(enum.Enum):
     FOUND = enum.auto()
     ABSENT = enum.auto()  # NoAnswer: the domain exists but has no record of this type
     DOMAIN_MISSING = enum.auto()  # NXDOMAIN: the domain does not exist at all
+    MAIL_REFUSED = enum.auto()  # RFC 7505 null MX: the domain exists and accepts no mail
     INCONCLUSIVE = enum.auto()  # timeout, SERVFAIL, or any other resolver error
+
+
+def _is_null_mx(answer: dns.resolver.Answer) -> bool:
+    """Return whether an MX answer is the RFC 7505 null MX.
+
+    A domain that accepts no mail at all says so with a single MX record of
+    preference 0 pointing at the root label, and RFC 7505 requires that
+    declaration to win over the implicit A/AAAA fallback. The query itself
+    succeeds, so without this the answer would read as an ordinary mail host.
+
+    :param answer: The resolver's answer to an MX query.
+    :return: Whether the answer is exactly the null MX declaration.
+    """
+    records = list(answer)
+    if len(records) != 1:
+        return False
+    record = records[0]
+    # bool(): dnspython's rdata is untyped, so the comparison is Any to mypy.
+    return bool(record.preference == 0 and record.exchange == dns.name.root)
 
 
 class EmailAddressPolicy:
@@ -353,14 +376,19 @@ class EmailAddressPolicy:
         :param domain: The lowercased domain to resolve.
         :return: ``FOUND`` if some record accepts mail, ``DOMAIN_MISSING`` if the
             domain itself does not exist or MX, A, and AAAA are all confirmed
-            absent, or ``INCONCLUSIVE`` if the resolver never gave a definitive
-            answer.
+            absent, ``MAIL_REFUSED`` if the domain publishes a null MX, or
+            ``INCONCLUSIVE`` if the resolver never gave a definitive answer.
         """
         mx_result = await self._lookup(domain, "MX")
         if mx_result is _LookupOutcome.FOUND:
             return _LookupOutcome.FOUND
         if mx_result is _LookupOutcome.DOMAIN_MISSING:
             return _LookupOutcome.DOMAIN_MISSING
+        if mx_result is _LookupOutcome.MAIL_REFUSED:
+            # RFC 7505 requires the null MX to override the A/AAAA fallback below:
+            # the domain has stated it accepts no mail, which is as definitive as
+            # an answer gets, so do not go looking for a way to contradict it.
+            return _LookupOutcome.MAIL_REFUSED
         if mx_result is _LookupOutcome.INCONCLUSIVE:
             return _LookupOutcome.INCONCLUSIVE
 
@@ -401,7 +429,9 @@ class EmailAddressPolicy:
         :return: The classified outcome.
         """
         try:
-            await self._get_resolver().resolve(domain, rdtype, lifetime=self._timeout_seconds)
+            answer = await self._get_resolver().resolve(
+                domain, rdtype, lifetime=self._timeout_seconds
+            )
         except dns.resolver.NXDOMAIN:
             return _LookupOutcome.DOMAIN_MISSING
         except dns.resolver.NoAnswer:
@@ -409,4 +439,6 @@ class EmailAddressPolicy:
         except dns.exception.DNSException:
             # Timeout, SERVFAIL (NoNameservers), or any other resolver-side fault.
             return _LookupOutcome.INCONCLUSIVE
+        if rdtype == "MX" and _is_null_mx(answer):
+            return _LookupOutcome.MAIL_REFUSED
         return _LookupOutcome.FOUND
