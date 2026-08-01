@@ -45,6 +45,9 @@ UPLOADED_KEY = "profiles/test/deadbeef0001.jpg"
 # A versioned photo URL always maps to the same bytes, so it is cacheable forever.
 IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable"
 
+# The bare path has no version, so its bytes change with the photo and it gets a short TTL.
+SHORT_CACHE_CONTROL = "public, max-age=300"
+
 
 def _photo_stream(data: bytes = VALID_JPEG_BYTES) -> MagicMock:
     """Wrap a photo body in a mock, so its read and close calls are observable."""
@@ -409,10 +412,31 @@ class TestPhotoProxy:
         user_id = self._user_with_photo(client, "cached@example.com")
 
         # WHEN
-        response = client.get(f"/api/v1/users/{user_id}/photo")
+        response = client.get(f"/api/v1/users/{user_id}/photo?v=deadbeef0001")
 
         # THEN
         assert response.headers["cache-control"] == IMMUTABLE_CACHE_CONTROL
+
+    def test_an_unversioned_url_is_not_pinned_for_a_year(self, client_with_mock_storage):
+        """
+        GIVEN a photo requested through the bare path, with no version parameter
+        WHEN the response is served
+        THEN it carries the short cache header instead of the immutable one
+
+        The bare path is a stable URL whose bytes change when the photo does. Nothing
+        the API emits looks like that, but pinning it in a shared cache would serve one
+        person's replaced avatar to everyone who asked for a year.
+        """
+        # GIVEN
+        client, _ = client_with_mock_storage
+        user_id = self._user_with_photo(client, "unversioned@example.com")
+
+        # WHEN
+        response = client.get(f"/api/v1/users/{user_id}/photo")
+
+        # THEN
+        assert response.headers["cache-control"] == SHORT_CACHE_CONTROL
+        assert response.headers["cache-control"] != IMMUTABLE_CACHE_CONTROL
 
     def test_closes_the_stream_once_the_response_is_written(self, client_with_mock_storage):
         """The bucket connection is released, not left in the pool."""
