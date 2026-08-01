@@ -31,6 +31,14 @@ _DEBUG_FORMAT = "%(asctime)s %(levelname)-8s [%(name)s] %(message)s (%(filename)
 #                      drain in the clear. The dev deploy runs at DEBUG, so inheriting
 #                      LOG_LEVEL here would leak on a real database. Query shape and
 #                      timing are logged by the read services instead.
+#                      Caveat, so nobody reads this pin as stronger than it is: SQLAlchemy's
+#                      InstanceLogger substitutes its own level from ``echo`` and calls
+#                      ``Logger._log`` directly, so an engine built with ``echo=True``
+#                      emits statements regardless of the level set here. What actually
+#                      keeps that off every deployed service is ``_validate_deploy_invariants``,
+#                      which refuses to boot any deploy with ``debug`` on, and
+#                      ``api/db/engine.py`` ties ``echo`` to ``settings.debug``. The pin
+#                      covers the case echo does not: SQLAlchemy's own INFO/DEBUG records.
 #   httpx / botocore   the Resend and S3 calls, already covered by ``email_sent`` and
 #                      ``s3_upload`` with timings; only transport failures add anything.
 _EXTERNAL_LOG_LEVELS: dict[str, int] = {
