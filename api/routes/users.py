@@ -50,9 +50,14 @@ from api.utils.upload import UploadTooLarge, read_within_limit
 router = APIRouter(prefix="/api/v1/users", tags=["users"])
 
 # Profile photo URLs are versioned: build_photo_url appends ?v=<token> taken from the
-# stored object key, and every upload mints a fresh key. A given URL therefore always
-# resolves to the same bytes, so it can be cached for as long as a cache will hold it.
-_PHOTO_CACHE_CONTROL = "public, max-age=31536000, immutable"
+# stored object key, and every upload mints a fresh key. A versioned URL therefore always
+# resolves to the same bytes and can be cached for as long as a cache will hold it.
+_VERSIONED_PHOTO_CACHE_CONTROL = "public, max-age=31536000, immutable"
+
+# The bare path carries no version, so its bytes change when the photo does. Nothing the
+# API emits looks like that, but a hand-written or truncated URL would, and pinning it for
+# a year in a shared cache would serve one person's old avatar to everyone who asked.
+_UNVERSIONED_PHOTO_CACHE_CONTROL = "public, max-age=300"
 
 
 @router.get("/me", summary="Get current user profile")
@@ -388,4 +393,12 @@ def get_user_photo(
     if stored is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Photo not found")
 
-    return StoredObjectResponse(stored, headers={"Cache-Control": _PHOTO_CACHE_CONTROL})
+    # Presence of the version parameter is the whole test. Comparing it against the stored
+    # key would tie this route to how build_photo_url derives the token, and buy nothing:
+    # a caller who invented a version is already asking for a URL nobody handed out.
+    cache_control = (
+        _VERSIONED_PHOTO_CACHE_CONTROL
+        if "v" in request.query_params
+        else _UNVERSIONED_PHOTO_CACHE_CONTROL
+    )
+    return StoredObjectResponse(stored, headers={"Cache-Control": cache_control})
