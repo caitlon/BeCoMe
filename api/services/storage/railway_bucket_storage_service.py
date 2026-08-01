@@ -14,6 +14,7 @@ from api.services.storage.exceptions import (
     StorageError,
     StorageUploadError,
 )
+from api.services.storage.stored_object import StoredObject
 from api.services.storage.validation import extension_for
 
 if TYPE_CHECKING:
@@ -124,11 +125,14 @@ class RailwayBucketStorageService(StorageService):
         )
         return key
 
-    def open(self, key: str) -> tuple[bytes, str] | None:
-        """Fetch a stored object by key.
+    def open(self, key: str) -> StoredObject | None:
+        """Open a stored object for reading, leaving its body on the wire.
+
+        ``get_object`` returns once the bucket has answered with headers; the
+        body is pulled later, chunk by chunk, by whoever consumes the handle.
 
         :param key: Object key.
-        :return: ``(bytes, content_type)`` or None when the object is absent.
+        :return: An open :class:`StoredObject`, or None when the object is absent.
         :raises StorageError: If the fetch fails for a reason other than absence.
         """
         start = perf_counter()
@@ -155,18 +159,21 @@ class RailwayBucketStorageService(StorageService):
                 },
             )
             raise StorageError(f"Failed to read file: {exc}") from exc
-        body: bytes = response["Body"].read()
         content_type: str = response.get("ContentType") or "application/octet-stream"
+        content_length: int | None = response.get("ContentLength")
+        # duration_ms is the time to the bucket's response headers, not to the last
+        # byte: the body has not been read yet. That is the number the client waits
+        # on before the image starts arriving, so it is the one worth watching.
         logger.info(
             "S3 open",
             extra={
                 "event": "s3_open",
                 "key": key,
-                "size_bytes": len(body),
+                "size_bytes": content_length,
                 "duration_ms": _elapsed_ms(start),
             },
         )
-        return body, content_type
+        return StoredObject(response["Body"], content_type, content_length)
 
     def delete(self, key: str) -> bool:
         """Delete a stored object by key.

@@ -2,6 +2,8 @@
 
 from abc import ABC, abstractmethod
 
+from api.services.storage.stored_object import StoredObject
+
 
 class StorageService(ABC):
     """File storage backend for profile photos, addressed by object key.
@@ -23,11 +25,14 @@ class StorageService(ABC):
         """
 
     @abstractmethod
-    def open(self, key: str) -> tuple[bytes, str] | None:
-        """Fetch a stored object by key.
+    def open(self, key: str) -> StoredObject | None:
+        """Open a stored object for reading, without downloading it.
+
+        The returned handle owns a live connection to the backend, so the caller
+        must either read it to the end or close it.
 
         :param key: Object key.
-        :return: ``(bytes, content_type)`` or None when the object is absent.
+        :return: An open :class:`StoredObject`, or None when the object is absent.
         :raises StorageError: If the fetch fails for a reason other than absence.
         """
 
