@@ -5,7 +5,7 @@ import logging
 from logging.handlers import RotatingFileHandler
 
 from api.config import Environment, Settings
-from api.logging_config import JsonLogFormatter, setup_logging
+from api.logging_config import _EXTERNAL_LOG_LEVELS, JsonLogFormatter, setup_logging
 from api.logging_context import ContextFilter
 
 
@@ -16,8 +16,14 @@ def _settings(
     debug=False,
     betterstack_source_token=None,
     betterstack_ingesting_host=None,
+    railway_environment_name=None,
 ):
-    """Build a Settings instance valid across all environment profiles."""
+    """Build a Settings instance valid across all environment profiles.
+
+    ``railway_environment_name`` is passed under its ``RAILWAY_ENVIRONMENT_NAME``
+    validation alias: the field declares one and the model does not set
+    ``populate_by_name``, so the field name alone would be silently ignored.
+    """
     return Settings(
         environment=environment,
         log_level=log_level,
@@ -25,6 +31,7 @@ def _settings(
         debug=debug,
         betterstack_source_token=betterstack_source_token,
         betterstack_ingesting_host=betterstack_ingesting_host,
+        RAILWAY_ENVIRONMENT_NAME=railway_environment_name,
         secret_key="a-sufficiently-strong-secret-value-for-tests",
         database_url="postgresql://user:pass@host:5432/db",
         redis_url="redis://localhost:6379/0",
@@ -195,7 +202,7 @@ class TestSetupLogging:
 
     def test_uses_text_formatter_in_development(self):
         """
-        GIVEN the development profile
+        GIVEN the development profile on a laptop (no Railway marker)
         WHEN setup_logging runs
         THEN the stream handler uses a plain text formatter
         """
@@ -208,6 +215,25 @@ class TestSetupLogging:
         # THEN
         handler = logging.getLogger("api").handlers[0]
         assert not isinstance(handler.formatter, JsonLogFormatter)
+
+    def test_uses_json_formatter_on_a_deployed_dev_service(self):
+        """
+        GIVEN the dev profile running on Railway
+        WHEN setup_logging runs
+        THEN the stream handler still uses the JSON formatter
+
+        The dev service is a deploy that happens to run the dev profile. Emitting text
+        there would leave every ``extra`` field unindexable in the log drain.
+        """
+        # GIVEN
+        settings = _settings(environment=Environment.DEV, railway_environment_name="dev")
+
+        # WHEN
+        setup_logging(settings)
+
+        # THEN
+        handler = logging.getLogger("api").handlers[0]
+        assert isinstance(handler.formatter, JsonLogFormatter)
 
     def test_repeated_calls_do_not_stack_handlers(self):
         """
@@ -333,6 +359,118 @@ class TestSetupLogging:
 
         # THEN
         mock_handler.assert_not_called()
+
+
+class TestExternalLoggers:
+    """Tests for the third-party loggers wired into the same handlers."""
+
+    def test_every_external_logger_shares_the_api_handlers(self):
+        """
+        GIVEN application settings
+        WHEN setup_logging runs
+        THEN each external logger carries the very same handler objects as 'api'
+
+        Sharing the objects, not just the types, is what keeps the Better Stack
+        handler a single HTTP client with a single buffer instead of one per logger.
+        """
+        # GIVEN
+        settings = _settings(
+            betterstack_source_token="a-source-token",
+            betterstack_ingesting_host="in.example.com",
+        )
+
+        # WHEN
+        setup_logging(settings)
+
+        # THEN
+        api_handlers = logging.getLogger("api").handlers
+        for name in _EXTERNAL_LOG_LEVELS:
+            assert logging.getLogger(name).handlers == api_handlers
+
+    def test_every_external_logger_stops_propagating(self):
+        """
+        GIVEN application settings
+        WHEN setup_logging runs
+        THEN each external logger has propagation disabled
+
+        They already carry the full handler set, so propagation would emit each
+        record a second time through an ancestor.
+        """
+        # GIVEN
+        settings = _settings()
+
+        # WHEN
+        setup_logging(settings)
+
+        # THEN
+        for name in _EXTERNAL_LOG_LEVELS:
+            assert logging.getLogger(name).propagate is False
+
+    def test_external_levels_match_the_mapping(self):
+        """
+        GIVEN application settings
+        WHEN setup_logging runs
+        THEN each external logger sits at its pinned level
+        """
+        # GIVEN
+        settings = _settings()
+
+        # WHEN
+        setup_logging(settings)
+
+        # THEN
+        for name, level in _EXTERNAL_LOG_LEVELS.items():
+            assert logging.getLogger(name).level == level
+
+    def test_uvicorn_error_is_kept_at_info(self):
+        """
+        GIVEN the external logger mapping
+        WHEN it is read
+        THEN uvicorn.error sits at INFO
+
+        It carries startup, shutdown, and protocol failures -- the records that explain
+        a boot that never finished. Raising it would hide them from the drain.
+        """
+        # GIVEN / WHEN / THEN
+        assert _EXTERNAL_LOG_LEVELS["uvicorn.error"] == logging.INFO
+
+    def test_sqlalchemy_stays_above_debug_even_when_log_level_is_debug(self):
+        """
+        GIVEN settings asking for DEBUG everywhere
+        WHEN setup_logging runs
+        THEN sqlalchemy.engine is still pinned at WARNING
+
+        Regression guard for a PII leak, not a style preference: sqlalchemy.engine's
+        DEBUG level prints bound query parameters -- password hashes, raw addresses,
+        reset-token hashes -- and the dev deploy runs at DEBUG against a real database.
+        """
+        # GIVEN
+        settings = _settings(log_level="DEBUG")
+
+        # WHEN
+        setup_logging(settings)
+
+        # THEN
+        assert logging.getLogger("api").level == logging.DEBUG
+        assert logging.getLogger("sqlalchemy.engine").level == logging.WARNING
+
+    def test_repeated_calls_do_not_stack_external_handlers(self):
+        """
+        GIVEN setup_logging has already run
+        WHEN it runs again
+        THEN the external loggers' handler counts stay the same
+        """
+        # GIVEN
+        settings = _settings()
+        setup_logging(settings)
+        before = {name: len(logging.getLogger(name).handlers) for name in _EXTERNAL_LOG_LEVELS}
+
+        # WHEN
+        setup_logging(settings)
+
+        # THEN
+        after = {name: len(logging.getLogger(name).handlers) for name in _EXTERNAL_LOG_LEVELS}
+        assert after == before
 
 
 class TestCreateAppLogging:
