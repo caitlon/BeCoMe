@@ -409,11 +409,16 @@ jobs:
           path: /tmp/become-e2e-api.log
           retention-days: 7
 
+  # Runs on pushes to the long-lived branches as well as on pull requests. Analysing only
+  # pull requests left SonarCloud with no picture of the branches themselves: `main` was last
+  # analysed on 2026-02-21 and reported 76.7% coverage against a real 99%, while `develop` and
+  # `staging` had never been analysed at all. A pull request's "new code" is measured against
+  # its base, so a stale base also made unrelated old code count as new -- that is what failed
+  # the gate on the promotion in #326 over CSS introduced by a different pull request.
   sonarcloud:
     name: SonarCloud Analysis
     runs-on: ubuntu-24.04
     needs: [python-tests, frontend-tests]
-    if: github.event_name == 'pull_request'
     env:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
@@ -434,6 +439,23 @@ jobs:
           name: frontend-coverage-report
           path: frontend/coverage/
 
+      # SonarCloud's new-code period for this project is "previous version", but no version was
+      # ever reported, so every analysis looked like the same one and the period degenerated.
+      # The release tags are the meaningful boundary here, so the latest one becomes the version
+      # and "new code" reads as "changed since the last release".
+      #
+      # The latest tag in the repository, not `git describe`. Releases are tagged on `main`,
+      # which is downstream of `develop`, so a release tag is never reachable from `develop` --
+      # `git describe` there answers with the release before last, and every branch would end up
+      # comparing against a different baseline. Falls back to the commit only when no tag exists.
+      - name: Derive the analysed version from the latest release tag
+        id: sonar_version
+        run: |
+          version="$(git tag --sort=-v:refname | head -1)"
+          echo "version=${version:-$(git rev-parse --short HEAD)}" >> "$GITHUB_OUTPUT"
+
       - name: SonarQube Cloud Scan
         if: env.SONAR_TOKEN != ''
         uses: SonarSource/sonarqube-scan-action@713881670b6b3676cda39549040e2d88c70d582e # v8
+        with:
+          args: -Dsonar.projectVersion=${{ steps.sonar_version.outputs.version }}
