@@ -17,6 +17,7 @@ from api.services.storage.exceptions import (
     StorageError,
     StorageUploadError,
 )
+from api.services.storage.stored_object import DEFAULT_CHUNK_SIZE, StoredObject
 from tests.integration.api.conftest import auth_header, create_test_app, register_and_login
 
 
@@ -41,6 +42,33 @@ INVALID_FILE_BYTES = b"This is not an image file"
 # Object key the mocked storage returns for an upload.
 UPLOADED_KEY = "profiles/test/deadbeef0001.jpg"
 
+# A versioned photo URL always maps to the same bytes, so it is cacheable forever.
+IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable"
+
+# The bare path has no version, so its bytes change with the photo and it gets a short TTL.
+SHORT_CACHE_CONTROL = "public, max-age=300"
+
+
+def _photo_stream(data: bytes = VALID_JPEG_BYTES) -> MagicMock:
+    """Wrap a photo body in a mock, so its read and close calls are observable."""
+    return MagicMock(wraps=BytesIO(data))
+
+
+def _stored_photo(
+    stream: MagicMock | None = None, chunk_size: int = DEFAULT_CHUNK_SIZE
+) -> StoredObject:
+    """Build an open handle over an in-memory photo body.
+
+    ``open`` hands back a single-use handle, so every call needs a fresh one --
+    a shared instance would arrive already closed on the second request.
+    """
+    return StoredObject(
+        stream if stream is not None else _photo_stream(),
+        "image/jpeg",
+        len(VALID_JPEG_BYTES),
+        chunk_size=chunk_size,
+    )
+
 
 @pytest.fixture
 def client_with_mock_storage(test_engine):
@@ -53,7 +81,7 @@ def client_with_mock_storage(test_engine):
 
     mock_storage = MagicMock(spec=StorageService)
     mock_storage.upload.return_value = UPLOADED_KEY
-    mock_storage.open.return_value = (VALID_JPEG_BYTES, "image/jpeg")
+    mock_storage.open.side_effect = lambda _key: _stored_photo()
 
     test_app.dependency_overrides[get_session] = override_get_session
     test_app.dependency_overrides[get_storage_service] = lambda: mock_storage
@@ -328,17 +356,23 @@ class TestPhotoDelete:
 class TestPhotoProxy:
     """Tests for GET /api/v1/users/{user_id}/photo."""
 
-    def test_streams_photo_bytes(self, client_with_mock_storage):
-        """The proxy streams the stored object with its content type."""
-        # GIVEN
-        client, mock_storage = client_with_mock_storage
-        token = register_and_login(client, "proxy@example.com")
+    @staticmethod
+    def _user_with_photo(client, email: str) -> str:
+        """Register a user, upload a photo, and return the user id."""
+        token = register_and_login(client, email)
         user_id = client.get("/api/v1/users/me", headers=auth_header(token)).json()["id"]
         client.post(
             "/api/v1/users/me/photo",
             headers=auth_header(token),
             files={"file": ("photo.jpg", VALID_JPEG_BYTES, "image/jpeg")},
         )
+        return str(user_id)
+
+    def test_streams_photo_bytes(self, client_with_mock_storage):
+        """The proxy streams the stored object with its content type and size."""
+        # GIVEN
+        client, mock_storage = client_with_mock_storage
+        user_id = self._user_with_photo(client, "proxy@example.com")
 
         # WHEN - public endpoint, no auth header
         response = client.get(f"/api/v1/users/{user_id}/photo")
@@ -346,13 +380,119 @@ class TestPhotoProxy:
         # THEN
         assert response.status_code == 200
         assert response.headers["content-type"].startswith("image/jpeg")
+        assert response.headers["content-length"] == str(len(VALID_JPEG_BYTES))
         assert response.content == VALID_JPEG_BYTES
         mock_storage.open.assert_called_with(UPLOADED_KEY)
+
+    def test_pulls_the_body_in_chunks_instead_of_buffering_it(self, client_with_mock_storage):
+        """The route hands the open stream to the response, chunk by chunk.
+
+        With a chunk size below the payload, a buffering route would show a single
+        read; a streaming one shows one read per chunk plus the closing empty read.
+        """
+        # GIVEN a handle that yields the photo four bytes at a time
+        client, mock_storage = client_with_mock_storage
+        user_id = self._user_with_photo(client, "chunked@example.com")
+        stream = _photo_stream()
+        mock_storage.open.side_effect = None
+        mock_storage.open.return_value = _stored_photo(stream, chunk_size=4)
+
+        # WHEN
+        response = client.get(f"/api/v1/users/{user_id}/photo")
+
+        # THEN one read per chunk, plus the empty read that ends the stream
+        assert response.content == VALID_JPEG_BYTES
+        expected_reads = -(-len(VALID_JPEG_BYTES) // 4) + 1
+        assert stream.read.call_count == expected_reads
+
+    def test_sets_an_immutable_year_long_cache_header(self, client_with_mock_storage):
+        """A versioned photo URL is cacheable indefinitely."""
+        # GIVEN
+        client, _ = client_with_mock_storage
+        user_id = self._user_with_photo(client, "cached@example.com")
+
+        # WHEN
+        response = client.get(f"/api/v1/users/{user_id}/photo?v=deadbeef0001")
+
+        # THEN
+        assert response.headers["cache-control"] == IMMUTABLE_CACHE_CONTROL
+
+    def test_an_unversioned_url_is_not_pinned_for_a_year(self, client_with_mock_storage):
+        """
+        GIVEN a photo requested through the bare path, with no version parameter
+        WHEN the response is served
+        THEN it carries the short cache header instead of the immutable one
+
+        The bare path is a stable URL whose bytes change when the photo does. Nothing
+        the API emits looks like that, but pinning it in a shared cache would serve one
+        person's replaced avatar to everyone who asked for a year.
+        """
+        # GIVEN
+        client, _ = client_with_mock_storage
+        user_id = self._user_with_photo(client, "unversioned@example.com")
+
+        # WHEN
+        response = client.get(f"/api/v1/users/{user_id}/photo")
+
+        # THEN
+        assert response.headers["cache-control"] == SHORT_CACHE_CONTROL
+        assert response.headers["cache-control"] != IMMUTABLE_CACHE_CONTROL
+
+    def test_a_version_that_is_not_the_current_one_is_not_pinned(self, client_with_mock_storage):
+        """
+        GIVEN a photo requested with a version token that is stale or invented
+        WHEN the response is served
+        THEN it carries the short cache header, not the immutable one
+
+        The route always serves whatever photo the account holds now, so a `v` that
+        names some other key describes bytes that already changed once and can change
+        again. Treating presence alone as proof of immutability would let anyone pin a
+        replaceable avatar in a shared cache for a year under a URL of their choosing.
+        """
+        # GIVEN
+        client, _ = client_with_mock_storage
+        user_id = self._user_with_photo(client, "stale-version@example.com")
+
+        # WHEN
+        response = client.get(f"/api/v1/users/{user_id}/photo?v=notthecurrentkey")
+
+        # THEN
+        assert response.headers["cache-control"] == SHORT_CACHE_CONTROL
+
+    def test_closes_the_stream_once_the_response_is_written(self, client_with_mock_storage):
+        """The bucket connection is released, not left in the pool."""
+        # GIVEN
+        client, mock_storage = client_with_mock_storage
+        user_id = self._user_with_photo(client, "closed@example.com")
+        stream = _photo_stream()
+        stored = _stored_photo(stream)
+        mock_storage.open.side_effect = None
+        mock_storage.open.return_value = stored
+
+        # WHEN
+        response = client.get(f"/api/v1/users/{user_id}/photo")
+
+        # THEN the handle is released once, though two paths try to release it
+        assert response.status_code == 200
+        assert stored.closed is True
+        stream.close.assert_called_once()
+
+    def test_returns_404_when_the_user_does_not_exist(self, client_with_mock_storage):
+        """An unknown user id returns 404 without reaching storage."""
+        # GIVEN
+        client, mock_storage = client_with_mock_storage
+
+        # WHEN
+        response = client.get(f"/api/v1/users/{uuid.uuid4()}/photo")
+
+        # THEN
+        assert response.status_code == 404
+        mock_storage.open.assert_not_called()
 
     def test_returns_404_when_user_has_no_photo(self, client_with_mock_storage):
         """The proxy returns 404 when the user has no photo set."""
         # GIVEN
-        client, _ = client_with_mock_storage
+        client, mock_storage = client_with_mock_storage
         token = register_and_login(client, "nophoto@example.com")
         user_id = client.get("/api/v1/users/me", headers=auth_header(token)).json()["id"]
 
@@ -361,6 +501,7 @@ class TestPhotoProxy:
 
         # THEN
         assert response.status_code == 404
+        mock_storage.open.assert_not_called()
 
     def test_returns_404_when_storage_unavailable(self, client_without_storage):
         """The proxy returns 404 when storage is not configured."""
@@ -377,13 +518,8 @@ class TestPhotoProxy:
         """The proxy returns 404 when the key is set but the object is gone from storage."""
         # GIVEN - a user with a photo whose backing object has since disappeared
         client, mock_storage = client_with_mock_storage
-        token = register_and_login(client, "gone@example.com")
-        user_id = client.get("/api/v1/users/me", headers=auth_header(token)).json()["id"]
-        client.post(
-            "/api/v1/users/me/photo",
-            headers=auth_header(token),
-            files={"file": ("photo.jpg", VALID_JPEG_BYTES, "image/jpeg")},
-        )
+        user_id = self._user_with_photo(client, "gone@example.com")
+        mock_storage.open.side_effect = None
         mock_storage.open.return_value = None
 
         # WHEN
@@ -400,13 +536,7 @@ class TestPhotoProxy:
         """
         # GIVEN - a user with a photo, and storage that fails on read
         client, mock_storage = client_with_mock_storage
-        token = register_and_login(client, "fault@example.com")
-        user_id = client.get("/api/v1/users/me", headers=auth_header(token)).json()["id"]
-        client.post(
-            "/api/v1/users/me/photo",
-            headers=auth_header(token),
-            files={"file": ("photo.jpg", VALID_JPEG_BYTES, "image/jpeg")},
-        )
+        user_id = self._user_with_photo(client, "fault@example.com")
         mock_storage.open.side_effect = StorageError(
             "Failed to read file: Could not connect to the endpoint URL: "
             f"https://private-bucket.example/{UPLOADED_KEY}"
