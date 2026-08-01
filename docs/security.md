@@ -308,11 +308,15 @@ out, since the SPA reads the CSRF token off the response.
 
 Both tiers send security response headers: the API from middleware
 (`api/middleware/security_headers.py`), the SPA from nginx (`frontend/nginx.conf`). Their
-Content-Security-Policies match except where the SPA genuinely needs more -- its
-`connect-src` also names the API origin, which is cross-origin on the deploys, and the
-Sentry ingest hosts the browser SDK reports to. That origin is baked into the policy when
-the image is built, from the same `VITE_API_URL` build argument the bundle uses, so the
-served policy cannot drift from the URL the app actually calls. `X-XSS-Protection` is set
+Content-Security-Policies match except where the SPA genuinely needs more. Its
+`connect-src` names the API origin, which is cross-origin on the deploys, plus the Sentry
+ingest hosts the browser SDK reports to. Its `img-src` names that same API origin, because
+profile photos are served by the API and rendered in `<img>` tags -- an image load, which
+`connect-src` does not cover. That origin is baked into the policy when the image is built,
+from the same `VITE_API_URL` build argument the bundle uses, so the served policy cannot
+drift from the URL the app actually calls. Both directives are asserted against the config
+in `tests/integration/test_frontend_csp.py`: a CSP that under-permits fails silently, since
+the browser drops the request before it reaches the origin and nothing appears in the logs. `X-XSS-Protection` is set
 to `0` on both tiers on purpose: the legacy auditor it enables is unreliable, browsers have
 dropped it, and its blocking mode has itself leaked cross-origin information. The CSP is
 what constrains injection.

@@ -409,11 +409,21 @@ jobs:
           path: /tmp/become-e2e-api.log
           retention-days: 7
 
+  # Runs on pull requests and on pushes to `main`. Analysing only pull requests left the main
+  # branch itself unanalysed since 2026-02-21, reporting 76.7% coverage against a real 99%, and
+  # a pull request's "new code" is measured against its base -- so a stale base made unrelated
+  # old code count as new, which is what failed the gate on the promotion in #326 over CSS
+  # introduced by a different pull request. Keeping `main` current fixes that at the root.
+  #
+  # `develop` and `staging` are deliberately not analysed: branch analysis for anything but the
+  # main branch is a paid SonarCloud feature, and this organization is on the free plan (its API
+  # answers "Organization is not allowed to access data from non main branches"). Pushing an
+  # analysis for them would burn a CI job on a result nothing can read.
   sonarcloud:
     name: SonarCloud Analysis
     runs-on: ubuntu-24.04
     needs: [python-tests, frontend-tests]
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
     env:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
@@ -434,6 +444,24 @@ jobs:
           name: frontend-coverage-report
           path: frontend/coverage/
 
+      # SonarCloud's new-code period for this project is "previous version", but no version was
+      # ever reported, so every analysis looked like the same one and the period degenerated.
+      # The release tags are the meaningful boundary here, so the latest one becomes the version
+      # and "new code" reads as "changed since the last release".
+      #
+      # The latest tag in the repository, not `git describe`. Releases are tagged on `main`,
+      # which is downstream of `develop`, so a release tag is never reachable from `develop` --
+      # `git describe` there answers with the release before last, and a pull request opened from
+      # `develop` would compare against a different baseline than one opened from `main`. Falls
+      # back to the commit only when no tag exists.
+      - name: Derive the analysed version from the latest release tag
+        id: sonar_version
+        run: |
+          version="$(git tag --sort=-v:refname | head -1)"
+          echo "version=${version:-$(git rev-parse --short HEAD)}" >> "$GITHUB_OUTPUT"
+
       - name: SonarQube Cloud Scan
         if: env.SONAR_TOKEN != ''
         uses: SonarSource/sonarqube-scan-action@713881670b6b3676cda39549040e2d88c70d582e # v8
+        with:
+          args: -Dsonar.projectVersion=${{ steps.sonar_version.outputs.version }}
