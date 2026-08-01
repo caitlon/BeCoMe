@@ -7,9 +7,13 @@ declared ``Content-Length`` above the limit up front, and counts bytes for chunk
 bodies so no request can buffer more than the limit regardless of the declared size.
 """
 
+import logging
+
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
+
+logger = logging.getLogger("api.request")
 
 # Default cap for buffered request bodies (2 MiB). Comfortably fits the largest
 # legitimate JSON payload -- a 1000-expert /calculate request -- while stopping the
@@ -41,6 +45,21 @@ class BodySizeLimitMiddleware:
 
         declared = self._declared_length(scope)
         if declared is not None and declared > self._max_body_bytes:
+            # This record carries no request_id: the middleware is added last and so
+            # runs first, before RequestLoggingMiddleware binds the correlation id.
+            # That ordering is the whole point -- the body is refused before anything
+            # buffers it -- so the missing id is a consequence, not an oversight.
+            logger.warning(
+                "Request body rejected",
+                extra={
+                    "event": "request_body_rejected",
+                    "reason": "declared_content_length",
+                    "declared_bytes": declared,
+                    "limit_bytes": self._max_body_bytes,
+                    "method": scope.get("method"),
+                    "path": scope.get("path"),
+                },
+            )
             await self._send_too_large(send)
             return
 
@@ -108,4 +127,15 @@ def body_too_large_handler(request: Request, exc: Exception) -> Response:
     :param exc: The raised :class:`RequestBodyTooLarge`.
     :return: A 413 JSON response.
     """
+    # The configured cap belongs to the middleware instance and is not reachable from
+    # this handler, so the record states what happened without guessing the number.
+    logger.warning(
+        "Request body rejected",
+        extra={
+            "event": "request_body_rejected",
+            "reason": "streamed_overflow",
+            "method": request.method,
+            "path": request.url.path,
+        },
+    )
     return JSONResponse(status_code=413, content={"detail": "Request body too large"})

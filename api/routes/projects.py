@@ -4,6 +4,7 @@ Exception handling follows OCP: all exceptions are handled
 by centralized middleware, routes focus on business logic only.
 """
 
+import logging
 from typing import Annotated
 from uuid import UUID
 
@@ -32,6 +33,11 @@ from api.services.project_membership_service import ProjectMembershipService
 from api.services.project_query_service import ProjectQueryService
 from api.services.project_service import ProjectService
 
+# Refusals raised as HTTPException inside a route reach FastAPI's own handler, not the
+# app's, so they are logged here or nowhere. Successful writes are not: project_service
+# and project_membership_service already emit those events.
+logger = logging.getLogger("api.route.projects")
+
 router = APIRouter(prefix="/api/v1/projects", tags=["projects"])
 
 
@@ -50,6 +56,15 @@ def list_projects(
     """
     projects_with_roles = query_service.get_user_projects_with_roles(
         current_user.id, limit=pagination.limit, offset=pagination.offset
+    )
+    logger.debug(
+        "Projects listed",
+        extra={
+            "event": "projects_listed",
+            "row_count": len(projects_with_roles),
+            "limit": pagination.limit,
+            "offset": pagination.offset,
+        },
     )
     return [
         ProjectWithRoleResponse.from_model_with_role(
@@ -100,6 +115,16 @@ def get_project(
     """
     role = membership_service.get_user_role_in_project(project.id, current_user.id)
     if role is None:
+        # The ProjectMember dependency already accepted this caller, so a missing role
+        # here means the membership went away between the two reads.
+        logger.warning(
+            "Project membership missing after access check",
+            extra={
+                "event": "project_membership_missing",
+                "project_id": str(project.id),
+                "user_id": str(current_user.id),
+            },
+        )
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Membership not found for this project.",
@@ -173,6 +198,15 @@ def transfer_ownership(
     :raises HTTPException: 400 if transferring ownership to self
     """
     if request.new_admin_id == current_user.id:
+        logger.warning(
+            "Ownership transfer rejected",
+            extra={
+                "event": "ownership_transfer_rejected",
+                "reason": "self_transfer",
+                "project_id": str(project.id),
+                "user_id": str(current_user.id),
+            },
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="You are already the project admin.",
@@ -199,6 +233,14 @@ def list_members(
     """
     members = membership_service.get_members(
         project.id, limit=pagination.limit, offset=pagination.offset
+    )
+    logger.debug(
+        "Project members listed",
+        extra={
+            "event": "members_listed",
+            "project_id": str(project.id),
+            "row_count": len(members),
+        },
     )
     return [MemberResponse.from_model(member.membership, member.user) for member in members]
 
@@ -232,6 +274,15 @@ def remove_member(
     :raises HTTPException: 400 if removing self
     """
     if user_id == current_user.id:
+        logger.warning(
+            "Member removal rejected",
+            extra={
+                "event": "member_removal_rejected",
+                "reason": "self_removal",
+                "project_id": str(project.id),
+                "user_id": str(current_user.id),
+            },
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Admin cannot remove themselves. Delete the project instead.",
@@ -239,3 +290,14 @@ def remove_member(
 
     if membership_service.remove_member(project.id, user_id):
         calculation_service.recalculate(project.id)
+    else:
+        # A 204 either way, so without this the no-op is indistinguishable from a
+        # removal in the log. project_membership_service logs the removal itself.
+        logger.debug(
+            "Member removal was a no-op",
+            extra={
+                "event": "member_removal_noop",
+                "project_id": str(project.id),
+                "user_id": str(user_id),
+            },
+        )
