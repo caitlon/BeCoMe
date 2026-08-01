@@ -250,7 +250,7 @@ Environment variables (can use `.env` file):
 | `BUCKET_ENDPOINT` | *optional* | S3-compatible bucket endpoint |
 | `BUCKET_ACCESS_KEY_ID` | *optional* | Bucket access key |
 | `BUCKET_SECRET_ACCESS_KEY` | *optional* | Bucket secret key |
-| `LOG_LEVEL` | `INFO` | Log verbosity (`DEBUG`/`INFO`/`WARNING`/`ERROR`); dev emits text, test/prod emit JSON |
+| `LOG_LEVEL` | per profile: `DEBUG` on dev, `INFO` on test and prod | Log verbosity (`DEBUG`/`INFO`/`WARNING`/`ERROR`/`CRITICAL`); an explicit value always wins. A local shell emits text, every deployed service emits JSON |
 | `LOG_FILE` | *optional* | Path for a rotating log file (console logging is always on) |
 | `SENTRY_DSN` | *optional* | Sentry DSN for backend error tracking (disabled when unset) |
 | `BETTERSTACK_SOURCE_TOKEN` | *optional* | Better Stack log source token (ships `api.*` logs when set together with the host below) |
@@ -260,7 +260,13 @@ Environment variables (can use `.env` file):
 
 **Migrations:** The PostgreSQL schema is managed by Alembic (`migrations/`). `alembic upgrade head` runs automatically before each Railway deploy; to apply it manually against a specific database use `ALEMBIC_DATABASE_URL=<url> uv run alembic upgrade head`. SQLite (local development and the test suite) keeps using `create_all`, so no migration step is needed there.
 
-**Observability:** Every request gets an `X-Request-ID` response header (generated, or echoed from the client's header) for log correlation. A `ContextFilter` binds that ID and the acting user through contextvars, so every `api.*` record -- service and security logs included -- carries `request_id` and `user_id`, not just the request line. Requests, unhandled exceptions, and rate-limit violations are logged under the `api.*` loggers; in `test`/`prod` the output is JSON so a log drain can index fields like `request_id` and `status_code`. Unhandled exceptions return an opaque 500 and are reported to Sentry when `SENTRY_DSN` is set. When the `BETTERSTACK_*` variables are set, the `api.*` logs are also shipped to Better Stack (a per-environment source) via `logtail-python`.
+**Observability:** Every request gets an `X-Request-ID` response header (generated, or echoed from the client's header) for log correlation. A `ContextFilter` binds that ID and the acting user through contextvars, so every `api.*` record -- service and security logs included -- carries `request_id` and `user_id`, not just the request line.
+
+What is logged, under the `api.*` loggers: each request and its timing; every mutating domain action (`api.service.*` and `api.route.*`); every refusal, whether it is a CSRF rejection, an over-large body, a rejected token, a denied invitation, or a refused photo upload; and, at `DEBUG`, the reads and the outbound calls to Redis, S3, and the email provider with their timings. Records carry structured `extra` fields under an `event` name rather than free text. Output is JSON on every deployed service -- the Railway `dev` service included, since it is a deploy and not a laptop -- so a drain can index `event`, `request_id`, `status_code`, and `duration_ms`.
+
+Three third-party loggers are wired into the same handlers with pinned levels (`_EXTERNAL_LOG_LEVELS` in `api/logging_config.py`): `uvicorn.error` at INFO, so a boot that never finished is visible in the drain; `httpx` and `botocore` at WARNING, since their successful calls are already covered by `email_sent` and `s3_upload`. `uvicorn.access` is deliberately silenced -- `api.request` logs the same requests with more fields. **`sqlalchemy.engine` is pinned at WARNING and must stay there:** its DEBUG level prints bound query parameters, which on this schema means password hashes, addresses, and reset-token hashes going to the drain in the clear. Query shape and timing are logged by the read services instead. If drain volume from dev's DEBUG stream becomes a problem, the lever is `logtail_handler.setLevel(logging.INFO)` in `setup_logging` -- the console keeps DEBUG, the drain does not.
+
+Unhandled exceptions return an opaque 500 and are reported to Sentry when `SENTRY_DSN` is set. When the `BETTERSTACK_*` variables are set, the logs are also shipped to Better Stack (a per-environment source) via `logtail-python`.
 
 ## Testing
 
