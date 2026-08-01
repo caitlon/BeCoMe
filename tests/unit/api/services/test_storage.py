@@ -1,5 +1,6 @@
 """Unit tests for RailwayBucketStorageService."""
 
+from io import BytesIO
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -160,21 +161,60 @@ class TestUpload:
 class TestOpen:
     """Tests for fetching an object."""
 
-    def test_returns_bytes_and_content_type(self):
-        """Returns the object bytes together with its content type."""
+    def test_returns_an_open_handle_with_metadata(self):
+        """Returns a handle carrying the content type and the reported size."""
         # GIVEN
-        body = MagicMock()
-        body.read.return_value = b"image bytes"
+        body = MagicMock(wraps=BytesIO(b"image bytes"))
         client = MagicMock()
-        client.get_object.return_value = {"Body": body, "ContentType": "image/png"}
+        client.get_object.return_value = {
+            "Body": body,
+            "ContentType": "image/png",
+            "ContentLength": 11,
+        }
         service = RailwayBucketStorageService(_settings(), client=client)
 
         # WHEN
         result = service.open("profiles/user/abc.png")
 
         # THEN
-        assert result == (b"image bytes", "image/png")
+        assert result is not None
+        assert result.content_type == "image/png"
+        assert result.content_length == 11
+        assert b"".join(result.chunks()) == b"image bytes"
         client.get_object.assert_called_once_with(Bucket="test-bucket", Key="profiles/user/abc.png")
+
+    def test_does_not_read_the_body_while_opening(self):
+        """Opening only fetches headers -- the body stays on the wire.
+
+        This is the whole point of the change: time to first byte must not include
+        the full object download.
+        """
+        # GIVEN
+        body = MagicMock(wraps=BytesIO(b"image bytes"))
+        client = MagicMock()
+        client.get_object.return_value = {"Body": body, "ContentLength": 11}
+        service = RailwayBucketStorageService(_settings(), client=client)
+
+        # WHEN
+        service.open("profiles/user/abc.png")
+
+        # THEN
+        body.read.assert_not_called()
+
+    def test_falls_back_to_octet_stream_without_a_content_type(self):
+        """A bucket response with no ContentType yields a generic media type."""
+        # GIVEN
+        client = MagicMock()
+        client.get_object.return_value = {"Body": MagicMock(wraps=BytesIO(b"x"))}
+        service = RailwayBucketStorageService(_settings(), client=client)
+
+        # WHEN
+        result = service.open("profiles/user/abc.png")
+
+        # THEN
+        assert result is not None
+        assert result.content_type == "application/octet-stream"
+        assert result.content_length is None
 
     def test_returns_none_when_object_absent(self):
         """Returns None when the object does not exist."""
@@ -225,6 +265,34 @@ class TestOpen:
         # THEN
         assert mock_logger.info.call_args[1]["extra"]["event"] == "s3_open_miss"
         mock_logger.error.assert_not_called()
+
+    def test_logs_the_reported_size_and_the_time_to_headers(self):
+        """The open event reports ContentLength and how long the headers took.
+
+        duration_ms no longer covers the download, because the body has not been
+        read at that point -- it measures what the client waits for before the
+        first byte arrives.
+        """
+        # GIVEN
+        body = MagicMock(wraps=BytesIO(b"image bytes"))
+        client = MagicMock()
+        client.get_object.return_value = {
+            "Body": body,
+            "ContentType": "image/png",
+            "ContentLength": 11,
+        }
+        service = RailwayBucketStorageService(_settings(), client=client)
+
+        # WHEN
+        with patch("api.services.storage.railway_bucket_storage_service.logger") as mock_logger:
+            service.open("profiles/user/abc.png")
+
+        # THEN
+        extra = mock_logger.info.call_args[1]["extra"]
+        assert extra["event"] == "s3_open"
+        assert extra["size_bytes"] == 11
+        assert "duration_ms" in extra
+        body.read.assert_not_called()
 
     def test_logs_failure_with_exc_info(self):
         """A non-absence failure logs an error carrying exc_info."""
