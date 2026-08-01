@@ -44,9 +44,15 @@ from api.services.storage.exceptions import (
     StorageUploadError,
 )
 from api.services.user_service import UserService
+from api.utils.streaming import StoredObjectResponse
 from api.utils.upload import UploadTooLarge, read_within_limit
 
 router = APIRouter(prefix="/api/v1/users", tags=["users"])
+
+# Profile photo URLs are versioned: build_photo_url appends ?v=<token> taken from the
+# stored object key, and every upload mints a fresh key. A given URL therefore always
+# resolves to the same bytes, so it can be cached for as long as a cache will hold it.
+_PHOTO_CACHE_CONTROL = "public, max-age=31536000, immutable"
 
 
 @router.get("/me", summary="Get current user profile")
@@ -361,7 +367,7 @@ def get_user_photo(
     :param user_id: User whose photo to serve
     :param user_service: User service for the photo key lookup
     :param storage_service: Storage service (None when not configured)
-    :return: The image bytes with public caching headers
+    :return: The image streamed from the bucket, with public caching headers
     """
     if storage_service is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Photo not found")
@@ -373,18 +379,13 @@ def get_user_photo(
     # A storage fault must not surface here: this endpoint is public, and the raw
     # exception text carries the bucket host and object key.
     try:
-        result = storage_service.open(user.photo_url)
+        stored = storage_service.open(user.photo_url)
     except StorageError as err:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Photo not found"
         ) from err
 
-    if result is None:
+    if stored is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Photo not found")
 
-    content, content_type = result
-    return Response(
-        content=content,
-        media_type=content_type,
-        headers={"Cache-Control": "public, max-age=86400"},
-    )
+    return StoredObjectResponse(stored, headers={"Cache-Control": _PHOTO_CACHE_CONTROL})
