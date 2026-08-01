@@ -11,9 +11,18 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# API URL injected at build time via Railway env vars
+# Build-time values injected via Railway env vars. Every VITE_* variable the SPA
+# reads has to be declared here: Railway passes service variables as build args, and
+# Vite only inlines a variable that exists in the builder's environment when
+# `npm run build` runs. An undeclared one is simply absent, and the code reading it
+# collapses to `undefined` -- which is how the Sentry init below went missing from
+# all three deployed bundles while VITE_SENTRY_DSN was set on every service.
 ARG VITE_API_URL
 ENV VITE_API_URL=${VITE_API_URL}
+ARG VITE_SENTRY_DSN
+ENV VITE_SENTRY_DSN=${VITE_SENTRY_DSN}
+ARG VITE_APP_ENV
+ENV VITE_APP_ENV=${VITE_APP_ENV}
 
 # Copy package files first for better caching
 COPY package.json package-lock.json ./
