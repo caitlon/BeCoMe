@@ -20,11 +20,15 @@ def build_photo_url(user_id: str | UUID, photo_key: str | None) -> str | None:
     if not photo_key:
         return None
     base = get_settings().api_public_url.rstrip("/")
-    return f"{base}/api/v1/users/{user_id}/photo?v={_cache_buster(photo_key)}"
+    return f"{base}/api/v1/users/{user_id}/photo?v={photo_version(photo_key)}"
 
 
-def _cache_buster(photo_key: str) -> str:
-    """Derive a short, stable cache-buster token from the object key.
+def photo_version(photo_key: str) -> str:
+    """Derive the version token that identifies one stored photo.
+
+    The photo route compares the ``v`` it was asked for against this, so the two
+    must agree on what a version is: only a request naming the key currently on
+    the account describes bytes that cannot change under it.
 
     :param photo_key: Stored object key like ``profiles/<id>/<random>.<ext>``.
     :return: The random key segment without its extension.

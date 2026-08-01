@@ -153,12 +153,15 @@ sending it. The header is that app's only copy of the value, which is why
 The photo proxy is public, because an `<img>` tag cannot send an auth header. It passes
 the bucket's response straight through to the client instead of downloading the object
 first, so the wait before the first byte is one bucket round trip rather than a full
-download. The URL it is reached by carries a `?v=` token taken from the stored object
-key, and every upload mints a new key, so a given versioned URL always resolves to the same
-bytes and is served with `Cache-Control: public, max-age=31536000, immutable`. The bare path
-without that token is a stable URL whose bytes change when the photo does, so it gets
-`max-age=300` instead: nothing the API emits looks like that, but pinning it in a shared
-cache would serve one person's replaced avatar to everyone who asked.
+download. The URL it is reached by carries a `?v=` token taken from the stored object key,
+and every upload mints a new key.
+
+The route always serves whichever photo the account holds now, so the cache header depends on
+whether the request named that photo. A `v` matching the current key describes bytes that
+cannot change under it and is served with `Cache-Control: public, max-age=31536000, immutable`.
+Anything else -- no token, a stale one, an invented one -- gets `max-age=300`, because those
+URLs already resolve to different bytes than they once did and will again. Pinning one for a
+year would leave a shared cache handing out a replaced avatar to everyone who asked for it.
 
 Deleting the account (`DELETE /api/v1/users/me`) accepts an optional body that says what
 to do with every project the user still admins -- `transfer` it to another member or

@@ -438,6 +438,27 @@ class TestPhotoProxy:
         assert response.headers["cache-control"] == SHORT_CACHE_CONTROL
         assert response.headers["cache-control"] != IMMUTABLE_CACHE_CONTROL
 
+    def test_a_version_that_is_not_the_current_one_is_not_pinned(self, client_with_mock_storage):
+        """
+        GIVEN a photo requested with a version token that is stale or invented
+        WHEN the response is served
+        THEN it carries the short cache header, not the immutable one
+
+        The route always serves whatever photo the account holds now, so a `v` that
+        names some other key describes bytes that already changed once and can change
+        again. Treating presence alone as proof of immutability would let anyone pin a
+        replaceable avatar in a shared cache for a year under a URL of their choosing.
+        """
+        # GIVEN
+        client, _ = client_with_mock_storage
+        user_id = self._user_with_photo(client, "stale-version@example.com")
+
+        # WHEN
+        response = client.get(f"/api/v1/users/{user_id}/photo?v=notthecurrentkey")
+
+        # THEN
+        assert response.headers["cache-control"] == SHORT_CACHE_CONTROL
+
     def test_closes_the_stream_once_the_response_is_written(self, client_with_mock_storage):
         """The bucket connection is released, not left in the pool."""
         # GIVEN
