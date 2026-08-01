@@ -1,5 +1,6 @@
 """JWT token creation and decoding with refresh token support."""
 
+import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
@@ -10,11 +11,39 @@ from jwt import InvalidTokenError
 from api.auth.revocation_store import RevocationStore, RevocationStoreError
 from api.config import get_settings
 
+logger = logging.getLogger("api.security")
+
 ALGORITHM = "HS256"
+
+# Refusals that are ordinary traffic, not a signal: an access token expires every 15
+# minutes, so every active session hits this, and so does every stale browser tab.
+# Logged at DEBUG so the refusals that do mean something -- a revoked token, an
+# unreachable store -- stay visible in a stream filtered to WARNING.
+_ROUTINE_REJECTIONS = frozenset({"invalid_or_expired", "invalid_user_id"})
 
 
 class TokenError(Exception):
     """Raised when token validation fails."""
+
+
+def _reject(reason: str, message: str, **fields: object) -> TokenError:
+    """Log a refused token and build the error to raise.
+
+    The token string never reaches the record -- only why it was refused and the
+    opaque identifiers needed to correlate the refusal with the session it came from.
+
+    :param reason: Machine-readable cause, e.g. ``jti_revoked``.
+    :param message: Message carried by the raised :class:`TokenError`.
+    :param fields: Extra context to attach to the record.
+    :return: The error the caller should raise.
+    """
+    level = logging.DEBUG if reason in _ROUTINE_REJECTIONS else logging.WARNING
+    logger.log(
+        level,
+        "Token rejected",
+        extra={"event": "token_rejected", "reason": reason, **fields},
+    )
+    return TokenError(message)
 
 
 @dataclass(frozen=True)
@@ -101,6 +130,17 @@ def create_token_pair(user_id: UUID, sid: str | None = None) -> TokenPair:
     session_id = sid or uuid4().hex
     refresh_token, jti = create_refresh_token(user_id, session_id)
     access_token = create_access_token(user_id, session_id, jti)
+    logger.debug(
+        "Token pair issued",
+        extra={
+            "event": "token_pair_issued",
+            "user_id": str(user_id),
+            "sid": session_id,
+            "jti": jti,
+            "expires_in": settings.access_token_expire_minutes * 60,
+            "continued": sid is not None,
+        },
+    )
     return TokenPair(
         access_token=access_token,
         refresh_token=refresh_token,
@@ -134,19 +174,25 @@ def decode_token(token: str, expected_type: str, store: RevocationStore) -> Toke
 
         token_type: str | None = payload.get("type")
         if token_type != expected_type:
-            raise TokenError(f"Invalid token type: expected {expected_type}")
+            raise _reject(
+                "type_mismatch",
+                f"Invalid token type: expected {expected_type}",
+                expected_type=expected_type,
+            )
 
         jti: str | None = payload.get("jti")
         if not jti:
-            raise TokenError("Missing token ID")
+            raise _reject("missing_jti", "Missing token ID", expected_type=expected_type)
 
         # Check revocation store (fail-closed: a store error becomes a 401)
         try:
             revoked = store.is_jti_revoked(jti)
         except RevocationStoreError as e:
-            raise TokenError("Revocation store unavailable") from e
+            raise _reject(
+                "store_unavailable", "Revocation store unavailable", op="is_jti_revoked"
+            ) from e
         if revoked:
-            raise TokenError("Token has been revoked")
+            raise _reject("jti_revoked", "Token has been revoked", jti=jti)
 
         # Reject any token whose session (sid) was revoked. Refresh-token reuse
         # revokes the whole family, so a stolen token cannot outlive detection.
@@ -155,13 +201,15 @@ def decode_token(token: str, expected_type: str, store: RevocationStore) -> Toke
             try:
                 session_revoked = store.is_session_revoked(sid)
             except RevocationStoreError as e:
-                raise TokenError("Revocation store unavailable") from e
+                raise _reject(
+                    "store_unavailable", "Revocation store unavailable", op="is_session_revoked"
+                ) from e
             if session_revoked:
-                raise TokenError("Token has been revoked")
+                raise _reject("session_revoked", "Token has been revoked", jti=jti, sid=sid)
 
         user_id_str: str | None = payload.get("sub")
         if not user_id_str:
-            raise TokenError("Missing user ID in token")
+            raise _reject("missing_sub", "Missing user ID in token", expected_type=expected_type)
         user_id = UUID(user_id_str)
 
         # Reject tokens issued before the user's valid_after cutoff (M1): a password
@@ -169,9 +217,16 @@ def decode_token(token: str, expected_type: str, store: RevocationStore) -> Toke
         try:
             valid_after = store.get_user_valid_after(user_id)
         except RevocationStoreError as e:
-            raise TokenError("Revocation store unavailable") from e
+            raise _reject(
+                "store_unavailable", "Revocation store unavailable", op="get_user_valid_after"
+            ) from e
         if valid_after is not None and datetime.fromtimestamp(payload["iat"], tz=UTC) < valid_after:
-            raise TokenError("Token has been revoked")
+            raise _reject(
+                "issued_before_valid_after",
+                "Token has been revoked",
+                jti=jti,
+                user_id=str(user_id),
+            )
 
         # exp is guaranteed by PyJWT with require=["exp"]
         exp_datetime = datetime.fromtimestamp(payload["exp"], tz=UTC)
@@ -184,9 +239,13 @@ def decode_token(token: str, expected_type: str, store: RevocationStore) -> Toke
             sid=sid or "",
         )
     except InvalidTokenError as e:
-        raise TokenError("Invalid or expired token") from e
+        raise _reject(
+            "invalid_or_expired", "Invalid or expired token", expected_type=expected_type
+        ) from e
     except ValueError as e:
-        raise TokenError("Invalid user ID in token") from e
+        raise _reject(
+            "invalid_user_id", "Invalid user ID in token", expected_type=expected_type
+        ) from e
 
 
 def decode_access_token(token: str, store: RevocationStore) -> UUID:
@@ -234,3 +293,4 @@ def revoke_token(jti: str, store: RevocationStore) -> None:
     :param store: Revocation store to record the JTI in
     """
     store.revoke_jti(jti, refresh_token_ttl_seconds())
+    logger.debug("Token revoked", extra={"event": "token_revoked", "jti": jti})

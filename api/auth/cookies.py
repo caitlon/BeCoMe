@@ -10,11 +10,14 @@ programmatic clients and the test suite can keep using the ``Authorization: Bear
 header.
 """
 
+import logging
 import secrets
 
 from fastapi import Request, Response
 
 from api.config import Environment, get_settings
+
+logger = logging.getLogger("api.security")
 
 ACCESS_COOKIE = "access_token"
 REFRESH_COOKIE = "refresh_token"
@@ -93,6 +96,15 @@ def set_auth_cookies(
         secure=secure,
         samesite="strict",
     )
+    logger.debug(
+        "Auth cookies set",
+        extra={
+            "event": "auth_cookies_set",
+            "secure": secure,
+            "access_ttl": access_ttl,
+            "refresh_ttl": refresh_ttl,
+        },
+    )
 
 
 def set_csrf_header(response: Response, csrf_token: str | None) -> None:
@@ -125,6 +137,15 @@ def set_csrf_header(response: Response, csrf_token: str | None) -> None:
     """
     if csrf_token and csrf_token.isascii() and csrf_token.isprintable():
         response.headers[CSRF_HEADER] = csrf_token
+    elif csrf_token:
+        # The guard just refused to echo a client-chosen value, i.e. it blocked a
+        # response-splitting attempt. The value itself stays out of the record: it is
+        # attacker-controlled and may carry the very control characters that make
+        # writing it anywhere unsafe.
+        logger.warning(
+            "CSRF header not echoed",
+            extra={"event": "csrf_header_suppressed", "reason": "non_printable"},
+        )
 
 
 def clear_auth_cookies(response: Response) -> None:
@@ -135,3 +156,4 @@ def clear_auth_cookies(response: Response) -> None:
     response.delete_cookie(ACCESS_COOKIE)
     response.delete_cookie(REFRESH_COOKIE, path=REFRESH_COOKIE_PATH)
     response.delete_cookie(CSRF_COOKIE)
+    logger.debug("Auth cookies cleared", extra={"event": "auth_cookies_cleared"})

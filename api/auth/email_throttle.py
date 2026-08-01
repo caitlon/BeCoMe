@@ -23,6 +23,7 @@ rebuilding by timing the account-existence oracle the uniform response removes.
 """
 
 import hashlib
+import logging
 import threading
 from datetime import UTC, datetime, timedelta
 from functools import lru_cache
@@ -31,6 +32,8 @@ from typing import Protocol, runtime_checkable
 import redis
 
 from api.config import get_settings
+
+logger = logging.getLogger("api.security")
 
 # At most one email per address per cooldown, plus a small daily total, so a known
 # inbox cannot be flooded even when the per-IP limiter is evaded across many IPs.
@@ -44,8 +47,45 @@ VERIFICATION_KEY_PREFIX = "verify"
 
 
 def _digest(identifier: str) -> str:
-    """Return the SHA-256 hex digest of a normalized email, so no address is stored."""
+    """Return the SHA-256 hex digest of a normalized email, so no address is stored.
+
+    Never log this value. It is an unkeyed digest, so anyone holding the logs could
+    hash a guessed address and confirm it appears -- the account-existence oracle
+    ``api.auth.logging.hash_email`` exists to prevent. Records here name the flow,
+    never the address; the address-scoped event belongs at the call site in
+    ``api/routes/auth.py``, which has the keyed tag.
+    """
     return hashlib.sha256(identifier.strip().lower().encode()).hexdigest()
+
+
+def _log_denied(reason: str, **fields: object) -> None:
+    """Record a refused email send.
+
+    :param reason: Which budget refused it -- ``cooldown`` or ``daily_cap``.
+    :param fields: Extra context; never an address or its digest.
+    """
+    logger.debug(
+        "Email send throttled",
+        extra={"event": "email_throttle_denied", "reason": reason, **fields},
+    )
+
+
+def _log_store_unavailable(op: str, exc: redis.RedisError, key_prefix: str) -> None:
+    """Record a throttle store that could not be reached.
+
+    Worth a record because this throttle fails open: the send proceeds and the caller
+    sees nothing, so an outage silently lifts the per-address cap on every flow behind
+    it. ``docs/security.md`` accepts that risk; this makes it observable.
+
+    :param op: Throttle operation that failed -- ``allow`` or ``record``.
+    :param exc: The Redis error that caused it.
+    :param key_prefix: Key namespace of the flow whose cap was lifted.
+    """
+    logger.warning(
+        "Email throttle store unavailable, cap not enforced",
+        extra={"event": "throttle_store_unavailable", "op": op, "key_prefix": key_prefix},
+        exc_info=exc,
+    )
 
 
 @runtime_checkable
@@ -83,9 +123,11 @@ class InMemoryEmailSendThrottle:
             recent = [t for t in self._sends.get(key, []) if now - t < self._daily_window]
             if recent and now - recent[-1] < self._cooldown:
                 self._sends[key] = recent
+                _log_denied("cooldown", backend="memory")
                 return False
             if len(recent) >= self._daily_cap:
                 self._sends[key] = recent
+                _log_denied("daily_cap", backend="memory")
                 return False
             recent.append(now)
             self._sends[key] = recent
@@ -135,16 +177,19 @@ class RedisEmailSendThrottle:
         try:
             # Cooldown gate: SET NX succeeds only when the cooldown window is clear.
             if not self._client.set(cooldown_key, "1", nx=True, ex=self._cooldown):
+                _log_denied("cooldown", backend="redis", key_prefix=self._key_prefix)
                 return False
             raw = self._client.get(daily_key)
             sent_today = int(raw) if isinstance(raw, bytes | str | int) else 0
             if sent_today >= self._daily_cap:
+                _log_denied("daily_cap", backend="redis", key_prefix=self._key_prefix)
                 return False
             if self._client.incr(daily_key) == 1:
                 self._client.expire(daily_key, self._daily_window)
             return True
-        except redis.RedisError:
+        except redis.RedisError as e:
             # Fail open: a store outage must never suppress a legitimate email.
+            _log_store_unavailable("allow", e, self._key_prefix)
             return True
 
     def record(self, identifier: str) -> None:
@@ -157,9 +202,10 @@ class RedisEmailSendThrottle:
             daily_key = f"{self._key_prefix}:daily:{digest}"
             if self._client.incr(daily_key) == 1:
                 self._client.expire(daily_key, self._daily_window)
-        except redis.RedisError:
+        except redis.RedisError as e:
             # Fail open, as ``allow`` does: a store outage must not turn into an error
             # on a request whose email has already been decided.
+            _log_store_unavailable("record", e, self._key_prefix)
             return
 
 
@@ -170,6 +216,16 @@ def _build_throttle(key_prefix: str) -> EmailSendThrottle:
     :return: The throttle backend for that flow.
     """
     settings = get_settings()
+    backend = "redis" if settings.redis_url else "memory"
+    logger.debug(
+        "Email throttle backend selected",
+        extra={
+            "event": "throttle_backend_selected",
+            "throttle": "email",
+            "key_prefix": key_prefix,
+            "backend": backend,
+        },
+    )
     if settings.redis_url:
         client = redis.from_url(settings.redis_url, socket_connect_timeout=2, socket_timeout=2)
         return RedisEmailSendThrottle(client, key_prefix=key_prefix)
