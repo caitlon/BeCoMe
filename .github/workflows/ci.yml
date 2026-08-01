@@ -409,16 +409,21 @@ jobs:
           path: /tmp/become-e2e-api.log
           retention-days: 7
 
-  # Runs on pushes to the long-lived branches as well as on pull requests. Analysing only
-  # pull requests left SonarCloud with no picture of the branches themselves: `main` was last
-  # analysed on 2026-02-21 and reported 76.7% coverage against a real 99%, while `develop` and
-  # `staging` had never been analysed at all. A pull request's "new code" is measured against
-  # its base, so a stale base also made unrelated old code count as new -- that is what failed
-  # the gate on the promotion in #326 over CSS introduced by a different pull request.
+  # Runs on pull requests and on pushes to `main`. Analysing only pull requests left the main
+  # branch itself unanalysed since 2026-02-21, reporting 76.7% coverage against a real 99%, and
+  # a pull request's "new code" is measured against its base -- so a stale base made unrelated
+  # old code count as new, which is what failed the gate on the promotion in #326 over CSS
+  # introduced by a different pull request. Keeping `main` current fixes that at the root.
+  #
+  # `develop` and `staging` are deliberately not analysed: branch analysis for anything but the
+  # main branch is a paid SonarCloud feature, and this organization is on the free plan (its API
+  # answers "Organization is not allowed to access data from non main branches"). Pushing an
+  # analysis for them would burn a CI job on a result nothing can read.
   sonarcloud:
     name: SonarCloud Analysis
     runs-on: ubuntu-24.04
     needs: [python-tests, frontend-tests]
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
     env:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
@@ -446,8 +451,9 @@ jobs:
       #
       # The latest tag in the repository, not `git describe`. Releases are tagged on `main`,
       # which is downstream of `develop`, so a release tag is never reachable from `develop` --
-      # `git describe` there answers with the release before last, and every branch would end up
-      # comparing against a different baseline. Falls back to the commit only when no tag exists.
+      # `git describe` there answers with the release before last, and a pull request opened from
+      # `develop` would compare against a different baseline than one opened from `main`. Falls
+      # back to the commit only when no tag exists.
       - name: Derive the analysed version from the latest release tag
         id: sonar_version
         run: |
