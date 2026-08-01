@@ -1,5 +1,6 @@
 """Registration policy for accounts that are activated by email."""
 
+import logging
 from dataclasses import dataclass
 
 from sqlalchemy.exc import IntegrityError
@@ -9,6 +10,27 @@ from api.db.models import User
 from api.exceptions import UserExistsError
 from api.services.email_verification_service import PendingCredentials
 from api.services.user_service import UserService
+
+logger = logging.getLogger("api.service.registration")
+
+
+def _log_branch(branch: str) -> None:
+    """Trace which registration branch ran.
+
+    DEBUG, and deliberately anonymous.
+    :func:`api.auth.logging.log_registration_attempt` already documents that a reader
+    of the full application log can recover which branch ran for a given
+    ``email_hash``, because the account write and the token minting emit their own
+    records under the same request id -- log access is the trust boundary there, not
+    this line. Carrying an ``email_hash`` here would make that join trivial instead of
+    merely possible, so it does not.
+
+    :param branch: ``created``, ``pending_unverified``, or ``already_verified``.
+    """
+    logger.debug(
+        "Registration branch taken",
+        extra={"event": "registration_branch", "branch": branch},
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,6 +115,7 @@ class RegistrationService:
         if existing is None:
             created = self._create_account(email, password, first_name, last_name)
             if created is not None:
+                _log_branch("created")
                 return RegistrationResult(
                     user=created,
                     credentials=PendingCredentials(
@@ -115,6 +138,7 @@ class RegistrationService:
             last_name=last_name,
         )
         pending = existing if existing is not None and existing.email_verified_at is None else None
+        _log_branch("pending_unverified" if pending is not None else "already_verified")
         return RegistrationResult(user=pending, credentials=credentials, created=False)
 
     def _create_account(
@@ -146,5 +170,9 @@ class RegistrationService:
             # unique index -- both of them answers this endpoint must never give,
             # since a caller can tell them apart from the uniform 202. Roll the failed
             # insert back so the session is usable and take the taken-address path.
+            logger.warning(
+                "Registration raced for a free address",
+                extra={"event": "registration_race_detected"},
+            )
             self._users.session.rollback()
             return None

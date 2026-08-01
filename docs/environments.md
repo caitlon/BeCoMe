@@ -92,21 +92,28 @@ Each environment has its own isolated Railway Postgres (`*-db`) and its own Rail
 
 The root `railway.toml` carries the API build and deploy settings: it points at `docker/Dockerfile` and the `/api/v1/health` check. Railway reads that file from the repository root for every service in the project, so the frontend cannot share it without trying to build the API image. The frontend service therefore has its own config file, `frontend/railway.json`, chosen per service through the Railway "Railway Config File" setting (the absolute path `/frontend/railway.json`); it pins `frontend/Dockerfile` and a `/` health check. Everything else that differs between environments lives in per-environment service variables.
 
-| Variable | staging (test) | production (prod) |
-|----------|----------------|-------------------|
-| `APP_ENV` | `test` | `prod` |
-| `SECRET_KEY` | strong value (`openssl rand -hex 32`) | strong value |
-| `DATABASE_URL` | staging `become_app` role | production `become_app` role |
-| `MIGRATION_DATABASE_URL` | privileged role, Alembic only | privileged role, Alembic only |
-| `CORS_ORIGINS` | staging origin(s) | production origin(s) |
-| `REDIS_URL` | staging Redis | production Redis |
-| `CLOUDFLARE_ORIGIN_SECRET` | — | shared secret matching the Cloudflare Transform Rule |
-| `DEBUG` | `false` | `false` |
-| `API_PUBLIC_URL` | staging API URL | production API URL |
-| `VITE_API_URL` (frontend build arg) | staging API URL | production API URL |
-| `BUCKET_NAME` / `BUCKET_ENDPOINT` / `BUCKET_ACCESS_KEY_ID` / `BUCKET_SECRET_ACCESS_KEY` | injected from `test-photos` | injected from `prod-photos` |
+| Variable | dev | staging (test) | production (prod) |
+|----------|-----|----------------|-------------------|
+| `APP_ENV` | `dev` | `test` | `prod` |
+| `SECRET_KEY` | strong value (`openssl rand -hex 32`) | strong value | strong value |
+| `DATABASE_URL` | dev `become_app` role | staging `become_app` role | production `become_app` role |
+| `MIGRATION_DATABASE_URL` | privileged role, Alembic only | privileged role, Alembic only | privileged role, Alembic only |
+| `CORS_ORIGINS` | dev origin(s) | staging origin(s) | production origin(s) |
+| `REDIS_URL` | dev Redis | staging Redis | production Redis |
+| `CLOUDFLARE_ORIGIN_SECRET` | — | — | shared secret matching the Cloudflare Transform Rule |
+| `DEBUG` | `false` | `false` | `false` |
+| `LOG_LEVEL` | `DEBUG` | `INFO` | `INFO` |
+| `API_PUBLIC_URL` | dev API URL | staging API URL | production API URL |
+| `VITE_API_URL` / `VITE_SENTRY_DSN` / `VITE_APP_ENV` (frontend build args) | dev values | staging values | production values |
+| `BUCKET_NAME` / `BUCKET_ENDPOINT` / `BUCKET_ACCESS_KEY_ID` / `BUCKET_SECRET_ACCESS_KEY` | injected from `dev-photos` | injected from `test-photos` | injected from `prod-photos` |
 
-If `APP_ENV` is left unset on a deployed service, it falls back to dev, which turns debug on and opens CORS. Every deployed service must set its profile explicitly (`test` or `prod`) so the startup guard runs.
+If `APP_ENV` is left unset on a deployed service, it falls back to dev, which turns debug on and opens CORS. Every deployed service must set its profile explicitly (`dev`, `test`, or `prod`) so the startup guard runs.
+
+`LOG_LEVEL` is listed as a service variable even though `api/config.py` already defaults it per profile (`DEBUG` on dev, `INFO` on test and prod). The default is the safety net for a service whose variable was never set; the variable is what makes the level visible to whoever opens the service without reading the settings module. An explicit value always wins over the profile default.
+
+Log format follows the deploy, not the profile. `api/logging_config.py` emits human-readable text only when the profile is dev *and* `RAILWAY_ENVIRONMENT_NAME` is absent, i.e. on a laptop. The Railway `dev` service is a deploy, so it emits JSON like staging and production and its `extra` fields stay indexable in the drain.
+
+Every `VITE_*` variable the SPA reads must also be declared as an `ARG`/`ENV` pair in `frontend/Dockerfile`. Railway passes service variables to the build as build args, but Docker only exposes the ones the Dockerfile declares, and Vite inlines `undefined` for anything missing at build time -- silently, with no build error. That gap left `VITE_SENTRY_DSN` set on all three frontend services while `Sentry.init` was tree-shaken out of every bundle.
 
 ## Database schema and access
 

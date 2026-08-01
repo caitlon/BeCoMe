@@ -11,6 +11,7 @@ requests; this double-submit check is defense-in-depth: an attacker who cannot r
 ``csrf_token`` cookie value cannot forge the matching ``X-CSRF-Token`` header.
 """
 
+import logging
 import secrets
 
 from starlette import status
@@ -19,6 +20,9 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 from api.auth.cookies import CSRF_COOKIE, CSRF_HEADER
+from api.utils.client_ip import get_client_ip
+
+logger = logging.getLogger("api.security")
 
 # Methods that never change state need no CSRF token (OPTIONS also keeps CORS preflight
 # working, since a cross-origin preflight carries no cookies or custom headers).
@@ -52,11 +56,37 @@ class CSRFMiddleware(BaseHTTPMiddleware):
             cookie = request.cookies.get(CSRF_COOKIE)
             if cookie is not None:
                 header = request.headers.get(CSRF_HEADER)
+                if header is None:
+                    return self._reject("missing_header", request)
                 # Compare as bytes: compare_digest raises TypeError on a non-ASCII str,
                 # which would turn a junk header into a 500 instead of this 403.
-                if header is None or not secrets.compare_digest(header.encode(), cookie.encode()):
-                    return JSONResponse(
-                        status_code=status.HTTP_403_FORBIDDEN,
-                        content={"detail": "CSRF token missing or invalid"},
-                    )
+                if not secrets.compare_digest(header.encode(), cookie.encode()):
+                    return self._reject("token_mismatch", request)
         return await call_next(request)
+
+    @staticmethod
+    def _reject(reason: str, request: Request) -> JSONResponse:
+        """Log the refused request and build its 403.
+
+        Neither the cookie nor the header value reaches the record: they are the
+        secret this check compares, so logging either would hand anyone reading the
+        log the token needed to forge the request it just blocked.
+
+        :param reason: Why the check failed -- ``missing_header`` or ``token_mismatch``.
+        :param request: The refused request.
+        :return: The 403 response sent to the caller.
+        """
+        logger.warning(
+            "CSRF check failed",
+            extra={
+                "event": "csrf_rejected",
+                "reason": reason,
+                "method": request.method,
+                "path": request.url.path,
+                "ip": get_client_ip(request),
+            },
+        )
+        return JSONResponse(
+            status_code=status.HTTP_403_FORBIDDEN,
+            content={"detail": "CSRF token missing or invalid"},
+        )

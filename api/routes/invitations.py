@@ -1,11 +1,13 @@
 """Invitation management routes for email-based invitations."""
 
+import logging
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from api.auth.dependencies import CurrentUser
+from api.auth.logging import hash_email
 from api.dependencies import ProjectAdmin, ProjectMember, get_invitation_service
 from api.exceptions import AlreadyInvitedError, UserNotFoundForInvitationError
 from api.middleware.rate_limit import LIMIT_WRITE, limiter
@@ -19,7 +21,37 @@ from api.schemas.invitation import (
 from api.schemas.project import MemberResponse
 from api.services.invitation_service import InvitationService
 
+logger = logging.getLogger("api.route.invitations")
+
 router = APIRouter(prefix="/api/v1", tags=["invitations"])
+
+
+def _log_invitation_rejected(reason: str, project_id: UUID, inviter_id: UUID, email: str) -> None:
+    """Record an invitation the endpoint refused.
+
+    Both refusals translate a :class:`~api.exceptions.BeCoMeAPIError` into an
+    ``HTTPException`` inside the route, so ``become_api_error_handler`` never sees the
+    original and neither refusal is logged anywhere else.
+
+    The address is tagged, never written out: this endpoint is the application's
+    email-enumeration surface, and a log of the addresses people probed for would be
+    the registry the uniform rate limit exists to deny.
+
+    :param reason: ``invitee_not_found`` or ``already_invited``.
+    :param project_id: Project the invitation targeted.
+    :param inviter_id: Admin who sent it.
+    :param email: Address that was invited.
+    """
+    logger.warning(
+        "Invitation rejected",
+        extra={
+            "event": "invitation_rejected",
+            "reason": reason,
+            "project_id": str(project_id),
+            "inviter_id": str(inviter_id),
+            "email_hash": hash_email(email),
+        },
+    )
 
 
 @router.post(
@@ -55,11 +87,13 @@ def invite_by_email(
             invitee_email=data.email,
         )
     except UserNotFoundForInvitationError as err:
+        _log_invitation_rejected("invitee_not_found", project.id, current_user.id, data.email)
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No user found with this email",
         ) from err
     except AlreadyInvitedError as err:
+        _log_invitation_rejected("already_invited", project.id, current_user.id, data.email)
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="User already has a pending invitation",
@@ -88,6 +122,15 @@ def list_project_invitations(
     invitations = invitation_service.get_project_invitations(
         project.id, limit=pagination.limit, offset=pagination.offset
     )
+    logger.debug(
+        "Project invitations listed",
+        extra={
+            "event": "invitations_listed",
+            "scope": "project",
+            "project_id": str(project.id),
+            "row_count": len(invitations),
+        },
+    )
     return [ProjectInvitationResponse.from_model(inv, invitee) for inv, invitee in invitations]
 
 
@@ -106,6 +149,14 @@ def list_my_invitations(
     """
     invitations = invitation_service.get_user_invitations(
         current_user.id, limit=pagination.limit, offset=pagination.offset
+    )
+    logger.debug(
+        "User invitations listed",
+        extra={
+            "event": "invitations_listed",
+            "scope": "user",
+            "row_count": len(invitations),
+        },
     )
     return [
         InvitationListItemResponse.from_model(

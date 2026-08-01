@@ -1,5 +1,6 @@
 """User management routes: profile, password, photo, account deletion."""
 
+import logging
 from contextlib import suppress
 from datetime import UTC, datetime
 from typing import Annotated
@@ -48,7 +49,47 @@ from api.utils.photo_links import photo_version
 from api.utils.streaming import StoredObjectResponse
 from api.utils.upload import UploadTooLarge, read_within_limit
 
+# Password change, account deletion, and the GDPR export are logged by
+# api/auth/logging.py; the storage layer logs its own s3_* events and the dimension
+# rejection. What is left for this router is the profile write and the photo refusals,
+# which are raised as HTTPException and so never reach the app's exception handlers.
+logger = logging.getLogger("api.route.users")
+
 router = APIRouter(prefix="/api/v1/users", tags=["users"])
+
+
+def _photo_upload_rejected(reason: str, user_id: UUID, **fields: object) -> None:
+    """Record a refused photo upload.
+
+    :param reason: Which check refused it, e.g. ``content_type``.
+    :param user_id: Uploader.
+    :param fields: Extra context, never the file's bytes.
+    """
+    logger.warning(
+        "Photo upload rejected",
+        extra={
+            "event": "photo_upload_rejected",
+            "reason": reason,
+            "user_id": str(user_id),
+            **fields,
+        },
+    )
+
+
+def _photo_not_found(reason: str, user_id: UUID) -> None:
+    """Record a 404 from the public photo proxy.
+
+    DEBUG rather than WARNING: the endpoint is public and fires on every avatar render,
+    so a missing photo is ordinary traffic rather than a signal.
+
+    :param reason: Which branch answered 404.
+    :param user_id: User whose photo was requested.
+    """
+    logger.debug(
+        "Photo not found",
+        extra={"event": "photo_not_found", "reason": reason, "user_id": str(user_id)},
+    )
+
 
 # Profile photo URLs are versioned: build_photo_url appends ?v=<token> taken from the
 # stored object key, and every upload mints a fresh key. A versioned URL therefore always
@@ -114,6 +155,23 @@ def update_current_user(
         user=current_user,
         first_name=request.first_name,
         last_name=request.last_name,
+    )
+    # Field names only. The values are the user's own name, which the record does not
+    # need in order to say that the profile changed.
+    logger.info(
+        "Profile updated",
+        extra={
+            "event": "profile_updated",
+            "user_id": str(current_user.id),
+            "fields": [
+                name
+                for name, value in (
+                    ("first_name", request.first_name),
+                    ("last_name", request.last_name),
+                )
+                if value is not None
+            ],
+        },
     )
     return UserResponse.from_user(updated)
 
@@ -269,6 +327,7 @@ async def upload_photo(
     :return: Updated user profile
     """
     if storage_service is None:
+        _photo_upload_rejected("storage_unavailable", current_user.id)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Photo upload is not available",
@@ -277,6 +336,7 @@ async def upload_photo(
     # Validate content type
     content_type = file.content_type
     if content_type is None or content_type not in validation.ALLOWED_CONTENT_TYPES:
+        _photo_upload_rejected("content_type", current_user.id, content_type=content_type)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid file type. Allowed: JPEG, PNG, GIF, WebP",
@@ -286,6 +346,9 @@ async def upload_photo(
     try:
         content = await read_within_limit(file, validation.MAX_FILE_SIZE_BYTES)
     except UploadTooLarge:
+        _photo_upload_rejected(
+            "too_large", current_user.id, limit_bytes=validation.MAX_FILE_SIZE_BYTES
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="File too large. Maximum size is 5 MB",
@@ -293,6 +356,7 @@ async def upload_photo(
 
     # Validate actual file content matches claimed type (magic bytes check)
     if not validation.validate_image_content(content, content_type):
+        _photo_upload_rejected("content_mismatch", current_user.id, content_type=content_type)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="File content does not match declared type",
@@ -321,6 +385,15 @@ async def upload_photo(
         ) from err
 
     updated_user = user_service.update_photo_url(current_user, photo_key)
+    logger.info(
+        "Profile photo uploaded",
+        extra={
+            "event": "photo_uploaded",
+            "user_id": str(current_user.id),
+            "size_bytes": len(content),
+            "content_type": content_type,
+        },
+    )
     return UserResponse.from_user(updated_user)
 
 
@@ -341,6 +414,11 @@ def delete_photo(
     :param storage_service: Storage service
     """
     if not current_user.photo_url:
+        # A 204 either way, so without this the no-op looks like a deletion.
+        logger.debug(
+            "Photo delete was a no-op",
+            extra={"event": "photo_delete_noop", "user_id": str(current_user.id)},
+        )
         return
 
     # Try to delete from storage, but always clear the DB record
@@ -349,6 +427,10 @@ def delete_photo(
             storage_service.delete(current_user.photo_url)
 
     user_service.update_photo_url(current_user, None)
+    logger.info(
+        "Profile photo deleted",
+        extra={"event": "photo_deleted", "user_id": str(current_user.id)},
+    )
 
 
 @router.get(
@@ -376,10 +458,12 @@ def get_user_photo(
     :return: The image streamed from the bucket, with public caching headers
     """
     if storage_service is None:
+        _photo_not_found("no_storage", user_id)
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Photo not found")
 
     user = user_service.get_by_id(user_id)
     if user is None or not user.photo_url:
+        _photo_not_found("no_user_or_key", user_id)
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Photo not found")
 
     # A storage fault must not surface here: this endpoint is public, and the raw
@@ -387,11 +471,15 @@ def get_user_photo(
     try:
         stored = storage_service.open(user.photo_url)
     except StorageError as err:
+        # The bucket layer already logged the fault with its own s3_open_failed event;
+        # this only records that the caller was answered 404 because of it.
+        _photo_not_found("storage_error", user_id)
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Photo not found"
         ) from err
 
     if stored is None:
+        _photo_not_found("object_missing", user_id)
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Photo not found")
 
     # The version has to match the key being served, not merely be present. This route
