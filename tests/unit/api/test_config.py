@@ -904,3 +904,73 @@ class TestLoggingSettings:
         # THEN
         assert settings.betterstack_source_token is None
         assert settings.betterstack_ingesting_host is None
+
+
+class TestProfileLogLevelDefault:
+    """Tests for the per-profile LOG_LEVEL fallback."""
+
+    @pytest.mark.parametrize(
+        ("app_env", "expected"),
+        [("dev", "DEBUG"), ("test", "INFO"), ("prod", "INFO")],
+    )
+    def test_unset_log_level_follows_the_profile(self, monkeypatch, tmp_path, app_env, expected):
+        """
+        GIVEN LOG_LEVEL is not set anywhere
+        WHEN Settings is constructed under a given profile
+        THEN log_level is that profile's default, not the bare field default
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("LOG_LEVEL", raising=False)
+        monkeypatch.setenv("APP_ENV", app_env)
+        monkeypatch.setenv("TESTING", "1")
+        monkeypatch.setenv("SECRET_KEY", "a-sufficiently-strong-secret-value-for-tests")
+        monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@host:5432/db")
+        monkeypatch.setenv("MIGRATION_DATABASE_URL", "postgresql://mig:pass@host:5432/db")
+        monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
+        monkeypatch.setenv("CLOUDFLARE_ORIGIN_SECRET", "an-origin-verify-secret-for-tests")
+        monkeypatch.setenv("CORS_ORIGINS", '["https://app.example.com"]')
+        monkeypatch.setenv("FRONTEND_BASE_URL", "https://app.example.com")
+        monkeypatch.setenv("EMAIL_PROVIDER", "http")
+        monkeypatch.setenv("EMAIL_API_KEY", "a-resend-api-key-for-tests")
+
+        # WHEN
+        settings = Settings()
+
+        # THEN
+        assert settings.log_level == expected
+
+    def test_explicit_log_level_beats_the_profile_default(self, monkeypatch, tmp_path):
+        """
+        GIVEN LOG_LEVEL is set explicitly on a profile whose default differs
+        WHEN Settings is constructed
+        THEN the explicit value wins
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("APP_ENV", "dev")
+        monkeypatch.setenv("SECRET_KEY", "irrelevant-for-dev")
+        monkeypatch.setenv("LOG_LEVEL", "WARNING")
+
+        # WHEN
+        settings = Settings()
+
+        # THEN -- the dev default is DEBUG, so this proves the override, not the default
+        assert settings.log_level == "WARNING"
+
+    def test_explicit_kwarg_beats_the_profile_default(self, monkeypatch, tmp_path):
+        """
+        GIVEN log_level passed directly as a keyword argument
+        WHEN Settings is constructed under the dev profile
+        THEN the keyword wins over the profile default
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("LOG_LEVEL", raising=False)
+        monkeypatch.setenv("APP_ENV", "dev")
+
+        # WHEN
+        settings = Settings(secret_key="irrelevant-for-dev", log_level="ERROR")
+
+        # THEN
+        assert settings.log_level == "ERROR"

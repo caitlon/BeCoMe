@@ -50,6 +50,16 @@ class Environment(StrEnum):
     PROD = "prod"
 
 
+# Verbosity used when LOG_LEVEL is not set. Development wants every DEBUG trace;
+# the deployed profiles stay at INFO, where the drain is affordable and the records
+# carry no detail that only helps a developer sitting at a keyboard.
+_DEFAULT_LOG_LEVELS: dict[Environment, LogLevel] = {
+    Environment.DEV: "DEBUG",
+    Environment.TEST: "INFO",
+    Environment.PROD: "INFO",
+}
+
+
 def _resolve_environment() -> Environment:
     """Resolve the active profile from the ``APP_ENV`` variable.
 
@@ -135,7 +145,9 @@ class Settings(BaseSettings):
     debug: bool = False
     api_version: str = _version
 
-    # Logging
+    # Logging. The field default is only a floor: when LOG_LEVEL is absent,
+    # _apply_profile_log_level replaces it with the active profile's level from
+    # _DEFAULT_LOG_LEVELS.
     log_level: LogLevel = "INFO"
     log_file: str | None = None
 
@@ -238,6 +250,24 @@ class Settings(BaseSettings):
         if self.email_provider == "http":
             return bool(self.email_api_key)
         return False
+
+    @model_validator(mode="after")
+    def _apply_profile_log_level(self) -> "Settings":
+        """Fall back to the active profile's log level when ``LOG_LEVEL`` is unset.
+
+        Without this, a service whose variable was never set -- a new deploy, a
+        cleared value, a fresh clone -- runs at the field default, and development
+        silently loses every DEBUG trace it is supposed to emit.
+
+        An explicit value always wins: pydantic-settings records anything sourced
+        from the environment or a dotenv file in ``model_fields_set``, so only a
+        genuinely absent ``LOG_LEVEL`` is replaced here.
+
+        :return: The settings instance with ``log_level`` resolved.
+        """
+        if "log_level" not in self.model_fields_set:
+            self.log_level = _DEFAULT_LOG_LEVELS[self.environment]
+        return self
 
     @model_validator(mode="after")
     def _validate_deploy_invariants(self) -> "Settings":
