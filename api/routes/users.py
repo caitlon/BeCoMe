@@ -44,6 +44,7 @@ from api.services.storage.exceptions import (
     StorageUploadError,
 )
 from api.services.user_service import UserService
+from api.utils.photo_links import photo_version
 from api.utils.streaming import StoredObjectResponse
 from api.utils.upload import UploadTooLarge, read_within_limit
 
@@ -393,12 +394,13 @@ def get_user_photo(
     if stored is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Photo not found")
 
-    # Presence of the version parameter is the whole test. Comparing it against the stored
-    # key would tie this route to how build_photo_url derives the token, and buy nothing:
-    # a caller who invented a version is already asking for a URL nobody handed out.
+    # The version has to match the key being served, not merely be present. This route
+    # always serves whatever photo the account holds now, so a stale or invented `v`
+    # names bytes that already changed once and can change again -- pinning it for a
+    # year would leave a shared cache handing out a replaced avatar under that URL.
     cache_control = (
         _VERSIONED_PHOTO_CACHE_CONTROL
-        if "v" in request.query_params
+        if request.query_params.get("v") == photo_version(user.photo_url)
         else _UNVERSIONED_PHOTO_CACHE_CONTROL
     )
     return StoredObjectResponse(stored, headers={"Cache-Control": cache_control})
