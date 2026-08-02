@@ -4,6 +4,7 @@ Exception handling follows OCP: all exceptions are handled
 by centralized middleware, routes focus on business logic only.
 """
 
+import logging
 from typing import Annotated
 from uuid import UUID
 
@@ -25,6 +26,11 @@ from api.services.export.data import ExportFormat, ReportLang
 from api.services.export.result_export_service import ResultExportService
 from api.services.opinion_service import OpinionService
 
+# Only refusals and reads live here. The upsert, delete, recalculation, and export
+# events already come from opinion_service, calculation_service, and
+# result_export_service.
+logger = logging.getLogger("api.route.opinions")
+
 router = APIRouter(prefix="/api/v1/projects", tags=["opinions"])
 
 
@@ -44,6 +50,14 @@ def list_opinions(
     """
     opinions = opinion_service.get_opinions_for_project(
         project.id, limit=pagination.limit, offset=pagination.offset
+    )
+    logger.debug(
+        "Opinions listed",
+        extra={
+            "event": "opinions_listed",
+            "project_id": str(project.id),
+            "row_count": len(opinions),
+        },
     )
     return [OpinionResponse.from_model(item.opinion, item.user) for item in opinions]
 
@@ -137,6 +151,14 @@ def get_result(
     :return: Calculation result or None
     """
     result = calculation_service.get_result(project.id)
+    logger.debug(
+        "Result read",
+        extra={
+            "event": "result_read",
+            "project_id": str(project.id),
+            "has_result": bool(result),
+        },
+    )
     if not result:
         return None
 
@@ -192,6 +214,15 @@ def export_result(
     """
     exported = service.export(project, export_format, lang)
     if exported is None:
+        logger.warning(
+            "Result export had nothing to export",
+            extra={
+                "event": "result_export_missing",
+                "project_id": str(project.id),
+                "format": export_format.value,
+                "lang": lang.value,
+            },
+        )
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No calculation result to export",

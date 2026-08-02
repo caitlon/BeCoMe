@@ -340,6 +340,33 @@ to `SECRET_KEY`), which makes it meaningless outside the application while still
 correlating repeated attempts on one account. Rotating the fallback re-tags every later
 record, so set `LOG_HASH_KEY` explicitly where that correlation has to survive a rotation.
 
+The rule for any new log record: identifiers, keyed tags, and counts, never the values
+themselves. Allowed are `user_id`, `project_id`, `invitation_id`, `jti`, `sid`, `ip`,
+`status_code`, `duration_ms`, `row_count`, and the `reason` a request was refused. Never
+logged, at any level: passwords and password hashes, raw JWTs, the CSRF cookie or header
+value, the email API key or bucket credentials, the `Authorization` header, any request or
+response body, raw email addresses, activation or reset tokens and the URLs carrying them,
+and free-text user content such as a project description.
+
+Two specific traps are worth naming. First, `_digest()` in `api/auth/login_throttle.py` and
+`api/auth/email_throttle.py` is a **plain, unkeyed** SHA-256 of the identifier -- it exists
+to key the store, not to be logged. Writing it out would rebuild exactly the oracle
+`hash_email` is keyed to prevent, so records in those modules name the flow (`key_prefix`,
+`op`) and never the account; the address-scoped event belongs at the call site in
+`api/routes/auth.py`, which has the keyed tag. Second, `sqlalchemy.engine` is pinned at
+WARNING in `api/logging_config.py` and must stay below DEBUG on any deployed service: its
+DEBUG level prints bound query parameters, which on this schema means bcrypt hashes,
+addresses, names, and reset-token hashes shipped to the log drain in the clear. That pin
+matters because the dev deploy now runs at `LOG_LEVEL=DEBUG` against a real database.
+
+Both throttles fail open, and that is now observable rather than silent. A Redis outage
+lifts the per-account login lockout and the per-address email cap while the request still
+succeeds, so each failure path logs a `throttle_store_unavailable` warning naming the
+operation and the flow. The accepted risk is unchanged; what changed is that it leaves a
+trace. The same applies to the revocation store, which fails *closed*: its errors surface to
+the caller as a plain 401, so `revocation_store_unavailable` is the only thing separating a
+Redis outage from a wave of bad tokens.
+
 Unhandled errors hit a catch-all `500` handler and, when `SENTRY_DSN` is configured, Sentry.
 
 Two separate switches keep credentials out of the tracker, and both are needed.
@@ -357,6 +384,14 @@ The browser SDK needs its own guard, since the reset link carries its token in t
 string: `frontend/src/main.tsx` installs `beforeSend` and `beforeBreadcrumb` hooks
 (`frontend/src/lib/sentry.ts`) that redact `token`, `access_token`, and `refresh_token`
 from event URLs and from navigation and fetch breadcrumbs.
+
+Those hooks were inert until this was fixed. `frontend/Dockerfile` declared only
+`ARG VITE_API_URL`, so `VITE_SENTRY_DSN` never reached the Vite build even though it was
+set on all three frontend services; the `if (import.meta.env.VITE_SENTRY_DSN)` guard in
+`main.tsx` folded to `false` and the whole `Sentry.init` call was tree-shaken out of every
+deployed bundle. No browser error was reported from any environment. The scrubbers now run
+because the SDK actually initialises -- so they are worth re-reading as live code rather
+than as documentation of an intent.
 
 ## Secrets
 
