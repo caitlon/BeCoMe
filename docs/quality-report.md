@@ -4,11 +4,11 @@
 
 | Check | Status | Result |
 |-------|--------|--------|
-| mypy (strict) | Pass | No errors (28 files in `src/`+`examples/`, 89 in `api/`) |
+| mypy (strict) | Pass | No errors (24 files in `src/`+`examples/`, 89 in `api/`) |
 | ruff check | Pass | No issues |
 | ruff format | Pass | All files formatted |
-| pytest | Pass | 1499 tests passed |
-| coverage | Pass | 100% on `src/` (197 statements), 99% on `src/`+`api/` (4014 statements, 49 uncovered) |
+| pytest | Pass | 1639 passed, 59 skipped (the e2e tier needs a live PostgreSQL; it runs in CI) |
+| coverage | Pass | 100% on `src/` (197 statements), 99% on `src/`+`api/` (4190 statements, 49 uncovered) |
 
 ## Running Checks
 
@@ -28,20 +28,22 @@ uv run mypy src/ examples/ && uv run ruff check . && uv run pytest --cov=src
 | Module | Statements | Coverage |
 |--------|------------|----------|
 | calculators/base_calculator.py | 12 | 100% |
-| calculators/become_calculator.py | 31 | 100% |
-| calculators/median_strategies.py | 20 | 100% |
+| calculators/become_calculator.py | 28 | 100% |
+| calculators/median_strategies.py | 14 | 100% |
 | exceptions.py | 8 | 100% |
 | interpreters/likert_interpreter.py | 24 | 100% |
 | models/become_result.py | 24 | 100% |
 | models/expert_opinion.py | 36 | 100% |
-| models/fuzzy_number.py | 49 | 100% |
-| **Total** | **204** | **100%** |
+| models/fuzzy_number.py | 51 | 100% |
+| **Total** | **197** | **100%** |
 
 HTML report: `uv run pytest --cov=src --cov-report=html` generates `htmlcov/index.html`.
 
 ## Test Breakdown
 
-Unit tests (797) cover models, calculators, interpreters, utilities, and API components (auth, schemas, services, middleware, logging). Integration tests (393) validate core calculations against Excel reference data for all three case studies and test API routes with a real database. End-to-end tests (59) exercise full API workflows. The frontend adds 733 Vitest tests and 76 Playwright scenarios run on three browsers. Edge cases include single expert, identical opinions, empty lists, and boundary values.
+Unit tests (1142) cover models, calculators, interpreters, utilities, and API components (auth, schemas, services, middleware, logging). Integration tests (497) validate core calculations against Excel reference data for all three case studies and test API routes with a real database. End-to-end tests (59) exercise full API workflows; they skip on a machine without a live PostgreSQL and run in CI. The frontend adds 1031 Vitest tests and 76 Playwright scenarios run on three browsers. Edge cases include single expert, identical opinions, empty lists, and boundary values.
+
+Logging has its own two-part guard. `tests/unit/api/test_logging_events.py` asserts that each refusal, external call, and read emits the record it promises, at the level it promises -- several of those tests assert on what is *absent*, since a CSRF record must not carry the token it just compared and a throttle record must not carry the account it throttled. `tests/unit/api/test_logging_pii.py` walks the syntax tree of every module under `api/` and fails on an `extra={...}` field whose name denotes a credential or a raw identifier, so the rule in `docs/security.md` does not depend on a reviewer noticing it.
 
 ## Mutation Testing
 

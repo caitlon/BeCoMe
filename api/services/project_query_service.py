@@ -1,5 +1,7 @@
 """Project query service for complex UI queries."""
 
+import logging
+from time import perf_counter
 from uuid import UUID
 
 from sqlmodel import col, select
@@ -8,6 +10,37 @@ from api.db.models import MemberRole, Project, ProjectMember
 from api.schemas.internal import ProjectWithMemberCount, ProjectWithMemberCountAndRole
 from api.services.base import BaseService
 from api.services.query_helpers import MemberCountSubquery
+
+logger = logging.getLogger("api.service.project_query")
+
+
+def _log_query(variant: str, user_id: UUID, row_count: int, start: float, **fields: object) -> None:
+    """Trace one project query's shape and cost.
+
+    This is the application-level answer to "trace the reads". Turning
+    ``sqlalchemy.engine`` up instead would print the statement and, at DEBUG, its bound
+    parameters -- password hashes, addresses, names -- into the log drain, so
+    :data:`api.logging_config._EXTERNAL_LOG_LEVELS` pins that logger below DEBUG and
+    the shape and timing are recorded here instead. The statement itself is never
+    logged.
+
+    :param variant: Which query ran -- ``with_counts`` or ``with_roles``.
+    :param user_id: Owner of the result set.
+    :param row_count: Rows returned.
+    :param start: ``perf_counter()`` reading taken before the query.
+    :param fields: Extra context, e.g. the paging window.
+    """
+    logger.debug(
+        "User projects queried",
+        extra={
+            "event": "user_projects_queried",
+            "variant": variant,
+            "user_id": str(user_id),
+            "row_count": row_count,
+            "duration_ms": round((perf_counter() - start) * 1000.0, 1),
+            **fields,
+        },
+    )
 
 
 class ProjectQueryService(BaseService):
@@ -36,7 +69,9 @@ class ProjectQueryService(BaseService):
             .where(ProjectMember.user_id == user_id)
             .order_by(col(Project.created_at).desc())
         )
+        start = perf_counter()
         results = self._session.exec(statement).all()
+        _log_query("with_counts", user_id, len(results), start)
         return [
             ProjectWithMemberCount(project=project, member_count=count)
             for project, count in results
@@ -68,7 +103,9 @@ class ProjectQueryService(BaseService):
         )
         if limit is not None:
             statement = statement.limit(limit).offset(offset)
+        start = perf_counter()
         results = self._session.exec(statement).all()
+        _log_query("with_roles", user_id, len(results), start, limit=limit, offset=offset)
         return [
             ProjectWithMemberCountAndRole(
                 project=project,

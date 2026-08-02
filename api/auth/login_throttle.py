@@ -32,6 +32,7 @@ rather than capping the pair.
 """
 
 import hashlib
+import logging
 import threading
 from datetime import UTC, datetime, timedelta
 from functools import lru_cache
@@ -40,6 +41,8 @@ from typing import Protocol, runtime_checkable
 import redis
 
 from api.config import get_settings
+
+logger = logging.getLogger("api.security")
 
 # After this many failures within the window, the account is locked until the window
 # elapses with no further failures. Ten is generous for a mistyped password while still
@@ -54,8 +57,33 @@ ACTIVATION_KEY_PREFIX = "activation"
 
 
 def _digest(identifier: str) -> str:
-    """Return the SHA-256 hex digest of a normalized identifier, so no raw value is stored."""
+    """Return the SHA-256 hex digest of a normalized identifier, so no raw value is stored.
+
+    Never log this value. It is an unkeyed digest, so anyone holding the logs could
+    hash a guessed address and confirm it appears -- exactly the account-existence
+    oracle ``api.auth.logging.hash_email`` is keyed to prevent. Records in this module
+    name the flow, never the account.
+    """
     return hashlib.sha256(identifier.strip().lower().encode()).hexdigest()
+
+
+def _log_store_unavailable(op: str, exc: redis.RedisError, key_prefix: str) -> None:
+    """Record a lockout store that could not be reached.
+
+    Worth a record because this throttle fails open: the attempt proceeds as if no
+    failures had been counted, so an outage silently disables the account lockout with
+    nothing else to show for it. ``docs/security.md`` accepts that risk; this makes it
+    observable.
+
+    :param op: Throttle operation that failed -- ``record_failure``, ``is_locked``, or ``reset``.
+    :param exc: The Redis error that caused it.
+    :param key_prefix: Key namespace of the flow whose lockout stopped being enforced.
+    """
+    logger.warning(
+        "Login throttle store unavailable, lockout not enforced",
+        extra={"event": "throttle_store_unavailable", "op": op, "key_prefix": key_prefix},
+        exc_info=exc,
+    )
 
 
 @runtime_checkable
@@ -144,15 +172,17 @@ class RedisLoginThrottle:
             pipe.incr(key)
             pipe.expire(key, self._window)
             pipe.execute()
-        except redis.RedisError:
+        except redis.RedisError as e:
             # Fail open: never block an attempt because the throttle store hiccupped.
+            _log_store_unavailable("record_failure", e, self._key_prefix)
             return
 
     def is_locked(self, identifier: str) -> bool:
         """Return whether the account has reached the failure threshold."""
         try:
             raw = self._client.get(self._key(identifier))
-        except redis.RedisError:
+        except redis.RedisError as e:
+            _log_store_unavailable("is_locked", e, self._key_prefix)
             return False
         if not isinstance(raw, bytes | str | int):
             return False
@@ -165,7 +195,8 @@ class RedisLoginThrottle:
         """Clear the account's failure counter (called on a successful attempt)."""
         try:
             self._client.delete(self._key(identifier))
-        except redis.RedisError:
+        except redis.RedisError as e:
+            _log_store_unavailable("reset", e, self._key_prefix)
             return
 
 
@@ -176,6 +207,16 @@ def _build_throttle(key_prefix: str) -> LoginThrottle:
     :return: The throttle backend for that flow.
     """
     settings = get_settings()
+    backend = "redis" if settings.redis_url else "memory"
+    logger.debug(
+        "Login throttle backend selected",
+        extra={
+            "event": "throttle_backend_selected",
+            "throttle": "login",
+            "key_prefix": key_prefix,
+            "backend": backend,
+        },
+    )
     if settings.redis_url:
         client = redis.from_url(settings.redis_url, socket_connect_timeout=2, socket_timeout=2)
         return RedisLoginThrottle(client, key_prefix=key_prefix)
