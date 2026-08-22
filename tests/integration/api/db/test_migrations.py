@@ -258,7 +258,15 @@ class TestExampleProjectSupportMigration:
     """The migration adding is_example, is_demo and the demo expert pool."""
 
     def test_upgrade_creates_the_pool_and_downgrade_removes_it(self, migration_pg, monkeypatch):
-        """The pool lands already verified, and the migration reverses cleanly."""
+        """The pool lands already verified, and the migration reverses cleanly.
+
+        The downgrade's project deletion is exercised here too, not left to run
+        against an empty ``projects`` table: an untouched example project is
+        deleted, an unrelated ordinary project is unaffected, and -- the property
+        that matters most -- an example project a real colleague was invited into
+        survives, because the CASCADE foreign keys behind it would otherwise take
+        that colleague's own membership down along with the demo data.
+        """
         # GIVEN - a clean database with Alembic aimed at it
         url = _url(migration_pg)
         monkeypatch.setenv("ALEMBIC_DATABASE_URL", url)
@@ -275,18 +283,81 @@ class TestExampleProjectSupportMigration:
             with engine.connect() as conn:
                 rows = conn.execute(
                     text(
-                        "SELECT email, email_verified_at FROM users "
+                        "SELECT email, email_verified_at, hashed_password FROM users "
                         "WHERE is_demo = true ORDER BY email"
                     )
                 ).all()
             assert len(rows) == len(EXAMPLE_EXPERTS)
             assert all(row.email_verified_at is not None for row in rows)
             assert {row.email for row in rows} == {e.email for e in EXAMPLE_EXPERTS}
+            # AND - every row holds a real bcrypt hash, not an empty or placeholder
+            # string: hash_password's own output always carries bcrypt's "$2" prefix
+            assert all(row.hashed_password.startswith("$2") for row in rows)
+            assert all(len(row.hashed_password) >= 50 for row in rows)
 
             # AND - both flags exist as columns
             inspector = inspect(engine)
             assert "is_demo" in {c["name"] for c in inspector.get_columns("users")}
             assert "is_example" in {c["name"] for c in inspector.get_columns("projects")}
+
+            # GIVEN - a real account with three projects: one untouched example
+            # project, one ordinary project, and one example project a real
+            # colleague was invited into
+            real_admin_id = uuid4()
+            real_colleague_id = uuid4()
+            untouched_example_id = uuid4()
+            ordinary_project_id = uuid4()
+            touched_example_id = uuid4()
+            created_at = datetime(2026, 1, 1, tzinfo=UTC)
+            with engine.begin() as conn:
+                conn.execute(
+                    text(
+                        "INSERT INTO users "
+                        "(id, email, hashed_password, first_name, last_name, created_at) "
+                        "VALUES "
+                        "(:admin_id, 'real.admin@example.com', 'hash', 'Real', 'Admin', :now), "
+                        "(:colleague_id, 'real.colleague@example.com', 'hash', 'Real', "
+                        "'Colleague', :now)"
+                    ),
+                    {
+                        "admin_id": str(real_admin_id),
+                        "colleague_id": str(real_colleague_id),
+                        "now": created_at,
+                    },
+                )
+                conn.execute(
+                    text(
+                        "INSERT INTO projects "
+                        "(id, name, admin_id, scale_min, scale_max, scale_unit, "
+                        "created_at, updated_at, is_example) "
+                        "VALUES "
+                        "(:untouched_id, 'Untouched example', :admin_id, 0, 100, '', "
+                        ":now, :now, true), "
+                        "(:ordinary_id, 'Ordinary project', :admin_id, 0, 100, '', "
+                        ":now, :now, false), "
+                        "(:touched_id, 'Touched example', :admin_id, 0, 100, '', "
+                        ":now, :now, true)"
+                    ),
+                    {
+                        "untouched_id": str(untouched_example_id),
+                        "ordinary_id": str(ordinary_project_id),
+                        "touched_id": str(touched_example_id),
+                        "admin_id": str(real_admin_id),
+                        "now": created_at,
+                    },
+                )
+                conn.execute(
+                    text(
+                        "INSERT INTO project_members (id, project_id, user_id, role, joined_at) "
+                        "VALUES (:id, :project_id, :user_id, 'EXPERT', :now)"
+                    ),
+                    {
+                        "id": str(uuid4()),
+                        "project_id": str(touched_example_id),
+                        "user_id": str(real_colleague_id),
+                        "now": created_at,
+                    },
+                )
 
             # WHEN - rolled back to its own down_revision (pinned, not "-1")
             command.downgrade(config, "5b9977c1b5c1")
@@ -295,6 +366,44 @@ class TestExampleProjectSupportMigration:
             inspector = inspect(engine)
             assert "is_demo" not in {c["name"] for c in inspector.get_columns("users")}
             assert "is_example" not in {c["name"] for c in inspector.get_columns("projects")}
+
+            # AND - the untouched example project is gone, but the ordinary project
+            # and the touched example project both survive. is_example no longer
+            # exists at this point, so survivors are identified by id, not the flag.
+            with engine.connect() as conn:
+                assert (
+                    conn.execute(
+                        text("SELECT 1 FROM projects WHERE id = :id"),
+                        {"id": str(untouched_example_id)},
+                    ).scalar()
+                    is None
+                )
+                assert (
+                    conn.execute(
+                        text("SELECT 1 FROM projects WHERE id = :id"),
+                        {"id": str(ordinary_project_id)},
+                    ).scalar()
+                    == 1
+                )
+                assert (
+                    conn.execute(
+                        text("SELECT 1 FROM projects WHERE id = :id"),
+                        {"id": str(touched_example_id)},
+                    ).scalar()
+                    == 1
+                )
+                # AND - the real colleague's own membership in the surviving example
+                # project was never touched by the demo cleanup
+                assert (
+                    conn.execute(
+                        text(
+                            "SELECT 1 FROM project_members "
+                            "WHERE project_id = :project_id AND user_id = :user_id"
+                        ),
+                        {"project_id": str(touched_example_id), "user_id": str(real_colleague_id)},
+                    ).scalar()
+                    == 1
+                )
 
             # WHEN - re-applied (reversibility holds; the downgrade deleted the pool,
             # so the insert cannot collide with a leftover row)
