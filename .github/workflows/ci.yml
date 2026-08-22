@@ -376,10 +376,12 @@ jobs:
           }
         env:
           DATABASE_URL: postgresql://become:become@localhost:5432/become_test
-          CORS_ORIGINS: '["http://localhost:8080"]'
+          # https: the e2e dev server runs on TLS so the browser will store the
+          # __Host- session cookies (frontend/scripts/e2e-cert.mjs explains why).
+          CORS_ORIGINS: '["https://localhost:8080"]'
           # Where the activation links point. Matching the Playwright origin makes the
           # mailed link the same one a browser can open, as it is in a real deploy.
-          FRONTEND_BASE_URL: http://localhost:8080
+          FRONTEND_BASE_URL: https://localhost:8080
           DEBUG: "false"
           # E2E signs up under a synthetic domain that has no DNS records, and CI
           # runners should not depend on a live resolver anyway.

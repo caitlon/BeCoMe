@@ -21,7 +21,7 @@ from hashlib import sha256
 from fastapi import Request, Response
 
 from api.auth.jwt import session_id_from_access_token
-from api.config import Environment, get_settings
+from api.config import get_settings
 
 # Domain separator mixed into the CSRF HMAC so the digest cannot be replayed as, or
 # confused with, any other value keyed on the same secret.
@@ -29,30 +29,25 @@ _CSRF_HMAC_CONTEXT = b"csrf:"
 
 logger = logging.getLogger("api.security")
 
-ACCESS_COOKIE = "access_token"
-REFRESH_COOKIE = "refresh_token"
-CSRF_COOKIE = "csrf_token"
+# Cookie-name prefixes the browser itself enforces, which is what makes them worth the
+# renaming. ``__Host-`` binds a cookie to exactly this host and path: it is only accepted
+# with ``Secure``, ``Path=/`` and **no** ``Domain``, and -- the part that matters here --
+# a page on a sibling ``becomify.app`` subdomain cannot overwrite it, because writing one
+# requires being the host itself. Without that, such a page can plant a session cookie of
+# its own and log the victim into the attacker's account (session fixation).
+#
+# The refresh cookie takes ``__Secure-`` instead: it is scoped to the auth routes, and
+# ``__Host-`` would force ``Path=/`` and hand it to every request on the site. That buys
+# less -- ``__Secure-`` only pins the Secure flag, not the host -- but keeping the narrow
+# path is worth more than closing a shadowing route that the access cookie already denies.
+ACCESS_COOKIE = "__Host-access_token"
+REFRESH_COOKIE = "__Secure-refresh_token"
+CSRF_COOKIE = "__Host-csrf_token"
 CSRF_HEADER = "X-CSRF-Token"
 
 # The refresh cookie is scoped to the auth routes, so the browser only sends it to
 # login/refresh/logout instead of on every API call.
 REFRESH_COOKIE_PATH = "/api/v1/auth"
-
-
-def cookies_secure(request: Request) -> bool:
-    """Return whether auth cookies should carry the ``Secure`` flag.
-
-    Always on in production; otherwise on only when the request itself arrived over
-    HTTPS. This keeps cookies working over plain HTTP for local dev, the pytest client,
-    and the HTTP e2e stack (a ``Secure`` cookie is dropped by the browser over HTTP),
-    while production behind TLS always gets ``Secure`` cookies.
-
-    :param request: The incoming request, used to read the connection scheme.
-    :return: True when cookies must be HTTPS-only.
-    """
-    if get_settings().environment is Environment.PROD:
-        return True
-    return request.url.scheme == "https"
 
 
 def csrf_token_for(sid: str) -> str:
@@ -107,9 +102,15 @@ def set_auth_cookies(
     csrf_token: str,
     access_ttl: int,
     refresh_ttl: int,
-    secure: bool,
 ) -> None:
     """Attach the access, refresh, and CSRF cookies to a response.
+
+    ``Secure`` is unconditional. It used to follow the request scheme so cookies kept
+    working over plain HTTP locally, but the name prefixes make that impossible: a
+    ``__Host-`` cookie without ``Secure`` is not a weaker cookie, it is a cookie the
+    browser discards outright. Nothing is lost by it -- browsers treat ``localhost`` as a
+    secure context and store Secure cookies there, and the one engine that does not
+    (WebKit) is why the e2e stack now serves HTTPS.
 
     :param response: The response to set cookies on.
     :param access_token: Short-lived access token (HttpOnly cookie).
@@ -118,14 +119,13 @@ def set_auth_cookies(
         :func:`csrf_token_for`.
     :param access_ttl: Access-cookie lifetime in seconds.
     :param refresh_ttl: Refresh- and CSRF-cookie lifetime in seconds.
-    :param secure: Whether to set the ``Secure`` flag (see :func:`cookies_secure`).
     """
     response.set_cookie(
         ACCESS_COOKIE,
         access_token,
         max_age=access_ttl,
         httponly=True,
-        secure=secure,
+        secure=True,
         samesite="strict",
     )
     response.set_cookie(
@@ -134,7 +134,7 @@ def set_auth_cookies(
         max_age=refresh_ttl,
         path=REFRESH_COOKIE_PATH,
         httponly=True,
-        secure=secure,
+        secure=True,
         samesite="strict",
     )
     # Not HttpOnly: the SPA reads it to echo back in the X-CSRF-Token header.
@@ -143,14 +143,13 @@ def set_auth_cookies(
         csrf_token,
         max_age=refresh_ttl,
         httponly=False,
-        secure=secure,
+        secure=True,
         samesite="strict",
     )
     logger.debug(
         "Auth cookies set",
         extra={
             "event": "auth_cookies_set",
-            "secure": secure,
             "access_ttl": access_ttl,
             "refresh_ttl": refresh_ttl,
         },
@@ -193,9 +192,22 @@ def set_csrf_header(response: Response, csrf_token: str | None) -> None:
 def clear_auth_cookies(response: Response) -> None:
     """Delete the access, refresh, and CSRF cookies (used on logout).
 
+    The deletions carry ``Secure`` because the names carry prefixes, and this is the one
+    place where the attributes stop being cosmetic. A deletion is just a ``Set-Cookie``
+    with an expired age, so it has to satisfy the prefix rules like any other: a
+    ``__Host-`` cookie sent without ``Secure`` (Starlette's default here is ``False``) is
+    rejected by the browser outright, and the cookie it was meant to remove stays --
+    logout would report success while leaving the session cookie in place.
+
     :param response: The response to clear cookies on.
     """
-    response.delete_cookie(ACCESS_COOKIE)
-    response.delete_cookie(REFRESH_COOKIE, path=REFRESH_COOKIE_PATH)
-    response.delete_cookie(CSRF_COOKIE)
+    response.delete_cookie(ACCESS_COOKIE, secure=True, httponly=True, samesite="strict")
+    response.delete_cookie(
+        REFRESH_COOKIE,
+        path=REFRESH_COOKIE_PATH,
+        secure=True,
+        httponly=True,
+        samesite="strict",
+    )
+    response.delete_cookie(CSRF_COOKIE, secure=True, samesite="strict")
     logger.debug("Auth cookies cleared", extra={"event": "auth_cookies_cleared"})

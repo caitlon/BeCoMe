@@ -38,13 +38,17 @@ const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 const CSRF_HEADER = 'X-CSRF-Token';
 
 /**
- * Reads the csrf_token cookie, which only works when the API answers on this
- * app's own origin -- local development, where Vite proxies /api/v1. On the
+ * Reads the __Host-csrf_token cookie, which only works when the API answers on
+ * this app's own origin -- local development, where Vite proxies /api/v1. On the
  * deploys the cookie belongs to the API host and document.cookie shows nothing,
  * which is why the token also arrives as a response header.
+ *
+ * The __Host- prefix is enforced by the browser, not by us: it only accepts the
+ * cookie from this exact host, over HTTPS, with Path=/ and no Domain. That is what
+ * stops a page on a sibling subdomain from writing a session cookie of its own.
  */
 function readCsrfCookie(): string | null {
-  const match = document.cookie.match(/(?:^|; )csrf_token=([^;]*)/);
+  const match = document.cookie.match(/(?:^|; )__Host-csrf_token=([^;]*)/);
   return match ? decodeURIComponent(match[1]) : null;
 }
 
