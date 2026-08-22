@@ -149,10 +149,15 @@ def downgrade() -> None:
     project from then on: its owner may have added their own opinion, or invited real
     colleagues, whose ``ExpertOpinion`` and ``ProjectMember`` rows sit behind CASCADE
     foreign keys and would be destroyed along with the project if it were deleted
-    outright. So only an example project touched by nobody but its admin and the demo
-    pool is deleted here. An example project that gained any other real member is left
-    in place -- once ``is_example`` is dropped below, it becomes an ordinary project,
-    which is the honest outcome, since by then it *is* real work.
+    outright. So an example project is deleted here only once no real person has
+    touched it at all, whether by joining it or by contributing an opinion to it.
+    Membership alone is not enough to decide that: a solo admin who opened the
+    example, added their own opinion, and invited nobody -- exactly what the feature
+    invites someone to do first -- has invited no other member, and a check that
+    stopped at membership would still delete that opinion out from under them. An
+    example project a real person touched either way is left in place -- once
+    ``is_example`` is dropped below, it becomes an ordinary project, which is the
+    honest outcome, since by then it *is* real work.
 
     Deleting the demo accounts still cascades their own memberships and opinions out
     of every project, spared or not, so a surviving project loses its demo content but
@@ -160,9 +165,12 @@ def downgrade() -> None:
     """
     op.execute(
         sa.text(
-            "DELETE FROM projects p WHERE p.is_example = true AND NOT EXISTS ("
+            "DELETE FROM projects AS p WHERE p.is_example = true AND NOT EXISTS ("
             "SELECT 1 FROM project_members pm JOIN users u ON u.id = pm.user_id "
             "WHERE pm.project_id = p.id AND u.is_demo = false AND pm.user_id != p.admin_id"
+            ") AND NOT EXISTS ("
+            "SELECT 1 FROM expert_opinions eo JOIN users u ON u.id = eo.user_id "
+            "WHERE eo.project_id = p.id AND u.is_demo = false"
             ")"
         )
     )

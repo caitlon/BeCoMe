@@ -262,10 +262,14 @@ class TestExampleProjectSupportMigration:
 
         The downgrade's project deletion is exercised here too, not left to run
         against an empty ``projects`` table: an untouched example project is
-        deleted, an unrelated ordinary project is unaffected, and -- the property
-        that matters most -- an example project a real colleague was invited into
-        survives, because the CASCADE foreign keys behind it would otherwise take
-        that colleague's own membership down along with the demo data.
+        deleted, an unrelated ordinary project is unaffected, an example project a
+        real colleague was invited into survives because the CASCADE foreign keys
+        behind it would otherwise take that colleague's own membership down along
+        with the demo data, and -- the property that matters most, since it is the
+        one the feature invites -- an example project whose only member is the
+        admin survives once that admin has authored their own opinion in it: a
+        contribution, not just a membership, has to spare the project from the
+        same CASCADE.
         """
         # GIVEN - a clean database with Alembic aimed at it
         url = _url(migration_pg)
@@ -300,14 +304,16 @@ class TestExampleProjectSupportMigration:
             assert "is_demo" in {c["name"] for c in inspector.get_columns("users")}
             assert "is_example" in {c["name"] for c in inspector.get_columns("projects")}
 
-            # GIVEN - a real account with three projects: one untouched example
-            # project, one ordinary project, and one example project a real
-            # colleague was invited into
+            # GIVEN - a real account with four projects: one untouched example
+            # project, one ordinary project, one example project a real colleague
+            # was invited into, and one example project the admin never invited
+            # anyone into but did add their own opinion to
             real_admin_id = uuid4()
             real_colleague_id = uuid4()
             untouched_example_id = uuid4()
             ordinary_project_id = uuid4()
             touched_example_id = uuid4()
+            admin_authored_example_id = uuid4()
             created_at = datetime(2026, 1, 1, tzinfo=UTC)
             with engine.begin() as conn:
                 conn.execute(
@@ -336,12 +342,15 @@ class TestExampleProjectSupportMigration:
                         "(:ordinary_id, 'Ordinary project', :admin_id, 0, 100, '', "
                         ":now, :now, false), "
                         "(:touched_id, 'Touched example', :admin_id, 0, 100, '', "
+                        ":now, :now, true), "
+                        "(:authored_id, 'Admin-authored example', :admin_id, 0, 100, '', "
                         ":now, :now, true)"
                     ),
                     {
                         "untouched_id": str(untouched_example_id),
                         "ordinary_id": str(ordinary_project_id),
                         "touched_id": str(touched_example_id),
+                        "authored_id": str(admin_authored_example_id),
                         "admin_id": str(real_admin_id),
                         "now": created_at,
                     },
@@ -355,6 +364,24 @@ class TestExampleProjectSupportMigration:
                         "id": str(uuid4()),
                         "project_id": str(touched_example_id),
                         "user_id": str(real_colleague_id),
+                        "now": created_at,
+                    },
+                )
+                # The admin never joins project_members in this fixture either (see
+                # the untouched-example case above) -- admin_id on the project row
+                # is what identifies them. What is new here is their own opinion.
+                conn.execute(
+                    text(
+                        "INSERT INTO expert_opinions "
+                        "(id, project_id, user_id, position, lower_bound, peak, "
+                        "upper_bound, created_at, updated_at) "
+                        "VALUES (:id, :project_id, :user_id, 'Admin', 0, 50, 100, "
+                        ":now, :now)"
+                    ),
+                    {
+                        "id": str(uuid4()),
+                        "project_id": str(admin_authored_example_id),
+                        "user_id": str(real_admin_id),
                         "now": created_at,
                     },
                 )
@@ -401,6 +428,31 @@ class TestExampleProjectSupportMigration:
                             "WHERE project_id = :project_id AND user_id = :user_id"
                         ),
                         {"project_id": str(touched_example_id), "user_id": str(real_colleague_id)},
+                    ).scalar()
+                    == 1
+                )
+                # AND - the project the admin never invited anyone into survives too,
+                # because they contributed their own opinion to it. Membership alone
+                # is not the bar: a solo admin who did exactly what the feature
+                # invites -- open the example, add a fourteenth opinion, invite
+                # nobody -- must not lose that opinion to the demo cleanup.
+                assert (
+                    conn.execute(
+                        text("SELECT 1 FROM projects WHERE id = :id"),
+                        {"id": str(admin_authored_example_id)},
+                    ).scalar()
+                    == 1
+                )
+                assert (
+                    conn.execute(
+                        text(
+                            "SELECT 1 FROM expert_opinions "
+                            "WHERE project_id = :project_id AND user_id = :user_id"
+                        ),
+                        {
+                            "project_id": str(admin_authored_example_id),
+                            "user_id": str(real_admin_id),
+                        },
                     ).scalar()
                     == 1
                 )
