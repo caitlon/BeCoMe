@@ -424,12 +424,27 @@ DEBUG level prints bound query parameters, which on this schema means bcrypt has
 addresses, names, and reset-token hashes shipped to the log drain in the clear. That pin
 matters because the dev deploy now runs at `LOG_LEVEL=DEBUG` against a real database.
 
-Both throttles fail open, and that is now observable rather than silent. A Redis outage
-lifts the per-account login lockout and the per-address email cap while the request still
-succeeds, so each failure path logs a `throttle_store_unavailable` warning naming the
-operation and the flow. The accepted risk is unchanged; what changed is that it leaves a
-trace. The same applies to the revocation store, which fails *closed*: its errors surface to
-the caller as a plain 401, so `revocation_store_unavailable` is the only thing separating a
+Both throttles fail open, and that is now alerted rather than silent. A Redis outage lifts
+the per-account login lockout and the per-address email cap while the request still
+succeeds, so each failure path logs `throttle_store_unavailable` naming the operation and
+the flow. It is logged at **ERROR**, and that level is the alert: Sentry is initialised
+without a `LoggingIntegration`, so the SDK's default `event_level` of ERROR is what turns a
+record into an issue, and an issue is the only thing that pages. At WARNING these records
+were a breadcrumb on some later event, which meant the brute-force lockout could stay off
+for the length of an outage with nothing raised anywhere -- the request it happened during
+returns normally, so there is no other symptom to notice. The accepted risk is unchanged;
+what changed is that it now announces itself.
+
+The level alone is not the whole alert, because the project's only other rule fires on
+*high priority* issues and Sentry does not necessarily rank a logged error that high. A
+dedicated rule, **"Fail-open throttle: store unavailable"** on the `python-fastapi`
+project, matches any event whose message contains `throttle store unavailable` and
+notifies on a new issue, a regression, **or** five events in an hour. That last condition
+is what covers a second outage weeks later: by then the issue is neither new nor a
+regression, and a rule without it would stay silent exactly when the lockout is off again.
+
+The same applies to the revocation store, which fails *closed*: its errors surface to the
+caller as a plain 401, so `revocation_store_unavailable` is the only thing separating a
 Redis outage from a wave of bad tokens.
 
 Unhandled errors hit a catch-all `500` handler and, when `SENTRY_DSN` is configured, Sentry.
