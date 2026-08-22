@@ -60,6 +60,23 @@ account, a taken-but-unverified address writes nothing at all, and a taken-and-v
 address is left untouched while its owner is emailed a notice that someone tried to sign up
 with it.
 
+**A demo service account answers as a fourth kind of address, without needing a fourth
+branch.** Thirteen such accounts hold the opinions of every user's seeded example project
+(`is_demo` on `users`, `api/data/example_project.py`), and `select_account_by_email`
+(`api/services/query_helpers.py`) excludes them from every lookup that resolves an address --
+login, registration, invitation, password reset, and activation resend alike -- so each of
+those five paths answers a demo address exactly as it answers one nobody has ever registered.
+Registration therefore reads it as free: `_create_account` attempts the insert, loses it to
+the unique index the demo row already occupies, and falls through the same `IntegrityError`
+handling a race between two real submissions takes (`api/services/registration_service.py`),
+landing on the uniform `202` with nothing to activate. The exclusion is what makes this a
+security control rather than a display convenience -- a lookup that forgot it would let an
+outsider invite a demo account into a real project or, had the migration not also inserted
+every demo row already verified, claim one outright through the taken-but-unverified branch
+and read every project it sits in. Both defenses hold independently: `is_demo` filtering keeps
+the accounts from being found at all, and pre-verification means even a lookup that did find
+one could not fall into the branch that mints it an activation token.
+
 **A submission is bound to the link it mints, never to the account.** The activation token
 carries the submitted password hash and names (`email_verification_tokens`, all three
 columns `NOT NULL`), and they are written to the account only when that specific token is
@@ -70,8 +87,8 @@ signed up, the owner clicks the link they already have, and the account activate
 attacker's password.
 
 **Redemption also requires the password the token carries.** `POST /auth/verify-email` takes
-`{token, password}` and checks the password against the token's `hashed_password`, never
-against the `users` row. That is what closes the class the binding above only narrows.
+`{token, password, language}` and checks the password against the token's `hashed_password`,
+never against the `users` row. That is what closes the class the binding above only narrows.
 Anyone can cause an activation link to arrive at an address they do not control -- a repeat
 registration puts a fresh one at the top of the victim's inbox, and nothing distinguishes it
 from their own. With the password required, the stranger's link is dead in both hands: the
@@ -187,6 +204,15 @@ the way the RFC requires. Both verdicts depend only on the domain string, never 
 state, so their `400` leaks nothing about account existence. Each has a runtime kill switch
 (`DISPOSABLE_EMAIL_BLOCKING_ENABLED`, `MX_CHECK_ENABLED`) in case either starts rejecting
 real users.
+
+**`language` on `/auth/verify-email` carries no authority and needs none.** A successful
+redemption seeds the newly activated account's example project (`ExampleProjectService.seed_for`),
+and `language` only picks which pre-written variant of that project's text is used. The
+request schema constrains it to the `Literal["en", "cs"]` the seeded copy actually ships in,
+so it never reaches the database as free text and cannot widen anything the token/password
+pair above already decided. Seeding runs after activation succeeds and its own failure is
+swallowed (`api/routes/auth.py`): an account that verified but got no example project is an
+acceptable outcome, an account that could not be logged into because seeding raised is not.
 
 ## Session transport (cookies and CSRF)
 
