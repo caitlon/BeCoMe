@@ -70,6 +70,23 @@ def _make_owner(session: Session, email: str = "owner@example.com") -> User:
     return user
 
 
+def _insert_partial_demo_pool(session: Session, count: int) -> None:
+    """Insert only the first ``count`` demo experts, as a half-applied migration would."""
+    unusable_password = hash_password("UnusedPassword1!")
+    for expert in EXAMPLE_EXPERTS[:count]:
+        session.add(
+            User(
+                id=expert.user_id,
+                email=expert.email,
+                hashed_password=unusable_password,
+                first_name=expert.first_name,
+                last_name=expert.last_name,
+                is_demo=True,
+            )
+        )
+    session.commit()
+
+
 @pytest.fixture
 def owner(session):
     """The account the example is seeded into."""
@@ -183,6 +200,7 @@ class TestSeedResult:
         """14.31 % on screen is the centroid of the compromise, not its peak."""
         # GIVEN
         service = ExampleProjectService(session)
+        expected = FLOODS_CASE["expected_result"]
 
         # WHEN
         project = service.seed_for(owner.id)
@@ -196,7 +214,7 @@ class TestSeedResult:
         ) / 3
 
         # THEN
-        assert centroid == pytest.approx(14.307692307692307, abs=TOLERANCE)
+        assert centroid == pytest.approx(expected["best_compromise_centroid"], abs=TOLERANCE)
 
 
 class TestSeedLanguage:
@@ -225,9 +243,13 @@ class TestSeedLanguage:
 
         # WHEN
         project = service.seed_for(owner.id, language="de")
+        opinions = session.exec(
+            select(ExpertOpinion).where(ExpertOpinion.project_id == project.id)
+        ).all()
 
         # THEN
         assert project.name == EXAMPLE_PROJECT_TEXT["en"].name
+        assert {o.position for o in opinions} == {e.position_en for e in EXAMPLE_EXPERTS}
 
 
 class TestSeedGuards:
@@ -251,6 +273,27 @@ class TestSeedGuards:
         """A database without the pool gets no example, not a foreign key error."""
         # GIVEN
         owner = _make_owner(session_without_pool, email="lonely@example.com")
+        service = ExampleProjectService(session_without_pool)
+
+        # WHEN
+        project = service.seed_for(owner.id)
+        projects = session_without_pool.exec(select(Project)).all()
+
+        # THEN
+        assert project is None
+        assert projects == []
+
+    def test_skips_when_the_demo_pool_is_partial(self, session_without_pool):
+        """A half-applied migration must not seed a project on an incomplete pool.
+
+        A count-based check ("are there at least 13 demo users?") and an identity
+        check ("are these specific 13 accounts present?") agree once the pool is
+        complete or empty, but they can diverge when it is partially applied -- this
+        pins the guard to the identity check.
+        """
+        # GIVEN
+        _insert_partial_demo_pool(session_without_pool, count=7)
+        owner = _make_owner(session_without_pool, email="partial@example.com")
         service = ExampleProjectService(session_without_pool)
 
         # WHEN
