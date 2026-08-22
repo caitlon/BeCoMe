@@ -242,7 +242,7 @@ Environment variables (can use `.env` file):
 | `API_VERSION` | `1.0.0b1` | API version (auto-read from pyproject.toml) |
 | `CORS_ORIGINS` | `http://localhost:3000,http://localhost:8080` | Allowed CORS origins |
 | `REDIS_URL` | *required when deployed* | Redis for rate limiting, token revocation, and auth throttles |
-| `CLOUDFLARE_ORIGIN_SECRET` | *required in prod* | Shared secret proving the request came through Cloudflare |
+| `CLOUDFLARE_ORIGIN_SECRET` | *required when deployed* | Shared secret proving the request came through Cloudflare; every deployed environment sits behind it, so each needs its own value paired with a Transform Rule for that environment's API host |
 | `EMAIL_PROVIDER` | `console` | Password-reset email delivery: `console` (log) or `http` (Resend) |
 | `EMAIL_API_KEY` | *required when deployed* | API key for the `http` email provider; startup fails without it on the staging and production profiles, where the console fallback would print reset links to stdout instead of sending them |
 | `API_PUBLIC_URL` | `http://localhost:8000` | Public base URL of this API, used to build profile photo proxy links |
