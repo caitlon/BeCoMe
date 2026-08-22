@@ -6,6 +6,12 @@ export default defineConfig({
   plugins: [react()],
   test: {
     environment: 'happy-dom',
+    // https, because the session cookies carry the __Host- prefix and happy-dom enforces
+    // the rule browsers do: such a cookie is only stored on a secure origin. On the
+    // default http://localhost the assignment is silently dropped, and a test reading it
+    // back sees undefined -- which looks like a bug in the client rather than the
+    // document refusing the cookie.
+    environmentOptions: { happyDOM: { url: 'https://localhost:8080' } },
     globals: true,
     setupFiles: ['./tests/setup.ts'],
     include: ['tests/**/*.{test,spec}.{ts,tsx}'],

@@ -57,6 +57,7 @@ from sqlmodel import Session
 
 from api.db.session import get_session
 
+
 @app.get("/users/{user_id}")
 def get_user(user_id: UUID, session: Session = Depends(get_session)):
     user = session.get(User, user_id)
@@ -91,9 +92,9 @@ opinion = ExpertOpinion(
     project_id=project.id,
     user_id=user.id,
     position="Financial Analyst",
-    lower_bound=30.0,   # pessimistic
-    peak=45.0,          # most likely
-    upper_bound=60.0,   # optimistic
+    lower_bound=30.0,  # pessimistic
+    peak=45.0,  # most likely
+    upper_bound=60.0,  # optimistic
 )
 ```
 

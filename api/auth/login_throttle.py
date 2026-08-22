@@ -75,11 +75,19 @@ def _log_store_unavailable(op: str, exc: redis.RedisError, key_prefix: str) -> N
     nothing else to show for it. ``docs/security.md`` accepts that risk; this makes it
     observable.
 
+    ERROR, not WARNING, and for the same reason as the swallowed email failures in
+    ``api/routes/auth.py``: Sentry is initialised without a ``LoggingIntegration``, so the
+    SDK's default ``event_level`` of ERROR decides what becomes an issue, and a warning
+    would only ever be a breadcrumb on some later event. Nothing else marks the outage --
+    the request it happened during succeeds and the caller sees a normal response -- so at
+    WARNING the brute-force lockout could stay off for as long as Redis is down with no
+    alert anywhere. The level *is* the alert.
+
     :param op: Throttle operation that failed -- ``record_failure``, ``is_locked``, or ``reset``.
     :param exc: The Redis error that caused it.
     :param key_prefix: Key namespace of the flow whose lockout stopped being enforced.
     """
-    logger.warning(
+    logger.error(
         "Login throttle store unavailable, lockout not enforced",
         extra={"event": "throttle_store_unavailable", "op": op, "key_prefix": key_prefix},
         exc_info=exc,

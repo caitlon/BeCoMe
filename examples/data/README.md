@@ -67,10 +67,10 @@ from examples.utils.data_loading import load_data_from_txt
 
 opinions, metadata = load_data_from_txt("examples/data/budget_case.txt")
 
-print(metadata["case"])        # "Budget"
-print(len(opinions))           # 22
-print(opinions[0].expert_id)   # "Chairman"
-print(opinions[0].opinion)     # FuzzyTriangleNumber(40, 70, 90)
+print(metadata["case"])  # "Budget"
+print(len(opinions))  # 22
+print(opinions[0].expert_id)  # "Chairman"
+print(opinions[0].opinion)  # FuzzyTriangleNumber(40, 70, 90)
 ```
 
 ## Data Quality

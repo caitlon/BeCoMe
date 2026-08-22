@@ -77,11 +77,17 @@ def _log_store_unavailable(op: str, exc: redis.RedisError, key_prefix: str) -> N
     sees nothing, so an outage silently lifts the per-address cap on every flow behind
     it. ``docs/security.md`` accepts that risk; this makes it observable.
 
+    ERROR for the reason given in
+    :func:`api.auth.login_throttle._log_store_unavailable`: ERROR is the level Sentry
+    turns into an issue, and nothing else about this failure is visible from outside --
+    the send goes through and the response is unchanged. Losing this cap is what lets a
+    known address be mailed repeatedly, so it should page rather than sit in a log.
+
     :param op: Throttle operation that failed -- ``allow`` or ``record``.
     :param exc: The Redis error that caused it.
     :param key_prefix: Key namespace of the flow whose cap was lifted.
     """
-    logger.warning(
+    logger.error(
         "Email throttle store unavailable, cap not enforced",
         extra={"event": "throttle_store_unavailable", "op": op, "key_prefix": key_prefix},
         exc_info=exc,
