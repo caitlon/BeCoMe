@@ -114,7 +114,8 @@ def set_auth_cookies(
     :param response: The response to set cookies on.
     :param access_token: Short-lived access token (HttpOnly cookie).
     :param refresh_token: Long-lived refresh token (HttpOnly, auth-scoped cookie).
-    :param csrf_token: Double-submit CSRF token (readable cookie).
+    :param csrf_token: Session-bound CSRF token (readable cookie), from
+        :func:`csrf_token_for`.
     :param access_ttl: Access-cookie lifetime in seconds.
     :param refresh_ttl: Refresh- and CSRF-cookie lifetime in seconds.
     :param secure: Whether to set the ``Secure`` flag (see :func:`cookies_secure`).
@@ -162,9 +163,9 @@ def set_csrf_header(response: Response, csrf_token: str | None) -> None:
     The ``csrf_token`` cookie carries no ``Domain`` attribute, so it belongs to the API
     host alone. In every deployed environment the SPA is served from a different host and
     ``document.cookie`` shows it nothing, which leaves it unable to fill in the
-    ``X-CSRF-Token`` request header the double-submit check demands. The header is the
-    copy it can reach; ``CORSMiddleware`` must name it in ``expose_headers`` for the
-    browser to hand it over.
+    ``X-CSRF-Token`` request header the check demands. The header is the copy it can
+    reach; ``CORSMiddleware`` must name it in ``expose_headers`` for the browser to hand
+    it over.
 
     This gives away nothing. The value is meant to be readable by the client that owns the
     session -- that is what lets the SPA send it back in the header -- and CORS answers
