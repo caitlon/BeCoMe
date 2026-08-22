@@ -61,7 +61,14 @@ const VerifyEmail = () => {
     setIsLoading(true);
     setFailure(null);
     try {
-      await api.verifyEmail(token, data.password, i18n.language.slice(0, 2));
+      // i18next has no supportedLngs allowlist, so i18n.language can be any
+      // browser-reported locale (e.g. "de-DE"), not just one we have
+      // resources for. The backend only accepts "en" or "cs"
+      // (Literal["en", "cs"]), so this clamps to those two instead of
+      // forwarding a raw slice that a third language would fail on. Same
+      // clamp as ResultExportMenu's handleExport.
+      const language = i18n.language.startsWith("cs") ? "cs" : "en";
+      await api.verifyEmail(token, data.password, language);
       toast({
         title: t("verifyEmail.successTitle"),
         description: t("verifyEmail.successMessage"),
