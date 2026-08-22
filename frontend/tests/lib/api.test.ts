@@ -594,20 +594,20 @@ describe('ApiClient', () => {
       );
     });
 
-    it('verifyEmail sends POST to /auth/verify-email with the token and password', async () => {
+    it('verifyEmail sends POST to /auth/verify-email with the token, password, and language', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
         json: () => Promise.resolve({ detail: 'Your email address is confirmed. You can sign in now.' }),
       });
 
-      await api.verifyEmail('a-token', 'CorrectHorse123!');
+      await api.verifyEmail('a-token', 'CorrectHorse123!', 'en');
 
       expect(mockFetch).toHaveBeenCalledWith(
         expect.stringContaining('/auth/verify-email'),
         expect.objectContaining({
           method: 'POST',
-          body: JSON.stringify({ token: 'a-token', password: 'CorrectHorse123!' }),
+          body: JSON.stringify({ token: 'a-token', password: 'CorrectHorse123!', language: 'en' }),
         })
       );
     });
@@ -620,7 +620,7 @@ describe('ApiClient', () => {
       });
 
       const { ForbiddenError } = await import('@/lib/errors');
-      await expect(api.verifyEmail('a-token', 'wrong')).rejects.toBeInstanceOf(ForbiddenError);
+      await expect(api.verifyEmail('a-token', 'wrong', 'en')).rejects.toBeInstanceOf(ForbiddenError);
     });
 
     it('resendVerification sends POST to /auth/resend-verification with the email and password', async () => {
