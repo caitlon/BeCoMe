@@ -273,6 +273,24 @@ it. A member who lacks the required role (an expert attempting an admin action) 
 since they already know the project is there. Denials are logged with the project and user
 id for audit.
 
+Row-level security is deliberately off (migration `c83186b79ad7`): the tables arrived from
+Supabase with RLS enabled and forced but no policies, which is a no-op for a superuser and
+a total lockout for the least-privilege `become_app` role. Authorization therefore has no
+database backstop -- if a route does not check, nothing does -- so
+`tests/unit/api/test_route_authorization.py` enforces it structurally instead of trusting
+review. It walks the application's real route table and asserts two things: every route
+taking a `project_id` has `RequireProjectAccess` somewhere in its dependency tree, and
+every route taking *any* path parameter is either guarded the same way or listed in
+`UNGUARDED_BY_DESIGN` with the check that stands in for the dependency.
+
+The second guard exists because the first cannot see the routes that matter most here: an
+identifier like `{invitation_id}` points at somebody else's record just as squarely as a
+project id does, and carries no `project_id` for the first check to notice. Three routes
+are exempt today -- the public avatar proxy, and accepting or declining an invitation,
+where `InvitationService` compares `invitee_id` against the caller because there is no
+membership to check until the invitation is accepted. A new route naming an object fails
+the suite until somebody either wires in the dependency or records what replaces it.
+
 ## Rate limiting and abuse control
 
 Rate limiting is handled by slowapi backed by Redis, with an in-memory fallback if Redis is
