@@ -19,15 +19,20 @@ class TestExampleExpertData:
     """The 13 seeded opinions against the reference case."""
 
     def test_triples_match_the_reference_case(self):
-        """Every seeded triple appears in the reference case, and none is missing."""
+        """Each expert's triple matches the reference case at the same position.
+
+        The seeded panel must stay in the same order as the published Floods case.
+        Reordering EXAMPLE_EXPERTS will fail this test — that is intentional, so
+        reordering becomes an explicit decision someone makes on purpose.
+        """
         # GIVEN
-        reference = sorted(
+        reference = [
             (o.opinion.lower_bound, o.opinion.peak, o.opinion.upper_bound)
             for o in FLOODS_CASE["opinions"]
-        )
+        ]
 
         # WHEN
-        seeded = sorted((e.lower_bound, e.peak, e.upper_bound) for e in EXAMPLE_EXPERTS)
+        seeded = [(e.lower_bound, e.peak, e.upper_bound) for e in EXAMPLE_EXPERTS]
 
         # THEN
         assert seeded == reference
