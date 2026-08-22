@@ -271,6 +271,38 @@ def decode_refresh_token(token: str, store: RevocationStore) -> TokenPayload:
     return decode_token(token, "refresh", store)
 
 
+def session_id_from_access_token(token: str) -> str | None:
+    """Return the session id an access token carries, without consulting the store.
+
+    Written for the CSRF middleware, which runs before routing and only needs to know
+    *which session* a request would authenticate as, so it can derive that session's
+    expected token. The signature is still verified -- otherwise a caller could name any
+    session -- but expiry, revocation, and the per-user cutoff are not, because those are
+    the authentication layer's job and checking them here would put three Redis round
+    trips in front of every mutating request. A token that fails any of them is refused a
+    few milliseconds later by :func:`decode_token`; letting it reach that refusal with the
+    CSRF check already applied is strictly the stricter order.
+
+    :param token: Raw access token from the session cookie.
+    :return: The session id, or None when the token is unreadable, is not an access
+        token, or predates sessions (no ``sid`` claim).
+    """
+    settings = get_settings()
+    try:
+        payload = jwt.decode(
+            token,
+            settings.secret_key,
+            algorithms=[ALGORITHM],
+            options={"verify_exp": False, "require": ["exp", "iat"]},
+        )
+    except InvalidTokenError:
+        return None
+    if payload.get("type") != "access":
+        return None
+    sid = payload.get("sid")
+    return sid if isinstance(sid, str) and sid else None
+
+
 def refresh_token_ttl_seconds() -> int:
     """Return the refresh-token lifetime in seconds.
 

@@ -178,36 +178,20 @@ class TestTokenRejectionLogging:
         assert set(_extras(mock_logger.log.call_args)) == {"event", "reason", "jti"}
 
 
-class TestCsrfHeaderSuppressionLogging:
-    """Refusing to echo a client-chosen CSRF value leaves a trace."""
+class TestCsrfHeaderLogging:
+    """Sending the CSRF header is unremarkable and says nothing."""
 
-    def test_non_printable_token_is_logged(self):
+    def test_sending_the_token_logs_nothing(self):
         """
-        GIVEN a CSRF token carrying a newline
-        WHEN set_csrf_header refuses to echo it
-        THEN a csrf_header_suppressed warning records the refusal
-
-        That guard blocks a response-splitting primitive and previously left no trace
-        whatsoever, so an attempt was indistinguishable from nothing happening.
-        """
-        # GIVEN
-        response = MagicMock()
-        response.headers = {}
-
-        # WHEN
-        with patch("api.auth.cookies.logger") as mock_logger:
-            cookies.set_csrf_header(response, "\nX-Injected: 1")
-
-        # THEN
-        extra = _extras(mock_logger.warning.call_args)
-        assert extra == {"event": "csrf_header_suppressed", "reason": "non_printable"}
-        assert response.headers == {}
-
-    def test_a_clean_token_is_echoed_without_a_warning(self):
-        """
-        GIVEN a well-formed token
+        GIVEN a session-derived CSRF token
         WHEN set_csrf_header runs
         THEN the header is set and nothing is logged
+
+        There used to be a warning here, for the case where the helper refused to echo a
+        client-chosen value that would have split the response. The token is now derived
+        server-side, so no client value reaches this function and there is no refusal
+        left to record. Logging the token itself is not an option either: it would hand
+        a log reader the value needed to forge that session's mutations.
         """
         # GIVEN
         response = MagicMock()
@@ -215,11 +199,12 @@ class TestCsrfHeaderSuppressionLogging:
 
         # WHEN
         with patch("api.auth.cookies.logger") as mock_logger:
-            cookies.set_csrf_header(response, "a-normal-url-safe-token")
+            cookies.set_csrf_header(response, "a" * 64)
 
         # THEN
-        assert response.headers[cookies.CSRF_HEADER] == "a-normal-url-safe-token"
+        assert response.headers[cookies.CSRF_HEADER] == "a" * 64
         mock_logger.warning.assert_not_called()
+        mock_logger.info.assert_not_called()
 
 
 class TestRevocationStoreLogging:

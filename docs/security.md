@@ -197,38 +197,71 @@ for the plain-HTTP dev and e2e stacks; see `api/auth/cookies.py`). An XSS payloa
 cannot read the session the way it could read `localStorage`.
 
 `SameSite=Strict` already stops the session cookies from riding along on cross-site
-requests. On top of that, a double-submit CSRF check (`api/middleware/csrf.py`) defends the
-same-site case: login also sets a readable `csrf_token` cookie, and every cookie-based
-mutation must echo it back in an `X-CSRF-Token` header. An attacker who cannot read the
-cookie value cannot forge the matching header. The check only engages when the request
-carries the `csrf_token` cookie, so Bearer-token clients and the pre-session auth endpoints
-(`login`, `register`, `refresh`, password reset) are unaffected -- a stale cookie left by a
-revoked session can never block a fresh login. Logout stays CSRF-protected.
+requests. On top of that, a CSRF check (`api/middleware/csrf.py`) defends the same-site
+case, and the case `SameSite` does not cover at all: "site" means the registrable domain,
+so a page on any `becomify.app` subdomain is same-site with the API and its requests do
+carry the session cookies.
 
-The SPA gets that value from a response header rather than from the cookie. Login and
-refresh return the token they just issued in an `X-CSRF-Token` **response** header, and
-`GET /auth/me` -- the app's session probe on mount -- hands back whatever the request's own
-cookie holds, so a page reload recovers it (`api/auth/cookies.py::set_csrf_header`). The
-header is what makes the check workable at all on the deploys: the cookie carries no
-`Domain` attribute, so it belongs to the API host, and the app is served from a different
-one, where `document.cookie` shows it nothing while the browser keeps sending it. Reading
-the cookie still works when the two share an origin, which is how local development runs
-behind the Vite proxy, and stays the fallback. `CORSMiddleware` names the header in
-`expose_headers`; without that the browser withholds it from cross-origin JavaScript.
+The token is **derived from the session**, not drawn at random and stored beside it:
+`csrf_token_for(sid)` is an HMAC of the session id under the application secret
+(`api/auth/cookies.py`). On a mutating request the middleware reads the session cookie,
+takes the `sid` from it, recomputes the expected token, and compares it against the
+`X-CSRF-Token` header. That comparison is against a value the server derives, never
+against something the client sent.
 
-Handing the value back changes nothing about the guarantee. It was always meant to be
-readable by the client that owns the cookie -- that is what double-submit is -- and CORS
-answers against an explicit origin allow-list, so a hostile origin can no more read the
-header than the cookie. Widening the cookie with `Domain=becomify.app` would look like the
-smaller fix and is the one to avoid: dev, staging, and production all sit under that parent
-and would overwrite each other's token, breaking whichever was visited last. The echo on
-`/auth/me` repeats a client-supplied value, so it is dropped unless it is printable ASCII;
-Starlette's RFC 2109 cookie unescape turns `csrf_token="\012..."` into a real newline, and
-uvicorn writes response headers without validating them.
+The difference matters against an attacker who can write cookies for the API host -- one
+sitting on a sibling `becomify.app` subdomain, since a cookie set with
+`Domain=becomify.app` shadows ours. A plain cookie-versus-header comparison loses to that
+attacker twice: they can plant a value they know in the `csrf_token` cookie and echo it in
+the header, and they can equally plant a token minted for a session they legitimately
+hold. Binding the token to the victim's `sid` closes both, since forging one for a session
+you do not hold means forging an HMAC.
+
+Deriving it also means the check cannot be waived by omission. It keys on the *session*
+cookie, so any request that authenticates as somebody is checked -- where the old
+comparison armed itself on the presence of the CSRF cookie and silently passed anything
+arriving without it. Bearer-token clients carry no session cookie and are unaffected, as
+are the pre-session auth endpoints (`login`, `register`, `refresh`, password reset), so a
+stale cookie left by a revoked session can never block a fresh login. Logout stays
+CSRF-protected.
+
+Reading the `sid` deliberately skips expiry, revocation, and the per-user cutoff
+(`session_id_from_access_token`): the signature is verified, but the rest is the
+authentication layer's job, and checking it here would put three Redis round trips in
+front of every mutating request. A token failing any of them is refused moments later
+anyway, with the CSRF check already applied.
+
+The SPA gets the value from a response header rather than from the cookie. Login and
+refresh send it in an `X-CSRF-Token` **response** header, and `GET /auth/me` -- the app's
+session probe on mount -- reports the token for the session it authenticates as, so a page
+reload recovers it (`api/auth/cookies.py::set_csrf_header`). The header is what makes this
+workable on the deploys: the cookie carries no `Domain` attribute, so it belongs to the API
+host, and the app is served from a different one, where `document.cookie` shows it nothing
+while the browser keeps sending it. Reading the cookie still works when the two share an
+origin, which is how local development runs behind the Vite proxy, and stays the fallback.
+`CORSMiddleware` names the header in `expose_headers`; without that the browser withholds
+it from cross-origin JavaScript.
+
+Handing the value back changes nothing about the guarantee. It is meant to be readable by
+the client that owns the session, and CORS answers against an explicit origin allow-list,
+so a hostile origin can no more read the header than the cookie. Widening the cookie with
+`Domain=becomify.app` would look like the smaller fix and is the one to avoid: dev,
+staging, and production all sit under that parent and would overwrite each other's token,
+breaking whichever was visited last. Deriving the token also retired a sharp edge on
+`/auth/me`, which used to echo the caller's own cookie back: Starlette's RFC 2109 cookie
+unescape turns `csrf_token="\012..."` into a real newline, and uvicorn writes response
+headers without validating them, so that echo was a response-splitting primitive kept in
+check by a filter. There is no client value on that path any more.
+
+What this does **not** cover is an attacker on a sibling subdomain shadowing the *session*
+cookie itself, which would log the victim into the attacker's account rather than forge a
+request. `__Host-` cookie prefixes are the fix for that; they require the `Secure`
+attribute, and WebKit refuses such cookies over plain `http://localhost`, so adopting them
+means moving the whole e2e stack onto TLS first.
 
 The `Authorization: Bearer` path is kept alongside the cookie path for programmatic clients
 and the test suite; it authenticates the same tokens without the cookie or CSRF machinery.
-Such a client sends no `csrf_token` cookie, so it gets no header back either.
+Such a client sends no session cookie, so it gets no header back either.
 
 ## Authorization and tenant isolation
 
