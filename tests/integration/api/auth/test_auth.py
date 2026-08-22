@@ -8,6 +8,7 @@ test_email_verification.py.
 
 from sqlmodel import select
 
+from api.auth.cookies import ACCESS_COOKIE, CSRF_COOKIE, REFRESH_COOKIE
 from api.db.models import User
 from tests.integration.api.conftest import (
     auth_header,
@@ -880,16 +881,16 @@ class TestCookieAuth:
 
     def _csrf_header(self, cookie_client):
         """Echo the readable csrf_token cookie back as the X-CSRF-Token header."""
-        return {"X-CSRF-Token": cookie_client.cookies.get("csrf_token")}
+        return {"X-CSRF-Token": cookie_client.cookies.get(CSRF_COOKIE)}
 
     def test_login_sets_httponly_session_cookies(self, cookie_client):
         """Login sets access/refresh/csrf cookies; token cookies are HttpOnly + SameSite=Strict."""
         resp = self._register_and_login(cookie_client)
 
         assert resp.status_code == 200
-        assert "access_token" in resp.cookies
-        assert "refresh_token" in resp.cookies
-        assert "csrf_token" in resp.cookies
+        assert ACCESS_COOKIE in resp.cookies
+        assert REFRESH_COOKIE in resp.cookies
+        assert CSRF_COOKIE in resp.cookies
         raw = " ".join(resp.headers.get_list("set-cookie")).lower()
         assert "httponly" in raw
         assert "samesite=strict" in raw
@@ -911,7 +912,7 @@ class TestCookieAuth:
 
         assert resp.status_code == 204
         raw = " ".join(resp.headers.get_list("set-cookie")).lower()
-        assert "access_token=" in raw
+        assert f"{ACCESS_COOKIE.lower()}=" in raw
 
     def test_cookie_mutation_without_csrf_header_is_rejected(self, cookie_client):
         """A cookie-authenticated mutation without the CSRF header is rejected with 403."""
@@ -962,7 +963,7 @@ class TestCookieAuth:
         self._register_and_login(cookie_client)
         # A revoked session can leave a stale csrf cookie behind with no matching header; the
         # login endpoint must still let the user re-authenticate rather than answer 403.
-        cookie_client.cookies.set("csrf_token", "stale-value")
+        cookie_client.cookies.set(CSRF_COOKIE, "stale-value")
 
         resp = cookie_client.post(
             "/api/v1/auth/login",
@@ -998,7 +999,7 @@ class TestCsrfTokenHeader:
         resp = self._login(cookie_client, "csrflogin@example.com")
 
         assert resp.status_code == 200
-        assert resp.headers["X-CSRF-Token"] == cookie_client.cookies.get("csrf_token")
+        assert resp.headers["X-CSRF-Token"] == cookie_client.cookies.get(CSRF_COOKIE)
 
     def test_refresh_keeps_the_token_within_one_session(self, cookie_client):
         """A refresh stays in the same rotation family, so the token does not move.
@@ -1013,7 +1014,7 @@ class TestCsrfTokenHeader:
 
         assert resp.status_code == 200
         assert resp.headers["X-CSRF-Token"] == issued
-        assert resp.headers["X-CSRF-Token"] == cookie_client.cookies.get("csrf_token")
+        assert resp.headers["X-CSRF-Token"] == cookie_client.cookies.get(CSRF_COOKIE)
 
     def test_a_new_login_starts_a_new_token(self, cookie_client):
         """A fresh login starts a new session family, so its token differs from the last."""
@@ -1033,7 +1034,7 @@ class TestCsrfTokenHeader:
         resp = cookie_client.get("/api/v1/auth/me")
 
         assert resp.status_code == 200
-        assert resp.headers["X-CSRF-Token"] == cookie_client.cookies.get("csrf_token")
+        assert resp.headers["X-CSRF-Token"] == cookie_client.cookies.get(CSRF_COOKIE)
 
     def test_profile_omits_the_header_for_a_bearer_client(self, client):
         """No CSRF cookie on the request, no header on the response."""
@@ -1067,7 +1068,7 @@ class TestCsrfTokenHeader:
         validating them, so echoing it would have split the response outright.
         """
         issued = self._login(cookie_client, "csrfjunk@example.com").headers["X-CSRF-Token"]
-        cookie_client.cookies.set("csrf_token", '"\\012X-Injected: 1"')
+        cookie_client.cookies.set(CSRF_COOKIE, '"\\012X-Injected: 1"')
 
         resp = cookie_client.get("/api/v1/auth/me")
 
@@ -1084,7 +1085,7 @@ class TestCsrfTokenHeader:
         session instead, so the planted pair matches nothing.
         """
         self._login(cookie_client, "csrfplanted@example.com")
-        cookie_client.cookies.set("csrf_token", "planted-value")
+        cookie_client.cookies.set(CSRF_COOKIE, "planted-value")
 
         resp = cookie_client.post("/api/v1/auth/logout", headers={"X-CSRF-Token": "planted-value"})
 
@@ -1111,7 +1112,7 @@ class TestCsrfTokenHeader:
         cookie, which is the one the browser sends whether the attacker likes it or not.
         """
         self._login(cookie_client, "csrfdropped@example.com")
-        cookie_client.cookies.delete("csrf_token")
+        cookie_client.cookies.delete(CSRF_COOKIE)
 
         resp = cookie_client.post("/api/v1/auth/logout")
 

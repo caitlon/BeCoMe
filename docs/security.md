@@ -191,10 +191,30 @@ real users.
 ## Session transport (cookies and CSRF)
 
 The browser client keeps no token in JavaScript-readable storage. Login and refresh set the
-access and refresh tokens as cookies marked `HttpOnly`, `SameSite=Strict`, and `Secure`
-(the `Secure` flag follows the request scheme, so it is on in production behind TLS and off
-for the plain-HTTP dev and e2e stacks; see `api/auth/cookies.py`). An XSS payload therefore
-cannot read the session the way it could read `localStorage`.
+access and refresh tokens as cookies marked `HttpOnly`, `SameSite=Strict`, and `Secure`. An
+XSS payload therefore cannot read the session the way it could read `localStorage`.
+
+The names carry prefixes the **browser** enforces: `__Host-access_token`,
+`__Host-csrf_token`, `__Secure-refresh_token`. `__Host-` is the one that matters — a cookie
+under that prefix is only accepted with `Secure`, `Path=/` and no `Domain`, and can only be
+written by the exact host it belongs to. That closes the gap `SameSite` leaves open: a page
+on any sibling `becomify.app` subdomain counts as same-site here, so without the prefix it
+could write a session cookie of its own and log the victim into the attacker's account
+(session fixation) — a different attack from the CSRF one below, and one no amount of token
+derivation prevents. The refresh cookie takes `__Secure-` instead, because `__Host-` would
+force `Path=/` and hand it to every request on the site rather than the auth routes alone.
+
+Two consequences worth knowing. `Secure` is now unconditional rather than following the
+request scheme: a `__Host-` cookie without it is not a weaker cookie, it is one the browser
+discards. And the deletions in `clear_auth_cookies` carry the same attributes, because a
+deletion is a `Set-Cookie` like any other — one sent without `Secure` is rejected outright,
+and logout would answer `204` with the session cookie still in place.
+
+That is also why the e2e suite runs over HTTPS (`frontend/scripts/e2e-cert.mjs` mints a
+throwaway certificate). Browsers treat `localhost` as a secure context and accept Secure
+cookies there — except WebKit, which refuses to store them over plain `http://localhost` at
+all, so on HTTP every authenticated Safari-engine test would fail on a cookie that was
+never stored. Verified across all three engines before adopting the prefixes.
 
 `SameSite=Strict` already stops the session cookies from riding along on cross-site
 requests. On top of that, a CSRF check (`api/middleware/csrf.py`) defends the same-site
@@ -253,11 +273,11 @@ unescape turns `csrf_token="\012..."` into a real newline, and uvicorn writes re
 headers without validating them, so that echo was a response-splitting primitive kept in
 check by a filter. There is no client value on that path any more.
 
-What this does **not** cover is an attacker on a sibling subdomain shadowing the *session*
-cookie itself, which would log the victim into the attacker's account rather than forge a
-request. `__Host-` cookie prefixes are the fix for that; they require the `Secure`
-attribute, and WebKit refuses such cookies over plain `http://localhost`, so adopting them
-means moving the whole e2e stack onto TLS first.
+The other half of the same threat — an attacker on a sibling subdomain shadowing the
+*session* cookie rather than the CSRF one, which logs the victim into the attacker's
+account instead of forging a request — is covered by the `__Host-` prefix described at the
+top of this section. Deriving the CSRF token would not have helped there: the two defences
+answer two different attacks and both are needed.
 
 The `Authorization: Bearer` path is kept alongside the cookie path for programmatic clients
 and the test suite; it authenticates the same tokens without the cookie or CSRF machinery.

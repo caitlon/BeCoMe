@@ -16,7 +16,6 @@ from starlette.concurrency import run_in_threadpool
 from api.auth.cookies import (
     REFRESH_COOKIE,
     clear_auth_cookies,
-    cookies_secure,
     csrf_token_for,
     expected_csrf_token,
     set_auth_cookies,
@@ -103,7 +102,7 @@ _RESEND_ACCEPTED = "If that address still needs confirming, a new link is on its
 _VERIFICATION_COMPLETE = "Your email address is confirmed. You can sign in now."
 
 
-def _set_session_cookies(response: Response, token_pair: TokenPair, request: Request) -> None:
+def _set_session_cookies(response: Response, token_pair: TokenPair) -> None:
     """Attach the access, refresh, and CSRF cookies for a freshly issued token pair.
 
     The CSRF token goes out in a response header as well; see
@@ -114,7 +113,6 @@ def _set_session_cookies(response: Response, token_pair: TokenPair, request: Req
 
     :param response: The response to set cookies on.
     :param token_pair: The newly minted access/refresh pair.
-    :param request: The incoming request, used to decide the cookie Secure flag.
     """
     csrf_token = csrf_token_for(token_pair.sid)
     set_auth_cookies(
@@ -124,7 +122,6 @@ def _set_session_cookies(response: Response, token_pair: TokenPair, request: Req
         csrf_token=csrf_token,
         access_ttl=token_pair.expires_in,
         refresh_ttl=refresh_token_ttl_seconds(),
-        secure=cookies_secure(request),
     )
     set_csrf_header(response, csrf_token)
 
@@ -304,7 +301,7 @@ def login(
     throttle.reset(form_data.username)
     token_pair = create_token_pair(user.id)
     store.start_session(token_pair.sid, token_pair.jti, refresh_token_ttl_seconds())
-    _set_session_cookies(response, token_pair, request)
+    _set_session_cookies(response, token_pair)
 
     log_login_success(user.id, user.email, request)
 
@@ -530,7 +527,7 @@ def refresh_token(
                 detail="Invalid or expired refresh token",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        _set_session_cookies(response, token_pair, request)
+        _set_session_cookies(response, token_pair)
         return TokenResponse(
             access_token=token_pair.access_token,
             refresh_token=token_pair.refresh_token,
@@ -542,7 +539,7 @@ def refresh_token(
     revoke_token(payload.jti, store)
     token_pair = create_token_pair(payload.user_id)
     store.start_session(token_pair.sid, token_pair.jti, ttl)
-    _set_session_cookies(response, token_pair, request)
+    _set_session_cookies(response, token_pair)
     return TokenResponse(
         access_token=token_pair.access_token,
         refresh_token=token_pair.refresh_token,
