@@ -15,8 +15,10 @@ from api.auth.jwt import (
     decode_access_token,
     decode_refresh_token,
     revoke_token,
+    session_id_from_access_token,
 )
 from api.auth.revocation_store import InMemoryRevocationStore, RevocationStoreError
+from api.config import get_settings
 from tests.unit.api.conftest import mock_datetime_offset
 
 
@@ -522,3 +524,72 @@ def test_decode_accepts_token_newer_than_valid_after(store):
     store.set_user_valid_after(user_id, datetime.now(UTC) - timedelta(seconds=5))
     token = create_access_token(user_id)
     assert decode_access_token(token, store) == user_id
+
+
+class TestSessionIdFromAccessToken:
+    """The store-free session lookup the CSRF middleware runs on every mutation."""
+
+    def test_returns_the_session_id(self):
+        """GIVEN an access token WHEN reading its session THEN the sid comes back."""
+        token = create_access_token(uuid4(), sid="session-1")
+
+        assert session_id_from_access_token(token) == "session-1"
+
+    def test_reads_an_expired_token(self):
+        """GIVEN an expired access token WHEN reading its session THEN the sid comes back.
+
+        Expiry is deliberately not checked here. The CSRF check runs before
+        authentication, and skipping it for an expired token would mean a stale session
+        cookie waives the check on the way to a 401 that has not happened yet.
+        """
+        with mock_datetime_offset("api.auth.jwt", timedelta(hours=-24)):
+            token = create_access_token(uuid4(), sid="session-1")
+
+        assert session_id_from_access_token(token) == "session-1"
+
+    def test_rejects_a_token_signed_with_another_key(self):
+        """GIVEN a token signed elsewhere WHEN reading its session THEN None comes back.
+
+        The signature is the only thing stopping a caller from naming whichever session
+        it likes and having the middleware derive that session's token for it.
+        """
+        forged = jwt.encode(
+            {
+                "sub": str(uuid4()),
+                "exp": datetime.now(UTC) + timedelta(minutes=15),
+                "iat": datetime.now(UTC),
+                "jti": "j",
+                "sid": "someone-elses-session",
+                "type": "access",
+            },
+            "a-different-secret",
+            algorithm=ALGORITHM,
+        )
+
+        assert session_id_from_access_token(forged) is None
+
+    def test_rejects_a_refresh_token(self):
+        """GIVEN a refresh token WHEN reading its session THEN None comes back."""
+        token, _ = create_refresh_token(uuid4(), "session-1")
+
+        assert session_id_from_access_token(token) is None
+
+    def test_returns_none_for_a_token_without_a_session(self):
+        """GIVEN a token predating sessions WHEN reading its session THEN None."""
+        token = jwt.encode(
+            {
+                "sub": str(uuid4()),
+                "exp": datetime.now(UTC) + timedelta(minutes=15),
+                "iat": datetime.now(UTC),
+                "jti": "j",
+                "type": "access",
+            },
+            get_settings().secret_key,
+            algorithm=ALGORITHM,
+        )
+
+        assert session_id_from_access_token(token) is None
+
+    def test_returns_none_for_junk(self):
+        """GIVEN an unparseable cookie value WHEN reading its session THEN None."""
+        assert session_id_from_access_token("not-a-jwt") is None

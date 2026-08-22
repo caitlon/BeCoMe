@@ -3,7 +3,6 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-import pytest
 from fastapi import Response
 from starlette.requests import cookie_parser
 
@@ -14,6 +13,17 @@ from api.config import Environment
 def _request(scheme: str) -> MagicMock:
     """Build a stand-in request whose only relevant attribute is the URL scheme."""
     return MagicMock(url=SimpleNamespace(scheme=scheme))
+
+
+def _with_secret(secret: str) -> object:
+    """Patch get_settings so the CSRF HMAC is keyed on ``secret``.
+
+    :param secret: Value for ``secret_key``.
+    :return: The active patch context manager.
+    """
+    settings = MagicMock()
+    settings.secret_key = secret
+    return patch("api.auth.cookies.get_settings", return_value=settings)
 
 
 class TestCookiesSecure:
@@ -38,50 +48,78 @@ class TestCookiesSecure:
             assert cookies.cookies_secure(_request("https")) is True
 
 
-class TestSetCsrfHeader:
-    """The CSRF token is repeated in a response header, and only when it is safe to."""
+class TestCsrfTokenFor:
+    """The CSRF token is derived from the session, not drawn at random."""
 
-    def test_echoes_a_minted_token(self):
-        """A freshly minted token goes back out unchanged."""
+    def test_is_stable_for_one_session(self):
+        """GIVEN one sid WHEN deriving twice THEN both calls agree."""
+        with _with_secret("a-secret-key-for-tests"):
+            assert cookies.csrf_token_for("sid-1") == cookies.csrf_token_for("sid-1")
+
+    def test_differs_between_sessions(self):
+        """GIVEN two sids WHEN deriving THEN the tokens differ.
+
+        This is what stops a token minted for the attacker's own session from being
+        replayed against a victim's.
+        """
+        with _with_secret("a-secret-key-for-tests"):
+            assert cookies.csrf_token_for("sid-1") != cookies.csrf_token_for("sid-2")
+
+    def test_depends_on_the_secret(self):
+        """GIVEN one sid under two secrets WHEN deriving THEN the tokens differ.
+
+        Forging a token for a session you do not hold means forging an HMAC, so the
+        secret has to be what the value hangs on.
+        """
+        with _with_secret("secret-one"):
+            first = cookies.csrf_token_for("sid-1")
+        with _with_secret("secret-two"):
+            second = cookies.csrf_token_for("sid-1")
+
+        assert first != second
+
+    def test_is_header_safe(self):
+        """GIVEN any sid WHEN deriving THEN the token is hex and carries no separators.
+
+        The value goes into a response header, and uvicorn's writer does not validate
+        header values. A hex digest cannot carry the newline that would split a response,
+        which is why the header helper no longer filters what it is given.
+        """
+        with _with_secret("a-secret-key-for-tests"):
+            token = cookies.csrf_token_for('"\\012X-Injected: 1"')
+
+        assert len(token) == 64
+        assert all(c in "0123456789abcdef" for c in token)
+
+
+class TestSetCsrfHeader:
+    """The derived CSRF token is repeated in a response header."""
+
+    def test_sends_the_token(self):
+        """A derived token goes back out unchanged."""
         response = Response()
-        token = cookies.new_csrf_token()
+        with _with_secret("a-secret-key-for-tests"):
+            token = cookies.csrf_token_for("sid-1")
 
         cookies.set_csrf_header(response, token)
 
         assert response.headers[cookies.CSRF_HEADER] == token
 
-    def test_omits_the_header_when_there_is_no_token(self):
-        """A request without the CSRF cookie gets a response without the header."""
+    def test_omits_the_header_when_there_is_no_session(self):
+        """A request with no session to derive a token from gets no header."""
         response = Response()
 
         cookies.set_csrf_header(response, None)
 
         assert cookies.CSRF_HEADER not in response.headers
 
-    @pytest.mark.parametrize(
-        "value",
-        ["", "\nX-Injected: 1", "token\r\nX-Injected: 1", "caf\xe9", "tok\x00en"],
-        ids=["empty", "newline", "crlf", "non-ascii", "null"],
-    )
-    def test_refuses_a_value_outside_printable_ascii(self, value):
-        """A cookie the client chose never decides what goes into a response header.
-
-        On the ``/auth/me`` path the echoed value comes straight from the request, and
-        uvicorn's httptools writer does not validate header values, so a newline in one
-        would split the response.
-        """
-        response = Response()
-
-        cookies.set_csrf_header(response, value)
-
-        assert cookies.CSRF_HEADER not in response.headers
-
-    def test_the_vector_it_guards_against_is_reachable_from_a_real_cookie(self):
+    def test_the_vector_the_old_echo_exposed_is_real(self):
         """Starlette's cookie unescaping really does yield a newline-bearing value.
 
-        Pins the premise of the check above, which would otherwise be theatre. Every
-        character of the header below is legal in a ``Cookie`` header; Starlette applies
-        the RFC 2109 octal unescape and hands back an actual newline.
+        Kept as the reason ``/auth/me`` no longer hands the caller's own cookie back:
+        every character below is legal in a ``Cookie`` header, and Starlette applies the
+        RFC 2109 octal unescape and returns an actual newline. Deriving the token
+        server-side removes the path rather than filtering it.
         """
         parsed = cookie_parser('csrf_token="\\012X-Injected: 1"')
 

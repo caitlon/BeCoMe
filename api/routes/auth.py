@@ -14,11 +14,11 @@ from fastapi.security import OAuth2PasswordRequestForm
 from starlette.concurrency import run_in_threadpool
 
 from api.auth.cookies import (
-    CSRF_COOKIE,
     REFRESH_COOKIE,
     clear_auth_cookies,
     cookies_secure,
-    new_csrf_token,
+    csrf_token_for,
+    expected_csrf_token,
     set_auth_cookies,
     set_csrf_header,
 )
@@ -106,15 +106,17 @@ _VERIFICATION_COMPLETE = "Your email address is confirmed. You can sign in now."
 def _set_session_cookies(response: Response, token_pair: TokenPair, request: Request) -> None:
     """Attach the access, refresh, and CSRF cookies for a freshly issued token pair.
 
-    The CSRF token goes out in a response header as well. A refresh rotates it, so a
-    cross-host SPA reading only the header would otherwise keep sending a superseded
-    value; see :func:`~api.auth.cookies.set_csrf_header` for why the header exists.
+    The CSRF token goes out in a response header as well; see
+    :func:`~api.auth.cookies.set_csrf_header` for why the header exists. It is derived
+    from the pair's session id, so a refresh that stays in the same rotation family hands
+    back the same token and a cross-host SPA reading only the header cannot end up sending
+    a superseded value. A fresh login starts a new family and therefore a new token.
 
     :param response: The response to set cookies on.
     :param token_pair: The newly minted access/refresh pair.
     :param request: The incoming request, used to decide the cookie Secure flag.
     """
-    csrf_token = new_csrf_token()
+    csrf_token = csrf_token_for(token_pair.sid)
     set_auth_cookies(
         response,
         access_token=token_pair.access_token,
@@ -665,22 +667,27 @@ def reset_password(
 
 @router.get("/me", summary="Get current user profile")
 def get_me(
+    request: Request,
     response: Response,
     current_user: CurrentUser,
-    csrf_cookie: Annotated[str | None, Cookie(alias=CSRF_COOKIE)] = None,
 ) -> UserResponse:
     """Return the authenticated user's profile, and the session's CSRF token with it.
 
     The SPA probes this route on mount, which makes it the one place a page reload can
     pick the CSRF token back up: the token lives in a cookie belonging to the API host,
-    and the SPA cannot read that cookie when the two run on different hosts. Nothing is
-    minted here -- the request's own cookie is handed straight back -- so a Bearer client,
-    which sends no such cookie, gets no header.
+    and the SPA cannot read that cookie when the two run on different hosts.
 
-    :param response: Response used to echo the CSRF token header.
+    The token is derived from the session the request authenticates as, not read back out
+    of the request's own CSRF cookie. Handing the caller's cookie back would let anyone
+    able to write a cookie for this host -- a page on a sibling ``becomify.app``
+    subdomain -- decide what this route reports, and the SPA would then dutifully send
+    that value on every mutation and be refused. A Bearer client carries no session
+    cookie, so it gets no header, as before.
+
+    :param request: The incoming request, read for the session cookie.
+    :param response: Response used to send the CSRF token header.
     :param current_user: User from JWT token
-    :param csrf_cookie: The session's CSRF cookie; absent for Bearer clients
     :return: User profile data
     """
-    set_csrf_header(response, csrf_cookie)
+    set_csrf_header(response, expected_csrf_token(request))
     return UserResponse.from_user(current_user)
