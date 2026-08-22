@@ -251,6 +251,30 @@ class Settings(BaseSettings):
             return bool(self.email_api_key)
         return False
 
+    @property
+    def is_deploy(self) -> bool:
+        """Check whether this process is a deployed service rather than a laptop.
+
+        A deployed service has its own database, a public URL, and shares the
+        rate-limit / revocation store, so it must satisfy the invariants in
+        :meth:`_validate_deploy_invariants` and may not trust client-supplied
+        forwarding headers.
+
+        ``Environment.TEST`` doubles as the pytest-runner profile (the conftests set
+        ``APP_ENV=test`` with ``TESTING=1`` and weak throwaway secrets), so it counts
+        only when ``TESTING`` is unset, as on the real staging deploy. Production is
+        never used by the test runner, so it always counts. The dev profile counts
+        when it runs on Railway: that service has its own database and a public URL,
+        so "dev" there means the data is separate, not that the service may be weakly
+        configured. A laptop or a CI runner carries no ``RAILWAY_*`` marker.
+
+        :return: True when this process serves real traffic on a deployed service.
+        """
+        return self.environment is Environment.PROD or (
+            not self.testing
+            and (self.environment is Environment.TEST or self.railway_environment_name is not None)
+        )
+
     @model_validator(mode="after")
     def _apply_profile_log_level(self) -> "Settings":
         """Fall back to the active profile's log level when ``LOG_LEVEL`` is unset.
@@ -274,29 +298,19 @@ class Settings(BaseSettings):
         """Reject development defaults on every deployed service.
 
         A strong secret, real PostgreSQL database, Redis-backed store, a real
-        (non-loopback) CORS origin, a configured email provider, debug off, and an
-        explicit migration URL are required on anything that serves real traffic,
-        since those services share the rate-limit / revocation store and are reachable
-        from the internet. The Cloudflare origin lock is required only in production,
-        where the app sits behind Cloudflare.
+        (non-loopback) CORS origin, a configured email provider, debug off, an
+        explicit migration URL, and the Cloudflare origin lock are required on
+        anything that serves real traffic, since those services share the
+        rate-limit / revocation store and are reachable from the internet. Every
+        deployed environment sits behind Cloudflare, so the origin lock is demanded
+        of all of them rather than of production alone.
 
         :return: The validated settings instance.
         :raises ValueError: If a deployed profile still carries a development
-            default, lacks a real email provider, runs with debug on, has no
-            migration URL, or production lacks the Cloudflare origin secret.
+            default, lacks a real email provider, runs with debug on, or has no
+            migration URL or Cloudflare origin secret.
         """
-        # Environment.TEST doubles as the pytest-runner profile (the conftests set
-        # APP_ENV=test with TESTING=1 and weak throwaway secrets), so its invariants
-        # apply only to the real deployed staging, where TESTING is unset. Production
-        # is never used by the test runner, so it is always enforced. The dev profile
-        # counts too when it runs on Railway: that service has its own database and a
-        # public URL, so "dev" there means the data is separate, not that the service
-        # may be weakly configured. A laptop or a CI runner has no RAILWAY_* marker.
-        is_deploy = self.environment is Environment.PROD or (
-            not self.testing
-            and (self.environment is Environment.TEST or self.railway_environment_name is not None)
-        )
-        if not is_deploy:
+        if not self.is_deploy:
             return self
 
         profile = self.environment.value
@@ -313,10 +327,14 @@ class Settings(BaseSettings):
         if not self.redis_url:
             raise ValueError(f"redis_url is required in the {profile} profile")
 
-        if self.environment is Environment.PROD and not self.cloudflare_origin_secret:
+        if not self.cloudflare_origin_secret:
             raise ValueError(
-                "cloudflare_origin_secret is required in production so the client IP "
-                "cannot be spoofed at the origin (Cloudflare injects X-Origin-Verify)"
+                f"cloudflare_origin_secret is required in the {profile} profile so the "
+                "client IP is read from a header only Cloudflare can set (it injects "
+                "X-Origin-Verify). Without it every request through Cloudflare is keyed "
+                "under the edge's own address, which collapses all callers into one "
+                "rate-limit bucket, and a request that reaches the bare origin is keyed "
+                "off a forwarding header the origin cannot vouch for"
             )
         if not _has_remote_cors_origin(self.cors_origins):
             raise ValueError(

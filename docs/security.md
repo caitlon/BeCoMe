@@ -299,9 +299,23 @@ production.
 
 ## Network and edge
 
-The public origin is `becomify.app`, served through Cloudflare. A Cloudflare Transform Rule
-injects a shared secret header that the origin then requires (`cloudflare_origin_secret`),
-so the Railway origin cannot be reached directly, bypassing the edge. CORS is configured
+The public origin is `becomify.app`, served through Cloudflare, and each deployed
+environment has its own host under it: `api.becomify.app` (production),
+`api-harbor.becomify.app` (staging), `api-atelier.becomify.app` (dev). A Cloudflare
+Transform Rule per host injects a shared secret header the origin then requires
+(`cloudflare_origin_secret`, a different value per environment, demanded of every deploy
+by `Settings._validate_deploy_invariants`).
+
+The lock decides what the origin *believes*, not what it *accepts*. Railway also gives each
+service a `*.up.railway.app` address, and those answer, so the edge can still be bypassed;
+what the secret buys is that a request arriving without it is keyed under a single constant
+rather than off a forwarding header the origin cannot vouch for (`api/utils/client_ip.py`).
+That matters because uvicorn runs with `--proxy-headers --forwarded-allow-ips='*'`, which
+makes `request.client.host` only as trustworthy as whatever wrote `X-Forwarded-For`. It
+also makes the rate-limit key correct rather than merely safe: without the lock, every
+request that did transit Cloudflare is keyed under the *edge's* address, collapsing all
+callers into one bucket. Closing the bypass itself -- so the WAF and bot rules cannot be
+skipped -- means retiring the `*.up.railway.app` domains, which is still open. CORS is configured
 with explicit allowed origins and `allow_credentials=True` (required for the cookie
 session). It permits the `X-CSRF-Token` header on the way in and exposes it on the way
 out, since the SPA reads the CSRF token off the response.
