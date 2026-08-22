@@ -614,6 +614,22 @@ class TestDeployedDevInvariants:
     CI runner carry no RAILWAY_* marker and stay unconstrained.
     """
 
+    def _configure_railway_dev(self, monkeypatch, tmp_path):
+        """Set a fully valid *deployed* dev environment; each test weakens one part."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("TESTING", raising=False)
+        monkeypatch.setenv("RAILWAY_ENVIRONMENT_NAME", "dev")
+        monkeypatch.setenv("APP_ENV", "dev")
+        monkeypatch.setenv("SECRET_KEY", "a-sufficiently-strong-secret-value")
+        monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@host:5432/db")
+        monkeypatch.setenv("MIGRATION_DATABASE_URL", "postgresql://migrator:pass@host:5432/db")
+        monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
+        monkeypatch.setenv("CORS_ORIGINS", '["https://dev.your-domain.example"]')
+        monkeypatch.setenv("FRONTEND_BASE_URL", "https://dev.your-domain.example")
+        monkeypatch.setenv("EMAIL_PROVIDER", "http")
+        monkeypatch.setenv("EMAIL_API_KEY", "a-resend-api-key")
+        monkeypatch.setenv("CLOUDFLARE_ORIGIN_SECRET", "a-dev-origin-lock-value")
+
     def test_local_dev_stays_unconstrained(self, monkeypatch, tmp_path):
         """
         GIVEN the dev profile with development defaults and no Railway marker
@@ -658,25 +674,27 @@ class TestDeployedDevInvariants:
         THEN validation passes
         """
         # GIVEN
-        monkeypatch.chdir(tmp_path)
-        monkeypatch.delenv("TESTING", raising=False)
-        monkeypatch.delenv("CLOUDFLARE_ORIGIN_SECRET", raising=False)
-        monkeypatch.setenv("RAILWAY_ENVIRONMENT_NAME", "dev")
-        monkeypatch.setenv("APP_ENV", "dev")
-        monkeypatch.setenv("SECRET_KEY", "a-sufficiently-strong-secret-value")
-        monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@host:5432/db")
-        monkeypatch.setenv("MIGRATION_DATABASE_URL", "postgresql://migrator:pass@host:5432/db")
-        monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
-        monkeypatch.setenv("CORS_ORIGINS", '["https://dev.your-domain.example"]')
-        monkeypatch.setenv("FRONTEND_BASE_URL", "https://dev.your-domain.example")
-        monkeypatch.setenv("EMAIL_PROVIDER", "http")
-        monkeypatch.setenv("EMAIL_API_KEY", "a-resend-api-key")
+        self._configure_railway_dev(monkeypatch, tmp_path)
 
         # WHEN
         settings = Settings()
 
         # THEN
         assert settings.environment is Environment.DEV
+
+    def test_railway_dev_rejects_missing_cloudflare_secret(self, monkeypatch, tmp_path):
+        """
+        GIVEN the dev profile on Railway with no CLOUDFLARE_ORIGIN_SECRET
+        WHEN Settings is constructed
+        THEN validation fails, because the dev service is fronted by Cloudflare too
+        """
+        # GIVEN
+        self._configure_railway_dev(monkeypatch, tmp_path)
+        monkeypatch.delenv("CLOUDFLARE_ORIGIN_SECRET", raising=False)
+
+        # WHEN / THEN
+        with pytest.raises(ValidationError, match="cloudflare_origin_secret"):
+            Settings()
 
     def test_pytest_profile_is_exempt_on_railway(self, monkeypatch, tmp_path):
         """
@@ -719,22 +737,36 @@ class TestStagingInvariants:
         monkeypatch.setenv("EMAIL_PROVIDER", "http")
         monkeypatch.setenv("EMAIL_API_KEY", "a-resend-api-key")
         monkeypatch.setenv("MIGRATION_DATABASE_URL", "postgresql://migrator:pass@host:5432/db")
+        monkeypatch.setenv("CLOUDFLARE_ORIGIN_SECRET", "a-staging-origin-lock-value")
 
-    def test_accepts_fully_configured_staging_without_cloudflare(self, monkeypatch, tmp_path):
+    def test_accepts_fully_configured_staging(self, monkeypatch, tmp_path):
         """
-        GIVEN a fully configured staging profile with no Cloudflare secret
+        GIVEN a fully configured staging profile
         WHEN Settings is constructed
-        THEN validation passes (the origin lock is production-only)
+        THEN validation passes
         """
         # GIVEN
         self._configure_staging(monkeypatch, tmp_path)
-        monkeypatch.delenv("CLOUDFLARE_ORIGIN_SECRET", raising=False)
 
         # WHEN
         settings = Settings()
 
         # THEN
         assert settings.environment is Environment.TEST
+
+    def test_rejects_missing_cloudflare_secret_in_staging(self, monkeypatch, tmp_path):
+        """
+        GIVEN the staging profile with no CLOUDFLARE_ORIGIN_SECRET
+        WHEN Settings is constructed
+        THEN validation fails, because staging is fronted by Cloudflare too
+        """
+        # GIVEN
+        self._configure_staging(monkeypatch, tmp_path)
+        monkeypatch.delenv("CLOUDFLARE_ORIGIN_SECRET", raising=False)
+
+        # WHEN / THEN
+        with pytest.raises(ValidationError, match="cloudflare_origin_secret"):
+            Settings()
 
     def test_rejects_insecure_secret_in_staging(self, monkeypatch, tmp_path):
         """
