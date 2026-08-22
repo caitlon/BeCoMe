@@ -28,7 +28,8 @@
   "card": {
     "noDescription": "Bez popisu",
     "scale": "Škála",
-    "experts": "expertů"
+    "experts": "expertů",
+    "exampleBadge": "Ukázka"
   },
   "roles": {
     "admin": "Admin",
@@ -139,6 +140,10 @@
       "high": "Vysoká shoda",
       "moderate": "Střední shoda",
       "low": "Nízká shoda"
+    },
+    "exampleBanner": {
+      "title": "Toto je ukázkový projekt",
+      "body": "Třináct expertů níže pochází z publikované studie protipovodňové ochrany a nejsou to skuteční lidé. Přidejte svůj názor a uvidíte, jak se kompromis posune, nebo projekt smažte, pokud ho nepotřebujete."
     }
   },
   "resultExport": {

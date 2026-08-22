@@ -85,6 +85,7 @@ class ProjectResponse(BaseModel):
     admin_id: str
     created_at: datetime
     member_count: int
+    is_example: bool = False
 
     @classmethod
     def from_model(cls, project: "Project", member_count: int) -> "ProjectResponse":
@@ -104,6 +105,7 @@ class ProjectResponse(BaseModel):
             admin_id=str(project.admin_id),
             created_at=project.created_at,
             member_count=member_count,
+            is_example=project.is_example,
         )
 
 
@@ -133,6 +135,7 @@ class ProjectWithRoleResponse(ProjectResponse):
             admin_id=str(project.admin_id),
             created_at=project.created_at,
             member_count=member_count,
+            is_example=project.is_example,
             role=role,
         )
 

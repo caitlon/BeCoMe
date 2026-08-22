@@ -31,6 +31,7 @@ function ownedProject(overrides: Partial<ProjectWithRole> = {}): ProjectWithRole
     admin_id: CURRENT_USER_ID,
     created_at: '2026-01-01T00:00:00Z',
     member_count: 2,
+    is_example: false,
     role: 'admin',
     ...overrides,
   };

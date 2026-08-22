@@ -28,7 +28,8 @@
   "card": {
     "noDescription": "No description",
     "scale": "Scale",
-    "experts": "experts"
+    "experts": "experts",
+    "exampleBadge": "Example"
   },
   "roles": {
     "admin": "Admin",
@@ -139,6 +140,10 @@
       "high": "High agreement",
       "moderate": "Moderate agreement",
       "low": "Low agreement"
+    },
+    "exampleBanner": {
+      "title": "This is an example project",
+      "body": "The thirteen experts below come from a published flood-prevention study and are not real people. Add your own opinion to see how the compromise moves, or delete this project if you do not need it."
     }
   },
   "resultExport": {

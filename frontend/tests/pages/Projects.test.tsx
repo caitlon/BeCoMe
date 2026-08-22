@@ -201,6 +201,20 @@ describe('Projects', () => {
         expect(badges.length).toBeGreaterThan(0);
       });
     });
+
+    it('badges a seeded example project', async () => {
+      const projects = [
+        createProjectWithRole({ name: 'Flood Prevention Planning', is_example: true }),
+        createProjectWithRole({ name: 'Real work' }),
+      ];
+      mockApi.getProjects.mockResolvedValue(projects);
+
+      render(<Projects />);
+
+      await waitFor(() => {
+        expect(screen.getAllByText('Example')).toHaveLength(1);
+      });
+    });
   });
 
   describe('Project Actions', () => {

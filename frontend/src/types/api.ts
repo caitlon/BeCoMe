@@ -24,6 +24,7 @@ export interface Project {
   admin_id: string;
   created_at: string;
   member_count: number;
+  is_example: boolean;
 }
 
 export interface FuzzyNumber {

@@ -200,6 +200,25 @@ describe('ProjectDetail', () => {
       expect(screen.getByRole('link', { name: /projects/i })).toHaveAttribute('href', '/projects');
     });
   });
+
+  it('explains that an example project team is fictional', async () => {
+    mockApi.getProject.mockResolvedValue(
+      createProjectWithRole({ id: 'project-1', role: 'admin', is_example: true }),
+    );
+
+    render(<ProjectDetail />);
+
+    expect(await screen.findByText('This is an example project')).toBeInTheDocument();
+  });
+
+  it('shows no banner on an ordinary project', async () => {
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Test Project')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('This is an example project')).not.toBeInTheDocument();
+  });
 });
 
 describe('ProjectDetail - Opinion Form Prefill', () => {
