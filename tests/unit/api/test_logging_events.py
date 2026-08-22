@@ -275,7 +275,7 @@ class TestThrottleLogging:
         """
         GIVEN Redis raising while the lockout counter is read
         WHEN the failure is recorded
-        THEN a throttle_store_unavailable warning names the flow, not the account
+        THEN a throttle_store_unavailable error names the flow, not the account
 
         _digest() is an unkeyed SHA-256: logging it would let anyone holding the logs
         confirm an address by hashing a guess.
@@ -288,12 +288,33 @@ class TestThrottleLogging:
             login_throttle._log_store_unavailable("is_locked", exc, "login")
 
         # THEN
-        extra = _extras(mock_logger.warning.call_args)
+        extra = _extras(mock_logger.error.call_args)
         assert extra == {
             "event": "throttle_store_unavailable",
             "op": "is_locked",
             "key_prefix": "login",
         }
+
+    def test_login_throttle_outage_is_logged_at_error_level(self):
+        """
+        GIVEN Redis raising while the lockout counter is read
+        WHEN the failure is recorded
+        THEN it is logged at ERROR, not WARNING
+
+        ERROR is what Sentry turns into an issue, and an issue is the only alert this
+        outage produces: the request it happened during succeeds, so at WARNING the
+        brute-force lockout could stay off for the whole outage with nothing raised.
+        """
+        # GIVEN
+        exc = redis.RedisError("down")
+
+        # WHEN
+        with patch("api.auth.login_throttle.logger") as mock_logger:
+            login_throttle._log_store_unavailable("is_locked", exc, "login")
+
+        # THEN
+        mock_logger.error.assert_called_once()
+        mock_logger.warning.assert_not_called()
 
     def test_email_throttle_outage_is_logged_without_the_address(self):
         """
@@ -309,12 +330,29 @@ class TestThrottleLogging:
             email_throttle._log_store_unavailable("allow", exc, "reset")
 
         # THEN
-        extra = _extras(mock_logger.warning.call_args)
+        extra = _extras(mock_logger.error.call_args)
         assert extra == {
             "event": "throttle_store_unavailable",
             "op": "allow",
             "key_prefix": "reset",
         }
+
+    def test_email_throttle_outage_is_logged_at_error_level(self):
+        """
+        GIVEN Redis raising while the per-address cap is checked
+        WHEN the failure is recorded
+        THEN it is logged at ERROR, so the lifted cap raises a Sentry issue
+        """
+        # GIVEN
+        exc = redis.RedisError("down")
+
+        # WHEN
+        with patch("api.auth.email_throttle.logger") as mock_logger:
+            email_throttle._log_store_unavailable("allow", exc, "reset")
+
+        # THEN
+        mock_logger.error.assert_called_once()
+        mock_logger.warning.assert_not_called()
 
     def test_in_memory_denial_logs_without_an_identifier(self):
         """
