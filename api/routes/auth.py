@@ -59,6 +59,7 @@ from api.dependencies import (
     get_email_address_policy,
     get_email_service,
     get_email_verification_service,
+    get_example_project_service,
     get_password_reset_service,
     get_registration_service,
     get_user_service,
@@ -84,6 +85,7 @@ from api.services.email.base import EmailSender
 from api.services.email.exceptions import EmailSendError
 from api.services.email_policy import EmailAddressPolicy
 from api.services.email_verification_service import EmailVerificationService
+from api.services.example_project_service import ExampleProjectService
 from api.services.password_reset_service import PasswordResetService
 from api.services.registration_service import RegistrationService
 from api.services.user_service import UserService
@@ -325,6 +327,7 @@ def verify_email(
     service: Annotated[EmailVerificationService, Depends(get_email_verification_service)],
     throttle: Annotated[LoginThrottle, Depends(get_activation_throttle)],
     login_throttle: Annotated[LoginThrottle, Depends(get_login_throttle)],
+    example_projects: Annotated[ExampleProjectService, Depends(get_example_project_service)],
 ) -> dict[str, str]:
     """Redeem an activation token and mark the account's address verified.
 
@@ -383,6 +386,8 @@ def verify_email(
     :param login_throttle: Per-account login throttle; a mismatch spends from it too, so
         activation guessing costs the guesser their login budget, and a redemption clears
         it, but it is never consulted here
+    :param example_projects: Service that seeds the newly activated account's example
+        project; failures are swallowed, see the try/except around its call below
     :return: A fixed confirmation message
     :raises InvalidVerificationTokenError: If the token is unknown, spent, or its
         account is already verified
@@ -411,6 +416,19 @@ def verify_email(
     # fumbled the password a few times would be told their address is confirmed and
     # then locked out of the sign-in that follows.
     login_throttle.reset(pending.email)
+
+    # Demo content, and nothing more: an account that could not be logged into because
+    # its example project failed to write would be a far worse outcome than an account
+    # without one. Broad except on purpose -- the same reasoning _send_quietly applies
+    # to the mail this endpoint's siblings send.
+    try:
+        example_projects.seed_for(user.id, data.language)
+    except Exception:
+        logger.warning(
+            "Example project seeding failed",
+            extra={"event": "example_project_seed_failed", "user_id": str(user.id)},
+            exc_info=True,
+        )
 
     log_email_verified(user.id, request)
     return {"detail": _VERIFICATION_COMPLETE}

@@ -223,6 +223,10 @@ class VerifyEmailRequest(BaseModel):
     password: str = Field(
         ..., min_length=1, max_length=128, description="Password used to sign up", repr=False
     )
+    language: Literal["en", "cs"] = Field(
+        default="en",
+        description="UI language the example project's text is seeded in",
+    )
 
 
 class ResendVerificationRequest(BaseModel):

@@ -9,6 +9,7 @@ from api.schemas.auth import (
     RegisterRequest,
     ResetPasswordRequest,
     UpdateUserRequest,
+    VerifyEmailRequest,
     validate_name_format,
     validate_password_strength,
 )
@@ -425,3 +426,29 @@ class TestCredentialFieldsStayOutOfRepr:
 
         # THEN
         assert "a-long-lived-refresh-token" not in rendered
+
+
+class TestVerifyEmailRequestLanguage:
+    """The UI language the activation carries, which the example is seeded in."""
+
+    def test_defaults_to_english(self):
+        """A client that sends no language still activates."""
+        # GIVEN / WHEN
+        request = VerifyEmailRequest(token="t", password="p")
+
+        # THEN
+        assert request.language == "en"
+
+    def test_accepts_czech(self):
+        """cs is the other language the content is authored in."""
+        # GIVEN / WHEN
+        request = VerifyEmailRequest(token="t", password="p", language="cs")
+
+        # THEN
+        assert request.language == "cs"
+
+    def test_rejects_an_unsupported_language(self):
+        """An unknown code is a client bug, not something to silently accept."""
+        # GIVEN / WHEN / THEN
+        with pytest.raises(ValidationError):
+            VerifyEmailRequest(token="t", password="p", language="de")

@@ -25,6 +25,7 @@ from api.services.email.console_email_sender import ConsoleEmailSender
 from api.services.email.resend_email_sender import ResendEmailSender
 from api.services.email_policy import EmailAddressPolicy
 from api.services.email_verification_service import EmailVerificationService
+from api.services.example_project_service import ExampleProjectService
 from api.services.export.result_export_service import ResultExportService
 from api.services.invitation_service import InvitationService
 from api.services.opinion_service import OpinionService
@@ -96,6 +97,13 @@ def get_calculation_service(
 ) -> CalculationService:
     """Create CalculationService instance."""
     return CalculationService(session)
+
+
+def get_example_project_service(
+    session: Annotated[Session, Depends(get_session)],
+) -> ExampleProjectService:
+    """Create ExampleProjectService instance."""
+    return ExampleProjectService(session)
 
 
 def get_data_export_service(
