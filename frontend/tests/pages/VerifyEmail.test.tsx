@@ -10,7 +10,8 @@ const mockVerifyEmail = vi.fn();
 const mockResendVerification = vi.fn();
 vi.mock('@/lib/api', () => ({
   api: {
-    verifyEmail: (token: string, password: string) => mockVerifyEmail(token, password),
+    verifyEmail: (token: string, password: string, language: string) =>
+      mockVerifyEmail(token, password, language),
     resendVerification: (email: string, password: string) =>
       mockResendVerification(email, password),
   },
@@ -116,7 +117,7 @@ describe('VerifyEmail', () => {
     await user.click(getSubmitButton());
 
     await waitFor(() => {
-      expect(mockVerifyEmail).toHaveBeenCalledWith(VALID_TOKEN, 'CorrectHorse123!');
+      expect(mockVerifyEmail).toHaveBeenCalledWith(VALID_TOKEN, 'CorrectHorse123!', 'en');
     });
     await waitFor(() => {
       expect(mockNavigate).toHaveBeenCalledWith('/login');
@@ -124,6 +125,18 @@ describe('VerifyEmail', () => {
     expect(mockToast).toHaveBeenCalledWith(
       expect.objectContaining({ title: expect.any(String) })
     );
+  });
+
+  it('sends the active UI language so the example project is seeded in it', async () => {
+    const user = userEvent.setup();
+    renderAt();
+
+    await user.type(getPasswordInput(), 'CorrectHorse123!');
+    await user.click(getSubmitButton());
+
+    await waitFor(() => {
+      expect(mockVerifyEmail).toHaveBeenCalledWith(VALID_TOKEN, 'CorrectHorse123!', 'en');
+    });
   });
 
   it('keeps the form and token in place on a 403 (wrong password), without navigating away', async () => {

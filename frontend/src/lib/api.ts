@@ -377,10 +377,10 @@ class ApiClient {
     });
   }
 
-  async verifyEmail(token: string, password: string): Promise<void> {
+  async verifyEmail(token: string, password: string, language: string): Promise<void> {
     return this.request<void>('/auth/verify-email', {
       method: 'POST',
-      body: JSON.stringify({ token, password }),
+      body: JSON.stringify({ token, password, language }),
     });
   }
 

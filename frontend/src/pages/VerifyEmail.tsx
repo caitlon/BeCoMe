@@ -25,7 +25,7 @@ type VerifyEmailFormData = {
 type VerifyFailure = "wrongPassword" | "invalidLink" | "lockedOut";
 
 const VerifyEmail = () => {
-  const { t } = useTranslation("auth");
+  const { t, i18n } = useTranslation("auth");
   const { t: tCommon } = useTranslation();
   useDocumentTitle(tCommon("pageTitle.verifyEmail"));
 
@@ -61,7 +61,7 @@ const VerifyEmail = () => {
     setIsLoading(true);
     setFailure(null);
     try {
-      await api.verifyEmail(token, data.password);
+      await api.verifyEmail(token, data.password, i18n.language.slice(0, 2));
       toast({
         title: t("verifyEmail.successTitle"),
         description: t("verifyEmail.successMessage"),
