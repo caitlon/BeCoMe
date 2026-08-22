@@ -9,7 +9,10 @@ from unittest.mock import patch
 
 from sqlmodel import col, select
 
-from api.db.models import Project
+from api.db.models import CalculationResult, ExpertOpinion, Project, User
+
+# Matches the fixed address the ``pending_account`` fixture registers.
+_PENDING_EMAIL = "pending@example.com"
 
 
 class TestActivationSeedsTheExample:
@@ -51,7 +54,7 @@ class TestSeedFailureIsContained:
     """The promise that demo content cannot lock anyone out."""
 
     def test_activation_succeeds_when_seeding_raises(self, client, session, pending_account):
-        """The account is verified and no example project is left half-written."""
+        """The account is verified and usable, and no example project is half-written."""
         # GIVEN
         token, password = pending_account
 
@@ -64,8 +67,55 @@ class TestSeedFailureIsContained:
                 "/api/v1/auth/verify-email",
                 json={"token": token, "password": password},
             )
+        user = session.exec(select(User).where(User.email == _PENDING_EMAIL)).first()
+        assert user is not None, "the pending account itself must still exist"
+        login_response = client.post(
+            "/api/v1/auth/login",
+            data={"username": _PENDING_EMAIL, "password": password},
+        )
         projects = session.exec(select(Project)).all()
 
         # THEN
         assert response.status_code == 200
+        assert user.email_verified_at is not None
+        assert login_response.status_code == 200
         assert projects == []
+
+    def test_activation_succeeds_when_recalculation_raises(self, client, session, pending_account):
+        """A crash after seed_for's own commit leaves a self-healing partial write.
+
+        recalculate runs once the project, its memberships, and all 13 opinions are
+        already committed, so this is a different failure shape than one inside
+        seed_for itself: the project is real and usable, only its cached result is
+        missing. GET /projects/{id}/result already serves None for that state, and
+        POST /opinions recalculates unconditionally, so the owner's own first opinion
+        repairs it without anyone having to notice.
+        """
+        # GIVEN
+        token, password = pending_account
+
+        # WHEN
+        with patch(
+            "api.services.calculation_service.CalculationService.recalculate",
+            side_effect=RuntimeError("recalculation is broken"),
+        ):
+            response = client.post(
+                "/api/v1/auth/verify-email",
+                json={"token": token, "password": password},
+            )
+        user = session.exec(select(User).where(User.email == _PENDING_EMAIL)).first()
+        assert user is not None, "the pending account itself must still exist"
+        project = session.exec(select(Project).where(col(Project.is_example).is_(True))).first()
+        assert project is not None, "the project must survive a post-commit failure"
+        opinions = session.exec(
+            select(ExpertOpinion).where(ExpertOpinion.project_id == project.id)
+        ).all()
+        results = session.exec(
+            select(CalculationResult).where(CalculationResult.project_id == project.id)
+        ).all()
+
+        # THEN
+        assert response.status_code == 200
+        assert user.email_verified_at is not None
+        assert len(opinions) == 13
+        assert results == []
