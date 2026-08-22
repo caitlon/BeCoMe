@@ -15,6 +15,8 @@ from alembic.config import Config
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.exc import IntegrityError
 
+from api.data.example_project import EXAMPLE_EXPERTS
+
 pytestmark = pytest.mark.skipif(
     not shutil.which("pg_ctl"),
     reason="PostgreSQL not installed (pg_ctl not found in PATH)",
@@ -248,5 +250,61 @@ class TestEmailVerificationCredentialsMigration:
                         "now": datetime(2026, 1, 1, tzinfo=UTC),
                     },
                 )
+        finally:
+            engine.dispose()
+
+
+class TestExampleProjectSupportMigration:
+    """The migration adding is_example, is_demo and the demo expert pool."""
+
+    def test_upgrade_creates_the_pool_and_downgrade_removes_it(self, migration_pg, monkeypatch):
+        """The pool lands already verified, and the migration reverses cleanly."""
+        # GIVEN - a clean database with Alembic aimed at it
+        url = _url(migration_pg)
+        monkeypatch.setenv("ALEMBIC_DATABASE_URL", url)
+        config = Config("alembic.ini")
+        engine = create_engine(url)
+
+        try:
+            # WHEN - migrated up to this migration, pinned to its own revision id so
+            # a later migration landing on top cannot silently change what is tested
+            command.upgrade(config, "c4e81f7a9d23")
+
+            # THEN - every demo account exists, and none of them is claimable through
+            # the registration branch that treats an unverified address as pending
+            with engine.connect() as conn:
+                rows = conn.execute(
+                    text(
+                        "SELECT email, email_verified_at FROM users "
+                        "WHERE is_demo = true ORDER BY email"
+                    )
+                ).all()
+            assert len(rows) == len(EXAMPLE_EXPERTS)
+            assert all(row.email_verified_at is not None for row in rows)
+            assert {row.email for row in rows} == {e.email for e in EXAMPLE_EXPERTS}
+
+            # AND - both flags exist as columns
+            inspector = inspect(engine)
+            assert "is_demo" in {c["name"] for c in inspector.get_columns("users")}
+            assert "is_example" in {c["name"] for c in inspector.get_columns("projects")}
+
+            # WHEN - rolled back to its own down_revision (pinned, not "-1")
+            command.downgrade(config, "5b9977c1b5c1")
+
+            # THEN - both columns are gone (downgrade works)
+            inspector = inspect(engine)
+            assert "is_demo" not in {c["name"] for c in inspector.get_columns("users")}
+            assert "is_example" not in {c["name"] for c in inspector.get_columns("projects")}
+
+            # WHEN - re-applied (reversibility holds; the downgrade deleted the pool,
+            # so the insert cannot collide with a leftover row)
+            command.upgrade(config, "c4e81f7a9d23")
+
+            # THEN
+            with engine.connect() as conn:
+                count = conn.execute(
+                    text("SELECT count(*) FROM users WHERE is_demo = true")
+                ).scalar()
+            assert count == len(EXAMPLE_EXPERTS)
         finally:
             engine.dispose()
