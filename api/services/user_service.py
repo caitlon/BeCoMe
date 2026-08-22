@@ -3,12 +3,13 @@
 import logging
 from uuid import UUID
 
-from sqlmodel import Session, select
+from sqlmodel import Session
 
 from api.auth.password import hash_password, verify_password
 from api.db.models import User
 from api.exceptions import InvalidCredentialsError, UserExistsError
 from api.services.base import BaseService
+from api.services.query_helpers import select_account_by_email
 from api.services.user_cache import UserCacheStore
 
 logger = logging.getLogger("api.service.user")
@@ -81,8 +82,7 @@ class UserService(BaseService):
         :param email: Email to search for (case-insensitive)
         :return: User if found, None otherwise
         """
-        statement = select(User).where(User.email == email.lower())
-        return self._session.exec(statement).first()
+        return self._session.exec(select_account_by_email(email)).first()
 
     def get_by_id(self, user_id: UUID) -> User | None:
         """Find user by ID.
