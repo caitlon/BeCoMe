@@ -667,7 +667,18 @@ again:
 ```
 
 Run it before risky migrations and on a regular cadence. The dumps stay out of the repo
-(`backups/` is gitignored -- they contain user data). Restore into any database with:
+(`backups/` is gitignored -- they contain user data).
+
+**That proxy is public while it is up.** Railway's TCP proxy exposes the database on an
+internet-reachable host and port, so for the length of the dump the only thing between the
+production database and the internet is the `become_app` password -- the private-network
+isolation described under "Network exposure" is not in force. The script removes the proxy
+on every exit path, including failure, but a killed terminal or a crashed shell can still
+leave one behind. Two habits follow: run it attended rather than from a cron, and if it
+ever exits abnormally, check the service's TCP proxies in the Railway dashboard and delete
+any that are still there.
+
+Restore into any database with:
 
 ```bash
 pg_restore --no-owner --no-privileges -d <target-url> backups/<dump>

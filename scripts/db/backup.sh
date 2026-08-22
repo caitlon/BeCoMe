@@ -38,10 +38,21 @@ api() {  # $1 = query/mutation string; $2 = variables JSON object (default {})
 }
 
 # Always clean up: remove the temporary proxy (if opened) and the stderr scratch file.
+# The proxy is PUBLIC while it is up -- for its lifetime the only thing between the
+# database and the internet is the role password -- so a failed teardown must be loud
+# rather than swallowed. The old form chained the delete with && and printed nothing when
+# it failed, which looked exactly like the case where no proxy was ever opened.
 ERRFILE=$(mktemp)
 PROXY_ID=""
 cleanup() {
-  [ -n "$PROXY_ID" ] && api 'mutation($id:String!){tcpProxyDelete(id:$id)}' "$(jq -n --arg id "$PROXY_ID" '{id:$id}')" >/dev/null && echo "temporary proxy removed"
+  if [ -n "$PROXY_ID" ]; then
+    if api 'mutation($id:String!){tcpProxyDelete(id:$id)}' "$(jq -n --arg id "$PROXY_ID" '{id:$id}')" >/dev/null; then
+      echo "temporary proxy removed"
+    else
+      echo "WARNING: could not remove the temporary proxy ($PROXY_ID)." >&2
+      echo "It is PUBLIC. Delete it in the Railway dashboard: $DB_SVC -> Settings -> TCP Proxy." >&2
+    fi
+  fi
   rm -f "$ERRFILE"
 }
 trap cleanup EXIT
