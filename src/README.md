@@ -80,9 +80,7 @@ opinions_sorted = sorted([opinion1, opinion2, opinion3])  # by centroid
 from src.models.become_result import BeCoMeResult
 
 result = BeCoMeResult.from_calculations(
-    arithmetic_mean=mean_fuzzy,
-    median=median_fuzzy,
-    num_experts=22
+    arithmetic_mean=mean_fuzzy, median=median_fuzzy, num_experts=22
 )
 print(result.best_compromise)
 print(result.max_error)
@@ -118,7 +116,7 @@ calculator = BeCoMeCalculator()
 opinions = [
     ExpertOpinion("E1", FuzzyTriangleNumber(10, 15, 20)),
     ExpertOpinion("E2", FuzzyTriangleNumber(12, 18, 24)),
-    ExpertOpinion("E3", FuzzyTriangleNumber(8, 13, 18))
+    ExpertOpinion("E3", FuzzyTriangleNumber(8, 13, 18)),
 ]
 result = calculator.calculate_compromise(opinions)
 ```
@@ -134,8 +132,8 @@ from src.interpreters.likert_interpreter import LikertDecisionInterpreter
 
 interpreter = LikertDecisionInterpreter()
 decision = interpreter.interpret(result.best_compromise)
-print(decision.likert_value)      # 75
-print(decision.decision_text)     # "Rather agree"
+print(decision.likert_value)  # 75
+print(decision.decision_text)  # "Rather agree"
 ```
 
 ### Exception Hierarchy (`exceptions.py`)

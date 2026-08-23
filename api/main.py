@@ -130,7 +130,7 @@ def create_app() -> FastAPI:
         max_age=600,  # Cache preflight requests for 10 minutes
     )
 
-    # CSRF double-submit check for cookie-authenticated mutations (no-op for Bearer clients).
+    # Session-bound CSRF check for cookie-authenticated mutations (no-op for Bearer clients).
     app.add_middleware(CSRFMiddleware)
 
     # Request/response logging with correlation IDs.

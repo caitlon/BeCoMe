@@ -18,7 +18,12 @@ export default defineConfig({
     },
   },
   use: {
-    baseURL: 'http://localhost:8080',
+    // HTTPS, because the session cookies carry the __Host- prefix and browsers only
+    // honour it on a Secure cookie -- WebKit will not even store one over plain
+    // http://localhost. The certificate is self-signed and regenerated on demand
+    // (scripts/e2e-cert.mjs), so the error it raises is expected and ignored here.
+    baseURL: 'https://localhost:8080',
+    ignoreHTTPSErrors: true,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
   },
@@ -50,8 +55,11 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'npm run dev',
-    url: 'http://localhost:8080',
+    // dev:e2e mints the certificate first; plain `dev` would come up on HTTP and every
+    // authenticated test would fail on a cookie the browser refused to store.
+    command: 'npm run dev:e2e',
+    url: 'https://localhost:8080',
+    ignoreHTTPSErrors: true,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
   },

@@ -26,15 +26,22 @@ def _request(
     return request
 
 
-def _with_secret(secret: str) -> object:
-    """Patch get_settings so cloudflare_origin_secret returns ``secret``."""
+def _with_secret(secret: str, *, is_deploy: bool = False) -> object:
+    """Patch get_settings with a given origin secret and deployment state.
+
+    :param secret: Value for ``cloudflare_origin_secret``.
+    :param is_deploy: Whether the process counts as a deployed service; the default
+        models a laptop, where the transport peer really is the client.
+    :return: The active patch context manager.
+    """
     settings = MagicMock()
     settings.cloudflare_origin_secret = secret
+    settings.is_deploy = is_deploy
     return patch("api.utils.client_ip.get_settings", return_value=settings)
 
 
-class TestNoOriginSecret:
-    """Without a Cloudflare secret (local dev only), key off the direct peer.
+class TestNoOriginSecretLocally:
+    """Without a Cloudflare secret and off a deploy, key off the direct peer.
 
     Client-supplied forwarding headers are untrusted here -- X-Forwarded-For and
     CF-Connecting-IP are ignored -- because deployed profiles must set the secret,
@@ -70,6 +77,28 @@ class TestNoOriginSecret:
         """GIVEN no secret, no headers, no client WHEN extracting THEN it is 'unknown'."""
         with _with_secret(""):
             assert get_client_ip(_request()) == "unknown"
+
+
+class TestNoOriginSecretOnDeploy:
+    """A deployed service without the secret keys everything under one constant.
+
+    The startup invariants refuse to boot such a deploy, so this is a backstop: the
+    app sits behind a proxy chain it cannot authenticate, and uvicorn runs with
+    ``--forwarded-allow-ips='*'``, so ``request.client.host`` is only ever as
+    trustworthy as whatever wrote ``X-Forwarded-For``.
+    """
+
+    def test_peer_is_not_trusted(self):
+        """GIVEN a deploy with no secret WHEN extracting THEN the sentinel is used."""
+        with _with_secret("", is_deploy=True):
+            request = _request({"X-Forwarded-For": "203.0.113.50"}, client_host="203.0.113.50")
+            assert get_client_ip(request) == "unverified-origin"
+
+    def test_cf_connecting_ip_is_not_trusted(self):
+        """GIVEN a deploy with no secret WHEN only the CF header is set THEN it is unused."""
+        with _with_secret("", is_deploy=True):
+            request = _request({"CF-Connecting-IP": "9.9.9.9"}, client_host="10.0.0.9")
+            assert get_client_ip(request) == "unverified-origin"
 
 
 class TestOriginSecretConfigured:
