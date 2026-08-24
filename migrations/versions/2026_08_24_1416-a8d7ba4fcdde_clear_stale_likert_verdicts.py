@@ -30,22 +30,22 @@ def upgrade() -> None:
     may never get that recalculation, since its owner's opinion is deliberately left
     unseeded.
 
-    The WHERE clause below negates ``_is_likert_scale`` in full rather than naming
-    only the 0-100-with-a-unit rows. A project outside the 0-100 range never received
-    a verdict in the first place, so both filters touch the same rows today. The full
-    negation is used anyway, because it also clears anything odd that predates the
-    current logic instead of assuming today's data is the only shape that exists.
-    ``TRIM`` is applied to ``scale_unit`` because ``_is_likert_scale`` treats a
-    whitespace-only unit as empty too.
+    The inner WHERE clause below negates ``_is_likert_scale`` in full rather than
+    naming only the 0-100-with-a-unit rows. A project outside the 0-100 range never
+    received a verdict in the first place, so both filters touch the same rows
+    today. The full negation is used anyway, because it also clears anything odd
+    that predates the current logic instead of assuming today's data is the only
+    shape that exists. ``TRIM`` is applied to ``scale_unit`` because
+    ``_is_likert_scale`` treats a whitespace-only unit as empty too.
     """
     op.execute(
         sa.text(
             "UPDATE calculation_results SET likert_value = NULL, likert_decision = NULL "
-            "FROM projects "
-            "WHERE projects.id = calculation_results.project_id "
-            "AND NOT ("
-            "projects.scale_min = 0 AND projects.scale_max = 100 "
-            "AND TRIM(projects.scale_unit) = ''"
+            "WHERE project_id IN ("
+            "SELECT id FROM projects "
+            "WHERE NOT ("
+            "scale_min = 0 AND scale_max = 100 AND TRIM(scale_unit) = ''"
+            ")"
             ")"
         )
     )
