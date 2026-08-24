@@ -12,6 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
 import { describeError } from "@/lib/errorMessages";
 import { ForbiddenError, HttpError, isRateLimited } from "@/lib/errors";
+import { toSupportedLanguage } from "@/i18n";
 
 type VerifyEmailFormData = {
   password: string;
@@ -61,13 +62,11 @@ const VerifyEmail = () => {
     setIsLoading(true);
     setFailure(null);
     try {
-      // i18next has no supportedLngs allowlist, so i18n.language can be any
-      // browser-reported locale (e.g. "de-DE"), not just one we have
-      // resources for. The backend only accepts "en" or "cs"
-      // (Literal["en", "cs"]), so this clamps to those two instead of
-      // forwarding a raw slice that a third language would fail on. Same
-      // clamp as ResultExportMenu's handleExport.
-      const language = i18n.language.startsWith("cs") ? "cs" : "en";
+      // i18n.language can still carry a region ("cs-CZ") or point at a language
+      // resources exist for on the wire but not in api/schemas' Literal["en",
+      // "cs"]. toSupportedLanguage is the shared clamp; see its doc comment for
+      // why init's supportedLngs alone does not remove the need for it.
+      const language = toSupportedLanguage(i18n.language);
       await api.verifyEmail(token, data.password, language);
       toast({
         title: t("verifyEmail.successTitle"),
