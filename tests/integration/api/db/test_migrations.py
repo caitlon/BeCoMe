@@ -588,3 +588,185 @@ class TestExampleProjectSupportMigration:
             assert count == len(EXAMPLE_EXPERTS)
         finally:
             engine.dispose()
+
+
+class TestClearStaleLikertVerdictsMigration:
+    """The migration clearing likert_value/likert_decision for non-Likert projects.
+
+    ``_is_likert_scale`` was fixed in a prior commit to require an empty
+    ``scale_unit`` in addition to the 0-100 range. This migration is the one-time
+    cleanup for rows a ``recalculate`` wrote before that fix existed.
+    """
+
+    def test_upgrade_clears_verdict_only_where_the_new_rule_disagrees(
+        self, migration_pg, monkeypatch
+    ):
+        """A stored verdict is cleared for exactly the rows the new rule rejects.
+
+        Three projects cover the three shapes ``_is_likert_scale`` distinguishes: a
+        0-100 scale with a non-empty unit, where a verdict was stored under the old
+        rule and must now be cleared; a 0-100 scale with an empty unit, a genuine
+        Likert project whose verdict must survive; and a scale outside 0-100, which
+        never received a verdict under either rule and whose NULL row must survive
+        untouched.
+        """
+        # GIVEN - a database migrated up to the revision just before this one
+        url = _url(migration_pg)
+        monkeypatch.setenv("ALEMBIC_DATABASE_URL", url)
+        config = Config("alembic.ini")
+        engine = create_engine(url)
+
+        try:
+            command.upgrade(config, "c4e81f7a9d23")
+
+            admin_id = uuid4()
+            percent_project_id = uuid4()
+            likert_project_id = uuid4()
+            budget_project_id = uuid4()
+            now = datetime(2026, 1, 1, tzinfo=UTC)
+
+            with engine.begin() as conn:
+                conn.execute(
+                    text(
+                        "INSERT INTO users "
+                        "(id, email, hashed_password, first_name, last_name, created_at) "
+                        "VALUES (:id, 'admin@example.com', 'hash', 'Admin', 'User', :now)"
+                    ),
+                    {"id": str(admin_id), "now": now},
+                )
+                # A flood question measured in percent and a budget question in
+                # billions of CZK, the two examples from the bug this fix closed,
+                # alongside the genuine 0-100 unitless scale they were confused with.
+                conn.execute(
+                    text(
+                        "INSERT INTO projects "
+                        "(id, name, admin_id, scale_min, scale_max, scale_unit, "
+                        "created_at, updated_at) "
+                        "VALUES "
+                        "(:percent_id, 'Flood extent', :admin_id, 0, 100, '%', :now, :now), "
+                        "(:likert_id, 'Agreement scale', :admin_id, 0, 100, '', :now, :now), "
+                        "(:budget_id, 'Reservoir budget', :admin_id, 0, 500, 'CZK bn', "
+                        ":now, :now)"
+                    ),
+                    {
+                        "percent_id": str(percent_project_id),
+                        "likert_id": str(likert_project_id),
+                        "budget_id": str(budget_project_id),
+                        "admin_id": str(admin_id),
+                        "now": now,
+                    },
+                )
+                # The percent and likert projects each carry a stored verdict, as
+                # the old, unit-blind rule would have written for both. The budget
+                # project's row has none, since even the old rule required the
+                # 0-100 range and 500 never qualified.
+                conn.execute(
+                    text(
+                        "INSERT INTO calculation_results "
+                        "(id, project_id, best_compromise_lower, best_compromise_peak, "
+                        "best_compromise_upper, arithmetic_mean_lower, arithmetic_mean_peak, "
+                        "arithmetic_mean_upper, median_lower, median_peak, median_upper, "
+                        "max_error, num_experts, likert_value, likert_decision, calculated_at) "
+                        "VALUES "
+                        "(:id1, :percent_id, 30, 50, 70, 30, 50, 70, 30, 50, 70, 5, 3, "
+                        "75, 'Agree', :now), "
+                        "(:id2, :likert_id, 30, 50, 70, 30, 50, 70, 30, 50, 70, 5, 3, "
+                        "75, 'Agree', :now), "
+                        "(:id3, :budget_id, 30, 50, 70, 30, 50, 70, 30, 50, 70, 5, 3, "
+                        "NULL, NULL, :now)"
+                    ),
+                    {
+                        "id1": str(uuid4()),
+                        "id2": str(uuid4()),
+                        "id3": str(uuid4()),
+                        "percent_id": str(percent_project_id),
+                        "likert_id": str(likert_project_id),
+                        "budget_id": str(budget_project_id),
+                        "now": now,
+                    },
+                )
+
+            # WHEN - this migration is applied. Pinned to its own revision id rather
+            # than "head" for the same reason as the migrations above: a later
+            # migration landing on top would otherwise silently change what this
+            # test exercises.
+            command.upgrade(config, "a8d7ba4fcdde")
+
+            # THEN - the percent-scale project's stale verdict is cleared
+            with engine.connect() as conn:
+                percent_row = conn.execute(
+                    text(
+                        "SELECT likert_value, likert_decision FROM calculation_results "
+                        "WHERE project_id = :id"
+                    ),
+                    {"id": str(percent_project_id)},
+                ).one()
+            assert percent_row.likert_value is None
+            assert percent_row.likert_decision is None
+
+            # AND - the genuine Likert project's verdict survives untouched
+            with engine.connect() as conn:
+                likert_row = conn.execute(
+                    text(
+                        "SELECT likert_value, likert_decision FROM calculation_results "
+                        "WHERE project_id = :id"
+                    ),
+                    {"id": str(likert_project_id)},
+                ).one()
+            assert likert_row.likert_value == 75
+            assert likert_row.likert_decision == "Agree"
+
+            # AND - the out-of-range project's row, which never had a verdict, is
+            # left alone rather than erroring or acquiring one
+            with engine.connect() as conn:
+                budget_row = conn.execute(
+                    text(
+                        "SELECT likert_value, likert_decision FROM calculation_results "
+                        "WHERE project_id = :id"
+                    ),
+                    {"id": str(budget_project_id)},
+                ).one()
+            assert budget_row.likert_value is None
+            assert budget_row.likert_decision is None
+
+            # WHEN - rolled back to its own down_revision (pinned, not "-1"). The
+            # downgrade is a documented no-op: the verdict this migration clears is
+            # derived data that was never stored anywhere to restore it from.
+            command.downgrade(config, "c4e81f7a9d23")
+
+            # THEN - nothing about the data changed; the downgrade did nothing
+            with engine.connect() as conn:
+                percent_row = conn.execute(
+                    text(
+                        "SELECT likert_value, likert_decision FROM calculation_results "
+                        "WHERE project_id = :id"
+                    ),
+                    {"id": str(percent_project_id)},
+                ).one()
+                likert_row = conn.execute(
+                    text(
+                        "SELECT likert_value, likert_decision FROM calculation_results "
+                        "WHERE project_id = :id"
+                    ),
+                    {"id": str(likert_project_id)},
+                ).one()
+            assert percent_row.likert_value is None
+            assert likert_row.likert_value == 75
+
+            # WHEN - re-applied (idempotent: clearing an already-cleared row and
+            # leaving an untouched one alone both repeat cleanly)
+            command.upgrade(config, "a8d7ba4fcdde")
+
+            # THEN
+            with engine.connect() as conn:
+                likert_row = conn.execute(
+                    text(
+                        "SELECT likert_value, likert_decision FROM calculation_results "
+                        "WHERE project_id = :id"
+                    ),
+                    {"id": str(likert_project_id)},
+                ).one()
+            assert likert_row.likert_value == 75
+            assert likert_row.likert_decision == "Agree"
+        finally:
+            engine.dispose()
