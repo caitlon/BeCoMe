@@ -146,27 +146,31 @@ def downgrade() -> None:
     """Downgrade schema.
 
     An example project is seeded into a real account and is editable like any other
-    project from then on: its owner may have added their own opinion, or invited real
-    colleagues, whose ``ExpertOpinion`` and ``ProjectMember`` rows sit behind CASCADE
-    foreign keys and would be destroyed along with the project if it were deleted
-    outright. So an example project is deleted here only once no real person has
-    touched it at all, whether by joining it or by contributing an opinion to it.
-    Membership alone is not enough to decide that: a solo admin who opened the
-    example, added their own opinion, and invited nobody -- exactly what the feature
-    invites someone to do first -- has invited no other member, and a check that
-    stopped at membership would still delete that opinion out from under them. An
-    example project a real person touched either way is left in place -- once
-    ``is_example`` is dropped below, it becomes an ordinary project, which is the
-    honest outcome, since by then it *is* real work.
+    project from then on: its owner may have added their own opinion, invited real
+    colleagues, or have a colleague still deciding whether to accept. ``ExpertOpinion``,
+    ``ProjectMember``, and ``Invitation`` rows all sit behind CASCADE foreign keys and
+    would be destroyed along with the project if it were deleted outright. So an example
+    project is deleted here only once no real person has touched it at all: joined it,
+    contributed an opinion to it, or been invited and not yet answered. Membership alone
+    is not enough to decide that: a solo admin who opened the example, added their own
+    opinion, and invited nobody -- exactly what the feature invites someone to do first
+    -- has invited no other member, and a check that stopped at membership would still
+    delete that opinion out from under them. Likewise, an invitation that has not yet
+    been accepted or declined leaves neither a membership nor an opinion behind, so it
+    needs its own check -- without it, the real colleague being invited is the one
+    real action this downgrade would silently discard. An example project a real
+    person touched any of these three ways is left in place -- once ``is_example`` is
+    dropped below, it becomes an ordinary project, which is the honest outcome, since
+    by then it *is* real work.
 
     Deleting the demo accounts still cascades their own memberships and opinions out
     of every project, spared or not, so a surviving project loses its demo content but
     keeps every real member's own contribution. A surviving project that loses every
-    one of its opinions this way -- spared only by a membership, never by an opinion of
-    its own -- is left with a stored result describing experts who no longer have one,
-    so any such result is discarded too: recomputing it is the application's job, not
-    this migration's, and the read path already treats a missing result as a normal
-    state.
+    one of its opinions this way -- spared only by a membership or an invitation, never
+    by an opinion of its own -- is left with a stored result describing experts who no
+    longer have one, so any such result is discarded too: recomputing it is the
+    application's job, not this migration's, and the read path already treats a
+    missing result as a normal state.
     """
     op.execute(
         sa.text(
@@ -176,6 +180,9 @@ def downgrade() -> None:
             ") AND NOT EXISTS ("
             "SELECT 1 FROM expert_opinions eo JOIN users u ON u.id = eo.user_id "
             "WHERE eo.project_id = p.id AND u.is_demo = false"
+            ") AND NOT EXISTS ("
+            "SELECT 1 FROM invitations inv JOIN users u ON u.id = inv.invitee_id "
+            "WHERE inv.project_id = p.id AND u.is_demo = false"
             ")"
         )
     )

@@ -265,11 +265,12 @@ class TestExampleProjectSupportMigration:
         deleted, an unrelated ordinary project is unaffected, an example project a
         real colleague was invited into survives because the CASCADE foreign keys
         behind it would otherwise take that colleague's own membership down along
-        with the demo data, and -- the property that matters most, since it is the
-        one the feature invites -- an example project whose only member is the
-        admin survives once that admin has authored their own opinion in it: a
+        with the demo data, an example project whose only member is the admin
+        survives once that admin has authored their own opinion in it (a
         contribution, not just a membership, has to spare the project from the
-        same CASCADE. It also covers what the deletion leaves behind: a surviving
+        same CASCADE), and an example project with an outstanding invitation to a
+        real colleague survives even though that colleague has neither joined nor
+        opined yet. It also covers what the deletion leaves behind: a surviving
         project whose only opinions were the demo pool's own is left with a stored
         result describing experts who no longer have one, and that stale result
         must not survive even though the project does.
@@ -307,16 +308,19 @@ class TestExampleProjectSupportMigration:
             assert "is_demo" in {c["name"] for c in inspector.get_columns("users")}
             assert "is_example" in {c["name"] for c in inspector.get_columns("projects")}
 
-            # GIVEN - a real account with four projects: one untouched example
+            # GIVEN - a real account with five projects: one untouched example
             # project, one ordinary project, one example project a real colleague
-            # was invited into, and one example project the admin never invited
-            # anyone into but did add their own opinion to
+            # was invited into, one example project the admin never invited anyone
+            # into but did add their own opinion to, and one example project with
+            # an outstanding invitation nobody has answered yet
             real_admin_id = uuid4()
             real_colleague_id = uuid4()
+            pending_invitee_id = uuid4()
             untouched_example_id = uuid4()
             ordinary_project_id = uuid4()
             touched_example_id = uuid4()
             admin_authored_example_id = uuid4()
+            pending_invitation_example_id = uuid4()
             demo_expert_id = EXAMPLE_EXPERTS[0].user_id
             created_at = datetime(2026, 1, 1, tzinfo=UTC)
             with engine.begin() as conn:
@@ -327,11 +331,14 @@ class TestExampleProjectSupportMigration:
                         "VALUES "
                         "(:admin_id, 'real.admin@example.com', 'hash', 'Real', 'Admin', :now), "
                         "(:colleague_id, 'real.colleague@example.com', 'hash', 'Real', "
-                        "'Colleague', :now)"
+                        "'Colleague', :now), "
+                        "(:invitee_id, 'pending.invitee@example.com', 'hash', 'Pending', "
+                        "'Invitee', :now)"
                     ),
                     {
                         "admin_id": str(real_admin_id),
                         "colleague_id": str(real_colleague_id),
+                        "invitee_id": str(pending_invitee_id),
                         "now": created_at,
                     },
                 )
@@ -348,6 +355,8 @@ class TestExampleProjectSupportMigration:
                         "(:touched_id, 'Touched example', :admin_id, 0, 100, '', "
                         ":now, :now, true), "
                         "(:authored_id, 'Admin-authored example', :admin_id, 0, 100, '', "
+                        ":now, :now, true), "
+                        "(:pending_id, 'Pending-invitation example', :admin_id, 0, 100, '', "
                         ":now, :now, true)"
                     ),
                     {
@@ -355,6 +364,7 @@ class TestExampleProjectSupportMigration:
                         "ordinary_id": str(ordinary_project_id),
                         "touched_id": str(touched_example_id),
                         "authored_id": str(admin_authored_example_id),
+                        "pending_id": str(pending_invitation_example_id),
                         "admin_id": str(real_admin_id),
                         "now": created_at,
                     },
@@ -386,6 +396,23 @@ class TestExampleProjectSupportMigration:
                         "id": str(uuid4()),
                         "project_id": str(admin_authored_example_id),
                         "user_id": str(real_admin_id),
+                        "now": created_at,
+                    },
+                )
+                # An invitation the colleague has neither accepted nor declined --
+                # the one real action that leaves no project_members and no
+                # expert_opinions row behind, so it needs its own survival check.
+                conn.execute(
+                    text(
+                        "INSERT INTO invitations "
+                        "(id, project_id, invitee_id, inviter_id, created_at) "
+                        "VALUES (:id, :project_id, :invitee_id, :inviter_id, :now)"
+                    ),
+                    {
+                        "id": str(uuid4()),
+                        "project_id": str(pending_invitation_example_id),
+                        "invitee_id": str(pending_invitee_id),
+                        "inviter_id": str(real_admin_id),
                         "now": created_at,
                     },
                 )
@@ -498,6 +525,30 @@ class TestExampleProjectSupportMigration:
                         {
                             "project_id": str(admin_authored_example_id),
                             "user_id": str(real_admin_id),
+                        },
+                    ).scalar()
+                    == 1
+                )
+                # AND - the project with an outstanding invitation survives too: the
+                # colleague has neither joined nor opined, so membership and opinion
+                # alone would have missed this case and deleted the project, taking
+                # the invitation down with it via CASCADE.
+                assert (
+                    conn.execute(
+                        text("SELECT 1 FROM projects WHERE id = :id"),
+                        {"id": str(pending_invitation_example_id)},
+                    ).scalar()
+                    == 1
+                )
+                assert (
+                    conn.execute(
+                        text(
+                            "SELECT 1 FROM invitations "
+                            "WHERE project_id = :project_id AND invitee_id = :invitee_id"
+                        ),
+                        {
+                            "project_id": str(pending_invitation_example_id),
+                            "invitee_id": str(pending_invitee_id),
                         },
                     ).scalar()
                     == 1
