@@ -272,7 +272,13 @@ def delete_current_user(
             raise InvalidProjectDispositionError(
                 "A transfer must name another member as the new admin."
             )
-        elif not membership_service.is_member(d.project_id, d.new_admin_id):
+        elif not membership_service.is_member(
+            d.project_id, d.new_admin_id
+        ) or membership_service.is_demo_account(d.new_admin_id):
+            # A demo account passes is_member (it is seeded into every example project),
+            # so it needs its own check here rather than being caught by the branch
+            # above -- treated the same as a non-member, for the same reason
+            # ProjectService.transfer_ownership refuses one.
             raise InvalidProjectDispositionError("The new admin must be a member of the project.")
         else:
             transfers.append((owned_by_id[d.project_id], d.new_admin_id))

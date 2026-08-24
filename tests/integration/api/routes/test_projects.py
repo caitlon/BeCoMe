@@ -1,14 +1,19 @@
 """Tests for project management endpoints."""
 
 from unittest.mock import patch
+from uuid import UUID
 
+from api.data.example_project import EXAMPLE_EXPERTS
+from api.db.models import MemberRole, ProjectMember
 from api.services.project_membership_service import ProjectMembershipService
 from tests.integration.api.conftest import (
+    app_session,
     auth_header,
     create_project,
     register_and_login,
     submit_opinion,
 )
+from tests.shared.helpers import insert_demo_experts
 
 
 def _add_expert(client, owner_token, project_id, email):
@@ -638,6 +643,39 @@ class TestTransferOwnership:
         response = client.post(
             f"/api/v1/projects/{project['id']}/transfer-ownership",
             json={"new_admin_id": fake_id},
+            headers=auth_header(owner),
+        )
+
+        # THEN
+        assert response.status_code == 404
+
+    def test_transfer_to_demo_account_returns_404(self, client):
+        """Transferring to a demo account is refused exactly like a non-member.
+
+        A demo account seeded into an example project is an ordinary ProjectMember
+        row, so this is the case membership alone cannot catch: the target really is
+        a member, and would pass the check that rejects a stranger. It still has to
+        be refused, because it can never log in to use the ownership it was handed.
+        """
+        # GIVEN a project with a demo account as an ordinary member
+        owner = register_and_login(client, "owner@example.com")
+        project = create_project(client, owner, "Solo")
+        demo_id = EXAMPLE_EXPERTS[0].user_id
+        with app_session(client) as session:
+            insert_demo_experts(session)
+            session.add(
+                ProjectMember(
+                    project_id=UUID(project["id"]),
+                    user_id=demo_id,
+                    role=MemberRole.EXPERT,
+                )
+            )
+            session.commit()
+
+        # WHEN
+        response = client.post(
+            f"/api/v1/projects/{project['id']}/transfer-ownership",
+            json={"new_admin_id": str(demo_id)},
             headers=auth_header(owner),
         )
 

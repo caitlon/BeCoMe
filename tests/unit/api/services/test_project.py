@@ -5,7 +5,7 @@ from uuid import uuid4
 
 import pytest
 
-from api.db.models import MemberRole, Project, ProjectMember
+from api.db.models import MemberRole, Project, ProjectMember, User
 from api.exceptions import MemberNotFoundError, ProjectNotFoundError, ScaleRangeError
 from api.schemas.project import ProjectCreate, ProjectUpdate
 from api.services.base import BaseService
@@ -384,6 +384,14 @@ class TestProjectServiceTransferOwnership:
         )
         mock_session = MagicMock()
         mock_session.exec.return_value.first.side_effect = [new_membership, old_membership]
+        mock_session.get.return_value = User(
+            id=new_admin_id,
+            email="new-admin@example.com",
+            hashed_password="x",
+            first_name="New",
+            last_name="Admin",
+            is_demo=False,
+        )
         service = ProjectService(mock_session)
 
         # WHEN
@@ -406,3 +414,32 @@ class TestProjectServiceTransferOwnership:
         # WHEN / THEN
         with pytest.raises(MemberNotFoundError):
             service.transfer_ownership(project, uuid4())
+
+    def test_raises_when_new_admin_is_demo_account(self):
+        """MemberNotFoundError is raised for a demo account, same as a non-member.
+
+        A demo account seeded into an example project is an ordinary ProjectMember
+        row, so the membership lookup alone would accept it -- it must be refused
+        even though it passes that check.
+        """
+        # GIVEN a demo account that is, in fact, a project member
+        new_admin_id = uuid4()
+        project = Project(id=uuid4(), name="P", admin_id=uuid4(), scale_min=0, scale_max=100)
+        membership = ProjectMember(
+            project_id=project.id, user_id=new_admin_id, role=MemberRole.EXPERT
+        )
+        mock_session = MagicMock()
+        mock_session.exec.return_value.first.return_value = membership
+        mock_session.get.return_value = User(
+            id=new_admin_id,
+            email="demo@example.invalid",
+            hashed_password="x",
+            first_name="Demo",
+            last_name="Expert",
+            is_demo=True,
+        )
+        service = ProjectService(mock_session)
+
+        # WHEN / THEN
+        with pytest.raises(MemberNotFoundError):
+            service.transfer_ownership(project, new_admin_id)

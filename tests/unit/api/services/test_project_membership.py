@@ -172,6 +172,65 @@ class TestProjectMembershipServiceIsMember:
         assert result is False
 
 
+class TestProjectMembershipServiceIsDemoAccount:
+    """Tests for ProjectMembershipService.is_demo_account method."""
+
+    def test_returns_true_for_demo_account(self):
+        """Returns True when the account is flagged is_demo."""
+        # GIVEN
+        user_id = uuid4()
+        mock_session = MagicMock()
+        mock_session.get.return_value = User(
+            id=user_id,
+            email="demo@example.invalid",
+            hashed_password="x",
+            first_name="Demo",
+            last_name="Expert",
+            is_demo=True,
+        )
+        service = ProjectMembershipService(mock_session)
+
+        # WHEN
+        result = service.is_demo_account(user_id)
+
+        # THEN
+        assert result is True
+
+    def test_returns_false_for_a_real_account(self):
+        """Returns False for an ordinary, non-demo account."""
+        # GIVEN
+        user_id = uuid4()
+        mock_session = MagicMock()
+        mock_session.get.return_value = User(
+            id=user_id,
+            email="real@example.com",
+            hashed_password="x",
+            first_name="Real",
+            last_name="User",
+            is_demo=False,
+        )
+        service = ProjectMembershipService(mock_session)
+
+        # WHEN
+        result = service.is_demo_account(user_id)
+
+        # THEN
+        assert result is False
+
+    def test_returns_false_when_user_does_not_exist(self):
+        """Returns False rather than raising when the id matches no account."""
+        # GIVEN
+        mock_session = MagicMock()
+        mock_session.get.return_value = None
+        service = ProjectMembershipService(mock_session)
+
+        # WHEN
+        result = service.is_demo_account(uuid4())
+
+        # THEN
+        assert result is False
+
+
 class TestProjectMembershipServiceIsAdmin:
     """Tests for ProjectMembershipService.is_admin method."""
 
