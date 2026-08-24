@@ -32,20 +32,27 @@ def upgrade() -> None:
 
     The keep-or-clear decision is made in Python instead of a SQL ``WHERE`` clause.
     ``_is_likert_scale`` calls a unit empty when ``scale_unit.strip()`` is falsy, and
-    Python's ``str.strip()`` removes every whitespace character -- tabs, newlines,
-    and more -- while SQL's ``TRIM()`` with no explicit character list removes only
-    the plain space, in both PostgreSQL and SQLite. A unit holding a bare tab passes
-    the application's rule and must keep its verdict, but a ``TRIM``-based filter
-    would leave that tab in place and clear it anyway. Re-running the identical
-    Python expression here, instead of a hand-built SQL equivalent, is what keeps
-    this migration from drifting away from the rule it exists to mirror.
+    Python's ``str.strip()`` removes every character ``str.isspace()`` accepts, while
+    SQL's ``TRIM()`` with no explicit character list removes only the plain space.
+    On PostgreSQL the two disagree about tab, newline, carriage return, vertical tab,
+    form feed, no-break space, next line and em space alike: each one passes the
+    application's rule and must keep its verdict, and each one a ``TRIM``-based
+    filter would have left looking non-empty and cleared anyway. Running the same
+    expression as the application, rather than a hand-built SQL equivalent, is the
+    only way to be sure the two agree on every value the column can hold.
+
+    A consequence worth naming: reading rows to decide means this revision has no
+    offline form and cannot be rendered with ``alembic upgrade --sql``. Nothing in
+    this repository asks for one -- deployment runs ``alembic upgrade head`` -- but
+    a static script cannot express a decision that depends on the data.
 
     The condition itself negates ``_is_likert_scale`` in full rather than naming
     only the 0-100-with-a-unit rows. A project outside the 0-100 range never
     received a verdict in the first place, so both filters touch the same rows
     today. The full negation is used anyway, because it also clears anything odd
     that predates the current logic instead of assuming today's data is the only
-    shape that exists.
+    shape that exists. The ``SELECT`` narrows the candidates to rows that actually
+    carry a verdict, since a row with neither value set has nothing to clear.
     """
     connection = op.get_bind()
     candidates = connection.execute(
@@ -56,10 +63,11 @@ def upgrade() -> None:
         )
     ).all()
 
-    # Mirrors CalculationService._is_likert_scale as of this revision, inlined
-    # rather than imported from api. so this migration keeps working even after
-    # that method changes again -- a migration is a record of what it did the day
-    # it ran, not a window onto the application's current logic.
+    # Mirrors CalculationService._is_likert_scale as of this revision. It is copied
+    # rather than imported from ``api``, so that a later change to that method
+    # cannot retroactively alter what this migration does -- a migration records
+    # what it did the day it ran, not what the application believes today. The copy
+    # therefore guarantees agreement now, not agreement forever.
     stale_ids = [
         row.project_id
         for row in candidates

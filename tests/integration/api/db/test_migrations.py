@@ -788,7 +788,11 @@ class TestClearStaleLikertVerdictsMigration:
             # leaving an untouched one alone both repeat cleanly)
             command.upgrade(config, "a8d7ba4fcdde")
 
-            # THEN
+            # THEN - both surviving verdicts are still there. The tab-unit project
+            # is re-checked alongside the empty-unit one because it is the only one
+            # of the two that a TRIM-based filter would get wrong: an empty unit
+            # survives TRIM and Python alike, so on its own it cannot tell a
+            # correct re-run from a regressed one.
             with engine.connect() as conn:
                 likert_row = conn.execute(
                     text(
@@ -797,7 +801,16 @@ class TestClearStaleLikertVerdictsMigration:
                     ),
                     {"id": str(likert_project_id)},
                 ).one()
+                tab_row = conn.execute(
+                    text(
+                        "SELECT likert_value, likert_decision FROM calculation_results "
+                        "WHERE project_id = :id"
+                    ),
+                    {"id": str(tab_project_id)},
+                ).one()
             assert likert_row.likert_value == 75
             assert likert_row.likert_decision == "Agree"
+            assert tab_row.likert_value == 75
+            assert tab_row.likert_decision == "Agree"
         finally:
             engine.dispose()
