@@ -62,6 +62,7 @@ def _build_single_opinion_service(
     *,
     scale_min: float = 0.0,
     scale_max: float = 100.0,
+    scale_unit: str = "",
 ) -> tuple[CalculationService, UUID]:
     """Build a CalculationService with one opinion and a mock session.
 
@@ -70,6 +71,8 @@ def _build_single_opinion_service(
     :param upper: Upper bound of fuzzy number
     :param scale_min: Project scale minimum
     :param scale_max: Project scale maximum
+    :param scale_unit: Project scale unit. Defaults to unitless, matching the
+        Likert scale's own default so existing callers keep testing that case.
     :return: Tuple of (service, project_id)
     """
     project_id = uuid4()
@@ -90,6 +93,7 @@ def _build_single_opinion_service(
         admin_id=uuid4(),
         scale_min=scale_min,
         scale_max=scale_max,
+        scale_unit=scale_unit,
     )
     mock_session = MagicMock()
     mock_session.exec.return_value.all.return_value = [opinion]
@@ -221,6 +225,38 @@ class TestCalculationServiceRecalculate:
         assert result is not None
         assert result.likert_value is not None
         assert result.likert_decision is not None
+
+    def test_adds_likert_interpretation_for_whitespace_only_unit(self):
+        """Treats a whitespace-only unit as unitless and still adds Likert."""
+        # GIVEN
+        service, project_id = _build_single_opinion_service(
+            70.0, 80.0, 90.0, scale_unit="   "
+        )
+
+        # WHEN
+        result = service.recalculate(project_id)
+
+        # THEN
+        assert result is not None
+        assert result.likert_value is not None
+        assert result.likert_decision is not None
+
+    def test_skips_likert_for_standard_scale_with_unit(self):
+        """Skips Likert interpretation when a 0-100 scale project names a unit.
+
+        A percentage or a budget can share the Likert range by coincidence;
+        naming a unit means the number measures that quantity, not agreement.
+        """
+        # GIVEN
+        service, project_id = _build_single_opinion_service(70.0, 80.0, 90.0, scale_unit="%")
+
+        # WHEN
+        result = service.recalculate(project_id)
+
+        # THEN
+        assert result is not None
+        assert result.likert_value is None
+        assert result.likert_decision is None
 
     def test_skips_likert_for_non_standard_scale(self):
         """Skips Likert interpretation for non 0-100 scale."""
