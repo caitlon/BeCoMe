@@ -161,7 +161,12 @@ def downgrade() -> None:
 
     Deleting the demo accounts still cascades their own memberships and opinions out
     of every project, spared or not, so a surviving project loses its demo content but
-    keeps every real member's own contribution.
+    keeps every real member's own contribution. A surviving project that loses every
+    one of its opinions this way -- spared only by a membership, never by an opinion of
+    its own -- is left with a stored result describing experts who no longer have one,
+    so any such result is discarded too: recomputing it is the application's job, not
+    this migration's, and the read path already treats a missing result as a normal
+    state.
     """
     op.execute(
         sa.text(
@@ -175,5 +180,12 @@ def downgrade() -> None:
         )
     )
     op.execute(sa.text("DELETE FROM users WHERE is_demo = true"))
+    op.execute(
+        sa.text(
+            "DELETE FROM calculation_results cr WHERE NOT EXISTS ("
+            "SELECT 1 FROM expert_opinions eo WHERE eo.project_id = cr.project_id"
+            ")"
+        )
+    )
     op.drop_column("projects", "is_example")
     op.drop_column("users", "is_demo")

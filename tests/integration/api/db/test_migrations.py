@@ -269,7 +269,10 @@ class TestExampleProjectSupportMigration:
         one the feature invites -- an example project whose only member is the
         admin survives once that admin has authored their own opinion in it: a
         contribution, not just a membership, has to spare the project from the
-        same CASCADE.
+        same CASCADE. It also covers what the deletion leaves behind: a surviving
+        project whose only opinions were the demo pool's own is left with a stored
+        result describing experts who no longer have one, and that stale result
+        must not survive even though the project does.
         """
         # GIVEN - a clean database with Alembic aimed at it
         url = _url(migration_pg)
@@ -314,6 +317,7 @@ class TestExampleProjectSupportMigration:
             ordinary_project_id = uuid4()
             touched_example_id = uuid4()
             admin_authored_example_id = uuid4()
+            demo_expert_id = EXAMPLE_EXPERTS[0].user_id
             created_at = datetime(2026, 1, 1, tzinfo=UTC)
             with engine.begin() as conn:
                 conn.execute(
@@ -385,6 +389,48 @@ class TestExampleProjectSupportMigration:
                         "now": created_at,
                     },
                 )
+                # The touched example project's only opinion is the demo pool's own,
+                # so it is what the colleague's membership spares from the project
+                # deletion but not from losing every opinion to the demo cleanup --
+                # exactly the case a stale calculation_results row is left behind in.
+                conn.execute(
+                    text(
+                        "INSERT INTO expert_opinions "
+                        "(id, project_id, user_id, position, lower_bound, peak, "
+                        "upper_bound, created_at, updated_at) "
+                        "VALUES (:id, :project_id, :user_id, 'Demo', 30, 50, 70, "
+                        ":now, :now)"
+                    ),
+                    {
+                        "id": str(uuid4()),
+                        "project_id": str(touched_example_id),
+                        "user_id": str(demo_expert_id),
+                        "now": created_at,
+                    },
+                )
+                # A stored result on each of the two surviving example projects that
+                # carry opinions: one where every opinion is about to be cascaded
+                # away with the demo pool (must not survive), and one where the
+                # admin's own opinion remains regardless (must survive untouched).
+                conn.execute(
+                    text(
+                        "INSERT INTO calculation_results "
+                        "(id, project_id, best_compromise_lower, best_compromise_peak, "
+                        "best_compromise_upper, arithmetic_mean_lower, arithmetic_mean_peak, "
+                        "arithmetic_mean_upper, median_lower, median_peak, median_upper, "
+                        "max_error, num_experts, calculated_at) "
+                        "VALUES "
+                        "(:id1, :touched_id, 30, 50, 70, 30, 50, 70, 30, 50, 70, 5, 1, :now), "
+                        "(:id2, :authored_id, 30, 50, 70, 30, 50, 70, 30, 50, 70, 5, 1, :now)"
+                    ),
+                    {
+                        "id1": str(uuid4()),
+                        "id2": str(uuid4()),
+                        "touched_id": str(touched_example_id),
+                        "authored_id": str(admin_authored_example_id),
+                        "now": created_at,
+                    },
+                )
 
             # WHEN - rolled back to its own down_revision (pinned, not "-1")
             command.downgrade(config, "5b9977c1b5c1")
@@ -453,6 +499,28 @@ class TestExampleProjectSupportMigration:
                             "project_id": str(admin_authored_example_id),
                             "user_id": str(real_admin_id),
                         },
+                    ).scalar()
+                    == 1
+                )
+                # AND - the touched example project's stored result is gone: its only
+                # opinion belonged to the demo pool, so once that opinion cascaded
+                # away with the demo accounts, the result was left describing an
+                # expert who no longer has one, and the cleanup discards it.
+                assert (
+                    conn.execute(
+                        text("SELECT 1 FROM calculation_results WHERE project_id = :id"),
+                        {"id": str(touched_example_id)},
+                    ).scalar()
+                    is None
+                )
+                # AND - the admin-authored example project's stored result survives,
+                # because that project never loses its only opinion: the cleanup must
+                # not discard a result just because a project was touched by the
+                # demo pool's deletion, only when it is left with no opinion at all.
+                assert (
+                    conn.execute(
+                        text("SELECT 1 FROM calculation_results WHERE project_id = :id"),
+                        {"id": str(admin_authored_example_id)},
                     ).scalar()
                     == 1
                 )
