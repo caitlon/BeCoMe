@@ -3,7 +3,7 @@
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
-from api.db.models import MemberRole, Project, ProjectMember
+from api.db.models import MemberRole, Project, ProjectMember, User
 from api.schemas.project import ProjectCreate, ProjectUpdate
 from api.services.calculation_service import CalculationService
 from api.services.invitation_service import InvitationService
@@ -62,6 +62,14 @@ class TestProjectServiceLogging:
             ProjectMember(project_id=project.id, user_id=new_admin_id, role=MemberRole.EXPERT),
             ProjectMember(project_id=project.id, user_id=old_admin_id, role=MemberRole.ADMIN),
         ]
+        mock_session.get.return_value = User(
+            id=new_admin_id,
+            email="new-admin@example.com",
+            hashed_password="x",
+            first_name="New",
+            last_name="Admin",
+            is_demo=False,
+        )
         service = ProjectService(mock_session)
 
         # WHEN
