@@ -6,21 +6,44 @@ Create Date: 2026-08-22 12:00:00.000000
 
 """
 
+import base64
+import hashlib
 import secrets
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from uuid import UUID
 
+import bcrypt
 import sqlalchemy as sa
 from alembic import op
-
-from api.auth.password import hash_password
 
 # revision identifiers, used by Alembic.
 revision: str = "c4e81f7a9d23"
 down_revision: str | Sequence[str] | None = "5b9977c1b5c1"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
+
+
+def _unusable_password_hash() -> str:
+    """Return a bcrypt hash of a random plaintext that is generated and discarded here.
+
+    Hashed with bcrypt directly instead of calling ``api.auth.password.hash_password``,
+    for the same reason ``_DEMO_EXPERTS`` below is a frozen tuple instead of an import
+    of ``EXAMPLE_EXPERTS``: a migration is a record of what it did the day it ran, and a
+    later change to that helper -- a new required parameter, a moved module, a swapped
+    library -- must not break ``alembic upgrade head`` on a database bootstrapped from
+    scratch afterwards. The SHA-256-then-bcrypt shape mirrors ``hash_password`` closely
+    enough that ``api.auth.password.verify_password`` can still evaluate the result
+    (bcrypt only reads its first 72 bytes, so a SHA-256 digest is hashed instead of the
+    raw plaintext, exactly as ``_prepare_password`` does there). The plaintext is random
+    and lives only in this function's local scope, so nothing can ever match the hash.
+
+    :return: A bcrypt hash string, in the same shape ``hash_password`` produces.
+    """
+    plaintext = secrets.token_urlsafe(64)
+    prepared = base64.b64encode(hashlib.sha256(plaintext.encode("utf-8")).digest())
+    return bcrypt.hashpw(prepared, bcrypt.gensalt()).decode("utf-8")
+
 
 # Frozen copy of api.data.example_project.EXAMPLE_EXPERTS (id, email, first name, last
 # name) as it stood when this migration was written. A migration is a record of what
@@ -122,7 +145,7 @@ def upgrade() -> None:
         sa.column("email_verified_at", sa.DateTime()),
         sa.column("is_demo", sa.Boolean()),
     )
-    unusable_password = hash_password(secrets.token_urlsafe(64))
+    unusable_password = _unusable_password_hash()
     created = datetime.now(UTC).replace(tzinfo=None)
     op.bulk_insert(
         demo_accounts,
