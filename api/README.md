@@ -33,7 +33,7 @@ api/
 │   └── utils.py            # UTC helpers, email regex
 ├── middleware/         # Request processing
 │   ├── rate_limit.py       # SlowAPI rate limiting (logs violations)
-│   ├── csrf.py             # Double-submit CSRF check on cookie mutations
+│   ├── csrf.py             # Session-bound CSRF check on cookie mutations
 │   ├── body_size.py        # Request body size limit (413)
 │   ├── security_headers.py # Security response headers
 │   ├── request_logging.py  # Request/response logging + X-Request-ID
@@ -123,19 +123,29 @@ does.
 `Secure; HttpOnly; SameSite=Strict` cookies (the refresh cookie is scoped to
 `/api/v1/auth`) plus a readable `csrf_token` cookie; the tokens are also returned in the
 response body so programmatic clients can keep using the `Authorization: Bearer` header.
-A cookie-authenticated mutating request (POST/PUT/PATCH/DELETE) must echo the
-`csrf_token` value back in an `X-CSRF-Token` header (double-submit CSRF); Bearer-header
-requests are exempt. `/auth/refresh` reads the refresh token from the cookie or the body,
-and logout revokes the session and clears the cookies.
+A cookie-authenticated mutating request (POST/PUT/PATCH/DELETE) must send that value back
+in an `X-CSRF-Token` header; Bearer-header requests are exempt. `/auth/refresh` reads the
+refresh token from the cookie or the body, and logout revokes the session and clears the
+cookies.
 
-Login and refresh also return that value in an `X-CSRF-Token` **response** header, and
-`GET /auth/me` returns whatever the request's own `csrf_token` cookie holds -- nothing is
-minted there, and a request without the cookie gets no header. This is not redundancy: the
+The token is **derived from the session**, not compared against the cookie: it is an HMAC
+of the session's `sid` under `SECRET_KEY`, and the middleware recomputes the expected value
+from the session cookie the request authenticates as. Anyone able to write cookies for this
+host -- a page on a sibling `becomify.app` subdomain, which `SameSite` counts as same-site
+-- can plant a `csrf_token` they know, or one minted for a session they hold; neither
+matches what the server derives for the victim's session. The check also keys on the
+*session* cookie, so it cannot be waived by omitting the CSRF cookie.
+
+Login and refresh return the value in an `X-CSRF-Token` **response** header, and
+`GET /auth/me` reports the token for the session it authenticates as, so a page reload
+recovers it; a request with no session cookie gets no header. This is not redundancy: the
 cookie has no `Domain` attribute, so it belongs to the API host, and a browser app served
 from any other host cannot read it out of `document.cookie` even though the browser keeps
 sending it. The header is that app's only copy of the value, which is why
-`CORSMiddleware` lists it under `expose_headers` as well as `allow_headers`. See
-`docs/security.md` for why the cookie is not widened with a `Domain` instead.
+`CORSMiddleware` lists it under `expose_headers` as well as `allow_headers`. A refresh
+stays in the same rotation family, so the token does not change across refreshes; a fresh
+login starts a new family and a new token. See `docs/security.md` for why the cookie is not
+widened with a `Domain` instead, and for what this does not cover.
 
 ### Users
 
@@ -242,7 +252,7 @@ Environment variables (can use `.env` file):
 | `API_VERSION` | `1.0.0b1` | API version (auto-read from pyproject.toml) |
 | `CORS_ORIGINS` | `http://localhost:3000,http://localhost:8080` | Allowed CORS origins |
 | `REDIS_URL` | *required when deployed* | Redis for rate limiting, token revocation, and auth throttles |
-| `CLOUDFLARE_ORIGIN_SECRET` | *required in prod* | Shared secret proving the request came through Cloudflare |
+| `CLOUDFLARE_ORIGIN_SECRET` | *required when deployed* | Shared secret proving the request came through Cloudflare; every deployed environment sits behind it, so each needs its own value paired with a Transform Rule for that environment's API host |
 | `EMAIL_PROVIDER` | `console` | Password-reset email delivery: `console` (log) or `http` (Resend) |
 | `EMAIL_API_KEY` | *required when deployed* | API key for the `http` email provider; startup fails without it on the staging and production profiles, where the console fallback would print reset links to stdout instead of sending them |
 | `API_PUBLIC_URL` | `http://localhost:8000` | Public base URL of this API, used to build profile photo proxy links |

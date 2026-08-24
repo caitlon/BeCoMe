@@ -399,7 +399,15 @@ def client(test_engine):
 
 @pytest.fixture
 def cookie_client(test_engine):
-    """Create a cookie-retaining test client for the cookie + CSRF session flow."""
+    """Create a cookie-retaining test client for the cookie + CSRF session flow.
+
+    The base URL is https, and it has to be: the session cookies are ``Secure`` (their
+    ``__Host-``/``__Secure-`` prefixes are only valid that way), and httpx applies the
+    same rule a browser does -- it stores such a cookie but will not send it back over
+    plain http. On ``http://testserver`` every request after login would arrive with no
+    cookies at all, which reads as "authentication is broken" rather than as the
+    transport mismatch it is.
+    """
     test_app = create_test_app()
 
     def override_get_session():
@@ -408,7 +416,7 @@ def cookie_client(test_engine):
 
     test_app.dependency_overrides[get_session] = override_get_session
 
-    with TestClient(test_app) as test_client:
+    with TestClient(test_app, base_url="https://testserver") as test_client:
         yield test_client
 
 

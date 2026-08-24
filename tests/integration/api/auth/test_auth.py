@@ -8,6 +8,7 @@ test_email_verification.py.
 
 from sqlmodel import select
 
+from api.auth.cookies import ACCESS_COOKIE, CSRF_COOKIE, REFRESH_COOKIE
 from api.db.models import User
 from tests.integration.api.conftest import (
     auth_header,
@@ -880,16 +881,16 @@ class TestCookieAuth:
 
     def _csrf_header(self, cookie_client):
         """Echo the readable csrf_token cookie back as the X-CSRF-Token header."""
-        return {"X-CSRF-Token": cookie_client.cookies.get("csrf_token")}
+        return {"X-CSRF-Token": cookie_client.cookies.get(CSRF_COOKIE)}
 
     def test_login_sets_httponly_session_cookies(self, cookie_client):
         """Login sets access/refresh/csrf cookies; token cookies are HttpOnly + SameSite=Strict."""
         resp = self._register_and_login(cookie_client)
 
         assert resp.status_code == 200
-        assert "access_token" in resp.cookies
-        assert "refresh_token" in resp.cookies
-        assert "csrf_token" in resp.cookies
+        assert ACCESS_COOKIE in resp.cookies
+        assert REFRESH_COOKIE in resp.cookies
+        assert CSRF_COOKIE in resp.cookies
         raw = " ".join(resp.headers.get_list("set-cookie")).lower()
         assert "httponly" in raw
         assert "samesite=strict" in raw
@@ -911,7 +912,7 @@ class TestCookieAuth:
 
         assert resp.status_code == 204
         raw = " ".join(resp.headers.get_list("set-cookie")).lower()
-        assert "access_token=" in raw
+        assert f"{ACCESS_COOKIE.lower()}=" in raw
 
     def test_cookie_mutation_without_csrf_header_is_rejected(self, cookie_client):
         """A cookie-authenticated mutation without the CSRF header is rejected with 403."""
@@ -962,7 +963,7 @@ class TestCookieAuth:
         self._register_and_login(cookie_client)
         # A revoked session can leave a stale csrf cookie behind with no matching header; the
         # login endpoint must still let the user re-authenticate rather than answer 403.
-        cookie_client.cookies.set("csrf_token", "stale-value")
+        cookie_client.cookies.set(CSRF_COOKIE, "stale-value")
 
         resp = cookie_client.post(
             "/api/v1/auth/login",
@@ -998,31 +999,42 @@ class TestCsrfTokenHeader:
         resp = self._login(cookie_client, "csrflogin@example.com")
 
         assert resp.status_code == 200
-        assert resp.headers["X-CSRF-Token"] == cookie_client.cookies.get("csrf_token")
+        assert resp.headers["X-CSRF-Token"] == cookie_client.cookies.get(CSRF_COOKIE)
 
-    def test_refresh_returns_the_rotated_token(self, cookie_client):
-        """A refresh mints a fresh CSRF cookie, so the header must carry the new value.
+    def test_refresh_keeps_the_token_within_one_session(self, cookie_client):
+        """A refresh stays in the same rotation family, so the token does not move.
 
-        A client left holding the token from login would send a superseded one on the
-        next mutation and be refused.
+        The token is derived from the session id, and a refresh continues the session
+        rather than starting one. A client holding the value from login therefore keeps a
+        working token across refreshes instead of silently sending a superseded one.
         """
         issued = self._login(cookie_client, "csrfrefresh@example.com").headers["X-CSRF-Token"]
 
         resp = cookie_client.post("/api/v1/auth/refresh")
 
         assert resp.status_code == 200
-        rotated = resp.headers["X-CSRF-Token"]
-        assert rotated != issued
-        assert rotated == cookie_client.cookies.get("csrf_token")
+        assert resp.headers["X-CSRF-Token"] == issued
+        assert resp.headers["X-CSRF-Token"] == cookie_client.cookies.get(CSRF_COOKIE)
 
-    def test_profile_echoes_the_token_from_the_request_cookie(self, cookie_client):
+    def test_a_new_login_starts_a_new_token(self, cookie_client):
+        """A fresh login starts a new session family, so its token differs from the last."""
+        first = self._login(cookie_client, "csrfrelogin@example.com").headers["X-CSRF-Token"]
+
+        second = cookie_client.post(
+            "/api/v1/auth/login",
+            data={"username": "csrfrelogin@example.com", "password": self.PASSWORD},
+        ).headers["X-CSRF-Token"]
+
+        assert second != first
+
+    def test_profile_reports_the_token_for_the_session(self, cookie_client):
         """The session probe is how the SPA picks the token back up after a page reload."""
         self._login(cookie_client, "csrfme@example.com")
 
         resp = cookie_client.get("/api/v1/auth/me")
 
         assert resp.status_code == 200
-        assert resp.headers["X-CSRF-Token"] == cookie_client.cookies.get("csrf_token")
+        assert resp.headers["X-CSRF-Token"] == cookie_client.cookies.get(CSRF_COOKIE)
 
     def test_profile_omits_the_header_for_a_bearer_client(self, client):
         """No CSRF cookie on the request, no header on the response."""
@@ -1045,18 +1057,63 @@ class TestCsrfTokenHeader:
 
         assert resp.status_code == 204
 
-    def test_profile_refuses_to_echo_a_cookie_that_would_split_the_response(self, cookie_client):
-        """A cookie value carrying a newline is dropped instead of written to a header.
+    def test_profile_ignores_a_planted_cookie(self, cookie_client):
+        """A CSRF cookie the caller wrote does not decide what the probe reports.
 
-        Every character sent below is legal in a Cookie header, and Starlette's RFC 2109
-        unescape turns it into a real newline. uvicorn writes response headers without
-        validating them, so echoing the value unchecked would let the client inject one.
+        This is the shape of the subdomain attack: a page on a sibling becomify.app host
+        is same-site with the API and can set a cookie for the whole registrable domain,
+        shadowing ours. If the probe handed that value back, the SPA would send it on
+        every mutation and be refused. The value sent below also carries a newline once
+        Starlette applies its RFC 2109 unescape -- uvicorn writes response headers without
+        validating them, so echoing it would have split the response outright.
         """
-        self._login(cookie_client, "csrfjunk@example.com")
-        cookie_client.cookies.set("csrf_token", '"\\012X-Injected: 1"')
+        issued = self._login(cookie_client, "csrfjunk@example.com").headers["X-CSRF-Token"]
+        cookie_client.cookies.set(CSRF_COOKIE, '"\\012X-Injected: 1"')
 
         resp = cookie_client.get("/api/v1/auth/me")
 
         assert resp.status_code == 200
-        assert "X-CSRF-Token" not in resp.headers
+        assert resp.headers["X-CSRF-Token"] == issued
         assert "X-Injected" not in resp.headers
+
+    def test_a_planted_cookie_and_matching_header_are_refused(self, cookie_client):
+        """Cookie and header agreeing is not enough; both must match the session's token.
+
+        The attack a plain double-submit check loses to: whoever can write cookies for
+        this host plants a value they know and echoes it in the header, and the two sides
+        of the comparison agree. Here the server derives the expected value from the
+        session instead, so the planted pair matches nothing.
+        """
+        self._login(cookie_client, "csrfplanted@example.com")
+        cookie_client.cookies.set(CSRF_COOKIE, "planted-value")
+
+        resp = cookie_client.post("/api/v1/auth/logout", headers={"X-CSRF-Token": "planted-value"})
+
+        assert resp.status_code == 403
+
+    def test_another_sessions_token_is_refused(self, cookie_client, client):
+        """A token minted for a different session does not authorise this one.
+
+        Closes the second half of the same attack: rather than inventing a value, the
+        attacker presents a real token issued to a session they legitimately hold.
+        """
+        stolen = self._login(client, "csrfother@example.com").headers["X-CSRF-Token"]
+        self._login(cookie_client, "csrfvictim@example.com")
+
+        resp = cookie_client.post("/api/v1/auth/logout", headers={"X-CSRF-Token": stolen})
+
+        assert resp.status_code == 403
+
+    def test_deleting_the_cookie_does_not_disable_the_check(self, cookie_client):
+        """Dropping the CSRF cookie no longer waives the check.
+
+        The old comparison armed itself on the cookie's presence, so a request that
+        simply arrived without it sailed through. The check now keys on the session
+        cookie, which is the one the browser sends whether the attacker likes it or not.
+        """
+        self._login(cookie_client, "csrfdropped@example.com")
+        cookie_client.cookies.delete(CSRF_COOKIE)
+
+        resp = cookie_client.post("/api/v1/auth/logout")
+
+        assert resp.status_code == 403

@@ -53,7 +53,7 @@ describe('ApiClient', () => {
     mockFetch.mockReset();
     // The DOM environment keeps document.cookie for the whole file, so a case that
     // plants one would otherwise decide what the next case reads.
-    document.cookie = 'csrf_token=; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+    document.cookie = '__Host-csrf_token=; Path=/; Secure; expires=Thu, 01 Jan 1970 00:00:00 GMT';
 
     // Mock window.location
     Object.defineProperty(window, 'location', {
@@ -93,10 +93,10 @@ describe('ApiClient', () => {
       expect(options.headers.Authorization).toBeUndefined();
     });
 
-    it('falls back to the csrf_token cookie when the API has returned no token yet', async () => {
+    it('falls back to the __Host-csrf_token cookie when the API has returned no token yet', async () => {
       // Only reachable same-origin, which is how local development runs: Vite
       // proxies /api/v1, so the cookie belongs to this origin and is readable.
-      document.cookie = 'csrf_token=csrf-abc';
+      document.cookie = '__Host-csrf_token=csrf-abc; Path=/; Secure';
       mockFetch.mockResolvedValueOnce({ ok: true, status: 204 });
 
       await api.deleteProject('1');
@@ -107,10 +107,10 @@ describe('ApiClient', () => {
   });
 
   // On every deployed environment the SPA and the API answer on different hosts, so
-  // the csrf_token cookie belongs to the API and document.cookie shows the app
+  // the __Host-csrf_token cookie belongs to the API and document.cookie shows the app
   // nothing. The API repeats the value in an X-CSRF-Token response header, and
-  // without picking that up the client cannot produce the header the double-submit
-  // check demands -- which is a 403 on logout and on every other mutation.
+  // without picking that up the client cannot produce the header the CSRF check
+  // demands -- which is a 403 on logout and on every other mutation.
   describe('CSRF token from the response header', () => {
     it('picks the token up from the login response', async () => {
       mockFetch.mockResolvedValueOnce({
@@ -145,7 +145,7 @@ describe('ApiClient', () => {
     });
 
     it('prefers the token the API returned over the cookie', async () => {
-      document.cookie = 'csrf_token=cookie-value';
+      document.cookie = '__Host-csrf_token=cookie-value; Path=/; Secure';
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,

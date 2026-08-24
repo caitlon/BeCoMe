@@ -178,36 +178,20 @@ class TestTokenRejectionLogging:
         assert set(_extras(mock_logger.log.call_args)) == {"event", "reason", "jti"}
 
 
-class TestCsrfHeaderSuppressionLogging:
-    """Refusing to echo a client-chosen CSRF value leaves a trace."""
+class TestCsrfHeaderLogging:
+    """Sending the CSRF header is unremarkable and says nothing."""
 
-    def test_non_printable_token_is_logged(self):
+    def test_sending_the_token_logs_nothing(self):
         """
-        GIVEN a CSRF token carrying a newline
-        WHEN set_csrf_header refuses to echo it
-        THEN a csrf_header_suppressed warning records the refusal
-
-        That guard blocks a response-splitting primitive and previously left no trace
-        whatsoever, so an attempt was indistinguishable from nothing happening.
-        """
-        # GIVEN
-        response = MagicMock()
-        response.headers = {}
-
-        # WHEN
-        with patch("api.auth.cookies.logger") as mock_logger:
-            cookies.set_csrf_header(response, "\nX-Injected: 1")
-
-        # THEN
-        extra = _extras(mock_logger.warning.call_args)
-        assert extra == {"event": "csrf_header_suppressed", "reason": "non_printable"}
-        assert response.headers == {}
-
-    def test_a_clean_token_is_echoed_without_a_warning(self):
-        """
-        GIVEN a well-formed token
+        GIVEN a session-derived CSRF token
         WHEN set_csrf_header runs
         THEN the header is set and nothing is logged
+
+        There used to be a warning here, for the case where the helper refused to echo a
+        client-chosen value that would have split the response. The token is now derived
+        server-side, so no client value reaches this function and there is no refusal
+        left to record. Logging the token itself is not an option either: it would hand
+        a log reader the value needed to forge that session's mutations.
         """
         # GIVEN
         response = MagicMock()
@@ -215,11 +199,12 @@ class TestCsrfHeaderSuppressionLogging:
 
         # WHEN
         with patch("api.auth.cookies.logger") as mock_logger:
-            cookies.set_csrf_header(response, "a-normal-url-safe-token")
+            cookies.set_csrf_header(response, "a" * 64)
 
         # THEN
-        assert response.headers[cookies.CSRF_HEADER] == "a-normal-url-safe-token"
+        assert response.headers[cookies.CSRF_HEADER] == "a" * 64
         mock_logger.warning.assert_not_called()
+        mock_logger.info.assert_not_called()
 
 
 class TestRevocationStoreLogging:
@@ -290,7 +275,7 @@ class TestThrottleLogging:
         """
         GIVEN Redis raising while the lockout counter is read
         WHEN the failure is recorded
-        THEN a throttle_store_unavailable warning names the flow, not the account
+        THEN a throttle_store_unavailable error names the flow, not the account
 
         _digest() is an unkeyed SHA-256: logging it would let anyone holding the logs
         confirm an address by hashing a guess.
@@ -303,12 +288,33 @@ class TestThrottleLogging:
             login_throttle._log_store_unavailable("is_locked", exc, "login")
 
         # THEN
-        extra = _extras(mock_logger.warning.call_args)
+        extra = _extras(mock_logger.error.call_args)
         assert extra == {
             "event": "throttle_store_unavailable",
             "op": "is_locked",
             "key_prefix": "login",
         }
+
+    def test_login_throttle_outage_is_logged_at_error_level(self):
+        """
+        GIVEN Redis raising while the lockout counter is read
+        WHEN the failure is recorded
+        THEN it is logged at ERROR, not WARNING
+
+        ERROR is what Sentry turns into an issue, and an issue is the only alert this
+        outage produces: the request it happened during succeeds, so at WARNING the
+        brute-force lockout could stay off for the whole outage with nothing raised.
+        """
+        # GIVEN
+        exc = redis.RedisError("down")
+
+        # WHEN
+        with patch("api.auth.login_throttle.logger") as mock_logger:
+            login_throttle._log_store_unavailable("is_locked", exc, "login")
+
+        # THEN
+        mock_logger.error.assert_called_once()
+        mock_logger.warning.assert_not_called()
 
     def test_email_throttle_outage_is_logged_without_the_address(self):
         """
@@ -324,12 +330,29 @@ class TestThrottleLogging:
             email_throttle._log_store_unavailable("allow", exc, "reset")
 
         # THEN
-        extra = _extras(mock_logger.warning.call_args)
+        extra = _extras(mock_logger.error.call_args)
         assert extra == {
             "event": "throttle_store_unavailable",
             "op": "allow",
             "key_prefix": "reset",
         }
+
+    def test_email_throttle_outage_is_logged_at_error_level(self):
+        """
+        GIVEN Redis raising while the per-address cap is checked
+        WHEN the failure is recorded
+        THEN it is logged at ERROR, so the lifted cap raises a Sentry issue
+        """
+        # GIVEN
+        exc = redis.RedisError("down")
+
+        # WHEN
+        with patch("api.auth.email_throttle.logger") as mock_logger:
+            email_throttle._log_store_unavailable("allow", exc, "reset")
+
+        # THEN
+        mock_logger.error.assert_called_once()
+        mock_logger.warning.assert_not_called()
 
     def test_in_memory_denial_logs_without_an_identifier(self):
         """

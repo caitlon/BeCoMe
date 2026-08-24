@@ -64,6 +64,10 @@ docker/.env
 frontend/.env.local
 frontend/.env.*.local
 
+# Throwaway TLS certificate for the e2e dev server (regenerated on demand,
+# trusted by nobody but Playwright's ignoreHTTPSErrors).
+frontend/.certs/
+
 # SQLite database
 *.db
 
