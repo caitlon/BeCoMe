@@ -30,25 +30,50 @@ def upgrade() -> None:
     may never get that recalculation, since its owner's opinion is deliberately left
     unseeded.
 
-    The inner WHERE clause below negates ``_is_likert_scale`` in full rather than
-    naming only the 0-100-with-a-unit rows. A project outside the 0-100 range never
+    The keep-or-clear decision is made in Python instead of a SQL ``WHERE`` clause.
+    ``_is_likert_scale`` calls a unit empty when ``scale_unit.strip()`` is falsy, and
+    Python's ``str.strip()`` removes every whitespace character -- tabs, newlines,
+    and more -- while SQL's ``TRIM()`` with no explicit character list removes only
+    the plain space, in both PostgreSQL and SQLite. A unit holding a bare tab passes
+    the application's rule and must keep its verdict, but a ``TRIM``-based filter
+    would leave that tab in place and clear it anyway. Re-running the identical
+    Python expression here, instead of a hand-built SQL equivalent, is what keeps
+    this migration from drifting away from the rule it exists to mirror.
+
+    The condition itself negates ``_is_likert_scale`` in full rather than naming
+    only the 0-100-with-a-unit rows. A project outside the 0-100 range never
     received a verdict in the first place, so both filters touch the same rows
     today. The full negation is used anyway, because it also clears anything odd
     that predates the current logic instead of assuming today's data is the only
-    shape that exists. ``TRIM`` is applied to ``scale_unit`` because
-    ``_is_likert_scale`` treats a whitespace-only unit as empty too.
+    shape that exists.
     """
-    op.execute(
+    connection = op.get_bind()
+    candidates = connection.execute(
         sa.text(
-            "UPDATE calculation_results SET likert_value = NULL, likert_decision = NULL "
-            "WHERE project_id IN ("
-            "SELECT id FROM projects "
-            "WHERE NOT ("
-            "scale_min = 0 AND scale_max = 100 AND TRIM(scale_unit) = ''"
-            ")"
-            ")"
+            "SELECT cr.project_id, p.scale_min, p.scale_max, p.scale_unit "
+            "FROM calculation_results cr JOIN projects p ON p.id = cr.project_id "
+            "WHERE cr.likert_value IS NOT NULL OR cr.likert_decision IS NOT NULL"
         )
-    )
+    ).all()
+
+    # Mirrors CalculationService._is_likert_scale as of this revision, inlined
+    # rather than imported from api. so this migration keeps working even after
+    # that method changes again -- a migration is a record of what it did the day
+    # it ran, not a window onto the application's current logic.
+    stale_ids = [
+        row.project_id
+        for row in candidates
+        if not (row.scale_min == 0 and row.scale_max == 100 and not row.scale_unit.strip())
+    ]
+
+    if stale_ids:
+        connection.execute(
+            sa.text(
+                "UPDATE calculation_results SET likert_value = NULL, likert_decision = NULL "
+                "WHERE project_id IN :ids"
+            ).bindparams(sa.bindparam("ids", expanding=True)),
+            {"ids": stale_ids},
+        )
 
 
 def downgrade() -> None:

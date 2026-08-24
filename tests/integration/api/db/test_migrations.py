@@ -603,12 +603,17 @@ class TestClearStaleLikertVerdictsMigration:
     ):
         """A stored verdict is cleared for exactly the rows the new rule rejects.
 
-        Three projects cover the three shapes ``_is_likert_scale`` distinguishes: a
-        0-100 scale with a non-empty unit, where a verdict was stored under the old
-        rule and must now be cleared; a 0-100 scale with an empty unit, a genuine
-        Likert project whose verdict must survive; and a scale outside 0-100, which
-        never received a verdict under either rule and whose NULL row must survive
-        untouched.
+        Four projects cover the shapes ``_is_likert_scale`` distinguishes: a 0-100
+        scale with a non-empty unit, where a verdict was stored under the old rule
+        and must now be cleared; a 0-100 scale with an empty unit, a genuine Likert
+        project whose verdict must survive; a scale outside 0-100, which never
+        received a verdict under either rule and whose NULL row must survive
+        untouched; and a 0-100 scale whose unit is a single tab character, which
+        ``_is_likert_scale`` also calls empty and whose verdict must equally survive.
+        The fourth case is the one a SQL ``TRIM(scale_unit) = ''`` filter gets wrong:
+        ``TRIM`` with no explicit character list strips only the plain space, not a
+        tab, in both PostgreSQL and SQLite, so it would leave the unit looking
+        non-empty and wrongly clear a verdict the application rule calls genuine.
         """
         # GIVEN - a database migrated up to the revision just before this one
         url = _url(migration_pg)
@@ -623,6 +628,7 @@ class TestClearStaleLikertVerdictsMigration:
             percent_project_id = uuid4()
             likert_project_id = uuid4()
             budget_project_id = uuid4()
+            tab_project_id = uuid4()
             now = datetime(2026, 1, 1, tzinfo=UTC)
 
             with engine.begin() as conn:
@@ -636,7 +642,9 @@ class TestClearStaleLikertVerdictsMigration:
                 )
                 # A flood question measured in percent and a budget question in
                 # billions of CZK, the two examples from the bug this fix closed,
-                # alongside the genuine 0-100 unitless scale they were confused with.
+                # alongside the genuine 0-100 unitless scale they were confused with,
+                # and a 0-100 scale whose unit is a bare tab -- whitespace that
+                # Python's str.strip() empties out but SQL's TRIM() does not.
                 conn.execute(
                     text(
                         "INSERT INTO projects "
@@ -646,20 +654,22 @@ class TestClearStaleLikertVerdictsMigration:
                         "(:percent_id, 'Flood extent', :admin_id, 0, 100, '%', :now, :now), "
                         "(:likert_id, 'Agreement scale', :admin_id, 0, 100, '', :now, :now), "
                         "(:budget_id, 'Reservoir budget', :admin_id, 0, 500, 'CZK bn', "
-                        ":now, :now)"
+                        ":now, :now), "
+                        "(:tab_id, 'Tab-unit scale', :admin_id, 0, 100, '\t', :now, :now)"
                     ),
                     {
                         "percent_id": str(percent_project_id),
                         "likert_id": str(likert_project_id),
                         "budget_id": str(budget_project_id),
+                        "tab_id": str(tab_project_id),
                         "admin_id": str(admin_id),
                         "now": now,
                     },
                 )
-                # The percent and likert projects each carry a stored verdict, as
-                # the old, unit-blind rule would have written for both. The budget
-                # project's row has none, since even the old rule required the
-                # 0-100 range and 500 never qualified.
+                # The percent, likert and tab projects each carry a stored verdict,
+                # as the old, unit-blind rule would have written for all three. The
+                # budget project's row has none, since even the old rule required
+                # the 0-100 range and 500 never qualified.
                 conn.execute(
                     text(
                         "INSERT INTO calculation_results "
@@ -673,15 +683,19 @@ class TestClearStaleLikertVerdictsMigration:
                         "(:id2, :likert_id, 30, 50, 70, 30, 50, 70, 30, 50, 70, 5, 3, "
                         "75, 'Agree', :now), "
                         "(:id3, :budget_id, 30, 50, 70, 30, 50, 70, 30, 50, 70, 5, 3, "
-                        "NULL, NULL, :now)"
+                        "NULL, NULL, :now), "
+                        "(:id4, :tab_id, 30, 50, 70, 30, 50, 70, 30, 50, 70, 5, 3, "
+                        "75, 'Agree', :now)"
                     ),
                     {
                         "id1": str(uuid4()),
                         "id2": str(uuid4()),
                         "id3": str(uuid4()),
+                        "id4": str(uuid4()),
                         "percent_id": str(percent_project_id),
                         "likert_id": str(likert_project_id),
                         "budget_id": str(budget_project_id),
+                        "tab_id": str(tab_project_id),
                         "now": now,
                     },
                 )
@@ -715,6 +729,23 @@ class TestClearStaleLikertVerdictsMigration:
                 ).one()
             assert likert_row.likert_value == 75
             assert likert_row.likert_decision == "Agree"
+
+            # AND - the tab-unit project's verdict survives too: a bare tab is
+            # whitespace under _is_likert_scale's own scale_unit.strip() check, so
+            # this project is Likert by the application's rule just as much as the
+            # empty-unit one above. SQL's TRIM() strips only the plain space, so a
+            # WHERE clause built on TRIM(scale_unit) = '' would have missed this
+            # unit and cleared the verdict a Python-side strip() correctly keeps.
+            with engine.connect() as conn:
+                tab_row = conn.execute(
+                    text(
+                        "SELECT likert_value, likert_decision FROM calculation_results "
+                        "WHERE project_id = :id"
+                    ),
+                    {"id": str(tab_project_id)},
+                ).one()
+            assert tab_row.likert_value == 75
+            assert tab_row.likert_decision == "Agree"
 
             # AND - the out-of-range project's row, which never had a verdict, is
             # left alone rather than erroring or acquiring one
