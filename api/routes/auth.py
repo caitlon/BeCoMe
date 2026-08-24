@@ -411,6 +411,12 @@ def verify_email(
         login_throttle.record_failure(pending.email)
         log_verification_password_mismatch(pending.user_id, request)
         raise
+    # Captured immediately, before anything else touches the session: seed_for's own
+    # commit expires every attribute on `user`, and a later commit inside the seeding
+    # path (recalculate) can fail and leave the session needing rollback -- at which
+    # point reading an expired attribute would raise PendingRollbackError instead of
+    # returning a value. Everything below reads this plain value instead of `user`.
+    user_id = user.id
     throttle.reset(pending.record.token_hash)
     # And the login counter this endpoint's own mismatches spent from, or a user who
     # fumbled the password a few times would be told their address is confirmed and
@@ -422,15 +428,19 @@ def verify_email(
     # without one. Broad except on purpose -- the same reasoning _send_quietly applies
     # to the mail this endpoint's siblings send.
     try:
-        example_projects.seed_for(user.id, data.language)
+        example_projects.seed_for(user_id, data.language)
     except Exception:
+        # A failed commit inside the seeding path leaves the session needing rollback;
+        # clearing that here keeps the session usable for the rest of the request
+        # instead of leaving that state for whatever runs on it next.
+        example_projects.session.rollback()
         logger.warning(
             "Example project seeding failed",
-            extra={"event": "example_project_seed_failed", "user_id": str(user.id)},
+            extra={"event": "example_project_seed_failed", "user_id": str(user_id)},
             exc_info=True,
         )
 
-    log_email_verified(user.id, request)
+    log_email_verified(user_id, request)
     return {"detail": _VERIFICATION_COMPLETE}
 
 
