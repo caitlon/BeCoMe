@@ -229,9 +229,7 @@ class TestCalculationServiceRecalculate:
     def test_adds_likert_interpretation_for_whitespace_only_unit(self):
         """Treats a whitespace-only unit as unitless and still adds Likert."""
         # GIVEN
-        service, project_id = _build_single_opinion_service(
-            70.0, 80.0, 90.0, scale_unit="   "
-        )
+        service, project_id = _build_single_opinion_service(70.0, 80.0, 90.0, scale_unit="   ")
 
         # WHEN
         result = service.recalculate(project_id)
