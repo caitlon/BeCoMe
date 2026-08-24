@@ -22,6 +22,7 @@ from api.exceptions import (
     VerificationTokenExpiredError,
 )
 from api.services.base import BaseService
+from api.services.query_helpers import select_account_by_email
 from api.services.user_cache import UserCacheStore
 
 logger = logging.getLogger("api.service.email_verification")
@@ -325,5 +326,4 @@ class EmailVerificationService(BaseService):
         :param email: Email address (case-insensitive).
         :return: The user, or None when not found.
         """
-        statement = select(User).where(User.email == email.lower())
-        return self._session.exec(statement).first()
+        return self._session.exec(select_account_by_email(email)).first()

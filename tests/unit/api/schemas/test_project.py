@@ -348,3 +348,63 @@ class TestMemberResponseFromModel:
         # THEN
         assert response.last_name is None
         assert response.role == "admin"
+
+
+class TestProjectResponseIsExample:
+    """The flag the UI reads to badge and explain a seeded project."""
+
+    def test_carries_the_flag_from_the_model(self):
+        """A seeded project is marked in the response."""
+        # GIVEN
+        project = Project(name="Example", admin_id=uuid4(), is_example=True)
+
+        # WHEN
+        response = ProjectResponse.from_model(project, member_count=14)
+
+        # THEN
+        assert response.is_example is True
+
+    def test_ordinary_project_is_not_marked(self):
+        """A project the user created carries a false flag, not a missing one."""
+        # GIVEN
+        project = Project(name="Real work", admin_id=uuid4())
+
+        # WHEN
+        response = ProjectResponse.from_model(project, member_count=1)
+
+        # THEN
+        assert response.is_example is False
+
+
+class TestProjectWithRoleResponseIsExample:
+    """list_projects and get_project build responses through from_model_with_role,
+    not through ProjectResponse.from_model, so the flag needs to be verified on
+    that path too or a seeded project would silently report is_example=False to
+    the two pages this feature is meant to change.
+    """
+
+    def test_carries_the_flag_from_the_model(self):
+        """A seeded project stays marked once a role is attached."""
+        # GIVEN
+        project = Project(name="Example", admin_id=uuid4(), is_example=True)
+
+        # WHEN
+        response = ProjectWithRoleResponse.from_model_with_role(
+            project, member_count=14, role="admin"
+        )
+
+        # THEN
+        assert response.is_example is True
+
+    def test_ordinary_project_is_not_marked(self):
+        """A project the user created carries a false flag, not a missing one."""
+        # GIVEN
+        project = Project(name="Real work", admin_id=uuid4())
+
+        # WHEN
+        response = ProjectWithRoleResponse.from_model_with_role(
+            project, member_count=1, role="expert"
+        )
+
+        # THEN
+        assert response.is_example is False

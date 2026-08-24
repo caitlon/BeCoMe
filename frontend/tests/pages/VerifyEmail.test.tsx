@@ -4,13 +4,15 @@ import userEvent from '@testing-library/user-event';
 import { render } from '@tests/utils';
 import VerifyEmail from '@/pages/VerifyEmail';
 import { ForbiddenError, HttpError, RateLimitError, ServerError } from '@/lib/errors';
+import i18n from '@/i18n';
 
 // Mock the API client (the page calls api.verifyEmail directly)
 const mockVerifyEmail = vi.fn();
 const mockResendVerification = vi.fn();
 vi.mock('@/lib/api', () => ({
   api: {
-    verifyEmail: (token: string, password: string) => mockVerifyEmail(token, password),
+    verifyEmail: (token: string, password: string, language: string) =>
+      mockVerifyEmail(token, password, language),
     resendVerification: (email: string, password: string) =>
       mockResendVerification(email, password),
   },
@@ -69,6 +71,15 @@ describe('VerifyEmail', () => {
     screen
       .getAllByRole('link', { name: /sign in/i })
       .find((link) => link.getAttribute('href') === '/login');
+  // The two locale-switching tests below render the page in whatever language
+  // they set, so the English-text lookups above (placeholder, button name)
+  // cannot find anything once the UI genuinely renders in Czech. The DOM
+  // attributes react-hook-form and SubmitButton set are not translated, so
+  // they work regardless of which language is active.
+  const getPasswordInputByAttribute = (container: HTMLElement) =>
+    container.querySelector<HTMLInputElement>('input[name="password"]');
+  const getSubmitButtonByAttribute = (container: HTMLElement) =>
+    container.querySelector<HTMLButtonElement>('button[type="submit"]');
 
   it('renders the password field and submit button when a token is present', () => {
     renderAt();
@@ -116,7 +127,7 @@ describe('VerifyEmail', () => {
     await user.click(getSubmitButton());
 
     await waitFor(() => {
-      expect(mockVerifyEmail).toHaveBeenCalledWith(VALID_TOKEN, 'CorrectHorse123!');
+      expect(mockVerifyEmail).toHaveBeenCalledWith(VALID_TOKEN, 'CorrectHorse123!', 'en');
     });
     await waitFor(() => {
       expect(mockNavigate).toHaveBeenCalledWith('/login');
@@ -124,6 +135,59 @@ describe('VerifyEmail', () => {
     expect(mockToast).toHaveBeenCalledWith(
       expect.objectContaining({ title: expect.any(String) })
     );
+  });
+
+  it('sends the active UI language so the example project is seeded in it', async () => {
+    const user = userEvent.setup();
+    renderAt();
+
+    await user.type(getPasswordInput(), 'CorrectHorse123!');
+    await user.click(getSubmitButton());
+
+    await waitFor(() => {
+      expect(mockVerifyEmail).toHaveBeenCalledWith(VALID_TOKEN, 'CorrectHorse123!', 'en');
+    });
+  });
+
+  // The activation link is opened straight from an email, so the browser's
+  // language is whatever the visitor's OS/browser reports -- entirely outside
+  // our control. i18next has no supportedLngs allowlist, so i18n.language
+  // resolves to that raw value (e.g. "de-DE") rather than being clamped to a
+  // language we actually have resources for. The backend only accepts "en"
+  // or "cs" (Literal["en", "cs"]), so an unclamped third language 422s the
+  // request and silently breaks activation for that visitor.
+  it('sends "en" to the backend when the browser language is neither English nor Czech', async () => {
+    const user = userEvent.setup();
+    await i18n.changeLanguage('de-DE');
+    try {
+      const { container } = renderAt();
+
+      await user.type(getPasswordInputByAttribute(container)!, 'CorrectHorse123!');
+      await user.click(getSubmitButtonByAttribute(container)!);
+
+      await waitFor(() => {
+        expect(mockVerifyEmail).toHaveBeenCalledWith(VALID_TOKEN, 'CorrectHorse123!', 'en');
+      });
+    } finally {
+      await i18n.changeLanguage('en');
+    }
+  });
+
+  it('still sends "cs" to the backend when the browser language is Czech', async () => {
+    const user = userEvent.setup();
+    await i18n.changeLanguage('cs-CZ');
+    try {
+      const { container } = renderAt();
+
+      await user.type(getPasswordInputByAttribute(container)!, 'CorrectHorse123!');
+      await user.click(getSubmitButtonByAttribute(container)!);
+
+      await waitFor(() => {
+        expect(mockVerifyEmail).toHaveBeenCalledWith(VALID_TOKEN, 'CorrectHorse123!', 'cs');
+      });
+    } finally {
+      await i18n.changeLanguage('en');
+    }
   });
 
   it('keeps the form and token in place on a 403 (wrong password), without navigating away', async () => {

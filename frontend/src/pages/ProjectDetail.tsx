@@ -9,9 +9,11 @@ import {
   Trash2,
   ChevronDown,
   ChevronUp,
+  Info,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Collapsible,
@@ -346,6 +348,14 @@ const ProjectDetail = () => {
             )}
           </div>
         </PageHeader>
+
+        {project.is_example && (
+          <Alert className="mb-6">
+            <Info className="h-4 w-4" />
+            <AlertTitle>{t("detail.exampleBanner.title")}</AlertTitle>
+            <AlertDescription>{t("detail.exampleBanner.body")}</AlertDescription>
+          </Alert>
+        )}
 
         {isDesktop ? (
           <>

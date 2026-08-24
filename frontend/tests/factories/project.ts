@@ -30,6 +30,7 @@ export function createProject(overrides: Partial<Project> = {}): Project {
     admin_id: 'admin-1',
     created_at: '2024-01-01T00:00:00Z',
     member_count: 1,
+    is_example: false,
     ...overrides,
   };
 }

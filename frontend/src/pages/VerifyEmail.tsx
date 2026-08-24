@@ -12,6 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
 import { describeError } from "@/lib/errorMessages";
 import { ForbiddenError, HttpError, isRateLimited } from "@/lib/errors";
+import { toSupportedLanguage } from "@/i18n";
 
 type VerifyEmailFormData = {
   password: string;
@@ -25,7 +26,7 @@ type VerifyEmailFormData = {
 type VerifyFailure = "wrongPassword" | "invalidLink" | "lockedOut";
 
 const VerifyEmail = () => {
-  const { t } = useTranslation("auth");
+  const { t, i18n } = useTranslation("auth");
   const { t: tCommon } = useTranslation();
   useDocumentTitle(tCommon("pageTitle.verifyEmail"));
 
@@ -61,7 +62,12 @@ const VerifyEmail = () => {
     setIsLoading(true);
     setFailure(null);
     try {
-      await api.verifyEmail(token, data.password);
+      // i18n.language can still carry a region ("cs-CZ") or point at a language
+      // resources exist for on the wire but not in api/schemas' Literal["en",
+      // "cs"]. toSupportedLanguage is the shared clamp; see its doc comment for
+      // why init's supportedLngs alone does not remove the need for it.
+      const language = toSupportedLanguage(i18n.language);
+      await api.verifyEmail(token, data.password, language);
       toast({
         title: t("verifyEmail.successTitle"),
         description: t("verifyEmail.successMessage"),

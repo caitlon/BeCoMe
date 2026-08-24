@@ -85,6 +85,7 @@ class ProjectResponse(BaseModel):
     admin_id: str
     created_at: datetime
     member_count: int
+    is_example: bool = False
 
     @classmethod
     def from_model(cls, project: "Project", member_count: int) -> "ProjectResponse":
@@ -104,6 +105,7 @@ class ProjectResponse(BaseModel):
             admin_id=str(project.admin_id),
             created_at=project.created_at,
             member_count=member_count,
+            is_example=project.is_example,
         )
 
 
@@ -118,23 +120,18 @@ class ProjectWithRoleResponse(ProjectResponse):
     ) -> "ProjectWithRoleResponse":
         """Create response from database model with role.
 
+        Delegates every field but ``role`` to :meth:`ProjectResponse.from_model`, so
+        a field added there -- ``is_example`` had to be added here too, and was
+        briefly dead code in the response that actually renders it, until that was
+        caught -- only ever needs adding once.
+
         :param project: Project database model
         :param member_count: Number of project members
         :param role: User's role in the project (admin/expert)
         :return: ProjectWithRoleResponse instance
         """
-        return cls(
-            id=str(project.id),
-            name=project.name,
-            description=project.description,
-            scale_min=project.scale_min,
-            scale_max=project.scale_max,
-            scale_unit=project.scale_unit,
-            admin_id=str(project.admin_id),
-            created_at=project.created_at,
-            member_count=member_count,
-            role=role,
-        )
+        base = ProjectResponse.from_model(project, member_count)
+        return cls(**base.model_dump(), role=role)
 
 
 class MemberResponse(BaseModel):

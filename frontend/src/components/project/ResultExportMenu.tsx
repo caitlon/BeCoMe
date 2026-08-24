@@ -12,6 +12,7 @@ import { api } from "@/lib/api";
 import { downloadBlob } from "@/lib/download";
 import { ProjectWithRole } from "@/types/api";
 import { useToast } from "@/hooks/use-toast";
+import { toSupportedLanguage } from "@/i18n";
 
 export interface ResultExportMenuProps {
   project: ProjectWithRole;
@@ -26,7 +27,7 @@ export const ResultExportMenu = ({ project }: ResultExportMenuProps) => {
   const handleExport = async (format: "pdf" | "csv") => {
     setExporting(format);
     try {
-      const lang = i18n.language.startsWith("cs") ? "cs" : "en";
+      const lang = toSupportedLanguage(i18n.language);
       const blob = await api.exportProjectResult(project.id, format, lang);
       const slug =
         project.name

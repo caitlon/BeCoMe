@@ -15,6 +15,8 @@ from alembic.config import Config
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.exc import IntegrityError
 
+from api.data.example_project import EXAMPLE_EXPERTS
+
 pytestmark = pytest.mark.skipif(
     not shutil.which("pg_ctl"),
     reason="PostgreSQL not installed (pg_ctl not found in PATH)",
@@ -248,5 +250,341 @@ class TestEmailVerificationCredentialsMigration:
                         "now": datetime(2026, 1, 1, tzinfo=UTC),
                     },
                 )
+        finally:
+            engine.dispose()
+
+
+class TestExampleProjectSupportMigration:
+    """The migration adding is_example, is_demo and the demo expert pool."""
+
+    def test_upgrade_creates_the_pool_and_downgrade_removes_it(self, migration_pg, monkeypatch):
+        """The pool lands already verified, and the migration reverses cleanly.
+
+        The downgrade's project deletion is exercised here too, not left to run
+        against an empty ``projects`` table: an untouched example project is
+        deleted, an unrelated ordinary project is unaffected, an example project a
+        real colleague was invited into survives because the CASCADE foreign keys
+        behind it would otherwise take that colleague's own membership down along
+        with the demo data, an example project whose only member is the admin
+        survives once that admin has authored their own opinion in it (a
+        contribution, not just a membership, has to spare the project from the
+        same CASCADE), and an example project with an outstanding invitation to a
+        real colleague survives even though that colleague has neither joined nor
+        opined yet. It also covers what the deletion leaves behind: a surviving
+        project whose only opinions were the demo pool's own is left with a stored
+        result describing experts who no longer have one, and that stale result
+        must not survive even though the project does.
+        """
+        # GIVEN - a clean database with Alembic aimed at it
+        url = _url(migration_pg)
+        monkeypatch.setenv("ALEMBIC_DATABASE_URL", url)
+        config = Config("alembic.ini")
+        engine = create_engine(url)
+
+        try:
+            # WHEN - migrated up to this migration, pinned to its own revision id so
+            # a later migration landing on top cannot silently change what is tested
+            command.upgrade(config, "c4e81f7a9d23")
+
+            # THEN - every demo account exists, and none of them is claimable through
+            # the registration branch that treats an unverified address as pending
+            with engine.connect() as conn:
+                rows = conn.execute(
+                    text(
+                        "SELECT email, email_verified_at, hashed_password FROM users "
+                        "WHERE is_demo = true ORDER BY email"
+                    )
+                ).all()
+            assert len(rows) == len(EXAMPLE_EXPERTS)
+            assert all(row.email_verified_at is not None for row in rows)
+            assert {row.email for row in rows} == {e.email for e in EXAMPLE_EXPERTS}
+            # AND - every row holds a real bcrypt hash, not an empty or placeholder
+            # string: hash_password's own output always carries bcrypt's "$2" prefix
+            assert all(row.hashed_password.startswith("$2") for row in rows)
+            assert all(len(row.hashed_password) >= 50 for row in rows)
+
+            # AND - both flags exist as columns
+            inspector = inspect(engine)
+            assert "is_demo" in {c["name"] for c in inspector.get_columns("users")}
+            assert "is_example" in {c["name"] for c in inspector.get_columns("projects")}
+
+            # GIVEN - a real account with five projects: one untouched example
+            # project, one ordinary project, one example project a real colleague
+            # was invited into, one example project the admin never invited anyone
+            # into but did add their own opinion to, and one example project with
+            # an outstanding invitation nobody has answered yet
+            real_admin_id = uuid4()
+            real_colleague_id = uuid4()
+            pending_invitee_id = uuid4()
+            untouched_example_id = uuid4()
+            ordinary_project_id = uuid4()
+            touched_example_id = uuid4()
+            admin_authored_example_id = uuid4()
+            pending_invitation_example_id = uuid4()
+            demo_expert_id = EXAMPLE_EXPERTS[0].user_id
+            created_at = datetime(2026, 1, 1, tzinfo=UTC)
+            with engine.begin() as conn:
+                conn.execute(
+                    text(
+                        "INSERT INTO users "
+                        "(id, email, hashed_password, first_name, last_name, created_at) "
+                        "VALUES "
+                        "(:admin_id, 'real.admin@example.com', 'hash', 'Real', 'Admin', :now), "
+                        "(:colleague_id, 'real.colleague@example.com', 'hash', 'Real', "
+                        "'Colleague', :now), "
+                        "(:invitee_id, 'pending.invitee@example.com', 'hash', 'Pending', "
+                        "'Invitee', :now)"
+                    ),
+                    {
+                        "admin_id": str(real_admin_id),
+                        "colleague_id": str(real_colleague_id),
+                        "invitee_id": str(pending_invitee_id),
+                        "now": created_at,
+                    },
+                )
+                conn.execute(
+                    text(
+                        "INSERT INTO projects "
+                        "(id, name, admin_id, scale_min, scale_max, scale_unit, "
+                        "created_at, updated_at, is_example) "
+                        "VALUES "
+                        "(:untouched_id, 'Untouched example', :admin_id, 0, 100, '', "
+                        ":now, :now, true), "
+                        "(:ordinary_id, 'Ordinary project', :admin_id, 0, 100, '', "
+                        ":now, :now, false), "
+                        "(:touched_id, 'Touched example', :admin_id, 0, 100, '', "
+                        ":now, :now, true), "
+                        "(:authored_id, 'Admin-authored example', :admin_id, 0, 100, '', "
+                        ":now, :now, true), "
+                        "(:pending_id, 'Pending-invitation example', :admin_id, 0, 100, '', "
+                        ":now, :now, true)"
+                    ),
+                    {
+                        "untouched_id": str(untouched_example_id),
+                        "ordinary_id": str(ordinary_project_id),
+                        "touched_id": str(touched_example_id),
+                        "authored_id": str(admin_authored_example_id),
+                        "pending_id": str(pending_invitation_example_id),
+                        "admin_id": str(real_admin_id),
+                        "now": created_at,
+                    },
+                )
+                conn.execute(
+                    text(
+                        "INSERT INTO project_members (id, project_id, user_id, role, joined_at) "
+                        "VALUES (:id, :project_id, :user_id, 'EXPERT', :now)"
+                    ),
+                    {
+                        "id": str(uuid4()),
+                        "project_id": str(touched_example_id),
+                        "user_id": str(real_colleague_id),
+                        "now": created_at,
+                    },
+                )
+                # The admin never joins project_members in this fixture either (see
+                # the untouched-example case above) -- admin_id on the project row
+                # is what identifies them. What is new here is their own opinion.
+                conn.execute(
+                    text(
+                        "INSERT INTO expert_opinions "
+                        "(id, project_id, user_id, position, lower_bound, peak, "
+                        "upper_bound, created_at, updated_at) "
+                        "VALUES (:id, :project_id, :user_id, 'Admin', 0, 50, 100, "
+                        ":now, :now)"
+                    ),
+                    {
+                        "id": str(uuid4()),
+                        "project_id": str(admin_authored_example_id),
+                        "user_id": str(real_admin_id),
+                        "now": created_at,
+                    },
+                )
+                # An invitation the colleague has neither accepted nor declined --
+                # the one real action that leaves no project_members and no
+                # expert_opinions row behind, so it needs its own survival check.
+                conn.execute(
+                    text(
+                        "INSERT INTO invitations "
+                        "(id, project_id, invitee_id, inviter_id, created_at) "
+                        "VALUES (:id, :project_id, :invitee_id, :inviter_id, :now)"
+                    ),
+                    {
+                        "id": str(uuid4()),
+                        "project_id": str(pending_invitation_example_id),
+                        "invitee_id": str(pending_invitee_id),
+                        "inviter_id": str(real_admin_id),
+                        "now": created_at,
+                    },
+                )
+                # The touched example project's only opinion is the demo pool's own,
+                # so it is what the colleague's membership spares from the project
+                # deletion but not from losing every opinion to the demo cleanup --
+                # exactly the case a stale calculation_results row is left behind in.
+                conn.execute(
+                    text(
+                        "INSERT INTO expert_opinions "
+                        "(id, project_id, user_id, position, lower_bound, peak, "
+                        "upper_bound, created_at, updated_at) "
+                        "VALUES (:id, :project_id, :user_id, 'Demo', 30, 50, 70, "
+                        ":now, :now)"
+                    ),
+                    {
+                        "id": str(uuid4()),
+                        "project_id": str(touched_example_id),
+                        "user_id": str(demo_expert_id),
+                        "now": created_at,
+                    },
+                )
+                # A stored result on each of the two surviving example projects that
+                # carry opinions: one where every opinion is about to be cascaded
+                # away with the demo pool (must not survive), and one where the
+                # admin's own opinion remains regardless (must survive untouched).
+                conn.execute(
+                    text(
+                        "INSERT INTO calculation_results "
+                        "(id, project_id, best_compromise_lower, best_compromise_peak, "
+                        "best_compromise_upper, arithmetic_mean_lower, arithmetic_mean_peak, "
+                        "arithmetic_mean_upper, median_lower, median_peak, median_upper, "
+                        "max_error, num_experts, calculated_at) "
+                        "VALUES "
+                        "(:id1, :touched_id, 30, 50, 70, 30, 50, 70, 30, 50, 70, 5, 1, :now), "
+                        "(:id2, :authored_id, 30, 50, 70, 30, 50, 70, 30, 50, 70, 5, 1, :now)"
+                    ),
+                    {
+                        "id1": str(uuid4()),
+                        "id2": str(uuid4()),
+                        "touched_id": str(touched_example_id),
+                        "authored_id": str(admin_authored_example_id),
+                        "now": created_at,
+                    },
+                )
+
+            # WHEN - rolled back to its own down_revision (pinned, not "-1")
+            command.downgrade(config, "5b9977c1b5c1")
+
+            # THEN - both columns are gone (downgrade works)
+            inspector = inspect(engine)
+            assert "is_demo" not in {c["name"] for c in inspector.get_columns("users")}
+            assert "is_example" not in {c["name"] for c in inspector.get_columns("projects")}
+
+            # AND - the untouched example project is gone, but the ordinary project
+            # and the touched example project both survive. is_example no longer
+            # exists at this point, so survivors are identified by id, not the flag.
+            with engine.connect() as conn:
+                assert (
+                    conn.execute(
+                        text("SELECT 1 FROM projects WHERE id = :id"),
+                        {"id": str(untouched_example_id)},
+                    ).scalar()
+                    is None
+                )
+                assert (
+                    conn.execute(
+                        text("SELECT 1 FROM projects WHERE id = :id"),
+                        {"id": str(ordinary_project_id)},
+                    ).scalar()
+                    == 1
+                )
+                assert (
+                    conn.execute(
+                        text("SELECT 1 FROM projects WHERE id = :id"),
+                        {"id": str(touched_example_id)},
+                    ).scalar()
+                    == 1
+                )
+                # AND - the real colleague's own membership in the surviving example
+                # project was never touched by the demo cleanup
+                assert (
+                    conn.execute(
+                        text(
+                            "SELECT 1 FROM project_members "
+                            "WHERE project_id = :project_id AND user_id = :user_id"
+                        ),
+                        {"project_id": str(touched_example_id), "user_id": str(real_colleague_id)},
+                    ).scalar()
+                    == 1
+                )
+                # AND - the project the admin never invited anyone into survives too,
+                # because they contributed their own opinion to it. Membership alone
+                # is not the bar: a solo admin who did exactly what the feature
+                # invites -- open the example, add a fourteenth opinion, invite
+                # nobody -- must not lose that opinion to the demo cleanup.
+                assert (
+                    conn.execute(
+                        text("SELECT 1 FROM projects WHERE id = :id"),
+                        {"id": str(admin_authored_example_id)},
+                    ).scalar()
+                    == 1
+                )
+                assert (
+                    conn.execute(
+                        text(
+                            "SELECT 1 FROM expert_opinions "
+                            "WHERE project_id = :project_id AND user_id = :user_id"
+                        ),
+                        {
+                            "project_id": str(admin_authored_example_id),
+                            "user_id": str(real_admin_id),
+                        },
+                    ).scalar()
+                    == 1
+                )
+                # AND - the project with an outstanding invitation survives too: the
+                # colleague has neither joined nor opined, so membership and opinion
+                # alone would have missed this case and deleted the project, taking
+                # the invitation down with it via CASCADE.
+                assert (
+                    conn.execute(
+                        text("SELECT 1 FROM projects WHERE id = :id"),
+                        {"id": str(pending_invitation_example_id)},
+                    ).scalar()
+                    == 1
+                )
+                assert (
+                    conn.execute(
+                        text(
+                            "SELECT 1 FROM invitations "
+                            "WHERE project_id = :project_id AND invitee_id = :invitee_id"
+                        ),
+                        {
+                            "project_id": str(pending_invitation_example_id),
+                            "invitee_id": str(pending_invitee_id),
+                        },
+                    ).scalar()
+                    == 1
+                )
+                # AND - the touched example project's stored result is gone: its only
+                # opinion belonged to the demo pool, so once that opinion cascaded
+                # away with the demo accounts, the result was left describing an
+                # expert who no longer has one, and the cleanup discards it.
+                assert (
+                    conn.execute(
+                        text("SELECT 1 FROM calculation_results WHERE project_id = :id"),
+                        {"id": str(touched_example_id)},
+                    ).scalar()
+                    is None
+                )
+                # AND - the admin-authored example project's stored result survives,
+                # because that project never loses its only opinion: the cleanup must
+                # not discard a result just because a project was touched by the
+                # demo pool's deletion, only when it is left with no opinion at all.
+                assert (
+                    conn.execute(
+                        text("SELECT 1 FROM calculation_results WHERE project_id = :id"),
+                        {"id": str(admin_authored_example_id)},
+                    ).scalar()
+                    == 1
+                )
+
+            # WHEN - re-applied (reversibility holds; the downgrade deleted the pool,
+            # so the insert cannot collide with a leftover row)
+            command.upgrade(config, "c4e81f7a9d23")
+
+            # THEN
+            with engine.connect() as conn:
+                count = conn.execute(
+                    text("SELECT count(*) FROM users WHERE is_demo = true")
+                ).scalar()
+            assert count == len(EXAMPLE_EXPERTS)
         finally:
             engine.dispose()

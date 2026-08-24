@@ -16,6 +16,7 @@ from api.db.models import PasswordResetToken, User
 from api.db.utils import ensure_utc, utc_now
 from api.exceptions import InvalidResetTokenError, ResetTokenExpiredError
 from api.services.base import BaseService
+from api.services.query_helpers import select_account_by_email
 from api.services.user_cache import UserCacheStore
 
 logger = logging.getLogger("api.service.password_reset")
@@ -225,8 +226,7 @@ class PasswordResetService(BaseService):
         :param email: Email address (case-insensitive).
         :return: The user, or None when not found.
         """
-        statement = select(User).where(User.email == email.lower())
-        return self._session.exec(statement).first()
+        return self._session.exec(select_account_by_email(email)).first()
 
     def _invalidate_outstanding(self, user: User) -> None:
         """Queue all of the user's not-yet-used tokens to be marked used.

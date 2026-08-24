@@ -284,13 +284,18 @@ const Projects = () => {
                             <Users className="h-4 w-4" />
                             <span>{project.member_count} {t("card.experts")}</span>
                           </div>
-                          <Badge variant={project.role === 'admin' ? 'default' : 'secondary'}>
-                            {project.role === 'admin' ? (
-                              <><Key className="h-3 w-3 mr-1" /> {t("roles.admin")}</>
-                            ) : (
-                              t("roles.expert")
+                          <div className="flex items-center gap-2">
+                            {project.is_example && (
+                              <Badge variant="outline">{t("card.exampleBadge")}</Badge>
                             )}
-                          </Badge>
+                            <Badge variant={project.role === 'admin' ? 'default' : 'secondary'}>
+                              {project.role === 'admin' ? (
+                                <><Key className="h-3 w-3 mr-1" /> {t("roles.admin")}</>
+                              ) : (
+                                t("roles.expert")
+                              )}
+                            </Badge>
+                          </div>
                         </div>
                       </CardContent>
                     </Card>
