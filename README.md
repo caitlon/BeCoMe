@@ -349,7 +349,7 @@ BeCoMe/
 │   ├── models/                 # Fuzzy number, expert opinion
 │   ├── calculators/            # BeCoMe algorithm
 │   └── interpreters/           # Likert scale support
-├── tests/                  # Test suite (1,200+ backend tests)
+├── tests/                  # Test suite (1,600+ backend tests)
 │   ├── unit/                   # Unit tests (models, calculators, API)
 │   ├── integration/            # Integration tests (Excel validation, API routes, DB)
 │   ├── e2e/                    # End-to-end API tests
@@ -382,7 +382,7 @@ uv run pytest tests/unit/models/       # Model tests only
 
 Current test coverage: **100%** on the core library (`src/`) and **99%** across the backend overall — the remaining lines are Redis-backed store variants exercised against a live Redis rather than in the unit suite.
 
-The test suite contains 797 unit tests (models, calculators, interpreters, utilities, API) and 393 integration tests (Excel validation, API routes, database). Another 59 end-to-end tests cover full API workflows, and the frontend adds 733 Vitest tests plus 76 Playwright browser scenarios. Edge cases like single expert, identical opinions, and extreme values are covered. Property-based tests verify fuzzy number arithmetic.
+The test suite contains 1,142 unit tests (models, calculators, interpreters, utilities, API) and 497 integration tests (Excel validation, API routes, database). Another 59 end-to-end tests cover full API workflows, and the frontend adds 733 Vitest tests plus 76 Playwright browser scenarios. Edge cases like single expert, identical opinions, and extreme values are covered. Property-based tests verify fuzzy number arithmetic.
 
 See [Quality Report](docs/quality-report.md) for detailed metrics.
 
