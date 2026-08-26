@@ -1,6 +1,6 @@
 # BeCoMe Test Suite
 
-Tests for the BeCoMe implementation: 1,249 backend tests, 100% coverage on the core library and 99% overall.
+Tests for the BeCoMe implementation: 1,639 backend tests, plus 59 end-to-end tests that skip unless a server and PostgreSQL are up. 100% coverage on the core library and 99% overall.
 
 ## Overview
 
@@ -14,7 +14,14 @@ uv run pytest tests/unit/              # unit tests only
 uv run pytest tests/integration/       # integration tests only
 uv run pytest -v                       # verbose output
 uv run pytest -x                       # stop on first failure
+uv run pytest -n 0                     # serial, for a readable traceback
 ```
+
+The suite runs in parallel by default: `-n auto` sits in `addopts`, one worker per
+core, which took the full run from 3:46 to 37 seconds. Output from the workers is
+interleaved, so reach for `-n 0` when you are reading one failure closely. Plain
+`-n auto` beat `--dist loadfile` here (36s against 49s), so the distribution is
+left at the default.
 
 ## Code Coverage
 

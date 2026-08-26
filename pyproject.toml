@@ -138,7 +138,7 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = ["-v", "--cov=src", "--cov=api"]
+addopts = ["-v", "-n", "auto", "--cov=src", "--cov=api"]
 asyncio_mode = "strict"
 markers = [
     "e2e: end-to-end tests requiring running server and PostgreSQL",
