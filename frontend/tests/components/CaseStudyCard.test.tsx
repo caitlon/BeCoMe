@@ -59,13 +59,13 @@ describe('CaseStudyCard', () => {
   it('shows scale info when showScale is true', () => {
     render(<CaseStudyCard study={mockStudy} showScale />);
 
-    expect(screen.getByText(/0–100/)).toBeInTheDocument();
+    expect(screen.getByText(/0-100/)).toBeInTheDocument();
   });
 
   it('hides scale info by default', () => {
     render(<CaseStudyCard study={mockStudy} />);
 
-    expect(screen.queryByText(/0–100/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/0-100/)).not.toBeInTheDocument();
   });
 
   it('marks decorative icon as aria-hidden', () => {

@@ -6,7 +6,7 @@ describe('useDocumentTitle', () => {
   it('sets document title with suffix when title provided', () => {
     renderHook(() => useDocumentTitle('Projects'));
 
-    expect(document.title).toBe('Projects — BeCoMe');
+    expect(document.title).toBe('Projects - BeCoMe');
   });
 
   it('sets document title to "BeCoMe" when title is empty', () => {
@@ -21,20 +21,20 @@ describe('useDocumentTitle', () => {
       { initialProps: { title: 'Projects' } }
     );
 
-    expect(document.title).toBe('Projects — BeCoMe');
+    expect(document.title).toBe('Projects - BeCoMe');
 
     rerender({ title: 'Profile' });
 
-    expect(document.title).toBe('Profile — BeCoMe');
+    expect(document.title).toBe('Profile - BeCoMe');
   });
 
   it('preserves last title on unmount', () => {
     const { unmount } = renderHook(() => useDocumentTitle('Projects'));
 
-    expect(document.title).toBe('Projects — BeCoMe');
+    expect(document.title).toBe('Projects - BeCoMe');
 
     unmount();
 
-    expect(document.title).toBe('Projects — BeCoMe');
+    expect(document.title).toBe('Projects - BeCoMe');
   });
 });

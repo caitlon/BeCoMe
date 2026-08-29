@@ -170,7 +170,7 @@ describe('ProjectDetail', () => {
     render(<ProjectDetail />);
 
     await waitFor(() => {
-      expect(screen.getByText(/Scale: 0 — 100 %/)).toBeInTheDocument();
+      expect(screen.getByText(/Scale: 0-100 %/)).toBeInTheDocument();
     });
   });
 
@@ -536,7 +536,7 @@ describe('ProjectDetail - Opinion Form Validations', () => {
 
     await waitFor(() => {
       expect(
-        screen.getAllByText('Values must be within scale range: 0 — 100').length
+        screen.getAllByText('Values must be within scale range: 0-100').length
       ).toBeGreaterThan(0);
     });
     expect(mockApi.createOrUpdateOpinion).not.toHaveBeenCalled();

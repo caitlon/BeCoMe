@@ -161,7 +161,7 @@ describe('Projects', () => {
       render(<Projects />);
 
       await waitFor(() => {
-        expect(screen.getByText(/0 — 100 %/)).toBeInTheDocument();
+        expect(screen.getByText(/0-100 %/)).toBeInTheDocument();
       });
     });
 

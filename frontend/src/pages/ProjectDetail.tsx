@@ -317,7 +317,7 @@ const ProjectDetail = () => {
         <PageHeader title={project.name} description={project.description ?? undefined}>
           <div className="flex flex-wrap items-center gap-4">
             <span className="font-mono text-sm bg-muted px-3 py-1 rounded">
-              {t("detail.scale")}: {project.scale_min} — {project.scale_max} {project.scale_unit}
+              {t("detail.scale")}: {project.scale_min}-{project.scale_max} {project.scale_unit}
             </span>
             {isAdmin && (
               <div className="flex gap-2">

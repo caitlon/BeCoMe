@@ -276,7 +276,7 @@ const Projects = () => {
                         </p>
 
                         <div className="text-xs text-muted-foreground mb-4 font-mono bg-muted px-2 py-1 rounded">
-                          {t("card.scale")}: {project.scale_min} — {project.scale_max} {project.scale_unit}
+                          {t("card.scale")}: {project.scale_min}-{project.scale_max} {project.scale_unit}
                         </div>
 
                         <div className="flex items-center justify-between">
@@ -365,7 +365,7 @@ const Projects = () => {
 
                             <div className="flex flex-wrap gap-4 text-xs text-muted-foreground mb-4">
                               <span className="font-mono bg-muted px-2 py-1 rounded">
-                                {t("card.scale")}: {invitation.project_scale_min} — {invitation.project_scale_max} {invitation.project_scale_unit}
+                                {t("card.scale")}: {invitation.project_scale_min}-{invitation.project_scale_max} {invitation.project_scale_unit}
                               </span>
                               <span className="flex items-center gap-1">
                                 <Users className="h-3 w-3" />
