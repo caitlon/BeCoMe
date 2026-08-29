@@ -1,8 +1,8 @@
-# UML Diagrams
+# UML diagrams
 
 Three diagrams visualize the BeCoMe implementation from different angles.
 
-## Class Diagram
+## Class diagram
 
 ![Class Diagram](diagrams/png/class-diagram.png)
 
@@ -12,7 +12,7 @@ Static structure of the codebase. `FuzzyTriangleNumber` holds three floats (lowe
 
 Composition arrows show containment (ExpertOpinion contains FuzzyTriangleNumber). Dashed arrows show dependencies (calculator uses opinions, creates results).
 
-## Sequence Diagram
+## Sequence diagram
 
 ![Sequence Diagram](diagrams/png/sequence-diagram.png)
 
@@ -20,13 +20,13 @@ Message flow during `calculate_compromise()`. The calculator first loops through
 
 With both Γ and Ω computed, the calculator averages them component-wise to get ΓΩMean. Maximum error is half the distance between mean and median centroids. Everything gets packed into BeCoMeResult and returned.
 
-## Activity Diagram
+## Activity diagram
 
 ![Activity Diagram](diagrams/png/activity-diagram.png)
 
 Algorithm flow with decision points. The odd/even branch in median calculation is the main fork: odd counts take the middle element directly, even counts average two neighbors. Color-coded partitions separate the four calculation phases: mean (red), median (green), compromise (blue), error (yellow).
 
-## Regenerating Diagrams
+## Regenerating diagrams
 
 Source files live in `diagrams/puml/`. To regenerate PNGs:
 

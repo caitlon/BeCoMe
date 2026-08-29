@@ -2,25 +2,25 @@
 
 Full-stack web application for group decision-making under fuzzy uncertainty using the BeCoMe (Best Compromise Mean) method.
 
-**🌐 Live: [becomify.app](https://www.becomify.app)**
+**Live: [becomify.app](https://www.becomify.app)**
 
 ![Python](https://img.shields.io/badge/python-3.13+-blue.svg)
 ![TypeScript](https://img.shields.io/badge/typescript-5.0+-blue.svg)
 ![FastAPI](https://img.shields.io/badge/fastapi-0.115+-green.svg)
 ![React](https://img.shields.io/badge/react-18+-blue.svg)
-![Tests](https://img.shields.io/badge/tests-1982%20passed-brightgreen)
+![Tests](https://img.shields.io/badge/tests-2823%20passed-brightgreen)
 ![Coverage](https://img.shields.io/badge/coverage-99%25-brightgreen)
 
-## Table of Contents
+## Table of contents
 
 - [About](#about)
 - [Abstract](#abstract)
 - [Features](#features)
-- [Quick Start](#quick-start)
-- [Web Application](#web-application)
+- [Quick start](#quick-start)
+- [Web application](#web-application)
 - [Methodology](#methodology)
 - [Installation](#installation)
-- [Project Structure](#project-structure)
+- [Project structure](#project-structure)
 - [Testing](#testing)
 - [Documentation](#documentation)
 - [License](#license)
@@ -37,31 +37,32 @@ A Python implementation of the **BeCoMe** (Best Compromise Mean) group decision-
 
 ## Abstract
 
-**BeCoMe** (Best Compromise Mean) is a group decision-making method that aggregates expert opinions expressed as fuzzy triangular numbers. This project implements the method — originally published by Vrana et al. (2021) — in Python, combining arithmetic mean and median approaches to produce consensus estimates that balance central tendency with outlier resistance.
+**BeCoMe** (Best Compromise Mean) is a group decision-making method that aggregates expert opinions expressed as fuzzy triangular numbers. This project implements the method in Python, as originally published by Vrana et al. (2021). It combines the arithmetic mean and the median to produce consensus estimates that balance central tendency against outlier resistance.
 
-Validated on three Czech case studies (COVID-19 budget allocation, flood prevention, cross-border travel policy). Results verified against original Excel implementation with 100% test coverage.
+Validated on three Czech case studies: COVID-19 budget allocation, flood prevention, and cross-border travel policy. The results match the original Excel implementation to within 0.001, and the core library has 100% test coverage.
 
 ## Features
 
-### Web Application
+### Web application
 - **REST API**: FastAPI backend with JWT authentication
-- **React Frontend**: Modern UI with TypeScript and Tailwind CSS
-- **Project Management**: Create projects, invite experts, collect opinions
-- **Real-time Calculations**: Automatic BeCoMe aggregation when opinions are submitted
+- **React frontend**: TypeScript and Tailwind CSS
+- **Project management**: create projects, invite experts, collect opinions
+- **Live calculations**: BeCoMe re-aggregates whenever an expert submits an opinion
 - **Multi-language**: English and Czech localization
 
-### Core Library
-- **Fuzzy Triangular Numbers**: Operations on TFN (a, c, b) with validation
-- **BeCoMe Algorithm**: Arithmetic mean + median → best compromise
-- **Strategy Pattern**: Handles odd/even expert counts for median calculation
-- **Likert Scale Support**: Ordinal data as special case of fuzzy numbers
+### Core library
+- **Fuzzy triangular numbers**: operations on TFN (a, c, b) with validation
+- **BeCoMe algorithm**: arithmetic mean + median → best compromise
+- **Strategy pattern**: handles odd and even expert counts for the median
+- **Likert scale support**: ordinal data as a special case of fuzzy numbers
 
 ### Quality
-- **100% Test Coverage**: 1,980+ tests for API, frontend, and core library
-- **Type Safety**: mypy strict mode, TypeScript strict
-- **Three Case Studies**: COVID-19 budget, flood prevention, cross-border travel
+- **Coverage**: 100% on the core library, 99% across the backend
+- **Test count**: 1,786 backend tests and 1,037 frontend tests
+- **Type safety**: mypy strict mode, TypeScript strict
+- **Three case studies**: COVID-19 budget, flood prevention, cross-border travel
 
-## Web Application
+## Web application
 
 The project includes a full-stack web application for collaborative decision-making.
 
@@ -71,21 +72,21 @@ The project includes a full-stack web application for collaborative decision-mak
 |-----------|------------|------|
 | Backend | FastAPI + SQLModel | 8000 |
 | Frontend | React + Vite + Tailwind | 8080 |
-| Database | SQLite (dev) / PostgreSQL (prod) | — |
+| Database | SQLite (dev), PostgreSQL (prod) | n/a |
 
-### Key Features
+### Key features
 
-- **User Authentication**: JWT auth with rotating refresh tokens, delivered as HttpOnly session cookies with CSRF protection
-- **Project Management**: Create projects with custom scales, invite experts by email
-- **Opinion Collection**: Experts submit fuzzy triangular numbers (lower, peak, upper)
-- **Automatic Calculation**: BeCoMe result computed when opinions are submitted
-- **Role-based Access**: Admin and member roles per project
+- **User authentication**: JWT auth with rotating refresh tokens, delivered as HttpOnly session cookies with CSRF protection
+- **Project management**: create projects with custom scales, invite experts by email
+- **Opinion collection**: experts submit fuzzy triangular numbers (lower, peak, upper)
+- **Automatic calculation**: the API recomputes the BeCoMe result on every opinion submitted
+- **Role-based access**: admin and member roles per project
 
-### Live Application
+### Live application
 
 **https://www.becomify.app**
 
-### Local Development
+### Local development
 
 ```bash
 # Backend (http://localhost:8000)
@@ -123,17 +124,17 @@ APP_ENV=dev uv run uvicorn api.main:app --reload
 APP_ENV=prod uv run uvicorn api.main:app
 ```
 
-Both deployed profiles (`test`, `prod`) refuse to start misconfigured: a weak or default `SECRET_KEY`, a SQLite `DATABASE_URL`, a missing `REDIS_URL`, or localhost-only `CORS_ORIGINS` fails startup immediately. Production additionally requires `CLOUDFLARE_ORIGIN_SECRET`.
+Both deployed profiles (`test`, `prod`) refuse to start misconfigured: a weak or default `SECRET_KEY`, a SQLite `DATABASE_URL`, a missing `REDIS_URL`, or localhost-only `CORS_ORIGINS` fails startup immediately. Production also requires `CLOUDFLARE_ORIGIN_SECRET`.
 
-The `TESTING` flag is separate from the profile. The test suite sets `APP_ENV=test` together with `TESTING=1`; `TESTING` disables rate limiting and the deploy startup checks, and is never set on a deployed profile, so staging keeps the same limits as production.
+The `TESTING` flag is separate from the profile. The test suite sets `APP_ENV=test` together with `TESTING=1`. `TESTING` disables rate limiting and the deploy startup checks, and it is never set on a deployed profile, so staging keeps the same limits as production.
 
-On Railway, set the profile and secrets as service variables per environment: `APP_ENV`, `SECRET_KEY`, `DATABASE_URL`, `REDIS_URL`, `CORS_ORIGINS`, `DEBUG`. The staging service uses `APP_ENV=test`; production uses `APP_ENV=prod`. The frontend reads its API URL from `VITE_API_URL`, injected at build time (see the frontend Dockerfile), so staging and production differ only by that value.
+On Railway, set the profile and secrets as service variables per environment: `APP_ENV`, `SECRET_KEY`, `DATABASE_URL`, `REDIS_URL`, `CORS_ORIGINS`, and `DEBUG`. The staging service uses `APP_ENV=test`, and production uses `APP_ENV=prod`. The frontend reads its API URL from `VITE_API_URL`, injected at build time (see the frontend Dockerfile), so staging and production differ only by that value.
 
 See [docs/environments.md](docs/environments.md) for the full reference: per-profile details, Railway variables, and current deployment status.
 
 ## Methodology
 
-### Method Overview
+### Method overview
 
 The BeCoMe method operates on expert opinions expressed as fuzzy triangular numbers **A** = (a, c, b), where:
 - **a** = lower bound (pessimistic estimate)
@@ -142,21 +143,21 @@ The BeCoMe method operates on expert opinions expressed as fuzzy triangular numb
 
 The algorithm proceeds through four steps:
 
-1. **Arithmetic Mean (Γ)**: Calculate component-wise average of all expert opinions
-2. **Median (Ω)**: Sort opinions by centroid values and compute median fuzzy number
-3. **Best Compromise (ΓΩMean)**: Average the arithmetic mean and median
-4. **Error Estimation (Δmax)**: Calculate maximum deviation as quality metric
+1. **Arithmetic mean (Γ)**: average all expert opinions component-wise
+2. **Median (Ω)**: sort opinions by centroid, then compute the median fuzzy number
+3. **Best compromise (ΓΩMean)**: average the arithmetic mean and the median
+4. **Error estimation (Δmax)**: compute the maximum deviation as a quality metric
 
-### Implementation Approach
+### Implementation approach
 
-**Programming Language**: Python 3.13+
+**Programming language**: Python 3.13+
 
-**Key Design Decisions**:
-- Object-oriented architecture separating data models from calculation logic
-- Strategy pattern for median calculation (odd vs. even number of experts)
-- Immutable value objects for fuzzy numbers using `dataclasses`
-- Type safety enforced through `mypy` in strict mode
-- Unit and integration testing with 100% code coverage
+**Key design decisions**:
+- Object-oriented architecture that separates the data models from the calculation logic
+- Strategy pattern for the median calculation (an odd against an even number of experts)
+- Immutable value objects for fuzzy numbers, built on `__slots__` and a blocked `__setattr__`
+- `mypy` in strict mode enforces type safety
+- Unit and integration tests, with the core library at 100% coverage
 
 **Dependencies**:
 - Core: `pydantic` for data validation (the only runtime dependency)
@@ -164,29 +165,29 @@ The algorithm proceeds through four steps:
 - Visualization: `matplotlib`, `plotly`, `seaborn` (optional, via `--extra viz`)
 - Notebooks: `jupyter`, `ipykernel` (optional, via `--extra notebook`)
 
-**Validation**: Results match Excel reference calculations from the original research. All three case studies produce expected values within 0.001 tolerance.
+**Validation**: results match the Excel reference calculations from the original research. All three case studies produce the expected values within a 0.001 tolerance.
 
 ## Data
 
-### Case Study Datasets
+### Case study datasets
 
-The implementation includes three real-world datasets from Czech public policy domain:
+The implementation includes three real-world datasets from the Czech public policy domain:
 
-#### 1. Budget Case (budget_case.txt)
+#### 1. Budget case (budget_case.txt)
 
 COVID-19 pandemic budget support estimation. 22 experts (government officials, emergency service leaders) provided interval estimates in billions of CZK. Demonstrates median calculation with an even number of experts.
 
-#### 2. Floods Case (floods_case.txt)
+#### 2. Floods case (floods_case.txt)
 
-Flood prevention planning — what percentage of arable land should be converted? 13 experts from different backgrounds (land owners, hydrologists, rescue services) show highly polarized opinions. This case demonstrates median calculation with an odd expert count.
+Flood prevention planning: what percentage of arable land should be converted? 13 experts from different backgrounds (land owners, hydrologists, rescue services) show highly polarized opinions. This case demonstrates the median calculation with an odd expert count.
 
-#### 3. Pendlers Case (pendlers_case.txt)
+#### 3. Pendlers case (pendlers_case.txt)
 
-Cross-border travel policy during pandemic. 22 public health officials and border service representatives rated policy options on a Likert scale (0, 25, 50, 75, 100). Uses crisp values — a special case where a = c = b in fuzzy number notation.
+Cross-border travel policy during the pandemic. 22 public health officials and border service representatives rated policy options on a Likert scale (0, 25, 50, 75, 100). It uses crisp values, the special case where a = c = b in fuzzy number notation.
 
-### Data Format
+### Data format
 
-All datasets are stored in human-readable text format in `examples/data/`:
+Every dataset lives in `examples/data/`, in a human-readable text format:
 
 ```
 CASE: CaseName
@@ -199,21 +200,21 @@ Expert2 | 12.0 | 18.0 | 25.0
 ...
 ```
 
-### Data Availability
+### Data availability
 
-- **Location**: `examples/data/` directory in this repository
-- **License**: Academic and research use
-- **Access**: Public (GitHub repository)
+- **Location**: the `examples/data/` directory in this repository
+- **License**: academic and research use
+- **Access**: public (GitHub repository)
 
-## Quick Start
+## Quick start
 
-### Web Application
+### Web application
 
 **Live demo:** https://www.becomify.app
 
-Register, create a project, invite experts, and collect opinions — no installation required.
+Register, create a project, invite experts, and collect opinions. No installation required.
 
-### Command Line (Case Studies)
+### Command line (case studies)
 
 ```bash
 uv sync --extra dev
@@ -227,7 +228,7 @@ uv run python -m examples.analyze_budget_case
 - Python 3.13 or higher
 - `uv` package manager (recommended) or `pip`
 
-### Installation Steps
+### Installation steps
 
 This project uses `uv` for dependency management:
 
@@ -263,15 +264,15 @@ After installing the `dev` extra, enable the local secret-scanning git hook:
 uv run pre-commit install
 ```
 
-### Dependency Groups
+### Dependency groups
 
-| Group | Contents | Use Case |
+| Group | Contents | Use case |
 |-------|----------|----------|
 | (core) | pydantic | Minimal installation for using the library |
-| `dev` | pytest, mypy, ruff, bandit, detect-secrets, pre-commit | Development, testing, security |
+| `api` | fastapi, uvicorn, sqlmodel, alembic, redis, boto3 | Running the REST API |
+| `dev` | pytest, hypothesis, mypy, ruff, bandit, detect-secrets, pre-commit | Development, testing, security |
 | `viz` | numpy, pandas, matplotlib, plotly, seaborn | Visualization and data analysis |
 | `notebook` | jupyter, ipykernel, ipywidgets | Interactive notebooks |
-| `docs` | plantuml | UML diagram generation |
 
 Alternatively, with pip:
 
@@ -281,9 +282,9 @@ pip install -e ".[dev,viz,notebook]"
 
 ## Usage
 
-### Running Case Study Examples
+### Running case study examples
 
-The easiest way to understand the BeCoMe method is to run one of the case study analyses:
+To see what the BeCoMe method does, run one of the case study analyses:
 
 ```bash
 # COVID-19 budget support case (22 experts, even number)
@@ -296,9 +297,9 @@ uv run python -m examples.analyze_floods_case
 uv run python -m examples.analyze_pendlers_case
 ```
 
-Each example provides step-by-step calculations with detailed explanations of the mathematical operations.
+Each example prints the calculation step by step, and explains each mathematical operation as it goes.
 
-### Basic API Usage
+### Basic API usage
 
 ```python
 from src.calculators.become_calculator import BeCoMeCalculator
@@ -326,7 +327,7 @@ print(f"Number of Experts: {result.num_experts}")
 
 See [src/README.md](src/README.md) for API documentation.
 
-## Project Structure
+## Project structure
 
 ```text
 BeCoMe/
@@ -349,7 +350,7 @@ BeCoMe/
 │   ├── models/                 # Fuzzy number, expert opinion
 │   ├── calculators/            # BeCoMe algorithm
 │   └── interpreters/           # Likert scale support
-├── tests/                  # Test suite (1,600+ backend tests)
+├── tests/                  # Test suite (1,786 backend tests)
 │   ├── unit/                   # Unit tests (models, calculators, API)
 │   ├── integration/            # Integration tests (Excel validation, API routes, DB)
 │   ├── e2e/                    # End-to-end API tests
@@ -361,9 +362,7 @@ BeCoMe/
 
 ## Testing
 
-The implementation includes full test coverage:
-
-### Running Tests
+### Running tests
 
 ```bash
 # Run all tests
@@ -378,17 +377,19 @@ uv run pytest tests/integration/       # Integration tests only
 uv run pytest tests/unit/models/       # Model tests only
 ```
 
-### Test Coverage
+### Test coverage
 
-Current test coverage: **100%** on the core library (`src/`) and **99%** across the backend overall — the remaining lines are Redis-backed store variants exercised against a live Redis rather than in the unit suite.
+Current test coverage: **100%** on the core library (`src/`) and **99%** across the backend overall. Most of the remaining lines are Redis-backed store variants, which run against a live Redis rather than in the unit suite.
 
-The test suite contains 1,142 unit tests (models, calculators, interpreters, utilities, API) and 497 integration tests (Excel validation, API routes, database). Another 59 end-to-end tests cover full API workflows, and the frontend adds 733 Vitest tests plus 76 Playwright browser scenarios. Edge cases like single expert, identical opinions, and extreme values are covered. Property-based tests verify fuzzy number arithmetic.
+The backend has 1,215 unit tests (models, calculators, interpreters, utilities, API) and 512 integration tests (Excel validation, API routes, database). Another 59 end-to-end tests cover full API workflows. The frontend adds 1,037 Vitest tests and 223 Playwright runs across five browser projects. The suite covers the edge cases: a single expert, identical opinions, and extreme values. Property-based tests built on Hypothesis check fuzzy number arithmetic.
 
-See [Quality Report](docs/quality-report.md) for detailed metrics.
+To regenerate these counts, run `uv run pytest tests/unit/ --collect-only -q` for each backend tier, `npx vitest run` in `frontend/`, and `npx playwright test --list`.
 
-## Code Quality
+See the [quality report](docs/quality-report.md) for detailed metrics.
 
-The project maintains strict code quality standards:
+## Code quality
+
+The project holds to strict code quality standards:
 
 ```bash
 # Type checking with mypy (strict mode)
@@ -404,7 +405,7 @@ uv run ruff format .
 uv run mypy src/ examples/ && uv run ruff check . && uv run pytest --cov=src
 ```
 
-All code passes mypy in strict mode without `type: ignore` comments. Ruff enforces consistent style. Every public API has docstrings.
+All code passes mypy in strict mode. The one `type: ignore` in the tree sits on `src/models/become_result.py:52`, where mypy and Pydantic's `@computed_field` decorator disagree about the property type. Ruff enforces consistent style, and every public API has docstrings.
 
 ## Documentation
 
@@ -412,42 +413,42 @@ Documentation is available in the `docs/` directory:
 
 | Document | Description |
 |----------|-------------|
-| [Method Description](docs/method-description.md) | Mathematical foundation with formulas and worked examples |
-| [UML Diagrams](docs/uml-diagrams/README.md) | Visual architecture (class, sequence, activity diagrams) |
-| [Quality Report](docs/quality-report.md) | Code quality metrics and test coverage details |
+| [Method description](docs/method-description.md) | Mathematical foundation with formulas and worked examples |
+| [UML diagrams](docs/uml-diagrams/README.md) | Visual architecture (class, sequence, and activity diagrams) |
+| [Quality report](docs/quality-report.md) | Code quality metrics and test coverage details |
 | [Security](docs/security.md) | Application and database security posture |
-| [Environments](docs/environments.md) | dev/test/prod profiles and Railway deployment |
-| [Source Code](src/README.md) | API documentation and module descriptions |
+| [Environments](docs/environments.md) | The dev, test, and prod profiles, and Railway deployment |
+| [Source code](src/README.md) | API documentation and module descriptions |
 
 ## Architecture
 
 The implementation follows object-oriented design principles:
 
-### Class Diagram
+### Class diagram
 
 ![Class Diagram](docs/uml-diagrams/diagrams/png/class-diagram.png)
 
-*Complete architecture with sequence and activity diagrams available in [UML Documentation](docs/uml-diagrams/README.md)*
+*The sequence and activity diagrams live in the [UML documentation](docs/uml-diagrams/README.md).*
 
-### Design Patterns
+### Design patterns
 
-`FuzzyTriangleNumber` is a value object — immutable and validated on construction. The median calculation uses Strategy pattern to handle odd and even expert counts differently. `BaseAggregationCalculator` applies Template Method for the calculation skeleton, while `BeCoMeResult` serves as a DTO encapsulating all outputs.
+`FuzzyTriangleNumber` is a value object: immutable, and validated on construction. The median calculation uses the Strategy pattern to handle odd and even expert counts differently. `BaseAggregationCalculator` applies Template Method for the calculation skeleton, and `BeCoMeResult` is the DTO that carries all the outputs.
 
 ## Examples
 
 The `examples/` directory contains three real-world case studies demonstrating the method:
 
-### Budget Case (22 experts)
+### Budget case (22 experts)
 
 Government officials and emergency service leaders estimated COVID-19 budget support needs (0-100 billion CZK). With an even number of experts, this case shows how the median is calculated by averaging two middle values.
 
-### Floods Case (13 experts)
+### Floods case (13 experts)
 
-Land owners, hydrologists, and rescue coordinators disagreed strongly on flood prevention measures. The polarized opinions make this case interesting — it demonstrates how BeCoMe handles outliers when expert count is odd.
+Land owners, hydrologists, and rescue coordinators disagreed strongly on flood prevention measures. The polarized opinions make this case the interesting one: it demonstrates how BeCoMe handles outliers when the expert count is odd.
 
-### Pendlers Case (22 experts)
+### Pendlers case (22 experts)
 
-Public health officials rated cross-border travel policies on a Likert scale. Unlike other cases, this one uses crisp values (where a = c = b), showing that fuzzy numbers generalize ordinal scales.
+Public health officials rated cross-border travel policies on a Likert scale. Unlike the other cases, this one uses crisp values, where a = c = b. It shows that fuzzy numbers generalize ordinal scales.
 
 Running any example loads data from `examples/data/`, walks through the calculation step by step, and shows intermediate results (arithmetic mean, median, sorting process). The output includes interpretation of the final consensus estimate.
 
@@ -455,7 +456,7 @@ See [examples/README.md](examples/README.md) for details.
 
 ## License
 
-**Academic Use**: This code is provided for academic and research purposes. If you build on this implementation, please cite the original BeCoMe paper by Vrana et al. (2021) — see [References](#references).
+**Academic use**: this code is provided for academic and research purposes. If you build on this implementation, cite the original BeCoMe paper by Vrana et al. (2021), listed under [References](#references).
 
 **Copyright**: © 2025-2026 Ekaterina Kuzmina
 
@@ -469,25 +470,25 @@ For questions or collaboration inquiries:
 
 ## References
 
-### Source Method
+### Source method
 
 This project implements the BeCoMe method developed by I. Vrana, J. Tyrychtr, and M. Pelikán at the Faculty of Economics and Management, Czech University of Life Sciences Prague.
 
 **Key reference:**
 - Vrana, I., Tyrychtr, J., & Pelikán, M. (2021). BeCoMe: Easy-to-implement optimized method for best-compromise group decision making: Flood-prevention and COVID-19 case studies. *Environmental Modelling & Software*, 136, 104953. https://doi.org/10.1016/j.envsoft.2020.104953
 
-Foundational background: fuzzy logic (Zadeh 1965; Bellman & Zadeh 1970).
+Foundational background: fuzzy logic (Zadeh 1965, and Bellman & Zadeh 1970).
 
-### Project Report
+### Project report
 
 A detailed write-up of the implementation is available in [thesis/main.pdf](thesis/main.pdf).
 
 ### Datasets
 
-All case study data is in `examples/data/`. The budget case has 22 experts estimating COVID-19 support. Floods case involves 13 experts with polarized views on land reduction. Pendlers case uses Likert scale ratings from 22 officials on cross-border travel policy.
+All case study data is in `examples/data/`. The Budget case has 22 experts estimating COVID-19 support. The Floods case involves 13 experts with polarized views on land reduction. The Pendlers case uses Likert scale ratings from 22 officials on cross-border travel policy.
 
 See [examples/data/README.md](examples/data/README.md) for format specifications and data provenance.
 
 ## Acknowledgments
 
-Thanks to the authors of the BeCoMe method — I. Vrana, J. Tyrychtr, and M. Pelikán — at the Faculty of Economics and Management, Czech University of Life Sciences Prague.
+Thanks to the authors of the BeCoMe method, I. Vrana, J. Tyrychtr, and M. Pelikán, at the Faculty of Economics and Management, Czech University of Life Sciences Prague.

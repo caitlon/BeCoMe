@@ -1,8 +1,8 @@
-# BeCoMe Examples
+# BeCoMe examples
 
 Three case studies from Czech public policy show the BeCoMe method in action. Each loads real expert data, walks through the calculation, and displays intermediate results.
 
-## Directory Structure
+## Directory structure
 
 ```
 examples/
@@ -14,15 +14,22 @@ examples/
 └── visualizations/             # Interactive Jupyter charts
 ```
 
-## Case Studies
+## Case studies
 
-**Budget Case** (`analyze_budget_case.py`) — 22 government officials estimated COVID-19 budget support needs in billions of CZK. With an even expert count, this case shows how the median averages two middle values.
+**Budget case** (`analyze_budget_case.py`). 22 government officials estimated COVID-19 budget
+support needs in billions of CZK. With an even expert count, this case shows how the median
+averages the two middle values.
 
-**Floods Case** (`analyze_floods_case.py`) — Land owners, hydrologists, and rescue coordinators disagreed sharply on flood prevention measures. The 13 experts produced highly polarized opinions, making this case useful for understanding how BeCoMe handles outliers when expert count is odd.
+**Floods case** (`analyze_floods_case.py`). Land owners, hydrologists, and rescue coordinators
+disagreed sharply on flood prevention measures. The 13 experts produced highly polarized
+opinions. That makes this case useful for understanding how BeCoMe handles outliers when the
+expert count is odd.
 
-**Pendlers Case** (`analyze_pendlers_case.py`) — Public health officials rated cross-border travel policies on a Likert scale (0, 25, 50, 75, 100). Unlike other cases, this one uses crisp values where lower bound equals peak equals upper bound.
+**Pendlers case** (`analyze_pendlers_case.py`). Public health officials rated cross-border
+travel policies on a Likert scale (0, 25, 50, 75, 100). Unlike the other cases, this one uses
+crisp values, where the lower bound, the peak, and the upper bound are all equal.
 
-### Running Examples
+### Running examples
 
 ```bash
 # COVID-19 budget support case
@@ -35,11 +42,16 @@ uv run python -m examples.analyze_floods_case
 uv run python -m examples.analyze_pendlers_case
 ```
 
-Each script loads data from text files, calculates arithmetic mean (Γ), median (Ω), and best compromise (ΓΩMean), then displays formulas and intermediate results at every step.
+Each script loads data from a text file, then calculates the arithmetic mean (Γ), the median
+(Ω), and the best compromise (ΓΩMean). It prints the formula and the intermediate result at
+every step.
 
 ## Visualizations
 
-The `visualizations/` directory contains interactive Jupyter notebooks for exploring BeCoMe results. Available charts include triangular membership functions, centroid comparisons, sensitivity analysis (toggle experts on/off to see impact), and a scenario dashboard comparing all three cases side-by-side.
+The `visualizations/` directory contains interactive Jupyter notebooks for exploring BeCoMe
+results. The charts cover triangular membership functions, centroid comparisons, sensitivity
+analysis (toggle experts on and off to see the impact), and a scenario dashboard that puts all
+three cases side by side.
 
 ```bash
 jupyter notebook examples/visualizations/visualize_become.ipynb
@@ -47,9 +59,9 @@ jupyter notebook examples/visualizations/visualize_become.ipynb
 
 See [visualizations/README.md](visualizations/README.md) for details.
 
-## Data Files
+## Data files
 
-The `data/` directory contains case study data in simple text format:
+The `data/` directory contains the case study data in a simple text format:
 
 ```
 data/
@@ -61,7 +73,7 @@ data/
 
 See [data/README.md](data/README.md) for dataset documentation, provenance, and validation details.
 
-### Text File Format
+### Text file format
 
 All data files follow a standardized format:
 
@@ -76,9 +88,10 @@ Expert2 | 12 | 18 | 25
 ...
 ```
 
-Lower, Peak, Upper represent the fuzzy triangular number (pessimistic, most likely, optimistic estimates).
+Lower, Peak, and Upper represent the fuzzy triangular number: the pessimistic, most likely, and
+optimistic estimates.
 
-## Custom Data
+## Custom data
 
 To analyze your own expert opinions, create a text file in `data/` following the format above:
 
@@ -98,12 +111,12 @@ print(f"Best Compromise: {result.best_compromise}")
 print(f"Max Error: {result.max_error}")
 ```
 
-## Understanding the Output
+## Understanding the output
 
 Each script displays four calculation steps: arithmetic mean (Γ), median (Ω), best compromise (ΓΩMean), and maximum error (Δmax). The output shows formulas, intermediate values, and sorted expert opinions at each stage. For the mathematical foundation behind these calculations, see [docs/method-description.md](../docs/method-description.md).
 
-## Related Documentation
+## Related documentation
 
-- [Main README](../README.md) — project overview and installation
-- [Method description](../docs/method-description.md) — mathematical foundation
-- [Source code](../src/README.md) — API documentation
+- [Main README](../README.md): project overview and installation
+- [Method description](../docs/method-description.md): mathematical foundation
+- [Source code](../src/README.md): API documentation

@@ -1,24 +1,31 @@
-# BeCoMe Visualizations
+# BeCoMe visualizations
 
-Interactive Jupyter charts for exploring expert opinions and BeCoMe calculation results. All visualizations run locally — no external services required.
+Interactive Jupyter charts for exploring expert opinions and BeCoMe calculation results.
+Everything runs locally and needs no external services.
 
-## Interactive Demo
+## Interactive demo
 
-![BeCoMe Interactive Visualizations Demo](demo.gif)
+![BeCoMe interactive visualizations demo](demo.gif)
 
 *Expert opinions, centroid comparisons, and sensitivity analysis in action.*
 
-## Available Visualizations
+## Available visualizations
 
-**Triangular Membership Functions** — Expert opinions displayed as overlapping triangular fuzzy numbers with arithmetic mean (Γ), median (Ω), and best compromise (ΓΩMean) highlighted on top.
+**Triangular membership functions.** Expert opinions appear as overlapping triangular fuzzy
+numbers, with the arithmetic mean (Γ), the median (Ω), and the best compromise (ΓΩMean) drawn
+on top.
 
-**Centroid Charts** — Each expert's fuzzy opinion reduced to a single centroid value, sorted and compared against aggregated metrics. Useful for spotting outliers.
+**Centroid charts.** Each expert's fuzzy opinion collapses to a single centroid value, sorted
+and compared against the aggregated metrics. Useful for spotting outliers.
 
-**Sensitivity Analysis** — Toggle individual experts on/off with checkboxes to see how their inclusion affects the final compromise. Recalculates in real time.
+**Sensitivity analysis.** Toggle individual experts on and off with checkboxes to see how their
+inclusion affects the final compromise. The chart recalculates in real time.
 
-**Scenario Dashboard** — All three case studies (Budget, Floods, Pendlers) side-by-side with metrics table and compact charts for cross-case comparison.
+**Scenario dashboard.** All three case studies (Budget, Floods, Pendlers) side by side, with a
+metrics table and compact charts for cross-case comparison.
 
-**Accuracy Gauge** — Speedometer-style indicator showing agreement level among experts. Color-coded green/yellow/red based on maximum error metric.
+**Accuracy gauge.** A speedometer-style indicator of how far the experts agree, color-coded
+green, yellow, or red from the maximum error metric.
 
 ## Running
 
@@ -28,18 +35,19 @@ jupyter notebook examples/visualizations/visualize_become.ipynb
 jupyter lab examples/visualizations/visualize_become.ipynb
 ```
 
-Requires Jupyter environment (`uv sync` installs all dependencies).
+Requires a Jupyter environment (`uv sync` installs all dependencies).
 
-## Interactive Features
+## Interactive features
 
-Charts support zoom, pan, and hover tooltips. Sensitivity analysis updates immediately when toggling experts. Works entirely in browser — no server calls.
+Charts support zoom, pan, and hover tooltips. The sensitivity analysis updates as soon as you
+toggle an expert. Everything runs in the browser, with no server calls.
 
-## Technical Details
+## Technical details
 
-Built with Matplotlib, Seaborn, and ipywidgets. Tested with 100+ expert datasets. Color schemes optimized for both screen and print.
+Built with Matplotlib, Seaborn, NumPy, and ipywidgets.
 
-## Related Documentation
+## Related documentation
 
-- [examples/README.md](../README.md) — case study analyses
-- [data/README.md](../data/README.md) — dataset documentation
-- [docs/method-description.md](../../docs/method-description.md) — mathematical foundation
+- [examples/README.md](../README.md): case study analyses
+- [data/README.md](../data/README.md): dataset documentation
+- [docs/method-description.md](../../docs/method-description.md): mathematical foundation

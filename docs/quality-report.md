@@ -4,13 +4,13 @@
 
 | Check | Status | Result |
 |-------|--------|--------|
-| mypy (strict) | Pass | No errors (24 files in `src/`+`examples/`, 89 in `api/`) |
+| mypy (strict) | Pass | No errors (24 files in `src/`+`examples/`, 92 in `api/`) |
 | ruff check | Pass | No issues |
 | ruff format | Pass | All files formatted |
-| pytest | Pass | 1639 passed, 59 skipped (the e2e tier needs a live PostgreSQL; it runs in CI) |
-| coverage | Pass | 100% on `src/` (197 statements), 99% on `src/`+`api/` (4190 statements, 49 uncovered) |
+| pytest | Pass | 1727 passed, 59 skipped (the e2e tier needs a live PostgreSQL, and runs in CI) |
+| coverage | Pass | 100% on `src/` (197 statements), 99% on `src/`+`api/` (4298 statements, 49 uncovered) |
 
-## Running Checks
+## Running checks
 
 ```bash
 uv run mypy src/ examples/
@@ -23,7 +23,7 @@ Or all at once:
 uv run mypy src/ examples/ && uv run ruff check . && uv run pytest --cov=src
 ```
 
-## Coverage by Module
+## Coverage by module
 
 | Module | Statements | Coverage |
 |--------|------------|----------|
@@ -39,17 +39,19 @@ uv run mypy src/ examples/ && uv run ruff check . && uv run pytest --cov=src
 
 HTML report: `uv run pytest --cov=src --cov-report=html` generates `htmlcov/index.html`.
 
-## Test Breakdown
+## Test breakdown
 
-Unit tests (1142) cover models, calculators, interpreters, utilities, and API components (auth, schemas, services, middleware, logging). Integration tests (497) validate core calculations against Excel reference data for all three case studies and test API routes with a real database. End-to-end tests (59) exercise full API workflows. They skip on a machine without a live PostgreSQL and run in CI. The frontend adds 1031 Vitest tests and 76 Playwright scenarios run on three browsers. Edge cases include single expert, identical opinions, empty lists, and boundary values.
+Unit tests (1215) cover models, calculators, interpreters, utilities, and API components (auth, schemas, services, middleware, logging). Integration tests (512) validate core calculations against Excel reference data for all three case studies and test API routes with a real database. End-to-end tests (59) exercise full API workflows. They skip on a machine without a live PostgreSQL and run in CI. The frontend adds 1037 Vitest tests, and 223 Playwright runs across five browser projects. Edge cases include a single expert, identical opinions, empty lists, and boundary values.
+
+To regenerate these counts, run `uv run pytest tests/unit/ --collect-only -q` for each backend tier, `npx vitest run` in `frontend/`, and `npx playwright test --list`.
 
 Logging has its own two-part guard. `tests/unit/api/test_logging_events.py` asserts that each refusal, external call, and read emits the record it promises, at the level it promises. Several of those tests assert on what is *absent*, since a CSRF record must not carry the token it just compared and a throttle record must not carry the account it throttled. `tests/unit/api/test_logging_pii.py` walks the syntax tree of every module under `api/` and fails on an `extra={...}` field whose name denotes a credential or a raw identifier, so the rule in `docs/security.md` does not depend on a reviewer noticing it.
 
-## Mutation Testing
+## Mutation testing
 
 Run date: 2026-02-22 | Commit: ae7fd59
 
-Mutation testing measures test suite quality: mutmut introduces small code changes called mutants: it replaces `+` with `-`, `<=` with `<`, and swaps constants. Then it checks whether the existing tests detect each change. A "killed" mutant means the tests caught the defect. A "survived" mutant means they did not.
+Mutation testing measures test suite quality. mutmut introduces small code changes called mutants, replacing `+` with `-` and `<=` with `<`, and swapping constants. It then checks whether the existing tests detect each change. A "killed" mutant means the tests caught the defect. A "survived" mutant means they did not.
 
 | Metric | Value |
 |--------|-------|
@@ -63,7 +65,7 @@ Mutation testing measures test suite quality: mutmut introduces small code chang
 
 Raw mutation score = killed / (killed + survived).
 
-### Results by Module
+### Results by module
 
 | File | Total | Killed | Survived | Kill rate |
 |------|-------|--------|----------|-----------|
@@ -75,7 +77,7 @@ Raw mutation score = killed / (killed + survived).
 | likert_interpreter.py | 41 | 34 | 7 | 83% |
 | become_result.py | 40 | 17 | 23 | 43% |
 
-Modules with core computational logic (`base_calculator`, `median_strategies`) have 100% kill rate: every arithmetic and sorting mutation is detected by the test suite.
+Modules with core computational logic (`base_calculator`, `median_strategies`) have a 100% kill rate: the test suite detects every arithmetic and sorting mutation.
 
 ### Surviving mutants
 
@@ -101,7 +103,7 @@ Modules with core computational logic (`base_calculator`, `median_strategies`) h
 ./scripts/ci/mutmut-run.sh detail   # list surviving mutants by file
 ```
 
-## Performance Testing
+## Performance testing
 
 Run date: 2026-02-22 | Commit: ae7fd59
 
@@ -125,7 +127,7 @@ uv run locust -f tests/performance/locustfile.py \
     --users 10 --spawn-rate 2 --run-time 60s --csv results
 ```
 
-## Production Performance
+## Production performance
 
 Run date: 2026-02-22 | Environment: Railway (Hobby), europe-west4, Cloudflare proxy
 
