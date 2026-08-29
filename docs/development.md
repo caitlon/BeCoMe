@@ -1,8 +1,8 @@
 # Development setup
 
-Everything needed to run BeCoMe locally: the toolchain, the dependency groups, and where each
-part of the tree lives. For what the method does, read the
-[method description](method-description.md). For the deployed profiles, read
+Everything needed to run BeCoMe locally: the toolchain, the dependency groups, and where
+each part of the tree lives. For what the method does, read the [method
+description](method-description.md). For the deployed profiles, read
 [environments](environments.md).
 
 ## Contents
