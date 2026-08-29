@@ -8,7 +8,7 @@ BeCoMe combines two classical aggregation approaches:
 - **Arithmetic mean (Γ)** - represents the average opinion
 - **Statistical median (Ω)** - represents the central tendency, resistant to outliers
 
-The final result is the **best compromise (ΓΩMean)**: the average of these two measures, which gives a consensus estimate that outliers cannot easily move.
+The final result is the **best compromise (ΓΩMean)**: the average of these two measures, so an outlier still moves the result, but by half of what it moves the mean alone.
 
 ---
 
@@ -369,7 +369,7 @@ Gx(Ω) = (5.5 + 8.5 + 13.0) / 3 = 9.00
 
 ## Why combine mean and median?
 
-Arithmetic mean uses all data points but gets skewed by outliers. One extreme opinion can pull the result away from the group consensus. Median ignores everything except the central value. Outliers cannot move it, but it throws away what the non-central experts said.
+Arithmetic mean uses all data points but gets skewed by outliers. One extreme opinion can pull the result away from the group consensus. Median ignores everything except the central value. An outlier barely moves it, but it throws away what the non-central experts said.
 
 BeCoMe splits the difference. The mean component ensures every opinion contributes. The median component prevents extremes from dominating. When experts largely agree, Γ and Ω are close, and ΓΩMean lands near both. When opinions diverge, the compromise falls between the pulled-mean and the stable-median.
 

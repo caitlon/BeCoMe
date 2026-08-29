@@ -110,16 +110,15 @@ activation link does, so reclaiming an address somebody pre-registered is one st
 credentials. It is not one step for the display name. See "Accepted risks" below.
 
 That makes an activation and a reset the two operations that can confirm the same account,
-so both go through a `_claim_account` that writes `UPDATE ... WHERE email_verified_at IS
-NULL` whenever the row it loaded was still pending, and lets the database pick the winner.
-The loser writes nothing and gets the opaque `400`. On the reset side its token is
-deliberately left unspent, so following the same link again succeeds against the now-
-confirmed account. A reset whose account was already confirmed when its token resolved has
-nothing to race, since redemption is refused once `email_verified_at` is set, so it writes
-by id alone. Reading the row and writing it back would instead let a reset that started
-while the account was still pending overwrite the password an activation had just applied,
-seconds after telling whoever redeemed it to sign in. bcrypt alone holds that window open
-for a few hundred milliseconds.
+so both go through a `_claim_account` that writes `UPDATE ... WHERE email_verified_at IS NULL` whenever the row it loaded was still pending,
+and lets the database pick the winner. The loser writes nothing and gets the opaque `400`.
+On the reset side its token is deliberately left unspent, so following the same link again
+succeeds against the now- confirmed account. A reset whose account was already confirmed
+when its token resolved has nothing to race, because an activation redemption is refused
+once `email_verified_at` is set, so it writes by id alone. Reading the row and writing it back would
+instead let a reset that started while the account was still pending overwrite the password
+an activation had just applied, seconds after telling whoever redeemed it to sign in. bcrypt
+alone holds that window open for a few hundred milliseconds.
 
 A wrong password answers `403` with its own wording, not the opaque `400` the token errors
 share. Whoever reaches that point already holds a live link, so admitting the link is fine
@@ -140,10 +139,10 @@ failure refreshes the window, keep it spent indefinitely, locking the real owner
 different, freshly resent link they hold instead. Keying on the token confines that damage
 to the token it was spent against. It does not widen what one token can be guessed: any
 single token still allows at most ten activation failures against its own password, the same
-bound described below. Nor does it hand an attacker more guesses to spend: `resend-
-verification` only ever mints a token carrying the password its own caller submitted, and
-the mail carrying it goes to the account's address, not back to whoever asked, so minting
-more tokens never buys a guess against a password the caller does not already know.
+bound described below. Nor does it hand an attacker more guesses to spend: `resend-verification` only ever
+mints a token carrying the password its own caller submitted, and the mail carrying it goes
+to the account's address, not back to whoever asked, so minting more tokens never buys a
+guess against a password the caller does not already know.
 
 **The two budgets are independent, and they add up.** Each endpoint allows 10 failures per
 15 minutes and consults only its own counter, login's keyed per account and activation's per
@@ -222,16 +221,14 @@ The browser client keeps no token in JavaScript-readable storage. Login and refr
 access and refresh tokens as cookies marked `HttpOnly`, `SameSite=Strict`, and `Secure`. An
 XSS payload therefore cannot read the session the way it could read `localStorage`.
 
-The names carry prefixes the **browser** enforces: `__Host-access_token`, `__Host-
-csrf_token`, `__Secure-refresh_token`. `__Host-` is the one that matters: a cookie under
-that prefix is only accepted with `Secure`, `Path=/` and no `Domain`, and can only be
-written by the exact host it belongs to. That closes the gap `SameSite` leaves open: a page
-on any sibling `becomify.app` subdomain counts as same-site here, so without the prefix it
-could write a session cookie of its own and log the victim into the attacker's account
+The names carry prefixes the **browser** enforces: `__Host-access_token`, `__Host-csrf_token`, `__Secure-refresh_token`. `__Host-` is the one
+that matters: a cookie under that prefix is only accepted with `Secure`, `Path=/` and no `Domain`,
+and can only be written by the exact host it belongs to. That closes the gap `SameSite` leaves
+open: a page on any sibling `becomify.app` subdomain counts as same-site here, so without the prefix
+it could write a session cookie of its own and log the victim into the attacker's account
 (session fixation). That is a different attack from the CSRF one below, and one no amount of
-token derivation prevents. The refresh cookie takes `__Secure-` instead, because `__Host-`
-would force `Path=/` and hand it to every request on the site rather than the auth routes
-alone.
+token derivation prevents. The refresh cookie takes `__Secure-` instead, because `__Host-` would force
+`Path=/` and hand it to every request on the site rather than the auth routes alone.
 
 Two consequences worth knowing. `Secure` is now unconditional rather than following the
 request scheme: a `__Host-` cookie without it is not a weaker cookie, it is one the browser
@@ -270,8 +267,8 @@ Deriving it also means the check cannot be waived by omission. It keys on the *s
 cookie, so any request that authenticates as somebody is checked, where the old comparison
 armed itself on the presence of the CSRF cookie and silently passed anything arriving
 without it. Bearer-token clients carry no session cookie and are unaffected, as are the pre-
-session auth endpoints (`login`, `register`, `refresh`, password reset), so a stale cookie
-left by a revoked session can never block a fresh login. Logout stays CSRF-protected.
+session auth endpoints (`login`, `register`, `refresh`, password reset), so a stale cookie left by a
+revoked session can never block a fresh login. Logout stays CSRF-protected.
 
 Reading the `sid` deliberately skips expiry, revocation, and the per-user cutoff
 (`session_id_from_access_token`): the signature is verified, but the rest is the
@@ -434,9 +431,9 @@ browser drops the request before it reaches the origin and nothing appears in th
 unreliable, browsers have dropped it, and its blocking mode has itself leaked cross-origin
 information. The CSP is what constrains injection.
 
-The correlation ID is not taken on trust either. An inbound `X-Request-ID` is echoed on the
-response and written to every log record of the request, so it is reused only when it looks
-like an ID, a short and conservative alphabet, and replaced with a fresh UUID otherwise
+The correlation ID is not taken on trust either. An inbound `X-Request-ID` is echoed on the response
+and written to every log record of the request, so it is reused only when it looks like an
+ID, meaning a short and conservative alphabet, and is replaced with a fresh UUID otherwise
 (`api/middleware/request_logging.py`).
 
 ## Logging, observability, and privacy
@@ -497,16 +494,15 @@ Redis outage from a wave of bad tokens.
 
 Unhandled errors hit a catch-all `500` handler and, when `SENTRY_DSN` is configured, Sentry.
 
-Two separate switches keep credentials out of the tracker, and both are needed.
-`send_default_pii=False` drops the client IP, cookies, headers, and request bodies.
-`include_local_variables=False` drops the frame locals of every traceback frame, which
-`send_default_pii` does not cover and which default to on: the auth handlers bind the parsed
-request body to a local, so with locals enabled a fault anywhere under `register`, `change-
-password`, or `reset-password` would ship `repr()` of that model to the tracker, meaning the
-plaintext passwords, or a reset token that is still redeemable. Sentry's own scrubber does
-not catch this, because it matches local *names* against a denylist and the leaking local is
-called `data`. As a second layer, the credential fields in `api/schemas/auth.py` are
-declared `repr=False`, so those values stay out of any `repr()` regardless of who calls it.
+Two separate switches keep credentials out of the tracker, and both are needed. `send_default_pii=False` drops
+the client IP, cookies, headers, and request bodies. `include_local_variables=False` drops the frame locals of every
+traceback frame, which `send_default_pii` does not cover and which default to on: the auth handlers bind
+the parsed request body to a local, so with locals enabled a fault anywhere under `register`,
+`change-password`, or `reset-password` would ship `repr()` of that model to the tracker, meaning the plaintext
+passwords, or a reset token that is still redeemable. Sentry's own scrubber does not catch
+this, because it matches local *names* against a denylist and the leaking local is called
+`data`. As a second layer, the credential fields in `api/schemas/auth.py` are declared `repr=False`, so those values
+stay out of any `repr()` regardless of who calls it.
 
 The browser SDK needs its own guard, since the reset link carries its token in the query
 string: `frontend/src/main.tsx` installs `beforeSend` and `beforeBreadcrumb` hooks
@@ -584,28 +580,26 @@ the next entry. Nothing about it is worth acting on, but a support question abou
 get this" is a legitimate one and the answer is here.
 
 **Reclaiming a pre-registered account through a resend or a reset keeps the name it was pre-
-registered under.** `create_resend_url` takes `first_name`/`last_name` from the account row,
-and a completed password reset never touches them either. Both confirm the address and let
-the new owner set the account's password, but neither writes a name. If a stranger pre-
-registered the address under a name of their choosing, that name is what `GET /auth/me`
-returns afterwards, and what surfaces in project member lists and invitations, until the
-account holder does one of two things: register the address again (which does write the
-submitter's own names, the same as a free address) or edit the profile once signed in. Only
-re-registering closes this in the same step that reclaims the credentials. A resend or a
-reset does not.
+registered under.** `create_resend_url` takes `first_name`/`last_name` from the account row, and a completed password
+reset never touches them either. Both confirm the address and let the new owner set the
+account's password, but neither writes a name. If a stranger pre- registered the address
+under a name of their choosing, that name is what `GET /auth/me` returns afterwards, and what
+surfaces in project member lists and invitations, until the account holder does one of two
+things: register the address again (which does write the submitter's own names, the same as
+a free address) or edit the profile once signed in. Only re-registering closes this in the
+same step that reclaims the credentials. A resend or a reset does not.
 
-**`POST /auth/register` still has a timing signal, of one bit and only once.** A submission
-whose email is suppressed by the per-address budget skips an awaited round trip to the mail
-provider, so it comes back measurably sooner than one that sends. A first probe can
-therefore learn that mail was recently triggered for that address. It is weak and self-
-consuming: the probe is itself a submission, so it spends from the same budget and changes
-the answer the next probe gets, and it reports on recent activity rather than on whether an
-account exists: every branch spends a slot, so no sequence of probes separates a free
-address from a taken one. `POST /auth/resend-verification` has the narrower version of the
-same property: it awaits a send only when the address has a pending signup, so a first probe
-against a clean budget distinguishes that case. Closing either means making the send fire-
-and-forget, which is the same queue change `forgot-password` needs for the identical
-property.
+**`POST /auth/register` still has a timing signal, of one bit and only once.** A submission whose email is
+suppressed by the per-address budget skips an awaited round trip to the mail provider, so it
+comes back measurably sooner than one that sends. A first probe can therefore learn that
+mail was recently triggered for that address. It is weak and self- consuming: the probe is
+itself a submission, so it spends from the same budget and changes the answer the next probe
+gets, and it reports on recent activity rather than on whether an account exists: every
+branch spends a slot, so no sequence of probes separates a free address from a taken one.
+`POST /auth/resend-verification` has the narrower version of the same property: it awaits a send only when the address
+has a pending signup, so a first probe against a clean budget distinguishes that case.
+Closing either means making the send fire- and-forget, which is the same queue change `forgot-password`
+needs for the identical property.
 
 **A stranger who knows a pending address can use up its daily activation mail.** The budget is
 per address and shared by every send the flow can trigger, which is what stops an inbox being
