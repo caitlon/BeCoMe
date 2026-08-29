@@ -33,11 +33,11 @@ uv run uvicorn api.main:app --reload
 
 ### test (staging and the test suite)
 
-Two consumers share this profile. A deployed staging service uses PostgreSQL with debug off and rate limiting on, which mirrors production for manual QA -- and it is held to the same startup invariants as production (strong secret, PostgreSQL, Redis, non-localhost CORS). The automated suite runs the same profile but adds `TESTING=1`, so it uses in-memory SQLite, turns rate limiting off, and skips the startup guard. The test conftests set both variables before any `api` import.
+Two consumers share this profile. A deployed staging service uses PostgreSQL with debug off and rate limiting on, which mirrors production for manual QA, and it is held to the same startup invariants as production (strong secret, PostgreSQL, Redis, non-localhost CORS). The automated suite runs the same profile but adds `TESTING=1`, so it uses in-memory SQLite, turns rate limiting off, and skips the startup guard. The test conftests set both variables before any `api` import.
 
 ### prod
 
-PostgreSQL, debug off. Both deployed profiles run a startup guard (`_validate_deploy_invariants` in `api/config.py`): a weak or default `SECRET_KEY`, a `sqlite` `DATABASE_URL`, a missing `REDIS_URL`, or localhost-only `CORS_ORIGINS` fails startup immediately instead of running with insecure defaults. Production additionally requires `CLOUDFLARE_ORIGIN_SECRET`, which proves requests came through the Cloudflare edge.
+PostgreSQL, debug off. Both deployed profiles run a startup guard (`_validate_deploy_invariants` in `api/config.py`): a weak or default `SECRET_KEY`, a `sqlite` `DATABASE_URL`, a missing `REDIS_URL`, or localhost-only `CORS_ORIGINS` fails startup immediately instead of running with insecure defaults. Production also requires `CLOUDFLARE_ORIGIN_SECRET`, which proves requests came through the Cloudflare edge.
 
 ## Configuration files
 
@@ -68,7 +68,7 @@ APP_ENV=prod uv run uvicorn api.main:app
 
 ## Docker
 
-The `api` service in `docker/docker-compose.yml` reads `APP_ENV` with `${APP_ENV:-dev}`, so local Compose runs as dev unless you override it. `docker/Dockerfile.dev` pins `APP_ENV=dev`. The production `docker/Dockerfile` does not hardcode it; the value comes from the platform.
+The `api` service in `docker/docker-compose.yml` reads `APP_ENV` with `${APP_ENV:-dev}`, so local Compose runs as dev unless you override it. `docker/Dockerfile.dev` pins `APP_ENV=dev`. The production `docker/Dockerfile` does not hardcode it. The value comes from the platform.
 
 ## CI
 
@@ -84,13 +84,13 @@ Each environment tracks one git branch, and a push to that branch redeploys the 
 | `staging` | test | `APP_ENV=test` | `test-backend`, `test-frontend`, `test-db`, `test-photos` |
 | `main` | production | `APP_ENV=prod` | `prod-backend`, `prod-frontend`, `prod-db`, `prod-photos` |
 
-Work moves in one direction. Cut a feature branch from `develop`, open a pull request back into `develop`, and the merge auto-deploys to dev for a first live check. When a slice is ready for QA, promote `develop` to `staging`; that deploy runs the `test` profile with production-like settings (rate limiting on, debug off), so manual testing is realistic. Promote `staging` to `main` to release, which deploys the `prod` profile and serves the public site. Hotfixes travel the same path instead of landing on `main` directly.
+Work moves in one direction. Cut a feature branch from `develop`, open a pull request back into `develop`, and the merge auto-deploys to dev for a first live check. When a slice is ready for QA, promote `develop` to `staging`. That deploy runs the `test` profile with production-like settings (rate limiting on, debug off), so manual testing is realistic. Promote `staging` to `main` to release, which deploys the `prod` profile and serves the public site. Hotfixes travel the same path instead of landing on `main` directly.
 
 Each environment has its own isolated Railway Postgres (`*-db`) and its own Railway Storage Bucket for profile photos (`*-photos`). Supabase is no longer used for the database or for file storage.
 
 ## Railway deployment
 
-The root `railway.toml` carries the API build and deploy settings: it points at `docker/Dockerfile` and the `/api/v1/health` check. Railway reads that file from the repository root for every service in the project, so the frontend cannot share it without trying to build the API image. The frontend service therefore has its own config file, `frontend/railway.json`, chosen per service through the Railway "Railway Config File" setting (the absolute path `/frontend/railway.json`); it pins `frontend/Dockerfile` and a `/` health check. Everything else that differs between environments lives in per-environment service variables.
+The root `railway.toml` carries the API build and deploy settings: it points at `docker/Dockerfile` and the `/api/v1/health` check. Railway reads that file from the repository root for every service in the project, so the frontend cannot share it without trying to build the API image. The frontend service therefore has its own config file, `frontend/railway.json`, chosen per service through the Railway "Railway Config File" setting (the absolute path `/frontend/railway.json`). It pins `frontend/Dockerfile` and a `/` health check. Everything else that differs between environments lives in per-environment service variables.
 
 | Variable | dev | staging (test) | production (prod) |
 |----------|-----|----------------|-------------------|
@@ -98,9 +98,9 @@ The root `railway.toml` carries the API build and deploy settings: it points at 
 | `SECRET_KEY` | strong value (`openssl rand -hex 32`) | strong value | strong value |
 | `DATABASE_URL` | dev `become_app` role | staging `become_app` role | production `become_app` role |
 | `MIGRATION_DATABASE_URL` | privileged role, Alembic only | privileged role, Alembic only | privileged role, Alembic only |
-| `CORS_ORIGINS` | dev origin(s) | staging origin(s) | production origin(s) |
+| `CORS_ORIGINS` | dev origins | staging origins | production origins |
 | `REDIS_URL` | dev Redis | staging Redis | production Redis |
-| `CLOUDFLARE_ORIGIN_SECRET` | — | — | shared secret matching the Cloudflare Transform Rule |
+| `CLOUDFLARE_ORIGIN_SECRET` | - | - | shared secret matching the Cloudflare Transform Rule |
 | `DEBUG` | `false` | `false` | `false` |
 | `LOG_LEVEL` | `DEBUG` | `INFO` | `INFO` |
 | `API_PUBLIC_URL` | dev API URL | staging API URL | production API URL |
@@ -109,35 +109,35 @@ The root `railway.toml` carries the API build and deploy settings: it points at 
 
 If `APP_ENV` is left unset on a deployed service, it falls back to dev, which turns debug on and opens CORS. Every deployed service must set its profile explicitly (`dev`, `test`, or `prod`) so the startup guard runs.
 
-`LOG_LEVEL` is listed as a service variable even though `api/config.py` already defaults it per profile (`DEBUG` on dev, `INFO` on test and prod). The default is the safety net for a service whose variable was never set; the variable is what makes the level visible to whoever opens the service without reading the settings module. An explicit value always wins over the profile default.
+`LOG_LEVEL` is listed as a service variable even though `api/config.py` already defaults it per profile (`DEBUG` on dev, `INFO` on test and prod). The default is the safety net for a service whose variable was never set. The variable is what makes the level visible to whoever opens the service without reading the settings module. An explicit value always wins over the profile default.
 
 Log format follows the deploy, not the profile. `api/logging_config.py` emits human-readable text only when the profile is dev *and* `RAILWAY_ENVIRONMENT_NAME` is absent, i.e. on a laptop. The Railway `dev` service is a deploy, so it emits JSON like staging and production and its `extra` fields stay indexable in the drain.
 
-Every `VITE_*` variable the SPA reads must also be declared as an `ARG`/`ENV` pair in `frontend/Dockerfile`. Railway passes service variables to the build as build args, but Docker only exposes the ones the Dockerfile declares, and Vite inlines `undefined` for anything missing at build time -- silently, with no build error. That gap left `VITE_SENTRY_DSN` set on all three frontend services while `Sentry.init` was tree-shaken out of every bundle.
+Every `VITE_*` variable the SPA reads must also be declared as an `ARG`/`ENV` pair in `frontend/Dockerfile`. Railway passes service variables to the build as build args, but Docker only exposes the ones the Dockerfile declares, and Vite inlines `undefined` for anything missing at build time, silently and with no build error. That gap left `VITE_SENTRY_DSN` set on all three frontend services while `Sentry.init` was tree-shaken out of every bundle.
 
 ## Database schema and access
 
-The schema is versioned with **Alembic**. Migrations live in `migrations/`; `migrations/env.py` reads its target from `MIGRATION_DATABASE_URL` (falling back to `DATABASE_URL`) and treats `SQLModel.metadata` as the source of truth. Every deploy runs `alembic upgrade head` once through the `preDeployCommand` in `railway.toml`, before the new version goes live, so a failed migration blocks the release instead of starting a broken one. `create_db_and_tables()` still builds the schema directly, but only for SQLite (local development) and `TESTING=1` runs (the end-to-end PostgreSQL); on a deployed database it is a no-op and Alembic stays in charge.
+The schema is versioned with **Alembic**. Migrations live in `migrations/`. `migrations/env.py` reads its target from `MIGRATION_DATABASE_URL` (falling back to `DATABASE_URL`) and treats `SQLModel.metadata` as the source of truth. Every deploy runs `alembic upgrade head` once through the `preDeployCommand` in `railway.toml`, before the new version goes live, so a failed migration blocks the release instead of starting a broken one. `create_db_and_tables()` still builds the schema directly, but only for SQLite (local development) and `TESTING=1` runs (the end-to-end PostgreSQL). On a deployed database it is a no-op and Alembic stays in charge.
 
-The application connects through a **least-privilege role**, `become_app`. It reads and writes the application tables but cannot create, alter, or drop objects, is not a superuser, and cannot bypass row-level security. Each backend therefore carries two database URLs: `DATABASE_URL` points at `become_app` for the running app, while `MIGRATION_DATABASE_URL` points at the privileged role that Alembic uses for DDL. The connection is hardened in `api/db/engine.py` -- TLS is required on deployed databases, each connection is tagged with an `application_name`, and per-session statement and idle-in-transaction timeouts stop a single query from monopolising the database. The schema also carries domain `CHECK` constraints (fuzzy-number ordering, positive expert counts, scale bounds) so the database rejects invalid rows on its own.
+The application connects through a **least-privilege role**, `become_app`. It reads and writes the application tables but cannot create, alter, or drop objects, is not a superuser, and cannot bypass row-level security. Each backend therefore carries two database URLs: `DATABASE_URL` points at `become_app` for the running app, while `MIGRATION_DATABASE_URL` points at the privileged role that Alembic uses for DDL. The connection is hardened in `api/db/engine.py`: TLS is required on deployed databases, each connection is tagged with an `application_name`, and per-session statement and idle-in-transaction timeouts stop a single query from monopolizing the database. The schema also carries domain `CHECK` constraints (fuzzy-number ordering, positive expert counts, scale bounds) so the database rejects invalid rows on its own.
 
 On production and staging each Postgres instance is reachable only over Railway's internal network: the public TCP proxies were removed, so those databases are no longer exposed to the internet. A proxy can be recreated briefly when a laptop needs direct access for a migration or a dump.
 
 ## Photo storage
 
-Profile photos live in a per-environment Railway Storage Bucket (`dev-photos`, `test-photos`, `prod-photos`), reached over the S3 API. Buckets are private, so the backend serves each image itself through the public proxy `GET /api/v1/users/{id}/photo`; the `users.photo_url` column stores the object key, and responses carry the proxy URL built from `API_PUBLIC_URL`. Attaching a bucket to a service auto-injects `BUCKET_NAME`, `BUCKET_ENDPOINT`, `BUCKET_ACCESS_KEY_ID`, and `BUCKET_SECRET_ACCESS_KEY`; when they are absent (plain local runs), photo upload is disabled and the rest of the API keeps working.
+Profile photos live in a per-environment Railway Storage Bucket (`dev-photos`, `test-photos`, `prod-photos`), reached over the S3 API. Buckets are private, so the backend serves each image itself through the public proxy `GET /api/v1/users/{id}/photo`. The `users.photo_url` column stores the object key, and responses carry the proxy URL built from `API_PUBLIC_URL`. Attaching a bucket to a service auto-injects `BUCKET_NAME`, `BUCKET_ENDPOINT`, `BUCKET_ACCESS_KEY_ID`, and `BUCKET_SECRET_ACCESS_KEY`. When they are absent (plain local runs), photo upload is disabled and the rest of the API keeps working.
 
 ## Email delivery
 
-Registration and password reset both send mail through `EMAIL_PROVIDER` (`console`, which logs the link, or `http`, a Resend-style API; see `api/README.md`). Registration now depends on delivery in a way password reset never did: an account is created unverified and cannot log in until its activation link is opened, so a deployment whose mail provider is broken or misconfigured creates accounts nobody can activate. The deploy guard already required a working provider for password reset (`_validate_deploy_invariants` in `api/config.py` fails startup on a deployed service without one); that same check now also gates whether a fresh signup is usable.
+Registration and password reset both send mail through `EMAIL_PROVIDER` (`console`, which logs the link, or `http`, a Resend-style API, described in `api/README.md`). Registration now depends on delivery in a way password reset never did: an account is created unverified and cannot log in until its activation link is opened, so a deployment whose mail provider is broken or misconfigured creates accounts nobody can activate. The deploy guard already required a working provider for password reset (`_validate_deploy_invariants` in `api/config.py` fails startup on a deployed service without one). That same check now also gates whether a fresh signup is usable.
 
-Two settings gate the address checks in `api/services/email_policy.py` that run before a registration reaches the database, both on by default: `DISPOSABLE_EMAIL_BLOCKING_ENABLED` rejects a vendored list of known disposable-mail domains, and `MX_CHECK_ENABLED` rejects a domain with no MX, A, or AAAA record (a resolver timeout or other inconclusive result fails open rather than rejecting). Either can be turned off with a Railway variable and no redeploy if it starts rejecting real signups. `EMAIL_VERIFICATION_TOKEN_TTL_HOURS` (default `24`) sets how long an activation link stays redeemable -- longer than the one-hour password-reset window, since an activation email is routinely opened the next morning rather than acted on right away.
+Two settings gate the address checks in `api/services/email_policy.py` that run before a registration reaches the database, both on by default: `DISPOSABLE_EMAIL_BLOCKING_ENABLED` rejects a vendored list of known disposable-mail domains, and `MX_CHECK_ENABLED` rejects a domain with no MX, A, or AAAA record (a resolver timeout or other inconclusive result fails open rather than rejecting). Either can be turned off with a Railway variable and no redeploy if it starts rejecting real signups. `EMAIL_VERIFICATION_TOKEN_TTL_HOURS` (default `24`) sets how long an activation link stays redeemable, longer than the one-hour password-reset window, since an activation email is routinely opened the next morning rather than acted on right away.
 
 ## Current status
 
 All three environments run entirely on Railway, each with its own isolated Postgres and photo bucket. The database layer is hardened the same way across them: Alembic owns the schema, the app connects as the least-privilege `become_app` role, and the production and staging databases are internal-only.
 
-- **prod** is live: https://www.becomify.app (frontend) and https://api.becomify.app (API), `APP_ENV=prod`. Database is **Railway Postgres** (`prod-db`); profile photos live in a **Railway Storage Bucket** (`prod-photos`) served through the API photo proxy. Supabase is fully retired -- neither the database nor file storage uses it anymore.
+- **prod** is live: https://www.becomify.app (frontend) and https://api.becomify.app (API), `APP_ENV=prod`. Database is **Railway Postgres** (`prod-db`). Profile photos live in a **Railway Storage Bucket** (`prod-photos`) served through the API photo proxy. Supabase is fully retired: neither the database nor file storage uses it anymore.
 - **test / staging** is live from `staging`: https://harbor.becomify.app (frontend) and https://api-harbor.becomify.app (API), on its own Railway Postgres (`test-db`) and bucket (`test-photos`), `APP_ENV=test`.
 - **dev** is deployed from `develop`: https://atelier.becomify.app (frontend) and https://api-atelier.becomify.app (API), on its own Railway Postgres (`dev-db`) and bucket (`dev-photos`). It also runs locally with no setup, since dev is the default profile.
 

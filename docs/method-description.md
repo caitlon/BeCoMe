@@ -1,4 +1,4 @@
-# BeCoMe Method Description
+# BeCoMe method description
 
 ## Overview
 
@@ -8,13 +8,13 @@ BeCoMe combines two classical aggregation approaches:
 - **Arithmetic mean (Γ)** - represents the average opinion
 - **Statistical median (Ω)** - represents the central tendency, resistant to outliers
 
-The final result is the **best compromise (ΓΩMean)** - the average of these two measures, providing a robust consensus estimate.
+The final result is the **best compromise (ΓΩMean)**: the average of these two measures, which gives a consensus estimate that outliers cannot easily move.
 
 ---
 
 ## Mathematical Foundation
 
-### 1. Fuzzy Triangular Numbers
+### 1. Fuzzy triangular numbers
 
 A **fuzzy triangular number** is a special type of fuzzy set that represents uncertain or imprecise information. It is defined by three characteristic values:
 
@@ -79,7 +79,7 @@ Gx = (5 + 8 + 12) / 3 = 25 / 3 ≈ 8.33
 
 ---
 
-## BeCoMe Algorithm - Step by Step
+## The BeCoMe algorithm, step by step
 
 The BeCoMe method aggregates **M** expert opinions into a single best compromise result through five steps.
 
@@ -95,7 +95,7 @@ Eₘ = (Aₘ, Cₘ, Bₘ)
 
 ---
 
-### Step 1: Calculate Arithmetic Mean (Γ)
+### Step 1: calculate the arithmetic mean (Γ)
 
 The arithmetic mean **Γ(α, γ, β)** is calculated by averaging each component separately.
 
@@ -128,22 +128,22 @@ Expert 3: E₃ = (8,  14, 22)
 
 ---
 
-### Step 2: Calculate Median (Ω)
+### Step 2: calculate the median (Ω)
 
-The median **Ω(ρ, ω, σ)** is found by sorting opinions by their centroids and taking the middle value(s).
+The median **Ω(ρ, ω, σ)** is found by sorting opinions by their centroids and taking the middle value, or the average of the two middle values when the count is even.
 
-#### Step 2.1: Calculate Centroids
+#### Step 2.1: calculate centroids
 
 For each expert opinion, calculate the centroid:
 ```
 Gxₖ = (Aₖ + Cₖ + Bₖ) / 3
 ```
 
-#### Step 2.2: Sort by Centroid
+#### Step 2.2: sort by centroid
 
 Sort all expert opinions in ascending order by their centroid values.
 
-#### Step 2.3: Find Median
+#### Step 2.3: find the median
 
 **Case A: Odd number of experts (M = 2n + 1)**
 
@@ -210,7 +210,7 @@ Expert 4: E₄ = (11, 16, 23) → Gx₄ = 50/3 ≈ 16.67
 
 ---
 
-### Step 3: Calculate Best Compromise (ΓΩMean)
+### Step 3: calculate the best compromise (ΓΩMean)
 
 The best compromise **ΓΩMean(π, φ, ξ)** is the average of the arithmetic mean and median.
 
@@ -242,7 +242,7 @@ Using results from Steps 1 and 2:
 
 ---
 
-### Step 4: Calculate Maximum Error (Δmax)
+### Step 4: calculate the maximum error (Δmax)
 
 The **maximum error Δmax** is a precision indicator that measures the distance between the arithmetic mean and median.
 
@@ -281,7 +281,7 @@ Gx(Ω) = (10.00 + 15.00 + 20.00) / 3 = 45.00 / 3 = 15.00
 
 ---
 
-### Step 5: Summary of Results
+### Step 5: summary of results
 
 The complete BeCoMe result includes:
 
@@ -296,9 +296,9 @@ The complete BeCoMe result includes:
 
 ---
 
-## Complete Worked Example
+## A complete worked example
 
-### Scenario: Project Budget Estimation
+### Scenario: estimating a project budget
 
 Five project managers estimate the required budget (in millions):
 
@@ -367,13 +367,13 @@ Gx(Ω) = (5.5 + 8.5 + 13.0) / 3 = 9.00
 
 ---
 
-## Why Combine Mean and Median?
+## Why combine mean and median?
 
-Arithmetic mean uses all data points but gets skewed by outliers. One extreme opinion can pull the result away from the group consensus. Median ignores everything except the central value — robust to outliers, but throws away information from non-central experts.
+Arithmetic mean uses all data points but gets skewed by outliers. One extreme opinion can pull the result away from the group consensus. Median ignores everything except the central value. Outliers cannot move it, but it throws away what the non-central experts said.
 
-BeCoMe splits the difference. The mean component ensures every opinion contributes; the median component prevents extremes from dominating. When experts largely agree, Γ and Ω are close, and ΓΩMean lands near both. When opinions diverge, the compromise falls between the pulled-mean and the stable-median.
+BeCoMe splits the difference. The mean component ensures every opinion contributes. The median component prevents extremes from dominating. When experts largely agree, Γ and Ω are close, and ΓΩMean lands near both. When opinions diverge, the compromise falls between the pulled-mean and the stable-median.
 
-The error metric Δmax quantifies this divergence. Near-zero Δmax means the mean and median nearly coincide — strong consensus. Large Δmax signals polarization or outliers, suggesting the group should discuss further before deciding.
+The error metric Δmax quantifies this divergence. Near-zero Δmax means the mean and median nearly coincide, which is strong consensus. Large Δmax signals polarization or outliers, suggesting the group should discuss further before deciding.
 
 ## Limitations
 
