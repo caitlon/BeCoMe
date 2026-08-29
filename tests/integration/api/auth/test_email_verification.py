@@ -252,7 +252,7 @@ class TestRegistrationBranches:
 class TestSignupTakeoverAttempts:
     """A stranger submitting a pending address cannot decide what its link opens.
 
-    Both orderings are covered. Registering after the owner is the quieter one -- a
+    Both orderings are covered. Registering after the owner is the quieter one: a
     stored last-write-wins password would let anyone overwrite a pending signup and
     simply wait for the owner to click the link they already have. Registering *first*
     is the dangerous one: the stranger's link is then the only one in the victim's
@@ -283,8 +283,8 @@ class TestSignupTakeoverAttempts:
     ):
         """Attacker first: the only link in the victim's inbox is the attacker's.
 
-        Nothing tells the victim that link is not theirs -- it arrives at their address
-        from the real service. What stops it is the password: the victim types their
+        Nothing tells the victim that link is not theirs, since it arrives at their
+        address from the real service. What stops it is the password: the victim types their
         own, the link carries the attacker's, and the account never opens.
         """
         # GIVEN: a stranger pre-registers the victim's address
@@ -432,7 +432,7 @@ class TestActivationPasswordGuessing:
 
     That lockout is namespaced apart from login's: guessing wrong here still spends
     from the login counter too (the combined bound across both endpoints is unchanged),
-    but nothing that happens at /login ever counts against -- or can trip -- this one.
+    but nothing that happens at /login ever counts against this one, or can trip it.
     """
 
     def test_repeated_mismatches_lock_the_account_out(self, client, fake_email):
@@ -466,7 +466,7 @@ class TestActivationPasswordGuessing:
         """Burning one token's budget must not lock a distinct token for the account.
 
         The counter keys on the token's hash, not the account, so a token obtained
-        without ongoing mailbox access -- forwarded, intercepted, however it got out --
+        without ongoing mailbox access, forwarded or intercepted, however it got out,
         can be burned without denying the owner a different, freshly resent link. A
         bucket shared by every token would let that one token deny every other one,
         which is a narrower instance of the same denial the login/activation split
@@ -496,7 +496,7 @@ class TestActivationPasswordGuessing:
     def test_failed_logins_do_not_block_the_victims_own_activation(self, client, fake_email):
         """A run of failed /login attempts must not deny someone their own activation.
 
-        The login throttle is writable by anyone who merely knows the address -- no
+        The login throttle is writable by anyone who merely knows the address, with no
         link required. Gating verify-email on it would let that unauthenticated caller
         lock out an activation they never touched.
         """
@@ -638,7 +638,7 @@ class TestLoginGate:
         """The gate never runs before the password check, so it cannot become an oracle.
 
         A 403 for a wrong password would tell an unauthenticated caller that the
-        address has an account -- exactly what the 401 hides.
+        address has an account, which is exactly what the 401 hides.
         """
         # GIVEN
         register(client, "waiting@example.com")
@@ -869,8 +869,8 @@ class TestPasswordResetActivatesTheAccount:
     def test_a_reset_retires_every_outstanding_activation_link(self, client, fake_email):
         """An unspent link must not be able to put the old password and names back.
 
-        Each carries a submission, so one redeemed after a reset would undo it -- which
-        is why forgot-password can only bound the risk if it also confirms the address.
+        Each carries a submission, so one redeemed after a reset would undo it. That is
+        why forgot-password can only bound the risk if it also confirms the address.
         """
         # GIVEN: a stranger's link, and a reset the real owner then completes
         register(client, "stale@example.com", password=OTHER_PASSWORD, first_name="Stranger")

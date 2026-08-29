@@ -428,7 +428,7 @@ class TestExternalLoggers:
         WHEN it is read
         THEN uvicorn.error sits at INFO
 
-        It carries startup, shutdown, and protocol failures -- the records that explain
+        It carries startup, shutdown, and protocol failures: the records that explain
         a boot that never finished. Raising it would hide them from the drain.
         """
         # GIVEN/WHEN / THEN
@@ -441,8 +441,9 @@ class TestExternalLoggers:
         THEN sqlalchemy.engine is still pinned at WARNING
 
         Regression guard for a PII leak, not a style preference: sqlalchemy.engine's
-        DEBUG level prints bound query parameters -- password hashes, raw addresses,
-        reset-token hashes -- and the dev deploy runs at DEBUG against a real database.
+        DEBUG level prints bound query parameters, meaning password hashes, raw
+        addresses, and reset-token hashes, and the dev deploy runs at DEBUG against a
+        real database.
         """
         # GIVEN
         settings = _settings(log_level="DEBUG")

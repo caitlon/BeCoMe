@@ -21,14 +21,14 @@ EN_DISPLAY = DisplayLabels(
     sum_upper_label="Sum of upper bounds",
     arithmetic_mean_label="Arithmetic Mean",
     mean_centroid_name="Mean centroid",
-    # Step 2 — detail
+    # Step 2: detail
     expert_count_template="Number of experts is {parity} (M={m})",
     even_upper="EVEN",
     odd_upper="ODD",
     median_even_template="Median = average of {left}th and {right}th experts:",
     median_odd_template="Median = middle expert (position {pos}):",
     centroid_word="centroid",
-    # Step 2 — main
+    # Step 2: main
     step_2_title="STEP 2: Median (Omega)",
     sorting_by_value="Sorting experts by value (centroid)...",
     sorting_by_centroid="Sorting experts by centroid...",
@@ -80,14 +80,14 @@ CS_DISPLAY = DisplayLabels(
     sum_upper_label="Součet horních hranic",
     arithmetic_mean_label="Aritmetický průměr",
     mean_centroid_name="Těžiště průměru",
-    # Step 2 — detail
+    # Step 2: detail
     expert_count_template="Počet expertů je {parity} (M={m})",
     even_upper="SUDÝ",
     odd_upper="LICHÝ",
     median_even_template="Medián = průměr {left}. a {right}. experta:",
     median_odd_template="Medián = střední expert (pozice {pos}):",
     centroid_word="těžiště",
-    # Step 2 — main
+    # Step 2: main
     step_2_title="KROK 2: Medián (Ω)",
     sorting_by_value="Řazení expertů podle hodnoty (těžiště)...",
     sorting_by_centroid="Řazení expertů podle těžiště...",

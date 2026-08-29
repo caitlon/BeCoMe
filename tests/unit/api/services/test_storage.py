@@ -184,7 +184,7 @@ class TestOpen:
         client.get_object.assert_called_once_with(Bucket="test-bucket", Key="profiles/user/abc.png")
 
     def test_does_not_read_the_body_while_opening(self):
-        """Opening only fetches headers -- the body stays on the wire.
+        """Opening only fetches headers, and the body stays on the wire.
 
         This is the whole point of the change: time to first byte must not include
         the full object download.
@@ -270,7 +270,7 @@ class TestOpen:
         """The open event reports ContentLength and how long the headers took.
 
         duration_ms no longer covers the download, because the body has not been
-        read at that point -- it measures what the client waits for before the
+        read at that point. It measures what the client waits for before the
         first byte arrives.
         """
         # GIVEN

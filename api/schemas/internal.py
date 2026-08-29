@@ -1,7 +1,7 @@
 """Internal Data Transfer Objects for service layer.
 
 These dataclasses replace raw tuples returned by services,
-following Interface Segregation Principle (ISP) — clients
+following the Interface Segregation Principle (ISP): clients
 work with well-defined types instead of anonymous tuples.
 """
 

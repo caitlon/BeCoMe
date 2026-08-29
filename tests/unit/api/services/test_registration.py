@@ -110,7 +110,7 @@ class TestTakenVerifiedAddress:
     def test_still_runs_bcrypt_so_the_branch_cannot_be_timed(self):
         """The branch that stores nothing must cost what the storing branches cost.
 
-        The hash has nowhere to go here -- no link is minted -- but skipping it would
+        The hash has nowhere to go here, since no link is minted, but skipping it would
         make the endpoint answer a live address hundreds of milliseconds faster than a
         free one, re-leaking by timing exactly what the identical response body hides.
         Carrying it on the result is what keeps it from looking like a line to delete.

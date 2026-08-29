@@ -288,7 +288,7 @@ class TestSeedGuards:
 
         A count-based check ("are there at least 13 demo users?") and an identity
         check ("are these specific 13 accounts present?") agree once the pool is
-        complete or empty, but they can diverge when it is partially applied -- this
+        complete or empty, but they can diverge when it is partially applied, so this
         pins the guard to the identity check.
         """
         # GIVEN

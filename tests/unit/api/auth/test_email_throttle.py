@@ -52,7 +52,7 @@ class TestInMemoryEmailSendThrottle:
 
         Without this the caller that always mails would leave a clean budget behind,
         and a second, back-to-back request would mail again where a gated one had
-        already gone quiet -- which is the timing difference the shared budget hides.
+        already gone quiet, which is the timing difference the shared budget hides.
         """
         throttle = InMemoryEmailSendThrottle(cooldown_seconds=3600)
         throttle.record("user@example.com")

@@ -99,7 +99,7 @@ class TestEmailEnabled:
 
         Without this, a developer's local .env (which may set EMAIL_PROVIDER and
         EMAIL_API_KEY for real sending) leaks into these default-value tests and
-        breaks them, even though CI -- with no .env -- stays green.
+        breaks them, even though CI, which has no .env, stays green.
         """
         monkeypatch.chdir(tmp_path)
         for var in (

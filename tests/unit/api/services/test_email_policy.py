@@ -467,7 +467,7 @@ class TestDomainVerdictCaching:
         WHEN check() runs twice for the same domain
         THEN the resolver is consulted both times, since nothing was cached
 
-        Fail-open means "we do not know, so do not block" -- not "we do not know,
+        Fail-open means "we do not know, so do not block", not "we do not know,
         so stop trying to find out for the rest of the TTL window."
         """
         # GIVEN

@@ -419,7 +419,7 @@ class TestProjectServiceTransferOwnership:
         """MemberNotFoundError is raised for a demo account, same as a non-member.
 
         A demo account seeded into an example project is an ordinary ProjectMember
-        row, so the membership lookup alone would accept it -- it must be refused
+        row, so the membership lookup alone would accept it. It must be refused
         even though it passes that check.
         """
         # GIVEN a demo account that is, in fact, a project member

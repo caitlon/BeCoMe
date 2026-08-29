@@ -30,7 +30,7 @@ class TestCookiePrefixes:
 
     A ``__Host-`` cookie is only accepted with ``Secure``, ``Path=/`` and no ``Domain``;
     a ``__Secure-`` one needs ``Secure``. Get an attribute wrong and the browser does not
-    fall back to an ordinary cookie -- it drops the ``Set-Cookie`` entirely, and the
+    fall back to an ordinary cookie. It drops the ``Set-Cookie`` entirely, and the
     session silently never starts.
     """
 
@@ -101,7 +101,7 @@ class TestClearAuthCookies:
         """GIVEN a logout WHEN cookies are cleared THEN each deletion carries Secure.
 
         A deletion is a Set-Cookie like any other, so a prefixed cookie sent without
-        ``Secure`` is rejected outright -- and Starlette's ``delete_cookie`` defaults to
+        ``Secure`` is rejected outright, and Starlette's ``delete_cookie`` defaults to
         ``secure=False``. Logout would answer 204 with the session cookie still in the
         browser.
         """

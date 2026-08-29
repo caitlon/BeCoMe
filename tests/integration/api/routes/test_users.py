@@ -266,8 +266,8 @@ class TestDeleteAccountDispositions:
     def test_transfer_to_demo_account_rejected(self, client):
         """A transfer naming a demo account as the erasure disposition is rejected.
 
-        Membership alone would accept it -- a demo account seeded into an example
-        project is an ordinary ProjectMember row -- so this covers the case
+        Membership alone would accept it, since a demo account seeded into an example
+        project is an ordinary ProjectMember row, so this covers the case
         test_transfer_to_non_member_rejected above does not: the target really is a
         member, and is refused anyway because it can never log in to hold the project.
         """
