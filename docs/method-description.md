@@ -1,5 +1,15 @@
 # BeCoMe method description
 
+## Contents
+
+- [Overview](#overview)
+- [Mathematical foundation](#mathematical-foundation)
+- [The BeCoMe algorithm, step by step](#the-become-algorithm-step-by-step)
+- [A complete worked example](#a-complete-worked-example)
+- [Why combine mean and median?](#why-combine-mean-and-median)
+- [Limitations](#limitations)
+- [Reference](#reference)
+
 ## Overview
 
 **BeCoMe** (Best Compromise Mean) is a method for aggregating expert opinions expressed as fuzzy triangular numbers. The method was developed by I. Vrana, J. Tyrychtr, and M. Pelikan at the Czech University of Life Sciences Prague.

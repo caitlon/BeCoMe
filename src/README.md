@@ -2,6 +2,20 @@
 
 Core implementation of the BeCoMe method for aggregating expert opinions expressed as fuzzy triangular numbers.
 
+## Contents
+
+- [Overview](#overview)
+- [Architecture](#architecture)
+- [Module descriptions](#module-descriptions)
+- [Design patterns](#design-patterns)
+- [Type safety](#type-safety)
+- [Importing modules](#importing-modules)
+- [Dependencies](#dependencies)
+- [Testing](#testing)
+- [Usage with examples](#usage-with-examples)
+- [Related documentation](#related-documentation)
+- [Contributing](#contributing)
+
 ## Overview
 
 Three layers handle different responsibilities. **Models** define the immutable data structures:

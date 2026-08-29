@@ -1,6 +1,6 @@
 # BeCoMe
 
-Full-stack web application for group decision-making under fuzzy uncertainty using the BeCoMe (Best Compromise Mean) method.
+Software that helps a panel of experts turn genuine disagreement into one defensible number.
 
 **Live: [becomify.app](https://www.becomify.app)**
 
@@ -13,8 +13,10 @@ Full-stack web application for group decision-making under fuzzy uncertainty usi
 
 ## Table of contents
 
-- [About](#about)
-- [Abstract](#abstract)
+- [The problem](#the-problem)
+- [How BeCoMe answers it](#how-become-answers-it)
+- [Three real cases](#three-real-cases)
+- [Where the method comes from](#where-the-method-comes-from)
 - [Features](#features)
 - [Quick start](#quick-start)
 - [Web application](#web-application)
@@ -26,20 +28,37 @@ Full-stack web application for group decision-making under fuzzy uncertainty usi
 - [License](#license)
 - [References](#references)
 
-## About
+## The problem
 
-A Python implementation of the **BeCoMe** (Best Compromise Mean) group decision-making method introduced by Vrana, Tyrychtr, and Pelikán (2021), packaged as a reusable library and a full-stack web application.
+Ask thirteen experts how much arable land a country should convert into flood plains and you get thirteen different answers, most of them ranges rather than single numbers. The hydrologists on one Czech panel recommended converting 37 to 47 percent. The land owners, whose fields those would be, said 0 to 4. Both groups had good reasons.
 
-- **Author**: Ekaterina Kuzmina
-- **University**: Czech University of Life Sciences Prague
-- **Source method**: Vrana et al. (2021), *Environmental Modelling & Software* (see [References](#references))
-- **Language**: English
+The usual move is to average everything, and it fails quietly here. The plain average of that panel is about 20 percent, a figure not one of the thirteen would defend: far too little for the hydrologists, ruinous for the farmers. It is also fragile. Add one more strong opinion at either end and the answer moves again.
 
-## Abstract
+## How BeCoMe answers it
 
-**BeCoMe** (Best Compromise Mean) is a group decision-making method that aggregates expert opinions expressed as fuzzy triangular numbers. This project implements the method in Python, as originally published by Vrana et al. (2021). It combines the arithmetic mean and the median to produce consensus estimates that balance central tendency against outlier resistance.
+Each expert gives three numbers instead of one: the lowest value they would accept, the value they consider most likely, and the highest. That is a fuzzy triangular number, and it lets someone say "around 40, but I could live with 37" without claiming a precision they do not have.
 
-Validated on three Czech case studies: COVID-19 budget allocation, flood prevention, and cross-border travel policy. The results match the original Excel implementation to within 0.001, and the core library has 100% test coverage.
+The method then computes two things the panel already implies. The average shows where the opinions sit in aggregate. The median shows where the middle of the panel sits, and it barely moves when one person takes an extreme position. BeCoMe combines the two into a best compromise, and it reports the distance between them as a number in its own right.
+
+That second number is the useful part. On the flood panel the average landed at 20.3 percent and the median at 8.3, so the compromise came out at 14.3, with a disagreement measure of 5.97. A panel that genuinely agrees produces a small one: the COVID-19 budget panel of 22 officials scored 2.20. The method does not hide a split under a single confident-looking figure. It tells you the split is there.
+
+## Three real cases
+
+The project ships the three panels the method's authors published, with the original data.
+
+**Flood prevention.** 13 experts, split between hydrologists, land owners, rescue coordinators, and economists, on how much arable land to convert. The most polarized of the three, and the reason outlier resistance matters.
+
+**COVID-19 budget support.** 22 Czech officials, among them deputy ministers, the Police President, and the Chief Hygienist, estimating support for affected businesses in billions of CZK. This panel largely agreed, and the numbers show it.
+
+**Cross-border travel.** 22 public health and border officials rating pandemic travel policy on a five-point scale. It shows the method handling ordinary survey answers as well as ranges.
+
+Open all three at [becomify.app](https://www.becomify.app) without installing anything, or run them from a terminal with one command.
+
+## Where the method comes from
+
+BeCoMe was published by I. Vrana, J. Tyrychtr, and M. Pelikán of the Faculty of Economics and Management at the Czech University of Life Sciences Prague, in *Environmental Modelling & Software* (see [References](#references)). This project is an independent implementation of that paper by Ekaterina Kuzmina at the same faculty, written in Python and wrapped in a web application so that a panel can be run by people who do not write code.
+
+Every result is checked against the authors' own Excel workbook to within 0.001, on all three published cases, and that check runs on every commit.
 
 ## Features
 
