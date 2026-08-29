@@ -25,7 +25,7 @@ class DisplayLabels:
     arithmetic_mean_label: str
     mean_centroid_name: str
 
-    # Step 2: Median — detail sub-function
+    # Step 2: Median, detail sub-function
     expert_count_template: str
     even_upper: str
     odd_upper: str
@@ -33,7 +33,7 @@ class DisplayLabels:
     median_odd_template: str
     centroid_word: str
 
-    # Step 2: Median — main function
+    # Step 2: Median, main function
     step_2_title: str
     sorting_by_value: str
     sorting_by_centroid: str

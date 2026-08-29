@@ -8,7 +8,7 @@ frontend/Dockerfile substitutes with the real origin at image build time.
 Two directives need it, for different reasons: connect-src covers fetch/XHR,
 and img-src covers profile photos, which the API serves as image bytes
 (GET /users/{id}/photo) rendered in <img> tags. Missing img-src is a silent
-failure -- the browser drops the request before it leaves the tab, so nothing
+failure: the browser drops the request before it leaves the tab, so nothing
 appears in the API logs and the avatar simply never renders. That shipped to
 production once; these tests exist so it cannot ship again.
 
@@ -53,7 +53,7 @@ def _header_counts() -> dict[str, int]:
     Comment lines are dropped first: the config explains the inheritance trap in prose
     that mentions ``add_header``, and counting those would report headers that are not
     set. Counting rather than parsing blocks keeps the test independent of how the file
-    is arranged -- what matters is that no header is declared fewer times than the
+    is arranged. What matters is that no header is declared fewer times than the
     others, which is exactly the shape of "forgot to repeat it in the location block".
 
     :return: Header name to number of declarations.
@@ -109,7 +109,7 @@ class TestNginxContentSecurityPolicy:
 
         The placeholder now appears several times over. Without the /g flag sed
         would rewrite only the first, leaving a literal __API_ORIGIN__ in the
-        served policy -- which is why the build also greps for leftovers.
+        served policy, which is why the build also greps for leftovers.
         """
         dockerfile = _DOCKERFILE.read_text(encoding="utf-8")
 
@@ -122,7 +122,7 @@ class TestNginxSecurityHeaders:
 
     Same inheritance trap the CSP tests guard: a location block that sets any
     ``add_header`` stops inheriting the server-level ones, so a header declared once at
-    the top silently disappears for whatever that block serves. The failure is quiet --
+    the top silently disappears for whatever that block serves. The failure is quiet:
     the page still loads, just without the protection.
     """
 
@@ -147,7 +147,7 @@ class TestNginxSecurityHeaders:
         THEN they all match
 
         A header set in the server block but not repeated in the asset location block
-        would show up here as a lower count -- which is precisely the bug that shipped
+        would show up here as a lower count, which is precisely the bug that shipped
         the SPA without a CSP once already.
         """
         counts = _header_counts()

@@ -22,7 +22,7 @@ class TestExampleExpertData:
         """Each expert's triple matches the reference case at the same position.
 
         The seeded panel must stay in the same order as the published Floods case.
-        Reordering EXAMPLE_EXPERTS will fail this test — that is intentional, so
+        Reordering EXAMPLE_EXPERTS will fail this test. That is intentional, so
         reordering becomes an explicit decision someone makes on purpose.
         """
         # GIVEN

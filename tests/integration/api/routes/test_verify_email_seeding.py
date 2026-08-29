@@ -2,7 +2,7 @@
 
 The seed is demo content. An account that could not be logged into because its example
 project failed to write would be a far worse outcome than an account without one, so
-the route swallows the failure -- and this module holds it to that.
+the route swallows the failure, and this module holds it to that.
 """
 
 from unittest.mock import patch
@@ -91,8 +91,8 @@ class TestSeedFailureIsContained:
         expires every attribute the shared request session holds for ``user``; a later
         commit inside the seeding path (CalculationService.recalculate, standing in for
         it here) then fails and leaves that session needing rollback. Reading an expired
-        attribute off ``user`` afterwards -- as the route's except block used to, via
-        ``user.id`` -- issues a refresh SELECT into the poisoned session and raises
+        attribute off ``user`` afterwards, as the route's except block used to via
+        ``user.id``, issues a refresh SELECT into the poisoned session and raises
         PendingRollbackError instead of the plain id the route now captures up front.
         """
         # GIVEN
@@ -110,8 +110,8 @@ class TestSeedFailureIsContained:
                 )
             )
             self._session.commit()
-            # And a second commit that actually fails -- standing in for the commit
-            # inside CalculationService.recalculate -- leaving the session needing
+            # And a second commit that actually fails, standing in for the commit
+            # inside CalculationService.recalculate, leaving the session needing
             # rollback rather than merely raising in Python before touching the database.
             self._session.add(
                 User(

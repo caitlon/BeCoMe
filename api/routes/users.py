@@ -157,7 +157,7 @@ def update_current_user(
         last_name=request.last_name,
     )
     # Field names only. The values are the user's own name, which the record does not
-    # need in order to say that the profile changed.
+    # need to say that the profile changed.
     logger.info(
         "Profile updated",
         extra={

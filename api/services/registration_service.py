@@ -72,7 +72,7 @@ class RegistrationService:
     the account opens with the attacker's password. The submission is therefore carried
     by the activation link it minted and applied only when *that* link is redeemed, so
     a link always activates the submission it belongs to and no submitter decides what
-    another submitter's link opens. Redemption additionally requires the submitted
+    another submitter's link opens. Redemption also requires the submitted
     password, so a stranger's link landing in the victim's inbox is not something the
     victim can complete either.
 

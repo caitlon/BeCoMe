@@ -21,7 +21,7 @@ from tests.e2e.conftest import (
 
 @pytest.mark.e2e
 class TestRightOfAccess:
-    """GDPR Article 15 — right of access to personal data."""
+    """GDPR Article 15: the right of access to personal data."""
 
     def test_user_can_access_all_profile_data(self, http_client):
         """GET /users/me returns all stored personal data."""
@@ -91,7 +91,7 @@ class TestRightOfAccess:
 
 @pytest.mark.e2e
 class TestDataErasure:
-    """GDPR Article 17 — right to erasure across related entities."""
+    """GDPR Article 17: the right to erasure across related entities."""
 
     def test_deleted_expert_opinion_removed(self, http_client):
         """When expert deletes account, their opinion disappears from project."""
@@ -296,7 +296,7 @@ class TestDataErasure:
         # THEN: deletion now succeeds
         assert delete_resp.status_code == 204
 
-        # Cleanup — the new owner removes the project and their own account
+        # Cleanup: the new owner removes the project and their own account
         http_client.delete(f"/projects/{project_id}", headers=auth_headers(expert_token))
         http_client.delete("/users/me", headers=auth_headers(expert_token))
 

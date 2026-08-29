@@ -2,9 +2,9 @@
 
 Demo accounts exist only to hold the opinions in the seeded example project, and each
 of them sits in the example project of every user on the platform. A lookup that could
-find one would let an outsider invite it into a real project, or -- through the branch
-of registration that treats a known-but-unverified address as an unfinished signup --
-claim it outright and read every one of those projects. Four call sites resolve an
+find one would let an outsider invite it into a real project, or claim it outright and
+read every one of those projects through the branch of registration that treats a
+known-but-unverified address as an unfinished signup. Four call sites resolve an
 address, and all four go through one helper so a fifth cannot forget.
 """
 
@@ -166,7 +166,7 @@ class TestRegistrationAgainstDemoAddress:
     the INSERT that follows then loses to the unique index the demo row already
     occupies; and ``RegistrationService._create_account`` catches that
     ``IntegrityError`` alongside ``UserExistsError`` and rolls back. Narrowing
-    that except clause later -- to ``UserExistsError`` alone, say -- would make
+    that except clause later, to ``UserExistsError`` alone say, would make
     the address claimable while every test above stays green, since none of them
     drives a write through a real database.
     """

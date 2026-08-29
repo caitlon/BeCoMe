@@ -215,7 +215,7 @@ class TestEmailVerificationCredentialsMigration:
 
         Redemption checks the posted password against ``hashed_password`` and writes
         all three, so a row missing any of them would be a link nobody has to
-        authenticate against -- which is the takeover the whole flow closes.
+        authenticate against, which is the takeover the whole flow closes.
         """
         # GIVEN: a database at this migration, holding one account
         url = _url(migration_pg)
@@ -382,7 +382,7 @@ class TestExampleProjectSupportMigration:
                     },
                 )
                 # The admin never joins project_members in this fixture either (see
-                # the untouched-example case above) -- admin_id on the project row
+                # the untouched-example case above). admin_id on the project row
                 # is what identifies them. What is new here is their own opinion.
                 conn.execute(
                     text(
@@ -399,7 +399,7 @@ class TestExampleProjectSupportMigration:
                         "now": created_at,
                     },
                 )
-                # An invitation the colleague has neither accepted nor declined --
+                # An invitation the colleague has neither accepted nor declined:
                 # the one real action that leaves no project_members and no
                 # expert_opinions row behind, so it needs its own survival check.
                 conn.execute(
@@ -418,7 +418,7 @@ class TestExampleProjectSupportMigration:
                 )
                 # The touched example project's only opinion is the demo pool's own,
                 # so it is what the colleague's membership spares from the project
-                # deletion but not from losing every opinion to the demo cleanup --
+                # deletion but not from losing every opinion to the demo cleanup,
                 # exactly the case a stale calculation_results row is left behind in.
                 conn.execute(
                     text(
@@ -507,8 +507,8 @@ class TestExampleProjectSupportMigration:
                 # AND: the project the admin never invited anyone into survives too,
                 # because they contributed their own opinion to it. Membership alone
                 # is not the bar: a solo admin who did exactly what the feature
-                # invites -- open the example, add a fourteenth opinion, invite
-                # nobody -- must not lose that opinion to the demo cleanup.
+                # invites, meaning open the example, add a fourteenth opinion, and
+                # invite nobody, must not lose that opinion to the demo cleanup.
                 assert (
                     conn.execute(
                         text("SELECT 1 FROM projects WHERE id = :id"),
@@ -643,7 +643,7 @@ class TestClearStaleLikertVerdictsMigration:
                 # A flood question measured in percent and a budget question in
                 # billions of CZK, the two examples from the bug this fix closed,
                 # alongside the genuine 0-100 unitless scale they were confused with,
-                # and a 0-100 scale whose unit is a bare tab -- whitespace that
+                # and a 0-100 scale whose unit is a bare tab, whitespace that
                 # Python's str.strip() empties out but SQL's TRIM() does not.
                 conn.execute(
                     text(

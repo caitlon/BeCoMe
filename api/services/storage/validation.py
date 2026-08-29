@@ -36,7 +36,7 @@ _IMAGE_SIGNATURES: Final[dict[bytes, str]] = {
     b"\x89PNG\r\n\x1a\n": _MIME_PNG,
     b"GIF87a": _MIME_GIF,
     b"GIF89a": _MIME_GIF,
-    b"RIFF": _MIME_WEBP,  # WebP additionally checks for the WEBP marker
+    b"RIFF": _MIME_WEBP,  # WebP also checks for the WEBP marker
 }
 
 

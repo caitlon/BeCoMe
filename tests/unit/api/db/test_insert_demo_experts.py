@@ -6,7 +6,7 @@ Tests build their schema with ``SQLModel.metadata.create_all``, which carries no
 so they call ``insert_demo_experts`` instead. Nothing ties the two together, so this
 checks the helper reproduces the same properties
 ``tests/integration/api/db/test_migrations.py::TestExampleProjectSupportMigration``
-proves about the migration -- if the two ever drift, every test that calls this helper
+proves about the migration. If the two ever drift, every test that calls this helper
 would otherwise go on validating a pool shape production does not have.
 """
 

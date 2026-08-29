@@ -1,7 +1,7 @@
 """Regression tests for the case-study numbers shown on the frontend.
 
 frontend/src/data/caseStudies.ts stores its bestCompromise/maxError results as
-static, hand-maintained numbers -- nothing recalculates them at runtime. This
+static, hand-maintained numbers, and nothing recalculates them at runtime. This
 module parses that TypeScript file as text, rebuilds each case's expert
 opinions, runs them through the real BeCoMeCalculator, and asserts the stored
 numbers match what the calculator actually produces from the same opinions.
@@ -15,7 +15,7 @@ actually shown to a user can drift from the real calculation even while
 result.bestCompromise/maxError in caseStudies.ts stays correct.
 
 Test coverage is driven by whatever cases caseStudies.ts actually contains,
-parsed at collection time, rather than a hardcoded id list -- a new case
+parsed at collection time, rather than a hardcoded id list, so a new case
 study is covered automatically instead of silently going untested.
 """
 
@@ -160,7 +160,7 @@ def _parse_experts_field(block: str, case_id: str) -> int:
 
     This is the expert count shown to users next to the case study (e.g. "22
     experts") and is independent of how many opinions the regex parser
-    actually found -- comparing the two catches both a parser regression and
+    actually found. Comparing the two catches both a parser regression and
     a displayed count that fell out of sync with the opinions array.
 
     :param block: Raw source slice for one case, as returned by _split_case_blocks
@@ -180,7 +180,7 @@ def _parse_opinions(block: str, data_type: str) -> list[ExpertOpinion]:
 
     Interval opinions map directly onto a fuzzy triangular number built from
     (lowerLimit, bestProposal, upperLimit). Likert opinions carry a single
-    crisp value v, modeled as the degenerate fuzzy number (v, v, v) -- the
+    crisp value v, modeled as the degenerate fuzzy number (v, v, v), the
     same convention the frontend's BeCoMe write-up uses for Likert scores.
 
     :param block: Raw source slice for one case, as returned by _split_case_blocks
@@ -265,7 +265,7 @@ def _load_interpretation_prose(path: Path) -> dict[str, str]:
     Load the per-case 'interpretation' prose from a caseStudies.json locale file.
 
     useLocalizedCaseStudies() overwrites result.interpretation with this
-    translated string at runtime, so this free text -- not caseStudies.ts -- is
+    translated string at runtime, so this free text, not caseStudies.ts, is
     what actually reaches the user for that field.
 
     :param path: Path to a locale's caseStudies.json (e.g. locales/en/caseStudies.json)
@@ -403,7 +403,7 @@ class TestFrontendCaseStudyNumbers:
         found = set(parsed_case_studies)
         assert found >= _EXPECTED_CASE_IDS, (
             f"Expected to find case ids {sorted(_EXPECTED_CASE_IDS)} in caseStudies.ts, "
-            f"but the parser only found {sorted(found)} -- check the regex parser"
+            f"but the parser only found {sorted(found)}. Check the regex parser"
         )
 
     @pytest.mark.parametrize("case_id", _CASE_IDS)
@@ -420,7 +420,7 @@ class TestFrontendCaseStudyNumbers:
         # GUARD: a parser regression, or a stale displayed expert count, must fail loudly
         assert len(case.opinions) == case.experts_field, (
             f"{case_id}: parsed {len(case.opinions)} expert opinions from caseStudies.ts, "
-            f"but its 'experts:' field declares {case.experts_field} -- either the regex "
+            f"but its 'experts:' field declares {case.experts_field}. Either the regex "
             f"parser under- or over-matched, or the displayed expert count is stale"
         )
 

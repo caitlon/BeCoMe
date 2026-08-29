@@ -1,8 +1,8 @@
 """Tests that refusals, external calls, and reads emit the log records they promise.
 
 Grouped by the layer that emits them rather than by module, because the point of each
-record is the question it answers for whoever reads the drain -- "was the request
-refused, and why" -- not which file happens to raise it.
+record is the question it answers for whoever reads the drain, "was the request
+refused, and why", not which file happens to raise it.
 
 Several of these assert on what is *absent*: a CSRF record must not carry the token it
 just compared, a throttle record must not carry the account it throttled. Those are the

@@ -167,7 +167,7 @@ def stored_accounts(client: TestClient, email: str) -> list[dict]:
 
     :param client: Test client instance
     :param email: Address to look up (case-insensitive)
-    :return: One dict per matching account (at most one -- the column is unique)
+    :return: One dict per matching account (at most one, since the column is unique)
     """
     with app_session(client) as session:
         users = session.exec(select(User).where(User.email == email.lower())).all()
@@ -299,7 +299,7 @@ def pending_account(session):
     """Register an account and return the raw activation token with its password.
 
     The database stores only the SHA-256 of the token, so the raw value is taken from
-    the verification URL the service mints -- the same trick the unit tests use.
+    the verification URL the service mints, the same trick the unit tests use.
 
     Also seeds the demo expert pool: the in-memory schema carries no data of its own,
     and without the pool ExampleProjectService.seed_for refuses to seed anything.
@@ -330,7 +330,7 @@ def _reset_auth_throttles():
     """Give each test fresh login, activation, reset-email, and verification-email throttles.
 
     All four factories are lru_cache singletons, so their in-memory state would
-    otherwise leak between tests that reuse an email address -- and every test that
+    otherwise leak between tests that reuse an email address, and every test that
     registers a user now goes through the verification-email throttle.
     """
     from api.auth.email_throttle import (
@@ -403,7 +403,7 @@ def cookie_client(test_engine):
 
     The base URL is https, and it has to be: the session cookies are ``Secure`` (their
     ``__Host-``/``__Secure-`` prefixes are only valid that way), and httpx applies the
-    same rule a browser does -- it stores such a cookie but will not send it back over
+    same rule a browser does: it stores such a cookie but will not send it back over
     plain http. On ``http://testserver`` every request after login would arrive with no
     cookies at all, which reads as "authentication is broken" rather than as the
     transport mismatch it is.

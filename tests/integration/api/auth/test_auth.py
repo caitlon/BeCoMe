@@ -1064,7 +1064,7 @@ class TestCsrfTokenHeader:
         is same-site with the API and can set a cookie for the whole registrable domain,
         shadowing ours. If the probe handed that value back, the SPA would send it on
         every mutation and be refused. The value sent below also carries a newline once
-        Starlette applies its RFC 2109 unescape -- uvicorn writes response headers without
+        Starlette applies its RFC 2109 unescape. uvicorn writes response headers without
         validating them, so echoing it would have split the response outright.
         """
         issued = self._login(cookie_client, "csrfjunk@example.com").headers["X-CSRF-Token"]

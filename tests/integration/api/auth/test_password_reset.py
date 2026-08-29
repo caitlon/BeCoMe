@@ -178,7 +178,7 @@ class TestResetPassword:
         """A revocation-store fault aborts the reset instead of half-applying it.
 
         Writing the password first would leave it changed with every pre-reset session
-        still valid -- the exact outcome someone resetting a compromised account is
+        still valid, the exact outcome someone resetting a compromised account is
         trying to avoid. Recording the cutoff first makes the fault a clean abort.
         """
         # GIVEN a user holding a valid reset link, and a store that cannot record the cutoff
@@ -290,7 +290,7 @@ class TestResetPassword:
         Presenting a valid reset token already proves control of the address. Leaving a
         stray lockout in place afterwards would let an attacker who tripped it keep the
         account locked out of login indefinitely, simply by resuming the same failed
-        guesses once the throttle's window reopens -- even though the owner just proved
+        guesses once the throttle's window reopens, even though the owner just proved
         they hold the mailbox and chose a new password.
         """
         # GIVEN: a login lockout, tripped by an attacker's wrong guesses

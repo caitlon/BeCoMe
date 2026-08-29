@@ -1,4 +1,4 @@
-"""E2E test fixtures — real server, real database."""
+"""E2E test fixtures: a real server and a real database."""
 
 import time
 from uuid import uuid4
@@ -19,7 +19,7 @@ def verify_user_email(email: str) -> None:
     """Mark a registered address verified straight through the E2E database.
 
     Registration creates an account that cannot log in until its address is confirmed,
-    and the activation token exists only inside the email the API sends -- which no
+    and the activation token exists only inside the email the API sends, which no
     test can read. So the harness writes the column instead, connecting to the same
     database the running API uses (``DATABASE_URL``). Everything else in the flow still
     goes through the real endpoints.

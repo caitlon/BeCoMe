@@ -25,7 +25,7 @@ def _image_bytes(width: int = 8, height: int = 8, image_format: str = "JPEG") ->
     """Encode a real image, so uploads face the same decoder the endpoint uses.
 
     Hand-written magic bytes were enough while only the signature was checked, but the
-    dimension guard actually parses the header -- a fake would be rejected as corrupt
+    dimension guard actually parses the header. A fake would be rejected as corrupt
     and the test would pass for the wrong reason.
     """
     buffer = BytesIO()
@@ -59,8 +59,8 @@ def _stored_photo(
 ) -> StoredObject:
     """Build an open handle over an in-memory photo body.
 
-    ``open`` hands back a single-use handle, so every call needs a fresh one --
-    a shared instance would arrive already closed on the second request.
+    ``open`` hands back a single-use handle, so every call needs a fresh one.
+    A shared instance would arrive already closed on the second request.
     """
     return StoredObject(
         stream if stream is not None else _photo_stream(),
@@ -155,7 +155,7 @@ class TestPhotoUpload:
     def test_upload_rejects_a_decompression_bomb(self, client_with_mock_storage):
         """A small file declaring a huge canvas is rejected before it reaches storage.
 
-        The 5 MB byte cap passes this file easily -- the danger is the 25-megapixel
+        The 5 MB byte cap passes this file easily. The danger is the 25-megapixel
         canvas it declares, which costs hundreds of megabytes the moment it decodes.
         """
         # GIVEN a 5000x5000 PNG that weighs well under the size limit

@@ -43,8 +43,8 @@ def _with_secret(secret: str, *, is_deploy: bool = False) -> object:
 class TestNoOriginSecretLocally:
     """Without a Cloudflare secret and off a deploy, key off the direct peer.
 
-    Client-supplied forwarding headers are untrusted here -- X-Forwarded-For and
-    CF-Connecting-IP are ignored -- because deployed profiles must set the secret,
+    Client-supplied forwarding headers are untrusted here, so X-Forwarded-For and
+    CF-Connecting-IP are ignored, because deployed profiles must set the secret,
     so a spoofed header can no longer mint fresh rate-limit buckets or poison logs.
     """
 

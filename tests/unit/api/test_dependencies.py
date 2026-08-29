@@ -219,7 +219,7 @@ class TestGetEmailAddressPolicy:
         WHEN the factory-built policy checks the same well-known disposable domain
         THEN no error is raised
 
-        This is the behaviour the setting must actually control -- not merely a
+        This is the behaviour the setting must actually control, not merely a
         value it parses into.
         """
         # GIVEN
@@ -266,7 +266,7 @@ class TestGetEmailAddressPolicy:
         rejected
         THEN no error is raised and the resolver is never consulted
 
-        This is the behaviour the setting must actually control -- not merely a
+        This is the behaviour the setting must actually control, not merely a
         value it parses into.
         """
         # GIVEN

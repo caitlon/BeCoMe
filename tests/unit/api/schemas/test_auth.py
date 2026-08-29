@@ -347,8 +347,8 @@ class TestChangePasswordRequest:
 class TestCredentialFieldsStayOutOfRepr:
     """Credential values must never appear in a model repr.
 
-    Anything that reprs a request model -- a log record, a debugger, a traceback frame
-    shipped to an error tracker -- would otherwise carry live credentials. The field
+    Anything that reprs a request model would otherwise carry live credentials: a log
+    record, a debugger, or a traceback frame shipped to an error tracker. The field
     values stay reachable through attribute access, only the repr drops them.
     """
 

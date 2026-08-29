@@ -209,7 +209,7 @@ class TestConsoleEmailSender:
 
     def test_registration_attempt_notice_static_reset_link_is_not_masked(self, capsys):
         """
-        GIVEN a registration-attempt notice carrying a static forgot-password link --
+        GIVEN a registration-attempt notice carrying a static forgot-password link,
         the shape the product actually sends, since minting a real reset token for an
         unauthenticated registration attempt would let anyone flood a victim's inbox
         with working reset links
