@@ -56,7 +56,7 @@ const Register = () => {
   // Carries the address and password the user just typed into the
   // check-your-inbox state, so the resend control there can call
   // api.resendVerification without asking the user to type the password
-  // again -- kept only in this component's state, never persisted.
+  // again, kept only in this component's state and never persisted.
   const [submitted, setSubmitted] = useState<{ email: string; password: string } | null>(
     null
   );
@@ -115,7 +115,7 @@ const Register = () => {
         first_name: data.firstName,
         last_name: data.lastName,
       });
-      // 202 identically for a free, unverified, or already-verified address --
+      // 202 identically for a free, unverified, or already-verified address,
       // the "check your inbox" state is the whole flow's success state, there
       // is no user object and no session to move to /projects with.
       setSubmitted({ email: data.email, password: data.password });

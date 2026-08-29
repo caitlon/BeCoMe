@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 interface PageHeaderProps {
   readonly title: string;
   readonly description?: string;
-  /** Meta row under the description — badges, actions, a back link. */
+  /** Meta row under the description: badges, actions, and a back link. */
   readonly children?: React.ReactNode;
   readonly className?: string;
 }

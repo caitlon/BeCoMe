@@ -280,7 +280,7 @@ describe('ProjectDetail - Team Section', () => {
       expect(screen.getAllByText('Jane Smith').length).toBeGreaterThan(0);
     });
 
-    // Collapsible trigger shows member count — section already expanded
+    // Collapsible trigger shows member count, and the section is already expanded
     expect(screen.getByRole('button', { name: /team.*2 members/i })).toBeInTheDocument();
   });
 

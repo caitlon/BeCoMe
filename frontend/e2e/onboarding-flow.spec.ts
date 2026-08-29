@@ -12,7 +12,7 @@ test.describe('Onboarding Flow', () => {
 
     await page.goto('/onboarding');
 
-    // Step 1: Welcome — click "Get Started"
+    // Step 1: Welcome, click "Get Started"
     await expect(page.getByText('Step 1 of 6')).toBeVisible({ timeout: 10000 });
     await expect(page.getByText('Welcome to BeCoMe')).toBeVisible();
     await page.getByRole('button', { name: /get started/i }).click();
@@ -37,7 +37,7 @@ test.describe('Onboarding Flow', () => {
     await expect(page.getByText('View Results')).toBeVisible();
     await page.getByRole('button', { name: /next/i }).click();
 
-    // Step 6: Complete — click "Go to Projects"
+    // Step 6: Complete, click "Go to Projects"
     await expect(page.getByText('Step 6 of 6')).toBeVisible({ timeout: 5000 });
     await expect(page.getByText("You're Ready!")).toBeVisible();
     await page.getByRole('button', { name: /go to projects/i }).click();

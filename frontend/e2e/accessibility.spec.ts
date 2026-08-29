@@ -23,7 +23,7 @@ test.describe('Accessibility — Tab Order', () => {
     await expect(passwordField).toBeVisible();
     await expect(submitBtn).toBeVisible();
 
-    // Focus email, then tab through — email comes before password in DOM
+    // Focus email, then tab through: email comes before password in DOM
     await emailField.focus();
     await expect(emailField).toBeFocused();
 
@@ -101,7 +101,7 @@ test.describe('Accessibility — Password Validation Boundary', () => {
 
     const passwordField = page.getByPlaceholder('Min. 12 characters');
 
-    // 11 chars — too short
+    // 11 chars, too short
     await passwordField.fill('Abcdefgh12!');
     await passwordField.blur();
 
@@ -121,7 +121,7 @@ test.describe('Accessibility — Password Validation Boundary', () => {
     // With 11-char password, submit should be disabled
     await expect(submitButton).toBeDisabled({ timeout: 5000 });
 
-    // 12 chars — meets requirement
+    // 12 chars, meets requirement
     await passwordField.clear();
     await passwordField.fill('Abcdefgh123!');
     await passwordField.blur();

@@ -8,7 +8,7 @@ import type { Opinion } from '@/types/api';
 
 /**
  * OpinionForm receives its react-hook-form instance from the page container
- * (the form renders twice there — desktop column and mobile tab — and both
+ * (the form renders twice there, as a desktop column and a mobile tab, and both
  * copies share one set of values). This harness recreates that wiring.
  */
 function Harness({

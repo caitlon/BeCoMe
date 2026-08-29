@@ -24,7 +24,7 @@ Object.defineProperty(window, 'localStorage', { value: localStorageMock });
 
 // Mock fetch. The cases below describe responses as plain objects and mostly leave
 // `headers` out, while a real Response always has one and the client reads the CSRF
-// token off it -- so fill an empty Headers in where a case did not supply its own.
+// token off it, so fill an empty Headers in where a case did not supply its own.
 const mockFetch = vi.fn();
 globalThis.fetch = ((...args: Parameters<typeof fetch>) =>
   Promise.resolve(mockFetch(...args)).then((response) =>
@@ -110,7 +110,7 @@ describe('ApiClient', () => {
   // the __Host-csrf_token cookie belongs to the API and document.cookie shows the app
   // nothing. The API repeats the value in an X-CSRF-Token response header, and
   // without picking that up the client cannot produce the header the CSRF check
-  // demands -- which is a 403 on logout and on every other mutation.
+  // demands, which is a 403 on logout and on every other mutation.
   describe('CSRF token from the response header', () => {
     it('picks the token up from the login response', async () => {
       mockFetch.mockResolvedValueOnce({

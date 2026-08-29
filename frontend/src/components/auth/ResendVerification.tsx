@@ -15,7 +15,7 @@ type ResendStatus = "idle" | "success" | "error";
  * Resend affordance for a fresh activation link. Only ever rendered where the
  * caller has just collected the account's password (the check-your-inbox
  * state right after registration, or a login blocked by an unverified
- * account) -- see api.resendVerification, which requires that password too.
+ * account). See api.resendVerification, which requires that password too.
  */
 export function ResendVerification({ email, password }: ResendVerificationProps) {
   const { t } = useTranslation("auth");
