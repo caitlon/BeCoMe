@@ -26,7 +26,7 @@
     "intro": "Experti odpovídají na položenou otázku hodnocením kvantitativního parametru. Své odpovědi mohou vyjádřit třemi způsoby:",
     "crisp": {
       "title": "Přesné číslo",
-      "description": "Jedna přesná hodnota, když je expert přesvědčen o svém odhadu. V rozhraní jednoduše zadejte stejnou hodnotu do všech tří polí (Dolní = Vrchol = Horní).",
+      "description": "Jedna přesná hodnota, když je expert přesvědčen o svém odhadu. V rozhraní zadejte stejnou hodnotu do všech tří polí (Dolní = Vrchol = Horní).",
       "example": "Příklad: Pokud jste si jisti, že rozpočet by měl být přesně 50 miliard Kč, zadejte (50, 50, 50)."
     },
     "fuzzy": {

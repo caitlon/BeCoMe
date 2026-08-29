@@ -27,7 +27,7 @@
     "switchToLight": "Switch to light mode"
   },
   "footer": {
-    "description": "Best Compromise Mean — a scientific approach to aggregating expert opinions using fuzzy triangular numbers.",
+    "description": "Best Compromise Mean: a scientific approach to aggregating expert opinions using fuzzy triangular numbers.",
     "product": "Product",
     "methodAuthors": "Method Authors",
     "copyright": "All rights reserved.",
@@ -37,7 +37,7 @@
     "faq": "FAQ",
     "caseStudies": "Case Studies",
     "implementation": "Implementation & Web Development",
-    "implementationAuthor": "Ekaterina Kuzmina – BeCoMe method implementation",
+    "implementationAuthor": "Ekaterina Kuzmina: BeCoMe method implementation",
     "implementationThesis": "BeCoMe method implementation",
     "implementationUniversity": "Czech University of Life Sciences Prague",
     "feedback": "Feedback & Contact",
@@ -117,8 +117,8 @@
     "mainNavigation": "Main navigation",
     "stepNavigation": "Step navigation",
     "noDataAvailable": "No data yet",
-    "pendingMemberRow": "{{name}} — awaiting response, no opinion submitted yet",
-    "pendingInvitationRow": "{{name}} — invitation pending, not yet joined",
+    "pendingMemberRow": "{{name}}: awaiting response, no opinion submitted yet",
+    "pendingInvitationRow": "{{name}}: invitation pending, not yet joined",
     "centroidChartDesc": "Bar chart showing expert opinion centroids sorted by value with reference lines for mean, median, and best compromise",
     "landscapeChartDesc": "Number line showing individual expert opinion centroids with mean, median, and best compromise markers",
     "memberProfileDialog": "Profile of {{name}}",

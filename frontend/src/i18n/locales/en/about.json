@@ -1,7 +1,7 @@
 {
   "hero": {
     "title": "About BeCoMe",
-    "subtitle": "Best Compromise Mean — a scientific method for optimal group decision-making under fuzzy uncertainty."
+    "subtitle": "Best Compromise Mean: a scientific method for optimal group decision-making under fuzzy uncertainty."
   },
   "challenge": {
     "title": "The Challenge",
@@ -25,7 +25,7 @@
     "fuzzy": {
       "title": "Fuzzy Interval",
       "description": "A triangular membership function with three values: best proposal, lower limit, and upper limit.",
-      "example": "Example: (40, 60, 80) — pessimistic, most likely, optimistic"
+      "example": "Example: (40, 60, 80) for pessimistic, most likely, and optimistic"
     },
     "likert": {
       "title": "Likert Scale",
@@ -46,7 +46,7 @@
   },
   "applications": {
     "title": "Applications",
-    "subtitle": "The BeCoMe method is a unique, helpful, and easily available instrument in many decision-making situations:",
+    "subtitle": "The BeCoMe method fits many decision-making situations:",
     "items": {
       "stateSecurity": "State security decisions",
       "publicHealth": "Public health policy",
