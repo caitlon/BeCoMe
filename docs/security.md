@@ -4,7 +4,7 @@ What is actually implemented in BeCoMe to keep the product and its users' data s
 how to operate the pieces that need runbooks. This is a description of the running system,
 not a wishlist. Deployment topology lives in [`environments.md`](environments.md). The
 academic threat model (attack trees, residual-risk argument) lives in the thesis
-workspace and is not duplicated here.
+workspace, and this page does not repeat it.
 
 ## Contents
 
@@ -45,37 +45,38 @@ workspace and is not duplicated here.
 
 Sessions are stateless JWTs signed with `SECRET_KEY` (HS256). Login returns a short-lived
 access token and a longer-lived refresh token. Refresh tokens rotate: each refresh mints a
-fresh pair tied to a rotation family (a `sid` claim). Presenting a refresh token that has
-already been rotated is treated as theft and revokes the entire family, so a stolen token
+fresh pair tied to a rotation family (a `sid` claim). The API treats a refresh token that has
+already rotated as theft and revokes the entire family, so a stolen token
 stops working the moment the legitimate client refreshes. Changing the password stamps a
 per-user cutoff that rejects every token issued before it. Both the change and the reset
 route record that cutoff *before* they write the new password, so a revocation-store fault
 aborts the operation instead of leaving a fresh password with every old session still
 alive. The cutoff itself expires
-once the longest-lived token would have, so it is not stored forever.
+once the longest-lived token would have, so it does not accumulate forever.
 
-Passwords are hashed with bcrypt. Because bcrypt silently truncates input at 72 bytes, the
-password is SHA-256 pre-hashed and base64-encoded first (`api/auth/password.py`), which is
-the approach bcrypt's own maintainers recommend. A strength policy is enforced on
-registration and password change.
+bcrypt hashes the passwords. Because bcrypt silently truncates input at 72 bytes,
+`api/auth/password.py` pre-hashes the password with SHA-256 and base64-encodes it first,
+which is the approach bcrypt's own maintainers recommend. Registration and password change
+both enforce a strength policy.
 
-Two abuse paths on the login endpoint are closed. Repeated failures lock the account for a
+The login endpoint closes two abuse paths. Repeated failures lock the account for a
 cooldown window (`api/auth/login_throttle.py`), which stops online brute force and
-credential stuffing against a single account. And an unknown email still runs a dummy hash
+credential stuffing against a single account. An unknown email still runs a dummy hash,
 so a wrong-email response takes the same time as a wrong-password one. Login timing
-cannot be used to enumerate which addresses have accounts.
+therefore reveals nothing about which addresses have accounts.
 
 ## Registration and email verification
 
-An account is created unverified and cannot log in until the address is confirmed. Login
-checks `email_verified_at` only *after* the password verifies, and answers `403`. Checking
+Registration creates the account unverified, and nobody can log in to it until the address
+is confirmed. Login checks `email_verified_at` only *after* the password verifies, and
+answers `403`. Checking
 first would answer differently for an address that has an account and one that does not,
 which is the enumeration oracle the uniform `401` exists to prevent.
 
 `POST /auth/register` always answers `202` with one fixed body. Behind it,
 `RegistrationService` picks one of three branches: a free address creates an unverified
-account, a taken-but-unverified address writes nothing at all, and a taken-and-verified
-address is left untouched while its owner is emailed a notice that someone tried to sign up
+account, a taken-but-unverified address writes nothing at all, and and a taken-and-verified
+address stays untouched while its owner gets a notice that someone tried to sign up
 with it.
 
 **A demo service account answers as a fourth kind of address, without needing a fourth
@@ -97,8 +98,8 @@ one could not fall into the branch that mints it an activation token.
 
 **A submission is bound to the link it mints, never to the account.** The activation token
 carries the submitted password hash and names (`email_verification_tokens`, all three
-columns `NOT NULL`), and they are written to the account only when that specific token is
-redeemed. The alternative, storing the newest submission on the account row, is an
+columns `NOT NULL`), and the account receives them only when somebody redeems that specific
+token. The alternative, storing the newest submission on the account row, is an
 unauthenticated account-takeover primitive: whoever submits last would decide what every
 outstanding link opens, so an attacker submits `victim@example.com` after the real owner
 signed up, the owner clicks the link they already have, and the account activates on the
@@ -117,11 +118,11 @@ the other's submission.
 Three consequences follow. Issuing a link does **not** retire the outstanding ones, unlike
 password reset: several live links for one unconfirmed address is the correct state, since
 each is single-use and carries its own submission, and retiring them is exactly how one
-submitter would kill another's pending link. Redemption is refused once the address is
+submitter would kill another's pending link. The API refuses redemption once the address is
 verified, with the same opaque `400` an unknown token gets: a token minted while the account
 was unconfirmed carries a password, so redeeming it afterwards would rewrite the credentials
-of an account somebody is already using, and refusing before the password is weighed also
-keeps the endpoint from being able to lock a live account out of its own login. And a
+of an account somebody is already using, and refusing before it weighs the password also
+keeps the endpoint from locking a live account out of its own login. And a
 completed password reset sets `email_verified_at` too, which retires every outstanding
 activation link in one move. A reset link proves control of the address exactly as an
 activation link does, so reclaiming an address somebody pre-registered is one step for the
@@ -130,10 +131,10 @@ credentials. It is not one step for the display name. See "Accepted risks" below
 That makes an activation and a reset the two operations that can confirm the same account,
 so both go through a `_claim_account` that writes `UPDATE ... WHERE email_verified_at IS NULL` whenever the row it loaded was still pending,
 and lets the database pick the winner. The loser writes nothing and gets the opaque `400`.
-On the reset side its token is deliberately left unspent, so following the same link again
-succeeds against the now- confirmed account. A reset whose account was already confirmed
-when its token resolved has nothing to race, because an activation redemption is refused
-once `email_verified_at` is set, so it writes by id alone. Reading the row and writing it back would
+On the reset side it deliberately leaves its token unspent, so following the same link again
+succeeds against the now-confirmed account. A reset whose account was already confirmed
+when its token resolved has nothing to race, because the API refuses an activation
+redemption once `email_verified_at` is set, so it writes by id alone. Reading the row and writing it back would
 instead let a reset that started while the account was still pending overwrite the password
 an activation had just applied, seconds after telling whoever redeemed it to sign in. bcrypt
 alone holds that window open for a few hundred milliseconds.
@@ -141,10 +142,10 @@ alone holds that window open for a few hundred milliseconds.
 A wrong password answers `403` with its own wording, not the opaque `400` the token errors
 share. Whoever reaches that point already holds a live link, so admitting the link is fine
 tells them nothing new, while telling a user who mistyped that their link is broken would
-send them round the loop asking for another one that would fail the same way. The guessing
-oracle that opens is capped by its own per-token lockout (`api/auth/login_throttle.py`),
-namespaced apart from the one `/login` uses: this endpoint's lockout can only be tripped by
-someone who already holds a live token, so a run of failed logins, which anyone who knows
+send them round the loop asking for another one that would fail the same way. Its own per-token lockout caps the guessing
+oracle that opens (`api/auth/login_throttle.py`),
+namespaced apart from the one `/login` uses: only someone who already holds a live token can
+trip this endpoint's lockout, so a run of failed logins, which anyone who knows
 the address can produce, can never deny someone their own activation.
 
 **The lockout keys on the token's hash, not the account.** Issuing a link never retires an
@@ -155,9 +156,9 @@ single token, forwarded by its recipient or intercepted rather than read from th
 itself, could spend the account's entire activation budget against it and, because every
 failure refreshes the window, keep it spent indefinitely, locking the real owner out of a
 different, freshly resent link they hold instead. Keying on the token confines that damage
-to the token it was spent against. It does not widen what one token can be guessed: any
-single token still allows at most ten activation failures against its own password, the same
-bound described below. Nor does it hand an attacker more guesses to spend: `resend-verification` only ever
+to the token somebody spent it against. It does not widen what one token exposes to guessing:
+any single token still allows at most ten activation failures against its own password, the
+same bound described below. Nor does it hand an attacker more guesses to spend: `resend-verification` only ever
 mints a token carrying the password its own caller submitted, and the mail carrying it goes
 to the account's address, not back to whoever asked, so minting more tokens never buys a
 guess against a password the caller does not already know.
@@ -168,26 +169,26 @@ token, so nine failed logins followed by ten activation guesses against one toke
 nineteen wrong passwords reachable against that token's password inside a window. A shared
 counter is the only thing that would bound the total, and a shared counter is exactly what
 the split exists to prevent. Moving the login counter takes no credential and every failure
-refreshes its expiry, so any endpoint that reads it can be held shut indefinitely by a
-stranger who knows nothing but the address. The activation counter cannot be moved without a
-live single-use token, and that token exists in one place: the mailbox it was sent to.
+refreshes its expiry, so a stranger who knows nothing but the address can hold any endpoint
+that reads it shut indefinitely. Moving the activation counter takes a live single-use
+token, and that token exists in one place: the mailbox it went to.
 Whoever reaches the extra ten guesses has therefore already read the mail, and reading the
 mail takes the account outright through `forgot-password` without guessing at anything. The
 extra guesses hand an attacker a weaker capability than the one they used to get them. A
-mismatch does still spend from the login counter, which costs the guesser instead of
+mismatch does still spend from the login counter, which costs the guesser rather than
 bounding them: ten activation mismatches lock `/login` too, so the total only grows when the
 login guesses come first. `POST /auth/reset-password` clears the login lockout on success,
 so an attacker's failed guesses cannot keep an account locked out of login after its owner
 has proven control of the address and set a new password.
 
 The notice mail carries a static `/forgot-password` link, never a minted reset token: an
-unauthenticated registration attempt must not be able to mail anyone a working reset link.
+unauthenticated registration attempt must never mail anyone a working reset link.
 
-Two side channels are closed alongside the response body. Every branch runs bcrypt on the
-submitted password, including the one that writes nothing, so none can be identified by
+The flow closes two side channels alongside the response body. Every branch runs bcrypt on
+the submitted password, including the one that writes nothing, so none gives itself away by
 answering hundreds of milliseconds faster. And the emails the flow can trigger share one
 per-address budget (`api/auth/email_throttle.py`, keyed by a hash of the address), so
-submitting a victim's address in a loop from rotating IPs cannot flood their inbox past the
+submitting a victim's address in a loop from rotating IPs cannot flood the inbox past the
 per-IP limiter. Suppression never changes the response.
 
 Every send spends from that budget, including the one on the branch that creates the
@@ -196,7 +197,7 @@ directions. Never denied, because that branch fires at most once per address (a 
 submission is by definition no longer free), so charging it would let a stranger drain the
 allowance with five unauthenticated `resend-verification` calls and pre-empt a signup that
 has not happened yet: the victim would register, get the normal `202`, receive nothing, and
-be left with an account that cannot log in. Still spending, because a send that left the
+hold an account that cannot log in. Still spending, because a send that left the
 budget clean would make two back-to-back submissions separate a free address from a taken
 one, the free one mailing on both probes and the taken one going quiet after the first, and
 the awaited round trip to the mail provider is exactly the difference the uniform `202`
@@ -226,12 +227,12 @@ real users.
 
 **`language` on `/auth/verify-email` carries no authority and needs none.** A successful
 redemption seeds the newly activated account's example project (`ExampleProjectService.seed_for`),
-and `language` only picks which pre-written variant of that project's text is used. The
+and `language` only picks which pre-written variant of that project's text it seeds. The
 request schema constrains it to the `Literal["en", "cs"]` the seeded copy actually ships in,
 so it never reaches the database as free text and cannot widen anything the token/password
-pair above already decided. Seeding runs after activation succeeds and its own failure is
-swallowed (`api/routes/auth.py`): an account that verified but got no example project is an
-acceptable outcome, an account that could not be logged into because seeding raised is not.
+pair above already decided. Seeding runs after activation succeeds, and the route swallows its
+failure (`api/routes/auth.py`): an account that verified but got no example project is an
+acceptable outcome, an account nobody can log in to because seeding raised is not.
 
 ## Session transport (cookies and CSRF)
 
@@ -240,8 +241,8 @@ access and refresh tokens as cookies marked `HttpOnly`, `SameSite=Strict`, and `
 XSS payload therefore cannot read the session the way it could read `localStorage`.
 
 The names carry prefixes the **browser** enforces: `__Host-access_token`, `__Host-csrf_token`, `__Secure-refresh_token`. `__Host-` is the one
-that matters: a cookie under that prefix is only accepted with `Secure`, `Path=/` and no `Domain`,
-and can only be written by the exact host it belongs to. That closes the gap `SameSite` leaves
+that matters: the browser accepts a cookie under that prefix only with `Secure`, `Path=/` and no
+`Domain`, and only the exact host it belongs to can write it. That closes the gap `SameSite` leaves
 open: a page on any sibling `becomify.app` subdomain counts as same-site here, so without the prefix
 it could write a session cookie of its own and log the victim into the attacker's account
 (session fixation). That is a different attack from the CSRF one below, and one no amount of
@@ -251,7 +252,7 @@ token derivation prevents. The refresh cookie takes `__Secure-` instead, because
 Two consequences worth knowing. `Secure` is now unconditional rather than following the
 request scheme: a `__Host-` cookie without it is not a weaker cookie, it is one the browser
 discards. And the deletions in `clear_auth_cookies` carry the same attributes, because a
-deletion is a `Set-Cookie` like any other. One sent without `Secure` is rejected outright,
+deletion is a `Set-Cookie` like any other. The browser rejects one sent without `Secure` outright,
 and logout would answer `204` with the session cookie still in place.
 
 That is also why the e2e suite runs over HTTPS (`frontend/scripts/e2e-cert.mjs` mints a
@@ -281,36 +282,36 @@ equally plant a token minted for a session they legitimately hold. Binding the t
 victim's `sid` closes both, since forging one for a session you do not hold means forging an
 HMAC.
 
-Deriving it also means the check cannot be waived by omission. It keys on the *session*
-cookie, so any request that authenticates as somebody is checked, where the old comparison
+Deriving it also means omission cannot waive the check. It keys on the *session*
+cookie, so it checks any request that authenticates as somebody, where the old comparison
 armed itself on the presence of the CSRF cookie and silently passed anything arriving
-without it. Bearer-token clients carry no session cookie and are unaffected, as are the pre-
-session auth endpoints (`login`, `register`, `refresh`, password reset), so a stale cookie left by a
+without it. Bearer-token clients carry no session cookie, so the check skips them, as it
+skips the pre-session auth endpoints (`login`, `register`, `refresh`, password reset), so a stale cookie left by a
 revoked session can never block a fresh login. Logout stays CSRF-protected.
 
 Reading the `sid` deliberately skips expiry, revocation, and the per-user cutoff
-(`session_id_from_access_token`): the signature is verified, but the rest is the
+(`session_id_from_access_token`). It still verifies the signature, but the rest is the
 authentication layer's job, and checking it here would put three Redis round trips in
-front of every mutating request. A token failing any of them is refused moments later
-anyway, with the CSRF check already applied.
+front of every mutating request. A token failing any of them meets its refusal moments
+later anyway, with the CSRF check already applied.
 
 The SPA gets the value from a response header rather than from the cookie. Login and refresh
 send it in an `X-CSRF-Token` **response** header, and `GET /auth/me`, the app's session
 probe on mount, reports the token for the session it authenticates as, so a page reload
 recovers it (`api/auth/cookies.py::set_csrf_header`). The header is what makes this workable
 on the deploys: the cookie carries no `Domain` attribute, so it belongs to the API host, and
-the app is served from a different one, where `document.cookie` shows it nothing while the
+the app runs on a different one, where `document.cookie` shows it nothing while the
 browser keeps sending it. Reading the cookie still works when the two share an origin, which
 is how local development runs behind the Vite proxy, and stays the fallback.
 `CORSMiddleware` names the header in `expose_headers`. Without that the browser withholds it
 from cross-origin JavaScript.
 
-Handing the value back changes nothing about the guarantee. It is meant to be readable by
-the client that owns the session, and CORS answers against an explicit origin allow-list,
+Handing the value back changes nothing about the guarantee. The client that owns the session is meant to read it, and CORS answers against an explicit
+origin allow-list,
 so a hostile origin can no more read the header than the cookie. Widening the cookie with
 `Domain=becomify.app` would look like the smaller fix and is the one to avoid: dev,
 staging, and production all sit under that parent and would overwrite each other's token,
-breaking whichever was visited last. Deriving the token also retired a sharp edge on
+breaking whichever the user visited last. Deriving the token also retired a sharp edge on
 `/auth/me`, which used to echo the caller's own cookie back: Starlette's RFC 2109 cookie
 unescape turns `csrf_token="\012..."` into a real newline, and uvicorn writes response
 headers without validating them, so that echo was a response-splitting primitive kept in
@@ -318,11 +319,11 @@ check by a filter. There is no client value on that path any more.
 
 The other half of the same threat is an attacker on a sibling subdomain shadowing the
 *session* cookie rather than the CSRF one, which logs the victim into the attacker's account
-instead of forging a request. That half is covered by the `__Host-` prefix described at the
-top of this section. Deriving the CSRF token would not have helped there: the two defenses
-answer two different attacks and both are needed.
+instead of forging a request. The `__Host-` prefix described at the top of this section covers that half.
+Deriving the CSRF token would not have helped there: the two defenses answer two different
+attacks, and the product needs both.
 
-The `Authorization: Bearer` path is kept alongside the cookie path for programmatic clients
+The `Authorization: Bearer` path stays alongside the cookie path for programmatic clients
 and the test suite. It authenticates the same tokens without the cookie or CSRF machinery.
 Such a client sends no session cookie, so it gets no header back either.
 
@@ -333,7 +334,7 @@ BeCoMe is multi-tenant: every project-scoped route runs through `RequireProjectA
 the project gets `404 Not Found`, the same answer as a project that does not exist, so the
 API never confirms the existence of a project to someone with no business knowing about it.
 A member who lacks the required role (an expert attempting an admin action) gets `403`,
-since they already know the project is there. Denials are logged with the project and user
+since they already know the project is there. The API logs each denial with the project and user
 id for audit.
 
 Row-level security is deliberately off (migration `c83186b79ad7`): the tables arrived from
@@ -356,10 +357,10 @@ until somebody either wires in the dependency or records what replaces it.
 
 ## Rate limiting and abuse control
 
-Rate limiting is handled by slowapi backed by Redis, with an in-memory fallback if Redis is
+slowapi handles rate limiting, backed by Redis, with an in-memory fallback when Redis is
 unreachable (`api/middleware/rate_limit.py`). Two global ceilings apply to every route,
-`300/minute` and a `20/second` burst, so no endpoint is unbounded even if it forgot its own
-limit. On top of that, routes carry tighter limits by risk:
+`300/minute` and a `20/second` burst, so every endpoint stays bounded even if it forgot its
+own limit. On top of that, routes carry tighter limits by risk:
 
 | Limit | Value | Applied to |
 |-------|-------|-----------|
@@ -370,45 +371,45 @@ limit. On top of that, routes carry tighter limits by risk:
 | Standard | `60/minute` | Everything else |
 
 The limiter keys on the real client IP. Behind Cloudflare and Railway the app trusts the
-forwarded protocol and client address only from the proxy hop it is configured for. An
-`X-Forwarded-For` header from an untrusted source is ignored, so a client cannot spoof its
-way around the per-IP limits. Auth rate limiting fails closed. Request bodies over the
-configured ceiling are rejected with `413` before they are buffered, and profile-photo
-uploads are streamed and size-capped rather than read whole into memory.
+forwarded protocol and client address only from the proxy hop it is configured for. It
+ignores an `X-Forwarded-For` header from an untrusted source, so a client cannot spoof its
+way around the per-IP limits. Auth rate limiting fails closed. A request body over the
+configured ceiling gets a `413` before anything buffers it, and the API streams profile-photo
+uploads under a size cap rather than reading them whole into memory.
 
 A photo upload passes three independent checks (`api/services/storage/validation.py`): the
 declared content type must be one of four image types, the leading magic bytes must match
 that declaration, and the pixel canvas must fit the avatar budget (4096x4096, no side over
 8192). The last one exists because bytes and pixels are not the same limit: image formats
 compress uniform areas so well that a 35 KB PNG can declare a 25-megapixel canvas, which
-costs hundreds of megabytes the moment anything decodes it. Only the header is parsed, so
-rejecting such a file is free.
+costs hundreds of megabytes the moment anything decodes it. The validator parses only the header, so
+rejecting such a file costs nothing.
 
 ## Input validation
 
 Request DTOs are Pydantic models with `extra="forbid"` (`api/schemas/`), so an unexpected
-field is a `422` rather than a silently ignored parameter. String fields carry length caps,
-free-text names are HTML-sanitized, and list endpoints clamp their page size (`MAX_PAGE_SIZE
+field draws a `422` rather than passing as a silently ignored parameter. String fields carry
+length caps, free-text names go through HTML sanitization, and list endpoints clamp their page size (`MAX_PAGE_SIZE
 = 100`, `api/pagination.py`) so a single request cannot ask the database for an unbounded
 result set. The GDPR export is the one deliberate exception to the list caps, since Article
-20 requires the full dataset, and that is documented at the call site.
+20 requires the full dataset, and a comment at the call site records that.
 
 ## Configuration and profiles
 
 The app runs under one of three profiles selected by `APP_ENV`: `dev`, `test`, `prod`
-(`api/config.py`). Deployed services are held to invariants that fail startup rather than
-boot insecurely (`_validate_deploy_invariants`): the `SECRET_KEY` must be strong, SQLite is
-rejected in favor of PostgreSQL, `redis_url` must be set, `CORS_ORIGINS` may not be
-localhost, a real email provider must be configured, `DEBUG` must be off, and
-`MIGRATION_DATABASE_URL` must be set explicitly so migrations keep running as the privileged
-role. Production also requires `cloudflare_origin_secret`.
+(`api/config.py`). Deployed services meet invariants that fail startup rather than
+booting insecurely (`_validate_deploy_invariants`): the `SECRET_KEY` must be strong, the
+guard refuses SQLite in favor of PostgreSQL, `redis_url` must carry a value, `CORS_ORIGINS`
+may not be localhost, a real email provider must be present, `DEBUG` must be off, and
+`MIGRATION_DATABASE_URL` must name the privileged role explicitly so migrations keep running
+as it. Production also requires `cloudflare_origin_secret`.
 
 "Deployed" is not the same as "not dev". The dev *service* has its own database and a
-public URL, so it is held to the same invariants: anything running with a
+public URL, so it meets the same invariants: anything running with a
 `RAILWAY_ENVIRONMENT_NAME` counts, whatever its `APP_ENV`. A laptop and a CI runner carry
-no such marker and stay unconstrained. The pytest runner is distinguished from a deployed
-`test` (staging) environment by a `TESTING` flag, so the invariants guard staging without
-breaking the local suite. Interactive API docs (`/docs`) are served only outside
+no such marker and stay unconstrained. A `TESTING` flag tells the pytest runner apart from a
+deployed `test` (staging) environment, so the invariants guard staging without
+breaking the local suite. The app serves the interactive API docs (`/docs`) only outside
 production.
 
 ## Network and edge
@@ -421,16 +422,17 @@ Transform Rule per host injects a shared secret header the origin then requires
 by `Settings._validate_deploy_invariants`).
 
 The lock decides what the origin *believes*, not what it *accepts*. Railway also gives each
-service a `*.up.railway.app` address, and those answer, so the edge can still be bypassed.
-What the secret buys is that a request arriving without it is keyed under a single constant
-rather than off a forwarding header the origin cannot vouch for (`api/utils/client_ip.py`).
+service a `*.up.railway.app` address, and those answer, so a caller can still bypass the
+edge. What the secret buys is that a request arriving without it keys under a single
+constant rather than off a forwarding header the origin cannot vouch for
+(`api/utils/client_ip.py`).
 That matters because uvicorn runs with `--proxy-headers --forwarded-allow-ips='*'`, which
 makes `request.client.host` only as trustworthy as whatever wrote `X-Forwarded-For`. It also
 makes the rate-limit key correct rather than just safe: without the lock, every request that
-did transit Cloudflare is keyed under the *edge's* address, collapsing all callers into one
-bucket. Closing the bypass itself, so the WAF and bot rules cannot be skipped, means
-retiring the `*.up.railway.app` domains, which is still open. CORS is configured with
-explicit allowed origins and `allow_credentials=True` (required for the cookie session). It
+did transit Cloudflare keys under the *edge's* address, collapsing all callers into one
+bucket. Closing the bypass itself, so nobody can skip the WAF and bot rules, means retiring
+the `*.up.railway.app` domains, which is still open. CORS carries explicit allowed origins
+and `allow_credentials=True` (required for the cookie session). It
 permits the `X-CSRF-Token` header on the way in and exposes it on the way out, since the SPA
 reads the CSRF token off the response.
 
@@ -438,31 +440,32 @@ Both tiers send security response headers: the API from middleware
 (`api/middleware/security_headers.py`), the SPA from nginx (`frontend/nginx.conf`). Their
 Content-Security-Policies match except where the SPA genuinely needs more. Its `connect-src`
 names the API origin, which is cross-origin on the deploys, plus the Sentry ingest hosts the
-browser SDK reports to. Its `img-src` names that same API origin, because profile photos are
-served by the API and rendered in `<img>` tags, which is an image load rather than something
-`connect-src` covers. That origin is baked into the policy when the image is built, from the
-same `VITE_API_URL` build argument the bundle uses, so the served policy cannot drift from
-the URL the app actually calls. Both directives are asserted against the config in
+browser SDK reports to. Its `img-src` names that same API origin, because the API serves profile photos
+and `<img>` tags render them, which is an image load rather than something `connect-src`
+covers. The Docker build bakes that origin into the policy from the same `VITE_API_URL`
+build argument the bundle uses, so the served policy cannot drift from the URL the app
+actually calls. `tests/integration/test_frontend_csp.py` asserts both directives against
+the config:
 `tests/integration/test_frontend_csp.py`: a CSP that under-permits fails silently, since the
 browser drops the request before it reaches the origin and nothing appears in the logs.
-`X-XSS-Protection` is set to `0` on both tiers on purpose: the legacy auditor it enables is
+Both tiers send `X-XSS-Protection: 0` on purpose: the legacy auditor it enables is
 unreliable, browsers have dropped it, and its blocking mode has itself leaked cross-origin
 information. The CSP is what constrains injection.
 
-The correlation ID is not taken on trust either. An inbound `X-Request-ID` is echoed on the response
-and written to every log record of the request, so it is reused only when it looks like an
-ID, meaning a short and conservative alphabet, and is replaced with a fresh UUID otherwise
-(`api/middleware/request_logging.py`).
+The correlation ID does not travel on trust either. The API echoes an inbound
+`X-Request-ID` on the response and writes it to every log record of the request, so it
+reuses one only when it looks like an ID, meaning a short and conservative alphabet, and
+substitutes a fresh UUID otherwise (`api/middleware/request_logging.py`).
 
 ## Logging, observability, and privacy
 
-Logs are structured JSON in the deployed profiles. Each request is tagged with an
-`X-Request-ID`, and a context filter binds that request id and the acting user id onto every
-`api.*` log record through contextvars (`api/logging_context.py`), so a service or security
-log line can be traced back to a request without threading identifiers by hand. Personal
-data is kept out of the logs: email addresses are recorded as a truncated keyed digest
-(`email_hash`), not in the clear. The key matters: a plain SHA-256 of an address is
-reproducible by anyone holding the logs, so they could confirm whether a given person has an
+The deployed profiles emit structured JSON. Each request carries an `X-Request-ID`, and a
+context filter binds that request id and the acting user id onto every `api.*` log record
+through contextvars (`api/logging_context.py`), so a service or security log line traces
+back to a request without threading identifiers by hand. Personal data stays out of the
+logs: a truncated keyed digest (`email_hash`) stands in for an email address, never the
+address itself. The key matters, because anyone holding the logs can reproduce a plain
+SHA-256 of an address, so they could confirm whether a given person has an
 account by hashing a guess. The tag is an HMAC keyed with `LOG_HASH_KEY` (falling back to
 `SECRET_KEY`), which makes it meaningless outside the application while still correlating
 repeated attempts on one account. Rotating the fallback re-tags every later record, so set
@@ -470,7 +473,7 @@ repeated attempts on one account. Rotating the fallback re-tags every later reco
 
 The rule for any new log record: identifiers, keyed tags, and counts, never the values
 themselves. Allowed are `user_id`, `project_id`, `invitation_id`, `jti`, `sid`, `ip`,
-`status_code`, `duration_ms`, `row_count`, and the `reason` a request was refused. Never
+`status_code`, `duration_ms`, `row_count`, and the `reason` for refusing a request. Never
 logged, at any level: passwords and password hashes, raw JWTs, the CSRF cookie or header
 value, the email API key or bucket credentials, the `Authorization` header, any request or
 response body, raw email addresses, activation or reset tokens and the URLs carrying them,
@@ -478,11 +481,11 @@ and free-text user content such as a project description.
 
 Two specific traps are worth naming. First, `_digest()` in `api/auth/login_throttle.py` and
 `api/auth/email_throttle.py` is a **plain, unkeyed** SHA-256 of the identifier. It exists to
-key the store, not to be logged. Writing it out would rebuild exactly the oracle
-`hash_email` is keyed to prevent, so records in those modules name the flow (`key_prefix`,
-`op`) and never the account. The address-scoped event belongs at the call site in
-`api/routes/auth.py`, which has the keyed tag. Second, `sqlalchemy.engine` is pinned at
-WARNING in `api/logging_config.py` and must stay below DEBUG on any deployed service: its
+key the store, not to reach a log. Writing it out would rebuild exactly the oracle the key
+in `hash_email` prevents, so records in those modules name the flow (`key_prefix`, `op`)
+and never the account. The address-scoped event belongs at the call site in
+`api/routes/auth.py`, which has the keyed tag. Second, `api/logging_config.py` pins `sqlalchemy.engine` at
+WARNING, and it must stay below DEBUG on any deployed service: its
 DEBUG level prints bound query parameters, which on this schema means bcrypt hashes,
 addresses, names, and reset-token hashes shipped to the log drain in the clear. That pin
 matters because the dev deploy now runs at `LOG_LEVEL=DEBUG` against a real database.
@@ -490,7 +493,7 @@ matters because the dev deploy now runs at `LOG_LEVEL=DEBUG` against a real data
 Both throttles fail open, and that is now alerted rather than silent. A Redis outage lifts
 the per-account login lockout and the per-address email cap while the request still
 succeeds, so each failure path logs `throttle_store_unavailable` naming the operation and
-the flow. It is logged at **ERROR**, and that level is the alert: Sentry is initialized
+the flow. Those records go out at **ERROR**, and that level is the alert. The app initializes Sentry
 without a `LoggingIntegration`, so the SDK's default `event_level` of ERROR is what turns a
 record into an issue, and an issue is the only thing that pages. At WARNING these records
 were a breadcrumb on some later event, which meant the brute-force lockout could stay off
@@ -510,35 +513,37 @@ The same applies to the revocation store, which fails *closed*: its errors surfa
 caller as a plain 401, so `revocation_store_unavailable` is the only thing separating a
 Redis outage from a wave of bad tokens.
 
-Unhandled errors hit a catch-all `500` handler and, when `SENTRY_DSN` is configured, Sentry.
+Unhandled errors hit a catch-all `500` handler and, when `SENTRY_DSN` carries a value,
+Sentry.
 
-Two separate switches keep credentials out of the tracker, and both are needed. `send_default_pii=False` drops
+Two separate switches keep credentials out of the tracker, and the product needs both. `send_default_pii=False` drops
 the client IP, cookies, headers, and request bodies. `include_local_variables=False` drops the frame locals of every
 traceback frame, which `send_default_pii` does not cover and which default to on: the auth handlers bind
 the parsed request body to a local, so with locals enabled a fault anywhere under `register`,
 `change-password`, or `reset-password` would ship `repr()` of that model to the tracker, meaning the plaintext
 passwords, or a reset token that is still redeemable. Sentry's own scrubber does not catch
-this, because it matches local *names* against a denylist and the leaking local is called
-`data`. As a second layer, the credential fields in `api/schemas/auth.py` are declared `repr=False`, so those values
-stay out of any `repr()` regardless of who calls it.
+this, because it matches local *names* against a denylist and the leaking local goes by
+`data`. As a second layer, the credential fields in `api/schemas/auth.py` carry
+`repr=False`, so those values stay out of any `repr()` regardless of who calls it.
 
 The browser SDK needs its own guard, since the reset link carries its token in the query
 string: `frontend/src/main.tsx` installs `beforeSend` and `beforeBreadcrumb` hooks
 (`frontend/src/lib/sentry.ts`) that redact `token`, `access_token`, and `refresh_token`
 from event URLs and from navigation and fetch breadcrumbs.
 
-Those hooks were inert until this was fixed. `frontend/Dockerfile` declared only `ARG
-VITE_API_URL`, so `VITE_SENTRY_DSN` never reached the Vite build even though it was set on
-all three frontend services. The `if (import.meta.env.VITE_SENTRY_DSN)` guard in `main.tsx`
-folded to `false` and the whole `Sentry.init` call was tree-shaken out of every deployed
-bundle. No browser error was reported from any environment. The scrubbers now run because
-the SDK actually initializes, so they are worth re-reading as live code rather than as
-documentation of an intent.
+Those hooks were inert until a 2026 fix. `frontend/Dockerfile` declared only `ARG
+VITE_API_URL`, so `VITE_SENTRY_DSN` never reached the Vite build even though all three
+frontend services set it. The `if (import.meta.env.VITE_SENTRY_DSN)` guard in `main.tsx`
+folded to `false` and the bundler tree-shook the whole `Sentry.init` call out of every
+deployed bundle. No environment ever reported a browser error. The scrubbers now run because
+the SDK actually initializes, so read them as live code rather than as documentation of an
+intent.
 
 ## Secrets
 
-Configuration comes from environment variables. The local `.env` is gitignored and never
-committed, and deployment secrets live in Railway variables rather than in the image. CI
+Configuration comes from environment variables. `.gitignore` covers the local `.env`, which
+never reaches a commit, and deployment secrets live in Railway variables rather than in the
+image. CI
 runs `detect-secrets` against a committed baseline, and the same check runs locally before a
 push, so a credential added to the tree is caught before it leaves the machine.
 
@@ -558,24 +563,24 @@ suspected.
 
 ## GDPR: export and erasure
 
-Both data-subject rights are served by the API. Export (Article 20) returns the full
-personal dataset as JSON from `GET /api/v1/users/me/export`. Erasure (Article 17) is handled
-by `DELETE /api/v1/users/me`: the request carries a disposition for every project the user
-still admins, either transferring it to another member or deleting it, and the account is
-removed only once each owned project has been dealt with. That keeps one person's erasure
-from silently taking a whole panel's opinions with it. The profile-photo blob is deleted
-from object storage as part of the same operation, so erasure covers stored media too.
+The API serves both data-subject rights. Export (Article 20) returns the full personal
+dataset as JSON from `GET /api/v1/users/me/export`. `DELETE /api/v1/users/me` performs
+erasure (Article 17): the request carries a disposition for every project the user still
+admins, either transferring it to another member or deleting it, and the account goes only
+once every owned project has a disposition. That keeps one person's erasure
+from silently taking a whole panel's opinions with it. The same operation removes the profile-photo blob
+from object storage, so erasure covers stored media too.
 
-When an admin removes a member from a project, that member's opinion is deleted in the same
-transaction and the project result is recalculated without it (`remove_member` in
+When an admin removes a member from a project, the same transaction deletes that member's
+opinion and recalculates the project result without it (`remove_member` in
 `api/services/project_membership_service.py`). Otherwise the row would outlive the
-membership: it carries the person's name, email, and stated position, it is served to every
-remaining member and embedded in every export, and `RequireProjectAccess` would no longer
+membership: it carries the person's name, email, and stated position, it reaches every
+remaining member and every export, and `RequireProjectAccess` would no longer
 let the person concerned withdraw it themselves.
 
 ## Accepted risks
 
-Seven properties are known, deliberate, and reviewed. They are recorded here so a future
+Seven properties are known, deliberate, and reviewed. This section records them so a future
 audit does not re-litigate them.
 
 **Inviting by email discloses whether an address has an account.** Inviting an address that
@@ -616,7 +621,7 @@ gets, and it reports on recent activity rather than on whether an account exists
 branch spends a slot, so no sequence of probes separates a free address from a taken one.
 `POST /auth/resend-verification` has the narrower version of the same property: it awaits a send only when the address
 has a pending signup, so a first probe against a clean budget distinguishes that case.
-Closing either means making the send fire- and-forget, which is the same queue change `forgot-password`
+Closing either means making the send fire-and-forget, which is the same queue change `forgot-password`
 needs for the identical property.
 
 **A stranger who knows a pending address can use up its daily activation mail.** The budget is
@@ -624,9 +629,9 @@ per address and shared by every send the flow can trigger, which is what stops a
 flooded. The cost is that anyone who knows an address with a signup already pending can spend
 the day's five unauthenticated `resend-verification` calls against it, after which the account
 holder's own resend, and their own re-registration, mail nothing while still answering the
-usual `202`. It cannot be closed by checking the password first, because the check would
-itself become the oracle the uniform response exists to remove. It is not a wedge: whatever
-link was mailed before the drain still works, and `forgot-password` draws on a separate budget
+usual `202`. Checking the password first cannot close it, because the check would
+itself become the oracle the uniform response exists to remove. It opens nothing further:
+any link mailed before the drain still works, and `forgot-password` draws on a separate budget
 and now confirms the address on success, so a password reset gets the holder in regardless.
 Support's answer to "I asked for the email again and nothing came" is to use forgot password.
 
@@ -634,19 +639,18 @@ Support's answer to "I asked for the email again and nothing came" is to use for
 on a `RedisError` (`api/auth/email_throttle.py`), so while the store is unreachable neither
 the 60-second cooldown nor the five-a-day total applies to `forgot-password`, `register`, or
 `resend-verification`, and someone rotating source addresses can put more mail in one inbox
-than the cap allows. The fail-open predates deferred activation and was written for
-recovery: a store hiccup must never be able to swallow a password-reset email. Deferred
+than the cap allows. The fail-open predates deferred activation, and it exists for recovery: a store hiccup must never be able to swallow a password-reset email. Deferred
 activation widened its reach, since registration and resend now draw on the same throttle,
 so an outage now lifts the cap on activation mail as well. Failing closed is the worse
 trade. These endpoints answer the same `202` whether or not mail went out, so a closed
 throttle would stop every signup and every reset silently for the duration. The
-acknowledgement would look normal, nothing would arrive, and no error would be raised to
+acknowledgement would look normal, nothing would arrive, and nothing would raise an error to
 alert on. The flood it would prevent stays bounded meanwhile: the per-IP limiter survives a
 store outage by falling back to slowapi's in-memory storage, which caps each source at
 `LIMIT_FALLBACK`, 60 requests a minute per instance (looser than the 3 and 5 a minute those
 routes normally carry, so the outage does widen this too). Redis is a hard requirement in
 every deployed profile, so an outage here is short and is already paging someone. Handing
-the fallback to `InMemoryEmailSendThrottle` instead was considered and dropped: it keeps a
+the fallback to `InMemoryEmailSendThrottle` instead came up and lost: it keeps a
 dict entry per address it has seen and never evicts one, which would open a memory-growth
 path during exactly the outage it was meant to cover.
 
@@ -654,53 +658,54 @@ path during exactly the outage it was meant to cover.
 never reads it, since it uses the `HttpOnly` cookie, but programmatic clients can only
 obtain the token this way, and `POST /auth/refresh` accepts it in the request body for
 exactly that reason. Reading the body value requires script execution on the origin, which
-the CSP (`script-src 'self'`), the explicit CORS allow-list, and `SameSite=Strict` are there
-to prevent. Rotation with reuse detection then caps the value of a token that does leak.
+the CSP (`script-src 'self'`), the explicit CORS allow-list, and `SameSite=Strict` between
+them prevent. Rotation with reuse detection then caps the value of a token that does leak.
 
 ## Database
 
-How the PostgreSQL databases are locked down. This layer sits under the application and is
-operated through its own runbooks.
+How the PostgreSQL databases stay locked down. This layer sits under the application and has
+its own runbooks.
 
 ### Roles and least privilege
 
-Every environment's database is reached through two roles, never one:
+Every environment's database answers to two roles, never one:
 
 - **`become_app`** is the application runtime role behind `DATABASE_URL`. It is a plain login
-  role: `NOSUPERUSER`, `NOCREATEDB`, `NOCREATEROLE`, `NOBYPASSRLS`. Its rights stop at
+  role: `NOSUPERUSER`, `NOCREATEDB`, `NOCREATEROLE`, and `NOBYPASSRLS`. Its rights stop at
   `SELECT/INSERT/UPDATE/DELETE` on the application tables plus `USAGE`/`SELECT` on their
   sequences. It cannot run DDL, create objects in `public`, or read another role's data.
-- **`postgres`** is the Railway-provisioned superuser, used only by Alembic for schema changes
-  through `MIGRATION_DATABASE_URL`. Railway hands out exactly one superuser, so there is no
+- **`postgres`** is the Railway-provisioned superuser, which only Alembic uses, for schema
+  changes through `MIGRATION_DATABASE_URL`. Railway hands out exactly one superuser, so there is no
   separate `migrator` role. Keeping migrations on a distinct URL is what isolates DDL from the
   runtime token, without the overhead of in-session `SET ROLE`.
 
-`scripts/db/roles.sql` is the idempotent source of truth for this setup. Running it against
-an environment as `postgres` reconciles the grants, the default privileges that hand every
+`scripts/db/roles.sql` is the idempotent source of truth for this setup. Run it against an
+environment as `postgres` to reconcile the grants, the default privileges that hand every
 future Alembic-created table to `become_app`, the `REVOKE CREATE ON SCHEMA public FROM
 PUBLIC` lockdown, a pinned `search_path` (`pg_catalog, public`, which closes CVE-2018-1058
 for the exposed role), and the role-level
 `statement_timeout`/`idle_in_transaction_session_timeout`/ `lock_timeout`. Passwords stay
 out of the file: they live in Railway variables.
 
-The connection itself is hardened in `api/db/engine.py`: TLS is required on deployed databases
-(`sslmode=require`), each connection is tagged with an `application_name`, and the per-session
-statement and idle-in-transaction timeouts are also set client-side through libpq `options`, so
-a single runaway query cannot monopolize the database.
+`api/db/engine.py` hardens the connection itself. It requires TLS on deployed databases
+(`sslmode=require`), tags each connection with an `application_name`, and repeats the
+per-session statement and idle-in-transaction timeouts client-side through libpq `options`,
+so a single runaway query cannot monopolize the database.
 
 ### Network exposure
 
 Production and staging databases answer only on Railway's private network
-(`*.railway.internal`). Their public TCP proxies were removed, so a leaked password is not
+(`*.railway.internal`). Their public TCP proxies are gone, so a leaked password is no longer
 the sole barrier between the internet and the data. The dev database is the one exception,
-and even there the proxy is normally closed. It is opened in the Railway dashboard only for
+and even there the proxy normally stays closed. Someone opens it in the Railway dashboard
+only for
 a specific hands-on operation and shut again afterwards. That toggle is the project's
 substitute for an IP allowlist, which Railway's platform does not offer.
 
 ### Audit logging
 
-Railway's managed Postgres permits `ALTER SYSTEM`, so connection auditing is enabled directly on
-each database and reloaded without a restart:
+Railway's managed Postgres permits `ALTER SYSTEM`, so each database turns on connection
+auditing directly and reloads without a restart:
 
 ```sql
 ALTER SYSTEM SET log_connections = 'on';
@@ -710,17 +715,17 @@ ALTER SYSTEM SET log_min_duration_statement = '5000';
 SELECT pg_reload_conf();
 ```
 
-Connections and disconnections are recorded, every DDL statement is logged, since schema
-changes should only ever originate from Alembic and anything else here is a red flag, and
-statements slower than five seconds are captured. The output flows into the Railway service
+Postgres then records connections and disconnections, logs every DDL statement, since only
+Alembic should ever originate a schema change and anything else here deserves a look, and
+captures statements slower than five seconds. The output flows into the Railway service
 logs. Finer read/write auditing would need the `pgaudit` extension, but that requires
 `shared_preload_libraries`, which Railway's image does not expose. `log_statement = 'ddl'`
-is the workable substitute.
+remains the workable substitute.
 
 ### Backups
 
-Railway's managed backups require the Pro plan, so on the current (free) plan the Postgres
-volumes are **not** backed up automatically. Until that changes, take manual dumps with
+Railway's managed backups require the Pro plan, so on the current (free) plan nothing backs up the
+Postgres volumes automatically. Until that changes, take manual dumps with
 `scripts/db/backup.sh`, which opens a temporary proxy, runs `pg_dump`, and removes the proxy
 again:
 
@@ -728,8 +733,8 @@ again:
 ./scripts/db/backup.sh prod      # writes backups/prod-<timestamp>.dump
 ```
 
-Run it before risky migrations and on a regular cadence. The dumps stay out of the repo:
-`backups/` is gitignored, because they contain user data.
+Run it before risky migrations and on a regular cadence. The dumps stay out of the repo, because they contain user data: `.gitignore` covers
+`backups/`.
 
 **That proxy is public while it is up.** Railway's TCP proxy exposes the database on an
 internet-reachable host and port, so for the length of the dump the only thing between the
@@ -754,7 +759,7 @@ plus point-in-time recovery.
 Deleting a user must not silently destroy other people's work. Most child rows clear
 themselves through `ON DELETE CASCADE` (memberships, opinions, sent and received
 invitations, reset tokens, activation tokens). A project a user **admins** is shared
-data, so `projects.admin_id` uses `ON DELETE RESTRICT`: the database refuses to orphan
+work, so `projects.admin_id` uses `ON DELETE RESTRICT`: the database refuses to orphan
 or silently erase a shared project, which is why the erasure endpoint requires an
 explicit disposition for each one (see [GDPR](#gdpr-export-and-erasure)). Schema changes
 ship as reversible Alembic migrations run through the migration-only superuser URL,

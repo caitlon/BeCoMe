@@ -111,7 +111,7 @@ someone redeems the emailed link through `POST /auth/verify-email`. Until then
 
 A submission takes effect only when someone follows its own link *and* restates its own
 password. The password hash and names travel on the activation token, so registering an
-unconfirmed address twice leaves two working links, and whichever is redeemed first decides
+unconfirmed address twice leaves two working links, and whichever one someone redeems first decides
 the credentials the account opens with. `POST /auth/verify-email` therefore takes
 `{token, password}`: an unknown, spent, or expired token gets one opaque `400`, while a
 password that does not match the token gets a `403` with its own `detail`, so a client can
@@ -129,7 +129,7 @@ password like any other. See `docs/security.md` for why each branch behaves as i
 does.
 
 **Session transport.** Login and refresh set the access and refresh tokens as
-`Secure; HttpOnly; SameSite=Strict` cookies (the refresh cookie is scoped to
+`Secure; HttpOnly; SameSite=Strict` cookies (the refresh cookie stays scoped to
 `/api/v1/auth`) plus a readable `csrf_token` cookie. The response body carries the same tokens,
 so programmatic clients can keep using the `Authorization: Bearer` header.
 A cookie-authenticated mutating request (POST/PUT/PATCH/DELETE) must send that value back
@@ -143,7 +143,7 @@ from the session cookie the request authenticates as. Anyone able to write cooki
 host can plant a `csrf_token` they know, or one minted for a session they hold. That includes a
 page on a sibling `becomify.app` subdomain, which `SameSite` counts as same-site. Neither
 cookie matches what the server derives for the victim's session. The check also keys on the
-*session* cookie, so it cannot be waived by omitting the CSRF cookie.
+*session* cookie, so omitting the CSRF cookie cannot waive it.
 
 Login and refresh return the value in an `X-CSRF-Token` **response** header, and
 `GET /auth/me` reports the token for the session it authenticates as, so a page reload
@@ -241,7 +241,7 @@ returns `422`. Erasure also removes the profile photo blob from object storage.
 | GET | `/api/v1/health` | API health check |
 
 **Pagination.** List endpoints (projects, opinions, members, invitations) accept optional
-`limit` and `offset` query parameters. `limit` is capped at 100 and defaults to the first page,
+`limit` and `offset` query parameters. `limit` tops out at 100 and defaults to the first page,
 so responses stay bounded. The GDPR export is the one exception: it always returns the full
 dataset.
 
@@ -306,16 +306,16 @@ a laptop. A drain can then index `event`, `request_id`, `status_code`, and `dura
 Five third-party loggers share those handlers at pinned levels (`_EXTERNAL_LOG_LEVELS` in
 `api/logging_config.py`). `uvicorn.error` sits at INFO, so a boot that never finished is visible
 in the drain. `httpx` and `botocore` sit at WARNING, since `email_sent` and `s3_upload` already
-cover their successful calls. `uvicorn.access` is silenced on purpose, because `api.request`
-logs the same requests with more fields. **`sqlalchemy.engine` is pinned at WARNING and must
+cover their successful calls. `uvicorn.access` stays silent on purpose, because `api.request`
+logs the same requests with more fields. **`sqlalchemy.engine` sits pinned at WARNING and must
 stay there:** its DEBUG level prints bound query parameters, which on this schema means password
 hashes, addresses, and reset-token hashes going to the drain in the clear. The read services log
 query shape and timing instead. If drain volume from dev's DEBUG stream becomes a problem, set
 `logtail_handler.setLevel(logging.INFO)` in `setup_logging`. The console keeps DEBUG, the drain
 does not.
 
-Unhandled exceptions return an opaque 500 and reach Sentry when `SENTRY_DSN` is set. When the
-`BETTERSTACK_*` variables are set, the API also ships its logs to Better Stack through
+Unhandled exceptions return an opaque 500 and reach Sentry when `SENTRY_DSN` carries a value.
+With the `BETTERSTACK_*` variables in place, the API also ships its logs to Better Stack through
 `logtail-python`, one source per environment.
 
 ## Testing

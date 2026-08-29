@@ -56,9 +56,9 @@ Open all three at [becomify.app](https://www.becomify.app) without installing an
 
 ## Where the method comes from
 
-BeCoMe was published by I. Vrana, J. Tyrychtr, and M. Pelikán of the Faculty of Economics and Management at the Czech University of Life Sciences Prague, in *Environmental Modelling & Software* (see [References](#references)). This project is an independent implementation of that paper by Ekaterina Kuzmina at the same faculty, written in Python and wrapped in a web application so that a panel can be run by people who do not write code.
+I. Vrana, J. Tyrychtr, and M. Pelikán published BeCoMe in *Environmental Modelling & Software* (see [References](#references)), at the Faculty of Economics and Management of the Czech University of Life Sciences Prague. Ekaterina Kuzmina wrote this independent implementation of that paper at the same faculty, in Python. A web application wraps it, so that people who do not write code can run a panel.
 
-Every result is checked against the authors' own Excel workbook to within 0.001, on all three published cases, and that check runs on every commit.
+Every result matches the authors' own Excel workbook to within 0.001, on all three published cases, and CI re-checks that on every commit.
 
 ## Features
 
@@ -120,7 +120,7 @@ See [api/README.md](api/README.md) for API documentation.
 
 ### Environment profiles
 
-The backend selects a profile from the `APP_ENV` variable: `dev` (default), `test`, or `prod`. Settings load the shared `.env` first, then `.env.<APP_ENV>` on top, so the profile file overrides the base. `APP_ENV` is read from the process environment (shell, Docker, Railway, CI), not from the dotenv file, because it decides which file to load.
+The backend selects a profile from the `APP_ENV` variable: `dev` (default), `test`, or `prod`. Settings load the shared `.env` first, then `.env.<APP_ENV>` on top, so the profile file overrides the base. Settings read `APP_ENV` from the process environment (shell, Docker, Railway, CI), not from the dotenv file, because it decides which file to load.
 
 | Profile | APP_ENV | Use | Database | Debug |
 |---------|---------|-----|----------|-------|
@@ -128,7 +128,7 @@ The backend selects a profile from the `APP_ENV` variable: `dev` (default), `tes
 | test | `test` | Deployed staging and the test suite | PostgreSQL | off |
 | prod | `prod` | Production (Railway) | PostgreSQL | off |
 
-Copy the matching template and fill it in (the real files are gitignored):
+Copy the matching template and fill it in (`.gitignore` covers the real files):
 
 ```bash
 cp .env.dev.example .env.dev      # local development
@@ -459,7 +459,7 @@ The `examples/` directory contains three real-world case studies demonstrating t
 
 ### Budget case (22 experts)
 
-Government officials and emergency service leaders estimated COVID-19 budget support needs (0-100 billion CZK). With an even number of experts, this case shows how the median is calculated by averaging two middle values.
+Government officials and emergency service leaders estimated COVID-19 budget support needs (0-100 billion CZK). With an even number of experts, this case shows the median averaging the two middle values.
 
 ### Floods case (13 experts)
 
@@ -475,7 +475,7 @@ See [examples/README.md](examples/README.md) for details.
 
 ## License
 
-**Academic use**: this code is provided for academic and research purposes. If you build on this implementation, cite the original BeCoMe paper by Vrana et al. (2021), listed under [References](#references).
+**Academic use**: this code serves academic and research purposes. If you build on this implementation, cite the original BeCoMe paper by Vrana et al. (2021), listed under [References](#references).
 
 **Copyright**: © 2025-2026 Ekaterina Kuzmina
 
