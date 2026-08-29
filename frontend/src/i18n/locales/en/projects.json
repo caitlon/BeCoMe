@@ -63,7 +63,7 @@
     "validationError": "Validation Error",
     "invalidNumbers": "Please enter valid numbers",
     "lowerPeakUpper": "Values must satisfy: lower ≤ peak ≤ upper",
-    "scaleRange": "Values must be within scale range: {{min}} — {{max}}",
+    "scaleRange": "Values must be within scale range: {{min}}-{{max}}",
     "opinionSaved": "Opinion saved",
     "saveFailed": "Failed to save",
     "opinionDeleted": "Opinion deleted",
@@ -103,7 +103,7 @@
     "median": "Median (Ω)",
     "supportingCalcs": "Supporting calculations",
     "confidence": "Confidence",
-    "confidenceHint": "How closely the mean and median agree -- a tighter agreement means a more precise compromise.",
+    "confidenceHint": "How closely the mean and median agree. A tighter agreement means a more precise compromise.",
     "confidenceLevel": {
       "high": "High",
       "moderate": "Moderate",

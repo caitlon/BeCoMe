@@ -105,7 +105,7 @@ const CaseStudy = () => {
                     </blockquote>
                     <div className="mt-4 flex items-center gap-4 text-sm">
                       <span className="px-3 py-1 bg-secondary rounded-full">
-                        {t("common.scale")}: {caseStudy.scaleMin}–{caseStudy.scaleMax}{" "}
+                        {t("common.scale")}: {caseStudy.scaleMin}-{caseStudy.scaleMax}{" "}
                         {caseStudy.scaleUnit}
                       </span>
                     </div>
@@ -157,7 +157,7 @@ const CaseStudy = () => {
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
                         <caption className="sr-only">
-                          {t("common.expertOpinions")} — {caseStudy.title}
+                          {t("common.expertOpinions")}: {caseStudy.title}
                         </caption>
                         <thead>
                           <tr className="border-b">

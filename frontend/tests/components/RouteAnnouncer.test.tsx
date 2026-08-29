@@ -74,14 +74,14 @@ describe('RouteAnnouncer', () => {
   });
 
   it('announces document.title after route change', () => {
-    document.title = 'Projects — BeCoMe';
+    document.title = 'Projects - BeCoMe';
 
     renderWithNavigate();
 
     act(() => { navigateFn('/projects'); });
     act(() => { vi.advanceTimersByTime(150); });
 
-    expect(screen.getByRole('status')).toHaveTextContent('Projects — BeCoMe');
+    expect(screen.getByRole('status')).toHaveTextContent('Projects - BeCoMe');
   });
 
   it('calls window.scrollTo(0, 0) on route change', () => {
@@ -146,12 +146,12 @@ describe('RouteAnnouncer', () => {
   });
 
   it('does not re-announce when pathname stays the same', () => {
-    document.title = 'Home — BeCoMe';
+    document.title = 'Home - BeCoMe';
     renderWithNavigate();
 
     // Let initial announcement fire
     act(() => { vi.advanceTimersByTime(150); });
-    expect(screen.getByRole('status')).toHaveTextContent('Home — BeCoMe');
+    expect(screen.getByRole('status')).toHaveTextContent('Home - BeCoMe');
 
     // Change title, then navigate to same path with different search params
     document.title = 'Should Not Appear';
@@ -159,6 +159,6 @@ describe('RouteAnnouncer', () => {
     act(() => { vi.advanceTimersByTime(200); });
 
     // Still shows old announcement, since no new one triggered
-    expect(screen.getByRole('status')).toHaveTextContent('Home — BeCoMe');
+    expect(screen.getByRole('status')).toHaveTextContent('Home - BeCoMe');
   });
 });

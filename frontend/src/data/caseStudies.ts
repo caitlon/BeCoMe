@@ -53,7 +53,7 @@ export const caseStudies: CaseStudy[] = [
     shortTitle: "Budget",
     description: "Budget allocation for pandemic response measures",
     fullDescription: "During the COVID-19 pandemic, the Czech government needed to determine the optimal financial support for entrepreneurs affected by restrictive measures. A panel of 22 high-ranking government officials from various ministries was assembled to provide their expert opinions.",
-    question: "Based on the submitted analyses of the Ministry of Industry and Trade and the Czech National Bank on the impact of the measures on the state budget of the Czech Republic, propose the total financial support in the range CZK 0–100 billion for entrepreneurs affected by the COVID-19 pandemic.",
+    question: "Based on the submitted analyses of the Ministry of Industry and Trade and the Czech National Bank on the impact of the measures on the state budget of the Czech Republic, propose the total financial support in the range CZK 0-100 billion for entrepreneurs affected by the COVID-19 pandemic.",
     icon: FileText,
     experts: 22,
     dataType: "interval",

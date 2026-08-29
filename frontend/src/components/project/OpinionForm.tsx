@@ -176,7 +176,7 @@ export const OpinionForm = ({
               />
             </div>
             <p className="text-xs text-muted-foreground mt-2">
-              {t("detail.range")}: {project.scale_min} — {project.scale_max} {project.scale_unit}
+              {t("detail.range")}: {project.scale_min}-{project.scale_max} {project.scale_unit}
             </p>
           </fieldset>
 

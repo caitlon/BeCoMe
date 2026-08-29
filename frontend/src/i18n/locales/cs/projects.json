@@ -63,7 +63,7 @@
     "validationError": "Chyba validace",
     "invalidNumbers": "Zadejte prosím platná čísla",
     "lowerPeakUpper": "Hodnoty musí splňovat: dolní ≤ vrchol ≤ horní",
-    "scaleRange": "Hodnoty musí být v rozsahu škály: {{min}} — {{max}}",
+    "scaleRange": "Hodnoty musí být v rozsahu škály: {{min}}–{{max}}",
     "opinionSaved": "Názor uložen",
     "saveFailed": "Nepodařilo se uložit",
     "opinionDeleted": "Názor smazán",
@@ -103,7 +103,7 @@
     "median": "Medián (Ω)",
     "supportingCalcs": "Pomocné výpočty",
     "confidence": "Spolehlivost",
-    "confidenceHint": "Jak blízko se shodují průměr a medián -- těsnější shoda znamená přesnější kompromis.",
+    "confidenceHint": "Jak blízko se shodují průměr a medián. Těsnější shoda znamená přesnější kompromis.",
     "confidenceLevel": {
       "high": "Vysoká",
       "moderate": "Střední",
