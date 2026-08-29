@@ -2,6 +2,15 @@
 
 FastAPI-based REST API for the BeCoMe group decision-making method.
 
+## Contents
+
+- [Quick start](#quick-start)
+- [Module structure](#module-structure)
+- [API endpoints](#api-endpoints)
+- [Configuration](#configuration)
+- [Testing](#testing)
+- [Related documentation](#related-documentation)
+
 ## Quick start
 
 ```bash

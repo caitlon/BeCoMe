@@ -6,6 +6,24 @@ not a wishlist. Deployment topology lives in [`environments.md`](environments.md
 academic threat model (attack trees, residual-risk argument) lives in the thesis
 workspace and is not duplicated here.
 
+## Contents
+
+- [Status at a glance](#status-at-a-glance)
+- [Authentication](#authentication)
+- [Registration and email verification](#registration-and-email-verification)
+- [Session transport (cookies and CSRF)](#session-transport-cookies-and-csrf)
+- [Authorization and tenant isolation](#authorization-and-tenant-isolation)
+- [Rate limiting and abuse control](#rate-limiting-and-abuse-control)
+- [Input validation](#input-validation)
+- [Configuration and profiles](#configuration-and-profiles)
+- [Network and edge](#network-and-edge)
+- [Logging, observability, and privacy](#logging-observability-and-privacy)
+- [Secrets](#secrets)
+- [GDPR: export and erasure](#gdpr-export-and-erasure)
+- [Accepted risks](#accepted-risks)
+- [Database](#database)
+- [Data integrity and migrations](#data-integrity-and-migrations)
+
 ## Status at a glance
 
 | Area | Status | Where |
