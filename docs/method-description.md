@@ -12,7 +12,7 @@ The final result is the **best compromise (ΓΩMean)**: the average of these two
 
 ---
 
-## Mathematical Foundation
+## Mathematical foundation
 
 ### 1. Fuzzy triangular numbers
 
@@ -24,7 +24,7 @@ A **fuzzy triangular number** is a special type of fuzzy set that represents unc
 
 **Constraint:** `A ≤ C ≤ B`
 
-#### Visual Representation
+#### Visual representation
 
 ```
   Membership
@@ -57,7 +57,7 @@ This is represented as: **FTN(5, 8, 12)**
 
 ---
 
-### 2. Centroid Calculation
+### 2. Centroid calculation
 
 The **centroid** (center of gravity) is the x-coordinate of the center of mass of the triangular fuzzy number.
 

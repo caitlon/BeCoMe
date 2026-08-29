@@ -1,4 +1,4 @@
-# Database Layer
+# Database layer
 
 SQLModel-based database layer for BeCoMe API.
 
@@ -15,7 +15,7 @@ SQLModel-based database layer for BeCoMe API.
 | `password_reset_tokens` | Tokens for password reset via email |
 | `email_verification_tokens` | Activation tokens for the email verification flow, stored as SHA-256 hashes |
 
-## Entity Relationships
+## Entity relationships
 
 ```
 users (1:N) ──► projects (admin ownership)
@@ -35,7 +35,7 @@ projects (1:1) ──► calculation_results
 
 ## Usage
 
-### Creating Tables
+### Creating tables
 
 ```python
 from api.db.engine import create_db_and_tables
@@ -43,13 +43,13 @@ from api.db.engine import create_db_and_tables
 create_db_and_tables()
 ```
 
-On SQLite (local development and the test suite) tables are created automatically on
-application startup via FastAPI lifespan. Deployed PostgreSQL schemas are managed by
-Alembic instead: migrations live in `migrations/` and run before each Railway deploy, and
-`create_db_and_tables()` is a no-op there. See
-[docs/environments.md](../../docs/environments.md) for the full schema-management story.
+On SQLite (local development and the test suite), the FastAPI lifespan hook calls
+`create_db_and_tables()` at startup. Alembic owns the deployed PostgreSQL schemas
+instead: the migrations live in `migrations/` and run before each Railway deploy, and
+`create_db_and_tables()` returns without doing anything there. For how schema management
+works, see [docs/environments.md](../../docs/environments.md).
 
-### Session Dependency
+### Session dependency
 
 ```python
 from fastapi import Depends
@@ -64,7 +64,7 @@ def get_user(user_id: UUID, session: Session = Depends(get_session)):
     return user
 ```
 
-### Model Examples
+### Model examples
 
 ```python
 from api.db.models import User, Project, ExpertOpinion, MemberRole
@@ -100,7 +100,7 @@ opinion = ExpertOpinion(
 
 ## Configuration
 
-Database URL is configured via environment variable:
+Set the database URL with the `DATABASE_URL` environment variable:
 
 ```bash
 # SQLite (default, for development)
@@ -110,7 +110,7 @@ DATABASE_URL=sqlite:///./become.db
 DATABASE_URL=postgresql://user:pass@localhost:5432/become
 ```
 
-## File Structure
+## File structure
 
 ```
 api/db/

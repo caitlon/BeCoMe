@@ -2,7 +2,7 @@
 
 FastAPI-based REST API for the BeCoMe group decision-making method.
 
-## Quick Start
+## Quick start
 
 ```bash
 uv sync --extra api
@@ -13,7 +13,7 @@ The API runs at `http://localhost:8000`. Interactive documentation:
 - Swagger UI: `/docs`
 - ReDoc: `/redoc`
 
-## Module Structure
+## Module structure
 
 ```text
 api/
@@ -78,7 +78,7 @@ api/
 └── main.py             # FastAPI application (+ setup_logging, Sentry init)
 ```
 
-## API Endpoints
+## API endpoints
 
 ### Authentication
 
@@ -86,7 +86,7 @@ api/
 |--------|----------|-------------|
 | POST | `/api/v1/auth/register` | Register new user, email an activation link |
 | POST | `/api/v1/auth/verify-email` | Confirm an address with an activation token and its password |
-| POST | `/api/v1/auth/resend-verification` | Request a fresh activation link for a password |
+| POST | `/api/v1/auth/resend-verification` | Request a fresh activation link for an address |
 | POST | `/api/v1/auth/login` | Login, get tokens |
 | POST | `/api/v1/auth/logout` | Revoke refresh token |
 | POST | `/api/v1/auth/refresh` | Refresh access token |
@@ -96,55 +96,55 @@ api/
 
 **Registration and activation.** `POST /auth/register` always answers `202` with the same
 body, whether the address is free, already registered but unverified, or already registered
-and verified -- the response never reveals which. The account it creates cannot log in until
-the emailed link is redeemed through `POST /auth/verify-email`; until then `POST /auth/login`
-answers `403` with a distinct `detail` so a client can offer a resend.
+and verified. The response never reveals which. The account it creates cannot log in until
+someone redeems the emailed link through `POST /auth/verify-email`. Until then
+`POST /auth/login` answers `403` with a distinct `detail`, so a client can offer a resend.
 
-A submission takes effect only when its own link is followed *and* its own password is
-restated. The password hash and names travel on the activation token, so registering an
+A submission takes effect only when someone follows its own link *and* restates its own
+password. The password hash and names travel on the activation token, so registering an
 unconfirmed address twice leaves two working links, and whichever is redeemed first decides
 the credentials the account opens with. `POST /auth/verify-email` therefore takes
 `{token, password}`: an unknown, spent, or expired token gets one opaque `400`, while a
 password that does not match the token gets a `403` with its own `detail`, so a client can
 ask the user to retype instead of sending them off for a new link. Mismatches count against
-their own per-token lockout, namespaced apart from login's -- a run of failed logins can
-never deny someone their own activation, and burning one token's budget can never lock a
-different, freshly resent token for the same account. The two budgets are independent, so
+their own per-token lockout, namespaced apart from login's. A run of failed logins can never
+deny someone their own activation, and burning one token's budget can never lock a different,
+freshly resent token for the same account. The two budgets are independent, so
 they add up: 10 failures each per 15 minutes, and only a caller already holding a live
 emailed token can spend the activation half. A mismatch also spends from the login lockout,
 which costs the guesser rather than capping the pair. A completed password reset clears the
 login lockout, and answers the same opaque `400` an unusable token gets when an activation
 confirmed the account while the reset was in flight. `POST /auth/resend-verification` takes
-`{email, password}` and answers `202` for any address; the link it mails carries the
-submitted password like any other. See `docs/security.md` for why each branch behaves as it
+`{email, password}` and answers `202` for any address. The link it mails carries the submitted
+password like any other. See `docs/security.md` for why each branch behaves as it
 does.
 
 **Session transport.** Login and refresh set the access and refresh tokens as
 `Secure; HttpOnly; SameSite=Strict` cookies (the refresh cookie is scoped to
-`/api/v1/auth`) plus a readable `csrf_token` cookie; the tokens are also returned in the
-response body so programmatic clients can keep using the `Authorization: Bearer` header.
+`/api/v1/auth`) plus a readable `csrf_token` cookie. The response body carries the same tokens,
+so programmatic clients can keep using the `Authorization: Bearer` header.
 A cookie-authenticated mutating request (POST/PUT/PATCH/DELETE) must send that value back
-in an `X-CSRF-Token` header; Bearer-header requests are exempt. `/auth/refresh` reads the
+in an `X-CSRF-Token` header. Bearer-header requests are exempt. `/auth/refresh` reads the
 refresh token from the cookie or the body, and logout revokes the session and clears the
 cookies.
 
 The token is **derived from the session**, not compared against the cookie: it is an HMAC
 of the session's `sid` under `SECRET_KEY`, and the middleware recomputes the expected value
 from the session cookie the request authenticates as. Anyone able to write cookies for this
-host -- a page on a sibling `becomify.app` subdomain, which `SameSite` counts as same-site
--- can plant a `csrf_token` they know, or one minted for a session they hold; neither
-matches what the server derives for the victim's session. The check also keys on the
+host can plant a `csrf_token` they know, or one minted for a session they hold. That includes a
+page on a sibling `becomify.app` subdomain, which `SameSite` counts as same-site. Neither
+cookie matches what the server derives for the victim's session. The check also keys on the
 *session* cookie, so it cannot be waived by omitting the CSRF cookie.
 
 Login and refresh return the value in an `X-CSRF-Token` **response** header, and
 `GET /auth/me` reports the token for the session it authenticates as, so a page reload
-recovers it; a request with no session cookie gets no header. This is not redundancy: the
-cookie has no `Domain` attribute, so it belongs to the API host, and a browser app served
+recovers it, and a request with no session cookie gets no header. The header is not redundant.
+The cookie has no `Domain` attribute, so it belongs to the API host, and a browser app served
 from any other host cannot read it out of `document.cookie` even though the browser keeps
 sending it. The header is that app's only copy of the value, which is why
 `CORSMiddleware` lists it under `expose_headers` as well as `allow_headers`. A refresh
-stays in the same rotation family, so the token does not change across refreshes; a fresh
-login starts a new family and a new token. See `docs/security.md` for why the cookie is not
+stays in the same rotation family, so the token does not change across refreshes. A fresh login
+starts a new family and a new token. See `docs/security.md` for why the cookie is not
 widened with a `Domain` instead, and for what this does not cover.
 
 ### Users
@@ -163,19 +163,20 @@ widened with a `Domain` instead, and for what this does not cover.
 The photo proxy is public, because an `<img>` tag cannot send an auth header. It passes
 the bucket's response straight through to the client instead of downloading the object
 first, so the wait before the first byte is one bucket round trip rather than a full
-download. The URL it is reached by carries a `?v=` token taken from the stored object key,
-and every upload mints a new key.
+download. The URL that reaches it carries a `?v=` token taken from the stored object key, and
+every upload mints a new key.
 
 The route always serves whichever photo the account holds now, so the cache header depends on
 whether the request named that photo. A `v` matching the current key describes bytes that
-cannot change under it and is served with `Cache-Control: public, max-age=31536000, immutable`.
-Anything else -- no token, a stale one, an invented one -- gets `max-age=300`, because those
-URLs already resolve to different bytes than they once did and will again. Pinning one for a
+cannot change under it, so the route serves it with
+`Cache-Control: public, max-age=31536000, immutable`. Anything else gets `max-age=300`: no
+token, a stale one, or an invented one. Those URLs already resolve to different bytes than they
+once did, and they will again. Pinning one for a
 year would leave a shared cache handing out a replaced avatar to everyone who asked for it.
 
 Deleting the account (`DELETE /api/v1/users/me`) accepts an optional body that says what
-to do with every project the user still admins -- `transfer` it to another member or
-`delete` it -- so erasure never silently drops other experts' contributions:
+to do with every project the user still admins: `transfer` it to another member, or `delete`
+it. Erasure then never silently drops other experts' contributions:
 
 ```json
 { "project_dispositions": [
@@ -184,8 +185,8 @@ to do with every project the user still admins -- `transfer` it to another membe
 ] }
 ```
 
-An owned project left without a disposition returns `409`; a transfer to a non-member
-returns `422`. The profile photo blob is removed from object storage as part of erasure.
+An owned project left without a disposition returns `409`, and a transfer to a non-member
+returns `422`. Erasure also removes the profile photo blob from object storage.
 
 ### Projects
 
@@ -231,13 +232,13 @@ returns `422`. The profile photo blob is removed from object storage as part of 
 | GET | `/api/v1/health` | API health check |
 
 **Pagination.** List endpoints (projects, opinions, members, invitations) accept optional
-`limit`/`offset` query parameters; `limit` is capped at 100 and defaults to the first page,
-so responses stay bounded. The GDPR export is the one exception -- it always returns the
-full dataset.
+`limit` and `offset` query parameters. `limit` is capped at 100 and defaults to the first page,
+so responses stay bounded. The GDPR export is the one exception: it always returns the full
+dataset.
 
 ## Configuration
 
-Environment variables (can use `.env` file):
+Environment variables (a `.env` file works too):
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -266,17 +267,47 @@ Environment variables (can use `.env` file):
 | `BETTERSTACK_SOURCE_TOKEN` | *optional* | Better Stack log source token (ships `api.*` logs when set together with the host below) |
 | `BETTERSTACK_INGESTING_HOST` | *optional* | Better Stack ingesting host for log shipping (per-environment source) |
 
-**Note:** Profile photos are stored in a private Railway Storage Bucket (S3-compatible) and served through the `GET /api/v1/users/{id}/photo` proxy. When the bucket variables are absent, photo upload is disabled and the API continues to function with all other features available.
+Profile photos live in a private Railway Storage Bucket (S3-compatible), served through the
+`GET /api/v1/users/{id}/photo` proxy. When the bucket variables are absent, photo upload is
+disabled and every other feature keeps working.
 
-**Migrations:** The PostgreSQL schema is managed by Alembic (`migrations/`). `alembic upgrade head` runs automatically before each Railway deploy; to apply it manually against a specific database use `ALEMBIC_DATABASE_URL=<url> uv run alembic upgrade head`. SQLite (local development and the test suite) keeps using `create_all`, so no migration step is needed there.
+**Migrations.** Alembic owns the PostgreSQL schema (`migrations/`), and `alembic upgrade head`
+runs before each Railway deploy. To apply it by hand against one database, run
+`ALEMBIC_DATABASE_URL=<url> uv run alembic upgrade head`. SQLite (local development and the test
+suite) keeps using `create_all`, so it needs no migration step.
 
-**Observability:** Every request gets an `X-Request-ID` response header (generated, or echoed from the client's header) for log correlation. A `ContextFilter` binds that ID and the acting user through contextvars, so every `api.*` record -- service and security logs included -- carries `request_id` and `user_id`, not just the request line.
+**Observability.** Every request gets an `X-Request-ID` response header for log correlation,
+either generated or echoed from the client's header. A `ContextFilter` binds that ID and the
+acting user through contextvars, so every `api.*` record carries `request_id` and `user_id`,
+service and security logs included, not just the request line.
 
-What is logged, under the `api.*` loggers: each request and its timing; every mutating domain action (`api.service.*` and `api.route.*`); every refusal, whether it is a CSRF rejection, an over-large body, a rejected token, a denied invitation, or a refused photo upload; and, at `DEBUG`, the reads and the outbound calls to Redis, S3, and the email provider with their timings. Records carry structured `extra` fields under an `event` name rather than free text. Output is JSON on every deployed service -- the Railway `dev` service included, since it is a deploy and not a laptop -- so a drain can index `event`, `request_id`, `status_code`, and `duration_ms`.
+Under the `api.*` loggers, the API logs:
 
-Three third-party loggers are wired into the same handlers with pinned levels (`_EXTERNAL_LOG_LEVELS` in `api/logging_config.py`): `uvicorn.error` at INFO, so a boot that never finished is visible in the drain; `httpx` and `botocore` at WARNING, since their successful calls are already covered by `email_sent` and `s3_upload`. `uvicorn.access` is deliberately silenced -- `api.request` logs the same requests with more fields. **`sqlalchemy.engine` is pinned at WARNING and must stay there:** its DEBUG level prints bound query parameters, which on this schema means password hashes, addresses, and reset-token hashes going to the drain in the clear. Query shape and timing are logged by the read services instead. If drain volume from dev's DEBUG stream becomes a problem, the lever is `logtail_handler.setLevel(logging.INFO)` in `setup_logging` -- the console keeps DEBUG, the drain does not.
+- each request and its timing
+- every mutating domain action (`api.service.*` and `api.route.*`)
+- every refusal, whether it is a CSRF rejection, an over-large body, a rejected token, a denied
+  invitation, or a refused photo upload
+- at `DEBUG`, the reads and the outbound calls to Redis, S3, and the email provider, with their
+  timings
 
-Unhandled exceptions return an opaque 500 and are reported to Sentry when `SENTRY_DSN` is set. When the `BETTERSTACK_*` variables are set, the logs are also shipped to Better Stack (a per-environment source) via `logtail-python`.
+Records carry structured `extra` fields under an `event` name rather than free text. Output is
+JSON on every deployed service, the Railway `dev` service included, since it is a deploy and not
+a laptop. A drain can then index `event`, `request_id`, `status_code`, and `duration_ms`.
+
+Five third-party loggers share those handlers at pinned levels (`_EXTERNAL_LOG_LEVELS` in
+`api/logging_config.py`). `uvicorn.error` sits at INFO, so a boot that never finished is visible
+in the drain. `httpx` and `botocore` sit at WARNING, since `email_sent` and `s3_upload` already
+cover their successful calls. `uvicorn.access` is silenced on purpose, because `api.request`
+logs the same requests with more fields. **`sqlalchemy.engine` is pinned at WARNING and must
+stay there:** its DEBUG level prints bound query parameters, which on this schema means password
+hashes, addresses, and reset-token hashes going to the drain in the clear. The read services log
+query shape and timing instead. If drain volume from dev's DEBUG stream becomes a problem, set
+`logtail_handler.setLevel(logging.INFO)` in `setup_logging`. The console keeps DEBUG, the drain
+does not.
+
+Unhandled exceptions return an opaque 500 and reach Sentry when `SENTRY_DSN` is set. When the
+`BETTERSTACK_*` variables are set, the API also ships its logs to Better Stack through
+`logtail-python`, one source per environment.
 
 ## Testing
 
@@ -293,9 +324,9 @@ uv run pytest tests/unit/api/ tests/integration/api/ -v
 uv run pytest tests/unit/api/ tests/integration/api/ --cov=api --cov-report=term-missing
 ```
 
-## Related Documentation
+## Related documentation
 
-- [Main README](../README.md) — project overview
-- [docs/security.md](../docs/security.md) — application and database security posture
-- [docs/environments.md](../docs/environments.md) — dev/test/prod profiles, Railway deployment, database topology
-- [CLAUDE.md](../CLAUDE.md) — development guidelines
+- [Main README](../README.md): project overview
+- [docs/security.md](../docs/security.md): application and database security posture
+- [docs/environments.md](../docs/environments.md): the dev, test, and prod profiles, Railway
+  deployment, and database topology

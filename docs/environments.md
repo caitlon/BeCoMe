@@ -1,4 +1,4 @@
-# Environment Profiles
+# Environment profiles
 
 The backend runs under one of three profiles, chosen by the `APP_ENV` variable: `dev`, `test`, or `prod`. A separate flag, `TESTING`, marks an automated test run and works independently of the profile. This page is the reference for both.
 
