@@ -9,6 +9,28 @@ async function countTabbableElements(page: import('@playwright/test').Page): Pro
   );
 }
 
+test.describe('Accessibility - Skip Link', () => {
+  test('the skip link reveals itself on focus and moves focus into main', async ({ page }) => {
+    await page.goto('/');
+
+    const skip = page.locator('a.skip-to-content');
+
+    // Off-screen until it takes focus: the link is present but must not occupy layout.
+    const offscreen = await skip.evaluate((el) => el.getBoundingClientRect().left);
+    expect(offscreen).toBeLessThan(0);
+
+    // The first Tab from the top of the document must land on it.
+    await page.keyboard.press('Tab');
+    await expect(skip).toBeFocused();
+
+    const onscreen = await skip.evaluate((el) => el.getBoundingClientRect().left);
+    expect(onscreen).toBeGreaterThanOrEqual(0);
+
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#main-content')).toBeFocused();
+  });
+});
+
 test.describe('Accessibility — Tab Order', () => {
   test('login form fields are keyboard-focusable in order', async ({ page }) => {
     await page.goto('/login');
