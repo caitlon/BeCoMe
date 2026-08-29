@@ -104,7 +104,7 @@ class TestForeignKeyEnforcement:
         # Non-existent user UUID
         fake_user_id = uuid4()
 
-        # WHEN/THEN - PostgreSQL enforces FK constraint
+        # WHEN/THEN: PostgreSQL enforces FK constraint
         membership = ProjectMember(
             project_id=project.id,
             user_id=fake_user_id,
@@ -179,7 +179,7 @@ class TestForeignKeyEnforcement:
         pg_session.delete(project)
         pg_session.commit()
 
-        # THEN - all related records should be deleted
+        # THEN: all related records should be deleted
         assert pg_session.get(ProjectMember, membership_id) is None
         assert pg_session.get(ExpertOpinion, opinion_id) is None
         assert pg_session.get(CalculationResult, result_id) is None
@@ -216,7 +216,7 @@ class TestForeignKeyEnforcement:
         pg_session.delete(user)
         pg_session.commit()
 
-        # THEN - the token is cascade deleted
+        # THEN: the token is cascade deleted
         assert pg_session.get(EmailVerificationToken, token_id) is None
 
     def test_deleting_admin_with_project_is_restricted(self, pg_session):
@@ -242,7 +242,7 @@ class TestForeignKeyEnforcement:
         pg_session.add(project)
         pg_session.commit()
 
-        # WHEN / THEN - RESTRICT blocks deleting an owner who still has a project
+        # WHEN/THEN: RESTRICT blocks deleting an owner who still has a project
         pg_session.delete(admin)
         with pytest.raises(IntegrityError):
             pg_session.commit()
@@ -282,7 +282,7 @@ class TestConcurrentAccess:
             finally:
                 session.close()
 
-        # WHEN - 5 threads try to create user with same email
+        # WHEN: 5 threads try to create user with same email
         with ThreadPoolExecutor(max_workers=5) as executor:
             futures = [executor.submit(create_user_in_thread) for _ in range(5)]
             for future in as_completed(futures):
@@ -291,7 +291,7 @@ class TestConcurrentAccess:
                 else:
                     results["errors"] += 1
 
-        # THEN - exactly one should succeed
+        # THEN: exactly one should succeed
         assert results["success"] == 1
         assert results["errors"] == 4
 
@@ -307,7 +307,7 @@ class TestSavepointAndPartialRollback:
 
         Uses begin_nested() for SAVEPOINT functionality.
         """
-        # GIVEN - create first user successfully
+        # GIVEN: create first user successfully
         user1 = User(
             email="first@example.com",
             hashed_password="hash",
@@ -317,7 +317,7 @@ class TestSavepointAndPartialRollback:
         pg_session.add(user1)
         pg_session.commit()
 
-        # WHEN - try to add duplicate in nested transaction (SAVEPOINT)
+        # WHEN: try to add duplicate in nested transaction (SAVEPOINT)
         # The savepoint allows partial rollback without losing the outer transaction
         try:
             with pg_session.begin_nested():
@@ -344,7 +344,7 @@ class TestSavepointAndPartialRollback:
         pg_session.add(user2)
         pg_session.commit()
 
-        # THEN - user1 and user2 should exist, duplicate should not
+        # THEN: user1 and user2 should exist, duplicate should not
         users = pg_session.execute(select(User)).scalars().all()
         emails = [u.email for u in users]
         assert "first@example.com" in emails
@@ -389,7 +389,7 @@ class TestTransactionIsolation:
         WHEN another transaction queries
         THEN uncommitted changes are not visible
         """
-        # GIVEN - Session 1 creates user but does NOT commit
+        # GIVEN: Session 1 creates user but does NOT commit
         session1 = scoped_session(sessionmaker(bind=pg_engine))
         user = User(
             email="uncommitted@example.com",
@@ -400,7 +400,7 @@ class TestTransactionIsolation:
         session1.add(user)
         session1.flush()  # Write to DB but don't commit
 
-        # WHEN - Session 2 queries for the user
+        # WHEN: Session 2 queries for the user
         session2 = scoped_session(sessionmaker(bind=pg_engine))
         found_user = (
             session2.execute(select(User).where(User.email == "uncommitted@example.com"))
@@ -408,7 +408,7 @@ class TestTransactionIsolation:
             .first()
         )
 
-        # THEN - uncommitted user is not visible
+        # THEN: uncommitted user is not visible
         assert found_user is None
 
         # Cleanup

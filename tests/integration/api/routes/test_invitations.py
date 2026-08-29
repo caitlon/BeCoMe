@@ -50,7 +50,7 @@ class TestInviteByEmail:
         admin_token = register_and_login(client, "admin@example.com")
         project = create_project(client, admin_token)
 
-        # WHEN - try to invite admin (already a member)
+        # WHEN: try to invite admin (already a member)
         response = client.post(
             f"/api/v1/projects/{project['id']}/invite",
             json={"email": "admin@example.com"},
@@ -75,7 +75,7 @@ class TestInviteByEmail:
             headers=auth_header(admin_token),
         )
 
-        # WHEN - try to invite again
+        # WHEN: try to invite again
         response = client.post(
             f"/api/v1/projects/{project['id']}/invite",
             json={"email": "invitee@example.com"},
@@ -234,7 +234,7 @@ class TestAcceptInvitation:
             headers=auth_header(invitee_token),
         )
 
-        # THEN - invitee can now access project
+        # THEN: invitee can now access project
         get_resp = client.get(
             f"/api/v1/projects/{project['id']}",
             headers=auth_header(invitee_token),
@@ -295,7 +295,7 @@ class TestAcceptInvitation:
         )
         invitation_id = invite_resp.json()["id"]
 
-        # WHEN - other user tries to accept
+        # WHEN: other user tries to accept
         response = client.post(
             f"/api/v1/invitations/{invitation_id}/accept",
             headers=auth_header(other_token),
@@ -385,7 +385,7 @@ class TestDeclineInvitation:
         )
         invitation_id = invite_resp.json()["id"]
 
-        # WHEN - other user tries to decline
+        # WHEN: other user tries to decline
         response = client.post(
             f"/api/v1/invitations/{invitation_id}/decline",
             headers=auth_header(other_token),
@@ -587,7 +587,7 @@ class TestListProjectInvitations:
             headers=auth_header(admin_token),
         )
 
-        # WHEN - expert accesses invitations
+        # WHEN: expert accesses invitations
         response = client.get(
             f"/api/v1/projects/{project['id']}/invitations",
             headers=auth_header(expert_token),

@@ -81,7 +81,7 @@ class TestGetCurrentUser:
         invalid_token = "invalid.token.here"
         mock_session = MagicMock()
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(HTTPException) as exc_info:
             asyncio.run(get_current_user(invalid_token, mock_session, store, cache))
 
@@ -120,7 +120,7 @@ class TestGetCurrentUser:
         payload = jwt.decode(token, settings.secret_key, algorithms=[ALGORITHM])
         revoke_token(payload["jti"], store)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(HTTPException) as exc_info:
             asyncio.run(get_current_user(token, mock_session, store, cache))
 
@@ -149,7 +149,7 @@ class TestGetCurrentTokenPayload:
         # GIVEN
         invalid_token = "invalid.token.here"
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(HTTPException) as exc_info:
             get_current_token_payload(invalid_token, store)
 
@@ -161,7 +161,7 @@ class TestGetCurrentTokenPayload:
         # GIVEN
         malformed_token = "not-a-jwt"
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(HTTPException) as exc_info:
             get_current_token_payload(malformed_token, store)
 
@@ -178,7 +178,7 @@ class TestGetCurrentTokenPayload:
         payload = jwt.decode(token, settings.secret_key, algorithms=[ALGORITHM])
         revoke_token(payload["jti"], store)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(HTTPException) as exc_info:
             get_current_token_payload(token, store)
 

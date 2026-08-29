@@ -132,7 +132,7 @@ class TestDataLoadingErrorHandling:
         # GIVEN
         non_existent_file: str = str(tmp_path / "does_not_exist.txt")
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(FileNotFoundError) as exc_info:
             load_data_from_txt(non_existent_file)
 
@@ -160,7 +160,7 @@ class TestDataLoadingErrorHandling:
             encoding="utf-8",
         )
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(ValueError) as exc_info:
             load_data_from_txt(str(test_file))
 
@@ -189,7 +189,7 @@ class TestDataLoadingErrorHandling:
             encoding="utf-8",
         )
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(ValueError) as exc_info:
             load_data_from_txt(str(test_file))
 
@@ -222,7 +222,7 @@ class TestDataLoadingErrorHandling:
             encoding="utf-8",
         )
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(ValueError) as exc_info:
             load_data_from_txt(str(test_file))
 

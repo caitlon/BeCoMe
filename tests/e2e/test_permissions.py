@@ -17,14 +17,14 @@ class TestNonMemberAccess:
 
     def test_non_member_cannot_access_project(self, http_client):
         """GET project by a non-member returns 404 (existence hidden)."""
-        # GIVEN — two users, one owns a project
+        # GIVEN: two users, one owns a project
         owner_email = unique_email("owner")
         outsider_email = unique_email("outsider")
         owner_token = register_user(http_client, owner_email)
         outsider_token = register_user(http_client, outsider_email)
         project = create_project(http_client, owner_token)
 
-        # WHEN — outsider tries to access the project
+        # WHEN: outsider tries to access the project
         response = http_client.get(
             f"/projects/{project['id']}",
             headers=auth_headers(outsider_token),
@@ -42,7 +42,7 @@ class TestNonMemberAccess:
         outsider_token = register_user(http_client, outsider_email)
         project = create_project(http_client, owner_token)
 
-        # WHEN — outsider submits an opinion
+        # WHEN: outsider submits an opinion
         response = http_client.post(
             f"/projects/{project['id']}/opinions",
             json={
@@ -64,7 +64,7 @@ class TestExpertPermissions:
 
     def test_expert_cannot_delete_project(self, http_client):
         """Expert member DELETE project returns 403."""
-        # GIVEN — owner and expert in the same project
+        # GIVEN: owner and expert in the same project
         owner_email = unique_email("owner")
         expert_email = unique_email("expert")
         owner_token = register_user(http_client, owner_email)
@@ -72,7 +72,7 @@ class TestExpertPermissions:
         project = create_project(http_client, owner_token)
         invite_and_accept(http_client, owner_token, expert_token, expert_email, project["id"])
 
-        # WHEN — expert tries to delete the project
+        # WHEN: expert tries to delete the project
         response = http_client.delete(
             f"/projects/{project['id']}",
             headers=auth_headers(expert_token),
@@ -83,7 +83,7 @@ class TestExpertPermissions:
 
     def test_expert_cannot_remove_members(self, http_client):
         """Expert cannot remove other members from a project."""
-        # GIVEN — owner and two experts
+        # GIVEN: owner and two experts
         owner_email = unique_email("owner")
         expert1_email = unique_email("expert1")
         expert2_email = unique_email("expert2")
@@ -105,7 +105,7 @@ class TestExpertPermissions:
         )
         assert expert2_id is not None, f"Expert ({expert2_email}) not found in members"
 
-        # WHEN — expert1 tries to remove expert2
+        # WHEN: expert1 tries to remove expert2
         response = http_client.delete(
             f"/projects/{project['id']}/members/{expert2_id}",
             headers=auth_headers(expert1_token),
@@ -121,21 +121,21 @@ class TestAdminPermissions:
 
     def test_admin_can_delete_own_project(self, http_client):
         """Owner DELETE project returns 204 and project becomes inaccessible."""
-        # GIVEN — owner with a project
+        # GIVEN: owner with a project
         owner_email = unique_email("owner")
         owner_token = register_user(http_client, owner_email)
         project = create_project(http_client, owner_token)
 
-        # WHEN — owner deletes the project
+        # WHEN: owner deletes the project
         response = http_client.delete(
             f"/projects/{project['id']}",
             headers=auth_headers(owner_token),
         )
 
-        # THEN — deletion succeeds
+        # THEN: deletion succeeds
         assert response.status_code == 204
 
-        # AND — project is no longer accessible
+        # AND: project is no longer accessible
         get_response = http_client.get(
             f"/projects/{project['id']}",
             headers=auth_headers(owner_token),

@@ -433,7 +433,7 @@ class TestVerifyEmailRequestLanguage:
 
     def test_defaults_to_english(self):
         """A client that sends no language still activates."""
-        # GIVEN / WHEN
+        # GIVEN/WHEN
         request = VerifyEmailRequest(token="t", password="p")
 
         # THEN
@@ -441,7 +441,7 @@ class TestVerifyEmailRequestLanguage:
 
     def test_accepts_czech(self):
         """cs is the other language the content is authored in."""
-        # GIVEN / WHEN
+        # GIVEN/WHEN
         request = VerifyEmailRequest(token="t", password="p", language="cs")
 
         # THEN
@@ -449,6 +449,6 @@ class TestVerifyEmailRequestLanguage:
 
     def test_rejects_an_unsupported_language(self):
         """An unknown code is a client bug, not something to silently accept."""
-        # GIVEN / WHEN / THEN
+        # GIVEN/WHEN / THEN
         with pytest.raises(ValidationError):
             VerifyEmailRequest(token="t", password="p", language="de")

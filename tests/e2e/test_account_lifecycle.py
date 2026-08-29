@@ -17,7 +17,7 @@ class TestAccountLifecycle:
 
     def test_full_lifecycle_register_to_delete(self, http_client):
         """User registers, creates project, submits opinion, cleans up, deletes account."""
-        # GIVEN — a new user with a project and opinion
+        # GIVEN: a new user with a project and opinion
         email = unique_email("lifecycle")
         token = register_user(http_client, email)
 
@@ -40,29 +40,29 @@ class TestAccountLifecycle:
         )
         assert del_project.status_code == 204
 
-        # WHEN — user deletes their account
+        # WHEN: user deletes their account
         delete_resp = http_client.delete(
             "/users/me",
             headers=auth_headers(token),
         )
 
-        # THEN — deletion succeeds
+        # THEN: deletion succeeds
         assert delete_resp.status_code == 204
 
     def test_deleted_account_token_invalidated(self, http_client):
         """After account deletion, the old token no longer works."""
-        # GIVEN — user registers and then deletes their account
+        # GIVEN: user registers and then deletes their account
         email = unique_email("deleted")
         token = register_user(http_client, email)
 
         delete_resp = http_client.delete("/users/me", headers=auth_headers(token))
         assert delete_resp.status_code == 204
 
-        # WHEN — try to use the old token
+        # WHEN: try to use the old token
         response = http_client.get(
             "/projects",
             headers=auth_headers(token),
         )
 
-        # THEN — token is invalid
+        # THEN: token is invalid
         assert response.status_code == 401

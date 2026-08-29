@@ -248,7 +248,7 @@ class TestUserCascadeDelete:
         session.delete(member)
         session.commit()
 
-        # THEN — user is deleted
+        # THEN: user is deleted
         assert session.get(User, member_id) is None
 
     def test_deleting_user_with_opinions_succeeds_in_sqlite(self, session):
@@ -295,7 +295,7 @@ class TestUserCascadeDelete:
         session.delete(expert)
         session.commit()
 
-        # THEN — user is deleted
+        # THEN: user is deleted
         assert session.get(User, expert_id) is None
 
     def test_deleting_user_with_reset_tokens_succeeds_in_sqlite(self, session):
@@ -329,7 +329,7 @@ class TestUserCascadeDelete:
         session.delete(user)
         session.commit()
 
-        # THEN — user is deleted
+        # THEN: user is deleted
         assert session.get(User, user_id) is None
 
     def test_deleting_user_with_verification_tokens_succeeds_in_sqlite(self, session):
@@ -366,7 +366,7 @@ class TestUserCascadeDelete:
         session.delete(user)
         session.commit()
 
-        # THEN - user is deleted
+        # THEN: user is deleted
         assert session.get(User, user_id) is None
 
     def test_deleting_admin_with_projects_succeeds_in_sqlite(self, session):
@@ -398,7 +398,7 @@ class TestUserCascadeDelete:
         session.delete(admin)
         session.commit()
 
-        # THEN — user is deleted
+        # THEN: user is deleted
         assert session.get(User, admin_id) is None
 
     def test_deleting_user_without_relations_succeeds(self, session):

@@ -18,7 +18,7 @@ class TestForgotPassword:
 
     def test_known_and_unknown_email_responses_are_identical(self, http_client):
         """Known and unknown emails both return 202 with the same body."""
-        # GIVEN — one registered email and one that was never registered
+        # GIVEN: one registered email and one that was never registered
         email = unique_email("reset-known")
         register_user(http_client, email)
 
@@ -28,7 +28,7 @@ class TestForgotPassword:
             "/auth/forgot-password", json={"email": unique_email("reset-ghost")}
         )
 
-        # THEN — indistinguishable (anti-enumeration)
+        # THEN: indistinguishable (anti-enumeration)
         assert known.status_code == unknown.status_code == 202
         assert known.json() == unknown.json()
 

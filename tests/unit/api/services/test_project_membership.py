@@ -111,7 +111,7 @@ class TestProjectMembershipServiceRemoveMember:
         mock_session.exec.return_value.first.return_value = None
         service = ProjectMembershipService(mock_session)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(MemberNotFoundError, match="not a member"):
             service.remove_member(uuid4(), uuid4())
 
@@ -267,7 +267,7 @@ class TestProjectMembershipServiceIsAdmin:
 
     def test_returns_false_when_expert(self):
         """Returns False when user is expert (not admin)."""
-        # GIVEN - is_admin query filters by role=ADMIN, so expert won't match
+        # GIVEN: is_admin query filters by role=ADMIN, so expert won't match
         mock_session = MagicMock()
         mock_session.exec.return_value.first.return_value = None
         service = ProjectMembershipService(mock_session)

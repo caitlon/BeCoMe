@@ -42,7 +42,7 @@ class TestInit:
         # GIVEN
         settings = _settings(storage_enabled=False)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(StorageConfigurationError, match="not configured"):
             RailwayBucketStorageService(settings, client=MagicMock())
 
@@ -51,7 +51,7 @@ class TestInit:
         # GIVEN
         settings = _settings(bucket_name=None)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(StorageConfigurationError, match="not configured"):
             RailwayBucketStorageService(settings, client=MagicMock())
 
@@ -119,7 +119,7 @@ class TestUpload:
         client.put_object.side_effect = Exception("boom")
         service = RailwayBucketStorageService(_settings(), client=client)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(StorageUploadError, match="Failed to upload"):
             service.upload(b"image data", "image/jpeg", "user-123")
 
@@ -236,7 +236,7 @@ class TestOpen:
         client.get_object.side_effect = _client_error("AccessDenied")
         service = RailwayBucketStorageService(_settings(), client=client)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(StorageError, match="Failed to read"):
             service.open("profiles/user/denied.jpg")
 
@@ -247,7 +247,7 @@ class TestOpen:
         client.get_object.side_effect = RuntimeError("connection reset")
         service = RailwayBucketStorageService(_settings(), client=client)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(StorageError, match="Failed to read"):
             service.open("profiles/user/x.jpg")
 
@@ -338,7 +338,7 @@ class TestDelete:
         client.delete_object.side_effect = Exception("boom")
         service = RailwayBucketStorageService(_settings(), client=client)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(StorageDeleteError, match="Failed to delete"):
             service.delete("profiles/user/abc.jpg")
 

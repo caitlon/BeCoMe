@@ -72,7 +72,7 @@ class TestDeleteAccount:
         # Delete account
         client.delete("/api/v1/users/me", headers=auth_header(token))
 
-        # WHEN - try to login with same credentials
+        # WHEN: try to login with same credentials
         response = client.post(
             "/api/v1/auth/login",
             data={"username": email, "password": DEFAULT_TEST_PASSWORD},

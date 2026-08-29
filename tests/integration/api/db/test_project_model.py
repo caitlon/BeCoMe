@@ -169,7 +169,7 @@ class TestProjectMemberModel:
         session.add(member1)
         session.commit()
 
-        # WHEN/THEN - adding same user to same project should fail
+        # WHEN/THEN: adding same user to same project should fail
         member2 = ProjectMember(
             project_id=project.id,
             user_id=user.id,
@@ -276,7 +276,7 @@ class TestInvitationModel:
         session.add(inv1)
         session.commit()
 
-        # WHEN/THEN - duplicate invitation to same user for same project should fail
+        # WHEN/THEN: duplicate invitation to same user for same project should fail
         inv2 = Invitation(
             project_id=project.id,
             invitee_id=invitee.id,

@@ -141,7 +141,7 @@ class TestBeCoMeCalculatorCompromise:
 
     def test_compromise_empty_list_raises_error(self, calculator):
         """Test that empty opinions list raises EmptyOpinionsError."""
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(EmptyOpinionsError) as exc_info:
             calculator.calculate_compromise([])
 
@@ -320,7 +320,7 @@ class TestBeCoMeCalculatorEdgeCases:
 
     def test_extreme_outlier_affects_mean_not_median(self, calculator):
         """Extreme outlier significantly affects mean but not median."""
-        # GIVEN - one extreme outlier
+        # GIVEN: one extreme outlier
         opinions = [
             ExpertOpinion(
                 expert_id="E1",
@@ -347,7 +347,7 @@ class TestBeCoMeCalculatorEdgeCases:
         # WHEN
         result = calculator.calculate_compromise(opinions)
 
-        # THEN - median is not affected by outlier
+        # THEN: median is not affected by outlier
         assert result.median.peak == 19.0  # Middle value (E3)
         # Mean is significantly higher due to outlier
         assert result.arithmetic_mean.peak > 200.0

@@ -71,7 +71,7 @@ class TestBaseAggregationCalculatorABC:
 
     def test_cannot_instantiate_abstract_base_class(self):
         """Test that BaseAggregationCalculator cannot be instantiated directly."""
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(TypeError) as exc_info:
             BaseAggregationCalculator()  # type: ignore
 
@@ -120,7 +120,7 @@ class TestAbstractMethodEnforcement:
             def calculate_arithmetic_mean(self, opinions):
                 return opinions[0].opinion
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(TypeError) as exc_info:
             IncompleteCalculator()  # type: ignore
 

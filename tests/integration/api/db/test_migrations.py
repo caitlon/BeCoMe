@@ -57,29 +57,29 @@ class TestProjectAdminRestrictMigration:
 
     def test_upgrade_sets_restrict_and_downgrade_restores_cascade(self, migration_pg, monkeypatch):
         """upgrade applies RESTRICT, downgrade reverts to CASCADE, and it is reversible."""
-        # GIVEN - a clean database with Alembic aimed at it
+        # GIVEN: a clean database with Alembic aimed at it
         url = _url(migration_pg)
         monkeypatch.setenv("ALEMBIC_DATABASE_URL", url)
         config = Config("alembic.ini")
         engine = create_engine(url)
 
         try:
-            # WHEN - migrated up to (and including) this migration. Pinned to its
+            # WHEN: migrated up to (and including) this migration. Pinned to its
             # own revision id rather than "head": later migrations land on top of
             # this one, and "head"/"-1" addressing would silently start exercising
             # them instead of the RESTRICT change this test is about.
             command.upgrade(config, "b1d9f4a2c7e3")
 
-            # THEN - admin_id is protected by RESTRICT
+            # THEN: admin_id is protected by RESTRICT
             assert _delete_rule(engine, "projects_admin_id_fkey") == "RESTRICT"
 
-            # WHEN - this migration is rolled back to its own down_revision
+            # WHEN: this migration is rolled back to its own down_revision
             command.downgrade(config, "f3a7c2b9d1e4")
 
-            # THEN - the constraint reverts to CASCADE (downgrade works)
+            # THEN: the constraint reverts to CASCADE (downgrade works)
             assert _delete_rule(engine, "projects_admin_id_fkey") == "CASCADE"
 
-            # WHEN - re-applied (reversibility holds)
+            # WHEN: re-applied (reversibility holds)
             command.upgrade(config, "b1d9f4a2c7e3")
 
             # THEN
@@ -95,7 +95,7 @@ class TestEmailVerificationMigration:
         self, migration_pg, monkeypatch
     ):
         """A pre-existing user is backfilled to verified, and the migration reverses cleanly."""
-        # GIVEN - a database migrated up to the revision just before this one
+        # GIVEN: a database migrated up to the revision just before this one
         url = _url(migration_pg)
         monkeypatch.setenv("ALEMBIC_DATABASE_URL", url)
         config = Config("alembic.ini")
@@ -125,13 +125,13 @@ class TestEmailVerificationMigration:
                     },
                 )
 
-            # WHEN - the email verification migration is applied. Pinned to its own
+            # WHEN: the email verification migration is applied. Pinned to its own
             # revision id rather than "head" for the same reason as the RESTRICT
             # migration above: a later migration landing on top would otherwise
             # silently change what this test exercises.
             command.upgrade(config, "21261c13bb2b")
 
-            # THEN - the pre-existing row is backfilled to its own created_at
+            # THEN: the pre-existing row is backfilled to its own created_at
             with engine.connect() as conn:
                 row = conn.execute(
                     text("SELECT email_verified_at, created_at FROM users WHERE id = :id"),
@@ -139,17 +139,17 @@ class TestEmailVerificationMigration:
                 ).one()
             assert row.email_verified_at == row.created_at
 
-            # WHEN - the migration is rolled back to its own down_revision (pinned,
+            # WHEN: the migration is rolled back to its own down_revision (pinned,
             # not "-1", for the same reason)
             command.downgrade(config, "b1d9f4a2c7e3")
 
-            # THEN - the column and the token table are gone (downgrade works)
+            # THEN: the column and the token table are gone (downgrade works)
             inspector = inspect(engine)
             columns = [c["name"] for c in inspector.get_columns("users")]
             assert "email_verified_at" not in columns
             assert _TOKENS not in inspector.get_table_names()
 
-            # WHEN - re-applied (reversibility holds)
+            # WHEN: re-applied (reversibility holds)
             command.upgrade(config, "21261c13bb2b")
 
             # THEN
@@ -168,7 +168,7 @@ class TestEmailVerificationCredentialsMigration:
 
     def test_upgrade_adds_not_null_columns_and_downgrade_reverts(self, migration_pg, monkeypatch):
         """The credential columns land as NOT NULL, and the migration reverses cleanly."""
-        # GIVEN - a database migrated up to the table-creation revision only, the
+        # GIVEN: a database migrated up to the table-creation revision only, the
         # state PR 1 leaves behind
         url = _url(migration_pg)
         monkeypatch.setenv("ALEMBIC_DATABASE_URL", url)
@@ -178,30 +178,30 @@ class TestEmailVerificationCredentialsMigration:
         try:
             command.upgrade(config, "21261c13bb2b")
 
-            # THEN - the table exists, but not yet with the credential columns
+            # THEN: the table exists, but not yet with the credential columns
             token_columns = {c["name"] for c in inspect(engine).get_columns(_TOKENS)}
             assert not {"hashed_password", "first_name", "last_name"} & token_columns
 
-            # WHEN - this migration is applied. Pinned to its own revision id rather
+            # WHEN: this migration is applied. Pinned to its own revision id rather
             # than "head" for the same reason as the migrations above: a later
             # migration landing on top would otherwise silently change what this
             # test exercises.
             command.upgrade(config, "5b9977c1b5c1")
 
-            # THEN - the credential columns exist and are NOT NULL
+            # THEN: the credential columns exist and are NOT NULL
             columns = {c["name"]: c["nullable"] for c in inspect(engine).get_columns(_TOKENS)}
             assert columns["hashed_password"] is False
             assert columns["first_name"] is False
             assert columns["last_name"] is False
 
-            # WHEN - rolled back to its own down_revision
+            # WHEN: rolled back to its own down_revision
             command.downgrade(config, "21261c13bb2b")
 
-            # THEN - the credential columns are gone (downgrade works)
+            # THEN: the credential columns are gone (downgrade works)
             token_columns = {c["name"] for c in inspect(engine).get_columns(_TOKENS)}
             assert not {"hashed_password", "first_name", "last_name"} & token_columns
 
-            # WHEN - re-applied (reversibility holds)
+            # WHEN: re-applied (reversibility holds)
             command.upgrade(config, "5b9977c1b5c1")
 
             # THEN
@@ -217,7 +217,7 @@ class TestEmailVerificationCredentialsMigration:
         all three, so a row missing any of them would be a link nobody has to
         authenticate against -- which is the takeover the whole flow closes.
         """
-        # GIVEN - a database at this migration, holding one account
+        # GIVEN: a database at this migration, holding one account
         url = _url(migration_pg)
         monkeypatch.setenv("ALEMBIC_DATABASE_URL", url)
         engine = create_engine(url)
@@ -235,7 +235,7 @@ class TestEmailVerificationCredentialsMigration:
                     {"id": str(user_id), "created_at": datetime(2026, 1, 1, tzinfo=UTC)},
                 )
 
-            # WHEN / THEN - a token with a password but no names is rejected
+            # WHEN/THEN: a token with a password but no names is rejected
             with pytest.raises(IntegrityError, match="not-null"), engine.begin() as c:
                 c.execute(
                     text(
@@ -275,18 +275,18 @@ class TestExampleProjectSupportMigration:
         result describing experts who no longer have one, and that stale result
         must not survive even though the project does.
         """
-        # GIVEN - a clean database with Alembic aimed at it
+        # GIVEN: a clean database with Alembic aimed at it
         url = _url(migration_pg)
         monkeypatch.setenv("ALEMBIC_DATABASE_URL", url)
         config = Config("alembic.ini")
         engine = create_engine(url)
 
         try:
-            # WHEN - migrated up to this migration, pinned to its own revision id so
+            # WHEN: migrated up to this migration, pinned to its own revision id so
             # a later migration landing on top cannot silently change what is tested
             command.upgrade(config, "c4e81f7a9d23")
 
-            # THEN - every demo account exists, and none of them is claimable through
+            # THEN: every demo account exists, and none of them is claimable through
             # the registration branch that treats an unverified address as pending
             with engine.connect() as conn:
                 rows = conn.execute(
@@ -298,17 +298,17 @@ class TestExampleProjectSupportMigration:
             assert len(rows) == len(EXAMPLE_EXPERTS)
             assert all(row.email_verified_at is not None for row in rows)
             assert {row.email for row in rows} == {e.email for e in EXAMPLE_EXPERTS}
-            # AND - every row holds a real bcrypt hash, not an empty or placeholder
+            # AND: every row holds a real bcrypt hash, not an empty or placeholder
             # string: hash_password's own output always carries bcrypt's "$2" prefix
             assert all(row.hashed_password.startswith("$2") for row in rows)
             assert all(len(row.hashed_password) >= 50 for row in rows)
 
-            # AND - both flags exist as columns
+            # AND: both flags exist as columns
             inspector = inspect(engine)
             assert "is_demo" in {c["name"] for c in inspector.get_columns("users")}
             assert "is_example" in {c["name"] for c in inspector.get_columns("projects")}
 
-            # GIVEN - a real account with five projects: one untouched example
+            # GIVEN: a real account with five projects: one untouched example
             # project, one ordinary project, one example project a real colleague
             # was invited into, one example project the admin never invited anyone
             # into but did add their own opinion to, and one example project with
@@ -459,15 +459,15 @@ class TestExampleProjectSupportMigration:
                     },
                 )
 
-            # WHEN - rolled back to its own down_revision (pinned, not "-1")
+            # WHEN: rolled back to its own down_revision (pinned, not "-1")
             command.downgrade(config, "5b9977c1b5c1")
 
-            # THEN - both columns are gone (downgrade works)
+            # THEN: both columns are gone (downgrade works)
             inspector = inspect(engine)
             assert "is_demo" not in {c["name"] for c in inspector.get_columns("users")}
             assert "is_example" not in {c["name"] for c in inspector.get_columns("projects")}
 
-            # AND - the untouched example project is gone, but the ordinary project
+            # AND: the untouched example project is gone, but the ordinary project
             # and the touched example project both survive. is_example no longer
             # exists at this point, so survivors are identified by id, not the flag.
             with engine.connect() as conn:
@@ -492,7 +492,7 @@ class TestExampleProjectSupportMigration:
                     ).scalar()
                     == 1
                 )
-                # AND - the real colleague's own membership in the surviving example
+                # AND: the real colleague's own membership in the surviving example
                 # project was never touched by the demo cleanup
                 assert (
                     conn.execute(
@@ -504,7 +504,7 @@ class TestExampleProjectSupportMigration:
                     ).scalar()
                     == 1
                 )
-                # AND - the project the admin never invited anyone into survives too,
+                # AND: the project the admin never invited anyone into survives too,
                 # because they contributed their own opinion to it. Membership alone
                 # is not the bar: a solo admin who did exactly what the feature
                 # invites -- open the example, add a fourteenth opinion, invite
@@ -529,7 +529,7 @@ class TestExampleProjectSupportMigration:
                     ).scalar()
                     == 1
                 )
-                # AND - the project with an outstanding invitation survives too: the
+                # AND: the project with an outstanding invitation survives too: the
                 # colleague has neither joined nor opined, so membership and opinion
                 # alone would have missed this case and deleted the project, taking
                 # the invitation down with it via CASCADE.
@@ -553,7 +553,7 @@ class TestExampleProjectSupportMigration:
                     ).scalar()
                     == 1
                 )
-                # AND - the touched example project's stored result is gone: its only
+                # AND: the touched example project's stored result is gone: its only
                 # opinion belonged to the demo pool, so once that opinion cascaded
                 # away with the demo accounts, the result was left describing an
                 # expert who no longer has one, and the cleanup discards it.
@@ -564,7 +564,7 @@ class TestExampleProjectSupportMigration:
                     ).scalar()
                     is None
                 )
-                # AND - the admin-authored example project's stored result survives,
+                # AND: the admin-authored example project's stored result survives,
                 # because that project never loses its only opinion: the cleanup must
                 # not discard a result just because a project was touched by the
                 # demo pool's deletion, only when it is left with no opinion at all.
@@ -576,7 +576,7 @@ class TestExampleProjectSupportMigration:
                     == 1
                 )
 
-            # WHEN - re-applied (reversibility holds; the downgrade deleted the pool,
+            # WHEN: re-applied (reversibility holds; the downgrade deleted the pool,
             # so the insert cannot collide with a leftover row)
             command.upgrade(config, "c4e81f7a9d23")
 
@@ -615,7 +615,7 @@ class TestClearStaleLikertVerdictsMigration:
         tab, in both PostgreSQL and SQLite, so it would leave the unit looking
         non-empty and wrongly clear a verdict the application rule calls genuine.
         """
-        # GIVEN - a database migrated up to the revision just before this one
+        # GIVEN: a database migrated up to the revision just before this one
         url = _url(migration_pg)
         monkeypatch.setenv("ALEMBIC_DATABASE_URL", url)
         config = Config("alembic.ini")
@@ -700,13 +700,13 @@ class TestClearStaleLikertVerdictsMigration:
                     },
                 )
 
-            # WHEN - this migration is applied. Pinned to its own revision id rather
+            # WHEN: this migration is applied. Pinned to its own revision id rather
             # than "head" for the same reason as the migrations above: a later
             # migration landing on top would otherwise silently change what this
             # test exercises.
             command.upgrade(config, "a8d7ba4fcdde")
 
-            # THEN - the percent-scale project's stale verdict is cleared
+            # THEN: the percent-scale project's stale verdict is cleared
             with engine.connect() as conn:
                 percent_row = conn.execute(
                     text(
@@ -718,7 +718,7 @@ class TestClearStaleLikertVerdictsMigration:
             assert percent_row.likert_value is None
             assert percent_row.likert_decision is None
 
-            # AND - the genuine Likert project's verdict survives untouched
+            # AND: the genuine Likert project's verdict survives untouched
             with engine.connect() as conn:
                 likert_row = conn.execute(
                     text(
@@ -730,7 +730,7 @@ class TestClearStaleLikertVerdictsMigration:
             assert likert_row.likert_value == 75
             assert likert_row.likert_decision == "Agree"
 
-            # AND - the tab-unit project's verdict survives too: a bare tab is
+            # AND: the tab-unit project's verdict survives too: a bare tab is
             # whitespace under _is_likert_scale's own scale_unit.strip() check, so
             # this project is Likert by the application's rule just as much as the
             # empty-unit one above. SQL's TRIM() strips only the plain space, so a
@@ -747,7 +747,7 @@ class TestClearStaleLikertVerdictsMigration:
             assert tab_row.likert_value == 75
             assert tab_row.likert_decision == "Agree"
 
-            # AND - the out-of-range project's row, which never had a verdict, is
+            # AND: the out-of-range project's row, which never had a verdict, is
             # left alone rather than erroring or acquiring one
             with engine.connect() as conn:
                 budget_row = conn.execute(
@@ -760,12 +760,12 @@ class TestClearStaleLikertVerdictsMigration:
             assert budget_row.likert_value is None
             assert budget_row.likert_decision is None
 
-            # WHEN - rolled back to its own down_revision (pinned, not "-1"). The
+            # WHEN: rolled back to its own down_revision (pinned, not "-1"). The
             # downgrade is a documented no-op: the verdict this migration clears is
             # derived data that was never stored anywhere to restore it from.
             command.downgrade(config, "c4e81f7a9d23")
 
-            # THEN - nothing about the data changed; the downgrade did nothing
+            # THEN: nothing about the data changed; the downgrade did nothing
             with engine.connect() as conn:
                 percent_row = conn.execute(
                     text(
@@ -784,11 +784,11 @@ class TestClearStaleLikertVerdictsMigration:
             assert percent_row.likert_value is None
             assert likert_row.likert_value == 75
 
-            # WHEN - re-applied (idempotent: clearing an already-cleared row and
+            # WHEN: re-applied (idempotent: clearing an already-cleared row and
             # leaving an untouched one alone both repeat cleanly)
             command.upgrade(config, "a8d7ba4fcdde")
 
-            # THEN - both surviving verdicts are still there. The tab-unit project
+            # THEN: both surviving verdicts are still there. The tab-unit project
             # is re-checked alongside the empty-unit one because it is the only one
             # of the two that a TRIM-based filter would get wrong: an empty unit
             # survives TRIM and Python alike, so on its own it cannot tell a

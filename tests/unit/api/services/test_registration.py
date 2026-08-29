@@ -50,7 +50,7 @@ class TestFreeAddress:
         assert result.created is True
         users.create_user.assert_called_once_with(**SUBMISSION)
 
-        # AND - the link carries the hash the account write already computed, so the
+        # AND: the link carries the hash the account write already computed, so the
         # branch spends exactly one bcrypt like the other two
         assert result.credentials is not None
         assert result.credentials.hashed_password == created.hashed_password
@@ -83,7 +83,7 @@ class TestTakenUnverifiedAddress:
         assert existing.hashed_password == "stored-hash"
         assert existing.first_name == "Stored"
 
-        # AND - the submission is carried by the link instead
+        # AND: the submission is carried by the link instead
         assert result.credentials is not None
         assert result.credentials.hashed_password != "stored-hash"
         assert result.credentials.first_name == SUBMISSION["first_name"]
@@ -145,7 +145,7 @@ class TestConcurrentSignupsForOneFreeAddress:
         Both of those are answers a caller can tell apart from the uniform 202, which
         would hand back the account-existence bit the flow removes.
         """
-        # GIVEN - the address looks free, then the insert loses to a concurrent one
+        # GIVEN: the address looks free, then the insert loses to a concurrent one
         users = MagicMock(spec=UserService)
         winner = _account(verified=False)
         users.get_by_email.side_effect = [None, winner]
@@ -154,7 +154,7 @@ class TestConcurrentSignupsForOneFreeAddress:
         # WHEN
         result = RegistrationService(users).register(**SUBMISSION)
 
-        # THEN - treated as a second submission on an unactivated address
+        # THEN: treated as a second submission on an unactivated address
         assert result.user is winner
         assert result.created is False
         assert result.credentials is not None

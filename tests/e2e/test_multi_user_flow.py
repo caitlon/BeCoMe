@@ -18,7 +18,7 @@ class TestTwoExpertsCollaboration:
 
     def test_two_experts_contribute_and_see_aggregated_result(self, http_client):
         """Both opinions are reflected in the calculation result."""
-        # GIVEN — owner and expert registered
+        # GIVEN: owner and expert registered
         owner_email = unique_email("owner")
         expert_email = unique_email("expert")
         owner_token = register_user(http_client, owner_email)
@@ -28,7 +28,7 @@ class TestTwoExpertsCollaboration:
         project = create_project(http_client, owner_token, "Two Experts E2E")
         invite_and_accept(http_client, owner_token, expert_token, expert_email, project["id"])
 
-        # WHEN — both submit opinions
+        # WHEN: both submit opinions
         submit_opinion(
             http_client,
             owner_token,
@@ -48,7 +48,7 @@ class TestTwoExpertsCollaboration:
             position="Expert",
         )
 
-        # THEN — result aggregates both opinions
+        # THEN: result aggregates both opinions
         result = http_client.get(
             f"/projects/{project['id']}/result",
             headers=auth_headers(owner_token),
@@ -70,7 +70,7 @@ class TestThreeExpertsMedian:
 
     def test_three_experts_odd_median(self, http_client):
         """With three opinions, median is the middle centroid."""
-        # GIVEN — three users
+        # GIVEN: three users
         owner_email = unique_email("owner")
         expert1_email = unique_email("expert1")
         expert2_email = unique_email("expert2")
@@ -82,7 +82,7 @@ class TestThreeExpertsMedian:
         invite_and_accept(http_client, owner_token, expert1_token, expert1_email, project["id"])
         invite_and_accept(http_client, owner_token, expert2_token, expert2_email, project["id"])
 
-        # WHEN — three different opinions
+        # WHEN: three different opinions
         # Centroids: (10+30+50)/3=30, (20+40+60)/3=40, (40+60+80)/3=60
         submit_opinion(
             http_client,
@@ -112,7 +112,7 @@ class TestThreeExpertsMedian:
             position="Expert 2",
         )
 
-        # THEN — result has 3 experts
+        # THEN: result has 3 experts
         result = http_client.get(
             f"/projects/{project['id']}/result",
             headers=auth_headers(owner_token),

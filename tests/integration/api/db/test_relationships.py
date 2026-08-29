@@ -163,7 +163,7 @@ class TestRelationships:
         # WHEN
         session.refresh(project)
 
-        # THEN - one-to-one relationship returns single object, not list
+        # THEN: one-to-one relationship returns single object, not list
         assert project.result is not None
         assert project.result.best_compromise_peak == 10.0
 

@@ -76,7 +76,7 @@ def test_no_log_field_names_a_credential_or_raw_identifier(module):
     WHEN its literal ``extra={...}`` log fields are collected
     THEN none of them names a credential, a raw address, or an unkeyed digest
     """
-    # GIVEN / WHEN
+    # GIVEN/WHEN
     offenders = [
         (key, lineno)
         for key, lineno in _extra_keys(module)
@@ -124,7 +124,7 @@ def test_the_guard_reads_real_log_calls():
     Guards against the AST walk silently matching nothing, which would make the
     parametrised test vacuous across the whole package.
     """
-    # GIVEN / WHEN
+    # GIVEN/WHEN
     keys = {key for key, _ in _extra_keys(API_ROOT / "middleware" / "request_logging.py")}
 
     # THEN

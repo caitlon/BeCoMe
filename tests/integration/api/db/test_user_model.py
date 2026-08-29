@@ -142,7 +142,7 @@ class TestPasswordResetTokenModel:
         session.add(token1)
         session.commit()
 
-        # WHEN/THEN - duplicate token hash should fail
+        # WHEN/THEN: duplicate token hash should fail
         token2 = PasswordResetToken(
             user_id=user.id,
             token_hash=shared_hash,
@@ -163,7 +163,7 @@ class TestPasswordResetTokenModel:
         session.add(user)
         session.commit()
 
-        # WHEN - multiple tokens for same user (e.g., requested reset twice)
+        # WHEN: multiple tokens for same user (e.g., requested reset twice)
         token1 = PasswordResetToken(
             user_id=user.id,
             token_hash="c" * 64,
@@ -238,7 +238,7 @@ class TestEmailVerificationTokenModel:
         session.add(token1)
         session.commit()
 
-        # WHEN/THEN - duplicate token hash should fail
+        # WHEN/THEN: duplicate token hash should fail
         token2 = EmailVerificationToken(
             user_id=user.id,
             token_hash=shared_hash,
@@ -262,7 +262,7 @@ class TestEmailVerificationTokenModel:
         session.add(user)
         session.commit()
 
-        # WHEN - multiple tokens for same user (e.g., re-sent verification email)
+        # WHEN: multiple tokens for same user (e.g., re-sent verification email)
         token1 = EmailVerificationToken(
             user_id=user.id,
             token_hash="c" * 64,

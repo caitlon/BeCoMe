@@ -32,7 +32,7 @@ class TestGetStatusAndDetail:
         THEN it falls back to NotFoundError base class mapping
         """
 
-        # GIVEN - custom NotFoundError not in EXCEPTION_MAP
+        # GIVEN: custom NotFoundError not in EXCEPTION_MAP
         class CustomNotFoundError(NotFoundError):
             pass
 
@@ -52,7 +52,7 @@ class TestGetStatusAndDetail:
         THEN it falls back to ValidationError base class mapping
         """
 
-        # GIVEN - custom ValidationError not in EXCEPTION_MAP
+        # GIVEN: custom ValidationError not in EXCEPTION_MAP
         class CustomValidationError(ValidationError):
             pass
 
@@ -72,7 +72,7 @@ class TestGetStatusAndDetail:
         THEN it falls back to BeCoMeAPIError base class mapping (400)
         """
 
-        # GIVEN - custom BeCoMeAPIError not in EXCEPTION_MAP
+        # GIVEN: custom BeCoMeAPIError not in EXCEPTION_MAP
         class CustomAPIError(BeCoMeAPIError):
             pass
 

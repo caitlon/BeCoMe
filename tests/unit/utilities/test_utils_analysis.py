@@ -59,7 +59,7 @@ class TestCalculateAgreementLevel:
 
     def test_boundary_transitions(self) -> None:
         """Test exact boundary values between categories."""
-        # WHEN / THEN
+        # WHEN/THEN
         assert calculate_agreement_level(0.999999) == "good"
         assert calculate_agreement_level(1.0) == "moderate"
         assert calculate_agreement_level(1.000001) == "moderate"

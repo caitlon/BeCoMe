@@ -21,19 +21,19 @@ class TestUpdateProject:
 
     def test_update_project_name_and_description_persists(self, http_client):
         """Admin renames project and adds description."""
-        # GIVEN — a project
+        # GIVEN: a project
         email = unique_email("projup")
         token = register_user(http_client, email)
         project = create_project(http_client, token, "Original Name")
 
-        # WHEN — update name and description
+        # WHEN: update name and description
         update_resp = http_client.patch(
             f"/projects/{project['id']}",
             json={"name": "Renamed Project", "description": "New description"},
             headers=auth_headers(token),
         )
 
-        # THEN — response reflects changes
+        # THEN: response reflects changes
         assert update_resp.status_code == 200
         body = update_resp.json()
         assert body["name"] == "Renamed Project"
@@ -54,7 +54,7 @@ class TestStandaloneCalculation:
 
     def test_standalone_calculate_three_experts_returns_correct_stats(self, http_client):
         """Three experts produce correct arithmetic mean, median, and best compromise."""
-        # GIVEN — three expert opinions
+        # GIVEN: three expert opinions
         payload = {
             "experts": [
                 {"name": "Expert A", "lower": 10.0, "peak": 20.0, "upper": 30.0},
@@ -63,10 +63,10 @@ class TestStandaloneCalculation:
             ]
         }
 
-        # WHEN — call standalone calculate
+        # WHEN: call standalone calculate
         response = http_client.post("/calculate", json=payload)
 
-        # THEN — correct results
+        # THEN: correct results
         assert response.status_code == 200
         result = response.json()
         assert result["num_experts"] == 3
@@ -93,14 +93,14 @@ class TestListPendingInvitations:
 
     def test_list_pending_invitations_includes_invitee(self, http_client):
         """Invite an expert, verify the invitation appears in the list."""
-        # GIVEN — a project owner and a registered expert
+        # GIVEN: a project owner and a registered expert
         owner_email = unique_email("invowner")
         expert_email = unique_email("invexpert")
         owner_token = register_user(http_client, owner_email)
         register_user(http_client, expert_email)
         project = create_project(http_client, owner_token, "Invitation List Test")
 
-        # WHEN — owner invites expert
+        # WHEN: owner invites expert
         invite_resp = http_client.post(
             f"/projects/{project['id']}/invite",
             json={"email": expert_email},
@@ -108,7 +108,7 @@ class TestListPendingInvitations:
         )
         invite_resp.raise_for_status()
 
-        # THEN — invitations list shows the pending invitation
+        # THEN: invitations list shows the pending invitation
         list_resp = http_client.get(
             f"/projects/{project['id']}/invitations",
             headers=auth_headers(owner_token),
@@ -126,7 +126,7 @@ class TestConcurrentOpinionSubmit:
 
     def test_concurrent_submit_produces_one_opinion(self, http_client):
         """Two simultaneous POSTs → at least one succeeds, exactly one opinion stored."""
-        # GIVEN — an invited expert
+        # GIVEN: an invited expert
         owner_email = unique_email("concown")
         expert_email = unique_email("concexp")
         owner_token = register_user(http_client, owner_email)
@@ -134,7 +134,7 @@ class TestConcurrentOpinionSubmit:
         project = create_project(http_client, owner_token, "Concurrent Test")
         invite_and_accept(http_client, owner_token, expert_token, expert_email, project["id"])
 
-        # WHEN — submit two opinions concurrently
+        # WHEN: submit two opinions concurrently
         def post_opinion(values: tuple[float, float, float]) -> int:
             import httpx
 
@@ -156,7 +156,7 @@ class TestConcurrentOpinionSubmit:
             f2 = pool.submit(post_opinion, (30.0, 50.0, 70.0))
             results = [f1.result(), f2.result()]
 
-        # THEN — at least one succeeds (the other may get 409 or 500 from
+        # THEN: at least one succeeds (the other may get 409 or 500 from
         # the DB unique constraint race), and exactly one opinion is stored
         assert 201 in results
         opinions_resp = http_client.get(
@@ -174,7 +174,7 @@ class TestMultipleExperts:
 
     def test_five_experts_correct_calculation(self, http_client):
         """Five expert opinions → num_experts=5, arithmetic_mean matches."""
-        # GIVEN — owner + 5 experts
+        # GIVEN: owner + 5 experts
         owner_email = unique_email("multiown")
         owner_token = register_user(http_client, owner_email)
         project = create_project(http_client, owner_token, "Multi Expert")
@@ -200,7 +200,7 @@ class TestMultipleExperts:
                 upper_bound=up,
             )
 
-        # WHEN — fetch result
+        # WHEN: fetch result
         result_resp = http_client.get(
             f"/projects/{project['id']}/result",
             headers=auth_headers(owner_token),
@@ -208,7 +208,7 @@ class TestMultipleExperts:
         result_resp.raise_for_status()
         result = result_resp.json()
 
-        # THEN — 5 experts, arithmetic mean = (10+20+30+40+50)/5=30, etc.
+        # THEN: 5 experts, arithmetic mean = (10+20+30+40+50)/5=30, etc.
         assert result["num_experts"] == 5
         assert result["arithmetic_mean"]["lower"] == pytest.approx(30.0)
         assert result["arithmetic_mean"]["peak"] == pytest.approx(50.0)
@@ -221,12 +221,12 @@ class TestScaleBoundaryOpinion:
 
     def test_opinion_at_exact_boundaries_returns_201(self, http_client):
         """lower=0, peak=50, upper=100 on default 0-100 scale → 201."""
-        # GIVEN — a project with default scale
+        # GIVEN: a project with default scale
         email = unique_email("boundary")
         token = register_user(http_client, email)
         project = create_project(http_client, token)
 
-        # WHEN — submit opinion at exact boundaries
+        # WHEN: submit opinion at exact boundaries
         response = http_client.post(
             f"/projects/{project['id']}/opinions",
             json={
@@ -238,7 +238,7 @@ class TestScaleBoundaryOpinion:
             headers=auth_headers(token),
         )
 
-        # THEN — accepted and persisted
+        # THEN: accepted and persisted
         assert response.status_code == 201
 
         # Verify persisted values via GET
@@ -260,12 +260,12 @@ class TestNegativeScaleProject:
 
     def test_negative_scale_valid_opinion_returns_201_with_correct_calculation(self, http_client):
         """Scale -100..0, opinion (-80,-50,-20) → 201 with correct calculation."""
-        # GIVEN — project with negative scale
+        # GIVEN: project with negative scale
         email = unique_email("negscale")
         token = register_user(http_client, email)
         project = create_project_with_scale(http_client, token, "Negative Scale", -100.0, 0.0)
 
-        # WHEN — submit opinion within range
+        # WHEN: submit opinion within range
         response = http_client.post(
             f"/projects/{project['id']}/opinions",
             json={
@@ -277,7 +277,7 @@ class TestNegativeScaleProject:
             headers=auth_headers(token),
         )
 
-        # THEN — accepted and calculation runs
+        # THEN: accepted and calculation runs
         assert response.status_code == 201
 
         result_resp = http_client.get(
@@ -298,13 +298,13 @@ class TestLikertInterpretation:
 
     def test_default_scale_returns_likert(self, http_client):
         """0-100 scale → likert_value int, likert_decision str."""
-        # GIVEN — default scale (0-100) project with one opinion
+        # GIVEN: default scale (0-100) project with one opinion
         email = unique_email("likert")
         token = register_user(http_client, email)
         project = create_project(http_client, token)
         submit_opinion(http_client, token, project["id"])
 
-        # WHEN — fetch result
+        # WHEN: fetch result
         result_resp = http_client.get(
             f"/projects/{project['id']}/result",
             headers=auth_headers(token),
@@ -312,14 +312,14 @@ class TestLikertInterpretation:
         result_resp.raise_for_status()
         result = result_resp.json()
 
-        # THEN — Likert fields populated
+        # THEN: Likert fields populated
         assert isinstance(result["likert_value"], int)
         assert isinstance(result["likert_decision"], str)
         assert len(result["likert_decision"]) > 0
 
     def test_custom_scale_null_likert(self, http_client):
         """1-10 scale → likert_value is null."""
-        # GIVEN — custom scale project
+        # GIVEN: custom scale project
         email = unique_email("nolikert")
         token = register_user(http_client, email)
         project = create_project_with_scale(http_client, token, "Custom Scale", 1.0, 10.0)
@@ -336,7 +336,7 @@ class TestLikertInterpretation:
             headers=auth_headers(token),
         ).raise_for_status()
 
-        # WHEN — fetch result
+        # WHEN: fetch result
         result_resp = http_client.get(
             f"/projects/{project['id']}/result",
             headers=auth_headers(token),
@@ -344,7 +344,7 @@ class TestLikertInterpretation:
         result_resp.raise_for_status()
         result = result_resp.json()
 
-        # THEN — no Likert interpretation
+        # THEN: no Likert interpretation
         assert result["likert_value"] is None
         assert result["likert_decision"] is None
 
@@ -355,7 +355,7 @@ class TestProjectDeleteWhileExpertViews:
 
     def test_expert_404_after_delete(self, http_client):
         """Owner deletes project → expert GET → 404."""
-        # GIVEN — owner + expert with opinion
+        # GIVEN: owner + expert with opinion
         owner_email = unique_email("delown")
         expert_email = unique_email("delexp")
         owner_token = register_user(http_client, owner_email)
@@ -364,14 +364,14 @@ class TestProjectDeleteWhileExpertViews:
         invite_and_accept(http_client, owner_token, expert_token, expert_email, project["id"])
         submit_opinion(http_client, expert_token, project["id"])
 
-        # WHEN — owner deletes project
+        # WHEN: owner deletes project
         del_resp = http_client.delete(
             f"/projects/{project['id']}",
             headers=auth_headers(owner_token),
         )
         assert del_resp.status_code == 204
 
-        # THEN — expert gets 404
+        # THEN: expert gets 404
         get_resp = http_client.get(
             f"/projects/{project['id']}",
             headers=auth_headers(expert_token),
@@ -385,7 +385,7 @@ class TestRemoveMemberThenSubmit:
 
     def test_removed_member_cannot_submit(self, http_client):
         """Owner removes expert → expert POST opinion → 403 or 404."""
-        # GIVEN — owner + expert in project
+        # GIVEN: owner + expert in project
         owner_email = unique_email("rmown")
         expert_email = unique_email("rmexp")
         owner_token = register_user(http_client, owner_email)
@@ -398,14 +398,14 @@ class TestRemoveMemberThenSubmit:
         me_resp.raise_for_status()
         expert_id = me_resp.json()["id"]
 
-        # WHEN — owner removes expert
+        # WHEN: owner removes expert
         rm_resp = http_client.delete(
             f"/projects/{project['id']}/members/{expert_id}",
             headers=auth_headers(owner_token),
         )
         assert rm_resp.status_code == 204
 
-        # THEN — expert cannot submit opinion
+        # THEN: expert cannot submit opinion
         opinion_resp = http_client.post(
             f"/projects/{project['id']}/opinions",
             json={

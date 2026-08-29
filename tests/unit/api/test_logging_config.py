@@ -431,7 +431,7 @@ class TestExternalLoggers:
         It carries startup, shutdown, and protocol failures -- the records that explain
         a boot that never finished. Raising it would hide them from the drain.
         """
-        # GIVEN / WHEN / THEN
+        # GIVEN/WHEN / THEN
         assert _EXTERNAL_LOG_LEVELS["uvicorn.error"] == logging.INFO
 
     def test_sqlalchemy_stays_above_debug_even_when_log_level_is_debug(self):
@@ -487,7 +487,7 @@ class TestCreateAppLogging:
 
         from api.main import create_app
 
-        # WHEN / THEN
+        # WHEN/THEN
         with patch("api.main.setup_logging") as mock_setup:
             create_app()
 
@@ -512,7 +512,7 @@ class TestSentryInit:
         settings.sentry_dsn = "https://key@o0.ingest.sentry.io/1"
         settings.environment = Environment.PROD
 
-        # WHEN / THEN
+        # WHEN/THEN
         with patch("api.main.sentry_sdk.init") as mock_init:
             _init_sentry(settings)
 
@@ -533,7 +533,7 @@ class TestSentryInit:
         settings = MagicMock()
         settings.sentry_dsn = None
 
-        # WHEN / THEN
+        # WHEN/THEN
         with patch("api.main.sentry_sdk.init") as mock_init:
             _init_sentry(settings)
 
