@@ -10,7 +10,7 @@ name: Regenerate Visual Snapshots
 # -f branch=<feature-branch>`). Uploading an artifact needs only the default
 # read token, so no repository permission change is required.
 #
-# FALLBACK -- if this workflow is unavailable, the fresh amd64 renders are
+# FALLBACK: if this workflow is unavailable, the fresh amd64 renders are
 # already inside the failed E2E run's report, so harvest them instead:
 #   1. gh run download <run-id> -n playwright-report -D <dir>
 #   2. <dir>/index.html embeds the report as a base64 zip in

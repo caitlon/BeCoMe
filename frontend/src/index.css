@@ -21,7 +21,7 @@
 /*
   Heading scale. Two registers: the marketing page (Landing) runs one step larger
   than the working pages, so hero and section each get their own entry. Every
-  page heading picks one of these -- no page sets a size of its own.
+  page heading picks one of these, and no page sets a size of its own.
 */
 @utility text-page-hero {
   @apply font-display font-normal tracking-tight text-4xl md:text-6xl lg:text-7xl;

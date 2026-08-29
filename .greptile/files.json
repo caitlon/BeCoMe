@@ -2,7 +2,7 @@
   "files": [
     {
       "path": "README.md",
-      "description": "BeCoMe method and algorithm overview -- reference for verifying calculator correctness against the documented aggregation steps.",
+      "description": "BeCoMe method and algorithm overview, the reference for verifying calculator correctness against the documented aggregation steps.",
       "scope": ["src/**"]
     },
     {
@@ -12,7 +12,7 @@
     },
     {
       "path": "api/README.md",
-      "description": "REST API reference -- endpoints, request/response schemas, and auth flow.",
+      "description": "REST API reference: endpoints, request and response schemas, and the auth flow.",
       "scope": ["api/**"]
     }
   ]

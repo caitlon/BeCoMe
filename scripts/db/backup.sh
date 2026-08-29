@@ -4,7 +4,7 @@
 # Railway's native backups require the Pro plan, so this is the free fallback: it
 # temporarily opens a public TCP proxy on the chosen database, runs pg_dump over it,
 # and ALWAYS removes the proxy again (even on error). Run it before risky changes and
-# periodically; store the dumps somewhere safe -- they contain user data.
+# periodically, and store the dumps somewhere safe, because they contain user data.
 #
 #   Usage:  ./scripts/db/backup.sh [prod|test|dev]      (default: prod)
 #   Output: backups/<env>-<UTC-timestamp>.dump  (custom format)
@@ -26,7 +26,7 @@ esac
 PROJECT_ID="${RAILWAY_PROJECT_ID:-$(railway status --json 2>/dev/null | jq -r '.id // empty')}"
 [ -z "$PROJECT_ID" ] && { echo "Set RAILWAY_PROJECT_ID, or run 'railway link' in this repo first"; exit 1; }
 TOKEN=$(python3 -c "import json,os;print(json.load(open(os.path.expanduser('~/.railway/config.json')))['user']['accessToken'])" 2>/dev/null)
-[ -z "$TOKEN" ] && { echo "No Railway token -- run 'railway login' (or 'railway whoami' to refresh)"; exit 1; }
+[ -z "$TOKEN" ] && { echo "No Railway token. Run 'railway login', or 'railway whoami' to refresh"; exit 1; }
 
 # GraphQL helper. The query is passed to jq as DATA (--arg), never embedded in the jq
 # program, so the braces/`$vars` in the query can't be mis-parsed by any jq version.
@@ -38,8 +38,8 @@ api() {  # $1 = query/mutation string; $2 = variables JSON object (default {})
 }
 
 # Always clean up: remove the temporary proxy (if opened) and the stderr scratch file.
-# The proxy is PUBLIC while it is up -- for its lifetime the only thing between the
-# database and the internet is the role password -- so a failed teardown must be loud
+# The proxy is PUBLIC while it is up: for its lifetime the only thing between the
+# database and the internet is the role password, so a failed teardown must be loud
 # rather than swallowed. The old form chained the delete with && and printed nothing when
 # it failed, which looked exactly like the case where no proxy was ever opened.
 ERRFILE=$(mktemp)
