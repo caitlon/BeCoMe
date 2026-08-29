@@ -39,7 +39,7 @@ class TestExampleExpertData:
 
     def test_expert_count_matches_the_reference_case(self):
         """The pool holds exactly as many experts as the case has opinions."""
-        # GIVEN / WHEN
+        # GIVEN/WHEN
         count = len(EXAMPLE_EXPERTS)
 
         # THEN
@@ -47,20 +47,20 @@ class TestExampleExpertData:
 
     def test_fuzzy_order_holds_for_every_expert(self):
         """lower <= peak <= upper, which the database also enforces."""
-        # GIVEN / WHEN / THEN
+        # GIVEN/WHEN / THEN
         for expert in EXAMPLE_EXPERTS:
             assert expert.lower_bound <= expert.peak <= expert.upper_bound
 
     def test_values_sit_inside_the_project_scale(self):
         """No opinion falls outside the scale the seeded project declares."""
-        # GIVEN / WHEN / THEN
+        # GIVEN/WHEN / THEN
         for expert in EXAMPLE_EXPERTS:
             assert expert.lower_bound >= EXAMPLE_SCALE_MIN
             assert expert.upper_bound <= EXAMPLE_SCALE_MAX
 
     def test_identities_are_unique(self):
         """Duplicate ids or addresses would break the unique constraints on insert."""
-        # GIVEN / WHEN
+        # GIVEN/WHEN
         ids = {e.user_id for e in EXAMPLE_EXPERTS}
         emails = {e.email for e in EXAMPLE_EXPERTS}
 
@@ -70,7 +70,7 @@ class TestExampleExpertData:
 
     def test_addresses_are_undeliverable(self):
         """RFC 2606 reserves .invalid, so no mail can ever reach these accounts."""
-        # GIVEN / WHEN / THEN
+        # GIVEN/WHEN / THEN
         for expert in EXAMPLE_EXPERTS:
             assert expert.email.endswith("@example.invalid")
 
@@ -80,12 +80,12 @@ class TestExampleProjectText:
 
     def test_both_locales_present(self):
         """A missing locale would silently fall back to English text."""
-        # GIVEN / WHEN / THEN
+        # GIVEN/WHEN / THEN
         assert set(EXAMPLE_PROJECT_TEXT) == {"en", "cs"}
 
     def test_positions_differ_between_locales(self):
         """A Czech position equal to the English one means a forgotten translation."""
-        # GIVEN / WHEN
+        # GIVEN/WHEN
         untranslated = [e.position_en for e in EXAMPLE_EXPERTS if e.position_cs == e.position_en]
 
         # THEN
@@ -96,7 +96,7 @@ class TestExampleProjectText:
         # GIVEN
         expert = EXAMPLE_EXPERTS[0]
 
-        # WHEN / THEN
+        # WHEN/THEN
         assert expert.position("cs") == expert.position_cs
         assert expert.position("en") == expert.position_en
         assert expert.position("de") == expert.position_en

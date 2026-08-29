@@ -15,7 +15,7 @@ class TestIsExampleDefault:
 
     def test_defaults_to_false(self):
         """A project created the ordinary way is not an example."""
-        # GIVEN / WHEN
+        # GIVEN/WHEN
         project = Project(name="Real work", admin_id=uuid4())
 
         # THEN
@@ -23,7 +23,7 @@ class TestIsExampleDefault:
 
     def test_can_be_set(self):
         """The seeding service marks its project explicitly."""
-        # GIVEN / WHEN
+        # GIVEN/WHEN
         project = Project(name="Example", admin_id=uuid4(), is_example=True)
 
         # THEN
@@ -35,7 +35,7 @@ class TestIsDemoDefault:
 
     def test_defaults_to_false(self):
         """A registered account is never a demo account."""
-        # GIVEN / WHEN
+        # GIVEN/WHEN
         user = User(
             email="person@example.com",
             hashed_password="x",
@@ -48,7 +48,7 @@ class TestIsDemoDefault:
 
     def test_can_be_set(self):
         """The migration marks the seeded pool explicitly."""
-        # GIVEN / WHEN
+        # GIVEN/WHEN
         user = User(
             email="demo@example.invalid",
             hashed_password="x",

@@ -202,7 +202,7 @@ class TestGetEmailAddressPolicy:
         mock_settings.disposable_email_blocking_enabled = True
         mock_settings.mx_check_enabled = False  # isolate the disposable switch
 
-        # WHEN / THEN
+        # WHEN/THEN
         # The resolver is still constructed (mx_check_enabled only skips using
         # it), so it is stubbed here too even though nothing calls .resolve().
         with (
@@ -227,7 +227,7 @@ class TestGetEmailAddressPolicy:
         mock_settings.disposable_email_blocking_enabled = False
         mock_settings.mx_check_enabled = False  # isolate the disposable switch
 
-        # WHEN / THEN (no raise)
+        # WHEN/THEN (no raise)
         # The resolver is still constructed (mx_check_enabled only skips using
         # it), so it is stubbed here too even though nothing calls .resolve().
         with (
@@ -250,7 +250,7 @@ class TestGetEmailAddressPolicy:
         stub_resolver = MagicMock()
         stub_resolver.resolve = AsyncMock(side_effect=dns.resolver.NXDOMAIN())
 
-        # WHEN / THEN
+        # WHEN/THEN
         with (
             patch("api.dependencies.get_settings", return_value=mock_settings),
             patch("dns.asyncresolver.Resolver", return_value=stub_resolver),
@@ -293,7 +293,7 @@ class TestGetEmailAddressPolicy:
         WHEN compared
         THEN they return the identical instance, so the resolver is built once
         """
-        # GIVEN / WHEN
+        # GIVEN/WHEN
         first = get_email_address_policy()
         second = get_email_address_policy()
 
@@ -352,7 +352,7 @@ class TestRequireProjectAccess:
         current_user.id = uuid4()
         dependency = RequireProjectAccess(AccessLevel.MEMBER)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(HTTPException) as exc_info:
             dependency(uuid4(), current_user, project_service, MagicMock())
 
@@ -401,7 +401,7 @@ class TestRequireProjectAccess:
         current_user.id = user_id
         dependency = RequireProjectAccess(AccessLevel.MEMBER)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(HTTPException) as exc_info:
             dependency(project_id, current_user, project_service, membership_service)
 

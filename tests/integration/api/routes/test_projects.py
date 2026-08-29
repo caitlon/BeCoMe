@@ -253,7 +253,7 @@ class TestGetProject:
         )
         project_id = create_resp.json()["id"]
 
-        # WHEN - mock get_user_role_in_project to return None (simulates race condition)
+        # WHEN: mock get_user_role_in_project to return None (simulates race condition)
         with patch.object(ProjectMembershipService, "get_user_role_in_project", return_value=None):
             response = client.get(f"/api/v1/projects/{project_id}", headers=auth_header(token))
 
@@ -368,7 +368,7 @@ class TestUpdateProject:
         )
         project_id = create_resp.json()["id"]
 
-        # WHEN - update scale_max to equal scale_min
+        # WHEN: update scale_max to equal scale_min
         response = client.patch(
             f"/api/v1/projects/{project_id}",
             json={"scale_max": 0},

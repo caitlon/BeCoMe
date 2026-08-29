@@ -116,7 +116,7 @@ class TestRegistrationBranches:
         assert len(accounts) == 1
         assert accounts[0]["email_verified_at"] is None
 
-        # AND - exactly one activation link went to that address, and no notice
+        # AND: exactly one activation link went to that address, and no notice
         assert len(fake_email.verification_calls) == 1
         assert fake_email.verification_calls[0]["to_email"] == "fresh@example.com"
         assert "/verify-email?token=" in fake_email.verification_calls[0]["verify_url"]
@@ -131,27 +131,27 @@ class TestRegistrationBranches:
         account, so it takes effect only for whoever follows that link with the
         password behind it.
         """
-        # GIVEN - an unverified account someone registered first
+        # GIVEN: an unverified account someone registered first
         register(client, "contested@example.com", password=DEFAULT_TEST_PASSWORD)
         first_link = _verify_token(fake_email)
 
-        # WHEN - the address is registered again with different credentials and name
+        # WHEN: the address is registered again with different credentials and name
         response = register(
             client, "contested@example.com", password=OTHER_PASSWORD, first_name="Later"
         )
 
-        # THEN - still one account, still carrying what the first submission stored
+        # THEN: still one account, still carrying what the first submission stored
         assert response.status_code == 202
         accounts = stored_accounts(client, "contested@example.com")
         assert len(accounts) == 1
         assert accounts[0]["first_name"] == "Test"
 
-        # AND - a second link was mailed and the first one is still alive
+        # AND: a second link was mailed and the first one is still alive
         assert len(fake_email.verification_calls) == 2
         second_link = _verify_token(fake_email)
         assert second_link != first_link
 
-        # AND - following the second link with its own password applies that submission
+        # AND: following the second link with its own password applies that submission
         assert _activate(client, second_link, OTHER_PASSWORD).status_code == 200
         assert stored_accounts(client, "contested@example.com")[0]["first_name"] == "Later"
         assert _login(client, "contested@example.com", DEFAULT_TEST_PASSWORD).status_code == 401
@@ -161,15 +161,15 @@ class TestRegistrationBranches:
         self, client, fake_email, unthrottled_email
     ):
         """A signup on a live account leaves it alone and tells its owner."""
-        # GIVEN - an activated account
+        # GIVEN: an activated account
         register_verified(client, "owner@example.com", password=DEFAULT_TEST_PASSWORD)
         created_id = stored_accounts(client, "owner@example.com")[0]["id"]
         sends_so_far = len(fake_email.verification_calls)
 
-        # WHEN - someone registers the same address with their own password
+        # WHEN: someone registers the same address with their own password
         response = register(client, "owner@example.com", password=OTHER_PASSWORD, first_name="Imp")
 
-        # THEN - the account is untouched
+        # THEN: the account is untouched
         assert response.status_code == 202
         accounts = stored_accounts(client, "owner@example.com")
         assert len(accounts) == 1
@@ -178,7 +178,7 @@ class TestRegistrationBranches:
         assert _login(client, "owner@example.com", OTHER_PASSWORD).status_code == 401
         assert _login(client, "owner@example.com", DEFAULT_TEST_PASSWORD).status_code == 200
 
-        # AND - the owner got a notice, never an activation link an attacker could use
+        # AND: the owner got a notice, never an activation link an attacker could use
         assert len(fake_email.verification_calls) == sends_so_far
         assert len(fake_email.notice_calls) == 1
         assert fake_email.notice_calls[0]["to_email"] == "owner@example.com"
@@ -205,7 +205,7 @@ class TestRegistrationBranches:
 
     def test_all_three_branches_answer_byte_for_byte_the_same(self, client, fake_email):
         """Status and body are identical for a free, an unverified, and a live address."""
-        # GIVEN - one address in each state
+        # GIVEN: one address in each state
         register(client, "pending@example.com")
         register_verified(client, "active@example.com")
 
@@ -221,7 +221,7 @@ class TestRegistrationBranches:
     def test_send_failure_does_not_change_the_response(self, client):
         """A provider outage still answers 202: an error would betray which branch ran."""
 
-        # GIVEN - a sender that fails on every send
+        # GIVEN: a sender that fails on every send
         class FailingEmailSender(EmailSender):
             """Simulate a provider that fails on every send."""
 
@@ -244,7 +244,7 @@ class TestRegistrationBranches:
         # WHEN
         response = register(client, "unreachable@example.com")
 
-        # THEN - the account still exists, waiting for a resend
+        # THEN: the account still exists, waiting for a resend
         assert response.status_code == 202
         assert stored_accounts(client, "unreachable@example.com")
 
@@ -263,16 +263,16 @@ class TestSignupTakeoverAttempts:
         self, client, fake_email, unthrottled_email
     ):
         """A later submission does not change what an already-mailed link activates."""
-        # GIVEN - the rightful owner signs up and gets their link
+        # GIVEN: the rightful owner signs up and gets their link
         register(client, "target@example.com", password=DEFAULT_TEST_PASSWORD)
         owners_link = _verify_token(fake_email)
 
-        # WHEN - a stranger submits the same address with a password of their choosing,
+        # WHEN: a stranger submits the same address with a password of their choosing,
         # then the owner follows the link they were sent
         register(client, "target@example.com", password=OTHER_PASSWORD, first_name="Stranger")
         activated = _activate(client, owners_link, DEFAULT_TEST_PASSWORD)
 
-        # THEN - the account is live on the owner's password, not the stranger's
+        # THEN: the account is live on the owner's password, not the stranger's
         assert activated.status_code == 200
         assert _login(client, "target@example.com", DEFAULT_TEST_PASSWORD).status_code == 200
         assert _login(client, "target@example.com", OTHER_PASSWORD).status_code == 401
@@ -287,19 +287,19 @@ class TestSignupTakeoverAttempts:
         from the real service. What stops it is the password: the victim types their
         own, the link carries the attacker's, and the account never opens.
         """
-        # GIVEN - a stranger pre-registers the victim's address
+        # GIVEN: a stranger pre-registers the victim's address
         register(client, "victim@example.com", password=OTHER_PASSWORD, first_name="Stranger")
         strangers_link = _verify_token(fake_email)
 
-        # WHEN - the victim clicks it and supplies the password they would have chosen
+        # WHEN: the victim clicks it and supplies the password they would have chosen
         refused = _activate(client, strangers_link, DEFAULT_TEST_PASSWORD)
 
-        # THEN - refused, distinguishably from a broken link, and nothing was activated
+        # THEN: refused, distinguishably from a broken link, and nothing was activated
         assert refused.status_code == 403
         assert refused.json()["detail"] == VERIFICATION_PASSWORD_MISMATCH_DETAIL
         assert stored_accounts(client, "victim@example.com")[0]["email_verified_at"] is None
 
-        # AND - the stranger's password never becomes usable, before or after
+        # AND: the stranger's password never becomes usable, before or after
         assert _login(client, "victim@example.com", OTHER_PASSWORD).status_code == 403
         assert _login(client, "victim@example.com", DEFAULT_TEST_PASSWORD).status_code == 401
 
@@ -311,22 +311,22 @@ class TestSignupTakeoverAttempts:
         The victim's submission mints its own link; following it with the victim's own
         password opens the account on the victim's terms and retires the stranger's.
         """
-        # GIVEN - a stranger pre-registered the address
+        # GIVEN: a stranger pre-registered the address
         register(client, "reclaim@example.com", password=OTHER_PASSWORD, first_name="Stranger")
         strangers_link = _verify_token(fake_email)
 
-        # WHEN - the victim registers the same address and follows the link that mints
+        # WHEN: the victim registers the same address and follows the link that mints
         register(client, "reclaim@example.com", password=DEFAULT_TEST_PASSWORD)
         victims_link = _verify_token(fake_email)
         activated = _activate(client, victims_link, DEFAULT_TEST_PASSWORD)
 
-        # THEN - the account is theirs
+        # THEN: the account is theirs
         assert activated.status_code == 200
         assert stored_accounts(client, "reclaim@example.com")[0]["first_name"] == "Test"
         assert _login(client, "reclaim@example.com", DEFAULT_TEST_PASSWORD).status_code == 200
         assert _login(client, "reclaim@example.com", OTHER_PASSWORD).status_code == 401
 
-        # AND - the stranger's link is dead, with the same opaque answer garbage gets
+        # AND: the stranger's link is dead, with the same opaque answer garbage gets
         stale = _activate(client, strangers_link, OTHER_PASSWORD)
         assert stale.status_code == 400
         assert stale.content == _activate(client, "garbage-token").content
@@ -338,7 +338,7 @@ class TestSignupTakeoverAttempts:
         by the per-address budget, so nothing lands in the owner's inbox to arouse
         suspicion, and the owner activates with the link they already had.
         """
-        # GIVEN - the owner signs up, then a stranger submits twice; both sends are
+        # GIVEN: the owner signs up, then a stranger submits twice; both sends are
         # suppressed by the per-address cooldown the signup started
         register(client, "quiet@example.com", password=DEFAULT_TEST_PASSWORD)
         owners_link = _verify_token(fake_email)
@@ -363,17 +363,17 @@ class TestSignupTakeoverAttempts:
         It carries a password, so redeeming one after activation would rewrite the
         credentials of an account somebody is already using.
         """
-        # GIVEN - the owner's link and a stranger's link, both live
+        # GIVEN: the owner's link and a stranger's link, both live
         register(client, "held@example.com", password=DEFAULT_TEST_PASSWORD)
         owners_link = _verify_token(fake_email)
         register(client, "held@example.com", password=OTHER_PASSWORD)
         strangers_link = _verify_token(fake_email)
         assert _activate(client, owners_link, DEFAULT_TEST_PASSWORD).status_code == 200
 
-        # WHEN - the stranger tries theirs afterwards, with the password it carries
+        # WHEN: the stranger tries theirs afterwards, with the password it carries
         response = _activate(client, strangers_link, OTHER_PASSWORD)
 
-        # THEN - refused, with the same opaque answer an unknown token gets
+        # THEN: refused, with the same opaque answer an unknown token gets
         assert response.status_code == 400
         assert response.content == _activate(client, "garbage-token").content
         assert _login(client, "held@example.com", DEFAULT_TEST_PASSWORD).status_code == 200
@@ -387,19 +387,19 @@ class TestSignupTakeoverAttempts:
         An address-only resend minted a link with nothing to prove, which anyone
         receiving the mail could follow.
         """
-        # GIVEN - the owner's pending signup, and a stranger asking for a "fresh" link
+        # GIVEN: the owner's pending signup, and a stranger asking for a "fresh" link
         register(client, "bound@example.com", password=DEFAULT_TEST_PASSWORD)
         _resend(client, "bound@example.com", OTHER_PASSWORD)
         strangers_link = _verify_token(fake_email)
 
-        # WHEN - the owner follows it with their own password
+        # WHEN: the owner follows it with their own password
         refused = _activate(client, strangers_link, DEFAULT_TEST_PASSWORD)
 
-        # THEN - refused, and nothing was activated
+        # THEN: refused, and nothing was activated
         assert refused.status_code == 403
         assert stored_accounts(client, "bound@example.com")[0]["email_verified_at"] is None
 
-        # AND - the stranger's password is not the account's either; the owner's is,
+        # AND: the stranger's password is not the account's either; the owner's is,
         # and it is still waiting on a link the owner can actually complete
         assert _login(client, "bound@example.com", OTHER_PASSWORD).status_code == 401
         assert _login(client, "bound@example.com", DEFAULT_TEST_PASSWORD).status_code == 403
@@ -413,15 +413,15 @@ class TestSignupTakeoverAttempts:
         confirmed the address without touching the stored password, so activating an
         account somebody else had pre-registered opened it on *their* password.
         """
-        # GIVEN - a stranger pre-registered the address
+        # GIVEN: a stranger pre-registered the address
         register(client, "resent@example.com", password=OTHER_PASSWORD, first_name="Stranger")
 
-        # WHEN - the real owner asks for a link, naming the password they want
+        # WHEN: the real owner asks for a link, naming the password they want
         _resend(client, "resent@example.com", DEFAULT_TEST_PASSWORD)
         owners_link = _verify_token(fake_email)
         activated = _activate(client, owners_link, DEFAULT_TEST_PASSWORD)
 
-        # THEN - the account is theirs, not the stranger's
+        # THEN: the account is theirs, not the stranger's
         assert activated.status_code == 200
         assert _login(client, "resent@example.com", DEFAULT_TEST_PASSWORD).status_code == 200
         assert _login(client, "resent@example.com", OTHER_PASSWORD).status_code == 401
@@ -437,7 +437,7 @@ class TestActivationPasswordGuessing:
 
     def test_repeated_mismatches_lock_the_account_out(self, client, fake_email):
         """Guessing against a link trips its own lockout, sized like the login one."""
-        # GIVEN - independent lockouts that trip after two failures, and a live link
+        # GIVEN: independent lockouts that trip after two failures, and a live link
         activation_throttle = InMemoryLoginThrottle(max_failures=2, window_seconds=3600)
         login_throttle = InMemoryLoginThrottle(max_failures=2, window_seconds=3600)
         client.app.dependency_overrides[get_activation_throttle] = lambda: activation_throttle
@@ -446,11 +446,11 @@ class TestActivationPasswordGuessing:
             register(client, "guessed@example.com", password=DEFAULT_TEST_PASSWORD)
             token = _verify_token(fake_email)
 
-            # WHEN - the password is guessed wrong up to the threshold
+            # WHEN: the password is guessed wrong up to the threshold
             assert _activate(client, token, "WrongGuess111!").status_code == 403
             assert _activate(client, token, "WrongGuess222!").status_code == 403
 
-            # THEN - even the right password is refused now, and so is a login: each
+            # THEN: even the right password is refused now, and so is a login: each
             # mismatch spent from both counters
             locked = _activate(client, token, DEFAULT_TEST_PASSWORD)
             assert locked.status_code == 429
@@ -472,7 +472,7 @@ class TestActivationPasswordGuessing:
         which is a narrower instance of the same denial the login/activation split
         above already guards against.
         """
-        # GIVEN - two live tokens for one account, and a lockout that trips after two
+        # GIVEN: two live tokens for one account, and a lockout that trips after two
         # failures
         activation_throttle = InMemoryLoginThrottle(max_failures=2, window_seconds=3600)
         client.app.dependency_overrides[get_activation_throttle] = lambda: activation_throttle
@@ -483,12 +483,12 @@ class TestActivationPasswordGuessing:
             second = _verify_token(fake_email)
             assert second != first
 
-            # WHEN - the first token's budget is burned by repeated wrong guesses
+            # WHEN: the first token's budget is burned by repeated wrong guesses
             assert _activate(client, first, "WrongGuess111!").status_code == 403
             assert _activate(client, first, "WrongGuess222!").status_code == 403
             assert _activate(client, first, DEFAULT_TEST_PASSWORD).status_code == 429
 
-            # THEN - the second, distinct token for the same account still activates
+            # THEN: the second, distinct token for the same account still activates
             assert _activate(client, second, OTHER_PASSWORD).status_code == 200
         finally:
             client.app.dependency_overrides.pop(get_activation_throttle, None)
@@ -500,7 +500,7 @@ class TestActivationPasswordGuessing:
         link required. Gating verify-email on it would let that unauthenticated caller
         lock out an activation they never touched.
         """
-        # GIVEN - a live activation link, and enough wrong logins to lock the login
+        # GIVEN: a live activation link, and enough wrong logins to lock the login
         # throttle for the same account
         login_throttle = InMemoryLoginThrottle(max_failures=2, window_seconds=3600)
         client.app.dependency_overrides[get_login_throttle] = lambda: login_throttle
@@ -511,10 +511,10 @@ class TestActivationPasswordGuessing:
                 assert _login(client, "targeted@example.com", "WrongGuess111!").status_code == 401
             assert _login(client, "targeted@example.com").status_code == 429
 
-            # WHEN - the victim activates with the correct password anyway
+            # WHEN: the victim activates with the correct password anyway
             activated = _activate(client, token, DEFAULT_TEST_PASSWORD)
 
-            # THEN - the login lockout never touched activation
+            # THEN: the login lockout never touched activation
             assert activated.status_code == 200
         finally:
             client.app.dependency_overrides.pop(get_login_throttle, None)
@@ -526,18 +526,18 @@ class TestActivationPasswordGuessing:
         guess here is, in the same act, spending down the budget that would otherwise
         cover /login guesses against the same account.
         """
-        # GIVEN - a login lockout that trips after two failures
+        # GIVEN: a login lockout that trips after two failures
         login_throttle = InMemoryLoginThrottle(max_failures=2, window_seconds=3600)
         client.app.dependency_overrides[get_login_throttle] = lambda: login_throttle
         try:
             register(client, "shared@example.com", password=DEFAULT_TEST_PASSWORD)
             token = _verify_token(fake_email)
 
-            # WHEN - one wrong guess at activation, then one wrong guess at login
+            # WHEN: one wrong guess at activation, then one wrong guess at login
             assert _activate(client, token, "WrongGuess111!").status_code == 403
             assert _login(client, "shared@example.com", "WrongGuess222!").status_code == 401
 
-            # THEN - together they already spent the login budget
+            # THEN: together they already spent the login budget
             assert _login(client, "shared@example.com").status_code == 429
         finally:
             client.app.dependency_overrides.pop(get_login_throttle, None)
@@ -560,7 +560,7 @@ class TestActivationPasswordGuessing:
             for _ in range(3):
                 assert _activate(client, "garbage-token").status_code == 400
 
-            # THEN - neither counter was charged, so login still works on the first try
+            # THEN: neither counter was charged, so login still works on the first try
             assert _login(client, "untouched@example.com").status_code == 200
         finally:
             client.app.dependency_overrides.pop(get_activation_throttle, None)
@@ -583,7 +583,7 @@ class TestRegistrationAddressPolicy:
     def test_unresolvable_domain_is_rejected_without_creating_an_account(self, client, fake_email):
         """A domain the resolver reports as nonexistent is refused with 400."""
 
-        # GIVEN - a resolver that reports every domain as missing
+        # GIVEN: a resolver that reports every domain as missing
         class NxdomainResolver:
             """Resolver stub that answers NXDOMAIN for every query."""
 
@@ -617,7 +617,7 @@ class TestLoginGate:
         # WHEN
         response = _login(client, "waiting@example.com")
 
-        # THEN - a 403 the SPA can tell apart from every other 403
+        # THEN: a 403 the SPA can tell apart from every other 403
         assert response.status_code == 403
         assert response.json()["detail"] == EMAIL_NOT_VERIFIED_DETAIL
 
@@ -653,17 +653,17 @@ class TestLoginGate:
         self, client, fake_email
     ):
         """Being unverified must not burn the account's login-lockout budget."""
-        # GIVEN - a lockout that trips after two failures
+        # GIVEN: a lockout that trips after two failures
         throttle = InMemoryLoginThrottle(max_failures=2, window_seconds=3600)
         client.app.dependency_overrides[get_login_throttle] = lambda: throttle
         try:
             register(client, "patient@example.com")
 
-            # WHEN - more correct-password attempts than the lockout threshold
+            # WHEN: more correct-password attempts than the lockout threshold
             for _ in range(3):
                 assert _login(client, "patient@example.com").status_code == 403
 
-            # THEN - activating still lets the owner in; nothing was counted as a failure
+            # THEN: activating still lets the owner in; nothing was counted as a failure
             mark_email_verified(client, "patient@example.com")
             assert _login(client, "patient@example.com").status_code == 200
         finally:
@@ -689,7 +689,7 @@ class TestVerifyEmailEndpoint:
 
     def test_unknown_reused_and_expired_tokens_give_the_same_answer(self, client, fake_email):
         """No response tells a caller which kind of bad token they hold."""
-        # GIVEN - a spent token, and an expired one written straight into the table
+        # GIVEN: a spent token, and an expired one written straight into the table
         register(client, "tokens@example.com")
         spent = _verify_token(fake_email)
         assert _activate(client, spent).status_code == 200
@@ -738,7 +738,7 @@ class TestVerifyEmailEndpoint:
         assert unknown.status_code == 400
         assert mismatch.content != unknown.content
 
-        # AND - the link survives the miss, so the second attempt works
+        # AND: the link survives the miss, so the second attempt works
         assert _activate(client, token).status_code == 200
 
     def test_verification_drops_the_cached_profile(self, client, fake_email):
@@ -747,7 +747,7 @@ class TestVerifyEmailEndpoint:
         The user cache holds a profile for a minute, so a snapshot taken before
         activation would keep reporting the account as unverified after it.
         """
-        # GIVEN - a registered account whose pre-activation snapshot is cached
+        # GIVEN: a registered account whose pre-activation snapshot is cached
         register(client, "cached@example.com")
         token = _verify_token(fake_email)
         with app_session(client) as session:
@@ -771,7 +771,7 @@ class TestResendVerification:
         self, client, fake_email, unthrottled_email
     ):
         """The endpoint reveals nothing about which addresses have accounts."""
-        # GIVEN - one unverified and one activated account
+        # GIVEN: one unverified and one activated account
         register(client, "pending@example.com")
         register_verified(client, "active@example.com")
 
@@ -815,7 +815,7 @@ class TestResendVerification:
         register(client, "again@example.com", password=DEFAULT_TEST_PASSWORD)
         first = _verify_token(fake_email)
 
-        # WHEN - the owner asks for another link, choosing a different password
+        # WHEN: the owner asks for another link, choosing a different password
         _resend(client, "again@example.com", OTHER_PASSWORD)
         second = _verify_token(fake_email)
 
@@ -849,7 +849,7 @@ class TestPasswordResetActivatesTheAccount:
 
     def test_completing_a_reset_activates_an_unverified_account(self, client, fake_email):
         """Reclaiming an address somebody else registered is one step, not three."""
-        # GIVEN - an account a stranger pre-registered, still unactivated
+        # GIVEN: an account a stranger pre-registered, still unactivated
         register(client, "reclaimed@example.com", password=OTHER_PASSWORD, first_name="Stranger")
         client.post("/api/v1/auth/forgot-password", json={"email": "reclaimed@example.com"})
         reset_token = fake_email.calls[-1]["reset_url"].split("token=")[1]
@@ -860,7 +860,7 @@ class TestPasswordResetActivatesTheAccount:
             json={"token": reset_token, "new_password": DEFAULT_TEST_PASSWORD},
         )
 
-        # THEN - the address is confirmed and the account opens straight away
+        # THEN: the address is confirmed and the account opens straight away
         assert reset.status_code == 204
         assert stored_accounts(client, "reclaimed@example.com")[0]["email_verified_at"] is not None
         assert _login(client, "reclaimed@example.com", DEFAULT_TEST_PASSWORD).status_code == 200
@@ -872,7 +872,7 @@ class TestPasswordResetActivatesTheAccount:
         Each carries a submission, so one redeemed after a reset would undo it -- which
         is why forgot-password can only bound the risk if it also confirms the address.
         """
-        # GIVEN - a stranger's link, and a reset the real owner then completes
+        # GIVEN: a stranger's link, and a reset the real owner then completes
         register(client, "stale@example.com", password=OTHER_PASSWORD, first_name="Stranger")
         strangers_link = _verify_token(fake_email)
         client.post("/api/v1/auth/forgot-password", json={"email": "stale@example.com"})
@@ -882,10 +882,10 @@ class TestPasswordResetActivatesTheAccount:
             json={"token": reset_token, "new_password": DEFAULT_TEST_PASSWORD},
         )
 
-        # WHEN - the stranger's link is followed afterwards, with its own password
+        # WHEN: the stranger's link is followed afterwards, with its own password
         response = _activate(client, strangers_link, OTHER_PASSWORD)
 
-        # THEN - dead, and the reset still stands
+        # THEN: dead, and the reset still stands
         assert response.status_code == 400
         assert _login(client, "stale@example.com", DEFAULT_TEST_PASSWORD).status_code == 200
         assert _login(client, "stale@example.com", OTHER_PASSWORD).status_code == 401
@@ -925,18 +925,18 @@ class TestEmailThrottling:
         spending from the budget left it clean, so the free address mailed on both
         probes while the taken one had already gone quiet.
         """
-        # GIVEN - a live account, and a fresh budget so the mail its own signup
+        # GIVEN: a live account, and a fresh budget so the mail its own signup
         # triggered does not skew the comparison
         register_verified(client, "taken@example.com")
         _budget(client, cooldown_seconds=3600)
         taken_before = len(_mails_to(fake_email, "taken@example.com"))
 
-        # WHEN - each address is submitted twice in a row
+        # WHEN: each address is submitted twice in a row
         for _ in range(2):
             assert register(client, "free@example.com").status_code == 202
             assert register(client, "taken@example.com").status_code == 202
 
-        # THEN - one email each, and it went out on the first probe
+        # THEN: one email each, and it went out on the first probe
         assert len(_mails_to(fake_email, "free@example.com")) == 1
         assert len(_mails_to(fake_email, "taken@example.com")) == taken_before + 1
 
@@ -944,31 +944,31 @@ class TestEmailThrottling:
         self, client, fake_email
     ):
         """The signup's own link spends the allowance; a resend right after is suppressed."""
-        # GIVEN - a registered account whose activation link just went out
+        # GIVEN: a registered account whose activation link just went out
         register(client, "flooded@example.com")
         assert len(fake_email.verification_calls) == 1
 
-        # WHEN - two resends follow immediately
+        # WHEN: two resends follow immediately
         first = _resend(client, "flooded@example.com")
         second = _resend(client, "flooded@example.com")
 
-        # THEN - identical answers, and nothing more reached the inbox
+        # THEN: identical answers, and nothing more reached the inbox
         assert first.status_code == second.status_code == 202
         assert first.content == second.content
         assert len(fake_email.verification_calls) == 1
 
     def test_one_budget_covers_the_signup_and_the_notices_it_triggers(self, client, fake_email):
         """Submitting a victim's address in a loop does not mail them repeatedly."""
-        # GIVEN - two emails a day for this address, one spent by its own signup
+        # GIVEN: two emails a day for this address, one spent by its own signup
         _budget(client, daily_cap=2)
         register_verified(client, "flooded@example.com")
         assert len(fake_email.verification_calls) == 1
 
-        # WHEN - the address is submitted twice more
+        # WHEN: the address is submitted twice more
         first = register(client, "flooded@example.com")
         second = register(client, "flooded@example.com")
 
-        # THEN - one notice for the two attempts, and both answers are the same
+        # THEN: one notice for the two attempts, and both answers are the same
         assert first.status_code == second.status_code == 202
         assert first.content == second.content
         assert len(fake_email.notice_calls) == 1
@@ -982,14 +982,14 @@ class TestEmailThrottling:
         signed up: the signup then answers 202, creates the account, mails nothing, and
         leaves a person who cannot log in and cannot get a link.
         """
-        # GIVEN - a stranger burns the whole daily budget for an address with no account
+        # GIVEN: a stranger burns the whole daily budget for an address with no account
         for _ in range(DAILY_CAP):
             _resend(client, "never@example.com")
 
-        # WHEN - the real person signs up
+        # WHEN: the real person signs up
         response = register(client, "never@example.com")
 
-        # THEN - their activation link goes out, and it works
+        # THEN: their activation link goes out, and it works
         assert response.status_code == 202
         assert len(fake_email.verification_calls) == 1
         assert fake_email.verification_calls[0]["to_email"] == "never@example.com"
@@ -1001,7 +1001,7 @@ class TestEmailThrottling:
         Nobody has to authenticate to name someone else's address here, so a request
         that sends no mail must not be able to spend the allowance a real one needs.
         """
-        # GIVEN - two emails a day, one spent by the account's own signup, and a
+        # GIVEN: two emails a day, one spent by the account's own signup, and a
         # stranger hammering resend at an address that has nothing to resend
         _budget(client, daily_cap=2)
         register_verified(client, "settled@example.com")
@@ -1009,8 +1009,8 @@ class TestEmailThrottling:
             _resend(client, "settled@example.com")
         assert len(fake_email.verification_calls) == 1  # only the original signup
 
-        # WHEN - someone submits that address to the signup form
+        # WHEN: someone submits that address to the signup form
         register(client, "settled@example.com")
 
-        # THEN - the owner is still told about it
+        # THEN: the owner is still told about it
         assert len(fake_email.notice_calls) == 1

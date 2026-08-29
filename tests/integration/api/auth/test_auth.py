@@ -37,11 +37,11 @@ class TestRegister:
         # WHEN
         response = client.post("/api/v1/auth/register", json=payload)
 
-        # THEN - the response carries no profile at all, only the fixed acknowledgement
+        # THEN: the response carries no profile at all, only the fixed acknowledgement
         assert response.status_code == 202
         assert list(response.json()) == ["detail"]
 
-        # AND - the account exists, unverified
+        # AND: the account exists, unverified
         accounts = stored_accounts(client, "test@example.com")
         assert len(accounts) == 1
         assert accounts[0]["first_name"] == "John"
@@ -69,31 +69,31 @@ class TestRegister:
         This replaces the old 409: telling the caller the address is taken is exactly
         the account-existence disclosure the deferred-activation flow removes.
         """
-        # GIVEN - first registration
+        # GIVEN: first registration
         first = register(client, "duplicate@example.com", first_name="First")
 
-        # WHEN - second registration with same email
+        # WHEN: second registration with same email
         second = register(client, "duplicate@example.com", first_name="Second")
 
-        # THEN - same status, same body
+        # THEN: same status, same body
         assert first.status_code == second.status_code == 202
         assert first.json() == second.json()
 
-        # AND - no second account was created
+        # AND: no second account was created
         assert len(stored_accounts(client, "duplicate@example.com")) == 1
 
     def test_register_matches_a_taken_address_case_insensitively(self, client):
         """A mixed-case repeat lands on the existing account rather than a new one."""
-        # GIVEN - first registration with mixed case email
+        # GIVEN: first registration with mixed case email
         register(client, "Test@Example.COM", first_name="First")
 
-        # WHEN - second registration with lowercase email
+        # WHEN: second registration with lowercase email
         response = register(client, "test@example.com", first_name="Second")
 
         # THEN
         assert response.status_code == 202
 
-        # AND - still one account, and the repeat left the stored row alone: an
+        # AND: still one account, and the repeat left the stored row alone: an
         # unactivated submission takes effect only when its own link is followed
         accounts = stored_accounts(client, "test@example.com")
         assert len(accounts) == 1
@@ -205,10 +205,10 @@ class TestLogin:
 
     def test_login_returns_token(self, client):
         """Login with valid credentials returns JWT token."""
-        # GIVEN - an activated user
+        # GIVEN: an activated user
         register_verified(client, "login@example.com", password=PASSWORD)
 
-        # WHEN - login with OAuth2 form data
+        # WHEN: login with OAuth2 form data
         response = client.post(
             "/api/v1/auth/login",
             data={"username": "login@example.com", "password": PASSWORD},
@@ -248,10 +248,10 @@ class TestLogin:
 
     def test_login_with_different_case_email_works(self, client):
         """Login works with email in different case than registered."""
-        # GIVEN - register with mixed case
+        # GIVEN: register with mixed case
         register_verified(client, "CaseTest@Example.COM", password=PASSWORD)
 
-        # WHEN - login with lowercase
+        # WHEN: login with lowercase
         response = client.post(
             "/api/v1/auth/login",
             data={"username": "casetest@example.com", "password": PASSWORD},
@@ -267,7 +267,7 @@ class TestMe:
 
     def test_me_returns_profile(self, client):
         """Authenticated request returns user profile."""
-        # GIVEN - register and login
+        # GIVEN: register and login
         register_verified(client, "me@example.com", password=PASSWORD, first_name="Me")
         login_response = client.post(
             "/api/v1/auth/login",
@@ -309,7 +309,7 @@ class TestMe:
 
     def test_me_with_deleted_user_fails(self, client):
         """Request with valid token but deleted user returns 401."""
-        # GIVEN - register, login, then delete user
+        # GIVEN: register, login, then delete user
         register_verified(client, "deleted@example.com", password=PASSWORD)
         login_response = client.post(
             "/api/v1/auth/login",
@@ -325,7 +325,7 @@ class TestMe:
         session.delete(user)
         session.commit()
 
-        # WHEN - try to use token for deleted user
+        # WHEN: try to use token for deleted user
         response = client.get(
             "/api/v1/auth/me",
             headers={"Authorization": f"Bearer {token}"},
@@ -560,7 +560,7 @@ class TestProfileUpdate:
             headers=headers,
         )
 
-        # THEN - empty string converted to None means "no update"
+        # THEN: empty string converted to None means "no update"
         assert response.status_code == 200
         assert response.json()["last_name"] == "User"  # unchanged
 
@@ -576,7 +576,7 @@ class TestProfileUpdate:
             headers=headers,
         )
 
-        # THEN - empty string converted to None means "no update"
+        # THEN: empty string converted to None means "no update"
         assert response.status_code == 200
         assert response.json()["first_name"] == "Profile"  # unchanged
 
@@ -680,7 +680,7 @@ class TestRefreshToken:
 
     def test_refresh_returns_new_access_token(self, client):
         """Refresh with valid refresh token returns new access token."""
-        # GIVEN - register and login
+        # GIVEN: register and login
         register_verified(client, "refresh@example.com", password=PASSWORD)
         login_response = client.post(
             "/api/v1/auth/login",
@@ -703,7 +703,7 @@ class TestRefreshToken:
 
     def test_refresh_rotates_and_reuse_revokes_the_family(self, client):
         """Refresh rotates the pair; reusing the old token revokes the whole family."""
-        # GIVEN - register and login
+        # GIVEN: register and login
         register_verified(client, "rotate@example.com", password=PASSWORD)
         login = client.post(
             "/api/v1/auth/login",
@@ -711,17 +711,17 @@ class TestRefreshToken:
         )
         old_refresh = login.json()["refresh_token"]
 
-        # WHEN - first refresh returns a fresh pair
+        # WHEN: first refresh returns a fresh pair
         first = client.post("/api/v1/auth/refresh", json={"refresh_token": old_refresh})
         assert first.status_code == 200
         new_refresh = first.json()["refresh_token"]
         assert new_refresh and new_refresh != old_refresh
 
-        # THEN - reusing the old refresh token is rejected and revokes the whole family
+        # THEN: reusing the old refresh token is rejected and revokes the whole family
         reused = client.post("/api/v1/auth/refresh", json={"refresh_token": old_refresh})
         assert reused.status_code == 401
 
-        # AND - reuse detection revoked the session, so the rotated token also stops working
+        # AND: reuse detection revoked the session, so the rotated token also stops working
         again = client.post("/api/v1/auth/refresh", json={"refresh_token": new_refresh})
         assert again.status_code == 401
 
@@ -738,7 +738,7 @@ class TestRefreshToken:
 
     def test_refresh_with_access_token_fails(self, client):
         """Refresh with access token (wrong type) returns 401."""
-        # GIVEN - register and login
+        # GIVEN: register and login
         register_verified(client, "wrongtype@example.com", password=PASSWORD)
         login_response = client.post(
             "/api/v1/auth/login",
@@ -746,7 +746,7 @@ class TestRefreshToken:
         )
         access_token = login_response.json()["access_token"]
 
-        # WHEN - try to use access token as refresh token
+        # WHEN: try to use access token as refresh token
         response = client.post(
             "/api/v1/auth/refresh",
             json={"refresh_token": access_token},
@@ -815,7 +815,7 @@ class TestLogout:
 
     def test_logout_revokes_token(self, client):
         """Logout revokes the current token."""
-        # GIVEN - register and login
+        # GIVEN: register and login
         register_verified(client, "logout@example.com", password=PASSWORD)
         login_response = client.post(
             "/api/v1/auth/login",
@@ -824,13 +824,13 @@ class TestLogout:
         access_token = login_response.json()["access_token"]
         headers = {"Authorization": f"Bearer {access_token}"}
 
-        # WHEN - logout
+        # WHEN: logout
         response = client.post("/api/v1/auth/logout", headers=headers)
 
         # THEN
         assert response.status_code == 204
 
-        # AND - token should no longer work
+        # AND: token should no longer work
         me_response = client.get("/api/v1/auth/me", headers=headers)
         assert me_response.status_code == 401
 
@@ -844,7 +844,7 @@ class TestLogout:
 
     def test_refresh_after_logout_fails(self, client):
         """Refresh token cannot be used after logout."""
-        # GIVEN - register and login
+        # GIVEN: register and login
         register_verified(client, "logoutrefresh@example.com", password=PASSWORD)
         login_response = client.post(
             "/api/v1/auth/login",
@@ -855,10 +855,10 @@ class TestLogout:
         refresh_token = tokens["refresh_token"]
         headers = {"Authorization": f"Bearer {access_token}"}
 
-        # WHEN - logout
+        # WHEN: logout
         client.post("/api/v1/auth/logout", headers=headers)
 
-        # THEN - refresh token should no longer work
+        # THEN: refresh token should no longer work
         refresh_response = client.post(
             "/api/v1/auth/refresh",
             json={"refresh_token": refresh_token},

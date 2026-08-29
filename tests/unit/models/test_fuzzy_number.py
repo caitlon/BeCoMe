@@ -71,7 +71,7 @@ class TestFuzzyTriangleNumberValidation:
         invalid_peak = 5.0
         invalid_upper = 15.0
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(ValueError) as exc_info:
             FuzzyTriangleNumber(
                 lower_bound=invalid_lower, peak=invalid_peak, upper_bound=invalid_upper
@@ -86,7 +86,7 @@ class TestFuzzyTriangleNumberValidation:
         invalid_peak = 15.0
         invalid_upper = 10.0
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(ValueError) as exc_info:
             FuzzyTriangleNumber(
                 lower_bound=invalid_lower, peak=invalid_peak, upper_bound=invalid_upper
@@ -101,7 +101,7 @@ class TestFuzzyTriangleNumberValidation:
         invalid_peak = 10.0
         invalid_upper = 5.0
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(ValueError) as exc_info:
             FuzzyTriangleNumber(
                 lower_bound=invalid_lower, peak=invalid_peak, upper_bound=invalid_upper
@@ -116,7 +116,7 @@ class TestFuzzyTriangleNumberValidation:
         invalid_peak = 10.0
         invalid_upper = 5.0
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(ValueError) as exc_info:
             FuzzyTriangleNumber(
                 lower_bound=invalid_lower, peak=invalid_peak, upper_bound=invalid_upper
@@ -211,7 +211,7 @@ class TestFuzzyTriangleNumberImmutability:
     )
     def test_frozen_attributes(self, standard_fuzzy, attribute_name):
         """Test that all attributes cannot be modified after creation."""
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises((AttributeError, TypeError)) as exc_info:
             setattr(standard_fuzzy, attribute_name, 20.0)
 
@@ -219,7 +219,7 @@ class TestFuzzyTriangleNumberImmutability:
 
     def test_delattr_raises_error(self, standard_fuzzy):
         """Test that deleting attributes is prevented."""
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(AttributeError) as exc_info:
             del standard_fuzzy.lower_bound
 
@@ -263,7 +263,7 @@ class TestFuzzyTriangleNumberEquality:
 
     def test_equality_with_non_fuzzy_number_returns_false(self, standard_fuzzy):
         """Test that comparison with non-FuzzyTriangleNumber returns False."""
-        # WHEN / THEN
+        # WHEN/THEN
         assert standard_fuzzy != (5.0, 10.0, 15.0)
         assert standard_fuzzy != [5.0, 10.0, 15.0]
         assert standard_fuzzy != "5.0, 10.0, 15.0"
@@ -290,7 +290,7 @@ class TestFuzzyTriangleNumberAverage:
 
     def test_average_empty_list_raises_error(self):
         """Test that averaging empty list raises ValueError."""
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(ValueError) as exc_info:
             FuzzyTriangleNumber.average([])
 
@@ -367,7 +367,7 @@ class TestFuzzyTriangleNumberEdgeCases:
         """NaN is rejected by model validation (comparison with NaN fails)."""
         import math
 
-        # WHEN / THEN - NaN comparison fails constraint check
+        # WHEN/THEN: NaN comparison fails constraint check
         with pytest.raises(ValueError) as exc_info:
             FuzzyTriangleNumber(lower_bound=5.0, peak=math.nan, upper_bound=15.0)
 
@@ -380,7 +380,7 @@ class TestFuzzyTriangleNumberEdgeCases:
         # WHEN
         fuzzy = FuzzyTriangleNumber(lower_bound=5.0, peak=10.0, upper_bound=math.inf)
 
-        # THEN - documents current behavior: infinity is allowed at model level
+        # THEN: documents current behavior: infinity is allowed at model level
         assert fuzzy.upper_bound == math.inf
         assert fuzzy.centroid == math.inf
 
@@ -408,7 +408,7 @@ class TestFuzzyTriangleNumberEdgeCases:
         # WHEN
         result = FuzzyTriangleNumber.average(numbers)
 
-        # THEN - mean of 0..99 is 49.5
+        # THEN: mean of 0..99 is 49.5
         assert result.lower_bound == pytest.approx(49.5, rel=1e-10)
         assert result.peak == pytest.approx(54.5, rel=1e-10)
         assert result.upper_bound == pytest.approx(59.5, rel=1e-10)

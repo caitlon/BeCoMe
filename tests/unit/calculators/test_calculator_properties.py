@@ -23,7 +23,7 @@ class TestCalculatorMedianStability:
     @settings(max_examples=50)
     def test_median_independent_of_input_order(self, calculator, opinions, data) -> None:
         """Median is the same regardless of how opinions are ordered."""
-        # GIVEN - a list of expert opinions and a random permutation
+        # GIVEN: a list of expert opinions and a random permutation
         shuffled = list(opinions)
         seed = data.draw(st.integers(min_value=0, max_value=2**31))
         random.Random(seed).shuffle(shuffled)
@@ -41,7 +41,7 @@ class TestCalculatorMedianStability:
     @settings(max_examples=50)
     def test_compromise_independent_of_input_order(self, calculator, opinions, data) -> None:
         """Full compromise result is the same regardless of input ordering."""
-        # GIVEN - a list of expert opinions and a random permutation
+        # GIVEN: a list of expert opinions and a random permutation
         shuffled = list(opinions)
         seed = data.draw(st.integers(min_value=0, max_value=2**31))
         random.Random(seed).shuffle(shuffled)
@@ -70,7 +70,7 @@ class TestCalculatorIdenticalExperts:
     @given(opinions=identical_expert_opinions(min_size=2, max_size=10))
     def test_identical_experts_zero_error(self, calculator, opinions) -> None:
         """Max error is zero when all experts agree."""
-        # GIVEN - a set of identical expert opinions
+        # GIVEN: a set of identical expert opinions
 
         # WHEN
         result = calculator.calculate_compromise(opinions)
@@ -81,13 +81,13 @@ class TestCalculatorIdenticalExperts:
     @given(opinions=identical_expert_opinions(min_size=2, max_size=10))
     def test_identical_experts_all_aggregations_equal(self, calculator, opinions) -> None:
         """Best compromise, mean, and median are all equal to the shared opinion."""
-        # GIVEN - a set of identical expert opinions
+        # GIVEN: a set of identical expert opinions
         shared = opinions[0].opinion
 
         # WHEN
         result = calculator.calculate_compromise(opinions)
 
-        # THEN — all aggregations should reproduce the shared fuzzy number
+        # THEN: all aggregations should reproduce the shared fuzzy number
         for aggregation in (result.best_compromise, result.arithmetic_mean, result.median):
             assert aggregation.lower_bound == pytest.approx(shared.lower_bound, rel=1e-9)
             assert aggregation.peak == pytest.approx(shared.peak, rel=1e-9)
@@ -101,7 +101,7 @@ class TestCalculatorMonotonicity:
     @settings(max_examples=50)
     def test_adding_higher_expert_shifts_mean_upward(self, calculator, opinions) -> None:
         """An extra expert above the current mean raises every component."""
-        # GIVEN - existing opinions and their arithmetic mean
+        # GIVEN: existing opinions and their arithmetic mean
         current_mean = calculator.calculate_arithmetic_mean(opinions)
 
         # Create a new expert strictly above the current mean
@@ -115,7 +115,7 @@ class TestCalculatorMonotonicity:
         # WHEN
         new_mean = calculator.calculate_arithmetic_mean(extended)
 
-        # THEN — each component of the new mean is strictly greater
+        # THEN: each component of the new mean is strictly greater
         assert new_mean.lower_bound > current_mean.lower_bound
         assert new_mean.peak > current_mean.peak
         assert new_mean.upper_bound > current_mean.upper_bound
@@ -128,7 +128,7 @@ class TestCalculatorConstraintPreservation:
     @settings(max_examples=50)
     def test_arithmetic_mean_preserves_constraint(self, calculator, opinions) -> None:
         """Arithmetic mean satisfies lower <= peak <= upper."""
-        # GIVEN - a list of expert opinions
+        # GIVEN: a list of expert opinions
 
         # WHEN
         result = calculator.calculate_arithmetic_mean(opinions)
@@ -140,7 +140,7 @@ class TestCalculatorConstraintPreservation:
     @settings(max_examples=50)
     def test_median_preserves_constraint(self, calculator, opinions) -> None:
         """Median satisfies lower <= peak <= upper."""
-        # GIVEN - a list of expert opinions
+        # GIVEN: a list of expert opinions
 
         # WHEN
         result = calculator.calculate_median(opinions)
@@ -152,7 +152,7 @@ class TestCalculatorConstraintPreservation:
     @settings(max_examples=50)
     def test_best_compromise_preserves_constraint(self, calculator, opinions) -> None:
         """Best compromise satisfies lower <= peak <= upper."""
-        # GIVEN - a list of expert opinions
+        # GIVEN: a list of expert opinions
 
         # WHEN
         result = calculator.calculate_compromise(opinions)
@@ -165,7 +165,7 @@ class TestCalculatorConstraintPreservation:
     @settings(max_examples=50)
     def test_max_error_non_negative(self, calculator, opinions) -> None:
         """Max error is always non-negative."""
-        # GIVEN - a list of expert opinions
+        # GIVEN: a list of expert opinions
 
         # WHEN
         result = calculator.calculate_compromise(opinions)

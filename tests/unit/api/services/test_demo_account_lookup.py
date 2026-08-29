@@ -92,7 +92,7 @@ class TestInvitationLookup:
         session.refresh(project)
         service = InvitationService(session)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(UserNotFoundForInvitationError):
             service.invite_by_email(
                 project_id=project.id,
@@ -146,7 +146,7 @@ class TestSelectAccountByEmailHelper:
 
     def test_demo_address_yields_nothing_and_real_address_is_found(self, session):
         """The exclusion sits in the statement, not in any one caller."""
-        # GIVEN / WHEN
+        # GIVEN/WHEN
         demo_result = session.exec(select_account_by_email(DEMO_EMAIL)).first()
         real_result = session.exec(select_account_by_email(REAL_EMAIL)).first()
 
@@ -173,11 +173,11 @@ class TestRegistrationAgainstDemoAddress:
 
     def test_demo_account_cannot_be_registered(self, session):
         """A registration submission against a demo address changes nothing."""
-        # GIVEN - the demo account and pool as the fixture seeded them
+        # GIVEN: the demo account and pool as the fixture seeded them
         demo_before = session.exec(select(User).where(User.email == DEMO_EMAIL)).one()
         demo_count_before = len(session.exec(select(User).where(col(User.is_demo).is_(True))).all())
 
-        # WHEN - someone registers using that address
+        # WHEN: someone registers using that address
         result = RegistrationService(UserService(session)).register(
             email=DEMO_EMAIL,
             password="AttackerPass1!",
@@ -185,16 +185,16 @@ class TestRegistrationAgainstDemoAddress:
             last_name="Name",
         )
 
-        # THEN - there is no account to activate, the same answer a taken-and-verified
+        # THEN: there is no account to activate, the same answer a taken-and-verified
         # address gets
         assert result.user is None
         assert result.created is False
 
-        # AND - no account was created; the demo pool is exactly as large as before
+        # AND: no account was created; the demo pool is exactly as large as before
         demo_count_after = len(session.exec(select(User).where(col(User.is_demo).is_(True))).all())
         assert demo_count_after == demo_count_before
 
-        # AND - the demo account's own stored fields were never touched
+        # AND: the demo account's own stored fields were never touched
         demo_after = session.get(User, demo_before.id)
         assert demo_after.hashed_password == demo_before.hashed_password
         assert demo_after.first_name == demo_before.first_name

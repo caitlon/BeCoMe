@@ -32,7 +32,7 @@ class TestDataExport:
 
     def test_export_includes_owned_project_and_opinion(self, client):
         """Owned projects and submitted opinions appear in the export."""
-        # GIVEN - a user who owns a project and submitted an opinion
+        # GIVEN: a user who owns a project and submitted an opinion
         token = register_and_login(client, "owner@example.com")
         project = create_project(client, token, "My Project")
         project_id = project["id"]
@@ -53,7 +53,7 @@ class TestDataExport:
 
     def test_export_includes_membership(self, client):
         """A project the user joined as an expert shows up under memberships."""
-        # GIVEN - owner invites an expert who accepts
+        # GIVEN: owner invites an expert who accepts
         owner = register_and_login(client, "m-owner@example.com")
         expert = register_and_login(client, "m-expert@example.com")
         project = create_project(client, owner, "Shared Project")
@@ -69,7 +69,7 @@ class TestDataExport:
             headers=auth_header(expert),
         )
 
-        # WHEN - the expert exports their data
+        # WHEN: the expert exports their data
         data = client.get(_EXPORT_URL, headers=auth_header(expert)).json()
 
         # THEN

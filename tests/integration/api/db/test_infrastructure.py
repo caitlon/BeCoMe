@@ -356,5 +356,5 @@ class TestWarmUpConnectionPool:
         mock_get_settings.return_value.testing = False
         mock_get_engine.return_value.connect.side_effect = OSError("boom")
 
-        # WHEN / THEN: does not raise
+        # WHEN/THEN: does not raise
         warm_up_connection_pool()

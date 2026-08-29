@@ -43,7 +43,7 @@ class TestInsertDemoExperts:
         signup (see ``RegistrationService``), so a verified pool is a security
         property of this helper, not incidental shape.
         """
-        # GIVEN / WHEN
+        # GIVEN/WHEN
         insert_demo_experts(session)
 
         # THEN

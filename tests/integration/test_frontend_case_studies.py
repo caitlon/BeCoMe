@@ -463,7 +463,7 @@ class TestFrontendCaseStudyNumbers:
         best_compromise = round(result.best_compromise.centroid, 2)
         max_error = round(result.max_error, 2)
 
-        # WHEN / THEN: english prose, dot decimal separator
+        # WHEN/THEN: english prose, dot decimal separator
         en_interpretation = en_interpretations[case_id]
         expected_en_best_compromise = _format_en(best_compromise)
         expected_en_max_error = _format_en(max_error)
@@ -478,7 +478,7 @@ class TestFrontendCaseStudyNumbers:
             f"interpretation={en_interpretation!r}"
         )
 
-        # WHEN / THEN: czech prose, comma decimal separator
+        # WHEN/THEN: czech prose, comma decimal separator
         cs_interpretation = cs_interpretations[case_id]
         expected_cs_best_compromise = _format_cs(best_compromise)
         expected_cs_max_error = _format_cs(max_error)

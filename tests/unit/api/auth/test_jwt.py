@@ -76,7 +76,7 @@ class TestDecodeAccessToken:
         # GIVEN
         invalid_token = "invalid.token.string"
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(TokenError, match="Invalid or expired token"):
             decode_access_token(invalid_token, store)
 
@@ -85,7 +85,7 @@ class TestDecodeAccessToken:
         # GIVEN
         malformed_token = "not-a-jwt"
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(TokenError, match="Invalid or expired token"):
             decode_access_token(malformed_token, store)
 
@@ -98,7 +98,7 @@ class TestDecodeAccessToken:
         with mock_datetime_offset("api.auth.jwt.datetime", timedelta(hours=48)):
             token = create_access_token(user_id)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(TokenError, match="Invalid or expired token"):
             decode_access_token(token, store)
 
@@ -117,7 +117,7 @@ class TestDecodeAccessToken:
         }
         token = jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(TokenError, match="Invalid user ID in token"):
             decode_access_token(token, store)
 
@@ -137,7 +137,7 @@ class TestDecodeAccessToken:
         }
         token = jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(TokenError, match="Invalid token type"):
             decode_access_token(token, store)
 
@@ -155,7 +155,7 @@ class TestDecodeAccessToken:
         }
         token = jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(TokenError, match="Missing user ID in token"):
             decode_access_token(token, store)
 
@@ -175,7 +175,7 @@ class TestDecodeAccessToken:
         }
         token = jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(TokenError, match="Missing token ID"):
             decode_access_token(token, store)
 
@@ -195,7 +195,7 @@ class TestDecodeAccessToken:
         }
         token = jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM)
 
-        # WHEN / THEN - PyJWT raises InvalidTokenError for missing exp due to require=["exp"]
+        # WHEN/THEN: PyJWT raises InvalidTokenError for missing exp due to require=["exp"]
         with pytest.raises(TokenError, match="Invalid or expired token"):
             decode_access_token(token, store)
 
@@ -425,7 +425,7 @@ class TestDecodeRefreshToken:
         user_id = uuid4()
         access_token = create_access_token(user_id)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(TokenError, match="Invalid token type"):
             decode_refresh_token(access_token, store)
 
@@ -438,7 +438,7 @@ class TestDecodeRefreshToken:
         with mock_datetime_offset("api.auth.jwt.datetime", timedelta(days=30)):
             token, _ = create_refresh_token(user_id)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(TokenError, match="Invalid or expired token"):
             decode_refresh_token(token, store)
 

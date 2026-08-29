@@ -16,14 +16,14 @@ class TestInvitationAccept:
 
     def test_invite_expert_accepts_allows_project_access(self, http_client):
         """Invited expert accepts and becomes a project member."""
-        # GIVEN — owner creates project, expert is registered
+        # GIVEN: owner creates project, expert is registered
         owner_email = unique_email("owner")
         expert_email = unique_email("expert")
         owner_token = register_user(http_client, owner_email)
         expert_token = register_user(http_client, expert_email)
         project = create_project(http_client, owner_token)
 
-        # WHEN — owner sends invitation
+        # WHEN: owner sends invitation
         invite_resp = http_client.post(
             f"/projects/{project['id']}/invite",
             json={"email": expert_email},
@@ -42,7 +42,7 @@ class TestInvitationAccept:
         )
         assert accept_resp.status_code == 201
 
-        # THEN — expert can access the project
+        # THEN: expert can access the project
         project_resp = http_client.get(
             f"/projects/{project['id']}",
             headers=auth_headers(expert_token),
@@ -56,12 +56,12 @@ class TestInvitationErrors:
 
     def test_invitation_to_nonexistent_user_returns_404(self, http_client):
         """Inviting an email not in the system returns 404."""
-        # GIVEN — owner with a project
+        # GIVEN: owner with a project
         owner_email = unique_email("owner")
         owner_token = register_user(http_client, owner_email)
         project = create_project(http_client, owner_token)
 
-        # WHEN — invite a nonexistent email
+        # WHEN: invite a nonexistent email
         response = http_client.post(
             f"/projects/{project['id']}/invite",
             json={"email": unique_email("ghost")},
@@ -73,7 +73,7 @@ class TestInvitationErrors:
 
     def test_invitation_to_existing_member_returns_409(self, http_client):
         """Inviting someone who is already a member returns 409."""
-        # GIVEN — expert is already a project member
+        # GIVEN: expert is already a project member
         owner_email = unique_email("owner")
         expert_email = unique_email("expert")
         owner_token = register_user(http_client, owner_email)
@@ -93,7 +93,7 @@ class TestInvitationErrors:
             headers=auth_headers(expert_token),
         )
 
-        # WHEN — owner tries to invite the same expert again
+        # WHEN: owner tries to invite the same expert again
         response = http_client.post(
             f"/projects/{project['id']}/invite",
             json={"email": expert_email},
@@ -110,7 +110,7 @@ class TestInvitationDecline:
 
     def test_decline_invitation_denies_project_access(self, http_client):
         """Declining removes the invitation; expert stays outside the project."""
-        # GIVEN — pending invitation
+        # GIVEN: pending invitation
         owner_email = unique_email("owner")
         expert_email = unique_email("expert")
         owner_token = register_user(http_client, owner_email)
@@ -126,18 +126,18 @@ class TestInvitationDecline:
         assert invitations, "No pending invitations found"
         invitation_id = invitations[0]["id"]
 
-        # WHEN — expert declines
+        # WHEN: expert declines
         decline_resp = http_client.post(
             f"/invitations/{invitation_id}/decline",
             headers=auth_headers(expert_token),
         )
         assert decline_resp.status_code == 204
 
-        # THEN — no pending invitations left
+        # THEN: no pending invitations left
         remaining = http_client.get("/invitations", headers=auth_headers(expert_token)).json()
         assert len(remaining) == 0
 
-        # AND — expert cannot access the project
+        # AND: expert cannot access the project
         project_resp = http_client.get(
             f"/projects/{project['id']}",
             headers=auth_headers(expert_token),

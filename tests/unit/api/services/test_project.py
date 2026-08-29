@@ -150,7 +150,7 @@ class TestProjectServiceUpdateProject:
         service = ProjectService(mock_session)
         data = ProjectUpdate(name="Updated")
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(ProjectNotFoundError, match="not found"):
             service.update_project(uuid4(), data)
 
@@ -170,7 +170,7 @@ class TestProjectServiceUpdateProject:
         service = ProjectService(mock_session)
         data = ProjectUpdate(scale_min=150)  # Greater than scale_max
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(ScaleRangeError, match="scale_min"):
             service.update_project(project_id, data)
 
@@ -190,7 +190,7 @@ class TestProjectServiceUpdateProject:
         service = ProjectService(mock_session)
         data = ProjectUpdate(scale_max=0)  # Equal to scale_min
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(ScaleRangeError, match="scale_min"):
             service.update_project(project_id, data)
 
@@ -296,7 +296,7 @@ class TestProjectServiceDeleteProject:
         mock_session.get.return_value = None
         service = ProjectService(mock_session)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(ProjectNotFoundError, match="not found"):
             service.delete_project(uuid4())
 
@@ -411,7 +411,7 @@ class TestProjectServiceTransferOwnership:
         mock_session.exec.return_value.first.return_value = None
         service = ProjectService(mock_session)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(MemberNotFoundError):
             service.transfer_ownership(project, uuid4())
 
@@ -440,6 +440,6 @@ class TestProjectServiceTransferOwnership:
         )
         service = ProjectService(mock_session)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(MemberNotFoundError):
             service.transfer_ownership(project, new_admin_id)

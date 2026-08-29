@@ -38,7 +38,7 @@ class TestDatabaseSchema:
         inspector = inspect(test_engine)
         indexes = inspector.get_indexes("users")
 
-        # THEN - find unique index on email
+        # THEN: find unique index on email
         email_indexes = [idx for idx in indexes if "email" in idx["column_names"]]
         assert any(idx.get("unique") for idx in email_indexes)
 
@@ -101,6 +101,6 @@ class TestDatabaseSchema:
         inspector = inspect(test_engine)
         indexes = inspector.get_indexes("calculation_results")
 
-        # THEN - find unique index on project_id
+        # THEN: find unique index on project_id
         project_indexes = [idx for idx in indexes if "project_id" in idx["column_names"]]
         assert any(idx.get("unique") for idx in project_indexes)

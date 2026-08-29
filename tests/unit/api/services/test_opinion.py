@@ -216,7 +216,7 @@ class TestOpinionServiceDeleteOpinion:
         mock_session.exec.return_value.first.return_value = None
         service = OpinionService(mock_session)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(OpinionNotFoundError):
             service.delete_opinion(uuid4(), uuid4())
 
@@ -267,7 +267,7 @@ class TestOpinionServiceValidateValuesInRange:
         mock_session = MagicMock()
         service = OpinionService(mock_session)
 
-        # WHEN / THEN - no exception raised
+        # WHEN/THEN: no exception raised
         service.validate_values_in_range(project, 20.0, 50.0, 80.0)
 
     def test_raises_error_when_lower_bound_below_min(self):
@@ -283,7 +283,7 @@ class TestOpinionServiceValidateValuesInRange:
         mock_session = MagicMock()
         service = OpinionService(mock_session)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(ValuesOutOfRangeError, match="within project scale"):
             service.validate_values_in_range(project, -5.0, 50.0, 80.0)
 
@@ -300,7 +300,7 @@ class TestOpinionServiceValidateValuesInRange:
         mock_session = MagicMock()
         service = OpinionService(mock_session)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(ValuesOutOfRangeError, match="within project scale"):
             service.validate_values_in_range(project, 15.0, 5.0, 80.0)
 
@@ -317,7 +317,7 @@ class TestOpinionServiceValidateValuesInRange:
         mock_session = MagicMock()
         service = OpinionService(mock_session)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(ValuesOutOfRangeError, match="within project scale"):
             service.validate_values_in_range(project, 20.0, 50.0, 150.0)
 
@@ -334,5 +334,5 @@ class TestOpinionServiceValidateValuesInRange:
         mock_session = MagicMock()
         service = OpinionService(mock_session)
 
-        # WHEN / THEN - no exception raised for boundary values
+        # WHEN/THEN: no exception raised for boundary values
         service.validate_values_in_range(project, 0.0, 50.0, 100.0)

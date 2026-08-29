@@ -66,7 +66,7 @@ class TestCheckConstraints:
         user = _make_user(session)
         project = Project(name="Bad", admin_id=user.id, scale_min=100.0, scale_max=100.0)
 
-        # WHEN / THEN
+        # WHEN/THEN
         session.add(project)
         with pytest.raises(IntegrityError):
             session.commit()
@@ -89,7 +89,7 @@ class TestCheckConstraints:
             upper_bound=8.0,
         )
 
-        # WHEN / THEN
+        # WHEN/THEN
         session.add(opinion)
         with pytest.raises(IntegrityError):
             session.commit()
@@ -104,7 +104,7 @@ class TestCheckConstraints:
         user = _make_user(session)
         project = _make_project(session, user)
 
-        # WHEN / THEN
+        # WHEN/THEN
         session.add(_make_calc(project.id, num_experts=0))
         with pytest.raises(IntegrityError):
             session.commit()
@@ -119,7 +119,7 @@ class TestCheckConstraints:
         user = _make_user(session)
         project = _make_project(session, user)
 
-        # WHEN / THEN
+        # WHEN/THEN
         session.add(_make_calc(project.id, best_compromise_lower=5.0))
         with pytest.raises(IntegrityError):
             session.commit()
@@ -134,7 +134,7 @@ class TestCheckConstraints:
         user = _make_user(session)
         project = _make_project(session, user)
 
-        # WHEN / THEN
+        # WHEN/THEN
         session.add(_make_calc(project.id, arithmetic_mean_lower=5.0))
         with pytest.raises(IntegrityError):
             session.commit()
@@ -149,7 +149,7 @@ class TestCheckConstraints:
         user = _make_user(session)
         project = _make_project(session, user)
 
-        # WHEN / THEN
+        # WHEN/THEN
         session.add(_make_calc(project.id, median_lower=5.0))
         with pytest.raises(IntegrityError):
             session.commit()
@@ -165,7 +165,7 @@ class TestCheckConstraints:
         user = _make_user(session)
         project = _make_project(session, user)
 
-        # WHEN / THEN
+        # WHEN/THEN
         session.add(_make_calc(project.id, likert_value=value))
         with pytest.raises(IntegrityError):
             session.commit()

@@ -83,7 +83,7 @@ class TestSecurityHeadersMiddleware:
         # WHEN
         response = http_client.get("/test")
 
-        # THEN - HSTS should not be present for HTTP
+        # THEN: HSTS should not be present for HTTP
         assert "Strict-Transport-Security" not in response.headers
 
     def test_adds_hsts_for_https(self, https_client: TestClient):

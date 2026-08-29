@@ -16,7 +16,7 @@ class TestValidateFuzzyConstraints:
         WHEN validate_fuzzy_constraints is called
         THEN no error is raised
         """
-        # WHEN/THEN - no exception
+        # WHEN/THEN: no exception
         validate_fuzzy_constraints(5.0, 10.0, 15.0)
 
     def test_equal_values_pass(self):
@@ -25,7 +25,7 @@ class TestValidateFuzzyConstraints:
         WHEN validate_fuzzy_constraints is called
         THEN no error is raised
         """
-        # WHEN/THEN - no exception
+        # WHEN/THEN: no exception
         validate_fuzzy_constraints(10.0, 10.0, 10.0)
 
     def test_nan_value_raises_error(self):

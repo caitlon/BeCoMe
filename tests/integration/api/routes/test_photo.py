@@ -182,7 +182,7 @@ class TestPhotoUpload:
         client, _ = client_with_mock_storage
         token = register_and_login(client, "photo@example.com")
 
-        # WHEN - claim JPEG but send text
+        # WHEN: claim JPEG but send text
         response = client.post(
             "/api/v1/users/me/photo",
             headers=auth_header(token),
@@ -259,7 +259,7 @@ class TestPhotoUpload:
             files={"file": ("photo1.jpg", VALID_JPEG_BYTES, "image/jpeg")},
         )
 
-        # WHEN - upload a second photo
+        # WHEN: upload a second photo
         response = client.post(
             "/api/v1/users/me/photo",
             headers=auth_header(token),
@@ -374,7 +374,7 @@ class TestPhotoProxy:
         client, mock_storage = client_with_mock_storage
         user_id = self._user_with_photo(client, "proxy@example.com")
 
-        # WHEN - public endpoint, no auth header
+        # WHEN: public endpoint, no auth header
         response = client.get(f"/api/v1/users/{user_id}/photo")
 
         # THEN
@@ -516,7 +516,7 @@ class TestPhotoProxy:
 
     def test_returns_404_when_stored_object_missing(self, client_with_mock_storage):
         """The proxy returns 404 when the key is set but the object is gone from storage."""
-        # GIVEN - a user with a photo whose backing object has since disappeared
+        # GIVEN: a user with a photo whose backing object has since disappeared
         client, mock_storage = client_with_mock_storage
         user_id = self._user_with_photo(client, "gone@example.com")
         mock_storage.open.side_effect = None
@@ -534,7 +534,7 @@ class TestPhotoProxy:
         This endpoint is public (image tags cannot send auth headers), and the wrapped
         botocore message carries the bucket host and object key.
         """
-        # GIVEN - a user with a photo, and storage that fails on read
+        # GIVEN: a user with a photo, and storage that fails on read
         client, mock_storage = client_with_mock_storage
         user_id = self._user_with_photo(client, "fault@example.com")
         mock_storage.open.side_effect = StorageError(
