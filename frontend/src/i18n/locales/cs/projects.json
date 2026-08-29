@@ -60,7 +60,6 @@
     "error": "Chyba",
     "loadFailed": "Nepodařilo se načíst projekty",
     "loadProjectFailed": "Nepodařilo se načíst projekt",
-    "validationError": "Chyba validace",
     "invalidNumbers": "Zadejte prosím platná čísla",
     "lowerPeakUpper": "Hodnoty musí splňovat: dolní ≤ vrchol ≤ horní",
     "scaleRange": "Hodnoty musí být v rozsahu škály: {{min}}–{{max}}",
@@ -81,10 +80,8 @@
     "transferOwnershipFailed": "Předání vlastnictví se nezdařilo"
   },
   "detail": {
-    "backToProjects": "Zpět na projekty",
     "projects": "Projekty",
     "experts": "Experti",
-    "responses": "odpovědí",
     "scale": "Škála",
     "inviteExperts": "Pozvat experty",
     "inviteExpert": "Pozvat experta",

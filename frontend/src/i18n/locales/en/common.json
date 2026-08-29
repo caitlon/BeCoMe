@@ -50,9 +50,6 @@
   },
   "docs": {
     "title": "Documentation",
-    "comingSoon": "Documentation is coming soon.",
-    "checkGithub": "In the meantime, check out our",
-    "githubReadme": "GitHub README",
     "github": "GitHub"
   },
   "common": {
@@ -62,7 +59,6 @@
     "cancel": "Cancel",
     "save": "Save",
     "delete": "Delete",
-    "edit": "Edit",
     "create": "Create",
     "back": "Back",
     "next": "Next",
@@ -90,7 +86,6 @@
     "peakDesc": "Peak (most likely)",
     "upperDesc": "Upper (optimistic)",
     "arithmeticMean": "Arithmetic Mean (Γ)",
-    "medianOmega": "Median (Ω)",
     "maxError": "Max Error (Δmax)",
     "membershipFunction": "μ(x)",
     "mean": "Mean",
@@ -100,19 +95,16 @@
   },
   "a11y": {
     "skipToContent": "Skip to main content",
-    "menu": "Menu",
     "openMenu": "Open menu",
     "closeMenu": "Close menu",
     "mobileNavigation": "Mobile navigation",
     "loading": "Loading",
-    "navigatedTo": "Navigated to {{page}}",
     "triangleDesc": "Animated fuzzy triangle cycling through three expert opinion shapes",
     "resultsChartDesc": "Chart showing arithmetic mean, median, and best compromise triangles",
     "opinionPreviewDesc": "Preview of your fuzzy triangular number with values {{lower}}, {{peak}}, {{upper}}",
     "removeTeamMember": "Remove {{name}} from team",
     "expertOpinions": "Expert opinions table",
     "teamMembers": "Team members table",
-    "fuzzyEstimate": "Fuzzy number estimate",
     "mainNavigation": "Main navigation",
     "stepNavigation": "Step navigation",
     "noDataAvailable": "No data yet",
@@ -120,7 +112,6 @@
     "pendingInvitationRow": "{{name}}: invitation pending, not yet joined",
     "centroidChartDesc": "Bar chart showing expert opinion centroids sorted by value with reference lines for mean, median, and best compromise",
     "landscapeChartDesc": "Number line showing individual expert opinion centroids with mean, median, and best compromise markers",
-    "memberProfileDialog": "Profile of {{name}}",
     "opinionValues": "Opinion values: Lower {{lower}}, Peak {{peak}}, Upper {{upper}}, Centroid {{centroid}}",
     "opensInNewTab": "opens in new tab"
   },

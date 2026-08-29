@@ -50,9 +50,6 @@
   },
   "docs": {
     "title": "Dokumentace",
-    "comingSoon": "Dokumentace se připravuje.",
-    "checkGithub": "Mezitím se podívejte na náš",
-    "githubReadme": "GitHub README",
     "github": "GitHub"
   },
   "common": {
@@ -62,7 +59,6 @@
     "cancel": "Zrušit",
     "save": "Uložit",
     "delete": "Smazat",
-    "edit": "Upravit",
     "create": "Vytvořit",
     "back": "Zpět",
     "next": "Další",
@@ -90,7 +86,6 @@
     "peakDesc": "Vrchol (nejpravděpodobnější)",
     "upperDesc": "Horní (optimistický)",
     "arithmeticMean": "Aritmetický průměr (Γ)",
-    "medianOmega": "Medián (Ω)",
     "maxError": "Max. chyba (Δmax)",
     "membershipFunction": "μ(x)",
     "mean": "Průměr",
@@ -100,19 +95,16 @@
   },
   "a11y": {
     "skipToContent": "Přeskočit na hlavní obsah",
-    "menu": "Menu",
     "openMenu": "Otevřít menu",
     "closeMenu": "Zavřít menu",
     "mobileNavigation": "Mobilní navigace",
     "loading": "Načítání",
-    "navigatedTo": "Přechod na {{page}}",
     "triangleDesc": "Animovaný fuzzy trojúhelník cyklující mezi třemi tvary expertních názorů",
     "resultsChartDesc": "Graf zobrazující aritmetický průměr, medián a nejlepší kompromis",
     "opinionPreviewDesc": "Náhled fuzzy trojúhelníkového čísla s hodnotami {{lower}}, {{peak}}, {{upper}}",
     "removeTeamMember": "Odebrat {{name}} z týmu",
     "expertOpinions": "Tabulka expertních názorů",
     "teamMembers": "Tabulka členů týmu",
-    "fuzzyEstimate": "Odhad fuzzy čísla",
     "mainNavigation": "Hlavní navigace",
     "stepNavigation": "Navigace kroků",
     "noDataAvailable": "Zatím žádná data",
@@ -120,7 +112,6 @@
     "pendingInvitationRow": "{{name}} — pozvánka čeká, zatím se nepřidal/a",
     "centroidChartDesc": "Sloupcový graf centroidů expertních názorů s referenčními liniemi pro průměr, medián a nejlepší kompromis",
     "landscapeChartDesc": "Číselná osa zobrazující centroidy jednotlivých expertních názorů se značkami průměru, mediánu a nejlepšího kompromisu",
-    "memberProfileDialog": "Profil {{name}}",
     "opinionValues": "Hodnoty názoru: Dolní {{lower}}, Vrchol {{peak}}, Horní {{upper}}, Centroid {{centroid}}",
     "opensInNewTab": "otevře se v nové záložce"
   },

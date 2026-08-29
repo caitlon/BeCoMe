@@ -60,7 +60,6 @@
     "error": "Error",
     "loadFailed": "Failed to load projects",
     "loadProjectFailed": "Failed to load project",
-    "validationError": "Validation Error",
     "invalidNumbers": "Please enter valid numbers",
     "lowerPeakUpper": "Values must satisfy: lower ≤ peak ≤ upper",
     "scaleRange": "Values must be within scale range: {{min}}-{{max}}",
@@ -81,10 +80,8 @@
     "transferOwnershipFailed": "Failed to transfer ownership"
   },
   "detail": {
-    "backToProjects": "Back to Projects",
     "projects": "Projects",
     "experts": "Experts",
-    "responses": "responses",
     "scale": "Scale",
     "inviteExperts": "Invite Experts",
     "inviteExpert": "Invite Expert",
