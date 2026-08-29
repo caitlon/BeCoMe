@@ -151,7 +151,7 @@ export const caseStudies: CaseStudy[] = [
     scaleMin: 0,
     scaleMax: 100,
     scaleUnit: "%",
-    context: "The Czech Republic experiences periodic flooding that causes significant damage to property and agriculture. Converting arable land to polders (water retention areas) can reduce flood risk but affects farmers' livelihoods and food production capacity. Finding the right balance is crucial.",
+    context: "The Czech Republic experiences periodic flooding that causes significant damage to property and agriculture. Converting arable land to polders (water retention areas) can reduce flood risk but affects farmers' livelihoods and food production capacity. Finding the right balance is the key question.",
     methodology: "Each expert provided their opinion as a fuzzy triangular number representing the recommended percentage of land conversion. The diverse panel included hydrologists, municipal representatives, land owners, and other stakeholders to ensure comprehensive perspective.",
     opinions: [
       { role: "Hydrologist 1", bestProposal: 42, lowerLimit: 37, upperLimit: 47 },
