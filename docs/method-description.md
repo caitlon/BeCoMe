@@ -12,13 +12,13 @@
 
 ## Overview
 
-**BeCoMe** (Best Compromise Mean) is a method for aggregating expert opinions expressed as fuzzy triangular numbers. The method was developed by I. Vrana, J. Tyrychtr, and M. Pelikan at the Czech University of Life Sciences Prague.
+**BeCoMe** (Best Compromise Mean) is a method for aggregating expert opinions expressed as fuzzy triangular numbers. I. Vrana, J. Tyrychtr, and M. Pelikán developed it at the Czech University of Life Sciences Prague.
 
 BeCoMe combines two classical aggregation approaches:
 - **Arithmetic mean (Γ)** - represents the average opinion
 - **Statistical median (Ω)** - represents the central tendency, resistant to outliers
 
-The final result is the **best compromise (ΓΩMean)**: the average of these two measures, so an outlier still moves the result, but by half of what it moves the mean alone.
+The final result is the **best compromise (ΓΩMean)**, the average of these two measures. An outlier still moves the result, but by half of what it moves the mean alone.
 
 ---
 
@@ -107,7 +107,7 @@ Eₘ = (Aₘ, Cₘ, Bₘ)
 
 ### Step 1: calculate the arithmetic mean (Γ)
 
-The arithmetic mean **Γ(α, γ, β)** is calculated by averaging each component separately.
+Averaging each component separately gives the arithmetic mean **Γ(α, γ, β)**.
 
 **Formulas:**
 ```
@@ -140,7 +140,7 @@ Expert 3: E₃ = (8,  14, 22)
 
 ### Step 2: calculate the median (Ω)
 
-The median **Ω(ρ, ω, σ)** is found by sorting opinions by their centroids and taking the middle value, or the average of the two middle values when the count is even.
+To find the median **Ω(ρ, ω, σ)**, sort the opinions by centroid and take the middle value. An even count takes the average of the two middle values.
 
 #### Step 2.1: calculate centroids
 

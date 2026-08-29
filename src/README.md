@@ -57,7 +57,7 @@ models/
 exceptions.py
 ```
 
-Components depend only on the layers below them, so a lower layer can be tested without the
+Components depend only on the layers below them, so you can test a lower layer without the
 ones above it.
 
 ## Module descriptions

@@ -52,7 +52,7 @@ asserting several unrelated things at once. Unclear structure makes a failure ha
 
 ## Comments explain "why", not "what"
 
-Prefer self-documenting names over comments. When a comment is warranted, it explains a
+Prefer self-documenting names over comments. When a comment earns its place, it explains a
 non-obvious decision or trade-off, not a restatement of the code. Docstrings are the public
 contract of an object (see the `py-docstring-contracts` rule). Inline comments are notes for
 maintainers.
