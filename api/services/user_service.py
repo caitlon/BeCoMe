@@ -144,7 +144,7 @@ class UserService(BaseService):
         """Check a password against the stored hash without writing anything.
 
         Split out of :meth:`change_password` so a caller can place its own side effects
-        between the check and the write -- the password-change route revokes existing
+        between the check and the write. The password-change route revokes existing
         sessions in that gap, which must not happen when the check fails.
 
         :param user: User whose password to verify

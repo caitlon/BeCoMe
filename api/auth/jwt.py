@@ -17,8 +17,8 @@ ALGORITHM = "HS256"
 
 # Refusals that are ordinary traffic, not a signal: an access token expires every 15
 # minutes, so every active session hits this, and so does every stale browser tab.
-# Logged at DEBUG so the refusals that do mean something -- a revoked token, an
-# unreachable store -- stay visible in a stream filtered to WARNING.
+# Logged at DEBUG so the refusals that do mean something, a revoked token or an
+# unreachable store, stay visible in a stream filtered to WARNING.
 _ROUTINE_REJECTIONS = frozenset({"invalid_or_expired", "invalid_user_id"})
 
 
@@ -29,7 +29,7 @@ class TokenError(Exception):
 def _reject(reason: str, message: str, **fields: object) -> TokenError:
     """Log a refused token and build the error to raise.
 
-    The token string never reaches the record -- only why it was refused and the
+    The token string never reaches the record, only why it was refused and the
     opaque identifiers needed to correlate the refusal with the session it came from.
 
     :param reason: Machine-readable cause, e.g. ``jti_revoked``.
@@ -52,7 +52,7 @@ class TokenPair:
 
     access_token: str
     refresh_token: str
-    token_type: str = "bearer"  # noqa: S105 -- OAuth2 scheme name, not a credential
+    token_type: str = "bearer"  # noqa: S105, an OAuth2 scheme name, not a credential
     expires_in: int = 0  # Access token lifetime in seconds
     jti: str = ""  # Shared jti of this access/refresh pair
     sid: str = ""  # Session id shared across the whole rotation family
@@ -276,12 +276,12 @@ def session_id_from_access_token(token: str) -> str | None:
 
     Written for the CSRF middleware, which runs before routing and only needs to know
     *which session* a request would authenticate as, so it can derive that session's
-    expected token. The signature is still verified -- otherwise a caller could name any
-    session -- but expiry, revocation, and the per-user cutoff are not, because those are
-    the authentication layer's job and checking them here would put three Redis round
+    expected token. The signature is still verified, since otherwise a caller could name
+    any session, but expiry, revocation, and the per-user cutoff are not, because those
+    are the authentication layer's job and checking them here would put three Redis round
     trips in front of every mutating request. A token that fails any of them is refused a
-    few milliseconds later by :func:`decode_token`; letting it reach that refusal with the
-    CSRF check already applied is strictly the stricter order.
+    few milliseconds later by :func:`decode_token`, and letting it reach that refusal with
+    the CSRF check already applied is strictly the stricter order.
 
     :param token: Raw access token from the session cookie.
     :return: The session id, or None when the token is unreadable, is not an access

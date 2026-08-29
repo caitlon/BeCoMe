@@ -16,13 +16,13 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 logger = logging.getLogger("api.request")
 
 # Default cap for buffered request bodies (2 MiB). Comfortably fits the largest
-# legitimate JSON payload -- a 1000-expert /calculate request -- while stopping the
+# legitimate JSON payload, a 1000-expert /calculate request, while stopping the
 # multi-hundred-MB bodies that would otherwise exhaust worker memory. Multipart
 # uploads are exempt: the upload route enforces its own streaming size limit.
 DEFAULT_MAX_BODY_BYTES = 2 * 1024 * 1024
 
 
-class RequestBodyTooLarge(Exception):  # noqa: N818 -- domain event, not an *Error
+class RequestBodyTooLarge(Exception):  # noqa: N818, a domain event, not an *Error
     """Raised when a streamed request body passes the configured byte limit."""
 
 
@@ -47,8 +47,8 @@ class BodySizeLimitMiddleware:
         if declared is not None and declared > self._max_body_bytes:
             # This record carries no request_id: the middleware is added last and so
             # runs first, before RequestLoggingMiddleware binds the correlation id.
-            # That ordering is the whole point -- the body is refused before anything
-            # buffers it -- so the missing id is a consequence, not an oversight.
+            # That ordering is the whole point, since the body is refused before
+            # anything buffers it, so the missing id is a consequence, not an oversight.
             logger.warning(
                 "Request body rejected",
                 extra={

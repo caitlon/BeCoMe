@@ -174,8 +174,8 @@ def get_email_address_policy() -> EmailAddressPolicy:
 
     Cached as a process singleton: the settings that drive it are fixed for the
     process, so the same policy (and its single ``dns.asyncresolver.Resolver``) is
-    reused across requests instead of being rebuilt -- and re-risking a
-    construction-time ``NoResolverConfiguration`` -- on every registration.
+    reused across requests instead of being rebuilt on every registration, which
+    would re-risk a construction-time ``NoResolverConfiguration``.
 
     :return: An EmailAddressPolicy with both kill switches read from settings.
     """

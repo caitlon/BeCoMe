@@ -30,9 +30,9 @@ def _unusable_password_hash() -> str:
     Hashed with bcrypt directly instead of calling ``api.auth.password.hash_password``,
     for the same reason ``_DEMO_EXPERTS`` below is a frozen tuple instead of an import
     of ``EXAMPLE_EXPERTS``: a migration is a record of what it did the day it ran, and a
-    later change to that helper -- a new required parameter, a moved module, a swapped
-    library -- must not break ``alembic upgrade head`` on a database bootstrapped from
-    scratch afterwards. The SHA-256-then-bcrypt shape mirrors ``hash_password`` closely
+    later change to that helper must not break ``alembic upgrade head`` on a database
+    bootstrapped from scratch afterwards, whether that is a new required parameter, a
+    moved module, or a swapped library. The SHA-256-then-bcrypt shape mirrors ``hash_password`` closely
     enough that ``api.auth.password.verify_password`` can still evaluate the result
     (bcrypt only reads its first 72 bytes, so a SHA-256 digest is hashed instead of the
     raw plaintext, exactly as ``_prepare_password`` does there). The plaintext is random
@@ -48,8 +48,8 @@ def _unusable_password_hash() -> str:
 # Frozen copy of api.data.example_project.EXAMPLE_EXPERTS (id, email, first name, last
 # name) as it stood when this migration was written. A migration is a record of what
 # it did the day it ran, not a window onto the application's current state: importing
-# EXAMPLE_EXPERTS here would let a later change to the live roster -- a 14th expert, a
-# renamed one -- retroactively change what this already-applied migration is defined
+# EXAMPLE_EXPERTS here would let a later change to the live roster, a 14th expert or a
+# renamed one, retroactively change what this already-applied migration is defined
 # to have inserted, so a database migrated today would silently diverge from one
 # migrated after that change even though both ran the exact same migration file. A
 # roster change belongs in a migration of its own. Do not replace this with
@@ -122,7 +122,7 @@ def upgrade() -> None:
     verified: an account with a NULL ``email_verified_at`` is what registration treats
     as an unfinished signup, and it would hand anyone who registers that address an
     activation link to a service account that sits in every user's example project.
-    One bcrypt hash of 64 random bytes is shared by all of them -- the plaintext is
+    One bcrypt hash of 64 random bytes is shared by all of them. The plaintext is
     never held anywhere, so no password can ever match.
     """
     op.add_column(
@@ -176,21 +176,21 @@ def downgrade() -> None:
     project is deleted here only once no real person has touched it at all: joined it,
     contributed an opinion to it, or been invited and not yet answered. Membership alone
     is not enough to decide that: a solo admin who opened the example, added their own
-    opinion, and invited nobody -- exactly what the feature invites someone to do first
-    -- has invited no other member, and a check that stopped at membership would still
-    delete that opinion out from under them. Likewise, an invitation that has not yet
+    opinion, and invited nobody has invited no other member, which is exactly what the
+    feature invites someone to do first, and a check that stopped at membership would
+    still delete that opinion out from under them. Likewise, an invitation that has not yet
     been accepted or declined leaves neither a membership nor an opinion behind, so it
-    needs its own check -- without it, the real colleague being invited is the one
+    needs its own check. Without it, the real colleague being invited is the one
     real action this downgrade would silently discard. An example project a real
-    person touched any of these three ways is left in place -- once ``is_example`` is
+    person touched any of these three ways is left in place. Once ``is_example`` is
     dropped below, it becomes an ordinary project, which is the honest outcome, since
     by then it *is* real work.
 
     Deleting the demo accounts still cascades their own memberships and opinions out
     of every project, spared or not, so a surviving project loses its demo content but
     keeps every real member's own contribution. A surviving project that loses every
-    one of its opinions this way -- spared only by a membership or an invitation, never
-    by an opinion of its own -- is left with a stored result describing experts who no
+    one of its opinions this way, spared only by a membership or an invitation and never
+    by an opinion of its own, is left with a stored result describing experts who no
     longer have one, so any such result is discarded too: recomputing it is the
     application's job, not this migration's, and the read path already treats a
     missing result as a normal state.

@@ -123,8 +123,8 @@ class VerificationPasswordMismatchError(BeCoMeAPIError):
 
     Answered distinguishably rather than folded into the opaque 400 above. Whoever
     reaches this point already holds a live link, so admitting that the link itself is
-    fine tells them nothing new -- while telling a user who simply mistyped that their
-    link is broken would send them round the loop asking for another one.
+    fine tells them nothing new. Telling a user who simply mistyped that their link is
+    broken would send them round the loop asking for another one.
     """
 
 

@@ -9,7 +9,7 @@ readable ``csrf_token`` cookie carries the CSRF token: the SPA echoes it in the
 programmatic clients and the test suite can keep using the ``Authorization: Bearer``
 header.
 
-The token is derived from the session rather than drawn at random -- see
+The token is derived from the session rather than drawn at random. See
 :func:`csrf_token_for` for why the cookie is a delivery channel and not the thing the
 check trusts.
 """
@@ -31,14 +31,14 @@ logger = logging.getLogger("api.security")
 
 # Cookie-name prefixes the browser itself enforces, which is what makes them worth the
 # renaming. ``__Host-`` binds a cookie to exactly this host and path: it is only accepted
-# with ``Secure``, ``Path=/`` and **no** ``Domain``, and -- the part that matters here --
-# a page on a sibling ``becomify.app`` subdomain cannot overwrite it, because writing one
-# requires being the host itself. Without that, such a page can plant a session cookie of
+# with ``Secure``, ``Path=/`` and **no** ``Domain``. The part that matters here: a page on
+# a sibling ``becomify.app`` subdomain cannot overwrite it, because writing one requires
+# being the host itself. Without that, such a page can plant a session cookie of
 # its own and log the victim into the attacker's account (session fixation).
 #
 # The refresh cookie takes ``__Secure-`` instead: it is scoped to the auth routes, and
 # ``__Host-`` would force ``Path=/`` and hand it to every request on the site. That buys
-# less -- ``__Secure-`` only pins the Secure flag, not the host -- but keeping the narrow
+# less, since ``__Secure-`` only pins the Secure flag, not the host. Keeping the narrow
 # path is worth more than closing a shadowing route that the access cookie already denies.
 ACCESS_COOKIE = "__Host-access_token"
 REFRESH_COOKIE = "__Secure-refresh_token"
@@ -55,7 +55,7 @@ def csrf_token_for(sid: str) -> str:
 
     The token is an HMAC of the session id under the application secret, not a random
     value stored alongside it. That is what makes the check survive an attacker who can
-    write cookies for the API host -- one sitting on any ``becomify.app`` subdomain, say,
+    write cookies for the API host, one sitting on any ``becomify.app`` subdomain, say,
     since ``SameSite`` treats the whole registrable domain as one site and a cookie set
     with ``Domain=becomify.app`` shadows ours.
 
@@ -82,8 +82,8 @@ def expected_csrf_token(request: Request) -> str | None:
 
     :param request: Incoming request, read for the session cookie.
     :return: The derived token, or None when the request carries no session cookie, the
-        cookie is unreadable, or it predates sessions -- in which case there is no
-        session to bind a token to and the check does not apply.
+        cookie is unreadable, or it predates sessions. In that case there is no
+        session to bind a token to, and the check does not apply.
     """
     token = request.cookies.get(ACCESS_COOKIE)
     if token is None:
@@ -108,7 +108,7 @@ def set_auth_cookies(
     ``Secure`` is unconditional. It used to follow the request scheme so cookies kept
     working over plain HTTP locally, but the name prefixes make that impossible: a
     ``__Host-`` cookie without ``Secure`` is not a weaker cookie, it is a cookie the
-    browser discards outright. Nothing is lost by it -- browsers treat ``localhost`` as a
+    browser discards outright. Nothing is lost by it: browsers treat ``localhost`` as a
     secure context and store Secure cookies there, and the one engine that does not
     (WebKit) is why the e2e stack now serves HTTPS.
 
@@ -163,21 +163,21 @@ def set_csrf_header(response: Response, csrf_token: str | None) -> None:
     host alone. In every deployed environment the SPA is served from a different host and
     ``document.cookie`` shows it nothing, which leaves it unable to fill in the
     ``X-CSRF-Token`` request header the check demands. The header is the copy it can
-    reach; ``CORSMiddleware`` must name it in ``expose_headers`` for the browser to hand
-    it over.
+    reach, and ``CORSMiddleware`` must name it in ``expose_headers`` for the browser to
+    hand it over.
 
     This gives away nothing. The value is meant to be readable by the client that owns the
-    session -- that is what lets the SPA send it back in the header -- and CORS answers
-    against an explicit origin allow-list, so a hostile origin can no more read the header
-    than the cookie. Setting ``Domain=becomify.app`` on the cookie instead would look
+    session, which is what lets the SPA send it back in the header. CORS answers against
+    an explicit origin allow-list, so a hostile origin can no more read the header than the
+    cookie. Setting ``Domain=becomify.app`` on the cookie instead would look
     simpler and break the deploys: dev, staging, and production all live under that parent
     and would overwrite each other's token.
 
     Every value passed here is derived by :func:`csrf_token_for`, so it is a hex digest and
     nothing else. That matters for what this function no longer has to do: it used to echo
     the caller's own ``csrf_token`` cookie back on ``/auth/me``, and Starlette unescapes
-    cookies the RFC 2109 way, so ``csrf_token="\\012X-Injected: 1"`` -- every character of
-    it legal in a ``Cookie`` header -- parsed into a value carrying a real newline that
+    cookies the RFC 2109 way, so ``csrf_token="\\012X-Injected: 1"``, every character of it
+    legal in a ``Cookie`` header, parsed into a value carrying a real newline that
     uvicorn's writer would have concatenated into the response unchecked. Deriving the
     token server-side removes that path entirely rather than filtering it.
 
@@ -196,8 +196,8 @@ def clear_auth_cookies(response: Response) -> None:
     place where the attributes stop being cosmetic. A deletion is just a ``Set-Cookie``
     with an expired age, so it has to satisfy the prefix rules like any other: a
     ``__Host-`` cookie sent without ``Secure`` (Starlette's default here is ``False``) is
-    rejected by the browser outright, and the cookie it was meant to remove stays --
-    logout would report success while leaving the session cookie in place.
+    rejected by the browser outright, and the cookie it was meant to remove stays. Logout
+    would report success while leaving the session cookie in place.
 
     :param response: The response to clear cookies on.
     """

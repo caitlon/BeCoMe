@@ -68,9 +68,9 @@ def _log_send_result(
     the keyed address tag, the provider's status, and the timing are logged.
 
     A failure is WARNING here, not ERROR, and that is deliberate. ``api/routes/auth.py``
-    already logs the swallowed :class:`EmailSendError` at ERROR precisely so Sentry --
-    initialised without a LoggingIntegration, so its default ``event_level`` of ERROR
-    decides -- raises one issue per outage. A second ERROR would double every issue.
+    already logs the swallowed :class:`EmailSendError` at ERROR precisely so Sentry
+    raises one issue per outage. Sentry is initialised without a LoggingIntegration, so
+    its default ``event_level`` of ERROR decides. A second ERROR would double every issue.
 
     :param kind: Which email it was.
     :param email_hash: Keyed tag for the recipient.

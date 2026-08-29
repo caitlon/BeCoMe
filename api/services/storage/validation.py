@@ -25,7 +25,7 @@ MAX_FILE_SIZE_BYTES: Final = 5 * 1024 * 1024  # 5 MB
 
 # Pixel budget for an avatar. The byte cap above does not bound this: image formats
 # compress uniform areas so well that a few hundred KB can describe tens of gigapixels,
-# which is a decompression bomb -- the memory is spent the moment anything decodes it.
+# which is a decompression bomb, and the memory is spent the moment anything decodes it.
 # 4096x4096 is far more than an avatar ever needs while accepting real camera photos.
 MAX_IMAGE_PIXELS: Final = 4096 * 4096
 MAX_IMAGE_DIMENSION: Final = 8192
@@ -52,7 +52,7 @@ def extension_for(content_type: str) -> str:
 def validate_image_dimensions(content: bytes) -> bool:
     """Check that an image's pixel dimensions stay within the avatar budget.
 
-    Only the header is parsed -- ``Image.open`` is lazy, so the pixel data is never
+    Only the header is parsed. ``Image.open`` is lazy, so the pixel data is never
     decoded and a bomb costs nothing to reject. This is the check the byte cap cannot
     do: a highly compressible image well under 5 MB can declare a canvas of tens of
     gigapixels, and whatever decodes it later pays that in memory.

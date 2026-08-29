@@ -119,10 +119,10 @@ class PasswordResetService(BaseService):
 
         A completed reset also confirms the address. Receiving the link proves control
         of the inbox exactly as an activation link does, so demanding a second proof
-        would be ceremony -- and it is what makes reclaiming an account somebody else
+        would be ceremony, and it is what makes reclaiming an account somebody else
         pre-registered a single step. It also retires every outstanding activation
-        token in one move, since redemption is refused once the address is verified;
-        leaving them live would let a link minted before the reset put the password and
+        token in one move, since redemption is refused once the address is verified.
+        Leaving them live would let a link minted before the reset put the password and
         names back afterwards.
 
         Which makes an activation the one operation this can collide with, so the write
@@ -160,14 +160,14 @@ class PasswordResetService(BaseService):
         :meth:`api.services.email_verification_service.EmailVerificationService.activate`
         uses. A reset and an activation both prove control of the same mailbox and both
         set ``email_verified_at``, so an activation can commit in the gap between the
-        row being loaded and this write -- bcrypt alone holds that gap open for a few
+        row being loaded and this write. bcrypt alone holds that gap open for a few
         hundred milliseconds. Writing by primary key would replace the password the
         activation had just chosen, after its caller was told the account was confirmed
         and could sign in, leaving them with credentials that no longer work.
 
         The extra predicate is added only when the row looked unverified. An account
         that was already confirmed when the token resolved has no activation in flight
-        against it -- redemption is refused once ``email_verified_at`` is set -- so
+        against it, since redemption is refused once ``email_verified_at`` is set, so
         there is no race to lose and the plain write by id is correct.
 
         :param user: The account the reset token belongs to.
@@ -186,7 +186,7 @@ class PasswordResetService(BaseService):
             # reset must leave them alone. Reporting success would be worse than the
             # refusal: the caller would be told a password was set that they then
             # cannot sign in with. The token is deliberately left unspent, so following
-            # the same link again works -- the account is verified by now, which puts
+            # the same link again works. The account is verified by now, which puts
             # the retry on the uncontested branch above.
             raise InvalidResetTokenError(_INVALID_MESSAGE)
 

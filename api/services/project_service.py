@@ -146,7 +146,7 @@ class ProjectService(BaseService):
         """Transfer project ownership to another member.
 
         Keeps both ownership sources in sync atomically: ``Project.admin_id`` and
-        the ``ProjectMember`` role rows -- the new owner becomes admin and the
+        the ``ProjectMember`` role rows. The new owner becomes admin and the
         former owner is demoted to expert.
 
         :param project: Project to transfer (current admin already verified)

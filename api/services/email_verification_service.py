@@ -35,7 +35,7 @@ _TOKEN_BYTES = 32
 _INVALID_MESSAGE = "Invalid or expired verification link"
 
 # The password posted with the link is not the one the link carries. Kept separate from
-# the message above on purpose -- see VerificationPasswordMismatchError.
+# the message above on purpose. See VerificationPasswordMismatchError.
 _MISMATCH_MESSAGE = "Password does not match this activation link"
 
 
