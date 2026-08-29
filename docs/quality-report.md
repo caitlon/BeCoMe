@@ -1,4 +1,4 @@
-# Code Quality Report
+# Code quality report
 
 ## Summary
 
@@ -41,15 +41,15 @@ HTML report: `uv run pytest --cov=src --cov-report=html` generates `htmlcov/inde
 
 ## Test Breakdown
 
-Unit tests (1142) cover models, calculators, interpreters, utilities, and API components (auth, schemas, services, middleware, logging). Integration tests (497) validate core calculations against Excel reference data for all three case studies and test API routes with a real database. End-to-end tests (59) exercise full API workflows; they skip on a machine without a live PostgreSQL and run in CI. The frontend adds 1031 Vitest tests and 76 Playwright scenarios run on three browsers. Edge cases include single expert, identical opinions, empty lists, and boundary values.
+Unit tests (1142) cover models, calculators, interpreters, utilities, and API components (auth, schemas, services, middleware, logging). Integration tests (497) validate core calculations against Excel reference data for all three case studies and test API routes with a real database. End-to-end tests (59) exercise full API workflows. They skip on a machine without a live PostgreSQL and run in CI. The frontend adds 1031 Vitest tests and 76 Playwright scenarios run on three browsers. Edge cases include single expert, identical opinions, empty lists, and boundary values.
 
-Logging has its own two-part guard. `tests/unit/api/test_logging_events.py` asserts that each refusal, external call, and read emits the record it promises, at the level it promises -- several of those tests assert on what is *absent*, since a CSRF record must not carry the token it just compared and a throttle record must not carry the account it throttled. `tests/unit/api/test_logging_pii.py` walks the syntax tree of every module under `api/` and fails on an `extra={...}` field whose name denotes a credential or a raw identifier, so the rule in `docs/security.md` does not depend on a reviewer noticing it.
+Logging has its own two-part guard. `tests/unit/api/test_logging_events.py` asserts that each refusal, external call, and read emits the record it promises, at the level it promises. Several of those tests assert on what is *absent*, since a CSRF record must not carry the token it just compared and a throttle record must not carry the account it throttled. `tests/unit/api/test_logging_pii.py` walks the syntax tree of every module under `api/` and fails on an `extra={...}` field whose name denotes a credential or a raw identifier, so the rule in `docs/security.md` does not depend on a reviewer noticing it.
 
 ## Mutation Testing
 
 Run date: 2026-02-22 | Commit: ae7fd59
 
-Mutation testing measures test suite quality: mutmut introduces small code changes (mutants) — replacing `+` with `-`, `<=` with `<`, swapping constants — and checks whether existing tests detect each change. A "killed" mutant means the tests caught the defect; a "survived" mutant means they did not.
+Mutation testing measures test suite quality: mutmut introduces small code changes called mutants: it replaces `+` with `-`, `<=` with `<`, and swaps constants. Then it checks whether the existing tests detect each change. A "killed" mutant means the tests caught the defect. A "survived" mutant means they did not.
 
 | Metric | Value |
 |--------|-------|
@@ -75,9 +75,9 @@ Raw mutation score = killed / (killed + survived).
 | likert_interpreter.py | 41 | 34 | 7 | 83% |
 | become_result.py | 40 | 17 | 23 | 43% |
 
-Modules with core computational logic (`base_calculator`, `median_strategies`) have 100% kill rate — every arithmetic and sorting mutation is detected by the test suite.
+Modules with core computational logic (`base_calculator`, `median_strategies`) have 100% kill rate: every arithmetic and sorting mutation is detected by the test suite.
 
-### Surviving Mutants Analysis
+### Surviving mutants
 
 50 surviving mutants by category:
 
@@ -89,7 +89,7 @@ Modules with core computational logic (`base_calculator`, `median_strategies`) h
 | Likert decision map text values | 6 | `"Policy is recommended with minor adjustments"` | Yes |
 | Class metadata (`__slots__`, decorators) | 4 | `__slots__ = (...)`, `@staticmethod` | No |
 
-46 of 50 survivors are equivalent mutants: changes to string literals in error messages, OpenAPI descriptions, and `repr()` output that do not alter what the code computes. Writing tests to assert exact error message text would add maintenance cost without improving defect detection. The remaining 4 mutants modify class metadata (`__slots__` tuples, `@staticmethod` decorators) — structurally harmless but not strictly equivalent.
+46 of 50 survivors are equivalent mutants: changes to string literals in error messages, OpenAPI descriptions, and `repr()` output that do not alter what the code computes. Writing tests to assert exact error message text would add maintenance cost without improving defect detection. The remaining 4 mutants modify class metadata (`__slots__` tuples, `@staticmethod` decorators). Those are structurally harmless but not strictly equivalent.
 
 **Effective mutation score** (excluding 46 equivalent string mutants): 120 / (170 − 46) = **96.8%**.
 
@@ -110,7 +110,7 @@ Run date: 2026-02-22 | Commit: ae7fd59
 | /api/v1/calculate | 10 | 2.3 | 2 | 4 | 9 | 16.0 |
 | /api/v1/calculate | 100 | 2.8 | 2 | 5 | 8 | 9.9 |
 | /api/v1/calculate | 1000 | 7.4 | 7 | 12 | 28 | 2.9 |
-| /api/v1/health | — | 1.9 | 1 | 3 | 10 | 3.2 |
+| /api/v1/health | - | 1.9 | 1 | 3 | 10 | 3.2 |
 
 Environment: macOS (Apple Silicon), Python 3.13, PostgreSQL 16 (Docker), 10 concurrent users, 60s run.
 Tool: Locust 2.43.3. Total requests: 1863, failures: 0.
@@ -134,7 +134,7 @@ Run date: 2026-02-22 | Environment: Railway (Hobby), europe-west4, Cloudflare pr
 | /api/v1/health | 417 | 222 | 534 |
 | /api/v1/calculate (10 experts) | 437 | 210 | 504 |
 
-Measured from Prague (CZ) via Cloudflare edge (PRG) → Railway (europe-west4, NL). TTFB includes network latency (~20ms round-trip), Cloudflare proxy overhead, and TLS negotiation. Actual compute time remains ~2-3ms per request; the difference from local benchmarks is purely network overhead.
+Measured from Prague (CZ) via Cloudflare edge (PRG) → Railway (europe-west4, NL). TTFB includes network latency (~20ms round-trip), Cloudflare proxy overhead, and TLS negotiation. Actual compute time remains ~2-3ms per request. The difference from local benchmarks is purely network overhead.
 
 ## Configuration
 
