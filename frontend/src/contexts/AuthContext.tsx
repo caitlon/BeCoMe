@@ -86,7 +86,7 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
       await api.logout();
     } catch (err) {
       // A server that refuses the sign-out is no reason to leave the user holding a
-      // session they believe they closed -- on a shared machine that is the worse
+      // session they believe they closed. On a shared machine that is the worse
       // outcome of the two. Clear the local session below regardless, but keep the
       // failure and re-throw once it is clean: swallowing it entirely would make a
       // failed sign-out look identical to a real one, and the caller is what can

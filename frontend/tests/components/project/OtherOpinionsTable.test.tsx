@@ -59,7 +59,7 @@ describe('OtherOpinionsTable - Pending Members', () => {
 
     render(<OtherOpinionsTable opinions={opinions} members={members} currentUserId="user-1" />);
 
-    // Anna has no opinion and is not the current user — should see "Awaiting response"
+    // Anna has no opinion and is not the current user, so she shows "Awaiting response"
     expect(screen.getByText('Awaiting response')).toBeInTheDocument();
     // Verify Anna specifically appears as pending
     expect(screen.getByText('Anna Lee')).toBeInTheDocument();
@@ -71,10 +71,10 @@ describe('OtherOpinionsTable - Pending Members', () => {
       createMember({ user_id: 'user-2', first_name: 'Jane', last_name: 'Smith', role: 'expert' }),
     ];
 
-    // No opinions at all — user-1 (current user) should NOT appear as pending
+    // No opinions at all, so user-1 (current user) must NOT appear as pending
     render(<OtherOpinionsTable opinions={[]} members={members} currentUserId="user-1" />);
 
-    // Only Jane should be pending — current user (John) must be excluded.
+    // Only Jane should be pending, and the current user (John) must be excluded.
     expect(screen.getAllByText('Awaiting response')).toHaveLength(1);
     expect(screen.queryByText('John Doe')).not.toBeInTheDocument();
   });

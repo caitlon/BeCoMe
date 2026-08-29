@@ -158,7 +158,7 @@ describe('RouteAnnouncer', () => {
     act(() => { navigateFn('/?query=test'); });
     act(() => { vi.advanceTimersByTime(200); });
 
-    // Still shows old announcement — no new one triggered
+    // Still shows old announcement, since no new one triggered
     expect(screen.getByRole('status')).toHaveTextContent('Home — BeCoMe');
   });
 });

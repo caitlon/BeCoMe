@@ -71,7 +71,7 @@ describe('CaseStudyCard', () => {
   it('marks decorative icon as aria-hidden', () => {
     const { container } = render(<CaseStudyCard study={mockStudy} />);
 
-    // FileText icon is decorative — verify it's hidden from assistive tech
+    // FileText icon is decorative, so verify it is hidden from assistive tech
     const svgIcons = container.querySelectorAll('svg[aria-hidden="true"]');
     expect(svgIcons.length).toBeGreaterThan(0);
   });

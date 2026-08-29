@@ -150,7 +150,7 @@ describe('VerifyEmail', () => {
   });
 
   // The activation link is opened straight from an email, so the browser's
-  // language is whatever the visitor's OS/browser reports -- entirely outside
+  // language is whatever the visitor's OS or browser reports, entirely outside
   // our control. i18next has no supportedLngs allowlist, so i18n.language
   // resolves to that raw value (e.g. "de-DE") rather than being clamped to a
   // language we actually have resources for. The backend only accepts "en"

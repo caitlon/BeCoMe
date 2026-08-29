@@ -64,8 +64,8 @@ i18n
     fallbackLng: "en",
     defaultNS,
     resources,
-    // Without this, i18n.language can resolve to any code the browser reports --
-    // "de-DE", "fr-CA" -- and i18next will happily leave it there instead of
+    // Without this, i18n.language can resolve to any code the browser reports,
+    // "de-DE" or "fr-CA", and i18next will happily leave it there instead of
     // narrowing to a language resources actually exist for.
     supportedLngs: ["en", "cs"],
     // supportedLngs alone is not enough for a regional tag: i18next first scans
@@ -78,7 +78,7 @@ i18n
     // a plainer candidate to win by being listed with no region at all. Verified
     // against the installed i18next 26.3.6 + i18next-browser-languagedetector
     // 8.2.1: even with this on, i18next can still resolve i18n.language itself to
-    // the untrimmed regional tag rather than the bare language -- toSupportedLanguage
+    // the untrimmed regional tag rather than the bare language, so toSupportedLanguage
     // below is what turns whatever it lands on into the exact literal the backend
     // contract requires; this option is what keeps Czech from being discarded
     // before that helper ever runs.
@@ -100,7 +100,7 @@ i18n
  * for a visitor whose browser reports a third language entirely, something
  * outside {@link SupportedLanguage}. This is the one place that narrows it to
  * "en" or "cs" for every caller that has to send a language to the backend
- * (activation, result export) -- keep it explicit rather than trusting init's
+ * (activation, result export). Keep it explicit rather than trusting init's
  * supportedLngs alone, since only a typed return value makes that contract
  * checkable at the call site.
  *

@@ -180,7 +180,7 @@ export function StepEnterOpinion() {
                       transition={{ delay: 0.2 }}
                     />
 
-                    {/* Base markers -- where the triangle sits on the axis */}
+                    {/* Base markers: where the triangle sits on the axis */}
                     <motion.circle
                       cx={scaleToX(lowerNum)}
                       cy={100}

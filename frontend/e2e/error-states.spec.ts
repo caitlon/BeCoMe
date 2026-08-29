@@ -66,7 +66,7 @@ test.describe('Error States', () => {
     await registerUser(page, email, 'Session', 'Test');
 
     // Simulate an expired session. The session lives in HttpOnly cookies now, so the
-    // cookies must be cleared -- localStorage no longer holds the token.
+    // cookies must be cleared, since localStorage no longer holds the token.
     await page.context().clearCookies();
     await page.evaluate(() => {
       const lang = localStorage.getItem('become-language');

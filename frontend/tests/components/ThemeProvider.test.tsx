@@ -229,7 +229,7 @@ describe('ThemeProvider', () => {
     // Clicking the button calls the no-op setTheme from initialState
     await user.click(screen.getByRole('button', { name: 'Set Dark' }));
 
-    // Theme stays "system" -- the no-op does nothing
+    // Theme stays "system", since the no-op does nothing
     expect(screen.getByTestId('theme')).toHaveTextContent('system');
   });
 

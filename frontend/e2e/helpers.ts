@@ -9,14 +9,14 @@ export const TEST_PASSWORD = 'TestPass123!@#';
 // Registration does not open a session any more: the account is created unverified
 // and the only way into it is the link the API mails. The E2E runs use the console
 // email sender, which prints that link to the API's stdout, and the runner captures
-// that stream here -- see scripts/ci/e2e-local.sh and the CI job that starts uvicorn.
+// that stream here. See scripts/ci/e2e-local.sh and the CI job that starts uvicorn.
 const API_LOG_PATH = process.env.E2E_API_LOG ?? '/tmp/become-e2e-api.log';
 
 // Each printed line names its recipient by hash_email(address): an HMAC-SHA-256 keyed
 // with LOG_HASH_KEY, or SECRET_KEY when that is unset, truncated to 16 hex characters
 // (api/auth/logging.py). Recomputing the tag here is what makes the lookup exact.
 // Taking the newest link in the file instead would, with several workers registering
-// at the same time, sometimes redeem another test's single-use token -- passing in
+// at the same time, sometimes redeem another test's single-use token, so passing in
 // this test and failing in that one, with nothing in either report to explain it.
 const EMAIL_TAG_LENGTH = 16;
 

@@ -19,7 +19,7 @@ export default defineConfig({
   },
   use: {
     // HTTPS, because the session cookies carry the __Host- prefix and browsers only
-    // honour it on a Secure cookie -- WebKit will not even store one over plain
+    // honour it on a Secure cookie. WebKit will not even store one over plain
     // http://localhost. The certificate is self-signed and regenerated on demand
     // (scripts/e2e-cert.mjs), so the error it raises is expected and ignored here.
     baseURL: 'https://localhost:8080',

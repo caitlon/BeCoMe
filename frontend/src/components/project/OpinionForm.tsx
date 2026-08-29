@@ -52,7 +52,7 @@ const NumericField = ({ form, name, label, placeholder, fieldId }: NumericFieldP
             onChange={(event) => {
               field.onChange(event);
               // The "lower <= peak <= upper" rule attaches its error to `peak`, so editing
-              // any sibling must re-check the group -- otherwise a corrected value leaves a
+              // any sibling must re-check the group, or a corrected value leaves a
               // stale cross-field error behind. Re-validate only the SIBLINGS already allowed
               // to show errors (touched, or every field once submitted), never the field being
               // typed into: form.trigger([name]) validates eagerly and would bypass
