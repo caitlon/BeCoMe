@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Local CI pipeline runner — mirrors .github/workflows/ci.yml
+# Local CI pipeline runner, mirroring .github/workflows/ci.yml
 #
 # Usage:
 #   ./scripts/ci/ci-local.sh              # full pipeline: lint + test + e2e

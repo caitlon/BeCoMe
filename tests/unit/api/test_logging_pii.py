@@ -86,8 +86,8 @@ def test_no_log_field_names_a_credential_or_raw_identifier(module):
     # THEN
     assert not offenders, (
         f"{module.relative_to(API_ROOT)} logs forbidden field(s) {offenders}. "
-        "Log an id, a keyed tag (api.auth.logging.hash_email), or a count instead -- "
-        "see the logging rules in docs/security.md."
+        "Log an id, a keyed tag (api.auth.logging.hash_email), or a count instead. "
+        "See the logging rules in docs/security.md."
     )
 
 

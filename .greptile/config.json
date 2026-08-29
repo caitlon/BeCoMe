@@ -33,7 +33,7 @@
     },
     {
       "id": "api-thin-endpoints",
-      "rule": "Keep endpoints thin. Business logic belongs in service classes injected via Annotated[Service, Depends(get_service)] -- never instantiate a service directly inside a route. Accept and return Pydantic schemas, not raw SQLModel table models. Raise custom domain exceptions rather than a bare HTTPException.",
+      "rule": "Keep endpoints thin. Business logic belongs in service classes injected via Annotated[Service, Depends(get_service)]. Never instantiate a service directly inside a route. Accept and return Pydantic schemas, not raw SQLModel table models. Raise custom domain exceptions rather than a bare HTTPException.",
       "scope": ["api/routes/**/*.py"],
       "severity": "high"
     },
@@ -81,7 +81,7 @@
     },
     {
       "id": "py-absolute-imports",
-      "rule": "Use absolute imports only (for example: from api.services.case_service import CaseService). Flag relative imports such as from .services import ... -- they are not caught by the linter.",
+      "rule": "Use absolute imports only (for example: from api.services.case_service import CaseService). Flag relative imports such as from .services import ..., which the linter does not catch.",
       "scope": ["src/**/*.py", "api/**/*.py"],
       "severity": "medium"
     },
@@ -93,13 +93,13 @@
     },
     {
       "id": "py-ascii-only",
-      "rule": "Keep code, comments, and docstrings ASCII-only. Use -> instead of an arrow glyph, -- instead of an em dash, and straight quotes instead of typographic quotes.",
+      "rule": "Keep code, comments, and docstrings ASCII-only. Use -> instead of an arrow glyph and straight quotes instead of typographic quotes. Never substitute -- for an em dash: rewrite the sentence with a period, a comma, or a colon, whichever the dash was doing.",
       "scope": ["**/*.py"],
       "severity": "low"
     },
     {
       "id": "tests-unit-isolation",
-      "rule": "Unit tests must isolate the component under test by mocking external dependencies -- database session, other services, and storage. A unit test that opens a real Session() or hits the database is an integration test and belongs under tests/integration.",
+      "rule": "Unit tests must isolate the component under test by mocking external dependencies: the database session, other services, and storage. A unit test that opens a real Session() or hits the database is an integration test and belongs under tests/integration.",
       "scope": ["tests/unit/**/*.py"],
       "severity": "high"
     }

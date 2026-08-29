@@ -86,7 +86,7 @@ def create_app() -> FastAPI:
     docs_hidden = settings.environment is Environment.PROD
     app = FastAPI(
         title="BeCoMe API",
-        description="Best Compromise Mean — Group Decision Making under Fuzzy Uncertainty",
+        description="Best Compromise Mean: group decision making under fuzzy uncertainty",
         version=settings.api_version,
         lifespan=lifespan,
         docs_url=None if docs_hidden else "/docs",

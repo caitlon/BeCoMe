@@ -295,7 +295,7 @@ jobs:
   e2e:
     name: E2E Tests (Playwright)
     runs-on: ubuntu-24.04
-    # Not gated on lint either -- this is the longest job in the pipeline, so starting it
+    # Not gated on lint either. This is the longest job in the pipeline, so starting it
     # a minute earlier shortens the whole run by that minute.
     env:
       APP_ENV: "test"
@@ -416,7 +416,7 @@ jobs:
 
   # Runs on pull requests and on pushes to `main`. Analysing only pull requests left the main
   # branch itself unanalysed since 2026-02-21, reporting 76.7% coverage against a real 99%, and
-  # a pull request's "new code" is measured against its base -- so a stale base made unrelated
+  # a pull request's "new code" is measured against its base, so a stale base made unrelated
   # old code count as new, which is what failed the gate on the promotion in #326 over CSS
   # introduced by a different pull request. Keeping `main` current fixes that at the root.
   #
@@ -455,7 +455,7 @@ jobs:
       # and "new code" reads as "changed since the last release".
       #
       # The latest tag in the repository, not `git describe`. Releases are tagged on `main`,
-      # which is downstream of `develop`, so a release tag is never reachable from `develop` --
+      # which is downstream of `develop`, so a release tag is never reachable from `develop`.
       # `git describe` there answers with the release before last, and a pull request opened from
       # `develop` would compare against a different baseline than one opened from `main`. Falls
       # back to the commit only when no tag exists.

@@ -16,7 +16,7 @@ async function createProjectAndNavigate(page: Page, name: string) {
   await expect(page).toHaveURL(/\/projects\//, { timeout: 10000 });
 }
 
-test.describe('Project Detail — Edge Cases', () => {
+test.describe('Project Detail: Edge Cases', () => {
   test('empty project shows no results message', async ({ page }) => {
     const email = `detail-empty-${uniqueId()}@test.com`;
     await registerUser(page, email, 'Empty', 'Project');
@@ -139,7 +139,7 @@ test.describe('Project Detail — Edge Cases', () => {
 });
 
 // Tests requiring manual browser context management
-baseTest.describe('Project Detail — Multi-Context', () => {
+baseTest.describe('Project Detail: Multi-Context', () => {
   baseTest('clicking team member opens profile dialog', async ({ browser }) => {
     const ownerContext = await browser.newContext();
     const expertContext = await browser.newContext();

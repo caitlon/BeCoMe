@@ -51,7 +51,7 @@ test.describe('Accessibility - Skip Link', () => {
   });
 });
 
-test.describe('Accessibility — Tab Order', () => {
+test.describe('Accessibility: Tab Order', () => {
   test('login form fields are keyboard-focusable in order', async ({ page }) => {
     await page.goto('/login');
 
@@ -111,7 +111,7 @@ test.describe('Accessibility — Tab Order', () => {
   });
 });
 
-test.describe('Accessibility — Dialog Focus', () => {
+test.describe('Accessibility: Dialog Focus', () => {
   test('dialog opens and closes with Escape', async ({ browser }) => {
     const context = await browser.newContext();
     const page = await context.newPage();
@@ -137,7 +137,7 @@ test.describe('Accessibility — Dialog Focus', () => {
   });
 });
 
-test.describe('Accessibility — Password Validation Boundary', () => {
+test.describe('Accessibility: Password Validation Boundary', () => {
   test('password 12-char boundary', async ({ page }) => {
     await page.goto('/register');
 

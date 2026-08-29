@@ -66,7 +66,7 @@ async function createProjectWithOpinion(page: Page) {
 
 // --- Light Theme ---
 
-lightTest.describe('Visual Regression — Light Theme', () => {
+lightTest.describe('Visual Regression: Light Theme', () => {
   lightTest('landing page hero', async ({ page }) => {
     await page.goto('/');
     await page.waitForLoadState('networkidle');
@@ -88,7 +88,7 @@ lightTest.describe('Visual Regression — Light Theme', () => {
     });
   });
 
-  lightTest('project results — triangle visualization', async ({ page }) => {
+  lightTest('project results: triangle visualization', async ({ page }) => {
     const email = `vr-tri-light-${uniqueId()}@test.com`;
     await registerUser(page, email, 'VR', 'Light');
     await createProjectWithOpinion(page);
@@ -100,7 +100,7 @@ lightTest.describe('Visual Regression — Light Theme', () => {
     await expect(page).toHaveScreenshot('project-results-triangle-light.png');
   });
 
-  lightTest('project results — centroid chart', async ({ page }) => {
+  lightTest('project results: centroid chart', async ({ page }) => {
     const email = `vr-cen-light-${uniqueId()}@test.com`;
     await registerUser(page, email, 'VR', 'Centroid');
     await createProjectWithOpinion(page);
@@ -118,7 +118,7 @@ lightTest.describe('Visual Regression — Light Theme', () => {
 
 // --- Dark Theme ---
 
-darkTest.describe('Visual Regression — Dark Theme', () => {
+darkTest.describe('Visual Regression: Dark Theme', () => {
   darkTest('landing page hero', async ({ page }) => {
     await page.goto('/');
     await page.waitForLoadState('networkidle');
@@ -140,7 +140,7 @@ darkTest.describe('Visual Regression — Dark Theme', () => {
     });
   });
 
-  darkTest('project results — triangle visualization', async ({ page }) => {
+  darkTest('project results: triangle visualization', async ({ page }) => {
     const email = `vr-tri-dark-${uniqueId()}@test.com`;
     await registerUser(page, email, 'VR', 'Dark');
     await createProjectWithOpinion(page);
@@ -152,7 +152,7 @@ darkTest.describe('Visual Regression — Dark Theme', () => {
     await expect(page).toHaveScreenshot('project-results-triangle-dark.png');
   });
 
-  darkTest('project results — centroid chart', async ({ page }) => {
+  darkTest('project results: centroid chart', async ({ page }) => {
     const email = `vr-cen-dark-${uniqueId()}@test.com`;
     await registerUser(page, email, 'VR', 'CenDark');
     await createProjectWithOpinion(page);
