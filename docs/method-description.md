@@ -391,4 +391,4 @@ BeCoMe assumes opinions fit the triangular fuzzy format. Not all expert judgment
 
 ## Reference
 
-Vrana, I., Tyrychtr, J., & Pelikan, M. (2021). BeCoMe – A new approach for fuzzy group decision making. *Expert Systems with Applications*, 177, 114936.
+Vrana, I., Tyrychtr, J., & Pelikán, M. (2021). BeCoMe: Easy-to-implement optimized method for best-compromise group decision making: Flood-prevention and COVID-19 case studies. *Environmental Modelling & Software*, 136, 104953. https://doi.org/10.1016/j.envsoft.2020.104953
