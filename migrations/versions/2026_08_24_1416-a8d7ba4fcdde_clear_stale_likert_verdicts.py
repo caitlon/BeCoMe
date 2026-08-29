@@ -43,7 +43,7 @@ def upgrade() -> None:
 
     A consequence worth naming: reading rows to decide means this revision has no
     offline form and cannot be rendered with ``alembic upgrade --sql``. Nothing in
-    this repository asks for one -- deployment runs ``alembic upgrade head`` -- but
+    this repository asks for one, since deployment runs ``alembic upgrade head``, but
     a static script cannot express a decision that depends on the data.
 
     The condition itself negates ``_is_likert_scale`` in full rather than naming
@@ -65,7 +65,7 @@ def upgrade() -> None:
 
     # Mirrors CalculationService._is_likert_scale as of this revision. It is copied
     # rather than imported from ``api``, so that a later change to that method
-    # cannot retroactively alter what this migration does -- a migration records
+    # cannot retroactively alter what this migration does. A migration records
     # what it did the day it ran, not what the application believes today. The copy
     # therefore guarantees agreement now, not agreement forever.
     stale_ids = [

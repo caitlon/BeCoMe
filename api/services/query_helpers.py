@@ -31,8 +31,8 @@ def select_account_by_email(email: str) -> SelectOfScalar[User]:
 
     Demo accounts are excluded here rather than at each call site. They exist only to
     hold the opinions in the seeded example project, and every path that resolves an
-    address -- login, registration, invitation, password reset, activation resend --
-    has to answer for them exactly as it answers for an address nobody registered.
+    address has to answer for them exactly as it answers for an address nobody
+    registered: login, registration, invitation, password reset, and activation resend.
     Each of those paths already answers identically for a missing account, so the
     exclusion adds no way to probe whether a demo address exists.
 

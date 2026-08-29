@@ -45,7 +45,7 @@ class ConsoleEmailSender(EmailSender):
     Used in development, CI, and tests: every flow works offline and each link is
     read straight from the application log or stdout. The deployed profiles reject
     an unconfigured email provider at startup (``Settings._validate_deploy_invariants``),
-    so this sender cannot be selected there -- a link and its token only ever
+    so this sender cannot be selected there, and a link and its token only ever
     reach a developer-visible log. Recipients are tagged with the same
     :func:`hash_email` digest the security log uses, never the raw address.
 
@@ -62,7 +62,7 @@ class ConsoleEmailSender(EmailSender):
         The log record masks the single-use token, so a rotating file or a log drain
         never captures a redeemable link. The dev flow still needs a usable one, so the
         full link is written straight to stdout instead of through the ``api`` logger
-        tree -- no handler, present or future, can ship it off the machine.
+        tree, where no handler, present or future, can ship it off the machine.
 
         :param to_email: Recipient email address.
         :param reset_url: Full frontend reset link (carries the raw token).
@@ -74,7 +74,7 @@ class ConsoleEmailSender(EmailSender):
             _mask_token(reset_url),
             extra={"event": "password_reset_email", "email_hash": email_hash},
         )
-        # Deliberately not a log record -- see the docstring.
+        # Deliberately not a log record. See the docstring.
         print(f"[console email] password reset link for {email_hash}: {reset_url}")
 
     async def send_email_verification(self, *, to_email: str, verify_url: str) -> None:
@@ -94,7 +94,7 @@ class ConsoleEmailSender(EmailSender):
             _mask_token(verify_url),
             extra={"event": "verification_email", "email_hash": email_hash},
         )
-        # Deliberately not a log record -- see the docstring on send_password_reset.
+        # Deliberately not a log record. See the docstring on send_password_reset.
         print(f"[console email] verification link for {email_hash}: {verify_url}")
 
     async def send_registration_attempt_notice(
@@ -118,7 +118,7 @@ class ConsoleEmailSender(EmailSender):
             _mask_token(reset_url),
             extra={"event": "registration_attempt_notice_email", "email_hash": email_hash},
         )
-        # Deliberately not a log record -- see the docstring on send_password_reset.
+        # Deliberately not a log record. See the docstring on send_password_reset.
         print(
             f"[console email] registration attempt notice for {email_hash}: "
             f"login={login_url} reset={reset_url}"

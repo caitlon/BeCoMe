@@ -135,7 +135,7 @@ EXCEPTION_MAP: dict[type[BeCoMeAPIError], tuple[int, str | None]] = {
     # 422 Unprocessable Content
     ValuesOutOfRangeError: (status.HTTP_422_UNPROCESSABLE_CONTENT, None),  # Use exception message
     ScaleRangeError: (status.HTTP_422_UNPROCESSABLE_CONTENT, None),  # Use exception message
-    # 503 Service Unavailable -- storage faults.
+    # 503 Service Unavailable, for storage faults.
     # These carry the raw botocore text (bucket host, object key, S3 error code), and the
     # lookup below matches types exactly, so every subclass needs its own entry: without
     # one it falls through to BeCoMeAPIError and returns str(exc) to the caller. The photo

@@ -1,6 +1,6 @@
 """Static content of the example project seeded into every activated account.
 
-The opinions are the Floods case study from the source paper -- the same numbers
+The opinions are the Floods case study from the source paper, the same numbers
 ``examples/data/floods_case.txt`` carries and ``tests/reference/floods_case.py``
 pins the expected result to. The accounts holding them are service accounts: the
 addresses use ``.invalid`` (RFC 2606), which no mail can ever reach.

@@ -136,9 +136,9 @@ def _may_mail(throttle: EmailSendThrottle, email: str, *, created: bool) -> bool
     with five unauthenticated resend requests would let anyone pre-empt a signup that
     has not happened yet. It still *spends* a slot, though. A send that spent nothing
     would leave the address's budget clean, so a second, back-to-back submission would
-    mail again for a free address while a taken one had already gone quiet -- and the
-    awaited round trip to the mail provider is exactly the difference the uniform 202
-    exists to hide.
+    mail again for a free address while a taken one had already gone quiet. The awaited
+    round trip to the mail provider is exactly the difference the uniform 202 exists to
+    hide.
 
     :param throttle: Per-address cap on the emails this flow can trigger.
     :param email: Address the email would go to.
@@ -168,7 +168,7 @@ async def _send_quietly(send: Awaitable[None], event: str) -> None:
         # ERROR, not WARNING: Sentry is initialised without a LoggingIntegration, so
         # the SDK's default event_level of ERROR decides what becomes an issue and a
         # warning would only ever be a breadcrumb on some later event. Every endpoint
-        # here answers 2xx regardless, so a provider outage is otherwise invisible --
+        # here answers 2xx regardless, so a provider outage is otherwise invisible:
         # signup would be down indefinitely with nothing to alert on.
         logger.error("Transactional email send failed", exc_info=True, extra={"event": event})
 
@@ -295,7 +295,7 @@ def login(
     # After the password check, never before: refusing an unverified account up front
     # would answer differently for an address that has an account and one that does
     # not, turning the endpoint into an enumeration oracle. A correct password on an
-    # unverified account is not a failed attempt, so nothing is recorded -- and nothing
+    # unverified account is not a failed attempt, so nothing is recorded, and nothing
     # is reset either, since the login did not succeed.
     if user.email_verified_at is None:
         log_login_blocked_unverified(user.id, request)
@@ -345,7 +345,7 @@ def verify_email(
     answers 403 instead, on purpose: the caller already holds a live link, and telling
     someone who mistyped that their link is broken would send them off for another one.
 
-    That leaves a guessing oracle, capped by its own lockout -- distinct from the one
+    That leaves a guessing oracle, capped by its own lockout, distinct from the one
     POST /login uses. A run of failed logins, which anyone who merely knows the address
     can produce without ever holding a link, never touches this counter, so it can
     never deny someone their own activation; only a caller who already holds a live
@@ -359,13 +359,13 @@ def verify_email(
     The lockout keys on the token's hash, not the account. Issuing a link never retires
     an earlier one (several can be outstanding for one unconfirmed address at once), so
     a bucket shared by every token would reopen the same shape of denial one level down:
-    whoever merely obtains a single token -- forwarded by its recipient, or intercepted,
-    short of reading the mailbox itself -- could spend the account's whole activation
+    whoever merely obtains a single token, forwarded by its recipient or intercepted,
+    short of reading the mailbox itself, could spend the account's whole activation
     budget against it and, because every failure refreshes the window, keep it spent,
     locking the owner out of a different, freshly resent link. Keying on the token
     confines that damage to the token it was spent against. It leaves the guessing bound
-    above untouched -- any one token still allows at most ten activation failures
-    against its own password -- and it hands out no extra guesses either: a resend only
+    above untouched, since any one token still allows at most ten activation failures
+    against its own password. It hands out no extra guesses either: a resend only
     ever mints a token carrying the password its own caller submitted, so minting more
     tokens never buys a guess against a password that caller does not already hold.
 
@@ -373,7 +373,7 @@ def verify_email(
     what stops a user who mistyped a few times from being told their address is
     confirmed and then refused at the sign-in that was the whole point: their own
     mismatches spent from a counter that no successful login can reach while the
-    account is locked. Handing that clearance to an activation is safe -- it takes a
+    account is locked. Handing that clearance to an activation is safe: it takes a
     live single-use token mailed to the address plus the password that token carries,
     which is stronger evidence of ownership than the password alone.
 
@@ -382,11 +382,11 @@ def verify_email(
     :param service: Email verification service
     :param throttle: Per-token activation-guess throttle (lockout after repeated
         mismatches against this token)
-    :param login_throttle: Per-account login throttle; a mismatch spends from it too, so
+    :param login_throttle: Per-account login throttle. A mismatch spends from it too, so
         activation guessing costs the guesser their login budget, and a redemption clears
         it, but it is never consulted here
     :param example_projects: Service that seeds the newly activated account's example
-        project; failures are swallowed, see the try/except around its call below
+        project. Failures are swallowed, see the try/except around its call below
     :return: A fixed confirmation message
     :raises InvalidVerificationTokenError: If the token is unknown, spent, or its
         account is already verified
@@ -412,8 +412,8 @@ def verify_email(
         raise
     # Captured immediately, before anything else touches the session: seed_for's own
     # commit expires every attribute on `user`, and a later commit inside the seeding
-    # path (recalculate) can fail and leave the session needing rollback -- at which
-    # point reading an expired attribute would raise PendingRollbackError instead of
+    # path (recalculate) can fail and leave the session needing rollback. At that point
+    # reading an expired attribute would raise PendingRollbackError instead of
     # returning a value. Everything below reads this plain value instead of `user`.
     user_id = user.id
     throttle.reset(pending.record.token_hash)
@@ -424,13 +424,13 @@ def verify_email(
 
     # Demo content, and nothing more: an account that could not be logged into because
     # its example project failed to write would be a far worse outcome than an account
-    # without one. Broad except on purpose -- the same reasoning _send_quietly applies
+    # without one. Broad except on purpose, for the same reasoning _send_quietly applies
     # to the mail this endpoint's siblings send.
     try:
         example_projects.seed_for(user_id, data.language)
     except Exception:
-        # A failed commit inside the seeding path leaves the session needing rollback;
-        # clearing that here keeps the session usable for the rest of the request
+        # A failed commit inside the seeding path leaves the session needing rollback.
+        # Clearing that here keeps the session usable for the rest of the request
         # instead of leaving that state for whatever runs on it next.
         example_projects.session.rollback()
         logger.warning(
@@ -588,7 +588,7 @@ def logout(
     """Revoke the current session and clear the auth cookies.
 
     Blacklists the token's JTI and revokes its whole session, so every access and
-    refresh token in the family stops working -- even a still-valid access token
+    refresh token in the family stops working, even a still-valid access token
     issued before an earlier rotation.
 
     :param response: Response used to clear the auth cookies.
@@ -704,9 +704,9 @@ def get_me(
 
     The token is derived from the session the request authenticates as, not read back out
     of the request's own CSRF cookie. Handing the caller's cookie back would let anyone
-    able to write a cookie for this host -- a page on a sibling ``becomify.app``
-    subdomain -- decide what this route reports, and the SPA would then dutifully send
-    that value on every mutation and be refused. A Bearer client carries no session
+    able to write a cookie for this host decide what this route reports, a page on a
+    sibling ``becomify.app`` subdomain included. The SPA would then dutifully send that
+    value on every mutation and be refused. A Bearer client carries no session
     cookie, so it gets no header, as before.
 
     :param request: The incoming request, read for the session cookie.

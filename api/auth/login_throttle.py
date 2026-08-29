@@ -11,13 +11,13 @@ Two flows share this mechanism but never a counter, and each keys it on somethin
 different. ``POST /login`` hashes the account's normalized email, so the lockout follows
 the address no matter which token, if any, a caller presents. ``POST /verify-email``
 hashes the token's own stored hash instead, so only a caller who already holds a live
-token can move it at all, and a run of failed logins -- which anyone who merely knows
-the address can produce without ever holding an activation link -- cannot lock someone
-out of their own activation. Keying activation on the token rather than the account also
+token can move it at all, and a run of failed logins cannot lock someone out of their own
+activation. Anyone who merely knows the address can produce such a run without ever
+holding an activation link. Keying activation on the token rather than the account also
 confines a burned token's damage to itself: an address can carry several live tokens at
-once, and a shared per-account bucket would let one obtained token -- forwarded or
-intercepted, not read from the mailbox -- exhaust the whole account's budget and deny a
-different, freshly resent link along with it. The two flows are further distinguished by
+once, and a shared per-account bucket would let one obtained token, forwarded or
+intercepted rather than read from the mailbox, exhaust the whole account's budget and
+deny a different, freshly resent link along with it. The two flows are further distinguished by
 a Redis key prefix.
 
 The two budgets are therefore independent, and they add up: ``MAX_FAILURES`` each per
@@ -60,7 +60,7 @@ def _digest(identifier: str) -> str:
     """Return the SHA-256 hex digest of a normalized identifier, so no raw value is stored.
 
     Never log this value. It is an unkeyed digest, so anyone holding the logs could
-    hash a guessed address and confirm it appears -- exactly the account-existence
+    hash a guessed address and confirm it appears, which is exactly the account-existence
     oracle ``api.auth.logging.hash_email`` is keyed to prevent. Records in this module
     name the flow, never the account.
     """
@@ -78,12 +78,12 @@ def _log_store_unavailable(op: str, exc: redis.RedisError, key_prefix: str) -> N
     ERROR, not WARNING, and for the same reason as the swallowed email failures in
     ``api/routes/auth.py``: Sentry is initialised without a ``LoggingIntegration``, so the
     SDK's default ``event_level`` of ERROR decides what becomes an issue, and a warning
-    would only ever be a breadcrumb on some later event. Nothing else marks the outage --
-    the request it happened during succeeds and the caller sees a normal response -- so at
-    WARNING the brute-force lockout could stay off for as long as Redis is down with no
+    would only ever be a breadcrumb on some later event. Nothing else marks the outage,
+    since the request it happened during succeeds and the caller sees a normal response.
+    At WARNING the brute-force lockout could stay off for as long as Redis is down with no
     alert anywhere. The level *is* the alert.
 
-    :param op: Throttle operation that failed -- ``record_failure``, ``is_locked``, or ``reset``.
+    :param op: Throttle operation that failed: ``record_failure``, ``is_locked``, or ``reset``.
     :param exc: The Redis error that caused it.
     :param key_prefix: Key namespace of the flow whose lockout stopped being enforced.
     """
@@ -148,9 +148,9 @@ class RedisLoginThrottle:
     """Redis-backed throttle shared across replicas.
 
     :param client: Redis client for the shared store.
-    :param key_prefix: Key namespace for this flow; required rather than defaulted so
-        two flows sharing one Redis cannot silently share -- or trip -- each other's
-        lockout.
+    :param key_prefix: Key namespace for this flow, required rather than defaulted so
+        two flows sharing one Redis cannot silently share each other's lockout, or trip
+        it.
     :param max_failures: Failures allowed within the window before locking.
     :param window_seconds: Length of the failure window, in seconds.
     """
@@ -235,8 +235,8 @@ def _build_throttle(key_prefix: str) -> LoginThrottle:
 def get_login_throttle() -> LoginThrottle:
     """Return the process-wide login throttle, Redis-backed when configured.
 
-    Gates ``POST /login`` only. A wrong password anywhere -- including one posted with
-    an activation link -- still spends from this counter (see
+    Gates ``POST /login`` only. A wrong password anywhere still spends from this counter,
+    including one posted with an activation link (see
     :func:`get_activation_throttle`), but nothing outside ``/login`` ever consults or
     clears it.
 

@@ -277,7 +277,7 @@ def delete_current_user(
         ) or membership_service.is_demo_account(d.new_admin_id):
             # A demo account passes is_member (it is seeded into every example project),
             # so it needs its own check here rather than being caught by the branch
-            # above -- treated the same as a non-member, for the same reason
+            # above. It is treated the same as a non-member, for the same reason
             # ProjectService.transfer_ownership refuses one.
             raise InvalidProjectDispositionError("The new admin must be a member of the project.")
         else:
@@ -490,7 +490,7 @@ def get_user_photo(
 
     # The version has to match the key being served, not merely be present. This route
     # always serves whatever photo the account holds now, so a stale or invented `v`
-    # names bytes that already changed once and can change again -- pinning it for a
+    # names bytes that already changed once and can change again. Pinning it for a
     # year would leave a shared cache handing out a replaced avatar under that URL.
     cache_control = (
         _VERSIONED_PHOTO_CACHE_CONTROL

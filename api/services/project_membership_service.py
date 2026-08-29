@@ -44,8 +44,8 @@ class ProjectMembershipService(BaseService):
         """Remove a member from project, discarding the opinion they submitted.
 
         The opinion goes in the same transaction as the membership. It carries the
-        member's identity -- name, email, position -- and is served to every remaining
-        member and embedded in every export, while ``RequireProjectAccess`` stops the
+        member's identity, meaning name, email, and position, and is served to every
+        remaining member and embedded in every export, while ``RequireProjectAccess`` stops the
         ex-member from withdrawing it themselves once their membership row is gone.
 
         :param project_id: Project ID

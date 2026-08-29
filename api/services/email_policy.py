@@ -7,8 +7,8 @@ Two independent, domain-only checks combine into a single policy:
    loaded once into a frozenset and matched against the address's domain
    exactly, case-insensitively. Refresh the file by hand from the public
    "disposable-email-domains" dataset
-   (https://github.com/disposable-email-domains/disposable-email-domains) --
-   never download it at runtime or at build time.
+   (https://github.com/disposable-email-domains/disposable-email-domains).
+   Never download it at runtime or at build time.
 
 2. An MX / A / AAAA reachability check via ``dns.asyncresolver``. This check
    fails open: a resolver timeout, SERVFAIL, or any other resolver error lets
@@ -62,7 +62,7 @@ DOMAIN_VERDICT_CACHE_TTL_SECONDS = 24 * 60 * 60
 
 # How long a definitive rejection is trusted. Shorter than the positive TTL on
 # purpose: DNS negative-caching conventions cap negative TTLs well below positive
-# ones, since a domain can gain an MX record at any time -- a freshly registered
+# ones, since a domain can gain an MX record at any time: a freshly registered
 # company domain must not stay locked out for the rest of the day.
 NEGATIVE_DOMAIN_VERDICT_CACHE_TTL_SECONDS = 30 * 60
 
@@ -163,7 +163,7 @@ class RedisDomainVerdictCache:
 
     Fail-open: a ``redis.RedisError`` is logged and swallowed. A read error is
     treated as a cache miss (the caller resolves the domain fresh), and a write
-    error just means the verdict is not cached this time -- neither ever blocks
+    error just means the verdict is not cached this time. Neither ever blocks
     or wrongly rejects a registration.
     """
 
@@ -262,9 +262,9 @@ def _is_null_mx(answer: dns.resolver.Answer) -> bool:
 class EmailAddressPolicy:
     """Decide whether an email address is acceptable for registration.
 
-    Combines two independent, domain-only checks -- a disposable-domain
-    blocklist and an MX/A/AAAA reachability check -- behind a single entry
-    point, :meth:`check`. Neither check reads database state, so neither can
+    Combines two independent, domain-only checks behind a single entry point,
+    :meth:`check`: a disposable-domain blocklist, and an MX/A/AAAA reachability
+    check. Neither check reads database state, so neither can
     leak whether an account already exists for the address.
     """
 
@@ -282,11 +282,11 @@ class EmailAddressPolicy:
     ) -> None:
         """Build the policy, wiring production defaults for anything not injected.
 
-        :param disposable_domains: Blocklist to match against; defaults to the
+        :param disposable_domains: Blocklist to match against. Defaults to the
             vendored list.
-        :param resolver: DNS resolver used for the MX/A/AAAA check; when omitted
+        :param resolver: DNS resolver used for the MX/A/AAAA check. When omitted,
             a ``dns.asyncresolver.Resolver`` is built on first use, not here.
-        :param cache: Domain-verdict cache; defaults to the process-wide cache
+        :param cache: Domain-verdict cache. Defaults to the process-wide cache
             (Redis-backed when configured, in-memory otherwise).
         :param disposable_check_enabled: Kill switch for the blocklist check.
         :param mx_check_enabled: Kill switch for the MX/A/AAAA check.
@@ -302,9 +302,9 @@ class EmailAddressPolicy:
         )
         # Deliberately not built here. dns.asyncresolver.Resolver() reads the host's
         # resolver configuration and raises NoResolverConfiguration when it finds
-        # none, so building it in __init__ turns every POST /register into a 500 --
-        # and MX_CHECK_ENABLED=false, the switch that exists for exactly that
-        # emergency, could not rescue it, because the object was built whether or not
+        # none, so building it in __init__ turns every POST /register into a 500.
+        # MX_CHECK_ENABLED=false, the switch that exists for exactly that emergency,
+        # could not rescue it either, because the object was built whether or not
         # the check ran. Built on first lookup instead, which the switch can prevent.
         self._resolver = resolver
         self._cache = cache if cache is not None else get_domain_verdict_cache()

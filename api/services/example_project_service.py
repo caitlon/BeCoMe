@@ -32,7 +32,7 @@ class ExampleProjectService(BaseService):
     The owner's own opinion is deliberately left out. The project opens with the 13
     opinions of the published Floods panel and the compromise they produce, so adding
     a fourteenth and watching that compromise move is the first thing the account can
-    do -- and it is the one demonstration of the method that needs no explanation.
+    do, and it is the one demonstration of the method that needs no explanation.
 
     :param session: Session the writes go through.
     :param calculation_service: Service that computes the opening result; defaults to
