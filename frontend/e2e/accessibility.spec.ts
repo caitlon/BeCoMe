@@ -10,22 +10,29 @@ async function countTabbableElements(page: import('@playwright/test').Page): Pro
 }
 
 test.describe('Accessibility - Skip Link', () => {
-  test('the skip link reveals itself on focus and moves focus into main', async ({ page }) => {
+  test('the skip link is first in tab order and reveals itself on focus', async ({ page }) => {
     await page.goto('/');
 
     const skip = page.locator('a.skip-to-content');
 
-    // Off-screen until it takes focus: the link is present but must not occupy layout.
-    const offscreen = await skip.evaluate((el) => el.getBoundingClientRect().left);
-    expect(offscreen).toBeLessThan(0);
+    // It has to be the first thing a keyboard reaches, or it cannot bypass the navbar.
+    // Asserted structurally rather than by pressing Tab: Firefox does not move focus
+    // into a freshly loaded document on the first press, so that would test the engine.
+    const firstTabbable = await page.evaluate(
+      () =>
+        document.querySelector(
+          'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])',
+        )?.className,
+    );
+    expect(firstTabbable).toBe('skip-to-content');
 
-    // The first Tab from the top of the document must land on it.
-    await page.keyboard.press('Tab');
+    // Present but out of the layout until it takes focus, then pinned on screen.
+    expect(await skip.evaluate((el) => el.getBoundingClientRect().left)).toBeLessThan(0);
+    await skip.focus();
     await expect(skip).toBeFocused();
+    expect(await skip.evaluate((el) => el.getBoundingClientRect().left)).toBeGreaterThanOrEqual(0);
 
-    const onscreen = await skip.evaluate((el) => el.getBoundingClientRect().left);
-    expect(onscreen).toBeGreaterThanOrEqual(0);
-
+    // Activating it hands focus to the landmark, which is the whole point of the control.
     await page.keyboard.press('Enter');
     await expect(page.locator('#main-content')).toBeFocused();
   });
