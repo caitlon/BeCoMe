@@ -36,13 +36,13 @@ src/
 │   ├── expert_opinion.py     # Expert opinion with identifier
 │   └── become_result.py      # Calculation result (Pydantic model)
 ├── calculators/         # Calculation logic
-│   ├── base_calculator.py        # Abstract base calculator (Template Method)
+│   ├── base_calculator.py        # Abstract base class (the shared interface)
 │   ├── median_strategies.py     # Median calculation strategies (Strategy Pattern)
 │   └── become_calculator.py     # Main BeCoMe implementation
 ├── interpreters/        # Result interpretation
 │   └── likert_interpreter.py    # Likert scale decision interpreter
 ├── exceptions.py        # Custom exception hierarchy
-└── __init__.py         # Package marker with version
+└── __init__.py         # Package marker
 ```
 
 ### Dependency flow
@@ -111,8 +111,8 @@ print(result.max_error)
 #### [base_calculator.py](calculators/base_calculator.py)
 
 `BaseAggregationCalculator` defines the interface: `calculate_arithmetic_mean()`,
-`calculate_median()`, `calculate_compromise()`, and `sort_by_centroid()`. Subclasses implement
-the logic, following the Template Method pattern.
+`calculate_median()`, `calculate_compromise()`, and `sort_by_centroid()`. All four are
+abstract, so a subclass supplies every one of them.
 
 #### [median_strategies.py](calculators/median_strategies.py)
 
@@ -122,7 +122,7 @@ Median calculation differs for odd and even expert counts. `OddMedianStrategy` r
 from src.calculators.median_strategies import OddMedianStrategy, EvenMedianStrategy
 
 strategy = OddMedianStrategy() if m % 2 == 1 else EvenMedianStrategy()
-median = strategy.calculate(sorted_opinions, median_centroid)
+median = strategy.calculate(sorted_opinions)
 ```
 
 #### [become_calculator.py](calculators/become_calculator.py)
@@ -186,9 +186,10 @@ keys.
 even count. `MedianCalculationStrategy` is the interface, and `OddMedianStrategy` and
 `EvenMedianStrategy` are the concrete implementations. The calculator picks one at runtime.
 
-**Template method.** `BaseAggregationCalculator` defines the calculation flow, and subclasses
-fill in the steps. The pattern keeps the interface consistent if someone adds a different
-aggregation method later.
+**Abstract interface.** `BaseAggregationCalculator` is a pure ABC: all four methods are
+abstract and it sequences nothing itself, so the calculation flow lives in
+`BeCoMeCalculator`. What the base class buys is one shape for every aggregation method
+added later.
 
 **Factory method.** `BeCoMeResult.from_calculations()` takes the arithmetic mean and the
 median, then derives the best compromise and the maximum error. It keeps the construction logic

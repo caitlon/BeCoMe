@@ -35,16 +35,23 @@ jupyter notebook examples/visualizations/visualize_become.ipynb
 jupyter lab examples/visualizations/visualize_become.ipynb
 ```
 
-Requires a Jupyter environment (`uv sync` installs all dependencies).
+Requires a Jupyter environment. A plain `uv sync` installs the core dependency only, so ask
+for the two extras this notebook needs:
+
+```bash
+uv sync --extra viz --extra notebook
+```
 
 ## Interactive features
 
-Charts support zoom, pan, and hover tooltips. The sensitivity analysis updates as soon as you
-toggle an expert. Everything runs in the browser, with no server calls.
+Charts render as static Matplotlib images. The controls around them are what is interactive:
+the sensitivity analysis redraws as soon as you toggle an expert, and the scenario dashboard as
+soon as you pick a different scenario. Every redraw runs in the notebook kernel, and nothing
+calls an external service.
 
 ## Technical details
 
-Built with Matplotlib, Seaborn, NumPy, and ipywidgets.
+Built with Matplotlib, Seaborn, NumPy, pandas, and ipywidgets.
 
 ## Related documentation
 

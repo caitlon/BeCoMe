@@ -7,7 +7,7 @@ The guidelines below apply repository-wide and benefit from explanation.
 ## Scope of review
 
 Focus on architecture, correctness, and contract violations. Leave formatting, import
-sorting, and pure style to the existing tools: Ruff (`E, W, F, I, N, UP, B, SIM, RUF`) and
+sorting, and pure style to the existing tools: Ruff (`E, W, F, I, N, UP, B, S, SIM, RUF`) and
 mypy strict on Python, ESLint on the frontend. Do not duplicate what those tools already
 report.
 

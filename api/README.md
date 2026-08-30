@@ -211,6 +211,7 @@ returns `422`. Erasure also removes the profile photo blob from object storage.
 | DELETE | `/api/v1/projects/{id}/members/{user_id}` | Remove member (discards their opinion and recalculates) |
 | POST | `/api/v1/projects/{id}/transfer-ownership` | Transfer ownership to another member |
 | POST | `/api/v1/projects/{id}/invite` | Invite user |
+| GET | `/api/v1/projects/{id}/invitations` | List the project's pending invitations |
 
 ### Opinions
 
@@ -234,6 +235,7 @@ returns `422`. Erasure also removes the profile photo blob from object storage.
 |--------|----------|-------------|
 | POST | `/api/v1/calculate` | Calculate BeCoMe (standalone) |
 | GET | `/api/v1/projects/{id}/result` | Get project calculation result |
+| GET | `/api/v1/projects/{id}/result/export` | Download the result as PDF or CSV |
 
 ### Health
 
@@ -265,7 +267,7 @@ Environment variables (a `.env` file works too):
 | `REDIS_URL` | *required when deployed* | Redis for rate limiting, token revocation, and auth throttles |
 | `CLOUDFLARE_ORIGIN_SECRET` | *required when deployed* | Shared secret proving the request came through Cloudflare; every deployed environment sits behind it, so each needs its own value paired with a Transform Rule for that environment's API host |
 | `EMAIL_PROVIDER` | `console` | Password-reset email delivery: `console` (log) or `http` (Resend) |
-| `EMAIL_API_KEY` | *required when deployed* | API key for the `http` email provider; startup fails without it on the staging and production profiles, where the console fallback would print reset links to stdout instead of sending them |
+| `EMAIL_API_KEY` | *required when deployed* | API key for the `http` email provider; startup fails without it on every deployed service, where the console fallback would print reset links to stdout instead of sending them |
 | `API_PUBLIC_URL` | `http://localhost:8000` | Public base URL of this API, used to build profile photo proxy links |
 | `BUCKET_NAME` | *optional* | Railway Storage Bucket name (auto-injected when a bucket is attached) |
 | `BUCKET_ENDPOINT` | *optional* | S3-compatible bucket endpoint |
@@ -311,9 +313,9 @@ cover their successful calls. `uvicorn.access` stays silent on purpose, because 
 logs the same requests with more fields. **`sqlalchemy.engine` is pinned at WARNING and must
 stay there:** its DEBUG level prints bound query parameters, which on this schema means password
 hashes, addresses, and reset-token hashes going to the drain in the clear. The read services log
-query shape and timing instead. If drain volume from dev's DEBUG stream becomes a problem, set
-`logtail_handler.setLevel(logging.INFO)` in `setup_logging`. The console keeps DEBUG, the drain
-does not.
+query shape and timing instead. If drain volume from dev's DEBUG stream becomes a problem, call
+`logtail_handler.setLevel(logging.INFO)` in `_build_handlers`, where the handler is built. The
+console keeps DEBUG, the drain does not.
 
 Unhandled exceptions return an opaque 500 and reach Sentry when `SENTRY_DSN` carries a value.
 With the `BETTERSTACK_*` variables in place, the API also ships its logs to Better Stack through

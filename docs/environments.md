@@ -8,7 +8,7 @@ Settings read `APP_ENV` from the process environment (shell, Docker, Railway, CI
 
 | Profile | `APP_ENV` | Where it runs | Database | Debug | Rate limiting |
 |---------|-----------|---------------|----------|-------|---------------|
-| dev | unset or `dev` | Local machine | SQLite | on | on |
+| dev | unset or `dev` | Local machine and the Railway dev service | SQLite locally, PostgreSQL on Railway | off (the `.env.dev.example` template turns it on) | on |
 | test | `test` | Staging deploy and the test suite | PostgreSQL (staging), in-memory SQLite (tests) | off | on when deployed, off under pytest |
 | prod | `prod` | Railway production | PostgreSQL | off | on |
 
@@ -33,11 +33,11 @@ uv run uvicorn api.main:app --reload
 
 ### test (staging and the test suite)
 
-Two consumers share this profile. A deployed staging service uses PostgreSQL with debug off and rate limiting on, which mirrors production for manual QA. It meets the same startup invariants as production: a strong secret, PostgreSQL, Redis, and non-localhost CORS. The automated suite runs the same profile but adds `TESTING=1`, so it uses in-memory SQLite, turns rate limiting off, and skips the startup guard. The test conftests set both variables before any `api` import.
+Two consumers share this profile. A deployed staging service uses PostgreSQL with debug off and rate limiting on, which mirrors production for manual QA. It meets the same startup invariants as production: a strong secret, PostgreSQL, Redis, a privileged `MIGRATION_DATABASE_URL`, the Cloudflare origin secret, non-localhost `CORS_ORIGINS`, a non-loopback `FRONTEND_BASE_URL`, a working email provider, and debug off. The automated suite runs the same profile but adds `TESTING=1`, so it uses in-memory SQLite, turns rate limiting off, and skips the startup guard. The test conftests set both variables before any `api` import.
 
 ### prod
 
-PostgreSQL, debug off. Both deployed profiles run a startup guard (`_validate_deploy_invariants` in `api/config.py`). A weak or default `SECRET_KEY`, a `sqlite` `DATABASE_URL`, a missing `REDIS_URL`, or localhost-only `CORS_ORIGINS` fails startup immediately, rather than running with insecure defaults. Production also requires `CLOUDFLARE_ORIGIN_SECRET`, which proves requests came through the Cloudflare edge.
+PostgreSQL, debug off. Every deployed service runs a startup guard (`_validate_deploy_invariants` in `api/config.py`), the Railway dev service included: the guard keys off the deploy, not the profile name. A weak or default `SECRET_KEY`, a `sqlite` `DATABASE_URL`, a missing `REDIS_URL`, or localhost-only `CORS_ORIGINS` fails startup immediately, rather than running with insecure defaults. So does a missing `CLOUDFLARE_ORIGIN_SECRET`, which proves requests came through the Cloudflare edge. Each deployed environment needs its own value, paired with a Transform Rule for that environment's API host.
 
 ## Configuration files
 
@@ -72,7 +72,7 @@ The `api` service in `docker/docker-compose.yml` reads `APP_ENV` with `${APP_ENV
 
 ## CI
 
-`.github/workflows/ci.yml` runs on every push and pull request to `main`, `develop`, and `staging`, so the deploy branches get the same full pipeline as `main`. That pipeline covers lint, Python and frontend tests, backend and Playwright end-to-end tests, and SonarCloud (the last on pull requests only). It sets `APP_ENV=test` on the `python-tests`, `backend-e2e`, and `e2e` jobs, including the steps that start a live server. `scripts/ci/e2e-local.sh` sets the same value for local end-to-end runs.
+`.github/workflows/ci.yml` runs on every push and pull request to `main`, `develop`, and `staging`, so the deploy branches get the same full pipeline as `main`. That pipeline covers lint, Python and frontend tests, backend and Playwright end-to-end tests, and SonarCloud (the last on pull requests and on pushes to `main`). It sets `APP_ENV=test` on the `python-tests`, `backend-e2e`, and `e2e` jobs, including the steps that start a live server. `scripts/ci/e2e-local.sh` sets the same value for local end-to-end runs.
 
 ## Development workflow
 
@@ -100,14 +100,14 @@ The root `railway.toml` carries the API build and deploy settings: it points at 
 | `MIGRATION_DATABASE_URL` | privileged role, Alembic only | privileged role, Alembic only | privileged role, Alembic only |
 | `CORS_ORIGINS` | dev origins | staging origins | production origins |
 | `REDIS_URL` | dev Redis | staging Redis | production Redis |
-| `CLOUDFLARE_ORIGIN_SECRET` | - | - | shared secret matching the Cloudflare Transform Rule |
+| `CLOUDFLARE_ORIGIN_SECRET` | own secret | own secret | own secret, each matching that environment's Cloudflare Transform Rule |
 | `DEBUG` | `false` | `false` | `false` |
 | `LOG_LEVEL` | `DEBUG` | `INFO` | `INFO` |
 | `API_PUBLIC_URL` | dev API URL | staging API URL | production API URL |
 | `VITE_API_URL` / `VITE_SENTRY_DSN` / `VITE_APP_ENV` (frontend build args) | dev values | staging values | production values |
 | `BUCKET_NAME` / `BUCKET_ENDPOINT` / `BUCKET_ACCESS_KEY_ID` / `BUCKET_SECRET_ACCESS_KEY` | injected from `dev-photos` | injected from `test-photos` | injected from `prod-photos` |
 
-A deployed service that leaves `APP_ENV` unset falls back to dev, which turns debug on and opens CORS. Every deployed service must set its profile explicitly (`dev`, `test`, or `prod`) so the startup guard runs.
+A deployed service that leaves `APP_ENV` unset falls back to the dev profile. The startup guard still runs there, because it keys off `RAILWAY_ENVIRONMENT_NAME` rather than the profile name, so an unset variable cannot weaken a deploy. Set the profile explicitly anyway (`dev`, `test`, or `prod`), so that the log level, the log format, and the `.env.<APP_ENV>` overlay are the ones you meant.
 
 `LOG_LEVEL` appears as a service variable even though `api/config.py` already defaults it per profile (`DEBUG` on dev, `INFO` on test and prod). The default is the safety net for a service whose variable was never set. The variable is what makes the level visible to whoever opens the service without reading the settings module. An explicit value always wins over the profile default.
 
@@ -117,7 +117,7 @@ In `frontend/Dockerfile`, declare an `ARG` and an `ENV` for every `VITE_*` varia
 
 ## Database schema and access
 
-**Alembic** versions the schema. Migrations live in `migrations/`. `migrations/env.py` reads its target from `MIGRATION_DATABASE_URL` (falling back to `DATABASE_URL`) and treats `SQLModel.metadata` as the source of truth. Every deploy runs `alembic upgrade head` once through the `preDeployCommand` in `railway.toml`, before the new version goes live, so a failed migration blocks the release instead of starting a broken one. `create_db_and_tables()` still builds the schema directly, but only for SQLite (local development) and `TESTING=1` runs (the end-to-end PostgreSQL). On a deployed database it is a no-op and Alembic stays in charge.
+**Alembic** versions the schema. Migrations live in `migrations/`. `migrations/env.py` reads its target from `ALEMBIC_DATABASE_URL`, then `MIGRATION_DATABASE_URL`, then `DATABASE_URL`, and treats `SQLModel.metadata` as the source of truth. Every deploy runs `alembic upgrade head` once through the `preDeployCommand` in `railway.toml`, before the new version goes live, so a failed migration blocks the release instead of starting a broken one. `create_db_and_tables()` still builds the schema directly, but only for SQLite (local development) and `TESTING=1` runs (the end-to-end PostgreSQL). On a deployed database it is a no-op and Alembic stays in charge.
 
 The application connects through a **least-privilege role**, `become_app`. It reads and writes the application tables but cannot create, alter, or drop objects, is not a superuser, and cannot bypass row-level security. Each backend therefore carries two database URLs: `DATABASE_URL` points at `become_app` for the running app, while `MIGRATION_DATABASE_URL` points at the privileged role that Alembic uses for DDL. `api/db/engine.py` hardens the connection: it requires TLS on deployed databases, tags each connection with an `application_name`, and sets per-session statement and idle-in-transaction timeouts so one query cannot monopolize the database. The schema also carries domain `CHECK` constraints (fuzzy-number ordering, positive expert counts, scale bounds) so the database rejects invalid rows on its own.
 

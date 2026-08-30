@@ -30,8 +30,8 @@ Expert2 | 12 | 18 | 25
 Government officials estimated COVID-19 budget support needs (0-100 billion CZK). The 22-member panel included deputy ministers from multiple ministries, the Police President, Fire Rescue Director, and Chief Hygienist.
 
 Opinions varied by ministry priorities: Interior proposed higher support (60-90 billion), and
-Education suggested lower (15-40 billion). With an even expert count, the median calculation
-averages the two middle values.
+Education suggested lower (15-60 billion, peaking at 40). With an even expert count, the
+median calculation averages the two middle values.
 
 ```
 Chairman | 40 | 70 | 90
@@ -45,7 +45,7 @@ Experts debated what percentage of arable land should be converted for flood pre
 participants held sharply divided views: hydrologists, land owners, rescue coordinators, and
 economists.
 
-Hydrologists recommended 37-47% reduction. Land owners proposed 0-4%. That polarization makes the Floods case useful for demonstrating BeCoMe's outlier resistance.
+Hydrologists recommended 37-50% reduction. Land owners proposed 0-4%. That polarization makes the Floods case useful for demonstrating BeCoMe's outlier resistance.
 With an odd expert count, the median is the middle element after sorting.
 
 ```
@@ -58,7 +58,7 @@ Land owner 2 | 0 | 0 | 2
 
 Officials rated whether cross-border commuters should be allowed to travel during pandemic restrictions. Unlike other cases, responses used a Likert scale: 0 (strongly disagree), 25, 50, 75, 100 (strongly agree).
 
-Foreign Affairs strongly supported travel (100). Interior and Defense opposed it (0). The majority leaned toward disagreement: 11 of 22 chose "rather disagree" (25). Likert values
+Foreign Affairs strongly supported travel (100). Interior and Defense opposed it (0). The majority leaned toward disagreement: 10 of 22 chose "rather disagree" (25). Likert values
 are crisp, so Lower = Peak = Upper.
 
 ```

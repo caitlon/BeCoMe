@@ -9,7 +9,7 @@ SQLModel-based database layer for BeCoMe API.
 | `users` | User accounts with authentication data |
 | `projects` | Decision-making projects with scale configuration |
 | `project_members` | Many-to-many: users ↔ projects with roles |
-| `invitations` | Unique invitation links for joining projects |
+| `invitations` | Per-user invitations to join a project (unique per project+invitee) |
 | `expert_opinions` | Fuzzy triangular numbers from experts (unique per user+project) |
 | `calculation_results` | Cached BeCoMe calculation results |
 | `password_reset_tokens` | Tokens for password reset via email |
@@ -28,7 +28,7 @@ users (1:N) ──► projects (admin ownership)
       │
       ├─(1:N)─► email_verification_tokens
       │
-      └─(1:N)─► invitations (used_by) ◄─(N:1)─ projects
+      └─(1:N)─► invitations (invitee_id, inviter_id) ◄─(N:1)─ projects
 
 projects (1:1) ──► calculation_results
 ```

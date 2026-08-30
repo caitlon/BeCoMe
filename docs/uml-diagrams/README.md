@@ -1,6 +1,6 @@
 # UML diagrams
 
-Three diagrams visualize the BeCoMe implementation from different angles.
+Five diagrams visualize the BeCoMe implementation from different angles.
 
 ## Class diagram
 
@@ -25,6 +25,20 @@ With both Γ and Ω computed, the calculator averages them component-wise to get
 ![Activity Diagram](diagrams/png/activity-diagram.png)
 
 Algorithm flow with decision points. The odd/even branch in median calculation is the main fork: odd counts take the middle element directly, even counts average two neighbors. Color-coded partitions separate the four calculation phases: mean (red), median (green), compromise (blue), error (yellow).
+
+## Class diagram: patterns
+
+![Class Diagram: Patterns](diagrams/png/class-diagram-patterns.png)
+
+The same classes seen through the two structures that shape them. `MedianCalculationStrategy` has one concrete subclass per parity: `OddMedianStrategy` takes the middle opinion, `EvenMedianStrategy` averages the two around the middle, and `BeCoMeCalculator` picks between them at run time instead of branching inline.
+
+`BaseAggregationCalculator` is the abstract side. All four of its methods are abstract and it sequences none of them, so what it fixes is the interface any second aggregation method would have to meet, not a shared implementation.
+
+## Activity diagram: simplified
+
+![Activity Diagram: Simplified](diagrams/png/activity-diagram-simplified.png)
+
+The same flow as above with the per-component arithmetic collapsed into one step per phase. Read this one first, and the full version when you need the exact operations.
 
 ## Regenerating diagrams
 
