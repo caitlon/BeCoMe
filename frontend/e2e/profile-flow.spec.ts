@@ -61,7 +61,7 @@ test.describe.serial('Profile Page Flow', () => {
   });
 
   test('delete account redirects to home', async () => {
-    // The password change above revoked the session, so log back in for a clean flow.
+    // The password change above revoked the session, so log back in for a clean flow:
     // the deletion dialog loads the owned projects and needs a live session.
     await page.goto('/login');
     await page.getByPlaceholder('you@example.com').fill(testEmail);

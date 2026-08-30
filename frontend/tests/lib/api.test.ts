@@ -110,7 +110,7 @@ describe('ApiClient', () => {
   // the __Host-csrf_token cookie belongs to the API and document.cookie shows the app
   // nothing. The API repeats the value in an X-CSRF-Token response header, and
   // without picking that up the client cannot produce the header the CSRF check
-  // demands, which is a 403 on logout and on every other mutation.
+  // demands, and that means a 403 on logout and on every other mutation.
   describe('CSRF token from the response header', () => {
     it('picks the token up from the login response', async () => {
       mockFetch.mockResolvedValueOnce({

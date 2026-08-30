@@ -38,8 +38,8 @@ logger = logging.getLogger("api.security")
 #
 # The refresh cookie takes ``__Secure-`` instead: it is scoped to the auth routes, and
 # ``__Host-`` would force ``Path=/`` and hand it to every request on the site. That buys
-# less, since ``__Secure-`` only pins the Secure flag, not the host. Keeping the narrow
-# path is worth more than closing a shadowing route that the access cookie already denies.
+# less, since ``__Secure-`` only pins the Secure flag, not the host, but the narrow path
+# is worth more than closing a shadowing route that the access cookie already denies.
 ACCESS_COOKIE = "__Host-access_token"
 REFRESH_COOKIE = "__Secure-refresh_token"
 CSRF_COOKIE = "__Host-csrf_token"

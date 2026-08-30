@@ -262,10 +262,10 @@ def _is_null_mx(answer: dns.resolver.Answer) -> bool:
 class EmailAddressPolicy:
     """Decide whether an email address is acceptable for registration.
 
-    Combines two independent, domain-only checks behind a single entry point,
-    :meth:`check`: a disposable-domain blocklist, and an MX/A/AAAA reachability
-    check. Neither check reads database state, so neither can
-    leak whether an account already exists for the address.
+    The single entry point :meth:`check` combines two independent, domain-only
+    checks: a disposable-domain blocklist, and an MX/A/AAAA reachability check.
+    Neither check reads database state, so neither can leak whether an account
+    already exists for the address.
     """
 
     def __init__(

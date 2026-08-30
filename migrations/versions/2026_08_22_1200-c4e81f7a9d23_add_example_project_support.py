@@ -176,8 +176,8 @@ def downgrade() -> None:
     project is deleted here only once no real person has touched it at all: joined it,
     contributed an opinion to it, or been invited and not yet answered. Membership alone
     is not enough to decide that: a solo admin who opened the example, added their own
-    opinion, and invited nobody has invited no other member, which is exactly what the
-    feature invites someone to do first, and a check that stopped at membership would
+    opinion, and invited nobody is doing exactly what the feature invites someone to do
+    first. That admin has no other member, and a check that stopped at membership would
     still delete that opinion out from under them. Likewise, an invitation that has not yet
     been accepted or declined leaves neither a membership nor an opinion behind, so it
     needs its own check. Without it, the real colleague being invited is the one
