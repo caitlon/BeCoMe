@@ -231,7 +231,7 @@ class ApiClient {
         } catch (refreshError) {
           // A network/5xx refresh failure means the service is down, not that the
           // session is gone, so surface the typed error (letting react-query retry
-          // and AuthContext shows "service unavailable") instead of a false logout.
+          // and AuthContext show "service unavailable") instead of a false logout.
           if (isServiceUnavailable(refreshError)) {
             throw refreshError;
           }

@@ -167,8 +167,8 @@ class RegistrationService:
         except (UserExistsError, IntegrityError):
             # Two submissions raced for the same free address. The duplicate would
             # otherwise surface as a 409 naming the address, or as a 500 from the
-            # unique index, both of them answers this endpoint must never give,
-            # since a caller can tell them apart from the uniform 202. Roll the failed
+            # unique index. Both are answers this endpoint must never give, since a
+            # caller can tell them apart from the uniform 202. Roll the failed
             # insert back so the session is usable and take the taken-address path.
             logger.warning(
                 "Registration raced for a free address",

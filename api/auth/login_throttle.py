@@ -149,8 +149,8 @@ class RedisLoginThrottle:
 
     :param client: Redis client for the shared store.
     :param key_prefix: Key namespace for this flow, required rather than defaulted so
-        two flows sharing one Redis cannot silently share each other's lockout, or trip
-        it.
+        two flows sharing one Redis cannot silently share each other's lockout, and
+        cannot trip it for one another.
     :param max_failures: Failures allowed within the window before locking.
     :param window_seconds: Length of the failure window, in seconds.
     """

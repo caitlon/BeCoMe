@@ -121,9 +121,9 @@ class ProjectWithRoleResponse(ProjectResponse):
         """Create response from database model with role.
 
         Delegates every field but ``role`` to :meth:`ProjectResponse.from_model`, so
-        a field added there only ever needs adding once. ``is_example`` had to be added
-        here too, and was briefly dead code in the response that actually renders it,
-        until that was caught.
+        a field added there only ever needs adding once. Before that delegation, ``is_example``
+        had to be added here too, and was briefly dead code in the response that actually
+        renders it, until that was caught.
 
         :param project: Project database model
         :param member_count: Number of project members
