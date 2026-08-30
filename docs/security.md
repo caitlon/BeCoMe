@@ -49,7 +49,10 @@ Sessions are stateless JWTs signed with `SECRET_KEY` (HS256). Login returns a sh
 access token and a longer-lived refresh token. Refresh tokens rotate: each refresh mints a
 fresh pair tied to a rotation family (a `sid` claim). The API treats the reuse of an
 already-rotated refresh token as theft and revokes the entire family, so a stolen token
-stops working the moment the legitimate client refreshes. Changing the password stamps a
+stops working the moment the legitimate client refreshes. A refresh token minted before the
+session model carries no `sid`, and `/auth/refresh` migrates it rather than rejecting it: the
+route revokes the old `jti` and starts a fresh family, so its holder keeps a working session.
+Changing the password stamps a
 per-user cutoff that rejects every token issued before it. Both the change and the reset
 route record that cutoff *before* they write the new password, so a revocation-store fault
 aborts the operation instead of leaving a fresh password with every old session still alive.
