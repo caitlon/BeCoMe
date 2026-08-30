@@ -42,11 +42,13 @@ uv run pytest --cov=src --cov-report=term-missing
 uv run pytest --cov=src --cov-report=html          # generates htmlcov/
 ```
 
-Current coverage: 100% on `src/`, and 99% across `src/` and `api/` together. About half the gap is
-the Redis-backed store variants, which need a live Redis; the rest is scattered error
-branches. CI measures the same number over
-`tests/unit/` and `tests/integration/` only, because the end-to-end tests drive a separate
-uvicorn process that in-process coverage cannot see.
+Current coverage: 100% on `src/`, and 99% across `src/` and `api/` together. Of the 49 uncovered
+lines, 18 sit in the Redis paths: sixteen are the `RedisRevocationStore` error handlers, which
+need a Redis that fails rather than one that works, and two are the branch that hands out the
+Redis cache. The other 31 are scattered: an in-memory expiry path, a `clear()` test helper, the
+`PackageNotFoundError` version fallback, and a handful of parse guards. CI measures the same
+number over `tests/unit/` and `tests/integration/` only, because the end-to-end tests drive a
+separate uvicorn process that in-process coverage cannot see.
 
 ## Test structure
 
