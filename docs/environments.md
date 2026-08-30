@@ -4,7 +4,7 @@ The backend runs under one of three profiles, chosen by the `APP_ENV` variable: 
 
 ## How selection works
 
-Settings read `APP_ENV` from the process environment (shell, Docker, Railway, CI), not from a dotenv file, because it decides which file to load. Settings load `.env` first, then `.env.<APP_ENV>` on top, so a profile value overrides the shared base. When `APP_ENV` is unset, the dev profile applies.
+Settings read `APP_ENV` from the process environment (shell, Docker, Railway, CI), not from a dotenv file, because that value decides which file to load. The loader then reads `.env` first, then `.env.<APP_ENV>` on top, so a profile value overrides the shared base. When `APP_ENV` is unset, the dev profile applies.
 
 | Profile | `APP_ENV` | Where it runs | Database | Debug | Rate limiting |
 |---------|-----------|---------------|----------|-------|---------------|
@@ -113,7 +113,7 @@ A deployed service that leaves `APP_ENV` unset falls back to dev, which turns de
 
 Log format follows the deploy, not the profile. `api/logging_config.py` emits human-readable text only when the profile is dev *and* `RAILWAY_ENVIRONMENT_NAME` is absent, i.e. on a laptop. The Railway `dev` service is a deploy, so it emits JSON like staging and production and its `extra` fields stay indexable in the drain.
 
-Declare every `VITE_*` variable the SPA reads as an `ARG` and an `ENV` in `frontend/Dockerfile`. Railway passes service variables to the build as build args, but Docker only exposes the ones the Dockerfile declares. Vite then inlines `undefined` for anything missing at build time, silently and with no build error. That gap left `VITE_SENTRY_DSN` set on all three frontend services while `Sentry.init` was tree-shaken out of every bundle.
+In `frontend/Dockerfile`, declare an `ARG` and an `ENV` for every `VITE_*` variable the SPA reads. Railway passes service variables to the build as build args, but Docker only exposes the ones the Dockerfile declares. Vite then inlines `undefined` for anything missing at build time, silently and with no build error. That gap left `VITE_SENTRY_DSN` set on all three frontend services while `Sentry.init` was tree-shaken out of every bundle.
 
 ## Database schema and access
 
@@ -121,7 +121,7 @@ Declare every `VITE_*` variable the SPA reads as an `ARG` and an `ENV` in `front
 
 The application connects through a **least-privilege role**, `become_app`. It reads and writes the application tables but cannot create, alter, or drop objects, is not a superuser, and cannot bypass row-level security. Each backend therefore carries two database URLs: `DATABASE_URL` points at `become_app` for the running app, while `MIGRATION_DATABASE_URL` points at the privileged role that Alembic uses for DDL. `api/db/engine.py` hardens the connection: it requires TLS on deployed databases, tags each connection with an `application_name`, and sets per-session statement and idle-in-transaction timeouts so one query cannot monopolize the database. The schema also carries domain `CHECK` constraints (fuzzy-number ordering, positive expert counts, scale bounds) so the database rejects invalid rows on its own.
 
-On production and staging each Postgres instance is reachable only over Railway's internal network: the public TCP proxies are gone, so the internet cannot reach those databases. Recreate a proxy briefly when a laptop needs direct access for a migration or a dump.
+On production and staging each Postgres instance is reachable only over Railway's internal network: the public TCP proxies are gone, so the internet cannot reach those databases. A proxy can be recreated briefly when a laptop needs direct access for a migration or a dump.
 
 ## Photo storage
 
@@ -129,13 +129,13 @@ Profile photos live in a per-environment Railway Storage Bucket (`dev-photos`, `
 
 ## Email delivery
 
-Registration and password reset both send mail through `EMAIL_PROVIDER` (`console`, which logs the link, or `http`, a Resend-style API, described in `api/README.md`). Registration now depends on delivery in a way password reset never did: registration creates the account unverified, and nobody can log in to it until someone opens its activation link. A deployment whose mail provider is broken or misconfigured therefore creates accounts nobody can activate. The deploy guard already required a working provider for password reset (`_validate_deploy_invariants` in `api/config.py` fails startup on a deployed service without one). That same check now also gates whether a fresh signup is usable.
+Registration and password reset both send mail through `EMAIL_PROVIDER` (`console`, which logs the link, or `http`, a Resend-style API, described in `api/README.md`). Registration now depends on delivery in a way password reset never did: the account is created unverified, and nobody can log in to it until someone opens its activation link. A deployment whose mail provider is broken or misconfigured therefore creates accounts nobody can activate. The deploy guard already required a working provider for password reset (`_validate_deploy_invariants` in `api/config.py` fails startup on a deployed service without one). That same check now also gates whether a fresh signup is usable.
 
-Two settings gate the address checks in `api/services/email_policy.py` that run before a registration reaches the database, both on by default. `DISPOSABLE_EMAIL_BLOCKING_ENABLED` rejects a vendored list of known disposable-mail domains. `MX_CHECK_ENABLED` rejects a domain with no MX, A, or AAAA record, and a resolver timeout or other inconclusive result fails open rather than rejecting. Turn either off with a Railway variable and no redeploy if it starts rejecting real signups. `EMAIL_VERIFICATION_TOKEN_TTL_HOURS` (default `24`) sets how long an activation link stays redeemable. That is longer than the one-hour password-reset window, because people routinely open an activation email the next morning.
+Two settings gate the address checks in `api/services/email_policy.py` that run before a registration reaches the database, both on by default. `DISPOSABLE_EMAIL_BLOCKING_ENABLED` rejects a vendored list of known disposable-mail domains. `MX_CHECK_ENABLED` rejects a domain with no MX, A, or AAAA record, and a resolver timeout or other inconclusive result fails open rather than rejecting. Either check can be turned off with a Railway variable, no redeploy needed, if it starts rejecting real signups. `EMAIL_VERIFICATION_TOKEN_TTL_HOURS` (default `24`) sets how long an activation link stays redeemable. That is longer than the one-hour password-reset window, because people routinely open an activation email the next morning.
 
 ## Current status
 
-All three environments run entirely on Railway, each with its own isolated Postgres and photo bucket. The database layer works the same way across them: Alembic owns the schema, the app connects as the least-privilege `become_app` role, and the production and staging databases are internal-only.
+All three environments run entirely on Railway, each with its own isolated Postgres and photo bucket. The database layer is hardened the same way across them: Alembic owns the schema, the app connects as the least-privilege `become_app` role, and the production and staging databases are internal-only.
 
 - **prod** is live: https://www.becomify.app (frontend) and https://api.becomify.app (API), `APP_ENV=prod`. Database is **Railway Postgres** (`prod-db`). Profile photos live in a **Railway Storage Bucket** (`prod-photos`) served through the API photo proxy.
 - **test / staging** is live from `staging`: https://harbor.becomify.app (frontend) and https://api-harbor.becomify.app (API), on its own Railway Postgres (`test-db`) and bucket (`test-photos`), `APP_ENV=test`.
@@ -145,4 +145,4 @@ Dev and staging moved off their generated `*.up.railway.app` hosts on 2026-07-31
 
 ## Where the code lives
 
-The selector and guard live in `api/config.py`. They are `Environment` (the enum), `_resolve_environment()` (reads `APP_ENV`), `_env_files_for()` (builds the `.env` plus `.env.<stage>` list), and the `_validate_deploy_invariants` model validator, which guards `prod` and a deployed `test`. Rate limiting reads `settings.testing` in `api/middleware/rate_limit.py`.
+The selector and guard live in `api/config.py`: `Environment` (the enum), `_resolve_environment()` (reads `APP_ENV`), `_env_files_for()` (builds the `.env` plus `.env.<stage>` list), and the `_validate_deploy_invariants` model validator, which guards `prod` and a deployed `test`. Rate limiting reads `settings.testing` in `api/middleware/rate_limit.py`.

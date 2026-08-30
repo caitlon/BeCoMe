@@ -140,7 +140,7 @@ Expert 3: E₃ = (8,  14, 22)
 
 ### Step 2: calculate the median (Ω)
 
-To find the median **Ω(ρ, ω, σ)**, sort the opinions by centroid and take the middle value. An even count takes the average of the two middle values.
+To find the median **Ω(ρ, ω, σ)**, sort the opinions by centroid and take the middle value. With an even count, take the average of the two middle values.
 
 #### Step 2.1: calculate centroids
 

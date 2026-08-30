@@ -111,7 +111,8 @@ someone redeems the emailed link through `POST /auth/verify-email`. Until then
 
 A submission takes effect only when someone follows its own link *and* restates its own
 password. The password hash and names travel on the activation token, so registering an
-unconfirmed address twice leaves two working links, and whichever one someone redeems first decides
+unconfirmed address twice leaves two working links, and whichever one someone redeems
+first decides
 the credentials the account opens with. `POST /auth/verify-email` therefore takes
 `{token, password}`: an unknown, spent, or expired token gets one opaque `400`, while a
 password that does not match the token gets a `403` with its own `detail`, so a client can
@@ -251,7 +252,7 @@ Environment variables (a `.env` file works too):
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `APP_ENV` | `dev` | Deployment profile: `dev`, `test`, or `prod`. Selects the `.env.<APP_ENV>` overlay; deployed profiles reject a weak secret, SQLite, a missing Redis, or localhost CORS at startup. See the root README "Environment profiles". |
+| `APP_ENV` | `dev` | Deployment profile: `dev`, `test`, or `prod`. Selects the `.env.<APP_ENV>` overlay; deployed profiles reject a weak secret, SQLite, a missing Redis, or localhost CORS at startup. See [docs/environments.md](../docs/environments.md). |
 | `DATABASE_URL` | `sqlite:///./become.db` | Database connection string. On deployed environments this is the least-privilege `become_app` role. |
 | `MIGRATION_DATABASE_URL` | *required when deployed* | Privileged connection used only by Alembic migrations (DDL); falls back to `DATABASE_URL` locally, but startup fails without it on a deployed service so the least-privilege split is never silently lost. |
 | `SECRET_KEY` | *required* | JWT signing key (generate with `openssl rand -hex 32`) |
@@ -307,7 +308,7 @@ Five third-party loggers share those handlers at pinned levels (`_EXTERNAL_LOG_L
 `api/logging_config.py`). `uvicorn.error` sits at INFO, so a boot that never finished is visible
 in the drain. `httpx` and `botocore` sit at WARNING, since `email_sent` and `s3_upload` already
 cover their successful calls. `uvicorn.access` stays silent on purpose, because `api.request`
-logs the same requests with more fields. **`sqlalchemy.engine` sits pinned at WARNING and must
+logs the same requests with more fields. **`sqlalchemy.engine` is pinned at WARNING and must
 stay there:** its DEBUG level prints bound query parameters, which on this schema means password
 hashes, addresses, and reset-token hashes going to the drain in the clear. The read services log
 query shape and timing instead. If drain volume from dev's DEBUG stream becomes a problem, set

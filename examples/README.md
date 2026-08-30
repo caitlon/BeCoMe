@@ -117,6 +117,6 @@ Each script displays four calculation steps: arithmetic mean (Γ), median (Ω), 
 
 ## Related documentation
 
-- [Main README](../README.md): project overview and installation
+- [Main README](../README.md): what the method does and where the docs are
 - [Method description](../docs/method-description.md): mathematical foundation
 - [Source code](../src/README.md): API documentation
