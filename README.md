@@ -5,10 +5,10 @@ Software that helps a panel of experts turn genuine disagreement into one defens
 **Live: [becomify.app](https://www.becomify.app)**
 
 ![Python](https://img.shields.io/badge/python-3.13+-blue.svg)
-![TypeScript](https://img.shields.io/badge/typescript-5.0+-blue.svg)
-![FastAPI](https://img.shields.io/badge/fastapi-0.115+-green.svg)
-![React](https://img.shields.io/badge/react-18+-blue.svg)
-![Tests](https://img.shields.io/badge/tests-2823%20passed-brightgreen)
+![TypeScript](https://img.shields.io/badge/typescript-6.0+-blue.svg)
+![FastAPI](https://img.shields.io/badge/fastapi-0.141+-green.svg)
+![React](https://img.shields.io/badge/react-19+-blue.svg)
+![Tests](https://img.shields.io/badge/tests-2813%20passed-brightgreen)
 ![Coverage](https://img.shields.io/badge/coverage-99%25-brightgreen)
 
 ## Contents
@@ -25,7 +25,7 @@ Software that helps a panel of experts turn genuine disagreement into one defens
 
 ## The problem
 
-Ask thirteen experts how much arable land a country should convert into flood plains and you get thirteen different answers, most of them ranges rather than single numbers. The hydrologists on one Czech panel recommended converting 37 to 47 percent. The land owners, whose fields those would be, said 0 to 4. Both groups had good reasons.
+Ask thirteen experts how much arable land a country should convert into flood plains and you get thirteen different answers, most of them ranges rather than single numbers. The hydrologists on one Czech panel recommended converting 37 to 50 percent. The land owners, whose fields those would be, said 0 to 4. Both groups had good reasons.
 
 The usual move is to average everything, and it fails quietly here. The plain average of that panel is about 20 percent, a figure not one of the thirteen would defend: far too little for the hydrologists, ruinous for the farmers. It is also fragile. Add one more strong opinion at either end and the answer moves again.
 
@@ -45,9 +45,9 @@ The project ships the three panels the method's authors published, with the orig
 
 **COVID-19 budget support.** 22 Czech officials, among them deputy ministers, the Police President, and the Chief Hygienist, estimating support for affected businesses in billions of CZK. This panel largely agreed, and the numbers show it.
 
-**Cross-border travel.** 22 public health and border officials rating pandemic travel policy on a five-point scale. It shows the method handling ordinary survey answers as well as ranges.
+**Cross-border travel.** 22 senior Czech officials rating pandemic travel policy on a five-point scale. It shows the method handling ordinary survey answers as well as ranges.
 
-Every result matches the authors' own Excel workbook to within 0.001, and CI re-checks that on every commit.
+Every result matches the authors' own Excel workbook to within 0.001, and CI re-checks that on every pull request.
 
 ## Try it
 

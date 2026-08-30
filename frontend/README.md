@@ -4,7 +4,7 @@ React frontend for BeCoMe (Best Compromise Mean), the system that aggregates exp
 
 ## Tech stack
 
-- React 18 + TypeScript
+- React 19 + TypeScript
 - Vite (build tool)
 - Tailwind CSS + shadcn/ui
 - React Query (data fetching)
@@ -50,7 +50,7 @@ A new `VITE_*` variable means editing three places: `Dockerfile`, the Railway se
 Build and run with Docker:
 ```bash
 docker build -t become-frontend .
-docker run -p 3000:80 become-frontend
+docker run -p 3000:8080 become-frontend
 ```
 
 To reproduce a deployed build locally, pass the build args explicitly:

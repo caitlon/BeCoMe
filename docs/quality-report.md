@@ -41,7 +41,7 @@ HTML report: `uv run pytest --cov=src --cov-report=html` generates `htmlcov/inde
 
 ## Test breakdown
 
-Unit tests (1215) cover models, calculators, interpreters, utilities, and API components (auth, schemas, services, middleware, logging). Integration tests (512) validate core calculations against Excel reference data for all three case studies and test API routes with a real database. End-to-end tests (59) exercise full API workflows. They skip on a machine without a live PostgreSQL and run in CI. The frontend adds 1037 Vitest tests, and 223 Playwright runs across five browser projects. Edge cases include a single expert, identical opinions, empty lists, and boundary values.
+Unit tests (1215) cover models, calculators, interpreters, utilities, and API components (auth, schemas, services, middleware, logging). Integration tests (512) validate core calculations against Excel reference data for all three case studies and test API routes with a real database. End-to-end tests (59) exercise full API workflows. They skip on a machine without a live PostgreSQL and run in CI. The frontend adds 1027 Vitest tests, and 229 Playwright runs across five browser projects. Edge cases include a single expert, identical opinions, empty lists, and boundary values.
 
 To regenerate these counts, run `uv run pytest tests/unit/ --collect-only -q` for each backend tier, `npx vitest run` in `frontend/`, and `npx playwright test --list`.
 
@@ -49,13 +49,13 @@ Logging has its own two-part guard. `tests/unit/api/test_logging_events.py` asse
 
 ## Mutation testing
 
-Run date: 2026-02-22 | Commit: ae7fd59
+Run date: 2026-02-22. The commit it ran against no longer resolves in this repository's history, so the figures below are a point-in-time measurement rather than something you can reproduce exactly. Rerun the commands to refresh them.
 
 Mutation testing measures test suite quality. mutmut introduces small code changes called mutants, replacing `+` with `-` and `<=` with `<`, and swapping constants. It then checks whether the existing tests detect each change. A "killed" mutant means the tests caught the defect. A "survived" mutant means they did not.
 
 | Metric | Value |
 |--------|-------|
-| Tool | mutmut 2.5.1 |
+| Tool | mutmut 2.5.1, the version pinned on the run date (now 3.6.0) |
 | Target | `src/` (core library) |
 | Total mutants | 170 |
 | Killed | 120 |
@@ -105,7 +105,7 @@ Modules with core computational logic (`base_calculator`, `median_strategies`) h
 
 ## Performance testing
 
-Run date: 2026-02-22 | Commit: ae7fd59
+Run date: 2026-02-22, on the same unresolvable commit as the mutation run above.
 
 | Endpoint | Experts | Avg (ms) | Median (ms) | P95 (ms) | P99 (ms) | RPS |
 |----------|---------|----------|-------------|----------|----------|-----|
@@ -115,7 +115,7 @@ Run date: 2026-02-22 | Commit: ae7fd59
 | /api/v1/health | - | 1.9 | 1 | 3 | 10 | 3.2 |
 
 Environment: macOS (Apple Silicon), Python 3.13, PostgreSQL 16 (Docker), 10 concurrent users, 60s run.
-Tool: Locust 2.43.3. Total requests: 1863, failures: 0.
+Tool: Locust 2.43.3, the version pinned on the run date. The pin has since moved to 2.46.2. Total requests: 1863, failures: 0.
 
 ```bash
 # Start API server
@@ -140,4 +140,4 @@ Measured from Prague (CZ) via Cloudflare edge (PRG) → Railway (europe-west4, N
 
 ## Configuration
 
-mypy runs in strict mode (`pyproject.toml`). ruff enforces pycodestyle, pyflakes, isort, bugbear, and naming conventions. Line length is 100 characters.
+mypy runs in strict mode (`pyproject.toml`). ruff enforces pycodestyle, pyflakes, isort, bugbear, naming conventions, pyupgrade, bandit, and flake8-simplify. Line length is 100 characters.

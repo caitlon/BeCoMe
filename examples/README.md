@@ -48,7 +48,7 @@ every step.
 
 ## Visualizations
 
-The `visualizations/` directory contains interactive Jupyter notebooks for exploring BeCoMe
+The `visualizations/` directory holds one interactive Jupyter notebook for exploring BeCoMe
 results. The charts cover triangular membership functions, centroid comparisons, sensitivity
 analysis (toggle experts on and off to see the impact), and a scenario dashboard that puts all
 three cases side by side.
