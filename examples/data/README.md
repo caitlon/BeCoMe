@@ -58,7 +58,7 @@ Land owner 2 | 0 | 0 | 2
 
 Officials rated whether cross-border commuters should be allowed to travel during pandemic restrictions. Unlike other cases, responses used a Likert scale: 0 (strongly disagree), 25, 50, 75, 100 (strongly agree).
 
-Foreign Affairs strongly supported travel (100). Interior and Defense opposed it (0). The majority leaned toward disagreement: 10 of 22 chose "rather disagree" (25). Likert values
+Foreign Affairs strongly supported travel (100). Interior and Defense opposed it (0). The panel leaned toward disagreement: 14 of 22 answered 0 or 25, with "rather disagree" (25) the most common at 10. Likert values
 are crisp, so Lower = Peak = Upper.
 
 ```

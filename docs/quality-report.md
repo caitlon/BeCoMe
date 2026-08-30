@@ -55,7 +55,7 @@ Mutation testing measures test suite quality. mutmut introduces small code chang
 
 | Metric | Value |
 |--------|-------|
-| Tool | mutmut 2.5.1, the version pinned on the run date (now 3.6.0) |
+| Tool | mutmut 2.5.1, the version `uv.lock` resolved on the run date; the project now pins 3.6.0 |
 | Target | `src/` (core library) |
 | Total mutants | 170 |
 | Killed | 120 |
@@ -115,7 +115,7 @@ Run date: 2026-02-22, on the same unresolvable commit as the mutation run above.
 | /api/v1/health | - | 1.9 | 1 | 3 | 10 | 3.2 |
 
 Environment: macOS (Apple Silicon), Python 3.13, PostgreSQL 16 (Docker), 10 concurrent users, 60s run.
-Tool: Locust 2.43.3, the version pinned on the run date. The pin has since moved to 2.46.2. Total requests: 1863, failures: 0.
+Tool: Locust 2.43.3, the version `uv.lock` resolved on the run date. The project now pins 2.46.2. Total requests: 1863, failures: 0.
 
 ```bash
 # Start API server
@@ -140,4 +140,4 @@ Measured from Prague (CZ) via Cloudflare edge (PRG) → Railway (europe-west4, N
 
 ## Configuration
 
-mypy runs in strict mode (`pyproject.toml`). ruff enforces pycodestyle, pyflakes, isort, bugbear, naming conventions, pyupgrade, bandit, and flake8-simplify. Line length is 100 characters.
+mypy runs in strict mode (`pyproject.toml`). ruff enforces pycodestyle, pyflakes, isort, bugbear, naming conventions, pyupgrade, bandit, flake8-simplify, and its own ruff-specific rules. Line length is 100 characters.
