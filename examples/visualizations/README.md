@@ -44,10 +44,9 @@ uv sync --extra viz --extra notebook
 
 ## Interactive features
 
-Charts render as static Matplotlib images. The controls around them are what is interactive:
-the sensitivity analysis redraws as soon as you toggle an expert, and the scenario dashboard as
-soon as you pick a different scenario. Every redraw runs in the notebook kernel, and nothing
-calls an external service.
+Charts render as static Matplotlib images. One view is interactive: the sensitivity analysis
+carries an ipywidgets checkbox per expert and redraws as soon as you toggle one. The redraw
+runs in the notebook kernel, and nothing calls an external service.
 
 ## Technical details
 

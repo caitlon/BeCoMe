@@ -25,7 +25,7 @@ This separation is what lets staging be realistic. A staging deploy sets `APP_EN
 
 ### dev
 
-The default. SQLite, debug on, localhost CORS, no startup validation. It needs no configuration.
+The default. SQLite, debug off, localhost CORS, and no startup guard on a laptop. It needs no configuration. The `.env.dev.example` template turns debug on, and the same profile on Railway is a deploy, so the guard applies to it.
 
 ```bash
 uv run uvicorn api.main:app --reload
