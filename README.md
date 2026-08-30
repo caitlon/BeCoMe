@@ -62,13 +62,13 @@ uv run python -m examples.analyze_budget_case
 
 ## Where the method comes from
 
-I. Vrana, J. Tyrychtr, and M. Pelikán published BeCoMe in *Environmental Modelling & Software*, at the Faculty of Economics and Management of the Czech University of Life Sciences Prague. Ekaterina Kuzmina wrote this independent implementation of that paper at the same faculty. A web application wraps it, so that people who do not write code can run a panel.
+I. Vrana, J. Tyrychtr, and M. Pelikán, of the Faculty of Economics and Management at the Czech University of Life Sciences Prague, published BeCoMe in *Environmental Modelling & Software*. Ekaterina Kuzmina wrote this independent implementation of that paper at the same faculty. A web application wraps it, so that people who do not write code can run a panel.
 
 The [method description](docs/method-description.md) works through the mathematics step by step, with the formulas and a complete example.
 
 ## Project status
 
-An MVP, and a working proof of concept rather than a finished product. The three published case studies run end to end, the web application is live, and the results match the reference implementation. It is under active development and the scope is still growing.
+This is an MVP: a working proof of concept rather than a finished product. The three published case studies run end to end, the web application is live, and the results match the reference implementation. It is under active development and the scope is still growing.
 
 ## For developers
 
@@ -94,7 +94,7 @@ The stack is FastAPI and SQLModel on the backend, React with TypeScript and Tail
 
 **Copyright**: © 2025-2026 Ekaterina Kuzmina
 
-Ekaterina Kuzmina, xkuze010@studenti.czu.cz, Czech University of Life Sciences Prague.
+**Contact**: Ekaterina Kuzmina, xkuze010@studenti.czu.cz, Czech University of Life Sciences Prague.
 
 ## References
 
@@ -104,4 +104,6 @@ Foundational background: fuzzy logic (Zadeh 1965, and Bellman & Zadeh 1970).
 
 All case study data is in `examples/data/`, with format specifications and provenance in [examples/data/README.md](examples/data/README.md).
 
-Thanks to the authors of the method, I. Vrana, J. Tyrychtr, and M. Pelikán, at the Faculty of Economics and Management, Czech University of Life Sciences Prague.
+Thanks to the method's authors.
+
+A longer write-up of this implementation is in [thesis/main.pdf](thesis/main.pdf).

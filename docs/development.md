@@ -31,7 +31,8 @@ uv sync --extra dev        # add testing, linting, type checking
 uv sync --all-extras       # everything
 
 source .venv/bin/activate  # macOS and Linux
-.venv\Scripts\activate     # Windows
+# or, on Windows:
+.venv\Scripts\activate
 ```
 
 After installing the `dev` extra, enable the local secret-scanning git hook:
