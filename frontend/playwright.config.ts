@@ -5,11 +5,13 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  // The CI runner has 4 cores and fullyParallel is on, so a single worker left three
-  // idle and made this the longest job in the pipeline by far. Two is deliberate rather
-  // than maximal: the visual-regression project compares screenshots, and rendering
-  // under heavy load is where those start to flake.
-  workers: process.env.CI ? 2 : undefined,
+  // One worker per core on the CI runner. The whole run is worker-bound: 1049 seconds
+  // of test time finished in 528 on two workers, so the wall clock is the total divided
+  // by this number and nothing else. Two was a precaution against the visual-regression
+  // project comparing screenshots under load, which cost the other 97% of the run more
+  // than it protected: those eight tests are 31 seconds of the 1049. CI now runs them
+  // as a separate pass at one worker, so the precaution holds and the rest go wide.
+  workers: process.env.CI ? 4 : undefined,
   // `list` alongside `html`: the HTML report is written to a directory that CI only
   // uploads when the job fails, so a green run left no record of where its nine
   // minutes went. `list` prints a line and a duration per test into the job log,
