@@ -21,6 +21,13 @@ concurrency:
 env:
   UV_COMPILE_BYTECODE: "1"
 
+# Every job waits for lint, and that is a deliberate trade rather than an oversight.
+# Nothing here needs ruff or mypy to have passed in order to run, so the jobs could all
+# start at once and finish about 70 seconds sooner. They wait anyway, because a run
+# whose shape you can read top to bottom is worth those seconds: lint first, then the
+# tests, then the analysis that consumes what the tests produced. The other benefit is
+# that a branch which does not lint stops after one job instead of occupying seven.
+
 jobs:
   lint:
     name: Code Quality Checks
@@ -91,6 +98,7 @@ jobs:
   dependency-audit:
     name: Dependency Audit
     runs-on: ubuntu-24.04
+    needs: lint
     # Network-bound audits (pip-audit -> pypi.org, npm audit -> npm registry) live here,
     # not in the required "Code Quality Checks" job, so a transient registry timeout cannot
     # fail the required lint check or skip the test jobs that depend on it. Retries absorb
@@ -234,9 +242,7 @@ jobs:
   backend-e2e:
     name: Backend E2E Tests
     runs-on: ubuntu-24.04
-    # Deliberately not gated on lint: E2E exercises a running server and does not care
-    # whether ruff or mypy is happy, so waiting for that job only adds a minute of idle
-    # time to the pipeline's critical path.
+    needs: lint
     env:
       APP_ENV: "test"
       TESTING: "1"
@@ -332,8 +338,7 @@ jobs:
           - name: chromium
             browsers: chromium
             projects: --project=chromium --project=wcag-audit
-    # Not gated on lint either. This is the longest job in the pipeline, so starting it
-    # a minute earlier shortens the whole run by that minute.
+    needs: lint
     env:
       APP_ENV: "test"
       TESTING: "1"
