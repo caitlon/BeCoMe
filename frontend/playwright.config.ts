@@ -5,13 +5,13 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  // One worker per core on the CI runner. The whole run is worker-bound: 1049 seconds
-  // of test time finished in 528 on two workers, so the wall clock is the total divided
-  // by this number and nothing else. Two was a precaution against the visual-regression
-  // project comparing screenshots under load, which cost the other 97% of the run more
-  // than it protected: those eight tests are 31 seconds of the 1049. CI now runs them
-  // as a separate pass at one worker, so the precaution holds and the rest go wide.
-  workers: process.env.CI ? 4 : undefined,
+  // Two, and four was measured and rejected. The runner advertises four cores but has
+  // two physical ones behind them, and a browser per worker does not fit in a
+  // hyperthread sibling: at four workers the summed test time went from 1049 seconds
+  // to 1787, so 70% more work bought 13% less wall clock. Six webkit tests also began
+  // failing on the timeout, which is what that inflation looks like from the inside.
+  // More parallelism here needs more machines, not more workers on this one.
+  workers: process.env.CI ? 2 : undefined,
   // `list` alongside `html`: the HTML report is written to a directory that CI only
   // uploads when the job fails, so a green run left no record of where its nine
   // minutes went. `list` prints a line and a duration per test into the job log,
