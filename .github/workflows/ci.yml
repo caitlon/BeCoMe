@@ -299,9 +299,31 @@ jobs:
           DATABASE_URL: postgresql://become:become@localhost:5432/become_e2e
           SECRET_KEY: test-secret-key-for-ci
 
-  e2e:
-    name: E2E Tests (Playwright)
+  # One shard per browser. The three of them run the same 73 functional specs, and a
+  # single runner cannot go wider than two workers: it advertises four cores over two
+  # physical ones, and at four workers the summed test time grew 70% while the wall
+  # clock fell only 13%. Extra parallelism therefore has to come from extra machines.
+  # Shares of one run: webkit 442s, firefox 304s, chromium 225s plus wcag 47s.
+  e2e-shard:
+    name: E2E shard (${{ matrix.name }})
     runs-on: ubuntu-24.04
+    strategy:
+      # One browser failing should not cancel the others: knowing whether a break is
+      # webkit-only or everywhere is most of what the split buys.
+      fail-fast: false
+      matrix:
+        include:
+          - name: webkit
+            browsers: webkit
+            projects: --project=webkit
+          - name: firefox
+            browsers: firefox
+            projects: --project=firefox
+          # Chromium carries the two single-browser projects as well: both are Desktop
+          # Chrome, so they need no second browser download.
+          - name: chromium
+            browsers: chromium
+            projects: --project=chromium --project=wcag-audit
     # Not gated on lint either. This is the longest job in the pipeline, so starting it
     # a minute earlier shortens the whole run by that minute.
     env:
@@ -362,13 +384,15 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
+          key: playwright-${{ runner.os }}-${{ matrix.browsers }}-${{ hashFiles('frontend/package-lock.json') }}
           restore-keys: |
-            playwright-${{ runner.os }}-
+            playwright-${{ runner.os }}-${{ matrix.browsers }}-
 
+      # Only this shard's browser. Downloading all three cost between 50 and 509
+      # seconds depending on how the cache landed, and two of them went unused.
       - name: Install Playwright browsers
         working-directory: frontend
-        run: npx playwright install --with-deps
+        run: npx playwright install --with-deps ${{ matrix.browsers }}
 
       - name: Start API server
         run: |
@@ -399,13 +423,20 @@ jobs:
 
       - name: Run E2E tests
         working-directory: frontend
-        run: npx playwright test
+        run: npx playwright test ${{ matrix.projects }}
+
+      # Alone, at one worker, which is the concurrency its baselines were recorded at.
+      # Eight tests and 31 seconds, so giving them their own pass costs almost nothing.
+      - name: Run visual regression tests
+        if: matrix.name == 'chromium'
+        working-directory: frontend
+        run: npx playwright test --project=visual-regression --workers=1
 
       - name: Upload Playwright report
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: playwright-report
+          name: playwright-report-${{ matrix.name }}
           path: frontend/playwright-report/
           retention-days: 7
 
@@ -417,9 +448,26 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: e2e-api-log
+          name: e2e-api-log-${{ matrix.name }}
           path: /tmp/become-e2e-api.log
           retention-days: 7
+
+  # `E2E Tests (Playwright)` is a required status check on develop, staging and main, so
+  # the split has to keep a job under exactly that name or every pull request into them
+  # would wait forever for a check that no longer runs. This one only reports the shards.
+  e2e:
+    name: E2E Tests (Playwright)
+    runs-on: ubuntu-24.04
+    needs: e2e-shard
+    if: always()
+    steps:
+      - name: Report shard results
+        run: |
+          echo "shards: ${{ needs.e2e-shard.result }}"
+          if [ "${{ needs.e2e-shard.result }}" != "success" ]; then
+            echo "::error::at least one E2E shard did not pass"
+            exit 1
+          fi
 
   # Runs on pull requests and on pushes to `main`. Analysing only pull requests left the main
   # branch itself unanalysed since 2026-02-21, reporting 76.7% coverage against a real 99%, and
