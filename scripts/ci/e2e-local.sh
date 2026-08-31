@@ -130,8 +130,8 @@ VISUAL_EXIT=0
 if [ "$MODE" = "all" ] || [ "$MODE" = "backend" ]; then
   echo "--- Backend E2E (pytest + httpx) ---"
   cd "$PROJECT_ROOT"
-  # -n 0 opts out of the shared -n auto: the workers would share one uvicorn and one
-  # Postgres, and the client's 10s timeout in tests/e2e/conftest.py is exceeded.
+  # -n 0 opts out of the shared -n logical: the workers would share one uvicorn and
+  # one Postgres, and the client's 10s timeout in tests/e2e/conftest.py is exceeded.
   uv run pytest tests/e2e/ -v -m e2e -n 0 || BACKEND_EXIT=$?
   echo ""
 fi
