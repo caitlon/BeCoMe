@@ -10,30 +10,62 @@ Unit tests cover models, calculators, interpreters, utilities, and API component
 ## Running tests
 
 ```bash
-uv run pytest                          # all tests
+uv run pytest                          # unit + integration (see testpaths)
 uv run pytest tests/unit/              # unit tests only
 uv run pytest tests/integration/       # integration tests only
+uv run pytest tests/e2e/ -n 0          # end-to-end, needs a live server
 uv run pytest -v                       # verbose output
 uv run pytest -x                       # stop on first failure
 uv run pytest -n 0                     # serial, for a readable traceback
 ```
 
-The suite runs in parallel by default: `-n auto` sits in `addopts`, one worker per
-core. A full run that took 3:46 serially lands between one and two minutes. The
-spread between repeats is wide enough that a single timing settles nothing, so
-treat any number here as a range rather than a figure to tune against.
+The suite runs in parallel by default: `-n logical` sits in `addopts`. It reads
+`logical` rather than `auto` because xdist resolves `auto` to *physical* cores, and
+the CI runner is a hyperthreaded VM with four logical cores over two physical ones,
+so `auto` ran the suite on half of it. To use a different worker count on one
+machine, set `PYTEST_XDIST_AUTO_NUM_WORKERS`; xdist reads that before it looks at
+the hardware, so it overrides `logical` without touching the shared `addopts`.
+
+How many workers is worth measuring rather than guessing, and half the cores is a
+tempting guess that does not hold here. On a copy of the tree on local disk, 1,727
+tests, two passes agreeing within two seconds: serial 169s, four workers 57s, six
+44s, eight 41s, twelve 44s. The curve is flat from six to twelve with a shallow best at eight,
+so dropping to six buys nothing — `PYTEST_XDIST_AUTO_NUM_WORKERS=8` on a
+twelve-core machine, and no reason to touch `addopts`.
+
+**Name the directories, do not pass `tests/`.** xdist hands tests to workers in
+collection order, and running the integration tier before the unit tier costs half
+again as long: 72s against 48s for the same 1,727 tests on eight workers. Passing
+the `tests/` root walks the directories alphabetically, which puts `integration`
+first, so `pytest tests/` pays that every time. `testpaths` names the two in the
+fast order, which is why a bare `uv run pytest` does not.
+
+Two more things shape these numbers. Nothing is byte-compiled unless you ask:
+`uv sync` does not do it, so every worker recompiles all of site-packages on every
+run, worth about a tenth of the wall clock (eight workers: 42s against 36s). CI
+sets `UV_COMPILE_BYTECODE`, which costs one second there. Locally the same effect
+needs `PYTHONPYCACHEPREFIX` pointed somewhere outside the tree, never a plain
+`__pycache__`, because this repo lives on iCloud Drive. And a timing taken while
+another suite runs on the same machine measures nothing: check `ps` first.
 
 Use `-n 0` in two cases. The first is reading one failure closely, because worker
 output interleaves. The second is any small selection: a single file costs more to
 distribute than to run, 5.5 seconds against 3.0 for
 `tests/unit/models/test_fuzzy_number.py`.
 
-The end-to-end tests opt out explicitly, in `.github/workflows/ci.yml` and in
-`scripts/ci/e2e-local.sh`. They share one uvicorn process and one database, so
-workers queue behind each other until the client's ten-second timeout in
-`tests/e2e/conftest.py` starts firing. At twelve workers a quarter of them failed
-that way. At four they all passed. Anything new that drives the live stack needs
-the same `-n 0`.
+The end-to-end tests need `-n 0`, which `.github/workflows/ci.yml` and
+`scripts/ci/e2e-local.sh` both pass. They share one uvicorn process and one
+database, so workers queue behind each other until the client's ten-second timeout
+in `tests/e2e/conftest.py` starts firing. At twelve workers a quarter of them
+failed that way. At four they all passed.
+
+Passing `-n 0` in those two places is not enough on its own, because `addopts`
+applies to every invocation: a plain `pytest tests/` sweeps the directory in at
+full width. So `pytest_collection_modifyitems` in `tests/e2e/conftest.py` skips
+these tests outright whenever the run is distributed. Without it that command paid
+ten reconnect attempts per worker with the stack down, and a cascade of timeouts
+with it up. Anything new that drives the live stack belongs in this directory, or
+needs the same guard.
 
 ## Code coverage
 
