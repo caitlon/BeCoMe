@@ -397,20 +397,9 @@ jobs:
           # runners should not depend on a live resolver anyway.
           MX_CHECK_ENABLED: "false"
 
-      # Two passes rather than one. The screenshot project runs alone at a single
-      # worker, which is the concurrency the baselines were recorded at, and
-      # everything else goes at the config's four. Naming the projects is what keeps
-      # the split honest, so a project added to playwright.config.ts has to be added
-      # here too or it will not run in CI.
       - name: Run E2E tests
         working-directory: frontend
-        run: >-
-          npx playwright test
-          --project=chromium --project=firefox --project=webkit --project=wcag-audit
-
-      - name: Run visual regression tests
-        working-directory: frontend
-        run: npx playwright test --project=visual-regression --workers=1
+        run: npx playwright test
 
       - name: Upload Playwright report
         if: failure()
