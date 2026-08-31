@@ -4,9 +4,47 @@ import json
 import logging
 from logging.handlers import RotatingFileHandler
 
+import pytest
+
 from api.config import Environment, Settings
 from api.logging_config import _EXTERNAL_LOG_LEVELS, JsonLogFormatter, setup_logging
 from api.logging_context import ContextFilter
+
+_CONFIGURED_LOGGERS = ("api", *_EXTERNAL_LOG_LEVELS)
+
+
+@pytest.fixture(autouse=True)
+def restore_configured_loggers():
+    """Leave the process-wide loggers as the test found them.
+
+    ``setup_logging`` attaches its handlers to real, process-wide loggers, and the
+    Better Stack tests below call it with ``LogtailHandler`` patched, so what gets
+    attached is a ``MagicMock``. Leaving the ``with patch(...)`` block detaches
+    nothing, and a mock left in ``handlers`` makes ``record.levelno >= hdlr.level``
+    raise ``TypeError`` inside ``logging`` itself for every later test in the same
+    process that logs anything. Two of the six loggers involved are
+    ``sqlalchemy.engine`` and ``httpx``, so the victims are most of the integration
+    suite.
+
+    Which tests those are depends on how xdist happened to distribute them, which is
+    why this surfaced as 25 unrelated failures in one run at eight workers and in
+    none at six or twelve. Restoring the loggers keeps the damage inside the test
+    that caused it.
+    """
+    saved = {
+        name: (
+            list(logging.getLogger(name).handlers),
+            logging.getLogger(name).level,
+            logging.getLogger(name).propagate,
+        )
+        for name in _CONFIGURED_LOGGERS
+    }
+    yield
+    for name, (handlers, level, propagate) in saved.items():
+        logger = logging.getLogger(name)
+        logger.handlers[:] = handlers
+        logger.setLevel(level)
+        logger.propagate = propagate
 
 
 def _settings(
