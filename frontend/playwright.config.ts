@@ -39,15 +39,24 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
       testIgnore: /visual-regression|wcag-audit/,
     },
+    // Firefox and WebKit get twice the default timeout, because they are that much
+    // slower on the same specs: summed over one CI run, chromium spends 225 seconds
+    // where firefox spends 304 and webkit 442. At two workers webkit's slowest test
+    // finished in 26.7s against the 30s default, so the margin was three seconds and
+    // it was the worker count holding it, not the app. Going to four workers pushed
+    // webkit to 32.7s and firefox to 30.7s, and six tests failed on the timeout alone.
+    // The number belongs to the browser rather than to how the run was scheduled.
     {
       name: 'firefox',
       use: { ...devices['Desktop Firefox'] },
       testIgnore: /visual-regression|wcag-audit/,
+      timeout: 60_000,
     },
     {
       name: 'webkit',
       use: { ...devices['Desktop Safari'] },
       testIgnore: /visual-regression|wcag-audit/,
+      timeout: 60_000,
     },
     {
       name: 'wcag-audit',
