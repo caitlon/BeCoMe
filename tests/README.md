@@ -30,8 +30,8 @@ How many workers is worth measuring rather than guessing, and half the cores is 
 tempting guess that does not hold here. On a copy of the tree on local disk, 1,727
 tests, two passes agreeing within two seconds: serial 169s, four workers 57s, six
 44s, eight 41s, twelve 44s. The curve is flat from six to twelve with a shallow best at eight,
-so dropping to six buys nothing — `PYTEST_XDIST_AUTO_NUM_WORKERS=8` on a
-twelve-core machine, and no reason to touch `addopts`.
+so dropping to six buys nothing. Set `PYTEST_XDIST_AUTO_NUM_WORKERS=8` on a
+twelve-core machine and leave `addopts` alone.
 
 **Name the directories, do not pass `tests/`.** xdist hands tests to workers in
 collection order, and running the integration tier before the unit tier costs half

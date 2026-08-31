@@ -7,7 +7,7 @@
 | mypy (strict) | Pass | No errors (24 files in `src/`+`examples/`, 92 in `api/`) |
 | ruff check | Pass | No issues |
 | ruff format | Pass | All files formatted |
-| pytest | Pass | 1727 passed, 59 skipped (the e2e tier needs a live PostgreSQL, and runs in CI) |
+| pytest | Pass | 1727 passed (`testpaths` is unit plus integration; the e2e tier is its own run, `pytest tests/e2e/ -n 0`, and needs a live PostgreSQL) |
 | coverage | Pass | 100% on `src/` (197 statements), 99% on `src/`+`api/` (4298 statements, 49 uncovered) |
 
 ## Running checks
