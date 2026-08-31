@@ -303,7 +303,8 @@ jobs:
   # single runner cannot go wider than two workers: it advertises four cores over two
   # physical ones, and at four workers the summed test time grew 70% while the wall
   # clock fell only 13%. Extra parallelism therefore has to come from extra machines.
-  # Shares of one run: webkit 442s, firefox 304s, chromium 225s plus wcag 47s.
+  # Shares of one run: webkit 442s, firefox 304s, chromium 225s plus wcag 47s, which
+  # is why webkit is split again below and the other two are not.
   e2e-shard:
     name: E2E shard (${{ matrix.name }})
     runs-on: ubuntu-24.04
@@ -313,9 +314,16 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: webkit
+          # WebKit twice. Whole, it ran 239 seconds of tests against chromium's 172 and
+          # became the only thing the pipeline waited on, at 363 seconds against 251.
+          # Halved, each part lands beside the other shards and the run ends when the
+          # slowest of four finishes rather than when webkit does.
+          - name: webkit-1
             browsers: webkit
-            projects: --project=webkit
+            projects: --project=webkit --shard=1/2
+          - name: webkit-2
+            browsers: webkit
+            projects: --project=webkit --shard=2/2
           - name: firefox
             browsers: firefox
             projects: --project=firefox
