@@ -26,17 +26,21 @@ env:
 # start at once and finish about 70 seconds sooner. They wait anyway, because a run
 # whose shape you can read top to bottom is worth those seconds: lint first, then the
 # tests, then the analysis that consumes what the tests produced. The other benefit is
-# that a branch which does not lint stops after one job instead of occupying seven.
+# that a branch which does not lint stops at the lint jobs instead of occupying nine.
 
 jobs:
-  lint:
-    name: Code Quality Checks
+  # Two toolchains, two jobs. Steps inside one job are strictly sequential, so the
+  # Node half used to wait for the Python half even though neither needs the other:
+  # 71 seconds, of which the linters themselves were 2. Ruff is under a second and
+  # mypy reports zero off its cache; the rest was setup and the frontend checks.
+  # Split, the two run side by side and the gate is as long as the slower one.
+  lint-python:
+    name: Lint (Python)
     runs-on: ubuntu-24.04
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      # Python setup
       - name: Set up uv
         uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
@@ -58,7 +62,6 @@ jobs:
           restore-keys: |
             mypy-${{ runner.os }}-
 
-      # Python linting
       - name: Check code formatting
         run: uv run ruff format --check .
 
@@ -74,7 +77,13 @@ jobs:
       - name: Scan for secrets (detect-secrets)
         run: uv run detect-secrets-hook --baseline .secrets.baseline $(git ls-files -- ':!:migrations' ':!:frontend/src/i18n' ':!:uv.lock' ':!:frontend/package-lock.json')
 
-      # Node.js setup
+  lint-frontend:
+    name: Lint (frontend)
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
         with:
@@ -86,7 +95,6 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      # TypeScript linting
       - name: Run ESLint
         working-directory: frontend
         run: npm run lint
@@ -94,6 +102,23 @@ jobs:
       - name: Check TypeScript types
         working-directory: frontend
         run: npx tsc -p tsconfig.app.json --noEmit
+
+  # `Code Quality Checks` is a required status check on develop, staging and main, and
+  # every other job gates on this one, so the split keeps a job under both the name and
+  # the id. It only reports the two halves.
+  lint:
+    name: Code Quality Checks
+    runs-on: ubuntu-24.04
+    needs: [lint-python, lint-frontend]
+    steps:
+      - name: Report lint results
+        run: |
+          echo "python: ${{ needs.lint-python.result }}, frontend: ${{ needs.lint-frontend.result }}"
+          if [ "${{ needs.lint-python.result }}" != "success" ] || \
+             [ "${{ needs.lint-frontend.result }}" != "success" ]; then
+            echo "::error::a lint half did not pass"
+            exit 1
+          fi
 
   dependency-audit:
     name: Dependency Audit
