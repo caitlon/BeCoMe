@@ -1,6 +1,7 @@
 """E2E test fixtures: a real server and a real database."""
 
 import time
+from pathlib import Path
 from uuid import uuid4
 
 import httpx
@@ -13,6 +14,40 @@ from api.db.utils import utc_now
 
 E2E_BASE_URL = "http://localhost:8000/api/v1"
 DEFAULT_PASSWORD = "SecurePass123!"
+
+_E2E_DIR = Path(__file__).parent
+
+
+def pytest_collection_modifyitems(config, items):
+    """Skip the E2E tests when the run is distributed across workers.
+
+    These tests share one uvicorn process and one database, so on more than one
+    worker they queue behind each other until the ten-second client timeout in
+    ``http_client`` starts firing: at twelve workers a quarter of them failed that
+    way. The CI job and ``scripts/ci/e2e-local.sh`` pass ``-n 0`` for exactly that
+    reason, but ``addopts`` carries ``-n logical``, so a plain ``pytest tests/``
+    still sweeps this directory in at full width. Without this hook that run pays
+    ten reconnect attempts per worker when the stack is down, and a cascade of
+    timeouts when it is up. Skipping here states the requirement instead.
+
+    Both halves of the check matter: ``workerinput`` exists only inside an xdist
+    worker, which is where the tests would actually execute, and ``numprocesses``
+    covers the controller process that collects before any worker starts.
+
+    :param config: Active pytest configuration
+    :param items: Collected test items, filtered here to this directory
+    """
+    distributed = hasattr(config, "workerinput") or bool(
+        getattr(config.option, "numprocesses", None)
+    )
+    if not distributed:
+        return
+    skip_distributed = pytest.mark.skip(
+        reason="E2E needs -n 0: the workers would share one server and one database"
+    )
+    for item in items:
+        if _E2E_DIR in Path(str(item.fspath)).parents:
+            item.add_marker(skip_distributed)
 
 
 def verify_user_email(email: str) -> None:
