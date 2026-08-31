@@ -10,7 +10,11 @@ export default defineConfig({
   // than maximal: the visual-regression project compares screenshots, and rendering
   // under heavy load is where those start to flake.
   workers: process.env.CI ? 2 : undefined,
-  reporter: 'html',
+  // `list` alongside `html`: the HTML report is written to a directory that CI only
+  // uploads when the job fails, so a green run left no record of where its nine
+  // minutes went. `list` prints a line and a duration per test into the job log,
+  // which is what makes the slow projects visible without re-running anything.
+  reporter: [['list'], ['html']],
   expect: {
     toHaveScreenshot: {
       maxDiffPixelRatio: 0.01,
