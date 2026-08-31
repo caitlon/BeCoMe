@@ -139,12 +139,12 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 # Unit before integration, and the two named rather than the "tests" root. Both
 # matter: xdist hands tests to workers in collection order, and putting the heavy
-# integration tests first costs about half again as long — 72s against 48s for the
+# integration tests first costs about half again as long: 72s against 48s for the
 # same 1727 tests on eight workers. Naming the root walks the directories
 # alphabetically, which puts integration first, so `pytest tests/` pays that.
 testpaths = ["tests/unit", "tests/integration"]
 # `logical` rather than `auto`: for `auto`, xdist asks psutil for *physical* cores,
-# and the CI runner is a hyperthreaded VM — four logical cores over two physical —
+# and the CI runner is a hyperthreaded VM, four logical cores over two physical,
 # so `auto` resolved to 2 and ran the suite on half the machine. This Mac has no
 # SMT, where the two counts agree, so the switch changes nothing locally and
 # doubles the workers in CI. To pick a different number on one machine, set

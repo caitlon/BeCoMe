@@ -46,7 +46,7 @@ def pytest_collection_modifyitems(config, items):
         reason="E2E needs -n 0: the workers would share one server and one database"
     )
     for item in items:
-        if _E2E_DIR in Path(str(item.fspath)).parents:
+        if _E2E_DIR in item.path.parents:
             item.add_marker(skip_distributed)
 
 
