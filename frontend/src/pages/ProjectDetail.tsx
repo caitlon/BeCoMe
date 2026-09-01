@@ -26,7 +26,12 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { PageShell } from "@/components/layout/PageShell";
 import { InviteExpertModal } from "@/components/modals/InviteExpertModal";
 import { DeleteConfirmModal } from "@/components/modals/DeleteConfirmModal";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import {
   OpinionForm,
@@ -326,29 +331,36 @@ const ProjectDetail = () => {
                     order and stops emitting pointer events, which would put the
                     explanation out of reach of both the keyboard and the tooltip. The
                     button stays focusable and the click is refused instead. */}
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className={
-                        project.is_example
-                          ? "gap-2 opacity-50 cursor-not-allowed"
-                          : "gap-2"
-                      }
-                      aria-disabled={project.is_example || undefined}
-                      onClick={() => {
-                        if (!project.is_example) setInviteModalOpen(true);
-                      }}
-                    >
-                      <UserPlus className="h-4 w-4" />
-                      {t("detail.inviteExperts")}
-                    </Button>
-                  </TooltipTrigger>
-                  {project.is_example && (
-                    <TooltipContent>{t("detail.inviteDisabledOnExample")}</TooltipContent>
-                  )}
-                </Tooltip>
+                {/* Its own provider: App mounts one around the whole tree, but this
+                    page is also rendered on its own in tests, and Radix throws without
+                    an ancestor provider. Nesting one is allowed and costs nothing. */}
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className={
+                          project.is_example
+                            ? "gap-2 opacity-50 cursor-not-allowed"
+                            : "gap-2"
+                        }
+                        aria-disabled={project.is_example || undefined}
+                        onClick={() => {
+                          if (!project.is_example) setInviteModalOpen(true);
+                        }}
+                      >
+                        <UserPlus className="h-4 w-4" />
+                        {t("detail.inviteExperts")}
+                      </Button>
+                    </TooltipTrigger>
+                    {project.is_example && (
+                      <TooltipContent>
+                        {t("detail.inviteDisabledOnExample")}
+                      </TooltipContent>
+                    )}
+                  </Tooltip>
+                </TooltipProvider>
                 <Button
                   variant="outline"
                   size="sm"
