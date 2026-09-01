@@ -141,7 +141,8 @@
     "exampleBanner": {
       "title": "This is an example project",
       "body": "The thirteen experts below come from a published flood-prevention study and are not real people. Add your own opinion to see how the compromise moves, or delete this project if you do not need it."
-    }
+    },
+    "inviteDisabledOnExample": "The example project already has its thirteen experts. Create your own project to invite people."
   },
   "resultExport": {
     "button": "Export",

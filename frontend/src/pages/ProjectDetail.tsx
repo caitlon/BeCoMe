@@ -25,6 +25,11 @@ import { PageSpinner } from "@/components/PageSpinner";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { PageShell } from "@/components/layout/PageShell";
 import { InviteExpertModal } from "@/components/modals/InviteExpertModal";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { DeleteConfirmModal } from "@/components/modals/DeleteConfirmModal";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import {
@@ -321,15 +326,28 @@ const ProjectDetail = () => {
             </span>
             {isAdmin && (
               <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-2"
-                  onClick={() => setInviteModalOpen(true)}
-                >
-                  <UserPlus className="h-4 w-4" />
-                  {t("detail.inviteExperts")}
-                </Button>
+                {/* The span carries the tooltip trigger, not the button: a disabled
+                    button emits no pointer events, so a trigger placed on it would
+                    never fire and the explanation would never appear. */}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className={project.is_example ? "cursor-not-allowed" : undefined}>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-2"
+                        disabled={project.is_example}
+                        onClick={() => setInviteModalOpen(true)}
+                      >
+                        <UserPlus className="h-4 w-4" />
+                        {t("detail.inviteExperts")}
+                      </Button>
+                    </span>
+                  </TooltipTrigger>
+                  {project.is_example && (
+                    <TooltipContent>{t("detail.inviteDisabledOnExample")}</TooltipContent>
+                  )}
+                </Tooltip>
                 <Button
                   variant="outline"
                   size="sm"
