@@ -9,7 +9,11 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from api.auth.dependencies import CurrentUser
 from api.auth.logging import hash_email
 from api.dependencies import ProjectAdmin, ProjectMember, get_invitation_service
-from api.exceptions import AlreadyInvitedError, UserNotFoundForInvitationError
+from api.exceptions import (
+    AlreadyInvitedError,
+    ExampleProjectInvitationError,
+    UserNotFoundForInvitationError,
+)
 from api.middleware.rate_limit import LIMIT_WRITE, limiter
 from api.pagination import PaginationParams
 from api.schemas.invitation import (
@@ -78,14 +82,21 @@ def invite_by_email(
     :param current_user: Authenticated admin user
     :param invitation_service: Invitation service
     :return: Created invitation
-    :raises HTTPException: 404 if user not found, 409 if already member or invited
+    :raises HTTPException: 404 if user not found, 409 if already member, already
+        invited, or the project is the seeded example
     """
     try:
         invitation, invitee = invitation_service.invite_by_email(
-            project_id=project.id,
+            project=project,
             inviter_id=current_user.id,
             invitee_email=data.email,
         )
+    except ExampleProjectInvitationError as err:
+        _log_invitation_rejected("example_project", project.id, current_user.id, data.email)
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="The example project cannot take invitations",
+        ) from err
     except UserNotFoundForInvitationError as err:
         _log_invitation_rejected("invitee_not_found", project.id, current_user.id, data.email)
         raise HTTPException(
