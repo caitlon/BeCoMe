@@ -214,8 +214,14 @@ jobs:
           command -v pg_ctl || { echo "::error::pg_ctl not found on PATH; PostgreSQL-gated tests would silently skip"; exit 1; }
           pg_ctl --version
 
+      # --cov-fail-under lives here and not in pyproject's addopts on purpose: there it
+      # would apply to every local run, so `pytest tests/unit/api/services/test_x.py`
+      # would measure a few percent of the project and fail on the threshold rather than
+      # on the tests. Only a full run can be judged against it, and only CI does one.
+      # Set one point under the 99% the suite currently reaches, which locks in the level
+      # without breaking on a single added line.
       - name: Run Python tests with coverage
-        run: uv run pytest tests/unit/ tests/integration/ --cov=src --cov=api --cov-report=term-missing --cov-report=html --cov-report=xml:coverage.xml
+        run: uv run pytest tests/unit/ tests/integration/ --cov=src --cov=api --cov-fail-under=98 --cov-report=term-missing --cov-report=html --cov-report=xml:coverage.xml
 
       - name: Upload Python coverage XML
         if: always()
