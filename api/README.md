@@ -205,7 +205,7 @@ returns `422`. Erasure also removes the profile photo blob from object storage.
 | GET | `/api/v1/projects` | List user's projects |
 | POST | `/api/v1/projects` | Create project |
 | GET | `/api/v1/projects/{id}` | Get project details |
-| PATCH | `/api/v1/projects/{id}` | Update project |
+| PATCH | `/api/v1/projects/{id}` | Update project (partial; every field except `description` is non-nullable, so an explicit null is a 422) |
 | DELETE | `/api/v1/projects/{id}` | Delete project |
 | GET | `/api/v1/projects/{id}/members` | List members |
 | DELETE | `/api/v1/projects/{id}/members/{user_id}` | Remove member (discards their opinion and recalculates) |

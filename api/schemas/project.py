@@ -1,7 +1,7 @@
 """Project management schemas."""
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Self
+from typing import TYPE_CHECKING, Any, Self
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -47,6 +47,14 @@ class ProjectCreate(BaseModel):
         return self
 
 
+# Every project column except `description` is NOT NULL. The `| None` on the fields below
+# means "absent", which is what a partial update needs, and Pydantic cannot tell that apart
+# from an explicit null by type alone. Sending one used to set the attribute to None and
+# come back as an unhandled 500 from the database, or as a TypeError from the scale range
+# check before the database was even reached.
+_NON_NULLABLE_FIELDS = ("name", "scale_min", "scale_max", "scale_unit")
+
+
 class ProjectUpdate(BaseModel):
     """Request to update a project (partial update)."""
 
@@ -57,6 +65,25 @@ class ProjectUpdate(BaseModel):
     scale_min: float | None = None
     scale_max: float | None = None
     scale_unit: str | None = Field(None, max_length=50)
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_explicit_nulls(cls, data: Any) -> Any:
+        """Refuse an explicit null for a column that cannot hold one.
+
+        Runs before parsing, on the raw payload, because that is the only place where a
+        key sent as null is still distinguishable from a key left out.
+
+        :param data: Raw request payload
+        :return: The payload unchanged when it carries no forbidden null
+        :raises ValueError: If a non-nullable field was sent explicitly as null
+        """
+        if isinstance(data, dict):
+            nulled = [name for name in _NON_NULLABLE_FIELDS if data.get(name, "") is None]
+            if nulled:
+                joined = ", ".join(nulled)
+                raise ValueError(f"cannot be null: {joined}")
+        return data
 
     @field_validator("name", "description", "scale_unit", mode="after")
     @classmethod
