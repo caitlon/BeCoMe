@@ -25,12 +25,8 @@ import { PageSpinner } from "@/components/PageSpinner";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { PageShell } from "@/components/layout/PageShell";
 import { InviteExpertModal } from "@/components/modals/InviteExpertModal";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { DeleteConfirmModal } from "@/components/modals/DeleteConfirmModal";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import {
   OpinionForm,
@@ -331,7 +327,13 @@ const ProjectDetail = () => {
                     never fire and the explanation would never appear. */}
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <span className={project.is_example ? "cursor-not-allowed" : undefined}>
+                    {/* Focusable only while disabled: a disabled button drops out of the
+                        tab order, which would leave the explanation reachable by mouse
+                        alone. On an ordinary project the span adds no tab stop. */}
+                    <span
+                      className={project.is_example ? "cursor-not-allowed" : undefined}
+                      tabIndex={project.is_example ? 0 : undefined}
+                    >
                       <Button
                         variant="outline"
                         size="sm"
