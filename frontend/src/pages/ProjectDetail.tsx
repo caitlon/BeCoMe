@@ -322,15 +322,10 @@ const ProjectDetail = () => {
             </span>
             {isAdmin && (
               <div className="flex gap-2">
-                {/* The span carries the tooltip trigger, not the button: a disabled
-                    button emits no pointer events, so a trigger placed on it would
-                    never fire and the explanation would never appear. */}
-                <Tooltip>
-                  <TooltipTrigger asChild>
                 {/* aria-disabled rather than disabled: a disabled button leaves the tab
-                order and stops emitting pointer events, which would put the
-                explanation out of reach of both the keyboard and the tooltip. The
-                button stays focusable and the click is refused instead. */}
+                    order and stops emitting pointer events, which would put the
+                    explanation out of reach of both the keyboard and the tooltip. The
+                    button stays focusable and the click is refused instead. */}
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
