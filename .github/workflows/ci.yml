@@ -340,6 +340,14 @@ jobs:
   e2e-shard:
     name: E2E shard (${{ matrix.name }})
     runs-on: ubuntu-24.04
+    # The browsers and their system libraries come baked into this image, so a shard no
+    # longer downloads them: that step cost 22s for chromium, 63s for webkit, and once
+    # 509s when the cache missed. The tag has to track the @playwright/test version in
+    # frontend/package.json exactly, or the two disagree about which binaries to use.
+    # Inside a job container the Postgres service answers to its service name instead of
+    # to localhost, which is why DATABASE_URL below reads postgres:5432.
+    container:
+      image: mcr.microsoft.com/playwright:v1.62.0-noble
     strategy:
       # One browser failing should not cancel the others: knowing whether a break is
       # webkit-only or everywhere is most of what the split buys.
@@ -426,20 +434,6 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      - name: Cache Playwright browsers
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ matrix.browsers }}-${{ hashFiles('frontend/package-lock.json') }}
-          restore-keys: |
-            playwright-${{ runner.os }}-${{ matrix.browsers }}-
-
-      # Only this shard's browser. Downloading all three cost between 50 and 509
-      # seconds depending on how the cache landed, and two of them went unused.
-      - name: Install Playwright browsers
-        working-directory: frontend
-        run: npx playwright install --with-deps ${{ matrix.browsers }}
-
       - name: Start API server
         run: |
           # PYTHONUNBUFFERED because stdout to a file is block-buffered: without it the
@@ -455,7 +449,7 @@ jobs:
             echo "API failed to start"; tail -n 40 "$E2E_API_LOG"; exit 1;
           }
         env:
-          DATABASE_URL: postgresql://become:become@localhost:5432/become_test
+          DATABASE_URL: postgresql://become:become@postgres:5432/become_test
           # https: the e2e dev server runs on TLS so the browser will store the
           # __Host- session cookies (frontend/scripts/e2e-cert.mjs explains why).
           CORS_ORIGINS: '["https://localhost:8080"]'
