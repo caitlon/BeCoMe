@@ -9,6 +9,7 @@ from sqlmodel import col, select
 from api.db.models import Invitation, MemberRole, Project, ProjectMember, User
 from api.exceptions import (
     AlreadyInvitedError,
+    ExampleProjectInvitationError,
     InvitationNotFoundError,
     UserAlreadyMemberError,
     UserNotFoundForInvitationError,
@@ -34,27 +35,39 @@ class InvitationService(BaseService):
 
     def invite_by_email(
         self,
-        project_id: UUID,
+        project: Project,
         inviter_id: UUID,
         invitee_email: str,
     ) -> tuple[Invitation, User]:
         """Invite a registered user to a project by email.
 
-        :param project_id: ID of the project to invite to
+        Takes the project rather than its id because the caller has already loaded it to
+        authorise the request, and because the example-project rule below needs the row
+        itself. Fetching it again here would be a wasted query and a dependency the
+        signature does not admit to.
+
+        :param project: Project to invite to, already loaded by the caller
         :param inviter_id: ID of the user sending the invitation
         :param invitee_email: Email of the user to invite
         :return: Tuple of (created Invitation, invitee User)
+        :raises ExampleProjectInvitationError: If the project is the seeded example
         :raises UserNotFoundForInvitationError: If no user with this email exists
         :raises UserAlreadyMemberError: If user is already a project member
         :raises AlreadyInvitedError: If user already has a pending invitation
         """
+        # Checked here rather than in the route so the rule holds for every caller. The
+        # example project ships with its thirteen opinions already in place and exists to
+        # be read, so a fourteenth expert has nothing to contribute to it.
+        if project.is_example:
+            raise ExampleProjectInvitationError("The example project cannot take invitations")
+
         invitee = self._session.exec(select_account_by_email(invitee_email)).first()
         if not invitee:
             raise UserNotFoundForInvitationError(f"No user found with email {invitee_email}")
 
         existing_membership = self._session.exec(
             select(ProjectMember).where(
-                ProjectMember.project_id == project_id,
+                ProjectMember.project_id == project.id,
                 ProjectMember.user_id == invitee.id,
             )
         ).first()
@@ -63,7 +76,7 @@ class InvitationService(BaseService):
 
         existing_invitation = self._session.exec(
             select(Invitation).where(
-                Invitation.project_id == project_id,
+                Invitation.project_id == project.id,
                 Invitation.invitee_id == invitee.id,
             )
         ).first()
@@ -71,7 +84,7 @@ class InvitationService(BaseService):
             raise AlreadyInvitedError("User already has a pending invitation")
 
         invitation = Invitation(
-            project_id=project_id,
+            project_id=project.id,
             invitee_id=invitee.id,
             inviter_id=inviter_id,
         )
@@ -81,7 +94,7 @@ class InvitationService(BaseService):
             extra={
                 "event": "invitation_created",
                 "invitation_id": str(saved.id),
-                "project_id": str(project_id),
+                "project_id": str(project.id),
                 "inviter_id": str(inviter_id),
                 "invitee_id": str(saved.invitee_id),
             },

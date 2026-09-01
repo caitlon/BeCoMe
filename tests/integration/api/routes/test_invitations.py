@@ -1,5 +1,10 @@
 """Tests for invitation management endpoints (email-based)."""
 
+from uuid import UUID
+
+from sqlmodel import select
+
+from api.db.models import Invitation, Project
 from tests.integration.api.conftest import auth_header, create_project, register_and_login
 
 
@@ -119,6 +124,37 @@ class TestInviteByEmail:
 
         # THEN
         assert response.status_code == 404
+
+    def test_invite_into_an_example_project_is_refused(self, client, session):
+        """The example project cannot take a fourteenth expert, and the API says so.
+
+        Asserted through the route rather than the service: a disabled button in the SPA
+        is a suggestion, and the rule has to hold for a plain POST as well.
+        """
+        # GIVEN
+        admin_token = register_and_login(client, "admin@example.com")
+        register_and_login(client, "invitee@example.com")
+        created = create_project(client, admin_token)
+        project = session.get(Project, UUID(created["id"]))
+        assert project is not None
+        project.is_example = True
+        session.add(project)
+        session.commit()
+
+        # WHEN
+        response = client.post(
+            f"/api/v1/projects/{created['id']}/invite",
+            json={"email": "invitee@example.com"},
+            headers=auth_header(admin_token),
+        )
+
+        # THEN
+        assert response.status_code == 409
+        assert "example" in response.json()["detail"].lower()
+        invitations = session.exec(
+            select(Invitation).where(Invitation.project_id == project.id)
+        ).all()
+        assert invitations == []
 
     def test_invite_without_auth(self, client):
         """401 returned when not authenticated."""

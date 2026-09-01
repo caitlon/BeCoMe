@@ -39,7 +39,9 @@ class TestInvitationServiceInviteByEmail:
 
         # WHEN
         invitation, returned_user = service.invite_by_email(
-            project_id, inviter_id, "invitee@example.com"
+            Project(id=project_id, name="Project", admin_id=inviter_id),
+            inviter_id,
+            "invitee@example.com",
         )
 
         # THEN
@@ -67,7 +69,9 @@ class TestInvitationServiceInviteByEmail:
 
         # WHEN: invite with mixed case email
         invitation, returned_user = service.invite_by_email(
-            project_id, inviter_id, "Invitee@Example.COM"
+            Project(id=project_id, name="Project", admin_id=inviter_id),
+            inviter_id,
+            "Invitee@Example.COM",
         )
 
         # THEN: user is found despite different case
@@ -84,7 +88,9 @@ class TestInvitationServiceInviteByEmail:
 
         # WHEN/THEN
         with pytest.raises(UserNotFoundForInvitationError, match="No user found"):
-            service.invite_by_email(uuid4(), uuid4(), "nonexistent@example.com")
+            service.invite_by_email(
+                Project(name="Project", admin_id=uuid4()), uuid4(), "nonexistent@example.com"
+            )
 
     def test_raises_error_when_user_already_member(self):
         """UserAlreadyMemberError is raised when user is already a member."""
@@ -107,7 +113,9 @@ class TestInvitationServiceInviteByEmail:
 
         # WHEN/THEN
         with pytest.raises(UserAlreadyMemberError, match="already a member"):
-            service.invite_by_email(uuid4(), uuid4(), "invitee@example.com")
+            service.invite_by_email(
+                Project(name="Project", admin_id=uuid4()), uuid4(), "invitee@example.com"
+            )
 
     def test_raises_error_when_already_invited(self):
         """AlreadyInvitedError is raised when user has pending invitation."""
@@ -131,7 +139,9 @@ class TestInvitationServiceInviteByEmail:
 
         # WHEN/THEN
         with pytest.raises(AlreadyInvitedError, match="pending invitation"):
-            service.invite_by_email(uuid4(), uuid4(), "invitee@example.com")
+            service.invite_by_email(
+                Project(name="Project", admin_id=uuid4()), uuid4(), "invitee@example.com"
+            )
 
 
 class TestInvitationServiceGetInvitationById:

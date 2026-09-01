@@ -86,6 +86,10 @@ class AlreadyInvitedError(ValidationError):
     """Raised when user already has a pending invitation to the project."""
 
 
+class ExampleProjectInvitationError(ValidationError):
+    """Raised when someone tries to invite an expert into the example project."""
+
+
 # Opinion-related exceptions
 class OpinionNotFoundError(NotFoundError):
     """Raised when opinion is not found."""
