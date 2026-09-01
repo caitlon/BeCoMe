@@ -103,11 +103,16 @@ opinion = ExpertOpinion(
 Set the database URL with the `DATABASE_URL` environment variable:
 
 ```bash
-# SQLite (default, for development)
-DATABASE_URL=sqlite:///./become.db
+# Local development: the PostgreSQL from docker/docker-compose.yml
+#   docker compose -f docker/docker-compose.yml up -d db
+DATABASE_URL=postgresql://become:become@localhost:5432/become
 
-# PostgreSQL (production)
-DATABASE_URL=postgresql://user:pass@localhost:5432/become
+# Deployed environments: the least-privilege become_app role on the managed instance
+DATABASE_URL=postgresql://user:pass@host:5432/become
+
+# Fallback when Docker is not available. Boots, but uses create_all rather than
+# Alembic, so it never exercises a migration.
+DATABASE_URL=sqlite:///./become.db
 ```
 
 ## File structure
