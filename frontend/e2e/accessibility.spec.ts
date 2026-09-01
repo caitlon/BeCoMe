@@ -9,7 +9,49 @@ async function countTabbableElements(page: import('@playwright/test').Page): Pro
   );
 }
 
-test.describe('Accessibility — Tab Order', () => {
+const TABBABLE =
+  'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+
+test.describe('Accessibility - Skip Link', () => {
+  test('is the first thing a keyboard reaches', async ({ page }) => {
+    await page.goto('/');
+
+    // Tab order follows DOM order, so this is the same guarantee as "the first Tab
+    // lands on it" without depending on how an engine hands focus to a fresh document.
+    // Firefox does not move focus into the page on the first press, so pressing Tab
+    // here would test the browser rather than the markup.
+    const first = await page.evaluate(
+      (selector) => document.querySelector(selector)?.className,
+      TABBABLE,
+    );
+    expect(first).toBe('skip-to-content');
+
+    // Present, but out of the layout until it is focused.
+    const left = await page
+      .locator('a.skip-to-content')
+      .evaluate((el) => el.getBoundingClientRect().left);
+    expect(left).toBeLessThan(0);
+  });
+
+  test('comes on screen when focused and hands focus to main', async ({ page, browserName }) => {
+    // Headless Firefox on the CI runner never gives the page focus, so `.focus()` does
+    // not stick and `:focus` never matches. The same test passes there headed and on a
+    // developer machine. Try `page.bringToFront()` if this needs to cover Firefox too.
+    test.skip(browserName === 'firefox', 'headless Firefox on CI does not focus the page');
+
+    await page.goto('/');
+    const skip = page.locator('a.skip-to-content');
+
+    await skip.focus();
+    await expect(skip).toBeFocused();
+    expect(await skip.evaluate((el) => el.getBoundingClientRect().left)).toBeGreaterThanOrEqual(0);
+
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#main-content')).toBeFocused();
+  });
+});
+
+test.describe('Accessibility: Tab Order', () => {
   test('login form fields are keyboard-focusable in order', async ({ page }) => {
     await page.goto('/login');
 
@@ -23,7 +65,7 @@ test.describe('Accessibility — Tab Order', () => {
     await expect(passwordField).toBeVisible();
     await expect(submitBtn).toBeVisible();
 
-    // Focus email, then tab through — email comes before password in DOM
+    // Focus email, then tab through: email comes before password in DOM
     await emailField.focus();
     await expect(emailField).toBeFocused();
 
@@ -69,7 +111,7 @@ test.describe('Accessibility — Tab Order', () => {
   });
 });
 
-test.describe('Accessibility — Dialog Focus', () => {
+test.describe('Accessibility: Dialog Focus', () => {
   test('dialog opens and closes with Escape', async ({ browser }) => {
     const context = await browser.newContext();
     const page = await context.newPage();
@@ -95,13 +137,13 @@ test.describe('Accessibility — Dialog Focus', () => {
   });
 });
 
-test.describe('Accessibility — Password Validation Boundary', () => {
+test.describe('Accessibility: Password Validation Boundary', () => {
   test('password 12-char boundary', async ({ page }) => {
     await page.goto('/register');
 
     const passwordField = page.getByPlaceholder('Min. 12 characters');
 
-    // 11 chars — too short
+    // 11 chars, too short
     await passwordField.fill('Abcdefgh12!');
     await passwordField.blur();
 
@@ -121,7 +163,7 @@ test.describe('Accessibility — Password Validation Boundary', () => {
     // With 11-char password, submit should be disabled
     await expect(submitButton).toBeDisabled({ timeout: 5000 });
 
-    // 12 chars — meets requirement
+    // 12 chars, meets requirement
     await passwordField.clear();
     await passwordField.fill('Abcdefgh123!');
     await passwordField.blur();

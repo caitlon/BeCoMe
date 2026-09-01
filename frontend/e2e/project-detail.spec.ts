@@ -16,7 +16,7 @@ async function createProjectAndNavigate(page: Page, name: string) {
   await expect(page).toHaveURL(/\/projects\//, { timeout: 10000 });
 }
 
-test.describe('Project Detail — Edge Cases', () => {
+test.describe('Project Detail: Edge Cases', () => {
   test('empty project shows no results message', async ({ page }) => {
     const email = `detail-empty-${uniqueId()}@test.com`;
     await registerUser(page, email, 'Empty', 'Project');
@@ -44,7 +44,7 @@ test.describe('Project Detail — Edge Cases', () => {
     await page.getByRole('button', { name: 'Save Opinion' }).click();
     await expect(page.getByText('Opinion saved', { exact: true })).toBeVisible({ timeout: 5000 });
 
-    // Wait for fetchData() to complete — button text changes to "Update Opinion"
+    // Wait for fetchData() to complete: button text changes to "Update Opinion"
     const updateBtn = page.getByRole('button', { name: 'Update Opinion' });
     await expect(updateBtn).toBeVisible({ timeout: 10000 });
     await expect(updateBtn).toBeDisabled();
@@ -139,7 +139,7 @@ test.describe('Project Detail — Edge Cases', () => {
 });
 
 // Tests requiring manual browser context management
-baseTest.describe('Project Detail — Multi-Context', () => {
+baseTest.describe('Project Detail: Multi-Context', () => {
   baseTest('clicking team member opens profile dialog', async ({ browser }) => {
     const ownerContext = await browser.newContext();
     const expertContext = await browser.newContext();
@@ -201,7 +201,7 @@ baseTest.describe('Project Detail — Multi-Context', () => {
   });
 
   baseTest('language switch to Czech persists across navigation', async ({ browser }) => {
-    // Do NOT use addInitScript here — it would override language on every navigation
+    // Do NOT use addInitScript here. It would override language on every navigation
     const context = await browser.newContext();
     const page = await context.newPage();
 
@@ -217,7 +217,7 @@ baseTest.describe('Project Detail — Multi-Context', () => {
     // Verify Czech text appears on landing page
     await expect(page.getByText(/Nejlepší kompromis/i).first()).toBeVisible({ timeout: 5000 });
 
-    // Navigate to about page — Czech should persist (no initScript overriding)
+    // Navigate to about page, where Czech should persist (no initScript overriding)
     await page.goto('/about');
 
     // "O metodě BeCoMe" is the Czech about page title

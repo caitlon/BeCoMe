@@ -21,14 +21,14 @@ _DEBUG_FORMAT = "%(asctime)s %(levelname)-8s [%(name)s] %(message)s (%(filename)
 # records reach the container's stdout but never the log drain.
 #
 # The levels are deliberate, not inherited from LOG_LEVEL:
-#   uvicorn.error      startup, shutdown, and protocol failures -- the records that
+#   uvicorn.error      startup, shutdown, and protocol failures: the records that
 #                      explain a boot that never finished. Low volume, high value.
 #   uvicorn.access     silenced: ``api.request`` already logs a richer line per request
 #                      (ip, duration, correlation id). Listed so the choice is visible.
 #   sqlalchemy.engine  MUST stay above DEBUG. Its INFO level prints every statement and
-#                      its DEBUG level adds the bound parameters -- password hashes, raw
-#                      addresses, names, reset-token hashes -- which would ship to the
-#                      drain in the clear. The dev deploy runs at DEBUG, so inheriting
+#                      its DEBUG level adds the bound parameters, meaning password
+#                      hashes, raw addresses, names, and reset-token hashes, which would
+#                      ship to the drain in the clear. The dev deploy runs at DEBUG, so inheriting
 #                      LOG_LEVEL here would leak on a real database. Query shape and
 #                      timing are logged by the read services instead.
 #                      Caveat, so nobody reads this pin as stronger than it is: SQLAlchemy's
@@ -40,7 +40,7 @@ _DEBUG_FORMAT = "%(asctime)s %(levelname)-8s [%(name)s] %(message)s (%(filename)
 #                      ``api/db/engine.py`` ties ``echo`` to ``settings.debug``. The pin
 #                      covers the case echo does not: SQLAlchemy's own INFO/DEBUG records.
 #   httpx / botocore   the Resend and S3 calls, already covered by ``email_sent`` and
-#                      ``s3_upload`` with timings; only transport failures add anything.
+#                      ``s3_upload`` with timings. Only transport failures add anything.
 _EXTERNAL_LOG_LEVELS: dict[str, int] = {
     "uvicorn.error": logging.INFO,
     "uvicorn.access": logging.WARNING,
@@ -113,7 +113,7 @@ def _build_formatter(settings: Settings) -> logging.Formatter:
     """Choose a log formatter for the active environment profile.
 
     A developer's console keeps human-readable text. Anything running as a deployed
-    service emits JSON so the log drain can index the ``extra`` fields -- and that
+    service emits JSON so the log drain can index the ``extra`` fields, and that
     includes the Railway ``dev`` service, which is a deploy that happens to run the
     dev profile rather than a laptop. Keying only on the profile would ship its
     records as plain text and leave every structured field unqueryable.
@@ -191,10 +191,10 @@ def _attach(logger: logging.Logger, handlers: list[logging.Handler], level: int 
     """Point one logger at the shared handlers at a given level.
 
     Existing handlers are dropped first, so calling this more than once in a
-    process -- a reload, or the tests that configure logging repeatedly -- does not
-    stack duplicates. Propagation is switched off because the logger already carries
-    the full handler set; leaving it on would emit each record a second time through
-    an ancestor.
+    process does not stack duplicates, whether that is a reload or the tests that
+    configure logging repeatedly. Propagation is switched off because the logger already
+    carries the full handler set, and leaving it on would emit each record a second time
+    through an ancestor.
 
     :param logger: Logger to configure.
     :param handlers: Shared handler set from :func:`_build_handlers`.
@@ -212,12 +212,12 @@ def _attach(logger: logging.Logger, handlers: list[logging.Handler], level: int 
 def setup_logging(settings: Settings) -> None:
     """Configure the ``api`` logger tree and the third-party loggers worth keeping.
 
-    The ``api`` logger takes its level from ``LOG_LEVEL``; every child
-    (``api.request``, ``api.security``, ``api.service.*``, ...) inherits it. The
+    The ``api`` logger takes its level from ``LOG_LEVEL``, and every child
+    (``api.request``, ``api.security``, ``api.service.*``, and the rest) inherits it. The
     loggers in :data:`_EXTERNAL_LOG_LEVELS` get the same handlers at their own
     pinned levels, so uvicorn's startup failures and the transport errors from
     httpx and botocore land in the drain next to the ``api.*`` records that explain
-    them -- see that mapping for why each level is what it is.
+    them. See that mapping for why each level is what it is.
 
     Safe to call repeatedly: every configured logger has its handlers cleared first.
 

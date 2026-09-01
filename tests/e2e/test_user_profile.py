@@ -18,18 +18,18 @@ class TestUpdateProfile:
 
     def test_update_profile_name_persists(self, http_client):
         """Change first_name and last_name, then verify via GET."""
-        # GIVEN — a registered user
+        # GIVEN: a registered user
         email = unique_email("profile")
         token = register_user(http_client, email)
 
-        # WHEN — update profile
+        # WHEN: update profile
         update_resp = http_client.put(
             "/users/me",
             json={"first_name": "Updated", "last_name": "Name"},
             headers=auth_headers(token),
         )
 
-        # THEN — response contains updated data
+        # THEN: response contains updated data
         assert update_resp.status_code == 200
         body = update_resp.json()
         assert body["first_name"] == "Updated"
@@ -48,11 +48,11 @@ class TestChangePassword:
 
     def test_change_password_success(self, http_client):
         """Change password, then login with new password succeeds."""
-        # GIVEN — a registered user
+        # GIVEN: a registered user
         email = unique_email("chpwd")
         token = register_user(http_client, email)
 
-        # WHEN — change password
+        # WHEN: change password
         change_resp = http_client.put(
             "/users/me/password",
             json={
@@ -62,7 +62,7 @@ class TestChangePassword:
             headers=auth_headers(token),
         )
 
-        # THEN — password changed
+        # THEN: password changed
         assert change_resp.status_code == 204
 
         # Login with new password works
@@ -75,11 +75,11 @@ class TestChangePassword:
 
     def test_change_password_wrong_current_rejected(self, http_client):
         """Wrong current_password must be rejected."""
-        # GIVEN — a registered user
+        # GIVEN: a registered user
         email = unique_email("wrongcur")
         token = register_user(http_client, email)
 
-        # WHEN — send wrong current password
+        # WHEN: send wrong current password
         response = http_client.put(
             "/users/me/password",
             json={
@@ -89,5 +89,5 @@ class TestChangePassword:
             headers=auth_headers(token),
         )
 
-        # THEN — rejected
+        # THEN: rejected
         assert response.status_code in (400, 401)

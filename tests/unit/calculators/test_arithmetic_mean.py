@@ -83,7 +83,7 @@ class TestBeCoMeCalculatorArithmeticMean:
 
     def test_arithmetic_mean_empty_list_raises_error(self, calculator):
         """Test that empty opinions list raises EmptyOpinionsError."""
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(EmptyOpinionsError) as exc_info:
             calculator.calculate_arithmetic_mean([])
 

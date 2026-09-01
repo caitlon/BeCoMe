@@ -16,9 +16,9 @@ a cookie: a value the attacker plants, or one minted for a session they do hold,
 longer matches what the server computes for the victim's session.
 
 Deriving it also means the check cannot be switched off by omission. The comparison keys
-on the session cookie, so a request that authenticates as somebody is always checked --
-where a cookie-versus-header comparison silently passed anything that simply arrived
-without the CSRF cookie.
+on the session cookie, so a request that authenticates as somebody is always checked.
+A cookie-versus-header comparison, by contrast, silently passed anything that simply
+arrived without the CSRF cookie.
 """
 
 import logging
@@ -40,8 +40,8 @@ _SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "TRACE"})
 
 # Pre-session auth endpoints must work without a CSRF token: a client can hold a session
 # cookie for a session that was revoked (after a password change, say), and these requests
-# establish or refresh a session rather than act on one. Logout is excluded -- it acts on a
-# live session and the browser client sends the matching token.
+# establish or refresh a session rather than act on one. Logout is excluded, since it acts
+# on a live session and the browser client sends the matching token.
 _AUTH_PREFIX = "/api/v1/auth/"
 _CSRF_PROTECTED_AUTH_PATHS = frozenset({"/api/v1/auth/logout"})
 
@@ -80,11 +80,11 @@ class CSRFMiddleware(BaseHTTPMiddleware):
 
         Neither the presented header nor the expected token reaches the record. The
         expected value is what the check compares against, so logging it would hand
-        anyone reading the log the token needed to forge the request just blocked -- and
-        because it is derived from the session id, one leaked record would keep working
-        for as long as that session lives.
+        anyone reading the log the token needed to forge the request just blocked. Because
+        it is derived from the session id, one leaked record would keep working for as
+        long as that session lives.
 
-        :param reason: Why the check failed -- ``missing_header`` or ``token_mismatch``.
+        :param reason: Why the check failed: ``missing_header`` or ``token_mismatch``.
         :param request: The refused request.
         :return: The 403 response sent to the caller.
         """

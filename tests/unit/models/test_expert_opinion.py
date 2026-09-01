@@ -73,7 +73,7 @@ class TestExpertOpinionComparison:
             opinion=FuzzyTriangleNumber(lower_bound=9.0, peak=12.0, upper_bound=15.0),
         )
 
-        # WHEN / THEN
+        # WHEN/THEN
         assert opinion1 < opinion2
         assert not opinion2 < opinion1
 
@@ -93,7 +93,7 @@ class TestExpertOpinionComparison:
             opinion=FuzzyTriangleNumber(lower_bound=9.0, peak=12.0, upper_bound=15.0),
         )
 
-        # WHEN / THEN
+        # WHEN/THEN
         assert opinion1 <= opinion2
         assert opinion1 <= opinion3
         assert not opinion3 <= opinion1
@@ -105,7 +105,7 @@ class TestExpertOpinionComparison:
         opinion2 = ExpertOpinion(expert_id="Expert 1", opinion=standard_fuzzy)
         opinion3 = ExpertOpinion(expert_id="Expert 2", opinion=standard_fuzzy)
 
-        # WHEN / THEN
+        # WHEN/THEN
         assert opinion1 == opinion2
         assert opinion1 != opinion3
 
@@ -121,12 +121,12 @@ class TestExpertOpinionComparison:
             opinion=FuzzyTriangleNumber(lower_bound=6.0, peak=10.0, upper_bound=15.0),
         )
 
-        # WHEN / THEN
+        # WHEN/THEN
         assert opinion1 != opinion2
 
     def test_equality_with_non_expert_opinion(self, expert_opinion_e1):
         """Test equality comparison with non-ExpertOpinion object."""
-        # WHEN / THEN
+        # WHEN/THEN
         assert expert_opinion_e1 != "not an expert opinion"
         assert expert_opinion_e1 != 42
         assert expert_opinion_e1 is not None
@@ -238,7 +238,7 @@ class TestExpertOpinionImmutability:
     )
     def test_frozen_attributes(self, expert_opinion_e1, attribute_name, new_value):
         """Test that all attributes cannot be modified after creation."""
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises((AttributeError, TypeError)) as exc_info:
             setattr(expert_opinion_e1, attribute_name, new_value)
 
@@ -246,7 +246,7 @@ class TestExpertOpinionImmutability:
 
     def test_delattr_raises_error(self, expert_opinion_e1):
         """Test that deleting attributes is prevented."""
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(AttributeError) as exc_info:
             del expert_opinion_e1.expert_id
 

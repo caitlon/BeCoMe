@@ -27,14 +27,12 @@ partition "**Step 1: Arithmetic Mean (Γ)**" #FFDDDD {
 
 ' === STEP 2: Median (simplified but keeping key branching) ===
 partition "**Step 2: Median (Ω)**" #DDFFDD {
-    :Sort opinions by centroid Gx;
-
-    :median_centroid = statistics.median(centroids);
+    :Sort opinions by centroid Gx\n(ties broken by the triangle bounds);
 
     if (Is M odd?) then (yes)
-        :Find middle opinion\n(closest to median_centroid);
+        :Take sorted[M // 2];
     else (no, M is even)
-        :Average two middle opinions\n(closest to median_centroid);
+        :Average sorted[M // 2 - 1]\nand sorted[M // 2];
     endif
 
     :Ω = FuzzyTriangleNumber(ρ, ω, σ);

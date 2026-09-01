@@ -31,7 +31,7 @@ class TestMetadata:
 
     def test_content_length_is_none_when_not_reported(self):
         """A backend that omits the size leaves content_length unset."""
-        # GIVEN / WHEN
+        # GIVEN/WHEN
         stored = StoredObject(_stream(), "image/jpeg")
 
         # THEN

@@ -46,18 +46,16 @@ partition "**Step 2: Calculate Median (Ω)**" #DDFFDD {
     ' Sort by centroid
     :Calculate centroid for each opinion:\nGx = (lower + peak + upper) / 3;
 
-    :Sort opinions by centroid values\n(ascending order);
-
-    :Calculate median of centroids:\nmedian_centroid = statistics.median(centroids);
+    :Sort opinions by centroid values\n(ascending; ties broken by lower, peak, upper);
 
     ' Check if odd or even
     if (M is odd?\nM = 2n + 1) then (yes)
-        :Find opinion with centroid\nclosest to median_centroid;
+        :Take the middle opinion by position:\nsorted[M // 2];
 
         :Extract components:\n- ρ = opinion.lower_bound\n- ω = opinion.peak\n- σ = opinion.upper_bound;
 
     else (no, M is even\nM = 2n)
-        :Find two opinions with centroids\nclosest to median_centroid;
+        :Take the two middle opinions by position:\nsorted[M // 2 - 1]\nand sorted[M // 2];
 
         :Average the two opinions:\n- ρ = (left.lower + right.lower) / 2\n- ω = (left.peak + right.peak) / 2\n- σ = (left.upper + right.upper) / 2;
     endif

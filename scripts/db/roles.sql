@@ -1,19 +1,19 @@
--- BeCoMe -- database role provisioning (idempotent, version-controlled source of truth)
+-- BeCoMe database role provisioning (idempotent, version-controlled source of truth)
 --
 -- Captures the least-privilege role setup that is provisioned on each Railway Postgres.
 -- Safe to re-run. Apply per environment as the Railway superuser (`postgres`), e.g.:
 --     psql "$SUPERUSER_DATABASE_URL" -f scripts/db/roles.sql
 --
--- Role model -- two connection URLs, no SET ROLE switching:
---   * become_app -- least-privilege RUNTIME role used by DATABASE_URL.
+-- Role model: two connection URLs, no SET ROLE switching:
+--   * become_app: least-privilege RUNTIME role used by DATABASE_URL.
 --                   DML only, no DDL: NOSUPERUSER / NOCREATEDB / NOCREATEROLE / NOBYPASSRLS.
---   * postgres   -- the Railway-provisioned superuser, used by MIGRATION_DATABASE_URL for
+--   * postgres:   the Railway-provisioned superuser, used by MIGRATION_DATABASE_URL for
 --                   Alembic DDL. Railway gives exactly one superuser, so we do not add a
 --                   separate `migrator` role (it would require an ownership refactor for no
 --                   meaningful gain). `postgres` is managed by Railway and is never created
 --                   or altered here.
 --
--- Passwords are NOT stored in this file -- they live in Railway variables. On a fresh
+-- Passwords are NOT stored in this file. They live in Railway variables. On a fresh
 -- provision, set the password out of band after running this script:
 --     ALTER ROLE become_app PASSWORD '<value from Railway>';
 
@@ -52,7 +52,7 @@ ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
 -- 5. Lock down the public schema (PG15+ default; explicit for reproducibility) -----
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;
 
--- 6. Deterministic search_path -- CVE-2018-1058 hardening for the exposed app role -
+-- 6. Deterministic search_path, CVE-2018-1058 hardening for the exposed app role --
 ALTER ROLE become_app SET search_path = pg_catalog, public;
 
 -- 7. Resource limits at the role level (mirrors the client-side options= in engine.py)

@@ -22,6 +22,7 @@ from api.exceptions import (
     VerificationTokenExpiredError,
 )
 from api.services.base import BaseService
+from api.services.query_helpers import select_account_by_email
 from api.services.user_cache import UserCacheStore
 
 logger = logging.getLogger("api.service.email_verification")
@@ -34,7 +35,7 @@ _TOKEN_BYTES = 32
 _INVALID_MESSAGE = "Invalid or expired verification link"
 
 # The password posted with the link is not the one the link carries. Kept separate from
-# the message above on purpose -- see VerificationPasswordMismatchError.
+# the message above on purpose. See VerificationPasswordMismatchError.
 _MISMATCH_MESSAGE = "Password does not match this activation link"
 
 
@@ -325,5 +326,4 @@ class EmailVerificationService(BaseService):
         :param email: Email address (case-insensitive).
         :return: The user, or None when not found.
         """
-        statement = select(User).where(User.email == email.lower())
-        return self._session.exec(statement).first()
+        return self._session.exec(select_account_by_email(email)).first()

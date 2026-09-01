@@ -206,7 +206,7 @@ describe('AuthContext', () => {
     // A server that refuses the sign-out must not leave the user signed in. This is
     // what a cookie-authenticated logout looked like on every deploy: the SPA could
     // not read the csrf_token cookie, so the request came back 403. Clearing the
-    // local session is not enough on its own though -- a caller that never learns
+    // local session is not enough on its own though, since a caller that never learns
     // the server-side session survived would show the exact same success state as
     // a real sign-out, which is worse than an error on a shared machine.
     const mockUser = createUser({ id: '1', email: 'test@example.com', first_name: 'Test' })

@@ -1,8 +1,8 @@
 """Tests that refusals, external calls, and reads emit the log records they promise.
 
 Grouped by the layer that emits them rather than by module, because the point of each
-record is the question it answers for whoever reads the drain -- "was the request
-refused, and why" -- not which file happens to raise it.
+record is the question it answers for whoever reads the drain, "was the request
+refused, and why", not which file happens to raise it.
 
 Several of these assert on what is *absent*: a CSRF record must not carry the token it
 just compared, a throttle record must not carry the account it throttled. Those are the
@@ -87,7 +87,7 @@ class TestCsrfRejectionLogging:
         The cookie and header are the secret being compared: a record carrying either
         hands a log reader what they need to forge the request that was just blocked.
         """
-        # GIVEN / WHEN
+        # GIVEN/WHEN
         with patch("api.middleware.csrf.logger") as mock_logger:
             CSRFMiddleware._reject("token_mismatch", _request())
 
@@ -138,7 +138,7 @@ class TestTokenRejectionLogging:
         Every active session hits this every 15 minutes and every stale browser tab
         hits it too; at WARNING it would bury the refusals that mean something.
         """
-        # GIVEN / WHEN
+        # GIVEN/WHEN
         with patch("api.auth.jwt.logger") as mock_logger:
             error = jwt_module._reject(reason, "nope", expected_type="access")
 
@@ -156,7 +156,7 @@ class TestTokenRejectionLogging:
         WHEN it is refused
         THEN the record is WARNING
         """
-        # GIVEN / WHEN
+        # GIVEN/WHEN
         with patch("api.auth.jwt.logger") as mock_logger:
             jwt_module._reject(reason, "nope", jti="abc123")
 
@@ -170,7 +170,7 @@ class TestTokenRejectionLogging:
         WHEN the record is built
         THEN only the reason and opaque identifiers are logged
         """
-        # GIVEN / WHEN
+        # GIVEN/WHEN
         with patch("api.auth.jwt.logger") as mock_logger:
             jwt_module._reject("jti_revoked", "nope", jti="abc123")
 
@@ -257,7 +257,7 @@ class TestRevocationStoreLogging:
         WHEN it is traced
         THEN the DEBUG record carries the operation and its duration
         """
-        # GIVEN / WHEN
+        # GIVEN/WHEN
         with patch("api.auth.revocation_store.logger") as mock_logger:
             revocation_store._log_call("revoke_session", perf_counter(), sid="s1")
 
@@ -387,7 +387,7 @@ class TestEmailSenderLogging:
         WHEN the outcome is recorded
         THEN an email_sent record carries the status, timing, and keyed address tag
         """
-        # GIVEN / WHEN
+        # GIVEN/WHEN
         with patch("api.services.email.resend_email_sender.logger") as mock_logger:
             resend_email_sender._log_send_result(
                 "password_reset", "abcdef0123456789", start=perf_counter(), status_code=200
@@ -452,7 +452,7 @@ class TestRegistrationLogging:
         WHEN its branch is traced
         THEN the DEBUG record names the branch and nothing about the address
         """
-        # GIVEN / WHEN
+        # GIVEN/WHEN
         with patch("api.services.registration_service.logger") as mock_logger:
             registration_service._log_branch(branch)
 

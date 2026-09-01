@@ -3,12 +3,12 @@
 Migration ``c83186b79ad7`` deliberately dropped row-level security, so tenant
 isolation rests entirely on the application layer. Nothing in the framework enforces
 that. A route added without an access check would read and write another tenant's data
-with no second line of defence, and it would look perfectly ordinary in review -- hence
+with no second line of defence, and it would look perfectly ordinary in review. Hence
 this test.
 
 Two guards live here. The first requires ``RequireProjectAccess`` on every route that
 takes a ``project_id``. The second is wider and catches what the first cannot: a route
-naming any other identifier -- an invitation, a user -- is equally able to cross tenants,
+naming any other identifier, an invitation or a user, is equally able to cross tenants,
 and such a route carries no ``project_id`` for the first guard to notice. Those are
 enumerated below with the check that stands in for the dependency, so a new one fails
 until somebody makes that argument explicitly.
@@ -31,7 +31,7 @@ PROJECT_ID_PARAM = "{project_id}"
 # formality: it says this route cannot be reached for somebody else's data.
 UNGUARDED_BY_DESIGN: dict[str, str] = {
     "GET /api/v1/users/{user_id}/photo": (
-        "Public by design -- an <img> tag cannot send an Authorization header, and every "
+        "Public by design: an <img> tag cannot send an Authorization header, and every "
         "project member renders every other member's avatar. Serves nothing but the "
         "avatar bytes, and answers 404 for a user without one."
     ),
@@ -39,7 +39,7 @@ UNGUARDED_BY_DESIGN: dict[str, str] = {
         "InvitationService.accept_invitation refuses unless invitation.invitee_id is the "
         "caller, with the same 404 an unknown id gets "
         "(test_accept_invitation_not_for_user). There is no project membership to check "
-        "yet -- accepting is what creates it."
+        "yet, since accepting is what creates it."
     ),
     "POST /api/v1/invitations/{invitation_id}/decline": (
         "InvitationService.decline_invitation applies the same invitee_id check "
@@ -135,7 +135,7 @@ class TestProjectScopedRoutesAreGuarded:
         routes = _project_scoped_routes()
 
         # THEN
-        assert routes, "no {project_id} routes found -- the guard below would pass vacuously"
+        assert routes, "no {project_id} routes found, so the guard below would pass vacuously"
 
     def test_every_project_scoped_route_requires_project_access(self):
         """
@@ -167,14 +167,14 @@ class TestRoutesNamingOtherObjectsAreAccountedFor:
         WHEN routes taking a path parameter are collected
         THEN some are found, so the guard below is not vacuously true
 
-        Without this, a route walk that silently returned nothing -- a FastAPI internal
-        the walker no longer recognises, say -- would read as "every route is fine".
+        Without this, a route walk that silently returned nothing would read as "every
+        route is fine", say a FastAPI internal the walker no longer recognises.
         """
         # WHEN
         routes = _parameterised_routes()
 
         # THEN
-        assert routes, "no parameterised routes found -- the guard below would pass vacuously"
+        assert routes, "no parameterised routes found, so the guard below passes vacuously"
 
     def test_the_exemption_list_has_no_stale_entries(self):
         """
@@ -208,7 +208,7 @@ class TestRoutesNamingOtherObjectsAreAccountedFor:
 
         Do not silence a failure by pasting the route into the list. Either wire in
         ProjectMember/ProjectAdmin, or write down what enforces access instead and the
-        test that proves it -- the way the existing entries do.
+        test that proves it, the way the existing entries do.
         """
         # WHEN
         unaccounted = sorted(

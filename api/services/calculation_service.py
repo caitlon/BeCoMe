@@ -118,10 +118,20 @@ class CalculationService(BaseService):
         return list(self._session.exec(statement).all())
 
     def _is_likert_scale(self, project: Project) -> bool:
-        """Check if project uses standard Likert scale (0-100)."""
+        """Check if project uses a standard, unitless Likert agreement scale.
+
+        Agreement is dimensionless, so the 0-100 range alone does not mark a
+        project as Likert: a percentage or a budget can share that same range
+        without expressing agreement. Requiring an empty ``scale_unit`` rules
+        those out. A whitespace-only unit counts as empty.
+
+        :param project: Project to check.
+        :return: True if the scale is the standard 0-100 range and unitless.
+        """
         return (
             project.scale_min == self._likert_scale_min
             and project.scale_max == self._likert_scale_max
+            and not project.scale_unit.strip()
         )
 
     def _save_result(

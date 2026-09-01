@@ -94,7 +94,7 @@ class TestForgotPassword:
     def test_returns_202_even_when_email_send_fails(self, client):
         """A provider send failure is swallowed; the response is still 202."""
 
-        # GIVEN — an email sender that raises on send
+        # GIVEN: an email sender that raises on send
         class FailingEmailSender(EmailSender):
             """Simulate a provider that fails on every send."""
 
@@ -178,7 +178,7 @@ class TestResetPassword:
         """A revocation-store fault aborts the reset instead of half-applying it.
 
         Writing the password first would leave it changed with every pre-reset session
-        still valid -- the exact outcome someone resetting a compromised account is
+        still valid, the exact outcome someone resetting a compromised account is
         trying to avoid. Recording the cutoff first makes the fault a clean abort.
         """
         # GIVEN a user holding a valid reset link, and a store that cannot record the cutoff
@@ -290,10 +290,10 @@ class TestResetPassword:
         Presenting a valid reset token already proves control of the address. Leaving a
         stray lockout in place afterwards would let an attacker who tripped it keep the
         account locked out of login indefinitely, simply by resuming the same failed
-        guesses once the throttle's window reopens -- even though the owner just proved
+        guesses once the throttle's window reopens, even though the owner just proved
         they hold the mailbox and chose a new password.
         """
-        # GIVEN - a login lockout, tripped by an attacker's wrong guesses
+        # GIVEN: a login lockout, tripped by an attacker's wrong guesses
         throttle = InMemoryLoginThrottle(max_failures=2, window_seconds=3600)
         client.app.dependency_overrides[get_login_throttle] = lambda: throttle
         try:
@@ -309,7 +309,7 @@ class TestResetPassword:
             )
             assert locked.status_code == 429
 
-            # WHEN - the owner completes a reset
+            # WHEN: the owner completes a reset
             client.post("/api/v1/auth/forgot-password", json={"email": "relocked@example.com"})
             token = _captured_token(fake_email)
             reset = client.post(
@@ -318,7 +318,7 @@ class TestResetPassword:
             )
             assert reset.status_code == 204
 
-            # THEN - the lockout is gone, not just outrun by a new password: a locked
+            # THEN: the lockout is gone, not just outrun by a new password: a locked
             # account would still answer 429 even with the correct password, since the
             # lockout is checked before the password is
             response = client.post(

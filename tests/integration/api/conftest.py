@@ -36,10 +36,13 @@ from api.middleware.exception_handlers import register_exception_handlers
 from api.middleware.rate_limit import limiter
 from api.routes import auth, calculate, health, invitations, opinions, projects, users
 from api.services.email_policy import EmailAddressPolicy
+from api.services.email_verification_service import EmailVerificationService, PendingCredentials
 from api.services.user_cache import get_user_cache
+from api.services.user_service import UserService
 from tests.shared.helpers import (  # noqa: F401
     DEFAULT_TEST_PASSWORD,
     auth_header,
+    insert_demo_experts,
     mock_datetime_offset,
 )
 
@@ -164,7 +167,7 @@ def stored_accounts(client: TestClient, email: str) -> list[dict]:
 
     :param client: Test client instance
     :param email: Address to look up (case-insensitive)
-    :return: One dict per matching account (at most one -- the column is unique)
+    :return: One dict per matching account (at most one, since the column is unique)
     """
     with app_session(client) as session:
         users = session.exec(select(User).where(User.email == email.lower())).all()
@@ -291,12 +294,43 @@ def session(test_engine):
         yield session
 
 
+@pytest.fixture
+def pending_account(session):
+    """Register an account and return the raw activation token with its password.
+
+    The database stores only the SHA-256 of the token, so the raw value is taken from
+    the verification URL the service mints, the same trick the unit tests use.
+
+    Also seeds the demo expert pool: the in-memory schema carries no data of its own,
+    and without the pool ExampleProjectService.seed_for refuses to seed anything.
+    """
+    insert_demo_experts(session)
+    password = "PendingPassword1!"
+    users = UserService(session)
+    user = users.create_user(
+        email="pending@example.com",
+        password=password,
+        first_name="Pending",
+        last_name="Account",
+    )
+    verification = EmailVerificationService(session)
+    url = verification.create_verification_url(
+        user,
+        PendingCredentials(
+            hashed_password=user.hashed_password,
+            first_name=user.first_name,
+            last_name=user.last_name,
+        ),
+    )
+    return url.split("token=")[1], password
+
+
 @pytest.fixture(autouse=True)
 def _reset_auth_throttles():
     """Give each test fresh login, activation, reset-email, and verification-email throttles.
 
     All four factories are lru_cache singletons, so their in-memory state would
-    otherwise leak between tests that reuse an email address -- and every test that
+    otherwise leak between tests that reuse an email address, and every test that
     registers a user now goes through the verification-email throttle.
     """
     from api.auth.email_throttle import (
@@ -369,7 +403,7 @@ def cookie_client(test_engine):
 
     The base URL is https, and it has to be: the session cookies are ``Secure`` (their
     ``__Host-``/``__Secure-`` prefixes are only valid that way), and httpx applies the
-    same rule a browser does -- it stores such a cookie but will not send it back over
+    same rule a browser does: it stores such a cookie but will not send it back over
     plain http. On ``http://testserver`` every request after login would arrive with no
     cookies at all, which reads as "authentication is broken" rather than as the
     transport mismatch it is.

@@ -29,7 +29,7 @@ def build_limiter(settings: Settings) -> Limiter:
     replicas (M6); without it slowapi falls back to in-memory. ``default_limits`` plus
     ``SlowAPIMiddleware`` (wired in ``create_app``) cap every route, so an endpoint
     without an explicit decorator is still bounded. ``in_memory_fallback`` keeps limiting
-    working during a Redis outage -- it is checked before ``swallow_errors``, so a store
+    working during a Redis outage. It is checked before ``swallow_errors``, so a store
     failure degrades to per-instance in-memory limits rather than disabling limiting
     entirely. ``swallow_errors`` remains a last-resort guard so a store hiccup cannot turn
     into a 500. Limiting is disabled only under the TESTING flag.
@@ -54,7 +54,7 @@ limiter = build_limiter(get_settings())
 
 # Rate limit constants for different endpoint types
 LIMIT_AUTH_ENDPOINTS = "5/minute"  # Login, register - strict to prevent brute-force
-LIMIT_PWD_RESET = "3/minute"  # noqa: S105 -- password-reset rate window, not a credential
+LIMIT_PWD_RESET = "3/minute"  # noqa: S105, a rate window, not a credential
 LIMIT_STANDARD = "60/minute"  # Normal API endpoints
 LIMIT_WRITE = "30/minute"  # Writes that also trigger a DB write plus recalculation
 LIMIT_UPLOAD = "10/minute"  # File uploads - prevent abuse

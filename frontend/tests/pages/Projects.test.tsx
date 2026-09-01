@@ -161,7 +161,7 @@ describe('Projects', () => {
       render(<Projects />);
 
       await waitFor(() => {
-        expect(screen.getByText(/0 — 100 %/)).toBeInTheDocument();
+        expect(screen.getByText(/0-100 %/)).toBeInTheDocument();
       });
     });
 
@@ -199,6 +199,20 @@ describe('Projects', () => {
         // Find badge with "Expert" text (case-sensitive)
         const badges = screen.getAllByText('Expert');
         expect(badges.length).toBeGreaterThan(0);
+      });
+    });
+
+    it('badges a seeded example project', async () => {
+      const projects = [
+        createProjectWithRole({ name: 'Flood Prevention Planning', is_example: true }),
+        createProjectWithRole({ name: 'Real work' }),
+      ];
+      mockApi.getProjects.mockResolvedValue(projects);
+
+      render(<Projects />);
+
+      await waitFor(() => {
+        expect(screen.getAllByText('Example')).toHaveLength(1);
       });
     });
   });

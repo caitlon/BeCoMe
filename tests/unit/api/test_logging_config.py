@@ -4,9 +4,47 @@ import json
 import logging
 from logging.handlers import RotatingFileHandler
 
+import pytest
+
 from api.config import Environment, Settings
 from api.logging_config import _EXTERNAL_LOG_LEVELS, JsonLogFormatter, setup_logging
 from api.logging_context import ContextFilter
+
+_CONFIGURED_LOGGERS = ("api", *_EXTERNAL_LOG_LEVELS)
+
+
+@pytest.fixture(autouse=True)
+def restore_configured_loggers():
+    """Leave the process-wide loggers as the test found them.
+
+    ``setup_logging`` attaches its handlers to real, process-wide loggers, and the
+    Better Stack tests below call it with ``LogtailHandler`` patched, so what gets
+    attached is a ``MagicMock``. Leaving the ``with patch(...)`` block detaches
+    nothing, and a mock left in ``handlers`` makes ``record.levelno >= hdlr.level``
+    raise ``TypeError`` inside ``logging`` itself for every later test in the same
+    process that logs anything. Two of the six loggers involved are
+    ``sqlalchemy.engine`` and ``httpx``, so the victims are most of the integration
+    suite.
+
+    Which tests those are depends on how xdist happened to distribute them, which is
+    why this surfaced as 25 unrelated failures in one run at eight workers and in
+    none at six or twelve. Restoring the loggers keeps the damage inside the test
+    that caused it.
+    """
+    saved = {
+        name: (
+            list(logging.getLogger(name).handlers),
+            logging.getLogger(name).level,
+            logging.getLogger(name).propagate,
+        )
+        for name in _CONFIGURED_LOGGERS
+    }
+    yield
+    for name, (handlers, level, propagate) in saved.items():
+        logger = logging.getLogger(name)
+        logger.handlers[:] = handlers
+        logger.setLevel(level)
+        logger.propagate = propagate
 
 
 def _settings(
@@ -428,10 +466,10 @@ class TestExternalLoggers:
         WHEN it is read
         THEN uvicorn.error sits at INFO
 
-        It carries startup, shutdown, and protocol failures -- the records that explain
+        It carries startup, shutdown, and protocol failures: the records that explain
         a boot that never finished. Raising it would hide them from the drain.
         """
-        # GIVEN / WHEN / THEN
+        # GIVEN/WHEN / THEN
         assert _EXTERNAL_LOG_LEVELS["uvicorn.error"] == logging.INFO
 
     def test_sqlalchemy_stays_above_debug_even_when_log_level_is_debug(self):
@@ -441,8 +479,9 @@ class TestExternalLoggers:
         THEN sqlalchemy.engine is still pinned at WARNING
 
         Regression guard for a PII leak, not a style preference: sqlalchemy.engine's
-        DEBUG level prints bound query parameters -- password hashes, raw addresses,
-        reset-token hashes -- and the dev deploy runs at DEBUG against a real database.
+        DEBUG level prints bound query parameters, meaning password hashes, raw
+        addresses, and reset-token hashes, and the dev deploy runs at DEBUG against a
+        real database.
         """
         # GIVEN
         settings = _settings(log_level="DEBUG")
@@ -487,7 +526,7 @@ class TestCreateAppLogging:
 
         from api.main import create_app
 
-        # WHEN / THEN
+        # WHEN/THEN
         with patch("api.main.setup_logging") as mock_setup:
             create_app()
 
@@ -512,7 +551,7 @@ class TestSentryInit:
         settings.sentry_dsn = "https://key@o0.ingest.sentry.io/1"
         settings.environment = Environment.PROD
 
-        # WHEN / THEN
+        # WHEN/THEN
         with patch("api.main.sentry_sdk.init") as mock_init:
             _init_sentry(settings)
 
@@ -533,7 +572,7 @@ class TestSentryInit:
         settings = MagicMock()
         settings.sentry_dsn = None
 
-        # WHEN / THEN
+        # WHEN/THEN
         with patch("api.main.sentry_sdk.init") as mock_init:
             _init_sentry(settings)
 

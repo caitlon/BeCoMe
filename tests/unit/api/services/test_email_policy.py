@@ -97,7 +97,7 @@ class TestDisposableBlocklist:
         # GIVEN
         policy = _policy(_resolver())
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(DisposableEmailDomainError):
             asyncio.run(policy.check("user@mailinator.com"))
 
@@ -110,7 +110,7 @@ class TestDisposableBlocklist:
         # GIVEN
         policy = _policy(_resolver())
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(DisposableEmailDomainError):
             asyncio.run(policy.check("user@MailInator.COM"))
 
@@ -140,7 +140,7 @@ class TestDisposableBlocklist:
         # GIVEN
         policy = _policy(_resolver())
 
-        # WHEN / THEN (no raise)
+        # WHEN/THEN (no raise)
         asyncio.run(policy.check("user@example.com"))
 
     def test_disposable_kill_switch_disables_the_check(self):
@@ -152,7 +152,7 @@ class TestDisposableBlocklist:
         # GIVEN
         policy = _policy(_resolver(), disposable_check_enabled=False)
 
-        # WHEN / THEN (no raise)
+        # WHEN/THEN (no raise)
         asyncio.run(policy.check("user@mailinator.com"))
 
 
@@ -187,7 +187,7 @@ class TestMxCheck:
         resolver = _resolver(side_effect=[dns.resolver.NoAnswer(), MagicMock()])
         policy = _policy(resolver)
 
-        # WHEN / THEN (no raise)
+        # WHEN/THEN (no raise)
         asyncio.run(policy.check("user@example.com"))
         assert resolver.resolve.await_count == 2
 
@@ -203,7 +203,7 @@ class TestMxCheck:
         )
         policy = _policy(resolver)
 
-        # WHEN / THEN (no raise)
+        # WHEN/THEN (no raise)
         asyncio.run(policy.check("user@example.com"))
         assert resolver.resolve.await_count == 3
 
@@ -216,7 +216,7 @@ class TestMxCheck:
         # GIVEN
         policy = _policy(_resolver(side_effect=dns.resolver.NXDOMAIN()))
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(UnresolvableEmailDomainError):
             asyncio.run(policy.check("user@doesnotexist.invalid"))
 
@@ -234,7 +234,7 @@ class TestMxCheck:
         resolver = _resolver(side_effect=[_null_mx_answer()])
         policy = _policy(resolver)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(UnresolvableEmailDomainError):
             asyncio.run(policy.check("user@no-mail.example"))
         assert resolver.resolve.await_count == 1
@@ -250,7 +250,7 @@ class TestMxCheck:
         # GIVEN
         policy = _policy(_resolver(side_effect=[_mx_answer([(0, "mail.example.com.")])]))
 
-        # WHEN / THEN (no raise)
+        # WHEN/THEN (no raise)
         asyncio.run(policy.check("user@example.com"))
 
     def test_null_mx_alongside_another_record_is_not_treated_as_a_refusal(self):
@@ -267,7 +267,7 @@ class TestMxCheck:
         answer = _mx_answer([(0, "."), (10, "mail.example.com.")])
         policy = _policy(_resolver(side_effect=[answer]))
 
-        # WHEN / THEN (no raise)
+        # WHEN/THEN (no raise)
         asyncio.run(policy.check("user@example.com"))
 
     def test_confirmed_absence_of_mx_a_and_aaaa_is_rejected(self):
@@ -286,7 +286,7 @@ class TestMxCheck:
         )
         policy = _policy(resolver)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(UnresolvableEmailDomainError):
             asyncio.run(policy.check("user@example.com"))
 
@@ -303,7 +303,7 @@ class TestMxCheck:
         # GIVEN
         policy = _policy(_resolver(side_effect=dns.exception.Timeout()))
 
-        # WHEN / THEN (no raise)
+        # WHEN/THEN (no raise)
         asyncio.run(policy.check("user@example.com"))
 
     def test_timeout_does_not_fall_back_to_a_or_aaaa(self):
@@ -332,7 +332,7 @@ class TestMxCheck:
         resolver = _resolver(side_effect=[dns.resolver.NoAnswer(), dns.exception.Timeout()])
         policy = _policy(resolver)
 
-        # WHEN / THEN (no raise)
+        # WHEN/THEN (no raise)
         asyncio.run(policy.check("user@example.com"))
         assert resolver.resolve.await_count == 2
 
@@ -345,7 +345,7 @@ class TestMxCheck:
         # GIVEN
         policy = _policy(_resolver(side_effect=dns.resolver.NoNameservers()))
 
-        # WHEN / THEN (no raise)
+        # WHEN/THEN (no raise)
         asyncio.run(policy.check("user@example.com"))
 
     def test_generic_resolver_error_passes(self):
@@ -357,7 +357,7 @@ class TestMxCheck:
         # GIVEN
         policy = _policy(_resolver(side_effect=dns.exception.DNSException("weird failure")))
 
-        # WHEN / THEN (no raise)
+        # WHEN/THEN (no raise)
         asyncio.run(policy.check("user@example.com"))
 
     def test_mx_kill_switch_disables_the_check(self):
@@ -411,7 +411,7 @@ class TestDomainVerdictCaching:
         with pytest.raises(UnresolvableEmailDomainError):
             asyncio.run(policy.check("first@example.com"))
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(UnresolvableEmailDomainError):
             asyncio.run(policy.check("second@example.com"))
         resolver.resolve.assert_awaited_once()
@@ -467,7 +467,7 @@ class TestDomainVerdictCaching:
         WHEN check() runs twice for the same domain
         THEN the resolver is consulted both times, since nothing was cached
 
-        Fail-open means "we do not know, so do not block" -- not "we do not know,
+        Fail-open means "we do not know, so do not block", not "we do not know,
         so stop trying to find out for the rest of the TTL window."
         """
         # GIVEN
@@ -627,7 +627,7 @@ class TestExtractDomain:
         WHEN _extract_domain runs
         THEN it returns the lowercased domain
         """
-        # GIVEN / WHEN / THEN
+        # GIVEN/WHEN / THEN
         assert _extract_domain(email) == expected_domain
 
 
@@ -667,7 +667,7 @@ class TestLoadDisposableDomains:
         WHEN _load_disposable_domains runs
         THEN it contains the providers named in the task brief
         """
-        # GIVEN / WHEN
+        # GIVEN/WHEN
         domains = _load_disposable_domains()
 
         # THEN
@@ -697,7 +697,7 @@ class TestLoadDisposableDomains:
         users. These providers forward to a real inbox rather than offering a
         disposable one, so they belong to that excluded category.
         """
-        # GIVEN / WHEN
+        # GIVEN/WHEN
         domains = _load_disposable_domains()
 
         # THEN
@@ -723,7 +723,7 @@ class TestInMemoryDomainVerdictCache:
         # GIVEN
         cache = InMemoryDomainVerdictCache()
 
-        # WHEN / THEN
+        # WHEN/THEN
         assert cache.get("example.com") is None
 
     def test_set_then_get_roundtrips_a_true_verdict(self):
@@ -771,7 +771,7 @@ class TestInMemoryDomainVerdictCache:
         with mock_datetime_offset("api.services.email_policy.datetime", timedelta(hours=25)):
             cache.set("example.com", True, ttl_seconds=DOMAIN_VERDICT_CACHE_TTL_SECONDS)  # 24h
 
-        # WHEN / THEN
+        # WHEN/THEN
         assert cache.get("example.com") is None
 
     def test_nonpositive_ttl_is_not_stored(self):
@@ -864,7 +864,7 @@ class TestRedisDomainVerdictCache:
         client.set.side_effect = redis.RedisError("down")
         cache = RedisDomainVerdictCache(client)
 
-        # WHEN / THEN
+        # WHEN/THEN
         assert cache.get("example.com") is None
         cache.set("example.com", True, ttl_seconds=60)  # must not raise
 
@@ -881,7 +881,7 @@ class TestRedisDomainVerdictCache:
         client.set(RedisDomainVerdictCache._key("example.com"), b"garbage")
         cache = RedisDomainVerdictCache(client)
 
-        # WHEN / THEN
+        # WHEN/THEN
         assert cache.get("example.com") is None
 
     def test_satisfies_protocol(self):

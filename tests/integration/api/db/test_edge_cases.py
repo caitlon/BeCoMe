@@ -114,7 +114,7 @@ class TestStringFieldEdgeCases:
         WHEN user is created
         THEN succeeds without error
         """
-        # GIVEN - construct email close to max length
+        # GIVEN: construct email close to max length
         # Format: localpart@domain.com where total <= 255
         local_part = "a" * 200
         domain = "example.com"
@@ -220,7 +220,7 @@ class TestFloatFieldEdgeCases:
         session.add(project)
         session.commit()
 
-        # WHEN - crisp number (degenerate fuzzy number)
+        # WHEN: crisp number (degenerate fuzzy number)
         opinion = ExpertOpinion(
             project_id=project.id,
             user_id=user.id,
@@ -325,7 +325,7 @@ class TestUuidEdgeCases:
         # Non-existent UUID (not nil, just doesn't exist in users table)
         fake_uuid = UUID("12345678-1234-1234-1234-123456789012")
 
-        # WHEN - SQLite allows this (no FK enforcement by default)
+        # WHEN: SQLite allows this (no FK enforcement by default)
         membership = ProjectMember(
             project_id=project.id,
             user_id=fake_uuid,
@@ -333,6 +333,6 @@ class TestUuidEdgeCases:
         session.add(membership)
         session.commit()
 
-        # THEN - membership is saved (orphaned reference)
+        # THEN: membership is saved (orphaned reference)
         session.refresh(membership)
         assert membership.user_id == fake_uuid

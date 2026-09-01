@@ -25,7 +25,7 @@ def _image_bytes(width: int = 8, height: int = 8, image_format: str = "JPEG") ->
     """Encode a real image, so uploads face the same decoder the endpoint uses.
 
     Hand-written magic bytes were enough while only the signature was checked, but the
-    dimension guard actually parses the header -- a fake would be rejected as corrupt
+    dimension guard actually parses the header. A fake would be rejected as corrupt
     and the test would pass for the wrong reason.
     """
     buffer = BytesIO()
@@ -59,8 +59,8 @@ def _stored_photo(
 ) -> StoredObject:
     """Build an open handle over an in-memory photo body.
 
-    ``open`` hands back a single-use handle, so every call needs a fresh one --
-    a shared instance would arrive already closed on the second request.
+    ``open`` hands back a single-use handle, so every call needs a fresh one.
+    A shared instance would arrive already closed on the second request.
     """
     return StoredObject(
         stream if stream is not None else _photo_stream(),
@@ -155,7 +155,7 @@ class TestPhotoUpload:
     def test_upload_rejects_a_decompression_bomb(self, client_with_mock_storage):
         """A small file declaring a huge canvas is rejected before it reaches storage.
 
-        The 5 MB byte cap passes this file easily -- the danger is the 25-megapixel
+        The 5 MB byte cap passes this file easily. The danger is the 25-megapixel
         canvas it declares, which costs hundreds of megabytes the moment it decodes.
         """
         # GIVEN a 5000x5000 PNG that weighs well under the size limit
@@ -182,7 +182,7 @@ class TestPhotoUpload:
         client, _ = client_with_mock_storage
         token = register_and_login(client, "photo@example.com")
 
-        # WHEN - claim JPEG but send text
+        # WHEN: claim JPEG but send text
         response = client.post(
             "/api/v1/users/me/photo",
             headers=auth_header(token),
@@ -259,7 +259,7 @@ class TestPhotoUpload:
             files={"file": ("photo1.jpg", VALID_JPEG_BYTES, "image/jpeg")},
         )
 
-        # WHEN - upload a second photo
+        # WHEN: upload a second photo
         response = client.post(
             "/api/v1/users/me/photo",
             headers=auth_header(token),
@@ -374,7 +374,7 @@ class TestPhotoProxy:
         client, mock_storage = client_with_mock_storage
         user_id = self._user_with_photo(client, "proxy@example.com")
 
-        # WHEN - public endpoint, no auth header
+        # WHEN: public endpoint, no auth header
         response = client.get(f"/api/v1/users/{user_id}/photo")
 
         # THEN
@@ -516,7 +516,7 @@ class TestPhotoProxy:
 
     def test_returns_404_when_stored_object_missing(self, client_with_mock_storage):
         """The proxy returns 404 when the key is set but the object is gone from storage."""
-        # GIVEN - a user with a photo whose backing object has since disappeared
+        # GIVEN: a user with a photo whose backing object has since disappeared
         client, mock_storage = client_with_mock_storage
         user_id = self._user_with_photo(client, "gone@example.com")
         mock_storage.open.side_effect = None
@@ -534,7 +534,7 @@ class TestPhotoProxy:
         This endpoint is public (image tags cannot send auth headers), and the wrapped
         botocore message carries the bucket host and object key.
         """
-        # GIVEN - a user with a photo, and storage that fails on read
+        # GIVEN: a user with a photo, and storage that fails on read
         client, mock_storage = client_with_mock_storage
         user_id = self._user_with_photo(client, "fault@example.com")
         mock_storage.open.side_effect = StorageError(

@@ -26,8 +26,8 @@ def upgrade() -> None:
     the submission that minted it, so redeeming the link applies that submission's
     credentials rather than whatever currently sits on the user row. That is what
     stops one person's registration from activating on another person's password.
-    The columns are NOT NULL with no server default, so the table is cleared first
-    -- nothing mints a token until this ships, but a row that somehow predates this
+    The columns are NOT NULL with no server default, so the table is cleared first.
+    Nothing mints a token until this ships, but a row that somehow predates this
     migration would carry no credentials and be unusable by the redeeming code.
     """
     op.execute(sa.text("DELETE FROM email_verification_tokens"))

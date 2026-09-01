@@ -28,7 +28,8 @@
   "card": {
     "noDescription": "No description",
     "scale": "Scale",
-    "experts": "experts"
+    "experts": "experts",
+    "exampleBadge": "Example"
   },
   "roles": {
     "admin": "Admin",
@@ -59,10 +60,9 @@
     "error": "Error",
     "loadFailed": "Failed to load projects",
     "loadProjectFailed": "Failed to load project",
-    "validationError": "Validation Error",
     "invalidNumbers": "Please enter valid numbers",
     "lowerPeakUpper": "Values must satisfy: lower ≤ peak ≤ upper",
-    "scaleRange": "Values must be within scale range: {{min}} — {{max}}",
+    "scaleRange": "Values must be within scale range: {{min}}-{{max}}",
     "opinionSaved": "Opinion saved",
     "saveFailed": "Failed to save",
     "opinionDeleted": "Opinion deleted",
@@ -80,10 +80,8 @@
     "transferOwnershipFailed": "Failed to transfer ownership"
   },
   "detail": {
-    "backToProjects": "Back to Projects",
     "projects": "Projects",
     "experts": "Experts",
-    "responses": "responses",
     "scale": "Scale",
     "inviteExperts": "Invite Experts",
     "inviteExpert": "Invite Expert",
@@ -102,7 +100,7 @@
     "median": "Median (Ω)",
     "supportingCalcs": "Supporting calculations",
     "confidence": "Confidence",
-    "confidenceHint": "How closely the mean and median agree -- a tighter agreement means a more precise compromise.",
+    "confidenceHint": "How closely the mean and median agree. A tighter agreement means a more precise compromise.",
     "confidenceLevel": {
       "high": "High",
       "moderate": "Moderate",
@@ -139,6 +137,10 @@
       "high": "High agreement",
       "moderate": "Moderate agreement",
       "low": "Low agreement"
+    },
+    "exampleBanner": {
+      "title": "This is an example project",
+      "body": "The thirteen experts below come from a published flood-prevention study and are not real people. Add your own opinion to see how the compromise moves, or delete this project if you do not need it."
     }
   },
   "resultExport": {

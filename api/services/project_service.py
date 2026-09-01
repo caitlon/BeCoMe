@@ -5,7 +5,7 @@ from uuid import UUID
 
 from sqlmodel import func, select
 
-from api.db.models import MemberRole, Project, ProjectMember
+from api.db.models import MemberRole, Project, ProjectMember, User
 from api.exceptions import MemberNotFoundError, ProjectNotFoundError, ScaleRangeError
 from api.schemas.project import ProjectCreate, ProjectUpdate
 from api.services.base import BaseService
@@ -146,13 +146,14 @@ class ProjectService(BaseService):
         """Transfer project ownership to another member.
 
         Keeps both ownership sources in sync atomically: ``Project.admin_id`` and
-        the ``ProjectMember`` role rows -- the new owner becomes admin and the
+        the ``ProjectMember`` role rows. The new owner becomes admin and the
         former owner is demoted to expert.
 
         :param project: Project to transfer (current admin already verified)
         :param new_admin_id: User ID of the member to promote to admin
         :return: Updated project
-        :raises MemberNotFoundError: If the target user is not a project member
+        :raises MemberNotFoundError: If the target user is not a project member, or is
+            one of the demo accounts (see ``User.is_demo``)
         """
         new_admin_membership = self._session.exec(
             select(ProjectMember).where(
@@ -160,7 +161,13 @@ class ProjectService(BaseService):
                 ProjectMember.user_id == new_admin_id,
             )
         ).first()
-        if not new_admin_membership:
+        new_admin = self._session.get(User, new_admin_id)
+        # A demo account can never log in, so handing it the project would stand up an
+        # admin nobody can reach: delete, patch, invite, remove-member, and transfer-back
+        # all lock up. It would also later block the demo pool's own downgrade, which
+        # cannot delete a user still referenced by projects.admin_id. Treated the same
+        # as a non-member on purpose, so a demo account cannot be told apart from one.
+        if not new_admin_membership or new_admin is None or new_admin.is_demo:
             raise MemberNotFoundError(
                 f"User {new_admin_id} is not a member of project {project.id}"
             )

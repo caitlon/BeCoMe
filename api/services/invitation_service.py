@@ -14,7 +14,7 @@ from api.exceptions import (
     UserNotFoundForInvitationError,
 )
 from api.services.base import BaseService
-from api.services.query_helpers import MemberCountSubquery
+from api.services.query_helpers import MemberCountSubquery, select_account_by_email
 
 logger = logging.getLogger("api.service.invitation")
 
@@ -48,9 +48,7 @@ class InvitationService(BaseService):
         :raises UserAlreadyMemberError: If user is already a project member
         :raises AlreadyInvitedError: If user already has a pending invitation
         """
-        invitee = self._session.exec(
-            select(User).where(User.email == invitee_email.lower())
-        ).first()
+        invitee = self._session.exec(select_account_by_email(invitee_email)).first()
         if not invitee:
             raise UserNotFoundForInvitationError(f"No user found with email {invitee_email}")
 

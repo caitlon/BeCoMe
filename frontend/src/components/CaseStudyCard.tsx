@@ -37,7 +37,7 @@ export function CaseStudyCard({ study, showScale = false }: CaseStudyCardProps) 
                 </span>
                 {showScale && (
                   <span className="font-mono bg-muted px-2 py-0.5 rounded">
-                    {study.scaleMin}–{study.scaleMax} {study.scaleUnit}
+                    {study.scaleMin}-{study.scaleMax} {study.scaleUnit}
                   </span>
                 )}
               </div>

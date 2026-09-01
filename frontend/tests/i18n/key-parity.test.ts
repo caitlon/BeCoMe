@@ -21,7 +21,7 @@ function collectKeys(obj: Record<string, unknown>, prefix = ''): string[] {
 }
 
 describe('i18n key parity (EN ↔ CS)', () => {
-  it.each(namespaces)('%s — EN and CS have identical keys', (ns) => {
+  it.each(namespaces)('%s: EN and CS have identical keys', (ns) => {
     const enKeys = collectKeys(resources.en[ns] as Record<string, unknown>);
     const csKeys = collectKeys(resources.cs[ns] as Record<string, unknown>);
 

@@ -31,7 +31,7 @@ class FuzzyNumber(Protocol):
     """Structural interface for fuzzy number types.
 
     Any class with matching properties (triangular, trapezoidal, Gaussian)
-    satisfies this protocol via duck typing — no explicit inheritance required.
+    satisfies this protocol via duck typing, with no explicit inheritance required.
     """
 
     @property

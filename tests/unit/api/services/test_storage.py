@@ -42,7 +42,7 @@ class TestInit:
         # GIVEN
         settings = _settings(storage_enabled=False)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(StorageConfigurationError, match="not configured"):
             RailwayBucketStorageService(settings, client=MagicMock())
 
@@ -51,7 +51,7 @@ class TestInit:
         # GIVEN
         settings = _settings(bucket_name=None)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(StorageConfigurationError, match="not configured"):
             RailwayBucketStorageService(settings, client=MagicMock())
 
@@ -119,7 +119,7 @@ class TestUpload:
         client.put_object.side_effect = Exception("boom")
         service = RailwayBucketStorageService(_settings(), client=client)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(StorageUploadError, match="Failed to upload"):
             service.upload(b"image data", "image/jpeg", "user-123")
 
@@ -184,7 +184,7 @@ class TestOpen:
         client.get_object.assert_called_once_with(Bucket="test-bucket", Key="profiles/user/abc.png")
 
     def test_does_not_read_the_body_while_opening(self):
-        """Opening only fetches headers -- the body stays on the wire.
+        """Opening only fetches headers, and the body stays on the wire.
 
         This is the whole point of the change: time to first byte must not include
         the full object download.
@@ -236,7 +236,7 @@ class TestOpen:
         client.get_object.side_effect = _client_error("AccessDenied")
         service = RailwayBucketStorageService(_settings(), client=client)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(StorageError, match="Failed to read"):
             service.open("profiles/user/denied.jpg")
 
@@ -247,7 +247,7 @@ class TestOpen:
         client.get_object.side_effect = RuntimeError("connection reset")
         service = RailwayBucketStorageService(_settings(), client=client)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(StorageError, match="Failed to read"):
             service.open("profiles/user/x.jpg")
 
@@ -270,7 +270,7 @@ class TestOpen:
         """The open event reports ContentLength and how long the headers took.
 
         duration_ms no longer covers the download, because the body has not been
-        read at that point -- it measures what the client waits for before the
+        read at that point. It measures what the client waits for before the
         first byte arrives.
         """
         # GIVEN
@@ -338,7 +338,7 @@ class TestDelete:
         client.delete_object.side_effect = Exception("boom")
         service = RailwayBucketStorageService(_settings(), client=client)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(StorageDeleteError, match="Failed to delete"):
             service.delete("profiles/user/abc.jpg")
 

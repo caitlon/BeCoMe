@@ -10,7 +10,7 @@ from api.services.storage import validation
 def _png(width: int, height: int) -> bytes:
     """Encode a real single-channel PNG of the given canvas size.
 
-    Grayscale and a flat fill keep the encoded file tiny even for huge canvases --
+    Grayscale and a flat fill keep the encoded file tiny even for huge canvases,
     which is exactly what makes a decompression bomb cheap to send.
     """
     buffer = BytesIO()

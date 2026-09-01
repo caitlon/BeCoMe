@@ -118,7 +118,7 @@ def create_db_and_tables() -> None:
     test runs (``TESTING=1``, including the e2e PostgreSQL) keep using
     ``create_all`` for a zero-setup, isolated schema.
     """
-    from api.db import models  # noqa: F401 — registers models with SQLModel.metadata
+    from api.db import models  # noqa: F401, registers models with SQLModel.metadata
 
     settings = get_settings()
     if not (settings.database_url.startswith("sqlite") or settings.testing):

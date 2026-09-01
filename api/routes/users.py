@@ -157,7 +157,7 @@ def update_current_user(
         last_name=request.last_name,
     )
     # Field names only. The values are the user's own name, which the record does not
-    # need in order to say that the profile changed.
+    # need to say that the profile changed.
     logger.info(
         "Profile updated",
         extra={
@@ -272,7 +272,13 @@ def delete_current_user(
             raise InvalidProjectDispositionError(
                 "A transfer must name another member as the new admin."
             )
-        elif not membership_service.is_member(d.project_id, d.new_admin_id):
+        elif not membership_service.is_member(
+            d.project_id, d.new_admin_id
+        ) or membership_service.is_demo_account(d.new_admin_id):
+            # A demo account passes is_member (it is seeded into every example project),
+            # so it needs its own check here rather than being caught by the branch
+            # above. It is treated the same as a non-member, for the same reason
+            # ProjectService.transfer_ownership refuses one.
             raise InvalidProjectDispositionError("The new admin must be a member of the project.")
         else:
             transfers.append((owned_by_id[d.project_id], d.new_admin_id))
@@ -484,7 +490,7 @@ def get_user_photo(
 
     # The version has to match the key being served, not merely be present. This route
     # always serves whatever photo the account holds now, so a stale or invented `v`
-    # names bytes that already changed once and can change again -- pinning it for a
+    # names bytes that already changed once and can change again. Pinning it for a
     # year would leave a shared cache handing out a replaced avatar under that URL.
     cache_control = (
         _VERSIONED_PHOTO_CACHE_CONTROL

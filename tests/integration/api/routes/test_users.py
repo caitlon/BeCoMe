@@ -1,16 +1,21 @@
 """Tests for DELETE /api/v1/users/me endpoint."""
 
 from unittest.mock import patch
+from uuid import UUID
 
 from fastapi import status
 
 from api.auth.revocation_store import RevocationStoreError
+from api.data.example_project import EXAMPLE_EXPERTS
+from api.db.models import MemberRole, ProjectMember
 from tests.integration.api.conftest import (
     DEFAULT_TEST_PASSWORD,
+    app_session,
     auth_header,
     create_project,
     register_and_login,
 )
+from tests.shared.helpers import insert_demo_experts
 
 
 def _add_expert(client, owner_token, project_id, email):
@@ -67,7 +72,7 @@ class TestDeleteAccount:
         # Delete account
         client.delete("/api/v1/users/me", headers=auth_header(token))
 
-        # WHEN - try to login with same credentials
+        # WHEN: try to login with same credentials
         response = client.post(
             "/api/v1/auth/login",
             data={"username": email, "password": DEFAULT_TEST_PASSWORD},
@@ -250,6 +255,48 @@ class TestDeleteAccountDispositions:
             json={
                 "project_dispositions": [
                     {"project_id": project["id"], "action": "transfer", "new_admin_id": stranger}
+                ]
+            },
+            headers=auth_header(owner),
+        )
+
+        # THEN the disposition is rejected as invalid
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+
+    def test_transfer_to_demo_account_rejected(self, client):
+        """A transfer naming a demo account as the erasure disposition is rejected.
+
+        Membership alone would accept it, since a demo account seeded into an example
+        project is an ordinary ProjectMember row, so this covers the case
+        test_transfer_to_non_member_rejected above does not: the target really is a
+        member, and is refused anyway because it can never log in to hold the project.
+        """
+        # GIVEN an owner whose project has a demo account as an ordinary member
+        owner = register_and_login(client, "demo-transfer-owner@example.com")
+        project = create_project(client, owner, "Solo")
+        demo_id = EXAMPLE_EXPERTS[0].user_id
+        with app_session(client) as session:
+            insert_demo_experts(session)
+            session.add(
+                ProjectMember(
+                    project_id=UUID(project["id"]),
+                    user_id=demo_id,
+                    role=MemberRole.EXPERT,
+                )
+            )
+            session.commit()
+
+        # WHEN the owner tries to transfer their project to the demo account
+        response = client.request(
+            "DELETE",
+            "/api/v1/users/me",
+            json={
+                "project_dispositions": [
+                    {
+                        "project_id": project["id"],
+                        "action": "transfer",
+                        "new_admin_id": str(demo_id),
+                    }
                 ]
             },
             headers=auth_header(owner),

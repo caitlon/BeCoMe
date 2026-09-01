@@ -15,7 +15,7 @@ WORKDIR /app
 # reads has to be declared here: Railway passes service variables as build args, and
 # Vite only inlines a variable that exists in the builder's environment when
 # `npm run build` runs. An undeclared one is simply absent, and the code reading it
-# collapses to `undefined` -- which is how the Sentry init below went missing from
+# collapses to `undefined`, which is how the Sentry init below went missing from
 # all three deployed bundles while VITE_SENTRY_DSN was set on every service.
 ARG VITE_API_URL
 ENV VITE_API_URL=${VITE_API_URL}

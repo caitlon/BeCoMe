@@ -43,7 +43,7 @@ class TestStorageEnabled:
         # GIVEN
         settings = Settings(secret_key="test-secret-key", **self._BUCKET)
 
-        # WHEN / THEN
+        # WHEN/THEN
         assert settings.storage_enabled is True
 
     def test_returns_false_when_endpoint_missing(self):
@@ -58,7 +58,7 @@ class TestStorageEnabled:
             **{**self._BUCKET, "bucket_endpoint": None},
         )
 
-        # WHEN / THEN
+        # WHEN/THEN
         assert settings.storage_enabled is False
 
     def test_returns_false_when_credentials_missing(self):
@@ -74,7 +74,7 @@ class TestStorageEnabled:
             bucket_endpoint="https://storage.railway.app",
         )
 
-        # WHEN / THEN
+        # WHEN/THEN
         assert settings.storage_enabled is False
 
     def test_returns_false_when_unconfigured(self):
@@ -86,7 +86,7 @@ class TestStorageEnabled:
         # GIVEN
         settings = Settings(secret_key="test-secret-key")
 
-        # WHEN / THEN
+        # WHEN/THEN
         assert settings.storage_enabled is False
 
 
@@ -99,7 +99,7 @@ class TestEmailEnabled:
 
         Without this, a developer's local .env (which may set EMAIL_PROVIDER and
         EMAIL_API_KEY for real sending) leaks into these default-value tests and
-        breaks them, even though CI -- with no .env -- stays green.
+        breaks them, even though CI, which has no .env, stays green.
         """
         monkeypatch.chdir(tmp_path)
         for var in (
@@ -117,7 +117,7 @@ class TestEmailEnabled:
         WHEN constructed
         THEN email_provider defaults to "console"
         """
-        # GIVEN / WHEN
+        # GIVEN/WHEN
         settings = Settings(secret_key="test-secret-key")
 
         # THEN
@@ -129,7 +129,7 @@ class TestEmailEnabled:
         WHEN constructed
         THEN password_reset_token_ttl_minutes defaults to 60
         """
-        # GIVEN / WHEN
+        # GIVEN/WHEN
         settings = Settings(secret_key="test-secret-key")
 
         # THEN
@@ -141,7 +141,7 @@ class TestEmailEnabled:
         WHEN constructed
         THEN email_verification_token_ttl_hours defaults to 24
         """
-        # GIVEN / WHEN
+        # GIVEN/WHEN
         settings = Settings(secret_key="test-secret-key")
 
         # THEN
@@ -156,7 +156,7 @@ class TestEmailEnabled:
         # GIVEN
         settings = Settings(secret_key="test-secret-key")
 
-        # WHEN / THEN
+        # WHEN/THEN
         assert settings.email_enabled is False
 
     def test_returns_false_for_http_without_api_key(self):
@@ -168,7 +168,7 @@ class TestEmailEnabled:
         # GIVEN
         settings = Settings(secret_key="test-secret-key", email_provider="http")
 
-        # WHEN / THEN
+        # WHEN/THEN
         assert settings.email_enabled is False
 
     def test_returns_true_for_http_with_api_key(self):
@@ -184,7 +184,7 @@ class TestEmailEnabled:
             email_api_key="re_test_key",
         )
 
-        # WHEN / THEN
+        # WHEN/THEN
         assert settings.email_enabled is True
 
 
@@ -197,7 +197,7 @@ class TestEmailPolicySettings:
         WHEN constructed
         THEN disposable_email_blocking_enabled defaults to True
         """
-        # GIVEN / WHEN
+        # GIVEN/WHEN
         settings = Settings(secret_key="test-secret-key")
 
         # THEN
@@ -209,7 +209,7 @@ class TestEmailPolicySettings:
         WHEN constructed
         THEN mx_check_enabled defaults to True
         """
-        # GIVEN / WHEN
+        # GIVEN/WHEN
         settings = Settings(secret_key="test-secret-key")
 
         # THEN
@@ -309,7 +309,7 @@ class TestEnvironmentResolution:
         monkeypatch.setenv("APP_ENV", "bogus")
         monkeypatch.setenv("SECRET_KEY", "irrelevant")
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(ValueError):
             Settings()
 
@@ -343,7 +343,7 @@ class TestEnvironmentResolution:
         monkeypatch.setenv("ENVIRONMENT", "prod")
         monkeypatch.setenv("SECRET_KEY", "irrelevant")
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(ValueError):
             Settings()
 
@@ -390,7 +390,7 @@ class TestProductionInvariants:
         monkeypatch.setenv("SECRET_KEY", "changeme")
         monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@host:5432/db")
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(ValidationError):
             Settings()
 
@@ -406,7 +406,7 @@ class TestProductionInvariants:
         monkeypatch.setenv("SECRET_KEY", "a-sufficiently-strong-secret-value")
         monkeypatch.setenv("DATABASE_URL", "sqlite:///./prod.db")
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(ValidationError):
             Settings()
 
@@ -448,7 +448,7 @@ class TestProductionInvariants:
         monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@host:5432/db")
         monkeypatch.delenv("REDIS_URL", raising=False)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(ValidationError, match="redis_url is required"):
             Settings()
 
@@ -466,7 +466,7 @@ class TestProductionInvariants:
         monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
         monkeypatch.delenv("CLOUDFLARE_ORIGIN_SECRET", raising=False)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(ValidationError, match="cloudflare_origin_secret"):
             Settings()
 
@@ -482,7 +482,7 @@ class TestProductionInvariants:
         monkeypatch.setenv("SECRET_KEY", "short-but-not-listed")
         monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@host:5432/db")
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(ValidationError):
             Settings()
 
@@ -501,7 +501,7 @@ class TestProductionInvariants:
         monkeypatch.setenv("CLOUDFLARE_ORIGIN_SECRET", "an-origin-verify-secret")
         monkeypatch.setenv("CORS_ORIGINS", '["http://localhost:3000"]')
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(ValidationError, match="cors_origins"):
             Settings()
 
@@ -515,7 +515,7 @@ class TestProductionInvariants:
         _configure_prod(monkeypatch, tmp_path)
         monkeypatch.setenv("FRONTEND_BASE_URL", "http://localhost:5173")
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(ValidationError, match="frontend_base_url"):
             Settings()
 
@@ -529,7 +529,7 @@ class TestProductionInvariants:
         _configure_prod(monkeypatch, tmp_path)
         monkeypatch.setenv("FRONTEND_BASE_URL", "app.example.com")
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(ValidationError, match="frontend_base_url"):
             Settings()
 
@@ -552,7 +552,7 @@ class TestProductionInvariants:
         monkeypatch.setenv("EMAIL_PROVIDER", "http")
         monkeypatch.delenv("EMAIL_API_KEY", raising=False)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(ValidationError, match="email_api_key is required"):
             Settings()
 
@@ -573,7 +573,7 @@ class TestProductionInvariants:
         monkeypatch.setenv("FRONTEND_BASE_URL", "https://app.example.com")
         monkeypatch.setenv("EMAIL_PROVIDER", "console")
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(ValidationError, match="email_api_key is required"):
             Settings()
 
@@ -587,7 +587,7 @@ class TestProductionInvariants:
         _configure_prod(monkeypatch, tmp_path)
         monkeypatch.setenv("DEBUG", "true")
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(ValidationError, match="debug must be off"):
             Settings()
 
@@ -601,7 +601,7 @@ class TestProductionInvariants:
         _configure_prod(monkeypatch, tmp_path)
         monkeypatch.delenv("MIGRATION_DATABASE_URL", raising=False)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(ValidationError, match="migration_database_url is required"):
             Settings()
 
@@ -663,7 +663,7 @@ class TestDeployedDevInvariants:
         monkeypatch.setenv("SECRET_KEY", "weak")
         monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@host:5432/db")
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(ValidationError, match="secret_key"):
             Settings()
 
@@ -692,7 +692,7 @@ class TestDeployedDevInvariants:
         self._configure_railway_dev(monkeypatch, tmp_path)
         monkeypatch.delenv("CLOUDFLARE_ORIGIN_SECRET", raising=False)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(ValidationError, match="cloudflare_origin_secret"):
             Settings()
 
@@ -764,7 +764,7 @@ class TestStagingInvariants:
         self._configure_staging(monkeypatch, tmp_path)
         monkeypatch.delenv("CLOUDFLARE_ORIGIN_SECRET", raising=False)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(ValidationError, match="cloudflare_origin_secret"):
             Settings()
 
@@ -778,7 +778,7 @@ class TestStagingInvariants:
         self._configure_staging(monkeypatch, tmp_path)
         monkeypatch.setenv("SECRET_KEY", "changeme")
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(ValidationError, match="secret_key"):
             Settings()
 
@@ -792,7 +792,7 @@ class TestStagingInvariants:
         self._configure_staging(monkeypatch, tmp_path)
         monkeypatch.delenv("REDIS_URL", raising=False)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(ValidationError, match="redis_url is required"):
             Settings()
 
@@ -806,7 +806,7 @@ class TestStagingInvariants:
         self._configure_staging(monkeypatch, tmp_path)
         monkeypatch.setenv("CORS_ORIGINS", '["http://localhost:3000"]')
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(ValidationError, match="cors_origins"):
             Settings()
 
@@ -820,7 +820,7 @@ class TestStagingInvariants:
         self._configure_staging(monkeypatch, tmp_path)
         monkeypatch.setenv("DATABASE_URL", "sqlite:///./staging.db")
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(ValidationError, match="SQLite"):
             Settings()
 
@@ -834,7 +834,7 @@ class TestStagingInvariants:
         self._configure_staging(monkeypatch, tmp_path)
         monkeypatch.delenv("EMAIL_API_KEY", raising=False)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(ValidationError, match="email_api_key is required"):
             Settings()
 
@@ -848,7 +848,7 @@ class TestLoggingSettings:
         WHEN constructed
         THEN log_level defaults to INFO
         """
-        # GIVEN / WHEN
+        # GIVEN/WHEN
         settings = Settings(secret_key="test-secret-key")
 
         # THEN
@@ -860,7 +860,7 @@ class TestLoggingSettings:
         WHEN constructed
         THEN log_file defaults to None
         """
-        # GIVEN / WHEN
+        # GIVEN/WHEN
         settings = Settings(secret_key="test-secret-key")
 
         # THEN
@@ -908,7 +908,7 @@ class TestLoggingSettings:
         WHEN Settings is constructed
         THEN a validation error is raised at load time
         """
-        # GIVEN / WHEN / THEN
+        # GIVEN/WHEN / THEN
         with pytest.raises(ValidationError):
             Settings(secret_key="test-secret-key", log_level="VERBOSE")
 
@@ -918,7 +918,7 @@ class TestLoggingSettings:
         WHEN constructed
         THEN sentry_dsn defaults to None
         """
-        # GIVEN / WHEN
+        # GIVEN/WHEN
         settings = Settings(secret_key="test-secret-key")
 
         # THEN
@@ -930,7 +930,7 @@ class TestLoggingSettings:
         WHEN constructed
         THEN both Better Stack fields default to None
         """
-        # GIVEN / WHEN
+        # GIVEN/WHEN
         settings = Settings(secret_key="test-secret-key")
 
         # THEN
@@ -987,7 +987,7 @@ class TestProfileLogLevelDefault:
         # WHEN
         settings = Settings()
 
-        # THEN -- the dev default is DEBUG, so this proves the override, not the default
+        # THEN: the dev default is DEBUG, so this proves the override, not the default
         assert settings.log_level == "WARNING"
 
     def test_explicit_kwarg_beats_the_profile_default(self, monkeypatch, tmp_path):

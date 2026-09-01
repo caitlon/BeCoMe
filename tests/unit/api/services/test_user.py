@@ -69,7 +69,7 @@ class TestUserServiceCreateUser:
         mock_session.exec.return_value.first.return_value = existing_user
         service = UserService(mock_session)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(UserExistsError, match="already exists"):
             service.create_user(
                 email="taken@example.com",
@@ -162,10 +162,10 @@ class TestUserServiceGetByEmail:
         mock_session.exec.return_value.first.return_value = expected_user
         service = UserService(mock_session)
 
-        # WHEN - search with mixed case email
+        # WHEN: search with mixed case email
         result = service.get_by_email("FOUND@EXAMPLE.COM")
 
-        # THEN - should find user because query uses lowercase
+        # THEN: should find user because query uses lowercase
         assert result == expected_user
         # Verify exec was called (query was made)
         mock_session.exec.assert_called_once()
@@ -238,7 +238,7 @@ class TestUserServiceAuthenticate:
         mock_session.exec.return_value.first.return_value = None
         service = UserService(mock_session)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(InvalidCredentialsError, match="Invalid email or password"):
             service.authenticate("unknown@example.com", "anypassword")
 
@@ -254,7 +254,7 @@ class TestUserServiceAuthenticate:
         mock_session.exec.return_value.first.return_value = user
         service = UserService(mock_session)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with (
             patch("api.services.user_service.verify_password", return_value=False),
             pytest.raises(InvalidCredentialsError, match="Invalid email or password"),
@@ -492,7 +492,7 @@ class TestUserServiceChangePassword:
         mock_session = MagicMock()
         service = UserService(mock_session)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with (
             patch("api.services.user_service.verify_password", return_value=False),
             pytest.raises(

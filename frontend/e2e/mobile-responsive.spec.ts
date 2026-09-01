@@ -40,7 +40,7 @@ test.describe('Mobile Responsive', () => {
     await expect(resultsTab).toBeVisible();
     await expect(teamTab).toBeVisible();
 
-    // Switch between tabs — verify each tab is selectable
+    // Switch between tabs, verifying each tab is selectable
     await resultsTab.click();
     await expect(resultsTab).toHaveAttribute('data-state', 'active', { timeout: 5000 });
 

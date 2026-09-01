@@ -25,7 +25,7 @@ def upgrade() -> None:
     means unverified, which the login route will refuse once the release that wires
     that flow up ships. This migration lands the column ahead of it, so between the
     two nothing reads the value. becomify.app already has live users, and the flip
-    must not lock them out -- existing rows are backfilled to their own
+    must not lock them out, so existing rows are backfilled to their own
     ``created_at``, treating pre-existing accounts as verified as of when they
     registered. ``email_verification_tokens``
     mirrors ``password_reset_tokens``, storing only the SHA-256 hash of each

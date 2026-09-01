@@ -2,7 +2,7 @@
 
 The database URL is resolved in this order: a direct ``ALEMBIC_DATABASE_URL``
 override (handy for ad-hoc runs against one specific database), then application
-settings -- ``migration_database_url`` (the privileged role used for DDL) falling
+settings: ``migration_database_url`` (the privileged role used for DDL), falling
 back to ``database_url``. This keeps migrations and the running application aimed
 at the same database while allowing a separate privileged connection for schema
 changes.
@@ -17,7 +17,7 @@ from sqlalchemy import engine_from_config, pool
 from sqlmodel import SQLModel
 
 from api.config import get_settings
-from api.db import models  # noqa: F401 -- imported so tables register on SQLModel.metadata
+from api.db import models  # noqa: F401, imported so tables register on SQLModel.metadata
 
 config = context.config
 

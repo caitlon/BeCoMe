@@ -40,7 +40,7 @@ export function Navbar() {
     try {
       await logout();
     } catch {
-      // The local session is already cleared at this point (AuthContext's job) --
+      // The local session is already cleared at this point (AuthContext's job);
       // only the server-side revoke failed. Stay on the page instead of
       // navigating home, so the user knows to try again rather than seeing what
       // looks like a normal sign-out while the session may still be alive.

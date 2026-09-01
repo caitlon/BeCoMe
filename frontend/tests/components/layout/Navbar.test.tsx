@@ -233,7 +233,7 @@ describe('Navbar - Mobile Menu (authenticated)', () => {
     const aboutLink = within(mobileMenu).getByRole('link', { name: /about/i });
     await user.click(aboutLink);
 
-    // Menu should close — hamburger label returns to "Open menu"
+    // Menu should close, and the hamburger label returns to "Open menu"
     expect(screen.getByRole('button', { name: /open menu/i })).toBeInTheDocument();
   });
 

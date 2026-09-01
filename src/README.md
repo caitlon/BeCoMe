@@ -1,16 +1,33 @@
-# BeCoMe Source Code
+# BeCoMe source code
 
 Core implementation of the BeCoMe method for aggregating expert opinions expressed as fuzzy triangular numbers.
 
+## Contents
+
+- [Overview](#overview)
+- [Architecture](#architecture)
+- [Module descriptions](#module-descriptions)
+- [Design patterns](#design-patterns)
+- [Type safety](#type-safety)
+- [Importing modules](#importing-modules)
+- [Dependencies](#dependencies)
+- [Testing](#testing)
+- [Usage with examples](#usage-with-examples)
+- [Related documentation](#related-documentation)
+- [Contributing](#contributing)
+
 ## Overview
 
-Three layers handle different responsibilities. **Models** define immutable data structures — fuzzy numbers, expert opinions, calculation results. **Calculators** contain the aggregation logic: arithmetic mean, median, and best compromise. **Interpreters** translate results into decision-making language (Likert scale mapping).
+Three layers handle different responsibilities. **Models** define the immutable data structures:
+fuzzy numbers, expert opinions, and calculation results. **Calculators** hold the aggregation
+logic for the arithmetic mean, the median, and the best compromise. **Interpreters** translate a
+result into decision-making language through a Likert scale mapping.
 
 The code passes mypy in strict mode and has 100% test coverage.
 
 ## Architecture
 
-### Layered Structure
+### Layered structure
 
 ```
 src/
@@ -19,16 +36,16 @@ src/
 │   ├── expert_opinion.py     # Expert opinion with identifier
 │   └── become_result.py      # Calculation result (Pydantic model)
 ├── calculators/         # Calculation logic
-│   ├── base_calculator.py        # Abstract base calculator (Template Method)
+│   ├── base_calculator.py        # Abstract base class (the shared interface)
 │   ├── median_strategies.py     # Median calculation strategies (Strategy Pattern)
 │   └── become_calculator.py     # Main BeCoMe implementation
 ├── interpreters/        # Result interpretation
 │   └── likert_interpreter.py    # Likert scale decision interpreter
 ├── exceptions.py        # Custom exception hierarchy
-└── __init__.py         # Package marker with version
+└── __init__.py         # Package marker
 ```
 
-### Dependency Flow
+### Dependency flow
 
 ```
 interpreters/
@@ -40,15 +57,17 @@ models/
 exceptions.py
 ```
 
-Components depend only on lower layers, ensuring clean separation of concerns.
+Components depend only on the layers below them, so a lower layer can be tested without the
+ones above it.
 
-## Module Descriptions
+## Module descriptions
 
-### Models Layer (`models/`)
+### Models layer (`models/`)
 
 #### [fuzzy_number.py](models/fuzzy_number.py)
 
-`FuzzyTriangleNumber` represents a triangular fuzzy number (lower_bound, peak, upper_bound). The class validates that lower ≤ peak ≤ upper and calculates the centroid as (lower + peak + upper) / 3. Immutability is enforced through `__slots__`.
+`FuzzyTriangleNumber` represents a triangular fuzzy number (lower_bound, peak, upper_bound). The class validates that lower ≤ peak ≤ upper and calculates the centroid as
+(lower + peak + upper) / 3. `__slots__` and an overridden `__setattr__` enforce immutability.
 
 ```python
 from src.models.fuzzy_number import FuzzyTriangleNumber
@@ -62,7 +81,8 @@ avg = FuzzyTriangleNumber.average([fuzzy1, fuzzy2])
 
 #### [expert_opinion.py](models/expert_opinion.py)
 
-`ExpertOpinion` pairs an expert ID with their fuzzy assessment. Opinions are comparable by centroid, which enables sorting for median calculation.
+`ExpertOpinion` pairs an expert ID with that expert's fuzzy assessment. Opinions compare by
+centroid, so sorting them puts the median in the middle.
 
 ```python
 from src.models.expert_opinion import ExpertOpinion
@@ -86,26 +106,28 @@ print(result.best_compromise)
 print(result.max_error)
 ```
 
-### Calculators Layer (`calculators/`)
+### Calculators layer (`calculators/`)
 
 #### [base_calculator.py](calculators/base_calculator.py)
 
-`BaseAggregationCalculator` defines the interface: `calculate_arithmetic_mean()`, `calculate_median()`, `calculate_compromise()`, and `sort_by_centroid()`. Template Method pattern — subclasses implement the actual logic.
+`BaseAggregationCalculator` defines the interface: `calculate_arithmetic_mean()`,
+`calculate_median()`, `calculate_compromise()`, and `sort_by_centroid()`. All four are
+abstract, so a subclass supplies every one of them.
 
 #### [median_strategies.py](calculators/median_strategies.py)
 
-Median calculation differs for odd and even expert counts. `OddMedianStrategy` returns the middle element after sorting. `EvenMedianStrategy` averages the two middle elements. The calculator selects the strategy at runtime based on expert count.
+Median calculation differs for odd and even expert counts. `OddMedianStrategy` returns the middle element after sorting. `EvenMedianStrategy` averages the two middle elements. The calculator selects the strategy at runtime, from the expert count.
 
 ```python
 from src.calculators.median_strategies import OddMedianStrategy, EvenMedianStrategy
 
 strategy = OddMedianStrategy() if m % 2 == 1 else EvenMedianStrategy()
-median = strategy.calculate(sorted_opinions, median_centroid)
+median = strategy.calculate(sorted_opinions)
 ```
 
 #### [become_calculator.py](calculators/become_calculator.py)
 
-Main BeCoMe implementation. Arithmetic mean (Γ) averages lower bounds, peaks, and upper bounds separately. Median (Ω) sorts opinions by centroid and applies the appropriate strategy. Best compromise (ΓΩMean) averages mean and median component-wise. Maximum error (Δmax) is half the distance between mean and median centroids.
+Main BeCoMe implementation. Arithmetic mean (Γ) averages lower bounds, peaks, and upper bounds separately. Median (Ω) sorts opinions by centroid and applies the matching strategy. Best compromise (ΓΩMean) averages mean and median component-wise. Maximum error (Δmax) is half the distance between mean and median centroids.
 
 ```python
 from src.calculators.become_calculator import BeCoMeCalculator
@@ -121,11 +143,13 @@ opinions = [
 result = calculator.calculate_compromise(opinions)
 ```
 
-### Interpreters Layer (`interpreters/`)
+### Interpreters layer (`interpreters/`)
 
 #### [likert_interpreter.py](interpreters/likert_interpreter.py)
 
-`LikertDecisionInterpreter` maps fuzzy number centroids to a 5-point Likert scale (0, 25, 50, 75, 100) and generates decision text. Useful for the Pendlers case where experts rated policies on an ordinal scale.
+`LikertDecisionInterpreter` maps fuzzy number centroids to a 5-point Likert scale
+(0, 25, 50, 75, 100) and generates the decision text. It is what the Pendlers case needs, where
+experts rated policies on an ordinal scale.
 
 ```python
 from src.interpreters.likert_interpreter import LikertDecisionInterpreter
@@ -136,9 +160,11 @@ print(decision.likert_value)  # 75
 print(decision.decision_text)  # "Rather agree"
 ```
 
-### Exception Hierarchy (`exceptions.py`)
+### Exception hierarchy (`exceptions.py`)
 
-`BeCoMeError` is the base. `EmptyOpinionsError` is raised when the opinion list is empty. `InvalidOpinionError` catches malformed input. `CalculationError` covers failures during aggregation.
+`BeCoMeError` is the base. The calculator raises `EmptyOpinionsError` when the opinion list is
+empty, `InvalidOpinionError` for malformed input, and `CalculationError` for a failure during
+aggregation.
 
 ```python
 from src.exceptions import EmptyOpinionsError
@@ -149,23 +175,36 @@ except EmptyOpinionsError as e:
     print(f"Error: {e}")
 ```
 
-## Design Patterns
+## Design patterns
 
-**Value Object** — `FuzzyTriangleNumber`, `ExpertOpinion`, and `LikertDecision` are immutable. They use `__slots__` and override `__setattr__` to prevent modification. Being hashable, they can serve as dictionary keys.
+**Value object.** `FuzzyTriangleNumber`, `ExpertOpinion`, and `LikertDecision` are immutable.
+The first two use `__slots__` and override `__setattr__` to block modification, and
+`LikertDecision` is a frozen dataclass. All three are hashable, so they can serve as dictionary
+keys.
 
-**Strategy** — Median calculation has two variants (odd/even expert counts). `MedianCalculationStrategy` is the interface; `OddMedianStrategy` and `EvenMedianStrategy` are the concrete implementations. The calculator picks one at runtime.
+**Strategy.** Median calculation has two variants, one for an odd expert count and one for an
+even count. `MedianCalculationStrategy` is the interface, and `OddMedianStrategy` and
+`EvenMedianStrategy` are the concrete implementations. The calculator picks one at runtime.
 
-**Template Method** — `BaseAggregationCalculator` defines the calculation flow. Subclasses fill in the steps. This keeps the interface consistent if someone adds a different aggregation method later.
+**Abstract interface.** `BaseAggregationCalculator` is a pure ABC: all four methods are
+abstract and it sequences nothing itself, so the calculation flow lives in
+`BeCoMeCalculator`. What the base class buys is one shape for every aggregation method
+added later.
 
-**Factory Method** — `BeCoMeResult.from_calculations()` takes arithmetic mean and median, then derives the best compromise and maximum error automatically. Keeps construction logic in one place.
+**Factory method.** `BeCoMeResult.from_calculations()` takes the arithmetic mean and the
+median, then derives the best compromise and the maximum error. It keeps the construction logic
+in one place.
 
-## Type Safety
+## Type safety
 
-Every function has type annotations. The code passes `uv run mypy src/` in strict mode with no `type: ignore` comments. Pydantic models also validate at runtime.
+Every function has type annotations, and the code passes `uv run mypy src/` in strict mode.
+`src/` carries a single `type: ignore`, on `become_result.py:52`, where mypy and Pydantic's
+`@computed_field` decorator disagree about the property type. Pydantic models also validate at
+runtime.
 
-## Importing Modules
+## Importing modules
 
-All imports should use absolute paths from the project root:
+Use absolute paths from the project root for every import:
 
 ```python
 # Correct (absolute imports)
@@ -180,7 +219,8 @@ from src.exceptions import BeCoMeError, EmptyOpinionsError
 from models.fuzzy_number import FuzzyTriangleNumber  # Will fail
 ```
 
-**Note**: Internal relative imports within `src/` modules are acceptable (e.g., in `expert_opinion.py` importing from `.fuzzy_number`).
+Relative imports inside `src/` are acceptable, for example `expert_opinion.py` importing from
+`.fuzzy_number`.
 
 ## Dependencies
 
@@ -197,21 +237,22 @@ uv run pytest --cov=src tests/
 
 See [../tests/README.md](../tests/README.md) for details.
 
-## Usage with Examples
+## Usage with examples
 
 The `examples/` directory shows how to use this code with real case studies. Each example loads data, calls `BeCoMeCalculator`, and displays step-by-step results. See [../examples/README.md](../examples/README.md).
 
-## Related Documentation
+## Related documentation
 
-- [Main README](../README.md) — project overview
-- [Method description](../docs/method-description.md) — mathematical foundation
-- [UML diagrams](../docs/uml-diagrams/README.md) — visual architecture
-- [Tests](../tests/README.md) — test organization
-- [Examples](../examples/README.md) — case studies
+- [Main README](../README.md): project overview
+- [Method description](../docs/method-description.md): mathematical foundation
+- [UML diagrams](../docs/uml-diagrams/README.md): visual architecture
+- [Tests](../tests/README.md): test organization
+- [Examples](../examples/README.md): case studies
 
 ## Contributing
 
-New code must pass mypy strict mode, maintain immutability for data models, and have test coverage. Run all checks before submitting:
+New code must pass mypy strict mode, keep the data models immutable, and hold `src/` at 100%
+coverage. Run all three checks before submitting:
 
 ```bash
 uv run mypy src/

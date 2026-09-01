@@ -93,7 +93,7 @@ class TokenResponse(BaseModel):
 
     access_token: str = Field(..., repr=False)
     refresh_token: str | None = Field(None, repr=False)
-    token_type: str = "bearer"  # noqa: S105 -- OAuth2 scheme name, not a credential
+    token_type: str = "bearer"  # noqa: S105, an OAuth2 scheme name, not a credential
     expires_in: int = 0  # Access token lifetime in seconds
 
 
@@ -222,6 +222,10 @@ class VerifyEmailRequest(BaseModel):
     )
     password: str = Field(
         ..., min_length=1, max_length=128, description="Password used to sign up", repr=False
+    )
+    language: Literal["en", "cs"] = Field(
+        default="en",
+        description="UI language the example project's text is seeded in",
     )
 
 

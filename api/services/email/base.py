@@ -7,8 +7,8 @@ class EmailSender(ABC):
     """Transactional email backend.
 
     Implementations either send a real message (production) or log its contents
-    (development). The interface stays minimal -- one method per transactional
-    message the app needs -- so concrete senders implement only what is used.
+    (development). The interface stays minimal, one method per transactional message
+    the app needs, so concrete senders implement only what is used.
     """
 
     @abstractmethod

@@ -136,7 +136,7 @@ class TestDataExportServiceBuildExport:
         inviter: User,
     ):
         """Every category of user data lands in the export document."""
-        # GIVEN - the four collection queries each return one row
+        # GIVEN: the four collection queries each return one row
         session = MagicMock()
         session.exec.side_effect = [
             _exec_returning([(project, result)]),
@@ -171,7 +171,7 @@ class TestDataExportServiceBuildExport:
 
     def test_owned_project_without_result_is_none(self, user: User, project: Project):
         """A project with no cached result exports a null result, not an error."""
-        # GIVEN - the outer join yields the project with a None result
+        # GIVEN: the outer join yields the project with a None result
         session = MagicMock()
         session.exec.side_effect = [
             _exec_returning([(project, None)]),
@@ -189,7 +189,7 @@ class TestDataExportServiceBuildExport:
 
     def test_export_never_contains_password_material(self, user: User):
         """The serialized export leaks neither the hash value nor its field name."""
-        # GIVEN - a user with no related data
+        # GIVEN: a user with no related data
         session = MagicMock()
         session.exec.side_effect = [
             _exec_returning([]),

@@ -209,7 +209,7 @@ class TestConsoleEmailSender:
 
     def test_registration_attempt_notice_static_reset_link_is_not_masked(self, capsys):
         """
-        GIVEN a registration-attempt notice carrying a static forgot-password link --
+        GIVEN a registration-attempt notice carrying a static forgot-password link,
         the shape the product actually sends, since minting a real reset token for an
         unauthenticated registration attempt would let anyone flood a victim's inbox
         with working reset links
@@ -252,7 +252,7 @@ class TestMaskToken:
         # GIVEN
         url = "https://app.example/reset-password"
 
-        # WHEN / THEN
+        # WHEN/THEN
         assert _mask_token(url) == url
 
 
@@ -329,7 +329,7 @@ class TestResendEmailSender:
         client.post = AsyncMock(return_value=response)
         sender = ResendEmailSender(_settings(), client=client)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(EmailSendError):
             asyncio.run(
                 sender.send_password_reset(
@@ -349,7 +349,7 @@ class TestResendEmailSender:
         client.post = AsyncMock(side_effect=httpx.ConnectError("boom"))
         sender = ResendEmailSender(_settings(), client=client)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(EmailSendError):
             asyncio.run(
                 sender.send_password_reset(
@@ -460,7 +460,7 @@ class TestResendEmailSender:
         client.post = AsyncMock(return_value=response)
         sender = ResendEmailSender(_settings(), client=client)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(EmailSendError, match="Failed to send verification email"):
             asyncio.run(
                 sender.send_email_verification(
@@ -513,7 +513,7 @@ class TestResendEmailSender:
         client.post = AsyncMock(side_effect=httpx.ConnectError("boom"))
         sender = ResendEmailSender(_settings(), client=client)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(EmailSendError, match="Failed to send registration attempt notice"):
             asyncio.run(
                 sender.send_registration_attempt_notice(

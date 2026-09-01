@@ -21,7 +21,7 @@ class TestFuzzyNumberCentroidProperty:
     @given(fn=fuzzy_numbers())
     def test_centroid_equals_component_average(self, fn: FuzzyTriangleNumber) -> None:
         """Centroid always equals (a + c + b) / 3 for any valid input."""
-        # GIVEN - a valid fuzzy triangular number
+        # GIVEN: a valid fuzzy triangular number
 
         # WHEN
         centroid = fn.centroid
@@ -33,19 +33,19 @@ class TestFuzzyNumberCentroidProperty:
     @given(fn=fuzzy_numbers())
     def test_centroid_between_lower_and_upper(self, fn: FuzzyTriangleNumber) -> None:
         """Centroid is always within [lower_bound, upper_bound] (up to float rounding)."""
-        # GIVEN - a valid fuzzy triangular number
+        # GIVEN: a valid fuzzy triangular number
 
         # WHEN
         centroid = fn.centroid
 
-        # THEN — allow tiny floating-point rounding error from (a+c+b)/3
+        # THEN: allow tiny floating-point rounding error from (a+c+b)/3
         eps = 1e-9
         assert fn.lower_bound - eps <= centroid <= fn.upper_bound + eps
 
     @given(value=st.floats(min_value=-1e6, max_value=1e6, allow_nan=False, allow_infinity=False))
     def test_equal_components_centroid_equals_value(self, value: float) -> None:
         """When all three components are equal, centroid equals that value."""
-        # GIVEN - a degenerate fuzzy number where a == c == b
+        # GIVEN: a degenerate fuzzy number where a == c == b
         fn = FuzzyTriangleNumber(lower_bound=value, peak=value, upper_bound=value)
 
         # WHEN
@@ -63,7 +63,7 @@ class TestFuzzyNumberAverageProperties:
         self, fn1: FuzzyTriangleNumber, fn2: FuzzyTriangleNumber
     ) -> None:
         """Average of two fuzzy numbers is the same regardless of order."""
-        # GIVEN - two valid fuzzy triangular numbers
+        # GIVEN: two valid fuzzy triangular numbers
 
         # WHEN
         avg_forward = FuzzyTriangleNumber.average([fn1, fn2])
@@ -76,7 +76,7 @@ class TestFuzzyNumberAverageProperties:
     @settings(max_examples=50)
     def test_average_preserves_ordering_constraint(self, fns: list[FuzzyTriangleNumber]) -> None:
         """Average preserves the triangular constraint lower <= peak <= upper."""
-        # GIVEN - a list of valid fuzzy triangular numbers
+        # GIVEN: a list of valid fuzzy triangular numbers
 
         # WHEN
         result = FuzzyTriangleNumber.average(fns)
@@ -87,7 +87,7 @@ class TestFuzzyNumberAverageProperties:
     @given(fn=fuzzy_numbers())
     def test_average_single_element_is_identity(self, fn: FuzzyTriangleNumber) -> None:
         """Average of a single-element list returns the same values."""
-        # GIVEN - a single fuzzy triangular number
+        # GIVEN: a single fuzzy triangular number
 
         # WHEN
         result = FuzzyTriangleNumber.average([fn])
@@ -100,7 +100,7 @@ class TestFuzzyNumberAverageProperties:
     @given(fn=fuzzy_numbers(), count=st.integers(min_value=2, max_value=10))
     def test_average_of_identical_equals_element(self, fn: FuzzyTriangleNumber, count: int) -> None:
         """Average of identical fuzzy numbers equals the original."""
-        # GIVEN - a list of identical fuzzy numbers
+        # GIVEN: a list of identical fuzzy numbers
         identical = [fn] * count
 
         # WHEN
@@ -117,7 +117,7 @@ class TestFuzzyNumberAverageProperties:
         self, fns: list[FuzzyTriangleNumber], data: st.DataObject
     ) -> None:
         """Average is independent of the input list ordering."""
-        # GIVEN - a list of fuzzy numbers and a random permutation
+        # GIVEN: a list of fuzzy numbers and a random permutation
         shuffled = list(fns)
         seed = data.draw(st.integers(min_value=0, max_value=2**31))
         random.Random(seed).shuffle(shuffled)
@@ -136,11 +136,11 @@ class TestFuzzyNumberHashConsistency:
     @given(fn=fuzzy_numbers())
     def test_hash_consistent_with_equality(self, fn: FuzzyTriangleNumber) -> None:
         """Two equal FuzzyTriangleNumber instances have the same hash."""
-        # GIVEN - a fuzzy number and a copy with the same values
+        # GIVEN: a fuzzy number and a copy with the same values
         copy = FuzzyTriangleNumber(
             lower_bound=fn.lower_bound, peak=fn.peak, upper_bound=fn.upper_bound
         )
 
-        # WHEN / THEN
+        # WHEN/THEN
         assert fn == copy
         assert hash(fn) == hash(copy)
