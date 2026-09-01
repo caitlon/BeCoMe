@@ -340,14 +340,11 @@ jobs:
   e2e-shard:
     name: E2E shard (${{ matrix.name }})
     runs-on: ubuntu-24.04
-    # The browsers and their system libraries come baked into this image, so a shard no
-    # longer downloads them: that step cost 22s for chromium, 63s for webkit, and once
-    # 509s when the cache missed. The tag has to track the @playwright/test version in
-    # frontend/package.json exactly, or the two disagree about which binaries to use.
-    # Inside a job container the Postgres service answers to its service name instead of
-    # to localhost, which is why DATABASE_URL below reads postgres:5432.
-    container:
-      image: mcr.microsoft.com/playwright:v1.62.0-noble
+    # Running this inside mcr.microsoft.com/playwright was tried and dropped. The image
+    # carries the browsers, which saves the 22s to 63s the download costs here, but it
+    # carries no C toolchain, and psycopg2 ships no wheels and builds from source. Adding
+    # build-essential and libpq-dev back through apt costs about what the download cost,
+    # and leaves the image tag needing to track the @playwright/test version by hand.
     strategy:
       # One browser failing should not cancel the others: knowing whether a break is
       # webkit-only or everywhere is most of what the split buys.
@@ -412,14 +409,6 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      # psycopg2 ships no wheels by design and builds from source, which needs pg_config
-      # and a compiler. A GitHub runner has both preinstalled; the Playwright image does
-      # not, so every shard failed on `uv sync` until this went in.
-      - name: Install build dependencies for psycopg2
-        run: |
-          apt-get update -qq
-          apt-get install -y --no-install-recommends libpq-dev gcc
-
       - name: Set up uv
         uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
@@ -442,6 +431,19 @@ jobs:
         working-directory: frontend
         run: npm ci
 
+      - name: Cache Playwright browsers
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ matrix.browsers }}-${{ hashFiles('frontend/package-lock.json') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-${{ matrix.browsers }}-
+
+      # Only this shard's browser, rather than all three: two of them would go unused.
+      - name: Install Playwright browsers
+        working-directory: frontend
+        run: npx playwright install --with-deps ${{ matrix.browsers }}
+
       - name: Start API server
         run: |
           # PYTHONUNBUFFERED because stdout to a file is block-buffered: without it the
@@ -457,7 +459,7 @@ jobs:
             echo "API failed to start"; tail -n 40 "$E2E_API_LOG"; exit 1;
           }
         env:
-          DATABASE_URL: postgresql://become:become@postgres:5432/become_test
+          DATABASE_URL: postgresql://become:become@localhost:5432/become_test
           # https: the e2e dev server runs on TLS so the browser will store the
           # __Host- session cookies (frontend/scripts/e2e-cert.mjs explains why).
           CORS_ORIGINS: '["https://localhost:8080"]'
