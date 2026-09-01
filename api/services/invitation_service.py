@@ -153,11 +153,21 @@ class InvitationService(BaseService):
         :param user_id: ID of the user accepting
         :return: Created ProjectMember instance
         :raises InvitationNotFoundError: If invitation doesn't exist or is not for this user
+        :raises ExampleProjectInvitationError: If the invitation is into the seeded example
         :raises UserAlreadyMemberError: If user is already a member
         """
         invitation = self.get_invitation_by_id(invitation_id)
         if not invitation or invitation.invitee_id != user_id:
             raise InvitationNotFoundError("Invitation not found")
+
+        # Refusing at creation covers new invitations only. One sent before that rule
+        # existed is still pending, and accepting it is the step that actually writes the
+        # membership, so the same refusal has to stand here. The invitation row is left
+        # alone: declining still removes it, and nothing is deleted on the strength of a
+        # single flag.
+        project = self._session.get(Project, invitation.project_id)
+        if project and project.is_example:
+            raise ExampleProjectInvitationError("The example project cannot take invitations")
 
         existing_membership = self._session.exec(
             select(ProjectMember).where(
