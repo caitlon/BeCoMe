@@ -10,18 +10,11 @@ class BeCoMeResultMapper:
     """Maps BeCoMeResult domain model to CalculationResult database model."""
 
     @staticmethod
-    def to_db_model(
-        project_id: UUID,
-        result: BeCoMeResult,
-        likert_value: int | None = None,
-        likert_decision: str | None = None,
-    ) -> CalculationResult:
+    def to_db_model(project_id: UUID, result: BeCoMeResult) -> CalculationResult:
         """Create new CalculationResult from domain BeCoMeResult.
 
         :param project_id: Project UUID
         :param result: Domain BeCoMeResult from calculator
-        :param likert_value: Optional Likert scale value
-        :param likert_decision: Optional Likert decision text
         :return: New CalculationResult instance (not yet persisted)
         """
         return CalculationResult(
@@ -37,26 +30,14 @@ class BeCoMeResultMapper:
             median_upper=result.median.upper_bound,
             max_error=result.max_error,
             num_experts=result.num_experts,
-            likert_value=likert_value,
-            likert_decision=likert_decision,
         )
 
     @staticmethod
-    def update_db_model(
-        existing: CalculationResult,
-        result: BeCoMeResult,
-        likert_value: int | None,
-        likert_decision: str | None,
-    ) -> CalculationResult:
+    def update_db_model(existing: CalculationResult, result: BeCoMeResult) -> CalculationResult:
         """Update existing CalculationResult with new BeCoMeResult values.
-
-        Always overwrites all fields including Likert values. Pass None explicitly
-        to clear Likert fields (e.g., when project scale changes from Likert to custom).
 
         :param existing: Existing CalculationResult to update
         :param result: Domain BeCoMeResult from calculator
-        :param likert_value: Likert scale value (None clears the field)
-        :param likert_decision: Likert decision text (None clears the field)
         :return: Updated CalculationResult instance (not yet persisted)
         """
         existing.best_compromise_lower = result.best_compromise.lower_bound
@@ -70,6 +51,4 @@ class BeCoMeResultMapper:
         existing.median_upper = result.median.upper_bound
         existing.max_error = result.max_error
         existing.num_experts = result.num_experts
-        existing.likert_value = likert_value
-        existing.likert_decision = likert_decision
         return existing

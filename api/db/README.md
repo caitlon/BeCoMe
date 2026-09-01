@@ -11,7 +11,7 @@ SQLModel-based database layer for BeCoMe API.
 | `project_members` | Many-to-many: users ↔ projects with roles |
 | `invitations` | Per-user invitations to join a project (unique per project+invitee) |
 | `expert_opinions` | Fuzzy triangular numbers from experts (unique per user+project) |
-| `calculation_results` | Cached BeCoMe calculation results |
+| `calculation_results` | Cached BeCoMe calculation results. Holds the numbers only: the Likert agreement verdict is derived from the project scale on read (`api/services/likert_verdict.py`), never stored, so it cannot drift from the project |
 | `password_reset_tokens` | Tokens for password reset via email |
 | `email_verification_tokens` | Activation tokens for the email verification flow, stored as SHA-256 hashes |
 

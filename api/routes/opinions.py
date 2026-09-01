@@ -24,6 +24,7 @@ from api.schemas.opinion import OpinionCreate, OpinionResponse
 from api.services.calculation_service import CalculationService
 from api.services.export.data import ExportFormat, ReportLang
 from api.services.export.result_export_service import ResultExportService
+from api.services.likert_verdict import derive_verdict
 from api.services.opinion_service import OpinionService
 
 # Only refusals and reads live here. The upsert, delete, recalculation, and export
@@ -162,6 +163,12 @@ def get_result(
     if not result:
         return None
 
+    verdict = derive_verdict(
+        project,
+        result.best_compromise_lower,
+        result.best_compromise_peak,
+        result.best_compromise_upper,
+    )
     return CalculationResultResponse(
         best_compromise=FuzzyNumberOutput.from_bounds(
             result.best_compromise_lower,
@@ -180,8 +187,8 @@ def get_result(
         ),
         max_error=result.max_error,
         num_experts=result.num_experts,
-        likert_value=result.likert_value,
-        likert_decision=result.likert_decision,
+        likert_value=verdict.value if verdict else None,
+        likert_decision=verdict.decision if verdict else None,
         calculated_at=result.calculated_at,
     )
 

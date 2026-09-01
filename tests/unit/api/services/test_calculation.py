@@ -213,64 +213,6 @@ class TestCalculationServiceRecalculate:
         assert result.num_experts == 3
         mock_session.add.assert_called()
 
-    def test_adds_likert_interpretation_for_standard_scale(self):
-        """Adds Likert interpretation for 0-100 scale projects."""
-        # GIVEN
-        service, project_id = _build_single_opinion_service(70.0, 80.0, 90.0)
-
-        # WHEN
-        result = service.recalculate(project_id)
-
-        # THEN
-        assert result is not None
-        assert result.likert_value is not None
-        assert result.likert_decision is not None
-
-    def test_adds_likert_interpretation_for_whitespace_only_unit(self):
-        """Treats a whitespace-only unit as unitless and still adds Likert."""
-        # GIVEN
-        service, project_id = _build_single_opinion_service(70.0, 80.0, 90.0, scale_unit="   ")
-
-        # WHEN
-        result = service.recalculate(project_id)
-
-        # THEN
-        assert result is not None
-        assert result.likert_value is not None
-        assert result.likert_decision is not None
-
-    def test_skips_likert_for_standard_scale_with_unit(self):
-        """Skips Likert interpretation when a 0-100 scale project names a unit.
-
-        A percentage or a budget can share the Likert range by coincidence;
-        naming a unit means the number measures that quantity, not agreement.
-        """
-        # GIVEN
-        service, project_id = _build_single_opinion_service(70.0, 80.0, 90.0, scale_unit="%")
-
-        # WHEN
-        result = service.recalculate(project_id)
-
-        # THEN
-        assert result is not None
-        assert result.likert_value is None
-        assert result.likert_decision is None
-
-    def test_skips_likert_for_non_standard_scale(self):
-        """Skips Likert interpretation for non 0-100 scale."""
-        # GIVEN
-        service, project_id = _build_single_opinion_service(
-            3.0, 4.0, 5.0, scale_min=1.0, scale_max=5.0
-        )
-
-        # WHEN
-        result = service.recalculate(project_id)
-
-        # THEN
-        assert result is not None
-        assert result.likert_value is None
-        assert result.likert_decision is None
-
     def test_updates_existing_result(self):
         """Updates existing result instead of creating new."""
         # GIVEN
