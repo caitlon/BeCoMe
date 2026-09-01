@@ -95,7 +95,7 @@ class TestInvitationLookup:
         # WHEN/THEN
         with pytest.raises(UserNotFoundForInvitationError):
             service.invite_by_email(
-                project_id=project.id,
+                project=project,
                 inviter_id=owner.id,
                 invitee_email=DEMO_EMAIL,
             )

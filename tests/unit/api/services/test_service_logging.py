@@ -165,7 +165,11 @@ class TestInvitationServiceLogging:
 
         # WHEN
         with patch("api.services.invitation_service.logger") as mock_logger:
-            service.invite_by_email(project_id, inviter_id, "user@example.com")
+            service.invite_by_email(
+                Project(id=project_id, name="Project", admin_id=inviter_id),
+                inviter_id,
+                "user@example.com",
+            )
 
         # THEN
         extra = mock_logger.info.call_args[1]["extra"]
