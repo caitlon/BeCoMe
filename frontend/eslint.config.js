@@ -27,7 +27,7 @@ export default tseslint.config(
     },
   },
   // shadcn/ui primitives export variants alongside components and use
-  // {...props} spread — both patterns trigger false positives
+  // {...props} spread: both patterns trigger false positives
   {
     files: ["src/components/ui/**/*.{ts,tsx}"],
     rules: {

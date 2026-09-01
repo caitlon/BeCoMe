@@ -26,8 +26,9 @@ export default defineConfig({
       "/api/v1": {
         // Plain HTTP on purpose even when the dev server itself is on TLS: this hop stays
         // inside the machine, and terminating TLS here would mean the API needs its own
-        // certificate for a connection no browser ever sees. What the browser sees -- and
-        // what decides whether a Secure cookie is stored -- is the connection above.
+        // certificate for a connection no browser ever sees. What the browser sees is
+        // the connection above, and that is what decides whether a Secure cookie is
+        // stored.
         target: "http://localhost:8000",
         changeOrigin: true,
       },

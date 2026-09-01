@@ -44,8 +44,8 @@ class ProjectMembershipService(BaseService):
         """Remove a member from project, discarding the opinion they submitted.
 
         The opinion goes in the same transaction as the membership. It carries the
-        member's identity -- name, email, position -- and is served to every remaining
-        member and embedded in every export, while ``RequireProjectAccess`` stops the
+        member's identity, meaning name, email, and position, and is served to every
+        remaining member and embedded in every export, while ``RequireProjectAccess`` stops the
         ex-member from withdrawing it themselves once their membership row is gone.
 
         :param project_id: Project ID
@@ -88,6 +88,20 @@ class ProjectMembershipService(BaseService):
         :return: True if user is a member
         """
         return self._get_membership(project_id, user_id) is not None
+
+    def is_demo_account(self, user_id: UUID) -> bool:
+        """Report whether a user id belongs to the demo expert pool.
+
+        A demo account can never log in, so accepting one as a transfer target (a
+        project's own admin, or an account-deletion disposition) would stand up an
+        admin nobody can ever reach again. Callers that accept a transfer target
+        should refuse one for which this returns True.
+
+        :param user_id: User id to check.
+        :return: True when the account exists and is flagged ``is_demo``.
+        """
+        user = self._session.get(User, user_id)
+        return user is not None and user.is_demo
 
     def is_admin(self, project_id: UUID, user_id: UUID) -> bool:
         """Check if user is an admin of the project.

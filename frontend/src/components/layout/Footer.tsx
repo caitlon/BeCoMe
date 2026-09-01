@@ -26,7 +26,7 @@ export function Footer() {
               {t("footer.authorName")}
               <span className="sr-only">, {t("a11y.opensInNewTab")}</span>
             </a>
-            {" – "}
+            {": "}
             {t("footer.implementationThesis")}
             {", "}
             {t("footer.implementationUniversity")}

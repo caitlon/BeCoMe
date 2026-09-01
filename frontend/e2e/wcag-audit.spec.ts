@@ -11,7 +11,7 @@ async function auditPage(page: Page) {
   return results.violations;
 }
 
-test.describe('WCAG Audit — Public Pages', () => {
+test.describe('WCAG Audit: Public Pages', () => {
   test('landing page has no WCAG violations', async ({ page }) => {
     await page.goto('/');
     await page.waitForLoadState('networkidle');
@@ -94,7 +94,7 @@ test.describe('WCAG Audit — Public Pages', () => {
   });
 });
 
-test.describe('WCAG Audit — Dark Theme', () => {
+test.describe('WCAG Audit: Dark Theme', () => {
   test('landing page in dark theme has no WCAG violations', async ({
     browser,
   }) => {
@@ -142,7 +142,7 @@ test.describe('WCAG Audit — Dark Theme', () => {
   });
 });
 
-test.describe('WCAG Audit — Authenticated Pages', () => {
+test.describe('WCAG Audit: Authenticated Pages', () => {
   test('projects page has no WCAG violations', async ({ browser }) => {
     const context = await browser.newContext();
     const page = await context.newPage();

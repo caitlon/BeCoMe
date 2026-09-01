@@ -57,7 +57,7 @@ class TestHashPassword:
 
     def test_handles_long_password(self):
         """Passwords longer than 72 bytes work correctly."""
-        # GIVEN - password longer than bcrypt's native 72-byte limit
+        # GIVEN: password longer than bcrypt's native 72-byte limit
         long_password = "a" * 200
 
         # WHEN
@@ -135,7 +135,7 @@ class TestVerifyPassword:
         password = "anypassword"
         invalid_hash = "not-a-valid-bcrypt-hash"
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(ValueError):
             verify_password(password, invalid_hash)
 
@@ -145,19 +145,19 @@ class TestVerifyPassword:
         password = "reusablepassword"
         hashed = hash_password(password)
 
-        # WHEN / THEN
+        # WHEN/THEN
         assert verify_password(password, hashed)
         assert verify_password(password, hashed)
         assert verify_password(password, hashed)
 
     def test_long_password_distinction(self):
         """Long passwords differing after 72 bytes are still distinguished."""
-        # GIVEN - SHA256 pre-hashing ensures full password is used
+        # GIVEN: SHA256 pre-hashing ensures full password is used
         password1 = "a" * 100 + "X"
         password2 = "a" * 100 + "Y"
 
         hashed1 = hash_password(password1)
 
-        # WHEN / THEN
+        # WHEN/THEN
         assert verify_password(password1, hashed1)
         assert not verify_password(password2, hashed1)

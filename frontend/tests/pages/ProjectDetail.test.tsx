@@ -170,7 +170,7 @@ describe('ProjectDetail', () => {
     render(<ProjectDetail />);
 
     await waitFor(() => {
-      expect(screen.getByText(/Scale: 0 — 100 %/)).toBeInTheDocument();
+      expect(screen.getByText(/Scale: 0-100 %/)).toBeInTheDocument();
     });
   });
 
@@ -199,6 +199,25 @@ describe('ProjectDetail', () => {
     await waitFor(() => {
       expect(screen.getByRole('link', { name: /projects/i })).toHaveAttribute('href', '/projects');
     });
+  });
+
+  it('explains that an example project team is fictional', async () => {
+    mockApi.getProject.mockResolvedValue(
+      createProjectWithRole({ id: 'project-1', role: 'admin', is_example: true }),
+    );
+
+    render(<ProjectDetail />);
+
+    expect(await screen.findByText('This is an example project')).toBeInTheDocument();
+  });
+
+  it('shows no banner on an ordinary project', async () => {
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Test Project')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('This is an example project')).not.toBeInTheDocument();
   });
 });
 
@@ -261,7 +280,7 @@ describe('ProjectDetail - Team Section', () => {
       expect(screen.getAllByText('Jane Smith').length).toBeGreaterThan(0);
     });
 
-    // Collapsible trigger shows member count — section already expanded
+    // Collapsible trigger shows member count, and the section is already expanded
     expect(screen.getByRole('button', { name: /team.*2 members/i })).toBeInTheDocument();
   });
 
@@ -517,7 +536,7 @@ describe('ProjectDetail - Opinion Form Validations', () => {
 
     await waitFor(() => {
       expect(
-        screen.getAllByText('Values must be within scale range: 0 — 100').length
+        screen.getAllByText('Values must be within scale range: 0-100').length
       ).toBeGreaterThan(0);
     });
     expect(mockApi.createOrUpdateOpinion).not.toHaveBeenCalled();

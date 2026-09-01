@@ -90,14 +90,14 @@ class TestEnsureUtc:
         """
         from datetime import timezone
 
-        # GIVEN - create datetime with +05:00 offset
+        # GIVEN: create datetime with +05:00 offset
         offset = timezone(timedelta(hours=5))
         aware_non_utc = datetime(2024, 1, 15, 12, 0, 0, tzinfo=offset)
 
         # WHEN
         result = ensure_utc(aware_non_utc)
 
-        # THEN - should be unchanged
+        # THEN: should be unchanged
         assert result == aware_non_utc
         assert result.tzinfo == offset
 
@@ -171,5 +171,5 @@ class TestEmailRegex:
 
         Note: These are technically invalid per RFC but accepted by our regex.
         """
-        # WHEN/THEN - documenting current behavior
+        # WHEN/THEN: documenting current behavior
         assert EMAIL_REGEX.match(permissive_email) is not None

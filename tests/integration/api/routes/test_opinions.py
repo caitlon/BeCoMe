@@ -220,7 +220,7 @@ class TestSubmitOpinion:
         token = register_and_login(client)
         project = create_project(client, token)
 
-        # WHEN - lower > peak
+        # WHEN: lower > peak
         response = client.post(
             f"/api/v1/projects/{project['id']}/opinions",
             json={
@@ -241,7 +241,7 @@ class TestSubmitOpinion:
         token = register_and_login(client)
         project = create_project(client, token)
 
-        # WHEN - upper_bound > scale_max (100)
+        # WHEN: upper_bound > scale_max (100)
         response = client.post(
             f"/api/v1/projects/{project['id']}/opinions",
             json={
@@ -267,7 +267,7 @@ class TestSubmitOpinion:
         )
         project = project_resp.json()
 
-        # WHEN - lower_bound (10) is below scale_min (20)
+        # WHEN: lower_bound (10) is below scale_min (20)
         response = client.post(
             f"/api/v1/projects/{project['id']}/opinions",
             json={
@@ -314,7 +314,7 @@ class TestSubmitOpinion:
         # WHEN
         submit_opinion(client, token, project["id"], 30.0, 50.0, 70.0)
 
-        # THEN - result should exist
+        # THEN: result should exist
         result_resp = client.get(
             f"/api/v1/projects/{project['id']}/result",
             headers=auth_header(token),
@@ -412,13 +412,13 @@ class TestDeleteOpinion:
         ).json()
         assert result_before["num_experts"] == 2
 
-        # WHEN - expert deletes opinion
+        # WHEN: expert deletes opinion
         client.delete(
             f"/api/v1/projects/{project['id']}/opinions",
             headers=auth_header(expert_token),
         )
 
-        # THEN - result should update
+        # THEN: result should update
         result_after = client.get(
             f"/api/v1/projects/{project['id']}/result",
             headers=auth_header(admin_token),

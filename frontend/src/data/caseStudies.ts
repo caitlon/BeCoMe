@@ -53,7 +53,7 @@ export const caseStudies: CaseStudy[] = [
     shortTitle: "Budget",
     description: "Budget allocation for pandemic response measures",
     fullDescription: "During the COVID-19 pandemic, the Czech government needed to determine the optimal financial support for entrepreneurs affected by restrictive measures. A panel of 22 high-ranking government officials from various ministries was assembled to provide their expert opinions.",
-    question: "Based on the submitted analyses of the Ministry of Industry and Trade and the Czech National Bank on the impact of the measures on the state budget of the Czech Republic, propose the total financial support in the range CZK 0–100 billion for entrepreneurs affected by the COVID-19 pandemic.",
+    question: "Based on the submitted analyses of the Ministry of Industry and Trade and the Czech National Bank on the impact of the measures on the state budget of the Czech Republic, propose the total financial support in the range CZK 0-100 billion for entrepreneurs affected by the COVID-19 pandemic.",
     icon: FileText,
     experts: 22,
     dataType: "interval",
@@ -151,7 +151,7 @@ export const caseStudies: CaseStudy[] = [
     scaleMin: 0,
     scaleMax: 100,
     scaleUnit: "%",
-    context: "The Czech Republic experiences periodic flooding that causes significant damage to property and agriculture. Converting arable land to polders (water retention areas) can reduce flood risk but affects farmers' livelihoods and food production capacity. Finding the right balance is crucial.",
+    context: "The Czech Republic experiences periodic flooding that causes significant damage to property and agriculture. Converting arable land to polders (water retention areas) can reduce flood risk but affects farmers' livelihoods and food production capacity. Finding the right balance is the key question.",
     methodology: "Each expert provided their opinion as a fuzzy triangular number representing the recommended percentage of land conversion. The diverse panel included hydrologists, municipal representatives, land owners, and other stakeholders to ensure comprehensive perspective.",
     opinions: [
       { role: "Hydrologist 1", bestProposal: 42, lowerLimit: 37, upperLimit: 47 },

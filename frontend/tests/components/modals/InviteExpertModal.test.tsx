@@ -241,13 +241,13 @@ describe('InviteExpertModal', () => {
       expect(screen.getByText('Invitation sent!')).toBeInTheDocument();
     });
 
-    // Click Done — triggers handleClose with setTimeout(200ms)
+    // Click Done, which triggers handleClose with setTimeout(200ms)
     await user.click(screen.getByRole('button', { name: /done/i }));
 
     // Wait for the setTimeout(200ms) callback to fire
     await new Promise((r) => setTimeout(r, 300));
 
-    // Rerender with open=true — form should show (not success state)
+    // Rerender with open=true, where the form should show (not success state)
     rerender(<InviteExpertModal {...defaultProps} open={true} onOpenChange={onOpenChange} />);
 
     expect(screen.getByPlaceholderText('expert@example.com')).toBeInTheDocument();

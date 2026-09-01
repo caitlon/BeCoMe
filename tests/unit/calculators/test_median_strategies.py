@@ -140,13 +140,13 @@ class TestMedianCalculationStrategyABC:
 
     def test_cannot_instantiate_abstract_base_class(self):
         """Test that MedianCalculationStrategy cannot be instantiated directly."""
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(TypeError):
             MedianCalculationStrategy()  # type: ignore
 
     def test_strategies_implement_abc_interface(self):
         """Test that both strategies implement ABC interface."""
-        # WHEN / THEN
+        # WHEN/THEN
         assert issubclass(OddMedianStrategy, MedianCalculationStrategy)
         assert issubclass(EvenMedianStrategy, MedianCalculationStrategy)
 
@@ -236,7 +236,7 @@ class TestEvenMedianStrategyEdgeCases:
 
     def test_two_experts_identical_centroids(self):
         """Two experts with identical centroids should average both opinions."""
-        # GIVEN - both have centroid = 10.0
+        # GIVEN: both have centroid = 10.0
         opinions = [
             ExpertOpinion(
                 expert_id="E1",
@@ -252,14 +252,14 @@ class TestEvenMedianStrategyEdgeCases:
         # WHEN
         result = strategy.calculate(opinions)
 
-        # THEN - average of (5,10,15) and (8,10,12) = (6.5, 10, 13.5)
+        # THEN: average of (5,10,15) and (8,10,12) = (6.5, 10, 13.5)
         assert result.lower_bound == 6.5
         assert result.peak == 10.0
         assert result.upper_bound == 13.5
 
     def test_four_experts_middle_two_same_centroid(self):
         """Four experts where middle two have same centroid."""
-        # GIVEN - E2 and E3 both have centroid = 10.0
+        # GIVEN: E2 and E3 both have centroid = 10.0
         opinions = [
             ExpertOpinion(
                 expert_id="E1",
@@ -283,14 +283,14 @@ class TestEvenMedianStrategyEdgeCases:
         # WHEN
         result = strategy.calculate(opinions)
 
-        # THEN - both middle elements have centroid=10, averages E2 and E3
+        # THEN: both middle elements have centroid=10, averages E2 and E3
         assert result.lower_bound == 6.5
         assert result.peak == 10.0
         assert result.upper_bound == 13.5
 
     def test_all_centroids_identical(self):
         """All experts have identical centroids."""
-        # GIVEN - all have centroid = 10.0
+        # GIVEN: all have centroid = 10.0
         opinions = [
             ExpertOpinion(
                 expert_id="E1",
@@ -314,14 +314,14 @@ class TestEvenMedianStrategyEdgeCases:
         # WHEN
         result = strategy.calculate(opinions)
 
-        # THEN - the two middle opinions of the list (E2 and E3) are averaged
+        # THEN: the two middle opinions of the list (E2 and E3) are averaged
         assert result.lower_bound == 7.5
         assert result.peak == 10.0
         assert result.upper_bound == 12.5
 
     def test_clustered_centroids_near_median(self):
         """Multiple opinions clustered near median centroid."""
-        # GIVEN - 6 experts: E1(centroid=2), E2-E5(centroid=10), E6(centroid=19)
+        # GIVEN: 6 experts: E1(centroid=2), E2-E5(centroid=10), E6(centroid=19)
         opinions = [
             ExpertOpinion(
                 expert_id="E1",
@@ -353,7 +353,7 @@ class TestEvenMedianStrategyEdgeCases:
         # WHEN
         result = strategy.calculate(opinions)
 
-        # THEN - the two middle opinions (E3 and E4) are averaged
+        # THEN: the two middle opinions (E3 and E4) are averaged
         assert result.lower_bound == 9.65
         assert result.peak == 10.0
         assert result.upper_bound == 10.35
@@ -364,7 +364,7 @@ class TestOddMedianStrategyEdgeCases:
 
     def test_three_experts_all_same_centroid(self):
         """Three experts all with identical centroids."""
-        # GIVEN - all have centroid = 10.0
+        # GIVEN: all have centroid = 10.0
         opinions = [
             ExpertOpinion(
                 expert_id="E1",
@@ -384,7 +384,7 @@ class TestOddMedianStrategyEdgeCases:
         # WHEN
         result = strategy.calculate(opinions)
 
-        # THEN - the middle element of the list (E2) is the median
+        # THEN: the middle element of the list (E2) is the median
         assert result.lower_bound == 7.0
         assert result.peak == 10.0
         assert result.upper_bound == 13.0

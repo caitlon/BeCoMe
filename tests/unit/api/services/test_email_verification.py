@@ -127,7 +127,7 @@ class TestCreateVerificationUrl:
         # WHEN
         service.create_verification_url(user, SUBMITTED)
 
-        # THEN - the older link still works
+        # THEN: the older link still works
         assert _redeem(service, first, SUBMITTED_PASSWORD).email_verified_at is not None
 
     def test_stores_the_submission_the_link_was_minted_for(self, session):
@@ -145,7 +145,7 @@ class TestCreateVerificationUrl:
         assert record.first_name == SUBMITTED.first_name
         assert record.last_name == SUBMITTED.last_name
 
-        # AND - the account itself is untouched until the link is followed
+        # AND: the account itself is untouched until the link is followed
         assert user.hashed_password == "stored-hash"
 
     def test_expiry_follows_the_configured_ttl(self, session):
@@ -157,7 +157,7 @@ class TestCreateVerificationUrl:
         # WHEN
         service.create_verification_url(user, SUBMITTED)
 
-        # THEN - 24h by default, so comfortably more than an hour away
+        # THEN: 24h by default, so comfortably more than an hour away
         record = session.exec(select(EmailVerificationToken)).one()
         assert record.expires_at > utc_now().replace(tzinfo=None) + timedelta(hours=23)
 
@@ -207,14 +207,14 @@ class TestFindUnverifiedAccount:
         pending = _make_user(session, "pending@example.com")
         service = EmailVerificationService(session)
 
-        # WHEN / THEN
+        # WHEN/THEN
         assert service.find_unverified_account("pending@example.com") == pending
 
     def test_returns_none_for_an_unknown_address(self, session):
         # GIVEN
         service = EmailVerificationService(session)
 
-        # WHEN / THEN
+        # WHEN/THEN
         assert service.find_unverified_account("ghost@example.com") is None
 
     def test_returns_none_for_an_already_verified_account(self, session):
@@ -223,7 +223,7 @@ class TestFindUnverifiedAccount:
         _make_user(session, "active@example.com", verified=True)
         service = EmailVerificationService(session)
 
-        # WHEN / THEN
+        # WHEN/THEN
         assert service.find_unverified_account("active@example.com") is None
 
     def test_mints_nothing_by_itself(self, session):
@@ -243,7 +243,7 @@ class TestFindUnverifiedAccount:
         _make_user(session, "mixed@example.com")
         service = EmailVerificationService(session)
 
-        # WHEN / THEN
+        # WHEN/THEN
         assert service.find_unverified_account("Mixed@Example.COM") is not None
 
 
@@ -265,7 +265,7 @@ class TestActivate:
 
     def test_writes_the_submission_the_redeemed_link_carries(self, session):
         """Following a link applies that link's submission, nobody else's."""
-        # GIVEN - a link minted by one submission, and a later one by another
+        # GIVEN: a link minted by one submission, and a later one by another
         user = _make_user(session)
         service = EmailVerificationService(session)
         mine = _token_from_url(service.create_verification_url(user, SUBMITTED))
@@ -290,11 +290,11 @@ class TestActivate:
         service = EmailVerificationService(session)
         raw = _token_from_url(service.create_verification_url(user, SUBMITTED))
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(VerificationPasswordMismatchError):
             _redeem(service, raw, OTHER_PASSWORD)
 
-        # AND - nothing was written and the link was not spent
+        # AND: nothing was written and the link was not spent
         session.refresh(user)
         assert user.email_verified_at is None
         assert user.hashed_password == "stored-hash"
@@ -306,7 +306,7 @@ class TestActivate:
         Checking against the account would let whoever created it decide what every
         outstanding link opens, which is the primitive being removed.
         """
-        # GIVEN - an account whose stored password is not the one the link carries
+        # GIVEN: an account whose stored password is not the one the link carries
         user = _make_user(session)
         user.hashed_password = hash_password(OTHER_PASSWORD)
         session.add(user)
@@ -314,7 +314,7 @@ class TestActivate:
         service = EmailVerificationService(session)
         raw = _token_from_url(service.create_verification_url(user, SUBMITTED))
 
-        # WHEN / THEN - the account's own password does not open its link
+        # WHEN/THEN: the account's own password does not open its link
         with pytest.raises(VerificationPasswordMismatchError):
             _redeem(service, raw, OTHER_PASSWORD)
         assert _redeem(service, raw, SUBMITTED_PASSWORD).email_verified_at is not None
@@ -326,14 +326,14 @@ class TestActivate:
         it after activation would let whoever holds it replace the password of a live
         account, which is the takeover this refusal closes.
         """
-        # GIVEN - two live links, one of them redeemed
+        # GIVEN: two live links, one of them redeemed
         user = _make_user(session)
         service = EmailVerificationService(session)
         first = _token_from_url(service.create_verification_url(user, SUBMITTED))
         second = _token_from_url(service.create_verification_url(user, OTHER))
         _redeem(service, first, SUBMITTED_PASSWORD)
 
-        # WHEN / THEN - the other one is refused like any unusable token, before its
+        # WHEN/THEN: the other one is refused like any unusable token, before its
         # password is even weighed
         with pytest.raises(InvalidVerificationTokenError):
             _redeem(service, second, OTHER_PASSWORD)
@@ -346,7 +346,7 @@ class TestActivate:
         version had them both write and the later one silently overwrite the earlier.
         The conditional UPDATE makes the database pick.
         """
-        # GIVEN - two links resolved before either is redeemed
+        # GIVEN: two links resolved before either is redeemed
         user = _make_user(session)
         service = EmailVerificationService(session)
         first = service.resolve_pending_activation(
@@ -359,7 +359,7 @@ class TestActivate:
         # WHEN
         service.activate(first, SUBMITTED_PASSWORD)
 
-        # THEN - the loser is refused and leaves the winner's credentials in place
+        # THEN: the loser is refused and leaves the winner's credentials in place
         with pytest.raises(InvalidVerificationTokenError):
             service.activate(second, OTHER_PASSWORD)
         session.refresh(user)
@@ -384,7 +384,7 @@ class TestActivate:
         # GIVEN
         service = EmailVerificationService(session)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(InvalidVerificationTokenError):
             service.resolve_pending_activation("garbage-token")
 
@@ -395,7 +395,7 @@ class TestActivate:
         raw = _token_from_url(service.create_verification_url(user, SUBMITTED))
         _redeem(service, raw, SUBMITTED_PASSWORD)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(InvalidVerificationTokenError):
             service.resolve_pending_activation(raw)
 
@@ -405,7 +405,7 @@ class TestActivate:
         _store_token(session, user.id, "stale", utc_now() - timedelta(hours=1))
         service = EmailVerificationService(session)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(VerificationTokenExpiredError):
             service.resolve_pending_activation("stale")
 
@@ -415,7 +415,7 @@ class TestActivate:
         Comparing a naive expires_at against an aware now() raises TypeError, which
         would surface as a 500 on a perfectly valid activation link.
         """
-        # GIVEN - an expiry stored the way the database hands it back: naive
+        # GIVEN: an expiry stored the way the database hands it back: naive
         user = _make_user(session)
         naive_future = datetime.now() + timedelta(hours=12)
         assert naive_future.tzinfo is None
@@ -430,10 +430,10 @@ class TestActivate:
 
     def test_rejects_a_token_whose_user_is_gone(self, session):
         """A token outliving its account is treated like any other bad token."""
-        # GIVEN - a token pointing at a user id that no longer exists
+        # GIVEN: a token pointing at a user id that no longer exists
         _store_token(session, uuid4(), "orphan", utc_now() + timedelta(hours=1))
         service = EmailVerificationService(session)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(InvalidVerificationTokenError):
             service.resolve_pending_activation("orphan")

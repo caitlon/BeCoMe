@@ -33,7 +33,7 @@ describe('StepEnterOpinion', () => {
   it('shows valid triangle when lower <= peak <= upper', () => {
     const { container } = render(<StepEnterOpinion />);
 
-    // With defaults 30, 50, 70 — triangle should render (polygon present)
+    // With defaults 30, 50, 70, the triangle should render (polygon present)
     const polygon = container.querySelector('polygon');
     expect(polygon).toBeInTheDocument();
   });
@@ -63,7 +63,7 @@ describe('StepEnterOpinion', () => {
     await user.clear(peakInput);
     await user.type(peakInput, '60');
 
-    // Triangle still valid (30 <= 60 <= 70) — polygon should exist
+    // Triangle still valid (30 <= 60 <= 70), so the polygon should exist
     const polygon = container.querySelector('polygon');
     expect(polygon).toBeInTheDocument();
   });

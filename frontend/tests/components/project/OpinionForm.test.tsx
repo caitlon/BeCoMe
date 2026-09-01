@@ -8,7 +8,7 @@ import type { Opinion } from '@/types/api';
 
 /**
  * OpinionForm receives its react-hook-form instance from the page container
- * (the form renders twice there — desktop column and mobile tab — and both
+ * (the form renders twice there, as a desktop column and a mobile tab, and both
  * copies share one set of values). This harness recreates that wiring.
  */
 function Harness({
@@ -137,7 +137,7 @@ describe('OpinionForm - Submission', () => {
     await user.click(screen.getByRole('button', { name: 'Save Opinion' }));
 
     await waitFor(() => {
-      expect(screen.getByText('Values must be within scale range: 0 — 100')).toBeInTheDocument();
+      expect(screen.getByText('Values must be within scale range: 0-100')).toBeInTheDocument();
     });
     expect(onSubmit).not.toHaveBeenCalled();
   });
@@ -197,7 +197,7 @@ describe('OpinionForm - Submission', () => {
     await user.type(lowerInput, '-5');
     expect(lowerInput).toHaveAttribute('aria-invalid', 'false');
     expect(
-      screen.queryByText('Values must be within scale range: 0 — 100')
+      screen.queryByText('Values must be within scale range: 0-100')
     ).not.toBeInTheDocument();
 
     // Blur -> onTouched now surfaces the error, so validation still works.

@@ -39,7 +39,7 @@ const CSRF_HEADER = 'X-CSRF-Token';
 
 /**
  * Reads the __Host-csrf_token cookie, which only works when the API answers on
- * this app's own origin -- local development, where Vite proxies /api/v1. On the
+ * this app's own origin, meaning local development, where Vite proxies /api/v1. On the
  * deploys the cookie belongs to the API host and document.cookie shows nothing,
  * which is why the token also arrives as a response header.
  *
@@ -146,7 +146,7 @@ class ApiClient {
    * share a single in-flight request instead of each firing their own POST.
    *
    * No X-CSRF-Token is sent on purpose: the backend exempts POST /auth/refresh
-   * from CSRF validation (same as POST /auth/login -- see api/middleware/csrf.py),
+   * from CSRF validation (the same as POST /auth/login, see api/middleware/csrf.py),
    * so a CSRF check can never turn this into a 403 -> false "session expired".
    */
   private refreshSession(): Promise<void> {
@@ -230,8 +230,8 @@ class ApiClient {
           await this.refreshSession();
         } catch (refreshError) {
           // A network/5xx refresh failure means the service is down, not that the
-          // session is gone -- surface the typed error (so react-query can retry
-          // and AuthContext shows "service unavailable") instead of a false logout.
+          // session is gone, so surface the typed error (letting react-query retry
+          // and AuthContext show "service unavailable") instead of a false logout.
           if (isServiceUnavailable(refreshError)) {
             throw refreshError;
           }
@@ -381,10 +381,10 @@ class ApiClient {
     });
   }
 
-  async verifyEmail(token: string, password: string): Promise<void> {
+  async verifyEmail(token: string, password: string, language: string): Promise<void> {
     return this.request<void>('/auth/verify-email', {
       method: 'POST',
-      body: JSON.stringify({ token, password }),
+      body: JSON.stringify({ token, password, language }),
     });
   }
 

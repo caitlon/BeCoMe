@@ -170,7 +170,7 @@ class TestBeCoMeResultImmutability:
             is_even=False,
         )
 
-        # WHEN / THEN
+        # WHEN/THEN
         new_fuzzy = FuzzyTriangleNumber(10.0, 20.0, 30.0)
         with pytest.raises(ValidationError):
             result.best_compromise = new_fuzzy
@@ -187,7 +187,7 @@ class TestBeCoMeResultImmutability:
             is_even=False,
         )
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(ValidationError):
             result.num_experts = 10
 
@@ -203,7 +203,7 @@ class TestBeCoMeResultImmutability:
             is_even=False,
         )
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(ValidationError):
             result.max_error = 2.0
 
@@ -315,7 +315,7 @@ class TestBeCoMeResultFactoryMethod:
         mean = FuzzyTriangleNumber(lower_bound=10.0, peak=15.0, upper_bound=20.0)
         median = FuzzyTriangleNumber(lower_bound=12.0, peak=16.0, upper_bound=22.0)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(ValueError) as exc_info:
             BeCoMeResult.from_calculations(arithmetic_mean=mean, median=median, num_experts=0)
 

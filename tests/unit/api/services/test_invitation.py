@@ -65,12 +65,12 @@ class TestInvitationServiceInviteByEmail:
         mock_session.exec.return_value.first.side_effect = [invitee, None, None]
         service = InvitationService(mock_session)
 
-        # WHEN - invite with mixed case email
+        # WHEN: invite with mixed case email
         invitation, returned_user = service.invite_by_email(
             project_id, inviter_id, "Invitee@Example.COM"
         )
 
-        # THEN - user is found despite different case
+        # THEN: user is found despite different case
         assert returned_user == invitee
         assert invitation.invitee_id == invitee.id
         mock_session.add.assert_called_once()
@@ -82,7 +82,7 @@ class TestInvitationServiceInviteByEmail:
         mock_session.exec.return_value.first.return_value = None
         service = InvitationService(mock_session)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(UserNotFoundForInvitationError, match="No user found"):
             service.invite_by_email(uuid4(), uuid4(), "nonexistent@example.com")
 
@@ -105,7 +105,7 @@ class TestInvitationServiceInviteByEmail:
         mock_session.exec.return_value.first.side_effect = [invitee, existing_membership]
         service = InvitationService(mock_session)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(UserAlreadyMemberError, match="already a member"):
             service.invite_by_email(uuid4(), uuid4(), "invitee@example.com")
 
@@ -129,7 +129,7 @@ class TestInvitationServiceInviteByEmail:
         mock_session.exec.return_value.first.side_effect = [invitee, None, existing_invitation]
         service = InvitationService(mock_session)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(AlreadyInvitedError, match="pending invitation"):
             service.invite_by_email(uuid4(), uuid4(), "invitee@example.com")
 
@@ -209,7 +209,7 @@ class TestInvitationServiceAcceptInvitation:
         mock_session.get.return_value = None
         service = InvitationService(mock_session)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(InvitationNotFoundError, match="not found"):
             service.accept_invitation(uuid4(), uuid4())
 
@@ -226,7 +226,7 @@ class TestInvitationServiceAcceptInvitation:
         mock_session.get.return_value = invitation
         service = InvitationService(mock_session)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(InvitationNotFoundError, match="not found"):
             service.accept_invitation(invitation.id, uuid4())  # Different user_id
 
@@ -252,7 +252,7 @@ class TestInvitationServiceAcceptInvitation:
         mock_session.exec.return_value.first.return_value = existing_membership
         service = InvitationService(mock_session)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(UserAlreadyMemberError, match="already a member"):
             service.accept_invitation(invitation.id, user_id)
 
@@ -289,7 +289,7 @@ class TestInvitationServiceDeclineInvitation:
         mock_session.get.return_value = None
         service = InvitationService(mock_session)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(InvitationNotFoundError, match="not found"):
             service.decline_invitation(uuid4(), uuid4())
 
@@ -306,7 +306,7 @@ class TestInvitationServiceDeclineInvitation:
         mock_session.get.return_value = invitation
         service = InvitationService(mock_session)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(InvitationNotFoundError, match="not found"):
             service.decline_invitation(invitation.id, uuid4())
 

@@ -26,7 +26,7 @@
     "intro": "Experts answer the raised question by assessing a quantitative parameter. They can express their responses in three ways:",
     "crisp": {
       "title": "Crisp Number",
-      "description": "A single precise value when the expert is confident about their estimate. In the interface, simply enter the same value for all three fields (Lower = Peak = Upper).",
+      "description": "A single precise value when the expert is confident about their estimate. In the interface, enter the same value in all three fields (Lower = Peak = Upper).",
       "example": "Example: If you're certain the budget should be exactly 50 billion CZK, enter (50, 50, 50)."
     },
     "fuzzy": {

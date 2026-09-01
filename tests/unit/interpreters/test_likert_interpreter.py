@@ -46,7 +46,7 @@ class TestLikertDecision:
             recommendation="Requires analysis",
         )
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(AttributeError):
             decision.likert_value = 75  # type: ignore
 

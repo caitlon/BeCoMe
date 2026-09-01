@@ -19,16 +19,16 @@ def _log_query(variant: str, user_id: UUID, row_count: int, start: float, **fiel
 
     This is the application-level answer to "trace the reads". Turning
     ``sqlalchemy.engine`` up instead would print the statement and, at DEBUG, its bound
-    parameters -- password hashes, addresses, names -- into the log drain, so
+    parameters, meaning password hashes, addresses, and names, into the log drain, so
     :data:`api.logging_config._EXTERNAL_LOG_LEVELS` pins that logger below DEBUG and
     the shape and timing are recorded here instead. The statement itself is never
     logged.
 
-    :param variant: Which query ran -- ``with_counts`` or ``with_roles``.
+    :param variant: Which query ran: ``with_counts`` or ``with_roles``.
     :param user_id: Owner of the result set.
     :param row_count: Rows returned.
     :param start: ``perf_counter()`` reading taken before the query.
-    :param fields: Extra context, e.g. the paging window.
+    :param fields: Extra context, for example the paging window.
     """
     logger.debug(
         "User projects queried",

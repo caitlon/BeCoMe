@@ -50,7 +50,7 @@ class TestTransactionRollback:
         WHEN rolled back
         THEN session can be reused for new operations
         """
-        # GIVEN - cause an error
+        # GIVEN: cause an error
         user1 = User(
             email="unique@example.com",
             hashed_password="hash",
@@ -72,7 +72,7 @@ class TestTransactionRollback:
             session.commit()
         session.rollback()
 
-        # WHEN - try new operation
+        # WHEN: try new operation
         user3 = User(
             email="different@example.com",
             hashed_password="hash",
@@ -82,7 +82,7 @@ class TestTransactionRollback:
         session.add(user3)
         session.commit()
 
-        # THEN - should succeed
+        # THEN: should succeed
         result = session.exec(select(User).where(User.email == "different@example.com")).first()
         assert result is not None
         assert result.email == "different@example.com"
@@ -97,7 +97,7 @@ class TestTransactionRollback:
 
         user_email = "flush_test@example.com"
 
-        # GIVEN - create and flush without commit
+        # GIVEN: create and flush without commit
         with Session(test_engine) as session1:
             user = User(
                 email=user_email,
@@ -109,11 +109,11 @@ class TestTransactionRollback:
             session1.flush()
             # Session closes without commit
 
-        # WHEN - new session checks for user
+        # WHEN: new session checks for user
         with Session(test_engine) as session2:
             result = session2.exec(select(User).where(User.email == user_email)).first()
 
-            # THEN - user should not exist
+            # THEN: user should not exist
             assert result is None
 
     def test_partial_add_rolled_back_on_error(self, session):
@@ -122,7 +122,7 @@ class TestTransactionRollback:
         WHEN commit fails due to constraint
         THEN all added entities are rolled back
         """
-        # GIVEN - first user commits successfully
+        # GIVEN: first user commits successfully
         user1 = User(
             email="first@example.com",
             hashed_password="hash",
@@ -151,6 +151,6 @@ class TestTransactionRollback:
             session.commit()
         session.rollback()
 
-        # THEN - project should not exist
+        # THEN: project should not exist
         result = session.exec(select(Project).where(Project.name == "Will Be Rolled Back")).first()
         assert result is None

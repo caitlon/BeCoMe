@@ -4,8 +4,8 @@ Three endpoints mail an address nobody has authenticated as: forgot-password, re
 and resend-verification. The per-IP rate limiter on each bounds a single source, but an
 attacker rotating IPs could still flood a *known* inbox. This throttle caps how often
 such an email is sent to a given address (keyed by a hash of the email, so no address is
-stored): at most one email per short cooldown plus a small daily total. It fails open --
-if the shared store is unreachable the email is still sent, so a store outage never
+stored): at most one email per short cooldown plus a small daily total. It fails open, so
+if the shared store is unreachable the email is still sent and a store outage never
 blocks a legitimate reset or activation. The cost is that an outage lifts the cap for
 every flow behind this throttle, registration and resend included. ``docs/security.md``
 records that as an accepted risk, along with why it beats failing closed: these endpoints
@@ -18,7 +18,7 @@ reset does not eat the budget an activation email needs (or the other way round)
 Two entry points, deliberately: ``allow`` asks and spends, ``record`` only spends. A
 caller that must send regardless (the branch of ``/register`` that creates the account)
 uses ``record``, because a send that spends nothing would make the endpoint answer a
-second, back-to-back submission differently for a free address than for a taken one --
+second, back-to-back submission differently for a free address than for a taken one,
 rebuilding by timing the account-existence oracle the uniform response removes.
 """
 
@@ -50,9 +50,9 @@ def _digest(identifier: str) -> str:
     """Return the SHA-256 hex digest of a normalized email, so no address is stored.
 
     Never log this value. It is an unkeyed digest, so anyone holding the logs could
-    hash a guessed address and confirm it appears -- the account-existence oracle
+    hash a guessed address and confirm it appears, which is the account-existence oracle
     ``api.auth.logging.hash_email`` exists to prevent. Records here name the flow,
-    never the address; the address-scoped event belongs at the call site in
+    never the address. The address-scoped event belongs at the call site in
     ``api/routes/auth.py``, which has the keyed tag.
     """
     return hashlib.sha256(identifier.strip().lower().encode()).hexdigest()
@@ -61,7 +61,7 @@ def _digest(identifier: str) -> str:
 def _log_denied(reason: str, **fields: object) -> None:
     """Record a refused email send.
 
-    :param reason: Which budget refused it -- ``cooldown`` or ``daily_cap``.
+    :param reason: Which budget refused it: ``cooldown`` or ``daily_cap``.
     :param fields: Extra context; never an address or its digest.
     """
     logger.debug(
@@ -79,11 +79,11 @@ def _log_store_unavailable(op: str, exc: redis.RedisError, key_prefix: str) -> N
 
     ERROR for the reason given in
     :func:`api.auth.login_throttle._log_store_unavailable`: ERROR is the level Sentry
-    turns into an issue, and nothing else about this failure is visible from outside --
-    the send goes through and the response is unchanged. Losing this cap is what lets a
+    turns into an issue, and nothing else about this failure is visible from outside,
+    since the send goes through and the response is unchanged. Losing this cap is what lets a
     known address be mailed repeatedly, so it should page rather than sit in a log.
 
-    :param op: Throttle operation that failed -- ``allow`` or ``record``.
+    :param op: Throttle operation that failed: ``allow`` or ``record``.
     :param exc: The Redis error that caused it.
     :param key_prefix: Key namespace of the flow whose cap was lifted.
     """

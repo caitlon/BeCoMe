@@ -102,5 +102,5 @@ examples/visualizations/cs/
 logs/
 logs.zip
 
-# Database backups (contain user data -- never commit)
+# Database backups (they contain user data, never commit them)
 /backups/

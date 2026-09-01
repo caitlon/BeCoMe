@@ -65,8 +65,8 @@ def _init_sentry(settings: Settings) -> None:
             send_default_pii=False,
             # Frame locals are a separate switch that send_default_pii does not cover, and
             # they default to on. Auth handlers bind the parsed body to a local, so a fault
-            # anywhere in the request would ship repr(ChangePasswordRequest) -- i.e. the
-            # plaintext passwords, or a still-valid reset token -- to the tracker.
+            # anywhere in the request would ship repr(ChangePasswordRequest) to the
+            # tracker, meaning the plaintext passwords or a still-valid reset token.
             include_local_variables=False,
         )
 
@@ -86,7 +86,7 @@ def create_app() -> FastAPI:
     docs_hidden = settings.environment is Environment.PROD
     app = FastAPI(
         title="BeCoMe API",
-        description="Best Compromise Mean — Group Decision Making under Fuzzy Uncertainty",
+        description="Best Compromise Mean: group decision making under fuzzy uncertainty",
         version=settings.api_version,
         lifespan=lifespan,
         docs_url=None if docs_hidden else "/docs",

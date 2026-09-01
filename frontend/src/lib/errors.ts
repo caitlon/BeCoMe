@@ -88,7 +88,7 @@ export const isServiceUnavailable = (error: unknown): boolean =>
  * Worth retrying automatically: transient network/server failures only.
  *
  * Same predicate as isServiceUnavailable today, kept as a separate name on
- * purpose -- "should react-query retry this" and "should the UI show a
+ * purpose: "should react-query retry this" and "should the UI show a
  * service-unavailable message" are distinct decisions that may diverge later.
  */
 export const isRetryable = (error: unknown): boolean =>

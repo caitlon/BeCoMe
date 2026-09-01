@@ -157,7 +157,7 @@ class TestCreateDbAndTables:
             # WHEN
             create_db_and_tables()
 
-            # THEN: create_all must not run -- migrations manage the Postgres schema
+            # THEN: create_all must not run, since migrations manage the Postgres schema
             mock_create_all.assert_not_called()
         finally:
             _dispose_and_clear_engine()
@@ -350,11 +350,11 @@ class TestWarmUpConnectionPool:
     def test_warmup_swallows_connection_errors(
         self, mock_get_settings: MagicMock, mock_get_engine: MagicMock
     ) -> None:
-        """A failed warm-up must not raise -- startup should continue."""
+        """A failed warm-up must not raise, so startup continues."""
         # GIVEN: connecting raises
         mock_get_settings.return_value.database_url = "postgresql://u:p@h:5432/db"
         mock_get_settings.return_value.testing = False
         mock_get_engine.return_value.connect.side_effect = OSError("boom")
 
-        # WHEN / THEN: does not raise
+        # WHEN/THEN: does not raise
         warm_up_connection_pool()

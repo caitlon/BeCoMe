@@ -18,16 +18,16 @@ skinparam ranksep 40
 package "Strategy" {
     together {
         class OddMedianStrategy {
-            + calculate(sorted_opinions, median_centroid): FuzzyTriangleNumber
+            + calculate(sorted_opinions): FuzzyTriangleNumber
         }
 
         class EvenMedianStrategy {
-            + calculate(sorted_opinions, median_centroid): FuzzyTriangleNumber
+            + calculate(sorted_opinions): FuzzyTriangleNumber
         }
     }
 
     abstract class MedianCalculationStrategy <<ABC>> {
-        + {abstract} calculate(sorted_opinions, median_centroid): FuzzyTriangleNumber
+        + {abstract} calculate(sorted_opinions): FuzzyTriangleNumber
     }
 
     OddMedianStrategy --|> MedianCalculationStrategy
@@ -41,12 +41,14 @@ package "Abstract Base Class" {
         + {abstract} calculate_compromise(opinions): BeCoMeResult
         + {abstract} calculate_arithmetic_mean(opinions): FuzzyTriangleNumber
         + {abstract} calculate_median(opinions): FuzzyTriangleNumber
+        + {abstract} sort_by_centroid(opinions): List[ExpertOpinion]
     }
 
     class BeCoMeCalculator {
         + calculate_compromise(opinions): BeCoMeResult
         + calculate_arithmetic_mean(opinions): FuzzyTriangleNumber
         + calculate_median(opinions): FuzzyTriangleNumber
+        + sort_by_centroid(opinions): List[ExpertOpinion]
     }
 
     BeCoMeCalculator --|> BaseAggregationCalculator

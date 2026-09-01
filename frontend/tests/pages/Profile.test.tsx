@@ -313,7 +313,7 @@ describe('Profile - Delete Account', () => {
 
   it('still navigates home and confirms deletion when the post-deletion sign-out fails', async () => {
     // The account is already gone by the time this runs, so a failed sign-out
-    // request here has nothing left to protect -- it must not be mistaken for a
+    // request here has nothing left to protect, so it must not be mistaken for a
     // failed deletion or leave the dialog stuck open.
     const user = userEvent.setup();
     mockApi.deleteAccount.mockResolvedValueOnce(undefined);

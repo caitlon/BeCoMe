@@ -17,11 +17,11 @@ class TestDuplicateRegistration:
 
     def test_duplicate_registration_is_accepted_like_any_other(self, http_client):
         """Second registration with the same email is accepted with 202, same as the first."""
-        # GIVEN — a registered user
+        # GIVEN: a registered user
         email = unique_email("dup")
         register_user(http_client, email)
 
-        # WHEN — same email registers again
+        # WHEN: same email registers again
         response = http_client.post(
             "/auth/register",
             json={
@@ -32,7 +32,7 @@ class TestDuplicateRegistration:
             },
         )
 
-        # THEN — the same 202 a free address gets: the endpoint never reveals that an
+        # THEN: the same 202 a free address gets: the endpoint never reveals that an
         # address is taken. The owner is told by email instead.
         assert response.status_code == 202
 
@@ -43,12 +43,12 @@ class TestInvalidFuzzyNumber:
 
     def test_lower_bound_greater_than_peak_rejected(self, http_client):
         """Opinion with lower_bound > peak returns 422."""
-        # GIVEN — a user with a project
+        # GIVEN: a user with a project
         email = unique_email("fuzzy")
         token = register_user(http_client, email)
         project = create_project(http_client, token)
 
-        # WHEN — submit opinion where lower > peak
+        # WHEN: submit opinion where lower > peak
         response = http_client.post(
             f"/projects/{project['id']}/opinions",
             json={
@@ -70,7 +70,7 @@ class TestInvalidFuzzyNumber:
         token = register_user(http_client, email)
         project = create_project(http_client, token)
 
-        # WHEN — peak exceeds upper bound
+        # WHEN: peak exceeds upper bound
         response = http_client.post(
             f"/projects/{project['id']}/opinions",
             json={
@@ -92,7 +92,7 @@ class TestAuthenticationErrors:
 
     def test_invalid_token_returns_401(self, http_client):
         """Request with a malformed JWT returns 401."""
-        # GIVEN — invalid auth token
+        # GIVEN: invalid auth token
         # WHEN
         response = http_client.get(
             "/projects",
@@ -104,7 +104,7 @@ class TestAuthenticationErrors:
 
     def test_missing_auth_header_returns_401(self, http_client):
         """Request without Authorization header returns 401."""
-        # GIVEN — no Authorization header
+        # GIVEN: no Authorization header
         # WHEN
         response = http_client.get("/projects")
 
@@ -118,7 +118,7 @@ class TestWeakPassword:
 
     def test_short_password_rejected(self, http_client):
         """Password shorter than 12 characters returns 422."""
-        # GIVEN — weak password input
+        # GIVEN: weak password input
         # WHEN
         response = http_client.post(
             "/auth/register",
@@ -135,7 +135,7 @@ class TestWeakPassword:
 
     def test_password_without_special_char_rejected(self, http_client):
         """Password missing special characters returns 422."""
-        # GIVEN — password missing special character
+        # GIVEN: password missing special character
         # WHEN
         response = http_client.post(
             "/auth/register",

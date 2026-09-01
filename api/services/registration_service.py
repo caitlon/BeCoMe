@@ -21,7 +21,7 @@ def _log_branch(branch: str) -> None:
     :func:`api.auth.logging.log_registration_attempt` already documents that a reader
     of the full application log can recover which branch ran for a given
     ``email_hash``, because the account write and the token minting emit their own
-    records under the same request id -- log access is the trust boundary there, not
+    records under the same request id. Log access is the trust boundary there, not
     this line. Carrying an ``email_hash`` here would make that join trivial instead of
     merely possible, so it does not.
 
@@ -72,7 +72,7 @@ class RegistrationService:
     the account opens with the attacker's password. The submission is therefore carried
     by the activation link it minted and applied only when *that* link is redeemed, so
     a link always activates the submission it belongs to and no submitter decides what
-    another submitter's link opens. Redemption additionally requires the submitted
+    another submitter's link opens. Redemption also requires the submitted
     password, so a stranger's link landing in the victim's inbox is not something the
     victim can complete either.
 
@@ -167,8 +167,8 @@ class RegistrationService:
         except (UserExistsError, IntegrityError):
             # Two submissions raced for the same free address. The duplicate would
             # otherwise surface as a 409 naming the address, or as a 500 from the
-            # unique index -- both of them answers this endpoint must never give,
-            # since a caller can tell them apart from the uniform 202. Roll the failed
+            # unique index. Both are answers this endpoint must never give, since a
+            # caller can tell them apart from the uniform 202. Roll the failed
             # insert back so the session is usable and take the taken-address path.
             logger.warning(
                 "Registration raced for a free address",

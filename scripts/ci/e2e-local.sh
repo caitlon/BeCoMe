@@ -90,7 +90,7 @@ export EMAIL_PROVIDER="console"
 # Activation links are built from this, so they point at the app Playwright drives.
 export FRONTEND_BASE_URL="http://localhost:8080"
 # The Playwright helper reads each activation link back out of the API's stdout, which
-# is the only place one exists -- the flow deliberately keeps it out of the response.
+# is the only place one exists, since the flow deliberately keeps it out of the response.
 # PYTHONUNBUFFERED because stdout to a file is block-buffered: without it a link can
 # sit unwritten in an 8 KiB buffer for the whole run.
 export E2E_API_LOG="${E2E_API_LOG:-/tmp/become-e2e-api.log}"
@@ -130,11 +130,13 @@ VISUAL_EXIT=0
 if [ "$MODE" = "all" ] || [ "$MODE" = "backend" ]; then
   echo "--- Backend E2E (pytest + httpx) ---"
   cd "$PROJECT_ROOT"
-  uv run pytest tests/e2e/ -v -m e2e || BACKEND_EXIT=$?
+  # -n 0 opts out of the shared -n logical: the workers would share one uvicorn and
+  # one Postgres, and the client's 10s timeout in tests/e2e/conftest.py is exceeded.
+  uv run pytest tests/e2e/ -v -m e2e -n 0 || BACKEND_EXIT=$?
   echo ""
 fi
 
-# Playwright E2E (functional tests — chromium, firefox, webkit)
+# Playwright E2E (functional tests: chromium, firefox, webkit)
 if [ "$MODE" = "all" ] || [ "$MODE" = "playwright" ]; then
   echo "--- Playwright E2E ---"
   cd "$PROJECT_ROOT/frontend"

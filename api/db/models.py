@@ -42,6 +42,10 @@ class User(SQLModel, table=True):
     # an account still carrying NULL. The column ships one release ahead of that and
     # sits inert until then, so it is read by nothing in between.
     email_verified_at: datetime | None = Field(default=None)
+    # Service accounts that hold the opinions in every seeded example project. They
+    # are excluded from every lookup that resolves an email address, so nobody can
+    # invite one into a real project or claim one through registration.
+    is_demo: bool = Field(default=False)
 
     owned_projects: list["Project"] = Relationship(
         back_populates="admin",
@@ -90,6 +94,9 @@ class Project(SQLModel, table=True):
     scale_min: float = Field(default=0.0)
     scale_max: float = Field(default=100.0)
     scale_unit: str = Field(default="", max_length=50)
+    # Seeded into an account on activation. Drives the badge and the banner in the UI;
+    # in every other respect the project behaves like one the user created.
+    is_example: bool = Field(default=False)
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(
         default_factory=utc_now,

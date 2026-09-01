@@ -21,11 +21,11 @@ from tests.e2e.conftest import (
 
 @pytest.mark.e2e
 class TestRightOfAccess:
-    """GDPR Article 15 — right of access to personal data."""
+    """GDPR Article 15: the right of access to personal data."""
 
     def test_user_can_access_all_profile_data(self, http_client):
         """GET /users/me returns all stored personal data."""
-        # GIVEN — user registered with known details
+        # GIVEN: user registered with known details
         email = unique_email("gdpr-access")
         token = register_user_with_name(
             http_client,
@@ -34,10 +34,10 @@ class TestRightOfAccess:
             "Testova",
         )
 
-        # WHEN — user requests their data
+        # WHEN: user requests their data
         response = http_client.get("/users/me", headers=auth_headers(token))
 
-        # THEN — all profile fields are present and correct
+        # THEN: all profile fields are present and correct
         assert response.status_code == 200
         data = response.json()
         assert data["email"] == email
@@ -50,20 +50,20 @@ class TestRightOfAccess:
 
     def test_user_can_export_their_data(self, http_client):
         """GET /users/me/export returns the user's data (GDPR Article 20)."""
-        # GIVEN — user with an owned project and a submitted opinion
+        # GIVEN: user with an owned project and a submitted opinion
         email = unique_email("gdpr-export")
         token = register_user_with_name(http_client, email, "Export", "Tester")
         project = create_project(http_client, token, "Export Project")
         project_id = project["id"]
         submit_opinion(http_client, token, project_id, 20.0, 50.0, 80.0)
 
-        # WHEN — user exports their data
+        # WHEN: user exports their data
         response = http_client.get(
             "/users/me/export",
             headers=auth_headers(token),
         )
 
-        # THEN — the export carries the profile, the project, and the opinion
+        # THEN: the export carries the profile, the project, and the opinion
         assert response.status_code == 200
         data = response.json()
         assert "export_metadata" in data
@@ -72,7 +72,7 @@ class TestRightOfAccess:
         assert any(p["name"] == "Export Project" for p in data["owned_projects"])
         assert any(o["project_id"] == project_id for o in data["opinions"])
 
-        # AND — password material is never exported
+        # AND: password material is never exported
         assert "hashed_password" not in response.text
         assert "hashed_password" not in data["profile"]
 
@@ -82,20 +82,20 @@ class TestRightOfAccess:
 
     def test_data_export_requires_authentication(self, http_client):
         """The export endpoint rejects unauthenticated requests."""
-        # WHEN — the export is requested without a token
+        # WHEN: the export is requested without a token
         response = http_client.get("/users/me/export")
 
-        # THEN — access is denied
+        # THEN: access is denied
         assert response.status_code == 401
 
 
 @pytest.mark.e2e
 class TestDataErasure:
-    """GDPR Article 17 — right to erasure across related entities."""
+    """GDPR Article 17: the right to erasure across related entities."""
 
     def test_deleted_expert_opinion_removed(self, http_client):
         """When expert deletes account, their opinion disappears from project."""
-        # GIVEN — owner and expert in the same project, both with opinions
+        # GIVEN: owner and expert in the same project, both with opinions
         owner_email = unique_email("gdpr-owner")
         expert_email = unique_email("gdpr-expert")
         owner_token = register_user(http_client, owner_email)
@@ -120,14 +120,14 @@ class TestDataErasure:
         )
         assert len(opinions_before.json()) == 2
 
-        # WHEN — expert deletes their account
+        # WHEN: expert deletes their account
         delete_resp = http_client.delete(
             "/users/me",
             headers=auth_headers(expert_token),
         )
         assert delete_resp.status_code == 204
 
-        # THEN — only owner's opinion remains
+        # THEN: only owner's opinion remains
         opinions_after = http_client.get(
             f"/projects/{project_id}/opinions",
             headers=auth_headers(owner_token),
@@ -143,7 +143,7 @@ class TestDataErasure:
 
     def test_deleted_expert_removed_from_members(self, http_client):
         """When expert deletes account, they disappear from project members."""
-        # GIVEN — owner and expert are both members
+        # GIVEN: owner and expert are both members
         owner_email = unique_email("gdpr-memb-own")
         expert_email = unique_email("gdpr-memb-exp")
         owner_token = register_user(http_client, owner_email)
@@ -165,14 +165,14 @@ class TestDataErasure:
         )
         assert len(members_before.json()) == 2
 
-        # WHEN — expert deletes their account
+        # WHEN: expert deletes their account
         delete_resp = http_client.delete(
             "/users/me",
             headers=auth_headers(expert_token),
         )
         assert delete_resp.status_code == 204
 
-        # THEN — only owner remains in members
+        # THEN: only owner remains in members
         members_after = http_client.get(
             f"/projects/{project_id}/members",
             headers=auth_headers(owner_token),
@@ -188,7 +188,7 @@ class TestDataErasure:
 
     def test_deleted_invitee_pending_invitation_removed(self, http_client):
         """When invitee deletes account, their pending invitation disappears."""
-        # GIVEN — owner sent invitation, invitee has NOT accepted
+        # GIVEN: owner sent invitation, invitee has NOT accepted
         owner_email = unique_email("gdpr-inv-own")
         invitee_email = unique_email("gdpr-inv-tgt")
         owner_token = register_user(http_client, owner_email)
@@ -210,14 +210,14 @@ class TestDataErasure:
         )
         assert len(invitations_before.json()) == 1
 
-        # WHEN — invitee deletes their account
+        # WHEN: invitee deletes their account
         delete_resp = http_client.delete(
             "/users/me",
             headers=auth_headers(invitee_token),
         )
         assert delete_resp.status_code == 204
 
-        # THEN — no pending invitations remain
+        # THEN: no pending invitations remain
         invitations_after = http_client.get(
             f"/projects/{project_id}/invitations",
             headers=auth_headers(owner_token),
@@ -233,11 +233,11 @@ class TestDataErasure:
 
     def test_deleted_user_cannot_login(self, http_client):
         """Deleted user's credentials no longer work for login."""
-        # GIVEN — user registered with known credentials
+        # GIVEN: user registered with known credentials
         email = unique_email("gdpr-login")
         token = register_user(http_client, email)
 
-        # WHEN — user deletes account and attempts to login again
+        # WHEN: user deletes account and attempts to login again
         delete_resp = http_client.delete(
             "/users/me",
             headers=auth_headers(token),
@@ -249,21 +249,21 @@ class TestDataErasure:
             data={"username": email, "password": DEFAULT_PASSWORD},
         )
 
-        # THEN — login is rejected
+        # THEN: login is rejected
         assert login_resp.status_code == 401
 
     def test_owner_cannot_delete_account_while_admin(self, http_client):
         """An account that still admins a project cannot be deleted (409)."""
-        # GIVEN — a user who owns a project
+        # GIVEN: a user who owns a project
         email = unique_email("gdpr-own-block")
         token = register_user(http_client, email)
         project = create_project(http_client, token, "Owned Project")
         project_id = project["id"]
 
-        # WHEN — the owner tries to delete their account
+        # WHEN: the owner tries to delete their account
         response = http_client.delete("/users/me", headers=auth_headers(token))
 
-        # THEN — deletion is blocked
+        # THEN: deletion is blocked
         assert response.status_code == 409
 
         # Cleanup
@@ -272,7 +272,7 @@ class TestDataErasure:
 
     def test_owner_can_delete_after_transferring_ownership(self, http_client):
         """After transferring ownership, the former owner can delete their account."""
-        # GIVEN — owner with a project and an expert member
+        # GIVEN: owner with a project and an expert member
         owner_email = unique_email("gdpr-xfer-own")
         expert_email = unique_email("gdpr-xfer-exp")
         owner_token = register_user(http_client, owner_email)
@@ -282,7 +282,7 @@ class TestDataErasure:
         invite_and_accept(http_client, owner_token, expert_token, expert_email, project_id)
         expert_id = http_client.get("/users/me", headers=auth_headers(expert_token)).json()["id"]
 
-        # WHEN — owner transfers ownership, then deletes their account
+        # WHEN: owner transfers ownership, then deletes their account
         transfer = http_client.post(
             f"/projects/{project_id}/transfer-ownership",
             json={"new_admin_id": expert_id},
@@ -293,10 +293,10 @@ class TestDataErasure:
 
         delete_resp = http_client.delete("/users/me", headers=auth_headers(owner_token))
 
-        # THEN — deletion now succeeds
+        # THEN: deletion now succeeds
         assert delete_resp.status_code == 204
 
-        # Cleanup — the new owner removes the project and their own account
+        # Cleanup: the new owner removes the project and their own account
         http_client.delete(f"/projects/{project_id}", headers=auth_headers(expert_token))
         http_client.delete("/users/me", headers=auth_headers(expert_token))
 
@@ -311,15 +311,15 @@ class TestDeletionAudit:
         Account removal does not depend on the storage backend, so a user with
         no photo (or an unconfigured bucket) can still delete their account.
         """
-        # GIVEN — user without a profile photo
+        # GIVEN: user without a profile photo
         email = unique_email("gdpr-nostorage")
         token = register_user(http_client, email)
 
-        # WHEN — user deletes their account
+        # WHEN: user deletes their account
         delete_resp = http_client.delete(
             "/users/me",
             headers=auth_headers(token),
         )
 
-        # THEN — deletion succeeds
+        # THEN: deletion succeeds
         assert delete_resp.status_code == 204

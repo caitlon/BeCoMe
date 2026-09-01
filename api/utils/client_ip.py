@@ -29,7 +29,7 @@ def get_client_ip(request: Request | None) -> str:
       it is keyed under a single constant instead of a spoofable address.
     - **No secret on a deployed service**: the same constant. The invariants in
       :meth:`api.config.Settings._validate_deploy_invariants` refuse to boot a deploy
-      without the secret, so this branch should be unreachable -- but the app runs
+      without the secret, so this branch should be unreachable. Even so, the app runs
       behind a proxy chain it cannot authenticate, and ``request.client.host`` is
       whatever that chain put in ``X-Forwarded-For`` (uvicorn runs with
       ``--forwarded-allow-ips='*'``). Falling back to a constant keeps a missing

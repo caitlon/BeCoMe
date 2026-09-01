@@ -17,7 +17,7 @@ describe('About', () => {
     render(<About />);
 
     expect(
-      screen.getByText(/best compromise mean — a scientific method/i)
+      screen.getByText(/best compromise mean: a scientific method/i)
     ).toBeInTheDocument();
   });
 

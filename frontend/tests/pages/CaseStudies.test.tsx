@@ -63,8 +63,8 @@ describe('CaseStudies', () => {
   it('displays scale information', () => {
     render(<CaseStudies />);
 
-    // Budget and Pendlers have 0–100, Floods has 0–100 too — all 3 show scale
-    const scaleElements = screen.getAllByText(/0–100/);
+    // Budget and Pendlers have 0-100, Floods has 0-100 too, so all 3 show scale
+    const scaleElements = screen.getAllByText(/0-100/);
     expect(scaleElements.length).toBeGreaterThanOrEqual(2);
   });
 

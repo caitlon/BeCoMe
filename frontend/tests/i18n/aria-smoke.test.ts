@@ -10,7 +10,7 @@ import i18n, { resources } from '@/i18n';
  * Every key below is one actually passed to `t()`/`tCommon()` for an
  * aria-label, role name, or sr-only string somewhere in the app. Resolving
  * to something other than the key itself proves the key exists in both
- * locales -- it would have caught the aria.loading typo immediately.
+ * locales. It would have caught the aria.loading typo immediately.
  */
 function collectKeys(obj: Record<string, unknown>, prefix = ''): string[] {
   const keys: string[] = [];

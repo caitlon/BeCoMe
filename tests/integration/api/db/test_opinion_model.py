@@ -131,7 +131,7 @@ class TestExpertOpinionModel:
         session.add(opinion1)
         session.commit()
 
-        # WHEN/THEN - second opinion from same user on same project should fail
+        # WHEN/THEN: second opinion from same user on same project should fail
         opinion2 = ExpertOpinion(
             project_id=project.id,
             user_id=user.id,
@@ -161,7 +161,7 @@ class TestExpertOpinionModel:
         session.add_all([project1, project2])
         session.commit()
 
-        # WHEN - same user gives opinions in different projects
+        # WHEN: same user gives opinions in different projects
         opinion1 = ExpertOpinion(
             project_id=project1.id,
             user_id=user.id,

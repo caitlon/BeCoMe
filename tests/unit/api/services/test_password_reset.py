@@ -156,7 +156,7 @@ class TestResolveValidToken:
         # GIVEN
         service = PasswordResetService(session)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(InvalidResetTokenError):
             service.resolve_valid_token("garbage-token")
 
@@ -172,7 +172,7 @@ class TestResolveValidToken:
         token = _token_from_url(service.create_reset_token(user.email))
         service.reset_password(token, "NewSecurePass123!")
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(InvalidResetTokenError):
             service.resolve_valid_token(token)
 
@@ -195,7 +195,7 @@ class TestResolveValidToken:
         session.commit()
         service = PasswordResetService(session)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(ResetTokenExpiredError):
             service.resolve_valid_token(raw)
 
@@ -234,7 +234,7 @@ class TestResetPassword:
         # GIVEN
         service = PasswordResetService(session)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(InvalidResetTokenError):
             service.reset_password("garbage-token", "NewSecurePass123!")
 
@@ -250,7 +250,7 @@ class TestResetPassword:
         token = _token_from_url(service.create_reset_token(user.email))
         service.reset_password(token, "NewSecurePass123!")
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(InvalidResetTokenError):
             service.reset_password(token, "AnotherPass123!")
 
@@ -273,7 +273,7 @@ class TestResetPassword:
         session.commit()
         service = PasswordResetService(session)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(ResetTokenExpiredError):
             service.reset_password(raw, "NewSecurePass123!")
 
@@ -283,7 +283,7 @@ class TestResetPassword:
         WHEN the password reset is attempted
         THEN InvalidResetTokenError is raised
         """
-        # GIVEN — a token row pointing at a user id that was never created
+        # GIVEN: a token row pointing at a user id that was never created
         raw = "orphan-token-value"
         session.add(
             PasswordResetToken(
@@ -295,7 +295,7 @@ class TestResetPassword:
         session.commit()
         service = PasswordResetService(session)
 
-        # WHEN / THEN
+        # WHEN/THEN
         with pytest.raises(InvalidResetTokenError):
             service.reset_password(raw, "NewSecurePass123!")
 
@@ -352,14 +352,14 @@ class TestResetPasswordConfirmsTheAddress:
         just applied, while the person who redeemed it had already been told to sign
         in with it.
         """
-        # GIVEN - an unverified account whose reset token the service has resolved,
+        # GIVEN: an unverified account whose reset token the service has resolved,
         # which is the point the route reaches before it starts hashing
         user = _make_user(session)
         reset = PasswordResetService(session)
         reset_token = _token_from_url(reset.create_reset_token(user.email))
         reset.resolve_valid_token(reset_token)
 
-        # WHEN - an activation redeems its own link first, from its own session, so
+        # WHEN: an activation redeems its own link first, from its own session, so
         # the reset still holds the unverified copy of the row
         activation_password = "ActivationPass1!"
         with Session(session.get_bind()) as other:
@@ -375,7 +375,7 @@ class TestResetPasswordConfirmsTheAddress:
             raw = _token_from_url(link)
             verification.activate(verification.resolve_pending_activation(raw), activation_password)
 
-        # THEN - the reset is refused rather than reporting a password it did not set
+        # THEN: the reset is refused rather than reporting a password it did not set
         with pytest.raises(InvalidResetTokenError):
             reset.reset_password(reset_token, "NewSecurePass123!")
         session.rollback()

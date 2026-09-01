@@ -28,7 +28,8 @@
   "card": {
     "noDescription": "Bez popisu",
     "scale": "Škála",
-    "experts": "expertů"
+    "experts": "expertů",
+    "exampleBadge": "Ukázka"
   },
   "roles": {
     "admin": "Admin",
@@ -59,10 +60,9 @@
     "error": "Chyba",
     "loadFailed": "Nepodařilo se načíst projekty",
     "loadProjectFailed": "Nepodařilo se načíst projekt",
-    "validationError": "Chyba validace",
     "invalidNumbers": "Zadejte prosím platná čísla",
     "lowerPeakUpper": "Hodnoty musí splňovat: dolní ≤ vrchol ≤ horní",
-    "scaleRange": "Hodnoty musí být v rozsahu škály: {{min}} — {{max}}",
+    "scaleRange": "Hodnoty musí být v rozsahu škály: {{min}}–{{max}}",
     "opinionSaved": "Názor uložen",
     "saveFailed": "Nepodařilo se uložit",
     "opinionDeleted": "Názor smazán",
@@ -80,10 +80,8 @@
     "transferOwnershipFailed": "Předání vlastnictví se nezdařilo"
   },
   "detail": {
-    "backToProjects": "Zpět na projekty",
     "projects": "Projekty",
     "experts": "Experti",
-    "responses": "odpovědí",
     "scale": "Škála",
     "inviteExperts": "Pozvat experty",
     "inviteExpert": "Pozvat experta",
@@ -102,7 +100,7 @@
     "median": "Medián (Ω)",
     "supportingCalcs": "Pomocné výpočty",
     "confidence": "Spolehlivost",
-    "confidenceHint": "Jak blízko se shodují průměr a medián -- těsnější shoda znamená přesnější kompromis.",
+    "confidenceHint": "Jak blízko se shodují průměr a medián. Těsnější shoda znamená přesnější kompromis.",
     "confidenceLevel": {
       "high": "Vysoká",
       "moderate": "Střední",
@@ -139,6 +137,10 @@
       "high": "Vysoká shoda",
       "moderate": "Střední shoda",
       "low": "Nízká shoda"
+    },
+    "exampleBanner": {
+      "title": "Toto je ukázkový projekt",
+      "body": "Třináct expertů níže pochází z publikované studie protipovodňové ochrany a nejsou to skuteční lidé. Přidejte svůj názor a uvidíte, jak se kompromis posune, nebo projekt smažte, pokud ho nepotřebujete."
     }
   },
   "resultExport": {

@@ -31,8 +31,8 @@ def hash_email(email: str) -> str:
     reproducible by anyone holding the logs, so they could confirm whether a given
     person has an account by hashing a guess. Keying it makes the tag meaningless
     outside this application. The key is ``log_hash_key`` when set, otherwise
-    ``secret_key`` -- note that rotating the fallback also re-tags every future
-    record, so set ``LOG_HASH_KEY`` explicitly to keep tags stable across a rotation.
+    ``secret_key``. Rotating the fallback also re-tags every future record, so set
+    ``LOG_HASH_KEY`` explicitly to keep tags stable across a rotation.
 
     :param email: The email address to tag.
     :return: A truncated hex HMAC-SHA-256 of the normalized email.

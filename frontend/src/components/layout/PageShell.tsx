@@ -23,7 +23,7 @@ interface PageShellProps {
   readonly mainClassName?: string;
   /**
    * Rendered between the navbar and <main>. For fixed page chrome that sits
-   * outside the content landmark — Onboarding's progress bar is the one case.
+   * outside the content landmark. Onboarding's progress bar is the one case.
    */
   readonly beforeMain?: React.ReactNode;
   /** Rendered after </main>, for fixed chrome that belongs below the content. */
@@ -34,7 +34,7 @@ interface PageShellProps {
 /**
  * The page frame every route shares: the background, the navbar, the
  * `#main-content` landmark that RouteAnnouncer moves focus to, and optionally
- * the footer. Loading and error branches go through it too — building them by
+ * the footer. Loading and error branches go through it too, since building them by
  * hand is how they ended up on a different background than the loaded page.
  */
 export function PageShell({

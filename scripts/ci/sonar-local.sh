@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Local SonarCloud scanner — analyze the whole project or a specific module.
+# Local SonarCloud scanner: analyze the whole project or a specific module.
 #
 # Usage:
 #   ./scripts/ci/sonar-local.sh                    # full analysis (src + api + frontend/src)
@@ -13,7 +13,7 @@ set -euo pipefail
 #   ./scripts/ci/sonar-local.sh --coverage src     # coverage + analyze specific module
 #
 # Environment:
-#   SONAR_TOKEN — SonarCloud token (reads from env, then .env file)
+#   SONAR_TOKEN: SonarCloud token (reads from env, then .env file)
 
 PROJECT_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$PROJECT_ROOT"

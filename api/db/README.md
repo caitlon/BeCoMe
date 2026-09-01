@@ -1,4 +1,4 @@
-# Database Layer
+# Database layer
 
 SQLModel-based database layer for BeCoMe API.
 
@@ -9,13 +9,13 @@ SQLModel-based database layer for BeCoMe API.
 | `users` | User accounts with authentication data |
 | `projects` | Decision-making projects with scale configuration |
 | `project_members` | Many-to-many: users ↔ projects with roles |
-| `invitations` | Unique invitation links for joining projects |
+| `invitations` | Per-user invitations to join a project (unique per project+invitee) |
 | `expert_opinions` | Fuzzy triangular numbers from experts (unique per user+project) |
 | `calculation_results` | Cached BeCoMe calculation results |
 | `password_reset_tokens` | Tokens for password reset via email |
 | `email_verification_tokens` | Activation tokens for the email verification flow, stored as SHA-256 hashes |
 
-## Entity Relationships
+## Entity relationships
 
 ```
 users (1:N) ──► projects (admin ownership)
@@ -28,14 +28,14 @@ users (1:N) ──► projects (admin ownership)
       │
       ├─(1:N)─► email_verification_tokens
       │
-      └─(1:N)─► invitations (used_by) ◄─(N:1)─ projects
+      └─(1:N)─► invitations (invitee_id, inviter_id) ◄─(N:1)─ projects
 
 projects (1:1) ──► calculation_results
 ```
 
 ## Usage
 
-### Creating Tables
+### Creating tables
 
 ```python
 from api.db.engine import create_db_and_tables
@@ -43,13 +43,13 @@ from api.db.engine import create_db_and_tables
 create_db_and_tables()
 ```
 
-On SQLite (local development and the test suite) tables are created automatically on
-application startup via FastAPI lifespan. Deployed PostgreSQL schemas are managed by
-Alembic instead: migrations live in `migrations/` and run before each Railway deploy, and
-`create_db_and_tables()` is a no-op there. See
-[docs/environments.md](../../docs/environments.md) for the full schema-management story.
+On SQLite (local development and the test suite), the FastAPI lifespan hook calls
+`create_db_and_tables()` at startup. Alembic owns the deployed PostgreSQL schemas
+instead: the migrations live in `migrations/` and run before each Railway deploy, and
+`create_db_and_tables()` returns without doing anything there. For how schema management
+works, see [docs/environments.md](../../docs/environments.md).
 
-### Session Dependency
+### Session dependency
 
 ```python
 from fastapi import Depends
@@ -64,7 +64,7 @@ def get_user(user_id: UUID, session: Session = Depends(get_session)):
     return user
 ```
 
-### Model Examples
+### Model examples
 
 ```python
 from api.db.models import User, Project, ExpertOpinion, MemberRole
@@ -100,7 +100,7 @@ opinion = ExpertOpinion(
 
 ## Configuration
 
-Database URL is configured via environment variable:
+Set the database URL with the `DATABASE_URL` environment variable:
 
 ```bash
 # SQLite (default, for development)
@@ -110,7 +110,7 @@ DATABASE_URL=sqlite:///./become.db
 DATABASE_URL=postgresql://user:pass@localhost:5432/become
 ```
 
-## File Structure
+## File structure
 
 ```
 api/db/

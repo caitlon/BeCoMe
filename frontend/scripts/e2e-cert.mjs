@@ -2,13 +2,13 @@
  * Generate the self-signed certificate the e2e dev server runs on.
  *
  * The suite needs HTTPS because the session cookies carry the `__Host-` prefix, which
- * browsers only honour on a cookie marked `Secure` -- and WebKit refuses to store such a
+ * browsers only honour on a cookie marked `Secure`, and WebKit refuses to store such a
  * cookie over plain `http://localhost` at all (Chromium and Firefox accept it there, so
  * the gap only shows up in one of the three browsers the suite runs).
  *
  * Written by hand with openssl rather than pulling in a plugin: it is one command, it
  * keeps the dependency tree (and its audit surface) unchanged, and the certificate is
- * throwaway -- regenerated whenever it is missing, never committed, trusted by nobody
+ * throwaway: regenerated whenever it is missing, never committed, trusted by nobody
  * except Playwright's `ignoreHTTPSErrors`.
  */
 import { execFileSync } from "node:child_process";

@@ -7,7 +7,7 @@
 # This file is vendored on purpose: it is never downloaded at runtime or at
 # build time. To refresh it, compare by hand against the public
 # "disposable-email-domains" dataset (https://github.com/disposable-email-domains/disposable-email-domains)
-# and add or drop entries -- do not wire up an automatic fetch.
+# and add or drop entries. Do not wire up an automatic fetch.
 #
 # Deliberately excluded: paid privacy/forwarding services (e.g. 33mail.com,
 # safe-mail.net, spamex.com) are not throwaway inboxes in the sense this list

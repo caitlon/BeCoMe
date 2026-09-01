@@ -208,7 +208,7 @@ class Settings(BaseSettings):
 
     # Kill switches for the registration email-address policy
     # (api/services/email_policy.py). Both default on; flip either to false via
-    # a Railway env var -- no deploy needed -- if it starts rejecting real users.
+    # a Railway env var, with no deploy needed, if it starts rejecting real users.
     disposable_email_blocking_enabled: bool = True
     mx_check_enabled: bool = True
 
@@ -279,8 +279,8 @@ class Settings(BaseSettings):
     def _apply_profile_log_level(self) -> "Settings":
         """Fall back to the active profile's log level when ``LOG_LEVEL`` is unset.
 
-        Without this, a service whose variable was never set -- a new deploy, a
-        cleared value, a fresh clone -- runs at the field default, and development
+        Without this, a service whose variable was never set runs at the field default,
+        whether that is a new deploy, a cleared value, or a fresh clone, and development
         silently loses every DEBUG trace it is supposed to emit.
 
         An explicit value always wins: pydantic-settings records anything sourced

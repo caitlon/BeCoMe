@@ -33,7 +33,7 @@ class StoredObject:
     answers with headers first, so a response can start immediately and the body
     is pulled only as it is written out. Nothing is buffered in the process.
 
-    The handle owns a live connection and therefore has a lifecycle -- open until
+    The handle owns a live connection and therefore has a lifecycle: it stays open until
     :meth:`chunks` runs to the end or :meth:`close` is called. Leaving it open
     leaks a connection from the backend pool.
 
