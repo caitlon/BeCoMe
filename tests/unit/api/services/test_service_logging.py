@@ -187,7 +187,12 @@ class TestInvitationServiceLogging:
         invitation.inviter_id = inviter_id
         invitation.project_id = project_id
         session = MagicMock()
-        session.get.return_value = invitation
+        # The project comes back from the second get, and must be a real one: a MagicMock
+        # reads as an example project and the acceptance is refused before it logs.
+        session.get.side_effect = [
+            invitation,
+            Project(id=project_id, name="Project", admin_id=inviter_id),
+        ]
         session.exec.return_value.first.return_value = None
         service = InvitationService(session)
 

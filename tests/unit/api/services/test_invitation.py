@@ -9,6 +9,7 @@ import pytest
 from api.db.models import Invitation, MemberRole, Project, ProjectMember, User
 from api.exceptions import (
     AlreadyInvitedError,
+    ExampleProjectInvitationError,
     InvitationNotFoundError,
     UserAlreadyMemberError,
     UserNotFoundForInvitationError,
@@ -198,7 +199,11 @@ class TestInvitationServiceAcceptInvitation:
             inviter_id=uuid4(),
         )
         mock_session = MagicMock()
-        mock_session.get.return_value = invitation
+        # Two gets: the invitation, then the project the example-project rule reads.
+        mock_session.get.side_effect = [
+            invitation,
+            Project(id=project_id, name="Project", admin_id=uuid4()),
+        ]
         mock_session.exec.return_value.first.return_value = None  # No existing membership
         service = InvitationService(mock_session)
 
@@ -258,13 +263,43 @@ class TestInvitationServiceAcceptInvitation:
             role=MemberRole.EXPERT,
         )
         mock_session = MagicMock()
-        mock_session.get.return_value = invitation
+        mock_session.get.side_effect = [
+            invitation,
+            Project(id=project_id, name="Project", admin_id=uuid4()),
+        ]
         mock_session.exec.return_value.first.return_value = existing_membership
         service = InvitationService(mock_session)
 
         # WHEN/THEN
         with pytest.raises(UserAlreadyMemberError, match="already a member"):
             service.accept_invitation(invitation.id, user_id)
+
+    def test_refuses_an_invitation_into_the_example_project(self):
+        """An invitation that predates the creation rule still cannot be accepted.
+
+        Accepting is the step that writes the membership, so a guard on creation alone
+        leaves every already-pending invitation able to add a fourteenth expert.
+        """
+        # GIVEN
+        user_id = uuid4()
+        project_id = uuid4()
+        invitation = Invitation(
+            id=uuid4(),
+            project_id=project_id,
+            invitee_id=user_id,
+            inviter_id=uuid4(),
+        )
+        example = Project(id=project_id, name="Example", admin_id=uuid4(), is_example=True)
+        mock_session = MagicMock()
+        mock_session.get.side_effect = [invitation, example]
+        service = InvitationService(mock_session)
+
+        # WHEN/THEN
+        with pytest.raises(ExampleProjectInvitationError, match="example project"):
+            service.accept_invitation(invitation.id, user_id)
+        mock_session.add.assert_not_called()
+        mock_session.commit.assert_not_called()
+        mock_session.delete.assert_not_called()
 
 
 class TestInvitationServiceDeclineInvitation:
