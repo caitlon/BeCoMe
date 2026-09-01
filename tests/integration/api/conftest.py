@@ -291,7 +291,7 @@ def test_engine():
     # hands out a single one, so this fires once in practice. Registered before
     # create_all so the connection that builds the schema is already enforcing.
     @event.listens_for(engine, "connect")
-    def _enforce_foreign_keys(dbapi_connection, _connection_record):  # type: ignore[no-untyped-def]
+    def _enforce_foreign_keys(dbapi_connection, _connection_record):
         cursor = dbapi_connection.cursor()
         cursor.execute("PRAGMA foreign_keys=ON")
         cursor.close()
