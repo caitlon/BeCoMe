@@ -14,6 +14,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from sqlalchemy import event
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine, select
 
@@ -282,6 +283,19 @@ def test_engine():
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
+
+    # SQLite ignores foreign keys unless each connection asks for them, so without this
+    # the ondelete rules declared on the models are decorative here: a broken CASCADE or
+    # a missing RESTRICT stays green on this tier and only fails on Postgres. The pragma
+    # is set on connect rather than once, because the flag is per connection; StaticPool
+    # hands out a single one, so this fires once in practice. Registered before
+    # create_all so the connection that builds the schema is already enforcing.
+    @event.listens_for(engine, "connect")
+    def _enforce_foreign_keys(dbapi_connection, _connection_record):  # type: ignore[no-untyped-def]
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
     SQLModel.metadata.create_all(engine)
     yield engine
     engine.dispose()
