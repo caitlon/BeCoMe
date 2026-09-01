@@ -412,6 +412,14 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
+      # psycopg2 ships no wheels by design and builds from source, which needs pg_config
+      # and a compiler. A GitHub runner has both preinstalled; the Playwright image does
+      # not, so every shard failed on `uv sync` until this went in.
+      - name: Install build dependencies for psycopg2
+        run: |
+          apt-get update -qq
+          apt-get install -y --no-install-recommends libpq-dev gcc
+
       - name: Set up uv
         uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
