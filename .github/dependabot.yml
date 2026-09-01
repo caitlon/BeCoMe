@@ -27,6 +27,15 @@ updates:
     labels:
       - "dependencies"
       - "area:frontend"
+    # happy-dom 20.12.0 made Animation.cancel() reject the animation's finished promise
+    # with an AbortError, which is what the Web Animations spec asks for. framer-motion
+    # stops animations on unmount and does not catch it, so a full vitest run ends with
+    # a few hundred unhandled rejections and a non-zero exit while every test passes.
+    # Narrow on purpose: 20.13 and later are still offered, and if the interaction is
+    # fixed by then the bump simply lands. Seen on PR #364.
+    ignore:
+      - dependency-name: "happy-dom"
+        versions: ["20.12.x"]
     groups:
       npm-minor-patch:
         patterns:
