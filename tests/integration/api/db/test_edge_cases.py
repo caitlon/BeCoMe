@@ -3,6 +3,9 @@
 import time
 from uuid import UUID
 
+import pytest
+from sqlalchemy.exc import IntegrityError
+
 from api.db.models import (
     ExpertOpinion,
     Project,
@@ -298,15 +301,11 @@ class TestDatetimeEdgeCases:
 class TestUuidEdgeCases:
     """Tests for UUID field edge cases."""
 
-    def test_nonexistent_uuid_accepted_in_sqlite(self, session):
+    def test_membership_with_a_nonexistent_user_is_rejected(self, session):
         """
-        GIVEN a membership with a non-existent user_id UUID
-        WHEN saved in SQLite (FK constraints not enforced by default)
-        THEN insert succeeds but represents orphaned data
-
-        Note: SQLite does not enforce FK constraints by default.
-        In production (PostgreSQL), this would raise IntegrityError.
-        This test documents the SQLite test environment behavior.
+        GIVEN a membership pointing at a user_id that is not in the users table
+        WHEN it is saved
+        THEN the foreign key refuses it rather than storing an orphan
         """
         # GIVEN
         admin = User(
@@ -322,17 +321,11 @@ class TestUuidEdgeCases:
         session.add(project)
         session.commit()
 
-        # Non-existent UUID (not nil, just doesn't exist in users table)
+        # Not the nil UUID, just one that no user has
         fake_uuid = UUID("12345678-1234-1234-1234-123456789012")
 
-        # WHEN: SQLite allows this (no FK enforcement by default)
-        membership = ProjectMember(
-            project_id=project.id,
-            user_id=fake_uuid,
-        )
-        session.add(membership)
-        session.commit()
-
-        # THEN: membership is saved (orphaned reference)
-        session.refresh(membership)
-        assert membership.user_id == fake_uuid
+        # WHEN/THEN
+        session.add(ProjectMember(project_id=project.id, user_id=fake_uuid))
+        with pytest.raises(IntegrityError):
+            session.commit()
+        session.rollback()
