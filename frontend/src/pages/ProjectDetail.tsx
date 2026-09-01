@@ -327,24 +327,28 @@ const ProjectDetail = () => {
                     never fire and the explanation would never appear. */}
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    {/* Focusable only while disabled: a disabled button drops out of the
-                        tab order, which would leave the explanation reachable by mouse
-                        alone. On an ordinary project the span adds no tab stop. */}
-                    <span
-                      className={project.is_example ? "cursor-not-allowed" : undefined}
-                      tabIndex={project.is_example ? 0 : undefined}
+                {/* aria-disabled rather than disabled: a disabled button leaves the tab
+                order and stops emitting pointer events, which would put the
+                explanation out of reach of both the keyboard and the tooltip. The
+                button stays focusable and the click is refused instead. */}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className={
+                        project.is_example
+                          ? "gap-2 opacity-50 cursor-not-allowed"
+                          : "gap-2"
+                      }
+                      aria-disabled={project.is_example || undefined}
+                      onClick={() => {
+                        if (!project.is_example) setInviteModalOpen(true);
+                      }}
                     >
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="gap-2"
-                        disabled={project.is_example}
-                        onClick={() => setInviteModalOpen(true)}
-                      >
-                        <UserPlus className="h-4 w-4" />
-                        {t("detail.inviteExperts")}
-                      </Button>
-                    </span>
+                      <UserPlus className="h-4 w-4" />
+                      {t("detail.inviteExperts")}
+                    </Button>
                   </TooltipTrigger>
                   {project.is_example && (
                     <TooltipContent>{t("detail.inviteDisabledOnExample")}</TooltipContent>
