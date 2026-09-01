@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel
 
 from api.schemas.calculation import FuzzyNumberOutput
+from api.services.likert_verdict import derive_verdict
 from api.utils.photo_links import build_photo_url
 from src.models.fuzzy_number import triangular_centroid
 
@@ -84,12 +85,22 @@ class ExportResult(BaseModel):
     calculated_at: datetime
 
     @classmethod
-    def from_model(cls, result: "CalculationResult") -> "ExportResult":
+    def from_model(cls, project: "Project", result: "CalculationResult") -> "ExportResult":
         """Build the result section from a calculation result model.
 
+        Takes the project as well because the agreement verdict is read off the scale at
+        export time rather than stored, so it cannot disagree with the project it belongs to.
+
+        :param project: Project the result belongs to.
         :param result: CalculationResult database model.
         :return: ExportResult with grouped fuzzy components.
         """
+        verdict = derive_verdict(
+            project,
+            result.best_compromise_lower,
+            result.best_compromise_peak,
+            result.best_compromise_upper,
+        )
         return cls(
             best_compromise=FuzzyNumberOutput.from_bounds(
                 result.best_compromise_lower,
@@ -108,8 +119,8 @@ class ExportResult(BaseModel):
             ),
             max_error=result.max_error,
             num_experts=result.num_experts,
-            likert_value=result.likert_value,
-            likert_decision=result.likert_decision,
+            likert_value=verdict.value if verdict else None,
+            likert_decision=verdict.decision if verdict else None,
             calculated_at=result.calculated_at,
         )
 
@@ -148,7 +159,7 @@ class ExportOwnedProject(BaseModel):
             scale_max=project.scale_max,
             scale_unit=project.scale_unit,
             created_at=project.created_at,
-            result=ExportResult.from_model(result) if result else None,
+            result=ExportResult.from_model(project, result) if result else None,
         )
 
 

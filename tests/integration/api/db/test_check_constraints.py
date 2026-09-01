@@ -153,19 +153,3 @@ class TestCheckConstraints:
         session.add(_make_calc(project.id, median_lower=5.0))
         with pytest.raises(IntegrityError):
             session.commit()
-
-    @pytest.mark.parametrize("value", [150, -1])
-    def test_calculation_likert_value_out_of_range_rejected(self, session, value):
-        """
-        GIVEN a result with likert_value outside 0..100 (either bound)
-        WHEN it is committed
-        THEN the database rejects it with IntegrityError
-        """
-        # GIVEN
-        user = _make_user(session)
-        project = _make_project(session, user)
-
-        # WHEN/THEN
-        session.add(_make_calc(project.id, likert_value=value))
-        with pytest.raises(IntegrityError):
-            session.commit()
