@@ -167,7 +167,10 @@ filterwarnings = [
 ]
 
 [tool.coverage.run]
-data_file = ".coverage"
+# Out of the repository root: the root is the first thing a newcomer reads, and a
+# machine-written data file competes there with the files that actually explain the
+# project. coverage.py creates the parent directory itself, verified 02.09.
+data_file = ".cache/coverage/.coverage"
 
 [tool.mutmut]
 paths_to_mutate = "src/"
