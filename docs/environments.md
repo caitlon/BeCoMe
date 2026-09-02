@@ -8,7 +8,7 @@ Settings read `APP_ENV` from the process environment (shell, Docker, Railway, CI
 
 | Profile | `APP_ENV` | Where it runs | Database | Debug | Rate limiting |
 |---------|-----------|---------------|----------|-------|---------------|
-| dev | unset or `dev` | Local machine and the Railway dev service | SQLite locally, PostgreSQL on Railway | off (the `.env.dev.example` template turns it on) | on |
+| dev | unset or `dev` | Local machine and the Railway dev service | SQLite locally, PostgreSQL on Railway | off (the `env/.env.dev.example` template turns it on) | on |
 | test | `test` | Staging deploy and the test suite | PostgreSQL (staging), in-memory SQLite (tests) | off | on when deployed, off under pytest |
 | prod | `prod` | Railway production | PostgreSQL | off | on |
 
@@ -25,7 +25,7 @@ This separation is what lets staging be realistic. A staging deploy sets `APP_EN
 
 ### dev
 
-The default. SQLite, debug off, localhost CORS, and no startup guard on a laptop. It needs no configuration. The `.env.dev.example` template turns debug on, and the same profile on Railway is a deploy, so the guard applies to it.
+The default. SQLite, debug off, localhost CORS, and no startup guard on a laptop. It needs no configuration. The `env/.env.dev.example` template turns debug on, and the same profile on Railway is a deploy, so the guard applies to it.
 
 ```bash
 uv run uvicorn api.main:app --reload
@@ -46,7 +46,7 @@ PostgreSQL, debug off. Every deployed service runs a startup guard (`_validate_d
 | `api/config.py` | Defines the `Environment` enum, resolves `APP_ENV`, builds the dotenv list, and runs the prod guard |
 | `.env` | Shared base values, loaded first (gitignored) |
 | `.env.<stage>` | Per-profile overrides, loaded second (gitignored) |
-| `.env.dev.example`, `.env.test.example`, `.env.prod.example` | Tracked templates to copy from |
+| `env/.env.example`, `env/.env.dev.example`, `env/.env.test.example`, `env/.env.prod.example` | Tracked templates to copy from |
 | `frontend/.env.development`, `.env.production`, `.env.test`, `.env.staging` | Vite per-mode values, mainly `VITE_API_URL` |
 
 ## Local use
@@ -54,9 +54,10 @@ PostgreSQL, debug off. Every deployed service runs a startup guard (`_validate_d
 Copy the template for the profile you want, then fill in the real values:
 
 ```bash
-cp .env.dev.example .env.dev      # local development
-cp .env.test.example .env.test    # staging-like run
-cp .env.prod.example .env.prod    # production-like run
+cp env/.env.example .env              # the shared base, always needed
+cp env/.env.dev.example .env.dev      # local development
+cp env/.env.test.example .env.test    # staging-like run
+cp env/.env.prod.example .env.prod    # production-like run
 ```
 
 Pick a profile by exporting `APP_ENV`:
