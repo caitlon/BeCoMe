@@ -11,6 +11,7 @@ description](method-description.md). For the deployed profiles, read
 - [Install](#install)
 - [Dependency groups](#dependency-groups)
 - [Configuration](#configuration)
+- [Build the documentation site](#build-the-documentation-site)
 - [Run it locally](#run-it-locally)
 - [Project structure](#project-structure)
 
@@ -75,6 +76,20 @@ the templates are not, which is why they carry comments rather than values.
 
 `env/.env.prod.example` documents what a deployed service needs. On Railway those are
 service variables, so copy it only for a production-like run on your own machine.
+
+## Build the documentation site
+
+The site is not part of the default install. `mkdocs` lives in the `docs` extra, so it needs
+naming explicitly:
+
+```bash
+uv run --extra docs mkdocs serve   # live preview on http://localhost:8000
+uv run --extra docs mkdocs build --strict   # what CI will run: fails on a broken link
+```
+
+`--strict` is the one that matters. Pages under `docs/dev/` are one include line each, pulling
+in a README that lives next to the code, so a moved file or a link that only resolves inside
+the repository turns into a build failure rather than a broken page.
 
 ## Run it locally
 
