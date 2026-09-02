@@ -1,0 +1,71 @@
+site_name: BeCoMe
+site_description: Group decision-making on fuzzy expert opinions.
+site_url: https://docs.becomify.app/
+repo_url: https://github.com/caitlon/BeCoMe
+repo_name: caitlon/BeCoMe
+
+docs_dir: docs
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - search.suggest
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+markdown_extensions:
+  - admonition
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences
+  # The one extension this site depends on structurally. Pages under `dev/` are a
+  # single include line each, so a README stays where a reader of the repository
+  # finds it and the site shows the same bytes. Copying it here instead would give
+  # the project two sources for one truth, and the older one always wins by
+  # accident. `check_paths` turns a mistyped include into a build failure rather
+  # than a silently empty page.
+  - pymdownx.snippets:
+      base_path: !relative $config_dir
+      check_paths: true
+
+# `security.md` deliberately does not ship. It is an engineering document with an
+# "Accepted risks" section, which is a list of what the project knowingly does not
+# defend against. It stays readable in the repository; linking it from a product
+# site is a different act. A short user-facing security page replaces it later.
+exclude_docs: |
+  security.md
+
+validation:
+  links:
+    absolute_links: warn
+    unrecognized_links: warn
+    anchors: warn
+
+nav:
+  - Home: index.md
+  - The method:
+      - How it works: method-description.md
+      - Diagrams: uml-diagrams/README.md
+  - For developers:
+      - Setup: development.md
+      - Core library: dev/core.md
+      - API: dev/api.md
+      - Database: dev/database.md
+      - Frontend: dev/frontend.md
+      - Testing: dev/testing.md
+      - Examples: dev/examples.md
+      - Environments: environments.md
+      - Quality report: quality-report.md
