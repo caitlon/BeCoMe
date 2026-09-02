@@ -53,4 +53,4 @@ Requires `plantuml` CLI installed locally (`brew install plantuml`).
 ## Related
 
 - [Method description](../method-description.md): mathematical formulas
-- [Source code](../../src/README.md): implementation details
+- [Source code](https://docs.becomify.app/dev/core/): implementation details

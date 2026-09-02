@@ -47,7 +47,7 @@ On SQLite (local development and the test suite), the FastAPI lifespan hook call
 `create_db_and_tables()` at startup. Alembic owns the deployed PostgreSQL schemas
 instead: the migrations live in `migrations/` and run before each Railway deploy, and
 `create_db_and_tables()` returns without doing anything there. For how schema management
-works, see [docs/environments.md](../../docs/environments.md).
+works, see [docs/environments.md](https://docs.becomify.app/environments/).
 
 ### Session dependency
 
