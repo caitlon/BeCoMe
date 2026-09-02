@@ -77,6 +77,32 @@ jobs:
       - name: Scan for secrets (detect-secrets)
         run: uv run detect-secrets-hook --baseline .secrets.baseline $(git ls-files -- ':!:migrations' ':!:frontend/src/i18n' ':!:uv.lock' ':!:frontend/package-lock.json')
 
+  # The site's own gate. Without it nothing exercises `--strict`, so a contributor
+  # editing a README on GitHub and writing an ordinary relative link would learn
+  # about it only when the link reached the published site broken. The build also
+  # catches a mistyped `--8<--` include, which `check_paths: true` turns into a
+  # failure instead of a silently empty page.
+  docs-build:
+    name: Docs Site
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.13.7
+
+      - name: Install documentation dependencies
+        run: uv sync --locked --extra docs
+
+      - name: Build the site strictly
+        run: uv run mkdocs build --strict
+
   lint-frontend:
     name: Lint (frontend)
     runs-on: ubuntu-24.04
