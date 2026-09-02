@@ -25,7 +25,9 @@ This separation is what lets staging be realistic. A staging deploy sets `APP_EN
 
 ### dev
 
-The default. SQLite, debug off, localhost CORS, and no startup guard on a laptop. It needs no configuration. The `env/.env.dev.example` template turns debug on, and the same profile on Railway is a deploy, so the guard applies to it.
+The default. SQLite, debug off, localhost CORS, and no startup guard on a laptop. It needs no
+profile file of its own, but it does need the base `.env`: `SECRET_KEY` has no default and the
+application refuses to start without it. The `env/.env.dev.example` template turns debug on, and the same profile on Railway is a deploy, so the guard applies to it.
 
 ```bash
 uv run uvicorn api.main:app --reload
@@ -140,7 +142,8 @@ All three environments run entirely on Railway, each with its own isolated Postg
 
 - **prod** is live: https://www.becomify.app (frontend) and https://api.becomify.app (API), `APP_ENV=prod`. Database is **Railway Postgres** (`prod-db`). Profile photos live in a **Railway Storage Bucket** (`prod-photos`) served through the API photo proxy.
 - **test / staging** is live from `staging`: https://harbor.becomify.app (frontend) and https://api-harbor.becomify.app (API), on its own Railway Postgres (`test-db`) and bucket (`test-photos`), `APP_ENV=test`.
-- **dev** deploys from `develop`: https://atelier.becomify.app (frontend) and https://api-atelier.becomify.app (API), on its own Railway Postgres (`dev-db`) and bucket (`dev-photos`). It also runs locally with no setup, since dev is the default profile.
+- **dev** deploys from `develop`: https://atelier.becomify.app (frontend) and https://api-atelier.becomify.app (API), on its own Railway Postgres (`dev-db`) and bucket (`dev-photos`). It also runs locally without selecting a profile, since dev is the default, though the base `.env`
+with `SECRET_KEY` is still required.
 
 Dev and staging moved off their generated `*.up.railway.app` hosts on 2026-07-31. They had to. `up.railway.app` is on the Public Suffix List, so a frontend and an API on two of those hosts count as different sites. The browser never sent the `SameSite=Strict` session cookies between them. Login answered `200` and the next request answered `401`, which looked like a broken session rather than a domain-topology problem. Production was never affected, since `www.becomify.app` and `api.becomify.app` share one registrable domain. The names avoid `dev` and `staging` so guessing does not find the environments. Certificate Transparency logs publish the certificates anyway, so that is a speed bump rather than access control. Adding a domain, the `_railway-verify` TXT record a proxied CNAME needs, and the cutover order are covered by the `cloudflare-operations` skill.
 
