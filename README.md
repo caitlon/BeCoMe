@@ -64,7 +64,7 @@ uv run python -m examples.analyze_budget_case
 
 I. Vrana, J. Tyrychtr, and M. Pelikán, of the Faculty of Economics and Management at the Czech University of Life Sciences Prague, published BeCoMe in *Environmental Modelling & Software*. Ekaterina Kuzmina wrote this independent implementation of that paper at the same faculty. A web application wraps it, so that people who do not write code can run a panel.
 
-The [method description](docs/method-description.md) works through the mathematics step by step, with the formulas and a complete example.
+The [method description](https://docs.becomify.app/method-description/) works through the mathematics step by step, with the formulas and a complete example.
 
 ## Project status
 
@@ -74,17 +74,17 @@ This is an MVP: a working proof of concept rather than a finished product. The t
 
 | Document | What it covers |
 |----------|----------------|
-| [Development setup](docs/development.md) | Requirements, install, dependency groups, project structure |
-| [Method description](docs/method-description.md) | The mathematics, with worked examples |
-| [Core library](src/README.md) | Models, calculators, interpreters, design patterns |
-| [REST API](api/README.md) | Endpoints, auth flow, configuration, observability |
-| [Frontend](frontend/README.md) | React app, environment variables, Docker |
-| [Environments](docs/environments.md) | The dev, test, and prod profiles, and Railway deployment |
-| [Security](docs/security.md) | Authentication, tenant isolation, GDPR, database posture |
-| [Quality report](docs/quality-report.md) | Coverage, mutation testing, performance |
-| [Tests](tests/README.md) | Suite layout and how to run it |
-| [Examples](examples/README.md) | The three case studies and custom data |
-| [UML diagrams](docs/uml-diagrams/README.md) | Class, sequence, and activity diagrams |
+| [Development setup](https://docs.becomify.app/development/) | Requirements, install, dependency groups, project structure |
+| [Method description](https://docs.becomify.app/method-description/) | The mathematics, with worked examples |
+| [Core library](https://docs.becomify.app/dev/core/) | Models, calculators, interpreters, design patterns |
+| [REST API](https://docs.becomify.app/dev/api/) | Endpoints, auth flow, configuration, observability |
+| [Frontend](https://docs.becomify.app/dev/frontend/) | React app, environment variables, Docker |
+| [Environments](https://docs.becomify.app/environments/) | The dev, test, and prod profiles, and Railway deployment |
+| [Security](https://github.com/caitlon/BeCoMe/blob/main/docs/security.md) | Authentication, tenant isolation, GDPR, database posture |
+| [Quality report](https://docs.becomify.app/quality-report/) | Coverage, mutation testing, performance |
+| [Tests](https://docs.becomify.app/dev/testing/) | Suite layout and how to run it |
+| [Examples](https://docs.becomify.app/dev/examples/) | The three case studies and custom data |
+| [UML diagrams](https://docs.becomify.app/uml-diagrams/) | Class, sequence, and activity diagrams |
 
 The stack is FastAPI and SQLModel on the backend, React with TypeScript and Tailwind on the frontend, PostgreSQL in the deployed environments and SQLite locally. mypy runs in strict mode, and the core library sits at 100% test coverage.
 
@@ -102,8 +102,8 @@ Vrana, I., Tyrychtr, J., & Pelikán, M. (2021). BeCoMe: Easy-to-implement optimi
 
 Foundational background: fuzzy logic (Zadeh 1965, and Bellman & Zadeh 1970).
 
-All case study data is in `examples/data/`, with format specifications and provenance in [examples/data/README.md](examples/data/README.md).
+All case study data is in `examples/data/`, with format specifications and provenance in [examples/data/README.md](https://github.com/caitlon/BeCoMe/blob/main/examples/data/README.md).
 
 Thanks to the method's authors.
 
-A longer write-up of this implementation is in [thesis/main.pdf](thesis/main.pdf).
+A longer write-up of this implementation is in [thesis/main.pdf](https://github.com/caitlon/BeCoMe/blob/main/thesis/main.pdf).

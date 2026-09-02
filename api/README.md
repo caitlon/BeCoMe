@@ -254,7 +254,7 @@ Environment variables (a `.env` file works too):
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `APP_ENV` | `dev` | Deployment profile: `dev`, `test`, or `prod`. Selects the `.env.<APP_ENV>` overlay; deployed profiles reject a weak secret, SQLite, a missing Redis, or localhost CORS at startup. See [docs/environments.md](../docs/environments.md). |
+| `APP_ENV` | `dev` | Deployment profile: `dev`, `test`, or `prod`. Selects the `.env.<APP_ENV>` overlay; deployed profiles reject a weak secret, SQLite, a missing Redis, or localhost CORS at startup. See [docs/environments.md](https://docs.becomify.app/environments/). |
 | `DATABASE_URL` | `sqlite:///./become.db` (fallback; local development uses the Docker PostgreSQL) | Database connection string. On deployed environments this is the least-privilege `become_app` role. |
 | `MIGRATION_DATABASE_URL` | *required when deployed* | Privileged connection used only by Alembic migrations (DDL); falls back to `DATABASE_URL` locally, but startup fails without it on a deployed service so the least-privilege split is never silently lost. |
 | `SECRET_KEY` | *required* | JWT signing key (generate with `openssl rand -hex 32`) |
@@ -340,7 +340,7 @@ uv run pytest tests/unit/api/ tests/integration/api/ --cov=api --cov-report=term
 
 ## Related documentation
 
-- [Main README](../README.md): project overview
-- [docs/security.md](../docs/security.md): application and database security posture
-- [docs/environments.md](../docs/environments.md): the dev, test, and prod profiles, Railway
+- [Main README](https://docs.becomify.app/): project overview
+- [docs/security.md](https://github.com/caitlon/BeCoMe/blob/main/docs/security.md): application and database security posture
+- [docs/environments.md](https://docs.becomify.app/environments/): the dev, test, and prod profiles, Railway
   deployment, and database topology
