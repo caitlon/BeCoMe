@@ -26,6 +26,7 @@ ENV/
 .mypy_cache/
 .ruff_cache/
 .coverage
+.cache/
 htmlcov/
 .tox/
 
@@ -37,7 +38,7 @@ htmlcov/
 # Environment files
 .env
 .env.*
-!.env.example
+!env/.env.example
 
 # Docker (don't copy Docker files into image)
 docker/

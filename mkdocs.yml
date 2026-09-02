@@ -6,6 +6,19 @@ repo_name: caitlon/BeCoMe
 
 docs_dir: docs
 
+# `mkdocs serve` watches only `docs_dir` and this file, so without these the six
+# pages under `docs/dev/` would never rebuild while their real source is edited.
+# Their own comment tells the reader to edit the README instead of the stub, and
+# a live preview that ignores exactly that edit makes the instruction read false.
+watch:
+  - README.md
+  - api/README.md
+  - api/db/README.md
+  - src/README.md
+  - frontend/README.md
+  - tests/README.md
+  - examples/README.md
+
 theme:
   name: material
   features:
