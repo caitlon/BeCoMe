@@ -93,7 +93,7 @@ Run one case study without the web app:
 uv run python -m examples.analyze_budget_case
 ```
 
-The dev profile is the default and needs no configuration. Profiles, Railway variables, and
+The dev profile is the default and needs no profile file of its own, only the base `.env`. Profiles, Railway variables, and
 deployment live in [environments](environments.md).
 
 ## Project structure
