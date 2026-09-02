@@ -62,20 +62,16 @@ pip install -e ".[dev,viz,notebook]"
 
 ## Configuration
 
-Every environment variable the application reads has a documented template under `env/`.
-Copy the one you need to the repository root, where the application looks for it:
+Templates for every environment variable live under `env/`. Copy the base to the repository
+root before the first run, because `SECRET_KEY` has no default and the application refuses to
+start without it:
 
 ```bash
-cp env/.env.example .env          # the shared base, always needed
-cp env/.env.dev.example .env.dev  # per-profile overrides, loaded after the base
+cp env/.env.example .env
 ```
 
-`.env` loads first and `.env.<APP_ENV>` overrides it, so a profile file carries only what
-differs. `APP_ENV` selects the profile and defaults to `dev`. The copies are gitignored;
-the templates are not, which is why they carry comments rather than values.
-
-`env/.env.prod.example` documents what a deployed service needs. On Railway those are
-service variables, so copy it only for a production-like run on your own machine.
+Profiles, what each one changes, and the per-profile templates are in
+[environments](environments.md).
 
 ## Build the documentation site
 
