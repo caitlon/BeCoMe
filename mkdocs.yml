@@ -60,6 +60,7 @@ markdown_extensions:
 # site is a different act. A short user-facing security page replaces it later.
 exclude_docs: |
   security.md
+  uml-diagrams/generate_diagrams.py
 
 validation:
   links:
