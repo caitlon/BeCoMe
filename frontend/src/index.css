@@ -98,9 +98,6 @@
   --color-sidebar-border: hsl(var(--sidebar-border));
   --color-sidebar-ring: hsl(var(--sidebar-ring));
 
-  --spacing-18: 4.5rem;
-  --spacing-88: 22rem;
-
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
   --radius-sm: calc(var(--radius) - 4px);
@@ -113,8 +110,6 @@
   --animate-slide-in-right: slide-in-right 0.3s ease-out;
   --animate-pulse-subtle: pulse-subtle 2s ease-in-out infinite;
 
-  --transition-duration-150: 150ms;
-  --transition-duration-200: 200ms;
 
   @keyframes accordion-down {
     from {
@@ -371,10 +366,6 @@
   /* Typography Classes */
   .font-display {
     font-family: 'Playfair Display', serif;
-  }
-  
-  .font-mono-numbers {
-    font-family: 'JetBrains Mono', monospace;
   }
   
   /*
