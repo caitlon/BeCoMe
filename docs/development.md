@@ -10,6 +10,7 @@ description](method-description.md). For the deployed profiles, read
 - [Requirements](#requirements)
 - [Install](#install)
 - [Dependency groups](#dependency-groups)
+- [Configuration](#configuration)
 - [Run it locally](#run-it-locally)
 - [Project structure](#project-structure)
 
@@ -56,6 +57,24 @@ pip install -e ".[dev,viz,notebook]"
 | `dev` | pytest, hypothesis, mypy, ruff, bandit, detect-secrets, pre-commit | Development, testing, security |
 | `viz` | numpy, pandas, matplotlib, plotly, seaborn | Visualization and data analysis |
 | `notebook` | jupyter, ipykernel, ipywidgets | Interactive notebooks |
+| `docs` | mkdocs, mkdocs-material | Building the documentation site |
+
+## Configuration
+
+Every environment variable the application reads has a documented template under `env/`.
+Copy the one you need to the repository root, where the application looks for it:
+
+```bash
+cp env/.env.example .env          # the shared base, always needed
+cp env/.env.dev.example .env.dev  # per-profile overrides, loaded after the base
+```
+
+`.env` loads first and `.env.<APP_ENV>` overrides it, so a profile file carries only what
+differs. `APP_ENV` selects the profile and defaults to `dev`. The copies are gitignored;
+the templates are not, which is why they carry comments rather than values.
+
+`env/.env.prod.example` documents what a deployed service needs. On Railway those are
+service variables, so copy it only for a production-like run on your own machine.
 
 ## Run it locally
 

@@ -19,6 +19,7 @@ dist/
 .pytest_cache/
 .hypothesis/
 .coverage
+.cache/
 htmlcov/
 coverage.xml
 
