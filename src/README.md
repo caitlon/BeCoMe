@@ -235,11 +235,11 @@ uv run pytest tests/unit/
 uv run pytest --cov=src tests/
 ```
 
-See [../tests/README.md](https://docs.becomify.app/dev/testing/) for details.
+See [Tests](https://docs.becomify.app/dev/testing/) for details.
 
 ## Usage with examples
 
-The `examples/` directory shows how to use this code with real case studies. Each example loads data, calls `BeCoMeCalculator`, and displays step-by-step results. See [../examples/README.md](https://docs.becomify.app/dev/examples/).
+The `examples/` directory shows how to use this code with real case studies. Each example loads data, calls `BeCoMeCalculator`, and displays step-by-step results. See [Examples](https://docs.becomify.app/dev/examples/).
 
 ## Related documentation
 

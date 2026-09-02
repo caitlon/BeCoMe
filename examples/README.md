@@ -113,7 +113,7 @@ print(f"Max Error: {result.max_error}")
 
 ## Understanding the output
 
-Each script displays four calculation steps: arithmetic mean (Γ), median (Ω), best compromise (ΓΩMean), and maximum error (Δmax). The output shows formulas, intermediate values, and sorted expert opinions at each stage. For the mathematical foundation behind these calculations, see [docs/method-description.md](https://docs.becomify.app/method-description/).
+Each script displays four calculation steps: arithmetic mean (Γ), median (Ω), best compromise (ΓΩMean), and maximum error (Δmax). The output shows formulas, intermediate values, and sorted expert opinions at each stage. For the mathematical foundation behind these calculations, see [Method description](https://docs.becomify.app/method-description/).
 
 ## Related documentation
 

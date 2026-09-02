@@ -143,5 +143,5 @@ Each test runs in isolation: no shared state, fresh fixtures, and deterministic 
 ## Related documentation
 
 - [Main README](https://docs.becomify.app/): project overview
-- [src/README.md](https://docs.becomify.app/dev/core/): implementation details
+- [Core library](https://docs.becomify.app/dev/core/): implementation details
 - [Method description](https://docs.becomify.app/method-description/): mathematical foundation
