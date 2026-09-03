@@ -21,14 +21,17 @@
  *   border      0 0%  90%     #e6e6e6      0 0% 17%   #2b2b2b
  */
 
-/* Playfair Display is the display face in `--font-display` and Material has no
- * setting for a third font, so it is fetched here. Inter and JetBrains Mono come
- * from `theme.font` in mkdocs.yml. The application self-hosts all three through
- * fontsource; this site does not, which is a deliberate difference and worth
- * knowing: it sends visitor addresses to Google, on a project that otherwise
- * takes data handling seriously. Acceptable for documentation, and reversible by
- * committing the woff2 files here instead. */
-@import url("https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600&display=swap");
+/* One typeface, and it is the application's: Inter for everything, JetBrains Mono
+ * for code, both set in `theme.font`. The application also has a display face,
+ * Playfair Display in `--font-display`, and it was tried here and dropped. It
+ * works on a product page that has a handful of headings; a documentation page is
+ * mostly headings, and setting a serif against Inter that many times per screen
+ * reads as two designs arguing rather than one.
+ *
+ * Both faces come from Google Fonts, while the application self-hosts through
+ * fontsource. That is a real difference and worth knowing: it sends visitor
+ * addresses to Google, on a project that otherwise takes data handling seriously.
+ * Acceptable for documentation, and reversible by committing the woff2 files. */
 
 [data-md-color-scheme="default"] {
   --md-primary-fg-color: #000000;
@@ -76,15 +79,14 @@
   --md-footer-bg-color--dark: #000000;
 }
 
-/* Headings are the serif face. This is the single change that makes the site read
- * as the same product rather than as Material with the colour drained out. */
+/* Inter carries headings too, so the only thing separating them from body text is
+ * weight and size. Material's default heading weight is light enough to disappear
+ * at h3 and below once the serif is gone. */
 .md-typeset h1,
 .md-typeset h2,
 .md-typeset h3,
-.md-typeset h4,
-.md-header__topic:first-child .md-ellipsis {
-  font-family: "Playfair Display", Georgia, serif;
-  font-weight: 400;
+.md-typeset h4 {
+  font-weight: 600;
   letter-spacing: -0.01em;
 }
 

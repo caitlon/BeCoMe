@@ -29,9 +29,9 @@ theme:
     - navigation.top
     - content.code.copy
     - search.suggest
-  # Inter and JetBrains Mono are `--font-sans` and `--font-mono` in
-  # `frontend/src/index.css`. Playfair Display, the third face, has no setting
-  # here and is fetched from `docs/stylesheets/become.css` instead.
+  # `--font-sans` and `--font-mono` from `frontend/src/index.css`. The application
+  # has a third face, Playfair Display, for headings; it is deliberately not used
+  # here and `docs/stylesheets/become.css` says why.
   font:
     text: Inter
     code: JetBrains Mono
