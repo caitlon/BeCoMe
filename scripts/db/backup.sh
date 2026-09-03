@@ -10,8 +10,10 @@
 #   Output: backups/<env>-<UTC-timestamp>.dump  (custom format)
 #   Restore: pg_restore --no-owner --no-privileges -d <target-url> <dump>
 #
-# Requires: the Railway CLI logged in and linked (or RAILWAY_PROJECT_ID set), plus jq
-# and a current pg_dump (>= the server; `brew install libpq` provides one).
+# Requires: the Railway CLI logged in and linked (or RAILWAY_PROJECT_ID set), plus jq,
+# and a way to run pg_dump at least as new as the server. A local client is used when it
+# is new enough; otherwise a `postgres:<server major>` container is, so docker alone is
+# sufficient and no formula has to be pinned per machine.
 set -uo pipefail
 
 ENV_ARG="${1:-prod}"
@@ -85,11 +87,51 @@ URL="postgresql://postgres@$DOMAIN:$PORT/$DBN?sslmode=require&connect_timeout=10
 
 mkdir -p backups
 OUT="backups/${ENV_ARG}-$(date -u +%Y%m%dT%H%M%SZ).dump"
+
+# A dump that failed must not leave a file behind. `pg_dump -f` creates the target
+# before it does anything else, so a failed run used to leave a 0-byte `.dump` with a
+# correct-looking name sitting next to the real ones. That is worse than no backup:
+# it is the thing you reach for on the day you need it. Measured 2026-09-03, when a
+# version mismatch produced exactly that file.
+discard_output() { [ -f "$OUT" ] && [ ! -s "$OUT" ] && rm -f "$OUT"; }
+
 ok=""
 for i in $(seq 1 6); do
   if PGPASSWORD="$PW" "$PG_DUMP" "$URL" --no-owner --no-privileges -Fc -f "$OUT" 2>"$ERRFILE"; then ok=1; break; fi
+  # Only a warming proxy is worth retrying. A version mismatch is not going to fix
+  # itself in five seconds, and the retry loop hid it behind six identical lines.
+  if grep -q "server version mismatch" "$ERRFILE" 2>/dev/null; then break; fi
   echo "  (proxy warming up, retry $i)..."; sleep 5
 done
-[ -z "$ok" ] && { echo "pg_dump failed:"; cat "$ERRFILE"; exit 1; }
+
+# `pg_dump` refuses to dump a server newer than itself, and the client here comes from
+# Homebrew while the server is whatever Railway runs. Rather than pinning a formula on
+# every machine, fall back to a container of the exact server major. The server version
+# is read out of the refusal itself, so nothing has to be configured or guessed.
+if [ -z "$ok" ] && grep -q "server version mismatch" "$ERRFILE" 2>/dev/null; then
+  SRV_MAJOR=$(sed -n 's/.*server version: \([0-9][0-9]*\).*/\1/p' "$ERRFILE" | head -1)
+  if [ -n "$SRV_MAJOR" ] && command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+    echo "  local pg_dump is older than the server; using postgres:$SRV_MAJOR in docker"
+    discard_output
+    if docker run --rm -i -e PGPASSWORD="$PW" "postgres:$SRV_MAJOR" \
+         pg_dump "$URL" --no-owner --no-privileges -Fc > "$OUT" 2>"$ERRFILE"; then
+      ok=1
+    fi
+  else
+    echo "  local pg_dump is older than the server and docker is unavailable."
+    echo "  install a matching client, e.g. brew install postgresql@${SRV_MAJOR:-18}"
+  fi
+fi
+
+if [ -z "$ok" ]; then
+  echo "pg_dump failed:"; cat "$ERRFILE"; discard_output; exit 1
+fi
+# An empty dump is a failure that reported success, and `pg_dump` has been seen to
+# exit 0 after writing nothing. This checks for emptiness only, deliberately: any
+# threshold above zero would be a guess about how small a legitimate database can be,
+# and a wrong guess here throws away a real backup.
+if [ ! -s "$OUT" ]; then
+  echo "pg_dump wrote nothing to $OUT"; discard_output; exit 1
+fi
 echo "OK: $OUT ($(du -h "$OUT" | cut -f1))"
 echo "restore: pg_restore --no-owner --no-privileges -d <target-url> $OUT"
