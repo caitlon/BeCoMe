@@ -107,3 +107,6 @@ logs.zip
 /backups/
 # MkDocs build output
 site/
+
+# Local state written by `wrangler pages deploy`; never part of the site.
+.wrangler/
