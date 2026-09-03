@@ -105,5 +105,3 @@ Foundational background: fuzzy logic (Zadeh 1965, and Bellman & Zadeh 1970).
 All case study data is in `examples/data/`, with format specifications and provenance in [examples/data/README.md](https://github.com/caitlon/BeCoMe/blob/main/examples/data/README.md).
 
 Thanks to the method's authors.
-
-A longer write-up of this implementation is in [thesis/main.pdf](https://github.com/caitlon/BeCoMe/blob/main/thesis/main.pdf).
