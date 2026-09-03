@@ -21,9 +21,6 @@ watch:
 
 theme:
   name: material
-  # One template lives here, `main.html`, and it exists to open the site in the
-  # reader's own light or dark setting. See the comment inside it.
-  custom_dir: overrides
   features:
     - navigation.sections
     - navigation.top
@@ -36,12 +33,14 @@ theme:
     text: Inter
     code: JetBrains Mono
   # Two entries, so the toggle is the application's: sun or moon, nothing else.
-  # Material's own way to follow the operating system needs a THIRD position on
-  # that toggle, carrying a brightness-auto icon, and left to itself a two-entry
-  # palette consults nobody: Material 9.7.7 renders both radios unchecked and the
-  # page keeps whatever scheme was built into `<body>`, so every visitor gets the
-  # same one whatever their machine says. `overrides/main.html` supplies the
-  # missing half, and the comment there explains how.
+  # A first visit still opens in the reader's own setting, because Material's
+  # inline snippet resolves `media` itself before the page paints. Measured on a
+  # deployed build with storage cleared: a dark machine gets `slate`, a light one
+  # gets `default`. Worth stating because it is easy to conclude otherwise, and I
+  # did: testing without clearing `localStorage` shows the previously stored
+  # choice being restored, which looks exactly like a palette that ignores the
+  # system. The third `(prefers-color-scheme)` entry Material documents adds a
+  # visible auto position to the toggle and is not needed for this.
   #
   # The icon names the CURRENT theme rather than the one a click would bring,
   # which is the application's convention: `ThemeToggle.tsx` shows the sun in

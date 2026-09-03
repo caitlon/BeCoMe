@@ -19,6 +19,12 @@
  *   secondary   0 0%  96%     #f5f5f5      0 0% 15%   #262626
  *   muted-fg    0 0%  35%     #595959      0 0% 63%   #a1a1a1
  *   border      0 0%  90%     #e6e6e6      0 0% 17%   #2b2b2b
+ *
+ * The last two rows are reference only: nothing below assigns them. Material
+ * derives its own muted text and borders by alpha-blending the foreground, and
+ * once `--md-hue` is zeroed those land close enough that replacing them would be
+ * churn. They are written down because the next person to extend this file will
+ * want the numbers, and converting them again by hand is how the two sides drift.
  */
 
 /* One typeface, and it is the application's: Inter for everything, JetBrains Mono
