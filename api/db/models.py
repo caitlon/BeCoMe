@@ -294,10 +294,6 @@ class CalculationResult(SQLModel, table=True):
             name="ck_calculation_results_median_order",
         ),
         CheckConstraint("num_experts > 0", name="ck_calculation_results_num_experts_positive"),
-        CheckConstraint(
-            "likert_value IS NULL OR (likert_value >= 0 AND likert_value <= 100)",
-            name="ck_calculation_results_likert_range",
-        ),
     )
 
     id: UUID = Field(default_factory=uuid4, primary_key=True)
@@ -313,8 +309,6 @@ class CalculationResult(SQLModel, table=True):
     median_upper: float
     max_error: float
     num_experts: int
-    likert_value: int | None = Field(default=None)
-    likert_decision: str | None = Field(default=None, max_length=100)
     calculated_at: datetime = Field(default_factory=utc_now)
 
     project: Project = Relationship(back_populates="result")

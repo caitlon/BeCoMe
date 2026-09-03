@@ -1,0 +1,90 @@
+name: Docs
+
+# Publishes from `main` only, and that is the point rather than an accident: the
+# site describes what is actually deployed, not what has merged into develop and
+# is waiting for a promotion. The cost is accepted and worth stating, because it
+# surprises people: a typo fix in the documentation also waits for a promotion.
+#
+# The pull-request gate lives in ci.yml as the `Docs Site` job, which runs the
+# same `mkdocs build --strict` without any credentials. Two jobs rather than one
+# because they answer different questions: that one asks whether the site still
+# builds, this one puts it online. Keeping them apart also keeps the PR gate free
+# of the deploy token.
+on:
+  push:
+    branches: [main]
+    paths:
+      - docs/**
+      - mkdocs.yml
+      # The pages under docs/dev/ are include lines, so their real sources are
+      # these READMEs. Leave one out and an edit to it would never reach the site.
+      - README.md
+      - api/README.md
+      - api/db/README.md
+      - src/README.md
+      - frontend/README.md
+      - tests/README.md
+      - examples/README.md
+      # The theme and its pins live here; a version bump changes every page.
+      - pyproject.toml
+      - uv.lock
+      - .github/workflows/docs.yml
+
+# A production deploy is never cancelled, so runs queue instead of replacing each
+# other. Cancelling looks harmless and is not: the run reads "cancelled" rather
+# than "failed", nothing is alerted, and the site quietly stays on the previous
+# build. Two promotions landing close together simply publish in order, and the
+# later one wins, which is the outcome anyone would have wanted anyway.
+concurrency:
+  group: docs-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Publish to Cloudflare Pages
+    runs-on: ubuntu-24.04
+    # Read only. This job holds a Cloudflare deploy token, so it gets the smallest
+    # GitHub grant that still works. `deployments: write` would only be needed to
+    # pass `gitHubToken` to the action and have it write a GitHub deployment record,
+    # and the run log already prints where the site landed.
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.13.7
+
+      - name: Install documentation dependencies
+        run: uv sync --locked --extra docs
+
+      # Strict here too. The same build already passed on the pull request, but a
+      # promotion merges several of them at once, and a link can break between two
+      # changes that were each fine alone.
+      - name: Build the site
+        run: uv run mkdocs build --strict
+
+      - name: Publish
+        uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4.0.0
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # Pinned, because the default is the string "4": the action runs
+          # `npm install wrangler@4` on every run and takes whatever 4.x is newest
+          # that morning. Every Python dependency in this repository is pinned with
+          # `==`, and the tool that does the actual publishing should not be the one
+          # exception. This is the version the first deployment was made with.
+          wranglerVersion: "4.128.0"
+          # `--branch` is explicit on purpose. Left off, wrangler infers the branch
+          # from the environment, and an inference that comes back as anything other
+          # than the project's production branch publishes a PREVIEW instead: the run
+          # goes green, a `pages.dev` URL appears in the log, and docs.becomify.app
+          # keeps serving the previous build. A silent no-op is the worst outcome
+          # available here, so the branch is named rather than detected.
+          command: pages deploy site --project-name=becomify-docs --branch=main

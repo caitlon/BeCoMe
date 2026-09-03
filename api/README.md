@@ -205,7 +205,7 @@ returns `422`. Erasure also removes the profile photo blob from object storage.
 | GET | `/api/v1/projects` | List user's projects |
 | POST | `/api/v1/projects` | Create project |
 | GET | `/api/v1/projects/{id}` | Get project details |
-| PATCH | `/api/v1/projects/{id}` | Update project |
+| PATCH | `/api/v1/projects/{id}` | Update project (partial; every field except `description` is non-nullable, so an explicit null is a 422) |
 | DELETE | `/api/v1/projects/{id}` | Delete project |
 | GET | `/api/v1/projects/{id}/members` | List members |
 | DELETE | `/api/v1/projects/{id}/members/{user_id}` | Remove member (discards their opinion and recalculates) |
@@ -254,8 +254,8 @@ Environment variables (a `.env` file works too):
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `APP_ENV` | `dev` | Deployment profile: `dev`, `test`, or `prod`. Selects the `.env.<APP_ENV>` overlay; deployed profiles reject a weak secret, SQLite, a missing Redis, or localhost CORS at startup. See [docs/environments.md](../docs/environments.md). |
-| `DATABASE_URL` | `sqlite:///./become.db` | Database connection string. On deployed environments this is the least-privilege `become_app` role. |
+| `APP_ENV` | `dev` | Deployment profile: `dev`, `test`, or `prod`. Selects the `.env.<APP_ENV>` overlay; deployed profiles reject a weak secret, SQLite, a missing Redis, or localhost CORS at startup. See [Environments](https://docs.becomify.app/environments/). |
+| `DATABASE_URL` | `sqlite:///./become.db` (fallback; local development uses the Docker PostgreSQL) | Database connection string. On deployed environments this is the least-privilege `become_app` role. |
 | `MIGRATION_DATABASE_URL` | *required when deployed* | Privileged connection used only by Alembic migrations (DDL); falls back to `DATABASE_URL` locally, but startup fails without it on a deployed service so the least-privilege split is never silently lost. |
 | `SECRET_KEY` | *required* | JWT signing key (generate with `openssl rand -hex 32`) |
 | `LOG_HASH_KEY` | *optional* | Key for the email tags in security logs; falls back to `SECRET_KEY`. Set it separately to keep tags comparable across a secret rotation. |
@@ -285,8 +285,10 @@ disabled and every other feature keeps working.
 
 **Migrations.** Alembic owns the PostgreSQL schema (`migrations/`), and `alembic upgrade head`
 runs before each Railway deploy. To apply it by hand against one database, run
-`ALEMBIC_DATABASE_URL=<url> uv run alembic upgrade head`. SQLite (local development and the test
-suite) keeps using `create_all`, so it needs no migration step.
+`ALEMBIC_DATABASE_URL=<url> uv run alembic upgrade head`. Local development runs on the same
+engine, the PostgreSQL in `docker/docker-compose.yml` (`docker compose -f docker/docker-compose.yml up -d db`), so a migration is exercised
+before it reaches a deployment rather than after. SQLite still works as a fallback and for the
+test suite, but it reaches the schema through `create_all` and skips migrations entirely.
 
 **Observability.** Every request gets an `X-Request-ID` response header for log correlation,
 either generated or echoed from the client's header. A `ContextFilter` binds that ID and the
@@ -338,7 +340,7 @@ uv run pytest tests/unit/api/ tests/integration/api/ --cov=api --cov-report=term
 
 ## Related documentation
 
-- [Main README](../README.md): project overview
-- [docs/security.md](../docs/security.md): application and database security posture
-- [docs/environments.md](../docs/environments.md): the dev, test, and prod profiles, Railway
+- [Main README](https://docs.becomify.app/): project overview
+- [docs/security.md](https://github.com/caitlon/BeCoMe/blob/main/docs/security.md): application and database security posture
+- [Environments](https://docs.becomify.app/environments/): the dev, test, and prod profiles, Railway
   deployment, and database topology

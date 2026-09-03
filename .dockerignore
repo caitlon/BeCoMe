@@ -26,6 +26,7 @@ ENV/
 .mypy_cache/
 .ruff_cache/
 .coverage
+.cache/
 htmlcov/
 .tox/
 
@@ -36,8 +37,11 @@ htmlcov/
 
 # Environment files
 .env
-.env.*
-!.env.example
+# Docker attaches a bare pattern to the context root and does not recurse into
+# subdirectories the way .gitignore does, so `.env.*` stopped covering the templates
+# the moment they moved into env/. The `**/` form matches at any depth.
+**/.env.*
+!**/.env.example
 
 # Docker (don't copy Docker files into image)
 docker/

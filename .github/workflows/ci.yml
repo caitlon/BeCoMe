@@ -42,7 +42,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           enable-cache: true
 
@@ -76,6 +76,32 @@ jobs:
 
       - name: Scan for secrets (detect-secrets)
         run: uv run detect-secrets-hook --baseline .secrets.baseline $(git ls-files -- ':!:migrations' ':!:frontend/src/i18n' ':!:uv.lock' ':!:frontend/package-lock.json')
+
+  # The site's own gate. Without it nothing exercises `--strict`, so a contributor
+  # editing a README on GitHub and writing an ordinary relative link would learn
+  # about it only when the link reached the published site broken. The build also
+  # catches a mistyped `--8<--` include, which `check_paths: true` turns into a
+  # failure instead of a silently empty page.
+  docs-build:
+    name: Docs Site
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.13.7
+
+      - name: Install documentation dependencies
+        run: uv sync --locked --extra docs
+
+      - name: Build the site strictly
+        run: uv run mkdocs build --strict
 
   lint-frontend:
     name: Lint (frontend)
@@ -132,7 +158,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           enable-cache: true
 
@@ -189,7 +215,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           enable-cache: true
 
@@ -214,8 +240,14 @@ jobs:
           command -v pg_ctl || { echo "::error::pg_ctl not found on PATH; PostgreSQL-gated tests would silently skip"; exit 1; }
           pg_ctl --version
 
+      # --cov-fail-under lives here and not in pyproject's addopts on purpose: there it
+      # would apply to every local run, so `pytest tests/unit/api/services/test_x.py`
+      # would measure a few percent of the project and fail on the threshold rather than
+      # on the tests. Only a full run can be judged against it, and only CI does one.
+      # Set one point under the 99% the suite currently reaches, which locks in the level
+      # without breaking on a single added line.
       - name: Run Python tests with coverage
-        run: uv run pytest tests/unit/ tests/integration/ --cov=src --cov=api --cov-report=term-missing --cov-report=html --cov-report=xml:coverage.xml
+        run: uv run pytest tests/unit/ tests/integration/ --cov=src --cov=api --cov-fail-under=98 --cov-report=term-missing --cov-report=html --cov-report=xml:coverage.xml
 
       - name: Upload Python coverage XML
         if: always()
@@ -291,7 +323,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           enable-cache: true
 
@@ -410,7 +442,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           enable-cache: true
 

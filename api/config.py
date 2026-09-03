@@ -124,7 +124,12 @@ class Settings(BaseSettings):
         default=None, validation_alias="RAILWAY_ENVIRONMENT_NAME"
     )
 
-    # Database
+    # Database. The SQLite fallback is deliberate and is not what local development is
+    # meant to use: it exists so the app boots with nothing installed. The intended local
+    # setup is the PostgreSQL in docker/docker-compose.yml, which env/.env.example points at,
+    # because Alembic targets PostgreSQL and SQLite reaches the schema through create_all
+    # instead. Every deployed environment sets this explicitly, so the default is only
+    # ever seen locally.
     database_url: str = "sqlite:///./become.db"
 
     # Privileged URL used only by Alembic for schema changes (DDL). When unset it

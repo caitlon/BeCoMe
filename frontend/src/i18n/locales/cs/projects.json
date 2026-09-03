@@ -141,7 +141,8 @@
     "exampleBanner": {
       "title": "Toto je ukázkový projekt",
       "body": "Třináct expertů níže pochází z publikované studie protipovodňové ochrany a nejsou to skuteční lidé. Přidejte svůj názor a uvidíte, jak se kompromis posune, nebo projekt smažte, pokud ho nepotřebujete."
-    }
+    },
+    "inviteDisabledOnExample": "Ukázkový projekt už má svých třináct expertů. Pro pozvání dalších lidí si vytvořte vlastní projekt."
   },
   "resultExport": {
     "button": "Export",

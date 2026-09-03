@@ -27,7 +27,7 @@ export function Footer() {
               <span className="sr-only">, {t("a11y.opensInNewTab")}</span>
             </a>
             {": "}
-            {t("footer.implementationThesis")}
+            {t("footer.implementationLine")}
             {", "}
             {t("footer.implementationUniversity")}
           </p>

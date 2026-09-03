@@ -1,5 +1,10 @@
 """Tests for invitation management endpoints (email-based)."""
 
+from uuid import UUID
+
+from sqlmodel import select
+
+from api.db.models import Invitation, Project, ProjectMember
 from tests.integration.api.conftest import auth_header, create_project, register_and_login
 
 
@@ -120,6 +125,37 @@ class TestInviteByEmail:
         # THEN
         assert response.status_code == 404
 
+    def test_invite_into_an_example_project_is_refused(self, client, session):
+        """The example project cannot take a fourteenth expert, and the API says so.
+
+        Asserted through the route rather than the service: a disabled button in the SPA
+        is a suggestion, and the rule has to hold for a plain POST as well.
+        """
+        # GIVEN
+        admin_token = register_and_login(client, "admin@example.com")
+        register_and_login(client, "invitee@example.com")
+        created = create_project(client, admin_token)
+        project = session.get(Project, UUID(created["id"]))
+        assert project is not None
+        project.is_example = True
+        session.add(project)
+        session.commit()
+
+        # WHEN
+        response = client.post(
+            f"/api/v1/projects/{created['id']}/invite",
+            json={"email": "invitee@example.com"},
+            headers=auth_header(admin_token),
+        )
+
+        # THEN
+        assert response.status_code == 409
+        assert "example" in response.json()["detail"].lower()
+        invitations = session.exec(
+            select(Invitation).where(Invitation.project_id == project.id)
+        ).all()
+        assert invitations == []
+
     def test_invite_without_auth(self, client):
         """401 returned when not authenticated."""
         # GIVEN
@@ -213,6 +249,45 @@ class TestAcceptInvitation:
         data = response.json()
         assert data["email"] == "invitee@example.com"
         assert data["role"] == "expert"
+
+    def test_accept_into_an_example_project_is_refused(self, client, session):
+        """An invitation sent before the rule existed still cannot be accepted.
+
+        The flag is set after the invitation row exists, which is the state a real account
+        can be in: it was invited while the button still worked. Acceptance is what writes
+        the membership, so the refusal has to hold at that step and not only at creation.
+        """
+        # GIVEN
+        admin_token = register_and_login(client, "admin@example.com")
+        invitee_token = register_and_login(client, "invitee@example.com")
+        created = create_project(client, admin_token)
+        invite_resp = client.post(
+            f"/api/v1/projects/{created['id']}/invite",
+            json={"email": "invitee@example.com"},
+            headers=auth_header(admin_token),
+        )
+        invitation_id = invite_resp.json()["id"]
+        project = session.get(Project, UUID(created["id"]))
+        assert project is not None
+        project.is_example = True
+        session.add(project)
+        session.commit()
+
+        # WHEN
+        response = client.post(
+            f"/api/v1/invitations/{invitation_id}/accept",
+            headers=auth_header(invitee_token),
+        )
+
+        # THEN
+        assert response.status_code == 409
+        assert "example" in response.json()["detail"].lower()
+        members = session.exec(
+            select(ProjectMember).where(ProjectMember.project_id == project.id)
+        ).all()
+        assert [member.user_id for member in members] == [project.admin_id]
+        # Left in place on purpose, so the invitee can still decline it.
+        assert session.get(Invitation, UUID(invitation_id)) is not None
 
     def test_accept_invitation_user_can_see_project(self, client):
         """User can access project after accepting invitation."""

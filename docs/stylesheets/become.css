@@ -1,0 +1,116 @@
+/* The site wears the application's palette, and the palette is the whole brand:
+ * there is no brand colour to borrow. `frontend/src/index.css` is monochrome on
+ * purpose, pure black on white and pure white on near-black, and everything that
+ * would normally carry identity is carried by type instead. Material ships indigo
+ * and a blue-tinted dark, so both have to be replaced rather than nudged.
+ *
+ * Values below are the hex of the HSL tokens in `frontend/src/index.css`. They are
+ * duplicated here and that is a real cost: change one side and the two drift apart
+ * silently. The alternative was worse. Tailwind reads those tokens through
+ * `@theme` at build time, so nothing emits a plain stylesheet the docs could
+ * import, and generating one would tie the documentation build to the frontend
+ * toolchain for four colours.
+ *
+ *   light                     dark
+ *   background  0 0% 100%     #ffffff      0 0%  4%   #0a0a0a
+ *   foreground  0 0%  10%     #1a1a1a      0 0% 98%   #fafafa
+ *   primary     0 0%   0%     #000000      0 0% 100%  #ffffff
+ *   card        0 0%  98%     #fafafa      0 0% 10%   #1a1a1a
+ *   secondary   0 0%  96%     #f5f5f5      0 0% 15%   #262626
+ *   muted-fg    0 0%  35%     #595959      0 0% 63%   #a1a1a1
+ *   border      0 0%  90%     #e6e6e6      0 0% 17%   #2b2b2b
+ *
+ * The last two rows are reference only: nothing below assigns them. Material
+ * derives its own muted text and borders by alpha-blending the foreground, and
+ * once `--md-hue` is zeroed those land close enough that replacing them would be
+ * churn. They are written down because the next person to extend this file will
+ * want the numbers, and converting them again by hand is how the two sides drift.
+ */
+
+/* One typeface, and it is the application's: Inter for everything, JetBrains Mono
+ * for code, both set in `theme.font`. The application also has a display face,
+ * Playfair Display in `--font-display`, and it was tried here and dropped. It
+ * works on a product page that has a handful of headings; a documentation page is
+ * mostly headings, and setting a serif against Inter that many times per screen
+ * reads as two designs arguing rather than one.
+ *
+ * Both faces come from Google Fonts, while the application self-hosts through
+ * fontsource. That is a real difference and worth knowing: it sends visitor
+ * addresses to Google, on a project that otherwise takes data handling seriously.
+ * Acceptable for documentation, and reversible by committing the woff2 files. */
+
+[data-md-color-scheme="default"] {
+  --md-primary-fg-color: #000000;
+  --md-primary-fg-color--light: #1a1a1a;
+  --md-primary-fg-color--dark: #000000;
+  --md-primary-bg-color: #ffffff;
+  --md-primary-bg-color--light: #f5f5f5;
+
+  --md-accent-fg-color: #000000;
+  --md-typeset-a-color: #000000;
+
+  --md-default-bg-color: #ffffff;
+  --md-code-bg-color: #f5f5f5;
+  --md-code-fg-color: #1a1a1a;
+
+  --md-footer-bg-color: #000000;
+  --md-footer-bg-color--dark: #1a1a1a;
+}
+
+/* Material builds the slate palette from `--md-hue`, which defaults to a blue
+ * tint. Zeroing it makes every derived grey neutral in one line, which is what
+ * the application's dark mode is; the two flat colours are then set outright. */
+[data-md-color-scheme="slate"] {
+  --md-hue: 0;
+
+  --md-default-bg-color: #0a0a0a;
+
+  /* The header takes the primary colour as its BACKGROUND. Taking the token
+   * literally would give a white bar above a black page, so dark mode uses the
+   * card tone here and keeps white for text and links, where the token means
+   * foreground. */
+  --md-primary-fg-color: #1a1a1a;
+  --md-primary-fg-color--light: #262626;
+  --md-primary-fg-color--dark: #0a0a0a;
+  --md-primary-bg-color: #fafafa;
+  --md-primary-bg-color--light: #a1a1a1;
+
+  --md-accent-fg-color: #ffffff;
+  --md-typeset-a-color: #ffffff;
+
+  --md-code-bg-color: #1a1a1a;
+  --md-code-fg-color: #fafafa;
+
+  --md-footer-bg-color: #0a0a0a;
+  --md-footer-bg-color--dark: #000000;
+}
+
+/* Inter carries headings too, so the only thing separating them from body text is
+ * weight and size. Material's default heading weight is light enough to disappear
+ * at h3 and below once the serif is gone. */
+.md-typeset h1,
+.md-typeset h2,
+.md-typeset h3,
+.md-typeset h4 {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+/* A monochrome link is the same colour as the sentence around it, so underline is
+ * the only thing left to mark it. Same offset the application uses. */
+.md-typeset a {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.md-typeset a:hover {
+  text-decoration-thickness: 2px;
+}
+
+/* Navigation and table of contents are not prose: underlining every entry there
+ * would draw a ladder down both margins. */
+.md-nav a,
+.md-nav a:hover,
+.md-typeset .md-nav a {
+  text-decoration: none;
+}
