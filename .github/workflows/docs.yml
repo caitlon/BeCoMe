@@ -29,8 +29,11 @@ on:
       - pyproject.toml
       - uv.lock
       - .github/workflows/docs.yml
-  # Republish without a commit. Needed the first time the custom domain is
-  # attached, and whenever a build has to be repeated for a reason outside git.
+  # Republish without a commit, and preview a branch before it is promoted. Which
+  # of the two happens is decided by the ref, in the step below: only `main` goes
+  # to production. Without that check this trigger would quietly undo the rule the
+  # whole workflow exists for, and it would do it BY DEFAULT, because the dispatch
+  # UI offers the repository's default branch first and that branch is `develop`.
   workflow_dispatch:
 
 concurrency:
@@ -68,6 +71,24 @@ jobs:
       - name: Build the site
         run: uv run mkdocs build --strict
 
+      # Production is `main` and only `main`. Every other ref publishes to a Pages
+      # preview under its own name, which gets its own URL and never touches
+      # docs.becomify.app. The ref arrives through the environment rather than
+      # through `${{ }}` inside the script, so a branch named to look like shell
+      # is data here, not code. Slashes become hyphens because `ci/docs-deploy` is
+      # a valid branch name and not a valid Pages branch name.
+      - name: Decide where this publishes
+        id: target
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          if [ "$REF_NAME" = "main" ]; then
+            echo "branch=main" >> "$GITHUB_OUTPUT"
+          else
+            safe=$(printf '%s' "$REF_NAME" | tr -c 'A-Za-z0-9._-' '-' | cut -c1-24)
+            echo "branch=preview-$safe" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Publish
         uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4.0.0
         with:
@@ -75,8 +96,8 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           # `--branch` is explicit on purpose. Left off, wrangler infers the branch
           # from the environment, and an inference that comes back as anything other
-          # than the project's production branch publishes a PREVIEW instead: the run
-          # goes green, a `*.pages.dev` URL appears in the log, and docs.becomify.app
+          # than the project's production branch publishes a preview instead: the run
+          # goes green, a `pages.dev` URL appears in the log, and docs.becomify.app
           # keeps serving the previous build. A silent no-op is the worst outcome
           # available here, so the branch is named rather than detected.
-          command: pages deploy site --project-name=become-docs --branch=main
+          command: pages deploy site --project-name=becomify-docs --branch=${{ steps.target.outputs.branch }}
