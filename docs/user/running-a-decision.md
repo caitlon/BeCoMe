@@ -17,6 +17,8 @@ An opinion here has three components. The **lower** bound is the pessimistic end
 realistic, the **peak** is the single most likely value, and the **upper** bound is the optimistic
 end. They must satisfy `lower ≤ peak ≤ upper`, and the form will refuse anything else.
 
+![The opinion form: position, and the three estimate fields](img/project-opinions.png)
+
 ## The three ways to answer
 
 **A fuzzy triangular number** is the normal case, and the one to reach for by default. Enter three
