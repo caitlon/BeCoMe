@@ -16,6 +16,9 @@ on:
     paths:
       - docs/**
       - mkdocs.yml
+      # The theme override, `theme.custom_dir`. It sits outside `docs/`, so
+      # `docs/**` does not reach it and an edit to it would never be published.
+      - overrides/**
       # The pages under docs/dev/ are include lines, so their real sources are
       # these READMEs. Leave one out and an edit to it would never reach the site.
       - README.md
