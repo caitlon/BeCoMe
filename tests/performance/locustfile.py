@@ -1,7 +1,7 @@
 """Locust performance tests for BeCoMe API.
 
 Tests the /api/v1/calculate endpoint with varying expert counts
-to measure response time under load for thesis benchmarks.
+to measure response time under load.
 
 Usage::
 
