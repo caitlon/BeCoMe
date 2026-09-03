@@ -72,7 +72,11 @@ frontend/.certs/
 # SQLite database
 *.db
 
-# Thesis workspace
+# Written here, kept out of the repository. `thesis/` holds the write-up this
+# implementation was submitted with; the project is not presented as coursework,
+# so the PDF is not part of what the repository ships. The rest are private
+# working files.
+thesis/
 supplementary/
 scripts/diagrams/
 scripts/photos/
