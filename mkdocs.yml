@@ -21,6 +21,9 @@ watch:
 
 theme:
   name: material
+  # One template lives here, `main.html`, and it exists to open the site in the
+  # reader's own light or dark setting. See the comment inside it.
+  custom_dir: overrides
   features:
     - navigation.sections
     - navigation.top
@@ -32,41 +35,38 @@ theme:
   font:
     text: Inter
     code: JetBrains Mono
-  # `custom` everywhere, because the application's palette is monochrome and none
-  # of Material's named colours is black or white. The values live in
-  # `docs/stylesheets/become.css`.
+  # Two entries, so the toggle is the application's: sun or moon, nothing else.
+  # Material's own way to follow the operating system needs a THIRD position on
+  # that toggle, carrying a brightness-auto icon, and left to itself a two-entry
+  # palette consults nobody: Material 9.7.7 renders both radios unchecked and the
+  # page keeps whatever scheme was built into `<body>`, so every visitor gets the
+  # same one whatever their machine says. `overrides/main.html` supplies the
+  # missing half, and the comment there explains how.
   #
-  # THREE entries, and the first one carries no scheme on purpose. With only the
-  # light and dark pair, Material 9.7.7 renders both radios unchecked and the page
-  # simply keeps whatever `<body>` was built with, so the system preference is
-  # never consulted: the site was stuck on one scheme for every visitor, whatever
-  # their machine was set to. The bare `(prefers-color-scheme)` entry is Material's
-  # documented way to say "follow the system", and it also gives the reader a third
-  # position on the toggle instead of a switch that silently disagrees with their OS.
+  # The icon names the CURRENT theme rather than the one a click would bring,
+  # which is the application's convention: `ThemeToggle.tsx` shows the sun in
+  # light mode. The `name` is the accessible label and does describe the action,
+  # again matching, since that component's aria-label reads "switch to dark"
+  # while the sun is on screen.
+  #
+  # `primary` and `accent` are `custom` because the application's palette is
+  # monochrome and none of Material's named colours is black or white. Values in
+  # `docs/stylesheets/become.css`.
   palette:
-    # `primary` and `accent` are repeated here rather than left out. Omitted,
-    # Material fills its own default in, and the built `<body>` comes out carrying
-    # `data-md-color-primary="indigo"` before any script runs.
-    - media: "(prefers-color-scheme)"
-      primary: custom
-      accent: custom
-      toggle:
-        icon: material/brightness-auto
-        name: Follows your system. Switch to light.
     - media: "(prefers-color-scheme: light)"
       scheme: default
       primary: custom
       accent: custom
       toggle:
         icon: material/weather-sunny
-        name: Light. Switch to dark.
+        name: Switch to dark mode
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
       primary: custom
       accent: custom
       toggle:
         icon: material/weather-night
-        name: Dark. Switch back to your system setting.
+        name: Switch to light mode
 
 extra_css:
   - stylesheets/become.css
