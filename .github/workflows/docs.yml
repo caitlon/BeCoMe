@@ -29,26 +29,15 @@ on:
       - pyproject.toml
       - uv.lock
       - .github/workflows/docs.yml
-  # Republish without a commit, and preview a branch before it is promoted. Which
-  # of the two happens is decided by the ref, in the step below: only `main` goes
-  # to production. Without that check this trigger would quietly undo the rule the
-  # whole workflow exists for, and it would do it BY DEFAULT, because the dispatch
-  # UI offers the repository's default branch first and that branch is `develop`.
-  workflow_dispatch:
 
-# Scoped to the ref, and production is never cancelled. One shared group would be
-# fine for a workflow that only ever deploys `main`, which is what this was until
-# the dispatch trigger above started publishing previews: after that, a preview run
-# on a feature branch and the production run from a promotion sit in the same group,
-# and GitHub cancels the older of the two whichever ref started it. The cancelled
-# run reads "cancelled" rather than "failed", so nothing is alerted and the site
-# quietly stays on the previous build. That is the same silent no-op the `--branch`
-# comment below calls the worst outcome here, arriving by a different door.
-#
-# `ci.yml` already had this right; the shape below is its shape.
+# A production deploy is never cancelled, so runs queue instead of replacing each
+# other. Cancelling looks harmless and is not: the run reads "cancelled" rather
+# than "failed", nothing is alerted, and the site quietly stays on the previous
+# build. Two promotions landing close together simply publish in order, and the
+# later one wins, which is the outcome anyone would have wanted anyway.
 concurrency:
-  group: docs-deploy-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  group: docs-deploy
+  cancel-in-progress: false
 
 jobs:
   deploy:
@@ -81,35 +70,6 @@ jobs:
       - name: Build the site
         run: uv run mkdocs build --strict
 
-      # Production is `main` and only `main`. Every other ref publishes to a Pages
-      # preview under its own name, which gets its own URL and never touches
-      # docs.becomify.app. The ref arrives through the environment rather than
-      # through `${{ }}` inside the script, so a branch named to look like shell
-      # is data here, not code. Slashes become hyphens because `ci/docs-deploy` is
-      # a valid branch name and not a valid Pages branch name.
-      - name: Decide where this publishes
-        id: target
-        env:
-          REF_NAME: ${{ github.ref_name }}
-        run: |
-          if [ "$REF_NAME" = "main" ]; then
-            echo "branch=main" >> "$GITHUB_OUTPUT"
-          else
-            # Truncation alone collides: two dependabot branches differing only in
-            # a patch version, or two feature branches sharing a long prefix, both
-            # land on one preview alias and the second silently replaces the first,
-            # so whoever opens the link reviews the wrong build. The digest of the
-            # full name separates them. It is a CRC-32 printed in decimal, so it
-            # runs nine or ten digits in practice and is not fixed-width.
-            # `cksum` rather than a sha tool: it is POSIX and present on both the
-            # runner and a developer's machine, so the exact line below can be run
-            # by hand to see what a branch will be called. A checksum is doing
-            # disambiguation here, not security.
-            safe=$(printf '%s' "$REF_NAME" | tr -c 'A-Za-z0-9._-' '-' | cut -c1-14)
-            digest=$(printf '%s' "$REF_NAME" | cksum | cut -d' ' -f1)
-            echo "branch=preview-$safe-$digest" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Publish
         uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4.0.0
         with:
@@ -123,8 +83,8 @@ jobs:
           wranglerVersion: "4.128.0"
           # `--branch` is explicit on purpose. Left off, wrangler infers the branch
           # from the environment, and an inference that comes back as anything other
-          # than the project's production branch publishes a preview instead: the run
+          # than the project's production branch publishes a PREVIEW instead: the run
           # goes green, a `pages.dev` URL appears in the log, and docs.becomify.app
           # keeps serving the previous build. A silent no-op is the worst outcome
           # available here, so the branch is named rather than detected.
-          command: pages deploy site --project-name=becomify-docs --branch=${{ steps.target.outputs.branch }}
+          command: pages deploy site --project-name=becomify-docs --branch=main
