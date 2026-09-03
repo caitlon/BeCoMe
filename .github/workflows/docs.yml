@@ -39,9 +39,19 @@ on:
   # UI offers the repository's default branch first and that branch is `develop`.
   workflow_dispatch:
 
+# Scoped to the ref, and production is never cancelled. One shared group would be
+# fine for a workflow that only ever deploys `main`, which is what this was until
+# the dispatch trigger above started publishing previews: after that, a preview run
+# on a feature branch and the production run from a promotion sit in the same group,
+# and GitHub cancels the older of the two whichever ref started it. The cancelled
+# run reads "cancelled" rather than "failed", so nothing is alerted and the site
+# quietly stays on the previous build. That is the same silent no-op the `--branch`
+# comment below calls the worst outcome here, arriving by a different door.
+#
+# `ci.yml` already had this right; the shape below is its shape.
 concurrency:
-  group: docs-deploy
-  cancel-in-progress: true
+  group: docs-deploy-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   deploy:
@@ -88,8 +98,18 @@ jobs:
           if [ "$REF_NAME" = "main" ]; then
             echo "branch=main" >> "$GITHUB_OUTPUT"
           else
-            safe=$(printf '%s' "$REF_NAME" | tr -c 'A-Za-z0-9._-' '-' | cut -c1-24)
-            echo "branch=preview-$safe" >> "$GITHUB_OUTPUT"
+            # Truncation alone collides: two dependabot branches differing only in
+            # a patch version, or two feature branches sharing a long prefix, both
+            # land on one preview alias and the second silently replaces the first,
+            # so whoever opens the link reviews the wrong build. Six characters of
+            # digest keep the name readable and make that practically impossible.
+            # `cksum` rather than a sha tool: it is POSIX and present on both the
+            # runner and a developer's machine, so the exact line below can be run
+            # by hand to see what a branch will be called. A checksum is doing
+            # disambiguation here, not security.
+            safe=$(printf '%s' "$REF_NAME" | tr -c 'A-Za-z0-9._-' '-' | cut -c1-14)
+            digest=$(printf '%s' "$REF_NAME" | cksum | cut -d' ' -f1)
+            echo "branch=preview-$safe-$digest" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Publish
@@ -97,6 +117,12 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # Pinned, because the default is the string "4": the action runs
+          # `npm install wrangler@4` on every run and takes whatever 4.x is newest
+          # that morning. Every Python dependency in this repository is pinned with
+          # `==`, and the tool that does the actual publishing should not be the one
+          # exception. This is the version the first deployment was made with.
+          wranglerVersion: "4.128.0"
           # `--branch` is explicit on purpose. Left off, wrangler infers the branch
           # from the environment, and an inference that comes back as anything other
           # than the project's production branch publishes a preview instead: the run
