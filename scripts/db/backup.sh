@@ -123,6 +123,23 @@ docker_dump() {  # $1 = postgres major to run
     pg_dump "$URL" --no-owner --no-privileges -Fc > "$OUT" 2>"$ERRFILE"
 }
 
+# The proxy needs the same warm-up here as it does for a local client, and the reason
+# this is easy to miss is that the fix above removed the wait: before it, a mismatch
+# spun through six retries and the proxy came up during them. Breaking out early made
+# the diagnosis honest and left the container racing a proxy that is not listening yet.
+# Whether it wins depends on how long docker spends pulling an image, which is not a
+# thing to depend on. A mismatch still returns immediately: it is the caller's cue to
+# correct the major and try again, and no amount of waiting changes it.
+docker_dump_waiting() {  # $1 = postgres major to run
+  local i
+  for i in $(seq 1 6); do
+    if docker_dump "$1"; then return 0; fi
+    if mismatch; then return 1; fi
+    echo "  (proxy warming up, retry $i)..."; sleep 5
+  done
+  return 1
+}
+
 ok=""
 if [ -n "$HAVE_LOCAL" ]; then
   for i in $(seq 1 6); do
@@ -149,13 +166,13 @@ if [ -z "$ok" ] && { [ -z "$HAVE_LOCAL" ] || mismatch; }; then
     CAND=$(server_major); [ -z "$CAND" ] && CAND=18
     [ -z "$HAVE_LOCAL" ] && echo "  no local pg_dump found; using postgres:$CAND in docker"
     [ -n "$HAVE_LOCAL" ] && echo "  local pg_dump is older than the server; using postgres:$CAND in docker"
-    if docker_dump "$CAND"; then
+    if docker_dump_waiting "$CAND"; then
       ok=1
     elif mismatch; then
       REAL=$(server_major)
       if [ -n "$REAL" ] && [ "$REAL" != "$CAND" ]; then
         echo "  server is actually $REAL; retrying with postgres:$REAL"
-        docker_dump "$REAL" && ok=1
+        docker_dump_waiting "$REAL" && ok=1
       fi
     fi
   fi
