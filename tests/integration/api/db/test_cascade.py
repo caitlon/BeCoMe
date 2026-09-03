@@ -2,6 +2,9 @@
 
 from datetime import UTC, datetime, timedelta
 
+import pytest
+from sqlalchemy.exc import IntegrityError
+
 from api.db.models import (
     CalculationResult,
     EmailVerificationToken,
@@ -192,28 +195,20 @@ class TestProjectCascadeDelete:
 
 
 class TestUserCascadeDelete:
-    """Tests for user deletion behavior with passive_deletes=True.
+    """Tests for user deletion, where the database enforces the referential rules.
 
-    User relationships use passive_deletes=True, which delegates referential
-    cleanup to the database. In SQLite (no FK enforcement by default) the ORM
-    just deletes the user row without touching child records, so these tests
-    only assert that the raw delete does not error.
-
-    In PostgreSQL the database enforces the foreign keys: memberships, opinions,
-    reset tokens, and verification tokens are cascade-deleted, while a user who
-    still admins a project is blocked by ON DELETE RESTRICT (the API rejects that
-    with 409 first). For the enforced behavior see
-    test_postgres_integration.py::TestForeignKeyEnforcement.
+    User relationships use ``passive_deletes=True``, so the ORM issues the delete and
+    lets the database clean up. The test engine turns on ``PRAGMA foreign_keys``, so
+    that cleanup happens here exactly as it does on Postgres: child rows go with the
+    user, and a user who still admins a project is refused by ``ON DELETE RESTRICT``.
+    The API rejects that case with 409 before it ever reaches the database.
     """
 
-    def test_deleting_user_with_memberships_succeeds_in_sqlite(self, session):
+    def test_deleting_user_deletes_memberships(self, session):
         """
-        GIVEN a user who is member of projects
-        WHEN the user is deleted in SQLite
-        THEN deletion succeeds (passive_deletes delegates to DB)
-
-        In PostgreSQL, ProjectMember rows are cascade-deleted by the DB.
-        In SQLite without FK enforcement, child rows become orphaned.
+        GIVEN a user who is member of a project
+        WHEN the user is deleted
+        THEN the membership goes with them via CASCADE
         """
         # GIVEN
         admin = User(
@@ -242,22 +237,21 @@ class TestUserCascadeDelete:
         )
         session.add(membership)
         session.commit()
-        member_id = member.id
+        member_id, membership_id = member.id, membership.id
 
         # WHEN
         session.delete(member)
         session.commit()
 
-        # THEN: user is deleted
+        # THEN
         assert session.get(User, member_id) is None
+        assert session.get(ProjectMember, membership_id) is None
 
-    def test_deleting_user_with_opinions_succeeds_in_sqlite(self, session):
+    def test_deleting_user_deletes_opinions(self, session):
         """
-        GIVEN a user who submitted opinions
-        WHEN the user is deleted in SQLite
-        THEN deletion succeeds (passive_deletes delegates to DB)
-
-        In PostgreSQL, ExpertOpinion rows are cascade-deleted by the DB.
+        GIVEN a user who submitted an opinion
+        WHEN the user is deleted
+        THEN the opinion goes with them via CASCADE
         """
         # GIVEN
         admin = User(
@@ -289,22 +283,21 @@ class TestUserCascadeDelete:
         )
         session.add(opinion)
         session.commit()
-        expert_id = expert.id
+        expert_id, opinion_id = expert.id, opinion.id
 
         # WHEN
         session.delete(expert)
         session.commit()
 
-        # THEN: user is deleted
+        # THEN
         assert session.get(User, expert_id) is None
+        assert session.get(ExpertOpinion, opinion_id) is None
 
-    def test_deleting_user_with_reset_tokens_succeeds_in_sqlite(self, session):
+    def test_deleting_user_deletes_reset_tokens(self, session):
         """
-        GIVEN a user with password reset tokens
-        WHEN the user is deleted in SQLite
-        THEN deletion succeeds (passive_deletes delegates to DB)
-
-        In PostgreSQL, PasswordResetToken rows are cascade-deleted by the DB.
+        GIVEN a user with a password reset token
+        WHEN the user is deleted
+        THEN the token goes with them via CASCADE
         """
         # GIVEN
         user = User(
@@ -323,22 +316,21 @@ class TestUserCascadeDelete:
         )
         session.add(token)
         session.commit()
-        user_id = user.id
+        user_id, token_id = user.id, token.id
 
         # WHEN
         session.delete(user)
         session.commit()
 
-        # THEN: user is deleted
+        # THEN
         assert session.get(User, user_id) is None
+        assert session.get(PasswordResetToken, token_id) is None
 
-    def test_deleting_user_with_verification_tokens_succeeds_in_sqlite(self, session):
+    def test_deleting_user_deletes_verification_tokens(self, session):
         """
         GIVEN a user with an email verification token
-        WHEN the user is deleted in SQLite
-        THEN deletion succeeds (passive_deletes delegates to DB)
-
-        In PostgreSQL, EmailVerificationToken rows are cascade-deleted by the DB.
+        WHEN the user is deleted
+        THEN the token goes with them via CASCADE
         """
         # GIVEN
         user = User(
@@ -360,24 +352,24 @@ class TestUserCascadeDelete:
         )
         session.add(token)
         session.commit()
-        user_id = user.id
+        user_id, token_id = user.id, token.id
 
         # WHEN
         session.delete(user)
         session.commit()
 
-        # THEN: user is deleted
+        # THEN
         assert session.get(User, user_id) is None
+        assert session.get(EmailVerificationToken, token_id) is None
 
-    def test_deleting_admin_with_projects_succeeds_in_sqlite(self, session):
+    def test_deleting_admin_with_projects_is_restricted(self, session):
         """
-        GIVEN a user who owns projects (is admin)
-        WHEN the user is deleted in SQLite
-        THEN the raw delete succeeds because SQLite does not enforce FKs
+        GIVEN a user who still admins a project
+        WHEN the user is deleted
+        THEN the database refuses it via ON DELETE RESTRICT on projects.admin_id
 
-        In PostgreSQL this delete is blocked by ON DELETE RESTRICT on
-        projects.admin_id (see test_postgres_integration.py); the API rejects it
-        with 409 before it reaches the database.
+        The API rejects this with 409 before the delete is ever issued, so this test
+        covers the layer underneath that check rather than the check itself.
         """
         # GIVEN
         admin = User(
@@ -394,12 +386,12 @@ class TestUserCascadeDelete:
         session.commit()
         admin_id = admin.id
 
-        # WHEN
+        # WHEN/THEN
         session.delete(admin)
-        session.commit()
-
-        # THEN: user is deleted
-        assert session.get(User, admin_id) is None
+        with pytest.raises(IntegrityError):
+            session.commit()
+        session.rollback()
+        assert session.get(User, admin_id) is not None
 
     def test_deleting_user_without_relations_succeeds(self, session):
         """

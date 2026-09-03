@@ -3,7 +3,7 @@
 What is actually implemented in BeCoMe to keep the product and its users' data safe, and how
 to operate the pieces that need runbooks. This is a description of the running system, not a
 wishlist. Deployment topology lives in [`environments.md`](environments.md). The academic
-threat model (attack trees, residual-risk argument) lives in the thesis workspace, and this
+threat model (attack trees, residual-risk argument) is kept outside this repository, and this
 page does not repeat it.
 
 ## Contents

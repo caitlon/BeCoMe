@@ -1,0 +1,117 @@
+site_name: BeCoMe
+site_description: Group decision-making on fuzzy expert opinions.
+site_url: https://docs.becomify.app/
+repo_url: https://github.com/caitlon/BeCoMe
+repo_name: caitlon/BeCoMe
+
+docs_dir: docs
+
+# `mkdocs serve` watches only `docs_dir` and this file, so without these the six
+# pages under `docs/dev/` would never rebuild while their real source is edited.
+# Their own comment tells the reader to edit the README instead of the stub, and
+# a live preview that ignores exactly that edit makes the instruction read false.
+watch:
+  - README.md
+  - api/README.md
+  - api/db/README.md
+  - src/README.md
+  - frontend/README.md
+  - tests/README.md
+  - examples/README.md
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - search.suggest
+  # `--font-sans` and `--font-mono` from `frontend/src/index.css`. The application
+  # has a third face, Playfair Display, for headings; it is deliberately not used
+  # here and `docs/stylesheets/become.css` says why.
+  font:
+    text: Inter
+    code: JetBrains Mono
+  # Two entries, so the toggle is the application's: sun or moon, nothing else.
+  # A first visit still opens in the reader's own setting, because Material's
+  # inline snippet resolves `media` itself before the page paints. Measured on a
+  # deployed build with storage cleared: a dark machine gets `slate`, a light one
+  # gets `default`. Worth stating because it is easy to conclude otherwise, and I
+  # did: testing without clearing `localStorage` shows the previously stored
+  # choice being restored, which looks exactly like a palette that ignores the
+  # system. The third `(prefers-color-scheme)` entry Material documents adds a
+  # visible auto position to the toggle and is not needed for this.
+  #
+  # The icon names the CURRENT theme rather than the one a click would bring,
+  # which is the application's convention: `ThemeToggle.tsx` shows the sun in
+  # light mode. The `name` is the accessible label and does describe the action,
+  # again matching, since that component's aria-label reads "switch to dark"
+  # while the sun is on screen.
+  #
+  # `primary` and `accent` are `custom` because the application's palette is
+  # monochrome and none of Material's named colours is black or white. Values in
+  # `docs/stylesheets/become.css`.
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-night
+        name: Switch to light mode
+
+extra_css:
+  - stylesheets/become.css
+
+markdown_extensions:
+  - admonition
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences
+  # The one extension this site depends on structurally. Pages under `dev/` are a
+  # single include line each, so a README stays where a reader of the repository
+  # finds it and the site shows the same bytes. Copying it here instead would give
+  # the project two sources for one truth, and the older one always wins by
+  # accident. `check_paths` turns a mistyped include into a build failure rather
+  # than a silently empty page.
+  - pymdownx.snippets:
+      base_path: !relative $config_dir
+      check_paths: true
+
+# `security.md` deliberately does not ship. It is an engineering document with an
+# "Accepted risks" section, which is a list of what the project knowingly does not
+# defend against. It stays readable in the repository. Linking it from a product
+# site is a different act. A short user-facing security page replaces it later.
+exclude_docs: |
+  security.md
+  uml-diagrams/generate_diagrams.py
+
+validation:
+  links:
+    absolute_links: warn
+    unrecognized_links: warn
+    anchors: warn
+
+nav:
+  - Home: index.md
+  - The method:
+      - How it works: method-description.md
+      - Diagrams: uml-diagrams/README.md
+  - For developers:
+      - Setup: development.md
+      - Core library: dev/core.md
+      - API: dev/api.md
+      - Database: dev/database.md
+      - Frontend: dev/frontend.md
+      - Testing: dev/testing.md
+      - Examples: dev/examples.md
+      - Environments: environments.md
+      - Quality report: quality-report.md

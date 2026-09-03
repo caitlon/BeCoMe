@@ -1,11 +1,12 @@
 # BeCoMe test suite
 
-Tests for the BeCoMe implementation: 1,727 backend tests, plus 59 end-to-end tests that skip
-unless a server and PostgreSQL are up. Coverage is 100% on the core library and 99% overall.
+Tests for the BeCoMe implementation: 1,730 backend tests, plus 59 end-to-end tests that skip
+unless a server and PostgreSQL are up. Coverage is 100% on the core library and 99% overall,
+and CI fails the run below 98%.
 
 ## Overview
 
-Unit tests cover models, calculators, interpreters, utilities, and API components in isolation. Integration tests validate core results against the original Excel implementation (tolerance: 0.001) and test API routes with a real database. End-to-end tests exercise full API workflows. All tests follow the GIVEN-WHEN-THEN pattern.
+Unit tests cover models, calculators, interpreters, utilities, and API components in isolation. Integration tests validate core results against the original Excel implementation (tolerance: 0.001) and drive the API routes against a database. That database is in-memory SQLite. The engine fixture turns on `PRAGMA foreign_keys`, so the `ondelete` rules declared on the models are enforced here too. A broken CASCADE or a missing RESTRICT goes red on this tier rather than waiting for Postgres. A smaller tier in `tests/integration/api/db/test_postgres_integration.py` runs against a real PostgreSQL and covers what SQLite cannot express. End-to-end tests exercise full API workflows. All tests follow the GIVEN-WHEN-THEN pattern.
 
 ## Running tests
 
@@ -141,6 +142,6 @@ Each test runs in isolation: no shared state, fresh fixtures, and deterministic 
 
 ## Related documentation
 
-- [Main README](../README.md): project overview
-- [src/README.md](../src/README.md): implementation details
-- [Method description](../docs/method-description.md): mathematical foundation
+- [Main README](https://docs.becomify.app/): project overview
+- [Core library](https://docs.becomify.app/dev/core/): implementation details
+- [Method description](https://docs.becomify.app/method-description/): mathematical foundation

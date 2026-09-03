@@ -3,6 +3,8 @@
 from unittest.mock import patch
 from uuid import UUID
 
+import pytest
+
 from api.data.example_project import EXAMPLE_EXPERTS
 from api.db.models import MemberRole, ProjectMember
 from api.services.project_membership_service import ProjectMembershipService
@@ -356,6 +358,55 @@ class TestUpdateProject:
 
         # THEN
         assert response.status_code == 422
+
+    @pytest.mark.parametrize("field", ["name", "scale_min", "scale_max", "scale_unit"])
+    def test_update_project_rejects_explicit_null(self, client, field):
+        """An explicit null for a non-nullable column is refused, not crashed on.
+
+        `description` is the only project field the column allows to be null, so every
+        other one sent as null is a client error. Before this was handled the request
+        reached the database and came back as an unhandled 500.
+        """
+        # GIVEN
+        token = register_and_login(client)
+        create_resp = client.post(
+            "/api/v1/projects",
+            json={"name": "Test", "scale_min": 0, "scale_max": 100},
+            headers=auth_header(token),
+        )
+        project_id = create_resp.json()["id"]
+
+        # WHEN
+        response = client.patch(
+            f"/api/v1/projects/{project_id}",
+            json={field: None},
+            headers=auth_header(token),
+        )
+
+        # THEN
+        assert response.status_code == 422
+
+    def test_update_project_accepts_null_description(self, client):
+        """`description` is nullable, so clearing it is a normal update."""
+        # GIVEN
+        token = register_and_login(client)
+        create_resp = client.post(
+            "/api/v1/projects",
+            json={"name": "Test", "description": "written", "scale_min": 0, "scale_max": 100},
+            headers=auth_header(token),
+        )
+        project_id = create_resp.json()["id"]
+
+        # WHEN
+        response = client.patch(
+            f"/api/v1/projects/{project_id}",
+            json={"description": None},
+            headers=auth_header(token),
+        )
+
+        # THEN
+        assert response.status_code == 200
+        assert response.json()["description"] is None
 
     def test_update_project_equal_scale_fails(self, client):
         """Update fails when scale_min equals scale_max."""

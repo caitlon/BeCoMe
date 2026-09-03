@@ -57,7 +57,7 @@ three cases side by side.
 jupyter notebook examples/visualizations/visualize_become.ipynb
 ```
 
-See [visualizations/README.md](visualizations/README.md) for details.
+See [visualizations/README.md](https://github.com/caitlon/BeCoMe/blob/main/examples/visualizations/README.md) for details.
 
 ## Data files
 
@@ -71,7 +71,7 @@ data/
 └── pendlers_case.txt    # Cross-border travel case (22 experts)
 ```
 
-See [data/README.md](data/README.md) for dataset documentation, provenance, and validation details.
+See [data/README.md](https://github.com/caitlon/BeCoMe/blob/main/examples/data/README.md) for dataset documentation, provenance, and validation details.
 
 ### Text file format
 
@@ -113,10 +113,10 @@ print(f"Max Error: {result.max_error}")
 
 ## Understanding the output
 
-Each script displays four calculation steps: arithmetic mean (Γ), median (Ω), best compromise (ΓΩMean), and maximum error (Δmax). The output shows formulas, intermediate values, and sorted expert opinions at each stage. For the mathematical foundation behind these calculations, see [docs/method-description.md](../docs/method-description.md).
+Each script displays four calculation steps: arithmetic mean (Γ), median (Ω), best compromise (ΓΩMean), and maximum error (Δmax). The output shows formulas, intermediate values, and sorted expert opinions at each stage. For the mathematical foundation behind these calculations, see [Method description](https://docs.becomify.app/method-description/).
 
 ## Related documentation
 
-- [Main README](../README.md): what the method does and where the docs are
-- [Method description](../docs/method-description.md): mathematical foundation
-- [Source code](../src/README.md): API documentation
+- [Main README](https://docs.becomify.app/): what the method does and where the docs are
+- [Method description](https://docs.becomify.app/method-description/): mathematical foundation
+- [Source code](https://docs.becomify.app/dev/core/): API documentation

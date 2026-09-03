@@ -17,6 +17,7 @@ from api.exceptions import (
     BeCoMeAPIError,
     DisposableEmailDomainError,
     EmailNotVerifiedError,
+    ExampleProjectInvitationError,
     InvalidCredentialsError,
     InvalidResetTokenError,
     InvalidVerificationTokenError,
@@ -131,6 +132,12 @@ EXCEPTION_MAP: dict[type[BeCoMeAPIError], tuple[int, str | None]] = {
     UserAlreadyMemberError: (
         status.HTTP_409_CONFLICT,
         "You are already a member of this project",
+    ),
+    # The invite route catches this itself so it can log the rejection; the entry here is
+    # what covers the accept route, which has no reason to log and no try/except.
+    ExampleProjectInvitationError: (
+        status.HTTP_409_CONFLICT,
+        "The example project cannot take invitations",
     ),
     # 422 Unprocessable Content
     ValuesOutOfRangeError: (status.HTTP_422_UNPROCESSABLE_CONTENT, None),  # Use exception message

@@ -10,6 +10,8 @@ description](method-description.md). For the deployed profiles, read
 - [Requirements](#requirements)
 - [Install](#install)
 - [Dependency groups](#dependency-groups)
+- [Configuration](#configuration)
+- [Build the documentation site](#build-the-documentation-site)
 - [Run it locally](#run-it-locally)
 - [Project structure](#project-structure)
 
@@ -56,6 +58,34 @@ pip install -e ".[dev,viz,notebook]"
 | `dev` | pytest, hypothesis, mypy, ruff, bandit, detect-secrets, pre-commit | Development, testing, security |
 | `viz` | numpy, pandas, matplotlib, plotly, seaborn | Visualization and data analysis |
 | `notebook` | jupyter, ipykernel, ipywidgets | Interactive notebooks |
+| `docs` | mkdocs, mkdocs-material | Building the documentation site |
+
+## Configuration
+
+Templates for every environment variable live under `env/`. Copy the base to the repository
+root before the first run, because `SECRET_KEY` has no default and the application refuses to
+start without it:
+
+```bash
+cp env/.env.example .env
+```
+
+Profiles, what each one changes, and the per-profile templates are in
+[environments](environments.md).
+
+## Build the documentation site
+
+The site is not part of the default install. `mkdocs` lives in the `docs` extra, so it needs
+naming explicitly:
+
+```bash
+uv run --extra docs mkdocs serve   # live preview on http://localhost:8000
+uv run --extra docs mkdocs build --strict   # what CI will run: fails on a broken link
+```
+
+`--strict` is the one that matters. Pages under `docs/dev/` are one include line each, pulling
+in a README that lives next to the code, so a moved file or a link that only resolves inside
+the repository turns into a build failure rather than a broken page.
 
 ## Run it locally
 
@@ -74,7 +104,7 @@ Run one case study without the web app:
 uv run python -m examples.analyze_budget_case
 ```
 
-The dev profile is the default and needs no configuration. Profiles, Railway variables, and
+The dev profile is the default and needs no profile file of its own, only the base `.env`. Profiles, Railway variables, and
 deployment live in [environments](environments.md).
 
 ## Project structure

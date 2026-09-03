@@ -19,6 +19,7 @@ from api.services.export.data import (
 )
 from api.services.export.labels import get_labels
 from api.services.export.renderers import get_renderer
+from api.services.likert_verdict import derive_verdict
 from api.services.opinion_service import OpinionService
 
 logger = logging.getLogger("api.service.result_export")
@@ -80,6 +81,12 @@ class ResultExportService(BaseService):
             )
             for item in opinions
         )
+        verdict = derive_verdict(
+            project,
+            result.best_compromise_lower,
+            result.best_compromise_peak,
+            result.best_compromise_upper,
+        )
         return ResultExportData(
             project_name=project.name,
             project_description=project.description,
@@ -100,8 +107,8 @@ class ResultExportService(BaseService):
                 result.arithmetic_mean_upper,
             ),
             median=FuzzyTriple(result.median_lower, result.median_peak, result.median_upper),
-            likert_value=result.likert_value,
-            likert_decision=result.likert_decision,
+            likert_value=verdict.value if verdict else None,
+            likert_decision=verdict.decision if verdict else None,
             opinions=rows,
         )
 

@@ -11,7 +11,7 @@ SQLModel-based database layer for BeCoMe API.
 | `project_members` | Many-to-many: users ↔ projects with roles |
 | `invitations` | Per-user invitations to join a project (unique per project+invitee) |
 | `expert_opinions` | Fuzzy triangular numbers from experts (unique per user+project) |
-| `calculation_results` | Cached BeCoMe calculation results |
+| `calculation_results` | Cached BeCoMe calculation results. Holds the numbers only: the Likert agreement verdict is derived from the project scale on read (`api/services/likert_verdict.py`), never stored, so it cannot drift from the project |
 | `password_reset_tokens` | Tokens for password reset via email |
 | `email_verification_tokens` | Activation tokens for the email verification flow, stored as SHA-256 hashes |
 
@@ -47,7 +47,7 @@ On SQLite (local development and the test suite), the FastAPI lifespan hook call
 `create_db_and_tables()` at startup. Alembic owns the deployed PostgreSQL schemas
 instead: the migrations live in `migrations/` and run before each Railway deploy, and
 `create_db_and_tables()` returns without doing anything there. For how schema management
-works, see [docs/environments.md](../../docs/environments.md).
+works, see [Environments](https://docs.becomify.app/environments/).
 
 ### Session dependency
 
@@ -103,11 +103,16 @@ opinion = ExpertOpinion(
 Set the database URL with the `DATABASE_URL` environment variable:
 
 ```bash
-# SQLite (default, for development)
-DATABASE_URL=sqlite:///./become.db
+# Local development: the PostgreSQL from docker/docker-compose.yml
+#   docker compose -f docker/docker-compose.yml up -d db
+DATABASE_URL=postgresql://become:become@localhost:5432/become
 
-# PostgreSQL (production)
-DATABASE_URL=postgresql://user:pass@localhost:5432/become
+# Deployed environments: the least-privilege become_app role on the managed instance
+DATABASE_URL=postgresql://user:pass@host:5432/become
+
+# Fallback when Docker is not available. Boots, but uses create_all rather than
+# Alembic, so it never exercises a migration.
+DATABASE_URL=sqlite:///./become.db
 ```
 
 ## File structure

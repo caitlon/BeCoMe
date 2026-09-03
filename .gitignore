@@ -19,6 +19,7 @@ dist/
 .pytest_cache/
 .hypothesis/
 .coverage
+.cache/
 htmlcov/
 coverage.xml
 
@@ -71,7 +72,11 @@ frontend/.certs/
 # SQLite database
 *.db
 
-# Thesis workspace
+# Written here, kept out of the repository. `thesis/` holds the write-up this
+# implementation was submitted with; the project is not presented as coursework,
+# so the PDF is not part of what the repository ships. The rest are private
+# working files.
+thesis/
 supplementary/
 scripts/diagrams/
 scripts/photos/
@@ -104,3 +109,8 @@ logs.zip
 
 # Database backups (they contain user data, never commit them)
 /backups/
+# MkDocs build output
+site/
+
+# Local state written by `wrangler pages deploy`; never part of the site.
+.wrangler/
