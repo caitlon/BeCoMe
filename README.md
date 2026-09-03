@@ -2,7 +2,7 @@
 
 Software that helps a panel of experts turn genuine disagreement into one defensible number.
 
-**Live: [becomify.app](https://www.becomify.app)**
+**Live: [becomify.app](https://www.becomify.app) · Docs: [docs.becomify.app](https://docs.becomify.app)**
 
 ![Python](https://img.shields.io/badge/python-3.13+-blue.svg)
 ![TypeScript](https://img.shields.io/badge/typescript-6.0+-blue.svg)
