@@ -37,7 +37,7 @@ export default defineConfig({
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
-      testIgnore: /visual-regression|wcag-audit/,
+      testIgnore: /visual-regression|wcag-audit|docs-screenshots/,
     },
     // Firefox and WebKit get twice the default timeout, because they are that much
     // slower on the same specs: summed over one CI run, chromium spends 225 seconds
@@ -49,13 +49,13 @@ export default defineConfig({
     {
       name: 'firefox',
       use: { ...devices['Desktop Firefox'] },
-      testIgnore: /visual-regression|wcag-audit/,
+      testIgnore: /visual-regression|wcag-audit|docs-screenshots/,
       timeout: 60_000,
     },
     {
       name: 'webkit',
       use: { ...devices['Desktop Safari'] },
-      testIgnore: /visual-regression|wcag-audit/,
+      testIgnore: /visual-regression|wcag-audit|docs-screenshots/,
       timeout: 60_000,
     },
     {
@@ -67,6 +67,14 @@ export default defineConfig({
       name: 'visual-regression',
       use: { ...devices['Desktop Chrome'] },
       testMatch: /visual-regression/,
+    },
+    // Illustrations for the documentation site, not a check. It writes PNGs into
+    // `docs/user/img/` and asserts almost nothing, so it is opt-in: nothing runs it
+    // unless somebody names it, and the three browser projects above ignore it.
+    {
+      name: 'docs-screenshots',
+      use: { ...devices['Desktop Chrome'] },
+      testMatch: /docs-screenshots/,
     },
   ],
   webServer: {

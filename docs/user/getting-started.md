@@ -16,6 +16,8 @@ looks like and what the chart is telling you without first having to produce a p
 The example project is read-only in the ways that matter. You cannot invite experts into it, and
 that is deliberate: it exists so that everyone's copy tells the same story.
 
+![The projects list on a new account, with the example project at the top](img/projects-list.png)
+
 ## Create a project
 
 A project is one question put to one panel. Click **New Project** and fill in four things.
@@ -29,6 +31,8 @@ The **scale** is the range the answer lives in, and it is the field people get w
 minimum, the maximum, and the unit: `0` to `100` with unit `%`, or `0` to `200` with unit
 `CZK billions`. The scale is not a guess at the answer. It is the boundary of what an answer could
 possibly be, and every opinion has to fit inside it.
+
+![The new project dialog, with the name, description and scale fields](img/new-project.png)
 
 !!! tip "Leave the unit empty for agreement questions"
 

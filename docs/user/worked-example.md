@@ -73,13 +73,30 @@ number is how far the compromise sits from each of the two candidates: `|20.28 �
 So Δmax is not a margin of error in the usual sense. It is the price of the disagreement, measured
 as the distance you had to travel from either honest answer to reach the compromise.
 
-That number is the honest part of this result. Quote 14.31 percent on its own and you imply a panel
-that broadly settled around fourteen. No expert said fourteen. Not one opinion on the list contains
-14.31 in its range except the economist's, and that one was an outlier in the other direction.
+And here is the trap this panel was made for. The app divides Δmax by the width of the scale, and
+5.97 on a scale of 0 to 100 is six percent, which it labels **high agreement** in green. That label
+is correct by its own rule and the rule is a reasonable one. The panel is still split into two
+camps forty points apart.
+
+Both things are true because Δmax does not measure how spread out the panel is. It measures how
+far apart the mean and the median landed, and on a two-camp panel those two can end up close: the
+mean settles between the camps, the median settles inside the larger one. Six points apart on a
+hundred-point scale is not much. Two camps at 2 and at 43 is a great deal.
+
+Never read the badge without looking at the chart underneath it. With every opinion drawn, the
+argument takes one glance: the grey triangles stand in two clusters with a gap between them, and
+all three aggregate curves sit inside the left one.
+
+![The triangle chart with all thirteen individual opinions shown, in two separated clusters](img/project-triangle-individual.png)
+
+## What to say when you quote it
+
+Quote 14.31 percent on its own and you imply a panel that broadly settled around fourteen. No
+expert said fourteen. Not one opinion on the list contains 14.31 in its range except the
+economist's, and that one was an outlier in the other direction.
 
 So the answer to this question is not "14.31 percent". It is "14.31 percent, from a panel that
-split into two camps roughly 40 percent apart, and here is the chart". The chart with **Show
-individual opinions** turned on makes the two camps visible in a way the four figures cannot.
+split into two camps roughly 40 percent apart, and here is the chart".
 
 ## Reproducing it
 
