@@ -16,9 +16,6 @@ on:
     paths:
       - docs/**
       - mkdocs.yml
-      # The theme override, `theme.custom_dir`. It sits outside `docs/`, so
-      # `docs/**` does not reach it and an edit to it would never be published.
-      - overrides/**
       # The pages under docs/dev/ are include lines, so their real sources are
       # these READMEs. Leave one out and an edit to it would never reach the site.
       - README.md
@@ -101,8 +98,9 @@ jobs:
             # Truncation alone collides: two dependabot branches differing only in
             # a patch version, or two feature branches sharing a long prefix, both
             # land on one preview alias and the second silently replaces the first,
-            # so whoever opens the link reviews the wrong build. Six characters of
-            # digest keep the name readable and make that practically impossible.
+            # so whoever opens the link reviews the wrong build. The digest of the
+            # full name separates them. It is a CRC-32 printed in decimal, so it
+            # runs nine or ten digits in practice and is not fixed-width.
             # `cksum` rather than a sha tool: it is POSIX and present on both the
             # runner and a developer's machine, so the exact line below can be run
             # by hand to see what a branch will be called. A checksum is doing
