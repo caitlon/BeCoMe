@@ -63,25 +63,17 @@ something you can count.
 
 On this panel the centroid view is the one that settles the argument. Thirteen dots, two clusters, nothing in between, and the mean sitting out in the empty middle where no expert put anything.
 
-## When the answer is a verdict instead of a number
+## The agreement mode is not finished
 
-On a Likert scale, which is a project running 0 to 100 with no unit, the compromise is rounded to
-the nearest of five positions and reported in words. The number is still there underneath, but "the
-panel rather agrees" is the answer to an agreement question and a decimal is not.
+The method has a second mode for "should we" questions rather than "how much" ones. A project whose
+scale runs 0 to 100 with no unit is read as an agreement scale, and the compromise is rounded to one
+of five positions, from strongly disagree to strongly agree.
 
-Each position carries a recommendation as well, and that sentence is what appears beside the
-verdict:
-
-| Value | Position | Recommendation |
-|---|---|---|
-| 0 | Strongly disagree | Policy is not recommended and should be rejected |
-| 25 | Rather disagree | Policy needs significant revision before consideration |
-| 50 | Neutral | Policy requires further analysis and stakeholder input |
-| 75 | Rather agree | Policy is recommended with minor adjustments |
-| 100 | Strongly agree | Policy is strongly recommended for implementation |
-
-Read it as the panel's recommendation rather than the software's. It restates where the compromise
-landed, phrased for a decision document.
+None of that reaches you yet, and it breaks in three separate places. The create form will not
+accept a project without a unit, so such a project cannot be made at all. The interface never
+displays the position, even when one is computed. And the recommendation sentence the core library
+writes for each position is dropped before it leaves the API. The pieces exist and are tested
+individually. They are not joined up, and this page will say so until they are.
 
 ## Words used on this page
 
