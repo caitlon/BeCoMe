@@ -27,8 +27,8 @@ The scale runs from 0 to 100 with the unit `%`. Thirteen experts answered.
 | Land owner 2 | 0 | 0 | 2 |
 | Land owner 3 | 0 | 2 | 3 |
 
-Read the column of peaks and the panel splits in two. The hydrologists, risk management, the
-rescue coordinator and one municipality want 38 to 50 percent. The land owners, whose fields those
+Read the column of peaks and the panel splits in two. Five of them, the two hydrologists, risk
+management, the rescue coordinator and one municipality, want 38 to 50 percent. The land owners, whose fields those
 would be, say 0 to 3. Nobody is being unreasonable and nobody is near the middle. There is no
 opinion at 25.
 
@@ -45,7 +45,7 @@ opinion at 25.
 
 They answer different questions about the same panel.
 
-The mean counts everyone, so the six experts arguing for 38 to 50 pull it up to 20.28. The median
+The mean counts everyone, so the five experts arguing for 38 to 50 pull it up to 20.28. The median
 sorts the thirteen opinions by center and takes the seventh, and because eight of the thirteen sit
 below 15, the seventh is one of the low ones: 8.33.
 
@@ -100,9 +100,10 @@ all three aggregate curves sit inside the left one.
 
 ## What to say when you quote it
 
-Quote 14.31 percent on its own and you imply a panel that broadly settled around fourteen. No
-expert said fourteen. Not one opinion on the list contains 14.31 in its range except the
-economist's, and that one was an outlier in the other direction.
+Quote 14.31 percent on its own and you imply a panel that broadly settled around fourteen. It did
+not. Exactly one of the thirteen is anywhere near that figure: the economist, whose peak is 14 and
+whose range is the only one on the list containing 14.31. Every other opinion sits in one camp or
+the other, and 14.31 falls in the gap between them.
 
 So the answer to this question is not "14.31 percent". It is "14.31 percent, from a panel that
 split into two camps roughly 40 percent apart, and here is the chart".
@@ -114,6 +115,12 @@ The data and the analysis live in the repository, so you can run this yourself:
 ```bash
 uv run python -m examples.analyze_floods_case
 ```
+
+It prints the same four figures and a different verdict: **low agreement**, where the application
+says high. Neither is a bug in the arithmetic. The script compares Δmax against fixed thresholds,
+the application divides it by the width of the scale first, and on a 0 to 100 scale those two rules
+disagree about 5.97. Which rule is the better one is an open question, tracked as BCM-66. For
+reading this page, take the numbers from either and the label from neither.
 
 The raw opinions are in `examples/data/floods_case.txt`, and two further cases sit beside it: a
 budget allocation and a commuter study. The
