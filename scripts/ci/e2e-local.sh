@@ -21,9 +21,9 @@ API_PID=""
 MODE="${1:-all}"
 
 case "$MODE" in
-  all|backend|playwright|visual) ;;
+  all|backend|playwright|visual|docs) ;;
   *)
-    echo "ERROR: Invalid mode '$MODE'. Use one of: all, backend, playwright, visual."
+    echo "ERROR: Invalid mode '$MODE'. Use one of: all, backend, playwright, visual, docs."
     exit 2
     ;;
 esac
@@ -98,6 +98,20 @@ export PYTHONUNBUFFERED=1
 : > "$E2E_API_LOG"
 echo "  API log: $E2E_API_LOG"
 
+# The documentation screenshots photograph the example project, and that project only
+# seeds when the demo expert pool exists. The pool is created by a MIGRATION, while the
+# test profile builds its schema with `create_all`, which makes tables and no rows. So
+# this mode runs migrations first; without them the seed is skipped, the account opens
+# on an empty project list, and the failure reads as a missing link rather than as a
+# missing pool. Only this mode, so the other three keep the schema they were written
+# against.
+if [ "$MODE" = "docs" ]; then
+  echo "  Running migrations (the example project's expert pool comes from one)..."
+  uv run --project "$PROJECT_ROOT" alembic upgrade head >> "$E2E_API_LOG" 2>&1 || {
+    echo "  ERROR: migrations failed"; tail -n 20 "$E2E_API_LOG"; exit 1;
+  }
+fi
+
 CORS_ORIGINS='["http://localhost:8080"]' \
 DEBUG="false" \
   uv run --project "$PROJECT_ROOT" uvicorn api.main:app \
@@ -125,6 +139,7 @@ echo ""
 BACKEND_EXIT=0
 PLAYWRIGHT_EXIT=0
 VISUAL_EXIT=0
+DOCS_EXIT=0
 
 # Backend E2E (pytest + httpx)
 if [ "$MODE" = "all" ] || [ "$MODE" = "backend" ]; then
@@ -152,6 +167,15 @@ if [ "$MODE" = "all" ] || [ "$MODE" = "visual" ]; then
   echo ""
 fi
 
+# Documentation screenshots. Never part of `all`: it writes PNGs into docs/user/img/
+# rather than checking anything, so it runs only when asked for by name.
+if [ "$MODE" = "docs" ]; then
+  echo "--- Documentation Screenshots ---"
+  cd "$PROJECT_ROOT/frontend"
+  npx playwright test --project=docs-screenshots || DOCS_EXIT=$?
+  echo ""
+fi
+
 # Report
 echo "=== Results ==="
 if [ "$MODE" = "all" ] || [ "$MODE" = "backend" ]; then
@@ -175,9 +199,20 @@ if [ "$MODE" = "all" ] || [ "$MODE" = "visual" ]; then
     echo "  Visual Regression: FAILED (exit code: $VISUAL_EXIT)"
   fi
 fi
+if [ "$MODE" = "docs" ]; then
+  if [ $DOCS_EXIT -eq 0 ]; then
+    echo "  Docs screenshots: WRITTEN"
+  else
+    echo "  Docs screenshots: FAILED (exit code: $DOCS_EXIT)"
+  fi
+fi
 
 # Exit with failure if any suite failed
-if [ "$BACKEND_EXIT" -eq 0 ] && [ "$PLAYWRIGHT_EXIT" -eq 0 ] && [ "$VISUAL_EXIT" -eq 0 ]; then
+# `DOCS_EXIT` belongs in this list even though the docs mode writes files rather than
+# checking anything. Left out, a failed screenshot run still printed "All E2E tests
+# passed!" and exited 0, which is how a missing picture reaches a pull request.
+if [ "$BACKEND_EXIT" -eq 0 ] && [ "$PLAYWRIGHT_EXIT" -eq 0 ] && [ "$VISUAL_EXIT" -eq 0 ] \
+   && [ "$DOCS_EXIT" -eq 0 ]; then
   echo ""
   echo "All E2E tests passed!"
   exit 0
