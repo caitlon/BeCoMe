@@ -6,10 +6,10 @@ Three case studies from Czech public policy show the BeCoMe method in action. Ea
 
 - [Directory structure](#directory-structure)
 - [Case studies](#case-studies)
-  - [Running examples](#running-examples)
+    - [Running examples](#running-examples)
 - [Visualizations](#visualizations)
 - [Data files](#data-files)
-  - [Text file format](#text-file-format)
+    - [Text file format](#text-file-format)
 - [Custom data](#custom-data)
 - [Understanding the output](#understanding-the-output)
 - [Related documentation](#related-documentation)

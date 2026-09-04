@@ -361,6 +361,7 @@ dev = [
     { name = "types-regex" },
 ]
 docs = [
+    { name = "markdown" },
     { name = "mkdocs" },
     { name = "mkdocs-material" },
     { name = "pymdown-extensions" },
@@ -401,6 +402,7 @@ requires-dist = [
     { name = "jupyter", marker = "extra == 'notebook'", specifier = "==1.1.1" },
     { name = "locust", marker = "extra == 'dev'", specifier = "==2.46.4" },
     { name = "logtail-python", marker = "extra == 'api'", specifier = "==0.4.0" },
+    { name = "markdown", marker = "extra == 'docs'", specifier = "==3.10.3" },
     { name = "matplotlib", marker = "extra == 'viz'", specifier = "==3.11.1" },
     { name = "mkdocs", marker = "extra == 'docs'", specifier = "==1.6.1" },
     { name = "mkdocs-material", marker = "extra == 'docs'", specifier = "==9.7.7" },

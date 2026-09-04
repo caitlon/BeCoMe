@@ -13,9 +13,9 @@ COVID-19. Each one demonstrates a different aspect of the BeCoMe method.
 
 - [File format](#file-format)
 - [Datasets](#datasets)
-  - [Budget case](#budget-case)
-  - [Floods case](#floods-case)
-  - [Pendlers case](#pendlers-case)
+    - [Budget case](#budget-case)
+    - [Floods case](#floods-case)
+    - [Pendlers case](#pendlers-case)
 - [Loading data](#loading-data)
 - [Data quality](#data-quality)
 - [Provenance](#provenance)
