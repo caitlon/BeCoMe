@@ -64,6 +64,11 @@ upper   (23.38 + 11.00) / 2 = 17.19
 That is the whole of ΓΩMean. It refuses to choose between counting everyone and ignoring the
 extremes, and takes both.
 
+The app shows the same arithmetic under **Supporting calculations**, so the numbers above are not
+something you have to take on trust from this page.
+
+![The supporting calculations panel, showing the mean and the median the compromise came from](img/project-supporting-calculations.png)
+
 ## What Δmax is telling you
 
 Δmax is `|20.28 − 8.33| / 2`, which is 5.97. Because the compromise is the midpoint, that same

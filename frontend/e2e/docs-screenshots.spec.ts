@@ -160,6 +160,75 @@ test.describe('documentation screenshots', () => {
     await expect(individual).toBeChecked();
     await settled(page);
     await viz.screenshot({ path: `${IMG}/project-triangle-individual.png` });
+
+    // The guide says "the chart" and there are three of them. Landscape is the default
+    // view and Centroid collapses each opinion to one point, which is the view that
+    // shows the gap between the camps as a gap rather than as overlapping triangles.
+    for (const view of ['Landscape', 'Centroid'] as const) {
+      const tab = page.getByRole('tab', { name: view });
+      await tab.click();
+      await expect(tab).toHaveAttribute('aria-selected', 'true');
+      await settled(page);
+      await viz.screenshot({ path: `${IMG}/project-${view.toLowerCase()}.png` });
+    }
+
+    // The arithmetic the worked example walks through, as the app shows it.
+    const calcs = page.getByRole('button', { name: /supporting calculations/i });
+    await calcs.scrollIntoViewIfNeeded();
+    await calcs.click();
+    const calcsCard = calcs.locator('..');
+    // Both directions, and this one earned the lesson twice: the first attempt used two
+    // levels, asserted only that the mean was inside, passed, and photographed the nav
+    // bar, the result card and the whole chart along with it. "Something is inside" does
+    // not bound a frame. Say what must be outside as well.
+    await expect(calcsCard.getByText(/arithmetic mean/i).first()).toBeVisible();
+    await expect(calcsCard.getByRole('heading', { name: 'Visualization' })).toHaveCount(0);
+    await expect(calcsCard.getByRole('navigation')).toHaveCount(0);
+    await settled(page);
+    await calcsCard.screenshot({ path: `${IMG}/project-supporting-calculations.png` });
+  });
+
+  // Cannot pass until a Likert project can be created at all. The scale becomes Likert
+  // when the unit is EMPTY, and `CreateProjectModal.tsx` requires a non-empty one, so the
+  // dialog never closes and the test dies there. The backend accepts an empty unit and the
+  // verdict logic is written and tested; only the form stands in the way. Tracked as
+  // BCM-67. Unskip this the moment that validation is relaxed, because the picture it
+  // takes is the one the guide is missing.
+  test.fixme('a Likert project reports a verdict', async ({ page }) => {
+    await registerUser(page, `docs-lk-${uniqueId()}@test.com`, 'Alex', 'Novak');
+    await dismissToasts(page);
+
+    // 0 to 100 with the unit left blank is what makes a scale Likert. The dialog
+    // already defaults to that range, so the empty unit is the whole trick, and it is
+    // the thing the guide warns is easy to get wrong.
+    await page.getByRole('button', { name: /new project/i }).first().click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+    await dialog.getByPlaceholder('Enter project name').fill('Adopt the new policy');
+    await dialog.getByRole('button', { name: 'Create Project' }).click();
+    await expect(dialog).toBeHidden({ timeout: 10000 });
+
+    await page.getByRole('link', { name: 'Adopt the new policy' }).click();
+    await expect(page).toHaveURL(/\/projects\//, { timeout: 10000 });
+
+    await page.getByLabel('Position').first().fill('Head of Department');
+    await page.getByLabel('Lower (pessimistic)').first().fill('60');
+    await page.getByLabel('Peak (most likely)').first().fill('75');
+    await page.getByLabel('Upper (optimistic)').first().fill('90');
+    await page.getByRole('button', { name: 'Save Opinion' }).click();
+
+    const verdict = page.getByRole('heading', { name: /Best Compromise/ });
+    await expect(verdict).toBeVisible({ timeout: 15000 });
+    await dismissToasts(page);
+    const verdictCard = verdict.locator('../..');
+    // The point of the picture: words, not a decimal. Assert one of the five positions
+    // is on screen, so a project that silently came out numeric fails here rather than
+    // shipping a screenshot that contradicts the page it illustrates.
+    await expect(
+      verdictCard.getByText(/strongly agree|rather agree|neutral|rather disagree|strongly disagree/i).first(),
+    ).toBeVisible();
+    await settled(page);
+    await verdictCard.screenshot({ path: `${IMG}/project-likert-verdict.png` });
   });
 
   test('the new project dialog', async ({ page }) => {
