@@ -1,5 +1,19 @@
 # Code quality report
 
+## Contents
+
+- [Summary](#summary)
+- [Running checks](#running-checks)
+- [Coverage by module](#coverage-by-module)
+- [Test breakdown](#test-breakdown)
+- [Mutation testing](#mutation-testing)
+  - [Results by module](#results-by-module)
+  - [Surviving mutants](#surviving-mutants)
+  - [Running](#running)
+- [Performance testing](#performance-testing)
+- [Production performance](#production-performance)
+- [Configuration](#configuration)
+
 ## Summary
 
 | Check | Status | Result |

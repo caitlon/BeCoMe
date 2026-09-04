@@ -100,6 +100,17 @@ jobs:
       - name: Install documentation dependencies
         run: uv sync --locked --extra docs
 
+      # Cheap, and it catches the drift the build cannot. Rename a heading without
+      # updating its entry and the site still builds: the link is well formed, it just
+      # points at a heading that is no longer there.
+      - name: Check the tables of contents
+        run: |
+          python3 scripts/docs/toc.py --check \
+            README.md api/README.md api/db/README.md src/README.md tests/README.md \
+            examples/README.md examples/data/README.md docs/development.md \
+            docs/environments.md docs/method-description.md docs/quality-report.md \
+            docs/security.md docs/uml-diagrams/README.md docs/user/worked-example.md
+
       - name: Build the site strictly
         run: uv run mkdocs build --strict
 

@@ -2,6 +2,26 @@
 
 The backend runs under one of three profiles, chosen by the `APP_ENV` variable: `dev`, `test`, or `prod`. A separate flag, `TESTING`, marks an automated test run and works independently of the profile. This page is the reference for both.
 
+## Contents
+
+- [How selection works](#how-selection-works)
+- [The two axes](#the-two-axes)
+- [Profiles in detail](#profiles-in-detail)
+  - [dev](#dev)
+  - [test (staging and the test suite)](#test-staging-and-the-test-suite)
+  - [prod](#prod)
+- [Configuration files](#configuration-files)
+- [Local use](#local-use)
+- [Docker](#docker)
+- [CI](#ci)
+- [Development workflow](#development-workflow)
+- [Railway deployment](#railway-deployment)
+- [Database schema and access](#database-schema-and-access)
+- [Photo storage](#photo-storage)
+- [Email delivery](#email-delivery)
+- [Current status](#current-status)
+- [Where the code lives](#where-the-code-lives)
+
 ## How selection works
 
 Settings read `APP_ENV` from the process environment (shell, Docker, Railway, CI), not from a dotenv file, because that value decides which file to load. The loader then reads `.env` first, then `.env.<APP_ENV>` on top, so a profile value overrides the shared base. When `APP_ENV` is unset, the dev profile applies.

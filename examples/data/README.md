@@ -9,6 +9,19 @@ COVID-19. Each one demonstrates a different aspect of the BeCoMe method.
 | [floods_case.txt](floods_case.txt) | 13 (odd) | Fuzzy intervals | Polarized opinions |
 | [pendlers_case.txt](pendlers_case.txt) | 22 (even) | Likert scale | Crisp values |
 
+## Contents
+
+- [File format](#file-format)
+- [Datasets](#datasets)
+  - [Budget case](#budget-case)
+  - [Floods case](#floods-case)
+  - [Pendlers case](#pendlers-case)
+- [Loading data](#loading-data)
+- [Data quality](#data-quality)
+- [Provenance](#provenance)
+- [Limitations](#limitations)
+- [Related documentation](#related-documentation)
+
 ## File format
 
 ```

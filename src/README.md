@@ -6,7 +6,13 @@ Core implementation of the BeCoMe method for aggregating expert opinions express
 
 - [Overview](#overview)
 - [Architecture](#architecture)
+  - [Layered structure](#layered-structure)
+  - [Dependency flow](#dependency-flow)
 - [Module descriptions](#module-descriptions)
+  - [Models layer (`models/`)](#models-layer-models)
+  - [Calculators layer (`calculators/`)](#calculators-layer-calculators)
+  - [Interpreters layer (`interpreters/`)](#interpreters-layer-interpreters)
+  - [Exception hierarchy (`exceptions.py`)](#exception-hierarchy-exceptionspy)
 - [Design patterns](#design-patterns)
 - [Type safety](#type-safety)
 - [Importing modules](#importing-modules)

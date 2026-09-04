@@ -2,6 +2,17 @@
 
 SQLModel-based database layer for BeCoMe API.
 
+## Contents
+
+- [Tables](#tables)
+- [Entity relationships](#entity-relationships)
+- [Usage](#usage)
+  - [Creating tables](#creating-tables)
+  - [Session dependency](#session-dependency)
+  - [Model examples](#model-examples)
+- [Configuration](#configuration)
+- [File structure](#file-structure)
+
 ## Tables
 
 | Table | Description |
@@ -56,7 +67,6 @@ from fastapi import Depends
 from sqlmodel import Session
 
 from api.db.session import get_session
-
 
 @app.get("/users/{user_id}")
 def get_user(user_id: UUID, session: Session = Depends(get_session)):
