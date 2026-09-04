@@ -52,8 +52,13 @@ docs = [
     "mkdocs==1.6.1",
     "mkdocs-material==9.7.7",
     # Ships with mkdocs-material, pinned here because the snippets extension is what
-    # pulls the per-directory READMEs onto the site instead of copying them.
+    # pulls the per-directory READMEs onto the site instead of copying them, and because
+    # `scripts/docs/toc.py` imports its slug function to get the same anchors the site
+    # and GitHub use.
     "pymdown-extensions==11.0.2",
+    # Arrives with mkdocs anyway. Named because that same script imports it directly,
+    # and an undeclared import is one dependency bump away from a puzzling failure.
+    "markdown==3.10.3",
 ]
 api = [
     "fastapi==0.141.1",

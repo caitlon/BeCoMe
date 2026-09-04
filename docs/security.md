@@ -22,10 +22,10 @@ page does not repeat it.
 - [GDPR: export and erasure](#gdpr-export-and-erasure)
 - [Accepted risks](#accepted-risks)
 - [Database](#database)
-  - [Roles and least privilege](#roles-and-least-privilege)
-  - [Network exposure](#network-exposure)
-  - [Audit logging](#audit-logging)
-  - [Backups](#backups)
+    - [Roles and least privilege](#roles-and-least-privilege)
+    - [Network exposure](#network-exposure)
+    - [Audit logging](#audit-logging)
+    - [Backups](#backups)
 - [Data integrity and migrations](#data-integrity-and-migrations)
 
 ## Status at a glance

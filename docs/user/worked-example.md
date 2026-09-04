@@ -10,7 +10,7 @@ here are genuinely awkward.
 - [The question](#the-question)
 - [What the method returned](#what-the-method-returned)
 - [Why the mean and the median disagree so badly](#why-the-mean-and-the-median-disagree-so-badly)
-- [What Δmax is telling you](#what-max-is-telling-you)
+- [What Δmax is telling you](#what-δmax-is-telling-you)
 - [What to say when you quote it](#what-to-say-when-you-quote-it)
 - [Reproducing it](#reproducing-it)
 
