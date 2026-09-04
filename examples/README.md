@@ -2,6 +2,18 @@
 
 Three case studies from Czech public policy show the BeCoMe method in action. Each loads real expert data, walks through the calculation, and displays intermediate results.
 
+## Contents
+
+- [Directory structure](#directory-structure)
+- [Case studies](#case-studies)
+  - [Running examples](#running-examples)
+- [Visualizations](#visualizations)
+- [Data files](#data-files)
+  - [Text file format](#text-file-format)
+- [Custom data](#custom-data)
+- [Understanding the output](#understanding-the-output)
+- [Related documentation](#related-documentation)
+
 ## Directory structure
 
 ```

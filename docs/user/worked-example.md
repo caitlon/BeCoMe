@@ -5,6 +5,15 @@ were asked a question about flood prevention, and they did not agree. Working th
 did with that disagreement explains the method better than any invented case, because the numbers
 here are genuinely awkward.
 
+## Contents
+
+- [The question](#the-question)
+- [What the method returned](#what-the-method-returned)
+- [Why the mean and the median disagree so badly](#why-the-mean-and-the-median-disagree-so-badly)
+- [What Δmax is telling you](#what-max-is-telling-you)
+- [What to say when you quote it](#what-to-say-when-you-quote-it)
+- [Reproducing it](#reproducing-it)
+
 ## The question
 
 **What percentage reduction of arable land in flood areas is recommended to prevent floods?**

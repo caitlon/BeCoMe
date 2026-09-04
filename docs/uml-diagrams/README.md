@@ -2,6 +2,16 @@
 
 Five diagrams visualize the BeCoMe implementation from different angles.
 
+## Contents
+
+- [Class diagram](#class-diagram)
+- [Class diagram: patterns](#class-diagram-patterns)
+- [Sequence diagram](#sequence-diagram)
+- [Activity diagram](#activity-diagram)
+- [Activity diagram: simplified](#activity-diagram-simplified)
+- [Regenerating diagrams](#regenerating-diagrams)
+- [Related](#related)
+
 ## Class diagram
 
 ![Class Diagram](diagrams/png/class-diagram.png)
