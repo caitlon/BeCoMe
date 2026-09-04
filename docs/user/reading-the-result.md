@@ -53,6 +53,16 @@ Those two situations can produce the same compromise. They do not mean the same 
 
 ![The triangle chart with the three aggregate curves](img/project-triangle.png)
 
+The same result in the other two views. Landscape is what opens by default, and Centroid
+collapses each opinion to a single point, which turns a crowd of overlapping triangles into
+something you can count.
+
+![The landscape view of the same result](img/project-landscape.png)
+
+![The centroid view: one dot per opinion, eight in the left cluster and five in the right, with the three aggregate lines standing in the gap](img/project-centroid.png)
+
+On this panel the centroid view is the one that settles the argument. Thirteen dots, two clusters, nothing in between, and the mean sitting out in the empty middle where no expert put anything.
+
 ## When the answer is a verdict instead of a number
 
 On a Likert scale, which is a project running 0 to 100 with no unit, the compromise is rounded to

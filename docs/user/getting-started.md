@@ -34,10 +34,13 @@ possibly be, and every opinion has to fit inside it.
 
 ![The new project dialog, with the name, description and scale fields](img/new-project.png)
 
-!!! tip "Leave the unit empty for agreement questions"
+!!! warning "Agreement questions need an empty unit, and the form will not accept one"
 
-    A scale of 0 to 100 with no unit is treated as a Likert scale, and the result comes back as a
-    verdict in words rather than a number. Use it for "should we" rather than "how much".
+    A scale of 0 to 100 with no unit is read as an agreement scale, and the result comes back as a
+    verdict in words rather than a number. The create form currently requires a unit, so that mode
+    cannot be reached from here yet. It is described under
+    [reading the result](reading-the-result.md) because it exists and works. Only this form stands
+    in the way.
 
 ## Invite the experts
 
