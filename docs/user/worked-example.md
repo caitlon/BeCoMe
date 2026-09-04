@@ -72,8 +72,12 @@ something you have to take on trust from this page.
 ## What Δmax is telling you
 
 Δmax is `|20.28 − 8.33| / 2`, which is 5.97. Because the compromise is the midpoint, that same
-number is how far the compromise sits from each of the two candidates: `|20.28 − 14.31| = 5.97` and
-`|14.31 − 8.33| = 5.98`.
+number is how far it sits from each of the two candidates, and exactly the same on both sides:
+5.9733 to the mean and 5.9733 to the median.
+
+Work that out from the rounded figures on this page and you get 5.97 one way and 5.98 the other,
+which is an artefact of the rounding rather than a real asymmetry. It is the same trap the rest of
+this page is about, and it caught the first draft of this paragraph.
 
 So Δmax is not a margin of error in the usual sense. It is the price of the disagreement, measured
 as the distance you had to travel from either honest answer to reach the compromise.

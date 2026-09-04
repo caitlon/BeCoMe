@@ -69,8 +69,10 @@ export default defineConfig({
       testMatch: /visual-regression/,
     },
     // Illustrations for the documentation site, not a check. It writes PNGs into
-    // `docs/user/img/` and asserts almost nothing, so it is opt-in: nothing runs it
-    // unless somebody names it, and the three browser projects above ignore it.
+    // `docs/user/img/`, so every entry point that matters names it explicitly: CI and
+    // `scripts/ci/e2e-local.sh` both pass `--project=`. A bare `npm run test:e2e` does
+    // run it, along with every other project, and would overwrite the tracked images
+    // with a local render. Same shape as `wcag-audit` and `visual-regression` above.
     {
       name: 'docs-screenshots',
       use: { ...devices['Desktop Chrome'] },

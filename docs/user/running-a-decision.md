@@ -42,26 +42,10 @@ not spending influence by admitting doubt.
 mean "I do not want to think about the range". A false certainty carries more weight than it has
 earned.
 
-**A Likert answer** is for agreement rather than quantity. When the project scale runs from 0 to
-100 with the unit left blank, the answers are read as positions on an agreement scale:
-
-| Position | Value |
-|---|---|
-| Strongly disagree | 0 |
-| Rather disagree | 25 |
-| Neutral | 50 |
-| Rather agree | 75 |
-| Strongly agree | 100 |
-
-You still answer with three numbers. An expert who rather agrees but holds it loosely might enter
-`(60, 75, 90)`. The result then comes back as a verdict in words rather than a bare figure, because
-"the panel rather agrees" is what the question asked for and 71.4 is not.
-
-!!! warning "The unit decides, not the range"
-
-    A project measured in percent also runs from 0 to 100, and it is not an agreement question.
-    Only an empty unit makes a scale Likert. This is why the example project, which measures a
-    percentage, keeps its `%` and reports a number.
+**An agreement answer** is what the method offers for "should we" questions instead of "how much"
+ones, on a scale of 0 to 100 with no unit. It is described under
+[reading the result](reading-the-result.md), and it is not usable yet: the create form will not
+make such a project. Everything above applies to the quantities you can actually ask about today.
 
 ## When the result appears
 

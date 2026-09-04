@@ -34,13 +34,11 @@ possibly be, and every opinion has to fit inside it.
 
 ![The new project dialog, with the name, description and scale fields](img/new-project.png)
 
-!!! warning "Agreement questions need an empty unit, and the form will not accept one"
+!!! warning "The agreement mode is not usable yet"
 
-    A scale of 0 to 100 with no unit is read as an agreement scale, and the result comes back as a
-    verdict in words rather than a number. The create form currently requires a unit, so that mode
-    cannot be reached from here yet. It is described under
-    [reading the result](reading-the-result.md) because it exists and works. Only this form stands
-    in the way.
+    The method has a second mode for "should we" questions, on a scale of 0 to 100 with no unit.
+    The form below will not accept a project without a unit, and even a project that had one would
+    not display its verdict. [Reading the result](reading-the-result.md) says where it stands.
 
 ## Invite the experts
 
