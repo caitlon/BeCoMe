@@ -35,7 +35,7 @@ points apart, and the app reports high agreement, correctly by its own rule.
 
 Which is why the chart is not decoration.
 
-![The result panel: best compromise, mean, median and the confidence badge](img/project-results.png)
+![The result card: the compromise, its spread, the confidence badge, and the three components](img/project-results.png)
 
 ## What the chart shows
 
