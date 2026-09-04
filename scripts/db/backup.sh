@@ -10,8 +10,10 @@
 #   Output: backups/<env>-<UTC-timestamp>.dump  (custom format)
 #   Restore: pg_restore --no-owner --no-privileges -d <target-url> <dump>
 #
-# Requires: the Railway CLI logged in and linked (or RAILWAY_PROJECT_ID set), plus jq
-# and a current pg_dump (>= the server; `brew install libpq` provides one).
+# Requires: the Railway CLI logged in and linked (or RAILWAY_PROJECT_ID set), plus jq,
+# and a way to run pg_dump at least as new as the server. A local client is used when it
+# is new enough; otherwise a `postgres:<server major>` container is, so docker alone is
+# sufficient and no formula has to be pinned per machine.
 set -uo pipefail
 
 ENV_ARG="${1:-prod}"
@@ -80,16 +82,107 @@ echo "temporary proxy open on $DOMAIN:$PORT"
 
 PG_DUMP=/opt/homebrew/opt/libpq/bin/pg_dump
 command -v "$PG_DUMP" >/dev/null 2>&1 || PG_DUMP=pg_dump
-# Password goes through PGPASSWORD so it never appears in the process arguments (ps aux).
+HAVE_LOCAL=""
+command -v "$PG_DUMP" >/dev/null 2>&1 && HAVE_LOCAL=1
+
+# Exported once rather than prefixed per command. Both keep it out of `ps`, but the
+# docker fallback below cannot use a prefix: `docker run -e VAR=value` puts the value in
+# the argv of the HOST docker process, where `ps` and `docker inspect` both show it.
+# The bare `-e VAR` form forwards the exported value without ever naming it.
+export PGPASSWORD="$PW"
 URL="postgresql://postgres@$DOMAIN:$PORT/$DBN?sslmode=require&connect_timeout=10"
 
 mkdir -p backups
 OUT="backups/${ENV_ARG}-$(date -u +%Y%m%dT%H%M%SZ).dump"
+
+# A dump that failed must not leave a file behind. `pg_dump -f` creates the target
+# before it does anything else, so a failed run used to leave a 0-byte `.dump` with a
+# correct-looking name sitting next to the real ones. That is worse than no backup:
+# it is the thing you reach for on the day you need it. Measured 2026-09-03, when a
+# version mismatch produced exactly that file.
+#
+# It removes only an EMPTY file, and that leaves one case uncovered on purpose: a dump
+# that connects and then dies mid-stream leaves a truncated, non-empty file with the
+# same correct-looking name. Any size threshold above zero would be a guess about how
+# small a legitimate database can be, and a wrong guess throws away a real backup. The
+# cover for that case is not this function, it is reading the dump's table of contents
+# after the run: `pg_restore --list <file>`.
+discard_output() { [ -f "$OUT" ] && [ ! -s "$OUT" ] && rm -f "$OUT"; }
+
+# Every message this script greps for is `pg_dump`'s own, and `pg_dump` is translated:
+# under a German locale the version refusal reads "Abbruch wegen unpassender
+# Serverversion", under Russian something different again, and the greps below match
+# none of them. Without `LC_ALL=C` this whole fallback is silently inert on any machine
+# whose shell is not English, which is the worst way for a safety net to fail.
+mismatch() { LC_ALL=C grep -q "server version mismatch" "$ERRFILE" 2>/dev/null; }
+server_major() { sed -n 's/.*server version: \([0-9][0-9]*\).*/\1/p' "$ERRFILE" | head -1; }
+
+docker_dump() {  # $1 = postgres major to run
+  discard_output
+  docker run --rm -i -e PGPASSWORD -e LC_ALL=C "postgres:$1" \
+    pg_dump "$URL" --no-owner --no-privileges -Fc > "$OUT" 2>"$ERRFILE"
+}
+
+# The proxy needs the same warm-up here as it does for a local client, and the reason
+# this is easy to miss is that the fix above removed the wait: before it, a mismatch
+# spun through six retries and the proxy came up during them. Breaking out early made
+# the diagnosis honest and left the container racing a proxy that is not listening yet.
+# Whether it wins depends on how long docker spends pulling an image, which is not a
+# thing to depend on. A mismatch still returns immediately: it is the caller's cue to
+# correct the major and try again, and no amount of waiting changes it.
+docker_dump_waiting() {  # $1 = postgres major to run
+  local i
+  for i in $(seq 1 6); do
+    if docker_dump "$1"; then return 0; fi
+    if mismatch; then return 1; fi
+    echo "  (proxy warming up, retry $i)..."; sleep 5
+  done
+  return 1
+}
+
 ok=""
-for i in $(seq 1 6); do
-  if PGPASSWORD="$PW" "$PG_DUMP" "$URL" --no-owner --no-privileges -Fc -f "$OUT" 2>"$ERRFILE"; then ok=1; break; fi
-  echo "  (proxy warming up, retry $i)..."; sleep 5
-done
-[ -z "$ok" ] && { echo "pg_dump failed:"; cat "$ERRFILE"; exit 1; }
+if [ -n "$HAVE_LOCAL" ]; then
+  for i in $(seq 1 6); do
+    if LC_ALL=C "$PG_DUMP" "$URL" --no-owner --no-privileges -Fc -f "$OUT" 2>"$ERRFILE"; then ok=1; break; fi
+    # Only a warming proxy is worth retrying. A version mismatch will not fix itself in
+    # five seconds, and the loop used to hide it behind six identical lines.
+    if mismatch; then break; fi
+    echo "  (proxy warming up, retry $i)..."; sleep 5
+  done
+fi
+
+# `pg_dump` refuses to dump a server newer than itself, and the client here comes from
+# Homebrew while the server is whatever Railway runs. Rather than pinning a formula on
+# every machine, fall back to a container of the server's own major, read out of the
+# refusal itself. With no local client at all there is nothing to read, so a candidate
+# is tried first and corrected once if it is also too old.
+if [ -z "$ok" ] && { [ -z "$HAVE_LOCAL" ] || mismatch; }; then
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "  need a pg_dump at least as new as the server, and docker is not installed."
+    echo "  install one, e.g. brew install postgresql@$(server_major || echo 18)"
+  elif ! docker info >/dev/null 2>&1; then
+    echo "  need a pg_dump at least as new as the server, and the docker daemon is not running."
+  else
+    CAND=$(server_major); [ -z "$CAND" ] && CAND=18
+    [ -z "$HAVE_LOCAL" ] && echo "  no local pg_dump found; using postgres:$CAND in docker"
+    [ -n "$HAVE_LOCAL" ] && echo "  local pg_dump is older than the server; using postgres:$CAND in docker"
+    if docker_dump_waiting "$CAND"; then
+      ok=1
+    elif mismatch; then
+      REAL=$(server_major)
+      if [ -n "$REAL" ] && [ "$REAL" != "$CAND" ]; then
+        echo "  server is actually $REAL; retrying with postgres:$REAL"
+        docker_dump_waiting "$REAL" && ok=1
+      fi
+    fi
+  fi
+fi
+
+if [ -z "$ok" ]; then
+  echo "pg_dump failed:"; cat "$ERRFILE"; discard_output; exit 1
+fi
+if [ ! -s "$OUT" ]; then
+  echo "pg_dump wrote nothing to $OUT"; discard_output; exit 1
+fi
 echo "OK: $OUT ($(du -h "$OUT" | cut -f1))"
 echo "restore: pg_restore --no-owner --no-privileges -d <target-url> $OUT"

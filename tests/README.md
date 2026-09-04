@@ -60,6 +60,21 @@ database, so workers queue behind each other until the client's ten-second timeo
 in `tests/e2e/conftest.py` starts firing. At twelve workers a quarter of them
 failed that way. At four they all passed.
 
+`scripts/ci/e2e-local.sh` takes a mode: `all`, `backend`, `playwright`, `visual`, or
+`docs`. The last one is not a test. It runs the `docs-screenshots` Playwright project,
+which photographs the app into `docs/user/img/` for the documentation site, and it is
+deliberately outside `all` because it writes files rather than checking anything.
+
+Two things about that mode are worth knowing before changing it. It runs
+`alembic upgrade head` first, which the other modes do not: the example project it
+photographs only seeds when the demo expert pool exists, and that pool is created by a
+migration while the test profile builds its schema with `create_all`. Without the
+migration the seed is skipped, and the failure reads as a missing link on an empty
+project list rather than as a missing pool. And its screenshots are not the ones in
+`visual-regression.spec.ts-snapshots`: those are byte-compared baselines rendered on
+Linux, these are illustrations, and keeping them apart stops the documentation from
+dictating what the regression suite checks.
+
 Passing `-n 0` in those two places is not enough on its own, because `addopts`
 applies to every invocation: a plain `pytest tests/` sweeps the directory in at
 full width. So `pytest_collection_modifyitems` in `tests/e2e/conftest.py` skips
