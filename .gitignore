@@ -85,6 +85,13 @@ scripts/seed_db.py
 CLAUDE.md
 .claude
 .worktreeinclude
+# Where `npx skills add` puts third-party skills, and the lockfile it keeps beside
+# them. Same reasoning as `.claude`: assistant configuration is local, and these
+# arrive from someone else's repository. No trailing slash, because a session
+# worktree gets `.agents` as a symlink and `.agents/` would not match one -- which
+# is why `supplementary/` and `.venv/` still show as untracked inside a worktree.
+.agents
+skills-lock.json
 .github/ISSUE_TEMPLATE
 
 # Mutation testing
