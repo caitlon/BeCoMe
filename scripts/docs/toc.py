@@ -120,7 +120,7 @@ def render(items: list[tuple[int, str]]) -> list[str]:
 def _splice(before: list[str], block: list[str], after: list[str]) -> str:
     """Put the block between the two halves, separated by exactly one blank line.
 
-    Deliberately narrow. The first version normalised blank lines across the whole
+    Deliberately narrow. The first version normalized blank lines across the whole
     document, which reached into a code sample in `api/db/README.md` and closed up the
     gap between two statements. A tool that rewrites a table of contents has no business
     touching a line it did not write.
@@ -223,7 +223,7 @@ def main() -> int:
         print("table of contents is stale in:")
         for p in stale:
             print(f"  {p}")
-        print("fix with: uv run python scripts/docs/toc.py --write <path>...")
+        print("fix with: uv run python scripts/docs/toc.py --write")
         return 1
     print(f"{len(paths)} checked, all current")
     return 0

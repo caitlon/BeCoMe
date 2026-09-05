@@ -87,6 +87,18 @@ uv run --extra docs mkdocs build --strict   # what CI will run: fails on a broke
 in a README that lives next to the code, so a moved file or a link that only resolves inside
 the repository turns into a build failure rather than a broken page.
 
+The long documents carry a generated table of contents, and CI checks it in the same job:
+
+```bash
+uv run --extra docs python scripts/docs/toc.py --check   # exit 1 and names what is stale
+uv run --extra docs python scripts/docs/toc.py --write   # rewrite them
+```
+
+Rename a heading and its entry stops pointing anywhere, which the build cannot see because the
+link is still well formed. That is what the check is for. With no paths it works on every
+tracked document over 100 lines or over 6 sections, so a document that grows into needing one
+gets picked up on its own.
+
 ## Run it locally
 
 ```bash
