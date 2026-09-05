@@ -25,12 +25,11 @@ and the check verified it; if one ever does, the link will point at the first oc
 and this comment is where to start.
 
     uv run python scripts/docs/toc.py --check   # exit 1 if any is stale
-    uv run python scripts/docs/toc.py --write   # rewrite in place
+    uv run python scripts/docs/toc.py --write   # rewrite them
 
 With no paths it works on every tracked document long enough to want a map, which is
-what CI runs; `discover` is where that means something. Naming paths overrides it. Run
-it from the repository root, and with the `docs` extra, which is where `markdown` and
-`pymdown-extensions` live.
+what CI runs; `discover` is where that means something. Naming paths overrides it. It
+needs the `docs` extra, which is where `markdown` and `pymdown-extensions` live.
 """
 
 from __future__ import annotations
@@ -42,15 +41,20 @@ import subprocess
 import sys
 from pathlib import Path
 
-import markdown
-from pymdownx.slugs import slugify as _github_slugify
+import markdown  # type: ignore[import-untyped]
+from pymdownx.slugs import slugify as _github_slugify  # type: ignore[import-untyped]
 
 HEADING = re.compile(r"^(#{2,3})\s+(.+?)\s*$")
-FENCE = re.compile(r"^\s*```")
+FENCE = re.compile(r"^\s*(`{3,}|~{3,})")
 CONTENTS_TITLE = re.compile(r"^##\s+(Contents|Table of contents)\s*$", re.IGNORECASE)
+ENTRY = re.compile(r"^ *- \[.*\]\(#.*\)\s*$")
 TAG = re.compile(r"<[^>]+>")
 
 _slug = _github_slugify(case="lower")
+
+
+class NotOursError(Exception):
+    """Something under `## Contents` was written by a person, so we refuse to touch it."""
 
 
 def slug(text: str) -> str:
@@ -68,7 +72,7 @@ def slug(text: str) -> str:
     one, which is the second time it has caught this function.
     """
     rendered = TAG.sub("", markdown.markdown("## " + text))
-    return _slug(html.unescape(rendered).strip(), "-")
+    return str(_slug(html.unescape(rendered).strip(), "-"))
 
 
 def _fenced(lines: list[str]) -> list[bool]:
@@ -78,15 +82,26 @@ def _fenced(lines: list[str]) -> list[bool]:
     example is not a heading. Miss that in the two places `rebuild` cuts the document
     and it cuts inside the fence, orphaning the closing delimiter and promoting the
     example's text into live headings.
+
+    Tildes count. `pymdownx.superfences` is enabled, so `~~~` opens a block exactly as
+    three backticks do, and a version of this that knew only about backticks read the
+    inside of a tilde block as ordinary document. Closing takes the same character and
+    at least as many of them, which is why the opening run is remembered rather than a
+    plain flag: a ``` line inside a ~~~ block closes nothing.
     """
     mask: list[bool] = []
-    in_fence = False
+    opened: tuple[str, int] | None = None
     for line in lines:
-        if FENCE.match(line):
-            in_fence = not in_fence
+        m = FENCE.match(line)
+        if m:
+            run = m.group(1)
+            if opened is None:
+                opened = (run[0], len(run))
+            elif run[0] == opened[0] and len(run) >= opened[1]:
+                opened = None
             mask.append(True)
             continue
-        mask.append(in_fence)
+        mask.append(opened is not None)
     return mask
 
 
@@ -140,6 +155,10 @@ def _splice(before: list[str], block: list[str], after: list[str]) -> str:
 
 
 def rebuild(text: str) -> str:
+    """The document with its Contents section regenerated.
+
+    :raises NotOursError: when the existing section holds anything this script did not write
+    """
     lines = text.splitlines()
     items = headings(lines)
     if not items:
@@ -162,6 +181,17 @@ def rebuild(text: str) -> str:
     end = start + 1
     while end < len(lines) and not is_heading[end]:
         end += 1
+
+    # Everything from here to the next heading is about to be thrown away unread, and
+    # when the section is the last one in the file that is the whole rest of the file.
+    # A sentence somebody wrote under `## Contents` would go with it, silently, and the
+    # command `--check` recommends is the one that would do it. Refuse instead.
+    for i in range(start + 1, end):
+        if lines[i].strip() and not ENTRY.match(lines[i]):
+            raise NotOursError(
+                f"line {i + 1} is under `## Contents` and is not a generated entry, so "
+                f"rewriting the section would delete it: {lines[i].strip()!r}"
+            )
     return _splice(lines[:start], render(items), lines[end:])
 
 
@@ -179,16 +209,28 @@ def discover() -> list[Path]:
     This lives here rather than as a list of filenames in the CI workflow so that the
     fifteenth document to cross the line gets checked without anyone remembering to add
     it. A list would stay green while quietly covering less each month.
+
+    Anchored at the repository root on purpose. `git ls-files` resolves its pathspec
+    against the working directory, so running this from `docs/` found seven files,
+    reported them all current and exited zero, having never looked at the READMEs under
+    `src/` or `api/`. Green output that means half of what it says is worse than red.
     """
-    tracked = subprocess.run(
-        ["git", "ls-files", "-z", "*.md"],  # noqa: S607, fixed argv, no shell, no input
+    root = subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"],  # noqa: S607, fixed argv, no shell
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    tracked = subprocess.run(  # noqa: S603, argv is git's own toplevel, not user input
+        ["git", "-C", root, "ls-files", "-z", "*.md"],  # noqa: S607, fixed argv, no shell
         capture_output=True,
         text=True,
         check=True,
     ).stdout.split("\0")
+
     out = []
     for name in filter(None, tracked):
-        path = Path(name)
+        path = Path(root) / name
         lines = path.read_text(encoding="utf-8").splitlines()
         sections = sum(1 for level, _ in headings(lines) if level == 2)
         if len(lines) > LONG_ENOUGH_LINES or sections > LONG_ENOUGH_SECTIONS:
@@ -208,8 +250,16 @@ def main() -> int:
 
     stale: list[Path] = []
     for path in paths:
-        original = path.read_text(encoding="utf-8")
-        updated = rebuild(original)
+        try:
+            original = path.read_text(encoding="utf-8")
+        except OSError as exc:
+            print(f"cannot read {path}: {exc}", file=sys.stderr)
+            return 2
+        try:
+            updated = rebuild(original)
+        except NotOursError as exc:
+            print(f"{path}: {exc}", file=sys.stderr)
+            return 2
         if updated == original:
             continue
         stale.append(path)
