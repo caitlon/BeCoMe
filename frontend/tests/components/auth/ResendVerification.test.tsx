@@ -191,5 +191,28 @@ describe('ResendVerification', () => {
         expect(mockTurnstileReset).toHaveBeenCalled();
       });
     });
+
+    it('resets the widget after a successful send, so a second one cannot replay the token', async () => {
+      vi.stubEnv('VITE_TURNSTILE_SITE_KEY', 'test-site-key');
+      mockResendVerification.mockResolvedValueOnce(undefined);
+      const user = userEvent.setup();
+      render(<ResendVerification email="user@example.com" password="CorrectHorse123!" />);
+
+      await user.click(screen.getByRole('button', { name: /mint resend_verification token/i }));
+      await waitFor(() => expect(getButton()).not.toBeDisabled());
+      await user.click(getButton());
+
+      await waitFor(() => {
+        expect(screen.getByRole('status')).toBeInTheDocument();
+      });
+      // A success spends the token exactly as a failure does, and this control is the
+      // one that stays on screen afterwards by design (the test above asserts it is
+      // still enabled). Without a reset here, asking for a second link replays the
+      // token the first one already redeemed and is refused for a reason the user
+      // can do nothing about.
+      await waitFor(() => {
+        expect(mockTurnstileReset).toHaveBeenCalled();
+      });
+    });
   });
 });

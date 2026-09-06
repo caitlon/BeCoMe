@@ -34,11 +34,13 @@ export function ResendVerification({ email, password }: ResendVerificationProps)
       setStatus("success");
     } catch {
       setStatus("error");
-      // The control stays on screen after a failure, so the retry it invites needs
-      // a token that has not already been spent.
-      turnstileRef.current?.reset();
     } finally {
       setIsLoading(false);
+      // Unlike the three auth pages, this control stays on screen whatever happened:
+      // after a failure for the retry it invites, after a success so a second link can
+      // be asked for. The attempt spent its token either way, so both paths have to
+      // earn a fresh one or the next send is refused for a reason nobody can act on.
+      turnstileRef.current?.reset();
     }
   };
 
