@@ -145,3 +145,10 @@ class DisposableEmailDomainError(ValidationError):
 
 class UnresolvableEmailDomainError(ValidationError):
     """Raised when a registration address's domain has no mail-capable DNS records."""
+
+
+# Bot-check exception (api/services/turnstile_service.py). One type for every way the
+# check can refuse, so the answer is the same whether the request carried no token at
+# all, one Cloudflare rejected, or one minted for another form or another site.
+class TurnstileVerificationError(BeCoMeAPIError):
+    """Raised when a request carries no Turnstile token, or none Cloudflare vouches for."""
