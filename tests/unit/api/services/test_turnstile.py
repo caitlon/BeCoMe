@@ -6,6 +6,7 @@ case that lets the verifier build its own patches ``httpx.AsyncClient``.
 
 import asyncio
 import json
+import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -18,6 +19,7 @@ from api.services.turnstile_service import (
     CloudflareTurnstileVerifier,
     DisabledTurnstileVerifier,
 )
+from tests.shared.helpers import captured_log_records
 
 _TOKEN = "0.a-token-minted-by-the-widget"
 _HOSTNAMES = frozenset({"www.becomify.app", "becomify.app"})
@@ -456,6 +458,72 @@ class TestHostnameMatchingIsCaseInsensitive:
         # WHEN/THEN
         with pytest.raises(TurnstileVerificationError):
             _verify(verifier)
+
+
+class TestRefusalLogLevels:
+    """What a refusal is worth in the drain depends on whether a token was presented.
+
+    A request with no header at all is a scanner, a crawler, or a stale tab: it costs
+    the service nothing and there are a great many of them, so a bot flood would write
+    one WARNING per request into a paid log drain and bury the records that mean
+    something. A token that was presented and rejected is the opposite - somebody ran
+    the widget and the answer still did not check out - and that is worth an alert.
+    """
+
+    @staticmethod
+    def _levels_and_reasons(verifier, token=_TOKEN):
+        """Refuse one request and return the (level, reason) of each record it wrote.
+
+        :param verifier: The verifier under test.
+        :param token: Header value to check.
+        :return: One ``(levelno, reason)`` pair per record on ``api.security``.
+        """
+        with captured_log_records("api.security") as records:
+            with pytest.raises(TurnstileVerificationError):
+                _verify(verifier, token)
+        return [(record.levelno, getattr(record, "reason", None)) for record in records]
+
+    def test_a_request_with_no_token_is_recorded_at_debug(self):
+        """
+        GIVEN a request that carried no X-Turnstile-Token header
+        WHEN the check refuses it
+        THEN the record is DEBUG, so a bot flood does not fill the drain
+        """
+        # GIVEN/WHEN
+        written = self._levels_and_reasons(_verifier(), token=None)
+
+        # THEN
+        assert written == [(logging.DEBUG, "missing_token")]
+
+    def test_a_rejected_token_is_recorded_at_warning(self):
+        """
+        GIVEN a token siteverify answers success: false for
+        WHEN the check refuses it
+        THEN the record is WARNING, since somebody presented a token that failed
+        """
+        # GIVEN
+        verifier = _verifier(_client(_siteverify_body(success=False)))
+
+        # WHEN
+        written = self._levels_and_reasons(verifier)
+
+        # THEN
+        assert written == [(logging.WARNING, "rejected")]
+
+    def test_a_token_minted_elsewhere_is_recorded_at_warning(self):
+        """
+        GIVEN a token minted on a hostname outside the list
+        WHEN the check refuses it
+        THEN the record is WARNING: a token from another site is worth seeing
+        """
+        # GIVEN
+        verifier = _verifier(_client(_siteverify_body(hostname="phish.example.com")))
+
+        # WHEN
+        written = self._levels_and_reasons(verifier)
+
+        # THEN
+        assert written == [(logging.WARNING, "hostname_mismatch")]
 
 
 class TestDisabledTurnstileVerifier:

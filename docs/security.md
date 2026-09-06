@@ -428,6 +428,12 @@ this one, would open registration here. The endpoints that redeem an emailed lin
 `/verify-email` and `/reset-password`, are deliberately not guarded: holding a live
 single-use token is already evidence of a person, and no widget is rendered on those pages.
 
+Every refusal writes one `turnstile_refused` record naming the reason, never the token. The
+level splits on whether a token was presented at all: a request that carried no header is
+recorded at DEBUG, because scanners produce those in bulk and one WARNING each would bury
+the rest of the drain, while a token that was presented and did not check out is a WARNING.
+An alert on the refusals should therefore key on the WARNING records.
+
 `TURNSTILE_ENABLED` is the kill switch and it defaults to **off**, which is what lets a
 laptop, CI, and a fresh clone run with no widget and no secret. It stays a working switch on
 a deploy, because the check is fail-closed: while Cloudflare's siteverify is unreachable,
