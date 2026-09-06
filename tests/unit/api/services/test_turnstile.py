@@ -478,9 +478,11 @@ class TestRefusalLogLevels:
         :param token: Header value to check.
         :return: One ``(levelno, reason)`` pair per record on ``api.security``.
         """
-        with captured_log_records("api.security") as records:
-            with pytest.raises(TurnstileVerificationError):
-                _verify(verifier, token)
+        with (
+            captured_log_records("api.security") as records,
+            pytest.raises(TurnstileVerificationError),
+        ):
+            _verify(verifier, token)
         return [(record.levelno, getattr(record, "reason", None)) for record in records]
 
     def test_a_request_with_no_token_is_recorded_at_debug(self):
