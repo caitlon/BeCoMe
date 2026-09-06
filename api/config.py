@@ -217,6 +217,17 @@ class Settings(BaseSettings):
     disposable_email_blocking_enabled: bool = True
     mx_check_enabled: bool = True
 
+    # Cloudflare Turnstile bot check on the unauthenticated auth endpoints
+    # (api/auth/turnstile.py). Off by default so a fresh clone, local development, and
+    # the test suite all run with no widget and no secret; every deployed service must
+    # switch it on, which _validate_deploy_invariants enforces. turnstile_hostnames
+    # lists the frontend hosts a token may be minted on, in the JSON-array form
+    # cors_origins uses; a token naming anything else is refused, so an empty list
+    # refuses everything.
+    turnstile_enabled: bool = False
+    turnstile_secret_key: str = ""
+    turnstile_hostnames: list[str] = []
+
     def __init__(self, **kwargs: Any) -> None:
         """Load ``.env`` then ``.env.<APP_ENV>`` and inject the resolved profile.
 
@@ -304,16 +315,21 @@ class Settings(BaseSettings):
 
         A strong secret, real PostgreSQL database, Redis-backed store, a real
         (non-loopback) CORS origin, a configured email provider, debug off, an
-        explicit migration URL, and the Cloudflare origin lock are required on
-        anything that serves real traffic, since those services share the
-        rate-limit / revocation store and are reachable from the internet. Every
-        deployed environment sits behind Cloudflare, so the origin lock is demanded
-        of all of them rather than of production alone.
+        explicit migration URL, the Cloudflare origin lock, and a fully configured
+        Turnstile bot check are required on anything that serves real traffic, since
+        those services share the rate-limit / revocation store and are reachable from
+        the internet. Every deployed environment sits behind Cloudflare, so the origin
+        lock is demanded of all of them rather than of production alone.
+
+        The bot check is demanded here rather than left to the operator because its
+        field defaults are the working local configuration: off, with no secret and no
+        hostnames. Nothing downstream can tell a deploy that meant to leave it off from
+        one that forgot, so the deploy is refused instead.
 
         :return: The validated settings instance.
         :raises ValueError: If a deployed profile still carries a development
             default, lacks a real email provider, runs with debug on, or has no
-            migration URL or Cloudflare origin secret.
+            migration URL, Cloudflare origin secret, or Turnstile configuration.
         """
         if not self.is_deploy:
             return self
@@ -369,6 +385,27 @@ class Settings(BaseSettings):
                 f"migration_database_url is required in the {profile} profile so Alembic "
                 "runs as the privileged role and the app keeps its least-privilege one; "
                 "set it explicitly even when it matches database_url"
+            )
+        if not self.turnstile_enabled:
+            raise ValueError(
+                f"turnstile_enabled must be true in the {profile} profile; register, "
+                "login, forgot-password, and resend-verification take a request from "
+                "nobody in particular, and with the check off a script can drive all four "
+                "as fast as the rate limiter allows. The field defaults to false so a "
+                "laptop needs no widget, which is exactly how a deploy would end up "
+                "unprotected with nothing to notice"
+            )
+        if not self.turnstile_secret_key:
+            raise ValueError(
+                f"turnstile_secret_key is required in the {profile} profile; the check is "
+                "on and without the secret every siteverify call is refused, so all four "
+                "endpoints answer 403 to real users"
+            )
+        if not self.turnstile_hostnames:
+            raise ValueError(
+                f"turnstile_hostnames must list the deployed frontend hosts in the "
+                f"{profile} profile; a token naming a hostname outside the list is "
+                "refused, so an empty list refuses every request"
             )
         return self
 

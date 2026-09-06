@@ -22,6 +22,9 @@ def _configure_prod(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("EMAIL_PROVIDER", "http")
     monkeypatch.setenv("EMAIL_API_KEY", "a-resend-api-key")
     monkeypatch.setenv("DEBUG", "false")
+    monkeypatch.setenv("TURNSTILE_ENABLED", "true")
+    monkeypatch.setenv("TURNSTILE_SECRET_KEY", "a-turnstile-secret")
+    monkeypatch.setenv("TURNSTILE_HOSTNAMES", '["app.example.com"]')
 
 
 class TestStorageEnabled:
@@ -252,6 +255,74 @@ class TestEmailPolicySettings:
         assert settings.mx_check_enabled is False
 
 
+class TestTurnstileSettings:
+    """Tests for the Cloudflare Turnstile bot-check settings."""
+
+    @pytest.fixture(autouse=True)
+    def _isolate_turnstile_env(self, monkeypatch, tmp_path):
+        """Isolate from the local .env file and any TURNSTILE_* process variables.
+
+        A developer running the widget locally has these set, and the repository .env
+        carries the secret; either would leak into the default-value tests below and
+        break them, while CI, which has no .env, stayed green.
+        """
+        monkeypatch.chdir(tmp_path)
+        for var in ("TURNSTILE_ENABLED", "TURNSTILE_SECRET_KEY", "TURNSTILE_HOSTNAMES"):
+            monkeypatch.delenv(var, raising=False)
+
+    def test_turnstile_is_off_by_default(self):
+        """
+        GIVEN Settings without an explicit override
+        WHEN constructed
+        THEN the bot check is off, so a clone needs no widget to run the app or the suite
+        """
+        # GIVEN/WHEN
+        settings = Settings(secret_key="test-secret-key")
+
+        # THEN
+        assert settings.turnstile_enabled is False
+        assert settings.turnstile_secret_key == ""
+        assert settings.turnstile_hostnames == []
+
+    def test_reads_the_switch_and_secret_from_the_environment(self, monkeypatch, tmp_path):
+        """
+        GIVEN TURNSTILE_ENABLED and TURNSTILE_SECRET_KEY in the environment
+        WHEN Settings is constructed
+        THEN both are picked up, so the check is a variable change rather than a deploy
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("APP_ENV", "dev")
+        monkeypatch.setenv("SECRET_KEY", "irrelevant-for-dev")
+        monkeypatch.setenv("TURNSTILE_ENABLED", "true")
+        monkeypatch.setenv("TURNSTILE_SECRET_KEY", "a-turnstile-secret")
+
+        # WHEN
+        settings = Settings()
+
+        # THEN
+        assert settings.turnstile_enabled is True
+        assert settings.turnstile_secret_key == "a-turnstile-secret"
+
+    def test_reads_the_hostname_list_as_a_json_array(self, monkeypatch, tmp_path):
+        """
+        GIVEN TURNSTILE_HOSTNAMES holding a JSON array
+        WHEN Settings is constructed
+        THEN it parses into a list, the same shape CORS_ORIGINS uses
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("APP_ENV", "dev")
+        monkeypatch.setenv("SECRET_KEY", "irrelevant-for-dev")
+        monkeypatch.setenv("TURNSTILE_HOSTNAMES", '["www.becomify.app", "becomify.app"]')
+
+        # WHEN
+        settings = Settings()
+
+        # THEN
+        assert settings.turnstile_hostnames == ["www.becomify.app", "becomify.app"]
+
+
 class TestEnvironmentResolution:
     """Tests for APP_ENV profile resolution."""
 
@@ -291,6 +362,9 @@ class TestEnvironmentResolution:
         monkeypatch.setenv("EMAIL_PROVIDER", "http")
         monkeypatch.setenv("EMAIL_API_KEY", "a-resend-api-key")
         monkeypatch.setenv("MIGRATION_DATABASE_URL", "postgresql://migrator:pass@host:5432/db")
+        monkeypatch.setenv("TURNSTILE_ENABLED", "true")
+        monkeypatch.setenv("TURNSTILE_SECRET_KEY", "a-turnstile-secret")
+        monkeypatch.setenv("TURNSTILE_HOSTNAMES", '["app.example.com"]')
 
         # WHEN
         settings = Settings()
@@ -428,6 +502,9 @@ class TestProductionInvariants:
         monkeypatch.setenv("EMAIL_PROVIDER", "http")
         monkeypatch.setenv("EMAIL_API_KEY", "a-resend-api-key")
         monkeypatch.setenv("MIGRATION_DATABASE_URL", "postgresql://migrator:pass@host:5432/db")
+        monkeypatch.setenv("TURNSTILE_ENABLED", "true")
+        monkeypatch.setenv("TURNSTILE_SECRET_KEY", "a-turnstile-secret")
+        monkeypatch.setenv("TURNSTILE_HOSTNAMES", '["app.example.com"]')
 
         # WHEN
         settings = Settings()
@@ -605,6 +682,52 @@ class TestProductionInvariants:
         with pytest.raises(ValidationError, match="migration_database_url is required"):
             Settings()
 
+    def test_rejects_disabled_turnstile_in_production(self, monkeypatch, tmp_path):
+        """
+        GIVEN a fully configured production profile with the bot check switched off
+        WHEN Settings is constructed
+        THEN validation fails, so the switch cannot quietly stay off after the deploy
+
+        The check defaults to off, which is what keeps a laptop and the test suite
+        working without a widget. That default is also how a deploy ends up with four
+        unauthenticated endpoints open to a script, and nothing else would notice.
+        """
+        # GIVEN
+        _configure_prod(monkeypatch, tmp_path)
+        monkeypatch.setenv("TURNSTILE_ENABLED", "false")
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="turnstile_enabled"):
+            Settings()
+
+    def test_rejects_missing_turnstile_secret_in_production(self, monkeypatch, tmp_path):
+        """
+        GIVEN a production profile with the check on but no TURNSTILE_SECRET_KEY
+        WHEN Settings is constructed
+        THEN validation fails, since every siteverify call would be refused
+        """
+        # GIVEN
+        _configure_prod(monkeypatch, tmp_path)
+        monkeypatch.delenv("TURNSTILE_SECRET_KEY", raising=False)
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="turnstile_secret_key"):
+            Settings()
+
+    def test_rejects_empty_turnstile_hostnames_in_production(self, monkeypatch, tmp_path):
+        """
+        GIVEN a production profile with the check on but no allowed hostnames
+        WHEN Settings is constructed
+        THEN validation fails, since a token can match nothing in an empty list
+        """
+        # GIVEN
+        _configure_prod(monkeypatch, tmp_path)
+        monkeypatch.setenv("TURNSTILE_HOSTNAMES", "[]")
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="turnstile_hostnames"):
+            Settings()
+
 
 class TestDeployedDevInvariants:
     """The dev profile is held to the deploy invariants when it runs on Railway.
@@ -629,6 +752,9 @@ class TestDeployedDevInvariants:
         monkeypatch.setenv("EMAIL_PROVIDER", "http")
         monkeypatch.setenv("EMAIL_API_KEY", "a-resend-api-key")
         monkeypatch.setenv("CLOUDFLARE_ORIGIN_SECRET", "a-dev-origin-lock-value")
+        monkeypatch.setenv("TURNSTILE_ENABLED", "true")
+        monkeypatch.setenv("TURNSTILE_SECRET_KEY", "a-dev-turnstile-secret")
+        monkeypatch.setenv("TURNSTILE_HOSTNAMES", '["dev.your-domain.example"]')
 
     def test_local_dev_stays_unconstrained(self, monkeypatch, tmp_path):
         """
@@ -738,6 +864,9 @@ class TestStagingInvariants:
         monkeypatch.setenv("EMAIL_API_KEY", "a-resend-api-key")
         monkeypatch.setenv("MIGRATION_DATABASE_URL", "postgresql://migrator:pass@host:5432/db")
         monkeypatch.setenv("CLOUDFLARE_ORIGIN_SECRET", "a-staging-origin-lock-value")
+        monkeypatch.setenv("TURNSTILE_ENABLED", "true")
+        monkeypatch.setenv("TURNSTILE_SECRET_KEY", "a-staging-turnstile-secret")
+        monkeypatch.setenv("TURNSTILE_HOSTNAMES", '["staging.example.com"]')
 
     def test_accepts_fully_configured_staging(self, monkeypatch, tmp_path):
         """
@@ -836,6 +965,20 @@ class TestStagingInvariants:
 
         # WHEN/THEN
         with pytest.raises(ValidationError, match="email_api_key is required"):
+            Settings()
+
+    def test_rejects_disabled_turnstile_in_staging(self, monkeypatch, tmp_path):
+        """
+        GIVEN the deployed staging profile with the bot check switched off
+        WHEN Settings is constructed
+        THEN validation fails, so staging cannot run without the check production has
+        """
+        # GIVEN
+        self._configure_staging(monkeypatch, tmp_path)
+        monkeypatch.setenv("TURNSTILE_ENABLED", "false")
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="turnstile_enabled"):
             Settings()
 
 
@@ -965,6 +1108,9 @@ class TestProfileLogLevelDefault:
         monkeypatch.setenv("FRONTEND_BASE_URL", "https://app.example.com")
         monkeypatch.setenv("EMAIL_PROVIDER", "http")
         monkeypatch.setenv("EMAIL_API_KEY", "a-resend-api-key-for-tests")
+        monkeypatch.setenv("TURNSTILE_ENABLED", "true")
+        monkeypatch.setenv("TURNSTILE_SECRET_KEY", "a-turnstile-secret-for-tests")
+        monkeypatch.setenv("TURNSTILE_HOSTNAMES", '["app.example.com"]')
 
         # WHEN
         settings = Settings()
