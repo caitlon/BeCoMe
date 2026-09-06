@@ -121,6 +121,10 @@ def create_app() -> FastAPI:
             "Accept-Language",
             "X-Request-ID",
             "X-CSRF-Token",
+            # The SPA and the API are on different hosts, so the sign-up and sign-in
+            # requests are cross-origin: without this the browser's preflight refuses
+            # the Turnstile token header and the request never leaves the page.
+            "X-Turnstile-Token",
         ],
         # allow_headers covers the request direction only. The SPA runs on a different
         # host than the API, so the CSRF token reaches it as a response header, and a

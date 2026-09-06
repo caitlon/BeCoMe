@@ -19,6 +19,9 @@ def _prod_env(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("EMAIL_PROVIDER", "http")
     monkeypatch.setenv("EMAIL_API_KEY", "a-resend-api-key")
     monkeypatch.setenv("MIGRATION_DATABASE_URL", "postgresql://migrator:pass@host:5432/db")
+    monkeypatch.setenv("TURNSTILE_ENABLED", "true")
+    monkeypatch.setenv("TURNSTILE_SECRET_KEY", "a-turnstile-secret")
+    monkeypatch.setenv("TURNSTILE_HOSTNAMES", '["app.example.com"]')
 
 
 class TestDocsExposure:
@@ -79,6 +82,47 @@ class TestCorsExposedHeaders:
 
         assert response.status_code == 200
         assert "X-CSRF-Token" in response.headers["access-control-expose-headers"]
+
+
+class TestCorsAllowedHeaders:
+    """The browser is allowed to send the Turnstile token on a cross-origin request."""
+
+    def test_turnstile_token_header_survives_preflight(self, monkeypatch, tmp_path):
+        """A preflight asking for X-Turnstile-Token is answered with it allowed.
+
+        The SPA and the API sit on separate hosts, so every guarded sign-up and sign-in
+        is a cross-origin request with a custom header, which the browser will not send
+        until the preflight says it may. Without the header on allow_origins' sibling
+        list the request never leaves the page, and the bot check would look broken from
+        the outside while never having been reached.
+        """
+        from fastapi.testclient import TestClient
+
+        from api.config import get_settings
+        from api.main import create_app
+
+        # chdir out of the repository first, as the sibling test above does: the real
+        # .env would otherwise decide which origins are allowed.
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("APP_ENV", "dev")
+        monkeypatch.setenv("SECRET_KEY", "a-sufficiently-strong-secret-value")
+        monkeypatch.setenv("CORS_ORIGINS", '["https://app.example.com"]')
+        get_settings.cache_clear()
+        try:
+            client = TestClient(create_app())
+            response = client.options(
+                "/api/v1/auth/register",
+                headers={
+                    "Origin": "https://app.example.com",
+                    "Access-Control-Request-Method": "POST",
+                    "Access-Control-Request-Headers": "X-Turnstile-Token",
+                },
+            )
+        finally:
+            get_settings.cache_clear()
+
+        assert response.status_code == 200
+        assert "x-turnstile-token" in response.headers["access-control-allow-headers"].lower()
 
 
 class TestSentryInit:
