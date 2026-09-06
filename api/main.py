@@ -71,6 +71,32 @@ def _init_sentry(settings: Settings) -> None:
         )
 
 
+def _report_disabled_bot_check(settings: Settings) -> None:
+    """Record an ERROR when a deployed service runs with the bot check switched off.
+
+    ``TURNSTILE_ENABLED`` is a kill switch. The check is fail-closed, so a Cloudflare
+    siteverify outage refuses every request to register, login, forgot-password and
+    resend-verification, and flipping the switch is the only way out that does not
+    involve a revert and a redeploy. ``Settings`` therefore lets such a deploy start.
+
+    What it may not do is start quietly: in that state the four unauthenticated
+    endpoints are open to a script, and nothing downstream can tell a deploy that meant
+    to turn the check off from one that never turned it on. ERROR is the level Sentry
+    turns into an event and a Better Stack alert keys on, so the state is visible for
+    as long as it lasts rather than only in whoever set the variable.
+
+    :param settings: Application settings.
+    """
+    if settings.is_deploy and not settings.turnstile_enabled:
+        logger.error(
+            "Bot check disabled on a deployed service",
+            extra={
+                "event": "turnstile_disabled",
+                "environment": settings.environment.value,
+            },
+        )
+
+
 def create_app() -> FastAPI:
     """Create and configure FastAPI application.
 
@@ -80,6 +106,9 @@ def create_app() -> FastAPI:
     settings = get_settings()
     setup_logging(settings)
     _init_sentry(settings)
+    # After both, so the record reaches the configured handlers and the tracker rather
+    # than only stderr.
+    _report_disabled_bot_check(settings)
 
     # Hide interactive docs and the OpenAPI schema in production so the full API
     # surface (every route and schema) is not publicly enumerable.
