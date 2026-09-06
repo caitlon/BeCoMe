@@ -741,6 +741,78 @@ describe('ApiClient', () => {
     });
   });
 
+  // These four endpoints are the only ones a Turnstile widget guards
+  // (api/auth/turnstile.py). The header is present only when a token was given
+  // and absent otherwise -- never an empty string -- which is what keeps a build
+  // with no sitekey (no widget, no token) working exactly as it did before the
+  // check existed.
+  describe('Turnstile token header', () => {
+    function turnstileHeader(call: unknown[]): string | undefined {
+      const [, options] = call as [string, RequestInit];
+      return (options.headers as Record<string, string>)['X-Turnstile-Token'];
+    }
+
+    it('register sends the header when given a token, and omits it otherwise', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        status: 202,
+        json: () => Promise.resolve({ detail: 'Check your inbox to finish signing up.' }),
+      });
+      const data = { email: 'new@example.com', password: 'password123', first_name: 'New' };
+
+      await api.register(data, 'turnstile-token-1');
+      expect(turnstileHeader(mockFetch.mock.calls[0])).toBe('turnstile-token-1');
+
+      await api.register(data);
+      expect(turnstileHeader(mockFetch.mock.calls[1])).toBeUndefined();
+    });
+
+    it('login sends the header when given a token, and omits it otherwise', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ access_token: 'tok', token_type: 'bearer' }),
+      });
+
+      await api.login('user@example.com', 'pass', 'turnstile-token-2');
+      expect(turnstileHeader(mockFetch.mock.calls[0])).toBe('turnstile-token-2');
+
+      await api.login('user@example.com', 'pass');
+      expect(turnstileHeader(mockFetch.mock.calls[1])).toBeUndefined();
+    });
+
+    it('forgotPassword sends the header when given a token, and omits it otherwise', async () => {
+      mockFetch.mockResolvedValue({ ok: true, status: 202 });
+
+      await api.forgotPassword('user@example.com', 'turnstile-token-3');
+      expect(turnstileHeader(mockFetch.mock.calls[0])).toBe('turnstile-token-3');
+
+      await api.forgotPassword('user@example.com');
+      expect(turnstileHeader(mockFetch.mock.calls[1])).toBeUndefined();
+    });
+
+    it('resendVerification sends the header when given a token, and omits it otherwise', async () => {
+      mockFetch.mockResolvedValue({ ok: true, status: 202 });
+
+      await api.resendVerification('user@example.com', 'CorrectHorse123!', 'turnstile-token-4');
+      expect(turnstileHeader(mockFetch.mock.calls[0])).toBe('turnstile-token-4');
+
+      await api.resendVerification('user@example.com', 'CorrectHorse123!');
+      expect(turnstileHeader(mockFetch.mock.calls[1])).toBeUndefined();
+    });
+
+    it('never sends the header as an empty string, even if a caller passes one', async () => {
+      // turnstileHeaders() branches on truthiness, not on `!== undefined`: an
+      // empty-string token (should never happen, but costs nothing to guard) is
+      // treated the same as no token at all, rather than sent as a header the API
+      // would reject anyway.
+      mockFetch.mockResolvedValue({ ok: true, status: 202 });
+
+      await api.forgotPassword('user@example.com', '');
+      expect(turnstileHeader(mockFetch.mock.calls[0])).toBeUndefined();
+    });
+  });
+
   describe('User Endpoints', () => {
     it('getCurrentUser probes /auth/me, which also returns the CSRF token', async () => {
       const user = { id: '1', email: 'me@example.com' };

@@ -1,4 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { forwardRef, useImperativeHandle } from 'react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { render } from '@tests/utils';
@@ -15,6 +16,39 @@ vi.mock('@/contexts/AuthContext', () => ({
     isAuthenticated: false,
   }),
 }));
+
+// A real TurnstileField needs Cloudflare's script, which never loads in this suite.
+// The Turnstile-specific describe block below swaps in a fake that mints a token on
+// click and exposes reset() the same way the real widget does, so the page's own
+// wiring (disabled-until-token, the action it asks for, reset-after-failure) can be
+// exercised without simulating a real challenge.
+const mockTurnstileReset = vi.fn();
+vi.mock('@/components/forms', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/components/forms')>();
+  const { isTurnstileRequired } = await import('@/lib/turnstile');
+  return {
+    ...actual,
+    TurnstileField: forwardRef<
+      { reset: () => void },
+      { action: string; onToken: (token: string | null) => void }
+    >(function TurnstileFieldMock({ action, onToken }, ref) {
+      useImperativeHandle(ref, () => ({ reset: mockTurnstileReset }));
+      // Mirrors the real widget's own contract (renders nothing without a sitekey),
+      // so every test that does not opt into Turnstile -- the whole file, minus the
+      // describe block below, including the not-verified state's nested
+      // ResendVerification and its own TurnstileField -- sees exactly what it saw
+      // before this mock existed.
+      if (!isTurnstileRequired()) {
+        return null;
+      }
+      return (
+        <button type="button" onClick={() => onToken('mock-turnstile-token')}>
+          {`mint ${action} token`}
+        </button>
+      );
+    }),
+  };
+});
 
 // The not-verified state's resend control calls api.resendVerification directly.
 const mockResendVerification = vi.fn();
@@ -116,7 +150,10 @@ describe('Login', () => {
     await user.click(screen.getByRole('button', { name: /sign in/i }));
 
     await waitFor(() => {
-      expect(mockLogin).toHaveBeenCalledWith('test@example.com', 'password123');
+      // Third argument is the Turnstile token; the check is off in this suite (no
+      // VITE_TURNSTILE_SITE_KEY), so the widget never mints one and login is called
+      // with null exactly as it was before the bot check existed.
+      expect(mockLogin).toHaveBeenCalledWith('test@example.com', 'password123', null);
     });
 
     await waitFor(() => {
@@ -304,6 +341,62 @@ describe('Login', () => {
       expect(getEmailInput()).toBeInTheDocument();
       expect(getEmailInput()).toHaveValue('unverified@example.com');
       expect(screen.queryByRole('button', { name: /resend/i })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('Turnstile bot check', () => {
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    it('renders the widget for the login action and keeps submit disabled until it mints a token', async () => {
+      vi.stubEnv('VITE_TURNSTILE_SITE_KEY', 'test-site-key');
+      const user = userEvent.setup();
+      render(<Login />);
+
+      await user.type(getEmailInput(), 'test@example.com');
+      await user.type(getPasswordInput(), 'password123');
+
+      // The exact defect this guards: a widget rendered under the wrong action (or
+      // none at all) mints a token the API refuses as action_mismatch, so the
+      // literal action string reaching the widget is what this asserts.
+      const mintButton = screen.getByRole('button', { name: /mint login token/i });
+      const submitButton = screen.getByRole('button', { name: /sign in/i });
+      expect(submitButton).toBeDisabled();
+
+      await user.click(submitButton);
+      expect(mockLogin).not.toHaveBeenCalled();
+
+      await user.click(mintButton);
+      await waitFor(() => expect(submitButton).not.toBeDisabled());
+    });
+
+    it('sends the minted token to login and resets the widget after a failed attempt', async () => {
+      vi.stubEnv('VITE_TURNSTILE_SITE_KEY', 'test-site-key');
+      mockLogin.mockRejectedValueOnce(new Error('Invalid credentials'));
+      const user = userEvent.setup();
+      render(<Login />);
+
+      await user.type(getEmailInput(), 'test@example.com');
+      await user.type(getPasswordInput(), 'password123');
+      await user.click(screen.getByRole('button', { name: /mint login token/i }));
+
+      const submitButton = screen.getByRole('button', { name: /sign in/i });
+      await waitFor(() => expect(submitButton).not.toBeDisabled());
+      await user.click(submitButton);
+
+      await waitFor(() => {
+        expect(mockLogin).toHaveBeenCalledWith(
+          'test@example.com',
+          'password123',
+          'mock-turnstile-token'
+        );
+      });
+      // The token is spent by the attempt that just failed; without a reset the
+      // next click would send that same dead token and be refused again.
+      await waitFor(() => {
+        expect(mockTurnstileReset).toHaveBeenCalled();
+      });
     });
   });
 });
