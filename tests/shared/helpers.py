@@ -1,6 +1,8 @@
 """Shared constants and helpers used across unit and integration tests."""
 
+import logging
 import secrets
+from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
@@ -68,3 +70,40 @@ def insert_demo_experts(session: Session) -> None:
             )
         )
     session.commit()
+
+
+@contextmanager
+def captured_log_records(name: str) -> Iterator[list[logging.LogRecord]]:
+    """Collect the records one logger emits, whatever the global logging state is.
+
+    ``pytest``'s ``caplog`` captures through the root logger, and
+    :func:`api.logging_config.setup_logging` sets ``propagate = False`` on the ``api``
+    tree, so a record logged after any test has built an app would never reach it. This
+    attaches a handler to the named logger itself instead, and pins its level so an
+    earlier ``LOG_LEVEL`` cannot filter the record out before the handler sees it. Both
+    the handler and the level are removed on the way out.
+
+    :param name: Dotted logger name, e.g. ``api.security``.
+    :return: The list the handler appends to, filled as records are emitted.
+
+    Example:
+        with captured_log_records("api.security") as records:
+            do_something()
+        assert [r.levelno for r in records] == [logging.DEBUG]
+    """
+    records: list[logging.LogRecord] = []
+
+    class _Collector(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            records.append(record)
+
+    logger = logging.getLogger(name)
+    handler = _Collector(level=logging.NOTSET)
+    saved_level = logger.level
+    logger.setLevel(logging.DEBUG)
+    logger.addHandler(handler)
+    try:
+        yield records
+    finally:
+        logger.removeHandler(handler)
+        logger.setLevel(saved_level)

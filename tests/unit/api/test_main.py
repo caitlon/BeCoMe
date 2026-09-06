@@ -1,6 +1,9 @@
 """Tests for application factory wiring in api.main."""
 
+import logging
 from unittest.mock import patch
+
+from tests.shared.helpers import captured_log_records
 
 # Not a credential: the host is unroutable and the key is a literal placeholder.
 _FAKE_DSN = "https://placeholder@localhost/0"
@@ -172,3 +175,63 @@ class TestSentryInit:
         kwargs = mock_init.call_args.kwargs
         assert kwargs["include_local_variables"] is False
         assert kwargs["send_default_pii"] is False
+
+
+class TestBotCheckStartupRecord:
+    """A deploy running with the bot check switched off says so at startup.
+
+    ``TURNSTILE_ENABLED`` is a kill switch, so a deployed service is allowed to start
+    with the check off (see ``Settings._validate_deploy_invariants``). What it is not
+    allowed to do is start quietly: the four unauthenticated auth endpoints are then
+    open to a script, and nothing downstream can tell that state from a laptop's. The
+    record goes out at ERROR because that is what Sentry turns into an event and what a
+    Better Stack alert keys on.
+    """
+
+    @staticmethod
+    def _create_app_capturing_records(monkeypatch, tmp_path, *, bot_check: str):
+        """Build the app in a deployed profile and return what api.main logged.
+
+        :param monkeypatch: pytest monkeypatch fixture.
+        :param tmp_path: Directory to run in, away from the repository .env.
+        :param bot_check: Value for TURNSTILE_ENABLED.
+        :return: The records api.main emitted while the app was built.
+        """
+        from api.config import get_settings
+        from api.main import create_app
+
+        _prod_env(monkeypatch, tmp_path)
+        monkeypatch.setenv("TURNSTILE_ENABLED", bot_check)
+        get_settings.cache_clear()
+        try:
+            with captured_log_records("api.main") as records:
+                create_app()
+        finally:
+            get_settings.cache_clear()
+        return records
+
+    def test_records_an_error_when_a_deploy_starts_with_the_check_off(self, monkeypatch, tmp_path):
+        """
+        GIVEN a production profile with TURNSTILE_ENABLED false
+        WHEN the application is built
+        THEN one ERROR names the disabled bot check and the profile it runs in
+        """
+        # GIVEN/WHEN
+        records = self._create_app_capturing_records(monkeypatch, tmp_path, bot_check="false")
+
+        # THEN
+        errors = [record for record in records if record.levelno == logging.ERROR]
+        assert [getattr(record, "event", None) for record in errors] == ["turnstile_disabled"]
+        assert getattr(errors[0], "environment", None) == "prod"
+
+    def test_stays_quiet_when_the_deploy_runs_the_check(self, monkeypatch, tmp_path):
+        """
+        GIVEN a production profile with the bot check switched on
+        WHEN the application is built
+        THEN nothing is recorded at ERROR, so the alert means what it says
+        """
+        # GIVEN/WHEN
+        records = self._create_app_capturing_records(monkeypatch, tmp_path, bot_check="true")
+
+        # THEN
+        assert [record for record in records if record.levelno >= logging.ERROR] == []

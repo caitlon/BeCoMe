@@ -682,23 +682,51 @@ class TestProductionInvariants:
         with pytest.raises(ValidationError, match="migration_database_url is required"):
             Settings()
 
-    def test_rejects_disabled_turnstile_in_production(self, monkeypatch, tmp_path):
+    def test_accepts_production_with_the_bot_check_switched_off(self, monkeypatch, tmp_path):
         """
         GIVEN a fully configured production profile with the bot check switched off
         WHEN Settings is constructed
-        THEN validation fails, so the switch cannot quietly stay off after the deploy
+        THEN it validates, so the switch stays usable on a running deploy
 
-        The check defaults to off, which is what keeps a laptop and the test suite
-        working without a widget. That default is also how a deploy ends up with four
-        unauthenticated endpoints open to a script, and nothing else would notice.
+        The check is fail-closed, so a Cloudflare siteverify outage answers 403 to
+        every real user on all four endpoints. If a deploy refused to boot with the
+        check off, the only way out of that outage would be reverting and
+        redeploying. The state is not silent: ``api/main.py`` records it at ERROR
+        when the service starts.
         """
         # GIVEN
         _configure_prod(monkeypatch, tmp_path)
         monkeypatch.setenv("TURNSTILE_ENABLED", "false")
 
-        # WHEN/THEN
-        with pytest.raises(ValidationError, match="turnstile_enabled"):
-            Settings()
+        # WHEN
+        settings = Settings()
+
+        # THEN
+        assert settings.turnstile_enabled is False
+
+    def test_ignores_the_turnstile_secret_when_the_check_is_off(self, monkeypatch, tmp_path):
+        """
+        GIVEN production with the check off and neither a secret nor a hostname list
+        WHEN Settings is constructed
+        THEN it validates, since neither value is read while the check is off
+
+        The invariant is a consistency check on the configuration, not a demand that
+        the check be on: an operator turning it off has no reason to keep a secret
+        and a hostname list in place, and requiring them would make the switch
+        awkward to flip in exactly the hurry it exists for.
+        """
+        # GIVEN
+        _configure_prod(monkeypatch, tmp_path)
+        monkeypatch.setenv("TURNSTILE_ENABLED", "false")
+        monkeypatch.delenv("TURNSTILE_SECRET_KEY", raising=False)
+        monkeypatch.setenv("TURNSTILE_HOSTNAMES", "[]")
+
+        # WHEN
+        settings = Settings()
+
+        # THEN
+        assert settings.turnstile_secret_key == ""
+        assert settings.turnstile_hostnames == []
 
     def test_rejects_missing_turnstile_secret_in_production(self, monkeypatch, tmp_path):
         """
@@ -967,18 +995,34 @@ class TestStagingInvariants:
         with pytest.raises(ValidationError, match="email_api_key is required"):
             Settings()
 
-    def test_rejects_disabled_turnstile_in_staging(self, monkeypatch, tmp_path):
+    def test_accepts_staging_with_the_bot_check_switched_off(self, monkeypatch, tmp_path):
         """
         GIVEN the deployed staging profile with the bot check switched off
         WHEN Settings is constructed
-        THEN validation fails, so staging cannot run without the check production has
+        THEN it validates, so staging keeps the same kill switch production has
         """
         # GIVEN
         self._configure_staging(monkeypatch, tmp_path)
         monkeypatch.setenv("TURNSTILE_ENABLED", "false")
 
+        # WHEN
+        settings = Settings()
+
+        # THEN
+        assert settings.turnstile_enabled is False
+
+    def test_rejects_staging_with_the_check_on_and_no_secret(self, monkeypatch, tmp_path):
+        """
+        GIVEN the deployed staging profile with the check on but no secret
+        WHEN Settings is constructed
+        THEN validation fails, since every siteverify call would be refused
+        """
+        # GIVEN
+        self._configure_staging(monkeypatch, tmp_path)
+        monkeypatch.delenv("TURNSTILE_SECRET_KEY", raising=False)
+
         # WHEN/THEN
-        with pytest.raises(ValidationError, match="turnstile_enabled"):
+        with pytest.raises(ValidationError, match="turnstile_secret_key"):
             Settings()
 
 

@@ -94,9 +94,11 @@ class DisabledTurnstileVerifier:
     """Verifier for a process running with the bot check switched off.
 
     Accepts every request without contacting Cloudflare, which is what lets local
-    development and the test suite work with no widget and no secret. No deployed
-    service can end up here: ``Settings`` refuses to build with ``turnstile_enabled``
-    false on a deploy.
+    development and the test suite work with no widget and no secret. A deployed
+    service can end up here too, deliberately: ``turnstile_enabled`` is the kill switch
+    for a siteverify outage, and a deploy that flips it starts rather than being
+    refused. It does not do so quietly, though -
+    :func:`api.main._report_disabled_bot_check` records that state at ERROR on startup.
     """
 
     async def verify(self, token: str | None, *, action: str, client_ip: str) -> None:

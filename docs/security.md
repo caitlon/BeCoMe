@@ -429,10 +429,17 @@ this one, would open registration here. The endpoints that redeem an emailed lin
 single-use token is already evidence of a person, and no widget is rendered on those pages.
 
 `TURNSTILE_ENABLED` is the kill switch and it defaults to **off**, which is what lets a
-laptop, CI, and a fresh clone run with no widget and no secret. A deployed profile may not
-sit in that state: `Settings._validate_deploy_invariants` refuses to start production,
-staging, or the Railway dev service unless the check is on with a secret and a non-empty
-hostname list.
+laptop, CI, and a fresh clone run with no widget and no secret. It stays a working switch on
+a deploy, because the check is fail-closed: while Cloudflare's siteverify is unreachable,
+all four endpoints answer `403` to real users, and turning the check off is the only way out
+of that which is not a revert and a redeploy. So `Settings._validate_deploy_invariants`
+checks the configuration for consistency rather than demanding the check be on. With
+`TURNSTILE_ENABLED` true, production, staging, and the Railway dev service refuse to start
+without a secret and a non-empty hostname list, since every request would be refused for
+want of configuration. With it false, the service starts and `api/main.py` records
+`turnstile_disabled` at **ERROR** on startup: Sentry raises that as an event and the log
+drain keeps it, so a deploy running without the bot check is a decision somebody can see
+rather than a default nobody notices.
 
 ## Input validation
 
