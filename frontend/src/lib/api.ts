@@ -38,6 +38,22 @@ const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 const CSRF_HEADER = 'X-CSRF-Token';
 
 /**
+ * Carries a Cloudflare Turnstile token on the four endpoints open to anonymous
+ * callers. The API reads the same name (api/auth/turnstile.py) and answers 403
+ * when the token is missing, spent, or minted for another form.
+ */
+const TURNSTILE_HEADER = 'X-Turnstile-Token';
+
+/**
+ * The Turnstile header for a call that has a token, and nothing for one that has
+ * none. A build with no sitekey mints no tokens, so the header is simply absent
+ * and the request looks exactly as it did before the check existed.
+ */
+function turnstileHeaders(token?: string | null): Record<string, string> {
+  return token ? { [TURNSTILE_HEADER]: token } : {};
+}
+
+/**
  * Reads the __Host-csrf_token cookie, which only works when the API answers on
  * this app's own origin, meaning local development, where Vite proxies /api/v1. On the
  * deploys the cookie belongs to the API host and document.cookie shows nothing,
@@ -315,14 +331,19 @@ class ApiClient {
   // Auth
   // Registration no longer signs anyone in: it only queues an activation
   // email, so there is no user object to return.
-  async register(data: RegisterInput): Promise<void> {
+  async register(data: RegisterInput, turnstileToken?: string | null): Promise<void> {
     return this.request<void>('/auth/register', {
       method: 'POST',
+      headers: turnstileHeaders(turnstileToken),
       body: JSON.stringify(data),
     });
   }
 
-  async login(email: string, password: string): Promise<AuthResponse> {
+  async login(
+    email: string,
+    password: string,
+    turnstileToken?: string | null
+  ): Promise<AuthResponse> {
     const formData = new URLSearchParams();
     formData.append('username', email);
     formData.append('password', password);
@@ -332,6 +353,7 @@ class ApiClient {
       credentials: 'include',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
+        ...turnstileHeaders(turnstileToken),
       },
       body: formData,
     });
@@ -367,9 +389,10 @@ class ApiClient {
     }
   }
 
-  async forgotPassword(email: string): Promise<void> {
+  async forgotPassword(email: string, turnstileToken?: string | null): Promise<void> {
     return this.request<void>('/auth/forgot-password', {
       method: 'POST',
+      headers: turnstileHeaders(turnstileToken),
       body: JSON.stringify({ email }),
     });
   }
@@ -388,9 +411,14 @@ class ApiClient {
     });
   }
 
-  async resendVerification(email: string, password: string): Promise<void> {
+  async resendVerification(
+    email: string,
+    password: string,
+    turnstileToken?: string | null
+  ): Promise<void> {
     return this.request<void>('/auth/resend-verification', {
       method: 'POST',
+      headers: turnstileHeaders(turnstileToken),
       body: JSON.stringify({ email, password }),
     });
   }
