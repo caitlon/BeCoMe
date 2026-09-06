@@ -59,7 +59,7 @@ Two consumers share this profile. A deployed staging service uses PostgreSQL wit
 
 ### prod
 
-PostgreSQL, debug off. Every deployed service runs a startup guard (`_validate_deploy_invariants` in `api/config.py`), the Railway dev service included: the guard keys off the deploy, not the profile name. A weak or default `SECRET_KEY`, a `sqlite` `DATABASE_URL`, a missing `REDIS_URL`, or localhost-only `CORS_ORIGINS` fails startup immediately, rather than running with insecure defaults. So does a missing `CLOUDFLARE_ORIGIN_SECRET`, which proves requests came through the Cloudflare edge. Each deployed environment needs its own value, paired with a Transform Rule for that environment's API host.
+PostgreSQL, debug off. Every deployed service runs a startup guard (`_validate_deploy_invariants` in `api/config.py`), the Railway dev service included: the guard keys off the deploy, not the profile name. A weak or default `SECRET_KEY`, a `sqlite` `DATABASE_URL`, a missing `REDIS_URL`, or localhost-only `CORS_ORIGINS` fails startup immediately, rather than running with insecure defaults. So does a missing `CLOUDFLARE_ORIGIN_SECRET`, which proves requests came through the Cloudflare edge. Each deployed environment needs its own value, paired with a Transform Rule for that environment's API host. So does a Turnstile bot check left switched off, or switched on without a secret and a hostname list: the check defaults to off so a laptop needs no widget, and that default is exactly how a deploy would end up with four unauthenticated endpoints open to a script and nothing to notice.
 
 ## Configuration files
 
@@ -124,6 +124,7 @@ The root `railway.toml` carries the API build and deploy settings: it points at 
 | `CORS_ORIGINS` | dev origins | staging origins | production origins |
 | `REDIS_URL` | dev Redis | staging Redis | production Redis |
 | `CLOUDFLARE_ORIGIN_SECRET` | own secret | own secret | own secret, each matching that environment's Cloudflare Transform Rule |
+| `TURNSTILE_ENABLED` / `TURNSTILE_SECRET_KEY` / `TURNSTILE_HOSTNAMES` | `true`, widget secret, dev frontend host | `true`, widget secret, staging frontend host | `true`, widget secret, production frontend hosts |
 | `DEBUG` | `false` | `false` | `false` |
 | `LOG_LEVEL` | `DEBUG` | `INFO` | `INFO` |
 | `API_PUBLIC_URL` | dev API URL | staging API URL | production API URL |

@@ -36,6 +36,7 @@ page does not repeat it.
 | Session transport: HttpOnly cookies + CSRF | Implemented | `api/auth/cookies.py`, `api/middleware/csrf.py` |
 | Authorization and tenant isolation | Implemented | `api/dependencies.py` |
 | Rate limiting and abuse control | Implemented | `api/middleware/rate_limit.py` |
+| Bot check on the unauthenticated auth endpoints | Implemented | `api/auth/turnstile.py`, `api/services/turnstile_service.py` |
 | Input validation | Implemented | `api/schemas/` |
 | Configuration invariants per profile | Implemented | `api/config.py` |
 | Network and edge: Cloudflare, CORS, headers | Implemented | `api/main.py`, Cloudflare |
@@ -407,6 +408,31 @@ that declaration, and the pixel canvas must fit the avatar budget (4096x4096, no
 compress uniform areas so well that a 35 KB PNG can declare a 25-megapixel canvas, which
 costs tens to hundreds of megabytes the moment anything decodes it, depending on the mode.
 The validator parses only the header, so rejecting such a file costs nothing.
+
+Rate limiting bounds how fast one caller can drive an endpoint. It does nothing about a
+caller with a thousand addresses, and the four endpoints that take a request from nobody
+in particular are exactly the ones worth driving: `POST /api/v1/auth/register`, `/login`,
+`/forgot-password`, and `/resend-verification`. Each of those also requires a Cloudflare
+Turnstile token, sent as the `X-Turnstile-Token` request header (`api/auth/turnstile.py`).
+A header rather than a body field because login takes an OAuth2 form while the other three
+take JSON: one mechanism covers all four and no request schema changes.
+
+The check is fail-closed, and it verifies more than `success`
+(`api/services/turnstile_service.py`). A missing header, a token Cloudflare rejects, one
+minted for a different form (`action`) or on a hostname outside `TURNSTILE_HOSTNAMES`, a
+siteverify timeout, a non-2xx answer, and a body that is not JSON all end in the same
+`403` with the same wording, so the response reveals neither what the check saw nor
+whether it is switched on. Verifying `action` and `hostname` is not optional: a sitekey is
+public, so without them a token farmed from a copy of the site, or from another form on
+this one, would open registration here. The endpoints that redeem an emailed link,
+`/verify-email` and `/reset-password`, are deliberately not guarded: holding a live
+single-use token is already evidence of a person, and no widget is rendered on those pages.
+
+`TURNSTILE_ENABLED` is the kill switch and it defaults to **off**, which is what lets a
+laptop, CI, and a fresh clone run with no widget and no secret. A deployed profile may not
+sit in that state: `Settings._validate_deploy_invariants` refuses to start production,
+staging, or the Railway dev service unless the check is on with a secret and a non-empty
+hostname list.
 
 ## Input validation
 
