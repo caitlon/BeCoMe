@@ -10,8 +10,8 @@ themselves refused.
 """
 
 import pytest
-from api.auth.turnstile import TURNSTILE_HEADER
 
+from api.auth.turnstile import TURNSTILE_HEADER
 from api.dependencies import get_turnstile_verifier
 from api.exceptions import TurnstileVerificationError
 from api.middleware.exception_handlers import TURNSTILE_REFUSED_DETAIL
