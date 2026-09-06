@@ -510,12 +510,15 @@ browser SDK reports to. Its `img-src` names that same API origin, because the AP
 profile photos and `<img>` tags render them, which is an image load rather than something
 `connect-src` covers. The Docker build bakes that origin into the policy from the same
 `VITE_API_URL` build argument the bundle uses, so the served policy cannot drift from the
-URL the app actually calls. `tests/integration/test_frontend_csp.py` asserts both directives
-against the config: a CSP that under-permits fails silently, since the browser drops the
-request before it reaches the origin and nothing appears in the logs. Both tiers send
-`X-XSS-Protection: 0` on purpose: the legacy auditor it enables is unreliable, browsers have
-dropped it, and its blocking mode has itself leaked cross-origin information. The CSP is
-what constrains injection.
+URL the app actually calls. Its `script-src` and `frame-src` name
+`https://challenges.cloudflare.com`, because the bot check's widget loads its script from
+there and runs its challenge in an iframe served by it; without both, no token is ever
+minted and all four auth forms stay unsubmittable. `tests/integration/test_frontend_csp.py`
+asserts those directives against the config: a CSP that under-permits fails silently, since
+the browser drops the request before it reaches the origin and nothing appears in the logs.
+Both tiers send `X-XSS-Protection: 0` on purpose: the legacy auditor it enables is
+unreliable, browsers have dropped it, and its blocking mode has itself leaked cross-origin
+information. The CSP is what constrains injection.
 
 The correlation ID does not travel on trust either. The API echoes an inbound `X-Request-ID`
 on the response and writes it to every log record of the request, so it reuses one only when
@@ -733,8 +736,9 @@ outage it was meant to cover.
 never reads it, since it uses the `HttpOnly` cookie, but programmatic clients can only
 obtain the token this way, and `POST /auth/refresh` accepts it in the request body for
 exactly that reason. Reading the body value requires script execution on the origin, which
-the CSP (`script-src 'self'`), the explicit CORS allow-list, and `SameSite=Strict` between
-them prevent. Rotation with reuse detection then caps the value of a token that does leak.
+the CSP (`script-src` allows this origin and Cloudflare's Turnstile host, nothing else), the
+explicit CORS allow-list, and `SameSite=Strict` between them prevent. Rotation with reuse
+detection then caps the value of a token that does leak.
 
 ## Database
 
