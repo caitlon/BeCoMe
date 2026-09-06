@@ -37,19 +37,29 @@ SITEVERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
 SITEVERIFY_TIMEOUT_SECONDS = 10.0
 
 
-def _refuse(reason: str, action: str, **fields: object) -> NoReturn:
+def _refuse(
+    reason: str, action: str, *, level: int = logging.WARNING, **fields: object
+) -> NoReturn:
     """Record a refused bot check and raise.
 
     The record names the reason and the action, never the token. A token is a live
     credential for one submission, and the log drain is a different trust boundary
     from the request that carried it.
 
+    The level is per-reason rather than fixed, because the refusals are not one kind of
+    event. A refusal where somebody presented a token and it did not check out is worth
+    an alert. A refusal of a request that carried no header at all is a scanner or a
+    crawler, and there are enough of those that logging each at WARNING would bury the
+    records that mean something under traffic nobody will read.
+
     :param reason: Why the check refused, e.g. ``missing_token``.
     :param action: The action the guarded endpoint declared.
+    :param level: Level for this refusal; WARNING unless the caller says otherwise.
     :param fields: Extra structured context; never the token.
     :raises TurnstileVerificationError: Always.
     """
-    logger.warning(
+    logger.log(
+        level,
         "Turnstile check refused a request",
         extra={"event": "turnstile_refused", "reason": reason, "action": action, **fields},
     )
@@ -154,8 +164,9 @@ class CloudflareTurnstileVerifier:
         if not token:
             # Nothing to ask about, so no call is made. The refusal is the same one a
             # rejected token gets, so the answer cannot be read back for whether the
-            # check is even switched on.
-            _refuse("missing_token", action)
+            # check is even switched on. Only the record differs, and only in level:
+            # a request with no header is scanner traffic, not an event.
+            _refuse("missing_token", action, level=logging.DEBUG)
         body = await self._siteverify(token, action=action, client_ip=client_ip)
         if body.get("success") is not True:
             _refuse("rejected", action, error_codes=body.get("error-codes"))
