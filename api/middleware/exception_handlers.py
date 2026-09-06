@@ -31,6 +31,7 @@ from api.exceptions import (
     ProjectNotFoundError,
     ResetTokenExpiredError,
     ScaleRangeError,
+    TurnstileVerificationError,
     UnresolvableEmailDomainError,
     UserAlreadyMemberError,
     UserExistsError,
@@ -61,6 +62,11 @@ EMAIL_NOT_VERIFIED_DETAIL = "Email address not verified. Check your inbox for th
 VERIFICATION_PASSWORD_MISMATCH_DETAIL = (
     "That password does not match the sign-up this link was created for."  # noqa: S105
 )
+
+# The 403 a request gets when the Turnstile bot check refuses it. One wording for every
+# refusal, an absent header included, so the response tells a caller nothing about what
+# the check saw or whether it is switched on at all.
+TURNSTILE_REFUSED_DETAIL = "Could not confirm you are human. Reload the page and try again."
 
 # Exception to HTTP status code and message mapping
 # Following OCP: extend by adding entries, not modifying handlers
@@ -117,6 +123,7 @@ EXCEPTION_MAP: dict[type[BeCoMeAPIError], tuple[int, str | None]] = {
         status.HTTP_403_FORBIDDEN,
         VERIFICATION_PASSWORD_MISMATCH_DETAIL,
     ),
+    TurnstileVerificationError: (status.HTTP_403_FORBIDDEN, TURNSTILE_REFUSED_DETAIL),
     # 429 Too Many Requests
     LoginThrottledError: (
         status.HTTP_429_TOO_MANY_REQUESTS,
