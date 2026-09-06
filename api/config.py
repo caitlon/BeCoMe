@@ -224,7 +224,8 @@ class Settings(BaseSettings):
     # siteverify outage, so a deploy that leaves it off starts and is reported at ERROR
     # (api/main.py) rather than refused. turnstile_hostnames lists the frontend hosts a
     # token may be minted on, in the JSON-array form cors_origins uses; a token naming
-    # anything else is refused, so an empty list refuses everything.
+    # anything else is refused, so an empty list refuses everything. Hostnames are
+    # matched case-insensitively, as DNS names compare.
     turnstile_enabled: bool = False
     turnstile_secret_key: str = ""
     turnstile_hostnames: list[str] = []
