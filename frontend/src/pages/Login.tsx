@@ -1,17 +1,24 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Link } from "react-router";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useTranslation } from "react-i18next";
 
-import { FormField, PasswordInput, SubmitButton } from "@/components/forms";
+import {
+  FormField,
+  PasswordInput,
+  SubmitButton,
+  TurnstileField,
+  TurnstileFieldHandle,
+} from "@/components/forms";
 import { ResendVerification } from "@/components/auth/ResendVerification";
 import { AuthLayout } from "@/components/layout/AuthLayout";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAuthSubmit } from "@/hooks/use-auth-submit";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { ForbiddenError } from "@/lib/errors";
+import { isTurnstileRequired } from "@/lib/turnstile";
 
 type LoginFormData = {
   email: string;
@@ -29,6 +36,10 @@ const Login = () => {
   const [notVerified, setNotVerified] = useState<{ email: string; password: string } | null>(
     null
   );
+
+  const turnstileRef = useRef<TurnstileFieldHandle>(null);
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const awaitingTurnstile = isTurnstileRequired() && turnstileToken === null;
 
   const { isLoading, execute } = useAuthSubmit({
     successTitle: t("login.successTitle"),
@@ -57,8 +68,12 @@ const Login = () => {
 
   const onSubmit = (data: LoginFormData) =>
     execute(
-      () => login(data.email, data.password),
+      () => login(data.email, data.password, turnstileToken),
       (error) => {
+        // The token was spent on the attempt that just failed. Without a fresh one
+        // every retry on this page would be refused for a reason that has nothing
+        // to do with the credentials the user is correcting.
+        turnstileRef.current?.reset();
         if (!(error instanceof ForbiddenError)) return false;
         // An unverified account is not a login failure to explain with the
         // generic error toast: it has its own recovery path (resend below),
@@ -92,6 +107,7 @@ const Login = () => {
 
   return (
     <AuthLayout title={t("login.title")}>
+      {/* eslint-disable-next-line react-hooks/refs -- handleSubmit defers to the browser's submit event; turnstileRef is only read/written once that event fires, never during render */}
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         <FormField
           label={t("login.email")}
@@ -119,10 +135,13 @@ const Login = () => {
           </Link>
         </div>
 
+        <TurnstileField action="login" ref={turnstileRef} onToken={setTurnstileToken} />
+
         <SubmitButton
           className="w-full"
           isLoading={isLoading}
           loadingText={t("login.signingIn")}
+          disabled={awaitingTurnstile}
         >
           {t("login.signIn")}
         </SubmitButton>

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Link } from "react-router";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -9,6 +9,8 @@ import {
   FormField,
   PasswordInput,
   SubmitButton,
+  TurnstileField,
+  TurnstileFieldHandle,
   ValidationChecklist,
   Requirement,
 } from "@/components/forms";
@@ -18,6 +20,7 @@ import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { useToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
 import { describeError } from "@/lib/errorMessages";
+import { isTurnstileRequired } from "@/lib/turnstile";
 import { buildPasswordSchema, getPasswordRequirements } from "@/lib/validation";
 
 type RegisterFormData = {
@@ -60,6 +63,10 @@ const Register = () => {
   const [submitted, setSubmitted] = useState<{ email: string; password: string } | null>(
     null
   );
+
+  const turnstileRef = useRef<TurnstileFieldHandle>(null);
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const awaitingTurnstile = isTurnstileRequired() && turnstileToken === null;
 
   const registerSchema = useMemo(
     () =>
@@ -109,17 +116,22 @@ const Register = () => {
   const onSubmit = async (data: RegisterFormData) => {
     setIsLoading(true);
     try {
-      await api.register({
-        email: data.email,
-        password: data.password,
-        first_name: data.firstName,
-        last_name: data.lastName,
-      });
+      await api.register(
+        {
+          email: data.email,
+          password: data.password,
+          first_name: data.firstName,
+          last_name: data.lastName,
+        },
+        turnstileToken
+      );
       // 202 identically for a free, unverified, or already-verified address,
       // the "check your inbox" state is the whole flow's success state, there
       // is no user object and no session to move to /projects with.
       setSubmitted({ email: data.email, password: data.password });
     } catch (error) {
+      // The token died with the attempt; the retry this toast invites needs a new one.
+      turnstileRef.current?.reset();
       toast({
         title: t("register.errorTitle"),
         description: describeError(error, tCommon, t("register.errorMessage")),
@@ -150,6 +162,7 @@ const Register = () => {
 
   return (
     <AuthLayout title={t("register.title")}>
+      {/* eslint-disable-next-line react-hooks/refs -- handleSubmit defers to the browser's submit event; turnstileRef is only read/written once that event fires, never during render */}
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         <div>
           <FormField
@@ -207,11 +220,13 @@ const Register = () => {
           {...register("lastName")}
         />
 
+        <TurnstileField action="register" ref={turnstileRef} onToken={setTurnstileToken} />
+
         <SubmitButton
           className="w-full"
           isLoading={isLoading}
           loadingText={t("register.creatingAccount")}
-          disabled={!isValid}
+          disabled={!isValid || awaitingTurnstile}
         >
           {t("register.createAccount")}
         </SubmitButton>

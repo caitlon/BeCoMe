@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { SubmitButton } from "@/components/forms";
+import { SubmitButton, TurnstileField, TurnstileFieldHandle } from "@/components/forms";
 import { api } from "@/lib/api";
+import { isTurnstileRequired } from "@/lib/turnstile";
 
 interface ResendVerificationProps {
   readonly email: string;
@@ -22,13 +23,20 @@ export function ResendVerification({ email, password }: ResendVerificationProps)
   const [isLoading, setIsLoading] = useState(false);
   const [status, setStatus] = useState<ResendStatus>("idle");
 
+  const turnstileRef = useRef<TurnstileFieldHandle>(null);
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const awaitingTurnstile = isTurnstileRequired() && turnstileToken === null;
+
   const handleResend = async () => {
     setIsLoading(true);
     try {
-      await api.resendVerification(email, password);
+      await api.resendVerification(email, password, turnstileToken);
       setStatus("success");
     } catch {
       setStatus("error");
+      // The control stays on screen after a failure, so the retry it invites needs
+      // a token that has not already been spent.
+      turnstileRef.current?.reset();
     } finally {
       setIsLoading(false);
     }
@@ -36,6 +44,7 @@ export function ResendVerification({ email, password }: ResendVerificationProps)
 
   return (
     <div className="space-y-2 text-center">
+      <TurnstileField action="resend_verification" ref={turnstileRef} onToken={setTurnstileToken} />
       <SubmitButton
         type="button"
         variant="outline"
@@ -43,6 +52,7 @@ export function ResendVerification({ email, password }: ResendVerificationProps)
         isLoading={isLoading}
         loadingText={t("resendVerification.sending")}
         onClick={handleResend}
+        disabled={awaitingTurnstile}
       >
         {t("resendVerification.action")}
       </SubmitButton>
