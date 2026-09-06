@@ -114,9 +114,9 @@ class CloudflareTurnstileVerifier:
     """Check a token against Cloudflare's siteverify endpoint, fail-closed.
 
     :param secret_key: The widget's secret, paired with the sitekey the frontend renders.
-    :param allowed_hostnames: Hostnames a token may have been minted on. A response
-        naming anything else is refused, and so is every response while the set is
-        empty, since nothing can be in it.
+    :param allowed_hostnames: Hostnames a token may have been minted on, in any case.
+        A response naming anything else is refused, and so is every response while the
+        set is empty, since nothing can be in it.
     :param client: Preconfigured async HTTP client; a fresh one is opened per call when
         omitted (injected directly in tests).
     :param timeout_seconds: Budget for one siteverify call, used only for a client this
@@ -133,7 +133,12 @@ class CloudflareTurnstileVerifier:
     ) -> None:
         """Store the widget credentials and an optional injected HTTP client."""
         self._secret_key = secret_key
-        self._allowed_hostnames = allowed_hostnames
+        # Case-folded once here so the comparison below can be a plain lookup. DNS
+        # names are case-insensitive, and TURNSTILE_HOSTNAMES=["WWW.Becomify.app"] is
+        # a configuration that reads exactly right; compared literally it would match
+        # nothing siteverify ever answers, refusing every request to all four guarded
+        # endpoints with a 403 that says nothing about why.
+        self._allowed_hostnames = frozenset(name.lower() for name in allowed_hostnames)
         self._client = client
         self._timeout_seconds = timeout_seconds
 
@@ -156,8 +161,11 @@ class CloudflareTurnstileVerifier:
             _refuse("rejected", action, error_codes=body.get("error-codes"))
         if body.get("action") != action:
             _refuse("action_mismatch", action, token_action=body.get("action"))
-        if body.get("hostname") not in self._allowed_hostnames:
-            _refuse("hostname_mismatch", action, token_hostname=body.get("hostname"))
+        hostname = body.get("hostname")
+        # Not a string means the answer is not shaped like siteverify's, so there is
+        # nothing to compare and the request is refused, as it is for a mismatch.
+        if not isinstance(hostname, str) or hostname.lower() not in self._allowed_hostnames:
+            _refuse("hostname_mismatch", action, token_hostname=hostname)
 
     async def _siteverify(self, token: str, *, action: str, client_ip: str) -> dict[str, object]:
         """Ask Cloudflare about one token and return the answer it parsed to.

@@ -289,6 +289,25 @@ class TestCloudflareTurnstileVerifierRefuses:
         with pytest.raises(TurnstileVerificationError):
             _verify(verifier)
 
+    def test_refuses_a_body_that_names_no_hostname_at_all(self):
+        """
+        GIVEN a siteverify answer with no hostname field
+        WHEN the check runs
+        THEN it is refused, since there is nothing to match against the list
+
+        A body shaped unlike siteverify's is a body from something that is not
+        siteverify, and a check that cannot see where a token was minted has not
+        checked anything.
+        """
+        # GIVEN
+        body = _siteverify_body()
+        del body["hostname"]
+        verifier = _verifier(_client(body))
+
+        # WHEN/THEN
+        with pytest.raises(TurnstileVerificationError):
+            _verify(verifier)
+
     def test_refuses_when_siteverify_times_out(self):
         """
         GIVEN siteverify never answers within the timeout
@@ -386,6 +405,57 @@ class TestCloudflareTurnstileVerifierRefuses:
 
         # THEN
         assert _TOKEN not in str(mock_logger.method_calls)
+
+
+class TestHostnameMatchingIsCaseInsensitive:
+    """Hostnames are case-insensitive by DNS, so the comparison has to be too.
+
+    Both sides matter. ``TURNSTILE_HOSTNAMES=["WWW.Becomify.app"]`` is a configuration
+    that reads exactly right and, compared literally, refuses every request the service
+    receives - a total outage of all four auth endpoints whose cause is invisible in
+    the response, which says only 403.
+    """
+
+    def test_accepts_a_configured_hostname_written_in_mixed_case(self):
+        """
+        GIVEN TURNSTILE_HOSTNAMES holding the host in mixed case
+        WHEN siteverify answers with the lower-case host
+        THEN the token is accepted
+        """
+        # GIVEN
+        verifier = CloudflareTurnstileVerifier(
+            secret_key="a-turnstile-secret",
+            allowed_hostnames=frozenset({"WWW.Becomify.app"}),
+            client=_client(_siteverify_body(hostname="www.becomify.app")),
+        )
+
+        # WHEN/THEN
+        _verify(verifier)
+
+    def test_accepts_an_answer_whose_hostname_is_in_mixed_case(self):
+        """
+        GIVEN a lower-case hostname list
+        WHEN siteverify answers with the host in mixed case
+        THEN the token is accepted
+        """
+        # GIVEN
+        verifier = _verifier(_client(_siteverify_body(hostname="WWW.Becomify.APP")))
+
+        # WHEN/THEN
+        _verify(verifier)
+
+    def test_still_refuses_a_hostname_that_differs_by_more_than_case(self):
+        """
+        GIVEN a token minted on another host, spelled in mixed case
+        WHEN the check runs
+        THEN it is refused, so case folding widened nothing but the case
+        """
+        # GIVEN
+        verifier = _verifier(_client(_siteverify_body(hostname="WWW.Becomify.app.evil.example")))
+
+        # WHEN/THEN
+        with pytest.raises(TurnstileVerificationError):
+            _verify(verifier)
 
 
 class TestDisabledTurnstileVerifier:
