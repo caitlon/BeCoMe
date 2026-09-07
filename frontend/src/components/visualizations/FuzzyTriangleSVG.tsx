@@ -10,7 +10,7 @@ const triangleForms = [
 ];
 
 const smoothTransition = {
-  duration: 1.2,
+  duration: 0.8,
   ease: [0.25, 0.1, 0.25, 1] as const,
 };
 
@@ -25,7 +25,7 @@ export function FuzzyTriangleSVG() {
 
     const interval = setInterval(() => {
       setCurrentForm(prev => (prev + 1) % triangleForms.length);
-    }, 3000);
+    }, 2000);
     return () => clearInterval(interval);
   }, []);
 
@@ -87,7 +87,7 @@ export function FuzzyTriangleSVG() {
           strokeOpacity={currentForm === index ? 0 : 0.15}
           strokeWidth="1"
           strokeDasharray="4,4"
-          className="transition-all duration-500"
+          className="transition-all duration-300"
         />
       ))}
       
