@@ -20,6 +20,7 @@ Software that helps a panel of experts turn genuine disagreement into one defens
 - [Where the method comes from](#where-the-method-comes-from)
 - [Project status](#project-status)
 - [For developers](#for-developers)
+- [How to cite](#how-to-cite)
 - [License and contact](#license-and-contact)
 - [References](#references)
 
@@ -88,11 +89,42 @@ This is an MVP: a working proof of concept rather than a finished product. The t
 
 The stack is FastAPI and SQLModel on the backend, React with TypeScript and Tailwind on the frontend, PostgreSQL in the deployed environments and SQLite locally. mypy runs in strict mode, and the core library sits at 100% test coverage.
 
+## How to cite
+
+Cite the software and the method separately. The software is this repository, the method is the
+paper it implements.
+
+```bibtex
+@software{kuzmina_become,
+  author  = {Kuzmina, Ekaterina},
+  title   = {{BeCoMe}: a web application for best-compromise group decision making
+             with fuzzy expert opinions},
+  year    = {2026},
+  version = {1.0.0-beta.1},
+  url     = {https://github.com/caitlon/BeCoMe},
+  license = {PolyForm-Noncommercial-1.0.0}
+}
+
+@article{vrana_become_2021,
+  author  = {Vrana, Ivan and Tyrychtr, Jan and Pelik{\'a}n, Martin},
+  title   = {{BeCoMe}: Easy-to-implement optimized method for best-compromise group
+             decision making: Flood-prevention and {COVID}-19 case studies},
+  journal = {Environmental Modelling \& Software},
+  volume  = {136},
+  pages   = {104953},
+  year    = {2021},
+  doi     = {10.1016/j.envsoft.2020.104953}
+}
+```
+
+GitHub also renders a Cite this repository button from [CITATION.cff](https://github.com/caitlon/BeCoMe/blob/main/CITATION.cff), which
+carries the same two entries.
+
 ## License and contact
 
-**Licence**: [PolyForm Noncommercial 1.0.0](LICENSE). Any noncommercial purpose is permitted. The licence names research, personal study, and use by educational institutions, public research bodies and government. Commercial use needs a separate written licence from the author.
+**Licence**: [PolyForm Noncommercial 1.0.0](https://github.com/caitlon/BeCoMe/blob/main/LICENSE). Any noncommercial purpose is permitted. The licence names research, personal study, and use by educational institutions, public research bodies and government. Commercial use needs a separate written licence from the author.
 
-**Citing**: cite this software with the metadata in [CITATION.cff](CITATION.cff), and cite the method's own paper, Vrana et al. (2021), listed under [References](#references). [NOTICE](NOTICE) sets out which part is whose.
+**Citing**: see [How to cite](#how-to-cite). [NOTICE](https://github.com/caitlon/BeCoMe/blob/main/NOTICE) sets out which part is whose.
 
 **Copyright**: © 2025-2026 Ekaterina Kuzmina
 
