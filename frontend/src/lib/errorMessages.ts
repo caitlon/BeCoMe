@@ -1,4 +1,9 @@
-import { HttpError, isServiceUnavailable, isRateLimited } from '@/lib/errors';
+import {
+  HttpError,
+  isServiceUnavailable,
+  isRateLimited,
+  isTurnstileRefusal,
+} from '@/lib/errors';
 
 /**
  * Turns any thrown value into a user-facing message.
@@ -7,10 +12,12 @@ import { HttpError, isServiceUnavailable, isRateLimited } from '@/lib/errors';
  * message rather than whatever text happened to be in the response body,
  * since that body was not written with an end user in mind. Rate limiting
  * gets its own dedicated message, including the server-provided retry delay
- * when one is known. Any other HttpError (401, 409, other 4xx) and plain
- * Error instances use their own message, since those already carry a
- * message meant to be read. Anything else falls back to the caller-supplied
- * default.
+ * when one is known. A refused bot check gets its own too: its `detail` is an
+ * English server-side constant, and what the user needs to be told is that the
+ * check did not go through, not whatever the API happened to say. Any other
+ * HttpError (401, 409, other 4xx) and plain Error instances use their own
+ * message, since those already carry a message meant to be read. Anything else
+ * falls back to the caller-supplied default.
  */
 export function describeError(
   error: unknown,
@@ -25,6 +32,9 @@ export function describeError(
       return t('errors.tooManyAttemptsRetry', { seconds: error.retryAfter });
     }
     return t('errors.tooManyAttempts');
+  }
+  if (isTurnstileRefusal(error)) {
+    return t('errors.turnstileRefused');
   }
   if (error instanceof HttpError) {
     return error.message;

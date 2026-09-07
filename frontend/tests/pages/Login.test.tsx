@@ -4,7 +4,23 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { render } from '@tests/utils';
 import Login from '@/pages/Login';
-import { ServerError, RateLimitError, ForbiddenError, UnauthorizedError } from '@/lib/errors';
+import {
+  ServerError,
+  RateLimitError,
+  ForbiddenError,
+  UnauthorizedError,
+  TURNSTILE_REFUSED_CODE,
+} from '@/lib/errors';
+
+// The two 403s POST /auth/login can answer, exactly as the API sends them. Only the
+// code tells them apart: the detail is prose, and the status is the same.
+const notVerified403 = () =>
+  new ForbiddenError('Email address not verified. Check your inbox for the activation link.');
+const turnstileRefused403 = () =>
+  new ForbiddenError(
+    'Could not confirm you are human. Reload the page and try again.',
+    TURNSTILE_REFUSED_CODE
+  );
 
 // Mock useAuth
 const mockLogin = vi.fn();
@@ -253,14 +269,14 @@ describe('Login', () => {
     });
   });
 
-  describe('unverified account (403)', () => {
+  describe('unverified account (403, no code)', () => {
     beforeEach(() => {
       mockResendVerification.mockReset();
     });
 
     it('shows a not-verified state with a resend control instead of the generic error toast', async () => {
       const user = userEvent.setup();
-      mockLogin.mockRejectedValueOnce(new ForbiddenError('Account not verified'));
+      mockLogin.mockRejectedValueOnce(notVerified403());
 
       render(<Login />);
 
@@ -299,7 +315,7 @@ describe('Login', () => {
 
     it('resends the verification email using the address and password typed into the form', async () => {
       const user = userEvent.setup();
-      mockLogin.mockRejectedValueOnce(new ForbiddenError());
+      mockLogin.mockRejectedValueOnce(notVerified403());
       mockResendVerification.mockResolvedValueOnce(undefined);
 
       render(<Login />);
@@ -324,7 +340,7 @@ describe('Login', () => {
 
     it('lets the user return to the login form from the not-verified state', async () => {
       const user = userEvent.setup();
-      mockLogin.mockRejectedValueOnce(new ForbiddenError());
+      mockLogin.mockRejectedValueOnce(notVerified403());
 
       render(<Login />);
 
@@ -369,6 +385,41 @@ describe('Login', () => {
 
       await user.click(mintButton);
       await waitFor(() => expect(submitButton).not.toBeDisabled());
+    });
+
+    it('does not read a refused bot check as an unverified account', async () => {
+      // The defect this guards: both refusals are 403 on this route, and claiming
+      // every 403 as the unverified case meant that during a siteverify outage -
+      // the check is fail-closed, so every sign-in is refused - each user was told
+      // their long-verified account was unconfirmed, and pointed at a resend flow
+      // guarded by the same check.
+      vi.stubEnv('VITE_TURNSTILE_SITE_KEY', 'test-site-key');
+      mockLogin.mockRejectedValueOnce(turnstileRefused403());
+      const user = userEvent.setup();
+      render(<Login />);
+
+      await user.type(getEmailInput(), 'verified@example.com');
+      await user.type(getPasswordInput(), 'CorrectHorse123!');
+      await user.click(screen.getByRole('button', { name: /mint login token/i }));
+
+      const submitButton = screen.getByRole('button', { name: /sign in/i });
+      await waitFor(() => expect(submitButton).not.toBeDisabled());
+      await user.click(submitButton);
+
+      await waitFor(() => {
+        expect(mockToast).toHaveBeenCalledWith(
+          expect.objectContaining({
+            variant: 'destructive',
+            description: "We couldn't confirm you are human. Please try again.",
+          })
+        );
+      });
+
+      expect(screen.queryByRole('button', { name: /resend/i })).not.toBeInTheDocument();
+      expect(screen.queryByText(/hasn't confirmed its email address/i)).not.toBeInTheDocument();
+      expect(getEmailInput()).toHaveValue('verified@example.com');
+      // The refused token is spent, so the retry the toast invites needs a new one.
+      expect(mockTurnstileReset).toHaveBeenCalled();
     });
 
     it('sends the minted token to login and resets the widget after a failed attempt', async () => {

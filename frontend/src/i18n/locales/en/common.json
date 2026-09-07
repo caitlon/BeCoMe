@@ -155,6 +155,7 @@
     "sessionExpiredTitle": "Session expired",
     "tooManyAttempts": "Too many attempts. Please wait a moment and try again.",
     "tooManyAttemptsRetry": "Too many attempts. Please try again in {{seconds}}s.",
+    "turnstileRefused": "We couldn't confirm you are human. Please try again.",
     "retry": "Try again",
     "logoutFailedTitle": "Sign-out failed",
     "logoutFailed": "Sign-out did not go through. Your session may still be active. Please try again."
