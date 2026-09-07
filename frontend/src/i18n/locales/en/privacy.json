@@ -20,7 +20,7 @@
       "The dates your account was created and your email confirmed.",
       "The projects you own or belong to, and the expert opinions you enter in them."
     ],
-    "outro": "Nothing else is collected. There is no analytics, no advertising, no profiling, and no third-party content embedded in the pages."
+    "outro": "Separately from the account, the service keeps security logs. They record the IP address a sign-in, a rate-limit rejection or a failed form check came from, together with the time and the account involved. Email addresses in those logs are stored as a keyed hash rather than in the clear. There is no advertising and no profiling, and no data is sold or shared with anyone beyond the providers named below."
   },
   "basis": {
     "heading": "On what basis",
@@ -28,40 +28,43 @@
   },
   "cookies": {
     "heading": "Cookies",
-    "intro": "Three cookies are set, all of them after you sign in, and all of them necessary for the service to function:",
+    "intro": "Three cookies are set, all of them once you sign in, and all of them necessary for the service to function:",
     "items": [
       "__Host-access_token keeps you signed in. It lasts 15 minutes.",
       "__Secure-refresh_token renews that session without asking for your password again. It lasts 7 days and is sent only to the authentication routes.",
       "__Host-csrf_token protects forms against cross-site request forgery."
     ],
-    "outro": "Until you sign in, the site sets no cookies at all. Because all three are strictly necessary for a service you explicitly requested, the ePrivacy rules do not require a consent banner, and none is shown. Your language choice is remembered in your browser's local storage and never leaves it."
+    "outro": "All three are strictly necessary for a service you explicitly requested, so the ePrivacy rules do not require a consent banner for them and none is shown. The sign-in, registration and password-reset forms also load Cloudflare's bot-check widget, which runs in a frame from challenges.cloudflare.com and may set storage of its own under Cloudflare's terms; it is a security measure rather than a tracker. Your language and theme choices are remembered in your browser's local storage, under become-language and become-theme, and never leave it."
   },
   "processors": {
     "heading": "Who else handles it",
-    "intro": "Three providers process data on the controller's behalf, all inside the European Union:",
+    "intro": "Several providers process data on the controller's behalf:",
     "items": [
-      "Railway hosts the application and its database in Amsterdam.",
+      "Railway hosts the application and its database in Amsterdam, in the European Union.",
       "Cloudflare serves the site and runs the bot check that protects the sign-in and registration forms.",
-      "Sentry receives error reports from the Frankfurt region. Access tokens and reset tokens are stripped from those reports before they are sent."
-    ]
+      "Resend delivers the verification and password-reset messages, which means it receives your email address. Its endpoint is in the United States, so this is a transfer outside the European Union under Chapter V of the GDPR.",
+      "Sentry receives crash reports from the Frankfurt region. It is also sent a short session record on each page view, which is what the Sentry service calls release health. Access tokens and reset tokens are removed from those reports before they are sent.",
+      "Better Stack receives the server logs described above, including IP addresses, where log shipping is switched on for the environment."
+    ],
+    "outro": "No analytics or advertising service is used, and no tracking script is embedded beyond the Cloudflare widget and the Sentry reporting described here."
   },
   "retention": {
     "heading": "How long",
-    "intro": "Sessions and one-time links expire on their own:",
+    "intro": "One-time links expire on their own:",
     "items": [
-      "A sign-in session lasts 15 minutes and renews for up to 7 days.",
       "A password-reset link is valid for 60 minutes.",
-      "An email verification link is valid for 24 hours."
+      "An email verification link is valid for 24 hours.",
+      "A sign-in session lasts 15 minutes and renews itself as you use it. Seven days of inactivity ends it; there is no fixed maximum for a session in continuous use."
     ],
-    "outro": "The account itself is kept until you delete it. Deletion removes the record from the database rather than hiding it, and it takes your projects and opinions with it."
+    "outro": "The account itself is kept until you delete it. Log records are kept for as long as the logging provider retains them, which is set by its plan rather than by this service."
   },
   "rights": {
     "heading": "Your rights, and how to use them",
-    "intro": "The GDPR gives you rights over this data, and two of them are buttons rather than requests:",
+    "intro": "The GDPR gives you rights over this data. Two of them are already buttons in your profile:",
     "items": [
-      "Download everything the service holds about you, as a single file, from your profile.",
-      "Delete your account and its contents, also from your profile. This cannot be undone.",
-      "Correct your name or email from your profile at any time.",
+      "Download everything the service holds about you, as a single file.",
+      "Delete your account and everything in it. Projects you own have to be dealt with first, and the dialog asks for each one: hand it to another member, or delete it with its opinions. A project you hand over stays, along with the opinions the other members gave it. Deletion cannot be undone.",
+      "Correct your first and last name at any time. The email address cannot be changed in the app; write to the address above to have it corrected.",
       "Object to the processing, or ask for it to be restricted, by writing to the address above."
     ],
     "profileLink": "Go to your profile"

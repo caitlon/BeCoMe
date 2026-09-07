@@ -9,9 +9,12 @@ import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { fadeInUp } from "@/lib/motion";
 
 /**
- * The sections that carry a lead paragraph, a list, and an optional closing paragraph.
- * Keeping them in one array is what stops the markup repeating itself six times, and it
- * means a translator adding a bullet needs to touch only the locale file.
+ * The sections built from a lead paragraph, a list, and a closing paragraph. Keeping them
+ * in one array stops the markup repeating itself four times, and it means a translator
+ * adding a bullet touches only the locale file. Every one of them carries all three parts;
+ * an earlier version made the closing paragraph optional by comparing the translation
+ * against its own key, which is i18next behaviour rather than API and broke the moment a
+ * section gained an outro.
  */
 const LIST_SECTIONS = ["collected", "cookies", "processors", "retention"] as const;
 
@@ -63,13 +66,9 @@ const Privacy = () => {
                     </li>
                   ))}
                 </ul>
-                {/* Only some sections close with a paragraph; i18next echoes the key back
-                    when there is none, which is how an absent outro is detected. */}
-                {t(`${key}.outro`) !== `${key}.outro` && (
-                  <p className="mt-4 text-muted-foreground leading-relaxed">
-                    {t(`${key}.outro`)}
-                  </p>
-                )}
+                <p className="mt-4 text-muted-foreground leading-relaxed">
+                  {t(`${key}.outro`)}
+                </p>
               </motion.div>
             ))}
 
