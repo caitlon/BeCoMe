@@ -81,6 +81,9 @@ const Login = () => {
         // resend flow that is guarded by the same check. Leave it to the toast,
         // which says the check did not go through and to try again; the widget has
         // just been reset, so there is a fresh challenge to try with.
+        // These two lines cannot be swapped: a refused bot check is itself a
+        // ForbiddenError, so the second test claims it as well and the order is
+        // the only thing keeping them apart. A test covers this ordering.
         if (isTurnstileRefusal(error)) return false;
         if (!(error instanceof ForbiddenError)) return false;
         // Everything else 403 on this route is an unverified account, including a
