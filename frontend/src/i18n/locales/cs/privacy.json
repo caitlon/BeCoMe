@@ -1,0 +1,73 @@
+{
+  "meta": {
+    "title": "Ochrana osobních údajů",
+    "subtitle": "Co o vás tato služba uchovává, proč, a jak si to vzít zpět.",
+    "updated": "Aktualizováno 8. září 2026"
+  },
+  "controller": {
+    "heading": "Kdo za to odpovídá",
+    "body": "Službu provozuje Ekaterina Kuzmina jako samostatný projekt na Provozně ekonomické fakultě České zemědělské univerzity v Praze a je správcem zde popsaných údajů. S jakýmkoli dotazem se obraťte na níže uvedenou adresu.",
+    "email": "xkuze010@studenti.czu.cz"
+  },
+  "collected": {
+    "heading": "Co se ukládá",
+    "intro": "Účet obsahuje pouze to, co služba potřebuje k provozu:",
+    "items": [
+      "Vaši e-mailovou adresu, která identifikuje účet a přijímá ověřovací zprávy a odkazy pro obnovu hesla.",
+      "Vaše jméno a příjmení, viditelné ostatním členům projektu, do kterého se zapojíte.",
+      "Vaše heslo, uložené pouze jako otisk. Původní podoba se nikdy nezapisuje a z uloženého ji nelze získat zpět.",
+      "Profilovou fotografii, pokud ji nahrajete.",
+      "Data vytvoření účtu a potvrzení e-mailu.",
+      "Projekty, které vlastníte nebo do nichž patříte, a expertní názory, které v nich zadáte."
+    ],
+    "outro": "Nic dalšího se nesbírá. Není zde žádná analytika, žádná reklama, žádné profilování ani žádný cizí obsah vložený do stránek."
+  },
+  "basis": {
+    "heading": "Na jakém základě",
+    "body": "Údaje účtu se zpracovávají za účelem poskytnutí služby, o kterou jste požádali, tedy na smluvním základě podle čl. 6 odst. 1 písm. b) GDPR. Omezení počtu přihlášení, kontrola robotů a bezpečnostní záznamy stojí na oprávněném zájmu podle čl. 6 odst. 1 písm. f): bez nich je přihlašovací formulář otevřený automatizovanému zneužití."
+  },
+  "cookies": {
+    "heading": "Soubory cookie",
+    "intro": "Nastavují se tři soubory cookie, všechny až po přihlášení a všechny nezbytné pro fungování služby:",
+    "items": [
+      "__Host-access_token vás udržuje přihlášené. Platí 15 minut.",
+      "__Secure-refresh_token obnovuje relaci, aniž by se znovu ptal na heslo. Platí 7 dní a odesílá se pouze na přihlašovací cesty.",
+      "__Host-csrf_token chrání formuláře před podvržením požadavku z cizího webu."
+    ],
+    "outro": "Dokud se nepřihlásíte, web nenastaví žádný soubor cookie. Protože jsou všechny tři nezbytné pro službu, kterou jste si výslovně vyžádali, pravidla ePrivacy nevyžadují souhlasovou lištu a žádná se nezobrazuje. Volba jazyka se pamatuje v místním úložišti prohlížeče a nikdy jej neopouští."
+  },
+  "processors": {
+    "heading": "Kdo další s údaji nakládá",
+    "intro": "Jménem správce zpracovávají údaje tři poskytovatelé, všichni v rámci Evropské unie:",
+    "items": [
+      "Railway hostuje aplikaci a její databázi v Amsterdamu.",
+      "Cloudflare doručuje web a provozuje kontrolu robotů, která chrání přihlašovací a registrační formulář.",
+      "Sentry přijímá hlášení o chybách ve frankfurtském regionu. Přístupové tokeny a tokeny pro obnovu hesla se z těchto hlášení odstraňují ještě před odesláním."
+    ]
+  },
+  "retention": {
+    "heading": "Jak dlouho",
+    "intro": "Relace a jednorázové odkazy vyprší samy:",
+    "items": [
+      "Přihlášená relace trvá 15 minut a obnovuje se nejdéle 7 dní.",
+      "Odkaz pro obnovu hesla platí 60 minut.",
+      "Odkaz pro ověření e-mailu platí 24 hodin."
+    ],
+    "outro": "Samotný účet se uchovává, dokud jej nesmažete. Smazání záznam z databáze odstraní, nikoli skryje, a odnese s sebou i vaše projekty a názory."
+  },
+  "rights": {
+    "heading": "Vaše práva a jak je uplatnit",
+    "intro": "GDPR vám k těmto údajům dává práva a dvě z nich jsou tlačítka, nikoli žádosti:",
+    "items": [
+      "Stáhnout vše, co o vás služba uchovává, jedním souborem ve svém profilu.",
+      "Smazat účet i jeho obsah, rovněž ve svém profilu. Tento krok nelze vzít zpět.",
+      "Kdykoli ve svém profilu opravit jméno nebo e-mail.",
+      "Vznést námitku proti zpracování nebo požádat o jeho omezení dopisem na výše uvedenou adresu."
+    ],
+    "profileLink": "Přejít do profilu"
+  },
+  "complaint": {
+    "heading": "Když je něco špatně",
+    "body": "Napište nejprve na výše uvedenou adresu. Máte také právo podat stížnost u Úřadu pro ochranu osobních údajů na uoou.gov.cz."
+  }
+}

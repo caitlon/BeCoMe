@@ -1,0 +1,73 @@
+{
+  "meta": {
+    "title": "Privacy",
+    "subtitle": "What this service stores about you, why, and how to take it back.",
+    "updated": "Last updated 8 September 2026"
+  },
+  "controller": {
+    "heading": "Who is responsible",
+    "body": "Ekaterina Kuzmina runs this service as an independent project at the Faculty of Economics and Management, Czech University of Life Sciences Prague, and is the controller of the data described here. Write to the address below with any question about it.",
+    "email": "xkuze010@studenti.czu.cz"
+  },
+  "collected": {
+    "heading": "What is stored",
+    "intro": "An account holds only what the service needs to work:",
+    "items": [
+      "Your email address, which identifies the account and receives verification and password-reset messages.",
+      "Your first and last name, shown to the other members of a project you join.",
+      "Your password, stored only as a hash. The original is never written down and cannot be recovered from what is stored.",
+      "A profile photo, if you upload one.",
+      "The dates your account was created and your email confirmed.",
+      "The projects you own or belong to, and the expert opinions you enter in them."
+    ],
+    "outro": "Nothing else is collected. There is no analytics, no advertising, no profiling, and no third-party content embedded in the pages."
+  },
+  "basis": {
+    "heading": "On what basis",
+    "body": "The account data is processed to provide the service you asked for, which is the contractual basis under Article 6(1)(b) of the GDPR. Login throttling, the bot check and the security logs rest on legitimate interest under Article 6(1)(f): without them the sign-in form is open to automated abuse."
+  },
+  "cookies": {
+    "heading": "Cookies",
+    "intro": "Three cookies are set, all of them after you sign in, and all of them necessary for the service to function:",
+    "items": [
+      "__Host-access_token keeps you signed in. It lasts 15 minutes.",
+      "__Secure-refresh_token renews that session without asking for your password again. It lasts 7 days and is sent only to the authentication routes.",
+      "__Host-csrf_token protects forms against cross-site request forgery."
+    ],
+    "outro": "Until you sign in, the site sets no cookies at all. Because all three are strictly necessary for a service you explicitly requested, the ePrivacy rules do not require a consent banner, and none is shown. Your language choice is remembered in your browser's local storage and never leaves it."
+  },
+  "processors": {
+    "heading": "Who else handles it",
+    "intro": "Three providers process data on the controller's behalf, all inside the European Union:",
+    "items": [
+      "Railway hosts the application and its database in Amsterdam.",
+      "Cloudflare serves the site and runs the bot check that protects the sign-in and registration forms.",
+      "Sentry receives error reports from the Frankfurt region. Access tokens and reset tokens are stripped from those reports before they are sent."
+    ]
+  },
+  "retention": {
+    "heading": "How long",
+    "intro": "Sessions and one-time links expire on their own:",
+    "items": [
+      "A sign-in session lasts 15 minutes and renews for up to 7 days.",
+      "A password-reset link is valid for 60 minutes.",
+      "An email verification link is valid for 24 hours."
+    ],
+    "outro": "The account itself is kept until you delete it. Deletion removes the record from the database rather than hiding it, and it takes your projects and opinions with it."
+  },
+  "rights": {
+    "heading": "Your rights, and how to use them",
+    "intro": "The GDPR gives you rights over this data, and two of them are buttons rather than requests:",
+    "items": [
+      "Download everything the service holds about you, as a single file, from your profile.",
+      "Delete your account and its contents, also from your profile. This cannot be undone.",
+      "Correct your name or email from your profile at any time.",
+      "Object to the processing, or ask for it to be restricted, by writing to the address above."
+    ],
+    "profileLink": "Go to your profile"
+  },
+  "complaint": {
+    "heading": "If something is wrong",
+    "body": "Write to the address above first. You also have the right to complain to the Czech data protection authority, the Úřad pro ochranu osobních údajů, at uoou.gov.cz."
+  }
+}

@@ -142,6 +142,14 @@ export function Footer() {
                   {t("footer.faq")}
                 </Link>
               </li>
+              <li>
+                <Link
+                  to="/privacy"
+                  className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {t("footer.privacy")}
+                </Link>
+              </li>
             </ul>
           </div>
         </div>
