@@ -3,6 +3,7 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { render } from '@tests/utils';
 import ForgotPassword from '@/pages/ForgotPassword';
+import { ForbiddenError, TURNSTILE_REFUSED_CODE } from '@/lib/errors';
 
 // Mock the API client (the page calls api.forgotPassword directly)
 const mockForgotPassword = vi.fn();
@@ -187,17 +188,42 @@ describe('ForgotPassword', () => {
         );
       });
 
-      // The other three forms reset the widget after a failure, because the user
-      // stays on them and needs a live token for the retry. This one does not: the
-      // failure is swallowed to keep the answer identical for a registered and an
-      // unregistered address, so the confirmation panel replaces the form and takes
-      // the widget with it. There is nothing left to hand a fresh token to.
+      // An ordinary failure is swallowed to keep the answer identical for a
+      // registered and an unregistered address, so the confirmation panel replaces
+      // the form and takes the widget with it. There is nothing left to hand a fresh
+      // token to. A refused bot check is the one exception — see the test below.
       await waitFor(() => {
         expect(screen.getByText(/reset link is on its way/i)).toBeInTheDocument();
       });
       expect(
         screen.queryByRole('button', { name: /mint password_reset token/i })
       ).not.toBeInTheDocument();
+    });
+
+    it('does not claim a link was sent when the bot check refused the request', async () => {
+      vi.stubEnv('VITE_TURNSTILE_SITE_KEY', 'test-site-key');
+      mockForgotPassword.mockRejectedValueOnce(
+        new ForbiddenError('Bot check failed.', TURNSTILE_REFUSED_CODE)
+      );
+      const user = userEvent.setup();
+      render(<ForgotPassword />);
+
+      await user.type(getEmailInput(), 'user@example.com');
+      await user.click(screen.getByRole('button', { name: /mint password_reset token/i }));
+
+      const submitButton = getSubmitButton();
+      await waitFor(() => expect(submitButton).not.toBeDisabled());
+      await user.click(submitButton);
+
+      await waitFor(() => expect(mockForgotPassword).toHaveBeenCalled());
+
+      // Nothing was sent, so the confirmation panel would be a lie — and it would
+      // unmount the widget, leaving the user with no way to earn a fresh challenge.
+      // The form stays put with the widget on it.
+      expect(screen.queryByText(/reset link is on its way/i)).not.toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: /mint password_reset token/i })
+      ).toBeInTheDocument();
     });
   });
 });
