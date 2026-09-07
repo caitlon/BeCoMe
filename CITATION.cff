@@ -1,0 +1,42 @@
+cff-version: 1.2.0
+title: >-
+  BeCoMe: a web application for best-compromise group decision
+  making with fuzzy expert opinions
+message: >-
+  If you use this software, please cite it using the metadata below, and cite the
+  paper that introduced the method it implements (listed under references).
+type: software
+authors:
+  - family-names: Kuzmina
+    given-names: Ekaterina
+    affiliation: >-
+      Faculty of Economics and Management, Czech University of Life Sciences Prague
+repository-code: https://github.com/caitlon/BeCoMe
+license: PolyForm-Noncommercial-1.0.0
+version: 1.0.0-beta.1
+abstract: >-
+  An independent implementation of the BeCoMe (Best-Compromise Mean) method for
+  aggregating expert opinions expressed as fuzzy triangular numbers, extended into a
+  working web application so people who do not write code can run a panel.
+keywords:
+  - group decision making
+  - fuzzy numbers
+  - best-compromise mean
+  - multi-criteria decision analysis
+references:
+  - type: article
+    title: >-
+      BeCoMe: Easy-to-implement optimized method for best-compromise group decision
+      making: Flood-prevention and COVID-19 case studies
+    authors:
+      - family-names: Vrana
+        given-names: Ivan
+      - family-names: Tyrychtr
+        given-names: Jan
+      - family-names: Pelikan
+        given-names: Martin
+    journal: Environmental Modelling & Software
+    volume: 136
+    start: 104953
+    year: 2021
+    doi: 10.1016/j.envsoft.2020.104953

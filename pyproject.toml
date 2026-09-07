@@ -3,7 +3,7 @@ name = "become"
 version = "1.0.0b1"
 description = "Python implementation of the BeCoMe group decision-making method"
 authors = [{ name = "Ekaterina Kuzmina" }]
-license = { text = "MIT" }
+license = { text = "PolyForm-Noncommercial-1.0.0" }
 readme = "README.md"
 requires-python = ">=3.13"
 

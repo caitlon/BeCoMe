@@ -90,7 +90,9 @@ The stack is FastAPI and SQLModel on the backend, React with TypeScript and Tail
 
 ## License and contact
 
-**Academic use**: this code serves academic and research purposes. If you build on this implementation, cite the original BeCoMe paper by Vrana et al. (2021), listed under [References](#references).
+**Licence**: [PolyForm Noncommercial 1.0.0](LICENSE). Any noncommercial purpose is permitted. The licence names research, personal study, and use by educational institutions, public research bodies and government. Commercial use needs a separate written licence from the author.
+
+**Citing**: cite this software with the metadata in [CITATION.cff](CITATION.cff), and cite the method's own paper, Vrana et al. (2021), listed under [References](#references). [NOTICE](NOTICE) sets out which part is whose.
 
 **Copyright**: © 2025-2026 Ekaterina Kuzmina
 

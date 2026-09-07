@@ -1,0 +1,40 @@
+BeCoMe
+Copyright 2025-2026 Ekaterina Kuzmina
+
+Required Notice: Copyright 2025-2026 Ekaterina Kuzmina (https://github.com/caitlon/BeCoMe)
+
+Licensed under the PolyForm Noncommercial License 1.0.0. See LICENSE for the terms.
+Commercial use is not permitted without a separate written licence from the author.
+
+
+WHAT IS COVERED
+
+Ekaterina Kuzmina is the author of everything in this repository: the BeCoMe library,
+the FastAPI backend, the React frontend, the test suites, the documentation, the
+deployment configuration and the tooling. She wrote it at the Faculty of Economics and
+Management, Czech University of Life Sciences Prague.
+
+
+THE METHOD THIS SOFTWARE IMPLEMENTS
+
+The BeCoMe (Best-Compromise Mean) method is not the work of this author. Ivan Vrana,
+Jan Tyrychtr and Martin Pelikan published it:
+
+  Vrana, I., Tyrychtr, J., & Pelikan, M. (2021). BeCoMe: Easy-to-implement optimized
+  method for best-compromise group decision making: Flood-prevention and COVID-19 case
+  studies. Environmental Modelling & Software, 136, 104953.
+  https://doi.org/10.1016/j.envsoft.2020.104953
+
+Copyright covers expression, not ideas, so a published method carries no copyright that
+this implementation could infringe. The licence above therefore applies to this source
+code alone and makes no claim over the method itself, which remains free for anyone to
+implement. What those authors are owed is citation, and this file gives it.
+
+
+CASE-STUDY DATA AND REFERENCE VALUES
+
+The three expert panels in examples/data/ (budget, floods, pendlers) and the expected
+results in tests/reference/ originate from the method authors' own Excel workbook. This
+repository reproduces them so the test suite can check its own results against theirs.
+It matches to within 0.001 on every run. Credit for that data belongs to the method's
+authors, not to this author.
