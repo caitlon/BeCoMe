@@ -128,7 +128,7 @@ The root `railway.toml` carries the API build and deploy settings: it points at 
 | `DEBUG` | `false` | `false` | `false` |
 | `LOG_LEVEL` | `DEBUG` | `INFO` | `INFO` |
 | `API_PUBLIC_URL` | dev API URL | staging API URL | production API URL |
-| `VITE_API_URL` / `VITE_SENTRY_DSN` / `VITE_APP_ENV` (frontend build args) | dev values | staging values | production values |
+| `VITE_API_URL` / `VITE_SENTRY_DSN` / `VITE_APP_ENV` / `VITE_TURNSTILE_SITE_KEY` (frontend build args) | dev values | staging values | production values |
 | `BUCKET_NAME` / `BUCKET_ENDPOINT` / `BUCKET_ACCESS_KEY_ID` / `BUCKET_SECRET_ACCESS_KEY` | injected from `dev-photos` | injected from `test-photos` | injected from `prod-photos` |
 
 A deployed service that leaves `APP_ENV` unset falls back to the dev profile. The startup guard still runs there, because it keys off `RAILWAY_ENVIRONMENT_NAME` rather than the profile name, so an unset variable cannot weaken a deploy. Set the profile explicitly anyway (`dev`, `test`, or `prod`), so that the log level, the log format, and the `.env.<APP_ENV>` overlay are the ones you meant.
@@ -136,6 +136,8 @@ A deployed service that leaves `APP_ENV` unset falls back to the dev profile. Th
 `LOG_LEVEL` appears as a service variable even though `api/config.py` already defaults it per profile (`DEBUG` on dev, `INFO` on test and prod). The default is the safety net for a service whose variable was never set. The variable is what makes the level visible to whoever opens the service without reading the settings module. An explicit value always wins over the profile default.
 
 Log format follows the deploy, not the profile. `api/logging_config.py` emits human-readable text only when the profile is dev *and* `RAILWAY_ENVIRONMENT_NAME` is absent, i.e. on a laptop. The Railway `dev` service is a deploy, so it emits JSON like staging and production and its `extra` fields stay indexable in the drain.
+
+`VITE_TURNSTILE_SITE_KEY` is the sitekey paired with the API's `TURNSTILE_SECRET_KEY` on the same service. Provisioning an environment that sets the three `TURNSTILE_*` variables and omits this one switches the check on with no widget in the bundle: no token reaches the API, and every sign-in, sign-up, password reset and resend answers `403`.
 
 In `frontend/Dockerfile`, declare an `ARG` and an `ENV` for every `VITE_*` variable the SPA reads. Railway passes service variables to the build as build args, but Docker only exposes the ones the Dockerfile declares. Vite then inlines `undefined` for anything missing at build time, silently and with no build error. That gap left `VITE_SENTRY_DSN` set on all three frontend services while `Sentry.init` was tree-shaken out of every bundle.
 

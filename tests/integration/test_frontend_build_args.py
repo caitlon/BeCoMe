@@ -20,6 +20,7 @@ from pathlib import Path
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 _DOCKERFILE = _PROJECT_ROOT / "frontend" / "Dockerfile"
 _SOURCE_ROOT = _PROJECT_ROOT / "frontend" / "src"
+_ENVIRONMENTS_DOC = _PROJECT_ROOT / "docs" / "environments.md"
 
 # Only the VITE_ prefix is injectable. Vite's own DEV/PROD/MODE come from the build
 # mode rather than the environment, so they are no one's build argument.
@@ -57,3 +58,22 @@ class TestFrontendBuildArgs:
         )
 
         assert not missing, f"read by the SPA, never declared as ARG: {sorted(missing)}"
+
+    def test_every_build_arg_is_named_in_the_environments_doc(self):
+        """
+        GIVEN the VITE_ build arguments frontend/Dockerfile declares
+        WHEN docs/environments.md is read
+        THEN every one of them is named somewhere in it
+
+        The per-environment variable table in that document is what a new environment
+        gets provisioned from. A build argument missing from it is set on no service,
+        which is the same silent failure as one missing from the Dockerfile: the bundle
+        is built with the value undefined and whatever it switches on never runs. This
+        asserts only that the name appears, so the document can be reworded freely.
+        """
+        documented = _ENVIRONMENTS_DOC.read_text(encoding="utf-8")
+        declared = set(_BUILD_ARG.findall(_DOCKERFILE.read_text(encoding="utf-8")))
+
+        missing = {name for name in declared if name not in documented}
+
+        assert not missing, f"built into the image, documented nowhere: {sorted(missing)}"
