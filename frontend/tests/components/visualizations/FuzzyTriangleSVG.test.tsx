@@ -72,7 +72,7 @@ describe('FuzzyTriangleSVG', () => {
     const animatedPolygon = container.querySelector('polygon:not([stroke-dasharray])');
     const initialPoints = animatedPolygon?.getAttribute('points');
 
-    // After 6 seconds (2 full cycles), points should remain unchanged
+    // After 6 seconds (three full cycles), points should remain unchanged
     act(() => { vi.advanceTimersByTime(6000); });
 
     const updatedPoints = animatedPolygon?.getAttribute('points');
@@ -87,7 +87,7 @@ describe('FuzzyTriangleSVG', () => {
     const animatedPolygon = container.querySelector('polygon:not([stroke-dasharray])');
     const initialPoints = animatedPolygon?.getAttribute('points');
 
-    // Advance past the interval (3 seconds) wrapped in act for state update
+    // Advance past the interval (2 seconds) wrapped in act for state update
     act(() => { vi.advanceTimersByTime(3100); });
 
     // Points should have changed to second form
