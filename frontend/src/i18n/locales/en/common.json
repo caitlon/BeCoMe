@@ -46,7 +46,8 @@
     "authorName": "Ekaterina Kuzmina",
     "vrana": "Prof. Ing. Ivan Vrana, DrSc.",
     "tyrychtr": "doc. Ing. Jan Tyrychtr, Ph.D.",
-    "pelikan": "doc. Ing. Martin Pelikán, Ph.D."
+    "pelikan": "doc. Ing. Martin Pelikán, Ph.D.",
+    "privacy": "Privacy"
   },
   "docs": {
     "title": "Documentation",
@@ -142,7 +143,8 @@
     "documentation": "Documentation",
     "faq": "FAQ",
     "caseStudies": "Case Studies",
-    "notFound": "Page Not Found"
+    "notFound": "Page Not Found",
+    "privacy": "Privacy"
   },
   "errorBoundary": {
     "title": "Something went wrong",
