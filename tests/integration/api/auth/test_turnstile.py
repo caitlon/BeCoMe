@@ -14,7 +14,7 @@ import pytest
 from api.auth.turnstile import TURNSTILE_HEADER
 from api.dependencies import get_turnstile_verifier
 from api.exceptions import TurnstileVerificationError
-from api.middleware.exception_handlers import TURNSTILE_REFUSED_DETAIL
+from api.middleware.exception_handlers import TURNSTILE_REFUSED_CODE, TURNSTILE_REFUSED_DETAIL
 from api.services.user_service import UserService
 from tests.integration.api.conftest import (
     app_session,
@@ -340,10 +340,11 @@ class TestGuardWiring:
         """
         GIVEN the bot check is on
         WHEN one request sends no token and another sends one the verifier rejects
-        THEN both answer with the same status and the same body
+        THEN both answer with the same status and the same body, code included
 
         Any difference would tell a caller whether the check is switched on, and which
-        half of it they failed.
+        half of it they failed. The code exists so the SPA can tell this 403 from the
+        unverified-account one; it must stay one value for every way the check refuses.
         """
         # GIVEN
         enable_check(client)
@@ -353,8 +354,35 @@ class TestGuardWiring:
         rejected = post_register(client, "rejected@example.com", "not-a-real-token")
 
         # THEN
+        expected = {"detail": TURNSTILE_REFUSED_DETAIL, "code": TURNSTILE_REFUSED_CODE}
         assert absent.status_code == rejected.status_code == 403
-        assert absent.json() == rejected.json() == {"detail": TURNSTILE_REFUSED_DETAIL}
+        assert absent.json() == rejected.json() == expected
+
+    def test_a_login_refusal_is_distinguishable_from_an_unverified_account(
+        self, client, fake_email
+    ):
+        """
+        GIVEN an account that exists and has not been verified
+        WHEN the bot check refuses its sign-in
+        THEN the answer carries the bot-check code, which the unverified 403 does not
+
+        Both are 403 on the same route. Before the code, the only thing separating them
+        in the body was an English sentence, so a siteverify outage told every user that
+        their verified account was unconfirmed and sent them to the resend flow, which
+        is guarded too.
+        """
+        # GIVEN
+        create_unverified(client, "unverified@example.com")
+
+        # WHEN
+        unverified = post_login(client, "unverified@example.com")
+        enable_check(client)
+        refused = post_login(client, "unverified@example.com")
+
+        # THEN
+        assert unverified.status_code == refused.status_code == 403
+        assert "code" not in unverified.json()
+        assert refused.json()["code"] == TURNSTILE_REFUSED_CODE
 
     @pytest.mark.parametrize(
         ("path", "payload"),
