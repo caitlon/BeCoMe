@@ -53,6 +53,7 @@ from api.auth.login_throttle import (
 )
 from api.auth.password import hash_password
 from api.auth.revocation_store import RevocationStore, get_revocation_store
+from api.auth.turnstile import require_human
 from api.config import get_settings
 from api.dependencies import (
     get_email_address_policy,
@@ -177,6 +178,7 @@ async def _send_quietly(send: Awaitable[None], event: str) -> None:
     "/register",
     status_code=status.HTTP_202_ACCEPTED,
     summary="Register a new user and send an activation link",
+    dependencies=[Depends(require_human("register"))],
 )
 @limiter.limit(LIMIT_AUTH_ENDPOINTS)
 async def register(
@@ -255,7 +257,11 @@ async def register(
     return {"detail": _REGISTRATION_ACCEPTED}
 
 
-@router.post("/login", summary="Login and get access + refresh tokens")
+@router.post(
+    "/login",
+    summary="Login and get access + refresh tokens",
+    dependencies=[Depends(require_human("login"))],
+)
 @limiter.limit(LIMIT_AUTH_ENDPOINTS)
 def login(
     request: Request,
@@ -447,6 +453,7 @@ def verify_email(
     "/resend-verification",
     status_code=status.HTTP_202_ACCEPTED,
     summary="Request a fresh activation link",
+    dependencies=[Depends(require_human("resend_verification"))],
 )
 @limiter.limit(LIMIT_PWD_RESET)
 async def resend_verification(
@@ -605,6 +612,7 @@ def logout(
     "/forgot-password",
     status_code=status.HTTP_202_ACCEPTED,
     summary="Request a password reset email",
+    dependencies=[Depends(require_human("password_reset"))],
 )
 @limiter.limit(LIMIT_PWD_RESET)
 async def forgot_password(

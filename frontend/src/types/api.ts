@@ -144,4 +144,11 @@ export interface ChangePasswordInput {
 
 export interface ApiError {
   detail: string | Array<{ loc: string[]; msg: string; type: string }>;
+  /**
+   * The API's machine-readable name for this answer, present only on the errors
+   * that have one (api/middleware/exception_handlers.py::ERROR_CODES). It is what
+   * separates two responses that share a status, so branch on it rather than on
+   * the human-facing `detail` sentence.
+   */
+  code?: string;
 }

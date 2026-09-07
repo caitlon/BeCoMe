@@ -15,7 +15,11 @@ interface AuthContextType {
   readonly isLoading: boolean;
   readonly isAuthenticated: boolean;
   readonly isServiceUnavailable: boolean;
-  readonly login: (email: string, password: string) => Promise<void>;
+  readonly login: (
+    email: string,
+    password: string,
+    turnstileToken?: string | null
+  ) => Promise<void>;
   readonly logout: () => Promise<void>;
   readonly refreshUser: () => Promise<void>;
 }
@@ -74,8 +78,14 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
     return () => api.setOnSessionExpired(null);
   }, [toast, tCommon]);
 
-  const login = useCallback(async (email: string, password: string) => {
-    await api.login(email, password);
+  // The Turnstile token is the sign-in form's, not this context's: it is minted by the
+  // widget on that page and passed straight through to the transport.
+  const login = useCallback(async (
+    email: string,
+    password: string,
+    turnstileToken?: string | null
+  ) => {
+    await api.login(email, password, turnstileToken);
     await refreshUser();
   }, [refreshUser]);
 

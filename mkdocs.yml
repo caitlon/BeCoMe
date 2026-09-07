@@ -72,8 +72,16 @@ extra_css:
 
 markdown_extensions:
   - admonition
+  # GitHub's slug rule, not the stock one. These pages are read in two places and the
+  # anchors have to work in both; the stock function drops every non-ASCII letter, which
+  # turns `### Step 1: calculate the arithmetic mean (Γ)` into a different anchor here
+  # than the one GitHub gives the same line. `scripts/docs/toc.py` imports this same
+  # function, so the tables of contents cannot drift away from either renderer.
   - toc:
       permalink: true
+      slugify: !!python/object/apply:pymdownx.slugs.slugify
+        kwds:
+          case: lower
   - pymdownx.details
   - pymdownx.superfences
   # The one extension this site depends on structurally. Pages under `dev/` are a

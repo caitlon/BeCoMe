@@ -5,7 +5,9 @@ import {
   ServerError,
   RateLimitError,
   UnauthorizedError,
+  ForbiddenError,
   HttpError,
+  TURNSTILE_REFUSED_CODE,
 } from '@/lib/errors';
 
 // Identity translator: makes assertions read as "which key was picked",
@@ -52,6 +54,22 @@ describe('describeError', () => {
   it('falls back to the plain tooManyAttempts key when retryAfter is not positive', () => {
     expect(describeError(new RateLimitError('Too many requests', 0), tInterpolate, 'fallback')).toBe(
       'Too many attempts.'
+    );
+  });
+
+  it('maps a refused bot check to its own key, not the server sentence', () => {
+    // The API's detail is an English constant. Showing it would put English in a
+    // Czech UI and tie the app to wording the server is free to change.
+    const refused = new ForbiddenError(
+      'Could not confirm you are human. Reload the page and try again.',
+      TURNSTILE_REFUSED_CODE
+    );
+    expect(describeError(refused, t, 'fallback')).toBe('errors.turnstileRefused');
+  });
+
+  it('leaves a 403 with no code alone, so the unverified-account text still shows', () => {
+    expect(describeError(new ForbiddenError('Email not verified'), t, 'fallback')).toBe(
+      'Email not verified'
     );
   });
 

@@ -1,16 +1,49 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { render } from '@tests/utils';
 import ForgotPassword from '@/pages/ForgotPassword';
+import { ForbiddenError, TURNSTILE_REFUSED_CODE } from '@/lib/errors';
 
 // Mock the API client (the page calls api.forgotPassword directly)
 const mockForgotPassword = vi.fn();
 vi.mock('@/lib/api', () => ({
   api: {
-    forgotPassword: (email: string) => mockForgotPassword(email),
+    forgotPassword: (email: string, turnstileToken?: string | null) =>
+      mockForgotPassword(email, turnstileToken),
   },
 }));
+
+// A real TurnstileField needs Cloudflare's script, which never loads in this suite.
+// The Turnstile-specific describe block below swaps in a fake that mints a token on
+// click. No ref: unlike the other three forms, this page never resets the widget,
+// because submitting replaces the whole form with the confirmation panel.
+vi.mock('@/components/forms', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/components/forms')>();
+  const { isTurnstileRequired } = await import('@/lib/turnstile');
+  return {
+    ...actual,
+    TurnstileField: function TurnstileFieldMock({
+      action,
+      onToken,
+    }: {
+      action: string;
+      onToken: (token: string | null) => void;
+    }) {
+      // Mirrors the real widget's own contract (renders nothing without a
+      // sitekey), so every test that does not opt into Turnstile sees exactly
+      // what it saw before this mock existed.
+      if (!isTurnstileRequired()) {
+        return null;
+      }
+      return (
+        <button type="button" onClick={() => onToken('mock-turnstile-token')}>
+          {`mint ${action} token`}
+        </button>
+      );
+    },
+  };
+});
 
 // AuthLayout renders Navbar, which calls useAuth -> mock it (as Login/Register tests do)
 vi.mock('@/contexts/AuthContext', () => ({
@@ -66,7 +99,10 @@ describe('ForgotPassword', () => {
     await user.click(getSubmitButton());
 
     await waitFor(() => {
-      expect(mockForgotPassword).toHaveBeenCalledWith('user@example.com');
+      // Second argument is the Turnstile token; the check is off in this suite (no
+      // VITE_TURNSTILE_SITE_KEY), so the widget never mints one and forgotPassword
+      // is called with null exactly as it was before the bot check existed.
+      expect(mockForgotPassword).toHaveBeenCalledWith('user@example.com', null);
     });
     await waitFor(() => {
       expect(screen.getByText(/if that email is registered/i)).toBeInTheDocument();
@@ -104,5 +140,90 @@ describe('ForgotPassword', () => {
 
     const loginLink = screen.getByRole('link', { name: /back to sign in/i });
     expect(loginLink).toHaveAttribute('href', '/login');
+  });
+
+  describe('Turnstile bot check', () => {
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    it('renders the widget for the password_reset action and keeps submit disabled until it mints a token', async () => {
+      vi.stubEnv('VITE_TURNSTILE_SITE_KEY', 'test-site-key');
+      const user = userEvent.setup();
+      render(<ForgotPassword />);
+
+      await user.type(getEmailInput(), 'user@example.com');
+
+      // The exact defect this guards: a widget rendered under the wrong action (or
+      // none) mints a token the API refuses as action_mismatch. ForgotPassword posts
+      // to /auth/forgot-password, which the backend guards with "password_reset".
+      const mintButton = screen.getByRole('button', { name: /mint password_reset token/i });
+      const submitButton = getSubmitButton();
+      expect(submitButton).toBeDisabled();
+
+      await user.click(submitButton);
+      expect(mockForgotPassword).not.toHaveBeenCalled();
+
+      await user.click(mintButton);
+      await waitFor(() => expect(submitButton).not.toBeDisabled());
+    });
+
+    it('sends the minted token and leaves no widget behind when the attempt fails', async () => {
+      vi.stubEnv('VITE_TURNSTILE_SITE_KEY', 'test-site-key');
+      mockForgotPassword.mockRejectedValueOnce(new Error('boom'));
+      const user = userEvent.setup();
+      render(<ForgotPassword />);
+
+      await user.type(getEmailInput(), 'user@example.com');
+      await user.click(screen.getByRole('button', { name: /mint password_reset token/i }));
+
+      const submitButton = getSubmitButton();
+      await waitFor(() => expect(submitButton).not.toBeDisabled());
+      await user.click(submitButton);
+
+      await waitFor(() => {
+        expect(mockForgotPassword).toHaveBeenCalledWith(
+          'user@example.com',
+          'mock-turnstile-token'
+        );
+      });
+
+      // An ordinary failure is swallowed to keep the answer identical for a
+      // registered and an unregistered address, so the confirmation panel replaces
+      // the form and takes the widget with it. There is nothing left to hand a fresh
+      // token to. A refused bot check is the one exception — see the test below.
+      await waitFor(() => {
+        expect(screen.getByText(/reset link is on its way/i)).toBeInTheDocument();
+      });
+      expect(
+        screen.queryByRole('button', { name: /mint password_reset token/i })
+      ).not.toBeInTheDocument();
+    });
+
+    it('does not claim a link was sent when the bot check refused the request', async () => {
+      vi.stubEnv('VITE_TURNSTILE_SITE_KEY', 'test-site-key');
+      mockForgotPassword.mockRejectedValueOnce(
+        new ForbiddenError('Bot check failed.', TURNSTILE_REFUSED_CODE)
+      );
+      const user = userEvent.setup();
+      render(<ForgotPassword />);
+
+      await user.type(getEmailInput(), 'user@example.com');
+      await user.click(screen.getByRole('button', { name: /mint password_reset token/i }));
+
+      const submitButton = getSubmitButton();
+      await waitFor(() => expect(submitButton).not.toBeDisabled());
+      await user.click(submitButton);
+
+      await waitFor(() => expect(mockForgotPassword).toHaveBeenCalled());
+
+      // Nothing was sent, so the confirmation panel would be a lie — and it would
+      // unmount the widget, leaving the user with no way to earn a fresh challenge.
+      // The form stays put with the widget on it.
+      expect(screen.queryByText(/reset link is on its way/i)).not.toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: /mint password_reset token/i })
+      ).toBeInTheDocument();
+    });
   });
 });

@@ -79,6 +79,9 @@ def _settings(
         email_provider="http",
         email_api_key="a-resend-api-key-for-tests",
         migration_database_url="postgresql://migrator:pass@host:5432/db",
+        turnstile_enabled=True,
+        turnstile_secret_key="a-turnstile-secret-for-tests",
+        turnstile_hostnames=["app.example.com"],
     )
 
 

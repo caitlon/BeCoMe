@@ -31,6 +31,7 @@ from api.exceptions import (
     ProjectNotFoundError,
     ResetTokenExpiredError,
     ScaleRangeError,
+    TurnstileVerificationError,
     UnresolvableEmailDomainError,
     UserAlreadyMemberError,
     UserExistsError,
@@ -61,6 +62,21 @@ EMAIL_NOT_VERIFIED_DETAIL = "Email address not verified. Check your inbox for th
 VERIFICATION_PASSWORD_MISMATCH_DETAIL = (
     "That password does not match the sign-up this link was created for."  # noqa: S105
 )
+
+# The 403 a request gets when the Turnstile bot check refuses it. One wording for every
+# refusal, an absent header included, so the response tells a caller nothing about what
+# the check saw or whether it is switched on at all.
+TURNSTILE_REFUSED_DETAIL = "Could not confirm you are human. Reload the page and try again."
+
+# The machine-readable half of that answer. POST /auth/login can answer 403 for two
+# unrelated reasons - an unverified account and a refused bot check - and they need
+# different screens. Without a code the only thing separating them in the body is the
+# English sentence above, and a client matching on that breaks the moment it is reworded.
+#
+# The code is one value for every refusal, exactly as the wording is, so it discriminates
+# for the SPA without conceding anything to a caller: it cannot say whether a token was
+# presented, which part of the check failed, or whether an account exists.
+TURNSTILE_REFUSED_CODE = "turnstile_refused"
 
 # Exception to HTTP status code and message mapping
 # Following OCP: extend by adding entries, not modifying handlers
@@ -117,6 +133,7 @@ EXCEPTION_MAP: dict[type[BeCoMeAPIError], tuple[int, str | None]] = {
         status.HTTP_403_FORBIDDEN,
         VERIFICATION_PASSWORD_MISMATCH_DETAIL,
     ),
+    TurnstileVerificationError: (status.HTTP_403_FORBIDDEN, TURNSTILE_REFUSED_DETAIL),
     # 429 Too Many Requests
     LoginThrottledError: (
         status.HTTP_429_TOO_MANY_REQUESTS,
@@ -151,6 +168,17 @@ EXCEPTION_MAP: dict[type[BeCoMeAPIError], tuple[int, str | None]] = {
     StorageConfigurationError: (status.HTTP_503_SERVICE_UNAVAILABLE, "Storage is not available"),
     StorageUploadError: (status.HTTP_503_SERVICE_UNAVAILABLE, "Failed to upload photo"),
     StorageDeleteError: (status.HTTP_503_SERVICE_UNAVAILABLE, "Failed to delete photo"),
+}
+
+# Stable codes for the answers a client has to branch on, sent as a "code" field beside
+# "detail". Only exceptions that need one appear here: everything else keeps a body of
+# exactly {"detail": ...}, so adding a code to one error changes no other response.
+#
+# Looked up by exact type, as EXCEPTION_MAP is. A subclass added later without an entry
+# here also misses EXCEPTION_MAP, so it answers 400 rather than a 403 the SPA could
+# mistake for one of these - the omission is loud rather than silent.
+ERROR_CODES: dict[type[BeCoMeAPIError], str] = {
+    TurnstileVerificationError: TURNSTILE_REFUSED_CODE,
 }
 
 # Default mappings for base exception classes
@@ -189,7 +217,8 @@ def become_api_error_handler(request: Request, exc: BeCoMeAPIError) -> JSONRespo
 
     :param request: FastAPI request
     :param exc: The exception instance
-    :return: JSON response with error detail
+    :return: JSON response with the error detail, plus a ``code`` for the exceptions
+        that carry one (see ``ERROR_CODES``)
     """
     status_code, detail = _get_status_and_detail(exc)
 
@@ -218,9 +247,14 @@ def become_api_error_handler(request: Request, exc: BeCoMeAPIError) -> JSONRespo
         elif exc.email:
             log_login_failure(exc.email, exc.reason, request)
 
+    content: dict[str, str] = {"detail": detail}
+    code = ERROR_CODES.get(type(exc))
+    if code is not None:
+        content["code"] = code
+
     return JSONResponse(
         status_code=status_code,
-        content={"detail": detail},
+        content=content,
         headers=headers,
     )
 
