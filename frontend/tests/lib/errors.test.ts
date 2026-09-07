@@ -12,6 +12,8 @@ import {
   isServerError,
   isServiceUnavailable,
   isRetryable,
+  isTurnstileRefusal,
+  TURNSTILE_REFUSED_CODE,
 } from '@/lib/errors';
 import { toHttpError, safeFetch } from '@/lib/api';
 
@@ -223,5 +225,86 @@ describe('toHttpError / safeFetch (api.ts error production)', () => {
 
     await expect(safeFetch('https://example.test/x', {})).rejects.toBeInstanceOf(NetworkError);
     await expect(safeFetch('https://example.test/x', {})).rejects.toMatchObject({ cause });
+  });
+});
+
+describe('the code the API sends beside the detail', () => {
+  it('carries onto the typed error', async () => {
+    const error = await toHttpError(
+      mockResponse(403, { detail: 'Could not confirm you are human.', code: 'turnstile_refused' })
+    );
+    expect(error).toBeInstanceOf(ForbiddenError);
+    expect(error.code).toBe('turnstile_refused');
+  });
+
+  it('is undefined when the body carries none, as an older API answers', async () => {
+    const error = await toHttpError(mockResponse(403, { detail: 'Email address not verified.' }));
+    expect(error).toBeInstanceOf(ForbiddenError);
+    expect(error.code).toBeUndefined();
+  });
+
+  it('is undefined when the body is not JSON at all', async () => {
+    const response = {
+      status: 403,
+      ok: false,
+      json: () => Promise.reject(new SyntaxError('not json')),
+      headers: { get: () => null },
+    } as unknown as Response;
+
+    const error = await toHttpError(response);
+    expect(error.code).toBeUndefined();
+    expect(error.message).toBe('An unexpected error occurred');
+  });
+
+  it('is undefined when the body carries something that is not a string', async () => {
+    const error = await toHttpError(mockResponse(403, { detail: 'No access', code: 42 }));
+    expect(error.code).toBeUndefined();
+  });
+
+  it('survives every status the taxonomy branches on', async () => {
+    const bodies = { detail: 'refused', code: 'some_code' };
+    expect((await toHttpError(mockResponse(401, bodies))).code).toBe('some_code');
+    expect((await toHttpError(mockResponse(429, bodies))).code).toBe('some_code');
+    expect((await toHttpError(mockResponse(503, bodies))).code).toBe('some_code');
+    expect((await toHttpError(mockResponse(409, bodies))).code).toBe('some_code');
+  });
+
+  it('reaches the error built from a validation-array body', async () => {
+    const error = await toHttpError(
+      mockResponse(422, {
+        detail: [{ loc: ['body', 'email'], msg: 'not an email', type: 'value_error' }],
+        code: 'some_code',
+      })
+    );
+    expect(error.message).toBe('not an email');
+    expect(error.code).toBe('some_code');
+  });
+
+  it('reaches the error built from a body with no detail field', async () => {
+    const error = await toHttpError(mockResponse(403, { code: 'turnstile_refused' }));
+    expect(error.message).toBe('Forbidden');
+    expect(error.code).toBe('turnstile_refused');
+  });
+});
+
+describe('isTurnstileRefusal', () => {
+  it('recognises the 403 the bot check answers with', () => {
+    expect(isTurnstileRefusal(new ForbiddenError('refused', TURNSTILE_REFUSED_CODE))).toBe(true);
+  });
+
+  it('rejects the unverified-account 403, which carries no code', () => {
+    // The whole point of the predicate: these two share a status and a class, and
+    // reading one as the other tells a verified user their account is unconfirmed.
+    expect(isTurnstileRefusal(new ForbiddenError('Email address not verified.'))).toBe(false);
+  });
+
+  it('rejects an error carrying some other code', () => {
+    expect(isTurnstileRefusal(new ForbiddenError('nope', 'something_else'))).toBe(false);
+  });
+
+  it('rejects values that are not HTTP errors at all', () => {
+    expect(isTurnstileRefusal(new NetworkError())).toBe(false);
+    expect(isTurnstileRefusal('turnstile_refused')).toBe(false);
+    expect(isTurnstileRefusal(undefined)).toBe(false);
   });
 });

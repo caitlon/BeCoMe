@@ -17,7 +17,7 @@ import { AuthLayout } from "@/components/layout/AuthLayout";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAuthSubmit } from "@/hooks/use-auth-submit";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
-import { ForbiddenError } from "@/lib/errors";
+import { ForbiddenError, isTurnstileRefusal } from "@/lib/errors";
 import { isTurnstileRequired } from "@/lib/turnstile";
 
 type LoginFormData = {
@@ -74,10 +74,20 @@ const Login = () => {
         // every retry on this page would be refused for a reason that has nothing
         // to do with the credentials the user is correcting.
         turnstileRef.current?.reset();
+        // Two unrelated refusals answer 403 on this route, and only one of them is
+        // about the account. A bot check refused while Cloudflare's siteverify is
+        // unreachable refuses every sign-in, so claiming it here would tell every
+        // user that their long-verified account is unconfirmed, and send them to a
+        // resend flow that is guarded by the same check. Leave it to the toast,
+        // which says the check did not go through and to try again; the widget has
+        // just been reset, so there is a fresh challenge to try with.
+        if (isTurnstileRefusal(error)) return false;
         if (!(error instanceof ForbiddenError)) return false;
-        // An unverified account is not a login failure to explain with the
-        // generic error toast: it has its own recovery path (resend below),
-        // so claim the error and render that instead.
+        // Everything else 403 on this route is an unverified account, including a
+        // 403 with no code at all, which is what an API deployed before the code
+        // existed answers. Not a login failure to explain with the generic error
+        // toast: it has its own recovery path (resend below), so claim the error
+        // and render that instead.
         setNotVerified({ email: data.email, password: data.password });
         return true;
       }

@@ -69,51 +69,61 @@ function readCsrfCookie(): string | null {
 }
 
 /**
- * Reads the `detail` field off an error response body, matching FastAPI's
- * error shape: either a plain string, or a validation array whose first
- * entry's `msg` is shown.
+ * Reads an error response body once, returning the human-facing `detail` and the
+ * machine-readable `code` beside it.
  *
- * An unparseable body (not JSON at all) gets the generic fallback text,
- * since nothing about the failure is known at that point. A body that
- * parses fine but simply omits `detail` returns an empty string instead,
- * so callers building a typed error can fall back to that error class's
- * own, more specific default message.
+ * `detail` matches FastAPI's error shape: either a plain string, or a validation
+ * array whose first entry's `msg` is shown. An unparseable body (not JSON at all)
+ * gets the generic fallback text, since nothing about the failure is known at
+ * that point. A body that parses fine but simply omits `detail` returns an empty
+ * string instead, so callers building a typed error can fall back to that error
+ * class's own, more specific default message.
+ *
+ * `code` is undefined unless the body carries one as a string. That covers both
+ * the errors the API sends no code for and an API deployed before the field
+ * existed, and the two are indistinguishable here on purpose: a caller has to
+ * treat an absent code as the behaviour it had before codes.
+ *
+ * One read, not two: a Response body can only be consumed once.
  */
-export async function parseDetail(response: Response): Promise<string> {
+async function parseErrorBody(response: Response): Promise<{ detail: string; code?: string }> {
   const error: ApiError | undefined = await response.json().catch(() => undefined);
 
   if (error === undefined) {
-    return 'An unexpected error occurred';
+    return { detail: 'An unexpected error occurred' };
   }
+
+  const code = typeof error.code === 'string' ? error.code : undefined;
+
   if (typeof error.detail === 'string') {
-    return error.detail;
+    return { detail: error.detail, code };
   }
   if (Array.isArray(error.detail)) {
-    return error.detail[0]?.msg || 'Validation error';
+    return { detail: error.detail[0]?.msg || 'Validation error', code };
   }
-  return '';
+  return { detail: '', code };
 }
 
 /** Classifies a non-ok response into the typed error taxonomy. */
 export async function toHttpError(response: Response): Promise<HttpError> {
-  const detail = await parseDetail(response);
+  const { detail, code } = await parseErrorBody(response);
   const message = detail || undefined;
 
   if (response.status === 401) {
-    return new UnauthorizedError(message);
+    return new UnauthorizedError(message, code);
   }
   if (response.status === 403) {
-    return new ForbiddenError(message);
+    return new ForbiddenError(message, code);
   }
   if (response.status === 429) {
     const retryAfterHeader = response.headers.get('Retry-After');
     const retryAfter = retryAfterHeader ? Number(retryAfterHeader) : undefined;
-    return new RateLimitError(message, retryAfter);
+    return new RateLimitError(message, retryAfter, code);
   }
   if (response.status >= 500) {
-    return new ServerError(message, response.status);
+    return new ServerError(message, response.status, code);
   }
-  return new HttpError(detail || 'An unexpected error occurred', response.status);
+  return new HttpError(detail || 'An unexpected error occurred', response.status, code);
 }
 
 /** Wraps fetch() so a network-level failure (offline, DNS, CORS) surfaces as a NetworkError. */
