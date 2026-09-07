@@ -1,16 +1,11 @@
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useTranslation } from "react-i18next";
 
-import {
-  FormField,
-  SubmitButton,
-  TurnstileField,
-  TurnstileFieldHandle,
-} from "@/components/forms";
+import { FormField, SubmitButton, TurnstileField } from "@/components/forms";
 import { AuthLayout } from "@/components/layout/AuthLayout";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { api } from "@/lib/api";
@@ -28,7 +23,6 @@ const ForgotPassword = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
-  const turnstileRef = useRef<TurnstileFieldHandle>(null);
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
   const awaitingTurnstile = isTurnstileRequired() && turnstileToken === null;
 
@@ -55,10 +49,12 @@ const ForgotPassword = () => {
       await api.forgotPassword(data.email, turnstileToken);
     } catch {
       // Swallow errors: the screen must look identical whether or not the email
-      // exists, mirroring the backend's anti-enumeration response. The widget is
-      // still reset, so the user who comes back to this form gets a live token
-      // rather than the one this attempt already spent.
-      turnstileRef.current?.reset();
+      // exists, mirroring the backend's anti-enumeration response.
+      //
+      // Unlike the other three forms, the widget is not reset here. The finally
+      // below switches this page to its confirmation panel whatever happened, and
+      // that unmounts the form and the widget with it, so there is no token left
+      // to replace and nobody on this page to spend a fresh one.
     } finally {
       setIsLoading(false);
       setSubmitted(true);
@@ -85,7 +81,6 @@ const ForgotPassword = () => {
       <p className="text-sm text-muted-foreground mb-4">
         {t("forgotPassword.description")}
       </p>
-      {/* eslint-disable-next-line react-hooks/refs -- handleSubmit defers to the browser's submit event; turnstileRef is only read/written once that event fires, never during render */}
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         <FormField
           label={t("forgotPassword.email")}
@@ -96,7 +91,7 @@ const ForgotPassword = () => {
           {...register("email")}
         />
 
-        <TurnstileField action="password_reset" ref={turnstileRef} onToken={setTurnstileToken} />
+        <TurnstileField action="password_reset" onToken={setTurnstileToken} />
 
         <SubmitButton
           className="w-full"

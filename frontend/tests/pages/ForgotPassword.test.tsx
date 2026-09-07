@@ -1,4 +1,3 @@
-import { forwardRef, useImperativeHandle } from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -16,18 +15,20 @@ vi.mock('@/lib/api', () => ({
 
 // A real TurnstileField needs Cloudflare's script, which never loads in this suite.
 // The Turnstile-specific describe block below swaps in a fake that mints a token on
-// click and exposes reset() the same way the real widget does.
-const mockTurnstileReset = vi.fn();
+// click. No ref: unlike the other three forms, this page never resets the widget,
+// because submitting replaces the whole form with the confirmation panel.
 vi.mock('@/components/forms', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/components/forms')>();
   const { isTurnstileRequired } = await import('@/lib/turnstile');
   return {
     ...actual,
-    TurnstileField: forwardRef<
-      { reset: () => void },
-      { action: string; onToken: (token: string | null) => void }
-    >(function TurnstileFieldMock({ action, onToken }, ref) {
-      useImperativeHandle(ref, () => ({ reset: mockTurnstileReset }));
+    TurnstileField: function TurnstileFieldMock({
+      action,
+      onToken,
+    }: {
+      action: string;
+      onToken: (token: string | null) => void;
+    }) {
       // Mirrors the real widget's own contract (renders nothing without a
       // sitekey), so every test that does not opt into Turnstile sees exactly
       // what it saw before this mock existed.
@@ -39,7 +40,7 @@ vi.mock('@/components/forms', async (importOriginal) => {
           {`mint ${action} token`}
         </button>
       );
-    }),
+    },
   };
 });
 
@@ -166,7 +167,7 @@ describe('ForgotPassword', () => {
       await waitFor(() => expect(submitButton).not.toBeDisabled());
     });
 
-    it('sends the minted token to forgotPassword and resets the widget after a failed attempt', async () => {
+    it('sends the minted token and leaves no widget behind when the attempt fails', async () => {
       vi.stubEnv('VITE_TURNSTILE_SITE_KEY', 'test-site-key');
       mockForgotPassword.mockRejectedValueOnce(new Error('boom'));
       const user = userEvent.setup();
@@ -185,11 +186,18 @@ describe('ForgotPassword', () => {
           'mock-turnstile-token'
         );
       });
-      // The token is spent by the attempt that just failed; without a reset the
-      // next click would send that same dead token and be refused again.
+
+      // The other three forms reset the widget after a failure, because the user
+      // stays on them and needs a live token for the retry. This one does not: the
+      // failure is swallowed to keep the answer identical for a registered and an
+      // unregistered address, so the confirmation panel replaces the form and takes
+      // the widget with it. There is nothing left to hand a fresh token to.
       await waitFor(() => {
-        expect(mockTurnstileReset).toHaveBeenCalled();
+        expect(screen.getByText(/reset link is on its way/i)).toBeInTheDocument();
       });
+      expect(
+        screen.queryByRole('button', { name: /mint password_reset token/i })
+      ).not.toBeInTheDocument();
     });
   });
 });
