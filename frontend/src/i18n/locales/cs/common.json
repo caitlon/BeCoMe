@@ -30,7 +30,7 @@
     "description": "Best Compromise Mean — vědecký přístup k agregaci expertních názorů pomocí fuzzy trojúhelníkových čísel.",
     "product": "Produkt",
     "methodAuthors": "Autoři metody",
-    "copyright": "Všechna práva vyhrazena.",
+    "copyright": "Nekomerční užití povoleno.",
     "methodBy": "Metoda BeCoMe vyvinuta na České zemědělské univerzitě v Praze",
     "resources": "Zdroje",
     "documentation": "Dokumentace",
@@ -155,6 +155,7 @@
     "sessionExpiredTitle": "Relace vypršela",
     "tooManyAttempts": "Příliš mnoho pokusů. Chvíli počkejte a zkuste to znovu.",
     "tooManyAttemptsRetry": "Příliš mnoho pokusů. Zkuste to znovu za {{seconds}} s.",
+    "turnstileRefused": "Nepodařilo se ověřit, že nejste robot. Zkuste to prosím znovu.",
     "retry": "Zkusit znovu",
     "logoutFailedTitle": "Odhlášení selhalo",
     "logoutFailed": "Odhlášení neproběhlo. Relace může být stále aktivní. Zkuste to prosím znovu."

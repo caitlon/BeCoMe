@@ -7,6 +7,13 @@ FastAPI-based REST API for the BeCoMe group decision-making method.
 - [Quick start](#quick-start)
 - [Module structure](#module-structure)
 - [API endpoints](#api-endpoints)
+    - [Authentication](#authentication)
+    - [Users](#users)
+    - [Projects](#projects)
+    - [Opinions](#opinions)
+    - [Invitations](#invitations)
+    - [Calculation](#calculation)
+    - [Health](#health)
 - [Configuration](#configuration)
 - [Testing](#testing)
 - [Related documentation](#related-documentation)
@@ -102,6 +109,19 @@ api/
 | POST | `/api/v1/auth/forgot-password` | Request a password reset email |
 | POST | `/api/v1/auth/reset-password` | Reset password using a token |
 | GET | `/api/v1/auth/me` | Get current user profile, plus the session's CSRF token as a header |
+
+**Bot check.** Four of these endpoints are open to the internet and each one costs something
+real: an account, a password guess, or an email sent from this domain. They therefore require
+a Cloudflare Turnstile token in the `X-Turnstile-Token` request header — `register`, `login`,
+`forgot-password` and `resend-verification`. The token is verified against Cloudflare's
+siteverify, including the action that minted it and the hostname that served the widget, and
+anything short of a confirmed pass answers `403`: a missing header, a rejected token, and an
+unreachable siteverify are one indistinguishable refusal, so nothing about the address or the
+account behind it leaks through the refusal. That the check exists at all is not a secret — the
+widget on the form says so — but the header is still optional in the schema deliberately, since a
+required one would answer `422` and separate "no token" from "bad token". `TURNSTILE_ENABLED=false` removes the check entirely,
+which is what keeps local development and the test suite offline; a deployed service in that
+state still starts, and records `turnstile_disabled` at ERROR while it does.
 
 **Registration and activation.** `POST /auth/register` always answers `202` with the same
 body, whether the address is free, already registered but unverified, or already registered
@@ -266,6 +286,9 @@ Environment variables (a `.env` file works too):
 | `CORS_ORIGINS` | `http://localhost:3000,http://localhost:8080` | Allowed CORS origins |
 | `REDIS_URL` | *required when deployed* | Redis for rate limiting, token revocation, and auth throttles |
 | `CLOUDFLARE_ORIGIN_SECRET` | *required when deployed* | Shared secret proving the request came through Cloudflare; every deployed environment sits behind it, so each needs its own value paired with a Transform Rule for that environment's API host |
+| `TURNSTILE_ENABLED` | `false` | Bot check on the four open auth endpoints. A deployed service starts with it off, and records `turnstile_disabled` at ERROR: it is the way out of a Cloudflare siteverify outage, since the check is fail-closed |
+| `TURNSTILE_SECRET_KEY` | *required when the check is on* | Cloudflare Turnstile secret, paired with the widget whose sitekey the frontend build carries |
+| `TURNSTILE_HOSTNAMES` | `[]`, *required when the check is on* | JSON array of hostnames the widget may be served from; a token minted anywhere else is refused. Never list `localhost` on production |
 | `EMAIL_PROVIDER` | `console` | Password-reset email delivery: `console` (log) or `http` (Resend) |
 | `EMAIL_API_KEY` | *required when deployed* | API key for the `http` email provider; startup fails without it on every deployed service, where the console fallback would print reset links to stdout instead of sending them |
 | `API_PUBLIC_URL` | `http://localhost:8000` | Public base URL of this API, used to build profile photo proxy links |

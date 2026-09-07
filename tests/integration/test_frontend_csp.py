@@ -12,6 +12,11 @@ failure: the browser drops the request before it leaves the tab, so nothing
 appears in the API logs and the avatar simply never renders. That shipped to
 production once; these tests exist so it cannot ship again.
 
+Cloudflare's Turnstile host is named for the same kind of reason and fails the
+same silent way: script-src has to allow the widget's script and frame-src the
+iframe it draws itself in. A policy missing either one leaves every auth form
+on a deploy that has a sitekey permanently unsubmittable.
+
 The config is plain text with no runtime the test suite can exercise, so this
 module parses it, the same way test_frontend_case_studies.py parses
 caseStudies.ts.
@@ -31,6 +36,12 @@ _CSP_HEADER = re.compile(r'add_header\s+Content-Security-Policy\s+"([^"]*)"')
 # Directives that must reach the API origin. nginx repeats the whole header in
 # every location block that sets one of its own, so each copy is checked.
 _API_ORIGIN_DIRECTIVES = ("connect-src", "img-src")
+
+# The bot check's widget (frontend/src/lib/turnstile.ts) loads its script from this
+# host and renders its challenge in an iframe served by it, so both directives below
+# have to name it, in every copy, for the same inheritance reason.
+_TURNSTILE_HOST = "https://challenges.cloudflare.com"
+_TURNSTILE_DIRECTIVES = ("script-src", "frame-src")
 
 # Headers every add_header block must repeat, for the same inheritance reason.
 _REQUIRED_HEADERS = (
@@ -100,6 +111,22 @@ class TestNginxContentSecurityPolicy:
         """
         for csp in _csp_headers():
             assert "__API_ORIGIN__" in _directive(csp, directive)
+
+    @pytest.mark.parametrize("directive", _TURNSTILE_DIRECTIVES)
+    def test_directive_allows_the_turnstile_widget(self, directive: str):
+        """
+        GIVEN every Content-Security-Policy declared in nginx.conf
+        WHEN the directives the bot check depends on are read
+        THEN each one names Cloudflare's Turnstile host
+
+        Both failures are invisible and both lock every user out of the four auth
+        forms. Without the host in script-src the browser blocks the widget's
+        script, the loader promise rejects, no token is ever minted and submit
+        stays disabled; without a frame-src the challenge iframe falls to
+        default-src 'self' and is dropped just as quietly.
+        """
+        for csp in _csp_headers():
+            assert _TURNSTILE_HOST in _directive(csp, directive)
 
     def test_placeholder_substitution_is_global(self):
         """

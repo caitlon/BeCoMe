@@ -22,6 +22,10 @@ page does not repeat it.
 - [GDPR: export and erasure](#gdpr-export-and-erasure)
 - [Accepted risks](#accepted-risks)
 - [Database](#database)
+    - [Roles and least privilege](#roles-and-least-privilege)
+    - [Network exposure](#network-exposure)
+    - [Audit logging](#audit-logging)
+    - [Backups](#backups)
 - [Data integrity and migrations](#data-integrity-and-migrations)
 
 ## Status at a glance
@@ -32,6 +36,7 @@ page does not repeat it.
 | Session transport: HttpOnly cookies + CSRF | Implemented | `api/auth/cookies.py`, `api/middleware/csrf.py` |
 | Authorization and tenant isolation | Implemented | `api/dependencies.py` |
 | Rate limiting and abuse control | Implemented | `api/middleware/rate_limit.py` |
+| Bot check on the unauthenticated auth endpoints | Implemented | `api/auth/turnstile.py`, `api/services/turnstile_service.py` |
 | Input validation | Implemented | `api/schemas/` |
 | Configuration invariants per profile | Implemented | `api/config.py` |
 | Network and edge: Cloudflare, CORS, headers | Implemented | `api/main.py`, Cloudflare |
@@ -404,6 +409,53 @@ compress uniform areas so well that a 35 KB PNG can declare a 25-megapixel canva
 costs tens to hundreds of megabytes the moment anything decodes it, depending on the mode.
 The validator parses only the header, so rejecting such a file costs nothing.
 
+Rate limiting bounds how fast one caller can drive an endpoint. It does nothing about a
+caller with a thousand addresses, and the four endpoints that take a request from nobody
+in particular are exactly the ones worth driving: `POST /api/v1/auth/register`, `/login`,
+`/forgot-password`, and `/resend-verification`. Each of those also requires a Cloudflare
+Turnstile token, sent as the `X-Turnstile-Token` request header (`api/auth/turnstile.py`).
+A header rather than a body field because login takes an OAuth2 form while the other three
+take JSON: one mechanism covers all four and no request schema changes.
+
+The check is fail-closed, and it verifies more than `success`
+(`api/services/turnstile_service.py`). A missing header, a token Cloudflare rejects, one
+minted for a different form (`action`) or on a hostname outside `TURNSTILE_HOSTNAMES`, a
+siteverify timeout, a non-2xx answer, and a body that is not JSON all end in the same
+`403` with the same wording, so the response reveals neither what the check saw nor
+whether it is switched on. Verifying `action` and `hostname` is not optional: a sitekey is
+public, so without them a token farmed from a copy of the site, or from another form on
+this one, would open registration here. The endpoints that redeem an emailed link,
+`/verify-email` and `/reset-password`, are deliberately not guarded: holding a live
+single-use token is already evidence of a person, and no widget is rendered on those pages.
+
+Every refusal writes one `turnstile_refused` record naming the reason, never the token, and
+its level says which of three things happened. A request that carried no header at all is
+**DEBUG**: scanners produce those in bulk and one WARNING each would bury the rest of the
+drain. A token that was presented and did not check out (`rejected`, `action_mismatch`,
+`hostname_mismatch`) is **WARNING**, and that is what an alert on bot traffic keys on. A
+siteverify call that fails, answers non-2xx, or answers something that is not its JSON
+(`siteverify_unreachable`, `siteverify_status`, `malformed_response`) is **ERROR**, the same
+level as `turnstile_disabled` below.
+
+The ERROR split is what makes an outage readable. Those three reasons say nothing about the
+caller: Cloudflare is unreachable, and because the check is fail-closed every request to all
+four endpoints is being refused for as long as it lasts. At WARNING that is indistinguishable
+from a bot flood, and the two call for opposite responses - wait it out, or flip
+`TURNSTILE_ENABLED` off. A run of ERROR refusals is the signal to reach for the kill switch.
+
+`TURNSTILE_ENABLED` is the kill switch and it defaults to **off**, which is what lets a
+laptop, CI, and a fresh clone run with no widget and no secret. It stays a working switch on
+a deploy, because the check is fail-closed: while Cloudflare's siteverify is unreachable,
+all four endpoints answer `403` to real users, and turning the check off is the only way out
+of that which is not a revert and a redeploy. So `Settings._validate_deploy_invariants`
+checks the configuration for consistency rather than demanding the check be on. With
+`TURNSTILE_ENABLED` true, production, staging, and the Railway dev service refuse to start
+without a secret and a non-empty hostname list, since every request would be refused for
+want of configuration. With it false, the service starts and `api/main.py` records
+`turnstile_disabled` at **ERROR** on startup: Sentry raises that as an event and the log
+drain keeps it, so a deploy running without the bot check is a decision somebody can see
+rather than a default nobody notices.
+
 ## Input validation
 
 Request DTOs are Pydantic models with `extra="forbid"` (`api/schemas/`), so an unexpected
@@ -467,12 +519,15 @@ browser SDK reports to. Its `img-src` names that same API origin, because the AP
 profile photos and `<img>` tags render them, which is an image load rather than something
 `connect-src` covers. The Docker build bakes that origin into the policy from the same
 `VITE_API_URL` build argument the bundle uses, so the served policy cannot drift from the
-URL the app actually calls. `tests/integration/test_frontend_csp.py` asserts both directives
-against the config: a CSP that under-permits fails silently, since the browser drops the
-request before it reaches the origin and nothing appears in the logs. Both tiers send
-`X-XSS-Protection: 0` on purpose: the legacy auditor it enables is unreliable, browsers have
-dropped it, and its blocking mode has itself leaked cross-origin information. The CSP is
-what constrains injection.
+URL the app actually calls. Its `script-src` and `frame-src` name
+`https://challenges.cloudflare.com`, because the bot check's widget loads its script from
+there and runs its challenge in an iframe served by it; without both, no token is ever
+minted and all four auth forms stay unsubmittable. `tests/integration/test_frontend_csp.py`
+asserts those directives against the config: a CSP that under-permits fails silently, since
+the browser drops the request before it reaches the origin and nothing appears in the logs.
+Both tiers send `X-XSS-Protection: 0` on purpose: the legacy auditor it enables is
+unreliable, browsers have dropped it, and its blocking mode has itself leaked cross-origin
+information. The CSP is what constrains injection.
 
 The correlation ID does not travel on trust either. The API echoes an inbound `X-Request-ID`
 on the response and writes it to every log record of the request, so it reuses one only when
@@ -690,8 +745,9 @@ outage it was meant to cover.
 never reads it, since it uses the `HttpOnly` cookie, but programmatic clients can only
 obtain the token this way, and `POST /auth/refresh` accepts it in the request body for
 exactly that reason. Reading the body value requires script execution on the origin, which
-the CSP (`script-src 'self'`), the explicit CORS allow-list, and `SameSite=Strict` between
-them prevent. Rotation with reuse detection then caps the value of a token that does leak.
+the CSP (`script-src` allows this origin and Cloudflare's Turnstile host, nothing else), the
+explicit CORS allow-list, and `SameSite=Strict` between them prevent. Rotation with reuse
+detection then caps the value of a token that does leak.
 
 ## Database
 

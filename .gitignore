@@ -13,7 +13,7 @@ dist/
 *.egg
 
 # Virtual environment
-.venv/
+.venv
 
 # Testing and coverage
 .pytest_cache/
@@ -77,7 +77,7 @@ frontend/.certs/
 # so the PDF is not part of what the repository ships. The rest are private
 # working files.
 thesis/
-supplementary/
+supplementary
 scripts/diagrams/
 scripts/photos/
 scripts/seed_db.py
@@ -85,6 +85,9 @@ scripts/seed_db.py
 CLAUDE.md
 .claude
 .worktreeinclude
+.agents
+.superpowers
+skills-lock.json
 .github/ISSUE_TEMPLATE
 
 # Mutation testing

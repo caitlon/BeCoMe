@@ -2,6 +2,26 @@
 
 The backend runs under one of three profiles, chosen by the `APP_ENV` variable: `dev`, `test`, or `prod`. A separate flag, `TESTING`, marks an automated test run and works independently of the profile. This page is the reference for both.
 
+## Contents
+
+- [How selection works](#how-selection-works)
+- [The two axes](#the-two-axes)
+- [Profiles in detail](#profiles-in-detail)
+    - [dev](#dev)
+    - [test (staging and the test suite)](#test-staging-and-the-test-suite)
+    - [prod](#prod)
+- [Configuration files](#configuration-files)
+- [Local use](#local-use)
+- [Docker](#docker)
+- [CI](#ci)
+- [Development workflow](#development-workflow)
+- [Railway deployment](#railway-deployment)
+- [Database schema and access](#database-schema-and-access)
+- [Photo storage](#photo-storage)
+- [Email delivery](#email-delivery)
+- [Current status](#current-status)
+- [Where the code lives](#where-the-code-lives)
+
 ## How selection works
 
 Settings read `APP_ENV` from the process environment (shell, Docker, Railway, CI), not from a dotenv file, because that value decides which file to load. The loader then reads `.env` first, then `.env.<APP_ENV>` on top, so a profile value overrides the shared base. When `APP_ENV` is unset, the dev profile applies.
@@ -39,7 +59,7 @@ Two consumers share this profile. A deployed staging service uses PostgreSQL wit
 
 ### prod
 
-PostgreSQL, debug off. Every deployed service runs a startup guard (`_validate_deploy_invariants` in `api/config.py`), the Railway dev service included: the guard keys off the deploy, not the profile name. A weak or default `SECRET_KEY`, a `sqlite` `DATABASE_URL`, a missing `REDIS_URL`, or localhost-only `CORS_ORIGINS` fails startup immediately, rather than running with insecure defaults. So does a missing `CLOUDFLARE_ORIGIN_SECRET`, which proves requests came through the Cloudflare edge. Each deployed environment needs its own value, paired with a Transform Rule for that environment's API host.
+PostgreSQL, debug off. Every deployed service runs a startup guard (`_validate_deploy_invariants` in `api/config.py`), the Railway dev service included: the guard keys off the deploy, not the profile name. A weak or default `SECRET_KEY`, a `sqlite` `DATABASE_URL`, a missing `REDIS_URL`, or localhost-only `CORS_ORIGINS` fails startup immediately, rather than running with insecure defaults. So does a missing `CLOUDFLARE_ORIGIN_SECRET`, which proves requests came through the Cloudflare edge. Each deployed environment needs its own value, paired with a Transform Rule for that environment's API host. So does a Turnstile bot check switched on without a secret and a hostname list, since every request would then be refused for want of configuration. The check left switched off does not fail startup: it is the kill switch for a Cloudflare siteverify outage, and the check is fail-closed, so taking that switch away would leave a revert as the only way out. A deploy in that state records `turnstile_disabled` at ERROR on startup instead, which puts the four unguarded endpoints in Sentry and the log drain rather than nowhere.
 
 ## Configuration files
 
@@ -104,10 +124,11 @@ The root `railway.toml` carries the API build and deploy settings: it points at 
 | `CORS_ORIGINS` | dev origins | staging origins | production origins |
 | `REDIS_URL` | dev Redis | staging Redis | production Redis |
 | `CLOUDFLARE_ORIGIN_SECRET` | own secret | own secret | own secret, each matching that environment's Cloudflare Transform Rule |
+| `TURNSTILE_ENABLED` / `TURNSTILE_SECRET_KEY` / `TURNSTILE_HOSTNAMES` | `true`, widget secret, dev frontend host | `true`, widget secret, staging frontend host | `true`, widget secret, production frontend hosts |
 | `DEBUG` | `false` | `false` | `false` |
 | `LOG_LEVEL` | `DEBUG` | `INFO` | `INFO` |
 | `API_PUBLIC_URL` | dev API URL | staging API URL | production API URL |
-| `VITE_API_URL` / `VITE_SENTRY_DSN` / `VITE_APP_ENV` (frontend build args) | dev values | staging values | production values |
+| `VITE_API_URL` / `VITE_SENTRY_DSN` / `VITE_APP_ENV` / `VITE_TURNSTILE_SITE_KEY` (frontend build args) | dev values | staging values | production values |
 | `BUCKET_NAME` / `BUCKET_ENDPOINT` / `BUCKET_ACCESS_KEY_ID` / `BUCKET_SECRET_ACCESS_KEY` | injected from `dev-photos` | injected from `test-photos` | injected from `prod-photos` |
 
 A deployed service that leaves `APP_ENV` unset falls back to the dev profile. The startup guard still runs there, because it keys off `RAILWAY_ENVIRONMENT_NAME` rather than the profile name, so an unset variable cannot weaken a deploy. Set the profile explicitly anyway (`dev`, `test`, or `prod`), so that the log level, the log format, and the `.env.<APP_ENV>` overlay are the ones you meant.
@@ -115,6 +136,8 @@ A deployed service that leaves `APP_ENV` unset falls back to the dev profile. Th
 `LOG_LEVEL` appears as a service variable even though `api/config.py` already defaults it per profile (`DEBUG` on dev, `INFO` on test and prod). The default is the safety net for a service whose variable was never set. The variable is what makes the level visible to whoever opens the service without reading the settings module. An explicit value always wins over the profile default.
 
 Log format follows the deploy, not the profile. `api/logging_config.py` emits human-readable text only when the profile is dev *and* `RAILWAY_ENVIRONMENT_NAME` is absent, i.e. on a laptop. The Railway `dev` service is a deploy, so it emits JSON like staging and production and its `extra` fields stay indexable in the drain.
+
+`VITE_TURNSTILE_SITE_KEY` is the sitekey paired with the API's `TURNSTILE_SECRET_KEY` on the same service. Provisioning an environment that sets the three `TURNSTILE_*` variables and omits this one switches the check on with no widget in the bundle: no token reaches the API, and every sign-in, sign-up, password reset and resend answers `403`.
 
 In `frontend/Dockerfile`, declare an `ARG` and an `ENV` for every `VITE_*` variable the SPA reads. Railway passes service variables to the build as build args, but Docker only exposes the ones the Dockerfile declares. Vite then inlines `undefined` for anything missing at build time, silently and with no build error. That gap left `VITE_SENTRY_DSN` set on all three frontend services while `Sentry.init` was tree-shaken out of every bundle.
 

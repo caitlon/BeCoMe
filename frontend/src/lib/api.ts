@@ -38,6 +38,22 @@ const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 const CSRF_HEADER = 'X-CSRF-Token';
 
 /**
+ * Carries a Cloudflare Turnstile token on the four endpoints open to anonymous
+ * callers. The API reads the same name (api/auth/turnstile.py) and answers 403
+ * when the token is missing, spent, or minted for another form.
+ */
+const TURNSTILE_HEADER = 'X-Turnstile-Token';
+
+/**
+ * The Turnstile header for a call that has a token, and nothing for one that has
+ * none. A build with no sitekey mints no tokens, so the header is simply absent
+ * and the request looks exactly as it did before the check existed.
+ */
+function turnstileHeaders(token?: string | null): Record<string, string> {
+  return token ? { [TURNSTILE_HEADER]: token } : {};
+}
+
+/**
  * Reads the __Host-csrf_token cookie, which only works when the API answers on
  * this app's own origin, meaning local development, where Vite proxies /api/v1. On the
  * deploys the cookie belongs to the API host and document.cookie shows nothing,
@@ -53,51 +69,61 @@ function readCsrfCookie(): string | null {
 }
 
 /**
- * Reads the `detail` field off an error response body, matching FastAPI's
- * error shape: either a plain string, or a validation array whose first
- * entry's `msg` is shown.
+ * Reads an error response body once, returning the human-facing `detail` and the
+ * machine-readable `code` beside it.
  *
- * An unparseable body (not JSON at all) gets the generic fallback text,
- * since nothing about the failure is known at that point. A body that
- * parses fine but simply omits `detail` returns an empty string instead,
- * so callers building a typed error can fall back to that error class's
- * own, more specific default message.
+ * `detail` matches FastAPI's error shape: either a plain string, or a validation
+ * array whose first entry's `msg` is shown. An unparseable body (not JSON at all)
+ * gets the generic fallback text, since nothing about the failure is known at
+ * that point. A body that parses fine but simply omits `detail` returns an empty
+ * string instead, so callers building a typed error can fall back to that error
+ * class's own, more specific default message.
+ *
+ * `code` is undefined unless the body carries one as a string. That covers both
+ * the errors the API sends no code for and an API deployed before the field
+ * existed, and the two are indistinguishable here on purpose: a caller has to
+ * treat an absent code as the behaviour it had before codes.
+ *
+ * One read, not two: a Response body can only be consumed once.
  */
-export async function parseDetail(response: Response): Promise<string> {
+async function parseErrorBody(response: Response): Promise<{ detail: string; code?: string }> {
   const error: ApiError | undefined = await response.json().catch(() => undefined);
 
   if (error === undefined) {
-    return 'An unexpected error occurred';
+    return { detail: 'An unexpected error occurred' };
   }
+
+  const code = typeof error.code === 'string' ? error.code : undefined;
+
   if (typeof error.detail === 'string') {
-    return error.detail;
+    return { detail: error.detail, code };
   }
   if (Array.isArray(error.detail)) {
-    return error.detail[0]?.msg || 'Validation error';
+    return { detail: error.detail[0]?.msg || 'Validation error', code };
   }
-  return '';
+  return { detail: '', code };
 }
 
 /** Classifies a non-ok response into the typed error taxonomy. */
 export async function toHttpError(response: Response): Promise<HttpError> {
-  const detail = await parseDetail(response);
+  const { detail, code } = await parseErrorBody(response);
   const message = detail || undefined;
 
   if (response.status === 401) {
-    return new UnauthorizedError(message);
+    return new UnauthorizedError(message, code);
   }
   if (response.status === 403) {
-    return new ForbiddenError(message);
+    return new ForbiddenError(message, code);
   }
   if (response.status === 429) {
     const retryAfterHeader = response.headers.get('Retry-After');
     const retryAfter = retryAfterHeader ? Number(retryAfterHeader) : undefined;
-    return new RateLimitError(message, retryAfter);
+    return new RateLimitError(message, retryAfter, code);
   }
   if (response.status >= 500) {
-    return new ServerError(message, response.status);
+    return new ServerError(message, response.status, code);
   }
-  return new HttpError(detail || 'An unexpected error occurred', response.status);
+  return new HttpError(detail || 'An unexpected error occurred', response.status, code);
 }
 
 /** Wraps fetch() so a network-level failure (offline, DNS, CORS) surfaces as a NetworkError. */
@@ -315,14 +341,19 @@ class ApiClient {
   // Auth
   // Registration no longer signs anyone in: it only queues an activation
   // email, so there is no user object to return.
-  async register(data: RegisterInput): Promise<void> {
+  async register(data: RegisterInput, turnstileToken?: string | null): Promise<void> {
     return this.request<void>('/auth/register', {
       method: 'POST',
+      headers: turnstileHeaders(turnstileToken),
       body: JSON.stringify(data),
     });
   }
 
-  async login(email: string, password: string): Promise<AuthResponse> {
+  async login(
+    email: string,
+    password: string,
+    turnstileToken?: string | null
+  ): Promise<AuthResponse> {
     const formData = new URLSearchParams();
     formData.append('username', email);
     formData.append('password', password);
@@ -332,6 +363,7 @@ class ApiClient {
       credentials: 'include',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
+        ...turnstileHeaders(turnstileToken),
       },
       body: formData,
     });
@@ -367,9 +399,10 @@ class ApiClient {
     }
   }
 
-  async forgotPassword(email: string): Promise<void> {
+  async forgotPassword(email: string, turnstileToken?: string | null): Promise<void> {
     return this.request<void>('/auth/forgot-password', {
       method: 'POST',
+      headers: turnstileHeaders(turnstileToken),
       body: JSON.stringify({ email }),
     });
   }
@@ -388,9 +421,14 @@ class ApiClient {
     });
   }
 
-  async resendVerification(email: string, password: string): Promise<void> {
+  async resendVerification(
+    email: string,
+    password: string,
+    turnstileToken?: string | null
+  ): Promise<void> {
     return this.request<void>('/auth/resend-verification', {
       method: 'POST',
+      headers: turnstileHeaders(turnstileToken),
       body: JSON.stringify({ email, password }),
     });
   }

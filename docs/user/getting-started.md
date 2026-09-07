@@ -37,8 +37,9 @@ possibly be, and every opinion has to fit inside it.
 !!! warning "The agreement mode is not usable yet"
 
     The method has a second mode for "should we" questions, on a scale of 0 to 100 with no unit.
-    The form below will not accept a project without a unit, and even a project that had one would
-    not display its verdict. [Reading the result](reading-the-result.md) says where it stands.
+    The dialog above requires a unit, so you cannot create a project like that here at all. One
+    made another way would still show nothing, because the interface never displays the verdict.
+    [Reading the result](reading-the-result.md) says where it stands.
 
 ## Invite the experts
 

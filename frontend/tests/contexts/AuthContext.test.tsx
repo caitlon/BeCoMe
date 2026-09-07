@@ -177,7 +177,29 @@ describe('AuthContext', () => {
       await result.current.login('test@example.com', 'password')
     })
 
-    expect(api.login).toHaveBeenCalledWith('test@example.com', 'password')
+    // A caller that passes no Turnstile token still reaches api.login with a third
+    // argument: AuthContext forwards whatever it was given, undefined included.
+    expect(api.login).toHaveBeenCalledWith('test@example.com', 'password', undefined)
+  })
+
+  it('login forwards the Turnstile token through to api.login', async () => {
+    const mockUser = createUser({ id: '1', email: 'test@example.com', first_name: 'Test' })
+    vi.mocked(api.login).mockResolvedValue({ access_token: 'new-token', token_type: 'bearer' })
+    vi.mocked(api.getCurrentUser).mockResolvedValue(mockUser)
+
+    const { result } = renderHook(() => useAuth(), {
+      wrapper: AuthTestProviders,
+    })
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false)
+    })
+
+    await act(async () => {
+      await result.current.login('test@example.com', 'password', 'turnstile-token-1')
+    })
+
+    expect(api.login).toHaveBeenCalledWith('test@example.com', 'password', 'turnstile-token-1')
   })
 
   it('logout clears user and calls api.logout', async () => {

@@ -1,6 +1,8 @@
 {
   "name": "become-frontend",
   "private": true,
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "author": "Ekaterina Kuzmina",
   "version": "1.0.0-beta.1",
   "type": "module",
   "scripts": {

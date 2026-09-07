@@ -37,6 +37,11 @@ from api.services.registration_service import RegistrationService
 from api.services.storage.base import StorageService
 from api.services.storage.exceptions import StorageConfigurationError
 from api.services.storage.railway_bucket_storage_service import RailwayBucketStorageService
+from api.services.turnstile_service import (
+    CloudflareTurnstileVerifier,
+    DisabledTurnstileVerifier,
+    TurnstileVerifier,
+)
 from api.services.user_cache import UserCacheStore, get_user_cache
 from api.services.user_service import UserService
 from src.calculators.become_calculator import BeCoMeCalculator
@@ -183,6 +188,29 @@ def get_email_address_policy() -> EmailAddressPolicy:
     return EmailAddressPolicy(
         disposable_check_enabled=settings.disposable_email_blocking_enabled,
         mx_check_enabled=settings.mx_check_enabled,
+    )
+
+
+def get_turnstile_verifier() -> TurnstileVerifier:
+    """Create the Turnstile verifier, disabled when the bot check is switched off.
+
+    ``turnstile_enabled`` is the kill switch, and it lives here rather than in the
+    guard: whether the check runs is a question about this deployment's configuration,
+    so the routes ask the same thing either way and get an answer that always accepts
+    when the check is off. That is what lets a laptop and the test suite post to the
+    guarded endpoints with no widget.
+
+    Not cached: the verifier holds nothing expensive (it opens an HTTP client per call,
+    like the email sender), so a process-wide singleton would only add a cache to clear.
+
+    :return: A TurnstileVerifier implementation.
+    """
+    settings = get_settings()
+    if not settings.turnstile_enabled:
+        return DisabledTurnstileVerifier()
+    return CloudflareTurnstileVerifier(
+        secret_key=settings.turnstile_secret_key,
+        allowed_hostnames=frozenset(settings.turnstile_hostnames),
     )
 
 

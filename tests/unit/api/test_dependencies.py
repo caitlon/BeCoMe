@@ -16,6 +16,7 @@ from api.dependencies import (
     get_email_service,
     get_password_reset_service,
     get_storage_service,
+    get_turnstile_verifier,
 )
 from api.exceptions import DisposableEmailDomainError, UnresolvableEmailDomainError
 from api.services.email.console_email_sender import ConsoleEmailSender
@@ -24,6 +25,7 @@ from api.services.email_policy import get_domain_verdict_cache
 from api.services.password_reset_service import PasswordResetService
 from api.services.storage.exceptions import StorageConfigurationError
 from api.services.storage.railway_bucket_storage_service import RailwayBucketStorageService
+from api.services.turnstile_service import CloudflareTurnstileVerifier, DisabledTurnstileVerifier
 
 
 class TestGetStorageService:
@@ -320,6 +322,49 @@ class TestGetPasswordResetService:
         # THEN
         assert isinstance(result, PasswordResetService)
         assert result.session is mock_session
+
+
+class TestGetTurnstileVerifier:
+    """Tests for the get_turnstile_verifier factory function."""
+
+    def test_returns_the_disabled_verifier_when_the_check_is_off(self):
+        """
+        GIVEN turnstile_enabled is false
+        WHEN get_turnstile_verifier is called
+        THEN it returns the verifier that accepts everything
+
+        This is the kill switch. It is what lets a laptop and the test suite post to
+        the guarded endpoints with no widget and no secret.
+        """
+        # GIVEN
+        mock_settings = MagicMock(spec=Settings)
+        mock_settings.turnstile_enabled = False
+
+        # WHEN
+        with patch("api.dependencies.get_settings", return_value=mock_settings):
+            result = get_turnstile_verifier()
+
+        # THEN
+        assert isinstance(result, DisabledTurnstileVerifier)
+
+    def test_returns_the_cloudflare_verifier_when_the_check_is_on(self):
+        """
+        GIVEN turnstile_enabled is true with a secret and a hostname list
+        WHEN get_turnstile_verifier is called
+        THEN it returns the verifier that calls Cloudflare
+        """
+        # GIVEN
+        mock_settings = MagicMock(spec=Settings)
+        mock_settings.turnstile_enabled = True
+        mock_settings.turnstile_secret_key = "a-turnstile-secret"
+        mock_settings.turnstile_hostnames = ["www.becomify.app"]
+
+        # WHEN
+        with patch("api.dependencies.get_settings", return_value=mock_settings):
+            result = get_turnstile_verifier()
+
+        # THEN
+        assert isinstance(result, CloudflareTurnstileVerifier)
 
 
 class TestRequireProjectAccess:

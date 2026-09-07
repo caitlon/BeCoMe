@@ -100,6 +100,14 @@ jobs:
       - name: Install documentation dependencies
         run: uv sync --locked --extra docs
 
+      # Not the renamed-heading case: the strict build below already fails on that, and
+      # was watched doing it. What it cannot see is a heading added with no entry, since
+      # nothing is broken then and the map is merely short. It also never reads two of
+      # these documents, `docs/security.md` and `examples/data/README.md`, which do not
+      # ship to the site and are read on GitHub alone.
+      - name: Check the tables of contents
+        run: uv run --extra docs python scripts/docs/toc.py --check
+
       - name: Build the site strictly
         run: uv run mkdocs build --strict
 
@@ -222,8 +230,11 @@ jobs:
       - name: Set up Python
         run: uv python install 3.13.7
 
+      # `docs` is here for one test file. `tests/unit/docs/test_toc.py` imports the
+      # table-of-contents generator, which imports the slug function the site uses, and
+      # without the extra the whole file would `importorskip` its way to green.
       - name: Install Python dependencies
-        run: uv sync --locked --extra dev --extra api
+        run: uv sync --locked --extra dev --extra api --extra docs
 
       # ubuntu-24.04 installs postgresql-16 (see the runner-images toolset manifest)
       # but does not put its version-specific binaries on PATH, so
