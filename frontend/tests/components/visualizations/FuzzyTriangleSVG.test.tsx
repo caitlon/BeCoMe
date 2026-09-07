@@ -72,8 +72,10 @@ describe('FuzzyTriangleSVG', () => {
     const animatedPolygon = container.querySelector('polygon:not([stroke-dasharray])');
     const initialPoints = animatedPolygon?.getAttribute('points');
 
-    // After 6 seconds (three full cycles), points should remain unchanged
-    act(() => { vi.advanceTimersByTime(6000); });
+    // Five seconds is two ticks of the 2s interval, deliberately not a whole
+    // number of trips round the three forms: a wrap would land back on the
+    // starting points and the assertion below could not fail.
+    act(() => { vi.advanceTimersByTime(5000); });
 
     const updatedPoints = animatedPolygon?.getAttribute('points');
     expect(updatedPoints).toBe(initialPoints);
@@ -88,7 +90,7 @@ describe('FuzzyTriangleSVG', () => {
     const initialPoints = animatedPolygon?.getAttribute('points');
 
     // Advance past the interval (2 seconds) wrapped in act for state update
-    act(() => { vi.advanceTimersByTime(3100); });
+    act(() => { vi.advanceTimersByTime(2100); });
 
     // Points should have changed to second form
     const updatedPoints = animatedPolygon?.getAttribute('points');
@@ -105,7 +107,7 @@ describe('FuzzyTriangleSVG', () => {
     const animatedPolygon = container.querySelector('polygon:not([stroke-dasharray])');
     const initialPoints = animatedPolygon?.getAttribute('points');
 
-    act(() => { vi.advanceTimersByTime(6000); });
+    act(() => { vi.advanceTimersByTime(5000); });
 
     expect(animatedPolygon?.getAttribute('points')).toBe(initialPoints);
   });

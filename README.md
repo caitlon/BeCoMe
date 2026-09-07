@@ -117,14 +117,14 @@ paper it implements.
 }
 ```
 
-GitHub also renders a Cite this repository button from [CITATION.cff](https://github.com/caitlon/BeCoMe/blob/main/CITATION.cff), which
+GitHub also renders a Cite this repository button from [CITATION.cff](https://github.com/caitlon/BeCoMe/blob/develop/CITATION.cff), which
 carries the same two entries.
 
 ## License and contact
 
-**Licence**: [PolyForm Noncommercial 1.0.0](https://github.com/caitlon/BeCoMe/blob/main/LICENSE). Any noncommercial purpose is permitted. The licence names research, personal study, and use by educational institutions, public research bodies and government. Commercial use needs a separate written licence from the author.
+**Licence**: [PolyForm Noncommercial 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0/). Any noncommercial purpose is permitted. The licence names research, personal study, and use by educational institutions, public research bodies and government. Commercial use needs a separate written licence from the author.
 
-**Citing**: see [How to cite](#how-to-cite). [NOTICE](https://github.com/caitlon/BeCoMe/blob/main/NOTICE) sets out which part is whose.
+**Citing**: see [How to cite](#how-to-cite). [NOTICE](https://github.com/caitlon/BeCoMe/blob/develop/NOTICE) sets out which part is whose.
 
 **Copyright**: © 2025-2026 Ekaterina Kuzmina
 

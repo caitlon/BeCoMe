@@ -14,6 +14,7 @@ authors:
 repository-code: https://github.com/caitlon/BeCoMe
 license: PolyForm-Noncommercial-1.0.0
 version: 1.0.0-beta.1
+date-released: 2026-09-07
 abstract: >-
   An independent implementation of the BeCoMe (Best-Compromise Mean) method for
   aggregating expert opinions expressed as fuzzy triangular numbers, extended into a
@@ -33,7 +34,7 @@ references:
         given-names: Ivan
       - family-names: Tyrychtr
         given-names: Jan
-      - family-names: Pelikan
+      - family-names: Pelikán
         given-names: Martin
     journal: Environmental Modelling & Software
     volume: 136
