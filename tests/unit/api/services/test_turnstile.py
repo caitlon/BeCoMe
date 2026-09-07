@@ -461,13 +461,22 @@ class TestHostnameMatchingIsCaseInsensitive:
 
 
 class TestRefusalLogLevels:
-    """What a refusal is worth in the drain depends on whether a token was presented.
+    """A refusal's level says which of three different things happened.
 
     A request with no header at all is a scanner, a crawler, or a stale tab: it costs
     the service nothing and there are a great many of them, so a bot flood would write
     one WARNING per request into a paid log drain and bury the records that mean
-    something. A token that was presented and rejected is the opposite - somebody ran
-    the widget and the answer still did not check out - and that is worth an alert.
+    something. That is DEBUG. A token that was presented and did not check out is the
+    opposite - somebody ran the widget and the answer still failed - and that is the
+    WARNING an alert on bot traffic keys on.
+
+    Neither describes siteverify being unreachable, answering non-2xx, or answering
+    something that is not JSON. Those are faults in a dependency, not evidence about the
+    caller, and because the check is fail-closed they refuse every request to all four
+    guarded endpoints for as long as they last. Logged at WARNING they would be
+    indistinguishable from a bot flood, which is the one reading that sends an operator
+    looking at the wrong thing; ERROR is the level that separates them, and the level
+    ``turnstile_disabled`` already uses for the switch that ends such an outage.
     """
 
     @staticmethod
@@ -511,6 +520,56 @@ class TestRefusalLogLevels:
 
         # THEN
         assert written == [(logging.WARNING, "rejected")]
+
+    def test_an_unreachable_siteverify_is_recorded_at_error(self):
+        """
+        GIVEN the siteverify host refuses the connection
+        WHEN the check refuses the request
+        THEN the record is ERROR, not the WARNING a bad token gets
+
+        Every request to all four guarded endpoints is being refused while this lasts.
+        An operator watching WARNING refusals would read that as a bot flood and leave
+        the kill switch alone, which is the only thing that ends it.
+        """
+        # GIVEN
+        client = MagicMock()
+        client.post = AsyncMock(side_effect=httpx.ConnectError("boom"))
+
+        # WHEN
+        written = self._levels_and_reasons(_verifier(client))
+
+        # THEN
+        assert written == [(logging.ERROR, "siteverify_unreachable")]
+
+    def test_a_non_2xx_answer_from_siteverify_is_recorded_at_error(self):
+        """
+        GIVEN siteverify answers 503
+        WHEN the check refuses the request
+        THEN the record is ERROR, since the fault is Cloudflare's, not the caller's
+        """
+        # GIVEN
+        verifier = _verifier(_client(status_error=True))
+
+        # WHEN
+        written = self._levels_and_reasons(verifier)
+
+        # THEN
+        assert written == [(logging.ERROR, "siteverify_status")]
+
+    def test_a_body_that_is_not_siteverify_json_is_recorded_at_error(self):
+        """
+        GIVEN a 200 whose body is JSON but not the object siteverify answers with
+        WHEN the check refuses the request
+        THEN the record is ERROR: something other than siteverify answered
+        """
+        # GIVEN
+        verifier = _verifier(_client([1, 2, 3]))
+
+        # WHEN
+        written = self._levels_and_reasons(verifier)
+
+        # THEN
+        assert written == [(logging.ERROR, "malformed_response")]
 
     def test_a_token_minted_elsewhere_is_recorded_at_warning(self):
         """
