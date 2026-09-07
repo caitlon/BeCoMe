@@ -33,6 +33,10 @@ export function describeError(
     }
     return t('errors.tooManyAttempts');
   }
+  // Order matters, and the two branches below cannot be swapped: a refused bot
+  // check IS an HttpError, so the generic branch would claim it first and show
+  // the server's own English detail instead of a translated line telling the
+  // user what to do. A test covers this ordering.
   if (isTurnstileRefusal(error)) {
     return t('errors.turnstileRefused');
   }
