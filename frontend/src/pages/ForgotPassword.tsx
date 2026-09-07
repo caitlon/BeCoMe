@@ -1,14 +1,22 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Link } from "react-router";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useTranslation } from "react-i18next";
 
-import { FormField, SubmitButton, TurnstileField } from "@/components/forms";
+import {
+  FormField,
+  SubmitButton,
+  TurnstileField,
+  TurnstileFieldHandle,
+} from "@/components/forms";
 import { AuthLayout } from "@/components/layout/AuthLayout";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { useToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
+import { describeError } from "@/lib/errorMessages";
+import { isTurnstileRefusal } from "@/lib/errors";
 import { isTurnstileRequired } from "@/lib/turnstile";
 
 type ForgotPasswordFormData = {
@@ -20,9 +28,11 @@ const ForgotPassword = () => {
   const { t: tCommon } = useTranslation();
   useDocumentTitle(tCommon("pageTitle.forgotPassword"));
 
+  const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
+  const turnstileRef = useRef<TurnstileFieldHandle>(null);
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
   const awaitingTurnstile = isTurnstileRequired() && turnstileToken === null;
 
@@ -47,17 +57,28 @@ const ForgotPassword = () => {
     setIsLoading(true);
     try {
       await api.forgotPassword(data.email, turnstileToken);
-    } catch {
-      // Swallow errors: the screen must look identical whether or not the email
-      // exists, mirroring the backend's anti-enumeration response.
-      //
-      // Unlike the other three forms, the widget is not reset here. The finally
-      // below switches this page to its confirmation panel whatever happened, and
-      // that unmounts the form and the widget with it, so there is no token left
-      // to replace and nobody on this page to spend a fresh one.
+      setSubmitted(true);
+    } catch (error) {
+      // A refused bot check is the one failure this screen must not hide. It is
+      // decided before the address is ever looked at, so saying it out loud reveals
+      // nothing about whether an account exists — while the confirmation panel would
+      // claim a link is on its way when nothing was sent, and unmount the widget, so
+      // the user could not even earn a fresh challenge to retry with.
+      if (isTurnstileRefusal(error)) {
+        turnstileRef.current?.reset();
+        setTurnstileToken(null);
+        toast({
+          title: t("forgotPassword.errorTitle"),
+          description: describeError(error, tCommon, tCommon("errors.turnstileRefused")),
+          variant: "destructive",
+        });
+        return;
+      }
+      // Everything else is swallowed on purpose: the screen must look identical
+      // whether or not the address exists, mirroring the backend's 202-always answer.
+      setSubmitted(true);
     } finally {
       setIsLoading(false);
-      setSubmitted(true);
     }
   };
 
@@ -81,6 +102,7 @@ const ForgotPassword = () => {
       <p className="text-sm text-muted-foreground mb-4">
         {t("forgotPassword.description")}
       </p>
+      {/* eslint-disable-next-line react-hooks/refs -- handleSubmit defers to the browser's submit event; turnstileRef is only read/written once that event fires, never during render */}
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         <FormField
           label={t("forgotPassword.email")}
@@ -91,7 +113,11 @@ const ForgotPassword = () => {
           {...register("email")}
         />
 
-        <TurnstileField action="password_reset" onToken={setTurnstileToken} />
+        <TurnstileField
+          action="password_reset"
+          ref={turnstileRef}
+          onToken={setTurnstileToken}
+        />
 
         <SubmitButton
           className="w-full"
