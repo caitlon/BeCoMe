@@ -782,7 +782,11 @@ describe('ApiClient', () => {
     });
 
     it('forgotPassword sends the header when given a token, and omits it otherwise', async () => {
-      mockFetch.mockResolvedValue({ ok: true, status: 202 });
+      mockFetch.mockResolvedValue({
+        ok: true,
+        status: 202,
+        json: () => Promise.resolve({ detail: 'accepted' }),
+      });
 
       await api.forgotPassword('user@example.com', 'turnstile-token-3');
       expect(turnstileHeader(mockFetch.mock.calls[0])).toBe('turnstile-token-3');
@@ -792,7 +796,11 @@ describe('ApiClient', () => {
     });
 
     it('resendVerification sends the header when given a token, and omits it otherwise', async () => {
-      mockFetch.mockResolvedValue({ ok: true, status: 202 });
+      mockFetch.mockResolvedValue({
+        ok: true,
+        status: 202,
+        json: () => Promise.resolve({ detail: 'accepted' }),
+      });
 
       await api.resendVerification('user@example.com', 'CorrectHorse123!', 'turnstile-token-4');
       expect(turnstileHeader(mockFetch.mock.calls[0])).toBe('turnstile-token-4');
@@ -806,7 +814,11 @@ describe('ApiClient', () => {
       // empty-string token (should never happen, but costs nothing to guard) is
       // treated the same as no token at all, rather than sent as a header the API
       // would reject anyway.
-      mockFetch.mockResolvedValue({ ok: true, status: 202 });
+      mockFetch.mockResolvedValue({
+        ok: true,
+        status: 202,
+        json: () => Promise.resolve({ detail: 'accepted' }),
+      });
 
       await api.forgotPassword('user@example.com', '');
       expect(turnstileHeader(mockFetch.mock.calls[0])).toBeUndefined();
