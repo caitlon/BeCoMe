@@ -1,8 +1,9 @@
 import { createRef } from 'react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, screen, waitFor } from '@testing-library/react';
 import { render } from '@tests/utils';
 import { TurnstileField, TurnstileFieldHandle } from '@/components/forms/TurnstileField';
+import i18n from '@/i18n';
 import type { TurnstileRenderOptions } from '@/lib/turnstile';
 
 const mockGetTurnstileSiteKey = vi.fn<() => string>();
@@ -21,6 +22,14 @@ describe('TurnstileField', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetTurnstileSiteKey.mockReturnValue('test-site-key');
+  });
+
+  // One test switches language to force a rebuild; the singleton is shared with
+  // every other test in this file, and the English copy is asserted below.
+  afterEach(async () => {
+    if (i18n.resolvedLanguage !== 'en') {
+      await i18n.changeLanguage('en');
+    }
   });
 
   it('renders nothing, and never touches the Turnstile script, when the build has no sitekey', () => {
@@ -156,6 +165,33 @@ describe('TurnstileField', () => {
     });
 
     expect(api.render).not.toHaveBeenCalled();
+  });
+
+  it('drops the error line when a language switch rebuilds the widget', async () => {
+    // Cloudflare fixes theme and language at render time, so changing either tears
+    // the widget down and builds another. The replacement has failed at nothing, and
+    // leaving the old widget's red line under it told the user to fix a problem that
+    // no longer existed - and that no amount of solving the new challenge cleared,
+    // since only an arriving token used to reset the flag.
+    const api = makeFakeApi();
+    api.render.mockReturnValue('widget-1');
+    mockLoadTurnstileScript.mockResolvedValue(api);
+
+    render(<TurnstileField action="login" onToken={vi.fn()} />);
+    await waitFor(() => expect(api.render).toHaveBeenCalledTimes(1));
+
+    const [, options] = api.render.mock.calls[0] as [HTMLElement, TurnstileRenderOptions];
+    act(() => options['error-callback']());
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+
+    api.render.mockReturnValue('widget-2');
+    await act(async () => {
+      await i18n.changeLanguage('cs');
+    });
+
+    await waitFor(() => expect(api.render).toHaveBeenCalledTimes(2));
+    expect(api.remove).toHaveBeenCalledWith('widget-1');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it('tears the widget down on unmount instead of leaking it for the page', async () => {

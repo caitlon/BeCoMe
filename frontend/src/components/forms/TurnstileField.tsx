@@ -83,6 +83,10 @@ const TurnstileField = React.forwardRef<TurnstileFieldHandle, TurnstileFieldProp
         return;
       }
 
+      // This effect runs again whenever the widget has to be rebuilt (theme, language,
+      // action, sitekey), and the new widget has not failed at anything yet.
+      setFailed(false);
+
       let active = true;
 
       loadTurnstileScript()
