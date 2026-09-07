@@ -116,9 +116,10 @@ a Cloudflare Turnstile token in the `X-Turnstile-Token` request header — `regi
 `forgot-password` and `resend-verification`. The token is verified against Cloudflare's
 siteverify, including the action that minted it and the hostname that served the widget, and
 anything short of a confirmed pass answers `403`: a missing header, a rejected token, and an
-unreachable siteverify are one indistinguishable refusal, so the endpoint stays free of any
-oracle. The header is optional in the schema deliberately — a required one would answer `422`
-and tell a caller the check exists. `TURNSTILE_ENABLED=false` removes the check entirely,
+unreachable siteverify are one indistinguishable refusal, so nothing about the address or the
+account behind it leaks through the refusal. That the check exists at all is not a secret — the
+widget on the form says so — but the header is still optional in the schema deliberately, since a
+required one would answer `422` and separate "no token" from "bad token". `TURNSTILE_ENABLED=false` removes the check entirely,
 which is what keeps local development and the test suite offline; a deployed service in that
 state still starts, and records `turnstile_disabled` at ERROR while it does.
 
