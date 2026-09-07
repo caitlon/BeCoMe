@@ -1,5 +1,6 @@
 """Tests for exception handlers."""
 
+import json
 from unittest.mock import MagicMock, patch
 
 from fastapi import FastAPI, status
@@ -7,14 +8,17 @@ from fastapi import FastAPI, status
 from api.exceptions import (
     BeCoMeAPIError,
     DisposableEmailDomainError,
+    EmailNotVerifiedError,
     InvalidCredentialsError,
     NotFoundError,
     ProjectNotFoundError,
+    TurnstileVerificationError,
     UnresolvableEmailDomainError,
     ValidationError,
     ValuesOutOfRangeError,
 )
 from api.middleware.exception_handlers import (
+    TURNSTILE_REFUSED_CODE,
     _get_status_and_detail,
     become_api_error_handler,
     register_exception_handlers,
@@ -293,6 +297,78 @@ class TestBecomeApiErrorHandler:
             # THEN
             mock_pcf.assert_called_once_with(request)
             mock_lf.assert_not_called()
+
+
+class TestMachineReadableErrorCodes:
+    """A 403 the SPA has to act on differently carries a code, not just a status.
+
+    ``POST /auth/login`` can answer 403 for two unrelated reasons: the account is
+    unverified, and the bot check refused the request. They need different screens, and
+    the only thing separating them in the body used to be an English sentence. Matching
+    that sentence in the SPA would break on any rewording, so the discriminator is a
+    stable code the client can compare.
+    """
+
+    def test_a_turnstile_refusal_carries_a_code(self):
+        """
+        GIVEN the bot check refused a request
+        WHEN the handler builds the response
+        THEN the body carries the machine-readable turnstile code beside the detail
+        """
+        # GIVEN
+        request = MagicMock()
+        exc = TurnstileVerificationError("turnstile check refused the request: rejected")
+
+        # WHEN
+        response = become_api_error_handler(request, exc)
+
+        # THEN
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert json.loads(response.body)["code"] == TURNSTILE_REFUSED_CODE
+
+    def test_an_unverified_account_carries_no_code(self):
+        """
+        GIVEN a login blocked because the account is not verified
+        WHEN the handler builds the response
+        THEN the body carries no code, which is what the SPA reads as this case
+
+        A 403 with no code is also what an older API answers, so the SPA treating it as
+        the unverified case keeps working while the two services deploy separately.
+        """
+        # GIVEN
+        request = MagicMock()
+        exc = EmailNotVerifiedError("unverified")
+
+        # WHEN
+        response = become_api_error_handler(request, exc)
+
+        # THEN
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert "code" not in json.loads(response.body)
+
+    def test_no_token_and_a_rejected_token_carry_the_same_code(self):
+        """
+        GIVEN one refusal for a missing header and one for a token that failed
+        WHEN the handler builds both responses
+        THEN the two bodies are identical, code included
+
+        The code tells the SPA which screen to draw. It must not also tell a caller
+        which half of the check they failed, or whether it is switched on.
+        """
+        # GIVEN
+        request = MagicMock()
+
+        # WHEN
+        absent = become_api_error_handler(
+            request,
+            TurnstileVerificationError("turnstile check refused the request: missing_token"),
+        )
+        rejected = become_api_error_handler(
+            request, TurnstileVerificationError("turnstile check refused the request: rejected")
+        )
+
+        # THEN
+        assert json.loads(absent.body) == json.loads(rejected.body)
 
 
 class TestRegisterExceptionHandlers:
