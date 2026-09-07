@@ -1,7 +1,7 @@
 {
   "meta": {
     "title": "Ochrana osobních údajů",
-    "subtitle": "Co o vás tato služba uchovává, proč, a jak si to vzít zpět.",
+    "subtitle": "Co o vás tato služba uchovává, proč a jak si to vzít zpět.",
     "updated": "Aktualizováno 8. září 2026"
   },
   "controller": {
@@ -17,10 +17,10 @@
       "Vaše jméno a příjmení, viditelné ostatním členům projektu, do kterého se zapojíte.",
       "Vaše heslo, uložené pouze jako otisk. Původní podoba se nikdy nezapisuje a z uloženého ji nelze získat zpět.",
       "Profilovou fotografii, pokud ji nahrajete.",
-      "Data vytvoření účtu a potvrzení e-mailu.",
+      "Datum vytvoření účtu a datum potvrzení e-mailu.",
       "Projekty, které vlastníte nebo do nichž patříte, a expertní názory, které v nich zadáte."
     ],
-    "outro": "Nic dalšího se nesbírá. Není zde žádná analytika, žádná reklama, žádné profilování ani žádný cizí obsah vložený do stránek."
+    "outro": "Odděleně od účtu služba vede bezpečnostní záznamy. Zaznamenává se v nich IP adresa, ze které přišlo přihlášení, odmítnutí kvůli překročení limitu nebo neúspěšná kontrola formuláře, spolu s časem a dotčeným účtem. E-mailové adresy se v těchto záznamech ukládají jako klíčovaný otisk, nikoli čitelně. Není zde žádná reklama ani profilování a žádné údaje se neprodávají ani nesdílejí s nikým mimo níže uvedené poskytovatele."
   },
   "basis": {
     "heading": "Na jakém základě",
@@ -34,35 +34,38 @@
       "__Secure-refresh_token obnovuje relaci, aniž by se znovu ptal na heslo. Platí 7 dní a odesílá se pouze na přihlašovací cesty.",
       "__Host-csrf_token chrání formuláře před podvržením požadavku z cizího webu."
     ],
-    "outro": "Dokud se nepřihlásíte, web nenastaví žádný soubor cookie. Protože jsou všechny tři nezbytné pro službu, kterou jste si výslovně vyžádali, pravidla ePrivacy nevyžadují souhlasovou lištu a žádná se nezobrazuje. Volba jazyka se pamatuje v místním úložišti prohlížeče a nikdy jej neopouští."
+    "outro": "Všechny tři jsou nezbytně nutné pro službu, kterou jste si výslovně vyžádali, a pravidla ePrivacy proto pro ně nevyžadují souhlas a žádná lišta se nezobrazuje. Formuláře pro přihlášení, registraci a obnovu hesla navíc načítají widget Cloudflare pro kontrolu robotů, který běží v rámu z challenges.cloudflare.com a může si podle podmínek Cloudflare ukládat vlastní data; jde o bezpečnostní opatření, nikoli o sledování. Volba jazyka a motivu se pamatuje v místním úložišti prohlížeče pod klíči become-language a become-theme a nikdy jej neopouští."
   },
   "processors": {
     "heading": "Kdo další s údaji nakládá",
-    "intro": "Jménem správce zpracovávají údaje tři poskytovatelé, všichni v rámci Evropské unie:",
+    "intro": "Jménem správce zpracovává údaje několik poskytovatelů:",
     "items": [
-      "Railway hostuje aplikaci a její databázi v Amsterdamu.",
+      "Railway hostuje aplikaci a její databázi v Amsterdamu, tedy v Evropské unii.",
       "Cloudflare doručuje web a provozuje kontrolu robotů, která chrání přihlašovací a registrační formulář.",
-      "Sentry přijímá hlášení o chybách ve frankfurtském regionu. Přístupové tokeny a tokeny pro obnovu hesla se z těchto hlášení odstraňují ještě před odesláním."
-    ]
+      "Resend doručuje ověřovací zprávy a odkazy pro obnovu hesla, takže se k němu dostává vaše e-mailová adresa. Jeho rozhraní je ve Spojených státech, jde tedy o předání mimo Evropskou unii podle kapitoly V GDPR.",
+      "Sentry přijímá hlášení o chybách ve frankfurtském regionu. Při každém zobrazení stránky mu je navíc odeslán krátký záznam o relaci, který Sentry označuje jako release health. Přístupové tokeny a tokeny pro obnovu hesla se z hlášení odstraňují ještě před odesláním.",
+      "Better Stack přijímá výše popsané serverové záznamy včetně IP adres, pokud je odesílání logů pro dané prostředí zapnuté."
+    ],
+    "outro": "Nepoužívá se žádná analytická ani reklamní služba a kromě widgetu Cloudflare a popsaného hlášení do Sentry není vložen žádný sledovací skript."
   },
   "retention": {
     "heading": "Jak dlouho",
-    "intro": "Relace a jednorázové odkazy vyprší samy:",
+    "intro": "Jednorázové odkazy vyprší samy:",
     "items": [
-      "Přihlášená relace trvá 15 minut a obnovuje se nejdéle 7 dní.",
       "Odkaz pro obnovu hesla platí 60 minut.",
-      "Odkaz pro ověření e-mailu platí 24 hodin."
+      "Odkaz pro ověření e-mailu platí 24 hodin.",
+      "Přihlášená relace trvá 15 minut a používáním se sama obnovuje. Sedm dní nečinnosti ji ukončí; pro průběžně používanou relaci není pevný horní limit."
     ],
-    "outro": "Samotný účet se uchovává, dokud jej nesmažete. Smazání záznam z databáze odstraní, nikoli skryje, a odnese s sebou i vaše projekty a názory."
+    "outro": "Samotný účet se uchovává, dokud jej nesmažete. Záznamy logů se uchovávají tak dlouho, jak je uchovává poskytovatel logování, což určuje jeho tarif, nikoli tato služba."
   },
   "rights": {
     "heading": "Vaše práva a jak je uplatnit",
-    "intro": "GDPR vám k těmto údajům dává práva a dvě z nich jsou tlačítka, nikoli žádosti:",
+    "intro": "GDPR vám k těmto údajům dává práva. Dvě z nich jsou už tlačítka ve vašem profilu:",
     "items": [
-      "Stáhnout vše, co o vás služba uchovává, jedním souborem ve svém profilu.",
-      "Smazat účet i jeho obsah, rovněž ve svém profilu. Tento krok nelze vzít zpět.",
-      "Kdykoli ve svém profilu opravit jméno nebo e-mail.",
-      "Vznést námitku proti zpracování nebo požádat o jeho omezení dopisem na výše uvedenou adresu."
+      "Stáhnout vše, co o vás služba uchovává, jedním souborem.",
+      "Smazat účet i vše, co obsahuje. Projekty, které vlastníte, je nutné vyřešit nejdřív a dialog se na každý z nich zeptá: předat jinému členovi, nebo smazat i s názory. Předaný projekt zůstává, stejně jako názory ostatních členů. Smazání nelze vzít zpět.",
+      "Kdykoli opravit své jméno a příjmení. E-mailovou adresu v aplikaci změnit nelze; o její opravu napište na výše uvedenou adresu.",
+      "Vznést námitku proti zpracování nebo požádat o jeho omezení napsáním na výše uvedenou adresu."
     ],
     "profileLink": "Přejít do profilu"
   },

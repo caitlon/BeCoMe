@@ -42,6 +42,7 @@ vi.mock('@/pages/CaseStudy', () => ({ default: () => <div data-testid="case-stud
 vi.mock('@/pages/About', () => ({ default: () => <div data-testid="about" /> }));
 vi.mock('@/pages/Documentation', () => ({ default: () => <div data-testid="documentation" /> }));
 vi.mock('@/pages/FAQ', () => ({ default: () => <div data-testid="faq" /> }));
+vi.mock('@/pages/Privacy', () => ({ default: () => <div data-testid="privacy" /> }));
 vi.mock('@/pages/Onboarding', () => ({ default: () => <div data-testid="onboarding" /> }));
 vi.mock('@/pages/NotFound', () => ({ default: () => <div data-testid="not-found" /> }));
 
@@ -187,6 +188,15 @@ describe('App - public routes', () => {
 
     await waitFor(() => {
       expect(screen.getByTestId('faq')).toBeInTheDocument();
+    });
+  });
+
+  it('renders Privacy page at /privacy', async () => {
+    routeRef.value = '/privacy';
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('privacy')).toBeInTheDocument();
     });
   });
 
