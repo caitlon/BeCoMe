@@ -428,11 +428,20 @@ this one, would open registration here. The endpoints that redeem an emailed lin
 `/verify-email` and `/reset-password`, are deliberately not guarded: holding a live
 single-use token is already evidence of a person, and no widget is rendered on those pages.
 
-Every refusal writes one `turnstile_refused` record naming the reason, never the token. The
-level splits on whether a token was presented at all: a request that carried no header is
-recorded at DEBUG, because scanners produce those in bulk and one WARNING each would bury
-the rest of the drain, while a token that was presented and did not check out is a WARNING.
-An alert on the refusals should therefore key on the WARNING records.
+Every refusal writes one `turnstile_refused` record naming the reason, never the token, and
+its level says which of three things happened. A request that carried no header at all is
+**DEBUG**: scanners produce those in bulk and one WARNING each would bury the rest of the
+drain. A token that was presented and did not check out (`rejected`, `action_mismatch`,
+`hostname_mismatch`) is **WARNING**, and that is what an alert on bot traffic keys on. A
+siteverify call that fails, answers non-2xx, or answers something that is not its JSON
+(`siteverify_unreachable`, `siteverify_status`, `malformed_response`) is **ERROR**, the same
+level as `turnstile_disabled` below.
+
+The ERROR split is what makes an outage readable. Those three reasons say nothing about the
+caller: Cloudflare is unreachable, and because the check is fail-closed every request to all
+four endpoints is being refused for as long as it lasts. At WARNING that is indistinguishable
+from a bot flood, and the two call for opposite responses - wait it out, or flip
+`TURNSTILE_ENABLED` off. A run of ERROR refusals is the signal to reach for the kill switch.
 
 `TURNSTILE_ENABLED` is the kill switch and it defaults to **off**, which is what lets a
 laptop, CI, and a fresh clone run with no widget and no secret. It stays a working switch on

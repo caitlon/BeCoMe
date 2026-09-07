@@ -48,9 +48,16 @@ def _refuse(
 
     The level is per-reason rather than fixed, because the refusals are not one kind of
     event. A refusal where somebody presented a token and it did not check out is worth
-    an alert. A refusal of a request that carried no header at all is a scanner or a
-    crawler, and there are enough of those that logging each at WARNING would bury the
-    records that mean something under traffic nobody will read.
+    an alert, and is a WARNING. A refusal of a request that carried no header at all is a
+    scanner or a crawler, and there are enough of those that logging each at WARNING
+    would bury the records that mean something under traffic nobody will read: DEBUG.
+
+    A siteverify call that fails, answers non-2xx, or answers something that is not
+    siteverify's JSON is neither. It says nothing about the caller and everything about a
+    dependency, and while it lasts the fail-closed check refuses every request to all four
+    guarded endpoints. At WARNING that reads exactly like a bot flood, so the one response
+    that ends it - the ``TURNSTILE_ENABLED`` kill switch - is the one nobody reaches for.
+    Those go out at ERROR, the level ``turnstile_disabled`` already uses.
 
     :param reason: Why the check refused, e.g. ``missing_token``.
     :param action: The action the guarded endpoint declared.
@@ -186,7 +193,8 @@ class CloudflareTurnstileVerifier:
         :param client_ip: Caller address, sent as ``remoteip`` when it is an address.
         :return: The decoded response object.
         :raises TurnstileVerificationError: If the call fails, answers non-2xx, or
-            answers with something other than a JSON object.
+            answers with something other than a JSON object. Each of those is recorded
+            at ERROR: the fault is in the dependency, not in the request.
         """
         payload = {"secret": self._secret_key, "response": token}
         remote_ip = _remote_ip(client_ip)
@@ -198,18 +206,23 @@ class CloudflareTurnstileVerifier:
             response.raise_for_status()
             body = response.json()
         except httpx.HTTPStatusError as exc:
-            _refuse("siteverify_status", action, status_code=exc.response.status_code)
+            _refuse(
+                "siteverify_status",
+                action,
+                level=logging.ERROR,
+                status_code=exc.response.status_code,
+            )
         except httpx.HTTPError:
             # A timeout, a refused connection, or any other transport fault. Cloudflare
             # being unreachable is when a bot check is most worth having, so this
             # refuses rather than waving the request through.
-            _refuse("siteverify_unreachable", action)
+            _refuse("siteverify_unreachable", action, level=logging.ERROR)
         except ValueError:
             # httpx raises json.JSONDecodeError, a ValueError, when the body is not
             # JSON at all: an error page or a captive portal in front of the API.
-            _refuse("malformed_response", action)
+            _refuse("malformed_response", action, level=logging.ERROR)
         if not isinstance(body, dict):
-            _refuse("malformed_response", action)
+            _refuse("malformed_response", action, level=logging.ERROR)
         return body
 
     async def _post(self, payload: dict[str, str]) -> httpx.Response:
