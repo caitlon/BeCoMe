@@ -10,14 +10,6 @@ function makeFakeApi(): FakeTurnstileApi {
   return { render: vi.fn(), reset: vi.fn(), remove: vi.fn() };
 }
 
-function getInjectedScript(): HTMLScriptElement {
-  const script = document.head.querySelector('script');
-  if (!script) {
-    throw new Error('Expected loadTurnstileScript() to have injected a <script> tag');
-  }
-  return script;
-}
-
 describe('lib/turnstile', () => {
   beforeEach(() => {
     // scriptLoad is module-level state; a fresh module instance per test keeps
@@ -50,6 +42,39 @@ describe('lib/turnstile', () => {
   });
 
   describe('loadTurnstileScript', () => {
+    // happy-dom refuses to fetch an external script: by default it throws a DOMException
+    // out of document.head.append itself, and opting into
+    // handleDisabledFileLoadingAsSuccess just trades that for dispatching `load`
+    // immediately on insertion, before the test gets a chance to control the outcome.
+    // Neither behaviour is what a browser does, so instead of fighting happy-dom's
+    // network stub, these tests intercept the insertion point: document.head.append is
+    // redirected into a detached stand-in element, which the loader's script never
+    // becomes a document-connected node and so never triggers happy-dom's script-loading
+    // special case, while still behaving like a real DOM container for every assertion
+    // below (querySelector, remove(), src) and for the `load`/`error` events the tests
+    // dispatch by hand.
+    let insertedHead: HTMLElement;
+    let appendSpy: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+      insertedHead = document.createElement('div');
+      appendSpy = vi.spyOn(document.head, 'append').mockImplementation((...nodes) => {
+        insertedHead.append(...nodes);
+      });
+    });
+
+    afterEach(() => {
+      appendSpy.mockRestore();
+    });
+
+    function getInjectedScript(): HTMLScriptElement {
+      const script = insertedHead.querySelector('script');
+      if (!script) {
+        throw new Error('Expected loadTurnstileScript() to have injected a <script> tag');
+      }
+      return script;
+    }
+
     it('resolves immediately with window.turnstile when the script is already loaded', async () => {
       const existingApi = makeFakeApi();
       (window as unknown as { turnstile: FakeTurnstileApi }).turnstile = existingApi;
@@ -57,7 +82,7 @@ describe('lib/turnstile', () => {
       const { loadTurnstileScript } = await import('@/lib/turnstile');
 
       await expect(loadTurnstileScript()).resolves.toBe(existingApi);
-      expect(document.head.querySelector('script')).toBeNull();
+      expect(insertedHead.querySelector('script')).toBeNull();
     });
 
     it('injects the script once, with explicit render mode, and shares one promise across callers', async () => {
@@ -66,7 +91,7 @@ describe('lib/turnstile', () => {
       const first = loadTurnstileScript();
       const second = loadTurnstileScript();
 
-      const scripts = document.head.querySelectorAll('script');
+      const scripts = insertedHead.querySelectorAll('script');
       expect(scripts).toHaveLength(1);
       expect(scripts[0].src).toBe(
         'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit'
@@ -88,11 +113,11 @@ describe('lib/turnstile', () => {
 
       await expect(attempt).rejects.toThrow('Turnstile script failed to load');
       // The dead script is removed rather than left behind for a retry to trip over.
-      expect(document.head.querySelector('script')).toBeNull();
+      expect(insertedHead.querySelector('script')).toBeNull();
 
       const retryApi = makeFakeApi();
       const retry = loadTurnstileScript();
-      expect(document.head.querySelectorAll('script')).toHaveLength(1);
+      expect(insertedHead.querySelectorAll('script')).toHaveLength(1);
       (window as unknown as { turnstile: FakeTurnstileApi }).turnstile = retryApi;
       getInjectedScript().dispatchEvent(new Event('load'));
 
@@ -108,7 +133,7 @@ describe('lib/turnstile', () => {
       await expect(attempt).rejects.toThrow(
         'Turnstile script loaded without defining window.turnstile'
       );
-      expect(document.head.querySelector('script')).toBeNull();
+      expect(insertedHead.querySelector('script')).toBeNull();
     });
   });
 });
