@@ -11,10 +11,12 @@ import { fadeInUp } from "@/lib/motion";
 /**
  * The sections built from a lead paragraph, a list, and a closing paragraph. Keeping them
  * in one array stops the markup repeating itself four times, and it means a translator
- * adding a bullet touches only the locale file. Every one of them carries all three parts;
- * an earlier version made the closing paragraph optional by comparing the translation
- * against its own key, which is i18next behaviour rather than API and broke the moment a
- * section gained an outro.
+ * adding a bullet touches only the locale file. Every one of them carries all three parts.
+ * An earlier version made the closing paragraph optional by comparing a translation against
+ * its own key. That worked, but it rested on undocumented i18next behaviour: the key comes
+ * back only while `parseMissingKeyHandler` is unset and `appendNamespaceToMissingKey` is
+ * false, neither of which the call site can see. `i18n.exists()` is the documented way to
+ * ask. Requiring all three parts avoids the question.
  */
 const LIST_SECTIONS = ["collected", "cookies", "processors", "retention"] as const;
 

@@ -20,7 +20,7 @@
       "The dates your account was created and your email confirmed.",
       "The projects you own or belong to, and the expert opinions you enter in them."
     ],
-    "outro": "Separately from the account, the service keeps security logs. They record the IP address a sign-in, a rate-limit rejection or a failed form check came from, together with the time and the account involved. Email addresses in those logs are stored as a keyed hash rather than in the clear. There is no advertising and no profiling, and no data is sold or shared with anyone beyond the providers named below."
+    "outro": "Separately from the account, the service keeps server logs. Every request to the API is recorded with its time, the path it asked for, and the IP address it came from, which amounts to a record of what an account did and when. Requests that sign you in, hit a rate limit or fail a form check also record the account involved. Email addresses in those logs are stored as a keyed hash rather than in the clear. There is no advertising and no profiling, and no data is sold or shared with anyone beyond the providers named below."
   },
   "basis": {
     "heading": "On what basis",
@@ -41,9 +41,9 @@
     "intro": "Several providers process data on the controller's behalf:",
     "items": [
       "Railway hosts the application and its database in Amsterdam, in the European Union.",
-      "Cloudflare serves the site and runs the bot check that protects the sign-in and registration forms.",
+      "Cloudflare serves the site and runs the bot check that protects the sign-in, registration, password-reset and verification-resend forms.",
       "Resend delivers the verification and password-reset messages, which means it receives your email address. Its endpoint is in the United States, so this is a transfer outside the European Union under Chapter V of the GDPR.",
-      "Sentry receives crash reports from both the browser and the server, in its Frankfurt region. The browser also sends it a short session record on each page view, which the service calls release health. Access tokens and reset tokens are removed from those reports before they leave.",
+      "Sentry receives crash reports from both the browser and the server, in its Frankfurt region. The browser also sends it a short session record on each page view, which the service calls release health. The server samples about one request in ten as a performance trace, carrying the route, the URL and database timings. Access tokens and reset tokens are removed before any of it leaves.",
       "Better Stack receives the server logs described above, including IP addresses, in its European Union data region."
     ],
     "outro": "The service uses no analytics and no advertising, and embeds no tracking script beyond the Cloudflare widget and the Sentry reporting described here."
