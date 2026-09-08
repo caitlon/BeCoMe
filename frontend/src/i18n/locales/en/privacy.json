@@ -6,7 +6,7 @@
   },
   "controller": {
     "heading": "Who is responsible",
-    "body": "Ekaterina Kuzmina runs this service as an independent project at the Faculty of Economics and Management, Czech University of Life Sciences Prague, and is the controller of the data described here. Write to the address below with any question about it.",
+    "body": "Ekaterina Kuzmina is the controller of the data described here. She runs this service as an independent project at the Faculty of Economics and Management, Czech University of Life Sciences Prague. Write to the address below with any question about it.",
     "email": "xkuze010@studenti.czu.cz"
   },
   "collected": {
@@ -28,13 +28,13 @@
   },
   "cookies": {
     "heading": "Cookies",
-    "intro": "Three cookies are set, all of them once you sign in, and all of them necessary for the service to function:",
+    "intro": "The service sets three cookies once you sign in, and all three are necessary for it to function:",
     "items": [
       "__Host-access_token keeps you signed in. It lasts 15 minutes.",
       "__Secure-refresh_token renews that session without asking for your password again. It lasts 7 days and is sent only to the authentication routes.",
       "__Host-csrf_token protects forms against cross-site request forgery."
     ],
-    "outro": "All three are strictly necessary for a service you explicitly requested, so the ePrivacy rules do not require a consent banner for them and none is shown. The sign-in, registration and password-reset forms also load Cloudflare's bot-check widget, which runs in a frame from challenges.cloudflare.com and may set storage of its own under Cloudflare's terms; it is a security measure rather than a tracker. Your language and theme choices are remembered in your browser's local storage, under become-language and become-theme, and never leave it."
+    "outro": "All three are strictly necessary for a service you explicitly requested, so the ePrivacy rules do not require a consent banner for them and none is shown. The sign-in, registration and password-reset forms also load Cloudflare's bot-check widget. It runs in a frame from challenges.cloudflare.com and may set storage of its own under Cloudflare's terms. That widget is a security measure, not a tracker. Your language and theme choices are remembered in your browser's local storage, under become-language and become-theme, and never leave it."
   },
   "processors": {
     "heading": "Who else handles it",
@@ -46,7 +46,7 @@
       "Sentry receives crash reports from both the browser and the server, in its Frankfurt region. The browser also sends it a short session record on each page view, which the service calls release health. Access tokens and reset tokens are removed from those reports before they leave.",
       "Better Stack receives the server logs described above, including IP addresses, at its Falkenstein site in Germany."
     ],
-    "outro": "No analytics or advertising service is used, and no tracking script is embedded beyond the Cloudflare widget and the Sentry reporting described here."
+    "outro": "The service uses no analytics and no advertising, and embeds no tracking script beyond the Cloudflare widget and the Sentry reporting described here."
   },
   "retention": {
     "heading": "How long",
@@ -54,7 +54,7 @@
     "items": [
       "A password-reset link is valid for 60 minutes.",
       "An email verification link is valid for 24 hours.",
-      "A sign-in session lasts 15 minutes and renews itself as you use it. Seven days of inactivity ends it; there is no fixed maximum for a session in continuous use."
+      "A sign-in session lasts 15 minutes and renews itself as you use it. Seven days of inactivity ends it. There is no fixed maximum for a session in continuous use."
     ],
     "outro": "The account itself is kept until you delete it. Log records are kept for as long as the logging provider retains them, which is set by its plan rather than by this service."
   },
@@ -64,7 +64,7 @@
     "items": [
       "Download everything the service holds about you, as a single file.",
       "Delete your account and everything in it. Projects you own have to be dealt with first, and the dialog asks for each one: hand it to another member, or delete it with its opinions. A project you hand over stays, along with the opinions the other members gave it. Deletion cannot be undone.",
-      "Correct your first and last name at any time. The email address cannot be changed in the app; write to the address above to have it corrected.",
+      "Correct your first and last name at any time. The email address cannot be changed in the app. Write to the address above to have it corrected.",
       "Object to the processing, or ask for it to be restricted, by writing to the address above."
     ],
     "profileLink": "Go to your profile"
