@@ -11,6 +11,10 @@ neutral in the design system sits at 0% saturation. And the chart series, whose
 comment claimed they matched the interface, were off by one in each channel:
 ``#3b82f6`` is Tailwind blue-500, whereas ``hsl(217 91% 60%)`` resolves to
 ``#3c83f6``. Neither was visible; both were drift.
+
+The palette carries only colours something actually draws. The agreement badge's
+three (``--success``, ``--warning``, ``--error``) are deliberately absent until the
+badge itself exists: a guarded colour with no consumer reads as implemented.
 """
 
 from dataclasses import dataclass
@@ -42,9 +46,6 @@ class ExportPalette:
     :ivar grid: Table rules and chart axes, from ``--border``.
     :ivar chart_mean: Arithmetic-mean series, from ``--chart-mean``.
     :ivar chart_median: Median series, from ``--chart-median``.
-    :ivar agreement_high: Badge fill for high agreement, from ``--success``.
-    :ivar agreement_moderate: Badge fill for moderate agreement, from ``--warning``.
-    :ivar agreement_low: Badge fill for low agreement, from ``--error``.
     """
 
     background: colors.Color
@@ -54,9 +55,6 @@ class ExportPalette:
     grid: colors.Color
     chart_mean: colors.Color
     chart_median: colors.Color
-    agreement_high: colors.Color
-    agreement_moderate: colors.Color
-    agreement_low: colors.Color
 
 
 _LIGHT = ExportPalette(
@@ -67,9 +65,6 @@ _LIGHT = ExportPalette(
     grid=colors.HexColor("#e6e6e6"),
     chart_mean=colors.HexColor("#3c83f6"),
     chart_median=colors.HexColor("#21c45d"),
-    agreement_high=colors.HexColor("#357937"),
-    agreement_moderate=colors.HexColor("#c75c05"),
-    agreement_low=colors.HexColor("#c62a2a"),
 )
 
 _DARK = ExportPalette(
@@ -80,15 +75,7 @@ _DARK = ExportPalette(
     grid=colors.HexColor("#2b2b2b"),
     chart_mean=colors.HexColor("#61a6fa"),
     chart_median=colors.HexColor("#4ade80"),
-    agreement_high=colors.HexColor("#357937"),
-    agreement_moderate=colors.HexColor("#f9811f"),
-    agreement_low=colors.HexColor("#d33131"),
 )
-
-_PALETTES: dict[ReportTheme, ExportPalette] = {
-    ReportTheme.LIGHT: _LIGHT,
-    ReportTheme.DARK: _DARK,
-}
 
 
 def get_palette(theme: ReportTheme) -> ExportPalette:
@@ -97,4 +84,4 @@ def get_palette(theme: ReportTheme) -> ExportPalette:
     :param theme: Theme the report is rendered in.
     :return: Palette holding that theme's colours.
     """
-    return _PALETTES[theme]
+    return _DARK if theme == ReportTheme.DARK else _LIGHT

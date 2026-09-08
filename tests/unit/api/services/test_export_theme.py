@@ -43,9 +43,6 @@ _TOKENS = {
     "grid": "--border",
     "chart_mean": "--chart-mean",
     "chart_median": "--chart-median",
-    "agreement_high": "--success",
-    "agreement_moderate": "--warning",
-    "agreement_low": "--error",
 }
 
 

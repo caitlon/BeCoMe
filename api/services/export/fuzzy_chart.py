@@ -2,8 +2,10 @@
 
 Each aggregated fuzzy number is a triangle with vertices ``(lower, 0)``,
 ``(peak, 1)`` and ``(upper, 0)``; the three are overlaid on shared axes so the
-PDF mirrors the "Triangle" chart from the web UI. Colors match the UI legend
-(blue mean, green median, dark best compromise).
+PDF mirrors the "Triangle" chart from the web UI. Colours come from the report
+palette, so they follow the theme exactly as the web legend does: blue mean, green
+median, and a best compromise drawn in the foreground ink -- near-black on a light
+page, near-white on a dark one, which is what ``currentColor`` gives it on the web.
 """
 
 from collections.abc import Callable
@@ -35,6 +37,7 @@ def build_triangle_chart(
     :param data: Assembled result data (provides the scale and the three
         aggregated fuzzy numbers).
     :param labels: Localized labels for the legend and axis caption.
+    :param palette: Colours for this report's theme.
     :return: A reportlab Drawing flowable ready to add to a PDF story.
     """
     drawing = Drawing(_WIDTH, _HEIGHT)

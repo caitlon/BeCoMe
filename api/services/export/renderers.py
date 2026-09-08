@@ -279,6 +279,32 @@ class PdfResultRenderer(ResultRenderer):
         story.append(self._opinions_table(data, labels))
         return story
 
+    def _table_style(self, numeric_from: int) -> TableStyle:
+        """Build the shared report-table style, in this renderer's colours.
+
+        Both tables in the report look the same; only where their numeric columns
+        start differs, because the opinions table carries one more text column.
+        Keeping one definition means a change to padding or a palette field cannot
+        land in one table and be forgotten in the other.
+
+        :param numeric_from: Index of the first right-aligned numeric column.
+        :return: Style ready to hand to :meth:`Table.setStyle`.
+        """
+        return TableStyle(
+            [
+                ("FONTNAME", (0, 0), (-1, -1), FONT_NAME),
+                ("FONTNAME", (0, 0), (-1, 0), FONT_NAME_BOLD),
+                ("FONTSIZE", (0, 0), (-1, -1), 9),
+                ("BACKGROUND", (0, 0), (-1, 0), self._palette.table_header),
+                ("TEXTCOLOR", (0, 0), (-1, -1), self._palette.foreground),
+                ("GRID", (0, 0), (-1, -1), 0.5, self._palette.grid),
+                ("ALIGN", (numeric_from, 0), (-1, -1), "RIGHT"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ]
+        )
+
     def _results_table(self, data: ResultExportData, labels: ResultLabels) -> Table:
         """Build the aggregated-results table (one row per aggregate)."""
         rows = [
@@ -299,22 +325,7 @@ class PdfResultRenderer(ResultRenderer):
                 ]
             )
         table = Table(rows, colWidths=[180, 80, 80, 80, 80])
-        table.setStyle(
-            TableStyle(
-                [
-                    ("FONTNAME", (0, 0), (-1, -1), FONT_NAME),
-                    ("FONTNAME", (0, 0), (-1, 0), FONT_NAME_BOLD),
-                    ("FONTSIZE", (0, 0), (-1, -1), 9),
-                    ("BACKGROUND", (0, 0), (-1, 0), self._palette.table_header),
-                    ("TEXTCOLOR", (0, 0), (-1, -1), self._palette.foreground),
-                    ("GRID", (0, 0), (-1, -1), 0.5, self._palette.grid),
-                    ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
-                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                    ("TOPPADDING", (0, 0), (-1, -1), 4),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-                ]
-            )
-        )
+        table.setStyle(self._table_style(numeric_from=1))
         return table
 
     def _opinions_table(self, data: ResultExportData, labels: ResultLabels) -> Table:
@@ -352,22 +363,7 @@ class PdfResultRenderer(ResultRenderer):
                 ]
             )
         table = Table(rows, colWidths=[110, 110, 68, 68, 68, 68])
-        table.setStyle(
-            TableStyle(
-                [
-                    ("FONTNAME", (0, 0), (-1, -1), FONT_NAME),
-                    ("FONTNAME", (0, 0), (-1, 0), FONT_NAME_BOLD),
-                    ("FONTSIZE", (0, 0), (-1, -1), 9),
-                    ("BACKGROUND", (0, 0), (-1, 0), self._palette.table_header),
-                    ("TEXTCOLOR", (0, 0), (-1, -1), self._palette.foreground),
-                    ("GRID", (0, 0), (-1, -1), 0.5, self._palette.grid),
-                    ("ALIGN", (2, 0), (-1, -1), "RIGHT"),
-                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                    ("TOPPADDING", (0, 0), (-1, -1), 4),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-                ]
-            )
-        )
+        table.setStyle(self._table_style(numeric_from=2))
         return table
 
 
