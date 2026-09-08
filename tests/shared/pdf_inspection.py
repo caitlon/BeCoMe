@@ -14,6 +14,7 @@ from reportlab.lib import colors
 
 _STREAM = re.compile(rb"stream(.*?)endstream", re.S)
 _FILL_COLOR = re.compile(r"([\d.]+) ([\d.]+) ([\d.]+) rg")
+_BASE_FONT = re.compile(rb"/BaseFont\s*/([A-Za-z0-9+\-]+)")
 
 
 def _decode(stream: bytes) -> str | None:
@@ -54,6 +55,19 @@ def fill_colours(pdf: bytes) -> set[tuple[float, float, float]]:
             "satisfy them without proving anything."
         )
     return found
+
+
+def embedded_fonts(pdf: bytes) -> set[str]:
+    """Return the family names of every font embedded in the document.
+
+    Subset names carry a six-letter prefix (``ABCDEF+Inter``); it is stripped here,
+    because it changes between renders and says nothing about which face was used.
+
+    :param pdf: Rendered PDF bytes.
+    :return: Set of base font names, without subset prefixes.
+    """
+    found = {match.decode("latin-1") for match in _BASE_FONT.findall(pdf)}
+    return {name.split("+", 1)[-1] for name in found}
 
 
 def as_fractions(colour: colors.Color) -> tuple[float, float, float]:

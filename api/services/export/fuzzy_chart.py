@@ -14,7 +14,7 @@ from reportlab.graphics.shapes import Drawing, Line, PolyLine, String
 from reportlab.pdfbase.pdfmetrics import stringWidth
 
 from api.services.export.data import ResultExportData
-from api.services.export.fonts import FONT_NAME
+from api.services.export.fonts import FONT_MONO, FONT_SANS
 from api.services.export.labels import ResultLabels
 from api.services.export.theme import ExportPalette
 
@@ -90,7 +90,7 @@ def _add_axes(
                 _PLOT_X0 - 6,
                 to_y(membership) - 3,
                 f"{membership:.0f}",
-                fontName=FONT_NAME,
+                fontName=FONT_MONO,
                 fontSize=_TICK_SIZE,
                 fillColor=palette.subtitle,
                 textAnchor="end",
@@ -104,7 +104,7 @@ def _add_axes(
                 to_x(value),
                 _PLOT_Y0 - 12,
                 f"{value:.1f}",
-                fontName=FONT_NAME,
+                fontName=FONT_MONO,
                 fontSize=_TICK_SIZE,
                 fillColor=palette.subtitle,
                 textAnchor=anchor,
@@ -128,9 +128,9 @@ def _add_legend(drawing: Drawing, labels: ResultLabels, palette: ExportPalette) 
                 x + 20,
                 legend_y - 3,
                 text,
-                fontName=FONT_NAME,
+                fontName=FONT_SANS,
                 fontSize=_LEGEND_SIZE,
                 fillColor=palette.subtitle,
             )
         )
-        x += 20 + stringWidth(text, FONT_NAME, _LEGEND_SIZE) + 18
+        x += 20 + stringWidth(text, FONT_SANS, _LEGEND_SIZE) + 18
