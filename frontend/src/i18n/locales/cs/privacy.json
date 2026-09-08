@@ -56,7 +56,7 @@
       "Odkaz pro ověření e-mailu platí 24 hodin.",
       "Přihlášená relace trvá 15 minut a používáním se sama obnovuje. Sedm dní nečinnosti ji ukončí; pro průběžně používanou relaci není pevný horní limit."
     ],
-    "outro": "Samotný účet se uchovává, dokud jej nesmažete. Záznamy logů se uchovávají tři dny a poté se zahazují."
+    "outro": "Samotný účet se uchovává, dokud jej nesmažete. Záznamy logů se uchovávají tři dny a poté se zahazují. Hlášení o chybách, záznamy relací a trasy uchovává Sentry podle vlastního nastavení."
   },
   "rights": {
     "heading": "Vaše práva a jak je uplatnit",
