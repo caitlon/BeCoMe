@@ -76,14 +76,18 @@ api/assets/fonts/ carries four TrueType files, embedded into every PDF the expor
 endpoint produces. All three families are licensed under the SIL Open Font License 1.1,
 and the licence text ships beside them:
 
-  Inter-Regular.ttf, Inter-SemiBold.ttf   Copyright the Inter Project Authors
+  Inter-Regular.ttf, Inter-SemiBold.ttf   Copyright 2016 The Inter Project Authors
                                           github.com/rsms/inter, Inter-OFL.txt
-  JetBrainsMono-Regular.ttf               Copyright the JetBrains Mono Project Authors
+  JetBrainsMono-Regular.ttf               Copyright 2020 The JetBrains Mono
+                                          Project Authors
                                           github.com/JetBrains/JetBrainsMono,
                                           JetBrainsMono-OFL.txt
-  PlayfairDisplay.ttf                     Copyright the Playfair Project Authors,
-                                          with Reserved Font Name "Playfair Display"
-                                          github.com/google/fonts, PlayfairDisplay-OFL.txt
+  PlayfairDisplay.ttf                     Copyright 2017 The Playfair Display Project
+                                          Authors, with Reserved Font Name
+                                          "Playfair Display"
+                                          github.com/clauseggers/Playfair-Display
+                                          (build taken from github.com/google/fonts),
+                                          PlayfairDisplay-OFL.txt
 
 The files are the upstream releases, unmodified. That matters for the reserved name:
 OFL 1.1 forbids a modified version from carrying it, and subsetting the file before
