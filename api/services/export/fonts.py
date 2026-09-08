@@ -16,12 +16,20 @@ as ``.notdef``, silently. So :func:`font_for` picks the preferred face only when
 can actually draw the string, and otherwise the caller's fallback.
 
 That fallback is Inter, and it is not universal. Measured against the DejaVu Sans it
-replaced: Inter covers Czech, Cyrillic, Greek and typographic punctuation, but not
-emoji, where DejaVu had part of the range (U+1F600 yes, U+1F680 no). Neither font has
-CJK, so that is unchanged. A project named with an emoji therefore loses it to
-``.notdef`` in the report title. Carrying DejaVu purely for a subset of monochrome
-emoji outlines was judged not worth 738 KB; if that call is revisited, the shape of
-the fix is a third argument here, not a change of default.
+replaced, character by character rather than by reputation:
+
+- Kept: Czech, Cyrillic, Greek, Turkish, Polish, typographic punctuation.
+- Lost: Armenian, Georgian, Hebrew and Arabic, which DejaVu covered completely and
+  Inter does not cover at all; and emoji, where DejaVu had part of the range
+  (U+1F600 yes, U+1F680 no).
+- Unchanged: CJK, which neither font has.
+
+Project names, descriptions and expert names are free text, so a name written in any
+of those four scripts now draws as blank boxes where it used to render. That is a real
+loss, taken knowingly: the report's two languages are English and Czech, and carrying
+a fifth 738 KB face for scripts the interface itself cannot display was judged the
+worse trade. If it is revisited, the shape of the fix is a third face passed as the
+``fallback`` argument, not a change of default.
 """
 
 from pathlib import Path
@@ -61,9 +69,10 @@ def register_fonts() -> None:
 def font_for(text: str, preferred: str, fallback: str = FONT_SANS) -> str:
     """Return the face to set ``text`` in: the preferred one, or the fallback.
 
-    Playfair Display cannot draw ``Γ``, and project names and expert names are
-    whatever a person typed. Asking the face whether it has every glyph is cheap
-    and turns a silently blank character into a visible, correct one.
+    Playfair Display cannot draw ``Γ``, and the report title is whatever a person
+    typed. Asking the face whether it has every glyph is cheap and turns a silently
+    blank character into a visible, correct one. Body text and table cells do not
+    call this: they are already set in the fallback face itself.
 
     The fallback is a parameter because weight has to survive it: a bold heading
     falling back to regular body text would swap the typeface and the weight at
