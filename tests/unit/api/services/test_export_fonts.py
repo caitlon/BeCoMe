@@ -6,11 +6,17 @@ would still pass. These tests are what turns that silence into a red build.
 """
 
 from dataclasses import fields
+from datetime import UTC, datetime
 
 import pytest
 from reportlab.pdfbase import pdfmetrics
 
-from api.services.export.data import ReportLang
+from api.services.export.data import (
+    FuzzyTriple,
+    OpinionRow,
+    ReportLang,
+    ResultExportData,
+)
 from api.services.export.fonts import (
     FONT_DISPLAY,
     FONT_MONO,
@@ -20,6 +26,28 @@ from api.services.export.fonts import (
     register_fonts,
 )
 from api.services.export.labels import ResultLabels, get_labels
+from api.services.export.renderers import PdfResultRenderer
+from api.services.export.theme import ReportTheme, get_palette
+
+
+def _export_data() -> ResultExportData:
+    """Build a result whose text exercises Czech diacritics and the method's Greek."""
+    return ResultExportData(
+        project_name="Protipovodňová opatření",
+        project_description=None,
+        scale_min=0.0,
+        scale_max=100.0,
+        scale_unit="%",
+        generated_at=datetime(2026, 9, 8, tzinfo=UTC),
+        num_experts=1,
+        max_error=5.97,
+        best_compromise=FuzzyTriple(11.54, 14.19, 17.19),
+        arithmetic_mean=FuzzyTriple(10.0, 13.0, 16.0),
+        median=FuzzyTriple(12.0, 15.0, 18.0),
+        likert_value=None,
+        likert_decision=None,
+        opinions=(OpinionRow("Jan Novák", "Vedoucí oddělení", 10.0, 14.0, 18.0),),
+    )
 
 
 def _covers(face: str, text: str) -> list[str]:
@@ -89,17 +117,28 @@ class TestHeadingsUseTheDisplayFace:
     """Headings are set in Playfair, as `CardTitle` is on the page."""
 
     @pytest.mark.parametrize("lang", list(ReportLang))
-    def test_section_headings_are_drawable_in_the_display_face(self, lang: ReportLang):
-        """All three section headings can be set in Playfair, in both languages.
+    def test_renderer_sets_section_headings_in_the_display_face(self, lang: ReportLang):
+        """The rendered story's headings carry Playfair, in both languages.
 
-        The report's headings mirror the page, where every card title carries
-        `font-display`. If a heading ever gains a Γ, the renderer falls back to
-        Inter for all three at once and this test says so before a reader sees it.
+        This asks the renderer, not the helper it uses. An earlier version of this
+        test called ``font_for`` with the same expression the renderer uses, which
+        proved only that the helper agrees with itself: putting ``FONT_SANS_BOLD``
+        back into the heading style left it green.
+
+        Reading the embedded fonts out of the finished PDF would not close the gap
+        either, because Playfair arrives there anyway through the report title.
         """
-        # GIVEN the headings for one language
-        labels = get_labels(lang)
-        headings = labels.results_heading + labels.chart_heading + labels.opinions_heading
+        # GIVEN a report about to be built in one language
+        renderer = PdfResultRenderer(get_palette(ReportTheme.LIGHT))
 
-        # WHEN the face for them is chosen
-        # THEN it is the display face, not the fallback
-        assert font_for(headings, FONT_DISPLAY) == FONT_DISPLAY
+        # WHEN its flowables are assembled
+        story = renderer._story(_export_data(), get_labels(lang))
+
+        # THEN every section heading is set in the display face
+        headings = [
+            flowable
+            for flowable in story
+            if getattr(getattr(flowable, "style", None), "name", None) == "heading"
+        ]
+        assert len(headings) == 3, "expected the results, chart and opinions headings"
+        assert {heading.style.fontName for heading in headings} == {FONT_DISPLAY}
