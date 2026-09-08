@@ -144,22 +144,30 @@ describe('Privacy', () => {
  * all 23 tests stayed green. Czech is the version a reader at the Czech supervisory authority
  * would open, so the facts are pinned in both files directly rather than through the page.
  *
- * "three days" is here for a different reason. It is the one number that cannot be re-derived
- * from this repository: it is the Better Stack source retention, read from the provider on
- * 2026-09-08. Three separate reviewers guessed it came from `_LOG_FILE_BACKUP_COUNT = 3`,
- * which is a rotated-file count on a handler no deployment enables. Pinning it makes any
- * future change deliberate instead of a silent drift away from what the provider does.
+ * Two of the numbers are here for a different reason: they cannot be re-derived from this
+ * repository at all, because they are settings held by the provider.
+ *
+ * "three days" is the Better Stack source retention, read from the provider on 2026-09-08.
+ * Three separate reviewers guessed it came from `_LOG_FILE_BACKUP_COUNT = 3`, which is a
+ * rotated-file count on a handler no deployment enables.
+ *
+ * "30 days" is Sentry's, and it follows the billing plan rather than any setting we chose:
+ * on the free Developer plan every kind of data this service sends — errors, release-health
+ * sessions and performance traces — is kept 30 days, while a Team plan would keep errors 90.
+ * Confirmed against the subscription page and the published retention table on 2026-09-08.
+ * So an upgrade silently makes this sentence wrong, which is exactly what a failing test is
+ * for: it turns a change of plan into a change the notice has to acknowledge.
  */
 describe.each([
   ['en', enPrivacy, {
     accessToken: '15 minutes', refresh: '7 days', reset: '60 minutes',
-    verify: '24 hours', logs: 'three days',
+    verify: '24 hours', logs: 'three days', sentry: 'by Sentry for 30 days',
     noEmailChange: 'email address cannot be changed in the app',
     transfer: 'Chapter V',
   }],
   ['cs', csPrivacy, {
     accessToken: '15 minut', refresh: '7 dní', reset: '60 minut',
-    verify: '24 hodin', logs: 'tři dny',
+    verify: '24 hodin', logs: 'tři dny', sentry: 'uchovává Sentry 30 dní',
     noEmailChange: 'E-mailovou adresu v aplikaci změnit nelze',
     transfer: 'kapitoly V',
   }],
