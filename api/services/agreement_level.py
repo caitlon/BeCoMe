@@ -37,7 +37,15 @@ def derive_agreement(project: Project, max_error: float) -> AgreementLevel:
     :param project: Project the compromise belongs to, for its scale bounds.
     :param max_error: Δmax of the compromise, in the units of that scale.
     :return: The level the interface labels this error with.
+    :raises ValueError: If Δmax is negative. Three layers above guarantee it is not
+        -- the domain model, the schema and a database constraint -- so reaching this
+        means one of them broke. A negative value would otherwise pass the first
+        threshold and report the widest possible disagreement as high agreement,
+        which is the one failure here worth refusing to guess about.
     """
+    if max_error < 0:
+        msg = f"max_error must not be negative, got {max_error}"
+        raise ValueError(msg)
     share = max_error / (project.scale_max - project.scale_min)
     if share <= _HIGH_SHARE:
         return AgreementLevel.HIGH

@@ -51,6 +51,8 @@ export const ResultsSection = ({
   }
 
   const scaleRange = project.scale_max - project.scale_min;
+  // Only the width of the progress bar. The verdict that reads this same share
+  // against its thresholds lives in the backend; see agreement_level below.
   const errorPercent = (result.max_error / scaleRange) * 100;
   const measuresCoincide =
     Math.abs(result.arithmetic_mean.centroid - result.median.centroid) < 0.01 &&
