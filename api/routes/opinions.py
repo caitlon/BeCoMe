@@ -21,6 +21,7 @@ from api.middleware.rate_limit import LIMIT_STANDARD, LIMIT_WRITE, limiter
 from api.pagination import PaginationParams
 from api.schemas.calculation import CalculationResultResponse, FuzzyNumberOutput
 from api.schemas.opinion import OpinionCreate, OpinionResponse
+from api.services.agreement_level import derive_agreement
 from api.services.calculation_service import CalculationService
 from api.services.export.data import ExportFormat, ReportLang
 from api.services.export.result_export_service import ResultExportService
@@ -171,6 +172,7 @@ def get_result(
         result.best_compromise_upper,
     )
     return CalculationResultResponse(
+        agreement_level=derive_agreement(project, result.max_error),
         best_compromise=FuzzyNumberOutput.from_bounds(
             result.best_compromise_lower,
             result.best_compromise_peak,

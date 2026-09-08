@@ -56,14 +56,9 @@ export const ResultsSection = ({
     Math.abs(result.arithmetic_mean.centroid - result.median.centroid) < 0.01 &&
     Math.abs(result.median.centroid - result.best_compromise.centroid) < 0.01;
 
-  let agreementLevel: "high" | "moderate" | "low";
-  if (errorPercent <= 20) {
-    agreementLevel = "high";
-  } else if (errorPercent <= 40) {
-    agreementLevel = "moderate";
-  } else {
-    agreementLevel = "low";
-  }
+  // The rule that reads Δmax against the scale lives in the backend, so that this
+  // page and the PDF export cannot label the same result differently.
+  const agreementLevel = result.agreement_level;
   const agreementClasses = {
     high: {
       badge: "bg-success text-success-foreground hover:bg-success/90",
