@@ -57,6 +57,18 @@ def _decision(data: ResultExportData, labels: ResultLabels) -> str | None:
     return labels.likert_decisions.get(data.likert_value, data.likert_decision)
 
 
+def _mono(text: str) -> str:
+    """Wrap a number in the monospace face, the way the page sets its figures.
+
+    Every numeric value on the results page carries ``font-mono``; inside a
+    paragraph of running text the only way to say that is inline markup.
+
+    :param text: Already-formatted number.
+    :return: Paragraph markup setting it in :data:`FONT_MONO`.
+    """
+    return f'<font name="{FONT_MONO}">{text}</font>'
+
+
 def _escape(text: str) -> str:
     """Escape the XML special characters reportlab Paragraph markup parses."""
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
@@ -239,6 +251,7 @@ class PdfResultRenderer(ResultRenderer):
             fontName=font_for(
                 labels.results_heading + labels.chart_heading + labels.opinions_heading,
                 FONT_DISPLAY,
+                fallback=FONT_SANS_BOLD,
             ),
             fontSize=13,
             spaceBefore=8,
@@ -266,7 +279,11 @@ class PdfResultRenderer(ResultRenderer):
         if data.scale_unit:
             scale_text = f"{scale_text} {_escape(data.scale_unit)}"
         story.append(Paragraph(f"<b>{_escape(labels.scale)}:</b> {scale_text}", body_style))
-        story.append(Paragraph(f"<b>{_escape(labels.experts)}:</b> {data.num_experts}", body_style))
+        story.append(
+            Paragraph(
+                f"<b>{_escape(labels.experts)}:</b> {_mono(str(data.num_experts))}", body_style
+            )
+        )
         generated = data.generated_at.strftime("%Y-%m-%d %H:%M UTC")
         story.append(Paragraph(f"<b>{_escape(labels.generated_at)}:</b> {generated}", body_style))
         story.append(Spacer(1, 12))
@@ -275,7 +292,9 @@ class PdfResultRenderer(ResultRenderer):
         story.append(self._results_table(data, labels))
         story.append(Spacer(1, 6))
         story.append(
-            Paragraph(f"<b>{_escape(labels.max_error)}:</b> {_n2(data.max_error)}", body_style)
+            Paragraph(
+                f"<b>{_escape(labels.max_error)}:</b> {_mono(_n2(data.max_error))}", body_style
+            )
         )
         decision = _decision(data, labels)
         if decision is not None:

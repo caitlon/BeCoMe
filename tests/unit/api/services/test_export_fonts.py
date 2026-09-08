@@ -142,3 +142,33 @@ class TestHeadingsUseTheDisplayFace:
         ]
         assert len(headings) == 3, "expected the results, chart and opinions headings"
         assert {heading.style.fontName for heading in headings} == {FONT_DISPLAY}
+
+
+class TestNumbersUseTheMonoFace:
+    """Figures are monospaced in the report, as they are on the page."""
+
+    def test_summary_numbers_are_set_in_the_mono_face(self):
+        """Δmax and the expert count carry the mono face, not body text.
+
+        Both are wrapped in `font-mono` on the results page. They sit inside
+        running paragraphs rather than table cells, so the table style that
+        monospaces the numeric columns does not reach them — they need inline
+        markup, and this test is what says whether they got it.
+        """
+        # GIVEN a rendered story
+        renderer = PdfResultRenderer(get_palette(ReportTheme.LIGHT))
+        labels = get_labels(ReportLang.EN)
+
+        # WHEN the paragraphs carrying those two figures are found
+        story = renderer._story(_export_data(), labels)
+        texts = [
+            flowable.text
+            for flowable in story
+            if getattr(flowable, "text", None)
+            and (labels.max_error in flowable.text or labels.experts in flowable.text)
+        ]
+
+        # THEN each sets its number in the mono face
+        assert len(texts) == 2, "expected the max-error and expert-count lines"
+        for text in texts:
+            assert f'<font name="{FONT_MONO}">' in text, text

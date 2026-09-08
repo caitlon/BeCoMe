@@ -13,8 +13,15 @@ One gap decides how they are used. Playfair Display has no ``Γ`` -- it carries 
 and Δ, but not Gamma -- and the method names its measures ΓΩMean and Γ. reportlab
 does not fall back per glyph the way a browser does: a missing character is drawn
 as ``.notdef``, silently. So :func:`font_for` picks the preferred face only when it
-can actually draw the string, and otherwise returns Inter, which covers everything
-the report can contain.
+can actually draw the string, and otherwise the caller's fallback.
+
+That fallback is Inter, and it is not universal. Measured against the DejaVu Sans it
+replaced: Inter covers Czech, Cyrillic, Greek and typographic punctuation, but not
+emoji, where DejaVu had part of the range (U+1F600 yes, U+1F680 no). Neither font has
+CJK, so that is unchanged. A project named with an emoji therefore loses it to
+``.notdef`` in the report title. Carrying DejaVu purely for a subset of monochrome
+emoji outlines was judged not worth 738 KB; if that call is revisited, the shape of
+the fix is a third argument here, not a change of default.
 """
 
 from pathlib import Path
@@ -51,17 +58,23 @@ def register_fonts() -> None:
     pdfmetrics.registerFontFamily(FONT_SANS, normal=FONT_SANS, bold=FONT_SANS_BOLD)
 
 
-def font_for(text: str, preferred: str) -> str:
-    """Return the face to set ``text`` in: the preferred one, or Inter.
+def font_for(text: str, preferred: str, fallback: str = FONT_SANS) -> str:
+    """Return the face to set ``text`` in: the preferred one, or the fallback.
 
     Playfair Display cannot draw ``Γ``, and project names and expert names are
     whatever a person typed. Asking the face whether it has every glyph is cheap
     and turns a silently blank character into a visible, correct one.
 
+    The fallback is a parameter because weight has to survive it: a bold heading
+    falling back to regular body text would swap the typeface and the weight at
+    once, which reads as a rendering bug rather than a substitution.
+
     :param text: The string about to be drawn.
     :param preferred: Face to use when it covers every character.
-    :return: ``preferred`` when it can draw the string, otherwise :data:`FONT_SANS`.
+    :param fallback: Face to use when it does not. Not itself checked -- see the
+        module docstring for what Inter does and does not cover.
+    :return: ``preferred`` when it can draw the string, otherwise ``fallback``.
     """
     register_fonts()
     coverage = pdfmetrics.getFont(preferred).face.charToGlyph
-    return preferred if all(ord(char) in coverage for char in text) else FONT_SANS
+    return preferred if all(ord(char) in coverage for char in text) else fallback
