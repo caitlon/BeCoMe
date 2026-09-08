@@ -235,7 +235,11 @@ class PdfResultRenderer(ResultRenderer):
         )
         heading_style = ParagraphStyle(
             "heading",
-            fontName=FONT_SANS_BOLD,
+            # One style serves all three headings, so it must suit all three.
+            fontName=font_for(
+                labels.results_heading + labels.chart_heading + labels.opinions_heading,
+                FONT_DISPLAY,
+            ),
             fontSize=13,
             spaceBefore=8,
             spaceAfter=6,

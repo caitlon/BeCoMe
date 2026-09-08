@@ -83,3 +83,23 @@ class TestDisplayFaceFallback:
         """Only Gamma is missing; Ω and Δ must not trigger the fallback."""
         # GIVEN / WHEN / THEN
         assert font_for("Median (Ω), Δmax", FONT_DISPLAY) == FONT_DISPLAY
+
+
+class TestHeadingsUseTheDisplayFace:
+    """Headings are set in Playfair, as `CardTitle` is on the page."""
+
+    @pytest.mark.parametrize("lang", list(ReportLang))
+    def test_section_headings_are_drawable_in_the_display_face(self, lang: ReportLang):
+        """All three section headings can be set in Playfair, in both languages.
+
+        The report's headings mirror the page, where every card title carries
+        `font-display`. If a heading ever gains a Γ, the renderer falls back to
+        Inter for all three at once and this test says so before a reader sees it.
+        """
+        # GIVEN the headings for one language
+        labels = get_labels(lang)
+        headings = labels.results_heading + labels.chart_heading + labels.opinions_heading
+
+        # WHEN the face for them is chosen
+        # THEN it is the display face, not the fallback
+        assert font_for(headings, FONT_DISPLAY) == FONT_DISPLAY
