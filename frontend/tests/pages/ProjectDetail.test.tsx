@@ -1063,7 +1063,7 @@ describe('ProjectDetail - Header Result Export', () => {
     await user.click(pdfItem);
 
     await waitFor(() => {
-      expect(mockApi.exportProjectResult).toHaveBeenCalledWith('project-1', 'pdf', 'en');
+      expect(mockApi.exportProjectResult).toHaveBeenCalledWith('project-1', 'pdf', 'en', 'light');
       expect(mockDownloadBlob).toHaveBeenCalledWith(expect.any(Blob), 'test-project-results.pdf');
     });
   });

@@ -19,6 +19,7 @@ from api.services.export.data import (
 )
 from api.services.export.labels import get_labels
 from api.services.export.renderers import get_renderer
+from api.services.export.theme import ReportTheme
 from api.services.likert_verdict import derive_verdict
 from api.services.opinion_service import OpinionService
 
@@ -36,20 +37,27 @@ class ResultExportService(BaseService):
     """
 
     def export(
-        self, project: Project, export_format: ExportFormat, lang: ReportLang
+        self,
+        project: Project,
+        export_format: ExportFormat,
+        lang: ReportLang,
+        theme: ReportTheme = ReportTheme.LIGHT,
     ) -> ExportedFile | None:
         """Render the project's result, or None when nothing is computed yet.
 
         :param project: Project the caller is already authorized to read.
         :param export_format: Requested file format (PDF or CSV).
         :param lang: Report language.
+        :param theme: Theme to draw the report in. Light by default so that a
+            link, an integration or a future mail-out gets the printable one
+            without having to ask.
         :return: The rendered file, or None when the project has no result.
         """
         result = self._get_result(project.id)
         if result is None:
             return None
         data = self._assemble(project, result)
-        renderer = get_renderer(export_format)
+        renderer = get_renderer(export_format, theme)
         content = renderer.render(data, get_labels(lang))
         filename = f"{self._slug(project.name)}-results.{renderer.extension}"
         logger.info(

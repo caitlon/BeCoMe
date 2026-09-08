@@ -24,6 +24,7 @@ from api.schemas.opinion import OpinionCreate, OpinionResponse
 from api.services.calculation_service import CalculationService
 from api.services.export.data import ExportFormat, ReportLang
 from api.services.export.result_export_service import ResultExportService
+from api.services.export.theme import ReportTheme
 from api.services.likert_verdict import derive_verdict
 from api.services.opinion_service import OpinionService
 
@@ -205,6 +206,9 @@ def export_result(
     service: Annotated[ResultExportService, Depends(get_result_export_service)],
     export_format: Annotated[ExportFormat, Query(alias="format", description="File format")],
     lang: Annotated[ReportLang, Query(description="Report language")] = ReportLang.EN,
+    theme: Annotated[
+        ReportTheme, Query(description="Theme to render in, mirroring the interface")
+    ] = ReportTheme.LIGHT,
 ) -> Response:
     """Export a project's BeCoMe result as a downloadable PDF or CSV file.
 
@@ -217,9 +221,12 @@ def export_result(
     :param service: Result export service.
     :param export_format: Requested file format (the ``format`` query parameter).
     :param lang: Report language (defaults to English).
+    :param theme: Theme to render in. Defaults to light: a document is the thing
+        people print, and a dark page either eats toner or comes out of a driver
+        with backgrounds off as pale text on white paper.
     :return: The rendered file as an attachment download.
     """
-    exported = service.export(project, export_format, lang)
+    exported = service.export(project, export_format, lang, theme)
     if exported is None:
         logger.warning(
             "Result export had nothing to export",
@@ -228,6 +235,7 @@ def export_result(
                 "project_id": str(project.id),
                 "format": export_format.value,
                 "lang": lang.value,
+                "theme": theme.value,
             },
         )
         raise HTTPException(

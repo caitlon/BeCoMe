@@ -1514,10 +1514,10 @@ describe('ApiClient', () => {
         blob: () => Promise.resolve(blob),
       });
 
-      const result = await api.exportProjectResult('proj-1', 'csv', 'cs');
+      const result = await api.exportProjectResult('proj-1', 'csv', 'cs', 'light');
 
       expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining('/projects/proj-1/result/export?format=csv&lang=cs'),
+        expect.stringContaining('/projects/proj-1/result/export?format=csv&lang=cs&theme=light'),
         expect.objectContaining({ credentials: 'include' })
       );
       expect(result).toBe(blob);
@@ -1530,7 +1530,7 @@ describe('ApiClient', () => {
         json: () => Promise.resolve({ detail: 'No calculation result to export' }),
       });
 
-      await expect(api.exportProjectResult('proj-1', 'pdf', 'en')).rejects.toThrow(
+      await expect(api.exportProjectResult('proj-1', 'pdf', 'en', 'light')).rejects.toThrow(
         'No calculation result to export'
       );
     });
@@ -1549,7 +1549,7 @@ describe('ApiClient', () => {
         .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve({}) })
         .mockResolvedValueOnce({ ok: true, status: 200, blob: () => Promise.resolve(blob) });
 
-      const result = await api.exportProjectResult('proj-1', 'pdf', 'en');
+      const result = await api.exportProjectResult('proj-1', 'pdf', 'en', 'light');
 
       expect(result).toBe(blob);
       expect(mockFetch).toHaveBeenCalledTimes(3);
@@ -1575,7 +1575,7 @@ describe('ApiClient', () => {
           json: () => Promise.resolve({ detail: 'Refresh failed' }),
         });
 
-      const error = await api.exportProjectResult('proj-1', 'pdf', 'en').catch((e) => e);
+      const error = await api.exportProjectResult('proj-1', 'pdf', 'en', 'light').catch((e) => e);
 
       expect(error).toBeInstanceOf(UnauthorizedError);
       expect(mockFetch).toHaveBeenCalledTimes(2);
@@ -1593,7 +1593,7 @@ describe('ApiClient', () => {
       });
 
       const { ServerError } = await import('@/lib/errors');
-      const error = await api.exportProjectResult('proj-1', 'pdf', 'en').catch((e) => e);
+      const error = await api.exportProjectResult('proj-1', 'pdf', 'en', 'light').catch((e) => e);
 
       expect(error).toBeInstanceOf(ServerError);
       expect(error.message).toBe('Export blew up');
@@ -1607,7 +1607,7 @@ describe('ApiClient', () => {
       });
 
       const { ServerError } = await import('@/lib/errors');
-      const error = await api.exportProjectResult('proj-1', 'csv', 'en').catch((e) => e);
+      const error = await api.exportProjectResult('proj-1', 'csv', 'en', 'light').catch((e) => e);
 
       expect(error).toBeInstanceOf(ServerError);
       expect(error.message).toBe('An unexpected error occurred');
