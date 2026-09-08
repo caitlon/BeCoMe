@@ -44,7 +44,7 @@
       "Cloudflare serves the site and runs the bot check that protects the sign-in and registration forms.",
       "Resend delivers the verification and password-reset messages, which means it receives your email address. Its endpoint is in the United States, so this is a transfer outside the European Union under Chapter V of the GDPR.",
       "Sentry receives crash reports from both the browser and the server, in its Frankfurt region. The browser also sends it a short session record on each page view, which the service calls release health. Access tokens and reset tokens are removed from those reports before they leave.",
-      "Better Stack receives the server logs described above, including IP addresses, at its Falkenstein site in Germany."
+      "Better Stack receives the server logs described above, including IP addresses, in its European Union data region."
     ],
     "outro": "The service uses no analytics and no advertising, and embeds no tracking script beyond the Cloudflare widget and the Sentry reporting described here."
   },
@@ -56,7 +56,7 @@
       "An email verification link is valid for 24 hours.",
       "A sign-in session lasts 15 minutes and renews itself as you use it. Seven days of inactivity ends it. There is no fixed maximum for a session in continuous use."
     ],
-    "outro": "The account itself is kept until you delete it. Log records are kept for as long as the logging provider retains them, which is set by its plan rather than by this service."
+    "outro": "The account itself is kept until you delete it. Log records are kept for three days and then discarded."
   },
   "rights": {
     "heading": "Your rights, and how to use them",
