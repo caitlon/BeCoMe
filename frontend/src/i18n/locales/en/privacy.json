@@ -43,8 +43,8 @@
       "Railway hosts the application and its database in Amsterdam, in the European Union.",
       "Cloudflare serves the site and runs the bot check that protects the sign-in and registration forms.",
       "Resend delivers the verification and password-reset messages, which means it receives your email address. Its endpoint is in the United States, so this is a transfer outside the European Union under Chapter V of the GDPR.",
-      "Sentry receives crash reports from the Frankfurt region. It is also sent a short session record on each page view, which is what the Sentry service calls release health. Access tokens and reset tokens are removed from those reports before they are sent.",
-      "Better Stack receives the server logs described above, including IP addresses, where log shipping is switched on for the environment."
+      "Sentry receives crash reports from both the browser and the server, in its Frankfurt region. The browser also sends it a short session record on each page view, which the service calls release health. Access tokens and reset tokens are removed from those reports before they leave.",
+      "Better Stack receives the server logs described above, including IP addresses, at its Falkenstein site in Germany."
     ],
     "outro": "No analytics or advertising service is used, and no tracking script is embedded beyond the Cloudflare widget and the Sentry reporting described here."
   },
