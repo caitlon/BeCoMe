@@ -2,6 +2,8 @@ import { describe, it, expect, vi } from 'vitest';
 import { screen } from '@testing-library/react';
 import { render, framerMotionMock, unauthenticatedAuthMock } from '@tests/utils';
 import Privacy from '@/pages/Privacy';
+import enPrivacy from '@/i18n/locales/en/privacy.json';
+import csPrivacy from '@/i18n/locales/cs/privacy.json';
 
 vi.mock('@/contexts/AuthContext', () => unauthenticatedAuthMock);
 vi.mock('framer-motion', () => framerMotionMock);
@@ -75,7 +77,9 @@ describe('Privacy', () => {
   it('discloses the security logs and the IP addresses in them', () => {
     render(<Privacy />);
 
-    expect(screen.getByText(/They record the IP address a sign-in/)).toBeInTheDocument();
+    // the scope matters: it is every request, not only the auth events
+    expect(screen.getByText(/Every request to the API is recorded/)).toBeInTheDocument();
+    expect(screen.getByText(/the IP address it came from/)).toBeInTheDocument();
     expect(screen.getByText(/keyed hash rather than in the clear/)).toBeInTheDocument();
   });
 
@@ -117,5 +121,55 @@ describe('Privacy', () => {
     render(<Privacy />);
 
     expect(screen.getByText(/Úřad pro ochranu osobních údajů/)).toBeInTheDocument();
+  });
+});
+
+/**
+ * The rendering tests above resolve to English, so until this block existed the Czech notice
+ * was unasserted: a review on 2026-09-08 inverted "the email cannot be changed" in `cs` and
+ * all 23 tests stayed green. Czech is the version a reader at the Czech supervisory authority
+ * would open, so the facts are pinned in both files directly rather than through the page.
+ *
+ * "three days" is here for a different reason. It is the one number that cannot be re-derived
+ * from this repository: it is the Better Stack source retention, read from the provider on
+ * 2026-09-08. Three separate reviewers guessed it came from `_LOG_FILE_BACKUP_COUNT = 3`,
+ * which is a rotated-file count on a handler no deployment enables. Pinning it makes any
+ * future change deliberate instead of a silent drift away from what the provider does.
+ */
+describe.each([
+  ['en', enPrivacy, {
+    accessToken: '15 minutes', refresh: '7 days', reset: '60 minutes',
+    verify: '24 hours', logs: 'three days',
+    noEmailChange: 'email address cannot be changed in the app',
+    transfer: 'Chapter V',
+  }],
+  ['cs', csPrivacy, {
+    accessToken: '15 minut', refresh: '7 dní', reset: '60 minut',
+    verify: '24 hodin', logs: 'tři dny',
+    noEmailChange: 'E-mailovou adresu v aplikaci změnit nelze',
+    transfer: 'kapitoly V',
+  }],
+] as const)('privacy notice facts, %s', (_lang, bundle, expected) => {
+  const prose = JSON.stringify(bundle);
+
+  it.each(Object.entries(expected))('states %s', (_name, phrase) => {
+    expect(prose).toContain(phrase);
+  });
+
+  it('names all five processors', () => {
+    for (const name of ['Railway', 'Cloudflare', 'Resend', 'Sentry', 'Better Stack']) {
+      expect(prose).toContain(name);
+    }
+  });
+
+  it('names the three cookies', () => {
+    for (const cookie of ['__Host-access_token', '__Secure-refresh_token', '__Host-csrf_token']) {
+      expect(prose).toContain(cookie);
+    }
+  });
+
+  it('cites both lawful bases', () => {
+    expect(prose).toMatch(/6\(1\)\(b\)|6 odst. 1 písm. b\)/);
+    expect(prose).toMatch(/6\(1\)\(f\)|6 odst. 1 písm. f\)/);
   });
 });
