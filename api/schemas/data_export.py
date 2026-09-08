@@ -88,8 +88,11 @@ class ExportResult(BaseModel):
     def from_model(cls, project: "Project", result: "CalculationResult") -> "ExportResult":
         """Build the result section from a calculation result model.
 
-        Takes the project as well because the agreement verdict is read off the scale at
-        export time rather than stored, so it cannot disagree with the project it belongs to.
+        Takes the project as well because the Likert verdict is read off the scale at
+        export time rather than stored, so it cannot disagree with the project it belongs
+        to. That is the five-point reading of the compromise itself, and not the same
+        thing as :class:`~api.services.agreement_level.AgreementLevel`, which reads Δmax
+        against the width of the scale. This export deliberately carries only the former.
 
         :param project: Project the result belongs to.
         :param result: CalculationResult database model.

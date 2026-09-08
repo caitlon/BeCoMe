@@ -61,3 +61,23 @@ class TestDeriveAgreement:
         # WHEN the error is a fifth of that width
         # THEN it reads as high, exactly as it would from 0 to 100
         assert derive_agreement(project, 20.0) is AgreementLevel.HIGH
+
+
+class TestNegativeErrorRefuses:
+    """A negative Δmax is a broken invariant, not an input to interpret."""
+
+    def test_a_negative_error_raises_instead_of_reading_as_high(self):
+        """Refusing beats guessing: -60 on a 0-100 scale would read as HIGH.
+
+        The share would be -0.6, which passes the first threshold, so the widest
+        possible disagreement would be reported as the strongest possible agreement.
+        Three layers above make this unreachable; if one ever breaks, it should be
+        loud rather than confidently wrong.
+        """
+        # GIVEN a project on a 0-100 scale
+        project = _project()
+
+        # WHEN a negative error somehow reaches the reading
+        # THEN it refuses
+        with pytest.raises(ValueError, match="must not be negative"):
+            derive_agreement(project, -60.0)
