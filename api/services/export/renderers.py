@@ -22,7 +22,14 @@ from reportlab.platypus import (
 )
 
 from api.services.export.data import ExportFormat, ResultExportData
-from api.services.export.fonts import FONT_NAME, FONT_NAME_BOLD, register_fonts
+from api.services.export.fonts import (
+    FONT_DISPLAY,
+    FONT_MONO,
+    FONT_SANS,
+    FONT_SANS_BOLD,
+    font_for,
+    register_fonts,
+)
 from api.services.export.fuzzy_chart import build_triangle_chart
 from api.services.export.labels import ResultLabels
 from api.services.export.theme import ExportPalette, ReportTheme, get_palette
@@ -213,18 +220,22 @@ class PdfResultRenderer(ResultRenderer):
         """Build the ordered list of flowables for the report body."""
         ink = self._palette.foreground
         title_style = ParagraphStyle(
-            "title", fontName=FONT_NAME_BOLD, fontSize=18, leading=22, textColor=ink
+            "title",
+            fontName=font_for(data.project_name, FONT_DISPLAY),
+            fontSize=18,
+            leading=22,
+            textColor=ink,
         )
         subtitle_style = ParagraphStyle(
             "subtitle",
-            fontName=FONT_NAME,
+            fontName=FONT_SANS,
             fontSize=11,
             textColor=self._palette.subtitle,
             leading=14,
         )
         heading_style = ParagraphStyle(
             "heading",
-            fontName=FONT_NAME_BOLD,
+            fontName=FONT_SANS_BOLD,
             fontSize=13,
             spaceBefore=8,
             spaceAfter=6,
@@ -232,7 +243,7 @@ class PdfResultRenderer(ResultRenderer):
             textColor=ink,
         )
         body_style = ParagraphStyle(
-            "body", fontName=FONT_NAME, fontSize=10, leading=14, textColor=ink
+            "body", fontName=FONT_SANS, fontSize=10, leading=14, textColor=ink
         )
 
         story: list[object] = [
@@ -292,12 +303,13 @@ class PdfResultRenderer(ResultRenderer):
         """
         return TableStyle(
             [
-                ("FONTNAME", (0, 0), (-1, -1), FONT_NAME),
-                ("FONTNAME", (0, 0), (-1, 0), FONT_NAME_BOLD),
+                ("FONTNAME", (0, 0), (-1, -1), FONT_SANS),
+                ("FONTNAME", (0, 0), (-1, 0), FONT_SANS_BOLD),
                 ("FONTSIZE", (0, 0), (-1, -1), 9),
                 ("BACKGROUND", (0, 0), (-1, 0), self._palette.table_header),
                 ("TEXTCOLOR", (0, 0), (-1, -1), self._palette.foreground),
                 ("GRID", (0, 0), (-1, -1), 0.5, self._palette.grid),
+                ("FONTNAME", (numeric_from, 1), (-1, -1), FONT_MONO),
                 ("ALIGN", (numeric_from, 0), (-1, -1), "RIGHT"),
                 ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
                 ("TOPPADDING", (0, 0), (-1, -1), 4),
@@ -337,7 +349,7 @@ class PdfResultRenderer(ResultRenderer):
         """
         cell_style = ParagraphStyle(
             "opinion_cell",
-            fontName=FONT_NAME,
+            fontName=FONT_SANS,
             fontSize=9,
             leading=11,
             textColor=self._palette.foreground,

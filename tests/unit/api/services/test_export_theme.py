@@ -7,13 +7,38 @@ the values here are not decoration, they are the interface's own tokens.
 
 import colorsys
 import re
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
+from api.services.export.data import FuzzyTriple, OpinionRow, ReportLang, ResultExportData
+from api.services.export.labels import get_labels
+from api.services.export.renderers import PdfResultRenderer
 from api.services.export.theme import ReportTheme, get_palette
+from tests.shared.pdf_inspection import embedded_fonts
 
 _INDEX_CSS = Path(__file__).resolve().parents[4] / "frontend" / "src" / "index.css"
+
+
+def _export_data() -> ResultExportData:
+    """Build a minimal result whose text exercises Czech and the method's Greek."""
+    return ResultExportData(
+        project_name="Protipovodňová opatření",
+        project_description=None,
+        scale_min=0.0,
+        scale_max=100.0,
+        scale_unit="%",
+        generated_at=datetime(2026, 9, 8, tzinfo=UTC),
+        num_experts=1,
+        max_error=5.97,
+        best_compromise=FuzzyTriple(11.54, 14.19, 17.19),
+        arithmetic_mean=FuzzyTriple(10.0, 13.0, 16.0),
+        median=FuzzyTriple(12.0, 15.0, 18.0),
+        likert_value=None,
+        likert_decision=None,
+        opinions=(OpinionRow("Jan Novák", "Vedoucí oddělení", 10.0, 14.0, 18.0),),
+    )
 
 
 class TestExportTheme:
@@ -107,3 +132,32 @@ class TestPaletteMatchesTheInterface:
             assert actual == expected, (
                 f"{theme.value} theme: {field} is {actual}, but {token} in index.css is {expected}"
             )
+
+
+class TestReportTypography:
+    """The report is set in the interface's faces, not in a stand-in."""
+
+    def test_report_is_set_in_the_interface_fonts(self):
+        """A rendered report embeds Inter, JetBrains Mono and Playfair Display.
+
+        DejaVu was a stand-in chosen for coverage, and it makes the document look
+        like it came from somewhere else than the page that produced it.
+
+        Helvetica and Times-Roman also appear in the document's font resources and
+        are deliberately not asserted against: reportlab declares them on every
+        canvas, and measurement shows they draw nothing at all.
+        """
+        # GIVEN a result to render
+        data = _export_data()
+
+        # WHEN the report is produced
+        content = PdfResultRenderer(get_palette(ReportTheme.LIGHT)).render(
+            data, get_labels(ReportLang.EN)
+        )
+
+        # THEN the faces the interface uses are the faces embedded
+        families = {name.split("-")[0] for name in embedded_fonts(content)}
+        assert "Inter" in families
+        assert "JetBrainsMono" in families
+        assert "PlayfairDisplay" in families
+        assert "DejaVuSans" not in families
