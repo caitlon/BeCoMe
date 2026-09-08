@@ -55,6 +55,9 @@ export interface CalculationResult {
   median: FuzzyNumber;
   max_error: number;
   num_experts: number;
+  /** How closely the mean and median agreed, read against this project's scale.
+   *  Derived by the backend so the page and the PDF export cannot disagree. */
+  agreement_level: 'high' | 'moderate' | 'low';
   likert_value: number | null;
   likert_decision: string | null;
   calculated_at: string;

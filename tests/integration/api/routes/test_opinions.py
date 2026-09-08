@@ -513,6 +513,26 @@ class TestGetResult:
         assert data["likert_value"] is not None
         assert data["likert_decision"] is not None
 
+    def test_includes_the_agreement_level(self, client):
+        """The result carries its agreement reading, so every reader shows the same one.
+
+        A single opinion puts the mean and the median in the same place, so Δmax is
+        zero and the panel reads as high agreement.
+        """
+        # GIVEN a project with one opinion
+        token = register_and_login(client)
+        project = create_project(client, token)
+        submit_opinion(client, token, project["id"], 70.0, 80.0, 90.0)
+
+        # WHEN the result is read
+        response = client.get(
+            f"/api/v1/projects/{project['id']}/result",
+            headers=auth_header(token),
+        )
+
+        # THEN the level comes from the server, not from whoever renders it
+        assert response.json()["agreement_level"] == "high"
+
     def test_skips_likert_for_custom_scale(self, client):
         """Skips Likert for non 0-100 scale."""
         # GIVEN

@@ -117,6 +117,7 @@ export function createCalculationResult(
     median: createFuzzyNumber({ lower: 38, peak: 54, upper: 66, centroid: 52.67 }),
     max_error: 12.5,
     num_experts: 5,
+    agreement_level: 'high',
     likert_value: null,
     likert_decision: null,
     calculated_at: '2024-01-01T00:00:00Z',
