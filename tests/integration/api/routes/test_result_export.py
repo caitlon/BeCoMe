@@ -2,12 +2,14 @@
 
 from fastapi import status
 
+from api.services.export.theme import ReportTheme, get_palette
 from tests.integration.api.conftest import (
     auth_header,
     create_project,
     register_and_login,
     submit_opinion,
 )
+from tests.shared.pdf_inspection import as_fractions, fill_colours
 
 
 def _project_with_result(client, email: str, name: str = "Budget Case") -> tuple[str, str]:
@@ -109,6 +111,48 @@ class TestResultExport:
 
         response = client.get(
             f"/api/v1/projects/{project_id}/result/export?format=xml",
+            headers=auth_header(token),
+        )
+
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+
+    def test_dark_theme_is_actually_rendered_dark(self, client):
+        """The theme parameter changes the document, not just the request.
+
+        Comparing the two responses byte for byte would pass without any
+        implementation at all: the generation timestamp goes into the report, so
+        two identical requests already differ. This reads the colour back out.
+        """
+        token, project_id = _project_with_result(client, "themed@example.com")
+
+        response = client.get(
+            f"/api/v1/projects/{project_id}/result/export?format=pdf&theme=dark",
+            headers=auth_header(token),
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        dark_background = as_fractions(get_palette(ReportTheme.DARK).background)
+        assert dark_background in fill_colours(response.content)
+
+    def test_theme_defaults_to_light(self, client):
+        """Omitting the theme yields the printable report, not a guess."""
+        token, project_id = _project_with_result(client, "notheme@example.com")
+
+        response = client.get(
+            f"/api/v1/projects/{project_id}/result/export?format=pdf",
+            headers=auth_header(token),
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        dark_background = as_fractions(get_palette(ReportTheme.DARK).background)
+        assert dark_background not in fill_colours(response.content)
+
+    def test_invalid_theme_is_rejected(self, client):
+        """An unsupported theme value fails request validation."""
+        token, project_id = _project_with_result(client, "badtheme@example.com")
+
+        response = client.get(
+            f"/api/v1/projects/{project_id}/result/export?format=pdf&theme=blue",
             headers=auth_header(token),
         )
 
