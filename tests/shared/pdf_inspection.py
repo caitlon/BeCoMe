@@ -25,7 +25,7 @@ def _decode(stream: bytes) -> str | None:
     body = stream.strip(b"\r\n")
     try:
         return zlib.decompress(base64.a85decode(body, adobe=True)).decode("latin-1")
-    except Exception:
+    except (ValueError, zlib.error, UnicodeDecodeError):
         return None
 
 
@@ -34,14 +34,25 @@ def fill_colours(pdf: bytes) -> set[tuple[float, float, float]]:
 
     :param pdf: Rendered PDF bytes.
     :return: Set of ``(red, green, blue)`` triples, each rounded to six decimals.
+    :raises AssertionError: If not one stream could be decoded. Negative assertions
+        ("this colour is absent") would otherwise pass on an empty set, which is the
+        failure this whole helper exists to avoid.
     """
     found: set[tuple[float, float, float]] = set()
+    decoded_any = False
     for stream in _STREAM.findall(pdf):
         content = _decode(stream)
         if content is None:
             continue
+        decoded_any = True
         for match in _FILL_COLOR.finditer(content):
             found.add(tuple(round(float(channel), 6) for channel in match.groups()))
+    if not decoded_any:
+        raise AssertionError(
+            "no PDF content stream could be decoded, so no colour was read. "
+            "Callers assert that a colour is absent, and an empty result would "
+            "satisfy them without proving anything."
+        )
     return found
 
 
