@@ -36,6 +36,20 @@ describe('Privacy', () => {
     }
   });
 
+  /**
+   * The six stored-data bullets had no assertion until a mutation run on 2026-09-08 replaced
+   * `collected.items` with a string and every test still passed. The guard in the component
+   * keeps the page alive in that case, which is right, and makes the loss silent, which is why
+   * this test exists.
+   */
+  it('lists what the account stores', () => {
+    render(<Privacy />);
+
+    expect(screen.getByText(/Your email address, which identifies the account/)).toBeInTheDocument();
+    expect(screen.getByText(/stored only as a hash/)).toBeInTheDocument();
+    expect(screen.getByText(/expert opinions you enter in them/)).toBeInTheDocument();
+  });
+
   it('names the controller and offers a mailto link', () => {
     render(<Privacy />);
 

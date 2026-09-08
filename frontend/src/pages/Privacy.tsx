@@ -20,6 +20,17 @@ import { fadeInUp } from "@/lib/motion";
  */
 const LIST_SECTIONS = ["collected", "cookies", "processors", "retention"] as const;
 
+/**
+ * i18next returns the key itself when a lookup misses, so `returnObjects` hands back a string
+ * rather than an array and `.map` throws, taking the whole notice down to the ErrorBoundary.
+ * `fallbackLng: "en"` hides a one-sided omission, so only a symmetric deletion reaches this,
+ * and the locale tests would fail first. This is the second line of defence: a legal page that
+ * loses one list is worse than the page it was, and far better than a page nobody can read,
+ * because the controller's address and the rights section survive.
+ */
+const asList = (value: unknown): string[] =>
+  Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+
 const Privacy = () => {
   const { t } = useTranslation("privacy");
   const { t: tCommon } = useTranslation();
@@ -62,7 +73,7 @@ const Privacy = () => {
                   {t(`${key}.intro`)}
                 </p>
                 <ul className="mt-4 space-y-2 list-disc pl-5">
-                  {(t(`${key}.items`, { returnObjects: true }) as string[]).map((item) => (
+                  {asList(t(`${key}.items`, { returnObjects: true })).map((item) => (
                     <li key={item} className="text-muted-foreground leading-relaxed">
                       {item}
                     </li>
@@ -83,7 +94,7 @@ const Privacy = () => {
               <h2 className="text-section-title mb-4">{t("rights.heading")}</h2>
               <p className="text-muted-foreground leading-relaxed">{t("rights.intro")}</p>
               <ul className="mt-4 space-y-2 list-disc pl-5">
-                {(t("rights.items", { returnObjects: true }) as string[]).map((item) => (
+                {asList(t("rights.items", { returnObjects: true })).map((item) => (
                   <li key={item} className="text-muted-foreground leading-relaxed">
                     {item}
                   </li>
