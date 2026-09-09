@@ -61,6 +61,16 @@ def _decision(data: ResultExportData, labels: ResultLabels) -> str | None:
     return labels.likert_decisions.get(data.likert_value, data.likert_decision)
 
 
+def _thirds(width: float) -> list[float]:
+    """Split a width into three columns that add up to exactly it.
+
+    :param width: Total width to divide.
+    :return: Three column widths whose sum is ``width``.
+    """
+    third = width / 3
+    return [third, third, width - 2 * third]
+
+
 def _mono_centered(ink: colors.Color) -> ParagraphStyle:
     """Build the centred monospace style the compromise card sets its triple in.
 
@@ -95,6 +105,13 @@ def _escape(text: str) -> str:
 
 
 _CSV_FORMULA_TRIGGERS = ("=", "+", "-", "@", "\t", "\r")
+
+# Page geometry, derived rather than guessed. The first version hardcoded 523 for
+# the card and 167 for each third of its triple, which overflowed the card's own
+# padding by two points -- invisible on screen, and still outside the frame.
+_MARGIN = 36
+_CONTENT_WIDTH = A4[0] - 2 * _MARGIN
+_CARD_PADDING = 12
 
 
 def _csv_safe(value: str) -> str:
@@ -420,7 +437,7 @@ class PdfResultRenderer(ResultRenderer):
                     Paragraph(_n2(data.best_compromise.upper), _mono_centered(ink)),
                 ],
             ],
-            colWidths=[167, 167, 167],
+            colWidths=_thirds(_CONTENT_WIDTH - 2 * _CARD_PADDING),
         )
         triple.setStyle(
             TableStyle(
@@ -441,7 +458,7 @@ class PdfResultRenderer(ResultRenderer):
                 [self._badge(data, labels)],
                 [triple],
             ],
-            colWidths=[523],
+            colWidths=[_CONTENT_WIDTH],
         )
         card.setStyle(
             TableStyle(
@@ -494,7 +511,10 @@ class PdfResultRenderer(ResultRenderer):
             f'<font color="{self._palette.subtitle.hexval()}"> '
             f"({_escape(labels.confidence_share).format(percent=f'{share * 100:.0f}')})</font>"
         )
-        row = Table([[Paragraph(text, caption), drawing]], colWidths=[253, 270])
+        row = Table(
+            [[Paragraph(text, caption), drawing]],
+            colWidths=[_CONTENT_WIDTH - width - 10, width + 10],
+        )
         row.setStyle(
             TableStyle(
                 [
