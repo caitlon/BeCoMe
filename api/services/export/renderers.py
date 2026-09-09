@@ -225,8 +225,17 @@ class PdfResultRenderer(ResultRenderer):
     def __init__(self, palette: ExportPalette):
         """Build a renderer that draws in one theme's colours.
 
+        Fonts are registered here rather than in :meth:`render`, so that every
+        method of a constructed renderer works. They used to be registered on the
+        way into ``render``, which left the pieces it calls depending on having
+        been reached through it: ``<b>`` markup asks reportlab for the bold face of
+        a family, and without the family registered that raises rather than falling
+        back. It only ever worked because something else happened to register them
+        first.
+
         :param palette: Colours to draw with, from :func:`get_palette`.
         """
+        register_fonts()
         self._palette = palette
 
     def _paint_page(self, canvas: Canvas, doc: BaseDocTemplate) -> None:
@@ -362,7 +371,12 @@ class PdfResultRenderer(ResultRenderer):
             AgreementLevel.MODERATE: self._palette.agreement_moderate,
             AgreementLevel.LOW: self._palette.agreement_low,
         }[data.agreement]
-        text = labels.agreement_texts[data.agreement.value]
+        # The page labels its two badges differently by position: the card's reads
+        # "High Confidence", the one beside the Δmax bar reads "High agreement".
+        # The report carries one badge, in the card's position, so it takes the
+        # card's wording; the second badge would land two centimetres below the
+        # first and say the same thing twice.
+        text = f"{labels.confidence_levels[data.agreement.value]} {labels.confidence}"
         style = ParagraphStyle(
             "badge",
             fontName=FONT_SANS,

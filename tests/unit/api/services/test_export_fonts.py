@@ -192,3 +192,24 @@ class TestNumbersUseTheMonoFace:
         assert len(texts) == 2, f"expected the max-error and expert-count lines, got {texts}"
         for text in texts:
             assert f'<font name="{FONT_MONO}">' in text, text
+
+
+class TestFallbackKeepsWeight:
+    """The fallback face is the caller's choice, so a bold context stays bold."""
+
+    def test_a_bold_caller_falls_back_to_the_bold_face(self):
+        """A string the display face cannot draw keeps its weight on the way out.
+
+        Falling back to the regular face would change typeface and weight at once,
+        which reads as a rendering fault rather than a substitution. Nothing in the
+        report reaches this branch today -- both locales' headings are covered by
+        Playfair -- so without this test the parameter would be unverified.
+        """
+        # GIVEN a heading that carries the one glyph Playfair lacks
+        heading = "Výsledky (Γ)"
+
+        # WHEN a bold caller asks for a face
+        chosen = font_for(heading, FONT_DISPLAY, fallback=FONT_SANS_BOLD)
+
+        # THEN it gets the bold fallback, not the regular one
+        assert chosen == FONT_SANS_BOLD

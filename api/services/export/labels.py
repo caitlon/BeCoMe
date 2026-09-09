@@ -43,7 +43,8 @@ class ResultLabels:
     lower_desc: str
     peak_desc: str
     upper_desc: str
-    agreement_texts: dict[str, str]
+    confidence: str
+    confidence_levels: dict[str, str]
     likert_decisions: dict[int, str]
 
 
@@ -77,11 +78,8 @@ _EN = ResultLabels(
     lower_desc="Lower (pessimistic)",
     peak_desc="Peak (most likely)",
     upper_desc="Upper (optimistic)",
-    agreement_texts={
-        "high": "High agreement",
-        "moderate": "Moderate agreement",
-        "low": "Low agreement",
-    },
+    confidence="Confidence",
+    confidence_levels={"high": "High", "moderate": "Moderate", "low": "Low"},
     likert_decisions={
         0: "Strongly disagree",
         25: "Rather disagree",
@@ -121,11 +119,8 @@ _CS = ResultLabels(
     lower_desc="Dolní (pesimistický)",
     peak_desc="Vrchol (nejpravděpodobnější)",
     upper_desc="Horní (optimistický)",
-    agreement_texts={
-        "high": "Vysoká shoda",
-        "moderate": "Střední shoda",
-        "low": "Nízká shoda",
-    },
+    confidence="Spolehlivost",
+    confidence_levels={"high": "Vysoká", "moderate": "Střední", "low": "Nízká"},
     likert_decisions={
         0: "Rozhodně nesouhlasím",
         25: "Spíše nesouhlasím",
