@@ -34,7 +34,11 @@ from api.services.export.fonts import (
     font_for,
     register_fonts,
 )
-from api.services.export.fuzzy_chart import build_triangle_chart
+from api.services.export.fuzzy_chart import (
+    build_centroid_chart,
+    build_landscape_chart,
+    build_triangle_chart,
+)
 from api.services.export.labels import ResultLabels
 from api.services.export.theme import ExportPalette, ReportTheme, get_palette
 
@@ -352,7 +356,13 @@ class PdfResultRenderer(ResultRenderer):
         story.append(Spacer(1, 14))
 
         story.append(Paragraph(_escape(labels.chart_heading), heading_style))
+        # The page's order, and the page opens on the landscape: a report that led
+        # with the triangle showed a view the reader had probably not looked at.
+        story.append(build_landscape_chart(data, labels, self._palette))
+        story.append(Spacer(1, 6))
         story.append(build_triangle_chart(data, labels, self._palette))
+        story.append(Spacer(1, 6))
+        story.append(build_centroid_chart(data, labels, self._palette))
         story.append(Spacer(1, 14))
 
         story.append(Paragraph(_escape(labels.opinions_heading), heading_style))
