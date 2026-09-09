@@ -8,6 +8,7 @@ from sqlmodel import select
 
 from api.db.models import CalculationResult, Project, User
 from api.db.utils import utc_now
+from api.services.agreement_level import derive_agreement
 from api.services.base import BaseService
 from api.services.export.data import (
     ExportedFile,
@@ -104,6 +105,7 @@ class ResultExportService(BaseService):
             generated_at=utc_now(),
             num_experts=result.num_experts,
             max_error=result.max_error,
+            agreement=derive_agreement(project, result.max_error),
             best_compromise=FuzzyTriple(
                 result.best_compromise_lower,
                 result.best_compromise_peak,
