@@ -17,7 +17,11 @@ from api.services.export.data import (
     ResultExportData,
 )
 from api.services.export.labels import get_labels
-from api.services.export.renderers import PdfResultRenderer
+from api.services.export.renderers import (
+    _CARD_PADDING,
+    _CONTENT_WIDTH,
+    PdfResultRenderer,
+)
 from api.services.export.theme import ReportTheme, get_palette
 from tests.shared.pdf_inspection import as_fractions, fill_colours
 
@@ -81,3 +85,44 @@ class TestAgreementBadge:
 
         # THEN the colour reserved for low agreement is absent
         assert as_fractions(palette.agreement_low) not in fill_colours(content)
+
+
+class TestNothingOverflowsThePage:
+    """Every table fits what its parent actually leaves it, not just the page."""
+
+    def test_no_table_is_wider_than_the_space_it_sits_in(self):
+        """Measured against the parent's inner width, at every nesting depth.
+
+        An earlier version of this test compared every table to the printable page
+        width, and so did not notice the triple inside the compromise card: it was
+        two points too wide for the card's padding while still narrower than the
+        page. Verified by putting the hardcoded widths back -- that version passed,
+        this one fails.
+        """
+        # GIVEN a rendered story
+        renderer = PdfResultRenderer(get_palette(ReportTheme.LIGHT))
+        story = renderer._story(_data(), get_labels(ReportLang.EN))
+
+        def check(flowables, available: float, where: str) -> None:
+            """Assert each table fits ``available``, then recurse into its cells."""
+            for flowable in flowables:
+                cols = getattr(flowable, "_colWidths", None)
+                rows = getattr(flowable, "_cellvalues", None)
+                if not cols or not all(isinstance(c, int | float) for c in cols):
+                    continue
+                total = sum(cols)
+                assert total <= available + 0.01, (
+                    f"{where}: table of {total:.2f}pt in {available:.2f}pt of space"
+                )
+                if not rows:
+                    continue
+                # A nested table gets its column's width, less this table's padding.
+                padding = 2 * _CARD_PADDING if total == pytest.approx(_CONTENT_WIDTH) else 0
+                for row in rows:
+                    for column, cell in enumerate(row):
+                        inner = cols[column] - padding
+                        check([cell], inner, f"{where} > column {column}")
+
+        # WHEN each table is measured against the space its parent leaves
+        # THEN none of them overflows it
+        check(story, _CONTENT_WIDTH, "story")
