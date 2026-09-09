@@ -8,6 +8,7 @@ from uuid import uuid4
 import pytest
 
 from api.db.models import CalculationResult, ExpertOpinion, Project, User
+from api.services.agreement_level import AgreementLevel
 from api.services.export.data import (
     ExportFormat,
     FuzzyTriple,
@@ -38,6 +39,7 @@ def export_data() -> ResultExportData:
         generated_at=datetime(2026, 6, 28, 12, 0, tzinfo=UTC),
         num_experts=2,
         max_error=3.5,
+        agreement=AgreementLevel.HIGH,
         best_compromise=FuzzyTriple(10.0, 20.0, 30.0),
         arithmetic_mean=FuzzyTriple(9.0, 19.0, 29.0),
         median=FuzzyTriple(11.0, 21.0, 31.0),
@@ -89,6 +91,7 @@ class TestCsvResultRenderer:
             generated_at=datetime(2026, 6, 28, tzinfo=UTC),
             num_experts=1,
             max_error=1.0,
+            agreement=AgreementLevel.HIGH,
             best_compromise=FuzzyTriple(1.0, 2.0, 3.0),
             arithmetic_mean=FuzzyTriple(1.0, 2.0, 3.0),
             median=FuzzyTriple(1.0, 2.0, 3.0),
@@ -224,6 +227,7 @@ def _calc_result(project_id) -> CalculationResult:
         median_peak=20.0,
         median_upper=30.0,
         max_error=2.0,
+        agreement=AgreementLevel.HIGH,
         num_experts=1,
         likert_value=50,
         likert_decision="Neutral",

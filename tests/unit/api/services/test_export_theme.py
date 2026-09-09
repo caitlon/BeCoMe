@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 
+from api.services.agreement_level import AgreementLevel
 from api.services.export.data import FuzzyTriple, OpinionRow, ReportLang, ResultExportData
 from api.services.export.labels import get_labels
 from api.services.export.renderers import PdfResultRenderer
@@ -32,6 +33,7 @@ def _export_data() -> ResultExportData:
         generated_at=datetime(2026, 9, 8, tzinfo=UTC),
         num_experts=1,
         max_error=5.97,
+        agreement=AgreementLevel.HIGH,
         best_compromise=FuzzyTriple(11.54, 14.19, 17.19),
         arithmetic_mean=FuzzyTriple(10.0, 13.0, 16.0),
         median=FuzzyTriple(12.0, 15.0, 18.0),
@@ -68,6 +70,9 @@ _TOKENS = {
     "grid": "--border",
     "chart_mean": "--chart-mean",
     "chart_median": "--chart-median",
+    "agreement_high": "--success",
+    "agreement_moderate": "--warning",
+    "agreement_low": "--error",
 }
 
 

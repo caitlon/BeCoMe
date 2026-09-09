@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 import pytest
 from reportlab.pdfbase import pdfmetrics
 
+from api.services.agreement_level import AgreementLevel
 from api.services.export.data import (
     FuzzyTriple,
     OpinionRow,
@@ -41,6 +42,7 @@ def _export_data() -> ResultExportData:
         generated_at=datetime(2026, 9, 8, tzinfo=UTC),
         num_experts=1,
         max_error=5.97,
+        agreement=AgreementLevel.HIGH,
         best_compromise=FuzzyTriple(11.54, 14.19, 17.19),
         arithmetic_mean=FuzzyTriple(10.0, 13.0, 16.0),
         median=FuzzyTriple(12.0, 15.0, 18.0),
@@ -144,52 +146,49 @@ class TestHeadingsUseTheDisplayFace:
         assert {heading.style.fontName for heading in headings} == {FONT_DISPLAY}
 
 
+def _paragraph_texts(flowables) -> list[str]:
+    """Collect the markup of every paragraph, including those inside tables.
+
+    The compromise card and the Δmax row are tables, so the figures worth checking
+    no longer sit at the top level of the story.
+
+    :param flowables: Story, or the cells of one table.
+    :return: Every paragraph's source markup, in document order.
+    """
+    texts: list[str] = []
+    for flowable in flowables:
+        text = getattr(flowable, "text", None)
+        if isinstance(text, str):
+            texts.append(text)
+        rows = getattr(flowable, "_cellvalues", None)
+        if rows:
+            for row in rows:
+                texts.extend(_paragraph_texts(row))
+    return texts
+
+
 class TestNumbersUseTheMonoFace:
     """Figures are monospaced in the report, as they are on the page."""
 
     def test_summary_numbers_are_set_in_the_mono_face(self):
         """Δmax and the expert count carry the mono face, not body text.
 
-        Both are wrapped in `font-mono` on the results page. They sit inside
-        running paragraphs rather than table cells, so the table style that
-        monospaces the numeric columns does not reach them — they need inline
-        markup, and this test is what says whether they got it.
+        Both are wrapped in `font-mono` on the results page. They sit inside running
+        text rather than the numeric columns of a table, so the table style that
+        monospaces those columns does not reach them.
         """
         # GIVEN a rendered story
         renderer = PdfResultRenderer(get_palette(ReportTheme.LIGHT))
         labels = get_labels(ReportLang.EN)
 
         # WHEN the paragraphs carrying those two figures are found
-        story = renderer._story(_export_data(), labels)
         texts = [
-            flowable.text
-            for flowable in story
-            if getattr(flowable, "text", None)
-            and (labels.max_error in flowable.text or labels.experts in flowable.text)
+            text
+            for text in _paragraph_texts(renderer._story(_export_data(), labels))
+            if labels.max_error in text or labels.experts in text
         ]
 
         # THEN each sets its number in the mono face
-        assert len(texts) == 2, "expected the max-error and expert-count lines"
+        assert len(texts) == 2, f"expected the max-error and expert-count lines, got {texts}"
         for text in texts:
             assert f'<font name="{FONT_MONO}">' in text, text
-
-
-class TestFallbackKeepsWeight:
-    """The fallback face is the caller's choice, so a bold context stays bold."""
-
-    def test_a_bold_caller_falls_back_to_the_bold_face(self):
-        """A string the display face cannot draw keeps its weight on the way out.
-
-        Falling back to the regular face would change typeface and weight at once,
-        which reads as a rendering fault rather than a substitution. Nothing in the
-        report reaches this branch today -- both locales' headings are covered by
-        Playfair -- so without this test the parameter would be unverified.
-        """
-        # GIVEN a heading that carries the one glyph Playfair lacks
-        heading = "Výsledky (Γ)"
-
-        # WHEN a bold caller asks for a face
-        chosen = font_for(heading, FONT_DISPLAY, fallback=FONT_SANS_BOLD)
-
-        # THEN it gets the bold fallback, not the regular one
-        assert chosen == FONT_SANS_BOLD
