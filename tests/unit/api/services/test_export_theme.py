@@ -65,6 +65,7 @@ class TestExportTheme:
 _TOKENS = {
     "background": "--background",
     "foreground": "--foreground",
+    "primary": "--primary",
     "table_header": "--muted",
     "subtitle": "--muted-foreground",
     "grid": "--border",

@@ -38,7 +38,8 @@ class ExportPalette:
     """Colours used to render a report in one theme.
 
     :ivar background: Page fill, from ``--background``.
-    :ivar foreground: Body text and the best-compromise line, from ``--foreground``.
+    :ivar foreground: Body text and the triangle's compromise line, from ``--foreground``.
+    :ivar primary: The compromise marker on the strip charts, from ``--primary``.
     :ivar table_header: Fill behind table header rows, from ``--muted``.
     :ivar subtitle: Secondary text and axis labels, from ``--muted-foreground``.
     :ivar grid: Table rules and chart axes, from ``--border``.
@@ -51,6 +52,7 @@ class ExportPalette:
 
     background: colors.Color
     foreground: colors.Color
+    primary: colors.Color
     table_header: colors.Color
     subtitle: colors.Color
     grid: colors.Color
@@ -64,6 +66,7 @@ class ExportPalette:
 _LIGHT = ExportPalette(
     background=colors.HexColor("#ffffff"),
     foreground=colors.HexColor("#1a1a1a"),
+    primary=colors.HexColor("#000000"),
     table_header=colors.HexColor("#f5f5f5"),
     subtitle=colors.HexColor("#595959"),
     grid=colors.HexColor("#e6e6e6"),
@@ -77,6 +80,7 @@ _LIGHT = ExportPalette(
 _DARK = ExportPalette(
     background=colors.HexColor("#0a0a0a"),
     foreground=colors.HexColor("#fafafa"),
+    primary=colors.HexColor("#ffffff"),
     table_header=colors.HexColor("#262626"),
     subtitle=colors.HexColor("#a1a1a1"),
     grid=colors.HexColor("#2b2b2b"),
