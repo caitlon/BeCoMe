@@ -160,7 +160,11 @@ _STRIP_SPAN = _STRIP_WIDTH * 0.8
 
 
 def _strip_axis(
-    drawing: Drawing, data: ResultExportData, palette: ExportPalette, axis_y: float
+    drawing: Drawing,
+    data: ResultExportData,
+    palette: ExportPalette,
+    axis_y: float,
+    bounds: tuple[float, float] | None = None,
 ) -> Callable[[float], float]:
     """Draw a horizontal scale axis with its end labels, and return its mapping.
 
@@ -168,12 +172,14 @@ def _strip_axis(
     :param data: Assembled result data, for the scale bounds.
     :param palette: Colours for this report's theme.
     :param axis_y: Height at which to draw the axis.
-    :return: Function mapping a value on the scale to an x coordinate.
+    :param bounds: Range the axis covers, defaulting to the project's full scale.
+    :return: Function mapping a value on that range to an x coordinate.
     """
-    span = data.scale_max - data.scale_min
+    low, high = bounds if bounds else (data.scale_min, data.scale_max)
+    span = high - low
 
     def to_x(value: float) -> float:
-        share = (value - data.scale_min) / span if span else 0.0
+        share = (value - low) / span if span else 0.0
         return _STRIP_INSET + share * _STRIP_SPAN
 
     drawing.add(
@@ -185,7 +191,7 @@ def _strip_axis(
             strokeColor=palette.grid,
         )
     )
-    for value, anchor in ((data.scale_min, "start"), (data.scale_max, "end")):
+    for value, anchor in ((low, "start"), (high, "end")):
         drawing.add(
             String(
                 to_x(value),
@@ -198,6 +204,27 @@ def _strip_axis(
             )
         )
     return to_x
+
+
+def _anchored(x: float, text: str, size: float, width: float) -> tuple[float, str]:
+    """Place a centred label so it cannot run off either edge of the drawing.
+
+    A ``Drawing`` does not clip: a label centred on a value near the start of the
+    scale is drawn straight past the left edge and into the page margin. Near an
+    edge the label is anchored to that edge instead of to its own middle.
+
+    :param x: Preferred centre for the label.
+    :param text: The label itself, for its measured width.
+    :param size: Font size the label is drawn at.
+    :param width: Width of the drawing the label must stay inside.
+    :return: The x to draw at, and the anchor to draw it with.
+    """
+    half = stringWidth(text, FONT_SANS, size) / 2
+    if x - half < 0:
+        return 0.0, "start"
+    if x + half > width:
+        return width, "end"
+    return x, "middle"
 
 
 def build_landscape_chart(
@@ -249,20 +276,48 @@ def build_landscape_chart(
             strokeWidth=2.5,
         )
     )
-    drawing.add(Circle(best_x, axis_y, 5, fillColor=palette.foreground, strokeColor=None))
+    drawing.add(Circle(best_x, axis_y, 5, fillColor=palette.primary, strokeColor=None))
+    caption = f"{labels.best_short} {data.best_compromise.centroid:.2f} \u00b1 {data.max_error:.2f}"
+    caption_x, anchor = _anchored(best_x, caption, 9, drawing.width)
     drawing.add(
         String(
-            best_x,
+            caption_x,
             axis_y + 28,
-            f"{labels.legend_best} {data.best_compromise.centroid:.2f} \u00b1 {data.max_error:.2f}",
+            caption,
             fontName=FONT_SANS,
             fontSize=9,
             fillColor=palette.foreground,
-            textAnchor="middle",
+            textAnchor=anchor,
         )
     )
     _add_legend(drawing, labels, palette, left=_STRIP_INSET)
     return drawing
+
+
+def _centroid_bounds(data: ResultExportData) -> tuple[float, float]:
+    """Return the range the centroid view covers: the data, plus breathing room.
+
+    The page zooms this view to the opinions rather than showing the whole scale,
+    and that is the point of it: collapsed to single points on a full scale, a
+    tight panel becomes one indistinguishable blob, which is the opposite of what
+    the view is for. Padding is 15% of the spread, or 5 units when every centroid
+    coincides -- the same rule the page uses.
+
+    :param data: Assembled result data.
+    :return: Lower and upper bound of the axis.
+    """
+    values = [opinion.centroid for opinion in data.opinions] or [
+        data.scale_min,
+        data.scale_max,
+    ]
+    values += [
+        data.arithmetic_mean.centroid,
+        data.median.centroid,
+        data.best_compromise.centroid,
+    ]
+    low, high = min(values), max(values)
+    padding = (high - low) * 0.15 or 5.0
+    return low - padding, high + padding
 
 
 def build_centroid_chart(
@@ -282,7 +337,7 @@ def build_centroid_chart(
     register_fonts()
     drawing = Drawing(_STRIP_WIDTH, _STRIP_HEIGHT)
     axis_y = 46.0
-    to_x = _strip_axis(drawing, data, palette, axis_y)
+    to_x = _strip_axis(drawing, data, palette, axis_y, bounds=_centroid_bounds(data))
 
     for opinion in data.opinions:
         drawing.add(
@@ -290,7 +345,7 @@ def build_centroid_chart(
                 to_x(opinion.centroid),
                 axis_y,
                 3.5,
-                fillColor=palette.foreground,
+                fillColor=palette.primary,
                 fillOpacity=0.7,
                 strokeColor=None,
             )
@@ -299,7 +354,7 @@ def build_centroid_chart(
     for triple, colour in (
         (data.arithmetic_mean, palette.chart_mean),
         (data.median, palette.chart_median),
-        (data.best_compromise, palette.foreground),
+        (data.best_compromise, palette.primary),
     ):
         x = to_x(triple.centroid)
         drawing.add(

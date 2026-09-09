@@ -37,6 +37,7 @@ class ResultLabels:
     legend_mean: str
     legend_median: str
     legend_best: str
+    best_short: str
     result_value: str
     confidence_share: str
     supporting_calcs: str
@@ -72,6 +73,7 @@ _EN = ResultLabels(
     legend_mean="Arithmetic mean",
     legend_median="Median",
     legend_best="Best compromise",
+    best_short="Best",
     result_value="Result value",
     confidence_share="{percent}% of the scale",
     supporting_calcs="Supporting calculations",
@@ -113,6 +115,7 @@ _CS = ResultLabels(
     legend_mean="Aritmetický průměr",
     legend_median="Medián",
     legend_best="Nejlepší kompromis",
+    best_short="Nejlepší",
     result_value="Výsledná hodnota",
     confidence_share="{percent} % rozsahu",
     supporting_calcs="Pomocné výpočty",
