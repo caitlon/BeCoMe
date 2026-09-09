@@ -10,11 +10,11 @@ page, near-white on a dark one, which is what ``currentColor`` gives it on the w
 
 from collections.abc import Callable
 
-from reportlab.graphics.shapes import Drawing, Line, PolyLine, String
+from reportlab.graphics.shapes import Circle, Drawing, Line, PolyLine, String
 from reportlab.pdfbase.pdfmetrics import stringWidth
 
 from api.services.export.data import ResultExportData
-from api.services.export.fonts import FONT_MONO, FONT_SANS
+from api.services.export.fonts import FONT_MONO, FONT_SANS, register_fonts
 from api.services.export.labels import ResultLabels
 from api.services.export.theme import ExportPalette
 
@@ -40,6 +40,7 @@ def build_triangle_chart(
     :param palette: Colours for this report's theme.
     :return: A reportlab Drawing flowable ready to add to a PDF story.
     """
+    register_fonts()
     drawing = Drawing(_WIDTH, _HEIGHT)
     span = data.scale_max - data.scale_min
 
@@ -112,15 +113,28 @@ def _add_axes(
         )
 
 
-def _add_legend(drawing: Drawing, labels: ResultLabels, palette: ExportPalette) -> None:
-    """Draw a horizontal legend strip above the plot."""
+def _add_legend(
+    drawing: Drawing, labels: ResultLabels, palette: ExportPalette, left: float = _PLOT_X0
+) -> None:
+    """Draw a horizontal legend strip along the top of the drawing.
+
+    The height comes from the drawing rather than from a module constant: the
+    landscape and centroid strips are half the height of the triangle plot, and a
+    fixed offset put their legends outside their own canvas, where they overprinted
+    the table below. Caught by looking at a rendered page, not by a test.
+
+    :param drawing: Drawing to add the legend to.
+    :param labels: Localized labels for the three series.
+    :param palette: Colours for this report's theme.
+    :param left: Left edge to start the strip at.
+    """
     entries = (
         (palette.chart_mean, labels.legend_mean),
         (palette.chart_median, labels.legend_median),
         (palette.foreground, labels.legend_best),
     )
-    x = _PLOT_X0
-    legend_y = _HEIGHT - 14
+    x = left
+    legend_y = drawing.height - 10
     for color, text in entries:
         drawing.add(Line(x, legend_y, x + 16, legend_y, strokeColor=color, strokeWidth=2))
         drawing.add(
@@ -134,3 +148,170 @@ def _add_legend(drawing: Drawing, labels: ResultLabels, palette: ExportPalette) 
             )
         )
         x += 20 + stringWidth(text, FONT_SANS, _LEGEND_SIZE) + 18
+
+
+# Landscape and Centroid keep the page's own proportions: it draws them in a
+# 400x100 viewBox with the axis inset 40 on the left and 320 wide, so the same
+# tenth-of-width inset is used here rather than a second set of numbers.
+_STRIP_WIDTH = 440.0
+_STRIP_HEIGHT = 118.0
+_STRIP_INSET = _STRIP_WIDTH * 0.1
+_STRIP_SPAN = _STRIP_WIDTH * 0.8
+
+
+def _strip_axis(
+    drawing: Drawing, data: ResultExportData, palette: ExportPalette, axis_y: float
+) -> Callable[[float], float]:
+    """Draw a horizontal scale axis with its end labels, and return its mapping.
+
+    :param drawing: Drawing to add the axis to.
+    :param data: Assembled result data, for the scale bounds.
+    :param palette: Colours for this report's theme.
+    :param axis_y: Height at which to draw the axis.
+    :return: Function mapping a value on the scale to an x coordinate.
+    """
+    span = data.scale_max - data.scale_min
+
+    def to_x(value: float) -> float:
+        share = (value - data.scale_min) / span if span else 0.0
+        return _STRIP_INSET + share * _STRIP_SPAN
+
+    drawing.add(
+        Line(
+            _STRIP_INSET,
+            axis_y,
+            _STRIP_INSET + _STRIP_SPAN,
+            axis_y,
+            strokeColor=palette.grid,
+        )
+    )
+    for value, anchor in ((data.scale_min, "start"), (data.scale_max, "end")):
+        drawing.add(
+            String(
+                to_x(value),
+                axis_y - 14,
+                f"{value:.1f}",
+                fontName=FONT_MONO,
+                fontSize=_TICK_SIZE,
+                fillColor=palette.subtitle,
+                textAnchor=anchor,
+            )
+        )
+    return to_x
+
+
+def build_landscape_chart(
+    data: ResultExportData, labels: ResultLabels, palette: ExportPalette
+) -> Drawing:
+    """Build the landscape view: every opinion on one axis, aggregates marked.
+
+    This is the view the page opens on, which is why the report leads with it. It
+    answers a question the triangles cannot at a glance: whether the panel is one
+    cluster or two, and where the compromise sits relative to them.
+
+    :param data: Assembled result data.
+    :param labels: Localized labels for the legend.
+    :param palette: Colours for this report's theme.
+    :return: A reportlab Drawing flowable ready to add to a PDF story.
+    """
+    register_fonts()
+    drawing = Drawing(_STRIP_WIDTH, _STRIP_HEIGHT)
+    axis_y = 46.0
+    to_x = _strip_axis(drawing, data, palette, axis_y)
+
+    for opinion in data.opinions:
+        drawing.add(
+            Circle(
+                to_x(opinion.centroid),
+                axis_y,
+                4,
+                fillColor=palette.subtitle,
+                fillOpacity=0.5,
+                strokeColor=None,
+            )
+        )
+
+    for triple, colour in (
+        (data.arithmetic_mean, palette.chart_mean),
+        (data.median, palette.chart_median),
+    ):
+        x = to_x(triple.centroid)
+        drawing.add(Line(x, axis_y - 10, x, axis_y + 10, strokeColor=colour, strokeWidth=2))
+
+    best_x = to_x(data.best_compromise.centroid)
+    drawing.add(
+        Line(
+            best_x,
+            axis_y - 18,
+            best_x,
+            axis_y + 22,
+            strokeColor=palette.foreground,
+            strokeWidth=2.5,
+        )
+    )
+    drawing.add(Circle(best_x, axis_y, 5, fillColor=palette.foreground, strokeColor=None))
+    drawing.add(
+        String(
+            best_x,
+            axis_y + 28,
+            f"{labels.legend_best} {data.best_compromise.centroid:.2f} \u00b1 {data.max_error:.2f}",
+            fontName=FONT_SANS,
+            fontSize=9,
+            fillColor=palette.foreground,
+            textAnchor="middle",
+        )
+    )
+    _add_legend(drawing, labels, palette, left=_STRIP_INSET)
+    return drawing
+
+
+def build_centroid_chart(
+    data: ResultExportData, labels: ResultLabels, palette: ExportPalette
+) -> Drawing:
+    """Build the centroid view: one dot per opinion, aggregates as dashed lines.
+
+    Collapsing each opinion to its centre of gravity turns a crowd of overlapping
+    triangles into something countable, which is what settles the question of
+    whether a small Δmax means the panel agreed.
+
+    :param data: Assembled result data.
+    :param labels: Localized labels for the legend.
+    :param palette: Colours for this report's theme.
+    :return: A reportlab Drawing flowable ready to add to a PDF story.
+    """
+    register_fonts()
+    drawing = Drawing(_STRIP_WIDTH, _STRIP_HEIGHT)
+    axis_y = 46.0
+    to_x = _strip_axis(drawing, data, palette, axis_y)
+
+    for opinion in data.opinions:
+        drawing.add(
+            Circle(
+                to_x(opinion.centroid),
+                axis_y,
+                3.5,
+                fillColor=palette.foreground,
+                fillOpacity=0.7,
+                strokeColor=None,
+            )
+        )
+
+    for triple, colour in (
+        (data.arithmetic_mean, palette.chart_mean),
+        (data.median, palette.chart_median),
+        (data.best_compromise, palette.foreground),
+    ):
+        x = to_x(triple.centroid)
+        drawing.add(
+            Line(
+                x,
+                axis_y - 16,
+                x,
+                axis_y + 20,
+                strokeColor=colour,
+                strokeWidth=1.5,
+                strokeDashArray=[6, 3],
+            )
+        )
+    _add_legend(drawing, labels, palette, left=_STRIP_INSET)
+    return drawing
