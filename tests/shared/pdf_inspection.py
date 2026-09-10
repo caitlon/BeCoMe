@@ -15,6 +15,7 @@ from reportlab.lib import colors
 _STREAM = re.compile(rb"stream(.*?)endstream", re.S)
 _FILL_COLOR = re.compile(r"([\d.]+) ([\d.]+) ([\d.]+) rg")
 _BASE_FONT = re.compile(rb"/BaseFont\s*/([A-Za-z0-9+\-]+)")
+_BF_CHAR = re.compile(r"<([0-9a-fA-F]+)>\s*<([0-9a-fA-F]{4,})>")
 
 
 def _decode(stream: bytes) -> str | None:
@@ -24,10 +25,18 @@ def _decode(stream: bytes) -> str | None:
     :return: Decoded content stream, or None for images and other binary payloads.
     """
     body = stream.strip(b"\r\n")
-    try:
-        return zlib.decompress(base64.a85decode(body, adobe=True)).decode("latin-1")
-    except (ValueError, zlib.error, UnicodeDecodeError):
-        return None
+    # Page content arrives as ASCII85 over Flate; the ToUnicode maps are Flate
+    # alone. Trying only the first combination returned nothing for the maps, which
+    # read as the Greek and Czech characters being missing from the document.
+    for decode in (
+        lambda raw: zlib.decompress(base64.a85decode(raw, adobe=True)),
+        zlib.decompress,
+    ):
+        try:
+            return decode(body).decode("latin-1")
+        except (ValueError, zlib.error, UnicodeDecodeError):
+            continue
+    return None
 
 
 def fill_colours(pdf: bytes) -> set[tuple[float, float, float]]:
@@ -54,6 +63,33 @@ def fill_colours(pdf: bytes) -> set[tuple[float, float, float]]:
             "Callers assert that a colour is absent, and an empty result would "
             "satisfy them without proving anything."
         )
+    return found
+
+
+def text_characters(pdf: bytes) -> set[str]:
+    """Return every character the document's text layer can be read back as.
+
+    This is what distinguishes a glyph that was drawn from one that silently became
+    ``.notdef``: reportlab writes a ToUnicode CMap for each embedded subset, and a
+    character that never made it into a subset has no entry to be found here.
+
+    One trap, met while writing this: each subset numbers its glyphs from zero, so
+    the codes collide across fonts. Merging the CMaps into one code-keyed mapping
+    loses everything the later fonts contribute -- which looked exactly like the
+    Greek and Czech letters being absent. Only the characters are collected.
+
+    :param pdf: Rendered PDF bytes.
+    :return: Set of characters present in the document's ToUnicode maps.
+    """
+    found: set[str] = set()
+    for stream in _STREAM.findall(pdf):
+        content = _decode(stream)
+        if content is None or "beginbfchar" not in content:
+            continue
+        for _, target in _BF_CHAR.findall(content):
+            char = chr(int(target[:4], 16))
+            if char != "\x00":
+                found.add(char)
     return found
 
 
