@@ -20,6 +20,7 @@ from dataclasses import replace
 from datetime import UTC, datetime
 
 import pytest
+from reportlab.pdfbase import pdfmetrics
 
 from api.services.agreement_level import AgreementLevel
 from api.services.export.data import (
@@ -27,6 +28,13 @@ from api.services.export.data import (
     OpinionRow,
     ReportLang,
     ResultExportData,
+)
+from api.services.export.fonts import (
+    FONT_DISPLAY,
+    FONT_MONO,
+    FONT_SANS,
+    FONT_SANS_BOLD,
+    register_fonts,
 )
 from api.services.export.labels import get_labels
 from api.services.export.renderers import PdfResultRenderer
@@ -111,26 +119,43 @@ class TestTheTextLayerCarriesWhatWasDrawn:
         missing = [letter for letter in _CZECH_LETTERS if letter not in characters]
         assert not missing, f"{''.join(missing)} did not reach the text layer"
 
-    def test_a_character_no_face_can_draw_is_absent(self):
-        """The guard has to be able to fail, so prove it on a character we lack.
+    def test_a_character_reaches_the_text_layer_exactly_when_a_face_has_it(self):
+        """The rule, not today's font list: coverage decides, and nothing raises.
 
-        No bundled face has CJK, and this is what the failure looks like: the
-        document renders, nothing raises, and the character simply is not there.
-        That is the silence these tests exist to break.
+        Stated as an invariant on purpose. Asserting that CJK is absent would make
+        this a hostage: bundling a face that covers it is a legitimate improvement
+        -- the module docstring names it as the shape of a future fix -- and the
+        test would fail on the improvement rather than on a defect.
+
+        Either way the report must render. That is the failure mode worth pinning:
+        reportlab draws a character it cannot find as `.notdef` and says nothing,
+        so nothing crashes and nothing complains.
         """
-        # GIVEN a project named in a script none of the fonts covers
-        data = replace(_data(), project_name="项目")
+        # GIVEN a project named in a script the bundled faces may or may not cover
+        name = "项目"
+        data = replace(_data(), project_name=name)
 
         # WHEN the report is rendered
         content = PdfResultRenderer(get_palette(ReportTheme.LIGHT)).render(
             data, get_labels(ReportLang.EN)
         )
 
-        # THEN it is produced without complaint, and the characters are missing
+        # THEN it is produced without complaint either way
         assert content.startswith(b"%PDF")
+
+        # AND each character is readable back exactly when some face can draw it
+        register_fonts()
         characters = text_characters(content)
-        assert "项" not in characters
-        assert "Δ" in characters, "the rest of the document is unaffected"
+        faces = (FONT_SANS, FONT_SANS_BOLD, FONT_MONO, FONT_DISPLAY)
+        for char in name:
+            drawable = any(ord(char) in pdfmetrics.getFont(face).face.charToGlyph for face in faces)
+            assert (char in characters) is drawable, (
+                f"{char!r} is {'drawable' if drawable else 'not drawable'} "
+                f"but {'absent from' if drawable else 'present in'} the text layer"
+            )
+
+        # AND the rest of the document is unaffected
+        assert "\u0394" in characters
 
     def test_the_document_embeds_only_the_report_faces(self):
         """Nothing but the three interface families draws text.
