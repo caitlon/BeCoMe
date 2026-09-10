@@ -28,6 +28,10 @@ def _decode(stream: bytes) -> str | None:
     # Page content arrives as ASCII85 over Flate; the ToUnicode maps are Flate
     # alone. Trying only the first combination returned nothing for the maps, which
     # read as the Greek and Czech characters being missing from the document.
+    # The second branch also "succeeds" on the embedded TrueType binaries, since
+    # latin-1 decoding never raises. Harmless for both callers -- one gates on
+    # "beginbfchar", the other on fill-colour operators, and neither appears in a
+    # font file -- but that is a property of these bytes, not of this code.
     for decode in (
         lambda raw: zlib.decompress(base64.a85decode(raw, adobe=True)),
         zlib.decompress,
@@ -87,7 +91,14 @@ def text_characters(pdf: bytes) -> set[str]:
         if content is None or "beginbfchar" not in content:
             continue
         for _, target in _BF_CHAR.findall(content):
-            char = chr(int(target[:4], 16))
+            # The whole value, not its first four digits. reportlab writes each
+            # target as a single scalar ("%04X"), so above U+FFFF it is five or six
+            # digits and truncating produced a different, perfectly valid-looking
+            # character: <1F12F> came back as U+1F12. Both bundled sans faces carry
+            # astral codepoints (31 in Inter, 46 in JetBrains Mono), so a future
+            # test on emoji coverage would have got a confident wrong answer rather
+            # than an honest failure.
+            char = chr(int(target, 16))
             if char != "\x00":
                 found.add(char)
     return found
