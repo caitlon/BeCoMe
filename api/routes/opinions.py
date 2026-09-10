@@ -247,5 +247,12 @@ def export_result(
     return Response(
         content=exported.content,
         media_type=exported.media_type,
-        headers={"Content-Disposition": f'attachment; filename="{exported.filename}"'},
+        headers={
+            "Content-Disposition": f'attachment; filename="{exported.filename}"',
+            # The report names every expert and prints their estimates, and the URL
+            # is stable per project, format and theme. Left unsaid, whether it is
+            # kept is decided by the browser's disk cache and by whatever proxy sits
+            # in front of the API.
+            "Cache-Control": "no-store",
+        },
     )

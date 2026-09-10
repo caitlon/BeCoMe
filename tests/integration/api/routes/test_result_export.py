@@ -157,3 +157,21 @@ class TestResultExport:
         )
 
         assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+
+    def test_the_download_is_not_cached_anywhere(self, client):
+        """The report carries expert names and their estimates, so nothing stores it.
+
+        Without a header the decision is left to whatever sits in front of the API
+        and to the browser's own disk cache. Every other response here goes the same
+        way, but this one is a file with names in it that a person downloads and
+        forwards; the endpoint should say so rather than leave it implied.
+        """
+        token, project_id = _project_with_result(client, "nocache@example.com")
+
+        response = client.get(
+            f"/api/v1/projects/{project_id}/result/export?format=pdf",
+            headers=auth_header(token),
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.headers["cache-control"] == "no-store"
