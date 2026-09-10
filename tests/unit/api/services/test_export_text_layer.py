@@ -29,13 +29,7 @@ from api.services.export.data import (
     ReportLang,
     ResultExportData,
 )
-from api.services.export.fonts import (
-    FONT_DISPLAY,
-    FONT_MONO,
-    FONT_SANS,
-    FONT_SANS_BOLD,
-    register_fonts,
-)
+from api.services.export.fonts import register_fonts
 from api.services.export.labels import get_labels
 from api.services.export.renderers import PdfResultRenderer
 from api.services.export.theme import ReportTheme, get_palette
@@ -144,9 +138,24 @@ class TestTheTextLayerCarriesWhatWasDrawn:
         assert content.startswith(b"%PDF")
 
         # AND each character is readable back exactly when some face can draw it
+        # Asked of whatever the report actually registered, not of a list repeated
+        # here: the fix this docstring anticipates adds a fifth face, and a hardcoded
+        # tuple would then disagree with the document while claiming to describe it.
+        #
+        # Chosen by whether a face can report its coverage, not by name. Excluding
+        # "Symbol" and "ZapfDingbats" by hand was not enough: in the full suite,
+        # neighbouring tests register reportlab's standard Type1 faces in the same
+        # process, and those have no glyph map either -- so the test passed alone and
+        # failed in the suite. Filtering on the capability is independent of whatever
+        # else a run happens to register.
         register_fonts()
         characters = text_characters(content)
-        faces = (FONT_SANS, FONT_SANS_BOLD, FONT_MONO, FONT_DISPLAY)
+        faces = [
+            face
+            for face in pdfmetrics.getRegisteredFontNames()
+            if hasattr(pdfmetrics.getFont(face).face, "charToGlyph")
+        ]
+        assert faces, "no embeddable face is registered"
         for char in name:
             drawable = any(ord(char) in pdfmetrics.getFont(face).face.charToGlyph for face in faces)
             assert (char in characters) is drawable, (
