@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, develop, staging]
+    branches: [dev, test, prod]
   pull_request:
-    branches: [main, develop, staging]
+    branches: [dev, test, prod]
 
 # Least-privilege default for GITHUB_TOKEN; every job here only reads the repo.
 permissions:
@@ -12,7 +12,7 @@ permissions:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/prod' }}
 
 # uv does not byte-compile what it installs, and a runner is a fresh container every
 # time, so without this each xdist worker recompiles all of site-packages from source
@@ -137,7 +137,7 @@ jobs:
         working-directory: frontend
         run: npx tsc -p tsconfig.app.json --noEmit
 
-  # `Code Quality Checks` is a required status check on develop, staging and main, and
+  # `Code Quality Checks` is a required status check on dev, test and prod, and
   # every other job gates on this one, so the split keeps a job under both the name and
   # the id. It only reports the two halves.
   lint:
@@ -545,7 +545,7 @@ jobs:
           path: /tmp/become-e2e-api.log
           retention-days: 7
 
-  # `E2E Tests (Playwright)` is a required status check on develop, staging and main, so
+  # `E2E Tests (Playwright)` is a required status check on dev, test and prod, so
   # the split has to keep a job under exactly that name or every pull request into them
   # would wait forever for a check that no longer runs. This one only reports the shards.
   e2e:
@@ -562,13 +562,13 @@ jobs:
             exit 1
           fi
 
-  # Runs on pull requests and on pushes to `main`. Analysing only pull requests left the main
+  # Runs on pull requests and on pushes to `prod`. Analysing only pull requests left the main
   # branch itself unanalysed since 2026-02-21, reporting 76.7% coverage against a real 99%, and
   # a pull request's "new code" is measured against its base, so a stale base made unrelated
   # old code count as new, which is what failed the gate on the promotion in #326 over CSS
-  # introduced by a different pull request. Keeping `main` current fixes that at the root.
+  # introduced by a different pull request. Keeping `prod` current fixes that at the root.
   #
-  # `develop` and `staging` are deliberately not analysed: branch analysis for anything but the
+  # `dev` and `test` are deliberately not analysed: branch analysis for anything but the
   # main branch is a paid SonarCloud feature, and this organization is on the free plan (its API
   # answers "Organization is not allowed to access data from non main branches"). Pushing an
   # analysis for them would burn a CI job on a result nothing can read.
@@ -576,7 +576,7 @@ jobs:
     name: SonarCloud Analysis
     runs-on: ubuntu-24.04
     needs: [python-tests, frontend-tests]
-    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/prod'
     env:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
@@ -602,10 +602,10 @@ jobs:
       # The release tags are the meaningful boundary here, so the latest one becomes the version
       # and "new code" reads as "changed since the last release".
       #
-      # The latest tag in the repository, not `git describe`. Releases are tagged on `main`,
-      # which is downstream of `develop`, so a release tag is never reachable from `develop`.
+      # The latest tag in the repository, not `git describe`. Releases are tagged on `prod`,
+      # which is downstream of `dev`, so a release tag is never reachable from `dev`.
       # `git describe` there answers with the release before last, and a pull request opened from
-      # `develop` would compare against a different baseline than one opened from `main`. Falls
+      # `dev` would compare against a different baseline than one opened from `prod`. Falls
       # back to the commit only when no tag exists.
       - name: Derive the analysed version from the latest release tag
         id: sonar_version

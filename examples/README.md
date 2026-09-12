@@ -69,7 +69,7 @@ three cases side by side.
 jupyter notebook examples/visualizations/visualize_become.ipynb
 ```
 
-See [visualizations/README.md](https://github.com/caitlon/BeCoMe/blob/main/examples/visualizations/README.md) for details.
+See [visualizations/README.md](https://github.com/caitlon/BeCoMe/blob/prod/examples/visualizations/README.md) for details.
 
 ## Data files
 
@@ -83,7 +83,7 @@ data/
 └── pendlers_case.txt    # Cross-border travel case (22 experts)
 ```
 
-See [data/README.md](https://github.com/caitlon/BeCoMe/blob/main/examples/data/README.md) for dataset documentation, provenance, and validation details.
+See [data/README.md](https://github.com/caitlon/BeCoMe/blob/prod/examples/data/README.md) for dataset documentation, provenance, and validation details.
 
 ### Text file format
 

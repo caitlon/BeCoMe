@@ -81,7 +81,7 @@ This is an MVP: a working proof of concept rather than a finished product. The t
 | [REST API](https://docs.becomify.app/dev/api/) | Endpoints, auth flow, configuration, observability |
 | [Frontend](https://docs.becomify.app/dev/frontend/) | React app, environment variables, Docker |
 | [Environments](https://docs.becomify.app/environments/) | The dev, test, and prod profiles, and Railway deployment |
-| [Security](https://github.com/caitlon/BeCoMe/blob/main/docs/security.md) | Authentication, tenant isolation, GDPR, database posture |
+| [Security](https://github.com/caitlon/BeCoMe/blob/prod/docs/security.md) | Authentication, tenant isolation, GDPR, database posture |
 | [Quality report](https://docs.becomify.app/quality-report/) | Coverage, mutation testing, performance |
 | [Tests](https://docs.becomify.app/dev/testing/) | Suite layout and how to run it |
 | [Examples](https://docs.becomify.app/dev/examples/) | The three case studies and custom data |
@@ -117,14 +117,14 @@ paper it implements.
 }
 ```
 
-GitHub also renders a Cite this repository button from [CITATION.cff](https://github.com/caitlon/BeCoMe/blob/develop/CITATION.cff), which
+GitHub also renders a Cite this repository button from [CITATION.cff](https://github.com/caitlon/BeCoMe/blob/dev/CITATION.cff), which
 carries the same two entries.
 
 ## License and contact
 
 **Licence**: [PolyForm Noncommercial 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0/). Any noncommercial purpose is permitted. The licence names research, personal study, and use by educational institutions, public research bodies and government. Commercial use needs a separate written licence from the author.
 
-**Citing**: see [How to cite](#how-to-cite). [NOTICE](https://github.com/caitlon/BeCoMe/blob/develop/NOTICE) sets out which part is whose.
+**Citing**: see [How to cite](#how-to-cite). [NOTICE](https://github.com/caitlon/BeCoMe/blob/dev/NOTICE) sets out which part is whose.
 
 **Copyright**: © 2025-2026 Ekaterina Kuzmina
 
@@ -136,6 +136,6 @@ Vrana, I., Tyrychtr, J., & Pelikán, M. (2021). BeCoMe: Easy-to-implement optimi
 
 Foundational background: fuzzy logic (Zadeh 1965, and Bellman & Zadeh 1970).
 
-All case study data is in `examples/data/`, with format specifications and provenance in [examples/data/README.md](https://github.com/caitlon/BeCoMe/blob/main/examples/data/README.md).
+All case study data is in `examples/data/`, with format specifications and provenance in [examples/data/README.md](https://github.com/caitlon/BeCoMe/blob/prod/examples/data/README.md).
 
 Thanks to the method's authors.
