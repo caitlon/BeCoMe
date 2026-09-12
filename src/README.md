@@ -70,7 +70,7 @@ ones above it.
 
 ### Models layer (`models/`)
 
-#### [fuzzy_number.py](https://github.com/caitlon/BeCoMe/blob/main/src/models/fuzzy_number.py)
+#### [fuzzy_number.py](https://github.com/caitlon/BeCoMe/blob/prod/src/models/fuzzy_number.py)
 
 `FuzzyTriangleNumber` represents a triangular fuzzy number (lower_bound, peak, upper_bound). The class validates that lower ≤ peak ≤ upper and calculates the centroid as
 (lower + peak + upper) / 3. `__slots__` and an overridden `__setattr__` enforce immutability.
@@ -85,7 +85,7 @@ print(fuzzy.centroid)  # 15.0
 avg = FuzzyTriangleNumber.average([fuzzy1, fuzzy2])
 ```
 
-#### [expert_opinion.py](https://github.com/caitlon/BeCoMe/blob/main/src/models/expert_opinion.py)
+#### [expert_opinion.py](https://github.com/caitlon/BeCoMe/blob/prod/src/models/expert_opinion.py)
 
 `ExpertOpinion` pairs an expert ID with that expert's fuzzy assessment. Opinions compare by
 centroid, so sorting them puts the median in the middle.
@@ -98,7 +98,7 @@ opinion = ExpertOpinion("Expert1", FuzzyTriangleNumber(10.0, 15.0, 20.0))
 opinions_sorted = sorted([opinion1, opinion2, opinion3])  # by centroid
 ```
 
-#### [become_result.py](https://github.com/caitlon/BeCoMe/blob/main/src/models/become_result.py)
+#### [become_result.py](https://github.com/caitlon/BeCoMe/blob/prod/src/models/become_result.py)
 
 `BeCoMeResult` is a Pydantic model holding the calculation outputs: best compromise (ΓΩMean), arithmetic mean (Γ), median (Ω), and maximum error (Δmax). The factory method `from_calculations()` derives the best compromise and error automatically.
 
@@ -114,13 +114,13 @@ print(result.max_error)
 
 ### Calculators layer (`calculators/`)
 
-#### [base_calculator.py](https://github.com/caitlon/BeCoMe/blob/main/src/calculators/base_calculator.py)
+#### [base_calculator.py](https://github.com/caitlon/BeCoMe/blob/prod/src/calculators/base_calculator.py)
 
 `BaseAggregationCalculator` defines the interface: `calculate_arithmetic_mean()`,
 `calculate_median()`, `calculate_compromise()`, and `sort_by_centroid()`. All four are
 abstract, so a subclass supplies every one of them.
 
-#### [median_strategies.py](https://github.com/caitlon/BeCoMe/blob/main/src/calculators/median_strategies.py)
+#### [median_strategies.py](https://github.com/caitlon/BeCoMe/blob/prod/src/calculators/median_strategies.py)
 
 Median calculation differs for odd and even expert counts. `OddMedianStrategy` returns the middle element after sorting. `EvenMedianStrategy` averages the two middle elements. The calculator selects the strategy at runtime, from the expert count.
 
@@ -131,7 +131,7 @@ strategy = OddMedianStrategy() if m % 2 == 1 else EvenMedianStrategy()
 median = strategy.calculate(sorted_opinions)
 ```
 
-#### [become_calculator.py](https://github.com/caitlon/BeCoMe/blob/main/src/calculators/become_calculator.py)
+#### [become_calculator.py](https://github.com/caitlon/BeCoMe/blob/prod/src/calculators/become_calculator.py)
 
 Main BeCoMe implementation. Arithmetic mean (Γ) averages lower bounds, peaks, and upper bounds separately. Median (Ω) sorts opinions by centroid and applies the matching strategy. Best compromise (ΓΩMean) averages mean and median component-wise. Maximum error (Δmax) is half the distance between mean and median centroids.
 
@@ -151,7 +151,7 @@ result = calculator.calculate_compromise(opinions)
 
 ### Interpreters layer (`interpreters/`)
 
-#### [likert_interpreter.py](https://github.com/caitlon/BeCoMe/blob/main/src/interpreters/likert_interpreter.py)
+#### [likert_interpreter.py](https://github.com/caitlon/BeCoMe/blob/prod/src/interpreters/likert_interpreter.py)
 
 `LikertDecisionInterpreter` maps fuzzy number centroids to a 5-point Likert scale
 (0, 25, 50, 75, 100) and generates the decision text. It is what the Pendlers case needs, where

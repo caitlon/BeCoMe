@@ -95,7 +95,7 @@ The `api` service in `docker/docker-compose.yml` reads `APP_ENV` with `${APP_ENV
 
 ## CI
 
-`.github/workflows/ci.yml` runs on every push and pull request to `main`, `develop`, and `staging`, so the deploy branches get the same full pipeline as `main`. That pipeline covers lint, Python and frontend tests, backend and Playwright end-to-end tests, and SonarCloud (the last on pull requests and on pushes to `main`). It sets `APP_ENV=test` on the `python-tests`, `backend-e2e`, and `e2e` jobs, including the steps that start a live server. `scripts/ci/e2e-local.sh` sets the same value for local end-to-end runs.
+`.github/workflows/ci.yml` runs on every push and pull request to `dev`, `test`, and `prod`, so the deploy branches get the same full pipeline as `prod`. That pipeline covers lint, Python and frontend tests, backend and Playwright end-to-end tests, and SonarCloud (the last on pull requests and on pushes to `prod`). It sets `APP_ENV=test` on the `python-tests`, `backend-e2e`, and `e2e` jobs, including the steps that start a live server. `scripts/ci/e2e-local.sh` sets the same value for local end-to-end runs.
 
 ## Development workflow
 
@@ -103,11 +103,11 @@ Each environment tracks one git branch, and a push to that branch redeploys the 
 
 | Branch | Environment | Profile | Services |
 |--------|-------------|---------|----------|
-| `develop` | dev | `APP_ENV=dev` | `dev-backend`, `dev-frontend`, `dev-db`, `dev-photos` |
-| `staging` | test | `APP_ENV=test` | `test-backend`, `test-frontend`, `test-db`, `test-photos` |
-| `main` | production | `APP_ENV=prod` | `prod-backend`, `prod-frontend`, `prod-db`, `prod-photos` |
+| `dev` | dev | `APP_ENV=dev` | `dev-backend`, `dev-frontend`, `dev-db`, `dev-photos` |
+| `test` | test | `APP_ENV=test` | `test-backend`, `test-frontend`, `test-db`, `test-photos` |
+| `prod` | production | `APP_ENV=prod` | `prod-backend`, `prod-frontend`, `prod-db`, `prod-photos` |
 
-Work moves in one direction. Cut a feature branch from `develop`, open a pull request back into `develop`, and the merge auto-deploys to dev for a first live check. When a slice is ready for QA, promote `develop` to `staging`. That deploy runs the `test` profile with production-like settings (rate limiting on, debug off), so manual testing is realistic. Promote `staging` to `main` to release, which deploys the `prod` profile and serves the public site. Hotfixes travel the same path instead of landing on `main` directly.
+Work moves in one direction. Cut a feature branch from `dev`, open a pull request back into `dev`, and the merge auto-deploys to dev for a first live check. When a slice is ready for QA, promote `dev` to `test`. That deploy runs the `test` profile with production-like settings (rate limiting on, debug off), so manual testing is realistic. Promote `test` to `prod` to release, which deploys the `prod` profile and serves the public site. Hotfixes travel the same path instead of landing on `prod` directly.
 
 Each environment has its own isolated Railway Postgres (`*-db`) and its own Railway Storage Bucket for profile photos (`*-photos`).
 
@@ -164,8 +164,8 @@ Two settings gate the address checks in `api/services/email_policy.py` that run 
 All three environments run entirely on Railway, each with its own isolated Postgres and photo bucket. The database layer is hardened the same way across them: Alembic owns the schema, the app connects as the least-privilege `become_app` role, and the production and staging databases are internal-only.
 
 - **prod** is live: https://www.becomify.app (frontend) and https://api.becomify.app (API), `APP_ENV=prod`. Database is **Railway Postgres** (`prod-db`). Profile photos live in a **Railway Storage Bucket** (`prod-photos`) served through the API photo proxy.
-- **test / staging** is live from `staging`: https://harbor.becomify.app (frontend) and https://api-harbor.becomify.app (API), on its own Railway Postgres (`test-db`) and bucket (`test-photos`), `APP_ENV=test`.
-- **dev** deploys from `develop`: https://atelier.becomify.app (frontend) and https://api-atelier.becomify.app (API), on its own Railway Postgres (`dev-db`) and bucket (`dev-photos`). It also runs locally without selecting a profile, since dev is the default, though the base `.env`
+- **test / staging** is live from `test`: https://harbor.becomify.app (frontend) and https://api-harbor.becomify.app (API), on its own Railway Postgres (`test-db`) and bucket (`test-photos`), `APP_ENV=test`.
+- **dev** deploys from `dev`: https://atelier.becomify.app (frontend) and https://api-atelier.becomify.app (API), on its own Railway Postgres (`dev-db`) and bucket (`dev-photos`). It also runs locally without selecting a profile, since dev is the default, though the base `.env`
 with `SECRET_KEY` is still required.
 
 Dev and staging moved off their generated `*.up.railway.app` hosts on 2026-07-31. They had to. `up.railway.app` is on the Public Suffix List, so a frontend and an API on two of those hosts count as different sites. The browser never sent the `SameSite=Strict` session cookies between them. Login answered `200` and the next request answered `401`, which looked like a broken session rather than a domain-topology problem. Production was never affected, since `www.becomify.app` and `api.becomify.app` share one registrable domain. The names avoid `dev` and `staging` so guessing does not find the environments. Certificate Transparency logs publish the certificates anyway, so that is a speed bump rather than access control. Adding a domain, the `_railway-verify` TXT record a proxied CNAME needs, and the cutover order are covered by the `cloudflare-operations` skill.

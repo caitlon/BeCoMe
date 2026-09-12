@@ -364,6 +364,6 @@ uv run pytest tests/unit/api/ tests/integration/api/ --cov=api --cov-report=term
 ## Related documentation
 
 - [Main README](https://docs.becomify.app/): project overview
-- [docs/security.md](https://github.com/caitlon/BeCoMe/blob/main/docs/security.md): application and database security posture
+- [docs/security.md](https://github.com/caitlon/BeCoMe/blob/prod/docs/security.md): application and database security posture
 - [Environments](https://docs.becomify.app/environments/): the dev, test, and prod profiles, Railway
   deployment, and database topology

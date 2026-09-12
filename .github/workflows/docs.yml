@@ -1,7 +1,7 @@
 name: Docs
 
-# Publishes from `main` only, and that is the point rather than an accident: the
-# site describes what is actually deployed, not what has merged into develop and
+# Publishes from `prod` only, and that is the point rather than an accident: the
+# site describes what is actually deployed, not what has merged into dev and
 # is waiting for a promotion. The cost is accepted and worth stating, because it
 # surprises people: a typo fix in the documentation also waits for a promotion.
 #
@@ -12,7 +12,7 @@ name: Docs
 # of the deploy token.
 on:
   push:
-    branches: [main]
+    branches: [prod]
     paths:
       - docs/**
       - mkdocs.yml
@@ -87,4 +87,4 @@ jobs:
           # goes green, a `pages.dev` URL appears in the log, and docs.becomify.app
           # keeps serving the previous build. A silent no-op is the worst outcome
           # available here, so the branch is named rather than detected.
-          command: pages deploy site --project-name=becomify-docs --branch=main
+          command: pages deploy site --project-name=becomify-docs --branch=prod
