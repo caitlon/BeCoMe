@@ -1,16 +1,16 @@
 name: Branch Flow Guard
 
-# Enforces the promotion chain: feature/fix -> develop -> staging -> main.
+# Enforces the promotion chain: feature/fix -> dev -> test -> prod.
 #
 # GitHub branch protection cannot restrict a PR's SOURCE branch natively, so this
-# required check fails any PR into `staging` or `main` that does not come from the
-# allowed upstream branch. Feature/fix PRs into `develop` are unrestricted.
+# required check fails any PR into `test` or `prod` that does not come from the
+# allowed upstream branch. Feature/fix PRs into `dev` are unrestricted.
 
 on:
   pull_request:
     branches:
-      - main
-      - staging
+      - prod
+      - test
 
 permissions:
   contents: read
@@ -27,15 +27,15 @@ jobs:
         run: |
           echo "PR: $HEAD -> $BASE"
           case "$BASE" in
-            main)
-              if [ "$HEAD" != "staging" ]; then
-                echo "::error::PRs into 'main' (production) must come from 'staging'. Got '$HEAD'. Allowed flow: develop -> staging -> main."
+            prod)
+              if [ "$HEAD" != "test" ]; then
+                echo "::error::PRs into 'prod' (production) must come from 'test'. Got '$HEAD'. Allowed flow: dev -> test -> prod."
                 exit 1
               fi
               ;;
-            staging)
-              if [ "$HEAD" != "develop" ]; then
-                echo "::error::PRs into 'staging' (test) must come from 'develop'. Got '$HEAD'. Allowed flow: develop -> staging -> main."
+            test)
+              if [ "$HEAD" != "dev" ]; then
+                echo "::error::PRs into 'test' must come from 'dev'. Got '$HEAD'. Allowed flow: dev -> test -> prod."
                 exit 1
               fi
               ;;
