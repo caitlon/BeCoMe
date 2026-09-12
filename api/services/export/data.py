@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 
+from api.services.agreement_level import AgreementLevel
 from src.models.fuzzy_number import triangular_centroid
 
 
@@ -74,6 +75,7 @@ class ResultExportData:
     generated_at: datetime
     num_experts: int
     max_error: float
+    agreement: AgreementLevel
     best_compromise: FuzzyTriple
     arithmetic_mean: FuzzyTriple
     median: FuzzyTriple

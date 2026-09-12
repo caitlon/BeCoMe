@@ -4,6 +4,7 @@ import i18n, { defaultNS, resources } from '@/i18n';
 const expectedNamespaces: (keyof typeof resources.en)[] = [
   'common', 'landing', 'auth', 'about', 'projects',
   'profile', 'caseStudies', 'docs', 'onboarding', 'faq',
+  'privacy',
 ];
 
 describe('i18n configuration', () => {
@@ -15,9 +16,9 @@ describe('i18n configuration', () => {
     expect(Object.keys(resources)).toEqual(['en', 'cs']);
   });
 
-  it('each language has 10 namespaces', () => {
-    expect(Object.keys(resources.en)).toHaveLength(10);
-    expect(Object.keys(resources.cs)).toHaveLength(10);
+  it('each language has 11 namespaces', () => {
+    expect(Object.keys(resources.en)).toHaveLength(11);
+    expect(Object.keys(resources.cs)).toHaveLength(11);
   });
 
   it('all namespaces are non-empty objects', () => {

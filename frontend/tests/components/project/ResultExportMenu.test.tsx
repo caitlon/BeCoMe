@@ -5,6 +5,7 @@ import { render } from '@tests/utils';
 import { ResultExportMenu } from '@/components/project';
 import { createProjectWithRole } from '@tests/factories/project';
 import i18n from '@/i18n';
+import { ThemeProvider } from '@/components/ThemeProvider';
 
 const { mockApi, mockToast, mockDownloadBlob } = vi.hoisted(() => ({
   mockApi: {
@@ -57,7 +58,7 @@ describe('ResultExportMenu', () => {
     const pdfItem = await screen.findByRole('menuitem', { name: /pdf report/i });
     await user.click(pdfItem);
 
-    expect(mockApi.exportProjectResult).toHaveBeenCalledWith('project-1', 'pdf', 'en');
+    expect(mockApi.exportProjectResult).toHaveBeenCalledWith('project-1', 'pdf', 'en', 'light');
     expect(mockDownloadBlob).toHaveBeenCalledWith(expect.any(Blob), 'test-project-results.pdf');
     expect(mockToast).toHaveBeenCalledWith({ title: 'Export downloaded' });
   });
@@ -73,9 +74,27 @@ describe('ResultExportMenu', () => {
     const csvItem = await screen.findByRole('menuitem', { name: /csv data/i });
     await user.click(csvItem);
 
-    expect(mockApi.exportProjectResult).toHaveBeenCalledWith('project-1', 'csv', 'en');
+    expect(mockApi.exportProjectResult).toHaveBeenCalledWith('project-1', 'csv', 'en', 'light');
     expect(mockDownloadBlob).toHaveBeenCalledWith(expect.any(Blob), 'test-project-results.csv');
     expect(mockToast).toHaveBeenCalledWith({ title: 'Export downloaded' });
+  });
+
+  it('exports in the theme the reader is looking at', async () => {
+    // The report is meant to be a printed copy of the page, so it follows the
+    // resolved theme rather than a server-side guess about the reader's OS.
+    const user = userEvent.setup();
+    const project = setup();
+    mockApi.exportProjectResult.mockResolvedValue(new Blob(['pdf'], { type: 'application/pdf' }));
+
+    render(
+      <ThemeProvider defaultTheme="dark">
+        <ResultExportMenu project={project} />
+      </ThemeProvider>
+    );
+    await user.click(screen.getByRole('button', { name: /export/i }));
+    await user.click(await screen.findByText(/PDF/i));
+
+    expect(mockApi.exportProjectResult).toHaveBeenCalledWith('project-1', 'pdf', 'en', 'dark');
   });
 
   it('shows an error toast when the export fails with an Error', async () => {
@@ -111,7 +130,7 @@ describe('ResultExportMenu', () => {
       const pdfItem = await screen.findByRole('menuitem', { name: /pdf/i });
       await user.click(pdfItem);
 
-      expect(mockApi.exportProjectResult).toHaveBeenCalledWith('project-1', 'pdf', 'cs');
+      expect(mockApi.exportProjectResult).toHaveBeenCalledWith('project-1', 'pdf', 'cs', 'light');
     } finally {
       await i18n.changeLanguage('en');
     }

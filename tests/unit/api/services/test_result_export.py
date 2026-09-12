@@ -8,6 +8,7 @@ from uuid import uuid4
 import pytest
 
 from api.db.models import CalculationResult, ExpertOpinion, Project, User
+from api.services.agreement_level import AgreementLevel
 from api.services.export.data import (
     ExportFormat,
     FuzzyTriple,
@@ -22,6 +23,8 @@ from api.services.export.renderers import (
     get_renderer,
 )
 from api.services.export.result_export_service import ResultExportService
+from api.services.export.theme import ReportTheme, get_palette
+from tests.shared.pdf_inspection import as_fractions, fill_colours
 
 
 @pytest.fixture
@@ -36,6 +39,7 @@ def export_data() -> ResultExportData:
         generated_at=datetime(2026, 6, 28, 12, 0, tzinfo=UTC),
         num_experts=2,
         max_error=3.5,
+        agreement=AgreementLevel.HIGH,
         best_compromise=FuzzyTriple(10.0, 20.0, 30.0),
         arithmetic_mean=FuzzyTriple(9.0, 19.0, 29.0),
         median=FuzzyTriple(11.0, 21.0, 31.0),
@@ -87,6 +91,7 @@ class TestCsvResultRenderer:
             generated_at=datetime(2026, 6, 28, tzinfo=UTC),
             num_experts=1,
             max_error=1.0,
+            agreement=AgreementLevel.HIGH,
             best_compromise=FuzzyTriple(1.0, 2.0, 3.0),
             arithmetic_mean=FuzzyTriple(1.0, 2.0, 3.0),
             median=FuzzyTriple(1.0, 2.0, 3.0),
@@ -106,7 +111,9 @@ class TestPdfResultRenderer:
 
     def test_render_returns_pdf_bytes(self, export_data: ResultExportData):
         """The PDF renderer produces a non-trivial PDF document."""
-        content = PdfResultRenderer().render(export_data, get_labels(ReportLang.EN))
+        content = PdfResultRenderer(get_palette(ReportTheme.LIGHT)).render(
+            export_data, get_labels(ReportLang.EN)
+        )
         assert content.startswith(b"%PDF")
         assert len(content) > 1000
 
@@ -115,14 +122,47 @@ class TestPdfResultRenderer:
         data = replace(
             export_data, likert_value=None, likert_decision=None, project_description=None
         )
-        content = PdfResultRenderer().render(data, get_labels(ReportLang.CS))
+        content = PdfResultRenderer(get_palette(ReportTheme.LIGHT)).render(
+            data, get_labels(ReportLang.CS)
+        )
         assert content.startswith(b"%PDF")
+
+    def test_dark_report_paints_the_page_in_the_dark_background(
+        self, export_data: ResultExportData
+    ):
+        """A dark report fills the page, instead of leaving the viewer's white.
+
+        Without an explicit fill the page stays white and only the text turns
+        pale, which is the worst of both themes: unreadable and still not dark.
+        """
+        # GIVEN the dark palette
+        palette = get_palette(ReportTheme.DARK)
+
+        # WHEN the report is rendered in it
+        content = PdfResultRenderer(palette).render(export_data, get_labels(ReportLang.EN))
+
+        # THEN the page carries that background as a fill colour
+        assert as_fractions(palette.background) in fill_colours(content)
+
+    def test_light_report_does_not_paint_the_dark_background(self, export_data: ResultExportData):
+        """The light report must not carry the dark theme's page fill."""
+        # GIVEN the light palette
+        # WHEN the report is rendered in it
+        content = PdfResultRenderer(get_palette(ReportTheme.LIGHT)).render(
+            export_data, get_labels(ReportLang.EN)
+        )
+
+        # THEN nothing paints the dark background
+        dark = as_fractions(get_palette(ReportTheme.DARK).background)
+        assert dark not in fill_colours(content)
 
     def test_render_wraps_long_expert_text(self, export_data: ResultExportData):
         """Long expert names/positions are wrapped (Paragraph), not clipped."""
         long_text = "Very long expert identification text that exceeds the cell " * 3
         data = replace(export_data, opinions=(OpinionRow(long_text, long_text, 10.0, 20.0, 30.0),))
-        content = PdfResultRenderer().render(data, get_labels(ReportLang.EN))
+        content = PdfResultRenderer(get_palette(ReportTheme.LIGHT)).render(
+            data, get_labels(ReportLang.EN)
+        )
         assert content.startswith(b"%PDF")
 
 
@@ -131,11 +171,11 @@ class TestRendererFactory:
 
     def test_returns_pdf_renderer(self):
         """PDF maps to the PDF renderer."""
-        assert isinstance(get_renderer(ExportFormat.PDF), PdfResultRenderer)
+        assert isinstance(get_renderer(ExportFormat.PDF, ReportTheme.LIGHT), PdfResultRenderer)
 
     def test_returns_csv_renderer(self):
         """CSV maps to the CSV renderer."""
-        assert isinstance(get_renderer(ExportFormat.CSV), CsvResultRenderer)
+        assert isinstance(get_renderer(ExportFormat.CSV, ReportTheme.LIGHT), CsvResultRenderer)
 
 
 class TestResultExportServiceHelpers:
@@ -187,6 +227,7 @@ def _calc_result(project_id) -> CalculationResult:
         median_peak=20.0,
         median_upper=30.0,
         max_error=2.0,
+        agreement=AgreementLevel.HIGH,
         num_experts=1,
         likert_value=50,
         likert_decision="Neutral",

@@ -48,6 +48,15 @@ test.describe('WCAG Audit: Public Pages', () => {
     expect(violations).toEqual([]);
   });
 
+  test('Privacy page has no WCAG violations', async ({ page }) => {
+    await page.goto('/privacy');
+    await page.waitForLoadState('networkidle');
+
+    const violations = await auditPage(page);
+
+    expect(violations).toEqual([]);
+  });
+
   test('case studies page has no WCAG violations', async ({ page }) => {
     await page.goto('/case-studies');
     await page.waitForLoadState('networkidle');

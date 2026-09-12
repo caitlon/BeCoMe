@@ -615,9 +615,12 @@ class ApiClient {
   async exportProjectResult(
     projectId: string,
     format: 'pdf' | 'csv',
-    lang: string
+    lang: string,
+    theme: 'light' | 'dark'
   ): Promise<Blob> {
-    const url = `${API_BASE_URL}/projects/${projectId}/result/export?format=${format}&lang=${lang}`;
+    const url =
+      `${API_BASE_URL}/projects/${projectId}/result/export` +
+      `?format=${format}&lang=${lang}&theme=${theme}`;
     const response = await this.fetchWithRefresh(url, () => ({
       credentials: 'include',
       headers: { 'X-Request-ID': crypto.randomUUID() },

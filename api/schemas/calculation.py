@@ -6,6 +6,7 @@ from typing import Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from api.schemas.validators import validate_fuzzy_constraints
+from api.services.agreement_level import AgreementLevel
 from src.models.fuzzy_number import FuzzyTriangleNumber, triangular_centroid
 
 
@@ -87,9 +88,12 @@ class CalculateResponse(BaseModel):
 class CalculationResultResponse(CalculateResponse):
     """BeCoMe calculation result for a project.
 
-    Extends CalculateResponse with Likert interpretation and timestamp.
+    Extends CalculateResponse with the agreement reading, the Likert interpretation
+    and the timestamp. Both readings are derived on every read rather than stored;
+    see :mod:`api.services.agreement_level` for why.
     """
 
+    agreement_level: AgreementLevel
     likert_value: int | None = Field(None, ge=0, le=100)
     likert_decision: str | None = None
     calculated_at: datetime

@@ -21,9 +21,11 @@ from api.middleware.rate_limit import LIMIT_STANDARD, LIMIT_WRITE, limiter
 from api.pagination import PaginationParams
 from api.schemas.calculation import CalculationResultResponse, FuzzyNumberOutput
 from api.schemas.opinion import OpinionCreate, OpinionResponse
+from api.services.agreement_level import derive_agreement
 from api.services.calculation_service import CalculationService
 from api.services.export.data import ExportFormat, ReportLang
 from api.services.export.result_export_service import ResultExportService
+from api.services.export.theme import ReportTheme
 from api.services.likert_verdict import derive_verdict
 from api.services.opinion_service import OpinionService
 
@@ -170,6 +172,7 @@ def get_result(
         result.best_compromise_upper,
     )
     return CalculationResultResponse(
+        agreement_level=derive_agreement(project, result.max_error),
         best_compromise=FuzzyNumberOutput.from_bounds(
             result.best_compromise_lower,
             result.best_compromise_peak,
@@ -205,6 +208,9 @@ def export_result(
     service: Annotated[ResultExportService, Depends(get_result_export_service)],
     export_format: Annotated[ExportFormat, Query(alias="format", description="File format")],
     lang: Annotated[ReportLang, Query(description="Report language")] = ReportLang.EN,
+    theme: Annotated[
+        ReportTheme, Query(description="Theme to render in, mirroring the interface")
+    ] = ReportTheme.LIGHT,
 ) -> Response:
     """Export a project's BeCoMe result as a downloadable PDF or CSV file.
 
@@ -217,9 +223,12 @@ def export_result(
     :param service: Result export service.
     :param export_format: Requested file format (the ``format`` query parameter).
     :param lang: Report language (defaults to English).
+    :param theme: Theme to render in. Defaults to light: a document is the thing
+        people print, and a dark page either eats toner or comes out of a driver
+        with backgrounds off as pale text on white paper.
     :return: The rendered file as an attachment download.
     """
-    exported = service.export(project, export_format, lang)
+    exported = service.export(project, export_format, lang, theme)
     if exported is None:
         logger.warning(
             "Result export had nothing to export",
@@ -228,6 +237,7 @@ def export_result(
                 "project_id": str(project.id),
                 "format": export_format.value,
                 "lang": lang.value,
+                "theme": theme.value,
             },
         )
         raise HTTPException(
@@ -237,5 +247,12 @@ def export_result(
     return Response(
         content=exported.content,
         media_type=exported.media_type,
-        headers={"Content-Disposition": f'attachment; filename="{exported.filename}"'},
+        headers={
+            "Content-Disposition": f'attachment; filename="{exported.filename}"',
+            # The report names every expert and prints their estimates, and the URL
+            # is stable per project, format and theme. Left unsaid, whether it is
+            # kept is decided by the browser's disk cache and by whatever proxy sits
+            # in front of the API.
+            "Cache-Control": "no-store",
+        },
     )
