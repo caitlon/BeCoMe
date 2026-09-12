@@ -105,7 +105,7 @@ Each environment tracks one git branch, and a push to that branch redeploys the 
 |--------|-------------|---------|----------|
 | `dev` | dev | `APP_ENV=dev` | `dev-backend`, `dev-frontend`, `dev-db`, `dev-photos` |
 | `test` | test | `APP_ENV=test` | `test-backend`, `test-frontend`, `test-db`, `test-photos` |
-| `prod` | production | `APP_ENV=prod` | `prod-backend`, `prod-frontend`, `prod-db`, `prod-photos` |
+| `prod` | prod | `APP_ENV=prod` | `prod-backend`, `prod-frontend`, `prod-db`, `prod-photos` |
 
 Work moves in one direction. Cut a feature branch from `dev`, open a pull request back into `dev`, and the merge auto-deploys to dev for a first live check. When a slice is ready for QA, promote `dev` to `test`. That deploy runs the `test` profile with production-like settings (rate limiting on, debug off), so manual testing is realistic. Promote `test` to `prod` to release, which deploys the `prod` profile and serves the public site. Hotfixes travel the same path instead of landing on `prod` directly.
 
@@ -115,20 +115,20 @@ Each environment has its own isolated Railway Postgres (`*-db`) and its own Rail
 
 The root `railway.toml` carries the API build and deploy settings: it points at `docker/Dockerfile` and the `/api/v1/health` check. Railway reads that file from the repository root for every service in the project, so the frontend cannot share it without trying to build the API image. The frontend service therefore has its own config file, `frontend/railway.json`, chosen per service through the Railway "Railway Config File" setting (the absolute path `/frontend/railway.json`). It pins `frontend/Dockerfile` and a `/` health check. Everything else that differs between environments lives in per-environment service variables.
 
-| Variable | dev | staging (test) | production (prod) |
-|----------|-----|----------------|-------------------|
+| Variable | dev | test | prod |
+|----------|-----|------|------|
 | `APP_ENV` | `dev` | `test` | `prod` |
 | `SECRET_KEY` | strong value (`openssl rand -hex 32`) | strong value | strong value |
-| `DATABASE_URL` | dev `become_app` role | staging `become_app` role | production `become_app` role |
+| `DATABASE_URL` | dev `become_app` role | test `become_app` role | prod `become_app` role |
 | `MIGRATION_DATABASE_URL` | privileged role, Alembic only | privileged role, Alembic only | privileged role, Alembic only |
-| `CORS_ORIGINS` | dev origins | staging origins | production origins |
-| `REDIS_URL` | dev Redis | staging Redis | production Redis |
+| `CORS_ORIGINS` | dev origins | test origins | prod origins |
+| `REDIS_URL` | dev Redis | test Redis | prod Redis |
 | `CLOUDFLARE_ORIGIN_SECRET` | own secret | own secret | own secret, each matching that environment's Cloudflare Transform Rule |
-| `TURNSTILE_ENABLED` / `TURNSTILE_SECRET_KEY` / `TURNSTILE_HOSTNAMES` | `true`, widget secret, dev frontend host | `true`, widget secret, staging frontend host | `true`, widget secret, production frontend hosts |
+| `TURNSTILE_ENABLED` / `TURNSTILE_SECRET_KEY` / `TURNSTILE_HOSTNAMES` | `true`, widget secret, dev frontend host | `true`, widget secret, test frontend host | `true`, widget secret, prod frontend hosts |
 | `DEBUG` | `false` | `false` | `false` |
 | `LOG_LEVEL` | `DEBUG` | `INFO` | `INFO` |
-| `API_PUBLIC_URL` | dev API URL | staging API URL | production API URL |
-| `VITE_API_URL` / `VITE_SENTRY_DSN` / `VITE_APP_ENV` / `VITE_TURNSTILE_SITE_KEY` (frontend build args) | dev values | staging values | production values |
+| `API_PUBLIC_URL` | dev API URL | test API URL | prod API URL |
+| `VITE_API_URL` / `VITE_SENTRY_DSN` / `VITE_APP_ENV` / `VITE_TURNSTILE_SITE_KEY` (frontend build args) | dev values | test values | prod values |
 | `BUCKET_NAME` / `BUCKET_ENDPOINT` / `BUCKET_ACCESS_KEY_ID` / `BUCKET_SECRET_ACCESS_KEY` | injected from `dev-photos` | injected from `test-photos` | injected from `prod-photos` |
 
 A deployed service that leaves `APP_ENV` unset falls back to the dev profile. The startup guard still runs there, because it keys off `RAILWAY_ENVIRONMENT_NAME` rather than the profile name, so an unset variable cannot weaken a deploy. Set the profile explicitly anyway (`dev`, `test`, or `prod`), so that the log level, the log format, and the `.env.<APP_ENV>` overlay are the ones you meant.
