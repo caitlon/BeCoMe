@@ -18,9 +18,9 @@ set -uo pipefail
 
 ENV_ARG="${1:-prod}"
 case "$ENV_ARG" in
-  prod) RW_ENV="production"; DB_SVC="prod-db" ;;
-  test) RW_ENV="staging";    DB_SVC="test-db" ;;
-  dev)  RW_ENV="dev";        DB_SVC="dev-db" ;;
+  prod) RW_ENV="prod"; DB_SVC="prod-db" ;;
+  test) RW_ENV="test"; DB_SVC="test-db" ;;
+  dev)  RW_ENV="dev";  DB_SVC="dev-db" ;;
   *) echo "usage: $0 [prod|test|dev]"; exit 1 ;;
 esac
 
