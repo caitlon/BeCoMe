@@ -45,10 +45,22 @@ describe('ResultsSection - Results Display', () => {
     expect(screen.getByText('Best Compromise')).toBeInTheDocument();
   });
 
-  it('shows agreement badge with results', () => {
-    // max_error=12.5, scale 0-100, errorPercent=12.5% → "High agreement"
+  it('shows the level the server sent, not one it recomputes', () => {
+    // max_error=12.5 on a 0-100 scale would read as high if this component still did
+    // the arithmetic. The server says low, and the server is the one place the rule
+    // lives now — so low is what must appear.
     const { project, opinions } = setup();
-    const result = createCalculationResult({ max_error: 12.5 });
+    const result = createCalculationResult({ max_error: 12.5, agreement_level: 'low' });
+
+    render(<ResultsSection result={result} project={project} showIndividual={false} setShowIndividual={vi.fn()} opinions={opinions} />);
+
+    expect(screen.getByText('Low agreement')).toBeInTheDocument();
+    expect(screen.queryByText('High agreement')).not.toBeInTheDocument();
+  });
+
+  it('shows agreement badge with results', () => {
+    const { project, opinions } = setup();
+    const result = createCalculationResult({ agreement_level: 'high' });
 
     render(<ResultsSection result={result} project={project} showIndividual={false} setShowIndividual={vi.fn()} opinions={opinions} />);
 
@@ -56,9 +68,8 @@ describe('ResultsSection - Results Display', () => {
   });
 
   it('shows moderate agreement for medium error', () => {
-    // max_error=30, scale 0-100, errorPercent=30% → "Moderate agreement"
     const { project, opinions } = setup();
-    const result = createCalculationResult({ max_error: 30 });
+    const result = createCalculationResult({ agreement_level: 'moderate' });
 
     render(<ResultsSection result={result} project={project} showIndividual={false} setShowIndividual={vi.fn()} opinions={opinions} />);
 
@@ -66,9 +77,8 @@ describe('ResultsSection - Results Display', () => {
   });
 
   it('shows low agreement for high error', () => {
-    // max_error=50, scale 0-100, errorPercent=50% → "Low agreement"
     const { project, opinions } = setup();
-    const result = createCalculationResult({ max_error: 50 });
+    const result = createCalculationResult({ agreement_level: 'low' });
 
     render(<ResultsSection result={result} project={project} showIndividual={false} setShowIndividual={vi.fn()} opinions={opinions} />);
 
@@ -221,7 +231,7 @@ describe('ResultsSection - Best Compromise Hero', () => {
 
   it('shows a moderate confidence pill for medium error', () => {
     const { project, opinions } = setup();
-    const result = createCalculationResult({ max_error: 30 });
+    const result = createCalculationResult({ agreement_level: 'moderate' });
 
     render(<ResultsSection result={result} project={project} showIndividual={false} setShowIndividual={vi.fn()} opinions={opinions} />);
 
@@ -230,7 +240,7 @@ describe('ResultsSection - Best Compromise Hero', () => {
 
   it('shows a low confidence pill for high error', () => {
     const { project, opinions } = setup();
-    const result = createCalculationResult({ max_error: 50 });
+    const result = createCalculationResult({ agreement_level: 'low' });
 
     render(<ResultsSection result={result} project={project} showIndividual={false} setShowIndividual={vi.fn()} opinions={opinions} />);
 

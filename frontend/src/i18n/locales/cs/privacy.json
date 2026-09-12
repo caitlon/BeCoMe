@@ -1,0 +1,76 @@
+{
+  "meta": {
+    "title": "Ochrana osobních údajů",
+    "subtitle": "Co o vás tato služba uchovává, proč a jak si to vzít zpět.",
+    "updated": "Aktualizováno 8. září 2026"
+  },
+  "controller": {
+    "heading": "Kdo za to odpovídá",
+    "body": "Službu provozuje Ekaterina Kuzmina jako samostatný projekt na Provozně ekonomické fakultě České zemědělské univerzity v Praze a je správcem zde popsaných údajů. S jakýmkoli dotazem se obraťte na níže uvedenou adresu.",
+    "email": "xkuze010@studenti.czu.cz"
+  },
+  "collected": {
+    "heading": "Co se ukládá",
+    "intro": "Účet obsahuje pouze to, co služba potřebuje k provozu:",
+    "items": [
+      "Vaši e-mailovou adresu, která identifikuje účet a přijímá ověřovací zprávy a odkazy pro obnovu hesla.",
+      "Vaše jméno a příjmení, viditelné ostatním členům projektu, do kterého se zapojíte.",
+      "Vaše heslo, uložené pouze jako otisk. Původní podoba se nikdy nezapisuje a z uloženého ji nelze získat zpět.",
+      "Profilovou fotografii, pokud ji nahrajete.",
+      "Datum vytvoření účtu a datum potvrzení e-mailu.",
+      "Projekty, které vlastníte nebo do nichž patříte, a expertní názory, které v nich zadáte."
+    ],
+    "outro": "Odděleně od účtu služba vede serverové záznamy. Každý požadavek na API se zaznamenává s časem, s cestou, na kterou směřoval, a s IP adresou, ze které přišel, což dohromady tvoří přehled o tom, co účet dělal a kdy. U požadavků, které vás přihlašují, narazí na limit nebo neprojdou kontrolou formuláře, se zaznamenává i dotčený účet. E-mailové adresy se v těchto záznamech ukládají jako klíčovaný otisk, nikoli čitelně. Není zde žádná reklama ani profilování a žádné údaje se neprodávají ani nesdílejí s nikým mimo níže uvedené poskytovatele."
+  },
+  "basis": {
+    "heading": "Na jakém základě",
+    "body": "Údaje účtu se zpracovávají za účelem poskytnutí služby, o kterou jste požádali, tedy na smluvním základě podle čl. 6 odst. 1 písm. b) GDPR. Omezení počtu přihlášení, kontrola robotů a bezpečnostní záznamy stojí na oprávněném zájmu podle čl. 6 odst. 1 písm. f): bez nich je přihlašovací formulář otevřený automatizovanému zneužití."
+  },
+  "cookies": {
+    "heading": "Soubory cookie",
+    "intro": "Nastavují se tři soubory cookie, všechny až po přihlášení a všechny nezbytné pro fungování služby:",
+    "items": [
+      "__Host-access_token vás udržuje přihlášené. Platí 15 minut.",
+      "__Secure-refresh_token obnovuje relaci, aniž by se znovu ptal na heslo. Platí 7 dní a odesílá se pouze na přihlašovací cesty.",
+      "__Host-csrf_token chrání formuláře před podvržením požadavku z cizího webu."
+    ],
+    "outro": "Všechny tři jsou nezbytně nutné pro službu, kterou jste si výslovně vyžádali, a pravidla ePrivacy proto pro ně nevyžadují souhlas a žádná lišta se nezobrazuje. Formuláře pro přihlášení, registraci a obnovu hesla navíc načítají widget Cloudflare pro kontrolu robotů, který běží v rámu z challenges.cloudflare.com a může si podle podmínek Cloudflare ukládat vlastní data; jde o bezpečnostní opatření, nikoli o sledování. Volba jazyka a motivu se pamatuje v místním úložišti prohlížeče pod klíči become-language a become-theme a nikdy jej neopouští."
+  },
+  "processors": {
+    "heading": "Kdo další s údaji nakládá",
+    "intro": "Jménem správce zpracovává údaje několik poskytovatelů:",
+    "items": [
+      "Railway hostuje aplikaci a její databázi v Amsterdamu, tedy v Evropské unii.",
+      "Cloudflare zajišťuje doručování webu a provozuje kontrolu robotů, která chrání formuláře pro přihlášení, registraci, obnovu hesla a opětovné zaslání ověřovacího e-mailu.",
+      "Resend doručuje ověřovací zprávy a odkazy pro obnovu hesla, takže se k němu dostává vaše e-mailová adresa. Jeho rozhraní je ve Spojených státech, jde tedy o předání mimo Evropskou unii podle kapitoly V GDPR.",
+      "Sentry přijímá hlášení o chybách z prohlížeče i ze serveru, ve svém frankfurtském regionu. Prohlížeč mu navíc při každém zobrazení stránky posílá krátký záznam o relaci, který služba označuje jako release health. Server zhruba u každého desátého požadavku odesílá výkonnostní trasu s cestou, URL a časy databázových dotazů. Přístupové tokeny a tokeny pro obnovu hesla se odstraňují dříve, než cokoli z toho odejde.",
+      "Better Stack přijímá výše popsané serverové záznamy včetně IP adres, ve svém datovém regionu v Evropské unii."
+    ],
+    "outro": "Nepoužívá se žádná analytická ani reklamní služba a kromě widgetu Cloudflare a popsaného hlášení do Sentry není vložen žádný sledovací skript."
+  },
+  "retention": {
+    "heading": "Jak dlouho",
+    "intro": "Jednorázové odkazy vyprší samy:",
+    "items": [
+      "Odkaz pro obnovu hesla platí 60 minut.",
+      "Odkaz pro ověření e-mailu platí 24 hodin.",
+      "Přihlášená relace trvá 15 minut a používáním se sama obnovuje. Sedm dní nečinnosti ji ukončí; pro průběžně používanou relaci není pevný horní limit."
+    ],
+    "outro": "Samotný účet se uchovává, dokud jej nesmažete. Záznamy logů se uchovávají tři dny a poté se zahazují. Hlášení o chybách, záznamy relací a trasy uchovává Sentry 30 dní."
+  },
+  "rights": {
+    "heading": "Vaše práva a jak je uplatnit",
+    "intro": "GDPR vám k těmto údajům dává práva. Dvě z nich jsou už tlačítka ve vašem profilu:",
+    "items": [
+      "Stáhnout vše, co o vás služba uchovává, jedním souborem.",
+      "Smazat účet i vše, co obsahuje. Projekty, které vlastníte, je nutné vyřešit nejdříve a dialog se na každý z nich zeptá: předat jinému členovi, nebo smazat i s názory. Předaný projekt zůstává, stejně jako názory ostatních členů. Smazání nelze vzít zpět.",
+      "Kdykoli opravit své jméno a příjmení. E-mailovou adresu v aplikaci změnit nelze; o její opravu napište na výše uvedenou adresu.",
+      "Vznést námitku proti zpracování nebo požádat o jeho omezení písemně na výše uvedené adrese."
+    ],
+    "profileLink": "Přejít do profilu"
+  },
+  "complaint": {
+    "heading": "Když je něco špatně",
+    "body": "Napište nejprve na výše uvedenou adresu. Máte také právo podat stížnost u Úřadu pro ochranu osobních údajů na uoou.gov.cz."
+  }
+}

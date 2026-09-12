@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useTheme } from "@/components/ThemeProvider";
 import { Loader2, ChevronDown, Download, FileText, FileSpreadsheet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,6 +22,7 @@ export interface ResultExportMenuProps {
 /** Result export (PDF / CSV) dropdown, rendered in the project header. */
 export const ResultExportMenu = ({ project }: ResultExportMenuProps) => {
   const { t, i18n } = useTranslation("projects");
+  const { resolvedTheme } = useTheme();
   const { toast } = useToast();
   const [exporting, setExporting] = useState<"pdf" | "csv" | null>(null);
 
@@ -28,7 +30,9 @@ export const ResultExportMenu = ({ project }: ResultExportMenuProps) => {
     setExporting(format);
     try {
       const lang = toSupportedLanguage(i18n.language);
-      const blob = await api.exportProjectResult(project.id, format, lang);
+      // resolvedTheme, not theme: "system" is the reader's OS talking, and the
+      // server has no way to resolve it.
+      const blob = await api.exportProjectResult(project.id, format, lang, resolvedTheme);
       const slug =
         project.name
           .toLowerCase()

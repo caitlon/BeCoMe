@@ -1,0 +1,76 @@
+{
+  "meta": {
+    "title": "Privacy",
+    "subtitle": "What this service stores about you, why, and how to take it back.",
+    "updated": "Last updated 8 September 2026"
+  },
+  "controller": {
+    "heading": "Who is responsible",
+    "body": "Ekaterina Kuzmina is the controller of the data described here. She runs this service as an independent project at the Faculty of Economics and Management, Czech University of Life Sciences Prague. Write to the address below with any question about it.",
+    "email": "xkuze010@studenti.czu.cz"
+  },
+  "collected": {
+    "heading": "What is stored",
+    "intro": "An account holds only what the service needs to work:",
+    "items": [
+      "Your email address, which identifies the account and receives verification and password-reset messages.",
+      "Your first and last name, shown to the other members of a project you join.",
+      "Your password, stored only as a hash. The original is never written down and cannot be recovered from what is stored.",
+      "A profile photo, if you upload one.",
+      "The dates your account was created and your email confirmed.",
+      "The projects you own or belong to, and the expert opinions you enter in them."
+    ],
+    "outro": "Separately from the account, the service keeps server logs. Every request to the API is recorded with its time, the path it asked for, and the IP address it came from, which amounts to a record of what an account did and when. Requests that sign you in, hit a rate limit or fail a form check also record the account involved. Email addresses in those logs are stored as a keyed hash rather than in the clear. There is no advertising and no profiling, and no data is sold or shared with anyone beyond the providers named below."
+  },
+  "basis": {
+    "heading": "On what basis",
+    "body": "The account data is processed to provide the service you asked for, which is the contractual basis under Article 6(1)(b) of the GDPR. Login throttling, the bot check and the security logs rest on legitimate interest under Article 6(1)(f): without them the sign-in form is open to automated abuse."
+  },
+  "cookies": {
+    "heading": "Cookies",
+    "intro": "The service sets three cookies once you sign in, and all three are necessary for it to function:",
+    "items": [
+      "__Host-access_token keeps you signed in. It lasts 15 minutes.",
+      "__Secure-refresh_token renews that session without asking for your password again. It lasts 7 days and is sent only to the authentication routes.",
+      "__Host-csrf_token protects forms against cross-site request forgery."
+    ],
+    "outro": "All three are strictly necessary for a service you explicitly requested, so the ePrivacy rules do not require a consent banner for them and none is shown. The sign-in, registration and password-reset forms also load Cloudflare's bot-check widget. It runs in a frame from challenges.cloudflare.com and may set storage of its own under Cloudflare's terms. That widget is a security measure, not a tracker. Your language and theme choices are remembered in your browser's local storage, under become-language and become-theme, and never leave it."
+  },
+  "processors": {
+    "heading": "Who else handles it",
+    "intro": "Several providers process data on the controller's behalf:",
+    "items": [
+      "Railway hosts the application and its database in Amsterdam, in the European Union.",
+      "Cloudflare serves the site and runs the bot check that protects the sign-in, registration, password-reset and verification-resend forms.",
+      "Resend delivers the verification and password-reset messages, which means it receives your email address. Its endpoint is in the United States, so this is a transfer outside the European Union under Chapter V of the GDPR.",
+      "Sentry receives crash reports from both the browser and the server, in its Frankfurt region. The browser also sends it a short session record on each page view, which the service calls release health. The server samples about one request in ten as a performance trace, carrying the route, the URL and database timings. Access tokens and reset tokens are removed before any of it leaves.",
+      "Better Stack receives the server logs described above, including IP addresses, in its European Union data region."
+    ],
+    "outro": "The service uses no analytics and no advertising, and embeds no tracking script beyond the Cloudflare widget and the Sentry reporting described here."
+  },
+  "retention": {
+    "heading": "How long",
+    "intro": "One-time links expire on their own:",
+    "items": [
+      "A password-reset link is valid for 60 minutes.",
+      "An email verification link is valid for 24 hours.",
+      "A sign-in session lasts 15 minutes and renews itself as you use it. Seven days of inactivity ends it. There is no fixed maximum for a session in continuous use."
+    ],
+    "outro": "The account itself is kept until you delete it. Log records are kept for three days and then discarded. Crash reports, session records and traces are kept by Sentry for 30 days."
+  },
+  "rights": {
+    "heading": "Your rights, and how to use them",
+    "intro": "The GDPR gives you rights over this data. Two of them are already buttons in your profile:",
+    "items": [
+      "Download everything the service holds about you, as a single file.",
+      "Delete your account and everything in it. Projects you own have to be dealt with first, and the dialog asks for each one: hand it to another member, or delete it with its opinions. A project you hand over stays, along with the opinions the other members gave it. Deletion cannot be undone.",
+      "Correct your first and last name at any time. The email address cannot be changed in the app. Write to the address above to have it corrected.",
+      "Object to the processing, or ask for it to be restricted, by writing to the address above."
+    ],
+    "profileLink": "Go to your profile"
+  },
+  "complaint": {
+    "heading": "If something is wrong",
+    "body": "Write to the address above first. You also have the right to complain to the Czech data protection authority, the Úřad pro ochranu osobních údajů, at uoou.gov.cz."
+  }
+}

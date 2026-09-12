@@ -24,6 +24,15 @@ test.describe('Public Pages', () => {
     await expect(page.getByRole('main')).toBeVisible();
   });
 
+  test('privacy page loads and states the licence position', async ({ page }) => {
+    await page.goto('/privacy');
+
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('Privacy');
+    await expect(page.getByRole('main')).toBeVisible();
+    // the sentence the whole no-banner argument rests on
+    await expect(page.getByRole('main')).toContainText('strictly necessary');
+  });
+
   test('documentation page loads', async ({ page }) => {
     await page.goto('/docs');
 

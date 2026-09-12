@@ -37,6 +37,15 @@ class ResultLabels:
     legend_mean: str
     legend_median: str
     legend_best: str
+    best_short: str
+    result_value: str
+    confidence_share: str
+    supporting_calcs: str
+    lower_desc: str
+    peak_desc: str
+    upper_desc: str
+    confidence: str
+    confidence_levels: dict[str, str]
     likert_decisions: dict[int, str]
 
 
@@ -64,6 +73,15 @@ _EN = ResultLabels(
     legend_mean="Arithmetic mean",
     legend_median="Median",
     legend_best="Best compromise",
+    best_short="Best",
+    result_value="Result value",
+    confidence_share="{percent}% of the scale",
+    supporting_calcs="Supporting calculations",
+    lower_desc="Lower (pessimistic)",
+    peak_desc="Peak (most likely)",
+    upper_desc="Upper (optimistic)",
+    confidence="Confidence",
+    confidence_levels={"high": "High", "moderate": "Moderate", "low": "Low"},
     likert_decisions={
         0: "Strongly disagree",
         25: "Rather disagree",
@@ -97,6 +115,15 @@ _CS = ResultLabels(
     legend_mean="Aritmetický průměr",
     legend_median="Medián",
     legend_best="Nejlepší kompromis",
+    best_short="Nejlepší",
+    result_value="Výsledná hodnota",
+    confidence_share="{percent} % rozsahu",
+    supporting_calcs="Pomocné výpočty",
+    lower_desc="Dolní (pesimistický)",
+    peak_desc="Vrchol (nejpravděpodobnější)",
+    upper_desc="Horní (optimistický)",
+    confidence="Spolehlivost",
+    confidence_levels={"high": "Vysoká", "moderate": "Střední", "low": "Nízká"},
     likert_decisions={
         0: "Rozhodně nesouhlasím",
         25: "Spíše nesouhlasím",

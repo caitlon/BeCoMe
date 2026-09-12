@@ -68,3 +68,32 @@ results in tests/reference/ originate from the method authors' own Excel workboo
 repository reproduces them so the test suite can check its own results against theirs.
 It matches to within 0.001 on every run. Credit for that data belongs to the method's
 authors, not to this author.
+
+
+BUNDLED TYPEFACES
+
+api/assets/fonts/ carries four TrueType files, embedded into every PDF the export
+endpoint produces. All three families are licensed under the SIL Open Font License 1.1,
+and the licence text ships beside them:
+
+  Inter-Regular.ttf, Inter-SemiBold.ttf   Copyright 2016 The Inter Project Authors
+                                          github.com/rsms/inter, Inter-OFL.txt
+  JetBrainsMono-Regular.ttf               Copyright 2020 The JetBrains Mono
+                                          Project Authors
+                                          github.com/JetBrains/JetBrainsMono,
+                                          JetBrainsMono-OFL.txt
+  PlayfairDisplay.ttf                     Copyright 2017 The Playfair Display Project
+                                          Authors, with Reserved Font Name
+                                          "Playfair Display"
+                                          github.com/clauseggers/Playfair-Display
+                                          (build taken from github.com/google/fonts),
+                                          PlayfairDisplay-OFL.txt
+
+The files are the upstream releases, unmodified. That matters for the reserved name:
+OFL 1.1 forbids a modified version from carrying it, and subsetting the file before
+shipping would make one. reportlab builds its own subset in memory when it writes a PDF,
+which is embedding rather than redistribution, so the shipped files stay original.
+
+These replaced DejaVu Sans, which this project previously bundled without recording it
+here -- an omission this section also settles, since the Bitstream Vera licence it ships
+under asks for the same acknowledgement.

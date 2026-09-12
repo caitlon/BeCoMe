@@ -12,6 +12,7 @@ import enCaseStudies from "./locales/en/caseStudies.json";
 import enDocs from "./locales/en/docs.json";
 import enOnboarding from "./locales/en/onboarding.json";
 import enFaq from "./locales/en/faq.json";
+import enPrivacy from "./locales/en/privacy.json";
 
 import csCommon from "./locales/cs/common.json";
 import csLanding from "./locales/cs/landing.json";
@@ -23,6 +24,7 @@ import csCaseStudies from "./locales/cs/caseStudies.json";
 import csDocs from "./locales/cs/docs.json";
 import csOnboarding from "./locales/cs/onboarding.json";
 import csFaq from "./locales/cs/faq.json";
+import csPrivacy from "./locales/cs/privacy.json";
 
 export const defaultNS = "common";
 
@@ -38,6 +40,7 @@ export const resources = {
     docs: enDocs,
     onboarding: enOnboarding,
     faq: enFaq,
+    privacy: enPrivacy,
   },
   cs: {
     common: csCommon,
@@ -50,6 +53,7 @@ export const resources = {
     docs: csDocs,
     onboarding: csOnboarding,
     faq: csFaq,
+    privacy: csPrivacy,
   },
 } as const;
 
