@@ -521,7 +521,7 @@ profile photos and `<img>` tags render them, which is an image load rather than 
 `VITE_API_URL` build argument the bundle uses, so the served policy cannot drift from the
 URL the app actually calls. Its `script-src` and `frame-src` name
 `https://challenges.cloudflare.com`, because the bot check's widget loads its script from
-there and runs its challenge in an iframe served by it; without both, no token is ever
+there and runs its challenge in an iframe served by it. Without both, no token is ever
 minted and all four auth forms stay unsubmittable. `tests/integration/test_frontend_csp.py`
 asserts those directives against the config: a CSP that under-permits fails silently, since
 the browser drops the request before it reaches the origin and nothing appears in the logs.
@@ -788,6 +788,14 @@ the sole barrier between the internet and the data. The dev database is the one 
 and even there the proxy normally stays closed. Someone opens it in the Railway dashboard
 only for a specific hands-on operation and shut again afterwards. That toggle is the
 project's substitute for an IP allowlist, which Railway's platform does not offer.
+
+Redis follows the same rule in all three environments. The backends reach it through
+`REDIS_URL` on the private network, and the public TCP proxy that each Redis service used to
+carry was removed on 2026-09-12, after a check that no service referenced it. The exposure
+mattered more than a cache would suggest. Redis holds the login and email-send throttles, the
+rate limiter's counters and the token revocation list, so while the proxy was open its
+password alone stood between the internet and lifting those throttles or reviving a revoked
+session.
 
 ### Audit logging
 
