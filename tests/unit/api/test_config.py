@@ -1196,3 +1196,103 @@ class TestProfileLogLevelDefault:
 
         # THEN
         assert settings.log_level == "ERROR"
+
+
+class TestAssistantSettings:
+    """The local assistant is refused everywhere except a developer's own machine."""
+
+    def test_assistant_is_off_by_default(self, monkeypatch, tmp_path):
+        """
+        GIVEN Settings without an explicit override and no .env file in reach
+        WHEN constructed
+        THEN assistant_enabled defaults to False
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("ASSISTANT_ENABLED", raising=False)
+
+        # WHEN
+        settings = Settings(secret_key="test-secret-key")
+
+        # THEN
+        assert settings.assistant_enabled is False
+
+    def test_local_dev_allows_the_assistant_switched_on(self, monkeypatch, tmp_path):
+        """
+        GIVEN the dev profile with no Railway marker (a laptop)
+        WHEN Settings is constructed with assistant_enabled=true
+        THEN validation passes
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("RAILWAY_ENVIRONMENT_NAME", raising=False)
+        monkeypatch.setenv("APP_ENV", "dev")
+        monkeypatch.setenv("SECRET_KEY", "irrelevant-for-dev")
+        monkeypatch.setenv("ASSISTANT_ENABLED", "true")
+
+        # WHEN
+        settings = Settings()
+
+        # THEN
+        assert settings.assistant_enabled is True
+
+    def test_rejects_assistant_enabled_in_production(self, monkeypatch, tmp_path):
+        """
+        GIVEN a fully configured production profile
+        WHEN Settings is constructed with assistant_enabled=true
+        THEN validation fails, naming the field
+        """
+        # GIVEN
+        _configure_prod(monkeypatch, tmp_path)
+        monkeypatch.setenv("ASSISTANT_ENABLED", "true")
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="assistant_enabled"):
+            Settings()
+
+    def test_rejects_assistant_enabled_on_a_deployed_dev_service(self, monkeypatch, tmp_path):
+        """
+        GIVEN the dev profile running on Railway (a deployed service, not a laptop)
+        WHEN Settings is constructed with assistant_enabled=true
+        THEN validation fails, since is_deploy is true there too
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("TESTING", raising=False)
+        monkeypatch.setenv("RAILWAY_ENVIRONMENT_NAME", "dev")
+        monkeypatch.setenv("APP_ENV", "dev")
+        monkeypatch.setenv("SECRET_KEY", "a-sufficiently-strong-secret-value")
+        monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@host:5432/db")
+        monkeypatch.setenv("MIGRATION_DATABASE_URL", "postgresql://migrator:pass@host:5432/db")
+        monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
+        monkeypatch.setenv("CORS_ORIGINS", '["https://dev.your-domain.example"]')
+        monkeypatch.setenv("FRONTEND_BASE_URL", "https://dev.your-domain.example")
+        monkeypatch.setenv("EMAIL_PROVIDER", "http")
+        monkeypatch.setenv("EMAIL_API_KEY", "a-resend-api-key")
+        monkeypatch.setenv("CLOUDFLARE_ORIGIN_SECRET", "a-dev-origin-lock-value")
+        monkeypatch.setenv("ASSISTANT_ENABLED", "true")
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="assistant_enabled"):
+            Settings()
+
+    def test_rejects_assistant_enabled_on_railway_even_with_testing_set(
+        self, monkeypatch, tmp_path
+    ):
+        """
+        GIVEN TESTING=1 set alongside a Railway environment marker
+        WHEN Settings is constructed with assistant_enabled=true
+        THEN validation fails, since a process on Railway must never run the
+            assistant, even one that also looks like a test run
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("TESTING", "1")
+        monkeypatch.setenv("RAILWAY_ENVIRONMENT_NAME", "dev")
+        monkeypatch.setenv("APP_ENV", "dev")
+        monkeypatch.setenv("SECRET_KEY", "a-sufficiently-strong-secret-value")
+        monkeypatch.setenv("ASSISTANT_ENABLED", "true")
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="assistant_enabled"):
+            Settings()

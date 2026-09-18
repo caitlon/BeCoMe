@@ -230,6 +230,34 @@ class Settings(BaseSettings):
     turnstile_secret_key: str = ""
     turnstile_hostnames: list[str] = []
 
+    # Local AI assistant (RAG + read-only project explainer). Off everywhere by
+    # default; _validate_assistant_local_only refuses to start any deployed profile
+    # with it on, so turning it on is only ever a developer's own choice on their own
+    # machine. api/routes/assistant.py is registered only when this is true (see
+    # api.main.create_app), so a deployed service answers 404 for the whole prefix
+    # regardless of this validator.
+    assistant_enabled: bool = False
+    assistant_llm_base_url: str = "http://127.0.0.1:8081/v1"
+    assistant_llm_model: str = "Qwen/Qwen3-4B-Instruct-2507"
+    assistant_embedding_base_url: str = "http://127.0.0.1:8082/v1"
+    assistant_embedding_model: str = "Qwen/Qwen3-Embedding-0.6B"
+    assistant_rerank_base_url: str = "http://127.0.0.1:8083/v1"
+    assistant_rerank_model: str = "BAAI/bge-reranker-v2-m3"
+    # Local-only credentials of the assistant-db compose service (bound to 127.0.0.1).
+    assistant_vector_db_url: str = "postgresql+psycopg://assistant:assistant@127.0.0.1:5433/assistant"  # pragma: allowlist secret
+    assistant_collection: str = "docs_default"
+    assistant_mode: Literal["agent", "workflow", "hybrid"] = "hybrid"
+    assistant_max_tool_calls: int = 4
+    assistant_max_history_turns: int = 10
+    assistant_max_message_chars: int = 4000
+    assistant_rate_limit_per_hour: int = 60
+    assistant_llm_timeout_seconds: float = 120.0
+    assistant_private_corpus_dirs: list[str] = []
+    assistant_langsmith_enabled: bool = False
+    assistant_langsmith_api_key: str | None = None
+    assistant_langsmith_endpoint: str = "https://eu.api.smith.langchain.com"
+    assistant_langsmith_project: str = "become-assistant-local"
+
     def __init__(self, **kwargs: Any) -> None:
         """Load ``.env`` then ``.env.<APP_ENV>`` and inject the resolved profile.
 
@@ -309,6 +337,35 @@ class Settings(BaseSettings):
         """
         if "log_level" not in self.model_fields_set:
             self.log_level = _DEFAULT_LOG_LEVELS[self.environment]
+        return self
+
+    @model_validator(mode="after")
+    def _validate_assistant_local_only(self) -> "Settings":
+        """Refuse to start with the assistant switched on anywhere but a laptop.
+
+        The assistant reads project data as the signed-in user and calls a locally
+        running LLM; neither belongs on a service that serves real traffic. Keeping
+        the guard here, right before _validate_deploy_invariants, means a deploy that
+        somehow set ASSISTANT_ENABLED fails on this message first, rather than on
+        whichever deploy invariant happens to be missing.
+
+        is_deploy alone would not catch every case: it is False whenever TESTING is
+        set, which is the pytest profile, so a Railway process that also carried
+        TESTING=1 would pass the is_deploy check while still running on a deployed
+        service. Checking railway_environment_name directly closes that gap -- a
+        process on Railway must never run the assistant, whatever else is set
+        alongside it.
+
+        :return: The validated settings instance.
+        :raises ValueError: If assistant_enabled is true while this process is
+            either a deployed service or running on Railway.
+        """
+        if self.assistant_enabled and (self.is_deploy or self.railway_environment_name is not None):
+            raise ValueError(
+                "assistant_enabled must stay false on a deployed service (the "
+                f"{self.environment.value} profile here); the assistant runs only on "
+                "a developer machine"
+            )
         return self
 
     @model_validator(mode="after")
