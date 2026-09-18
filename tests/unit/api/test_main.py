@@ -339,7 +339,7 @@ class TestAssistantRouterGating:
         env = {
             **os.environ,
             "APP_ENV": "dev",
-            "SECRET_KEY": "a-sufficiently-strong-secret-value",
+            "SECRET_KEY": "a-sufficiently-strong-secret-value",  # pragma: allowlist secret
             "ASSISTANT_ENABLED": assistant_enabled,
             "PYTHONPATH": str(_REPO_ROOT),
         }
