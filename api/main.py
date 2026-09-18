@@ -185,6 +185,16 @@ def create_app() -> FastAPI:
     app.include_router(invitations.router)
     app.include_router(opinions.router)
 
+    # Imported only when the flag is on, so the assistant package - and, once later
+    # PRs add them, its LangChain/LangGraph imports from the "assistant" extra -
+    # never loads in a deployed process. It could not run there anyway:
+    # Settings._validate_assistant_local_only refuses to start any deployed profile
+    # with assistant_enabled set.
+    if settings.assistant_enabled:
+        from api.routes import assistant
+
+        app.include_router(assistant.router)
+
     return app
 
 

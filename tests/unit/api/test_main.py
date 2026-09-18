@@ -1,12 +1,22 @@
 """Tests for application factory wiring in api.main."""
 
 import logging
+import os
+import subprocess
+import sys
+from pathlib import Path
 from unittest.mock import patch
+
+import pytest
 
 from tests.shared.helpers import captured_log_records
 
 # Not a credential: the host is unroutable and the key is a literal placeholder.
 _FAKE_DSN = "https://placeholder@localhost/0"
+
+# Repository root, used to give a subprocess a PYTHONPATH so it can import api.main
+# regardless of its own cwd.
+_REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 def _prod_env(monkeypatch, tmp_path) -> None:
@@ -235,3 +245,124 @@ class TestBotCheckStartupRecord:
 
         # THEN
         assert [record for record in records if record.levelno >= logging.ERROR] == []
+
+
+class TestAssistantRouterGating:
+    """The assistant router exists only when the local-only flag is on."""
+
+    def test_config_endpoint_is_absent_by_default(self, monkeypatch, tmp_path):
+        """
+        GIVEN the default settings (assistant disabled, no .env file in reach)
+        WHEN the app is built and its config endpoint is requested
+        THEN the whole assistant prefix is unrouted, so the response is 404
+        """
+        from fastapi.testclient import TestClient
+
+        from api.config import get_settings
+        from api.main import create_app
+
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("APP_ENV", "dev")
+        monkeypatch.setenv("SECRET_KEY", "a-sufficiently-strong-secret-value")
+        monkeypatch.delenv("ASSISTANT_ENABLED", raising=False)
+        monkeypatch.delenv("RAILWAY_ENVIRONMENT_NAME", raising=False)
+        get_settings.cache_clear()
+        try:
+            client = TestClient(create_app())
+
+            # WHEN
+            response = client.get("/api/v1/assistant/config")
+        finally:
+            get_settings.cache_clear()
+
+        # THEN
+        assert response.status_code == 404
+
+    def test_config_endpoint_serves_the_active_configuration_when_enabled(
+        self, monkeypatch, tmp_path
+    ):
+        """
+        GIVEN the dev profile with the assistant switched on
+        WHEN the app is built and its config endpoint is requested
+        THEN it answers 200 with the active model, mode, and collection
+        """
+        from fastapi.testclient import TestClient
+
+        from api.config import get_settings
+        from api.main import create_app
+
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("APP_ENV", "dev")
+        monkeypatch.setenv("SECRET_KEY", "a-sufficiently-strong-secret-value")
+        monkeypatch.setenv("ASSISTANT_ENABLED", "true")
+        monkeypatch.delenv("RAILWAY_ENVIRONMENT_NAME", raising=False)
+        get_settings.cache_clear()
+        try:
+            client = TestClient(create_app())
+
+            # WHEN
+            response = client.get("/api/v1/assistant/config")
+        finally:
+            get_settings.cache_clear()
+
+        # THEN
+        assert response.status_code == 200
+        assert response.json() == {
+            "enabled": True,
+            "model": "Qwen/Qwen3-4B-Instruct-2507",
+            "mode": "hybrid",
+            "collection": "docs_default",
+        }
+
+    @pytest.mark.parametrize(
+        ("assistant_enabled", "expect_loaded"),
+        [
+            ("false", False),
+            ("true", True),
+        ],
+    )
+    def test_assistant_module_is_imported_only_when_the_switch_is_on(
+        self, tmp_path, assistant_enabled, expect_loaded
+    ):
+        """
+        GIVEN a fresh interpreter with ASSISTANT_ENABLED set to the given value
+        WHEN it imports api.main, which builds the app and its routers at import
+        THEN api.routes.assistant is in sys.modules only when the switch was on
+
+        Parametrized over both directions on purpose: a router registered
+        unconditionally would still pass the "loaded when on" case, so only the
+        "not loaded when off" case can catch that mistake.
+        """
+        # GIVEN
+        env = {
+            **os.environ,
+            "APP_ENV": "dev",
+            "SECRET_KEY": "a-sufficiently-strong-secret-value",
+            "ASSISTANT_ENABLED": assistant_enabled,
+            "PYTHONPATH": str(_REPO_ROOT),
+        }
+        env.pop("RAILWAY_ENVIRONMENT_NAME", None)
+        snippet = (
+            "import sys\n"
+            "import api.main\n"
+            "print('assistant_loaded=' + str('api.routes.assistant' in sys.modules))\n"
+        )
+
+        # WHEN
+        result = subprocess.run(  # noqa: S603 - fixed argv, no shell; sys.executable is trusted
+            [sys.executable, "-c", snippet],
+            cwd=tmp_path,
+            env=env,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+
+        # THEN
+        marker_lines = [
+            line for line in result.stdout.splitlines() if line.startswith("assistant_loaded=")
+        ]
+        assert marker_lines, f"no marker line in stdout: {result.stdout!r}"
+        assert marker_lines[-1] == f"assistant_loaded={expect_loaded}"
