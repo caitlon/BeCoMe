@@ -7,6 +7,9 @@ from contextlib import contextmanager
 os.environ.setdefault("APP_ENV", "test")
 os.environ.setdefault("SECRET_KEY", "test-secret-key")
 os.environ["TESTING"] = "1"  # Must always be set; rate limiter reads it at import time
+# The suite never inherits a developer's local switch from .env or the shell; a test
+# that needs the assistant on sets it explicitly with monkeypatch.
+os.environ["ASSISTANT_ENABLED"] = "false"
 
 import dns.asyncresolver
 import pytest
