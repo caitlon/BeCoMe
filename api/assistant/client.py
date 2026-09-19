@@ -101,6 +101,8 @@ class UserApiClient:
         """List the projects the caller is a member of.
 
         :return: One ProjectBrief per project, across every page.
+        :raises AssistantUpstreamError: If the API refuses the request, or the list
+            runs past _MAX_PAGES full pages.
         """
         items = await self._get_all("/api/v1/projects")
         return [ProjectBrief.model_validate(item) for item in items]
@@ -112,6 +114,7 @@ class UserApiClient:
         :return: The project's allowlisted details.
         :raises AssistantNotFoundError: If project_id is not a valid UUID, or the
             caller cannot see this project.
+        :raises AssistantUpstreamError: If the API answers with any other error.
         """
         response = await self._get(f"/api/v1/projects/{_canonical_project_id(project_id)}")
         return ProjectView.model_validate(response.json())
@@ -123,6 +126,7 @@ class UserApiClient:
         :return: The result, or None if no opinions have been submitted yet.
         :raises AssistantNotFoundError: If project_id is not a valid UUID, or the
             caller cannot see this project.
+        :raises AssistantUpstreamError: If the API answers with any other error.
         """
         response = await self._get(f"/api/v1/projects/{_canonical_project_id(project_id)}/result")
         body = response.json()
@@ -135,6 +139,8 @@ class UserApiClient:
         :return: One OpinionView per submitted opinion, across every page.
         :raises AssistantNotFoundError: If project_id is not a valid UUID, or the
             caller cannot see this project.
+        :raises AssistantUpstreamError: If the API answers with any other error, or
+            the list runs past _MAX_PAGES full pages.
         """
         path = f"/api/v1/projects/{_canonical_project_id(project_id)}/opinions"
         return [OpinionView.model_validate(item) for item in await self._get_all(path)]
