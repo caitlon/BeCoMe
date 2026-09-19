@@ -4,9 +4,9 @@ from typing import Any
 from uuid import uuid4
 
 import pytest
-from api.assistant.client import _MAX_PAGES, UserApiClient
 from fastapi import FastAPI, Request, Response
 
+from api.assistant.client import _MAX_PAGES, UserApiClient
 from api.assistant.errors import AssistantNotFoundError, AssistantUpstreamError
 from api.pagination import MAX_PAGE_SIZE
 
