@@ -237,9 +237,14 @@ class TestTokenNeverLogged:
     @pytest.mark.asyncio
     async def test_access_token_does_not_appear_in_any_log_record(self, client):
         """
-        GIVEN a real access token used to read a project through UserApiClient
-        WHEN every api.* log record emitted during that call is captured
-        THEN the raw token string appears in none of them, neither message nor extra
+        GIVEN a real access token used to list and read projects through UserApiClient
+        WHEN every api.* log record emitted during those calls is captured
+        THEN records were emitted, and the raw token appears in none of them,
+            neither message nor extra
+
+        Listing projects is what makes this test able to fail: the project query
+        service logs on every list, while reading one project logs nothing on the
+        test app, so without the list call the loop below would check nothing.
         """
         # GIVEN
         token = register_and_login(client, "alice@example.com")
@@ -248,10 +253,12 @@ class TestTokenNeverLogged:
 
         # WHEN
         with captured_log_records("api") as records:
+            await api_client.list_projects()
             await api_client.get_project(project["id"])
         await api_client.aclose()
 
         # THEN
+        assert records
         for record in records:
             assert token not in record.getMessage()
             assert all(token not in str(value) for value in record.__dict__.values())
