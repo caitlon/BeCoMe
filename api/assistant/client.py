@@ -17,7 +17,8 @@ from api.assistant.errors import AssistantNotFoundError, AssistantUpstreamError
 from api.assistant.views import OpinionView, ProjectBrief, ProjectView, ResultView
 from api.pagination import MAX_PAGE_SIZE
 
-_INTERNAL_BASE_URL = "http://assistant.internal"
+# A loopback host: the request never leaves this process, so plain http exposes nothing.
+_INTERNAL_BASE_URL = "http://localhost"
 
 # The most pages one list read follows. 1,000 rows is far past any real expert panel
 # or project list, so this only stops a runaway read; it never trims a real one.
