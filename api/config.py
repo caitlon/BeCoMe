@@ -243,8 +243,8 @@ class Settings(BaseSettings):
     assistant_embedding_model: str = "Qwen/Qwen3-Embedding-0.6B"
     assistant_rerank_base_url: str = "http://127.0.0.1:8083/v1"
     assistant_rerank_model: str = "BAAI/bge-reranker-v2-m3"
-    # Local-only credentials of the assistant-db compose service (bound to 127.0.0.1).
-    assistant_vector_db_url: str = "postgresql+psycopg://assistant:assistant@127.0.0.1:5433/assistant"  # pragma: allowlist secret
+    # Local-only and passwordless: the assistant-db service trusts connections from 127.0.0.1.
+    assistant_vector_db_url: str = "postgresql+psycopg://assistant@127.0.0.1:5433/assistant"
     assistant_collection: str = "docs_default"
     assistant_mode: Literal["agent", "workflow", "hybrid"] = "hybrid"
     assistant_max_tool_calls: int = 4
