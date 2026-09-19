@@ -1,8 +1,9 @@
 """Allowlisted view models: exactly the fields the assistant may see.
 
 Each view lists the fields it accepts; extra="ignore" drops everything else the
-real API response carries, which is what keeps user_email, user_id, and photo_url
-out of the model's reach without a hand-maintained blocklist.
+real API response carries. That is what keeps user_email and user_id out of the
+model's reach without a hand-maintained blocklist, and it drops any field a
+response gains later, such as a photo_url, the same way.
 """
 
 from datetime import datetime
