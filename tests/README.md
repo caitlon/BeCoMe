@@ -53,10 +53,12 @@ fast order, which is why a bare `uv run pytest` does not.
 Two more things shape these numbers. Nothing is byte-compiled unless you ask:
 `uv sync` does not do it, so every worker recompiles all of site-packages on every
 run, worth about a tenth of the wall clock (eight workers: 42s against 36s). CI
-sets `UV_COMPILE_BYTECODE`, which costs one second there. Locally the same effect
-needs `PYTHONPYCACHEPREFIX` pointed somewhere outside the tree, never a plain
-`__pycache__`, because this repo lives on iCloud Drive. And a timing taken while
-another suite runs on the same machine measures nothing: check `ps` first.
+sets `UV_COMPILE_BYTECODE`, which costs one second there. Locally the cache Python
+writes on the first run does the same job, and `PYTHONPYCACHEPREFIX` decides where
+it lands: point it outside the tree and the checkout keeps no `__pycache__` of its
+own. It buys no speed on a fresh worktree -- the prefix mirrors the absolute source
+path, so a new one starts cold either way. And a timing taken while another suite
+runs on the same machine measures nothing: check `ps` first.
 
 Use `-n 0` in two cases. The first is reading one failure closely, because worker
 output interleaves. The second is any small selection: a single file costs more to
