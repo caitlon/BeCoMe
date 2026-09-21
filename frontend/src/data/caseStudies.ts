@@ -175,15 +175,3 @@ export const caseStudies: CaseStudy[] = [
     },
   },
 ];
-
-export function getCaseStudyById(id: string): CaseStudy | undefined {
-  return caseStudies.find((cs) => cs.id === id);
-}
-
-export function getLikertLabel(value: number): string {
-  if (value <= 12.5) return "Strongly Disagree";
-  if (value <= 37.5) return "Rather Disagree";
-  if (value <= 62.5) return "Neutral";
-  if (value <= 87.5) return "Rather Agree";
-  return "Strongly Agree";
-}

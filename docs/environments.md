@@ -69,7 +69,7 @@ PostgreSQL, debug off. Every deployed service runs a startup guard (`_validate_d
 | `.env` | Shared base values, loaded first (gitignored) |
 | `.env.<stage>` | Per-profile overrides, loaded second (gitignored) |
 | `env/.env.example`, `env/.env.dev.example`, `env/.env.test.example`, `env/.env.prod.example` | Tracked templates to copy from |
-| `frontend/.env.development`, `.env.production`, `.env.test`, `.env.staging` | Vite per-mode values, mainly `VITE_API_URL` |
+| `frontend/.env.development`, `.env.production`, `.env.test` | Vite per-mode values, mainly `VITE_API_URL` |
 
 ## Local use
 
