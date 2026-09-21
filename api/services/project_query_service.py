@@ -24,7 +24,7 @@ def _log_query(variant: str, user_id: UUID, row_count: int, start: float, **fiel
     the shape and timing are recorded here instead. The statement itself is never
     logged.
 
-    :param variant: Which query ran: ``with_counts`` or ``with_roles``.
+    :param variant: Which query ran; ``with_roles`` is the one left.
     :param user_id: Owner of the result set.
     :param row_count: Rows returned.
     :param start: ``perf_counter()`` reading taken before the query.
