@@ -11,19 +11,14 @@ from examples.utils.analysis import calculate_agreement_level
 from examples.utils.formatting import print_header, print_section
 from examples.utils.locales import EN_ANALYSIS, EN_DISPLAY, EN_FORMATTING
 from examples.utils.runner import run_analysis
-from src.calculators.base_calculator import BaseAggregationCalculator
 from src.calculators.become_calculator import BeCoMeCalculator
 
 
-def main(calculator: BaseAggregationCalculator | None = None) -> None:
+def main() -> None:
     """
     Run detailed BeCoMe analysis for Budget case study.
-
-    :param calculator: Aggregation calculator instance.
-                       Defaults to BeCoMeCalculator if not provided.
     """
-    if calculator is None:
-        calculator = BeCoMeCalculator()
+    calculator = BeCoMeCalculator()
 
     data_file = str(Path(__file__).parent / "data" / "budget_case.txt")
 

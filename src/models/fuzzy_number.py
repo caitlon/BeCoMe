@@ -1,7 +1,6 @@
 """Fuzzy number representations."""
 
 import statistics
-from typing import Protocol, runtime_checkable
 
 
 def triangular_centroid(lower_bound: float, peak: float, upper_bound: float) -> float:
@@ -24,27 +23,6 @@ def triangular_centroid(lower_bound: float, peak: float, upper_bound: float) -> 
     10.0
     """
     return (lower_bound + peak + upper_bound) / 3.0
-
-
-@runtime_checkable
-class FuzzyNumber(Protocol):
-    """Structural interface for fuzzy number types.
-
-    Any class with matching properties (triangular, trapezoidal, Gaussian)
-    satisfies this protocol via duck typing, with no explicit inheritance required.
-    """
-
-    @property
-    def lower_bound(self) -> float: ...
-
-    @property
-    def peak(self) -> float: ...
-
-    @property
-    def upper_bound(self) -> float: ...
-
-    @property
-    def centroid(self) -> float: ...
 
 
 class FuzzyTriangleNumber:

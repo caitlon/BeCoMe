@@ -30,65 +30,6 @@ def sample_three_opinions() -> list[ExpertOpinion]:
 
 
 @pytest.fixture
-def sample_four_opinions() -> list[ExpertOpinion]:
-    """Provide 4-expert opinions for display tests.
-
-    :return: List of 4 ExpertOpinion objects
-    """
-    return [
-        ExpertOpinion(
-            expert_id=f"E{i}",
-            opinion=FuzzyTriangleNumber(lower_bound=10.0 * i, peak=20.0 * i, upper_bound=30.0 * i),
-        )
-        for i in range(1, 5)
-    ]
-
-
-@pytest.fixture
-def likert_opinions_odd() -> list[ExpertOpinion]:
-    """Provide Likert scale opinions with odd number of experts.
-
-    :return: List of 3 ExpertOpinion objects with crisp values
-    """
-    values = [25.0, 50.0, 75.0]
-    return [
-        ExpertOpinion(expert_id=f"E{i + 1}", opinion=FuzzyTriangleNumber(v, v, v))
-        for i, v in enumerate(values)
-    ]
-
-
-@pytest.fixture
-def likert_opinions_even() -> list[ExpertOpinion]:
-    """Provide Likert scale opinions with even number of experts.
-
-    :return: List of 4 ExpertOpinion objects with crisp values
-    """
-    values = [25.0, 50.0, 75.0, 100.0]
-    return [
-        ExpertOpinion(expert_id=f"E{i + 1}", opinion=FuzzyTriangleNumber(v, v, v))
-        for i, v in enumerate(values)
-    ]
-
-
-@pytest.fixture
-def single_expert_opinion() -> list[ExpertOpinion]:
-    """Provide single expert opinion for edge case testing.
-
-    :return: List containing 1 ExpertOpinion object
-    """
-    return [ExpertOpinion(expert_id="E1", opinion=FuzzyTriangleNumber(10.0, 20.0, 30.0))]
-
-
-@pytest.fixture
-def expected_metadata_keys() -> list[str]:
-    """Provide list of expected metadata keys from data files.
-
-    :return: List of metadata keys
-    """
-    return ["case", "description", "num_experts"]
-
-
-@pytest.fixture
 def opinions_factory():
     """Factory fixture to create opinions with varying counts and types.
 

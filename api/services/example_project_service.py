@@ -35,22 +35,15 @@ class ExampleProjectService(BaseService):
     do, and it is the one demonstration of the method that needs no explanation.
 
     :param session: Session the writes go through.
-    :param calculation_service: Service that computes the opening result; defaults to
-        one built on the same session.
     """
 
-    def __init__(
-        self,
-        session: Session,
-        calculation_service: CalculationService | None = None,
-    ) -> None:
-        """Initialize with the session and the calculator to open the project with.
+    def __init__(self, session: Session) -> None:
+        """Initialize with the session the writes go through.
 
         :param session: Session the writes go through.
-        :param calculation_service: Calculation service, or None to build one.
         """
         super().__init__(session)
-        self._calculations = calculation_service or CalculationService(session)
+        self._calculations = CalculationService(session)
 
     def seed_for(self, user_id: UUID, language: str = _DEFAULT_LANGUAGE) -> Project | None:
         """Create the example project for an account, if it does not have one.

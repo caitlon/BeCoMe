@@ -8,7 +8,6 @@ from sqlmodel import Session, select
 from api.db.models import CalculationResult, ExpertOpinion
 from api.services.base import BaseService
 from api.services.mappers import BeCoMeResultMapper
-from api.services.protocols import CalculatorProtocol
 from src.calculators.become_calculator import BeCoMeCalculator
 from src.models.become_result import BeCoMeResult
 from src.models.expert_opinion import ExpertOpinion as DomainExpertOpinion
@@ -20,18 +19,13 @@ logger = logging.getLogger("api.service.calculation")
 class CalculationService(BaseService):
     """Service for BeCoMe calculation operations."""
 
-    def __init__(
-        self,
-        session: Session,
-        calculator: CalculatorProtocol | None = None,
-    ) -> None:
-        """Initialize with database session and optional dependencies.
+    def __init__(self, session: Session) -> None:
+        """Initialize with database session.
 
         :param session: SQLModel session for database operations
-        :param calculator: Calculator implementing CalculatorProtocol
         """
         super().__init__(session)
-        self._calculator: CalculatorProtocol = calculator or BeCoMeCalculator()
+        self._calculator = BeCoMeCalculator()
 
     def get_result(self, project_id: UUID) -> CalculationResult | None:
         """Get calculation result for a project.

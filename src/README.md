@@ -42,8 +42,6 @@ src/
 │   ├── expert_opinion.py     # Expert opinion with identifier
 │   └── become_result.py      # Calculation result (Pydantic model)
 ├── calculators/         # Calculation logic
-│   ├── base_calculator.py        # Abstract base class (the shared interface)
-│   ├── median_strategies.py     # Median calculation strategies (Strategy Pattern)
 │   └── become_calculator.py     # Main BeCoMe implementation
 ├── interpreters/        # Result interpretation
 │   └── likert_interpreter.py    # Likert scale decision interpreter
@@ -114,26 +112,9 @@ print(result.max_error)
 
 ### Calculators layer (`calculators/`)
 
-#### [base_calculator.py](https://github.com/caitlon/BeCoMe/blob/prod/src/calculators/base_calculator.py)
-
-`BaseAggregationCalculator` defines the interface: `calculate_arithmetic_mean()`,
-`calculate_median()`, `calculate_compromise()`, and `sort_by_centroid()`. All four are
-abstract, so a subclass supplies every one of them.
-
-#### [median_strategies.py](https://github.com/caitlon/BeCoMe/blob/prod/src/calculators/median_strategies.py)
-
-Median calculation differs for odd and even expert counts. `OddMedianStrategy` returns the middle element after sorting. `EvenMedianStrategy` averages the two middle elements. The calculator selects the strategy at runtime, from the expert count.
-
-```python
-from src.calculators.median_strategies import OddMedianStrategy, EvenMedianStrategy
-
-strategy = OddMedianStrategy() if m % 2 == 1 else EvenMedianStrategy()
-median = strategy.calculate(sorted_opinions)
-```
-
 #### [become_calculator.py](https://github.com/caitlon/BeCoMe/blob/prod/src/calculators/become_calculator.py)
 
-Main BeCoMe implementation. Arithmetic mean (Γ) averages lower bounds, peaks, and upper bounds separately. Median (Ω) sorts opinions by centroid and applies the matching strategy. Best compromise (ΓΩMean) averages mean and median component-wise. Maximum error (Δmax) is half the distance between mean and median centroids.
+Main BeCoMe implementation. Arithmetic mean (Γ) averages lower bounds, peaks, and upper bounds separately. Median (Ω) sorts opinions by centroid and takes the middle element, or averages the two middle elements when the count is even. Best compromise (ΓΩMean) averages mean and median component-wise. Maximum error (Δmax) is half the distance between mean and median centroids.
 
 ```python
 from src.calculators.become_calculator import BeCoMeCalculator
@@ -169,8 +150,7 @@ print(decision.decision_text)  # "Rather agree"
 ### Exception hierarchy (`exceptions.py`)
 
 `BeCoMeError` is the base. The calculator raises `EmptyOpinionsError` when the opinion list is
-empty, `InvalidOpinionError` for malformed input, and `CalculationError` for a failure during
-aggregation.
+empty.
 
 ```python
 from src.exceptions import EmptyOpinionsError
@@ -187,15 +167,6 @@ except EmptyOpinionsError as e:
 The first two use `__slots__` and override `__setattr__` to block modification, and
 `LikertDecision` is a frozen dataclass. All three are hashable, so they can serve as dictionary
 keys.
-
-**Strategy.** Median calculation has two variants, one for an odd expert count and one for an
-even count. `MedianCalculationStrategy` is the interface, and `OddMedianStrategy` and
-`EvenMedianStrategy` are the concrete implementations. The calculator picks one at runtime.
-
-**Abstract interface.** `BaseAggregationCalculator` is a pure ABC: all four methods are
-abstract and it sequences nothing itself, so the calculation flow lives in
-`BeCoMeCalculator`. What the base class buys is one shape for every aggregation method
-added later.
 
 **Factory method.** `BeCoMeResult.from_calculations()` takes the arithmetic mean and the
 median, then derives the best compromise and the maximum error. It keeps the construction logic
