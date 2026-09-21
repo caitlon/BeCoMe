@@ -1,4 +1,4 @@
-import { User, Member } from '@/types/api';
+import { User } from '@/types/api';
 
 let userCounter = 0;
 
@@ -17,28 +17,4 @@ export function createUser(overrides: Partial<User> = {}): User {
     created_at: '2024-01-01T00:00:00Z',
     ...overrides,
   };
-}
-
-/**
- * Creates a mock Member object with default values.
- */
-export function createMember(overrides: Partial<Member> = {}): Member {
-  userCounter++;
-  return {
-    user_id: `user-${userCounter}`,
-    email: `member${userCounter}@example.com`,
-    first_name: 'Member',
-    last_name: 'User',
-    photo_url: null,
-    role: 'expert',
-    joined_at: '2024-01-01T00:00:00Z',
-    ...overrides,
-  };
-}
-
-/**
- * Resets the counter for deterministic IDs in tests.
- */
-export function resetUserCounter() {
-  userCounter = 0;
 }

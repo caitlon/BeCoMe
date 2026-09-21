@@ -1,7 +1,5 @@
 export {
   createUser,
-  createMember,
-  resetUserCounter,
 } from './user';
 
 export {
