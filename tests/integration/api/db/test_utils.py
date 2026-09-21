@@ -2,9 +2,7 @@
 
 from datetime import UTC, datetime, timedelta
 
-import pytest
-
-from api.db.utils import EMAIL_REGEX, ensure_utc, utc_now
+from api.db.utils import ensure_utc, utc_now
 
 
 class TestUtcNow:
@@ -100,76 +98,3 @@ class TestEnsureUtc:
         # THEN: should be unchanged
         assert result == aware_non_utc
         assert result.tzinfo == offset
-
-
-class TestEmailRegex:
-    """Tests for EMAIL_REGEX pattern."""
-
-    @pytest.mark.parametrize(
-        "email",
-        [
-            "simple@example.com",
-            "very.common@example.com",
-            "disposable.style.email.with+symbol@example.com",
-            "other.email-with-hyphen@example.com",
-            "fully-qualified-domain@example.com",
-            "user.name+tag+sorting@example.com",
-            "x@example.com",
-            "example-indeed@strange-example.com",
-            "test@subdomain.example.com",
-            "user123@example.co.uk",
-            "firstname.lastname@example.org",
-            "email@example-one.com",
-            "_______@example.com",
-            "email@example.name",
-        ],
-    )
-    def test_valid_email_formats_match(self, email: str):
-        """
-        GIVEN various valid email formats
-        WHEN matched against EMAIL_REGEX
-        THEN all match successfully
-        """
-        # WHEN/THEN
-        assert EMAIL_REGEX.match(email) is not None
-
-    @pytest.mark.parametrize(
-        "invalid_email",
-        [
-            "plainaddress",
-            "@example.com",
-            "email@",
-            "email@.com",
-            "email@example",
-            "email@@example.com",
-            "email @example.com",
-            "email@ example.com",
-        ],
-    )
-    def test_invalid_email_formats_do_not_match(self, invalid_email: str):
-        """
-        GIVEN various clearly invalid email formats
-        WHEN matched against EMAIL_REGEX
-        THEN none match
-        """
-        # WHEN/THEN
-        assert EMAIL_REGEX.match(invalid_email) is None
-
-    @pytest.mark.parametrize(
-        "permissive_email",
-        [
-            ".email@example.com",
-            "email.@example.com",
-            "email@-example.com",
-        ],
-    )
-    def test_permissive_email_formats_accepted(self, permissive_email: str):
-        """
-        GIVEN edge case emails that EMAIL_REGEX accepts
-        WHEN matched against EMAIL_REGEX
-        THEN they match (documenting permissive behavior)
-
-        Note: These are technically invalid per RFC but accepted by our regex.
-        """
-        # WHEN/THEN: documenting current behavior
-        assert EMAIL_REGEX.match(permissive_email) is not None

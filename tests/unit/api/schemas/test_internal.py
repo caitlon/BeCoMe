@@ -15,28 +15,8 @@ from api.db.models import (
 from api.schemas.internal import (
     MemberWithUser,
     OpinionWithUser,
-    ProjectWithMemberCount,
     ProjectWithMemberCountAndRole,
-    UpsertResult,
 )
-
-
-class TestProjectWithMemberCount:
-    """Tests for ProjectWithMemberCount DTO."""
-
-    def test_id_property(self):
-        """ID property returns project ID."""
-        project = Project(id=uuid4(), name="Test", admin_id=uuid4())
-        pwmc = ProjectWithMemberCount(project=project, member_count=5)
-
-        assert pwmc.id == project.id
-
-    def test_name_property(self):
-        """Name property returns project name."""
-        project = Project(id=uuid4(), name="My Project", admin_id=uuid4())
-        pwmc = ProjectWithMemberCount(project=project, member_count=3)
-
-        assert pwmc.name == "My Project"
 
 
 class TestProjectWithMemberCountAndRole:
@@ -140,10 +120,6 @@ class TestOpinionWithUser:
         )
         return OpinionWithUser(opinion=opinion, user=user)
 
-    def test_opinion_id_property(self, opinion_with_user):
-        """Opinion ID property returns opinion ID."""
-        assert opinion_with_user.opinion_id == opinion_with_user.opinion.id
-
     def test_user_id_property(self, opinion_with_user):
         """User ID property returns user ID."""
         assert opinion_with_user.user_id == opinion_with_user.user.id
@@ -163,51 +139,3 @@ class TestOpinionWithUser:
     def test_upper_bound_property(self, opinion_with_user):
         """Upper bound property returns opinion upper bound."""
         assert opinion_with_user.upper_bound == 15.0
-
-
-class TestUpsertResult:
-    """Tests for UpsertResult DTO."""
-
-    def test_opinion_id_property(self):
-        """Opinion ID property returns opinion ID."""
-        opinion = ExpertOpinion(
-            id=uuid4(),
-            project_id=uuid4(),
-            user_id=uuid4(),
-            lower_bound=5.0,
-            peak=10.0,
-            upper_bound=15.0,
-        )
-        result = UpsertResult(opinion=opinion, is_new=True)
-
-        assert result.opinion_id == opinion.id
-
-    def test_was_created_when_new(self):
-        """Was created returns True when is_new is True."""
-        opinion = ExpertOpinion(
-            id=uuid4(),
-            project_id=uuid4(),
-            user_id=uuid4(),
-            lower_bound=5.0,
-            peak=10.0,
-            upper_bound=15.0,
-        )
-        result = UpsertResult(opinion=opinion, is_new=True)
-
-        assert result.was_created is True
-        assert result.was_updated is False
-
-    def test_was_updated_when_not_new(self):
-        """Was updated returns True when is_new is False."""
-        opinion = ExpertOpinion(
-            id=uuid4(),
-            project_id=uuid4(),
-            user_id=uuid4(),
-            lower_bound=5.0,
-            peak=10.0,
-            upper_bound=15.0,
-        )
-        result = UpsertResult(opinion=opinion, is_new=False)
-
-        assert result.was_created is False
-        assert result.was_updated is True

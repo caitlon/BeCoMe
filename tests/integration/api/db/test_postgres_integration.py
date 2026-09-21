@@ -460,22 +460,3 @@ class TestPostgreSQLSpecificFeatures:
 
         # THEN
         assert user.created_at is not None
-
-    def test_pydantic_scale_range_validation(self, pg_session):
-        """
-        GIVEN a project with invalid scale range (min > max)
-        WHEN model_validate is called
-        THEN Pydantic ValidationError is raised before reaching database
-        """
-        from pydantic import ValidationError
-
-        # GIVEN/WHEN/THEN - Pydantic validation catches this before DB
-        with pytest.raises(ValidationError, match="scale_min"):
-            Project.model_validate(
-                {
-                    "name": "Invalid Project",
-                    "admin_id": "00000000-0000-0000-0000-000000000000",
-                    "scale_min": 100.0,
-                    "scale_max": 50.0,
-                }
-            )

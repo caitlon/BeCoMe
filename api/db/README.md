@@ -134,6 +134,6 @@ api/db/
 ├── engine.py       # Database engine and table creation
 ├── models.py       # SQLModel table definitions
 ├── session.py      # Database session management (get_session)
-├── utils.py        # Utilities (utc_now, ensure_utc, EMAIL_REGEX)
+├── utils.py        # Utilities (utc_now, ensure_utc)
 └── README.md       # This file
 ```

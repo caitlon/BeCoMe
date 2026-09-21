@@ -15,7 +15,7 @@ from api.exceptions import (
     UserNotFoundForInvitationError,
 )
 from api.services.base import BaseService
-from api.services.query_helpers import MemberCountSubquery, select_account_by_email
+from api.services.query_helpers import member_count_subquery, select_account_by_email
 
 logger = logging.getLogger("api.service.invitation")
 
@@ -111,15 +111,15 @@ class InvitationService(BaseService):
         :param offset: Rows to skip when a limit is set.
         :return: List of invitations with project and inviter details
         """
-        member_count_subquery = MemberCountSubquery.build()
+        counts = member_count_subquery()
 
         statement = (
-            select(Invitation, Project, User, member_count_subquery.c.member_count)
+            select(Invitation, Project, User, counts.c.member_count)
             .join(Project, Invitation.project_id == Project.id)  # type: ignore[arg-type]
             .join(User, Invitation.inviter_id == User.id)  # type: ignore[arg-type]
             .join(
-                member_count_subquery,
-                member_count_subquery.c.project_id == Project.id,
+                counts,
+                counts.c.project_id == Project.id,
             )
             .where(Invitation.invitee_id == user_id)
             .order_by(col(Invitation.created_at).desc())
