@@ -16,7 +16,6 @@
   },
   "expertOpinions": {
     "title": "How Experts Express Their Opinions",
-    "subtitle": "Experts answer the raised question and assess a certain quantitative parameter of the proposed solution. They can express their responses in three ways:",
     "crisp": {
       "title": "Crisp Number",
       "description": "A single precise value when the expert is confident about their estimate.",

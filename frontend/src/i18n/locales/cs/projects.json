@@ -58,7 +58,6 @@
   },
   "toast": {
     "error": "Chyba",
-    "loadFailed": "Nepodařilo se načíst projekty",
     "loadProjectFailed": "Nepodařilo se načíst projekt",
     "invalidNumbers": "Zadejte prosím platná čísla",
     "lowerPeakUpper": "Hodnoty musí splňovat: dolní ≤ vrchol ≤ horní",
@@ -84,9 +83,7 @@
     "experts": "Experti",
     "scale": "Škála",
     "inviteExperts": "Pozvat experty",
-    "inviteExpert": "Pozvat experta",
     "delete": "Smazat",
-    "deleteProject": "Smazat projekt",
     "opinions": "Názory",
     "results": "Výsledky",
     "team": "Tým",
@@ -106,10 +103,6 @@
       "moderate": "Střední",
       "low": "Nízká"
     },
-    "expertOpinions": "Expertní názory",
-    "noOpinions": "Zatím žádné expertní názory.",
-    "pending": "Čeká",
-    "submitted": "Odesláno",
     "yourOpinion": "Váš názor",
     "position": "Pozice",
     "positionPlaceholder": "např. Vedoucí oddělení",
@@ -178,8 +171,6 @@
     "namePlaceholder": "Zadejte název projektu",
     "description": "Popis",
     "descriptionPlaceholder": "Popište svůj projekt...",
-    "question": "Otázka pro experty",
-    "questionPlaceholder": "Na jakou otázku mají experti odpovědět?",
     "scaleSettings": "Nastavení škály",
     "scaleMin": "Minimum",
     "scaleMax": "Maximum",
@@ -192,7 +183,6 @@
     "creating": "Vytváření...",
     "dialogDescription": "Nastavte nový projekt s názvem, popisem a škálou",
     "successTitle": "Projekt vytvořen",
-    "successMessage": "Váš projekt byl úspěšně vytvořen.",
     "errorTitle": "Chyba",
     "validation": {
       "nameRequired": "Název je povinný",
@@ -212,21 +202,10 @@
     "inviteAnother": "Pozvat dalšího",
     "done": "Hotovo",
     "successTitle": "Pozvánka odeslána!",
-    "successMessage": "Expert byl pozván do projektu.",
     "errorTitle": "Pozvání selhalo",
     "errorMessage": "Nepodařilo se odeslat pozvánku",
     "validation": {
       "emailInvalid": "Neplatná e-mailová adresa"
     }
-  },
-  "delete": {
-    "title": "Smazat projekt",
-    "message": "Opravdu chcete smazat tento projekt? Tuto akci nelze vrátit zpět.",
-    "cancel": "Zrušit",
-    "confirm": "Smazat",
-    "deleting": "Mazání...",
-    "successTitle": "Projekt smazán",
-    "successMessage": "Projekt byl smazán.",
-    "errorTitle": "Chyba"
   }
 }

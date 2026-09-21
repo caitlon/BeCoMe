@@ -36,7 +36,6 @@
     "documentation": "Documentation",
     "faq": "FAQ",
     "caseStudies": "Case Studies",
-    "implementation": "Implementation & Web Development",
     "implementationLine": "BeCoMe method implementation",
     "implementationUniversity": "Czech University of Life Sciences Prague",
     "feedback": "Feedback & Contact",
@@ -49,22 +48,8 @@
     "pelikan": "doc. Ing. Martin Pelikán, Ph.D.",
     "privacy": "Privacy"
   },
-  "docs": {
-    "title": "Documentation",
-    "github": "GitHub"
-  },
   "common": {
-    "loading": "Loading...",
-    "error": "Error",
-    "success": "Success",
-    "cancel": "Cancel",
-    "save": "Save",
-    "delete": "Delete",
-    "create": "Create",
-    "back": "Back",
-    "next": "Next",
-    "submit": "Submit",
-    "close": "Close"
+    "loading": "Loading..."
   },
   "password": {
     "show": "Show password",
@@ -86,8 +71,6 @@
     "lowerDesc": "Lower (pessimistic)",
     "peakDesc": "Peak (most likely)",
     "upperDesc": "Upper (optimistic)",
-    "arithmeticMean": "Arithmetic Mean (Γ)",
-    "maxError": "Max Error (Δmax)",
     "membershipFunction": "μ(x)",
     "mean": "Mean",
     "median": "Median",
@@ -117,7 +100,6 @@
   },
   "centroidChart": {
     "centroidValue": "Centroid",
-    "yAxisLabel": "Centroid value",
     "meanLine": "Mean (Γ)",
     "medianLine": "Median (Ω)",
     "compromiseLine": "Best Compromise (ΓΩMean)",

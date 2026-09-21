@@ -16,7 +16,6 @@
   },
   "expertOpinions": {
     "title": "Jak experti vyjadřují své názory",
-    "subtitle": "Experti odpovídají na položenou otázku a hodnotí určitý kvantitativní parametr navrhovaného řešení. Své odpovědi mohou vyjádřit třemi způsoby:",
     "crisp": {
       "title": "Přesné číslo",
       "description": "Jedna přesná hodnota, když je expert přesvědčen o svém odhadu.",

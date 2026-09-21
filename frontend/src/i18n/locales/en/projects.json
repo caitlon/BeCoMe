@@ -58,7 +58,6 @@
   },
   "toast": {
     "error": "Error",
-    "loadFailed": "Failed to load projects",
     "loadProjectFailed": "Failed to load project",
     "invalidNumbers": "Please enter valid numbers",
     "lowerPeakUpper": "Values must satisfy: lower ≤ peak ≤ upper",
@@ -84,9 +83,7 @@
     "experts": "Experts",
     "scale": "Scale",
     "inviteExperts": "Invite Experts",
-    "inviteExpert": "Invite Expert",
     "delete": "Delete",
-    "deleteProject": "Delete Project",
     "opinions": "Opinions",
     "results": "Results",
     "team": "Team",
@@ -106,10 +103,6 @@
       "moderate": "Moderate",
       "low": "Low"
     },
-    "expertOpinions": "Expert Opinions",
-    "noOpinions": "No expert opinions yet.",
-    "pending": "Pending",
-    "submitted": "Submitted",
     "yourOpinion": "Your Opinion",
     "position": "Position",
     "positionPlaceholder": "e.g., Head of Department",
@@ -178,8 +171,6 @@
     "namePlaceholder": "Enter project name",
     "description": "Description",
     "descriptionPlaceholder": "Describe your project...",
-    "question": "Question for Experts",
-    "questionPlaceholder": "What question should experts answer?",
     "scaleSettings": "Scale Settings",
     "scaleMin": "Minimum",
     "scaleMax": "Maximum",
@@ -192,7 +183,6 @@
     "creating": "Creating...",
     "dialogDescription": "Set up a new project with name, description, and scale settings",
     "successTitle": "Project created",
-    "successMessage": "Your project has been created successfully.",
     "errorTitle": "Error",
     "validation": {
       "nameRequired": "Name is required",
@@ -212,21 +202,10 @@
     "inviteAnother": "Invite Another",
     "done": "Done",
     "successTitle": "Invitation sent!",
-    "successMessage": "Expert has been invited to the project.",
     "errorTitle": "Invitation failed",
     "errorMessage": "Failed to send invitation",
     "validation": {
       "emailInvalid": "Invalid email address"
     }
-  },
-  "delete": {
-    "title": "Delete Project",
-    "message": "Are you sure you want to delete this project? This action cannot be undone.",
-    "cancel": "Cancel",
-    "confirm": "Delete",
-    "deleting": "Deleting...",
-    "successTitle": "Project deleted",
-    "successMessage": "The project has been deleted.",
-    "errorTitle": "Error"
   }
 }
