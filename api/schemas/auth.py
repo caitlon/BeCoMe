@@ -59,7 +59,11 @@ def validate_email_ascii(email: str) -> str:
     return email
 
 
-AsciiEmail = Annotated[EmailStr, AfterValidator(validate_email_ascii)]
+AsciiEmail = Annotated[
+    EmailStr,
+    Field(max_length=255, description="Email address"),
+    AfterValidator(validate_email_ascii),
+]
 
 
 class RegisterRequest(BaseModel):
@@ -67,7 +71,7 @@ class RegisterRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    email: AsciiEmail = Field(..., max_length=255, description="Email address")
+    email: AsciiEmail
     password: str = Field(..., min_length=12, max_length=128, description="Password", repr=False)
     first_name: str = Field(..., min_length=1, max_length=100, description="First name")
     last_name: str = Field(..., min_length=1, max_length=100, description="Last name")
@@ -184,7 +188,7 @@ class ForgotPasswordRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    email: AsciiEmail = Field(..., max_length=255, description="Email address")
+    email: AsciiEmail
 
 
 class ResetPasswordRequest(BaseModel):
@@ -237,7 +241,7 @@ class ResendVerificationRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    email: AsciiEmail = Field(..., max_length=255, description="Email address")
+    email: AsciiEmail
     password: str = Field(..., min_length=12, max_length=128, description="Password", repr=False)
 
     @field_validator("password")
