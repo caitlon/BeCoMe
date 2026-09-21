@@ -1,8 +1,7 @@
 """Renderers that serialize result data into a downloadable CSV or PDF.
 
 The two renderers share a small ``ResultRenderer`` Strategy interface so the
-service can pick one by format and stay open for new formats (mirrors the
-median-strategy pattern in ``src/calculators``).
+service can pick one by format and stay open for new formats.
 """
 
 import csv

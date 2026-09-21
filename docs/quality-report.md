@@ -22,7 +22,7 @@
 | ruff check | Pass | No issues |
 | ruff format | Pass | All files formatted |
 | pytest | Pass | 1730 passed (`testpaths` is unit plus integration; the e2e tier is its own run, `pytest tests/e2e/ -n 0`, and needs a live PostgreSQL) |
-| coverage | Pass | 100% on `src/` (197 statements), 98.86% on `src/`+`api/` (4307 statements, 49 uncovered). CI enforces `--cov-fail-under=98` on the full run |
+| coverage | Pass | 100% on `src/` (164 statements), 98.86% on `src/`+`api/` (4307 statements, 49 uncovered). CI enforces `--cov-fail-under=98` on the full run |
 
 ## Running checks
 
@@ -41,15 +41,13 @@ uv run mypy src/ examples/ && uv run ruff check . && uv run pytest --cov=src
 
 | Module | Statements | Coverage |
 |--------|------------|----------|
-| calculators/base_calculator.py | 12 | 100% |
 | calculators/become_calculator.py | 28 | 100% |
-| calculators/median_strategies.py | 14 | 100% |
-| exceptions.py | 8 | 100% |
+| exceptions.py | 4 | 100% |
 | interpreters/likert_interpreter.py | 24 | 100% |
 | models/become_result.py | 24 | 100% |
 | models/expert_opinion.py | 36 | 100% |
-| models/fuzzy_number.py | 51 | 100% |
-| **Total** | **197** | **100%** |
+| models/fuzzy_number.py | 48 | 100% |
+| **Total** | **164** | **100%** |
 
 HTML report: `uv run pytest --cov=src --cov-report=html` generates `htmlcov/index.html`.
 
