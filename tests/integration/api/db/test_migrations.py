@@ -5,6 +5,7 @@ models, so a reversible schema change is proven end to end. Skipped when
 PostgreSQL is not installed.
 """
 
+import logging
 import shutil
 from datetime import UTC, datetime
 from uuid import uuid4
@@ -814,3 +815,46 @@ class TestClearStaleLikertVerdictsMigration:
             assert tab_row.likert_decision == "Agree"
         finally:
             engine.dispose()
+
+
+class TestMigrationsKeepAppLoggers:
+    """Running Alembic in process leaves the application's own loggers working."""
+
+    def test_an_api_logger_created_before_a_migration_still_emits(self, migration_pg, monkeypatch):
+        """
+        GIVEN an api.* logger that already exists when Alembic runs
+        WHEN a migration runs through the project's alembic.ini
+        THEN the logger still emits afterwards
+
+        migrations/env.py hands alembic.ini to logging.config.fileConfig, which by
+        default disables every logger that exists at that moment and is not named in
+        the file. The app's loggers are created at import time, so a migration run
+        in the test process used to silence them for the rest of the session. The
+        record is caught by a plain handler rather than captured_log_records, which
+        re-enables disabled loggers and would hide exactly this failure.
+        """
+        # GIVEN
+        url = _url(migration_pg)
+        monkeypatch.setenv("ALEMBIC_DATABASE_URL", url)
+        records: list[logging.LogRecord] = []
+
+        class _Collector(logging.Handler):
+            def emit(self, record: logging.LogRecord) -> None:
+                records.append(record)
+
+        logger = logging.getLogger("api.test_migration_logging_probe")
+        handler = _Collector()
+        logger.addHandler(handler)
+        logger.setLevel(logging.INFO)
+        logger.propagate = False
+
+        try:
+            # WHEN
+            command.upgrade(Config("alembic.ini"), "b1d9f4a2c7e3")
+            logger.info("emitted after the migration")
+        finally:
+            logger.removeHandler(handler)
+            logger.propagate = True
+
+        # THEN
+        assert [record.getMessage() for record in records] == ["emitted after the migration"]
