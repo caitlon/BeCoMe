@@ -31,7 +31,6 @@
     "title": "Smazat účet?",
     "description": "Opravdu chcete smazat svůj účet?",
     "details": {
-      "opinions": "Všechny vaše názory budou odstraněny",
       "noUndo": "Tuto akci nelze vrátit zpět"
     },
     "confirm": "Smazat můj účet",
@@ -56,7 +55,6 @@
     "passwordUpdated": "Heslo aktualizováno",
     "passwordFailed": "Nepodařilo se změnit heslo",
     "accountDeleted": "Účet smazán",
-    "deleteFailed": "Nepodařilo se smazat účet",
     "photoUpdated": "Profilová fotka aktualizována",
     "photoTooLarge": "Soubor je příliš velký. Maximální velikost je 5 MB",
     "photoFailed": "Nepodařilo se nahrát fotku",

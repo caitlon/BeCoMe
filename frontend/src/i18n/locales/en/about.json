@@ -14,35 +14,6 @@
     "paragraph2": "The optimum decision is a result of a computationally complex fuzzy set mathematical model based on minimizing entropy. This approach ensures that the final decision represents the most balanced compromise among all expert viewpoints.",
     "learnMore": "View Documentation"
   },
-  "expertOpinions": {
-    "title": "How Experts Express Their Opinions",
-    "crisp": {
-      "title": "Crisp Number",
-      "description": "A single precise value when the expert is confident about their estimate.",
-      "example": "Example: 50 billion CZK"
-    },
-    "fuzzy": {
-      "title": "Fuzzy Interval",
-      "description": "A triangular membership function with three values: best proposal, lower limit, and upper limit.",
-      "example": "Example: (40, 60, 80) for pessimistic, most likely, and optimistic"
-    },
-    "likert": {
-      "title": "Likert Scale",
-      "description": "Linguistic terms mapped to numeric values: Strongly disagree (0), Rather disagree (25), Neutral (50), Rather agree (75), Strongly agree (100).",
-      "example": "Example: Rather agree = 75"
-    }
-  },
-  "results": {
-    "title": "Results",
-    "bestCompromise": {
-      "title": "Best Compromise",
-      "description": "The optimal value that represents the best agreement among all expert opinions, calculated through fuzzy set mathematics."
-    },
-    "maxError": {
-      "title": "Maximum Error of Estimate",
-      "description": "A quality metric that indicates the uncertainty level of the compromise, helping decision-makers understand the confidence in the result."
-    }
-  },
   "applications": {
     "title": "Applications",
     "subtitle": "The BeCoMe method fits many decision-making situations:",
