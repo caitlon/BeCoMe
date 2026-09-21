@@ -14,35 +14,6 @@
     "paragraph2": "Optimální rozhodnutí je výsledkem výpočetně složitého matematického modelu fuzzy množin založeného na minimalizaci entropie. Tento přístup zajišťuje, že konečné rozhodnutí představuje nejvyváženější kompromis mezi všemi expertními pohledy.",
     "learnMore": "Zobrazit dokumentaci"
   },
-  "expertOpinions": {
-    "title": "Jak experti vyjadřují své názory",
-    "crisp": {
-      "title": "Přesné číslo",
-      "description": "Jedna přesná hodnota, když je expert přesvědčen o svém odhadu.",
-      "example": "Příklad: 50 miliard Kč"
-    },
-    "fuzzy": {
-      "title": "Fuzzy interval",
-      "description": "Trojúhelníková funkce příslušnosti se třemi hodnotami: nejlepší návrh, dolní limit a horní limit.",
-      "example": "Příklad: (40, 60, 80) — pesimistický, nejpravděpodobnější, optimistický"
-    },
-    "likert": {
-      "title": "Likertova škála",
-      "description": "Lingvistické termíny mapované na číselné hodnoty: Rozhodně nesouhlasím (0), Spíše nesouhlasím (25), Neutrální (50), Spíše souhlasím (75), Rozhodně souhlasím (100).",
-      "example": "Příklad: Spíše souhlasím = 75"
-    }
-  },
-  "results": {
-    "title": "Výsledky",
-    "bestCompromise": {
-      "title": "Nejlepší kompromis",
-      "description": "Optimální hodnota, která představuje nejlepší shodu mezi všemi expertními názory, vypočítaná pomocí matematiky fuzzy množin."
-    },
-    "maxError": {
-      "title": "Maximální chyba odhadu",
-      "description": "Metrika kvality, která indikuje úroveň nejistoty kompromisu a pomáhá rozhodovatelům pochopit spolehlivost výsledku."
-    }
-  },
   "applications": {
     "title": "Aplikace",
     "subtitle": "Metoda BeCoMe se hodí do mnoha rozhodovacích situací:",

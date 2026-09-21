@@ -31,7 +31,6 @@
     "title": "Delete Account?",
     "description": "Are you sure you want to delete your account?",
     "details": {
-      "opinions": "All your opinions will be removed",
       "noUndo": "This action cannot be undone"
     },
     "confirm": "Delete My Account",
@@ -56,7 +55,6 @@
     "passwordUpdated": "Password updated",
     "passwordFailed": "Failed to change password",
     "accountDeleted": "Account deleted",
-    "deleteFailed": "Failed to delete account",
     "photoUpdated": "Profile photo updated",
     "photoTooLarge": "File too large. Maximum size is 5 MB",
     "photoFailed": "Failed to upload photo",
