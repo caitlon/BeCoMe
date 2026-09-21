@@ -1,18 +1,15 @@
 """Authentication schemas."""
 
 import re
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Annotated, Literal
 from uuid import UUID
 
-import regex
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from api.utils.photo_links import build_photo_url
 
 if TYPE_CHECKING:
     from api.db.models import User
-
-NAME_PATTERN = regex.compile(r"^[\p{L}\s'-]+$")
 
 
 def validate_password_strength(password: str) -> str:
@@ -42,9 +39,27 @@ def validate_name_format(name: str) -> str:
     :return: Name if valid
     :raises ValueError: If name contains invalid characters
     """
-    if not NAME_PATTERN.match(name):
+    # str.isspace() also counts the control separators \x1c-\x1f as whitespace; keep them out.
+    if not name or not all(
+        c.isalpha() or c in "'-" or (c.isspace() and c not in "\x1c\x1d\x1e\x1f") for c in name
+    ):
         raise ValueError("Name can only contain letters, spaces, hyphens, and apostrophes")
     return name
+
+
+def validate_email_ascii(email: str) -> str:
+    """Validate email contains only ASCII characters.
+
+    :param email: Email to validate
+    :return: Email if valid
+    :raises ValueError: If email contains non-ASCII characters
+    """
+    if not email.isascii():
+        raise ValueError("Email must contain only ASCII characters")
+    return email
+
+
+AsciiEmail = Annotated[EmailStr, AfterValidator(validate_email_ascii)]
 
 
 class RegisterRequest(BaseModel):
@@ -52,18 +67,10 @@ class RegisterRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    email: EmailStr = Field(..., max_length=255, description="Email address")
+    email: AsciiEmail = Field(..., max_length=255, description="Email address")
     password: str = Field(..., min_length=12, max_length=128, description="Password", repr=False)
     first_name: str = Field(..., min_length=1, max_length=100, description="First name")
     last_name: str = Field(..., min_length=1, max_length=100, description="Last name")
-
-    @field_validator("email")
-    @classmethod
-    def email_ascii_only(cls, v: str) -> str:
-        """Validate email contains only ASCII characters."""
-        if not v.isascii():
-            raise ValueError("Email must contain only ASCII characters")
-        return v
 
     @field_validator("password")
     @classmethod
@@ -177,15 +184,7 @@ class ForgotPasswordRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    email: EmailStr = Field(..., max_length=255, description="Email address")
-
-    @field_validator("email")
-    @classmethod
-    def email_ascii_only(cls, v: str) -> str:
-        """Validate email contains only ASCII characters."""
-        if not v.isascii():
-            raise ValueError("Email must contain only ASCII characters")
-        return v
+    email: AsciiEmail = Field(..., max_length=255, description="Email address")
 
 
 class ResetPasswordRequest(BaseModel):
@@ -238,16 +237,8 @@ class ResendVerificationRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    email: EmailStr = Field(..., max_length=255, description="Email address")
+    email: AsciiEmail = Field(..., max_length=255, description="Email address")
     password: str = Field(..., min_length=12, max_length=128, description="Password", repr=False)
-
-    @field_validator("email")
-    @classmethod
-    def email_ascii_only(cls, v: str) -> str:
-        """Validate email contains only ASCII characters."""
-        if not v.isascii():
-            raise ValueError("Email must contain only ASCII characters")
-        return v
 
     @field_validator("password")
     @classmethod

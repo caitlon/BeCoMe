@@ -175,6 +175,29 @@ class TestValidateNameFormat:
         with pytest.raises(ValueError, match="letters"):
             validate_name_format(name)
 
+    def test_name_with_control_separator_rejected(self):
+        """
+        GIVEN a name holding a control separator that str.isspace() counts as whitespace
+        WHEN validate_name_format is called
+        THEN ValueError is raised
+        """
+        # GIVEN
+        name = "Anna\x1cBell"
+
+        # WHEN/THEN
+        with pytest.raises(ValueError, match="letters"):
+            validate_name_format(name)
+
+    def test_empty_name_rejected(self):
+        """
+        GIVEN an empty name
+        WHEN validate_name_format is called
+        THEN ValueError is raised
+        """
+        # WHEN/THEN
+        with pytest.raises(ValueError, match="letters"):
+            validate_name_format("")
+
 
 class TestRegisterRequest:
     """Tests for RegisterRequest schema."""
