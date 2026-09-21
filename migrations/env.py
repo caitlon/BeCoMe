@@ -22,7 +22,9 @@ from api.db import models  # noqa: F401, imported so tables register on SQLModel
 config = context.config
 
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # The default would disable every logger that already exists and is not named in
+    # alembic.ini, which in a process that imported the app means all of api.*.
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 target_metadata = SQLModel.metadata
 
