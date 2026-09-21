@@ -3,7 +3,6 @@
 from uuid import uuid4
 
 import pytest
-from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 
 from api.db.models import Invitation, MemberRole, Project, ProjectMember, User
@@ -11,40 +10,6 @@ from api.db.models import Invitation, MemberRole, Project, ProjectMember, User
 
 class TestProjectModel:
     """Tests for Project model."""
-
-    def test_scale_min_greater_than_scale_max_raises_error(self):
-        """
-        GIVEN scale_min >= scale_max
-        WHEN Project is validated
-        THEN ValidationError is raised
-        """
-        # WHEN/THEN
-        with pytest.raises(ValidationError, match=r"scale_min .* must be less than scale_max"):
-            Project.model_validate(
-                {
-                    "name": "Test Project",
-                    "admin_id": uuid4(),
-                    "scale_min": 100.0,
-                    "scale_max": 50.0,
-                }
-            )
-
-    def test_scale_min_equals_scale_max_raises_error(self):
-        """
-        GIVEN scale_min == scale_max
-        WHEN Project is validated
-        THEN ValidationError is raised
-        """
-        # WHEN/THEN
-        with pytest.raises(ValidationError, match=r"scale_min .* must be less than scale_max"):
-            Project.model_validate(
-                {
-                    "name": "Test Project",
-                    "admin_id": uuid4(),
-                    "scale_min": 50.0,
-                    "scale_max": 50.0,
-                }
-            )
 
     def test_valid_scale_range_passes_validation(self):
         """

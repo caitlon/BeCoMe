@@ -3,7 +3,6 @@
 import logging
 from uuid import UUID
 
-from sqlalchemy import func
 from sqlmodel import col, select
 
 from api.db.models import ExpertOpinion, Project, User
@@ -121,19 +120,6 @@ class OpinionService(BaseService):
                 "user_id": str(user_id),
             },
         )
-
-    def count_opinions(self, project_id: UUID) -> int:
-        """Count opinions for a project.
-
-        :param project_id: Project UUID
-        :return: Number of opinions
-        """
-        statement = (
-            select(func.count())
-            .select_from(ExpertOpinion)
-            .where(ExpertOpinion.project_id == project_id)
-        )
-        return self._session.exec(statement).one()
 
     def validate_values_in_range(
         self,

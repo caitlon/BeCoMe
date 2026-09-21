@@ -221,36 +221,6 @@ class TestOpinionServiceDeleteOpinion:
             service.delete_opinion(uuid4(), uuid4())
 
 
-class TestOpinionServiceCountOpinions:
-    """Tests for OpinionService.count_opinions method."""
-
-    def test_returns_count(self):
-        """Returns number of opinions for project."""
-        # GIVEN
-        mock_session = MagicMock()
-        mock_session.exec.return_value.one.return_value = 5
-        service = OpinionService(mock_session)
-
-        # WHEN
-        result = service.count_opinions(uuid4())
-
-        # THEN
-        assert result == 5
-
-    def test_returns_zero_for_empty_project(self):
-        """Returns zero when project has no opinions."""
-        # GIVEN
-        mock_session = MagicMock()
-        mock_session.exec.return_value.one.return_value = 0
-        service = OpinionService(mock_session)
-
-        # WHEN
-        result = service.count_opinions(uuid4())
-
-        # THEN
-        assert result == 0
-
-
 class TestOpinionServiceValidateValuesInRange:
     """Tests for OpinionService.validate_values_in_range method."""
 

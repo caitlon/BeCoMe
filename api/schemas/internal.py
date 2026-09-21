@@ -19,27 +19,6 @@ from api.db.models import (
 
 
 @dataclass(frozen=True)
-class ProjectWithMemberCount:
-    """Project with its member count.
-
-    Replaces tuple[Project, int] for better type safety.
-    """
-
-    project: Project
-    member_count: int
-
-    @property
-    def id(self) -> UUID:
-        """Get project ID."""
-        return self.project.id
-
-    @property
-    def name(self) -> str:
-        """Get project name."""
-        return self.project.name
-
-
-@dataclass(frozen=True)
 class ProjectWithMemberCountAndRole:
     """Project with member count and user's role.
 
@@ -114,11 +93,6 @@ class OpinionWithUser:
     user: User
 
     @property
-    def opinion_id(self) -> UUID:
-        """Get opinion ID."""
-        return self.opinion.id
-
-    @property
     def user_id(self) -> UUID:
         """Get user ID."""
         return self.user.id
@@ -153,18 +127,3 @@ class UpsertResult:
 
     opinion: ExpertOpinion
     is_new: bool
-
-    @property
-    def opinion_id(self) -> UUID:
-        """Get opinion ID."""
-        return self.opinion.id
-
-    @property
-    def was_created(self) -> bool:
-        """Check if opinion was newly created."""
-        return self.is_new
-
-    @property
-    def was_updated(self) -> bool:
-        """Check if existing opinion was updated."""
-        return not self.is_new

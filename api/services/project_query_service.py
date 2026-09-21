@@ -7,9 +7,9 @@ from uuid import UUID
 from sqlmodel import col, select
 
 from api.db.models import MemberRole, Project, ProjectMember
-from api.schemas.internal import ProjectWithMemberCount, ProjectWithMemberCountAndRole
+from api.schemas.internal import ProjectWithMemberCountAndRole
 from api.services.base import BaseService
-from api.services.query_helpers import MemberCountSubquery
+from api.services.query_helpers import member_count_subquery
 
 logger = logging.getLogger("api.service.project_query")
 
@@ -49,34 +49,6 @@ class ProjectQueryService(BaseService):
     Handles queries that join multiple tables for UI display.
     """
 
-    def get_user_projects_with_counts(self, user_id: UUID) -> list[ProjectWithMemberCount]:
-        """Get all projects where user is a member, with member counts.
-
-        Uses a single query with subquery to avoid N+1 problem.
-
-        :param user_id: User ID
-        :return: List of ProjectWithMemberCount instances
-        """
-        member_count_subquery = MemberCountSubquery.build()
-
-        statement = (
-            select(Project, member_count_subquery.c.member_count)
-            .join(ProjectMember, col(ProjectMember.project_id) == Project.id)
-            .join(
-                member_count_subquery,
-                member_count_subquery.c.project_id == Project.id,
-            )
-            .where(ProjectMember.user_id == user_id)
-            .order_by(col(Project.created_at).desc())
-        )
-        start = perf_counter()
-        results = self._session.exec(statement).all()
-        _log_query("with_counts", user_id, len(results), start)
-        return [
-            ProjectWithMemberCount(project=project, member_count=count)
-            for project, count in results
-        ]
-
     def get_user_projects_with_roles(
         self, user_id: UUID, limit: int | None = None, offset: int = 0
     ) -> list[ProjectWithMemberCountAndRole]:
@@ -89,14 +61,14 @@ class ProjectQueryService(BaseService):
         :param offset: Rows to skip when a limit is set.
         :return: List of ProjectWithMemberCountAndRole instances
         """
-        member_count_subquery = MemberCountSubquery.build()
+        counts = member_count_subquery()
 
         statement = (
-            select(Project, member_count_subquery.c.member_count, ProjectMember.role)
+            select(Project, counts.c.member_count, ProjectMember.role)
             .join(ProjectMember, col(ProjectMember.project_id) == Project.id)
             .join(
-                member_count_subquery,
-                member_count_subquery.c.project_id == Project.id,
+                counts,
+                counts.c.project_id == Project.id,
             )
             .where(ProjectMember.user_id == user_id)
             .order_by(col(Project.created_at).desc())

@@ -3,7 +3,6 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 
 from api.db.models import EmailVerificationToken, PasswordResetToken, User
@@ -11,23 +10,6 @@ from api.db.models import EmailVerificationToken, PasswordResetToken, User
 
 class TestUserModel:
     """Tests for User model."""
-
-    def test_invalid_email_format_raises_error(self):
-        """
-        GIVEN invalid email format
-        WHEN User is validated
-        THEN ValidationError is raised
-        """
-        # WHEN/THEN
-        with pytest.raises(ValidationError, match="Invalid email format"):
-            User.model_validate(
-                {
-                    "email": "not-an-email",
-                    "hashed_password": "hash",
-                    "first_name": "Test",
-                    "last_name": "User",
-                }
-            )
 
     def test_valid_email_passes_validation(self):
         """

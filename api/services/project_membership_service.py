@@ -127,21 +127,6 @@ class ProjectMembershipService(BaseService):
         membership = self._get_membership(project_id, user_id)
         return membership.role if membership else None
 
-    def add_member(self, project_id: UUID, user_id: UUID, role: MemberRole) -> ProjectMember:
-        """Add a member to project.
-
-        :param project_id: Project ID
-        :param user_id: User ID to add
-        :param role: Member role
-        :return: Created ProjectMember instance
-        """
-        membership = ProjectMember(
-            project_id=project_id,
-            user_id=user_id,
-            role=role,
-        )
-        return self._save_and_refresh(membership)
-
     def _get_membership(self, project_id: UUID, user_id: UUID) -> ProjectMember | None:
         """Get membership record for user in project.
 

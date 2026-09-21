@@ -7,23 +7,16 @@ from sqlmodel.sql.expression import SelectOfScalar
 from api.db.models import ProjectMember, User
 
 
-class MemberCountSubquery:
-    """Helper for building member count subqueries.
+def member_count_subquery() -> Subquery:
+    """Build subquery for counting project members.
 
-    Eliminates duplication of member count logic across services.
+    :return: Subquery that can be joined with Project table
     """
-
-    @staticmethod
-    def build() -> Subquery:
-        """Build subquery for counting project members.
-
-        :return: Subquery that can be joined with Project table
-        """
-        return (
-            select(ProjectMember.project_id, func.count().label("member_count"))
-            .group_by(col(ProjectMember.project_id))
-            .subquery()
-        )
+    return (
+        select(ProjectMember.project_id, func.count().label("member_count"))
+        .group_by(col(ProjectMember.project_id))
+        .subquery()
+    )
 
 
 def select_account_by_email(email: str) -> SelectOfScalar[User]:

@@ -2,14 +2,13 @@
 
 import enum
 from datetime import datetime
-from typing import Optional, Self
+from typing import Optional
 from uuid import UUID, uuid4
 
-from pydantic import model_validator
 from sqlalchemy import CheckConstraint, UniqueConstraint
 from sqlmodel import Field, Relationship, SQLModel
 
-from api.db.utils import EMAIL_REGEX, utc_now
+from api.db.utils import utc_now
 
 _USERS_FK = "users.id"
 _PROJECTS_FK = "projects.id"
@@ -68,14 +67,6 @@ class User(SQLModel, table=True):
         sa_relationship_kwargs={"passive_deletes": True},
     )
 
-    @model_validator(mode="after")
-    def validate_email_format(self) -> Self:
-        """Validate email format."""
-        if not EMAIL_REGEX.match(self.email):
-            msg = f"Invalid email format: {self.email}"
-            raise ValueError(msg)
-        return self
-
 
 class Project(SQLModel, table=True):
     """A project for group decision-making."""
@@ -120,14 +111,6 @@ class Project(SQLModel, table=True):
         back_populates="project",
         sa_relationship_kwargs={"uselist": False, "cascade": _CASCADE_ALL_DELETE_ORPHAN},
     )
-
-    @model_validator(mode="after")
-    def validate_scale_range(self) -> Self:
-        """Validate scale_min < scale_max."""
-        if self.scale_min >= self.scale_max:
-            msg = f"scale_min ({self.scale_min}) must be less than scale_max ({self.scale_max})"
-            raise ValueError(msg)
-        return self
 
 
 class ProjectMember(SQLModel, table=True):
@@ -203,14 +186,6 @@ class ExpertOpinion(SQLModel, table=True):
 
     project: Project = Relationship(back_populates="opinions")
     user: User = Relationship(back_populates="opinions")
-
-    @model_validator(mode="after")
-    def validate_fuzzy_constraints(self) -> Self:
-        """Validate lower <= peak <= upper for fuzzy triangular number."""
-        if not (self.lower_bound <= self.peak <= self.upper_bound):
-            msg = f"Must satisfy: lower <= peak <= upper. Got: {self.lower_bound}, {self.peak}, {self.upper_bound}"
-            raise ValueError(msg)
-        return self
 
 
 class PasswordResetToken(SQLModel, table=True):
@@ -312,27 +287,3 @@ class CalculationResult(SQLModel, table=True):
     calculated_at: datetime = Field(default_factory=utc_now)
 
     project: Project = Relationship(back_populates="result")
-
-    @model_validator(mode="after")
-    def validate_fuzzy_constraints(self) -> Self:
-        """Validate lower <= peak <= upper for all fuzzy numbers."""
-        fuzzy_sets = [
-            (
-                "best_compromise",
-                self.best_compromise_lower,
-                self.best_compromise_peak,
-                self.best_compromise_upper,
-            ),
-            (
-                "arithmetic_mean",
-                self.arithmetic_mean_lower,
-                self.arithmetic_mean_peak,
-                self.arithmetic_mean_upper,
-            ),
-            ("median", self.median_lower, self.median_peak, self.median_upper),
-        ]
-        for name, lower, peak, upper in fuzzy_sets:
-            if not (lower <= peak <= upper):
-                msg = f"{name}: must satisfy lower <= peak <= upper. Got: {lower}, {peak}, {upper}"
-                raise ValueError(msg)
-        return self
