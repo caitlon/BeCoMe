@@ -31,7 +31,6 @@
     "title": "Smazat účet?",
     "description": "Opravdu chcete smazat svůj účet?",
     "details": {
-      "projects": "Všechny vaše projekty budou smazány",
       "opinions": "Všechny vaše názory budou odstraněny",
       "noUndo": "Tuto akci nelze vrátit zpět"
     },

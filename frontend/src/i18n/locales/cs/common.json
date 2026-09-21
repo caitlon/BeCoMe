@@ -36,7 +36,6 @@
     "documentation": "Dokumentace",
     "faq": "Časté dotazy",
     "caseStudies": "Případové studie",
-    "implementation": "Implementace a vývoj webové aplikace",
     "implementationLine": "Implementace metody BeCoMe",
     "implementationUniversity": "Česká zemědělská univerzita v Praze",
     "feedback": "Zpětná vazba a kontakt",
@@ -49,22 +48,8 @@
     "pelikan": "doc. Ing. Martin Pelikán, Ph.D.",
     "privacy": "Ochrana údajů"
   },
-  "docs": {
-    "title": "Dokumentace",
-    "github": "GitHub"
-  },
   "common": {
-    "loading": "Načítání...",
-    "error": "Chyba",
-    "success": "Úspěch",
-    "cancel": "Zrušit",
-    "save": "Uložit",
-    "delete": "Smazat",
-    "create": "Vytvořit",
-    "back": "Zpět",
-    "next": "Další",
-    "submit": "Odeslat",
-    "close": "Zavřít"
+    "loading": "Načítání..."
   },
   "password": {
     "show": "Zobrazit heslo",
@@ -86,8 +71,6 @@
     "lowerDesc": "Dolní (pesimistický)",
     "peakDesc": "Vrchol (nejpravděpodobnější)",
     "upperDesc": "Horní (optimistický)",
-    "arithmeticMean": "Aritmetický průměr (Γ)",
-    "maxError": "Max. chyba (Δmax)",
     "membershipFunction": "μ(x)",
     "mean": "Průměr",
     "median": "Medián",
@@ -117,7 +100,6 @@
   },
   "centroidChart": {
     "centroidValue": "Centroid",
-    "yAxisLabel": "Hodnota centroidu",
     "meanLine": "Průměr (Γ)",
     "medianLine": "Medián (Ω)",
     "compromiseLine": "Nejlepší kompromis (ΓΩMean)",

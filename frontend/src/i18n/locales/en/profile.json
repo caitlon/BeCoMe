@@ -31,7 +31,6 @@
     "title": "Delete Account?",
     "description": "Are you sure you want to delete your account?",
     "details": {
-      "projects": "All your projects will be deleted",
       "opinions": "All your opinions will be removed",
       "noUndo": "This action cannot be undone"
     },
