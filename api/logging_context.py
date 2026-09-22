@@ -39,13 +39,14 @@ def get_request_id() -> str | None:
     return _request_id_var.get()
 
 
-def set_user_id(user_id: str) -> Token[str | None]:
+def set_user_id(user_id: str) -> None:
     """Bind the acting user ID for the current context.
 
+    Nothing resets it: each request runs in its own context, so the value ends with it.
+
     :param user_id: ID of the authenticated user driving the request.
-    :return: Reset token to restore the previous value.
     """
-    return _user_id_var.set(user_id)
+    _user_id_var.set(user_id)
 
 
 def get_user_id() -> str | None:
