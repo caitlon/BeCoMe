@@ -3,7 +3,7 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { render } from '@tests/utils';
 import Projects from '@/pages/Projects';
-import { createProjectWithRole, createInvitation } from '@tests/factories';
+import { createProjectWithRole, createInvitation } from '@tests/factories/project';
 
 // Mock api
 const mockApi = {
