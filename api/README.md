@@ -46,7 +46,7 @@ api/
 │   ├── models.py           # SQLModel entities
 │   ├── engine.py           # Database engine setup
 │   ├── session.py          # Session dependency
-│   └── utils.py            # UTC helpers, email regex
+│   └── utils.py            # UTC helpers
 ├── middleware/         # Request processing
 │   ├── rate_limit.py       # SlowAPI rate limiting (logs violations)
 │   ├── csrf.py             # Session-bound CSRF check on cookie mutations
