@@ -48,14 +48,6 @@ def set_user_id(user_id: str) -> Token[str | None]:
     return _user_id_var.set(user_id)
 
 
-def reset_user_id(token: Token[str | None]) -> None:
-    """Restore the acting user ID to its previous value.
-
-    :param token: Token returned by :func:`set_user_id`.
-    """
-    _user_id_var.reset(token)
-
-
 def get_user_id() -> str | None:
     """Return the acting user ID bound to the current context.
 
