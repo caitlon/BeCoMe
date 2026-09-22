@@ -115,7 +115,7 @@ separate uvicorn process that in-process coverage cannot see.
 tests/
 ├── unit/
 │   ├── models/          # FuzzyTriangleNumber, ExpertOpinion, BeCoMeResult
-│   ├── calculators/     # arithmetic mean, median, strategies, compromise
+│   ├── calculators/     # arithmetic mean, median, centroid sort, compromise
 │   ├── interpreters/    # Likert scale interpreter
 │   ├── utilities/       # display, formatting, analysis helpers
 │   └── api/             # API unit tests
