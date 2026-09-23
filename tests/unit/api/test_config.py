@@ -1296,3 +1296,19 @@ class TestAssistantSettings:
         # WHEN/THEN
         with pytest.raises(ValidationError, match="assistant_enabled"):
             Settings()
+
+    def test_private_corpus_manifest_defaults_to_none(self, monkeypatch, tmp_path):
+        """
+        GIVEN Settings without an explicit override and no .env file in reach
+        WHEN constructed
+        THEN assistant_private_corpus_manifest defaults to None
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("ASSISTANT_PRIVATE_CORPUS_MANIFEST", raising=False)
+
+        # WHEN
+        settings = Settings(secret_key="test-secret-key")
+
+        # THEN
+        assert settings.assistant_private_corpus_manifest is None
