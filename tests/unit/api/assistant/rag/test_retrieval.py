@@ -1,5 +1,7 @@
 """Unit tests for query retrieval (fakes only, no network)."""
 
+from collections.abc import Callable
+
 import httpx
 import pytest
 from langchain_core.documents import Document
@@ -16,6 +18,27 @@ def _doc(text: str, title: str, heading_path: str = "") -> Document:
         page_content=text,
         metadata={"title": title, "heading_path": heading_path, "url": None, "layer": "public"},
     )
+
+
+class _RelevanceScoredInMemoryVectorStore(InMemoryVectorStore):
+    """InMemoryVectorStore, with LangChain's relevance-score hook implemented.
+
+    InMemoryVectorStore declares no _select_relevance_score_fn, so a bare instance
+    makes DocsRetriever.search() raise NotImplementedError (see
+    TestDocsRetrieverDenseSearch.test_a_store_with_no_relevance_score_support_raises
+    below) - correct for a real store that cannot say what its raw score means, but
+    these tests need a working relevance score to exercise search() at all. Maps
+    InMemoryVectorStore's cosine similarity ([-1, 1]) onto the [0, 1] range
+    LangChain's relevance-score contract requires, with (similarity + 1) / 2, clamped
+    to [0.0, 1.0]: LangChain warns whenever a relevance score leaves [0, 1]
+    ("Relevance scores must be between 0 and 1, got ..." - quoting the full list of
+    retrieved documents and scores, not just the offending number), which random
+    fake-embedding vectors and float overshoot at the +/-1 boundary would otherwise
+    trigger.
+    """
+
+    def _select_relevance_score_fn(self) -> Callable[[float], float]:
+        return lambda similarity: max(0.0, min(1.0, (similarity + 1) / 2))
 
 
 class TestRetrievedChunk:
@@ -49,7 +72,7 @@ class TestDocsRetrieverDenseSearch:
         """
         # GIVEN
         embeddings = DeterministicFakeEmbedding(size=16)
-        store = InMemoryVectorStore(embeddings)
+        store = _RelevanceScoredInMemoryVectorStore(embeddings)
         query_text = "BeCoMe combines the arithmetic mean and the median."
         await store.aadd_documents(
             [
@@ -85,7 +108,7 @@ class TestDocsRetrieverDenseSearch:
         """
         # GIVEN
         embeddings = DeterministicFakeEmbedding(size=16)
-        store = InMemoryVectorStore(embeddings)
+        store = _RelevanceScoredInMemoryVectorStore(embeddings)
         await store.aadd_documents([_doc(f"chunk {i}", title=f"T{i}") for i in range(3)])
         config = RetrievalConfig(mode="dense", k=2)
         retriever = DocsRetriever(store=store, config=config, reranker=None, llm=None)
@@ -95,6 +118,58 @@ class TestDocsRetrieverDenseSearch:
 
         # THEN
         assert len(results) == 2
+
+    @pytest.mark.asyncio
+    async def test_best_match_scores_highest_and_results_are_descending(self):
+        """
+        GIVEN a store with an exact-match document and two unrelated ones
+        WHEN search() runs in dense mode over all three
+        THEN the exact-match document's score is the highest of the three, and the
+             scores come back in descending order (best match first)
+        """
+        # GIVEN
+        embeddings = DeterministicFakeEmbedding(size=16)
+        store = _RelevanceScoredInMemoryVectorStore(embeddings)
+        query_text = "BeCoMe combines the arithmetic mean and the median."
+        await store.aadd_documents(
+            [
+                _doc("The frontend uses React and TypeScript.", title="Frontend"),
+                _doc(query_text, title="Method"),
+                _doc("Cats are small domesticated carnivorous mammals.", title="Unrelated"),
+            ]
+        )
+        config = RetrievalConfig(mode="dense", k=3)
+        retriever = DocsRetriever(store=store, config=config, reranker=None, llm=None)
+
+        # WHEN
+        results = await retriever.search(query_text)
+
+        # THEN
+        scores = [chunk.score for chunk in results]
+        assert results[0].title == "Method"
+        assert results[0].score == max(scores)
+        assert scores == sorted(scores, reverse=True)
+
+    @pytest.mark.asyncio
+    async def test_a_store_with_no_relevance_score_support_raises(self):
+        """
+        GIVEN a bare InMemoryVectorStore, which declares no relevance-score
+             conversion (unlike PGVectorStore, which does)
+        WHEN search() runs in dense mode
+        THEN it raises NotImplementedError rather than silently treating the store's
+             raw score as if it meant "higher is more relevant" - a store that
+             cannot say what its score means must fail loudly, not guess
+        """
+        # GIVEN
+        embeddings = DeterministicFakeEmbedding(size=16)
+        store = InMemoryVectorStore(embeddings)
+        await store.aadd_documents([_doc("chunk", title="T")])
+        config = RetrievalConfig(mode="dense", k=1)
+        retriever = DocsRetriever(store=store, config=config, reranker=None, llm=None)
+
+        # WHEN / THEN
+        with pytest.raises(NotImplementedError):
+            await retriever.search("chunk")
 
 
 class _RerankByPositionResponse:
@@ -143,7 +218,7 @@ class TestDocsRetrieverRerank:
         # GIVEN
         monkeypatch.setattr(httpx, "AsyncClient", _RerankByPositionClient)
         embeddings = DeterministicFakeEmbedding(size=16)
-        store = InMemoryVectorStore(embeddings)
+        store = _RelevanceScoredInMemoryVectorStore(embeddings)
         await store.aadd_documents([_doc(f"chunk {i}", title=f"T{i}") for i in range(3)])
         reranker = LlamaServerReranker(base_url="http://127.0.0.1:8083/v1", model="m", timeout=5.0)
         config = RetrievalConfig(mode="dense", k=3, rerank=True)
@@ -163,7 +238,7 @@ class TestDocsRetrieverRerank:
         THEN it raises ValueError rather than failing later inside search()
         """
         embeddings = DeterministicFakeEmbedding(size=16)
-        store = InMemoryVectorStore(embeddings)
+        store = _RelevanceScoredInMemoryVectorStore(embeddings)
         config = RetrievalConfig(mode="dense", rerank=True)
 
         with pytest.raises(ValueError, match="reranker"):
@@ -181,7 +256,7 @@ class TestUnimplementedRetrieval:
         THEN it raises NotImplementedError naming the mode
         """
         embeddings = DeterministicFakeEmbedding(size=16)
-        store = InMemoryVectorStore(embeddings)
+        store = _RelevanceScoredInMemoryVectorStore(embeddings)
         config = RetrievalConfig(mode="bm25")
 
         with pytest.raises(NotImplementedError, match="bm25"):
@@ -194,7 +269,7 @@ class TestUnimplementedRetrieval:
         THEN it raises NotImplementedError naming the transform
         """
         embeddings = DeterministicFakeEmbedding(size=16)
-        store = InMemoryVectorStore(embeddings)
+        store = _RelevanceScoredInMemoryVectorStore(embeddings)
         config = RetrievalConfig(mode="dense", query_transform="hyde")
 
         with pytest.raises(NotImplementedError, match="hyde"):

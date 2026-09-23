@@ -39,8 +39,10 @@ class RetrievedChunk:
     :param section: The chunk's heading_path metadata.
     :param url: The source's public URL, or None.
     :param layer: "public" or "local".
-    :param score: Relevance score - the reranker's when rerank=True, else the
-        vector store's own similarity score.
+    :param score: Relevance score - higher is always more relevant. The reranker's
+        own score when rerank=True; otherwise the vector store's relevance score
+        (for PGVectorStore with cosine distance, that is 1 - distance: 1.0 for an
+        identical vector, below 0 only for an anti-correlated one).
     """
 
     text: str
@@ -63,9 +65,12 @@ class DocsRetriever:
     ) -> None:
         """
         :param store: The document index to search. Typed as the LangChain VectorStore
-            base class, not the more specific PGVectorStore: PGVectorStore is one of
-            VectorStore's subclasses, so every real caller stays valid, and a test
-            double such as InMemoryVectorStore becomes a valid argument too.
+            base class, not the more specific PGVectorStore, so every real caller
+            stays valid - but search() calls asimilarity_search_with_relevance_scores,
+            so the store must also implement LangChain's relevance-score conversion
+            (VectorStore._select_relevance_score_fn). PGVectorStore does; a bare
+            InMemoryVectorStore does not and makes search() raise NotImplementedError
+            rather than silently returning a score of unknown meaning.
         :param config: mode must be "dense" and query_transform must be "none" in
             this pull request; both are enforced here, at construction time.
         :param reranker: Required when config.rerank is True; ignored otherwise.
@@ -95,15 +100,25 @@ class DocsRetriever:
     async def search(self, query: str) -> list[RetrievedChunk]:
         """Search the index and return the top-k chunks, most relevant first.
 
+        Scores are relevance scores, not raw distances: higher is always more
+        relevant, most relevant first, for every store. A store that has no
+        relevance-score conversion (VectorStore._select_relevance_score_fn not
+        overridden) raises NotImplementedError here instead of silently returning a
+        raw score whose meaning - similarity or distance - this code cannot know.
+
         Errors are not caught here: an unreachable store or reranker raises as-is.
         The chat endpoint's service layer is what turns either into
         AssistantUnavailableError.
 
         :param query: The search query.
-        :return: Up to config.k RetrievedChunk, ordered by relevance.
+        :return: Up to config.k RetrievedChunk, ordered by relevance (highest
+            score, most relevant, first).
+        :raises NotImplementedError: If the store has no relevance-score conversion
+            (VectorStore._select_relevance_score_fn not overridden) - PGVectorStore
+            has one, a bare InMemoryVectorStore does not.
         """
         fetch_k = self._config.k * 4 if self._config.rerank else self._config.k
-        dense_results = await self._store.asimilarity_search_with_score(query, k=fetch_k)
+        dense_results = await self._store.asimilarity_search_with_relevance_scores(query, k=fetch_k)
         if self._config.rerank and dense_results:
             if self._reranker is None:
                 raise RuntimeError("unreachable: config.rerank requires a reranker")
