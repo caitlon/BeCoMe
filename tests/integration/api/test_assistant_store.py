@@ -13,8 +13,10 @@ raise there uncaught, but that path is CI-only and already gated earlier.
 import shutil
 
 import pytest
+from langchain_core.documents import Document
+from langchain_core.embeddings import DeterministicFakeEmbedding
 
-from api.assistant.rag.store import ensure_collection, make_engine
+from api.assistant.rag.store import ensure_collection, make_engine, open_store
 
 pytestmark = pytest.mark.skipif(
     not shutil.which("pg_ctl"), reason="PostgreSQL not installed (pg_ctl not found in PATH)"
@@ -91,5 +93,42 @@ class TestEnsureCollection:
         # WHEN/THEN
         try:
             await ensure_collection(engine, table="docs_test_hybrid", vector_size=8, hybrid=True)
+        finally:
+            await engine.close()
+
+
+class TestOpenStore:
+    """open_store binds a PGVectorStore to an already-created collection table."""
+
+    @pytest.mark.asyncio
+    async def test_round_trips_a_document_through_real_pgvector(self, postgresql):
+        """
+        GIVEN a table created by ensure_collection
+        WHEN a document is added through open_store's PGVectorStore and searched for
+        THEN the same document comes back
+        """
+        # GIVEN
+        engine = make_engine(_connection_url(postgresql))
+        embeddings = DeterministicFakeEmbedding(size=8)
+        try:
+            await ensure_collection(
+                engine, table="docs_test_roundtrip", vector_size=8, hybrid=False
+            )
+            store = open_store(engine, table="docs_test_roundtrip", embeddings=embeddings)
+
+            # WHEN
+            await store.aadd_documents(
+                [
+                    Document(
+                        page_content="BeCoMe combines the mean and the median.",
+                        metadata={"title": "Method"},
+                    )
+                ]
+            )
+            results = await store.asimilarity_search_with_score("mean and median", k=1)
+
+            # THEN
+            assert len(results) == 1
+            assert results[0][0].page_content == "BeCoMe combines the mean and the median."
         finally:
             await engine.close()

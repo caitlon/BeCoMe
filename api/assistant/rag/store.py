@@ -6,7 +6,8 @@ Settings.assistant_vector_db_url), never the application's own Postgres.
 
 import contextlib
 
-from langchain_postgres import PGEngine
+from langchain_core.embeddings import Embeddings
+from langchain_postgres import PGEngine, PGVectorStore
 from langchain_postgres.v2.hybrid_search_config import HybridSearchConfig
 from sqlalchemy.exc import ProgrammingError
 
@@ -51,3 +52,14 @@ async def ensure_collection(engine: PGEngine, table: str, vector_size: int, hybr
         await engine.ainit_vectorstore_table(
             table_name=table, vector_size=vector_size, hybrid_search_config=hybrid_config
         )
+
+
+def open_store(engine: PGEngine, table: str, embeddings: Embeddings) -> PGVectorStore:
+    """Open an existing collection table as a PGVectorStore.
+
+    :param engine: The assistant database's connection pool.
+    :param table: The collection's table name, already created via ensure_collection.
+    :param embeddings: The embeddings client used to embed queries and documents.
+    :return: A PGVectorStore bound to that table.
+    """
+    return PGVectorStore.create_sync(engine=engine, embedding_service=embeddings, table_name=table)
