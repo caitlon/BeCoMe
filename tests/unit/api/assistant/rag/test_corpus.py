@@ -44,8 +44,8 @@ class TestPublicDocsWalk:
         manifest = build_manifest(repo_root=tmp_path, private_dirs=[])
 
         # THEN: path is the resolved absolute file, not a repo-relative string - loaders.py
-        # (Task 124.6+) opens source.path directly, with no repo_root of its own to resolve
-        # a relative one against.
+        # opens source.path directly, with no repo_root of its own to resolve a relative
+        # one against.
         target = tmp_path / "docs" / "user" / "what-it-does.md"
         excluded = tmp_path / "docs" / "security.md"
         paths = {source.path for source in manifest}
