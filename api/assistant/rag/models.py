@@ -6,6 +6,7 @@ reached through the OpenAI-compatible API langchain_openai speaks. The rerank ro
 langchain_openai counterpart - and is added in Task 124.11.
 """
 
+import httpx
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from pydantic import SecretStr
 
@@ -42,3 +43,48 @@ def make_embeddings(settings: Settings) -> OpenAIEmbeddings:
         model=settings.assistant_embedding_model,
         check_embedding_ctx_length=False,
     )
+
+
+class LlamaServerReranker:
+    """Async client for llama-server's /v1/rerank endpoint.
+
+    Not an OpenAI-compatible client - langchain_openai has no rerank counterpart - so
+    this talks to llama-server directly over HTTP, in the Jina/Cohere-shaped request
+    and response llama.cpp documents for /v1/rerank.
+    """
+
+    def __init__(self, base_url: str, model: str, timeout: float) -> None:
+        """
+        :param base_url: The rerank-role llama-server's base URL, e.g.
+            "http://127.0.0.1:8083/v1".
+        :param model: Model alias the rerank llama-server was started with.
+        :param timeout: HTTP request timeout, in seconds.
+        """
+        self._base_url = base_url
+        self._model = model
+        self._timeout = timeout
+
+    async def rerank(self, query: str, texts: list[str]) -> list[float]:
+        """Score each text's relevance to the query.
+
+        Errors are not caught here: a non-2xx response raises httpx.HTTPStatusError,
+        and an unreachable server raises httpx.ConnectError, both as-is. BCM-126's
+        service layer is what turns either into AssistantUnavailableError.
+
+        :param query: The search query.
+        :param texts: Candidate passages, in the order to score.
+        :return: One relevance score per text, in the SAME order as texts - not
+            sorted by score. A caller that wants a ranking sorts the (text, score)
+            pairs itself.
+        """
+        async with httpx.AsyncClient(timeout=self._timeout) as client:
+            response = await client.post(
+                f"{self._base_url}/rerank",
+                json={"model": self._model, "query": query, "documents": texts},
+            )
+        response.raise_for_status()
+        results = response.json()["results"]
+        scores = [0.0] * len(texts)
+        for result in results:
+            scores[result["index"]] = result["relevance_score"]
+        return scores

@@ -1,8 +1,10 @@
 """Unit tests for the chat/embeddings model factories (fakes only, no network)."""
 
+import httpx
+import pytest
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 
-from api.assistant.rag.models import make_chat_model, make_embeddings
+from api.assistant.rag.models import LlamaServerReranker, make_chat_model, make_embeddings
 from api.config import Settings
 
 
@@ -49,3 +51,74 @@ class TestMakeEmbeddings:
         assert embeddings.openai_api_base == settings.assistant_embedding_base_url
         assert embeddings.model == settings.assistant_embedding_model
         assert embeddings.check_embedding_ctx_length is False
+
+
+class _FakeResponse:
+    """Stands in for httpx.Response: only raise_for_status() and json() are used."""
+
+    def __init__(self, payload: dict) -> None:
+        self._payload = payload
+
+    def raise_for_status(self) -> None:
+        pass
+
+    def json(self) -> dict:
+        return self._payload
+
+
+class _FakeAsyncClient:
+    """Stands in for httpx.AsyncClient, recording the request and its own response."""
+
+    last_request: dict | None = None
+
+    def __init__(self, *args, **kwargs) -> None:
+        pass
+
+    async def __aenter__(self) -> "_FakeAsyncClient":
+        return self
+
+    async def __aexit__(self, *exc_info) -> bool:
+        return False
+
+    async def post(self, url: str, json: dict) -> _FakeResponse:
+        _FakeAsyncClient.last_request = {"url": url, "json": json}
+        return _FakeResponse(
+            {
+                "results": [
+                    {"index": 1, "relevance_score": 0.9},
+                    {"index": 0, "relevance_score": 0.2},
+                ]
+            }
+        )
+
+
+class TestLlamaServerReranker:
+    """Async client for llama-server's /v1/rerank endpoint."""
+
+    @pytest.mark.asyncio
+    async def test_rerank_returns_scores_aligned_to_input_order(self, monkeypatch):
+        """
+        GIVEN a fake llama-server whose response lists results out of input order
+        WHEN rerank() scores two texts
+        THEN scores come back aligned to the INPUT order, not the response order,
+             and the request body carries model/query/documents as llama-server expects
+        """
+        # GIVEN
+        monkeypatch.setattr(httpx, "AsyncClient", _FakeAsyncClient)
+        reranker = LlamaServerReranker(
+            base_url="http://127.0.0.1:8083/v1", model="BAAI/bge-reranker-v2-m3", timeout=5.0
+        )
+
+        # WHEN
+        scores = await reranker.rerank("query", ["doc a", "doc b"])
+
+        # THEN
+        assert scores == [0.2, 0.9]
+        assert _FakeAsyncClient.last_request == {
+            "url": "http://127.0.0.1:8083/v1/rerank",
+            "json": {
+                "model": "BAAI/bge-reranker-v2-m3",
+                "query": "query",
+                "documents": ["doc a", "doc b"],
+            },
+        }
