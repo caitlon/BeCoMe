@@ -92,6 +92,22 @@ class _FakeAsyncClient:
         )
 
 
+class _FakeAsyncClientOutOfRangeIndex:
+    """Stands in for httpx.AsyncClient, returning a result index past the input texts."""
+
+    def __init__(self, *args, **kwargs) -> None:
+        pass
+
+    async def __aenter__(self) -> "_FakeAsyncClientOutOfRangeIndex":
+        return self
+
+    async def __aexit__(self, *exc_info) -> bool:
+        return False
+
+    async def post(self, url: str, json: dict) -> _FakeResponse:
+        return _FakeResponse({"results": [{"index": 5, "relevance_score": 0.9}]})
+
+
 class TestLlamaServerReranker:
     """Async client for llama-server's /v1/rerank endpoint."""
 
@@ -122,3 +138,20 @@ class TestLlamaServerReranker:
                 "documents": ["doc a", "doc b"],
             },
         }
+
+    @pytest.mark.asyncio
+    async def test_rerank_rejects_a_result_index_outside_the_input_range(self, monkeypatch):
+        """
+        GIVEN a fake llama-server whose response names an index past the input texts
+        WHEN rerank() scores the texts
+        THEN it raises ValueError naming the bad index, not an IndexError
+        """
+        # GIVEN
+        monkeypatch.setattr(httpx, "AsyncClient", _FakeAsyncClientOutOfRangeIndex)
+        reranker = LlamaServerReranker(
+            base_url="http://127.0.0.1:8083/v1", model="BAAI/bge-reranker-v2-m3", timeout=5.0
+        )
+
+        # WHEN / THEN
+        with pytest.raises(ValueError, match="index 5"):
+            await reranker.rerank("query", ["doc a", "doc b"])

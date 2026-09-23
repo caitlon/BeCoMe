@@ -76,6 +76,7 @@ class LlamaServerReranker:
         :return: One relevance score per text, in the SAME order as texts - not
             sorted by score. A caller that wants a ranking sorts the (text, score)
             pairs itself.
+        :raises ValueError: if a result's "index" falls outside range(len(texts)).
         """
         async with httpx.AsyncClient(timeout=self._timeout) as client:
             response = await client.post(
@@ -86,5 +87,11 @@ class LlamaServerReranker:
         results = response.json()["results"]
         scores = [0.0] * len(texts)
         for result in results:
-            scores[result["index"]] = result["relevance_score"]
+            index = result["index"]
+            if not 0 <= index < len(texts):
+                raise ValueError(
+                    f"llama-server rerank result index {index} is out of range for "
+                    f"{len(texts)} texts"
+                )
+            scores[index] = result["relevance_score"]
         return scores
