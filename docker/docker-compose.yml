@@ -101,6 +101,38 @@ services:
       start_period: 10s
 
   # ============================================
+  # Assistant vector database (pgvector) - local only
+  # ============================================
+  # Backs the local AI assistant's RAG index (BCM-120). The "assistant" profile keeps
+  # this out of a plain `docker compose up`: nothing outside a developer's own laptop
+  # ever sets ASSISTANT_ENABLED=true (Settings._validate_assistant_local_only in
+  # api/config.py refuses to start any deployed profile with it on), so no deployed
+  # environment has a reason to start this container either.
+  assistant-db:
+    image: pgvector/pgvector:0.8.6-pg16
+    container_name: become-assistant-db
+    restart: unless-stopped
+    profiles: ["assistant"]
+    environment:
+      POSTGRES_USER: assistant
+      POSTGRES_DB: assistant
+      # No password: the port below is bound to 127.0.0.1 only.
+      POSTGRES_HOST_AUTH_METHOD: trust
+    # Separate port from the app's own Postgres (5432): the two run side by side on a
+    # developer machine, and this one is never meant to be reachable from anywhere but
+    # localhost.
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - assistant_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U assistant -d assistant"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # ============================================
   # BeCoMe API (Development) - uncomment to use
   # ============================================
   # api-dev:
@@ -127,3 +159,5 @@ services:
 volumes:
   postgres_data:
     name: become-postgres-data
+  assistant_pg_data:
+    name: become-assistant-pg-data
