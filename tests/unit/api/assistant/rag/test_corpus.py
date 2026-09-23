@@ -123,6 +123,47 @@ class TestPublicDocsWalk:
         assert paths == {tmp_path / "README.md"}
 
 
+class TestI18nWalk:
+    """build_manifest discovers the two targeted i18n JSON files in each locale."""
+
+    def test_discovers_docs_and_faq_json_per_locale(self, tmp_path):
+        """
+        GIVEN docs.json (with its own "title") and faq.json (without one) under two
+             locale directories
+        WHEN build_manifest walks the i18n tree
+        THEN each becomes an i18n_json CorpusSource with lang taken from the locale
+             directory, title from the JSON's own "title" key, and a fallback to the
+             bare file name when that key is absent
+        """
+        # GIVEN
+        locales = tmp_path / "frontend" / "src" / "i18n" / "locales"
+        _touch(
+            locales / "en" / "docs.json",
+            json.dumps({"title": "Documentation", "intro": "Start here."}),
+        )
+        _touch(
+            locales / "cs" / "faq.json",
+            json.dumps({"question": "Co je BeCoMe?"}),
+        )
+
+        # WHEN
+        manifest = build_manifest(repo_root=tmp_path, private_dirs=[])
+
+        # THEN
+        by_path = {source.path: source for source in manifest}
+        en_docs = by_path[locales / "en" / "docs.json"]
+        assert en_docs.kind == "i18n_json"
+        assert en_docs.layer == "public"
+        assert en_docs.lang == "en"
+        assert en_docs.title == "Documentation"
+        assert en_docs.url is None
+
+        cs_faq = by_path[locales / "cs" / "faq.json"]
+        assert cs_faq.kind == "i18n_json"
+        assert cs_faq.lang == "cs"
+        assert cs_faq.title == "faq.json"
+
+
 class TestCorpusSourceShape:
     """CorpusSource is the frozen dataclass the contract fixes."""
 
@@ -270,6 +311,27 @@ class TestLocalLayer:
 
         # WHEN/THEN
         with pytest.raises(ValueError, match="outside every root"):
+            build_manifest(repo_root=tmp_path, private_dirs=[corpus], local_manifest=manifest_file)
+
+    def test_rejects_an_entry_with_an_unsupported_suffix(self, tmp_path):
+        """
+        GIVEN a manifest entry naming a file whose suffix maps to no known Kind
+        WHEN build_manifest runs
+        THEN it raises ValueError naming the offending entry and suffix
+        """
+        # GIVEN
+        corpus = tmp_path / "corpus"
+        _touch(corpus / "wave-1" / "report.docx", "not a supported corpus format")
+        manifest_file = corpus / "manifest.json"
+        _touch(
+            manifest_file,
+            json.dumps(
+                [{"path": "wave-1/report.docx", "title": "Report", "lang": "en", "wave": 1}]
+            ),
+        )
+
+        # WHEN/THEN
+        with pytest.raises(ValueError, match="unsupported"):
             build_manifest(repo_root=tmp_path, private_dirs=[corpus], local_manifest=manifest_file)
 
     def test_missing_manifest_file_raises(self, tmp_path):
