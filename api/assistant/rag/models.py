@@ -1,9 +1,9 @@
-"""Factories for the assistant's model clients: chat and embeddings.
+"""Factories for the assistant's model clients: chat, embeddings, and rerank.
 
-Both point at a locally running llama-server (one process per role, BCM-121's spike),
+The chat and embedding roles point at a locally running llama-server process each,
 reached through the OpenAI-compatible API langchain_openai speaks. The rerank role
 (LlamaServerReranker) is not an OpenAI-shaped client - llama-server's /v1/rerank has no
-langchain_openai counterpart - and is added in Task 124.11.
+langchain_openai counterpart - so it talks to the endpoint directly over HTTP instead.
 """
 
 import httpx
