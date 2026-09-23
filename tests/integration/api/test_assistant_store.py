@@ -11,7 +11,9 @@ raise there uncaught, but that path is CI-only and already gated earlier.
 """
 
 import shutil
+from typing import Any
 
+import psycopg
 import pytest
 from langchain_core.documents import Document
 from langchain_core.embeddings import DeterministicFakeEmbedding
@@ -34,7 +36,7 @@ except ImportError:
     postgresql = None
 
 
-def _connection_url(postgresql) -> str:
+def _connection_url(postgresql: psycopg.Connection[tuple[Any, ...]]) -> str:
     """Build a postgresql+psycopg:// URL from pytest-postgresql's connection info."""
     info = postgresql.info
     return f"postgresql+psycopg://{info.user}:@{info.host}:{info.port}/{info.dbname}"
@@ -86,17 +88,28 @@ class TestEnsureCollection:
         """
         GIVEN a fresh PostgreSQL database
         WHEN ensure_collection runs with hybrid=True
-        THEN it does not raise (a full-text-search column is provisioned alongside
-             the vector column)
+        THEN the tsvector column langchain-postgres provisions for hybrid search
+             (content_tsv, per the installed langchain-postgres 0.0.18 source) exists
+             on the table alongside the vector column
         """
         # GIVEN
         engine = make_engine(_connection_url(postgresql))
 
-        # WHEN/THEN
+        # WHEN
         try:
             await ensure_collection(engine, table="docs_test_hybrid", vector_size=8, hybrid=True)
         finally:
             await engine.close()
+
+        # THEN
+        with postgresql.cursor() as cursor:
+            cursor.execute(
+                "SELECT data_type FROM information_schema.columns "
+                "WHERE table_name = 'docs_test_hybrid' AND column_name = 'content_tsv'"
+            )
+            row = cursor.fetchone()
+        assert row is not None, "content_tsv column was not provisioned for hybrid search"
+        assert row[0] == "tsvector"
 
     @pytest.mark.asyncio
     async def test_a_non_duplicate_table_error_still_propagates(self, postgresql):
