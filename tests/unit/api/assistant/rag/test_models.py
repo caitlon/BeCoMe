@@ -1,4 +1,4 @@
-"""Unit tests for the chat/embeddings model factories (fakes only, no network)."""
+"""Unit tests for the chat, embeddings, and reranker model clients (fakes only, no network)."""
 
 import httpx
 import pytest
