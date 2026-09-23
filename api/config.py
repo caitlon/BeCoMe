@@ -253,6 +253,12 @@ class Settings(BaseSettings):
     assistant_rate_limit_per_hour: int = 60
     assistant_llm_timeout_seconds: float = 120.0
     assistant_private_corpus_dirs: list[str] = []
+    # Path to a local-only JSON manifest describing the local corpus layer (see
+    # api/assistant/rag/corpus.py::build_manifest). It sits at the root of a private
+    # corpus kept outside this repository; its relative entries resolve from its own
+    # folder, and every entry must resolve under one of assistant_private_corpus_dirs.
+    # None means no local layer, which is always the case in CI and in every test.
+    assistant_private_corpus_manifest: str | None = None
     assistant_langsmith_enabled: bool = False
     assistant_langsmith_api_key: str | None = None
     assistant_langsmith_endpoint: str = "https://eu.api.smith.langchain.com"

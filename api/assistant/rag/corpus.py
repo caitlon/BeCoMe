@@ -211,27 +211,101 @@ def _walk_i18n(repo_root: Path, wave: int) -> list[CorpusSource]:
     return sources
 
 
+def _resolve(base: Path, raw: str) -> Path:
+    """Resolve a manifest- or setting-supplied path against a base directory.
+
+    An absolute path passes through unchanged; anything else is taken as relative to
+    base: the repository root for settings, the manifest's own folder for its entries.
+
+    :param base: Directory a relative path is taken from.
+    :param raw: The raw string from settings or a manifest entry.
+    :return: The joined path, with symlinks and ".." left as written.
+    """
+    candidate = Path(raw)
+    return candidate if candidate.is_absolute() else (base / candidate)
+
+
+def _walk_local(
+    repo_root: Path, private_dirs: list[Path], local_manifest: Path | None
+) -> list[CorpusSource]:
+    """Read the local-layer JSON manifest, enforcing the private_dirs allowlist.
+
+    The manifest sits at the root of the private corpus repository, so a relative entry
+    is taken from the manifest's own folder: one commit of that repository then pins
+    both the files and their list, wherever the repository lives.
+
+    :param repo_root: Repository root, for resolving a relative manifest path and
+        relative private_dirs.
+    :param private_dirs: Allowed roots (Settings.assistant_private_corpus_dirs); every
+        entry must resolve, symlinks and ".." included, to one of these or below it.
+    :param local_manifest: Path to the manifest JSON file, or None for no local layer.
+    :return: One CorpusSource per manifest entry.
+    :raises FileNotFoundError: If local_manifest is given but does not exist.
+    :raises ValueError: If an entry resolves outside every allowed root, or its
+        suffix maps to no known Kind.
+    """
+    if local_manifest is None:
+        return []
+    manifest_path = _resolve(repo_root, str(local_manifest))
+    if not manifest_path.is_file():
+        raise FileNotFoundError(f"local corpus manifest not found: {manifest_path}")
+    # Compared after resolve(): Path.is_relative_to only compares path parts, so
+    # "wave-1/../../../.ssh/config" would otherwise pass as being under the corpus.
+    allowed_roots = [_resolve(repo_root, str(root)).resolve() for root in private_dirs]
+    entries = json.loads(manifest_path.read_text(encoding="utf-8"))
+    sources = []
+    for entry in entries:
+        path = _resolve(manifest_path.parent, entry["path"])
+        real_path = path.resolve()
+        if not any(real_path.is_relative_to(root) for root in allowed_roots):
+            raise ValueError(
+                f"local corpus manifest entry {entry['path']!r} resolves to {real_path}, "
+                "which is outside every root in assistant_private_corpus_dirs"
+            )
+        kind = _KIND_BY_SUFFIX.get(path.suffix.lower())
+        if kind is None:
+            raise ValueError(
+                f"local corpus manifest entry {entry['path']!r} has an unsupported "
+                f"suffix {path.suffix!r}"
+            )
+        sources.append(
+            CorpusSource(
+                path=path,
+                layer="local",
+                kind=kind,
+                title=entry["title"],
+                lang=entry["lang"],
+                url=None,
+                wave=entry.get("wave", 1),
+            )
+        )
+    return sources
+
+
 def build_manifest(
     repo_root: Path,
     private_dirs: list[Path],
     wave: int = 1,
+    local_manifest: Path | None = None,
 ) -> list[CorpusSource]:
-    """Build the full corpus manifest: public layer plus (in Task 124.5) local layer.
+    """Build the full corpus manifest: public layer plus the local layer.
 
     :param repo_root: Repository root; docs/**, module READMEs, and the two i18n
-        files are found relative to it.
+        files are found relative to it, and it is also the base for a relative
+        local_manifest path and relative private_dirs.
     :param private_dirs: Allowed local-layer roots (Settings.assistant_private_corpus_dirs).
-        Public-layer discovery does not use this; kept as a parameter so the one
-        function signature never has to change again once the local layer lands.
+        Every local_manifest entry must resolve under one of these.
     :param wave: Highest wave to include (1 or 2); a source is included when its own
         wave is less than or equal to this one.
+    :param local_manifest: Path to the local-layer JSON manifest, or None for no
+        local layer at all (the default, and always the case in CI).
     :return: Every CorpusSource whose wave qualifies, public layer first.
     """
-    del private_dirs  # local layer arrives in Task 124.5
     already_covered = _snippet_targets(repo_root / "docs")
     sources = [
         *_walk_docs(repo_root, wave=1),
         *_walk_module_readmes(repo_root, already_covered, wave=1),
         *_walk_i18n(repo_root, wave=1),
+        *_walk_local(repo_root, private_dirs, local_manifest),
     ]
     return [source for source in sources if source.wave <= wave]

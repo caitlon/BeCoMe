@@ -1,5 +1,7 @@
 """Unit tests for the public-layer corpus manifest (fakes only, no network)."""
 
+import json
+import re
 from pathlib import Path
 
 import pytest
@@ -144,3 +146,174 @@ class TestCorpusSourceShape:
 
         with pytest.raises(dataclasses.FrozenInstanceError):
             source.title = "Changed"
+
+
+class TestLocalLayer:
+    """The local layer is read from a JSON manifest at the root of the private corpus."""
+
+    def test_no_manifest_means_no_local_sources(self, tmp_path):
+        """
+        GIVEN private_dirs but no local_manifest
+        WHEN build_manifest runs
+        THEN no local-layer sources appear, and nothing raises
+        """
+        # GIVEN/WHEN
+        manifest = build_manifest(
+            repo_root=tmp_path, private_dirs=[tmp_path / "corpus"], local_manifest=None
+        )
+
+        # THEN
+        assert all(source.layer != "local" for source in manifest)
+
+    def test_entries_resolve_from_the_manifest_directory(self, tmp_path):
+        """
+        GIVEN a manifest at the corpus root with an entry relative to it
+        WHEN build_manifest runs
+        THEN the entry becomes a local-layer CorpusSource under the corpus, kind from suffix
+        """
+        # GIVEN
+        corpus = tmp_path / "supplementary" / "assistant" / "corpus"
+        _touch(corpus / "wave-1" / "clanek.txt", "obsah")
+        manifest_file = corpus / "manifest.json"
+        _touch(
+            manifest_file,
+            json.dumps([{"path": "wave-1/clanek.txt", "title": "Clanek", "lang": "cs", "wave": 1}]),
+        )
+
+        # WHEN
+        manifest = build_manifest(
+            repo_root=tmp_path, private_dirs=[corpus], local_manifest=manifest_file
+        )
+
+        # THEN
+        local_sources = [s for s in manifest if s.layer == "local"]
+        assert len(local_sources) == 1
+        source = local_sources[0]
+        assert source.path == corpus / "wave-1" / "clanek.txt"
+        assert source.kind == "text"
+        assert source.title == "Clanek"
+        assert source.lang == "cs"
+        assert source.url is None
+
+    def test_relative_settings_resolve_against_repo_root_not_cwd(self, tmp_path, monkeypatch):
+        """
+        GIVEN the manifest path and allowlist root as relative paths, the way Settings gives them
+        WHEN build_manifest runs from an unrelated working directory
+        THEN both resolve against repo_root and the entry is found
+        """
+        # GIVEN
+        corpus = tmp_path / "supplementary" / "assistant" / "corpus"
+        _touch(corpus / "wave-1" / "clanek.txt", "obsah")
+        _touch(
+            corpus / "manifest.json",
+            json.dumps([{"path": "wave-1/clanek.txt", "title": "Clanek", "lang": "cs", "wave": 1}]),
+        )
+        elsewhere = tmp_path / "elsewhere"
+        elsewhere.mkdir()
+        monkeypatch.chdir(elsewhere)
+
+        # WHEN
+        manifest = build_manifest(
+            repo_root=tmp_path,
+            private_dirs=[Path("supplementary/assistant/corpus")],
+            local_manifest=Path("supplementary/assistant/corpus/manifest.json"),
+        )
+
+        # THEN
+        assert [s.path for s in manifest if s.layer == "local"] == [
+            corpus / "wave-1" / "clanek.txt"
+        ]
+
+    def test_rejects_an_entry_outside_every_allowed_root(self, tmp_path):
+        """
+        GIVEN a manifest entry with an absolute path outside every private_dirs root
+        WHEN build_manifest runs
+        THEN it raises ValueError naming the offending entry, before any indexing
+        """
+        # GIVEN
+        corpus = tmp_path / "corpus"
+        outside = tmp_path / "elsewhere" / "secret.txt"
+        _touch(outside, "not corpus content")
+        manifest_file = corpus / "manifest.json"
+        _touch(
+            manifest_file,
+            json.dumps([{"path": str(outside), "title": "X", "lang": "en", "wave": 1}]),
+        )
+
+        # WHEN/THEN
+        with pytest.raises(ValueError, match=re.escape(str(outside))):
+            build_manifest(repo_root=tmp_path, private_dirs=[corpus], local_manifest=manifest_file)
+
+    def test_rejects_a_dotdot_escape_from_the_allowed_root(self, tmp_path):
+        """
+        GIVEN an entry that starts inside the corpus and climbs out of it with ".."
+        WHEN build_manifest runs
+        THEN it raises ValueError: the allowlist compares resolved paths, not path strings
+        """
+        # GIVEN
+        corpus = tmp_path / "corpus"
+        _touch(tmp_path / "elsewhere" / "secret.txt", "not corpus content")
+        manifest_file = corpus / "manifest.json"
+        _touch(
+            manifest_file,
+            json.dumps(
+                [
+                    {
+                        "path": "wave-1/../../elsewhere/secret.txt",
+                        "title": "X",
+                        "lang": "en",
+                        "wave": 1,
+                    }
+                ]
+            ),
+        )
+
+        # WHEN/THEN
+        with pytest.raises(ValueError, match="outside every root"):
+            build_manifest(repo_root=tmp_path, private_dirs=[corpus], local_manifest=manifest_file)
+
+    def test_missing_manifest_file_raises(self, tmp_path):
+        """
+        GIVEN a local_manifest path that does not exist
+        WHEN build_manifest runs
+        THEN it raises FileNotFoundError rather than silently skipping the local layer
+        """
+        # GIVEN
+        missing = tmp_path / "corpus" / "manifest.json"
+
+        # WHEN/THEN
+        with pytest.raises(FileNotFoundError):
+            build_manifest(repo_root=tmp_path, private_dirs=[], local_manifest=missing)
+
+    def test_wave_2_entry_is_excluded_from_a_wave_1_build(self, tmp_path):
+        """
+        GIVEN one wave-1 and one wave-2 manifest entry
+        WHEN build_manifest runs with wave=1
+        THEN only the wave-1 entry is included; wave=2 includes both
+        """
+        # GIVEN
+        corpus = tmp_path / "corpus"
+        _touch(corpus / "wave-1" / "a.txt", "a")
+        _touch(corpus / "wave-2" / "b.txt", "b")
+        manifest_file = corpus / "manifest.json"
+        _touch(
+            manifest_file,
+            json.dumps(
+                [
+                    {"path": "wave-1/a.txt", "title": "Wave 1", "lang": "en", "wave": 1},
+                    {"path": "wave-2/b.txt", "title": "Wave 2", "lang": "en", "wave": 2},
+                ]
+            ),
+        )
+
+        # WHEN
+        only_wave_1 = build_manifest(
+            repo_root=tmp_path, private_dirs=[corpus], local_manifest=manifest_file, wave=1
+        )
+        both_waves = build_manifest(
+            repo_root=tmp_path, private_dirs=[corpus], local_manifest=manifest_file, wave=2
+        )
+
+        # THEN
+        assert [s.title for s in only_wave_1 if s.layer == "local"] == ["Wave 1"]
+        assert sorted(s.title for s in both_waves if s.layer == "local") == ["Wave 1", "Wave 2"]
