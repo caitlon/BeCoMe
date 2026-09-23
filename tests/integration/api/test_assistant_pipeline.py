@@ -1,11 +1,15 @@
-"""Integration tests for pipeline.py against real PostgreSQL+pgvector and a fake
-embedding HTTP server (fakes the model server, not the database)."""
+"""Integration tests for pipeline.py, and for eval_retrieval.py's read of the registry
+it writes, against real PostgreSQL+pgvector and a fake embedding HTTP server (fakes the
+model server, not the database)."""
 
+import importlib.util
 import json
 import shutil
 import subprocess
+import sys
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from pathlib import Path
 
 import psycopg
 import pytest
@@ -269,3 +273,107 @@ class TestCollectionRegistry:
         # THEN
         rows = await _registry_rows(postgresql, spec.name)
         assert rows[0][-1] == "wave-1"
+
+
+def _load_eval_retrieval():
+    """Import scripts/assistant/eval_retrieval.py by path, since scripts/ is not a package.
+
+    :return: The imported eval_retrieval module.
+    """
+    root = Path(__file__).resolve().parents[3]
+    spec = importlib.util.spec_from_file_location(
+        "eval_retrieval", root / "scripts" / "assistant" / "eval_retrieval.py"
+    )
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["eval_retrieval"] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+_eval_retrieval = _load_eval_retrieval()
+
+
+class TestFetchCollectionRow:
+    """eval_retrieval.py's _fetch_collection_row reads back what pipeline.py records.
+
+    An integration test, not a unit test: it runs both sides of the same table against a
+    real database, so a future rename of assistant_collections.app_version or
+    .corpus_version in pipeline.py's CREATE TABLE/INSERT fails here (UndefinedColumn)
+    instead of only surfacing when someone runs the eval script against a real collection.
+    """
+
+    @pytest.mark.asyncio
+    async def test_reads_back_the_versions_build_collection_recorded(
+        self, tmp_path, postgresql, fake_embedding_server
+    ):
+        """
+        GIVEN a local corpus that is its own git repository, tagged wave-1, indexed by
+            build_collection
+        WHEN _fetch_collection_row reads that collection's registry row
+        THEN it returns the same app_version and corpus_version the registry holds
+        """
+        # GIVEN
+        (tmp_path / "docs").mkdir()
+        (tmp_path / "docs" / "index.md").write_text("# BeCoMe\n\nOne sentence.\n", encoding="utf-8")
+        corpus = tmp_path / "supplementary" / "assistant" / "corpus"
+        (corpus / "wave-1").mkdir(parents=True)
+        (corpus / "wave-1" / "note.txt").write_text("BeCoMe in one line.", encoding="utf-8")
+        (corpus / "manifest.json").write_text(
+            json.dumps([{"path": "wave-1/note.txt", "title": "Note", "lang": "en", "wave": 1}]),
+            encoding="utf-8",
+        )
+        for args in (("init",), ("add", "-A"), ("commit", "-m", "wave 1"), ("tag", "wave-1")):
+            subprocess.run(  # noqa: S603 - fixed git argv plus a pytest tmp_path
+                [  # noqa: S607 - fixed argv, no shell
+                    "git",
+                    "-c",
+                    "user.name=Test",
+                    "-c",
+                    "user.email=test@example.com",
+                    "-C",
+                    str(corpus),
+                    *args,
+                ],
+                check=True,
+                capture_output=True,
+            )
+        vector_db_url = _connection_url(postgresql)
+        settings = Settings(
+            secret_key="test-secret-key",
+            assistant_vector_db_url=vector_db_url,
+            assistant_embedding_base_url=fake_embedding_server,
+            assistant_embedding_model="fake-embedding-model",
+            assistant_private_corpus_dirs=[str(corpus)],
+            assistant_private_corpus_manifest=str(corpus / "manifest.json"),
+        )
+        spec = CollectionSpec(
+            name="docs_test_fetch_collection_row",
+            chunker=ChunkerConfig(strategy="markdown_headers", size=500, overlap_pct=10),
+            context="none",
+            wave=1,
+        )
+        await build_collection(spec, settings, repo_root=tmp_path)
+
+        # WHEN
+        row = await _eval_retrieval._fetch_collection_row(vector_db_url, spec.name)
+
+        # THEN: matches what the registry actually holds, cross-checked independently
+        assert row == (None, "wave-1")
+        registry_rows = await _registry_rows(postgresql, spec.name)
+        assert row == registry_rows[0][-2:]
+
+    @pytest.mark.asyncio
+    async def test_returns_none_for_an_unknown_collection_name(self, postgresql):
+        """
+        GIVEN a fresh database with no assistant_collections row for a given name
+        WHEN _fetch_collection_row looks it up
+        THEN it returns None rather than raising
+        """
+        # WHEN
+        row = await _eval_retrieval._fetch_collection_row(
+            _connection_url(postgresql), "does_not_exist"
+        )
+
+        # THEN
+        assert row is None
