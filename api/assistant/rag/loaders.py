@@ -7,11 +7,13 @@ citations (SourceRef) are built on.
 """
 
 import hashlib
+import io
 import json
 import re
 from pathlib import Path
 from typing import Any
 
+import pypdf
 from langchain_core.documents import Document
 
 from api.assistant.rag.corpus import SNIPPET_INCLUDE, CorpusSource
@@ -128,6 +130,28 @@ def _load_i18n_json(source: CorpusSource) -> list[Document]:
     ]
 
 
+def _load_text(source: CorpusSource) -> list[Document]:
+    """Load a plain-text file as a single Document.
+
+    :param source: A CorpusSource with kind="text".
+    :return: A single Document with the file's text.
+    """
+    raw = source.path.read_bytes()
+    return [Document(page_content=raw.decode("utf-8"), metadata=_base_metadata(source, raw))]
+
+
+def _load_pdf(source: CorpusSource) -> list[Document]:
+    """Extract a PDF's text page by page and join it into a single Document.
+
+    :param source: A CorpusSource with kind="pdf".
+    :return: A single Document with the concatenated per-page text.
+    """
+    raw = source.path.read_bytes()
+    reader = pypdf.PdfReader(io.BytesIO(raw))
+    text = "\n\n".join(page.extract_text() for page in reader.pages)
+    return [Document(page_content=text, metadata=_base_metadata(source, raw))]
+
+
 def load_source(source: CorpusSource) -> list[Document]:
     """Turn one manifest entry into the Document(s) it contributes to the corpus.
 
@@ -139,4 +163,8 @@ def load_source(source: CorpusSource) -> list[Document]:
         return _load_markdown(source)
     if source.kind == "i18n_json":
         return _load_i18n_json(source)
+    if source.kind == "text":
+        return _load_text(source)
+    if source.kind == "pdf":
+        return _load_pdf(source)
     raise ValueError(f"load_source does not handle kind {source.kind!r} yet")
