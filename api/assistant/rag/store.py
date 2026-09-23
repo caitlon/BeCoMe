@@ -4,11 +4,10 @@ Talks to the assistant's own vector database (docker-compose profile "assistant"
 Settings.assistant_vector_db_url), never the application's own Postgres.
 """
 
-import contextlib
-
 from langchain_core.embeddings import Embeddings
 from langchain_postgres import PGEngine, PGVectorStore
 from langchain_postgres.v2.hybrid_search_config import HybridSearchConfig
+from psycopg.errors import DuplicateTable
 from sqlalchemy.exc import ProgrammingError
 
 
@@ -46,12 +45,20 @@ async def ensure_collection(engine: PGEngine, table: str, vector_size: int, hybr
         search. This pull request's own pipeline always passes False (dense-only);
         BCM-125's lab is what exercises True.
     :return: None.
+    :raises ProgrammingError: If table creation fails for any reason other than the
+        table already existing. Only psycopg.errors.DuplicateTable (SQLSTATE 42P07)
+        is treated as an already-created collection; any other ProgrammingError (a
+        rejected table name, an invalid column) propagates instead of being silently
+        absorbed.
     """
     hybrid_config = HybridSearchConfig() if hybrid else None
-    with contextlib.suppress(ProgrammingError):
+    try:
         await engine.ainit_vectorstore_table(
             table_name=table, vector_size=vector_size, hybrid_search_config=hybrid_config
         )
+    except ProgrammingError as exc:
+        if not isinstance(exc.orig, DuplicateTable):
+            raise
 
 
 def open_store(engine: PGEngine, table: str, embeddings: Embeddings) -> PGVectorStore:
