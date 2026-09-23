@@ -183,6 +183,37 @@ class TestMarkdownLoader:
         with pytest.raises(ValueError, match="EXCLUDED_PUBLIC"):
             load_source(source)
 
+    def test_refuses_an_excluded_page_reached_through_a_hard_link(self, tmp_path):
+        """
+        GIVEN a page that snippet-includes a hard link to docs/security.md under another name
+        WHEN load_source reads it
+        THEN it raises ValueError, because the link is the same file as the excluded page
+
+        Unlike a symlink, a hard link does not resolve to the excluded path, so only the
+        file-identity comparison catches it, on every filesystem.
+        """
+        # GIVEN
+        (tmp_path / "pyproject.toml").write_text('[project]\nname = "become"\n')
+        _touch(tmp_path / "docs" / "security.md", "# Security\nInternal only, never shipped.\n")
+        (tmp_path / "docs" / "notes.md").hardlink_to(tmp_path / "docs" / "security.md")
+        _touch(
+            tmp_path / "docs" / "dev" / "ops-notes.md",
+            '<!-- Included from elsewhere -->\n\n--8<-- "docs/notes.md"\n',
+        )
+        source = CorpusSource(
+            path=tmp_path / "docs" / "dev" / "ops-notes.md",
+            layer="public",
+            kind="markdown",
+            title="Ops Notes",
+            lang="en",
+            url=None,
+            wave=1,
+        )
+
+        # WHEN/THEN
+        with pytest.raises(ValueError, match="EXCLUDED_PUBLIC"):
+            load_source(source)
+
     def test_refuses_a_snippet_include_resolving_outside_the_repository_root(self, tmp_path):
         """
         GIVEN a docs/dev/*.md page whose snippet include climbs above the repository root
