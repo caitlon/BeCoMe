@@ -15,6 +15,7 @@ from typing import Any
 
 import pypdf
 from langchain_core.documents import Document
+from pylatexenc.latex2text import LatexNodes2Text
 
 from api.assistant.rag.corpus import SNIPPET_INCLUDE, CorpusSource
 
@@ -152,6 +153,23 @@ def _load_pdf(source: CorpusSource) -> list[Document]:
     return [Document(page_content=text, metadata=_base_metadata(source, raw))]
 
 
+def _load_latex(source: CorpusSource) -> list[Document]:
+    """Convert a LaTeX chapter to plain text with pylatexenc's default macro handling.
+
+    Unknown macros - biblatex's \\textcite/\\autocite, and this corpus's own custom
+    environments and source-attribution commands among them - degrade to their
+    mandatory argument's text rather than raising, which is enough fidelity for
+    retrieval (verified directly against the real thesis chapters' constructs,
+    2026-09-14); no custom latex_context is registered.
+
+    :param source: A CorpusSource with kind="latex".
+    :return: A single Document with the extracted plain text.
+    """
+    raw = source.path.read_bytes()
+    text = LatexNodes2Text().latex_to_text(raw.decode("utf-8"))
+    return [Document(page_content=text, metadata=_base_metadata(source, raw))]
+
+
 def load_source(source: CorpusSource) -> list[Document]:
     """Turn one manifest entry into the Document(s) it contributes to the corpus.
 
@@ -167,4 +185,6 @@ def load_source(source: CorpusSource) -> list[Document]:
         return _load_text(source)
     if source.kind == "pdf":
         return _load_pdf(source)
+    if source.kind == "latex":
+        return _load_latex(source)
     raise ValueError(f"load_source does not handle kind {source.kind!r} yet")

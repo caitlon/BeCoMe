@@ -162,6 +162,10 @@ disallow_untyped_defs = false
 module = "reportlab.*"
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = "pylatexenc.*"
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 # Unit before integration, and the two named rather than the "tests" root. Both
 # matter: xdist hands tests to workers in collection order, and putting the heavy
