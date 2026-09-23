@@ -174,6 +174,62 @@ async def _registry_rows(postgresql, name: str) -> list[tuple]:
         return await cursor.fetchall()
 
 
+@pytest.fixture
+def tagged_corpus(tmp_path):
+    """A local corpus that is its own git repository, tagged wave-1.
+
+    Also lays down a one-file docs/ tree next to it, matching a real checkout's shape,
+    for the two tests (TestCollectionRegistry and TestFetchCollectionRow) that need a
+    local layer with a real, deterministic corpus_version.
+
+    :return: The corpus directory (tmp_path/supplementary/assistant/corpus).
+    """
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "index.md").write_text("# BeCoMe\n\nOne sentence.\n", encoding="utf-8")
+    corpus = tmp_path / "supplementary" / "assistant" / "corpus"
+    (corpus / "wave-1").mkdir(parents=True)
+    (corpus / "wave-1" / "note.txt").write_text("BeCoMe in one line.", encoding="utf-8")
+    (corpus / "manifest.json").write_text(
+        json.dumps([{"path": "wave-1/note.txt", "title": "Note", "lang": "en", "wave": 1}]),
+        encoding="utf-8",
+    )
+    for args in (("init",), ("add", "-A"), ("commit", "-m", "wave 1"), ("tag", "wave-1")):
+        subprocess.run(  # noqa: S603 - fixed git argv plus a pytest tmp_path
+            [  # noqa: S607 - fixed argv, no shell
+                "git",
+                "-c",
+                "user.name=Test",
+                "-c",
+                "user.email=test@example.com",
+                "-C",
+                str(corpus),
+                *args,
+            ],
+            check=True,
+            capture_output=True,
+        )
+    return corpus
+
+
+def _tagged_corpus_settings(postgresql, fake_embedding_server, corpus) -> Settings:
+    """Settings for a build against tagged_corpus's local corpus.
+
+    :param postgresql: The pytest-postgresql fixture.
+    :param fake_embedding_server: fake_embedding_server's base URL.
+    :param corpus: tagged_corpus's return value.
+    :return: Settings pointed at that database, that fake embedding server, and that
+        corpus's manifest.
+    """
+    return Settings(
+        secret_key="test-secret-key",
+        assistant_vector_db_url=_connection_url(postgresql),
+        assistant_embedding_base_url=fake_embedding_server,
+        assistant_embedding_model="fake-embedding-model",
+        assistant_private_corpus_dirs=[str(corpus)],
+        assistant_private_corpus_manifest=str(corpus / "manifest.json"),
+    )
+
+
 class TestCollectionRegistry:
     """build_collection records every build in the assistant_collections table."""
 
@@ -220,7 +276,7 @@ class TestCollectionRegistry:
 
     @pytest.mark.asyncio
     async def test_records_the_version_of_a_git_backed_local_corpus(
-        self, tmp_path, postgresql, fake_embedding_server
+        self, tmp_path, postgresql, fake_embedding_server, tagged_corpus
     ):
         """
         GIVEN a local corpus that is its own git repository, tagged wave-1
@@ -228,38 +284,7 @@ class TestCollectionRegistry:
         THEN the registry row carries corpus_version "wave-1"
         """
         # GIVEN
-        (tmp_path / "docs").mkdir()
-        (tmp_path / "docs" / "index.md").write_text("# BeCoMe\n\nOne sentence.\n", encoding="utf-8")
-        corpus = tmp_path / "supplementary" / "assistant" / "corpus"
-        (corpus / "wave-1").mkdir(parents=True)
-        (corpus / "wave-1" / "note.txt").write_text("BeCoMe in one line.", encoding="utf-8")
-        (corpus / "manifest.json").write_text(
-            json.dumps([{"path": "wave-1/note.txt", "title": "Note", "lang": "en", "wave": 1}]),
-            encoding="utf-8",
-        )
-        for args in (("init",), ("add", "-A"), ("commit", "-m", "wave 1"), ("tag", "wave-1")):
-            subprocess.run(  # noqa: S603 - fixed git argv plus a pytest tmp_path
-                [  # noqa: S607 - fixed argv, no shell
-                    "git",
-                    "-c",
-                    "user.name=Test",
-                    "-c",
-                    "user.email=test@example.com",
-                    "-C",
-                    str(corpus),
-                    *args,
-                ],
-                check=True,
-                capture_output=True,
-            )
-        settings = Settings(
-            secret_key="test-secret-key",
-            assistant_vector_db_url=_connection_url(postgresql),
-            assistant_embedding_base_url=fake_embedding_server,
-            assistant_embedding_model="fake-embedding-model",
-            assistant_private_corpus_dirs=[str(corpus)],
-            assistant_private_corpus_manifest=str(corpus / "manifest.json"),
-        )
+        settings = _tagged_corpus_settings(postgresql, fake_embedding_server, tagged_corpus)
         spec = CollectionSpec(
             name="docs_test_registry_versions",
             chunker=ChunkerConfig(strategy="markdown_headers", size=500, overlap_pct=10),
@@ -305,7 +330,7 @@ class TestFetchCollectionRow:
 
     @pytest.mark.asyncio
     async def test_reads_back_the_versions_build_collection_recorded(
-        self, tmp_path, postgresql, fake_embedding_server
+        self, tmp_path, postgresql, fake_embedding_server, tagged_corpus
     ):
         """
         GIVEN a local corpus that is its own git repository, tagged wave-1, indexed by
@@ -314,39 +339,8 @@ class TestFetchCollectionRow:
         THEN it returns the same app_version and corpus_version the registry holds
         """
         # GIVEN
-        (tmp_path / "docs").mkdir()
-        (tmp_path / "docs" / "index.md").write_text("# BeCoMe\n\nOne sentence.\n", encoding="utf-8")
-        corpus = tmp_path / "supplementary" / "assistant" / "corpus"
-        (corpus / "wave-1").mkdir(parents=True)
-        (corpus / "wave-1" / "note.txt").write_text("BeCoMe in one line.", encoding="utf-8")
-        (corpus / "manifest.json").write_text(
-            json.dumps([{"path": "wave-1/note.txt", "title": "Note", "lang": "en", "wave": 1}]),
-            encoding="utf-8",
-        )
-        for args in (("init",), ("add", "-A"), ("commit", "-m", "wave 1"), ("tag", "wave-1")):
-            subprocess.run(  # noqa: S603 - fixed git argv plus a pytest tmp_path
-                [  # noqa: S607 - fixed argv, no shell
-                    "git",
-                    "-c",
-                    "user.name=Test",
-                    "-c",
-                    "user.email=test@example.com",
-                    "-C",
-                    str(corpus),
-                    *args,
-                ],
-                check=True,
-                capture_output=True,
-            )
-        vector_db_url = _connection_url(postgresql)
-        settings = Settings(
-            secret_key="test-secret-key",
-            assistant_vector_db_url=vector_db_url,
-            assistant_embedding_base_url=fake_embedding_server,
-            assistant_embedding_model="fake-embedding-model",
-            assistant_private_corpus_dirs=[str(corpus)],
-            assistant_private_corpus_manifest=str(corpus / "manifest.json"),
-        )
+        settings = _tagged_corpus_settings(postgresql, fake_embedding_server, tagged_corpus)
+        vector_db_url = settings.assistant_vector_db_url
         spec = CollectionSpec(
             name="docs_test_fetch_collection_row",
             chunker=ChunkerConfig(strategy="markdown_headers", size=500, overlap_pct=10),
