@@ -17,7 +17,7 @@ import pypdf
 from langchain_core.documents import Document
 from pylatexenc.latex2text import LatexNodes2Text
 
-from api.assistant.rag.corpus import SNIPPET_INCLUDE, CorpusSource
+from api.assistant.rag.corpus import EXCLUDED_PUBLIC, SNIPPET_INCLUDE, CorpusSource
 
 _CAMEL_BOUNDARY = re.compile(r"(?<!^)(?=[A-Z])")
 
@@ -68,13 +68,32 @@ def _load_markdown(source: CorpusSource) -> list[Document]:
 
     :param source: A CorpusSource with kind="markdown".
     :return: A single Document with the file's (resolved) text.
+    :raises ValueError: If a snippet include's target resolves outside the repository
+        root, or names a file in EXCLUDED_PUBLIC - checked, and refused, before the
+        target itself is read.
     """
     raw = source.path.read_bytes()
     text = raw.decode("utf-8")
     match = SNIPPET_INCLUDE.search(text)
     if match:
-        repo_root = _find_repo_root(source.path)
-        target_text = (repo_root / match.group(1)).read_text(encoding="utf-8")
+        target = match.group(1)
+        repo_root = _find_repo_root(source.path).resolve()
+        # Compared after resolve(), the same way _walk_local compares the local-layer
+        # allowlist: Path.is_relative_to only compares path parts, so a target reached
+        # through a symlink or a "../.." climb would otherwise pass as being inside
+        # repo_root.
+        target_path = (repo_root / target).resolve()
+        if not target_path.is_relative_to(repo_root):
+            raise ValueError(
+                f"{source.path}: snippet include {target!r} resolves to {target_path}, "
+                "which is outside the repository root"
+            )
+        if target_path.relative_to(repo_root).as_posix() in EXCLUDED_PUBLIC:
+            raise ValueError(
+                f"{source.path}: snippet include {target!r} resolves to {target_path}, "
+                "which is in EXCLUDED_PUBLIC and must never be included"
+            )
+        target_text = target_path.read_text(encoding="utf-8")
         # A function replacement, not a plain string: re.sub treats a string
         # replacement as a backreference template (\1, \g<name>, ...), and target_text
         # is arbitrary file content that may itself contain a literal backslash.

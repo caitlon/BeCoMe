@@ -4,6 +4,7 @@ import hashlib
 import json
 from pathlib import Path
 
+import pytest
 from reportlab.pdfgen import canvas
 
 from api.assistant.rag.corpus import CorpusSource
@@ -94,6 +95,62 @@ class TestMarkdownLoader:
         # THEN
         assert "--8<--" not in documents[0].page_content
         assert "Backend overview." in documents[0].page_content
+
+    def test_refuses_a_snippet_include_naming_an_excluded_public_page(self, tmp_path):
+        """
+        GIVEN a docs/dev/*.md page that snippet-includes docs/security.md
+        WHEN load_source reads it
+        THEN it raises ValueError before the excluded page's text reaches a Document
+        """
+        # GIVEN
+        (tmp_path / "pyproject.toml").write_text('[project]\nname = "become"\n')
+        _touch(tmp_path / "docs" / "security.md", "# Security\nInternal only, never shipped.\n")
+        _touch(
+            tmp_path / "docs" / "dev" / "ops-notes.md",
+            '<!-- Included from docs/security.md -->\n\n--8<-- "docs/security.md"\n',
+        )
+        source = CorpusSource(
+            path=tmp_path / "docs" / "dev" / "ops-notes.md",
+            layer="public",
+            kind="markdown",
+            title="Ops Notes",
+            lang="en",
+            url=None,
+            wave=1,
+        )
+
+        # WHEN/THEN
+        with pytest.raises(ValueError, match=r"docs/security\.md"):
+            load_source(source)
+
+    def test_refuses_a_snippet_include_resolving_outside_the_repository_root(self, tmp_path):
+        """
+        GIVEN a docs/dev/*.md page whose snippet include climbs above the repository root
+        WHEN load_source reads it
+        THEN it raises ValueError before the outside file's text reaches a Document
+        """
+        # GIVEN
+        repo_root = tmp_path / "repo"
+        repo_root.mkdir()
+        (repo_root / "pyproject.toml").write_text('[project]\nname = "become"\n')
+        _touch(tmp_path / "outside.md", "# Outside\nNot part of the repository.\n")
+        _touch(
+            repo_root / "docs" / "dev" / "ops-notes.md",
+            '<!-- Included from outside the repo -->\n\n--8<-- "../outside.md"\n',
+        )
+        source = CorpusSource(
+            path=repo_root / "docs" / "dev" / "ops-notes.md",
+            layer="public",
+            kind="markdown",
+            title="Ops Notes",
+            lang="en",
+            url=None,
+            wave=1,
+        )
+
+        # WHEN/THEN
+        with pytest.raises(ValueError, match="outside the repository root"):
+            load_source(source)
 
 
 class TestI18nJsonLoader:
