@@ -21,6 +21,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import psycopg
+from psycopg.errors import UndefinedTable
+
 from api.assistant.rag.corpus import build_manifest
 from api.assistant.rag.models import make_embeddings
 from api.assistant.rag.retrieval import DocsRetriever, RetrievalConfig, RetrievedChunk
@@ -37,13 +40,23 @@ def _title_to_path(repo_root: Path) -> dict[str, str]:
     :param repo_root: Repository root.
     :return: {title: repo-relative path}, public layer only (the golden set's
         questions are all answerable from public docs).
+    :raises ValueError: If two public sources share the same title - this mapping
+        could then not tell which path a chunk with that title actually came from.
     """
     sources = build_manifest(repo_root=repo_root, private_dirs=[])
-    return {
-        source.title: source.path.relative_to(repo_root).as_posix()
-        for source in sources
-        if source.layer == "public"
-    }
+    title_to_path: dict[str, str] = {}
+    for source in sources:
+        if source.layer != "public":
+            continue
+        path = source.path.relative_to(repo_root).as_posix()
+        if source.title in title_to_path:
+            raise ValueError(
+                f"two public corpus sources share the title {source.title!r} "
+                f"({title_to_path[source.title]} and {path}); give one of them a "
+                "distinct heading"
+            )
+        title_to_path[source.title] = path
+    return title_to_path
 
 
 def _load_golden_set(path: Path) -> list[dict[str, Any]]:
@@ -112,7 +125,12 @@ async def _evaluate(
     :param title_to_path: _title_to_path()'s mapping.
     :return: {"per_query": [...], "hit_at_1": ..., "hit_at_3": ..., "hit_at_5": ...,
         "mrr": ..., "ndcg_at_5": ...} - the last five averaged over all entries.
+    :raises ValueError: If entries is empty (an empty or blank golden set) - there
+        would be nothing to average, and dividing by the query count would otherwise
+        raise ZeroDivisionError instead of a message that says what is actually wrong.
     """
+    if not entries:
+        raise ValueError("the golden set is empty; nothing to evaluate")
     per_query = []
     for entry in entries:
         gold_paths = frozenset(source["path"] for source in entry["gold_sources"])
@@ -132,6 +150,78 @@ async def _evaluate(
     }
 
 
+async def _fetch_collection_row(
+    vector_db_url: str, name: str
+) -> tuple[str | None, str | None] | None:
+    """Read one collection's app/corpus version from the assistant_collections registry.
+
+    Uses its own connection, the same pattern pipeline.py's _record_collection uses,
+    rather than the langchain PGEngine pool: assistant_collections is a plain table the
+    ingest pipeline manages directly, outside langchain-postgres.
+
+    :param vector_db_url: Settings.assistant_vector_db_url.
+    :param name: The collection's table name (assistant_collections.name).
+    :return: (app_version, corpus_version) for that collection, or None when there is
+        no registry row for it - either the table has never been created (nothing has
+        been ingested anywhere yet), or this particular collection was never recorded.
+    """
+    dsn = vector_db_url.replace("postgresql+psycopg://", "postgresql://")
+    async with await psycopg.AsyncConnection.connect(dsn) as conn:
+        try:
+            cursor = await conn.execute(
+                "SELECT app_version, corpus_version FROM assistant_collections WHERE name = %s",
+                (name,),
+            )
+        except UndefinedTable:
+            return None
+        row = await cursor.fetchone()
+    return (row[0], row[1]) if row is not None else None
+
+
+def _require_collection_versions(
+    row: tuple[str | None, str | None] | None, name: str
+) -> tuple[str | None, str | None]:
+    """Fail loudly on a missing registry row, instead of writing an untraceable report.
+
+    :param row: _fetch_collection_row()'s result.
+    :param name: The collection name, for the error message.
+    :return: row, unwrapped.
+    :raises ValueError: If row is None - a report with no app_version or corpus_version
+        cannot be traced back to what corpus and application code produced it, which is
+        the reason assistant_collections records them in the first place (pipeline.py).
+    """
+    if row is None:
+        raise ValueError(
+            f"no assistant_collections registry row for collection {name!r}; run the "
+            "ingest CLI for it first, so this report can be traced to an app and corpus "
+            "version"
+        )
+    return row
+
+
+def _finalize_report(
+    metrics: dict[str, Any], collection: str, app_version: str | None, corpus_version: str | None
+) -> dict[str, Any]:
+    """Attach the collection name and its registry versions to the aggregated metrics.
+
+    Kept pure and separate from _fetch_collection_row so the report shape - what every
+    measured number must carry, per the plan's global constraint - is unit-testable
+    without a database connection.
+
+    :param metrics: _evaluate()'s result.
+    :param collection: The collection name that was evaluated.
+    :param app_version: assistant_collections.app_version for this collection.
+    :param corpus_version: assistant_collections.corpus_version for this collection.
+    :return: A new dict: metrics plus "collection", "app_version", "corpus_version".
+    """
+    return {
+        **metrics,
+        "collection": collection,
+        "app_version": app_version,
+        "corpus_version": corpus_version,
+    }
+
+
 def _parse_args() -> argparse.Namespace:
     """Parse CLI arguments for one retrieval eval run."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -145,7 +235,11 @@ def _parse_args() -> argparse.Namespace:
 
 
 async def _main() -> None:
-    """Evaluate one collection against the golden set and write a JSON report."""
+    """Evaluate one collection against the golden set and write a JSON report.
+
+    :raises ValueError: If the golden set is empty, or the collection has no
+        assistant_collections registry row (_evaluate, _require_collection_versions).
+    """
     args = _parse_args()
     repo_root = Path(__file__).resolve().parents[2]
     golden_set_path = (
@@ -161,14 +255,16 @@ async def _main() -> None:
     engine = make_engine(settings.assistant_vector_db_url)
     try:
         store = open_store(engine, table=args.collection, embeddings=embeddings)
+        row = await _fetch_collection_row(settings.assistant_vector_db_url, args.collection)
+        app_version, corpus_version = _require_collection_versions(row, args.collection)
         retriever = DocsRetriever(
             store=store, config=RetrievalConfig(mode="dense", k=5), reranker=None, llm=None
         )
-        report = await _evaluate(entries, retriever, title_to_path)
+        metrics = await _evaluate(entries, retriever, title_to_path)
     finally:
         await engine.close()
 
-    report["collection"] = args.collection
+    report = _finalize_report(metrics, args.collection, app_version, corpus_version)
     report["generated_at"] = datetime.now(UTC).isoformat()
     out_dir = repo_root / "supplementary" / "assistant-eval"
     out_dir.mkdir(parents=True, exist_ok=True)
