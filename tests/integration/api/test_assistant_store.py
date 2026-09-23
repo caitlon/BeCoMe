@@ -15,6 +15,8 @@ import shutil
 import pytest
 from langchain_core.documents import Document
 from langchain_core.embeddings import DeterministicFakeEmbedding
+from psycopg.errors import DuplicateTable
+from sqlalchemy.exc import ProgrammingError
 
 from api.assistant.rag.store import ensure_collection, make_engine, open_store
 
@@ -93,6 +95,27 @@ class TestEnsureCollection:
         # WHEN/THEN
         try:
             await ensure_collection(engine, table="docs_test_hybrid", vector_size=8, hybrid=True)
+        finally:
+            await engine.close()
+
+    @pytest.mark.asyncio
+    async def test_a_non_duplicate_table_error_still_propagates(self, postgresql):
+        """
+        GIVEN a table name Postgres rejects for a reason other than "already exists"
+             (the empty string: the generated CREATE TABLE "public".""(...) is a
+             syntax error, not psycopg.errors.DuplicateTable)
+        WHEN ensure_collection is called with that name
+        THEN the ProgrammingError propagates instead of being swallowed as though the
+             collection were already there
+        """
+        # GIVEN
+        engine = make_engine(_connection_url(postgresql))
+
+        # WHEN/THEN
+        try:
+            with pytest.raises(ProgrammingError) as exc_info:
+                await ensure_collection(engine, table="", vector_size=8, hybrid=False)
+            assert not isinstance(exc_info.value.orig, DuplicateTable)
         finally:
             await engine.close()
 
