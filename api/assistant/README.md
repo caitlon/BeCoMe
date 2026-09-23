@@ -22,7 +22,13 @@ Runs only on a developer machine. `Settings` refuses to start any deployed profi
 4. Index the documentation: `uv run python scripts/assistant/ingest.py --name docs_default
    --strategy markdown_headers` builds the collection the backend reads by default; `--help`
    lists the chunker, context and wave options.
-5. Backend: set `ASSISTANT_ENABLED=true` in `.env`, then run the API as usual. This turns on
+5. Evaluate retrieval quality: `uv run python scripts/assistant/eval_retrieval.py --collection
+   docs_default` scores hit@1/3/5, MRR and nDCG@5 for that collection against the golden set
+   (`scripts/assistant/golden_set.jsonl` by default; point `--golden-set` at another file to use
+   a different one). Every report also records the collection's `app_version` and
+   `corpus_version` from the `assistant_collections` registry, and is written to
+   `supplementary/assistant-eval/<collection>-<timestamp>.json`.
+6. Backend: set `ASSISTANT_ENABLED=true` in `.env`, then run the API as usual. This turns on
    `GET /api/v1/assistant/config` (`api/routes/assistant.py`), the only assistant route so far.
 
 ## Private corpus layer
