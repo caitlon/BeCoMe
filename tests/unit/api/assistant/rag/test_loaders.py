@@ -123,6 +123,66 @@ class TestMarkdownLoader:
         with pytest.raises(ValueError, match=r"docs/security\.md"):
             load_source(source)
 
+    def test_refuses_an_excluded_page_spelled_in_another_case(self, tmp_path):
+        """
+        GIVEN a page that snippet-includes docs/security.md spelled "DOCS/SECURITY.MD"
+        WHEN load_source reads it on a case-insensitive filesystem
+        THEN it raises ValueError, because the spelling still opens the excluded file
+
+        A case-sensitive filesystem has no such file under that spelling, so there the
+        include cannot reach the excluded page at all and the test has nothing to check.
+        """
+        # GIVEN
+        (tmp_path / "pyproject.toml").write_text('[project]\nname = "become"\n')
+        _touch(tmp_path / "docs" / "security.md", "# Security\nInternal only, never shipped.\n")
+        if not (tmp_path / "DOCS" / "SECURITY.MD").exists():
+            pytest.skip("case-sensitive filesystem: the other spelling names no file")
+        _touch(
+            tmp_path / "docs" / "dev" / "ops-notes.md",
+            '<!-- Included from elsewhere -->\n\n--8<-- "DOCS/SECURITY.MD"\n',
+        )
+        source = CorpusSource(
+            path=tmp_path / "docs" / "dev" / "ops-notes.md",
+            layer="public",
+            kind="markdown",
+            title="Ops Notes",
+            lang="en",
+            url=None,
+            wave=1,
+        )
+
+        # WHEN/THEN
+        with pytest.raises(ValueError, match="EXCLUDED_PUBLIC"):
+            load_source(source)
+
+    def test_refuses_an_excluded_page_reached_through_a_symlink(self, tmp_path):
+        """
+        GIVEN a page that snippet-includes an innocently named symlink to docs/security.md
+        WHEN load_source reads it
+        THEN it raises ValueError, because the link resolves to the excluded page
+        """
+        # GIVEN
+        (tmp_path / "pyproject.toml").write_text('[project]\nname = "become"\n')
+        _touch(tmp_path / "docs" / "security.md", "# Security\nInternal only, never shipped.\n")
+        (tmp_path / "docs" / "notes.md").symlink_to(tmp_path / "docs" / "security.md")
+        _touch(
+            tmp_path / "docs" / "dev" / "ops-notes.md",
+            '<!-- Included from elsewhere -->\n\n--8<-- "docs/notes.md"\n',
+        )
+        source = CorpusSource(
+            path=tmp_path / "docs" / "dev" / "ops-notes.md",
+            layer="public",
+            kind="markdown",
+            title="Ops Notes",
+            lang="en",
+            url=None,
+            wave=1,
+        )
+
+        # WHEN/THEN
+        with pytest.raises(ValueError, match="EXCLUDED_PUBLIC"):
+            load_source(source)
+
     def test_refuses_a_snippet_include_resolving_outside_the_repository_root(self, tmp_path):
         """
         GIVEN a docs/dev/*.md page whose snippet include climbs above the repository root
