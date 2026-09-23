@@ -81,6 +81,24 @@ api = [
     "redis==8.1.0",
     "dnspython==2.8.0",
 ]
+assistant = [
+    # Re-check every pin against PyPI at implementation time (verified 2026-09-14, latest
+    # patch releases as of that date). pgvector is intentionally absent: langchain-postgres
+    # 0.0.18 requires pgvector<0.4 and pulls it in transitively; our code never imports it
+    # directly.
+    "langchain-core==1.6.4",
+    "langchain-openai==1.6.4",
+    "langchain-postgres==0.0.18",
+    "langchain-text-splitters==1.1.2",
+    "psycopg[binary]==3.3.6",
+    "pypdf==6.19.0",  # security fix for page labels
+    "pylatexenc==2.11",
+    # langchain_core.embeddings.fake wraps its own `import numpy as np` in
+    # contextlib.suppress(ImportError), so DeterministicFakeEmbedding - which the
+    # dense-search test (Task 124.16) uses - raises NameError at call time without
+    # this, not an ImportError at import time. Same pin already used by the viz extra.
+    "numpy==2.5.2",
+]
 
 [build-system]
 requires = ["hatchling"]
