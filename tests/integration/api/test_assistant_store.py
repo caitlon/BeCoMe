@@ -4,7 +4,7 @@ Skipped (like tests/integration/api/db/test_postgres_integration.py) when pg_ctl
 on PATH - a machine with no PostgreSQL at all. Also skipped, by _require_pgvector below,
 when PostgreSQL is present but pgvector is not (a Homebrew postgresql@16 machine that
 never built pgvector - see api/assistant/README.md). CI is not exposed to either skip:
-ci.yml installs postgresql-16-pgvector and Task 124.3's own step fails the job before
+ci.yml installs postgresql-16-pgvector and a dedicated step fails the job before
 pytest runs if that install is broken, so a broken CI install never reaches this file at
 all - PGEngine.ainit_vectorstore_table's own CREATE EXTENSION IF NOT EXISTS vector would
 raise there uncaught, but that path is CI-only and already gated earlier.
@@ -50,7 +50,7 @@ def _require_pgvector(postgresql):
     a developer machine with PostgreSQL but no pgvector next to it (Homebrew's
     postgresql@16 formula does not carry it - see api/assistant/README.md) gets a clear
     skip instead of ensure_collection's own CREATE EXTENSION IF NOT EXISTS failing with
-    sqlalchemy.exc.NotSupportedError. CI is not exposed to this path: Task 124.3's
+    sqlalchemy.exc.NotSupportedError. CI is not exposed to this path: its
     "Verify the pgvector extension is installed" step already fails the job before
     pytest runs if the apt install is broken, so a CI run either has pgvector for real
     or never reaches this fixture at all.

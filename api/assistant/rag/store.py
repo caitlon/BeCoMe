@@ -32,18 +32,18 @@ async def ensure_collection(engine: PGEngine, table: str, vector_size: int, hybr
 
     Idempotent: calling this again for a table that already exists is a no-op, since
     re-running the ingest CLI for an existing collection name is a normal workflow
-    (BCM-129 refreshes an existing collection with a second corpus wave). The no-op
+    (a second corpus wave refreshes an existing collection). The no-op
     does not check whether hybrid matches the table's existing shape: a second call
     that flips hybrid for an existing table name silently keeps the old columns.
-    BCM-125, which is what first sets hybrid=True, must recreate the table itself
-    when switching an existing collection to hybrid.
+    Whatever first sets hybrid=True must recreate the table itself when switching an
+    existing collection to hybrid.
 
     :param engine: The assistant database's connection pool.
     :param table: Table name for this collection (pipeline.py names it per variant).
     :param vector_size: Embedding dimensionality, decided by the embedding model.
     :param hybrid: Whether to also provision a full-text-search column for hybrid
-        search. This pull request's own pipeline always passes False (dense-only);
-        BCM-125's lab is what exercises True.
+        search. The ingest pipeline passes False (dense-only); only the later retrieval
+        experiments pass True.
     :return: None.
     :raises ProgrammingError: If table creation fails for any reason other than the
         table already existing. Only psycopg.errors.DuplicateTable (SQLSTATE 42P07)
