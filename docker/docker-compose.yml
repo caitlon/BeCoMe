@@ -103,7 +103,7 @@ services:
   # ============================================
   # Assistant vector database (pgvector) - local only
   # ============================================
-  # Backs the local AI assistant's RAG index (BCM-120). The "assistant" profile keeps
+  # Backs the local AI assistant's RAG index. The "assistant" profile keeps
   # this out of a plain `docker compose up`: nothing outside a developer's own laptop
   # ever sets ASSISTANT_ENABLED=true (Settings._validate_assistant_local_only in
   # api/config.py refuses to start any deployed profile with it on), so no deployed
