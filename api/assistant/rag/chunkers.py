@@ -1,8 +1,8 @@
 """Split loaded Documents into retrieval-sized chunks.
 
-Only "markdown_headers" is implemented in this pull request; the other five Strategy
-values are BCM-125's search lab, and split() raises NotImplementedError for them
-rather than silently returning something misleading.
+Only "markdown_headers" is implemented so far; the other five Strategy values
+belong to the later retrieval experiments, and split() raises NotImplementedError
+for them rather than silently returning something misleading.
 """
 
 from dataclasses import dataclass
@@ -73,11 +73,11 @@ def split(
 
     :param docs: Loaded Documents (loaders.py).
     :param config: Which strategy to apply, and its size/overlap.
-    :param embeddings: Only used by the future "semantic" strategy (BCM-125).
+    :param embeddings: Only used by the future "semantic" strategy.
     :return: The resulting chunks.
     :raises NotImplementedError: For every strategy but "markdown_headers".
     """
-    del embeddings  # only "semantic" (BCM-125) needs it
+    del embeddings  # only the future "semantic" strategy needs it
     if config.strategy == "markdown_headers":
         return _split_markdown_headers(docs, config)
     raise NotImplementedError(
