@@ -3,9 +3,11 @@ embedding HTTP server (fakes the model server, not the database)."""
 
 import json
 import shutil
+import subprocess
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
+import psycopg
 import pytest
 
 from api.assistant.rag.chunkers import ChunkerConfig
@@ -149,3 +151,121 @@ class TestBuildCollection:
             assert "arithmetic mean" in results[0][0].page_content
         finally:
             await engine.close()
+
+
+def _plain_dsn(url: str) -> str:
+    """Strip the "+psycopg" SQLAlchemy driver suffix for a plain psycopg connection."""
+    return url.replace("postgresql+psycopg://", "postgresql://")
+
+
+async def _registry_rows(postgresql, name: str) -> list[tuple]:
+    """Read one collection's registry rows back through a plain psycopg connection."""
+    dsn = _plain_dsn(_connection_url(postgresql))
+    async with await psycopg.AsyncConnection.connect(dsn) as conn, conn.cursor() as cursor:
+        await cursor.execute(
+            "SELECT chunker_strategy, wave, embedding_model, chunk_count, app_version, "
+            "corpus_version FROM assistant_collections WHERE name = %s",
+            (name,),
+        )
+        return await cursor.fetchall()
+
+
+class TestCollectionRegistry:
+    """build_collection records every build in the assistant_collections table."""
+
+    @pytest.mark.asyncio
+    async def test_records_and_updates_one_row_per_collection_name(
+        self, tmp_path, postgresql, fake_embedding_server
+    ):
+        """
+        GIVEN a tiny corpus outside any git repository and a fresh database
+        WHEN build_collection runs twice for the same collection name
+        THEN assistant_collections holds exactly one row, updated the second time, with
+            both versions empty
+        """
+        # GIVEN
+        (tmp_path / "docs").mkdir()
+        (tmp_path / "docs" / "index.md").write_text("# BeCoMe\n\nOne sentence.\n", encoding="utf-8")
+        settings = Settings(
+            secret_key="test-secret-key",
+            assistant_vector_db_url=_connection_url(postgresql),
+            assistant_embedding_base_url=fake_embedding_server,
+            assistant_embedding_model="fake-embedding-model",
+        )
+        spec = CollectionSpec(
+            name="docs_test_registry",
+            chunker=ChunkerConfig(strategy="markdown_headers", size=500, overlap_pct=10),
+            context="none",
+            wave=1,
+        )
+
+        # WHEN
+        await build_collection(spec, settings, repo_root=tmp_path)
+        await build_collection(spec, settings, repo_root=tmp_path)
+
+        # THEN
+        rows = await _registry_rows(postgresql, spec.name)
+        assert len(rows) == 1
+        strategy, wave, embedding_model, chunk_count, app_version, corpus_version = rows[0]
+        assert strategy == "markdown_headers"
+        assert wave == 1
+        assert embedding_model == "fake-embedding-model"
+        assert chunk_count == 1
+        assert app_version is None
+        assert corpus_version is None
+
+    @pytest.mark.asyncio
+    async def test_records_the_version_of_a_git_backed_local_corpus(
+        self, tmp_path, postgresql, fake_embedding_server
+    ):
+        """
+        GIVEN a local corpus that is its own git repository, tagged wave-1
+        WHEN build_collection runs with that corpus's manifest
+        THEN the registry row carries corpus_version "wave-1"
+        """
+        # GIVEN
+        (tmp_path / "docs").mkdir()
+        (tmp_path / "docs" / "index.md").write_text("# BeCoMe\n\nOne sentence.\n", encoding="utf-8")
+        corpus = tmp_path / "supplementary" / "assistant" / "corpus"
+        (corpus / "wave-1").mkdir(parents=True)
+        (corpus / "wave-1" / "note.txt").write_text("BeCoMe in one line.", encoding="utf-8")
+        (corpus / "manifest.json").write_text(
+            json.dumps([{"path": "wave-1/note.txt", "title": "Note", "lang": "en", "wave": 1}]),
+            encoding="utf-8",
+        )
+        for args in (("init",), ("add", "-A"), ("commit", "-m", "wave 1"), ("tag", "wave-1")):
+            subprocess.run(  # noqa: S603 - fixed git argv plus a pytest tmp_path
+                [  # noqa: S607 - fixed argv, no shell
+                    "git",
+                    "-c",
+                    "user.name=Test",
+                    "-c",
+                    "user.email=test@example.com",
+                    "-C",
+                    str(corpus),
+                    *args,
+                ],
+                check=True,
+                capture_output=True,
+            )
+        settings = Settings(
+            secret_key="test-secret-key",
+            assistant_vector_db_url=_connection_url(postgresql),
+            assistant_embedding_base_url=fake_embedding_server,
+            assistant_embedding_model="fake-embedding-model",
+            assistant_private_corpus_dirs=[str(corpus)],
+            assistant_private_corpus_manifest=str(corpus / "manifest.json"),
+        )
+        spec = CollectionSpec(
+            name="docs_test_registry_versions",
+            chunker=ChunkerConfig(strategy="markdown_headers", size=500, overlap_pct=10),
+            context="none",
+            wave=1,
+        )
+
+        # WHEN
+        await build_collection(spec, settings, repo_root=tmp_path)
+
+        # THEN
+        rows = await _registry_rows(postgresql, spec.name)
+        assert rows[0][-1] == "wave-1"
