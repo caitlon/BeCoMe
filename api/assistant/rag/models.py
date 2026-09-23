@@ -68,8 +68,8 @@ class LlamaServerReranker:
         """Score each text's relevance to the query.
 
         Errors are not caught here: a non-2xx response raises httpx.HTTPStatusError,
-        and an unreachable server raises httpx.ConnectError, both as-is. BCM-126's
-        service layer is what turns either into AssistantUnavailableError.
+        and an unreachable server raises httpx.ConnectError, both as-is. The chat
+        endpoint's service layer is what turns either into AssistantUnavailableError.
 
         :param query: The search query.
         :param texts: Candidate passages, in the order to score.
