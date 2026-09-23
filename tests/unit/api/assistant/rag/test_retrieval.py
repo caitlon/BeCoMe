@@ -1,5 +1,6 @@
 """Unit tests for query retrieval (fakes only, no network)."""
 
+import warnings
 from collections.abc import Callable
 
 import httpx
@@ -27,18 +28,17 @@ class _RelevanceScoredInMemoryVectorStore(InMemoryVectorStore):
     makes DocsRetriever.search() raise NotImplementedError (see
     TestDocsRetrieverDenseSearch.test_a_store_with_no_relevance_score_support_raises
     below) - correct for a real store that cannot say what its raw score means, but
-    these tests need a working relevance score to exercise search() at all. Maps
-    InMemoryVectorStore's cosine similarity ([-1, 1]) onto the [0, 1] range
-    LangChain's relevance-score contract requires, with (similarity + 1) / 2, clamped
-    to [0.0, 1.0]: LangChain warns whenever a relevance score leaves [0, 1]
-    ("Relevance scores must be between 0 and 1, got ..." - quoting the full list of
-    retrieved documents and scores, not just the offending number), which random
-    fake-embedding vectors and float overshoot at the +/-1 boundary would otherwise
-    trigger.
+    these tests need a working relevance score to exercise search() at all. The
+    identity function is the right one here, not a rescale: InMemoryVectorStore's
+    similarity_search_with_score already returns cosine similarity directly, the same
+    [-1, 1] scale and meaning as PGVectorStore's own relevance score (1 - cosine
+    distance, which equals cosine similarity) - both can legitimately go negative for
+    an anti-correlated candidate, and this double should behave the same way the real
+    store does.
     """
 
     def _select_relevance_score_fn(self) -> Callable[[float], float]:
-        return lambda similarity: max(0.0, min(1.0, (similarity + 1) / 2))
+        return lambda similarity: similarity
 
 
 class TestRetrievedChunk:
@@ -170,6 +170,46 @@ class TestDocsRetrieverDenseSearch:
         # WHEN / THEN
         with pytest.raises(NotImplementedError):
             await retriever.search("chunk")
+
+    @pytest.mark.asyncio
+    async def test_a_negative_relevance_score_emits_no_range_warning(self):
+        """
+        GIVEN a document with a clearly negative cosine similarity to the query -
+             an anti-correlated candidate, which a cosine relevance score legitimately
+             allows (see RetrievedChunk.score)
+        WHEN search() runs in dense mode
+        THEN no "Relevance scores must be between 0 and 1" warning fires - that
+             warning would quote the whole fetched batch, page_content included, to
+             stderr, outside the app's scrubbed logger - and at least one returned
+             score is genuinely negative, so the check is not vacuous
+        """
+        # GIVEN: this document's DeterministicFakeEmbedding(size=16) vector has cosine
+        # similarity ~-0.56 to the query text below (found with a one-off probe).
+        embeddings = DeterministicFakeEmbedding(size=16)
+        store = _RelevanceScoredInMemoryVectorStore(embeddings)
+        query_text = "BeCoMe combines the arithmetic mean and the median."
+        await store.aadd_documents(
+            [
+                _doc(query_text, title="Method"),
+                _doc(
+                    "Deep sea creatures adapt to extreme pressure and total darkness.",
+                    title="Unrelated",
+                ),
+            ]
+        )
+        config = RetrievalConfig(mode="dense", k=2)
+        retriever = DocsRetriever(store=store, config=config, reranker=None, llm=None)
+
+        # WHEN
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            results = await retriever.search(query_text)
+
+        # THEN
+        assert not any(
+            "Relevance scores must be between 0 and 1" in str(warning.message) for warning in caught
+        )
+        assert any(chunk.score < 0 for chunk in results)
 
 
 class _RerankByPositionResponse:

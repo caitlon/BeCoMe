@@ -40,9 +40,11 @@ class RetrievedChunk:
     :param url: The source's public URL, or None.
     :param layer: "public" or "local".
     :param score: Relevance score - higher is always more relevant. The reranker's
-        own score when rerank=True; otherwise the vector store's relevance score
-        (for PGVectorStore with cosine distance, that is 1 - distance: 1.0 for an
-        identical vector, below 0 only for an anti-correlated one).
+        own score when rerank=True; otherwise the vector store's relevance score.
+        For PGVectorStore with cosine distance, that equals the cosine similarity
+        directly and ranges over [-1, 1]: 1.0 for an identical vector, -1.0 for a
+        perfectly anti-correlated one - a negative score is a legitimate,
+        unremarkable result, not an error.
     """
 
     text: str
@@ -66,11 +68,11 @@ class DocsRetriever:
         """
         :param store: The document index to search. Typed as the LangChain VectorStore
             base class, not the more specific PGVectorStore, so every real caller
-            stays valid - but search() calls asimilarity_search_with_relevance_scores,
-            so the store must also implement LangChain's relevance-score conversion
-            (VectorStore._select_relevance_score_fn). PGVectorStore does; a bare
-            InMemoryVectorStore does not and makes search() raise NotImplementedError
-            rather than silently returning a score of unknown meaning.
+            stays valid - but search() depends on LangChain's relevance-score
+            conversion (VectorStore._select_relevance_score_fn). PGVectorStore
+            implements it; a bare InMemoryVectorStore does not and makes search()
+            raise NotImplementedError rather than silently returning a score of
+            unknown meaning.
         :param config: mode must be "dense" and query_transform must be "none" in
             this pull request; both are enforced here, at construction time.
         :param reranker: Required when config.rerank is True; ignored otherwise.
@@ -118,7 +120,17 @@ class DocsRetriever:
             has one, a bare InMemoryVectorStore does not.
         """
         fetch_k = self._config.k * 4 if self._config.rerank else self._config.k
-        dense_results = await self._store.asimilarity_search_with_relevance_scores(query, k=fetch_k)
+        # Not the public asimilarity_search_with_relevance_scores: it warns - quoting
+        # the whole fetched batch, page_content included - whenever any relevance
+        # score leaves [0, 1], and PGVectorStore's cosine relevance is legitimately
+        # negative for an anti-correlated candidate, which would print chunk text to
+        # stderr on every such search. This protected method is the same conversion
+        # (_select_relevance_score_fn applied over asimilarity_search_with_score)
+        # without that warning, and still raises NotImplementedError for a store with
+        # no relevance function.
+        dense_results = await self._store._asimilarity_search_with_relevance_scores(
+            query, k=fetch_k
+        )
         if self._config.rerank and dense_results:
             if self._reranker is None:
                 raise RuntimeError("unreachable: config.rerank requires a reranker")
