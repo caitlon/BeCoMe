@@ -31,7 +31,7 @@ _KIND_BY_SUFFIX: dict[str, Kind] = {
 
 #: The two i18n files the corpus wants; the other files in the same locale
 #: directories (about.json, auth.json, ...) are UI strings with no method or
-#: interpretation content and are not part of any BCM-120 corpus wave.
+#: interpretation content and are not part of any corpus wave.
 _I18N_TARGETS = ("docs.json", "faq.json")
 
 #: Not private: loaders.py matches the same pattern to resolve a docs/dev/*.md
@@ -56,7 +56,7 @@ class CorpusSource:
     :param title: Human-readable title, shown in citations.
     :param lang: BCP-47-ish language tag, "en" or "cs".
     :param url: Public documentation URL, or None for sources with no public page.
-    :param wave: Corpus wave this source belongs to (1 or 2); see BCM-129.
+    :param wave: Corpus wave this source belongs to (1 or 2).
     """
 
     path: Path
