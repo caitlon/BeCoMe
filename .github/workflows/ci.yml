@@ -50,7 +50,7 @@ jobs:
         run: uv python install 3.13.7
 
       - name: Install Python dependencies
-        run: uv sync --locked --extra dev --extra api
+        run: uv sync --locked --extra dev --extra api --extra assistant
 
       # mypy runs in strict mode over src/ + api/; caching .mypy_cache lets it
       # re-check only changed files instead of the whole tree every run.
@@ -174,7 +174,7 @@ jobs:
         run: uv python install 3.13.7
 
       - name: Install Python dependencies
-        run: uv sync --locked --extra dev --extra api
+        run: uv sync --locked --extra dev --extra api --extra assistant
 
       - name: Audit Python dependencies (pip-audit)
         run: |
@@ -234,7 +234,7 @@ jobs:
       # table-of-contents generator, which imports the slug function the site uses, and
       # without the extra the whole file would `importorskip` its way to green.
       - name: Install Python dependencies
-        run: uv sync --locked --extra dev --extra api --extra docs
+        run: uv sync --locked --extra dev --extra api --extra docs --extra assistant
 
       # ubuntu-24.04 installs postgresql-16 (see the runner-images toolset manifest)
       # but does not put its version-specific binaries on PATH, so
@@ -250,6 +250,22 @@ jobs:
         run: |
           command -v pg_ctl || { echo "::error::pg_ctl not found on PATH; PostgreSQL-gated tests would silently skip"; exit 1; }
           pg_ctl --version
+
+      # postgresql-16 itself ships without pgvector: the extension is a separate apt
+      # package that installs its .so and .control files into the same postgresql-16
+      # tree, which is what lets pytest-postgresql's throwaway cluster (spun up on the
+      # pg_ctl binaries confirmed above) run CREATE EXTENSION vector.
+      - name: Install the pgvector extension for PostgreSQL 16
+        run: sudo apt-get update && sudo apt-get install -y postgresql-16-pgvector
+
+      # Fail loudly if the extension is not where Postgres expects it, instead of
+      # letting a broken install reach the pgvector-gated tests as a silent skip.
+      - name: Verify the pgvector extension is installed
+        run: |
+          test -f /usr/share/postgresql/16/extension/vector.control || {
+            echo "::error::vector.control not found; postgresql-16-pgvector did not install"
+            exit 1
+          }
 
       # --cov-fail-under lives here and not in pyproject's addopts on purpose: there it
       # would apply to every local run, so `pytest tests/unit/api/services/test_x.py`
