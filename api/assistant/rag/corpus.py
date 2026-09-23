@@ -1,0 +1,237 @@
+"""The corpus manifest: which files feed the assistant's document index.
+
+build_manifest() is the single source of truth for "what gets indexed" - the ingest
+CLI (scripts/assistant/ingest.py) and the retrieval eval script both call it rather
+than walking the filesystem themselves, so the public and local layers are defined in
+exactly one place.
+"""
+
+import json
+import re
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Literal
+
+Layer = Literal["public", "local"]
+Kind = Literal["markdown", "i18n_json", "text", "pdf", "latex"]
+
+#: Public documents that intentionally never ship to any reader, this assistant
+#: included: both discuss what the project deliberately does not publish.
+EXCLUDED_PUBLIC = ("docs/security.md", "docs/environments.md")
+
+#: Suffix -> Kind. A file whose suffix is not here is not part of the corpus at all
+#: (images, stylesheets, .puml diagrams under docs/uml-diagrams/ and similar).
+_KIND_BY_SUFFIX: dict[str, Kind] = {
+    ".md": "markdown",
+    ".json": "i18n_json",
+    ".txt": "text",
+    ".pdf": "pdf",
+    ".tex": "latex",
+}
+
+#: The two i18n files the corpus wants; the other files in the same locale
+#: directories (about.json, auth.json, ...) are UI strings with no method or
+#: interpretation content and are not part of any BCM-120 corpus wave.
+_I18N_TARGETS = ("docs.json", "faq.json")
+
+#: Not private: loaders.py matches the same pattern to resolve a docs/dev/*.md
+#: snippet's content at load time, and shares this one definition rather than a
+#: second copy of the same syntax.
+SNIPPET_INCLUDE = re.compile(r'--8<--\s+"([^"]+)"')
+
+_H1_HEADING = re.compile(r"^#\s+(.+)$", re.MULTILINE)
+
+
+@dataclass(frozen=True)
+class CorpusSource:
+    """One file the assistant's corpus indexes, with its provenance.
+
+    :param path: Absolute filesystem path to the file: repo_root joined with the
+        relative path for a public source, or already resolved against the local
+        manifest's own folder for a local one (see build_manifest and _walk_local).
+        Never a bare relative path: loaders.py opens it directly, with no repository
+        root of its own to resolve one against.
+    :param layer: "public" (repository-tracked) or "local" (private, never in git).
+    :param kind: Which loader (loaders.py) reads this file.
+    :param title: Human-readable title, shown in citations.
+    :param lang: BCP-47-ish language tag, "en" or "cs".
+    :param url: Public documentation URL, or None for sources with no public page.
+    :param wave: Corpus wave this source belongs to (1 or 2); see BCM-129.
+    """
+
+    path: Path
+    layer: Layer
+    kind: Kind
+    title: str
+    lang: str
+    url: str | None
+    wave: int
+
+
+def _markdown_title(text: str, fallback: str) -> str:
+    """Take the first H1 heading as a title, falling back to a prettified filename.
+
+    :param text: The markdown file's raw content.
+    :param fallback: Stem to prettify (e.g. "what-it-does") if there is no H1.
+    :return: A human-readable title.
+    """
+    match = _H1_HEADING.search(text)
+    if match:
+        return match.group(1).strip()
+    return fallback.replace("-", " ").replace("_", " ").title()
+
+
+def _snippet_targets(docs_dir: Path) -> set[str]:
+    """Find every file that a docs/**/*.md page pulls in via a `--8<--` snippet include.
+
+    Used to keep the "module READMEs" pass from re-adding a README that docs/** has
+    already contributed to the manifest with its own path and URL (docs/dev/api.md IS
+    api/README.md's text, plus two lines of HTML comment; docs/index.md IS the root
+    README.md's text the same way) - so the scan walks the whole docs/ tree, not only
+    docs/dev/, or the index.md case would be missed.
+
+    :param docs_dir: The docs directory (may not exist).
+    :return: Repository-root-relative paths named by a `--8<--` include.
+    """
+    if not docs_dir.is_dir():
+        return set()
+    targets: set[str] = set()
+    for md_file in docs_dir.rglob("*.md"):
+        match = SNIPPET_INCLUDE.search(md_file.read_text(encoding="utf-8"))
+        if match:
+            targets.add(match.group(1))
+    return targets
+
+
+def _walk_docs(repo_root: Path, wave: int) -> list[CorpusSource]:
+    """Walk docs/** for markdown, skipping EXCLUDED_PUBLIC.
+
+    :param repo_root: Repository root.
+    :param wave: Wave number stamped on every source this call produces.
+    :return: One CorpusSource per markdown file under docs/.
+    """
+    docs_dir = repo_root / "docs"
+    if not docs_dir.is_dir():
+        return []
+    sources = []
+    for md_file in sorted(docs_dir.rglob("*.md")):
+        rel = md_file.relative_to(repo_root).as_posix()
+        if rel in EXCLUDED_PUBLIC:
+            continue
+        text = md_file.read_text(encoding="utf-8")
+        sources.append(
+            CorpusSource(
+                path=md_file,
+                layer="public",
+                kind="markdown",
+                title=_markdown_title(text, md_file.stem),
+                lang="en",
+                url=None,
+                wave=wave,
+            )
+        )
+    return sources
+
+
+# The repository's own READMEs that docs/dev/*.md does not already snippet-include.
+# An explicit list, not a walk: rglob("README.md") from the repository root reaches
+# frontend/node_modules and .venv (thousands of third-party READMEs) and, in a
+# worktree, the supplementary symlink with private files. api/assistant/README.md is
+# deliberately absent: it is the assistant's own setup guide, not documentation of
+# the method or the app.
+PUBLIC_EXTRA_READMES = (
+    "README.md",
+    "examples/data/README.md",
+    "examples/visualizations/README.md",
+)
+
+
+def _walk_module_readmes(
+    repo_root: Path, already_covered: set[str], wave: int
+) -> list[CorpusSource]:
+    """Return the allowlisted READMEs not already pulled in via a docs/dev/*.md snippet.
+
+    :param repo_root: Repository root.
+    :param already_covered: Repository-root-relative paths a docs/dev/*.md snippet
+        already targets (see _snippet_targets); these are skipped here to avoid
+        indexing the same text twice under two different sources.
+    :param wave: Wave number stamped on every source this call produces.
+    :return: One CorpusSource per allowlisted README that exists and is not covered.
+    """
+    sources = []
+    for rel in PUBLIC_EXTRA_READMES:
+        readme = repo_root / rel
+        if rel in already_covered or not readme.is_file():
+            continue
+        text = readme.read_text(encoding="utf-8")
+        sources.append(
+            CorpusSource(
+                path=readme,
+                layer="public",
+                kind="markdown",
+                title=_markdown_title(text, readme.parent.name or "README"),
+                lang="en",
+                url=None,
+                wave=wave,
+            )
+        )
+    return sources
+
+
+def _walk_i18n(repo_root: Path, wave: int) -> list[CorpusSource]:
+    """Find the two targeted i18n JSON files in each locale.
+
+    :param repo_root: Repository root.
+    :param wave: Wave number stamped on every source this call produces.
+    :return: One CorpusSource per (locale, target file) pair that exists.
+    """
+    locales_dir = repo_root / "frontend" / "src" / "i18n" / "locales"
+    if not locales_dir.is_dir():
+        return []
+    sources = []
+    for locale_dir in sorted(locales_dir.iterdir()):
+        if not locale_dir.is_dir():
+            continue
+        for name in _I18N_TARGETS:
+            json_file = locale_dir / name
+            if not json_file.is_file():
+                continue
+            data = json.loads(json_file.read_text(encoding="utf-8"))
+            sources.append(
+                CorpusSource(
+                    path=json_file,
+                    layer="public",
+                    kind="i18n_json",
+                    title=data.get("title", name),
+                    lang=locale_dir.name,
+                    url=None,
+                    wave=wave,
+                )
+            )
+    return sources
+
+
+def build_manifest(
+    repo_root: Path,
+    private_dirs: list[Path],
+    wave: int = 1,
+) -> list[CorpusSource]:
+    """Build the full corpus manifest: public layer plus (in Task 124.5) local layer.
+
+    :param repo_root: Repository root; docs/**, module READMEs, and the two i18n
+        files are found relative to it.
+    :param private_dirs: Allowed local-layer roots (Settings.assistant_private_corpus_dirs).
+        Public-layer discovery does not use this; kept as a parameter so the one
+        function signature never has to change again once the local layer lands.
+    :param wave: Highest wave to include (1 or 2); a source is included when its own
+        wave is less than or equal to this one.
+    :return: Every CorpusSource whose wave qualifies, public layer first.
+    """
+    del private_dirs  # local layer arrives in Task 124.5
+    already_covered = _snippet_targets(repo_root / "docs")
+    sources = [
+        *_walk_docs(repo_root, wave=1),
+        *_walk_module_readmes(repo_root, already_covered, wave=1),
+        *_walk_i18n(repo_root, wave=1),
+    ]
+    return [source for source in sources if source.wave <= wave]
