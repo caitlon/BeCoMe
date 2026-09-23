@@ -94,7 +94,7 @@ assistant = [
     "pylatexenc==2.11",
     # langchain_core.embeddings.fake wraps its own `import numpy as np` in
     # contextlib.suppress(ImportError), so DeterministicFakeEmbedding - which the
-    # dense-search test (Task 124.16) uses - raises NameError at call time without
+    # dense-search test uses - raises NameError at call time without
     # this, not an ImportError at import time. Same pin already used by the viz extra.
     "numpy==2.5.2",
 ]
