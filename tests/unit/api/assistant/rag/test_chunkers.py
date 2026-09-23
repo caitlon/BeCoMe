@@ -133,7 +133,7 @@ class TestMarkdownHeadersStrategy:
 
 
 class TestUnimplementedStrategies:
-    """Every strategy but markdown_headers is BCM-125's job, and fails loudly."""
+    """Every strategy but markdown_headers is left for later, and fails loudly."""
 
     @pytest.mark.parametrize(
         "strategy", ["fixed", "recursive", "sentences", "semantic", "parent_child"]
