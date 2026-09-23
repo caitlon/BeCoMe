@@ -186,6 +186,21 @@ jobs:
           echo "::error::pip-audit failed after 3 attempts"
           exit 1
 
+      # The install above holds only what CI runs. The notebook, viz and docs extras are
+      # local tooling and never deployed, but they share uv.lock and run on developer
+      # machines. Auditing an export of every extra covers them without installing them,
+      # and an extra added later is covered without editing this step.
+      - name: Audit every locked extra (pip-audit)
+        run: |
+          uv export --locked --all-extras --no-emit-project -o "$RUNNER_TEMP/all-extras.txt"
+          for attempt in 1 2 3; do
+            uv run pip-audit --timeout 30 --disable-pip -r "$RUNNER_TEMP/all-extras.txt" && exit 0
+            echo "::warning::pip-audit attempt $attempt failed (network?); retrying in 15s"
+            sleep 15
+          done
+          echo "::error::pip-audit failed after 3 attempts"
+          exit 1
+
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
         with:
