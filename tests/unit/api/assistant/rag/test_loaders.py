@@ -205,3 +205,46 @@ class TestPdfLoader:
         assert len(documents) == 1
         assert "BeCoMe aggregates expert opinions." in documents[0].page_content
         assert documents[0].metadata["title"] == "Article"
+
+
+class TestLatexLoader:
+    """LaTeX text is extracted with pylatexenc's default macro handling."""
+
+    def test_extracts_text_and_degrades_unknown_macros_gracefully(self, tmp_path):
+        """
+        GIVEN a .tex file using \\section, \\textcite (a biblatex macro pylatexenc does
+             not know by default), and a custom "grafobj" environment - the same shapes
+             the real thesis chapters use
+        WHEN load_source reads it
+        THEN the section heading and citation keys survive as plain text, with no
+             exception raised for the unknown macro or environment
+        """
+        # GIVEN
+        tex_path = tmp_path / "chapter3.tex"
+        _touch(
+            tex_path,
+            "\\section{Fuzzy Set Theory}\n"
+            "Expert decision-making is accompanied by vagueness \\textcite{Zadeh1965}.\n"
+            "\n"
+            "\\begin{grafobj}[H]\n"
+            "    \\sourcegraf{Source: \\textcite{Klir1995}}\n"
+            "\\end{grafobj}\n",
+        )
+        source = CorpusSource(
+            path=tex_path,
+            layer="local",
+            kind="latex",
+            title="Chapter 3",
+            lang="en",
+            url=None,
+            wave=1,
+        )
+
+        # WHEN
+        documents = load_source(source)
+
+        # THEN
+        text = documents[0].page_content
+        assert "FUZZY SET THEORY" in text
+        assert "Zadeh1965" in text
+        assert "Klir1995" in text
