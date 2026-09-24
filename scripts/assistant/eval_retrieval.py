@@ -8,7 +8,9 @@ would eventually say about it. The answer evaluation adds the answer-quality hal
 
     uv run python scripts/assistant/eval_retrieval.py --collection docs_default
 
-Needs the "assistant" extra and a running embedding llama-server.
+Needs the "assistant" extra and a running embedding llama-server. --rerank also needs
+the reranker llama-server, and a query transform needs the chat llama-server.
+scripts/assistant/run-llama-servers.sh starts all three.
 """
 
 from __future__ import annotations
@@ -245,6 +247,25 @@ def _build_retrieval_config(args: argparse.Namespace) -> RetrievalConfig:
     )
 
 
+def _positive_int(text: str) -> int:
+    """Parse a whole number of at least one, for --k.
+
+    k=0 would cut every result list to nothing and write a report in which each query
+    reads as a miss, so the parser refuses it instead.
+
+    :param text: The raw command-line value.
+    :return: The parsed number.
+    :raises argparse.ArgumentTypeError: If text is not a whole number of at least one.
+    """
+    try:
+        value = int(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"{text!r} is not a whole number") from None
+    if value < 1:
+        raise argparse.ArgumentTypeError(f"{value} is less than 1")
+    return value
+
+
 def _parse_args() -> argparse.Namespace:
     """Parse CLI arguments for one retrieval eval run."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -270,7 +291,9 @@ def _parse_args() -> argparse.Namespace:
         dest="query_transform",
         help="Query transform to apply before retrieval",
     )
-    parser.add_argument("--k", type=int, default=5, help="Number of chunks to return")
+    parser.add_argument(
+        "--k", type=_positive_int, default=5, help="Number of chunks to return, at least 1"
+    )
     return parser.parse_args()
 
 
