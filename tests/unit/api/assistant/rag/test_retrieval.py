@@ -7,6 +7,7 @@ import httpx
 import pytest
 from langchain_core.documents import Document
 from langchain_core.embeddings import DeterministicFakeEmbedding
+from langchain_core.language_models.fake_chat_models import FakeListChatModel
 from langchain_core.vectorstores import InMemoryVectorStore
 
 from api.assistant.rag.models import LlamaServerReranker
@@ -297,20 +298,61 @@ class TestDocsRetrieverRerank:
 
 
 class TestUnimplementedRetrieval:
-    """Every query_transform but none is not implemented yet."""
+    """multi_query and hyde are not implemented yet."""
 
-    def test_rejects_a_query_transform_other_than_none(self):
+    def test_rejects_multi_query_transform(self):
         """
-        GIVEN a RetrievalConfig with query_transform="hyde"
+        GIVEN a RetrievalConfig with query_transform="multi_query"
         WHEN DocsRetriever is constructed
         THEN it raises NotImplementedError naming the transform
         """
         embeddings = DeterministicFakeEmbedding(size=16)
         store = InMemoryVectorStore(embeddings)
-        config = RetrievalConfig(mode="dense", query_transform="hyde")
+        config = RetrievalConfig(mode="dense", query_transform="multi_query")
 
-        with pytest.raises(NotImplementedError, match="hyde"):
+        with pytest.raises(NotImplementedError, match="multi_query"):
             DocsRetriever(store=store, config=config, reranker=None, llm=None)
+
+
+class TestTranslateEnTransform:
+    """query_transform="translate_en" searches with the model's English translation."""
+
+    def test_query_transform_other_than_none_requires_an_llm(self):
+        """
+        GIVEN query_transform="translate_en" but llm=None
+        WHEN DocsRetriever is constructed
+        THEN it raises ValueError rather than failing deep inside search()
+        """
+        embeddings = DeterministicFakeEmbedding(size=16)
+        store = InMemoryVectorStore(embeddings)
+        config = RetrievalConfig(mode="dense", query_transform="translate_en")
+
+        with pytest.raises(ValueError, match="llm"):
+            DocsRetriever(store=store, config=config, reranker=None, llm=None)
+
+    @pytest.mark.asyncio
+    async def test_searches_with_the_translated_query_not_the_original(self):
+        """
+        GIVEN a store whose only document matches an English phrase exactly
+        WHEN search() runs with query_transform="translate_en" and a fake model that
+             "translates" a Czech query to that exact English phrase
+        THEN the document is found, proof the translated text drove the search
+        """
+        # GIVEN
+        embeddings = DeterministicFakeEmbedding(size=16)
+        store = _RelevanceScoredInMemoryVectorStore(embeddings)
+        english_text = "BeCoMe combines the arithmetic mean and the median."
+        await store.aadd_documents([_doc(english_text, title="Method")])
+        llm = FakeListChatModel(responses=[english_text])
+        config = RetrievalConfig(mode="dense", k=1, query_transform="translate_en")
+        retriever = DocsRetriever(store=store, config=config, reranker=None, llm=llm)
+
+        # WHEN
+        results = await retriever.search("Co kombinuje BeCoMe?")
+
+        # THEN
+        assert results[0].title == "Method"
+        assert results[0].score > 0.99
 
 
 class TestDocsRetrieverBm25Search:

@@ -1,8 +1,9 @@
 """Query the document index: dense search, BM25 search, and a hybrid of the two.
 
-Hybrid mode fuses dense and BM25 rankings by reciprocal rank fusion. Every
-query_transform but "none" is not implemented in this pull request; DocsRetriever
-raises NotImplementedError for those at construction time.
+Hybrid mode fuses dense and BM25 rankings by reciprocal rank fusion. A query_transform
+turns the query into one or more queries actually used to search; "translate_en" is
+implemented, "multi_query" and "hyde" are not yet, and DocsRetriever raises
+NotImplementedError for those at construction time.
 """
 
 import re
@@ -44,7 +45,8 @@ class RetrievalConfig:
         measured winner.
     :param k: Number of chunks to return.
     :param rerank: Whether to rerank the candidates before truncating to k.
-    :param query_transform: Only "none" is implemented in this pull request.
+    :param query_transform: "none" and "translate_en" are implemented; "multi_query"
+        and "hyde" are not yet.
     """
 
     mode: Literal["bm25", "dense", "hybrid"] = "dense"
@@ -140,19 +142,22 @@ class DocsRetriever:
             search() then raises NotImplementedError rather than silently
             returning a score of unknown meaning. BM25 mode reads the store's
             documents directly and has no such dependency.
-        :param config: query_transform must be "none" in this pull request; enforced
-            here, at construction time. mode may be "dense", "bm25", or "hybrid".
+        :param config: mode may be "dense", "bm25", or "hybrid". query_transform
+            "multi_query" and "hyde" are not implemented yet; enforced here, at
+            construction time.
         :param reranker: Required when config.rerank is True; ignored otherwise.
-        :param llm: Unused in this pull request (query_transform="none" needs none);
-            the "translate_en"/"multi_query"/"hyde" transforms need it.
-        :raises NotImplementedError: If query_transform is not "none".
-        :raises ValueError: If config.rerank is True but reranker is None.
+        :param llm: Required when config.query_transform is not "none"; unused
+            otherwise.
+        :raises NotImplementedError: If query_transform is "multi_query" or "hyde".
+        :raises ValueError: If config.rerank is True but reranker is None, or if
+            query_transform is not "none" and llm is None.
         """
-        if config.query_transform != "none":
+        if config.query_transform in ("multi_query", "hyde"):
             raise NotImplementedError(
-                f"query_transform {config.query_transform!r} is not implemented yet; "
-                "only 'none' ships in this pull request"
+                f"query_transform {config.query_transform!r} is not implemented yet"
             )
+        if config.query_transform != "none" and llm is None:
+            raise ValueError(f"query_transform {config.query_transform!r} requires an llm")
         if config.rerank and reranker is None:
             raise ValueError("config.rerank is True but no reranker was given")
         self._store = store
@@ -268,11 +273,50 @@ class DocsRetriever:
         bm25 = await self._search_bm25(query, fetch_k)
         return _reciprocal_rank_fusion([dense, bm25])[:fetch_k]
 
+    _TRANSLATE_PROMPT = (
+        "Translate the following text to English. Reply with only the translation:\n\n{query}"
+    )
+
+    async def _translate_to_english(self, query: str) -> str:
+        """Ask the model to translate the query to English.
+
+        :param query: The user's original query, in any language.
+        :return: The model's English translation.
+        """
+        if self._llm is None:
+            raise RuntimeError("unreachable: __init__ requires an llm for this query_transform")
+        response = await self._llm.ainvoke(self._TRANSLATE_PROMPT.format(query=query))
+        return str(response.content).strip()
+
+    async def _transformed_queries(self, query: str) -> list[str]:
+        """Turn one query into the query, or queries, actually used to search.
+
+        :param query: The user's original query.
+        :return: A single query for "none" and "translate_en".
+        """
+        if self._config.query_transform == "translate_en":
+            return [await self._translate_to_english(query)]
+        return [query]
+
+    async def _search_one(self, query: str, fetch_k: int) -> list[tuple[Document, float]]:
+        """Run a single search in the configured mode.
+
+        :param query: One search query: the original, or one produced by a
+            query_transform.
+        :param fetch_k: How many candidates to fetch.
+        :return: (Document, score) pairs.
+        """
+        if self._config.mode == "dense":
+            return await self._search_dense(query, fetch_k)
+        if self._config.mode == "bm25":
+            return await self._search_bm25(query, fetch_k)
+        return await self._search_hybrid(query, fetch_k)
+
     async def search(self, query: str) -> list[RetrievedChunk]:
         """Search the index and return the top-k chunks, most relevant first.
 
-        Errors are not caught here: an unreachable store or reranker raises as-is.
-        The chat endpoint's service layer is what turns either into
+        Errors are not caught here: an unreachable store, llm, or reranker raises
+        as-is. The chat endpoint's service layer is what turns any of them into
         AssistantUnavailableError.
 
         :param query: The search query.
@@ -285,12 +329,11 @@ class DocsRetriever:
             is empty or fills the fetch limit.
         """
         fetch_k = self._config.k * 4 if self._config.rerank else self._config.k
-        if self._config.mode == "dense":
-            candidates = await self._search_dense(query, fetch_k)
-        elif self._config.mode == "bm25":
-            candidates = await self._search_bm25(query, fetch_k)
-        else:
-            candidates = await self._search_hybrid(query, fetch_k)
+        search_queries = await self._transformed_queries(query)
+        rankings = [await self._search_one(one, fetch_k) for one in search_queries]
+        candidates = (
+            rankings[0] if len(rankings) == 1 else _reciprocal_rank_fusion(rankings)[:fetch_k]
+        )
         if self._config.rerank and candidates:
             candidates = await self._apply_rerank(query, candidates)
         return [
