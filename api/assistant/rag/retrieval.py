@@ -122,6 +122,43 @@ def _reciprocal_rank_fusion(
     return [(docs_by_key[key], scores[key]) for key in ranked_keys]
 
 
+#: A leading numbered ("1.", "1)") or bulleted ("-", "*", "•") list marker, with
+#: the space that follows it.
+_LIST_MARKER = re.compile(r"^(?:\d+[.)]|[-*•])\s+")
+
+
+def _clean_multi_query_variants(reply: str, original: str, limit: int) -> list[str]:
+    """Turn a multi_query model reply into deduplicated, marker-free paraphrase lines.
+
+    A model asked for several paraphrases, one per line, does not reliably comply:
+    it may add a preamble line, number or bullet the lines, or repeat the original
+    query or an earlier line verbatim. Kept lines have their list marker (if any)
+    removed; a line that is only a preamble (ends with ":"), or that repeats the
+    original query or an earlier kept line once whitespace is collapsed and case is
+    ignored, is dropped instead of becoming one more full search.
+
+    :param reply: The model's reply, already stripped of any think block.
+    :param original: The original query, so an accidental repeat of it is dropped too.
+    :param limit: The maximum number of variants to keep.
+    :return: Cleaned, deduplicated paraphrase lines, in the order the model wrote
+        them, at most limit long.
+    """
+    seen = {" ".join(original.split()).casefold()}
+    variants = []
+    for raw_line in reply.splitlines():
+        line = _LIST_MARKER.sub("", raw_line.strip()).strip()
+        if not line or line.endswith(":"):
+            continue
+        key = " ".join(line.split()).casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        variants.append(line)
+        if len(variants) == limit:
+            break
+    return variants
+
+
 class DocsRetriever:
     """Retrieve document chunks relevant to a query."""
 
@@ -290,14 +327,15 @@ class DocsRetriever:
         """Ask the model to paraphrase the query, and search with the original too.
 
         :param query: The user's original query.
-        :return: The original query, followed by each non-blank paraphrase line.
+        :return: The original query, followed by up to _MULTI_QUERY_VARIANTS cleaned,
+            deduplicated paraphrase lines (see _clean_multi_query_variants).
         """
         if self._llm is None:
             raise RuntimeError("unreachable: __init__ requires an llm for this query_transform")
         prompt = self._MULTI_QUERY_PROMPT.format(n=self._MULTI_QUERY_VARIANTS, query=query)
         response = await self._llm.ainvoke(prompt)
         reply = strip_think_block(str(response.content))
-        variants = [line.strip() for line in reply.splitlines() if line.strip()]
+        variants = _clean_multi_query_variants(reply, query, self._MULTI_QUERY_VARIANTS)
         return [query, *variants]
 
     _HYDE_PROMPT = (
