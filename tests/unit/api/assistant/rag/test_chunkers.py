@@ -358,19 +358,31 @@ class TestSemanticStrategy:
             split([_doc("some text")], config, embeddings=None)
 
 
-class TestUnimplementedStrategies:
-    """Every strategy but markdown_headers is left for later, and fails loudly."""
+class TestParentChildStrategy:
+    """Small child chunks for matching, each carrying its larger parent as context."""
 
-    @pytest.mark.parametrize("strategy", ["parent_child"])
-    def test_raises_not_implemented(self, strategy):
+    def test_child_chunks_carry_their_parent_text_in_metadata(self):
         """
-        GIVEN a ChunkerConfig using a strategy this pull request does not implement
-        WHEN split() is called
-        THEN it raises NotImplementedError naming the strategy
+        GIVEN a short document that is one parent split into three children
+        WHEN split() runs with strategy="parent_child"
+        THEN every child chunk's metadata carries the SAME parent_text - the whole
+             original document, since it fit in one parent-sized piece
         """
-        config = ChunkerConfig(strategy=strategy)
-        with pytest.raises(NotImplementedError, match=strategy):
-            split([_doc("text")], config)
+        # GIVEN
+        text = "BeCoMe averages the mean and the median values."
+        config = ChunkerConfig(strategy="parent_child", size=20, overlap_pct=0)
+
+        # WHEN
+        chunks = split([_doc(text)], config)
+
+        # THEN
+        assert [c.page_content for c in chunks] == [
+            "BeCoMe averages the",
+            "mean and the median",
+            "values.",
+        ]
+        assert all(c.metadata["parent_text"] == text for c in chunks)
+        assert all(c.metadata["source"] == "docs/method-description.md" for c in chunks)
 
 
 class TestLoaderChunkerIntegration:
