@@ -534,6 +534,35 @@ class TestMultiQueryTransform:
         # THEN
         assert queries == ["What does BeCoMe combine?"]
 
+    @pytest.mark.asyncio
+    async def test_runs_over_hybrid_search_without_raising(self):
+        """
+        GIVEN mode="hybrid" together with query_transform="multi_query"
+        WHEN search() runs
+        THEN it returns results without raising, and every returned chunk is one of
+             the documents actually in the store: the per-query hybrid fusion nested
+             inside the multi-query fusion does not corrupt or invent a result
+        """
+        # GIVEN
+        embeddings = DeterministicFakeEmbedding(size=16)
+        store = _RelevanceScoredInMemoryVectorStore(embeddings)
+        await store.aadd_documents(
+            [
+                _doc("The median is robust to outliers.", title="Median"),
+                _doc("The frontend uses React and TypeScript.", title="Frontend"),
+            ]
+        )
+        llm = FakeListChatModel(responses=["How is the median used?\nWhat about outliers?"])
+        config = RetrievalConfig(mode="hybrid", k=2, query_transform="multi_query")
+        retriever = DocsRetriever(store=store, config=config, reranker=None, llm=llm)
+
+        # WHEN
+        results = await retriever.search("median")
+
+        # THEN
+        assert results
+        assert all(chunk.title in {"Median", "Frontend"} for chunk in results)
+
 
 class TestHydeTransform:
     """query_transform="hyde" searches with a model-generated hypothetical answer."""

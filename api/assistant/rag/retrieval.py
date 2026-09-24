@@ -72,6 +72,9 @@ class RetrievedChunk:
         with the query scores exactly 0.0. Hybrid mode returns the fused reciprocal
         rank fusion score: still higher is more relevant, but on its own scale,
         small positive numbers rather than a cosine similarity or a BM25 score.
+        With a query_transform other than "none", the score measures relevance to
+        the transformed query or queries actually searched, not to the literal
+        text passed to search().
     """
 
     text: str
