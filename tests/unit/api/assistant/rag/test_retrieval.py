@@ -337,6 +337,31 @@ class TestTranslateEnTransform:
         assert results[0].title == "Method"
         assert results[0].score > 0.99
 
+    @pytest.mark.asyncio
+    async def test_strips_a_think_block_from_the_translation(self):
+        """
+        GIVEN a fake model whose reply carries a <think>...</think> block before the
+             actual translation
+        WHEN _transformed_queries runs with query_transform="translate_en"
+        THEN the returned query holds only the translation, with no trace of the block
+        """
+        # GIVEN
+        embeddings = DeterministicFakeEmbedding(size=16)
+        store = InMemoryVectorStore(embeddings)
+        llm = FakeListChatModel(
+            responses=[
+                "<think>This is Czech, translating to English.</think>\n\nWhat does BeCoMe combine?"
+            ]
+        )
+        config = RetrievalConfig(mode="dense", query_transform="translate_en")
+        retriever = DocsRetriever(store=store, config=config, reranker=None, llm=llm)
+
+        # WHEN
+        queries = await retriever._transformed_queries("Co kombinuje BeCoMe?")
+
+        # THEN
+        assert queries == ["What does BeCoMe combine?"]
+
 
 class TestMultiQueryTransform:
     """query_transform="multi_query" searches with the original query plus paraphrases."""
@@ -397,6 +422,36 @@ class TestMultiQueryTransform:
         assert len(results) == 2
         assert {chunk.title for chunk in results} == {"Method", "Frontend"}
 
+    @pytest.mark.asyncio
+    async def test_strips_a_think_block_before_splitting_into_variants(self):
+        """
+        GIVEN a fake model whose reply opens with a multi-line <think>...</think>
+             block before the paraphrase lines
+        WHEN _transformed_queries runs with query_transform="multi_query"
+        THEN none of the reasoning lines appear among the returned queries
+        """
+        # GIVEN
+        embeddings = DeterministicFakeEmbedding(size=16)
+        store = InMemoryVectorStore(embeddings)
+        llm = FakeListChatModel(
+            responses=[
+                "<think>Let me think of two paraphrases\nfor this question.</think>\n\n"
+                "How does BeCoMe aggregate opinions?\nWhat is the BeCoMe formula?"
+            ]
+        )
+        config = RetrievalConfig(mode="dense", query_transform="multi_query")
+        retriever = DocsRetriever(store=store, config=config, reranker=None, llm=llm)
+
+        # WHEN
+        queries = await retriever._transformed_queries("What does BeCoMe combine?")
+
+        # THEN
+        assert queries == [
+            "What does BeCoMe combine?",
+            "How does BeCoMe aggregate opinions?",
+            "What is the BeCoMe formula?",
+        ]
+
 
 class TestHydeTransform:
     """query_transform="hyde" searches with a model-generated hypothetical answer."""
@@ -444,6 +499,33 @@ class TestHydeTransform:
         # THEN
         assert results[0].title == "Method"
         assert results[0].score > 0.99
+
+    @pytest.mark.asyncio
+    async def test_strips_a_think_block_from_the_hypothetical_answer(self):
+        """
+        GIVEN a fake model whose reply carries a <think>...</think> block before the
+             actual hypothetical answer
+        WHEN _transformed_queries runs with query_transform="hyde"
+        THEN the returned query holds only the hypothetical answer, with no trace of
+             the block
+        """
+        # GIVEN
+        embeddings = DeterministicFakeEmbedding(size=16)
+        store = InMemoryVectorStore(embeddings)
+        llm = FakeListChatModel(
+            responses=[
+                "<think>The user is asking about the compromise method.</think>\n\n"
+                "The best compromise combines the mean and the median."
+            ]
+        )
+        config = RetrievalConfig(mode="dense", query_transform="hyde")
+        retriever = DocsRetriever(store=store, config=config, reranker=None, llm=llm)
+
+        # WHEN
+        queries = await retriever._transformed_queries("What is the best compromise?")
+
+        # THEN
+        assert queries == ["The best compromise combines the mean and the median."]
 
 
 class TestDocsRetrieverBm25Search:
