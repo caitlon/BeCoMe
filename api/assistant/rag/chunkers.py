@@ -270,6 +270,8 @@ def split(
     :param config: Which strategy to apply, and its size/overlap.
     :param embeddings: Used by strategy="semantic".
     :return: The resulting chunks.
+    :raises ValueError: For strategy="semantic" with no embeddings client, and for a
+        config.strategy value none of the branches above recognize.
     """
     if config.strategy == "markdown_headers":
         return _split_markdown_headers(docs, config)
@@ -283,4 +285,6 @@ def split(
         if embeddings is None:
             raise ValueError("strategy='semantic' requires an embeddings client")
         return _split_semantic(docs, embeddings)
-    return _split_parent_child(docs, config)
+    if config.strategy == "parent_child":
+        return _split_parent_child(docs, config)
+    raise ValueError(f"unknown chunking strategy {config.strategy!r}")
