@@ -27,6 +27,31 @@ def make_chat_model(settings: Settings) -> ChatOpenAI:
     )
 
 
+_THINK_OPEN = "<think>"
+_THINK_CLOSE = "</think>"
+
+
+def strip_think_block(reply: str) -> str:
+    """Remove the <think>...</think> block a reasoning-capable chat model may prepend.
+
+    A locally swapped chat model can emit its internal reasoning inside a <think>
+    block before the actual answer. Embedding that block along with the intended
+    context sentence would pollute what gets stored and later searched. Plain
+    substring search, not a regular expression, keeps this linear in the reply's
+    length.
+
+    :param reply: The model's raw reply text.
+    :return: reply without its first complete <think>...</think> block, stripped of
+        leading and trailing whitespace. A reply with no complete block is only
+        stripped.
+    """
+    start = reply.find(_THINK_OPEN)
+    end = reply.find(_THINK_CLOSE, start + len(_THINK_OPEN)) if start != -1 else -1
+    if end == -1:
+        return reply.strip()
+    return (reply[:start] + reply[end + len(_THINK_CLOSE) :]).strip()
+
+
 def make_embeddings(settings: Settings) -> OpenAIEmbeddings:
     """Build the embeddings client, pointed at the local embedding llama-server.
 

@@ -12,6 +12,8 @@ from typing import Literal
 from langchain_core.documents import Document
 from langchain_core.language_models import BaseChatModel
 
+from api.assistant.rag.models import strip_think_block
+
 ContextMode = Literal["none", "heading_path", "llm_context", "doc_summary"]
 
 
@@ -26,31 +28,6 @@ def _prepend_heading_path(chunk: Document) -> Document:
     return Document(
         page_content=text, metadata={**chunk.metadata, "chunk_text": chunk.page_content}
     )
-
-
-_THINK_OPEN = "<think>"
-_THINK_CLOSE = "</think>"
-
-
-def _strip_think_block(reply: str) -> str:
-    """Remove the <think>...</think> block a reasoning-capable chat model may prepend.
-
-    A locally swapped chat model can emit its internal reasoning inside a <think>
-    block before the actual answer. Embedding that block along with the intended
-    context sentence would pollute what gets stored and later searched. Plain
-    substring search, not a regular expression, keeps this linear in the reply's
-    length.
-
-    :param reply: The model's raw reply text.
-    :return: reply without its first complete <think>...</think> block, stripped of
-        leading and trailing whitespace. A reply with no complete block is only
-        stripped.
-    """
-    start = reply.find(_THINK_OPEN)
-    end = reply.find(_THINK_CLOSE, start + len(_THINK_OPEN)) if start != -1 else -1
-    if end == -1:
-        return reply.strip()
-    return (reply[:start] + reply[end + len(_THINK_CLOSE) :]).strip()
 
 
 _LLM_CONTEXT_PROMPT = (
@@ -75,7 +52,7 @@ def _prepend_llm_context(chunk: Document, llm: BaseChatModel) -> Document:
     prompt = _LLM_CONTEXT_PROMPT.format(
         title=chunk.metadata.get("title", ""), chunk=chunk.page_content
     )
-    context = _strip_think_block(str(llm.invoke(prompt).content))
+    context = strip_think_block(str(llm.invoke(prompt).content))
     return Document(
         page_content=f"{context}\n\n{chunk.page_content}",
         metadata={**chunk.metadata, "chunk_text": chunk.page_content},
@@ -113,7 +90,7 @@ def _prepend_doc_summary(chunks: list[Document], llm: BaseChatModel) -> list[Doc
         by_source.setdefault(chunk.metadata["source"], []).append(chunk)
 
     summaries = {
-        source: _strip_think_block(
+        source: strip_think_block(
             str(
                 llm.invoke(
                     _DOC_SUMMARY_PROMPT.format(
