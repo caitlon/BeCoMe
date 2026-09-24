@@ -4,11 +4,41 @@ Talks to the assistant's own vector database (docker-compose profile "assistant"
 Settings.assistant_vector_db_url), never the application's own Postgres.
 """
 
+import re
+
 from langchain_core.embeddings import Embeddings
 from langchain_postgres import PGEngine, PGVectorStore
 from langchain_postgres.v2.hybrid_search_config import HybridSearchConfig
 from psycopg.errors import DuplicateTable
 from sqlalchemy.exc import ProgrammingError
+
+# PostgreSQL's own identifier limit is 63 bytes. langchain-postgres 0.0.18 escapes
+# table_name in ensure_collection's own CREATE TABLE call (PGEngine.ainit_vectorstore_table
+# doubles an embedded double quote), but open_store's later PGVectorStore/AsyncPGVectorStore
+# interpolates table_name straight into its insert, search and delete SQL with no escaping
+# at all - a name containing a double quote breaks out of the quoted identifier there. Both
+# functions are restricted to this plain shape instead, so neither has to rely on the
+# library escaping it correctly. fullmatch (not match) so a trailing newline cannot slip a
+# name past the $ anchor - re.match(r"...$", "docs_default\n") matches "docs_default" and
+# would wrongly accept it; fullmatch requires the whole string to fit the pattern.
+_COLLECTION_NAME_PATTERN = re.compile(r"^[a-z_][a-z0-9_]{0,62}$")
+
+
+def _validate_collection_name(name: str) -> None:
+    """Refuse a collection name that is not a plain, safe SQL identifier.
+
+    :param name: The proposed collection/table name.
+    :return: None.
+    :raises ValueError: If name does not match _COLLECTION_NAME_PATTERN: lowercase
+        letters, digits and underscores, not starting with a digit, at most 63
+        characters. Never includes the database URL - only the name and the rule.
+    """
+    if not _COLLECTION_NAME_PATTERN.fullmatch(name):
+        raise ValueError(
+            f"collection name {name!r} is not a plain identifier: it must match "
+            f"{_COLLECTION_NAME_PATTERN.pattern!r} (lowercase letters, digits and "
+            "underscores, not starting with a digit, at most 63 characters)"
+        )
 
 
 def make_engine(url: str) -> PGEngine:
@@ -45,12 +75,14 @@ async def ensure_collection(engine: PGEngine, table: str, vector_size: int, hybr
         search. The ingest pipeline passes False (dense-only); only the later retrieval
         experiments pass True.
     :return: None.
+    :raises ValueError: If table is not a plain identifier; see _validate_collection_name.
     :raises ProgrammingError: If table creation fails for any reason other than the
         table already existing. Only psycopg.errors.DuplicateTable (SQLSTATE 42P07)
-        is treated as an already-created collection; any other ProgrammingError (a
-        rejected table name, an invalid column) propagates instead of being silently
+        is treated as an already-created collection; any other ProgrammingError (an
+        invalid column, a permission error) propagates instead of being silently
         absorbed.
     """
+    _validate_collection_name(table)
     hybrid_config = HybridSearchConfig() if hybrid else None
     try:
         await engine.ainit_vectorstore_table(
@@ -68,5 +100,7 @@ def open_store(engine: PGEngine, table: str, embeddings: Embeddings) -> PGVector
     :param table: The collection's table name, already created via ensure_collection.
     :param embeddings: The embeddings client used to embed queries and documents.
     :return: A PGVectorStore bound to that table.
+    :raises ValueError: If table is not a plain identifier; see _validate_collection_name.
     """
+    _validate_collection_name(table)
     return PGVectorStore.create_sync(engine=engine, embedding_service=embeddings, table_name=table)
