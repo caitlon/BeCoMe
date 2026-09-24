@@ -257,7 +257,8 @@ class Settings(BaseSettings):
     # api/assistant/rag/corpus.py::build_manifest). It sits at the root of a private
     # corpus kept outside this repository; its relative entries resolve from its own
     # folder, and every entry must resolve under one of assistant_private_corpus_dirs.
-    # None means no local layer, which is always the case in CI and in every test.
+    # None means no local layer: the default, and what CI runs with. Tests that need a
+    # local layer build one in a temporary folder and set this explicitly.
     assistant_private_corpus_manifest: str | None = None
     assistant_langsmith_enabled: bool = False
     assistant_langsmith_api_key: str | None = None
