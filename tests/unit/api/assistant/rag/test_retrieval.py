@@ -297,23 +297,6 @@ class TestDocsRetrieverRerank:
             DocsRetriever(store=store, config=config, reranker=None, llm=None)
 
 
-class TestUnimplementedRetrieval:
-    """hyde is not implemented yet."""
-
-    def test_rejects_hyde_transform(self):
-        """
-        GIVEN a RetrievalConfig with query_transform="hyde"
-        WHEN DocsRetriever is constructed
-        THEN it raises NotImplementedError naming the transform
-        """
-        embeddings = DeterministicFakeEmbedding(size=16)
-        store = InMemoryVectorStore(embeddings)
-        config = RetrievalConfig(mode="dense", query_transform="hyde")
-
-        with pytest.raises(NotImplementedError, match="hyde"):
-            DocsRetriever(store=store, config=config, reranker=None, llm=None)
-
-
 class TestTranslateEnTransform:
     """query_transform="translate_en" searches with the model's English translation."""
 
@@ -413,6 +396,54 @@ class TestMultiQueryTransform:
         # THEN
         assert len(results) == 2
         assert {chunk.title for chunk in results} == {"Method", "Frontend"}
+
+
+class TestHydeTransform:
+    """query_transform="hyde" searches with a model-generated hypothetical answer."""
+
+    @pytest.mark.asyncio
+    async def test_transformed_queries_is_just_the_hypothetical_answer(self):
+        """
+        GIVEN a fake model that returns one hypothetical answer
+        WHEN _transformed_queries runs with query_transform="hyde"
+        THEN it returns exactly that text, replacing rather than joining the original
+        """
+        # GIVEN
+        embeddings = DeterministicFakeEmbedding(size=16)
+        store = InMemoryVectorStore(embeddings)
+        llm = FakeListChatModel(responses=["The best compromise combines the mean and the median."])
+        config = RetrievalConfig(mode="dense", query_transform="hyde")
+        retriever = DocsRetriever(store=store, config=config, reranker=None, llm=llm)
+
+        # WHEN
+        queries = await retriever._transformed_queries("What is the best compromise?")
+
+        # THEN
+        assert queries == ["The best compromise combines the mean and the median."]
+
+    @pytest.mark.asyncio
+    async def test_searches_with_the_hypothetical_answer_not_the_original_query(self):
+        """
+        GIVEN a store whose only document matches the model's hypothetical answer
+             exactly, and does not match the original query text at all
+        WHEN search() runs with query_transform="hyde"
+        THEN that document is found with a near-1.0 score
+        """
+        # GIVEN
+        embeddings = DeterministicFakeEmbedding(size=16)
+        store = _RelevanceScoredInMemoryVectorStore(embeddings)
+        hypothetical = "BeCoMe combines the arithmetic mean and the median."
+        await store.aadd_documents([_doc(hypothetical, title="Method")])
+        llm = FakeListChatModel(responses=[hypothetical])
+        config = RetrievalConfig(mode="dense", k=1, query_transform="hyde")
+        retriever = DocsRetriever(store=store, config=config, reranker=None, llm=llm)
+
+        # WHEN
+        results = await retriever.search("What does BeCoMe do?")
+
+        # THEN
+        assert results[0].title == "Method"
+        assert results[0].score > 0.99
 
 
 class TestDocsRetrieverBm25Search:
