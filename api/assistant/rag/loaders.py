@@ -17,7 +17,7 @@ import pypdf
 from langchain_core.documents import Document
 from pylatexenc.latex2text import LatexNodes2Text
 
-from api.assistant.rag.corpus import EXCLUDED_PUBLIC, SNIPPET_INCLUDE, CorpusSource
+from api.assistant.rag.corpus import SNIPPET_INCLUDE, CorpusSource, is_excluded_public
 
 _CAMEL_BOUNDARY = re.compile(r"(?<!^)(?=[A-Z])")
 
@@ -63,27 +63,6 @@ def _base_metadata(
     }
 
 
-def _is_excluded_public(target_path: Path, repo_root: Path) -> bool:
-    """Report whether a resolved include target is one of the EXCLUDED_PUBLIC pages.
-
-    Compared by file identity as well as by spelling: on a case-insensitive filesystem
-    (the macOS default) "DOCS/SECURITY.MD" opens docs/security.md while comparing
-    unequal as a string, and a hard link opens it under any name at all.
-
-    :param target_path: The include target, already resolved.
-    :param repo_root: The repository root, already resolved.
-    :return: True when the target is an excluded page or the same file as one.
-    """
-    if target_path.relative_to(repo_root).as_posix() in EXCLUDED_PUBLIC:
-        return True
-    if not target_path.exists():
-        return False
-    return any(
-        (repo_root / excluded).exists() and target_path.samefile(repo_root / excluded)
-        for excluded in EXCLUDED_PUBLIC
-    )
-
-
 def _load_markdown(source: CorpusSource) -> list[Document]:
     """Load a markdown file, resolving one `--8<--` snippet include if present.
 
@@ -109,7 +88,7 @@ def _load_markdown(source: CorpusSource) -> list[Document]:
                 f"{source.path}: snippet include {target!r} resolves to {target_path}, "
                 "which is outside the repository root"
             )
-        if _is_excluded_public(target_path, repo_root):
+        if is_excluded_public(target_path, repo_root):
             raise ValueError(
                 f"{source.path}: snippet include {target!r} resolves to {target_path}, "
                 "which is in EXCLUDED_PUBLIC and must never be included"
