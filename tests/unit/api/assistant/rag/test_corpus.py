@@ -15,6 +15,22 @@ def _touch(path: Path, content: str = "content") -> None:
     path.write_text(content, encoding="utf-8")
 
 
+def _hardlink_or_skip(link: Path, target: Path) -> None:
+    """Hard-link link -> target, or skip the test when the filesystem cannot do it."""
+    try:
+        link.hardlink_to(target)
+    except OSError as exc:
+        pytest.skip(f"filesystem cannot create hard links: {exc}")
+
+
+def _symlink_or_skip(link: Path, target: Path, target_is_directory: bool = False) -> None:
+    """Symlink link -> target, or skip the test when the filesystem cannot do it."""
+    try:
+        link.symlink_to(target, target_is_directory=target_is_directory)
+    except OSError as exc:
+        pytest.skip(f"filesystem cannot create symlinks: {exc}")
+
+
 class TestExcludedPublic:
     """The two internal-only documents never enter the manifest."""
 
@@ -121,6 +137,68 @@ class TestPublicDocsWalk:
         # THEN
         paths = {source.path for source in manifest}
         assert paths == {tmp_path / "README.md"}
+
+    def test_hard_link_to_an_excluded_page_is_not_in_the_manifest(self, tmp_path):
+        """
+        GIVEN docs/notes.md hard-linked to docs/security.md
+        WHEN build_manifest walks docs/
+        THEN the link is excluded too - it is the same file as the excluded page,
+             which a string comparison of the walked path against EXCLUDED_PUBLIC
+             would miss
+        """
+        # GIVEN
+        _touch(tmp_path / "docs" / "security.md", "# Security\nInternal only.")
+        _touch(tmp_path / "docs" / "user" / "what-it-does.md", "# What BeCoMe does\nText.")
+        link = tmp_path / "docs" / "notes.md"
+        _hardlink_or_skip(link, tmp_path / "docs" / "security.md")
+
+        # WHEN
+        manifest = build_manifest(repo_root=tmp_path, private_dirs=[])
+
+        # THEN
+        paths = {source.path for source in manifest}
+        assert link not in paths
+        assert (tmp_path / "docs" / "security.md") not in paths
+        assert (tmp_path / "docs" / "user" / "what-it-does.md") in paths
+
+    def test_symlink_to_an_excluded_page_is_not_in_the_manifest(self, tmp_path):
+        """
+        GIVEN docs/notes.md symlinked to docs/environments.md
+        WHEN build_manifest walks docs/
+        THEN the link is excluded too - it resolves to the excluded page, which a
+             string comparison of the walked path against EXCLUDED_PUBLIC would miss
+        """
+        # GIVEN
+        _touch(tmp_path / "docs" / "environments.md", "# Environments\nInternal only.")
+        _touch(tmp_path / "docs" / "user" / "what-it-does.md", "# What BeCoMe does\nText.")
+        link = tmp_path / "docs" / "notes.md"
+        _symlink_or_skip(link, tmp_path / "docs" / "environments.md")
+
+        # WHEN
+        manifest = build_manifest(repo_root=tmp_path, private_dirs=[])
+
+        # THEN
+        paths = {source.path for source in manifest}
+        assert link not in paths
+        assert (tmp_path / "docs" / "environments.md") not in paths
+        assert (tmp_path / "docs" / "user" / "what-it-does.md") in paths
+
+    def test_symlink_escaping_the_repository_root_raises(self, tmp_path):
+        """
+        GIVEN docs/escape.md symlinked to a file outside the repository root
+        WHEN build_manifest walks docs/
+        THEN it raises ValueError naming the link, before the outside file is read
+        """
+        # GIVEN
+        repo_root = tmp_path / "repo"
+        _touch(tmp_path / "outside.md", "# Outside\nNot part of the repository.\n")
+        link = repo_root / "docs" / "escape.md"
+        link.parent.mkdir(parents=True, exist_ok=True)
+        _symlink_or_skip(link, tmp_path / "outside.md")
+
+        # WHEN/THEN
+        with pytest.raises(ValueError, match="outside the repository root"):
+            build_manifest(repo_root=repo_root, private_dirs=[])
 
 
 class TestI18nWalk:
@@ -235,6 +313,35 @@ class TestLocalLayer:
         assert source.title == "Clanek"
         assert source.lang == "cs"
         assert source.url is None
+
+    def test_entry_reached_through_a_symlinked_folder_is_stored_resolved(self, tmp_path):
+        """
+        GIVEN a manifest entry reached through a symlinked directory component
+        WHEN build_manifest runs
+        THEN the local-layer CorpusSource stores the resolved path, not the symlinked
+             one - the file loaders.py later opens is then the file that was checked
+             against the private_dirs allowlist
+        """
+        # GIVEN
+        corpus = tmp_path / "supplementary" / "assistant" / "corpus"
+        _touch(corpus / "wave-1" / "clanek.txt", "obsah")
+        link = corpus / "links"
+        _symlink_or_skip(link, corpus / "wave-1", target_is_directory=True)
+        manifest_file = corpus / "manifest.json"
+        _touch(
+            manifest_file,
+            json.dumps([{"path": "links/clanek.txt", "title": "Clanek", "lang": "cs", "wave": 1}]),
+        )
+
+        # WHEN
+        manifest = build_manifest(
+            repo_root=tmp_path, private_dirs=[corpus], local_manifest=manifest_file
+        )
+
+        # THEN
+        local_sources = [s for s in manifest if s.layer == "local"]
+        assert len(local_sources) == 1
+        assert local_sources[0].path == corpus / "wave-1" / "clanek.txt"
 
     def test_relative_settings_resolve_against_repo_root_not_cwd(self, tmp_path, monkeypatch):
         """
