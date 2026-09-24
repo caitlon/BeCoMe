@@ -13,6 +13,7 @@ from pathlib import Path
 
 import psycopg
 import pytest
+from langchain_core.language_models.fake_chat_models import FakeListChatModel
 
 from api.assistant.rag.chunkers import ChunkerConfig
 from api.assistant.rag.pipeline import CollectionSpec, build_collection
@@ -252,6 +253,63 @@ class TestBuildCollectionWithContext:
             assert len(results) == 1
             assert results[0][0].page_content.startswith("BeCoMe\n\n")
             assert "arithmetic mean" in results[0][0].page_content
+        finally:
+            await engine.close()
+
+
+class TestBuildCollectionWithModelWrittenContext:
+    """context="llm_context" drives a chat model through build_collection end to end."""
+
+    @pytest.mark.asyncio
+    async def test_builds_a_collection_with_llm_context(
+        self, tmp_path, postgresql, fake_embedding_server, monkeypatch
+    ):
+        """
+        GIVEN a one-file corpus and a fake chat model standing in for the real one
+        WHEN build_collection runs with context="llm_context"
+        THEN the stored chunk's text starts with the fake model's sentence, and its
+             chunk_text metadata still holds the chunk's own original text
+        """
+        # GIVEN
+        (tmp_path / "docs").mkdir()
+        (tmp_path / "docs" / "index.md").write_text(
+            "# BeCoMe\n\nBeCoMe combines the arithmetic mean and the median.\n",
+            encoding="utf-8",
+        )
+        fake_llm = FakeListChatModel(responses=["Describes the compromise method."])
+        monkeypatch.setattr("api.assistant.rag.pipeline.make_chat_model", lambda settings: fake_llm)
+        settings = Settings(
+            secret_key="test-secret-key",
+            assistant_vector_db_url=_connection_url(postgresql),
+            assistant_embedding_base_url=fake_embedding_server,
+            assistant_embedding_model="fake-embedding-model",
+        )
+        spec = CollectionSpec(
+            name="docs_test_llm_context",
+            chunker=ChunkerConfig(strategy="markdown_headers", size=500, overlap_pct=10),
+            context="llm_context",
+            wave=1,
+        )
+
+        # WHEN
+        chunk_count = await build_collection(spec, settings, repo_root=tmp_path)
+
+        # THEN
+        assert chunk_count == 1
+        from api.assistant.rag.models import make_embeddings
+
+        engine = make_engine(_connection_url(postgresql))
+        try:
+            query_embeddings = make_embeddings(settings)
+            store = open_store(engine, table="docs_test_llm_context", embeddings=query_embeddings)
+            results = await store.asimilarity_search_with_score("mean and median", k=1)
+            assert len(results) == 1
+            stored = results[0][0]
+            assert stored.page_content.startswith("Describes the compromise method.")
+            assert (
+                stored.metadata["chunk_text"]
+                == "BeCoMe combines the arithmetic mean and the median."
+            )
         finally:
             await engine.close()
 
