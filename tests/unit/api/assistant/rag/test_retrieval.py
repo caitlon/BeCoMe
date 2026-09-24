@@ -535,33 +535,41 @@ class TestMultiQueryTransform:
         assert queries == ["What does BeCoMe combine?"]
 
     @pytest.mark.asyncio
-    async def test_runs_over_hybrid_search_without_raising(self):
+    async def test_fuses_the_paraphrase_rankings_over_hybrid_search(self, monkeypatch):
         """
-        GIVEN mode="hybrid" together with query_transform="multi_query"
-        WHEN search() runs
-        THEN it returns results without raising, and every returned chunk is one of
-             the documents actually in the store: the per-query hybrid fusion nested
-             inside the multi-query fusion does not corrupt or invent a result
+        GIVEN mode="hybrid" and query_transform="multi_query", with dense and bm25
+             search stubbed so the original query finds only "Frontend" and both
+             paraphrases find only "Median"
+        WHEN search() runs with k=1
+        THEN "Median" comes back, since it leads two of the three per-query hybrid
+             rankings being fused; a search that ignored the paraphrases would have
+             returned "Frontend"
         """
         # GIVEN
         embeddings = DeterministicFakeEmbedding(size=16)
         store = _RelevanceScoredInMemoryVectorStore(embeddings)
-        await store.aadd_documents(
-            [
-                _doc("The median is robust to outliers.", title="Median"),
-                _doc("The frontend uses React and TypeScript.", title="Frontend"),
-            ]
-        )
-        llm = FakeListChatModel(responses=["How is the median used?\nWhat about outliers?"])
-        config = RetrievalConfig(mode="hybrid", k=2, query_transform="multi_query")
+        median = _doc("The median is robust to outliers.", title="Median")
+        frontend = _doc("The frontend uses React and TypeScript.", title="Frontend")
+        found_by_query = {
+            "original question": frontend,
+            "first paraphrase": median,
+            "second paraphrase": median,
+        }
+        llm = FakeListChatModel(responses=["first paraphrase\nsecond paraphrase"])
+        config = RetrievalConfig(mode="hybrid", k=1, query_transform="multi_query")
         retriever = DocsRetriever(store=store, config=config, reranker=None, llm=llm)
 
+        async def _stub_search(query, fetch_k):
+            return [(found_by_query[query], 1.0)]
+
+        monkeypatch.setattr(retriever, "_search_dense", _stub_search)
+        monkeypatch.setattr(retriever, "_search_bm25", _stub_search)
+
         # WHEN
-        results = await retriever.search("median")
+        results = await retriever.search("original question")
 
         # THEN
-        assert results
-        assert all(chunk.title in {"Median", "Frontend"} for chunk in results)
+        assert [chunk.title for chunk in results] == ["Median"]
 
 
 class TestHydeTransform:
