@@ -1,9 +1,7 @@
 """Split loaded Documents into retrieval-sized chunks.
 
-"markdown_headers", "fixed", "recursive", "sentences", and "semantic" are
-implemented so far; "parent_child" belongs to the later retrieval experiments,
-and split() raises NotImplementedError for it rather than silently returning
-something misleading.
+Six chunking strategies, chosen by config.strategy: "markdown_headers", "fixed",
+"recursive", "sentences", "semantic", and "parent_child".
 """
 
 import math
@@ -224,6 +222,30 @@ def _split_semantic(docs: list[Document], embeddings: Embeddings) -> list[Docume
     return chunks
 
 
+def _split_parent_child(docs: list[Document], config: ChunkerConfig) -> list[Document]:
+    """Split into small child chunks, each carrying its larger parent's text.
+
+    Child chunks (config.size) are the unit of embedding and matching; each keeps its
+    parent chunk's full text (four times as large, a common default for this
+    pattern) in metadata["parent_text"] for expanded context after retrieval.
+
+    :param docs: Loaded Documents.
+    :param config: size/overlap_pct size the CHILD chunks; the parent is 4x as large.
+    :return: Child-sized chunks, each with an added "parent_text" metadata key.
+    """
+    parent_splitter = RecursiveCharacterTextSplitter(chunk_size=config.size * 4, chunk_overlap=0)
+    child_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=config.size, chunk_overlap=int(config.size * config.overlap_pct / 100)
+    )
+    chunks = []
+    for doc in docs:
+        for parent_text in parent_splitter.split_text(doc.page_content):
+            for child_text in child_splitter.split_text(parent_text):
+                metadata = {**doc.metadata, "parent_text": parent_text}
+                chunks.append(Document(page_content=child_text, metadata=metadata))
+    return chunks
+
+
 def split(
     docs: list[Document], config: ChunkerConfig, embeddings: Embeddings | None = None
 ) -> list[Document]:
@@ -233,8 +255,6 @@ def split(
     :param config: Which strategy to apply, and its size/overlap.
     :param embeddings: Used by strategy="semantic".
     :return: The resulting chunks.
-    :raises NotImplementedError: For every strategy but "markdown_headers", "fixed",
-        "recursive", "sentences", and "semantic".
     """
     if config.strategy == "markdown_headers":
         return _split_markdown_headers(docs, config)
@@ -248,4 +268,4 @@ def split(
         if embeddings is None:
             raise ValueError("strategy='semantic' requires an embeddings client")
         return _split_semantic(docs, embeddings)
-    raise NotImplementedError(f"chunking strategy {config.strategy!r} is not implemented yet")
+    return _split_parent_child(docs, config)
