@@ -55,14 +55,23 @@ _DOC_SUMMARY_PROMPT = (
     "Summarize this document in two sentences, in the document's own language:\n\n{document}"
 )
 
+# Kept well under the chat llama-server's 16384-token context window
+# (scripts/assistant/run-llama-servers.sh), even at a conservative ~3 characters per
+# token. 24_000 characters is about 8_000 tokens, leaving headroom for the prompt
+# template and the model's own reply, so joining one source's chunks can never
+# overflow the context window the way an unbounded join could for a large PDF.
+_DOC_SUMMARY_CHAR_BUDGET = 24_000
+
 
 def _prepend_doc_summary(chunks: list[Document], llm: BaseChatModel) -> list[Document]:
     """Prepend a short whole-document summary to every chunk from that document.
 
-    The summary is generated once per source file - from that file's own chunks
-    joined back together, the closest approximation of the original document
-    available once chunking has already happened - and applied to every chunk
-    sharing that "source" metadata value.
+    The summary is generated once per source file, from that file's own chunks
+    joined back together. This is the closest approximation of the original document
+    available once chunking has already happened, applied to every chunk sharing that
+    "source" metadata value. Only the opening _DOC_SUMMARY_CHAR_BUDGET characters of
+    that joined text are sent to the model, so the summary reads the opening of a
+    long document rather than all of it.
 
     :param chunks: Chunks to enrich, from one or more source documents.
     :param llm: The chat model asked for each document's summary.
@@ -75,7 +84,9 @@ def _prepend_doc_summary(chunks: list[Document], llm: BaseChatModel) -> list[Doc
     summaries = {
         source: str(
             llm.invoke(
-                _DOC_SUMMARY_PROMPT.format(document="\n\n".join(c.page_content for c in group))
+                _DOC_SUMMARY_PROMPT.format(
+                    document="\n\n".join(c.page_content for c in group)[:_DOC_SUMMARY_CHAR_BUDGET]
+                )
             ).content
         )
         for source, group in by_source.items()

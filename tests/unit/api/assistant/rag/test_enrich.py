@@ -3,8 +3,19 @@
 import pytest
 from langchain_core.documents import Document
 from langchain_core.language_models.fake_chat_models import FakeListChatModel
+from pydantic import Field
 
-from api.assistant.rag.enrich import enrich
+from api.assistant.rag.enrich import _DOC_SUMMARY_CHAR_BUDGET, enrich
+
+
+class _RecordingChatModel(FakeListChatModel):
+    """FakeListChatModel that also records the prompt text of every invoke() call."""
+
+    prompts: list[str] = Field(default_factory=list)
+
+    def _call(self, messages, stop=None, run_manager=None, **kwargs):
+        self.prompts.append(messages[-1].content)
+        return super()._call(messages, stop=stop, run_manager=run_manager, **kwargs)
 
 
 def _chunk(
@@ -165,3 +176,23 @@ class TestDocSummaryMode:
         # THEN
         assert enriched[0].page_content.startswith("Method summary.")
         assert enriched[1].page_content.startswith("Getting-started summary.")
+
+    def test_bounds_the_joined_text_sent_to_the_model(self):
+        """
+        GIVEN one source whose chunks joined together exceed the summary input budget
+        WHEN enrich() runs with mode="doc_summary"
+        THEN the model is asked about only the budget's worth of characters, taken
+             from the opening of the joined text
+        """
+        # GIVEN
+        joined = "".join(f"sentence-{i:05d}. " for i in range(2000))
+        chunks = [_chunk(joined)]
+        llm = _RecordingChatModel(responses=["Summary."])
+
+        # WHEN
+        enrich(chunks, mode="doc_summary", llm=llm)
+
+        # THEN
+        document_part = llm.prompts[0].split("\n\n", 1)[1]
+        assert len(document_part) == _DOC_SUMMARY_CHAR_BUDGET
+        assert document_part == joined[:_DOC_SUMMARY_CHAR_BUDGET]
