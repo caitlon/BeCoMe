@@ -396,3 +396,47 @@ class TestDocsRetrieverBm25Search:
         # WHEN / THEN
         with pytest.raises(ValueError, match="empty"):
             await retriever.search("median")
+
+    @pytest.mark.asyncio
+    async def test_a_collection_that_fills_the_fetch_limit_raises(self, monkeypatch):
+        """
+        GIVEN a fetch limit of two and a store holding three documents
+        WHEN search() runs with mode="bm25"
+        THEN it raises ValueError instead of indexing the two documents one fetch
+             returns, which would silently leave the third out of every bm25 result
+        """
+        # GIVEN
+        monkeypatch.setattr("api.assistant.rag.retrieval._BM25_FETCH_LIMIT", 2)
+        embeddings = DeterministicFakeEmbedding(size=16)
+        store = InMemoryVectorStore(embeddings)
+        await store.aadd_documents([_doc(f"median chunk {i}", title=f"T{i}") for i in range(3)])
+        config = RetrievalConfig(mode="bm25", k=1)
+        retriever = DocsRetriever(store=store, config=config, reranker=None, llm=None)
+
+        # WHEN / THEN
+        with pytest.raises(ValueError, match="fetch limit"):
+            await retriever.search("median")
+
+    @pytest.mark.asyncio
+    async def test_rerank_reorders_the_bm25_candidates(self, monkeypatch):
+        """
+        GIVEN a fake reranker that always scores the last-listed candidate highest
+        WHEN search() runs with mode="bm25" and rerank=True over three documents
+        THEN all three bm25 candidates were sent to the reranker, and the returned
+             scores are the reranker's own, in descending order
+        """
+        # GIVEN
+        monkeypatch.setattr(httpx, "AsyncClient", _RerankByPositionClient)
+        embeddings = DeterministicFakeEmbedding(size=16)
+        store = InMemoryVectorStore(embeddings)
+        await store.aadd_documents([_doc(f"median chunk {i}", title=f"T{i}") for i in range(3)])
+        reranker = LlamaServerReranker(base_url="http://127.0.0.1:8083/v1", model="m", timeout=5.0)
+        config = RetrievalConfig(mode="bm25", k=3, rerank=True)
+        retriever = DocsRetriever(store=store, config=config, reranker=reranker, llm=None)
+
+        # WHEN
+        results = await retriever.search("median")
+
+        # THEN
+        assert len(_RerankByPositionClient.last_documents) == 3
+        assert [chunk.score for chunk in results] == [2.0, 1.0, 0.0]

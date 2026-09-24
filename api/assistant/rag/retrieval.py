@@ -153,7 +153,8 @@ class DocsRetriever:
         :raises ValueError: If the store's collection is empty. rank_bm25 divides
             by the document count while building the index, so an empty corpus
             would otherwise raise ZeroDivisionError with no indication of the
-            real cause.
+            real cause. Also if one fetch comes back full, because a collection
+            of _BM25_FETCH_LIMIT chunks or more would be indexed only in part.
         """
         if self._bm25_index is not None:
             return
@@ -167,6 +168,12 @@ class DocsRetriever:
         documents = [doc for doc, _ in results]
         if not documents:
             raise ValueError("cannot build a bm25 index: the store's collection is empty")
+        if len(documents) >= _BM25_FETCH_LIMIT:
+            raise ValueError(
+                f"cannot build a complete bm25 index: the collection fills the fetch limit "
+                f"of {_BM25_FETCH_LIMIT} chunks, so some chunks may be missing; raise "
+                "_BM25_FETCH_LIMIT"
+            )
         self._bm25_documents = documents
         self._bm25_index = BM25Okapi([_tokenize(doc.page_content) for doc in documents])
 
@@ -176,7 +183,8 @@ class DocsRetriever:
         :param query: The search query.
         :param fetch_k: How many candidates to return.
         :return: (Document, score) pairs, highest BM25 score first.
-        :raises ValueError: If the store's collection is empty.
+        :raises ValueError: If the store's collection is empty, or fills the fetch
+            limit.
         """
         await self._ensure_bm25_index()
         if self._bm25_index is None or self._bm25_documents is None:
@@ -221,7 +229,8 @@ class DocsRetriever:
         :raises NotImplementedError: If mode is "dense" and the store has no
             relevance-score conversion (VectorStore._select_relevance_score_fn not
             overridden). PGVectorStore has one, a bare InMemoryVectorStore does not.
-        :raises ValueError: If mode is "bm25" and the store's collection is empty.
+        :raises ValueError: If mode is "bm25" and the store's collection is empty or
+            fills the fetch limit.
         """
         fetch_k = self._config.k * 4 if self._config.rerank else self._config.k
         if self._config.mode == "dense":
