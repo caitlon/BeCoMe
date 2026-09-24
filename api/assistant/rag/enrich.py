@@ -4,6 +4,7 @@ enrich() returns NEW Documents; the chunk's own metadata (including provenance) 
 carried over unchanged, only page_content changes.
 """
 
+import re
 from typing import Literal
 
 from langchain_core.documents import Document
@@ -21,6 +22,24 @@ def _prepend_heading_path(chunk: Document) -> Document:
     heading_path = chunk.metadata.get("heading_path", "")
     text = f"{heading_path}\n\n{chunk.page_content}" if heading_path else chunk.page_content
     return Document(page_content=text, metadata=dict(chunk.metadata))
+
+
+_THINK_BLOCK_RE = re.compile(r"\s*<think>.*?</think>\s*", re.DOTALL)
+
+
+def _strip_think_block(reply: str) -> str:
+    """Remove a <think>...</think> block a reasoning-capable chat model may prepend.
+
+    A locally swapped chat model can emit its internal reasoning inside a <think>
+    block before the actual answer. Embedding that block along with the intended
+    context sentence would pollute what gets stored and later searched.
+
+    :param reply: The model's raw reply text.
+    :return: reply with any <think>...</think> block and the whitespace immediately
+        around it removed, and the remaining text stripped of leading and trailing
+        whitespace.
+    """
+    return _THINK_BLOCK_RE.sub("", reply).strip()
 
 
 _LLM_CONTEXT_PROMPT = (
@@ -45,7 +64,7 @@ def _prepend_llm_context(chunk: Document, llm: BaseChatModel) -> Document:
     prompt = _LLM_CONTEXT_PROMPT.format(
         title=chunk.metadata.get("title", ""), chunk=chunk.page_content
     )
-    context = str(llm.invoke(prompt).content)
+    context = _strip_think_block(str(llm.invoke(prompt).content))
     return Document(
         page_content=f"{context}\n\n{chunk.page_content}", metadata=dict(chunk.metadata)
     )
@@ -82,12 +101,16 @@ def _prepend_doc_summary(chunks: list[Document], llm: BaseChatModel) -> list[Doc
         by_source.setdefault(chunk.metadata["source"], []).append(chunk)
 
     summaries = {
-        source: str(
-            llm.invoke(
-                _DOC_SUMMARY_PROMPT.format(
-                    document="\n\n".join(c.page_content for c in group)[:_DOC_SUMMARY_CHAR_BUDGET]
-                )
-            ).content
+        source: _strip_think_block(
+            str(
+                llm.invoke(
+                    _DOC_SUMMARY_PROMPT.format(
+                        document="\n\n".join(c.page_content for c in group)[
+                            :_DOC_SUMMARY_CHAR_BUDGET
+                        ]
+                    )
+                ).content
+            )
         )
         for source, group in by_source.items()
     }

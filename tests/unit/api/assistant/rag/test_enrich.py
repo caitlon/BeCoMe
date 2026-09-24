@@ -129,6 +129,32 @@ class TestLlmContextMode:
         with pytest.raises(ValueError, match="llm_context"):
             enrich([_chunk("text")], mode="llm_context", llm=None)
 
+    def test_strips_a_think_block_from_the_models_reply(self):
+        """
+        GIVEN a fake model whose reply carries a <think>...</think> block before its
+             actual context sentence
+        WHEN enrich() runs with mode="llm_context"
+        THEN the stored text starts with the context sentence, with no trace of the
+             reasoning block
+        """
+        # GIVEN
+        chunk = _chunk("It uses every opinion, which is its virtue and its flaw.")
+        llm = FakeListChatModel(
+            responses=[
+                "<think>The chunk criticizes averaging.</think>\n\n"
+                "Describes a weakness of the arithmetic mean."
+            ]
+        )
+
+        # WHEN
+        enriched = enrich([chunk], mode="llm_context", llm=llm)
+
+        # THEN
+        assert enriched[0].page_content == (
+            "Describes a weakness of the arithmetic mean.\n\n"
+            "It uses every opinion, which is its virtue and its flaw."
+        )
+
 
 class TestDocSummaryMode:
     """mode="doc_summary" prepends one summary per source document, not per chunk."""
@@ -176,6 +202,30 @@ class TestDocSummaryMode:
         # THEN
         assert enriched[0].page_content.startswith("Method summary.")
         assert enriched[1].page_content.startswith("Getting-started summary.")
+
+    def test_strips_a_think_block_from_the_models_summary(self):
+        """
+        GIVEN a fake model whose summary reply carries a <think>...</think> block
+        WHEN enrich() runs with mode="doc_summary"
+        THEN the stored text starts with the summary, with no trace of the
+             reasoning block
+        """
+        # GIVEN
+        chunk = _chunk("First chunk of the method description.")
+        llm = FakeListChatModel(
+            responses=[
+                "<think>This document is about a compromise method.</think>\n\n"
+                "A method for aggregating expert opinions."
+            ]
+        )
+
+        # WHEN
+        enriched = enrich([chunk], mode="doc_summary", llm=llm)
+
+        # THEN
+        assert enriched[0].page_content == (
+            "A method for aggregating expert opinions.\n\nFirst chunk of the method description."
+        )
 
     def test_bounds_the_joined_text_sent_to_the_model(self):
         """
