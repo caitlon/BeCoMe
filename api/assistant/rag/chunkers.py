@@ -49,7 +49,12 @@ def _split_markdown_headers(docs: list[Document], config: ChunkerConfig) -> list
     :param docs: Loaded Documents (loaders.py), each with the eight base metadata keys.
     :param config: strategy must be "markdown_headers"; size/overlap_pct bound the
         second pass.
-    :return: Retrieval-sized chunks, each with heading_path set from its section.
+    :return: Retrieval-sized chunks. Each chunk's heading_path is the loader's own
+        heading_path (loaders.py; "" for markdown, a JSON key path for i18n) and this
+        section's "#"-derived path, joined with " > " and skipping whichever side is
+        empty - a markdown document keeps just its section path, an i18n document
+        with no "#" lines keeps just its loader path, and a document with both gets
+        the loader path first.
     """
     header_splitter = MarkdownHeaderTextSplitter(
         headers_to_split_on=_HEADERS_TO_SPLIT_ON, strip_headers=True
@@ -60,7 +65,12 @@ def _split_markdown_headers(docs: list[Document], config: ChunkerConfig) -> list
     chunks = []
     for doc in docs:
         for section in header_splitter.split_text(doc.page_content):
-            base_metadata = {**doc.metadata, "heading_path": _heading_path(section.metadata)}
+            heading_path = " > ".join(
+                part
+                for part in (doc.metadata["heading_path"], _heading_path(section.metadata))
+                if part
+            )
+            base_metadata = {**doc.metadata, "heading_path": heading_path}
             for piece in size_splitter.split_text(section.page_content):
                 chunks.append(Document(page_content=piece, metadata=dict(base_metadata)))
     return chunks

@@ -1,15 +1,23 @@
 """Unit tests for chunking loaded Documents (fakes only, no network)."""
 
 import dataclasses
+import json
 
 import pytest
 from langchain_core.documents import Document
 
 from api.assistant.rag.chunkers import ChunkerConfig, split
+from api.assistant.rag.corpus import CorpusSource
+from api.assistant.rag.loaders import load_source
 
 
-def _doc(text: str) -> Document:
-    """A Document with the eight base metadata keys loaders.py always sets."""
+def _doc(text: str, heading_path: str = "") -> Document:
+    """A Document with the eight base metadata keys loaders.py always sets.
+
+    :param text: The document's page content.
+    :param heading_path: The loader-set heading_path - "" (markdown's default) unless
+        given, e.g. an i18n JSON key path.
+    """
     return Document(
         page_content=text,
         metadata={
@@ -19,7 +27,7 @@ def _doc(text: str) -> Document:
             "lang": "en",
             "url": None,
             "sha256": "abc123",
-            "heading_path": "",
+            "heading_path": heading_path,
             "wave": 1,
         },
     )
@@ -131,6 +139,46 @@ class TestMarkdownHeadersStrategy:
         assert chunks[0].metadata["heading_path"] == ""
         assert chunks[0].page_content == text
 
+    def test_keeps_the_loaders_heading_path_when_the_text_has_no_markdown_headings(self):
+        """
+        GIVEN an i18n-style Document whose loader set heading_path to a JSON key path,
+             with no "#"-prefixed lines in its text
+        WHEN split() runs with markdown_headers
+        THEN the chunk keeps that heading_path, rather than losing it to the
+             splitter's own (empty) header metadata
+        """
+        # GIVEN
+        text = "Title: Creating A Project\nStep1: Sign up."
+        doc = _doc(text, heading_path="gettingStarted > createProject")
+        config = ChunkerConfig(strategy="markdown_headers", size=500, overlap_pct=10)
+
+        # WHEN
+        chunks = split([doc], config)
+
+        # THEN
+        assert len(chunks) == 1
+        assert chunks[0].metadata["heading_path"] == "gettingStarted > createProject"
+
+    def test_joins_the_loaders_heading_path_with_the_splitters_own(self):
+        """
+        GIVEN a Document whose loader set a heading_path AND whose text has its own
+             "#"-prefixed heading
+        WHEN split() runs with markdown_headers
+        THEN the chunk's heading_path is the loader's path and the splitter's path
+             joined with " > ", loader path first
+        """
+        # GIVEN
+        text = "## Best compromise\n\nIt is the midpoint of the mean and the median.\n"
+        doc = _doc(text, heading_path="gettingStarted")
+        config = ChunkerConfig(strategy="markdown_headers", size=500, overlap_pct=10)
+
+        # WHEN
+        chunks = split([doc], config)
+
+        # THEN
+        assert len(chunks) == 1
+        assert chunks[0].metadata["heading_path"] == "gettingStarted > Best compromise"
+
 
 class TestUnimplementedStrategies:
     """Every strategy but markdown_headers is left for later, and fails loudly."""
@@ -147,3 +195,48 @@ class TestUnimplementedStrategies:
         config = ChunkerConfig(strategy=strategy)
         with pytest.raises(NotImplementedError, match=strategy):
             split([_doc("text")], config)
+
+
+class TestLoaderChunkerIntegration:
+    """End-to-end: loaders.load_source's heading_path must survive split()."""
+
+    def test_i18n_json_chunks_keep_their_sections_key_path_as_heading_path(self, tmp_path):
+        """
+        GIVEN a small nested i18n JSON file loaded through loaders.load_source
+        WHEN its Documents are split with markdown_headers
+        THEN every chunk's heading_path is non-empty and equals its own section's
+             key path - i18n text has no "#" lines to derive one from otherwise
+        """
+        # GIVEN
+        data = {
+            "gettingStarted": {
+                "title": "Getting Started",
+                "createProject": {
+                    "title": "Creating a Project",
+                    "step1": "Sign up.",
+                },
+            },
+        }
+        json_path = tmp_path / "frontend" / "src" / "i18n" / "locales" / "en" / "docs.json"
+        json_path.parent.mkdir(parents=True, exist_ok=True)
+        json_path.write_text(json.dumps(data), encoding="utf-8")
+        source = CorpusSource(
+            path=json_path,
+            layer="public",
+            kind="i18n_json",
+            title="Documentation",
+            lang="en",
+            url=None,
+            wave=1,
+        )
+        documents = load_source(source)
+        config = ChunkerConfig(strategy="markdown_headers", size=500, overlap_pct=10)
+
+        # WHEN
+        chunks = split(documents, config)
+
+        # THEN
+        assert len(chunks) == len(documents)
+        for document, chunk in zip(documents, chunks, strict=True):
+            assert chunk.metadata["heading_path"] != ""
+            assert chunk.metadata["heading_path"] == document.metadata["heading_path"]
