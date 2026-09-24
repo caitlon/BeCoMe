@@ -362,6 +362,27 @@ class TestTranslateEnTransform:
         # THEN
         assert queries == ["What does BeCoMe combine?"]
 
+    @pytest.mark.asyncio
+    async def test_falls_back_to_the_original_query_on_an_empty_reply(self):
+        """
+        GIVEN a fake model that replies with only whitespace
+        WHEN _transformed_queries runs with query_transform="translate_en"
+        THEN it falls back to the original query instead of searching with an
+             empty string
+        """
+        # GIVEN
+        embeddings = DeterministicFakeEmbedding(size=16)
+        store = InMemoryVectorStore(embeddings)
+        llm = FakeListChatModel(responses=["   "])
+        config = RetrievalConfig(mode="dense", query_transform="translate_en")
+        retriever = DocsRetriever(store=store, config=config, reranker=None, llm=llm)
+
+        # WHEN
+        queries = await retriever._transformed_queries("Co kombinuje BeCoMe?")
+
+        # THEN
+        assert queries == ["Co kombinuje BeCoMe?"]
+
 
 class TestMultiQueryTransform:
     """query_transform="multi_query" searches with the original query plus paraphrases."""
@@ -493,6 +514,26 @@ class TestMultiQueryTransform:
             "What is the BeCoMe formula?",
         ]
 
+    @pytest.mark.asyncio
+    async def test_falls_back_to_just_the_original_query_on_an_empty_reply(self):
+        """
+        GIVEN a fake model that replies with only whitespace
+        WHEN _transformed_queries runs with query_transform="multi_query"
+        THEN it falls back to a single-element list holding just the original query
+        """
+        # GIVEN
+        embeddings = DeterministicFakeEmbedding(size=16)
+        store = InMemoryVectorStore(embeddings)
+        llm = FakeListChatModel(responses=["   "])
+        config = RetrievalConfig(mode="dense", query_transform="multi_query")
+        retriever = DocsRetriever(store=store, config=config, reranker=None, llm=llm)
+
+        # WHEN
+        queries = await retriever._transformed_queries("What does BeCoMe combine?")
+
+        # THEN
+        assert queries == ["What does BeCoMe combine?"]
+
 
 class TestHydeTransform:
     """query_transform="hyde" searches with a model-generated hypothetical answer."""
@@ -567,6 +608,27 @@ class TestHydeTransform:
 
         # THEN
         assert queries == ["The best compromise combines the mean and the median."]
+
+    @pytest.mark.asyncio
+    async def test_falls_back_to_the_original_query_on_an_empty_reply(self):
+        """
+        GIVEN a fake model that replies with only a think block and nothing else
+        WHEN _transformed_queries runs with query_transform="hyde"
+        THEN it falls back to the original query instead of searching with an
+             empty string
+        """
+        # GIVEN
+        embeddings = DeterministicFakeEmbedding(size=16)
+        store = InMemoryVectorStore(embeddings)
+        llm = FakeListChatModel(responses=["<think>Still deciding what to write.</think>"])
+        config = RetrievalConfig(mode="dense", query_transform="hyde")
+        retriever = DocsRetriever(store=store, config=config, reranker=None, llm=llm)
+
+        # WHEN
+        queries = await retriever._transformed_queries("What is the best compromise?")
+
+        # THEN
+        assert queries == ["What is the best compromise?"]
 
 
 class TestDocsRetrieverBm25Search:
