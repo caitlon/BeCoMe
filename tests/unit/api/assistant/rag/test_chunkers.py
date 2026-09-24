@@ -476,6 +476,23 @@ class TestParentChildStrategy:
         assert all(c.metadata["source"] == "docs/method-description.md" for c in chunks)
 
 
+class TestUnknownStrategy:
+    """split() fails loudly for a strategy value none of its branches handle."""
+
+    def test_raises_value_error(self):
+        """
+        GIVEN a ChunkerConfig naming a strategy split() does not recognize
+        WHEN split() is called
+        THEN it raises ValueError rather than silently treating it as parent_child
+        """
+        # GIVEN
+        config = ChunkerConfig(strategy="unknown")  # type: ignore[arg-type]
+
+        # WHEN / THEN
+        with pytest.raises(ValueError, match="unknown"):
+            split([_doc("text")], config)
+
+
 class TestLoaderChunkerIntegration:
     """End-to-end: loaders.load_source's heading_path must survive split()."""
 
