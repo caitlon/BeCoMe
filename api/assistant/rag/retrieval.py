@@ -125,8 +125,8 @@ def _reciprocal_rank_fusion(
     return [(docs_by_key[key], scores[key]) for key in ranked_keys]
 
 
-#: A leading numbered ("1.", "1)") or bulleted ("-", "*", "•") list marker, with
-#: the space that follows it.
+#: A leading numbered ("1.", "1)") or bulleted ("-", "*", or a bullet character) list
+#: marker, with the space that follows it.
 _LIST_MARKER = re.compile(r"^(?:\d+[.)]|[-*•])\s+")
 
 
