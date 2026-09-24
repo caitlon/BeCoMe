@@ -1,12 +1,13 @@
 """Unit tests for the retrieval eval's metrics (fakes only, no network)."""
 
+import argparse
 import importlib.util
 import sys
 from pathlib import Path
 
 import pytest
 
-from api.assistant.rag.retrieval import RetrievedChunk
+from api.assistant.rag.retrieval import RetrievalConfig, RetrievedChunk
 
 ROOT = Path(__file__).resolve().parents[4]
 
@@ -177,19 +178,21 @@ class TestRequireCollectionVersions:
 
 
 class TestFinalizeReport:
-    """_finalize_report attaches the collection name and its registry versions."""
+    """_finalize_report attaches the collection, its versions, and the retrieval settings."""
 
     def test_attaches_collection_name_and_versions(self):
         """
-        GIVEN aggregated metrics, a collection name, and its registry versions
+        GIVEN aggregated metrics, a collection name, its registry versions, and the
+             retrieval config that produced them
         WHEN _finalize_report merges them
         THEN the result carries the metrics plus collection/app_version/corpus_version
         """
         # GIVEN
         metrics = {"per_query": [], "hit_at_1": 1.0, "mrr": 1.0, "ndcg_at_5": 1.0}
+        config = RetrievalConfig(mode="dense", k=5, rerank=False, query_transform="none")
 
         # WHEN
-        report = ev._finalize_report(metrics, "docs_default", "v1.2.3", "wave-1-dirty")
+        report = ev._finalize_report(metrics, "docs_default", "v1.2.3", "wave-1-dirty", config)
 
         # THEN
         assert report["collection"] == "docs_default"
@@ -203,5 +206,50 @@ class TestFinalizeReport:
         WHEN _finalize_report merges it
         THEN corpus_version stays None in the report rather than being coerced
         """
-        report = ev._finalize_report({}, "docs_default", "v1.2.3", None)
+        config = RetrievalConfig(mode="dense", k=5, rerank=False, query_transform="none")
+        report = ev._finalize_report({}, "docs_default", "v1.2.3", None, config)
         assert report["corpus_version"] is None
+
+    def test_records_the_retrieval_settings_next_to_the_versions(self):
+        """
+        GIVEN a retrieval config with a non-default mode, rerank, query_transform, and k
+        WHEN _finalize_report merges it into the report
+        THEN the report carries all four settings, so two reports of the same
+             collection measured under different settings can be told apart
+        """
+        config = RetrievalConfig(mode="bm25", k=3, rerank=True, query_transform="hyde")
+
+        report = ev._finalize_report({}, "docs_default", "v1.2.3", "wave-1", config)
+
+        assert report["mode"] == "bm25"
+        assert report["rerank"] is True
+        assert report["query_transform"] == "hyde"
+        assert report["k"] == 3
+
+
+class TestBuildRetrievalConfig:
+    """_build_retrieval_config turns parsed CLI arguments into a RetrievalConfig."""
+
+    def test_builds_a_dense_config_with_defaults(self):
+        """
+        GIVEN parsed arguments with no rerank flag and query_transform="none"
+        WHEN _build_retrieval_config converts them
+        THEN the resulting RetrievalConfig matches every field
+        """
+        args = argparse.Namespace(mode="dense", rerank=False, query_transform="none", k=5)
+
+        config = ev._build_retrieval_config(args)
+
+        assert config == ev.RetrievalConfig(mode="dense", k=5, rerank=False, query_transform="none")
+
+    def test_builds_a_hybrid_reranked_config(self):
+        """
+        GIVEN parsed arguments requesting hybrid mode with reranking on
+        WHEN _build_retrieval_config converts them
+        THEN rerank is True and mode is "hybrid" in the resulting RetrievalConfig
+        """
+        args = argparse.Namespace(mode="hybrid", rerank=True, query_transform="hyde", k=3)
+
+        config = ev._build_retrieval_config(args)
+
+        assert config == ev.RetrievalConfig(mode="hybrid", k=3, rerank=True, query_transform="hyde")

@@ -25,7 +25,7 @@ import psycopg
 from psycopg.errors import UndefinedTable
 
 from api.assistant.rag.corpus import build_manifest
-from api.assistant.rag.models import make_embeddings
+from api.assistant.rag.models import LlamaServerReranker, make_chat_model, make_embeddings
 from api.assistant.rag.retrieval import DocsRetriever, RetrievalConfig, RetrievedChunk
 from api.assistant.rag.store import make_engine, open_store
 from api.config import get_settings
@@ -200,26 +200,49 @@ def _require_collection_versions(
 
 
 def _finalize_report(
-    metrics: dict[str, Any], collection: str, app_version: str | None, corpus_version: str | None
+    metrics: dict[str, Any],
+    collection: str,
+    app_version: str | None,
+    corpus_version: str | None,
+    config: RetrievalConfig,
 ) -> dict[str, Any]:
-    """Attach the collection name and its registry versions to the aggregated metrics.
+    """Attach the collection, its registry versions, and the retrieval settings used.
 
-    Kept pure and separate from _fetch_collection_row so the report shape - what every
-    measured number must carry, per the plan's global constraint - is unit-testable
-    without a database connection.
+    Kept pure and separate from _fetch_collection_row, so the report shape (what every
+    measured number must carry, per the plan's global constraint) is unit-testable
+    without a database connection. Recording the retrieval settings next to the
+    versions lets two reports of the same collection, measured under different
+    settings, be told apart.
 
     :param metrics: _evaluate()'s result.
     :param collection: The collection name that was evaluated.
     :param app_version: assistant_collections.app_version for this collection.
     :param corpus_version: assistant_collections.corpus_version for this collection.
-    :return: A new dict: metrics plus "collection", "app_version", "corpus_version".
+    :param config: The retrieval settings this run measured.
+    :return: A new dict: metrics plus "collection", "app_version", "corpus_version",
+        "mode", "rerank", "query_transform", and "k".
     """
     return {
         **metrics,
         "collection": collection,
         "app_version": app_version,
         "corpus_version": corpus_version,
+        "mode": config.mode,
+        "rerank": config.rerank,
+        "query_transform": config.query_transform,
+        "k": config.k,
     }
+
+
+def _build_retrieval_config(args: argparse.Namespace) -> RetrievalConfig:
+    """Turn parsed CLI arguments into a RetrievalConfig.
+
+    :param args: Parsed arguments (see _parse_args).
+    :return: The retrieval config to evaluate.
+    """
+    return RetrievalConfig(
+        mode=args.mode, k=args.k, rerank=args.rerank, query_transform=args.query_transform
+    )
 
 
 def _parse_args() -> argparse.Namespace:
@@ -231,6 +254,23 @@ def _parse_args() -> argparse.Namespace:
         default=None,
         help="Path to the golden set JSONL (default: scripts/assistant/golden_set.jsonl)",
     )
+    parser.add_argument(
+        "--mode",
+        default="dense",
+        choices=["bm25", "dense", "hybrid"],
+        help="Retrieval mode to evaluate",
+    )
+    parser.add_argument(
+        "--rerank", action="store_true", help="Rerank candidates before truncating to k"
+    )
+    parser.add_argument(
+        "--query-transform",
+        default="none",
+        choices=["none", "translate_en", "multi_query", "hyde"],
+        dest="query_transform",
+        help="Query transform to apply before retrieval",
+    )
+    parser.add_argument("--k", type=int, default=5, help="Number of chunks to return")
     return parser.parse_args()
 
 
@@ -249,22 +289,31 @@ async def _main() -> None:
     )
     entries = _load_golden_set(golden_set_path)
     title_to_path = _title_to_path(repo_root)
+    config = _build_retrieval_config(args)
 
     settings = get_settings()
     embeddings = make_embeddings(settings)
+    reranker = (
+        LlamaServerReranker(
+            base_url=settings.assistant_rerank_base_url,
+            model=settings.assistant_rerank_model,
+            timeout=settings.assistant_llm_timeout_seconds,
+        )
+        if config.rerank
+        else None
+    )
+    llm = make_chat_model(settings) if config.query_transform != "none" else None
     engine = make_engine(settings.assistant_vector_db_url)
     try:
         store = open_store(engine, table=args.collection, embeddings=embeddings)
         row = await _fetch_collection_row(settings.assistant_vector_db_url, args.collection)
         app_version, corpus_version = _require_collection_versions(row, args.collection)
-        retriever = DocsRetriever(
-            store=store, config=RetrievalConfig(mode="dense", k=5), reranker=None, llm=None
-        )
+        retriever = DocsRetriever(store=store, config=config, reranker=reranker, llm=llm)
         metrics = await _evaluate(entries, retriever, title_to_path)
     finally:
         await engine.close()
 
-    report = _finalize_report(metrics, args.collection, app_version, corpus_version)
+    report = _finalize_report(metrics, args.collection, app_version, corpus_version, config)
     report["generated_at"] = datetime.now(UTC).isoformat()
     out_dir = repo_root / "supplementary" / "assistant-eval"
     out_dir.mkdir(parents=True, exist_ok=True)
