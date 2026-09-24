@@ -109,13 +109,6 @@ class TestEnsureCollection:
         assert row is not None, "content_tsv column was not provisioned for hybrid search"
         assert row[0] == "tsvector"
 
-    # The non-DuplicateTable-still-propagates case used to live here, triggered by an
-    # empty table name (a real Postgres syntax error). ensure_collection now validates
-    # the name first, so an empty name raises ValueError before reaching the database
-    # - see TestEnsureCollectionValidatesTheName in the unit test file. The re-raise
-    # branch itself still gets a test there too, driven by a stub engine instead:
-    # TestEnsureCollectionReraisesOtherProgrammingErrors.
-
 
 class TestOpenStore:
     """open_store binds a PGVectorStore to an already-created collection table."""
