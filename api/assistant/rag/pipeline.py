@@ -8,22 +8,17 @@ import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
 
 import psycopg
 from langchain_core.documents import Document
 
 from api.assistant.rag.chunkers import ChunkerConfig, split
 from api.assistant.rag.corpus import build_manifest
+from api.assistant.rag.enrich import ContextMode, enrich
 from api.assistant.rag.loaders import load_source
-from api.assistant.rag.models import make_embeddings
+from api.assistant.rag.models import make_chat_model, make_embeddings
 from api.assistant.rag.store import ensure_collection, make_engine, open_store
 from api.config import Settings
-
-# Owned by enrich.py once the retrieval experiments add it (raised there to the
-# contracted location); declared here for now because CollectionSpec.context is
-# this pull request's only consumer and enrich.py does not exist yet.
-ContextMode = Literal["none", "heading_path", "llm_context", "doc_summary"]
 
 
 @dataclass(frozen=True)
@@ -163,14 +158,7 @@ async def build_collection(spec: CollectionSpec, settings: Settings, repo_root: 
         corpus locations).
     :param repo_root: Repository root, passed through to build_manifest.
     :return: Number of chunks written to the collection.
-    :raises NotImplementedError: If spec.context is not "none" (the retrieval experiments
-        add enrich.py and the other three modes).
     """
-    if spec.context != "none":
-        raise NotImplementedError(
-            f"context mode {spec.context!r} is not implemented yet; only 'none' ships "
-            "in this pull request (the retrieval experiments add enrich.py and the rest)"
-        )
     private_dirs = [Path(entry) for entry in settings.assistant_private_corpus_dirs]
     local_manifest = (
         Path(settings.assistant_private_corpus_manifest)
@@ -190,6 +178,8 @@ async def build_collection(spec: CollectionSpec, settings: Settings, repo_root: 
     documents = [doc for source in sources for doc in load_source(source)]
     embeddings = make_embeddings(settings)
     chunks = split(documents, spec.chunker, embeddings=embeddings)
+    llm = make_chat_model(settings) if spec.context in ("llm_context", "doc_summary") else None
+    chunks = enrich(chunks, spec.context, llm=llm)
 
     vector_size = len(embeddings.embed_query("dimension probe"))
     engine = make_engine(settings.assistant_vector_db_url)
