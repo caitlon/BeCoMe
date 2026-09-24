@@ -1,11 +1,12 @@
 """Split loaded Documents into retrieval-sized chunks.
 
-"markdown_headers", "fixed", and "recursive" are implemented so far; the other
-three Strategy values belong to the later retrieval experiments, and split()
-raises NotImplementedError for them rather than silently returning something
-misleading.
+"markdown_headers", "fixed", "recursive", and "sentences" are implemented so
+far; "semantic" and "parent_child" belong to the later retrieval experiments,
+and split() raises NotImplementedError for them rather than silently returning
+something misleading.
 """
 
+import re
 from dataclasses import dataclass
 from typing import Literal
 
@@ -122,6 +123,41 @@ def _split_recursive(docs: list[Document], config: ChunkerConfig) -> list[Docume
     return chunks
 
 
+#: A sentence boundary: ".", "!", or "?" followed by whitespace and a capital letter
+#: (Latin, with diacritics, including the Czech caron capitals) or digit.
+#: Punctuation-based, not a full NLP tokenizer - this is a search-lab comparison
+#: tool, not a production parser.
+_SENTENCE_BOUNDARY = re.compile(r"(?<=[.!?])\s+(?=[A-ZÀ-ÖØ-ÞČĎĚŇŘŠŤŮŽ0-9])")
+
+
+def _split_sentences(docs: list[Document], config: ChunkerConfig) -> list[Document]:
+    """Group sentences greedily up to config.size characters per chunk.
+
+    :param docs: Loaded Documents.
+    :param config: size bounds each group; overlap_pct, when positive, carries the
+        previous group's last sentence into the start of the next one.
+    :return: Sentence-grouped chunks.
+    """
+    chunks = []
+    for doc in docs:
+        sentences = [s.strip() for s in _SENTENCE_BOUNDARY.split(doc.page_content) if s.strip()]
+        groups: list[list[str]] = []
+        current: list[str] = []
+        current_len = 0
+        for sentence in sentences:
+            if current and current_len + len(sentence) + 1 > config.size:
+                groups.append(current)
+                current = [current[-1]] if config.overlap_pct > 0 else []
+                current_len = sum(len(s) + 1 for s in current)
+            current.append(sentence)
+            current_len += len(sentence) + 1
+        if current:
+            groups.append(current)
+        for group in groups:
+            chunks.append(Document(page_content=" ".join(group), metadata=dict(doc.metadata)))
+    return chunks
+
+
 def split(
     docs: list[Document], config: ChunkerConfig, embeddings: Embeddings | None = None
 ) -> list[Document]:
@@ -131,8 +167,8 @@ def split(
     :param config: Which strategy to apply, and its size/overlap.
     :param embeddings: Only used by the future "semantic" strategy.
     :return: The resulting chunks.
-    :raises NotImplementedError: For every strategy but "markdown_headers", "fixed", and
-        "recursive".
+    :raises NotImplementedError: For every strategy but "markdown_headers", "fixed",
+        "recursive", and "sentences".
     """
     del embeddings  # only the future "semantic" strategy needs it
     if config.strategy == "markdown_headers":
@@ -141,4 +177,6 @@ def split(
         return _split_fixed(docs, config)
     if config.strategy == "recursive":
         return _split_recursive(docs, config)
+    if config.strategy == "sentences":
+        return _split_sentences(docs, config)
     raise NotImplementedError(f"chunking strategy {config.strategy!r} is not implemented yet")

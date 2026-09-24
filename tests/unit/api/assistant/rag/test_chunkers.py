@@ -238,10 +238,78 @@ class TestRecursiveStrategy:
         assert all(c.metadata["source"] == "docs/method-description.md" for c in chunks)
 
 
+class TestSentencesStrategy:
+    """Groups sentences greedily up to config.size, punctuation-based boundaries."""
+
+    _TEXT = (
+        "BeCoMe combines the mean and the median. It reports a maximum error too. "
+        "Widening a range does not move the center. This is the third fact worth knowing."
+    )
+
+    def test_groups_sentences_without_overlap(self):
+        """
+        GIVEN four sentences and size=80, overlap_pct=0
+        WHEN split() runs with strategy="sentences"
+        THEN sentences 1-2 group together (fits in 80), then 3 and 4 are each alone
+        """
+        # GIVEN
+        config = ChunkerConfig(strategy="sentences", size=80, overlap_pct=0)
+
+        # WHEN
+        chunks = split([_doc(self._TEXT)], config)
+
+        # THEN
+        assert [c.page_content for c in chunks] == [
+            "BeCoMe combines the mean and the median. It reports a maximum error too.",
+            "Widening a range does not move the center.",
+            "This is the third fact worth knowing.",
+        ]
+
+    def test_overlap_carries_the_last_sentence_into_the_next_group(self):
+        """
+        GIVEN the same four sentences, size=80, overlap_pct=10 (any positive value)
+        WHEN split() runs
+        THEN each group after the first repeats the previous group's last sentence
+        """
+        # GIVEN
+        config = ChunkerConfig(strategy="sentences", size=80, overlap_pct=10)
+
+        # WHEN
+        chunks = split([_doc(self._TEXT)], config)
+
+        # THEN
+        assert [c.page_content for c in chunks] == [
+            "BeCoMe combines the mean and the median. It reports a maximum error too.",
+            "It reports a maximum error too. Widening a range does not move the center.",
+            "Widening a range does not move the center. This is the third fact worth knowing.",
+        ]
+
+    def test_treats_a_czech_caron_capital_as_a_sentence_start(self):
+        """
+        GIVEN two Czech sentences, the second starting with a caron capital ("Skoda")
+        WHEN split() runs with strategy="sentences" and a size that fits either
+             sentence alone but not both together
+        THEN the caron capital is recognized as a sentence start, so the two
+             sentences land in separate chunks
+        """
+        # GIVEN
+        text = "Odborníci hodnotí projekt. Škoda vznikla při zpoždění."
+        config = ChunkerConfig(strategy="sentences", size=30, overlap_pct=0)
+
+        # WHEN
+        chunks = split([_doc(text)], config)
+
+        # THEN
+        assert [c.page_content for c in chunks] == [
+            "Odborníci hodnotí projekt.",
+            "Škoda vznikla při zpoždění.",
+        ]
+
+
 class TestUnimplementedStrategies:
     """Every strategy but markdown_headers is left for later, and fails loudly."""
 
-    @pytest.mark.parametrize("strategy", ["sentences", "semantic", "parent_child"])
+    @pytest.mark.parametrize("strategy", ["semantic", "parent_child"])
     def test_raises_not_implemented(self, strategy):
         """
         GIVEN a ChunkerConfig using a strategy this pull request does not implement
