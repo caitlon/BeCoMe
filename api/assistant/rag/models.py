@@ -35,8 +35,8 @@ def strip_think_block(reply: str) -> str:
     """Remove the <think>...</think> block a reasoning-capable chat model may prepend.
 
     A locally swapped chat model can emit its internal reasoning inside a <think>
-    block before the actual answer. Embedding that block along with the intended
-    context sentence would pollute what gets stored and later searched. Plain
+    block before the actual answer. Whatever the reply becomes, a context sentence
+    stored with a chunk or a query to search with, that block would pollute it. Plain
     substring search, not a regular expression, keeps this linear in the reply's
     length.
 
