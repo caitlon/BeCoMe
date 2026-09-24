@@ -46,7 +46,11 @@ def _base_metadata(
     """Build the eight contracted metadata keys shared by every loaded Document.
 
     :param source: The manifest entry this content came from.
-    :param raw: The source file's raw bytes, hashed for change detection.
+    :param raw: The bytes to hash for change detection - the source file's own raw
+        bytes for every loader except markdown, which passes the bytes of its
+        resolved (post `--8<--` substitution) text instead, so an edit to an included
+        file changes the hash too. A markdown file with no include resolves to its
+        own raw bytes, so this keeps today's value there.
     :param heading_path: Structural path within the document, "" when not yet known
         (markdown fills this in later, per chunk, in chunkers.py).
     :return: A JSON-serializable metadata dict.
@@ -67,7 +71,10 @@ def _load_markdown(source: CorpusSource) -> list[Document]:
     """Load a markdown file, resolving one `--8<--` snippet include if present.
 
     :param source: A CorpusSource with kind="markdown".
-    :return: A single Document with the file's (resolved) text.
+    :return: A single Document with the file's (resolved) text. Its sha256 hashes
+        that resolved text, UTF-8 encoded, rather than the wrapper file's raw bytes,
+        so editing an included file changes the hash too. A file with no include
+        resolves to its own raw bytes, so this matches today's value there.
     :raises ValueError: If a snippet include's target resolves outside the repository
         root, or names a file in EXCLUDED_PUBLIC - checked, and refused, before the
         target itself is read.
@@ -98,7 +105,7 @@ def _load_markdown(source: CorpusSource) -> list[Document]:
         # replacement as a backreference template (\1, \g<name>, ...), and target_text
         # is arbitrary file content that may itself contain a literal backslash.
         text = SNIPPET_INCLUDE.sub(lambda _match: target_text, text, count=1)
-    return [Document(page_content=text, metadata=_base_metadata(source, raw))]
+    return [Document(page_content=text, metadata=_base_metadata(source, text.encode("utf-8")))]
 
 
 def _prettify_key(key: str) -> str:
