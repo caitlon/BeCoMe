@@ -103,20 +103,52 @@ def _snippet_targets(docs_dir: Path) -> set[str]:
     return targets
 
 
+def is_excluded_public(path: Path, repo_root: Path) -> bool:
+    """Report whether a resolved path is one of the EXCLUDED_PUBLIC pages.
+
+    Compared by file identity as well as by spelling: on a case-insensitive filesystem
+    (the macOS default) "DOCS/SECURITY.MD" opens docs/security.md while comparing
+    unequal as a string, and a hard link opens it under any name at all.
+
+    :param path: The candidate path, already resolved.
+    :param repo_root: The repository root, already resolved.
+    :return: True when the path is an excluded page or the same file as one.
+    """
+    if path.relative_to(repo_root).as_posix() in EXCLUDED_PUBLIC:
+        return True
+    if not path.exists():
+        return False
+    return any(
+        (repo_root / excluded).exists() and path.samefile(repo_root / excluded)
+        for excluded in EXCLUDED_PUBLIC
+    )
+
+
 def _walk_docs(repo_root: Path, wave: int) -> list[CorpusSource]:
-    """Walk docs/** for markdown, skipping EXCLUDED_PUBLIC.
+    """Walk docs/** for markdown, skipping EXCLUDED_PUBLIC under any name.
 
     :param repo_root: Repository root.
     :param wave: Wave number stamped on every source this call produces.
-    :return: One CorpusSource per markdown file under docs/.
+    :return: One CorpusSource per markdown file under docs/, EXCLUDED_PUBLIC omitted.
+    :raises ValueError: If a walked file's resolved path is outside repo_root - a
+        symlink pointing out of the repository would otherwise pull an arbitrary file
+        into the public layer.
     """
     docs_dir = repo_root / "docs"
     if not docs_dir.is_dir():
         return []
+    resolved_root = repo_root.resolve()
     sources = []
     for md_file in sorted(docs_dir.rglob("*.md")):
-        rel = md_file.relative_to(repo_root).as_posix()
-        if rel in EXCLUDED_PUBLIC:
+        resolved = md_file.resolve()
+        # Compared after resolve(), the same way loaders.py's snippet-include guard
+        # does: Path.is_relative_to only compares path parts, so a symlink climbing
+        # out of the repository would otherwise pass as being inside repo_root.
+        if not resolved.is_relative_to(resolved_root):
+            raise ValueError(
+                f"{md_file}: resolves to {resolved}, which is outside the repository root"
+            )
+        if is_excluded_public(resolved, resolved_root):
             continue
         text = md_file.read_text(encoding="utf-8")
         sources.append(
@@ -270,7 +302,9 @@ def _walk_local(
             )
         sources.append(
             CorpusSource(
-                path=path,
+                # The path already resolved and checked against allowed_roots above,
+                # so the file loaders.py later opens is the file that was validated.
+                path=real_path,
                 layer="local",
                 kind=kind,
                 title=entry["title"],
