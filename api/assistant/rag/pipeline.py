@@ -66,7 +66,8 @@ def git_version(repo_dir: Path) -> str | None:
     git = shutil.which("git")
     if git is None or not (repo_dir / ".git").exists():
         return None
-    result = subprocess.run(  # noqa: S603 - git's own path and fixed flags, no shell
+    # S603 is safe here: git's own resolved path and fixed flags, no shell.
+    result = subprocess.run(  # noqa: S603
         [git, "-C", str(repo_dir), "describe", "--tags", "--always", "--dirty"],
         capture_output=True,
         text=True,
