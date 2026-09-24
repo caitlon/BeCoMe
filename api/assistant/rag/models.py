@@ -34,6 +34,9 @@ def make_embeddings(settings: Settings) -> OpenAIEmbeddings:
     tiktoken-encoded integer tokens instead of raw text, which llama-server's
     embedding endpoint does not accept.
 
+    There is no separate embedding timeout setting: settings.assistant_llm_timeout_seconds
+    (the chat model's own timeout) bounds this client's requests too.
+
     :param settings: Application settings.
     :return: An OpenAIEmbeddings client for settings.assistant_embedding_base_url.
     """
@@ -42,6 +45,7 @@ def make_embeddings(settings: Settings) -> OpenAIEmbeddings:
         api_key=SecretStr("not-needed"),
         model=settings.assistant_embedding_model,
         check_embedding_ctx_length=False,
+        timeout=settings.assistant_llm_timeout_seconds,
     )
 
 
