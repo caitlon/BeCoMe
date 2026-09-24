@@ -10,14 +10,25 @@ from langchain_core.embeddings import DeterministicFakeEmbedding
 from langchain_core.vectorstores import InMemoryVectorStore
 
 from api.assistant.rag.models import LlamaServerReranker
-from api.assistant.rag.retrieval import DocsRetriever, RetrievalConfig, RetrievedChunk
+from api.assistant.rag.retrieval import (
+    DocsRetriever,
+    RetrievalConfig,
+    RetrievedChunk,
+    _reciprocal_rank_fusion,
+)
 
 
 def _doc(text: str, title: str, heading_path: str = "") -> Document:
     """A Document with the metadata keys DocsRetriever maps onto RetrievedChunk."""
     return Document(
         page_content=text,
-        metadata={"title": title, "heading_path": heading_path, "url": None, "layer": "public"},
+        metadata={
+            "title": title,
+            "heading_path": heading_path,
+            "url": None,
+            "layer": "public",
+            "source": "docs/method-description.md",
+        },
     )
 
 
@@ -286,20 +297,7 @@ class TestDocsRetrieverRerank:
 
 
 class TestUnimplementedRetrieval:
-    """hybrid mode, and every query_transform but none, are not implemented yet."""
-
-    def test_rejects_hybrid_mode(self):
-        """
-        GIVEN a RetrievalConfig with mode="hybrid"
-        WHEN DocsRetriever is constructed
-        THEN it raises NotImplementedError naming the mode
-        """
-        embeddings = DeterministicFakeEmbedding(size=16)
-        store = InMemoryVectorStore(embeddings)
-        config = RetrievalConfig(mode="hybrid")
-
-        with pytest.raises(NotImplementedError, match="hybrid"):
-            DocsRetriever(store=store, config=config, reranker=None, llm=None)
+    """Every query_transform but none is not implemented yet."""
 
     def test_rejects_a_query_transform_other_than_none(self):
         """
@@ -440,3 +438,106 @@ class TestDocsRetrieverBm25Search:
         # THEN
         assert len(_RerankByPositionClient.last_documents) == 3
         assert [chunk.score for chunk in results] == [2.0, 1.0, 0.0]
+
+
+def _rrf_score(k: int, *ranks: int) -> float:
+    """The expected reciprocal rank fusion score for a document at these ranks.
+
+    One rank per ranking the document appears in, computed from the same formula
+    _reciprocal_rank_fusion uses, so a test's expected score is never a hand-typed
+    total that could itself be wrong.
+    """
+    return sum(1 / (k + rank + 1) for rank in ranks)
+
+
+class TestReciprocalRankFusion:
+    """RRF combines rankings by position, not by their (incomparable) scores."""
+
+    def test_fuses_two_orderings_by_rank_position(self):
+        """
+        GIVEN dense order [A, B, C] and bm25 order [B, C, A], k=60
+        WHEN _reciprocal_rank_fusion combines them
+        THEN the fused order is B, A, C, matching the rank-formula scores: A is rank 0
+             in dense and rank 2 in bm25, B is rank 1 in dense and rank 0 in bm25, C is
+             rank 2 in dense and rank 1 in bm25
+        """
+        # GIVEN
+        doc_a = _doc("text a", title="A")
+        doc_b = _doc("text b", title="B")
+        doc_c = _doc("text c", title="C")
+        dense = [(doc_a, 0.9), (doc_b, 0.8), (doc_c, 0.7)]
+        bm25 = [(doc_b, 5.0), (doc_c, 4.0), (doc_a, 1.0)]
+
+        # WHEN
+        fused = _reciprocal_rank_fusion([dense, bm25], k=60)
+
+        # THEN
+        assert [doc.metadata["title"] for doc, _ in fused] == ["B", "A", "C"]
+        assert round(fused[0][1], 6) == round(_rrf_score(60, 1, 0), 6)
+
+    def test_a_document_in_only_one_ranking_still_scores(self):
+        """
+        GIVEN a document that appears only in the second of two rankings
+        WHEN _reciprocal_rank_fusion combines an empty ranking with it
+        THEN it still appears in the fused result, scored from that one ranking alone
+        """
+        # GIVEN
+        doc = _doc("bm25 only", title="Only")
+
+        # WHEN
+        fused = _reciprocal_rank_fusion([[], [(doc, 3.0)]], k=60)
+
+        # THEN
+        assert len(fused) == 1
+        assert fused[0][0].metadata["title"] == "Only"
+        assert round(fused[0][1], 6) == round(_rrf_score(60, 0), 6)
+
+    def test_fuses_more_than_two_rankings(self):
+        """
+        GIVEN three rankings, each led by a different document
+        WHEN _reciprocal_rank_fusion combines all three
+        THEN a document leading in two of the three rankings outranks the others
+        """
+        # GIVEN
+        doc_a = _doc("text a", title="A")
+        doc_b = _doc("text b", title="B")
+        rankings = [
+            [(doc_a, 1.0), (doc_b, 0.5)],
+            [(doc_b, 1.0), (doc_a, 0.5)],
+            [(doc_b, 1.0), (doc_a, 0.5)],
+        ]
+
+        # WHEN
+        fused = _reciprocal_rank_fusion(rankings, k=60)
+
+        # THEN
+        assert fused[0][0].metadata["title"] == "B"
+
+
+class TestDocsRetrieverHybridSearch:
+    """Hybrid mode fuses dense and bm25 candidates via reciprocal rank fusion."""
+
+    @pytest.mark.asyncio
+    async def test_returns_results_combining_both_search_modes(self):
+        """
+        GIVEN a store with a keyword-distinctive and a keyword-generic document
+        WHEN search() runs with mode="hybrid"
+        THEN both documents come back, and the call does not raise
+        """
+        # GIVEN
+        embeddings = DeterministicFakeEmbedding(size=16)
+        store = _RelevanceScoredInMemoryVectorStore(embeddings)
+        await store.aadd_documents(
+            [
+                _doc("The median is robust to outliers.", title="Median"),
+                _doc("The frontend uses React and TypeScript.", title="Frontend"),
+            ]
+        )
+        config = RetrievalConfig(mode="hybrid", k=2)
+        retriever = DocsRetriever(store=store, config=config, reranker=None, llm=None)
+
+        # WHEN
+        results = await retriever.search("median")
+
+        # THEN
+        assert {chunk.title for chunk in results} == {"Median", "Frontend"}
