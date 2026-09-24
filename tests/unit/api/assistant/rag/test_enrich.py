@@ -1,6 +1,8 @@
 """Unit tests for per-chunk context enrichment (fakes only, no network)."""
 
+import pytest
 from langchain_core.documents import Document
+from langchain_core.language_models.fake_chat_models import FakeListChatModel
 
 from api.assistant.rag.enrich import enrich
 
@@ -82,3 +84,36 @@ class TestHeadingPathMode:
 
         # THEN
         assert enriched[0].page_content == "Plain text with no heading structure."
+
+
+class TestLlmContextMode:
+    """mode="llm_context" asks the model what each chunk is about, then prepends it."""
+
+    def test_prepends_the_models_own_context_sentence(self):
+        """
+        GIVEN a chunk and a fake model with a canned context sentence
+        WHEN enrich() runs with mode="llm_context"
+        THEN the model's sentence appears before the chunk's own text
+        """
+        # GIVEN
+        chunk = _chunk("It uses every opinion, which is its virtue and its flaw.")
+        llm = FakeListChatModel(responses=["Describes a weakness of the arithmetic mean."])
+
+        # WHEN
+        enriched = enrich([chunk], mode="llm_context", llm=llm)
+
+        # THEN
+        assert enriched[0].page_content == (
+            "Describes a weakness of the arithmetic mean.\n\n"
+            "It uses every opinion, which is its virtue and its flaw."
+        )
+
+    def test_requires_an_llm(self):
+        """
+        GIVEN mode="llm_context" but llm=None
+        WHEN enrich() is called
+        THEN it raises ValueError rather than failing deep inside llm.invoke
+        """
+        # GIVEN / WHEN / THEN
+        with pytest.raises(ValueError, match="llm_context"):
+            enrich([_chunk("text")], mode="llm_context", llm=None)

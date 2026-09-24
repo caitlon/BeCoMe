@@ -23,6 +23,34 @@ def _prepend_heading_path(chunk: Document) -> Document:
     return Document(page_content=text, metadata=dict(chunk.metadata))
 
 
+_LLM_CONTEXT_PROMPT = (
+    "Document title: {title}\n\n"
+    "Chunk:\n{chunk}\n\n"
+    "In one short sentence, say what this chunk is about in the context of the whole "
+    "document. Do not repeat the chunk's own wording verbatim; describe its role."
+)
+
+
+def _prepend_llm_context(chunk: Document, llm: BaseChatModel) -> Document:
+    """Ask the model what this chunk is about in the document, and prepend that.
+
+    Contextual retrieval: a short model-written sentence placed before the chunk's
+    own text, so a fragment that reads as generic on its own gets the surrounding
+    document's subject attached before it is embedded.
+
+    :param chunk: The chunk to enrich.
+    :param llm: The chat model asked for the context sentence.
+    :return: A new Document with the model's sentence prepended.
+    """
+    prompt = _LLM_CONTEXT_PROMPT.format(
+        title=chunk.metadata.get("title", ""), chunk=chunk.page_content
+    )
+    context = str(llm.invoke(prompt).content)
+    return Document(
+        page_content=f"{context}\n\n{chunk.page_content}", metadata=dict(chunk.metadata)
+    )
+
+
 def enrich(
     chunks: list[Document], mode: ContextMode, llm: BaseChatModel | None = None
 ) -> list[Document]:
@@ -36,4 +64,10 @@ def enrich(
     """
     if mode == "none":
         return [Document(page_content=c.page_content, metadata=dict(c.metadata)) for c in chunks]
-    return [_prepend_heading_path(chunk) for chunk in chunks]
+    if mode == "heading_path":
+        return [_prepend_heading_path(chunk) for chunk in chunks]
+    if llm is None:
+        raise ValueError(f"context mode {mode!r} requires an llm")
+    if mode == "llm_context":
+        return [_prepend_llm_context(chunk, llm) for chunk in chunks]
+    return chunks  # doc_summary mode added next
