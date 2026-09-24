@@ -478,11 +478,11 @@ class TestMultiQueryTransform:
         """
         GIVEN a reply with a preamble line, several different list-marker styles, two
              lines that repeat the original query once cleaned, one line that repeats
-             an earlier variant once cleaned, and more than _MULTI_QUERY_VARIANTS
+             an earlier variant once cleaned, and more than _MULTI_QUERY_MAX_VARIANTS
              distinct candidates left over
         WHEN _transformed_queries runs with query_transform="multi_query"
         THEN the preamble and every repeat are dropped, each kept line has its list
-             marker removed, and at most _MULTI_QUERY_VARIANTS variants follow the
+             marker removed, and at most _MULTI_QUERY_MAX_VARIANTS variants follow the
              original query, which stays first
         """
         # GIVEN
