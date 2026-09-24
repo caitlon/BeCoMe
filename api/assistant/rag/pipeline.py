@@ -188,9 +188,9 @@ async def build_collection(spec: CollectionSpec, settings: Settings, repo_root: 
         local_manifest=local_manifest,
     )
     documents = [doc for source in sources for doc in load_source(source)]
-    chunks = split(documents, spec.chunker)
-
     embeddings = make_embeddings(settings)
+    chunks = split(documents, spec.chunker, embeddings=embeddings)
+
     vector_size = len(embeddings.embed_query("dimension probe"))
     engine = make_engine(settings.assistant_vector_db_url)
     try:
