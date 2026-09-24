@@ -161,6 +161,24 @@ class TestLlmContextMode:
             "It uses every opinion, which is its virtue and its flaw."
         )
 
+    def test_keeps_a_reply_whose_think_block_never_closes(self):
+        """
+        GIVEN a fake model whose reply opens a <think> block and never closes it
+        WHEN enrich() runs with mode="llm_context"
+        THEN the reply is kept as it is, since only a complete block is removed
+        """
+        # GIVEN
+        chunk = _chunk("It uses every opinion.")
+        llm = FakeListChatModel(responses=["<think>Still reasoning about the chunk"])
+
+        # WHEN
+        enriched = enrich([chunk], mode="llm_context", llm=llm)
+
+        # THEN
+        assert enriched[0].page_content == (
+            "<think>Still reasoning about the chunk\n\nIt uses every opinion."
+        )
+
 
 class TestDocSummaryMode:
     """mode="doc_summary" prepends one summary per source document, not per chunk."""

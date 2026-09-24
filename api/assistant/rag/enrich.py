@@ -7,7 +7,6 @@ including "none", so a later citation or a source-grounding check can tell the
 chunk's own text apart from any model-written text fused into page_content.
 """
 
-import re
 from typing import Literal
 
 from langchain_core.documents import Document
@@ -29,22 +28,29 @@ def _prepend_heading_path(chunk: Document) -> Document:
     )
 
 
-_THINK_BLOCK_RE = re.compile(r"\s*<think>.*?</think>\s*", re.DOTALL)
+_THINK_OPEN = "<think>"
+_THINK_CLOSE = "</think>"
 
 
 def _strip_think_block(reply: str) -> str:
-    """Remove a <think>...</think> block a reasoning-capable chat model may prepend.
+    """Remove the <think>...</think> block a reasoning-capable chat model may prepend.
 
     A locally swapped chat model can emit its internal reasoning inside a <think>
     block before the actual answer. Embedding that block along with the intended
-    context sentence would pollute what gets stored and later searched.
+    context sentence would pollute what gets stored and later searched. Plain
+    substring search, not a regular expression, keeps this linear in the reply's
+    length.
 
     :param reply: The model's raw reply text.
-    :return: reply with any <think>...</think> block and the whitespace immediately
-        around it removed, and the remaining text stripped of leading and trailing
-        whitespace.
+    :return: reply without its first complete <think>...</think> block, stripped of
+        leading and trailing whitespace. A reply with no complete block is only
+        stripped.
     """
-    return _THINK_BLOCK_RE.sub("", reply).strip()
+    start = reply.find(_THINK_OPEN)
+    end = reply.find(_THINK_CLOSE, start + len(_THINK_OPEN)) if start != -1 else -1
+    if end == -1:
+        return reply.strip()
+    return (reply[:start] + reply[end + len(_THINK_CLOSE) :]).strip()
 
 
 _LLM_CONTEXT_PROMPT = (
