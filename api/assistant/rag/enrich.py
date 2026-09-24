@@ -133,6 +133,8 @@ def enrich(
     :param llm: Required for "llm_context" and "doc_summary"; ignored by "none" and
         "heading_path".
     :return: New Documents with the same metadata and mode-appropriate content.
+    :raises ValueError: If mode needs an llm and none was given, or mode is not one of
+        "none", "heading_path", "llm_context", "doc_summary".
     """
     if mode == "none":
         return [Document(page_content=c.page_content, metadata=dict(c.metadata)) for c in chunks]
@@ -142,4 +144,6 @@ def enrich(
         raise ValueError(f"context mode {mode!r} requires an llm")
     if mode == "llm_context":
         return [_prepend_llm_context(chunk, llm) for chunk in chunks]
-    return _prepend_doc_summary(chunks, llm)
+    if mode == "doc_summary":
+        return _prepend_doc_summary(chunks, llm)
+    raise ValueError(f"unknown context mode {mode!r}")

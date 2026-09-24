@@ -246,3 +246,21 @@ class TestDocSummaryMode:
         document_part = llm.prompts[0].split("\n\n", 1)[1]
         assert len(document_part) == _DOC_SUMMARY_CHAR_BUDGET
         assert document_part == joined[:_DOC_SUMMARY_CHAR_BUDGET]
+
+
+class TestUnknownMode:
+    """An unrecognized mode string fails loudly instead of silently running doc_summary."""
+
+    def test_rejects_an_unknown_mode(self):
+        """
+        GIVEN a mode string that is not "none", "heading_path", "llm_context", or
+             "doc_summary"
+        WHEN enrich() is called with an llm present
+        THEN it raises ValueError naming the unknown mode
+        """
+        # GIVEN
+        llm = FakeListChatModel(responses=["should never be reached"])
+
+        # WHEN / THEN
+        with pytest.raises(ValueError, match="unknown context mode"):
+            enrich([_chunk("text")], mode="not_a_real_mode", llm=llm)
