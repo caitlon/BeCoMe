@@ -15,7 +15,7 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.vectorstores import VectorStore
 from rank_bm25 import BM25Okapi
 
-from api.assistant.rag.models import LlamaServerReranker
+from api.assistant.rag.models import LlamaServerReranker, strip_think_block
 
 #: Unicode-aware by default for str patterns in Python 3, so Czech diacritics count
 #: as word characters (verified directly, 2026-09-14).
@@ -278,7 +278,7 @@ class DocsRetriever:
         if self._llm is None:
             raise RuntimeError("unreachable: __init__ requires an llm for this query_transform")
         response = await self._llm.ainvoke(self._TRANSLATE_PROMPT.format(query=query))
-        return str(response.content).strip()
+        return strip_think_block(str(response.content))
 
     _MULTI_QUERY_VARIANTS = 3
     _MULTI_QUERY_PROMPT = (
@@ -296,7 +296,8 @@ class DocsRetriever:
             raise RuntimeError("unreachable: __init__ requires an llm for this query_transform")
         prompt = self._MULTI_QUERY_PROMPT.format(n=self._MULTI_QUERY_VARIANTS, query=query)
         response = await self._llm.ainvoke(prompt)
-        variants = [line.strip() for line in str(response.content).splitlines() if line.strip()]
+        reply = strip_think_block(str(response.content))
+        variants = [line.strip() for line in reply.splitlines() if line.strip()]
         return [query, *variants]
 
     _HYDE_PROMPT = (
@@ -313,7 +314,7 @@ class DocsRetriever:
         if self._llm is None:
             raise RuntimeError("unreachable: __init__ requires an llm for this query_transform")
         response = await self._llm.ainvoke(self._HYDE_PROMPT.format(query=query))
-        return str(response.content).strip()
+        return strip_think_block(str(response.content))
 
     async def _transformed_queries(self, query: str) -> list[str]:
         """Turn one query into the query, or queries, actually used to search.
