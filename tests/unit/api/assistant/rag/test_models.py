@@ -52,6 +52,22 @@ class TestMakeEmbeddings:
         assert embeddings.model == settings.assistant_embedding_model
         assert embeddings.check_embedding_ctx_length is False
 
+    def test_bounds_the_client_by_the_chat_model_timeout(self):
+        """
+        GIVEN default Settings
+        WHEN make_embeddings builds a client
+        THEN its request timeout is settings.assistant_llm_timeout_seconds - there is
+             no separate embedding timeout setting, so the chat one bounds it too
+        """
+        # GIVEN
+        settings = Settings(secret_key="test-secret-key")
+
+        # WHEN
+        embeddings = make_embeddings(settings)
+
+        # THEN
+        assert embeddings.request_timeout == settings.assistant_llm_timeout_seconds
+
 
 class _FakeResponse:
     """Stands in for httpx.Response: only raise_for_status() and json() are used."""
