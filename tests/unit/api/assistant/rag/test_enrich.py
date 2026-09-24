@@ -117,3 +117,51 @@ class TestLlmContextMode:
         # GIVEN / WHEN / THEN
         with pytest.raises(ValueError, match="llm_context"):
             enrich([_chunk("text")], mode="llm_context", llm=None)
+
+
+class TestDocSummaryMode:
+    """mode="doc_summary" prepends one summary per source document, not per chunk."""
+
+    def test_prepends_the_same_summary_to_every_chunk_of_one_source(self):
+        """
+        GIVEN two chunks from the same source and a fake model with one canned summary
+        WHEN enrich() runs with mode="doc_summary"
+        THEN both chunks get the SAME summary prepended, and the model was called once
+        """
+        # GIVEN
+        chunks = [
+            _chunk("First chunk of the method description."),
+            _chunk("Second chunk of the method description."),
+        ]
+        llm = FakeListChatModel(responses=["A method for aggregating expert opinions."])
+
+        # WHEN
+        enriched = enrich(chunks, mode="doc_summary", llm=llm)
+
+        # THEN
+        assert enriched[0].page_content == (
+            "A method for aggregating expert opinions.\n\nFirst chunk of the method description."
+        )
+        assert enriched[1].page_content == (
+            "A method for aggregating expert opinions.\n\nSecond chunk of the method description."
+        )
+
+    def test_summarizes_two_different_sources_separately(self):
+        """
+        GIVEN chunks from two different sources
+        WHEN enrich() runs with mode="doc_summary" and two canned responses
+        THEN each source's chunk gets its OWN summary, in call order
+        """
+        # GIVEN
+        chunks = [
+            _chunk("About the method.", source="docs/method-description.md"),
+            _chunk("About getting started.", source="docs/user/getting-started.md"),
+        ]
+        llm = FakeListChatModel(responses=["Method summary.", "Getting-started summary."])
+
+        # WHEN
+        enriched = enrich(chunks, mode="doc_summary", llm=llm)
+
+        # THEN
+        assert enriched[0].page_content.startswith("Method summary.")
+        assert enriched[1].page_content.startswith("Getting-started summary.")

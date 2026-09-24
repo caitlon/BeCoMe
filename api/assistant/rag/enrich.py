@@ -51,6 +51,44 @@ def _prepend_llm_context(chunk: Document, llm: BaseChatModel) -> Document:
     )
 
 
+_DOC_SUMMARY_PROMPT = (
+    "Summarize this document in two sentences, in the document's own language:\n\n{document}"
+)
+
+
+def _prepend_doc_summary(chunks: list[Document], llm: BaseChatModel) -> list[Document]:
+    """Prepend a short whole-document summary to every chunk from that document.
+
+    The summary is generated once per source file - from that file's own chunks
+    joined back together, the closest approximation of the original document
+    available once chunking has already happened - and applied to every chunk
+    sharing that "source" metadata value.
+
+    :param chunks: Chunks to enrich, from one or more source documents.
+    :param llm: The chat model asked for each document's summary.
+    :return: New Documents with their source document's summary prepended.
+    """
+    by_source: dict[str, list[Document]] = {}
+    for chunk in chunks:
+        by_source.setdefault(chunk.metadata["source"], []).append(chunk)
+
+    summaries = {
+        source: str(
+            llm.invoke(
+                _DOC_SUMMARY_PROMPT.format(document="\n\n".join(c.page_content for c in group))
+            ).content
+        )
+        for source, group in by_source.items()
+    }
+    return [
+        Document(
+            page_content=f"{summaries[chunk.metadata['source']]}\n\n{chunk.page_content}",
+            metadata=dict(chunk.metadata),
+        )
+        for chunk in chunks
+    ]
+
+
 def enrich(
     chunks: list[Document], mode: ContextMode, llm: BaseChatModel | None = None
 ) -> list[Document]:
@@ -70,4 +108,4 @@ def enrich(
         raise ValueError(f"context mode {mode!r} requires an llm")
     if mode == "llm_context":
         return [_prepend_llm_context(chunk, llm) for chunk in chunks]
-    return chunks  # doc_summary mode added next
+    return _prepend_doc_summary(chunks, llm)
