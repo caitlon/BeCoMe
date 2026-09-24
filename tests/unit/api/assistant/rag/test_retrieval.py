@@ -452,6 +452,47 @@ class TestMultiQueryTransform:
             "What is the BeCoMe formula?",
         ]
 
+    @pytest.mark.asyncio
+    async def test_cleans_a_messy_reply_and_caps_the_variant_count(self):
+        """
+        GIVEN a reply with a preamble line, several different list-marker styles, two
+             lines that repeat the original query once cleaned, one line that repeats
+             an earlier variant once cleaned, and more than _MULTI_QUERY_VARIANTS
+             distinct candidates left over
+        WHEN _transformed_queries runs with query_transform="multi_query"
+        THEN the preamble and every repeat are dropped, each kept line has its list
+             marker removed, and at most _MULTI_QUERY_VARIANTS variants follow the
+             original query, which stays first
+        """
+        # GIVEN
+        embeddings = DeterministicFakeEmbedding(size=16)
+        store = InMemoryVectorStore(embeddings)
+        llm = FakeListChatModel(
+            responses=[
+                "Here are three ways to ask that:\n"
+                "1. How does BeCoMe aggregate expert opinions?\n"
+                "2) What does BeCoMe combine?\n"
+                "- What Does BeCoMe combine?\n"
+                "* What is combined by BeCoMe?\n"
+                "• How does BeCoMe aggregate expert opinions?\n"
+                "5. What is the BeCoMe formula?\n"
+                "6. Which two statistics does BeCoMe combine?"
+            ]
+        )
+        config = RetrievalConfig(mode="dense", query_transform="multi_query")
+        retriever = DocsRetriever(store=store, config=config, reranker=None, llm=llm)
+
+        # WHEN
+        queries = await retriever._transformed_queries("What does BeCoMe combine?")
+
+        # THEN
+        assert queries == [
+            "What does BeCoMe combine?",
+            "How does BeCoMe aggregate expert opinions?",
+            "What is combined by BeCoMe?",
+            "What is the BeCoMe formula?",
+        ]
+
 
 class TestHydeTransform:
     """query_transform="hyde" searches with a model-generated hypothetical answer."""
