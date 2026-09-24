@@ -206,6 +206,56 @@ class TestBuildCollection:
             await engine.close()
 
 
+class TestBuildCollectionWithContext:
+    """context="heading_path" is no longer NotImplementedError once enrich.py exists."""
+
+    @pytest.mark.asyncio
+    async def test_builds_a_collection_with_heading_path_context(
+        self, tmp_path, postgresql, fake_embedding_server
+    ):
+        """
+        GIVEN a one-file corpus
+        WHEN build_collection runs with context="heading_path"
+        THEN it succeeds, and the stored chunk's text carries its heading path
+        """
+        # GIVEN
+        (tmp_path / "docs").mkdir()
+        (tmp_path / "docs" / "index.md").write_text(
+            "# BeCoMe\n\nBeCoMe combines the arithmetic mean and the median.\n",
+            encoding="utf-8",
+        )
+        settings = Settings(
+            secret_key="test-secret-key",
+            assistant_vector_db_url=_connection_url(postgresql),
+            assistant_embedding_base_url=fake_embedding_server,
+            assistant_embedding_model="fake-embedding-model",
+        )
+        spec = CollectionSpec(
+            name="docs_test_context",
+            chunker=ChunkerConfig(strategy="markdown_headers", size=500, overlap_pct=10),
+            context="heading_path",
+            wave=1,
+        )
+
+        # WHEN
+        chunk_count = await build_collection(spec, settings, repo_root=tmp_path)
+
+        # THEN: read the stored chunk back and check its text, not only the count
+        assert chunk_count == 1
+        from api.assistant.rag.models import make_embeddings
+
+        engine = make_engine(_connection_url(postgresql))
+        try:
+            query_embeddings = make_embeddings(settings)
+            store = open_store(engine, table="docs_test_context", embeddings=query_embeddings)
+            results = await store.asimilarity_search_with_score("mean and median", k=1)
+            assert len(results) == 1
+            assert results[0][0].page_content.startswith("BeCoMe\n\n")
+            assert "arithmetic mean" in results[0][0].page_content
+        finally:
+            await engine.close()
+
+
 def _plain_dsn(url: str) -> str:
     """Strip the "+psycopg" SQLAlchemy driver suffix for a plain psycopg connection."""
     return url.replace("postgresql+psycopg://", "postgresql://")
