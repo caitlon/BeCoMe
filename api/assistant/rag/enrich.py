@@ -1,7 +1,10 @@
-"""Add per-chunk context before embedding: the retrieval lab's context factor (B).
+"""Add per-chunk context before embedding: the retrieval lab's context factor.
 
 enrich() returns NEW Documents; the chunk's own metadata (including provenance) is
-carried over unchanged, only page_content changes.
+carried over unchanged except for one addition. Every enriched Document also carries
+metadata["chunk_text"], the chunk's own text before enrichment, for every mode
+including "none", so a later citation or a source-grounding check can tell the
+chunk's own text apart from any model-written text fused into page_content.
 """
 
 import re
@@ -21,7 +24,9 @@ def _prepend_heading_path(chunk: Document) -> Document:
     """
     heading_path = chunk.metadata.get("heading_path", "")
     text = f"{heading_path}\n\n{chunk.page_content}" if heading_path else chunk.page_content
-    return Document(page_content=text, metadata=dict(chunk.metadata))
+    return Document(
+        page_content=text, metadata={**chunk.metadata, "chunk_text": chunk.page_content}
+    )
 
 
 _THINK_BLOCK_RE = re.compile(r"\s*<think>.*?</think>\s*", re.DOTALL)
@@ -66,7 +71,8 @@ def _prepend_llm_context(chunk: Document, llm: BaseChatModel) -> Document:
     )
     context = _strip_think_block(str(llm.invoke(prompt).content))
     return Document(
-        page_content=f"{context}\n\n{chunk.page_content}", metadata=dict(chunk.metadata)
+        page_content=f"{context}\n\n{chunk.page_content}",
+        metadata={**chunk.metadata, "chunk_text": chunk.page_content},
     )
 
 
@@ -117,7 +123,7 @@ def _prepend_doc_summary(chunks: list[Document], llm: BaseChatModel) -> list[Doc
     return [
         Document(
             page_content=f"{summaries[chunk.metadata['source']]}\n\n{chunk.page_content}",
-            metadata=dict(chunk.metadata),
+            metadata={**chunk.metadata, "chunk_text": chunk.page_content},
         )
         for chunk in chunks
     ]
@@ -137,7 +143,12 @@ def enrich(
         "none", "heading_path", "llm_context", "doc_summary".
     """
     if mode == "none":
-        return [Document(page_content=c.page_content, metadata=dict(c.metadata)) for c in chunks]
+        return [
+            Document(
+                page_content=c.page_content, metadata={**c.metadata, "chunk_text": c.page_content}
+            )
+            for c in chunks
+        ]
     if mode == "heading_path":
         return [_prepend_heading_path(chunk) for chunk in chunks]
     if llm is None:

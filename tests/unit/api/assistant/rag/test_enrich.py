@@ -44,7 +44,8 @@ class TestNoneMode:
         """
         GIVEN one chunk
         WHEN enrich() runs with mode="none"
-        THEN the returned Document has the exact same text and metadata
+        THEN the returned Document has the exact same text and metadata, plus
+             chunk_text recording that same text
         """
         # GIVEN
         chunk = _chunk("The compromise is the midpoint of the mean and the median.")
@@ -54,7 +55,7 @@ class TestNoneMode:
 
         # THEN
         assert enriched[0].page_content == chunk.page_content
-        assert enriched[0].metadata == chunk.metadata
+        assert enriched[0].metadata == {**chunk.metadata, "chunk_text": chunk.page_content}
 
 
 class TestHeadingPathMode:
@@ -65,7 +66,7 @@ class TestHeadingPathMode:
         GIVEN a chunk with a non-empty heading_path
         WHEN enrich() runs with mode="heading_path"
         THEN the heading path appears before the chunk's own text, separated by a
-             blank line
+             blank line, and chunk_text still holds the chunk's original text
         """
         # GIVEN
         chunk = _chunk(
@@ -80,12 +81,14 @@ class TestHeadingPathMode:
         assert enriched[0].page_content == (
             "Method > Best compromise\n\nIt is the midpoint of the mean and the median."
         )
+        assert enriched[0].metadata["chunk_text"] == chunk.page_content
 
     def test_leaves_a_headingless_chunk_unchanged(self):
         """
         GIVEN a chunk with an empty heading_path (a header-less document, e.g. a PDF)
         WHEN enrich() runs with mode="heading_path"
-        THEN there is nothing to prepend, so the text is unchanged
+        THEN there is nothing to prepend, so the text is unchanged, and chunk_text
+             still records that same text
         """
         # GIVEN
         chunk = _chunk("Plain text with no heading structure.", heading_path="")
@@ -95,6 +98,7 @@ class TestHeadingPathMode:
 
         # THEN
         assert enriched[0].page_content == "Plain text with no heading structure."
+        assert enriched[0].metadata["chunk_text"] == chunk.page_content
 
 
 class TestLlmContextMode:
@@ -104,7 +108,8 @@ class TestLlmContextMode:
         """
         GIVEN a chunk and a fake model with a canned context sentence
         WHEN enrich() runs with mode="llm_context"
-        THEN the model's sentence appears before the chunk's own text
+        THEN the model's sentence appears before the chunk's own text, and
+             chunk_text holds the chunk's own text on its own
         """
         # GIVEN
         chunk = _chunk("It uses every opinion, which is its virtue and its flaw.")
@@ -118,6 +123,7 @@ class TestLlmContextMode:
             "Describes a weakness of the arithmetic mean.\n\n"
             "It uses every opinion, which is its virtue and its flaw."
         )
+        assert enriched[0].metadata["chunk_text"] == chunk.page_content
 
     def test_requires_an_llm(self):
         """
@@ -163,7 +169,8 @@ class TestDocSummaryMode:
         """
         GIVEN two chunks from the same source and a fake model with one canned summary
         WHEN enrich() runs with mode="doc_summary"
-        THEN both chunks get the SAME summary prepended, and the model was called once
+        THEN both chunks get the SAME summary prepended, the model was called once,
+             and each keeps its OWN text in chunk_text
         """
         # GIVEN
         chunks = [
@@ -182,6 +189,8 @@ class TestDocSummaryMode:
         assert enriched[1].page_content == (
             "A method for aggregating expert opinions.\n\nSecond chunk of the method description."
         )
+        assert enriched[0].metadata["chunk_text"] == "First chunk of the method description."
+        assert enriched[1].metadata["chunk_text"] == "Second chunk of the method description."
 
     def test_summarizes_two_different_sources_separately(self):
         """
