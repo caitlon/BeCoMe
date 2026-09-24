@@ -17,8 +17,6 @@ import psycopg
 import pytest
 from langchain_core.documents import Document
 from langchain_core.embeddings import DeterministicFakeEmbedding
-from psycopg.errors import DuplicateTable
-from sqlalchemy.exc import ProgrammingError
 
 from api.assistant.rag.store import ensure_collection, make_engine, open_store
 
@@ -111,26 +109,12 @@ class TestEnsureCollection:
         assert row is not None, "content_tsv column was not provisioned for hybrid search"
         assert row[0] == "tsvector"
 
-    @pytest.mark.asyncio
-    async def test_a_non_duplicate_table_error_still_propagates(self, postgresql):
-        """
-        GIVEN a table name Postgres rejects for a reason other than "already exists"
-             (the empty string: the generated CREATE TABLE "public".""(...) is a
-             syntax error, not psycopg.errors.DuplicateTable)
-        WHEN ensure_collection is called with that name
-        THEN the ProgrammingError propagates instead of being swallowed as though the
-             collection were already there
-        """
-        # GIVEN
-        engine = make_engine(_connection_url(postgresql))
-
-        # WHEN/THEN
-        try:
-            with pytest.raises(ProgrammingError) as exc_info:
-                await ensure_collection(engine, table="", vector_size=8, hybrid=False)
-            assert not isinstance(exc_info.value.orig, DuplicateTable)
-        finally:
-            await engine.close()
+    # The non-DuplicateTable-still-propagates case used to live here, triggered by an
+    # empty table name (a real Postgres syntax error). ensure_collection now validates
+    # the name first, so an empty name raises ValueError before reaching the database
+    # - see TestEnsureCollectionValidatesTheName in the unit test file. The re-raise
+    # branch itself still gets a test there too, driven by a stub engine instead:
+    # TestEnsureCollectionReraisesOtherProgrammingErrors.
 
 
 class TestOpenStore:
