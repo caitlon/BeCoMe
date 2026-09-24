@@ -5,6 +5,7 @@ import json
 
 import pytest
 from langchain_core.documents import Document
+from langchain_core.embeddings import DeterministicFakeEmbedding
 
 from api.assistant.rag.chunkers import ChunkerConfig, split
 from api.assistant.rag.corpus import CorpusSource
@@ -306,10 +307,61 @@ class TestSentencesStrategy:
         ]
 
 
+class TestSemanticStrategy:
+    """An in-house semantic breakpoint: percentile of neighbor cosine distance."""
+
+    def test_breaks_where_neighboring_sentences_stop_repeating(self):
+        """
+        GIVEN six sentences: three identical ones, then three different identical ones
+        WHEN split() runs with strategy="semantic" and a real embeddings client
+        THEN it breaks exactly once, at the boundary between the two repeated texts
+        """
+        # GIVEN
+        text = " ".join(["X sentence one."] * 3 + ["Y sentence two."] * 3)
+        config = ChunkerConfig(strategy="semantic")
+        embeddings = DeterministicFakeEmbedding(size=16)
+
+        # WHEN
+        chunks = split([_doc(text)], config, embeddings=embeddings)
+
+        # THEN
+        assert len(chunks) == 2
+        assert chunks[0].page_content == "X sentence one. X sentence one. X sentence one."
+        assert chunks[1].page_content == "Y sentence two. Y sentence two. Y sentence two."
+
+    def test_a_single_sentence_document_becomes_one_chunk(self):
+        """
+        GIVEN a document with no sentence boundary at all
+        WHEN split() runs with strategy="semantic"
+        THEN it is returned as a single chunk, unchanged - there is nothing to compare
+        """
+        # GIVEN
+        config = ChunkerConfig(strategy="semantic")
+        embeddings = DeterministicFakeEmbedding(size=16)
+
+        # WHEN
+        chunks = split([_doc("Just one sentence, no boundary")], config, embeddings=embeddings)
+
+        # THEN
+        assert len(chunks) == 1
+        assert chunks[0].page_content == "Just one sentence, no boundary"
+
+    def test_requires_an_embeddings_client(self):
+        """
+        GIVEN strategy="semantic" but embeddings=None
+        WHEN split() is called
+        THEN it raises ValueError rather than failing deep inside embed_documents
+        """
+        config = ChunkerConfig(strategy="semantic")
+
+        with pytest.raises(ValueError, match="embeddings"):
+            split([_doc("some text")], config, embeddings=None)
+
+
 class TestUnimplementedStrategies:
     """Every strategy but markdown_headers is left for later, and fails loudly."""
 
-    @pytest.mark.parametrize("strategy", ["semantic", "parent_child"])
+    @pytest.mark.parametrize("strategy", ["parent_child"])
     def test_raises_not_implemented(self, strategy):
         """
         GIVEN a ChunkerConfig using a strategy this pull request does not implement

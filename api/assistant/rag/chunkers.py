@@ -1,11 +1,12 @@
 """Split loaded Documents into retrieval-sized chunks.
 
-"markdown_headers", "fixed", "recursive", and "sentences" are implemented so
-far; "semantic" and "parent_child" belong to the later retrieval experiments,
-and split() raises NotImplementedError for them rather than silently returning
+"markdown_headers", "fixed", "recursive", "sentences", and "semantic" are
+implemented so far; "parent_child" belongs to the later retrieval experiments,
+and split() raises NotImplementedError for it rather than silently returning
 something misleading.
 """
 
+import math
 import re
 from dataclasses import dataclass
 from typing import Literal
@@ -158,6 +159,71 @@ def _split_sentences(docs: list[Document], config: ChunkerConfig) -> list[Docume
     return chunks
 
 
+#: Break where a sentence-to-sentence jump sits above this percentile of the
+#: document's OWN distance distribution - relative to how much this document's
+#: meaning typically drifts between neighbors, not an absolute cutoff.
+_SEMANTIC_BREAKPOINT_PERCENTILE = 95.0
+
+
+def _cosine_distance(a: list[float], b: list[float]) -> float:
+    """1 - cosine similarity between two equal-length vectors, stdlib math only.
+
+    :param a: First vector.
+    :param b: Second vector.
+    :return: 0.0 for identical direction, up to 2.0 for opposite direction.
+    """
+    dot = sum(x * y for x, y in zip(a, b, strict=True))
+    norm_a = math.sqrt(sum(x * x for x in a))
+    norm_b = math.sqrt(sum(y * y for y in b))
+    if norm_a == 0 or norm_b == 0:
+        return 1.0
+    return 1.0 - dot / (norm_a * norm_b)
+
+
+def _percentile(values: list[float], pct: float) -> float:
+    """Linear-interpolation percentile over a small sample, stdlib math only.
+
+    :param values: Sample of values.
+    :param pct: Target percentile, 0-100.
+    :return: 0.0 for an empty sample.
+    """
+    if not values:
+        return 0.0
+    ordered = sorted(values)
+    rank = (pct / 100) * (len(ordered) - 1)
+    lower, upper = math.floor(rank), math.ceil(rank)
+    if lower == upper:
+        return ordered[int(rank)]
+    fraction = rank - lower
+    return ordered[lower] + (ordered[upper] - ordered[lower]) * fraction
+
+
+def _split_semantic(docs: list[Document], embeddings: Embeddings) -> list[Document]:
+    """Break at the sentence boundaries whose neighbor distance is an outlier.
+
+    :param docs: Loaded Documents.
+    :param embeddings: Used to embed every sentence in a document, once per document.
+    :return: Semantically grouped chunks.
+    """
+    chunks = []
+    for doc in docs:
+        sentences = [s.strip() for s in _SENTENCE_BOUNDARY.split(doc.page_content) if s.strip()]
+        if len(sentences) <= 1:
+            chunks.append(Document(page_content=doc.page_content, metadata=dict(doc.metadata)))
+            continue
+        vectors = embeddings.embed_documents(sentences)
+        distances = [_cosine_distance(vectors[i], vectors[i + 1]) for i in range(len(vectors) - 1)]
+        threshold = _percentile(distances, _SEMANTIC_BREAKPOINT_PERCENTILE)
+        groups: list[list[str]] = [[sentences[0]]]
+        for i, distance in enumerate(distances):
+            if distance > threshold:
+                groups.append([])
+            groups[-1].append(sentences[i + 1])
+        for group in groups:
+            chunks.append(Document(page_content=" ".join(group), metadata=dict(doc.metadata)))
+    return chunks
+
+
 def split(
     docs: list[Document], config: ChunkerConfig, embeddings: Embeddings | None = None
 ) -> list[Document]:
@@ -165,12 +231,11 @@ def split(
 
     :param docs: Loaded Documents (loaders.py).
     :param config: Which strategy to apply, and its size/overlap.
-    :param embeddings: Only used by the future "semantic" strategy.
+    :param embeddings: Used by strategy="semantic".
     :return: The resulting chunks.
     :raises NotImplementedError: For every strategy but "markdown_headers", "fixed",
-        "recursive", and "sentences".
+        "recursive", "sentences", and "semantic".
     """
-    del embeddings  # only the future "semantic" strategy needs it
     if config.strategy == "markdown_headers":
         return _split_markdown_headers(docs, config)
     if config.strategy == "fixed":
@@ -179,4 +244,8 @@ def split(
         return _split_recursive(docs, config)
     if config.strategy == "sentences":
         return _split_sentences(docs, config)
+    if config.strategy == "semantic":
+        if embeddings is None:
+            raise ValueError("strategy='semantic' requires an embeddings client")
+        return _split_semantic(docs, embeddings)
     raise NotImplementedError(f"chunking strategy {config.strategy!r} is not implemented yet")
