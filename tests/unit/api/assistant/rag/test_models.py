@@ -4,7 +4,12 @@ import httpx
 import pytest
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 
-from api.assistant.rag.models import LlamaServerReranker, make_chat_model, make_embeddings
+from api.assistant.rag.models import (
+    LlamaServerReranker,
+    make_chat_model,
+    make_embeddings,
+    strip_think_block,
+)
 from api.config import Settings
 
 
@@ -67,6 +72,55 @@ class TestMakeEmbeddings:
 
         # THEN
         assert embeddings.request_timeout == settings.assistant_llm_timeout_seconds
+
+
+class TestStripThinkBlock:
+    """strip_think_block removes a reasoning-capable model's <think> preamble."""
+
+    def test_removes_a_leading_think_block(self):
+        """
+        GIVEN a reply with a <think>...</think> block before the actual answer
+        WHEN strip_think_block runs
+        THEN only the text after the block remains, stripped of surrounding whitespace
+        """
+        # GIVEN
+        reply = "<think>Reasoning about the answer.</think>\n\nThe actual answer."
+
+        # WHEN
+        result = strip_think_block(reply)
+
+        # THEN
+        assert result == "The actual answer."
+
+    def test_leaves_a_reply_with_no_think_block_only_stripped(self):
+        """
+        GIVEN a reply with no <think> block at all
+        WHEN strip_think_block runs
+        THEN the reply comes back with only its surrounding whitespace removed
+        """
+        # GIVEN
+        reply = "  The actual answer.  "
+
+        # WHEN
+        result = strip_think_block(reply)
+
+        # THEN
+        assert result == "The actual answer."
+
+    def test_keeps_a_reply_whose_think_block_never_closes(self):
+        """
+        GIVEN a reply that opens a <think> block and never closes it
+        WHEN strip_think_block runs
+        THEN the reply is kept as it is, since only a complete block is removed
+        """
+        # GIVEN
+        reply = "<think>Still reasoning about the answer"
+
+        # WHEN
+        result = strip_think_block(reply)
+
+        # THEN
+        assert result == "<think>Still reasoning about the answer"
 
 
 class _FakeResponse:
