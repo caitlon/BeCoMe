@@ -253,3 +253,26 @@ class TestBuildRetrievalConfig:
         config = ev._build_retrieval_config(args)
 
         assert config == ev.RetrievalConfig(mode="hybrid", k=3, rerank=True, query_transform="hyde")
+
+
+class TestPositiveInt:
+    """--k accepts only a whole number of at least one."""
+
+    def test_accepts_a_positive_whole_number(self):
+        """
+        GIVEN the text "3"
+        WHEN _positive_int parses it
+        THEN it returns the integer 3
+        """
+        assert ev._positive_int("3") == 3
+
+    @pytest.mark.parametrize("text", ["0", "-1", "2.5", "five"])
+    def test_rejects_anything_else(self, text):
+        """
+        GIVEN zero, a negative number, a fraction, or a word
+        WHEN _positive_int parses it
+        THEN it raises ArgumentTypeError, so argparse stops with a usage error instead of
+             writing a report in which k=0 made every query look like a miss
+        """
+        with pytest.raises(argparse.ArgumentTypeError):
+            ev._positive_int(text)
