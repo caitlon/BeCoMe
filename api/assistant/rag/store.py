@@ -72,8 +72,9 @@ async def ensure_collection(engine: PGEngine, table: str, vector_size: int, hybr
     :param table: Table name for this collection (pipeline.py names it per variant).
     :param vector_size: Embedding dimensionality, decided by the embedding model.
     :param hybrid: Whether to also provision a full-text-search column for hybrid
-        search. The ingest pipeline passes False (dense-only); only the later retrieval
-        experiments pass True.
+        search. The ingest pipeline passes False (dense-only), and so do the
+        retrieval experiments: their hybrid mode fuses dense and BM25 search in
+        process, by reciprocal rank fusion, rather than through this column.
     :return: None.
     :raises ValueError: If table is not a plain identifier; see _validate_collection_name.
     :raises ProgrammingError: If table creation fails for any reason other than the

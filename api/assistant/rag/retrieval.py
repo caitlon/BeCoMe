@@ -1,7 +1,8 @@
-"""Query the document index: dense and BM25 search, with optional reranking.
+"""Query the document index: dense search, BM25 search, and a hybrid of the two.
 
-"hybrid" mode and every query_transform but "none" are not implemented in this pull
-request; DocsRetriever raises NotImplementedError for them at construction time.
+Hybrid mode fuses dense and BM25 rankings by reciprocal rank fusion. Every
+query_transform but "none" is not implemented in this pull request; DocsRetriever
+raises NotImplementedError for those at construction time.
 """
 
 import re
@@ -38,8 +39,9 @@ def _tokenize(text: str) -> list[str]:
 class RetrievalConfig:
     """Which retrieval mode to run, how many results, and its optional add-ons.
 
-    :param mode: "hybrid" is not implemented in this pull request; the default stays
-        "dense" until the lab's closing step sets the measured winner.
+    :param mode: "dense", "bm25", or "hybrid" (reciprocal rank fusion of the other
+        two). The default stays "dense" until the lab's closing step sets the
+        measured winner.
     :param k: Number of chunks to return.
     :param rerank: Whether to rerank the candidates before truncating to k.
     :param query_transform: Only "none" is implemented in this pull request.
@@ -66,7 +68,9 @@ class RetrievedChunk:
         identical vector, -1.0 for a perfectly anti-correlated one. A negative
         score there is a legitimate, unremarkable result, not an error. BM25 mode
         returns the raw BM25 score, unbounded above; a document sharing no token
-        with the query scores exactly 0.0.
+        with the query scores exactly 0.0. Hybrid mode returns the fused reciprocal
+        rank fusion score: still higher is more relevant, but on its own scale,
+        small positive numbers rather than a cosine similarity or a BM25 score.
     """
 
     text: str
@@ -75,6 +79,46 @@ class RetrievedChunk:
     url: str | None
     layer: str
     score: float
+
+
+#: Reciprocal rank fusion's damping constant, from the paper that introduced it
+#: (Cormack, Clarke and Buettcher, "Reciprocal Rank Fusion Outperforms Condorcet and
+#: Individual Rank Learning Methods", SIGIR 2009). Also the default of
+#: langchain-postgres's own reciprocal_rank_fusion function, though not of its
+#: HybridSearchConfig, whose fusion_function defaults to weighted_sum_ranking
+#: instead. Fusion runs in process here, over _search_dense and _search_bm25, rather
+#: than through that library's built-in hybrid search: PostgreSQL ships no Czech
+#: text-search configuration, so the built-in hybrid's full-text component would
+#: tokenize and stem the Czech half of the corpus with English rules.
+_RRF_K = 60
+
+
+def _reciprocal_rank_fusion(
+    rankings: list[list[tuple[Document, float]]], k: int = _RRF_K
+) -> list[tuple[Document, float]]:
+    """Combine any number of rankings by reciprocal rank fusion: score = sum(1 / (k + rank + 1)).
+
+    Rank-based, not score-based: dense cosine similarity and BM25 scores live on
+    different, incomparable scales, so RRF looks only at each document's position in
+    each ranking. That is also why the signature takes a list of rankings rather than
+    two named parameters: nothing here is specific to fusing exactly a dense and a
+    bm25 ranking, only to fusing rankings in general.
+
+    :param rankings: Any number of (Document, score) rankings to combine, each
+        already sorted best-first; the score half of each pair is ignored.
+    :param k: RRF's damping constant.
+    :return: Fused (Document, score) pairs, highest fused score first. A document
+        appearing in only one ranking is still included, scored from that one alone.
+    """
+    scores: dict[tuple[str, str], float] = {}
+    docs_by_key: dict[tuple[str, str], Document] = {}
+    for ranking in rankings:
+        for rank, (doc, _) in enumerate(ranking):
+            key = (str(doc.metadata.get("source", "")), doc.page_content)
+            scores[key] = scores.get(key, 0.0) + 1.0 / (k + rank + 1)
+            docs_by_key[key] = doc
+    ranked_keys = sorted(scores, key=lambda key: scores[key], reverse=True)
+    return [(docs_by_key[key], scores[key]) for key in ranked_keys]
 
 
 class DocsRetriever:
@@ -96,17 +140,14 @@ class DocsRetriever:
             search() then raises NotImplementedError rather than silently
             returning a score of unknown meaning. BM25 mode reads the store's
             documents directly and has no such dependency.
-        :param config: mode must not be "hybrid" and query_transform must be "none"
-            in this pull request; both are enforced here, at construction time.
+        :param config: query_transform must be "none" in this pull request; enforced
+            here, at construction time. mode may be "dense", "bm25", or "hybrid".
         :param reranker: Required when config.rerank is True; ignored otherwise.
         :param llm: Unused in this pull request (query_transform="none" needs none);
             the "translate_en"/"multi_query"/"hyde" transforms need it.
-        :raises NotImplementedError: If mode is "hybrid", or query_transform is not
-            "none".
+        :raises NotImplementedError: If query_transform is not "none".
         :raises ValueError: If config.rerank is True but reranker is None.
         """
-        if config.mode == "hybrid":
-            raise NotImplementedError("retrieval mode 'hybrid' is not implemented yet")
         if config.query_transform != "none":
             raise NotImplementedError(
                 f"query_transform {config.query_transform!r} is not implemented yet; "
@@ -144,10 +185,9 @@ class DocsRetriever:
     async def _ensure_bm25_index(self) -> None:
         """Build the BM25 index once, from every document currently in the store.
 
-        Cached on this instance: rebuilt only the first time a bm25 (or, later,
-        hybrid) search runs, not on every call. A retrieval evaluation running many
-        queries against one collection would otherwise rescan the whole collection
-        once per query.
+        Cached on this instance: rebuilt only the first time a bm25 or hybrid search
+        runs, not on every call. A retrieval evaluation running many queries against
+        one collection would otherwise rescan the whole collection once per query.
 
         :return: None.
         :raises ValueError: If the store's collection is empty. rank_bm25 divides
@@ -216,6 +256,18 @@ class DocsRetriever:
             reverse=True,
         )
 
+    async def _search_hybrid(self, query: str, fetch_k: int) -> list[tuple[Document, float]]:
+        """Combine dense and BM25 search via reciprocal rank fusion.
+
+        :param query: The search query.
+        :param fetch_k: How many candidates to fetch from each of dense and bm25
+            search, and how many fused results to return.
+        :return: Fused (Document, score) pairs, highest fused score first.
+        """
+        dense = await self._search_dense(query, fetch_k)
+        bm25 = await self._search_bm25(query, fetch_k)
+        return _reciprocal_rank_fusion([dense, bm25])[:fetch_k]
+
     async def search(self, query: str) -> list[RetrievedChunk]:
         """Search the index and return the top-k chunks, most relevant first.
 
@@ -226,17 +278,19 @@ class DocsRetriever:
         :param query: The search query.
         :return: Up to config.k RetrievedChunk, ordered by relevance (highest
             score, most relevant, first).
-        :raises NotImplementedError: If mode is "dense" and the store has no
-            relevance-score conversion (VectorStore._select_relevance_score_fn not
+        :raises NotImplementedError: If mode is "dense" or "hybrid" and the store has
+            no relevance-score conversion (VectorStore._select_relevance_score_fn not
             overridden). PGVectorStore has one, a bare InMemoryVectorStore does not.
-        :raises ValueError: If mode is "bm25" and the store's collection is empty or
-            fills the fetch limit.
+        :raises ValueError: If mode is "bm25" or "hybrid" and the store's collection
+            is empty or fills the fetch limit.
         """
         fetch_k = self._config.k * 4 if self._config.rerank else self._config.k
         if self._config.mode == "dense":
             candidates = await self._search_dense(query, fetch_k)
-        else:
+        elif self._config.mode == "bm25":
             candidates = await self._search_bm25(query, fetch_k)
+        else:
+            candidates = await self._search_hybrid(query, fetch_k)
         if self._config.rerank and candidates:
             candidates = await self._apply_rerank(query, candidates)
         return [
