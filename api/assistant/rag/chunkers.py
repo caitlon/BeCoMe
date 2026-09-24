@@ -157,9 +157,10 @@ def _split_sentences(docs: list[Document], config: ChunkerConfig) -> list[Docume
     return chunks
 
 
-#: Break where a sentence-to-sentence jump sits above this percentile of the
-#: document's OWN distance distribution - relative to how much this document's
-#: meaning typically drifts between neighbors, not an absolute cutoff.
+#: The 95th percentile, by linear interpolation, of one document's own neighbor
+#: cosine distances. A sentence pair breaks apart when its distance is strictly
+#: greater than that value, so the cut point is relative to this document's own
+#: distances, never an absolute similarity score.
 _SEMANTIC_BREAKPOINT_PERCENTILE = 95.0
 
 
@@ -197,7 +198,21 @@ def _percentile(values: list[float], pct: float) -> float:
 
 
 def _split_semantic(docs: list[Document], embeddings: Embeddings) -> list[Document]:
-    """Break at the sentence boundaries whose neighbor distance is an outlier.
+    """Break where a document's own neighbor distances are relatively the largest.
+
+    This is the percentile mode of langchain-experimental's SemanticChunker
+    (np.percentile(distances, 95), breaking where a distance is strictly greater
+    than that value), reimplemented here with stdlib math instead of that
+    dependency, and without its one-sentence buffer around each break.
+
+    The threshold is relative to this document's own distances, not an absolute
+    similarity floor, so two things follow from it. Any document of three or more
+    sentences whose neighbor distances are not all equal breaks at least once, at
+    its largest jumps, even when the text never actually changes topic. A
+    two-sentence document is never split, because its one distance is compared
+    against the 95th percentile of a sample containing only itself, which linear
+    interpolation returns as that same distance, and nothing is ever strictly
+    greater than itself.
 
     :param docs: Loaded Documents.
     :param embeddings: Used to embed every sentence in a document, once per document.

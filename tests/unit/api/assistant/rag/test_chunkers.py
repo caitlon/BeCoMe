@@ -2,10 +2,11 @@
 
 import dataclasses
 import json
+import math
 
 import pytest
 from langchain_core.documents import Document
-from langchain_core.embeddings import DeterministicFakeEmbedding
+from langchain_core.embeddings import DeterministicFakeEmbedding, Embeddings
 
 from api.assistant.rag.chunkers import ChunkerConfig, split
 from api.assistant.rag.corpus import CorpusSource
@@ -307,6 +308,36 @@ class TestSentencesStrategy:
         ]
 
 
+def _unit_vector(angle_degrees: float) -> list[float]:
+    """A 2D unit vector at the given angle, for placing fake sentence embeddings by hand.
+
+    :param angle_degrees: Angle from the positive x axis, in degrees.
+    :return: [cos, sin] of that angle.
+    """
+    radians = math.radians(angle_degrees)
+    return [math.cos(radians), math.sin(radians)]
+
+
+class _FixedVectorEmbeddings(Embeddings):
+    """A minimal Embeddings stub: every known sentence maps to one fixed vector.
+
+    Lets a test place sentences at chosen angles and get exact, predictable neighbor
+    cosine distances, rather than relying on a hash-based fake embedding.
+    """
+
+    def __init__(self, vectors: dict[str, list[float]]) -> None:
+        """
+        :param vectors: Exact sentence text mapped to its fixed embedding vector.
+        """
+        self._vectors = vectors
+
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        return [self._vectors[text] for text in texts]
+
+    def embed_query(self, text: str) -> list[float]:
+        return self._vectors[text]
+
+
 class TestSemanticStrategy:
     """An in-house semantic breakpoint: percentile of neighbor cosine distance."""
 
@@ -333,7 +364,7 @@ class TestSemanticStrategy:
         """
         GIVEN a document with no sentence boundary at all
         WHEN split() runs with strategy="semantic"
-        THEN it is returned as a single chunk, unchanged - there is nothing to compare
+        THEN it is returned as a single chunk, unchanged, since there is nothing to compare
         """
         # GIVEN
         config = ChunkerConfig(strategy="semantic")
@@ -357,6 +388,66 @@ class TestSemanticStrategy:
         with pytest.raises(ValueError, match="embeddings"):
             split([_doc("some text")], config, embeddings=None)
 
+    def test_a_coherent_paragraph_still_breaks_at_its_largest_relative_jump(self):
+        """
+        GIVEN four sentences placed a few degrees apart on the unit circle, so every
+             neighbor distance is small, and one gap only a little larger than the rest
+        WHEN split() runs with strategy="semantic"
+        THEN it still breaks exactly once, at that largest gap, since the threshold is
+             relative to this document's own distances rather than an absolute floor,
+             so a paragraph that never truly changes topic still gets cut
+        """
+        # GIVEN
+        sentences = [
+            "Alpha sentence one.",
+            "Beta sentence two.",
+            "Gamma sentence three.",
+            "Delta sentence four.",
+        ]
+        angles_degrees = [0.0, 3.0, 6.0, 10.0]
+        vectors = {
+            sentence: _unit_vector(angle)
+            for sentence, angle in zip(sentences, angles_degrees, strict=True)
+        }
+        text = " ".join(sentences)
+        config = ChunkerConfig(strategy="semantic")
+        embeddings = _FixedVectorEmbeddings(vectors)
+
+        # WHEN
+        chunks = split([_doc(text)], config, embeddings=embeddings)
+
+        # THEN
+        assert [c.page_content for c in chunks] == [
+            "Alpha sentence one. Beta sentence two. Gamma sentence three.",
+            "Delta sentence four.",
+        ]
+
+    def test_a_two_sentence_document_stays_one_chunk_even_at_the_maximum_distance(self):
+        """
+        GIVEN two sentences placed at opposite points on the unit circle, the largest
+             cosine distance two vectors can have
+        WHEN split() runs with strategy="semantic"
+        THEN it still stays a single chunk, because with only one neighbor distance,
+             that distance is its own 95th percentile, and a distance is never
+             strictly greater than itself
+        """
+        # GIVEN
+        sentences = ["Alpha sentence one.", "Beta sentence two."]
+        vectors = {
+            sentences[0]: _unit_vector(0.0),
+            sentences[1]: _unit_vector(180.0),
+        }
+        text = " ".join(sentences)
+        config = ChunkerConfig(strategy="semantic")
+        embeddings = _FixedVectorEmbeddings(vectors)
+
+        # WHEN
+        chunks = split([_doc(text)], config, embeddings=embeddings)
+
+        # THEN
+        assert len(chunks) == 1
+        assert chunks[0].page_content == text
+
 
 class TestParentChildStrategy:
     """Small child chunks for matching, each carrying its larger parent as context."""
@@ -365,7 +456,7 @@ class TestParentChildStrategy:
         """
         GIVEN a short document that is one parent split into three children
         WHEN split() runs with strategy="parent_child"
-        THEN every child chunk's metadata carries the SAME parent_text - the whole
+        THEN every child chunk's metadata carries the SAME parent_text, the whole
              original document, since it fit in one parent-sized piece
         """
         # GIVEN
