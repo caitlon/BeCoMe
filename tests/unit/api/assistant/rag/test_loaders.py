@@ -243,6 +243,65 @@ class TestMarkdownLoader:
         with pytest.raises(ValueError, match="outside the repository root"):
             load_source(source)
 
+    def test_sha256_changes_when_only_the_included_file_changes(self, tmp_path):
+        """
+        GIVEN a wrapper page that snippet-includes another file
+        WHEN load_source reads it, the included file is then edited, and load_source
+             reads the unchanged wrapper page again
+        THEN the Document's sha256 differs, because it hashes the text actually
+             indexed (post-substitution), not the wrapper's own raw bytes
+        """
+        # GIVEN
+        (tmp_path / "pyproject.toml").write_text('[project]\nname = "become"\n')
+        _touch(tmp_path / "api" / "README.md", "# API\nBackend overview.\n")
+        _touch(
+            tmp_path / "docs" / "dev" / "api.md",
+            '<!-- Included from api/README.md -->\n\n--8<-- "api/README.md"\n',
+        )
+        source = CorpusSource(
+            path=tmp_path / "docs" / "dev" / "api.md",
+            layer="public",
+            kind="markdown",
+            title="API",
+            lang="en",
+            url=None,
+            wave=1,
+        )
+
+        # WHEN
+        sha_before = load_source(source)[0].metadata["sha256"]
+        _touch(tmp_path / "api" / "README.md", "# API\nBackend overview, now with more detail.\n")
+        sha_after = load_source(source)[0].metadata["sha256"]
+
+        # THEN
+        assert sha_before != sha_after
+
+    def test_sha256_without_an_include_matches_the_raw_bytes(self, tmp_path):
+        """
+        GIVEN a markdown file with no snippet include
+        WHEN load_source reads it
+        THEN its sha256 equals hashlib.sha256 of the file's own raw bytes, since there
+             is no substitution to make the indexed text differ from them
+        """
+        # GIVEN
+        md_path = tmp_path / "docs" / "user" / "what-it-does.md"
+        _touch(md_path, "# What BeCoMe does\n\nBeCoMe aggregates expert opinions.\n")
+        source = CorpusSource(
+            path=md_path,
+            layer="public",
+            kind="markdown",
+            title="What BeCoMe does",
+            lang="en",
+            url=None,
+            wave=1,
+        )
+
+        # WHEN
+        documents = load_source(source)
+
+        # THEN
+        assert documents[0].metadata["sha256"] == hashlib.sha256(md_path.read_bytes()).hexdigest()
+
 
 class TestI18nJsonLoader:
     """i18n JSON flattens into one Document per leaf section."""
