@@ -1,9 +1,9 @@
 """Query the document index: dense search, BM25 search, and a hybrid of the two.
 
 Hybrid mode fuses dense and BM25 rankings by reciprocal rank fusion. A query_transform
-turns the query into one or more queries actually used to search; "translate_en" and
-"multi_query" are implemented, "hyde" is not yet, and DocsRetriever raises
-NotImplementedError for that at construction time.
+turns the query into one or more queries actually used to search: "translate_en"
+searches with the model's English translation, "multi_query" adds paraphrases of the
+query, and "hyde" replaces the query with a model-generated hypothetical answer.
 """
 
 import re
@@ -45,8 +45,7 @@ class RetrievalConfig:
         measured winner.
     :param k: Number of chunks to return.
     :param rerank: Whether to rerank the candidates before truncating to k.
-    :param query_transform: "none", "translate_en", and "multi_query" are implemented;
-        "hyde" is not yet.
+    :param query_transform: "none", "translate_en", "multi_query", or "hyde".
     """
 
     mode: Literal["bm25", "dense", "hybrid"] = "dense"
@@ -142,19 +141,13 @@ class DocsRetriever:
             search() then raises NotImplementedError rather than silently
             returning a score of unknown meaning. BM25 mode reads the store's
             documents directly and has no such dependency.
-        :param config: mode may be "dense", "bm25", or "hybrid". query_transform
-            "hyde" is not implemented yet; enforced here, at construction time.
+        :param config: mode may be "dense", "bm25", or "hybrid".
         :param reranker: Required when config.rerank is True; ignored otherwise.
         :param llm: Required when config.query_transform is not "none"; unused
             otherwise.
-        :raises NotImplementedError: If query_transform is "hyde".
         :raises ValueError: If config.rerank is True but reranker is None, or if
             query_transform is not "none" and llm is None.
         """
-        if config.query_transform == "hyde":
-            raise NotImplementedError(
-                f"query_transform {config.query_transform!r} is not implemented yet"
-            )
         if config.query_transform != "none" and llm is None:
             raise ValueError(f"query_transform {config.query_transform!r} requires an llm")
         if config.rerank and reranker is None:
@@ -306,17 +299,36 @@ class DocsRetriever:
         variants = [line.strip() for line in str(response.content).splitlines() if line.strip()]
         return [query, *variants]
 
+    _HYDE_PROMPT = (
+        "Write a short, plausible passage that would answer this question, as if it "
+        "came from technical documentation. Do not mention that you are guessing:\n\n{query}"
+    )
+
+    async def _hypothetical_answer(self, query: str) -> str:
+        """Ask the model to write a plausible answer, to search with instead of the query.
+
+        :param query: The user's original query.
+        :return: The model's hypothetical answer text.
+        """
+        if self._llm is None:
+            raise RuntimeError("unreachable: __init__ requires an llm for this query_transform")
+        response = await self._llm.ainvoke(self._HYDE_PROMPT.format(query=query))
+        return str(response.content).strip()
+
     async def _transformed_queries(self, query: str) -> list[str]:
         """Turn one query into the query, or queries, actually used to search.
 
         :param query: The user's original query.
-        :return: A single query for "none" and "translate_en"; the original query
-            plus paraphrases for "multi_query".
+        :return: A single query for "none", "translate_en", and "hyde" (the last
+            replacing rather than joining the original); the original query plus
+            paraphrases for "multi_query".
         """
         if self._config.query_transform == "translate_en":
             return [await self._translate_to_english(query)]
         if self._config.query_transform == "multi_query":
             return await self._multi_query_variants(query)
+        if self._config.query_transform == "hyde":
+            return [await self._hypothetical_answer(query)]
         return [query]
 
     async def _search_one(self, query: str, fetch_k: int) -> list[tuple[Document, float]]:
