@@ -1,8 +1,9 @@
 """Split loaded Documents into retrieval-sized chunks.
 
-"markdown_headers" and "fixed" are implemented so far; the other four Strategy
-values belong to the later retrieval experiments, and split() raises
-NotImplementedError for them rather than silently returning something misleading.
+"markdown_headers", "fixed", and "recursive" are implemented so far; the other
+three Strategy values belong to the later retrieval experiments, and split()
+raises NotImplementedError for them rather than silently returning something
+misleading.
 """
 
 from dataclasses import dataclass
@@ -101,6 +102,26 @@ def _split_fixed(docs: list[Document], config: ChunkerConfig) -> list[Document]:
     return chunks
 
 
+def _split_recursive(docs: list[Document], config: ChunkerConfig) -> list[Document]:
+    """Split by langchain's default separator hierarchy, size-bound only.
+
+    No heading awareness, unlike "markdown_headers": this is the strategy the
+    retrieval search lab compares against fixed-window cutting.
+
+    :param docs: Loaded Documents.
+    :param config: size/overlap_pct, passed straight to RecursiveCharacterTextSplitter.
+    :return: Recursively split chunks.
+    """
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=config.size, chunk_overlap=int(config.size * config.overlap_pct / 100)
+    )
+    chunks = []
+    for doc in docs:
+        for piece in splitter.split_text(doc.page_content):
+            chunks.append(Document(page_content=piece, metadata=dict(doc.metadata)))
+    return chunks
+
+
 def split(
     docs: list[Document], config: ChunkerConfig, embeddings: Embeddings | None = None
 ) -> list[Document]:
@@ -110,11 +131,14 @@ def split(
     :param config: Which strategy to apply, and its size/overlap.
     :param embeddings: Only used by the future "semantic" strategy.
     :return: The resulting chunks.
-    :raises NotImplementedError: For every strategy but "markdown_headers" and "fixed".
+    :raises NotImplementedError: For every strategy but "markdown_headers", "fixed", and
+        "recursive".
     """
     del embeddings  # only the future "semantic" strategy needs it
     if config.strategy == "markdown_headers":
         return _split_markdown_headers(docs, config)
     if config.strategy == "fixed":
         return _split_fixed(docs, config)
+    if config.strategy == "recursive":
+        return _split_recursive(docs, config)
     raise NotImplementedError(f"chunking strategy {config.strategy!r} is not implemented yet")

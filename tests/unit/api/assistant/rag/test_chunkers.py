@@ -216,10 +216,32 @@ class TestFixedStrategy:
         assert [c.page_content for c in chunks] == ["abcdefghij", "ijklmnopqr", "qrstuvwxy"]
 
 
+class TestRecursiveStrategy:
+    """Splits by langchain's default separator hierarchy, with no heading awareness."""
+
+    def test_prefers_paragraph_boundaries_over_mid_word_cuts(self):
+        """
+        GIVEN two short paragraphs that together exceed size
+        WHEN split() runs with strategy="recursive"
+        THEN the split falls on the paragraph boundary, not mid-word
+        """
+        # GIVEN
+        text = "First short paragraph here.\n\nSecond short paragraph there."
+        config = ChunkerConfig(strategy="recursive", size=30, overlap_pct=0)
+
+        # WHEN
+        chunks = split([_doc(text)], config)
+
+        # THEN
+        assert chunks[0].page_content == "First short paragraph here."
+        assert chunks[1].page_content == "Second short paragraph there."
+        assert all(c.metadata["source"] == "docs/method-description.md" for c in chunks)
+
+
 class TestUnimplementedStrategies:
     """Every strategy but markdown_headers is left for later, and fails loudly."""
 
-    @pytest.mark.parametrize("strategy", ["recursive", "sentences", "semantic", "parent_child"])
+    @pytest.mark.parametrize("strategy", ["sentences", "semantic", "parent_child"])
     def test_raises_not_implemented(self, strategy):
         """
         GIVEN a ChunkerConfig using a strategy this pull request does not implement
