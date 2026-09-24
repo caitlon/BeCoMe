@@ -180,12 +180,46 @@ class TestMarkdownHeadersStrategy:
         assert chunks[0].metadata["heading_path"] == "gettingStarted > Best compromise"
 
 
+class TestFixedStrategy:
+    """The naive baseline: literal size-character windows, no boundary awareness."""
+
+    def test_cuts_literal_windows_with_no_overlap(self):
+        """
+        GIVEN a 25-character document and size=10, overlap_pct=0
+        WHEN split() runs with strategy="fixed"
+        THEN it produces three windows of 10, 10, and 5 characters
+        """
+        # GIVEN
+        text = "abcdefghijklmnopqrstuvwxy"  # 25 characters
+        config = ChunkerConfig(strategy="fixed", size=10, overlap_pct=0)
+
+        # WHEN
+        chunks = split([_doc(text)], config)
+
+        # THEN
+        assert [c.page_content for c in chunks] == ["abcdefghij", "klmnopqrst", "uvwxy"]
+
+    def test_overlap_repeats_the_tail_of_the_previous_window(self):
+        """
+        GIVEN the same document with size=10, overlap_pct=20 (2-character step back)
+        WHEN split() runs
+        THEN each window after the first starts 2 characters before the previous one ended
+        """
+        # GIVEN
+        text = "abcdefghijklmnopqrstuvwxy"
+        config = ChunkerConfig(strategy="fixed", size=10, overlap_pct=20)
+
+        # WHEN
+        chunks = split([_doc(text)], config)
+
+        # THEN
+        assert [c.page_content for c in chunks] == ["abcdefghij", "ijklmnopqr", "qrstuvwxy"]
+
+
 class TestUnimplementedStrategies:
     """Every strategy but markdown_headers is left for later, and fails loudly."""
 
-    @pytest.mark.parametrize(
-        "strategy", ["fixed", "recursive", "sentences", "semantic", "parent_child"]
-    )
+    @pytest.mark.parametrize("strategy", ["recursive", "sentences", "semantic", "parent_child"])
     def test_raises_not_implemented(self, strategy):
         """
         GIVEN a ChunkerConfig using a strategy this pull request does not implement

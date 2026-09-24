@@ -1,8 +1,8 @@
 """Split loaded Documents into retrieval-sized chunks.
 
-Only "markdown_headers" is implemented so far; the other five Strategy values
-belong to the later retrieval experiments, and split() raises NotImplementedError
-for them rather than silently returning something misleading.
+"markdown_headers" and "fixed" are implemented so far; the other four Strategy
+values belong to the later retrieval experiments, and split() raises
+NotImplementedError for them rather than silently returning something misleading.
 """
 
 from dataclasses import dataclass
@@ -76,6 +76,31 @@ def _split_markdown_headers(docs: list[Document], config: ChunkerConfig) -> list
     return chunks
 
 
+def _split_fixed(docs: list[Document], config: ChunkerConfig) -> list[Document]:
+    """Cut every document into literal size-character windows.
+
+    No word or sentence boundary is respected - this is the naive baseline every
+    smarter chunking strategy is compared against in the retrieval search lab.
+
+    :param docs: Loaded Documents.
+    :param config: size is the window width; overlap_pct steps each window back by
+        that percentage of size before cutting the next one.
+    :return: Fixed-size chunks, in document order.
+    """
+    step = max(config.size - int(config.size * config.overlap_pct / 100), 1)
+    chunks = []
+    for doc in docs:
+        text = doc.page_content
+        for start in range(0, len(text), step):
+            piece = text[start : start + config.size]
+            if not piece:
+                continue
+            chunks.append(Document(page_content=piece, metadata=dict(doc.metadata)))
+            if start + config.size >= len(text):
+                break
+    return chunks
+
+
 def split(
     docs: list[Document], config: ChunkerConfig, embeddings: Embeddings | None = None
 ) -> list[Document]:
@@ -85,12 +110,11 @@ def split(
     :param config: Which strategy to apply, and its size/overlap.
     :param embeddings: Only used by the future "semantic" strategy.
     :return: The resulting chunks.
-    :raises NotImplementedError: For every strategy but "markdown_headers".
+    :raises NotImplementedError: For every strategy but "markdown_headers" and "fixed".
     """
     del embeddings  # only the future "semantic" strategy needs it
     if config.strategy == "markdown_headers":
         return _split_markdown_headers(docs, config)
-    raise NotImplementedError(
-        f"chunking strategy {config.strategy!r} is not implemented yet; only "
-        "'markdown_headers' ships in this pull request"
-    )
+    if config.strategy == "fixed":
+        return _split_fixed(docs, config)
+    raise NotImplementedError(f"chunking strategy {config.strategy!r} is not implemented yet")
