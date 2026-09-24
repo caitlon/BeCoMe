@@ -163,8 +163,8 @@ class TestBuildCollection:
         """
         GIVEN a one-file corpus, a fresh PostgreSQL database, and a fake embedding server
         WHEN build_collection runs with strategy="semantic"
-        THEN it succeeds and stores the resulting chunks - proving split() receives the
-             same embeddings client the store uses, rather than raising ValueError for
+        THEN it succeeds and stores the resulting chunks, which proves split() receives
+             the same embeddings client the store uses instead of raising ValueError for
              a missing one
         """
         # GIVEN
