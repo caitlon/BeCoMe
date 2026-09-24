@@ -108,6 +108,45 @@ class _FakeAsyncClientOutOfRangeIndex:
         return _FakeResponse({"results": [{"index": 5, "relevance_score": 0.9}]})
 
 
+class _FakeAsyncClientMissingIndex:
+    """Stands in for httpx.AsyncClient, returning fewer results than input texts."""
+
+    def __init__(self, *args, **kwargs) -> None:
+        pass
+
+    async def __aenter__(self) -> "_FakeAsyncClientMissingIndex":
+        return self
+
+    async def __aexit__(self, *exc_info) -> bool:
+        return False
+
+    async def post(self, url: str, json: dict) -> _FakeResponse:
+        return _FakeResponse({"results": [{"index": 0, "relevance_score": 0.9}]})
+
+
+class _FakeAsyncClientDuplicateIndex:
+    """Stands in for httpx.AsyncClient, scoring the same index twice."""
+
+    def __init__(self, *args, **kwargs) -> None:
+        pass
+
+    async def __aenter__(self) -> "_FakeAsyncClientDuplicateIndex":
+        return self
+
+    async def __aexit__(self, *exc_info) -> bool:
+        return False
+
+    async def post(self, url: str, json: dict) -> _FakeResponse:
+        return _FakeResponse(
+            {
+                "results": [
+                    {"index": 0, "relevance_score": 0.9},
+                    {"index": 0, "relevance_score": 0.2},
+                ]
+            }
+        )
+
+
 class TestLlamaServerReranker:
     """Async client for llama-server's /v1/rerank endpoint."""
 
@@ -154,4 +193,40 @@ class TestLlamaServerReranker:
 
         # WHEN / THEN
         with pytest.raises(ValueError, match="index 5"):
+            await reranker.rerank("query", ["doc a", "doc b"])
+
+    @pytest.mark.asyncio
+    async def test_rerank_rejects_a_response_that_leaves_an_index_unscored(self, monkeypatch):
+        """
+        GIVEN a fake llama-server whose response holds fewer results than input texts
+        WHEN rerank() scores three texts
+        THEN it raises ValueError naming the unscored indices, instead of returning a
+             fabricated 0.0 score for the texts the server never mentioned
+        """
+        # GIVEN
+        monkeypatch.setattr(httpx, "AsyncClient", _FakeAsyncClientMissingIndex)
+        reranker = LlamaServerReranker(
+            base_url="http://127.0.0.1:8083/v1", model="BAAI/bge-reranker-v2-m3", timeout=5.0
+        )
+
+        # WHEN / THEN
+        with pytest.raises(ValueError, match=r"\[1, 2\]"):
+            await reranker.rerank("query", ["doc a", "doc b", "doc c"])
+
+    @pytest.mark.asyncio
+    async def test_rerank_rejects_a_duplicated_result_index(self, monkeypatch):
+        """
+        GIVEN a fake llama-server whose response scores the same index twice
+        WHEN rerank() scores two texts
+        THEN it raises ValueError naming the duplicated index, instead of silently
+             overwriting the earlier score with the later one
+        """
+        # GIVEN
+        monkeypatch.setattr(httpx, "AsyncClient", _FakeAsyncClientDuplicateIndex)
+        reranker = LlamaServerReranker(
+            base_url="http://127.0.0.1:8083/v1", model="BAAI/bge-reranker-v2-m3", timeout=5.0
+        )
+
+        # WHEN / THEN
+        with pytest.raises(ValueError, match="index 0"):
             await reranker.rerank("query", ["doc a", "doc b"])
