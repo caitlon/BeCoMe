@@ -34,7 +34,7 @@ def _parse_args() -> argparse.Namespace:
         "--strategy",
         required=True,
         choices=["fixed", "recursive", "markdown_headers", "sentences", "semantic", "parent_child"],
-        help="Chunking strategy (only markdown_headers ships in this pull request)",
+        help="Chunking strategy",
     )
     parser.add_argument("--size", type=int, default=500, help="Target chunk size in characters")
     parser.add_argument(
@@ -44,7 +44,7 @@ def _parse_args() -> argparse.Namespace:
         "--context",
         default="none",
         choices=["none", "heading_path", "llm_context", "doc_summary"],
-        help="Per-chunk context mode (only 'none' ships in this pull request)",
+        help="Per-chunk context mode",
     )
     parser.add_argument("--wave", type=int, default=1, help="Highest corpus wave to include")
     return parser.parse_args()
