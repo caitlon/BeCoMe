@@ -305,6 +305,19 @@ class DocsRetriever:
         bm25 = await self._search_bm25(query, fetch_k)
         return _reciprocal_rank_fusion([dense, bm25])[:fetch_k]
 
+    async def _ask_llm(self, prompt: str) -> str:
+        """Send one prompt to the chat model and return its cleaned reply.
+
+        :param prompt: The full prompt text.
+        :return: The reply with any <think> block removed and outer whitespace stripped.
+        :raises RuntimeError: If there is no chat model, which __init__ already refuses
+            for every query_transform that calls this.
+        """
+        if self._llm is None:
+            raise RuntimeError("unreachable: __init__ requires an llm for this query_transform")
+        response = await self._llm.ainvoke(prompt)
+        return strip_think_block(str(response.content))
+
     _TRANSLATE_PROMPT = (
         "Translate the following text to English. Reply with only the translation:\n\n{query}"
     )
@@ -316,13 +329,10 @@ class DocsRetriever:
         :return: The model's English translation, or the original query if the
             model's reply is empty once stripped.
         """
-        if self._llm is None:
-            raise RuntimeError("unreachable: __init__ requires an llm for this query_transform")
-        response = await self._llm.ainvoke(self._TRANSLATE_PROMPT.format(query=query))
-        translation = strip_think_block(str(response.content))
+        translation = await self._ask_llm(self._TRANSLATE_PROMPT.format(query=query))
         return translation or query
 
-    _MULTI_QUERY_VARIANTS = 3
+    _MULTI_QUERY_MAX_VARIANTS = 3
     _MULTI_QUERY_PROMPT = (
         "Write {n} different ways to ask this same question, one per line, no "
         "numbering or extra text:\n\n{query}"
@@ -332,15 +342,12 @@ class DocsRetriever:
         """Ask the model to paraphrase the query, and search with the original too.
 
         :param query: The user's original query.
-        :return: The original query, followed by up to _MULTI_QUERY_VARIANTS cleaned,
+        :return: The original query, followed by up to _MULTI_QUERY_MAX_VARIANTS cleaned,
             deduplicated paraphrase lines (see _clean_multi_query_variants).
         """
-        if self._llm is None:
-            raise RuntimeError("unreachable: __init__ requires an llm for this query_transform")
-        prompt = self._MULTI_QUERY_PROMPT.format(n=self._MULTI_QUERY_VARIANTS, query=query)
-        response = await self._llm.ainvoke(prompt)
-        reply = strip_think_block(str(response.content))
-        variants = _clean_multi_query_variants(reply, query, self._MULTI_QUERY_VARIANTS)
+        prompt = self._MULTI_QUERY_PROMPT.format(n=self._MULTI_QUERY_MAX_VARIANTS, query=query)
+        reply = await self._ask_llm(prompt)
+        variants = _clean_multi_query_variants(reply, query, self._MULTI_QUERY_MAX_VARIANTS)
         return [query, *variants]
 
     _HYDE_PROMPT = (
@@ -355,10 +362,7 @@ class DocsRetriever:
         :return: The model's hypothetical answer text, or the original query if the
             model's reply is empty once stripped.
         """
-        if self._llm is None:
-            raise RuntimeError("unreachable: __init__ requires an llm for this query_transform")
-        response = await self._llm.ainvoke(self._HYDE_PROMPT.format(query=query))
-        answer = strip_think_block(str(response.content))
+        answer = await self._ask_llm(self._HYDE_PROMPT.format(query=query))
         return answer or query
 
     async def _transformed_queries(self, query: str) -> list[str]:
