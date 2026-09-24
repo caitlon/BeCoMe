@@ -1,9 +1,9 @@
 """Query the document index: dense search, BM25 search, and a hybrid of the two.
 
 Hybrid mode fuses dense and BM25 rankings by reciprocal rank fusion. A query_transform
-turns the query into one or more queries actually used to search; "translate_en" is
-implemented, "multi_query" and "hyde" are not yet, and DocsRetriever raises
-NotImplementedError for those at construction time.
+turns the query into one or more queries actually used to search; "translate_en" and
+"multi_query" are implemented, "hyde" is not yet, and DocsRetriever raises
+NotImplementedError for that at construction time.
 """
 
 import re
@@ -45,8 +45,8 @@ class RetrievalConfig:
         measured winner.
     :param k: Number of chunks to return.
     :param rerank: Whether to rerank the candidates before truncating to k.
-    :param query_transform: "none" and "translate_en" are implemented; "multi_query"
-        and "hyde" are not yet.
+    :param query_transform: "none", "translate_en", and "multi_query" are implemented;
+        "hyde" is not yet.
     """
 
     mode: Literal["bm25", "dense", "hybrid"] = "dense"
@@ -143,16 +143,15 @@ class DocsRetriever:
             returning a score of unknown meaning. BM25 mode reads the store's
             documents directly and has no such dependency.
         :param config: mode may be "dense", "bm25", or "hybrid". query_transform
-            "multi_query" and "hyde" are not implemented yet; enforced here, at
-            construction time.
+            "hyde" is not implemented yet; enforced here, at construction time.
         :param reranker: Required when config.rerank is True; ignored otherwise.
         :param llm: Required when config.query_transform is not "none"; unused
             otherwise.
-        :raises NotImplementedError: If query_transform is "multi_query" or "hyde".
+        :raises NotImplementedError: If query_transform is "hyde".
         :raises ValueError: If config.rerank is True but reranker is None, or if
             query_transform is not "none" and llm is None.
         """
-        if config.query_transform in ("multi_query", "hyde"):
+        if config.query_transform == "hyde":
             raise NotImplementedError(
                 f"query_transform {config.query_transform!r} is not implemented yet"
             )
@@ -288,14 +287,36 @@ class DocsRetriever:
         response = await self._llm.ainvoke(self._TRANSLATE_PROMPT.format(query=query))
         return str(response.content).strip()
 
+    _MULTI_QUERY_VARIANTS = 3
+    _MULTI_QUERY_PROMPT = (
+        "Write {n} different ways to ask this same question, one per line, no "
+        "numbering or extra text:\n\n{query}"
+    )
+
+    async def _multi_query_variants(self, query: str) -> list[str]:
+        """Ask the model to paraphrase the query, and search with the original too.
+
+        :param query: The user's original query.
+        :return: The original query, followed by each non-blank paraphrase line.
+        """
+        if self._llm is None:
+            raise RuntimeError("unreachable: __init__ requires an llm for this query_transform")
+        prompt = self._MULTI_QUERY_PROMPT.format(n=self._MULTI_QUERY_VARIANTS, query=query)
+        response = await self._llm.ainvoke(prompt)
+        variants = [line.strip() for line in str(response.content).splitlines() if line.strip()]
+        return [query, *variants]
+
     async def _transformed_queries(self, query: str) -> list[str]:
         """Turn one query into the query, or queries, actually used to search.
 
         :param query: The user's original query.
-        :return: A single query for "none" and "translate_en".
+        :return: A single query for "none" and "translate_en"; the original query
+            plus paraphrases for "multi_query".
         """
         if self._config.query_transform == "translate_en":
             return [await self._translate_to_english(query)]
+        if self._config.query_transform == "multi_query":
+            return await self._multi_query_variants(query)
         return [query]
 
     async def _search_one(self, query: str, fetch_k: int) -> list[tuple[Document, float]]:

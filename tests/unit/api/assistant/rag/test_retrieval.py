@@ -298,19 +298,19 @@ class TestDocsRetrieverRerank:
 
 
 class TestUnimplementedRetrieval:
-    """multi_query and hyde are not implemented yet."""
+    """hyde is not implemented yet."""
 
-    def test_rejects_multi_query_transform(self):
+    def test_rejects_hyde_transform(self):
         """
-        GIVEN a RetrievalConfig with query_transform="multi_query"
+        GIVEN a RetrievalConfig with query_transform="hyde"
         WHEN DocsRetriever is constructed
         THEN it raises NotImplementedError naming the transform
         """
         embeddings = DeterministicFakeEmbedding(size=16)
         store = InMemoryVectorStore(embeddings)
-        config = RetrievalConfig(mode="dense", query_transform="multi_query")
+        config = RetrievalConfig(mode="dense", query_transform="hyde")
 
-        with pytest.raises(NotImplementedError, match="multi_query"):
+        with pytest.raises(NotImplementedError, match="hyde"):
             DocsRetriever(store=store, config=config, reranker=None, llm=None)
 
 
@@ -353,6 +353,66 @@ class TestTranslateEnTransform:
         # THEN
         assert results[0].title == "Method"
         assert results[0].score > 0.99
+
+
+class TestMultiQueryTransform:
+    """query_transform="multi_query" searches with the original query plus paraphrases."""
+
+    @pytest.mark.asyncio
+    async def test_transformed_queries_includes_the_original_and_every_variant_line(self):
+        """
+        GIVEN a fake model that returns two paraphrased lines, with a blank line
+             between them
+        WHEN _transformed_queries runs with query_transform="multi_query"
+        THEN it returns the original query followed by both variants, blank line dropped
+        """
+        # GIVEN
+        embeddings = DeterministicFakeEmbedding(size=16)
+        store = InMemoryVectorStore(embeddings)
+        llm = FakeListChatModel(
+            responses=["How does BeCoMe aggregate opinions?\n\nWhat is the BeCoMe formula?\n"]
+        )
+        config = RetrievalConfig(mode="dense", query_transform="multi_query")
+        retriever = DocsRetriever(store=store, config=config, reranker=None, llm=llm)
+
+        # WHEN
+        queries = await retriever._transformed_queries("What does BeCoMe combine?")
+
+        # THEN
+        assert queries == [
+            "What does BeCoMe combine?",
+            "How does BeCoMe aggregate opinions?",
+            "What is the BeCoMe formula?",
+        ]
+
+    @pytest.mark.asyncio
+    async def test_a_document_matched_only_by_a_variant_is_still_retrieved(self):
+        """
+        GIVEN a model that generates one variant identical to a stored document's text
+        WHEN search() runs with query_transform="multi_query" and k covers both documents
+        THEN that document is present in the results, even though the ORIGINAL query
+             text does not match it at all
+        """
+        # GIVEN
+        embeddings = DeterministicFakeEmbedding(size=16)
+        store = _RelevanceScoredInMemoryVectorStore(embeddings)
+        exact_text = "BeCoMe combines the arithmetic mean and the median."
+        await store.aadd_documents(
+            [
+                _doc(exact_text, title="Method"),
+                _doc("The frontend uses React and TypeScript.", title="Frontend"),
+            ]
+        )
+        llm = FakeListChatModel(responses=[exact_text])  # one variant, identical to the stored doc
+        config = RetrievalConfig(mode="dense", k=2, query_transform="multi_query")
+        retriever = DocsRetriever(store=store, config=config, reranker=None, llm=llm)
+
+        # WHEN
+        results = await retriever.search("some unrelated original query text")
+
+        # THEN
+        assert len(results) == 2
+        assert {chunk.title for chunk in results} == {"Method", "Frontend"}
 
 
 class TestDocsRetrieverBm25Search:
