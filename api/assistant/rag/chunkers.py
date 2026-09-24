@@ -206,9 +206,10 @@ def _split_semantic(docs: list[Document], embeddings: Embeddings) -> list[Docume
     dependency, and without its one-sentence buffer around each break.
 
     The threshold is relative to this document's own distances, not an absolute
-    similarity floor, so two things follow from it. Any document of three or more
-    sentences whose neighbor distances are not all equal breaks at least once, at
-    its largest jumps, even when the text never actually changes topic. A
+    similarity floor, so two things follow from it. A document of three or more
+    sentences whose largest neighbor distance is strictly above its second largest,
+    which real embeddings nearly always give, breaks at least once at that jump,
+    even when the text never actually changes topic. A
     two-sentence document is never split, because its one distance is compared
     against the 95th percentile of a sample containing only itself, which linear
     interpolation returns as that same distance, and nothing is ever strictly
