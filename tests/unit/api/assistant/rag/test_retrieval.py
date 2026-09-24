@@ -286,20 +286,19 @@ class TestDocsRetrieverRerank:
 
 
 class TestUnimplementedRetrieval:
-    """Every mode but dense, and every query_transform but none, is the retrieval
-    experiments' job."""
+    """hybrid mode, and every query_transform but none, are not implemented yet."""
 
-    def test_rejects_a_mode_other_than_dense(self):
+    def test_rejects_hybrid_mode(self):
         """
-        GIVEN a RetrievalConfig with mode="bm25"
+        GIVEN a RetrievalConfig with mode="hybrid"
         WHEN DocsRetriever is constructed
         THEN it raises NotImplementedError naming the mode
         """
         embeddings = DeterministicFakeEmbedding(size=16)
-        store = _RelevanceScoredInMemoryVectorStore(embeddings)
-        config = RetrievalConfig(mode="bm25")
+        store = InMemoryVectorStore(embeddings)
+        config = RetrievalConfig(mode="hybrid")
 
-        with pytest.raises(NotImplementedError, match="bm25"):
+        with pytest.raises(NotImplementedError, match="hybrid"):
             DocsRetriever(store=store, config=config, reranker=None, llm=None)
 
     def test_rejects_a_query_transform_other_than_none(self):
@@ -309,8 +308,91 @@ class TestUnimplementedRetrieval:
         THEN it raises NotImplementedError naming the transform
         """
         embeddings = DeterministicFakeEmbedding(size=16)
-        store = _RelevanceScoredInMemoryVectorStore(embeddings)
+        store = InMemoryVectorStore(embeddings)
         config = RetrievalConfig(mode="dense", query_transform="hyde")
 
         with pytest.raises(NotImplementedError, match="hyde"):
             DocsRetriever(store=store, config=config, reranker=None, llm=None)
+
+
+class TestDocsRetrieverBm25Search:
+    """BM25 keyword search over the whole collection, fetched once and cached."""
+
+    @pytest.mark.asyncio
+    async def test_ranks_the_keyword_match_above_the_unrelated_document(self):
+        """
+        GIVEN three documents, only two of which mention "median"
+        WHEN search() runs with mode="bm25" for the query "median"
+        THEN the two matching documents outrank the unrelated one
+        """
+        # GIVEN
+        embeddings = DeterministicFakeEmbedding(size=16)
+        store = InMemoryVectorStore(embeddings)
+        await store.aadd_documents(
+            [
+                _doc("The median is robust to outliers in the panel.", title="Median"),
+                _doc("The frontend uses React and TypeScript for the interface.", title="Frontend"),
+                _doc("The median and the mean together form the compromise.", title="Compromise"),
+            ]
+        )
+        config = RetrievalConfig(mode="bm25", k=3)
+        retriever = DocsRetriever(store=store, config=config, reranker=None, llm=None)
+
+        # WHEN
+        results = await retriever.search("median")
+
+        # THEN
+        titles = [chunk.title for chunk in results]
+        assert titles.index("Median") < titles.index("Frontend")
+        assert titles.index("Compromise") < titles.index("Frontend")
+        assert next(chunk.score for chunk in results if chunk.title == "Frontend") == 0.0
+
+    @pytest.mark.asyncio
+    async def test_reuses_the_cached_index_on_a_second_search(self):
+        """
+        GIVEN a retriever that has already run one bm25 search
+        WHEN a second search runs against the same store
+        THEN it still returns correct results without rebuilding from an empty index
+             (a crude proxy: the store is not queried for "all documents" a second
+             time, checked by monkeypatching the store's underlying search call)
+        """
+        # GIVEN
+        embeddings = DeterministicFakeEmbedding(size=16)
+        store = InMemoryVectorStore(embeddings)
+        await store.aadd_documents([_doc("The median and the mean.", title="Median")])
+        config = RetrievalConfig(mode="bm25", k=1)
+        retriever = DocsRetriever(store=store, config=config, reranker=None, llm=None)
+        await retriever.search("median")
+        calls = []
+        original = store.asimilarity_search_with_score
+
+        async def _counting(*args, **kwargs):
+            calls.append((args, kwargs))
+            return await original(*args, **kwargs)
+
+        store.asimilarity_search_with_score = _counting
+
+        # WHEN
+        await retriever.search("mean")
+
+        # THEN
+        assert calls == []  # the cached index served the second search; no re-fetch
+
+    @pytest.mark.asyncio
+    async def test_an_empty_collection_raises_a_clear_value_error(self):
+        """
+        GIVEN a store with no documents added to it
+        WHEN search() runs with mode="bm25"
+        THEN it raises ValueError naming the empty collection, rather than the
+             ZeroDivisionError rank_bm25 raises internally when asked to index
+             zero documents
+        """
+        # GIVEN
+        embeddings = DeterministicFakeEmbedding(size=16)
+        store = InMemoryVectorStore(embeddings)
+        config = RetrievalConfig(mode="bm25", k=1)
+        retriever = DocsRetriever(store=store, config=config, reranker=None, llm=None)
+
+        # WHEN / THEN
+        with pytest.raises(ValueError, match="empty"):
+            await retriever.search("median")
