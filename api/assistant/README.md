@@ -48,6 +48,39 @@ Every build records `git describe` of this repository and of the corpus reposito
 docker exec become-assistant-db psql -U assistant -d assistant -c "SELECT name, corpus_version, app_version, chunk_count FROM assistant_collections"
 ```
 
+## Chunk captions
+
+Prepending a short caption to a chunk's own text, before it is embedded, was the context
+enrichment mode that improved retrieval quality the most, of everything this project's search
+lab measured (`--context captions`, `api/assistant/rag/enrich.py`). A caption names the source
+document and says what that one fragment covers, giving a generic-looking sentence the context
+it would otherwise only have inside its full document.
+
+Captions live in a JSON file, `chunk_key` (a chunk's own sha256, `enrich.py`) mapped to its
+caption text, named by `ASSISTANT_CAPTIONS_FILE` and kept in the private corpus repository next
+to the local manifest, so its own `git describe` becomes part of `corpus_version` the same way
+the manifest's already does. Building a `captions` collection fails outright when none of its
+chunks match an entry - a sign the file belongs to another corpus revision or chunker - and logs
+a warning, by count only, when just some chunks miss one.
+
+### Refreshing captions after a corpus or chunker change
+
+1. `uv run python scripts/assistant/captions.py missing --strategy markdown_headers --size 500
+   --overlap-pct 10 --out batch.json` chunks the corpus exactly as a real ingest run would,
+   reports how many of its chunks have no caption yet, and, with `--out`, writes the documents
+   that do - full text and all - to a JSON file. It touches only the corpus and the captions
+   file: no chat model, no embedding server, no database.
+2. Caption every fragment the batch file lists: one or two sentences, at most 50 words, naming
+   what the document is and what that specific fragment covers - not a restatement of its own
+   wording - written in English, with no markup. Save the result as a JSON object mapping each
+   fragment's `sha` to its caption.
+3. `uv run python scripts/assistant/captions.py merge <captioned-batch.json>` folds those
+   captions into `ASSISTANT_CAPTIONS_FILE`, creating it on the first run, and reports how many
+   captions were added versus replaced.
+4. Commit the updated captions file in the corpus repository.
+5. Rebuild the collection: rerun `ingest.py` (see "Start" above) with `--context captions` added,
+   so the new captions take effect.
+
 ## Running the pgvector-backed tests locally
 
 `tests/integration/api/test_assistant_store.py`, `test_assistant_pipeline.py` and
