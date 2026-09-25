@@ -6,7 +6,8 @@ does search find a chunk from the right document at all, regardless of what an L
 would eventually say about it. The answer evaluation adds the answer-quality half
 (fact/citation grading, LangSmith experiments) on top of a running assistant.
 
-    uv run python scripts/assistant/eval_retrieval.py --collection docs_default
+    uv run python scripts/assistant/eval_retrieval.py \\
+        --collection docs_markdown_headers_500_o10_captions_bge_m3
 
 Needs the "assistant" extra and a running embedding llama-server. --rerank also needs
 the reranker llama-server, and a query transform needs the chat llama-server.

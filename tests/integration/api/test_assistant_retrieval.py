@@ -146,7 +146,7 @@ class TestDocsRetrieverAgainstRealPgvector:
                     )
                 ]
             )
-            config = RetrievalConfig(mode="dense", k=1)
+            config = RetrievalConfig(mode="dense", k=1, query_transform="none")
             retriever = DocsRetriever(store=store, config=config, reranker=None, llm=None)
 
             # WHEN
@@ -211,7 +211,7 @@ class TestDocsRetrieverAgainstRealPgvector:
                     ),
                 ]
             )
-            config = RetrievalConfig(mode="dense", k=2)
+            config = RetrievalConfig(mode="dense", k=2, query_transform="none")
             retriever = DocsRetriever(store=store, config=config, reranker=None, llm=None)
 
             # WHEN

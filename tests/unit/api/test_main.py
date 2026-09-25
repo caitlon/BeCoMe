@@ -313,7 +313,7 @@ class TestAssistantRouterGating:
             "enabled": True,
             "model": "Qwen/Qwen3-4B-Instruct-2507",
             "mode": "hybrid",
-            "collection": "docs_default",
+            "collection": "docs_markdown_headers_500_o10_captions_bge_m3",
         }
 
     @pytest.mark.parametrize(

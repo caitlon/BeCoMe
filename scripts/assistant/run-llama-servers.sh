@@ -16,8 +16,8 @@ CHAT_ALIAS="${CHAT_ALIAS:-Qwen/Qwen3-4B-Instruct-2507}"
 trap 'kill 0' EXIT INT TERM
 
 llama-server -hf "$CHAT_HF" --alias "$CHAT_ALIAS" --jinja -c 16384 --port 8081 "$@" &
-llama-server -hf Qwen/Qwen3-Embedding-0.6B-GGUF:Q8_0 \
-  --alias Qwen/Qwen3-Embedding-0.6B --embedding --pooling last -c 8192 --port 8082 &
+llama-server -hf ggml-org/bge-m3-Q8_0-GGUF \
+  --alias BAAI/bge-m3 --embedding --pooling cls -c 8192 -b 8192 -ub 8192 --port 8082 &
 llama-server -hf gpustack/bge-reranker-v2-m3-GGUF:Q4_K_M \
   --alias BAAI/bge-reranker-v2-m3 --embedding --pooling rank --port 8083 &
 

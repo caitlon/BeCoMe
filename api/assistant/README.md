@@ -28,11 +28,13 @@ Runs only on a developer machine. `Settings` refuses to start any deployed profi
    The URL has no default, and both the indexer and the backend read it; every other
    `ASSISTANT_*` variable is listed in `env/.env.example`.
 3. Model servers: `./scripts/assistant/run-llama-servers.sh`
-4. Index the documentation: `uv run python scripts/assistant/ingest.py --name docs_default
-   --strategy markdown_headers` builds the collection the backend reads by default; `--help`
-   lists the chunker, context and wave options.
+4. Index the documentation: `uv run python scripts/assistant/ingest.py --name
+   docs_markdown_headers_500_o10_captions_bge_m3 --strategy markdown_headers --size 500
+   --overlap-pct 10 --context captions` builds the collection the backend reads by default;
+   `--help` lists the chunker, context and wave options.
 5. Evaluate retrieval quality: `uv run python scripts/assistant/eval_retrieval.py --collection
-   docs_default` scores hit@1/3/5, MRR and nDCG@5 for that collection against the golden set
+   docs_markdown_headers_500_o10_captions_bge_m3 --mode hybrid --query-transform translate_en`
+   scores hit@1/3/5, MRR and nDCG@5 for that collection against the golden set
    (`scripts/assistant/golden_set.jsonl` by default; point `--golden-set` at another file to use
    a different one). Every report also records the collection's `app_version` and
    `corpus_version` from the `assistant_collections` registry, and is written to
@@ -87,8 +89,7 @@ a warning, by count only, when just some chunks miss one.
    captions into `ASSISTANT_CAPTIONS_FILE`, creating it on the first run, and reports how many
    captions were added versus replaced.
 4. Commit the updated captions file in the corpus repository.
-5. Rebuild the collection: rerun `ingest.py` (see "Start" above) with `--context captions` added,
-   so the new captions take effect.
+5. Rebuild the collection: rerun `ingest.py` (see "Start" above), so the new captions take effect.
 
 ## Running the pgvector-backed tests locally
 
