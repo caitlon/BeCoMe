@@ -683,6 +683,60 @@ class TestHydeTransform:
         assert queries == ["What is the best compromise?"]
 
 
+class _RecordingFakeChatModel(FakeListChatModel):
+    """FakeListChatModel that also remembers the temperature of its last call."""
+
+    recorded_temperature: float | None = None
+
+    def _call(self, *args, **kwargs) -> str:
+        self.recorded_temperature = kwargs.get("temperature")
+        return super()._call(*args, **kwargs)
+
+
+class TestQueryTransformsRunAtZeroTemperature:
+    """Every query_transform must produce the same search query for the same question.
+
+    A transform that samples would translate, paraphrase, or hypothesize differently
+    across otherwise-identical searches, so the same user question could retrieve
+    different chunks from one run to the next.
+    """
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("query_transform", "response"),
+        [
+            pytest.param("translate_en", "What does BeCoMe combine?", id="translate_en"),
+            pytest.param(
+                "multi_query",
+                "How does BeCoMe aggregate opinions?\nWhat is the BeCoMe formula?",
+                id="multi_query",
+            ),
+            pytest.param("hyde", "BeCoMe combines the arithmetic mean and the median.", id="hyde"),
+        ],
+    )
+    async def test_transform_invokes_the_model_with_temperature_zero(
+        self, query_transform, response
+    ):
+        """
+        GIVEN a chat model that records the keyword arguments of its last call
+        WHEN _transformed_queries runs, for each of translate_en, multi_query, and hyde
+        THEN the model was called with temperature=0, so the same question always
+             becomes the same search query
+        """
+        # GIVEN
+        embeddings = DeterministicFakeEmbedding(size=16)
+        store = InMemoryVectorStore(embeddings)
+        llm = _RecordingFakeChatModel(responses=[response])
+        config = RetrievalConfig(mode="dense", query_transform=query_transform)
+        retriever = DocsRetriever(store=store, config=config, reranker=None, llm=llm)
+
+        # WHEN
+        await retriever._transformed_queries("What does BeCoMe combine?")
+
+        # THEN
+        assert llm.recorded_temperature == 0
+
+
 class TestDocsRetrieverBm25Search:
     """BM25 keyword search over the whole collection, fetched once and cached."""
 
