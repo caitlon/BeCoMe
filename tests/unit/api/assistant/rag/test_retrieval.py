@@ -71,6 +71,21 @@ class TestRetrievedChunk:
             chunk.score = 0.0
 
 
+class TestRetrievalConfigDefaults:
+    """RetrievalConfig's defaults are the search lab's measured winner, not a placeholder."""
+
+    def test_defaults_are_the_measured_winner(self):
+        """
+        GIVEN a RetrievalConfig built with no arguments
+        WHEN compared to the search lab's measured winner (hybrid search, k=5, no
+             reranker, the query translated to English first)
+        THEN the two are equal, since that combination is what every field defaults to
+        """
+        assert RetrievalConfig() == RetrievalConfig(
+            mode="hybrid", k=5, rerank=False, query_transform="translate_en"
+        )
+
+
 class TestDocsRetrieverDenseSearch:
     """Dense search against an in-memory store standing in for PGVectorStore."""
 
@@ -96,7 +111,7 @@ class TestDocsRetrieverDenseSearch:
                 ),
             ]
         )
-        config = RetrievalConfig(mode="dense", k=1)
+        config = RetrievalConfig(mode="dense", k=1, query_transform="none")
         retriever = DocsRetriever(store=store, config=config, reranker=None, llm=None)
 
         # WHEN
@@ -122,7 +137,7 @@ class TestDocsRetrieverDenseSearch:
         embeddings = DeterministicFakeEmbedding(size=16)
         store = _RelevanceScoredInMemoryVectorStore(embeddings)
         await store.aadd_documents([_doc(f"chunk {i}", title=f"T{i}") for i in range(3)])
-        config = RetrievalConfig(mode="dense", k=2)
+        config = RetrievalConfig(mode="dense", k=2, query_transform="none")
         retriever = DocsRetriever(store=store, config=config, reranker=None, llm=None)
 
         # WHEN
@@ -150,7 +165,7 @@ class TestDocsRetrieverDenseSearch:
                 _doc("Cats are small domesticated carnivorous mammals.", title="Unrelated"),
             ]
         )
-        config = RetrievalConfig(mode="dense", k=3)
+        config = RetrievalConfig(mode="dense", k=3, query_transform="none")
         retriever = DocsRetriever(store=store, config=config, reranker=None, llm=None)
 
         # WHEN
@@ -176,7 +191,7 @@ class TestDocsRetrieverDenseSearch:
         embeddings = DeterministicFakeEmbedding(size=16)
         store = InMemoryVectorStore(embeddings)
         await store.aadd_documents([_doc("chunk", title="T")])
-        config = RetrievalConfig(mode="dense", k=1)
+        config = RetrievalConfig(mode="dense", k=1, query_transform="none")
         retriever = DocsRetriever(store=store, config=config, reranker=None, llm=None)
 
         # WHEN / THEN
@@ -209,7 +224,7 @@ class TestDocsRetrieverDenseSearch:
                 ),
             ]
         )
-        config = RetrievalConfig(mode="dense", k=2)
+        config = RetrievalConfig(mode="dense", k=2, query_transform="none")
         retriever = DocsRetriever(store=store, config=config, reranker=None, llm=None)
 
         # WHEN
@@ -273,7 +288,7 @@ class TestDocsRetrieverRerank:
         store = _RelevanceScoredInMemoryVectorStore(embeddings)
         await store.aadd_documents([_doc(f"chunk {i}", title=f"T{i}") for i in range(3)])
         reranker = LlamaServerReranker(base_url="http://127.0.0.1:8083/v1", model="m", timeout=5.0)
-        config = RetrievalConfig(mode="dense", k=3, rerank=True)
+        config = RetrievalConfig(mode="dense", k=3, rerank=True, query_transform="none")
         retriever = DocsRetriever(store=store, config=config, reranker=reranker, llm=None)
 
         # WHEN
@@ -291,7 +306,7 @@ class TestDocsRetrieverRerank:
         """
         embeddings = DeterministicFakeEmbedding(size=16)
         store = _RelevanceScoredInMemoryVectorStore(embeddings)
-        config = RetrievalConfig(mode="dense", rerank=True)
+        config = RetrievalConfig(mode="dense", rerank=True, query_transform="none")
 
         with pytest.raises(ValueError, match="reranker"):
             DocsRetriever(store=store, config=config, reranker=None, llm=None)
@@ -688,7 +703,7 @@ class TestDocsRetrieverBm25Search:
                 _doc("The median and the mean together form the compromise.", title="Compromise"),
             ]
         )
-        config = RetrievalConfig(mode="bm25", k=3)
+        config = RetrievalConfig(mode="bm25", k=3, query_transform="none")
         retriever = DocsRetriever(store=store, config=config, reranker=None, llm=None)
 
         # WHEN
@@ -713,7 +728,7 @@ class TestDocsRetrieverBm25Search:
         embeddings = DeterministicFakeEmbedding(size=16)
         store = InMemoryVectorStore(embeddings)
         await store.aadd_documents([_doc("The median and the mean.", title="Median")])
-        config = RetrievalConfig(mode="bm25", k=1)
+        config = RetrievalConfig(mode="bm25", k=1, query_transform="none")
         retriever = DocsRetriever(store=store, config=config, reranker=None, llm=None)
         await retriever.search("median")
         calls = []
@@ -743,7 +758,7 @@ class TestDocsRetrieverBm25Search:
         # GIVEN
         embeddings = DeterministicFakeEmbedding(size=16)
         store = InMemoryVectorStore(embeddings)
-        config = RetrievalConfig(mode="bm25", k=1)
+        config = RetrievalConfig(mode="bm25", k=1, query_transform="none")
         retriever = DocsRetriever(store=store, config=config, reranker=None, llm=None)
 
         # WHEN / THEN
@@ -763,7 +778,7 @@ class TestDocsRetrieverBm25Search:
         embeddings = DeterministicFakeEmbedding(size=16)
         store = InMemoryVectorStore(embeddings)
         await store.aadd_documents([_doc(f"median chunk {i}", title=f"T{i}") for i in range(3)])
-        config = RetrievalConfig(mode="bm25", k=1)
+        config = RetrievalConfig(mode="bm25", k=1, query_transform="none")
         retriever = DocsRetriever(store=store, config=config, reranker=None, llm=None)
 
         # WHEN / THEN
@@ -784,7 +799,7 @@ class TestDocsRetrieverBm25Search:
         store = InMemoryVectorStore(embeddings)
         await store.aadd_documents([_doc(f"median chunk {i}", title=f"T{i}") for i in range(3)])
         reranker = LlamaServerReranker(base_url="http://127.0.0.1:8083/v1", model="m", timeout=5.0)
-        config = RetrievalConfig(mode="bm25", k=3, rerank=True)
+        config = RetrievalConfig(mode="bm25", k=3, rerank=True, query_transform="none")
         retriever = DocsRetriever(store=store, config=config, reranker=reranker, llm=None)
 
         # WHEN
@@ -888,7 +903,7 @@ class TestDocsRetrieverHybridSearch:
                 _doc("The frontend uses React and TypeScript.", title="Frontend"),
             ]
         )
-        config = RetrievalConfig(mode="hybrid", k=2)
+        config = RetrievalConfig(mode="hybrid", k=2, query_transform="none")
         retriever = DocsRetriever(store=store, config=config, reranker=None, llm=None)
 
         # WHEN

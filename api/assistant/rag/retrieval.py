@@ -40,18 +40,22 @@ def _tokenize(text: str) -> list[str]:
 class RetrievalConfig:
     """Which retrieval mode to run, how many results, and its optional add-ons.
 
+    The defaults are the search lab's measured winner: hybrid search (reciprocal
+    rank fusion of dense and bm25) over the markdown_headers 500/10 chunks with
+    captions, the query translated to English first, and no reranker - reranking
+    did not earn back its cost against that collection.
+
     :param mode: "dense", "bm25", or "hybrid" (reciprocal rank fusion of the other
-        two). The default stays "dense" until the lab's closing step sets the
-        measured winner.
+        two).
     :param k: Number of chunks to return.
     :param rerank: Whether to rerank the candidates before truncating to k.
     :param query_transform: "none", "translate_en", "multi_query", or "hyde".
     """
 
-    mode: Literal["bm25", "dense", "hybrid"] = "dense"
+    mode: Literal["bm25", "dense", "hybrid"] = "hybrid"
     k: int = 5
     rerank: bool = False
-    query_transform: Literal["none", "translate_en", "multi_query", "hyde"] = "none"
+    query_transform: Literal["none", "translate_en", "multi_query", "hyde"] = "translate_en"
 
 
 @dataclass(frozen=True)

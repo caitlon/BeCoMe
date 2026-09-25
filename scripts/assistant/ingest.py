@@ -6,7 +6,8 @@ locations, then builds exactly one collection per invocation - run it once per
 chunker/context/wave variant the retrieval experiments want to compare.
 
     uv run python scripts/assistant/ingest.py \\
-        --name docs_default --strategy markdown_headers --size 500 --overlap-pct 10
+        --name docs_markdown_headers_500_o10_captions_bge_m3 --strategy markdown_headers \\
+        --size 500 --overlap-pct 10 --context captions
 
 Needs the "assistant" extra (uv sync --extra assistant) and a running embedding
 llama-server (api/assistant/README.md).

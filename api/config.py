@@ -240,12 +240,12 @@ class Settings(BaseSettings):
     assistant_llm_base_url: str = "http://127.0.0.1:8081/v1"
     assistant_llm_model: str = "Qwen/Qwen3-4B-Instruct-2507"
     assistant_embedding_base_url: str = "http://127.0.0.1:8082/v1"
-    assistant_embedding_model: str = "Qwen/Qwen3-Embedding-0.6B"
+    assistant_embedding_model: str = "BAAI/bge-m3"
     assistant_rerank_base_url: str = "http://127.0.0.1:8083/v1"
     assistant_rerank_model: str = "BAAI/bge-reranker-v2-m3"
     # No default: a URL here would hard-code a password or reach a database that has none.
     assistant_vector_db_url: str = ""
-    assistant_collection: str = "docs_default"
+    assistant_collection: str = "docs_markdown_headers_500_o10_captions_bge_m3"
     assistant_mode: Literal["agent", "workflow", "hybrid"] = "hybrid"
     assistant_max_tool_calls: int = 4
     assistant_max_history_turns: int = 10
