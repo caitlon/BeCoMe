@@ -7,7 +7,11 @@ would eventually say about it. The answer evaluation adds the answer-quality hal
 (fact/citation grading, LangSmith experiments) on top of a running assistant.
 
     uv run python scripts/assistant/eval_retrieval.py \\
-        --collection docs_markdown_headers_500_o10_captions_bge_m3
+        --collection docs_markdown_headers_500_o10_captions_bge_m3 \\
+        --mode hybrid --query-transform translate_en
+
+The flags default to dense search with no transform, so the assistant's own default
+(hybrid search with the question translated to English) has to be asked for, as above.
 
 Needs the "assistant" extra and a running embedding llama-server. --rerank also needs
 the reranker llama-server, and a query transform needs the chat llama-server.
