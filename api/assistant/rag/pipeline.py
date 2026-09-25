@@ -4,6 +4,8 @@ Used only by scripts/assistant/ingest.py; the running API server never calls thi
 """
 
 import hashlib
+import json
+import logging
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -14,11 +16,13 @@ from langchain_core.documents import Document
 
 from api.assistant.rag.chunkers import ChunkerConfig, split
 from api.assistant.rag.corpus import build_manifest
-from api.assistant.rag.enrich import ContextMode, enrich
+from api.assistant.rag.enrich import ContextMode, chunk_key, enrich
 from api.assistant.rag.loaders import load_source
 from api.assistant.rag.models import make_chat_model, make_embeddings
 from api.assistant.rag.store import ensure_collection, make_engine, open_store
 from api.config import Settings
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -150,6 +154,32 @@ async def _record_collection(
         await conn.commit()
 
 
+def load_captions(settings: Settings, repo_root: Path) -> dict[str, str]:
+    """Load the chunk_key -> caption mapping the "captions" context mode reads.
+
+    The file is written outside this stack (see enrich.py's module docstring) and
+    kept in the private corpus repository, next to the local manifest.
+
+    :param settings: Application settings; assistant_captions_file names the file.
+    :param repo_root: Repository root; a relative assistant_captions_file resolves
+        from here, the same way assistant_private_corpus_manifest does - an
+        absolute path wins the join.
+    :return: chunk_key(chunk's own text) -> caption, as read from that file.
+    :raises ValueError: If assistant_captions_file is not set, or the file's content
+        is not a JSON object mapping strings to strings.
+    """
+    if not settings.assistant_captions_file:
+        raise ValueError(
+            "no captions file configured: set ASSISTANT_CAPTIONS_FILE to build a "
+            "'captions' collection"
+        )
+    path = repo_root / settings.assistant_captions_file
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict) or not all(isinstance(value, str) for value in data.values()):
+        raise ValueError(f"{path}: captions file must be a JSON object of strings to strings")
+    return data
+
+
 async def build_collection(spec: CollectionSpec, settings: Settings, repo_root: Path) -> int:
     """Build one named collection: load the corpus, chunk it, embed it, store it.
 
@@ -158,7 +188,11 @@ async def build_collection(spec: CollectionSpec, settings: Settings, repo_root: 
         corpus locations).
     :param repo_root: Repository root, passed through to build_manifest.
     :return: Number of chunks written to the collection.
+    :raises ValueError: If spec.context is "captions" and load_captions() rejects the
+        configured file - checked before the corpus is loaded or embedded, so a
+        misconfigured captions build fails immediately rather than after that work.
     """
+    captions = load_captions(settings, repo_root) if spec.context == "captions" else None
     private_dirs = [Path(entry) for entry in settings.assistant_private_corpus_dirs]
     local_manifest = (
         Path(settings.assistant_private_corpus_manifest)
@@ -179,7 +213,18 @@ async def build_collection(spec: CollectionSpec, settings: Settings, repo_root: 
     embeddings = make_embeddings(settings)
     chunks = split(documents, spec.chunker, embeddings=embeddings)
     llm = make_chat_model(settings) if spec.context in ("llm_context", "doc_summary") else None
-    chunks = enrich(chunks, spec.context, llm=llm)
+    if captions is not None:
+        missing = sum(1 for chunk in chunks if chunk_key(chunk.page_content) not in captions)
+        if missing:
+            logger.warning(
+                "some chunks have no matching caption",
+                extra={
+                    "event": "assistant_captions_missing",
+                    "missing": missing,
+                    "total": len(chunks),
+                },
+            )
+    chunks = enrich(chunks, spec.context, llm=llm, captions=captions)
 
     vector_size = len(embeddings.embed_query("dimension probe"))
     engine = make_engine(settings.assistant_vector_db_url)

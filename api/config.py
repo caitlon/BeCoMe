@@ -260,6 +260,12 @@ class Settings(BaseSettings):
     # None means no local layer: the default, and what CI runs with. Tests that need a
     # local layer build one in a temporary folder and set this explicitly.
     assistant_private_corpus_manifest: str | None = None
+    # Path to a JSON object mapping a chunk's key (enrich.chunk_key, the sha256 of the
+    # chunk's own text) to a caption written for that chunk; only the "captions" context
+    # mode reads it. It lives in the private corpus repository next to the local manifest,
+    # so its version is part of corpus_version. A relative path resolves from the
+    # repository root. None means no captions file, and a "captions" build then fails.
+    assistant_captions_file: str | None = None
     assistant_langsmith_enabled: bool = False
     assistant_langsmith_api_key: str | None = None
     assistant_langsmith_endpoint: str = "https://eu.api.smith.langchain.com"

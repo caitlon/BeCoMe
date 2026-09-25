@@ -16,6 +16,7 @@ import pytest
 from langchain_core.language_models.fake_chat_models import FakeListChatModel
 
 from api.assistant.rag.chunkers import ChunkerConfig
+from api.assistant.rag.enrich import chunk_key
 from api.assistant.rag.pipeline import CollectionSpec, build_collection
 from api.assistant.rag.store import make_engine, open_store
 from api.config import Settings
@@ -40,6 +41,7 @@ def _isolated_from_dotenv(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("ASSISTANT_PRIVATE_CORPUS_MANIFEST", raising=False)
     monkeypatch.delenv("ASSISTANT_PRIVATE_CORPUS_DIRS", raising=False)
+    monkeypatch.delenv("ASSISTANT_CAPTIONS_FILE", raising=False)
 
 
 class _FakeEmbeddingHandler(BaseHTTPRequestHandler):
@@ -312,6 +314,84 @@ class TestBuildCollectionWithModelWrittenContext:
             )
         finally:
             await engine.close()
+
+
+class TestBuildCollectionWithCaptions:
+    """context="captions" reads a caption file and logs how many chunks got none."""
+
+    @pytest.mark.asyncio
+    async def test_builds_a_collection_with_file_read_captions(
+        self, tmp_path, postgresql, fake_embedding_server, caplog
+    ):
+        """
+        GIVEN a two-chunk corpus and a captions file covering all chunks but one
+        WHEN build_collection runs with context="captions"
+        THEN the captioned chunk's stored text starts with its title and caption, and
+             a warning names how many chunks had no matching caption
+        """
+        # GIVEN
+        (tmp_path / "docs").mkdir()
+        (tmp_path / "docs" / "index.md").write_text(
+            "# BeCoMe\n\n"
+            "## First\n\n"
+            "BeCoMe combines the arithmetic mean and the median.\n\n"
+            "## Second\n\n"
+            "The best compromise minimizes the total distance to every opinion.\n",
+            encoding="utf-8",
+        )
+        captions_file = tmp_path / "captions.json"
+        captions_file.write_text(
+            json.dumps(
+                {
+                    chunk_key(
+                        "BeCoMe combines the arithmetic mean and the median."
+                    ): "Introduces the aggregation method."
+                }
+            ),
+            encoding="utf-8",
+        )
+        settings = Settings(
+            secret_key="test-secret-key",
+            assistant_vector_db_url=_connection_url(postgresql),
+            assistant_embedding_base_url=fake_embedding_server,
+            assistant_embedding_model="fake-embedding-model",
+            assistant_captions_file=str(captions_file),
+        )
+        spec = CollectionSpec(
+            name="docs_test_captions",
+            chunker=ChunkerConfig(strategy="markdown_headers", size=500, overlap_pct=10),
+            context="captions",
+            wave=1,
+        )
+
+        # WHEN
+        chunk_count = await build_collection(spec, settings, repo_root=tmp_path)
+
+        # THEN: the captioned chunk's stored text carries its title and caption
+        assert chunk_count == 2
+        from api.assistant.rag.models import make_embeddings
+
+        engine = make_engine(_connection_url(postgresql))
+        try:
+            query_embeddings = make_embeddings(settings)
+            store = open_store(engine, table="docs_test_captions", embeddings=query_embeddings)
+            results = await store.asimilarity_search_with_score("mean and median", k=1)
+            assert len(results) == 1
+            assert results[0][0].page_content.startswith(
+                "BeCoMe. Introduces the aggregation method.\n\n"
+            )
+        finally:
+            await engine.close()
+
+        # AND: the one chunk with no matching caption was logged, by count only
+        missing_records = [
+            record
+            for record in caplog.records
+            if getattr(record, "event", None) == "assistant_captions_missing"
+        ]
+        assert len(missing_records) == 1
+        assert missing_records[0].missing == 1
+        assert missing_records[0].total == 2
 
 
 def _plain_dsn(url: str) -> str:

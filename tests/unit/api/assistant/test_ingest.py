@@ -58,3 +58,34 @@ class TestBuildSpec:
             context="none",
             wave=1,
         )
+
+
+class TestParseArgs:
+    """_parse_args accepts every documented --context mode, "captions" included."""
+
+    def test_context_captions_is_parsed_and_reaches_the_collection_spec(self, monkeypatch):
+        """
+        GIVEN CLI arguments naming --context captions
+        WHEN _parse_args parses them and _build_spec converts the result
+        THEN the resulting CollectionSpec carries context="captions"
+        """
+        # GIVEN
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "ingest.py",
+                "--name",
+                "docs_default",
+                "--strategy",
+                "markdown_headers",
+                "--context",
+                "captions",
+            ],
+        )
+
+        # WHEN
+        spec = ingest._build_spec(ingest._parse_args())
+
+        # THEN
+        assert spec.context == "captions"

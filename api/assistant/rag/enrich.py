@@ -25,7 +25,10 @@ ContextMode = Literal["none", "heading_path", "llm_context", "doc_summary", "cap
 
 
 def chunk_key(text: str) -> str:
-    """The key a chunk's caption is stored under: the sha256 hex digest of its own text."""
+    """The key a chunk's caption is stored under: the sha256 hex digest of its own text.
+
+    Two chunks with identical text share a key, and so share a caption.
+    """
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
