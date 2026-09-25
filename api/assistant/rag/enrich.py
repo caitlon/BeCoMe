@@ -5,8 +5,15 @@ carried over unchanged except for one addition. Every enriched Document also car
 metadata["chunk_text"], the chunk's own text before enrichment, for every mode
 including "none", so a later citation or a source-grounding check can tell the
 chunk's own text apart from any model-written text fused into page_content.
+
+Mode "captions" does not generate anything locally: its captions are written outside
+this stack, kept in a file in the private corpus repository, and keyed by chunk_key()
+on the chunk's own text as split (before enrichment). A chunk whose key has no entry
+in that mapping still gets its title prepended on its own.
 """
 
+import hashlib
+from collections.abc import Mapping
 from typing import Literal
 
 from langchain_core.documents import Document
@@ -14,7 +21,32 @@ from langchain_core.language_models import BaseChatModel
 
 from api.assistant.rag.models import strip_think_block
 
-ContextMode = Literal["none", "heading_path", "llm_context", "doc_summary"]
+ContextMode = Literal["none", "heading_path", "llm_context", "doc_summary", "captions"]
+
+
+def chunk_key(text: str) -> str:
+    """The key a chunk's caption is stored under: the sha256 hex digest of its own text."""
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _prepend_caption(chunk: Document, captions: Mapping[str, str]) -> Document:
+    """Prepend the chunk's own title and its looked-up caption to its text.
+
+    The caption comes from outside this module (see the module docstring); a chunk
+    whose chunk_key has no entry in captions falls back to the title on its own.
+
+    :param chunk: The chunk to enrich.
+    :param captions: chunk_key(chunk's own text) -> caption.
+    :return: A new Document; text is unchanged when there is neither a title nor a
+        matching caption.
+    """
+    title = chunk.metadata.get("title", "")
+    caption = captions.get(chunk_key(chunk.page_content), "")
+    context = " ".join(part for part in (f"{title}." if title else "", caption) if part)
+    text = f"{context}\n\n{chunk.page_content}" if context else chunk.page_content
+    return Document(
+        page_content=text, metadata={**chunk.metadata, "chunk_text": chunk.page_content}
+    )
 
 
 def _prepend_heading_path(chunk: Document) -> Document:
@@ -113,17 +145,24 @@ def _prepend_doc_summary(chunks: list[Document], llm: BaseChatModel) -> list[Doc
 
 
 def enrich(
-    chunks: list[Document], mode: ContextMode, llm: BaseChatModel | None = None
+    chunks: list[Document],
+    mode: ContextMode,
+    llm: BaseChatModel | None = None,
+    captions: Mapping[str, str] | None = None,
 ) -> list[Document]:
     """Prepend context to each chunk's text before it is embedded and stored.
 
     :param chunks: Chunks to enrich (chunkers.split()'s output).
     :param mode: Which context to add.
-    :param llm: Required for "llm_context" and "doc_summary"; ignored by "none" and
-        "heading_path".
+    :param llm: Required for "llm_context" and "doc_summary"; ignored by "none",
+        "heading_path", and "captions".
+    :param captions: Required for "captions": chunk_key(chunk's own text) -> caption,
+        written outside this module (see the module docstring). Ignored by every
+        other mode.
     :return: New Documents with the same metadata and mode-appropriate content.
-    :raises ValueError: If mode needs an llm and none was given, or mode is not one of
-        "none", "heading_path", "llm_context", "doc_summary".
+    :raises ValueError: If mode is "captions" and captions is None, if mode needs an
+        llm and none was given, or mode is not one of "none", "heading_path",
+        "captions", "llm_context", "doc_summary".
     """
     if mode == "none":
         return [
@@ -134,6 +173,10 @@ def enrich(
         ]
     if mode == "heading_path":
         return [_prepend_heading_path(chunk) for chunk in chunks]
+    if mode == "captions":
+        if captions is None:
+            raise ValueError("context mode 'captions' requires a captions mapping")
+        return [_prepend_caption(chunk, captions) for chunk in chunks]
     if llm is None:
         raise ValueError(f"context mode {mode!r} requires an llm")
     if mode == "llm_context":
