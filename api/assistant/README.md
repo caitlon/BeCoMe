@@ -3,6 +3,15 @@
 Runs only on a developer machine. `Settings` refuses to start any deployed profile with
 `ASSISTANT_ENABLED=true`.
 
+## Contents
+
+- [Prerequisites](#prerequisites)
+- [Start](#start)
+- [Private corpus layer](#private-corpus-layer)
+- [Chunk captions](#chunk-captions)
+    - [Refreshing captions after a corpus or chunker change](#refreshing-captions-after-a-corpus-or-chunker-change)
+- [Running the pgvector-backed tests locally](#running-the-pgvector-backed-tests-locally)
+
 ## Prerequisites
 
 - `brew install llama.cpp`
