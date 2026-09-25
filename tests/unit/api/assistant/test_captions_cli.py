@@ -45,7 +45,7 @@ class TestReadCaptionsOrEmpty:
         THEN it returns {} instead of raising FileNotFoundError
         """
         settings = Settings(
-            secret_key="test-secret-key",
+            secret_key="test-secret-key",  # pragma: allowlist secret
             assistant_captions_file=str(tmp_path / "does-not-exist.json"),
         )
 
