@@ -17,7 +17,7 @@
     },
     "whyBetterThanMean": {
       "question": "Proč je BeCoMe lepší než prostý průměr?",
-      "answer": "BeCoMe zohledňuje nejistotu prostřednictvím fuzzy čísel, je robustní vůči odlehlým hodnotám díky složce mediánu a poskytuje odhad přesnosti (Δmax), který indikuje kvalitu konsenzu."
+      "answer": "BeCoMe zohledňuje nejistotu prostřednictvím fuzzy čísel, je robustní vůči odlehlým hodnotám díky složce mediánu a uvádí Δmax, tedy vzdálenost kompromisu od průměru i od mediánu."
     },
     "whenToUse": {
       "question": "Kdy mám použít BeCoMe?",
@@ -39,7 +39,7 @@
     "intro": "Naučte se interpretovat výsledky výpočtu BeCoMe a odhady chyb.",
     "whatIsMaxError": {
       "question": "Co znamená maximální chyba (Δmax)?",
-      "answer": "Maximální chyba Δmax = |Γ − Ω| / 2 ukazuje maximální odchylku od optima. Nižší hodnota indikuje lepší shodu mezi experty."
+      "answer": "Maximální chyba Δmax = |Γ − Ω| / 2 je polovina vzdálenosti mezi průměrem a mediánem, což je zároveň vzdálenost kompromisu od každého z nich. Nízká hodnota sama o sobě neznamená, že se experti shodli. Nízkou hodnotu může dát i panel rozdělený do dvou táborů, proto se podívejte i na graf jednotlivých názorů."
     },
     "whyDifferentMedian": {
       "question": "Proč se medián počítá jinak pro lichý a sudý počet expertů?",

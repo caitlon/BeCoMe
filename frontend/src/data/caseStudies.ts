@@ -171,7 +171,7 @@ export const caseStudies: CaseStudy[] = [
     result: {
       bestCompromise: 14.31,
       maxError: 5.97,
-      interpretation: "The best compromise recommends converting approximately 14.31% of arable land in flood areas to retention zones. This reflects a moderate approach that addresses flood risk while limiting impact on agricultural production. The relatively low error, ±5.97%, indicates reasonable consensus despite the diverse stakeholder interests.",
+      interpretation: "The best compromise recommends converting approximately 14.31% of arable land in flood areas to retention zones. This reflects a moderate approach that addresses flood risk while limiting impact on agricultural production. The error of ±5.97% is low because the mean and the median land fairly close together, not because the stakeholders agreed. The panel splits into two camps about 40 percentage points apart.",
     },
   },
 ];

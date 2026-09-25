@@ -72,7 +72,7 @@
     },
     "maxError": {
       "title": "Maximální chyba (Δmax)",
-      "description": "Metrika kvality indikující úroveň nejistoty kompromisu. Nižší hodnoty naznačují lepší shodu mezi experty.",
+      "description": "Polovina vzdálenosti mezi aritmetickým průměrem a mediánem, což je zároveň vzdálenost kompromisu od každého z nich. Nízká hodnota sama o sobě neznamená, že se experti shodli, protože ji může dát i panel rozdělený do dvou táborů. Podívejte se i na graf jednotlivých názorů.",
       "interpretation": "Pokud je maximální chyba vysoká vzhledem ke škále, naznačuje to významnou neshodu mezi experty."
     }
   },
