@@ -79,7 +79,7 @@
         "bestCompromise": "Best Compromise",
         "bestCompromiseDesc": "The optimal aggregation of all expert opinions",
         "maxError": "Max Error",
-        "maxErrorDesc": "Quality metric indicating agreement level",
+        "maxErrorDesc": "How far the compromise sits from the mean and the median",
         "experts": "Experts",
         "expertsDesc": "Number of opinions collected"
       },
