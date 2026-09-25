@@ -17,7 +17,7 @@
     },
     "whyBetterThanMean": {
       "question": "Why is BeCoMe better than a simple average?",
-      "answer": "BeCoMe accounts for uncertainty through fuzzy numbers, is robust against outliers thanks to the median component, and provides an accuracy estimate (Δmax) that indicates the quality of consensus."
+      "answer": "BeCoMe accounts for uncertainty through fuzzy numbers, is robust against outliers thanks to the median component, and reports Δmax, how far the compromise lies from both the mean and the median."
     },
     "whenToUse": {
       "question": "When should I use BeCoMe?",
@@ -39,7 +39,7 @@
     "intro": "Learn how to interpret BeCoMe calculation results and error estimates.",
     "whatIsMaxError": {
       "question": "What does the maximum error (Δmax) mean?",
-      "answer": "The maximum error Δmax = |Γ − Ω| / 2 shows the maximum deviation from the optimum. A lower value indicates better agreement among experts."
+      "answer": "The maximum error Δmax = |Γ − Ω| / 2 is half the distance between the mean and the median, which is also the distance from the compromise to each of them. A low value does not by itself mean the experts agreed. A panel split into two camps can give a low value too, so check the chart of individual opinions."
     },
     "whyDifferentMedian": {
       "question": "Why is the median calculated differently for odd and even expert counts?",
