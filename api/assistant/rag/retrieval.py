@@ -312,6 +312,11 @@ class DocsRetriever:
     async def _ask_llm(self, prompt: str) -> str:
         """Send one prompt to the chat model and return its cleaned reply.
 
+        Bound to temperature=0 here, not in make_chat_model: a transform must turn
+        the same question into the same search query, or the same question finds
+        different chunks from one run to the next. Chat answers keep their own
+        temperature, set elsewhere.
+
         :param prompt: The full prompt text.
         :return: The reply with any <think> block removed and outer whitespace stripped.
         :raises RuntimeError: If there is no chat model, which __init__ already refuses
@@ -319,7 +324,7 @@ class DocsRetriever:
         """
         if self._llm is None:
             raise RuntimeError("unreachable: __init__ requires an llm for this query_transform")
-        response = await self._llm.ainvoke(prompt)
+        response = await self._llm.bind(temperature=0).ainvoke(prompt)
         return strip_think_block(str(response.content))
 
     _TRANSLATE_PROMPT = (
