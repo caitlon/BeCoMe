@@ -1,11 +1,13 @@
 """Unit tests for per-chunk context enrichment (fakes only, no network)."""
 
+import hashlib
+
 import pytest
 from langchain_core.documents import Document
 from langchain_core.language_models.fake_chat_models import FakeListChatModel
 from pydantic import Field
 
-from api.assistant.rag.enrich import _DOC_SUMMARY_CHAR_BUDGET, enrich
+from api.assistant.rag.enrich import _DOC_SUMMARY_CHAR_BUDGET, chunk_key, enrich
 
 
 class _RecordingChatModel(FakeListChatModel):
@@ -19,7 +21,10 @@ class _RecordingChatModel(FakeListChatModel):
 
 
 def _chunk(
-    text: str, heading_path: str = "", source: str = "docs/method-description.md"
+    text: str,
+    heading_path: str = "",
+    source: str = "docs/method-description.md",
+    title: str = "Method",
 ) -> Document:
     """A chunk with the metadata keys enrich() reads."""
     return Document(
@@ -27,7 +32,7 @@ def _chunk(
         metadata={
             "source": source,
             "layer": "public",
-            "title": "Method",
+            "title": title,
             "lang": "en",
             "url": None,
             "sha256": "abc",
@@ -275,13 +280,102 @@ class TestDocSummaryMode:
         assert document_part == joined[:_DOC_SUMMARY_CHAR_BUDGET]
 
 
+class TestCaptionsMode:
+    """mode="captions" prepends a per-chunk caption, keyed by chunk_key(), and the title."""
+
+    def test_prepends_the_title_and_caption_when_the_caption_is_found(self):
+        """
+        GIVEN a chunk whose title is set and whose own text has a matching caption
+        WHEN enrich() runs with mode="captions"
+        THEN the title and caption appear before the chunk's own text, chunk_text
+             holds the chunk's own text, and the rest of the metadata is unchanged
+        """
+        # GIVEN
+        chunk = _chunk("Chunk body", title="Doc")
+        captions = {chunk_key(chunk.page_content): "What it covers."}
+
+        # WHEN
+        enriched = enrich([chunk], mode="captions", captions=captions)
+
+        # THEN
+        assert enriched[0].page_content == "Doc. What it covers.\n\nChunk body"
+        assert enriched[0].metadata == {**chunk.metadata, "chunk_text": "Chunk body"}
+
+    def test_prepends_the_title_alone_when_no_caption_matches(self):
+        """
+        GIVEN a chunk whose title is set but whose chunk_key has no entry in captions
+        WHEN enrich() runs with mode="captions"
+        THEN only the title is prepended, still followed by a blank line
+        """
+        # GIVEN
+        chunk = _chunk("Chunk body", title="Doc")
+
+        # WHEN
+        enriched = enrich([chunk], mode="captions", captions={})
+
+        # THEN
+        assert enriched[0].page_content == "Doc.\n\nChunk body"
+
+    def test_leaves_the_chunk_unchanged_with_no_title_and_no_caption(self):
+        """
+        GIVEN a chunk with neither a title nor a matching caption
+        WHEN enrich() runs with mode="captions"
+        THEN there is nothing to prepend, so the text is unchanged
+        """
+        # GIVEN
+        chunk = _chunk("Chunk body", title="")
+
+        # WHEN
+        enriched = enrich([chunk], mode="captions", captions={})
+
+        # THEN
+        assert enriched[0].page_content == "Chunk body"
+
+    def test_requires_a_captions_mapping(self):
+        """
+        GIVEN mode="captions" but no captions mapping
+        WHEN enrich() is called
+        THEN it raises ValueError naming the missing mapping rather than failing
+             deep inside the lookup
+        """
+        # GIVEN / WHEN / THEN
+        with pytest.raises(ValueError, match="'captions'"):
+            enrich([_chunk("text")], mode="captions")
+
+    def test_does_not_require_a_model(self):
+        """
+        GIVEN mode="captions" and no llm argument
+        WHEN enrich() is called
+        THEN it succeeds without a chat model, since captions are looked up rather
+             than generated
+        """
+        # GIVEN
+        chunk = _chunk("Chunk body", title="Doc")
+        captions = {chunk_key(chunk.page_content): "What it covers."}
+
+        # WHEN
+        enriched = enrich([chunk], mode="captions", captions=captions, llm=None)
+
+        # THEN
+        assert enriched[0].page_content == "Doc. What it covers.\n\nChunk body"
+
+    def test_chunk_key_is_the_sha256_hex_digest_of_the_chunks_own_text(self):
+        """
+        GIVEN the text "x"
+        WHEN chunk_key() is called
+        THEN it returns the sha256 hex digest of that text's UTF-8 bytes
+        """
+        # GIVEN / WHEN / THEN
+        assert chunk_key("x") == hashlib.sha256(b"x").hexdigest()
+
+
 class TestUnknownMode:
     """An unrecognized mode string fails loudly instead of silently running doc_summary."""
 
     def test_rejects_an_unknown_mode(self):
         """
-        GIVEN a mode string that is not "none", "heading_path", "llm_context", or
-             "doc_summary"
+        GIVEN a mode string that is not "none", "heading_path", "captions",
+             "llm_context", or "doc_summary"
         WHEN enrich() is called with an llm present
         THEN it raises ValueError naming the unknown mode
         """
