@@ -165,6 +165,8 @@ def load_captions(settings: Settings, repo_root: Path) -> dict[str, str]:
         from here, the same way assistant_private_corpus_manifest does - an
         absolute path wins the join.
     :return: chunk_key(chunk's own text) -> caption, as read from that file.
+    :raises FileNotFoundError: If assistant_captions_file is set but does not resolve
+        to an existing file.
     :raises ValueError: If assistant_captions_file is not set, or the file's content
         is not a JSON object mapping strings to strings.
     """
@@ -180,6 +182,39 @@ def load_captions(settings: Settings, repo_root: Path) -> dict[str, str]:
     return data
 
 
+def load_corpus(settings: Settings, repo_root: Path, wave: int) -> list[Document]:
+    """Load every Document the corpus manifest names, at the given wave.
+
+    The manifest and per-source loaders are exactly what build_collection() itself
+    used to run inline; scripts/assistant/captions.py's `missing` command calls this
+    directly so it chunks the identical corpus a real ingest run would, without
+    needing a chat model, an embedding server, or a database.
+
+    :param settings: Application settings (private corpus locations).
+    :param repo_root: Repository root, passed through to build_manifest.
+    :param wave: Highest corpus wave to include (see corpus.py::build_manifest).
+    :return: Every Document the manifest's sources load to, public layer first.
+    :raises FileNotFoundError: If assistant_private_corpus_manifest is set but does
+        not resolve to an existing file (corpus.py::build_manifest).
+    :raises ValueError: If a local manifest entry resolves outside every root in
+        assistant_private_corpus_dirs, or names an unsupported file suffix
+        (corpus.py::build_manifest).
+    """
+    private_dirs = [Path(entry) for entry in settings.assistant_private_corpus_dirs]
+    local_manifest = (
+        Path(settings.assistant_private_corpus_manifest)
+        if settings.assistant_private_corpus_manifest
+        else None
+    )
+    sources = build_manifest(
+        repo_root=repo_root,
+        private_dirs=private_dirs,
+        wave=wave,
+        local_manifest=local_manifest,
+    )
+    return [doc for source in sources for doc in load_source(source)]
+
+
 async def build_collection(spec: CollectionSpec, settings: Settings, repo_root: Path) -> int:
     """Build one named collection: load the corpus, chunk it, embed it, store it.
 
@@ -188,12 +223,14 @@ async def build_collection(spec: CollectionSpec, settings: Settings, repo_root: 
         corpus locations).
     :param repo_root: Repository root, passed through to build_manifest.
     :return: Number of chunks written to the collection.
+    :raises FileNotFoundError: If spec.context is "captions" and the configured
+        captions file does not exist.
     :raises ValueError: If spec.context is "captions" and load_captions() rejects the
         configured file - checked before the corpus is loaded or embedded, so a
-        misconfigured captions build fails immediately rather than after that work.
+        misconfigured captions build fails immediately rather than after that work -
+        or if every chunk misses a caption once the corpus has been chunked.
     """
     captions = load_captions(settings, repo_root) if spec.context == "captions" else None
-    private_dirs = [Path(entry) for entry in settings.assistant_private_corpus_dirs]
     local_manifest = (
         Path(settings.assistant_private_corpus_manifest)
         if settings.assistant_private_corpus_manifest
@@ -203,25 +240,25 @@ async def build_collection(spec: CollectionSpec, settings: Settings, repo_root: 
     # An absolute manifest path wins the join, the same way corpus.py resolves it.
     app_version = git_version(repo_root)
     corpus_version = git_version((repo_root / local_manifest).parent) if local_manifest else None
-    sources = build_manifest(
-        repo_root=repo_root,
-        private_dirs=private_dirs,
-        wave=spec.wave,
-        local_manifest=local_manifest,
-    )
-    documents = [doc for source in sources for doc in load_source(source)]
+    documents = load_corpus(settings, repo_root, spec.wave)
     embeddings = make_embeddings(settings)
     chunks = split(documents, spec.chunker, embeddings=embeddings)
     llm = make_chat_model(settings) if spec.context in ("llm_context", "doc_summary") else None
     if captions is not None:
+        total = len(chunks)
         missing = sum(1 for chunk in chunks if chunk_key(chunk.page_content) not in captions)
+        if chunks and missing == total:
+            raise ValueError(
+                f"{missing} of {total} chunks have no matching caption; the captions "
+                "file probably belongs to another corpus revision or chunker"
+            )
         if missing:
             logger.warning(
                 "some chunks have no matching caption",
                 extra={
                     "event": "assistant_captions_missing",
                     "missing": missing,
-                    "total": len(chunks),
+                    "total": total,
                 },
             )
     chunks = enrich(chunks, spec.context, llm=llm, captions=captions)
