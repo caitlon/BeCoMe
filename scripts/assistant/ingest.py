@@ -43,7 +43,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--context",
         default="none",
-        choices=["none", "heading_path", "llm_context", "doc_summary"],
+        choices=["none", "heading_path", "llm_context", "doc_summary", "captions"],
         help="Per-chunk context mode",
     )
     parser.add_argument("--wave", type=int, default=1, help="Highest corpus wave to include")

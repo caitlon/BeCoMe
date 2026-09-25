@@ -316,6 +316,22 @@ class TestCaptionsMode:
         # THEN
         assert enriched[0].page_content == "Doc.\n\nChunk body"
 
+    def test_prepends_the_caption_alone_when_there_is_no_title(self):
+        """
+        GIVEN a chunk with no title but whose own text has a matching caption
+        WHEN enrich() runs with mode="captions"
+        THEN only the caption is prepended, still followed by a blank line
+        """
+        # GIVEN
+        chunk = _chunk("Chunk body", title="")
+        captions = {chunk_key(chunk.page_content): "What it covers."}
+
+        # WHEN
+        enriched = enrich([chunk], mode="captions", captions=captions)
+
+        # THEN
+        assert enriched[0].page_content == "What it covers.\n\nChunk body"
+
     def test_leaves_the_chunk_unchanged_with_no_title_and_no_caption(self):
         """
         GIVEN a chunk with neither a title nor a matching caption
