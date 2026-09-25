@@ -79,7 +79,7 @@
         "bestCompromise": "Nejlepší kompromis",
         "bestCompromiseDesc": "Optimální agregace všech expertních názorů",
         "maxError": "Max. chyba",
-        "maxErrorDesc": "Metrika kvality indikující úroveň shody",
+        "maxErrorDesc": "Jak daleko leží kompromis od průměru a mediánu",
         "experts": "Experti",
         "expertsDesc": "Počet shromážděných názorů"
       },
