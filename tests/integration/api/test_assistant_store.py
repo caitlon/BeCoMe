@@ -233,3 +233,40 @@ class TestSwapInStaging:
             assert cursor.fetchall() == [("old",)]
             cursor.execute("SELECT to_regclass('public.docs_test_swap_rollback_staging')")
             assert cursor.fetchone()[0] is not None
+
+    @pytest.mark.asyncio
+    async def test_gives_up_when_a_reader_holds_the_live_table(self, postgresql, monkeypatch):
+        """
+        GIVEN a live table holding "old" and a staging table holding "new", and a
+             second connection that has run SELECT count(*) on the live table inside
+             a transaction it keeps open
+        WHEN swap_in_staging runs on another connection with _SWAP_LOCK_TIMEOUT
+             monkeypatched to "200ms"
+        THEN it raises psycopg.errors.LockNotAvailable, and after rolling that
+             connection back and closing the reader, the live table still holds only
+             "old" and the staging table still exists
+        """
+        # GIVEN
+        await _seed_live_and_staging(postgresql, "docs_test_swap_timeout")
+        dsn = _connection_url(postgresql).replace("postgresql+psycopg://", "postgresql://")
+        monkeypatch.setattr("api.assistant.rag.store._SWAP_LOCK_TIMEOUT", "200ms")
+
+        reader = await psycopg.AsyncConnection.connect(dsn)
+        swap_conn = await psycopg.AsyncConnection.connect(dsn)
+        try:
+            await reader.execute("SELECT count(*) FROM docs_test_swap_timeout")
+
+            # WHEN / THEN
+            with pytest.raises(psycopg.errors.LockNotAvailable):
+                await swap_in_staging(swap_conn, "docs_test_swap_timeout")
+            await swap_conn.rollback()
+        finally:
+            await swap_conn.close()
+            await reader.close()
+
+        # THEN
+        with postgresql.cursor() as cursor:
+            cursor.execute("SELECT content FROM docs_test_swap_timeout")
+            assert cursor.fetchall() == [("old",)]
+            cursor.execute("SELECT to_regclass('public.docs_test_swap_timeout_staging')")
+            assert cursor.fetchone()[0] is not None
