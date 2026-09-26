@@ -138,3 +138,32 @@ class TestBuildCollectionRefusesAnUnmatchedCaptionsFile:
         # WHEN / THEN
         with pytest.raises(ValueError, match="1 of 1 chunks"):
             await build_collection(spec, settings, repo_root=tmp_path)
+
+
+class TestBuildCollectionValidatesTheNameBeforeAnyWork:
+    """A collection name too long to stage a rebuild fails before any corpus work."""
+
+    @pytest.mark.asyncio
+    async def test_a_name_too_long_to_stage_raises_before_load_corpus(self, tmp_path, monkeypatch):
+        """
+        GIVEN a spec.name too long for staging_table to accept (56 characters)
+        WHEN build_collection runs
+        THEN it raises ValueError before load_corpus is ever called
+        """
+
+        # GIVEN
+        def _fail_if_called(*args, **kwargs):
+            pytest.fail("load_corpus must not run once spec.name fails to stage")
+
+        monkeypatch.setattr("api.assistant.rag.pipeline.load_corpus", _fail_if_called)
+        settings = Settings(secret_key="test-secret-key")
+        spec = CollectionSpec(
+            name="a" * 56,
+            chunker=ChunkerConfig(strategy="markdown_headers", size=500, overlap_pct=10),
+            context="none",
+            wave=1,
+        )
+
+        # WHEN / THEN
+        with pytest.raises(ValueError, match="too long to rebuild"):
+            await build_collection(spec, settings, repo_root=tmp_path)

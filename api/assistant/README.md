@@ -31,7 +31,9 @@ Runs only on a developer machine. `Settings` refuses to start any deployed profi
 4. Index the documentation: `uv run python scripts/assistant/ingest.py --name
    docs_markdown_headers_500_o10_captions_bge_m3 --strategy markdown_headers --size 500
    --overlap-pct 10 --context captions` builds the collection the backend reads by default;
-   `--help` lists the chunker, context and wave options.
+   `--help` lists the chunker, context and wave options. Rerunning it with the same `--name`
+   replaces that collection: the build writes into a staging table and swaps it in only once
+   every chunk is stored, so a build that fails leaves the previous collection in place.
 5. Evaluate retrieval quality: `uv run python scripts/assistant/eval_retrieval.py --collection
    docs_markdown_headers_500_o10_captions_bge_m3 --mode hybrid --query-transform translate_en`
    scores hit@1/3/5, MRR and nDCG@5 for that collection against the golden set

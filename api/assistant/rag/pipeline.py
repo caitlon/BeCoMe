@@ -19,7 +19,13 @@ from api.assistant.rag.corpus import build_manifest
 from api.assistant.rag.enrich import ContextMode, chunk_key, enrich
 from api.assistant.rag.loaders import load_source
 from api.assistant.rag.models import make_chat_model, make_embeddings
-from api.assistant.rag.store import ensure_collection, make_engine, open_store
+from api.assistant.rag.store import (
+    create_collection,
+    make_engine,
+    open_store,
+    staging_table,
+    swap_in_staging,
+)
 from api.config import Settings
 
 logger = logging.getLogger(__name__)
@@ -75,7 +81,7 @@ def git_version(repo_dir: Path) -> str | None:
     return result.stdout.strip() if result.returncode == 0 else None
 
 
-async def _record_collection(
+async def _publish_collection(
     vector_db_url: str,
     spec: CollectionSpec,
     embedding_model: str,
@@ -84,13 +90,17 @@ async def _record_collection(
     app_version: str | None,
     corpus_version: str | None,
 ) -> None:
-    """Upsert one collection's build metadata into the assistant_collections registry.
+    """Swap the freshly built staging table live and upsert its registry row.
 
-    Creates the registry table on first use. Never touched by Alembic: it lives in
-    the assistant's own database, entirely separate from the application's.
+    Both happen in this one connection's transaction, committed together at the end:
+    swap_in_staging's DDL and the registry upsert either both take effect or neither
+    does, so a reader never finds a table the assistant_collections registry does not
+    describe. Creates the registry table on first use. Never touched by Alembic: it
+    lives in the assistant's own database, entirely separate from the application's.
 
     :param vector_db_url: Settings.assistant_vector_db_url.
-    :param spec: The collection's chunker/context/wave.
+    :param spec: The collection's chunker/context/wave; spec.name is the collection
+        going live, staging_table(spec.name) its already-built staging table.
     :param embedding_model: Which embedding model produced these vectors.
     :param corpus_hash: _corpus_hash() of the chunks just written.
     :param chunk_count: How many chunks this build wrote.
@@ -100,6 +110,7 @@ async def _record_collection(
     """
     dsn = vector_db_url.replace("postgresql+psycopg://", "postgresql://")
     async with await psycopg.AsyncConnection.connect(dsn) as conn:
+        await swap_in_staging(conn, spec.name)
         await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS assistant_collections (
@@ -218,6 +229,12 @@ def load_corpus(settings: Settings, repo_root: Path, wave: int) -> list[Document
 async def build_collection(spec: CollectionSpec, settings: Settings, repo_root: Path) -> int:
     """Build one named collection: load the corpus, chunk it, embed it, store it.
 
+    Rerunning it with an existing spec.name replaces that collection instead of
+    appending to it: the build writes every chunk into a staging table and only then
+    swaps it live (_publish_collection), so a build that fails before the swap leaves
+    the previous collection and its registry row exactly as they were, and the next
+    build for that name drops the leftover staging table when it creates a fresh one.
+
     :param spec: Which chunker/context/wave this collection represents.
     :param settings: Application settings (vector DB URL, embedding model, private
         corpus locations).
@@ -225,12 +242,15 @@ async def build_collection(spec: CollectionSpec, settings: Settings, repo_root: 
     :return: Number of chunks written to the collection.
     :raises FileNotFoundError: If spec.context is "captions" and the configured
         captions file does not exist.
-    :raises ValueError: If spec.context is "captions" and load_captions() rejects the
-        configured file - checked before the corpus is loaded or embedded, so a
-        misconfigured captions build fails immediately rather than after that work -
-        or if every chunk misses a caption once the corpus has been chunked.
+    :raises ValueError: If spec.name is too long to stage a rebuild (see
+        staging_table) - checked before any other work, or if spec.context is
+        "captions" and load_captions() rejects the configured file - checked before
+        the corpus is loaded or embedded, so a misconfigured captions build fails
+        immediately rather than after that work - or if every chunk misses a caption
+        once the corpus has been chunked.
     """
     captions = load_captions(settings, repo_root) if spec.context == "captions" else None
+    staging = staging_table(spec.name)
     local_manifest = (
         Path(settings.assistant_private_corpus_manifest)
         if settings.assistant_private_corpus_manifest
@@ -266,13 +286,13 @@ async def build_collection(spec: CollectionSpec, settings: Settings, repo_root: 
     vector_size = len(embeddings.embed_query("dimension probe"))
     engine = make_engine(settings.assistant_vector_db_url)
     try:
-        await ensure_collection(engine, table=spec.name, vector_size=vector_size, hybrid=False)
-        store = open_store(engine, table=spec.name, embeddings=embeddings)
+        await create_collection(engine, table=staging, vector_size=vector_size, hybrid=False)
+        store = open_store(engine, table=staging, embeddings=embeddings)
         if chunks:
             await store.aadd_documents(chunks)
     finally:
         await engine.close()
-    await _record_collection(
+    await _publish_collection(
         settings.assistant_vector_db_url,
         spec,
         embedding_model=settings.assistant_embedding_model,

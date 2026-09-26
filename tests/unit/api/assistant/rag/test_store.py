@@ -1,10 +1,8 @@
 """Unit tests for store.py that need no database."""
 
 import pytest
-from psycopg.errors import DuplicateTable, InsufficientPrivilege
-from sqlalchemy.exc import ProgrammingError
 
-from api.assistant.rag.store import ensure_collection, make_engine, open_store
+from api.assistant.rag.store import create_collection, make_engine, open_store, staging_table
 
 
 def test_make_engine_refuses_an_empty_url():
@@ -34,22 +32,22 @@ _MALFORMED_COLLECTION_NAMES = [
 ]
 
 
-class TestEnsureCollectionValidatesTheName:
-    """ensure_collection refuses a malformed table name before touching the database."""
+class TestCreateCollectionValidatesTheName:
+    """create_collection refuses a malformed table name before touching the database."""
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("name", _MALFORMED_COLLECTION_NAMES)
     async def test_refuses_a_malformed_name(self, name):
         """
         GIVEN a table name that is not a plain lowercase identifier
-        WHEN ensure_collection is called with it
+        WHEN create_collection is called with it
         THEN it raises ValueError naming the rule and repeating the name, without
              ever using engine - None stands in for PGEngine here, since validation
              must reject the name before anything tries to call ainit_vectorstore_table
         """
         # WHEN/THEN
         with pytest.raises(ValueError, match="is not a plain identifier") as exc_info:
-            await ensure_collection(None, table=name, vector_size=8, hybrid=False)
+            await create_collection(None, table=name, vector_size=8, hybrid=False)
         assert repr(name) in str(exc_info.value)
 
 
@@ -71,45 +69,61 @@ class TestOpenStoreValidatesTheName:
         assert repr(name) in str(exc_info.value)
 
 
-class _StubEngineRaisingProgrammingError:
-    """Stands in for PGEngine: ainit_vectorstore_table always fails the way a
-    permission error would - a real ProgrammingError that is not DuplicateTable -
-    so the re-raise branch in ensure_collection is exercised without a real database.
-    """
+class TestStagingTable:
+    """staging_table names the table a rebuild writes into before it goes live."""
 
-    async def ainit_vectorstore_table(self, **kwargs: object) -> None:
-        raise ProgrammingError(
-            "CREATE EXTENSION IF NOT EXISTS vector",
-            {},
-            InsufficientPrivilege('permission denied to create extension "vector"'),
-        )
-
-
-class TestEnsureCollectionReraisesOtherProgrammingErrors:
-    """The DuplicateTable-only handling in ensure_collection must not swallow other
-    ProgrammingErrors - previously exercised over a real connection with an invalid
-    table name (an empty string raised a syntax error); that trigger is gone now that
-    validation rejects an invalid name first, so a stub engine takes its place to keep
-    the branch covered - a permission error is a realistic stand-in, since the
-    assistant's vector database could gain a least-privilege role later the way the
-    application database already has (docs/security.md).
-    """
-
-    @pytest.mark.asyncio
-    async def test_a_non_duplicate_programming_error_still_propagates(self):
+    def test_appends_staging_to_the_name(self):
         """
-        GIVEN a stub engine whose ainit_vectorstore_table raises a ProgrammingError
-             that is not psycopg.errors.DuplicateTable
-        WHEN ensure_collection is called with a name that passes validation
-        THEN the ProgrammingError propagates instead of being swallowed as though the
-             collection were already there
+        GIVEN a plain collection name
+        WHEN staging_table is called with it
+        THEN it returns the name followed by "_staging"
+        """
+        # WHEN
+        result = staging_table("docs_default")
+
+        # THEN
+        assert result == "docs_default_staging"
+
+    def test_accepts_a_55_character_name(self):
+        """
+        GIVEN a 55-character collection name - the longest whose staging name still
+             fits PostgreSQL's 63-character identifier limit
+        WHEN staging_table is called with it
+        THEN it returns the 63-character staging name, raising nothing
+        """
+        # GIVEN
+        name = "a" * 55
+
+        # WHEN
+        result = staging_table(name)
+
+        # THEN
+        assert result == name + "_staging"
+        assert len(result) == 63
+
+    def test_refuses_a_56_character_name(self):
+        """
+        GIVEN a 56-character collection name - one character too long, since its
+             staging name would be 64 characters
+        WHEN staging_table is called with it
+        THEN it raises ValueError naming why: too long to rebuild
+        """
+        # GIVEN
+        name = "a" * 56
+
+        # WHEN/THEN
+        with pytest.raises(ValueError, match="too long to rebuild"):
+            staging_table(name)
+
+    @pytest.mark.parametrize("name", _MALFORMED_COLLECTION_NAMES)
+    def test_refuses_a_malformed_name(self, name):
+        """
+        GIVEN a table name that is not a plain lowercase identifier
+        WHEN staging_table is called with it
+        THEN it raises ValueError naming the rule and repeating the name, the same
+             way _validate_collection_name does for create_collection and open_store
         """
         # WHEN/THEN
-        with pytest.raises(ProgrammingError) as exc_info:
-            await ensure_collection(
-                _StubEngineRaisingProgrammingError(),
-                table="docs_default",
-                vector_size=8,
-                hybrid=False,
-            )
-        assert not isinstance(exc_info.value.orig, DuplicateTable)
+        with pytest.raises(ValueError, match="is not a plain identifier") as exc_info:
+            staging_table(name)
+        assert repr(name) in str(exc_info.value)

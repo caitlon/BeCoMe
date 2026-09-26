@@ -18,7 +18,13 @@ import pytest
 from langchain_core.documents import Document
 from langchain_core.embeddings import DeterministicFakeEmbedding
 
-from api.assistant.rag.store import ensure_collection, make_engine, open_store
+from api.assistant.rag.store import (
+    create_collection,
+    make_engine,
+    open_store,
+    staging_table,
+    swap_in_staging,
+)
 
 pytestmark = pytest.mark.skipif(
     not shutil.which("pg_ctl"), reason="PostgreSQL not installed (pg_ctl not found in PATH)"
@@ -47,7 +53,7 @@ def _require_pgvector(postgresql):
     Checked through pg_available_extensions before anything calls CREATE EXTENSION, so
     a developer machine with PostgreSQL but no pgvector next to it (Homebrew's
     postgresql@16 formula does not carry it - see api/assistant/README.md) gets a clear
-    skip instead of ensure_collection's own CREATE EXTENSION IF NOT EXISTS failing with
+    skip instead of create_collection's own CREATE EXTENSION IF NOT EXISTS failing with
     sqlalchemy.exc.NotSupportedError. CI is not exposed to this path: its
     "Verify the pgvector extension is installed" step already fails the job before
     pytest runs if the apt install is broken, so a CI run either has pgvector for real
@@ -61,31 +67,42 @@ def _require_pgvector(postgresql):
             )
 
 
-class TestEnsureCollection:
-    """ensure_collection creates the pgvector-backed table for one collection."""
+class TestCreateCollection:
+    """create_collection creates the pgvector-backed table for one collection."""
 
     @pytest.mark.asyncio
-    async def test_creates_a_dense_only_table_and_is_idempotent(self, postgresql):
+    async def test_replaces_an_existing_table(self, postgresql):
         """
-        GIVEN a fresh PostgreSQL database
-        WHEN ensure_collection runs twice with hybrid=False and the same table name
-        THEN neither call raises - the second finds the table already there
+        GIVEN a table created by create_collection, holding one document
+        WHEN create_collection runs again with the same table name
+        THEN the table exists empty - the previous table and its row are gone, not
+             left alongside a second table or a second row
         """
         # GIVEN
         engine = make_engine(_connection_url(postgresql))
-
-        # WHEN/THEN
+        embeddings = DeterministicFakeEmbedding(size=8)
         try:
-            await ensure_collection(engine, table="docs_test_dense", vector_size=8, hybrid=False)
-            await ensure_collection(engine, table="docs_test_dense", vector_size=8, hybrid=False)
+            await create_collection(engine, table="docs_test_replace", vector_size=8, hybrid=False)
+            store = open_store(engine, table="docs_test_replace", embeddings=embeddings)
+            await store.aadd_documents(
+                [Document(page_content="BeCoMe combines the mean and the median.")]
+            )
+
+            # WHEN
+            await create_collection(engine, table="docs_test_replace", vector_size=8, hybrid=False)
         finally:
             await engine.close()
+
+        # THEN
+        with postgresql.cursor() as cursor:
+            cursor.execute("SELECT count(*) FROM docs_test_replace")
+            assert cursor.fetchone()[0] == 0
 
     @pytest.mark.asyncio
     async def test_creates_a_hybrid_table(self, postgresql):
         """
         GIVEN a fresh PostgreSQL database
-        WHEN ensure_collection runs with hybrid=True
+        WHEN create_collection runs with hybrid=True
         THEN the tsvector column langchain-postgres provisions for hybrid search
              (content_tsv, per the installed langchain-postgres 0.0.18 source) exists
              on the table alongside the vector column
@@ -95,7 +112,7 @@ class TestEnsureCollection:
 
         # WHEN
         try:
-            await ensure_collection(engine, table="docs_test_hybrid", vector_size=8, hybrid=True)
+            await create_collection(engine, table="docs_test_hybrid", vector_size=8, hybrid=True)
         finally:
             await engine.close()
 
@@ -116,7 +133,7 @@ class TestOpenStore:
     @pytest.mark.asyncio
     async def test_round_trips_a_document_through_real_pgvector(self, postgresql):
         """
-        GIVEN a table created by ensure_collection
+        GIVEN a table created by create_collection
         WHEN a document is added through open_store's PGVectorStore and searched for
         THEN the same document comes back
         """
@@ -124,7 +141,7 @@ class TestOpenStore:
         engine = make_engine(_connection_url(postgresql))
         embeddings = DeterministicFakeEmbedding(size=8)
         try:
-            await ensure_collection(
+            await create_collection(
                 engine, table="docs_test_roundtrip", vector_size=8, hybrid=False
             )
             store = open_store(engine, table="docs_test_roundtrip", embeddings=embeddings)
@@ -145,3 +162,74 @@ class TestOpenStore:
             assert results[0][0].page_content == "BeCoMe combines the mean and the median."
         finally:
             await engine.close()
+
+
+async def _seed_live_and_staging(postgresql, table: str) -> None:
+    """Create table and its staging table, holding one document each: "old" and "new".
+
+    :param postgresql: The pytest-postgresql fixture.
+    :param table: The live table's name; staging_table(table) is created alongside it.
+    """
+    engine = make_engine(_connection_url(postgresql))
+    embeddings = DeterministicFakeEmbedding(size=8)
+    try:
+        await create_collection(engine, table=table, vector_size=8, hybrid=False)
+        live_store = open_store(engine, table=table, embeddings=embeddings)
+        await live_store.aadd_documents([Document(page_content="old")])
+
+        staging = staging_table(table)
+        await create_collection(engine, table=staging, vector_size=8, hybrid=False)
+        staging_store = open_store(engine, table=staging, embeddings=embeddings)
+        await staging_store.aadd_documents([Document(page_content="new")])
+    finally:
+        await engine.close()
+
+
+class TestSwapInStaging:
+    """swap_in_staging replaces a collection's live table with its staging table."""
+
+    @pytest.mark.asyncio
+    async def test_commit_puts_the_staging_rows_live(self, postgresql):
+        """
+        GIVEN a live table holding "old" and a staging table holding "new"
+        WHEN swap_in_staging runs and the caller commits
+        THEN the live table holds only "new", and the staging table is gone
+        """
+        # GIVEN
+        await _seed_live_and_staging(postgresql, "docs_test_swap_commit")
+        dsn = _connection_url(postgresql).replace("postgresql+psycopg://", "postgresql://")
+
+        # WHEN
+        async with await psycopg.AsyncConnection.connect(dsn) as conn:
+            await swap_in_staging(conn, "docs_test_swap_commit")
+            await conn.commit()
+
+        # THEN
+        with postgresql.cursor() as cursor:
+            cursor.execute("SELECT content FROM docs_test_swap_commit")
+            assert cursor.fetchall() == [("new",)]
+            cursor.execute("SELECT to_regclass('public.docs_test_swap_commit_staging')")
+            assert cursor.fetchone()[0] is None
+
+    @pytest.mark.asyncio
+    async def test_rollback_keeps_the_old_table(self, postgresql):
+        """
+        GIVEN a live table holding "old" and a staging table holding "new"
+        WHEN swap_in_staging runs and the caller rolls back instead of committing
+        THEN the live table still holds "old", and the staging table still exists
+        """
+        # GIVEN
+        await _seed_live_and_staging(postgresql, "docs_test_swap_rollback")
+        dsn = _connection_url(postgresql).replace("postgresql+psycopg://", "postgresql://")
+
+        # WHEN
+        async with await psycopg.AsyncConnection.connect(dsn) as conn:
+            await swap_in_staging(conn, "docs_test_swap_rollback")
+            await conn.rollback()
+
+        # THEN
+        with postgresql.cursor() as cursor:
+            cursor.execute("SELECT content FROM docs_test_swap_rollback")
+            assert cursor.fetchall() == [("old",)]
+            cursor.execute("SELECT to_regclass('public.docs_test_swap_rollback_staging')")
+            assert cursor.fetchone()[0] is not None

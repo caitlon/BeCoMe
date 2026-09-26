@@ -162,7 +162,7 @@ async def _fetch_collection_row(
 ) -> tuple[str | None, str | None] | None:
     """Read one collection's app/corpus version from the assistant_collections registry.
 
-    Uses its own connection, the same pattern pipeline.py's _record_collection uses,
+    Uses its own connection, the same pattern pipeline.py's _publish_collection uses,
     rather than the langchain PGEngine pool: assistant_collections is a plain table the
     ingest pipeline manages directly, outside langchain-postgres.
 
