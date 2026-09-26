@@ -435,6 +435,31 @@ class TestRunPrune:
         assert capsys.readouterr().out.strip() == "removed 0, kept 1"
         assert captions_path.read_text(encoding="utf-8") == original
 
+    def test_refuses_when_no_caption_matches_a_chunk(self, tmp_path, monkeypatch):
+        """
+        GIVEN a captions file with two captions whose keys match none of the corpus's chunks
+        WHEN _run_prune runs
+        THEN it raises SystemExit naming "none of the 2 captions matches a chunk", and the
+             file's bytes are unchanged
+        """
+        # GIVEN
+        doc = Document(page_content="Solo document.", metadata={"title": "Doc", "layer": "public"})
+        monkeypatch.setattr(captions_cli, "load_corpus", lambda settings, repo_root, wave: [doc])
+        captions_path = tmp_path / "captions.json"
+        original = json.dumps({"stale-key-1": "Orphan one.", "stale-key-2": "Orphan two."})
+        captions_path.write_text(original, encoding="utf-8")
+        settings = Settings(
+            secret_key="test-secret-key", assistant_captions_file=str(captions_path)
+        )
+        args = argparse.Namespace(strategy="fixed", size=500, overlap_pct=10, wave=1)
+
+        # WHEN
+        with pytest.raises(SystemExit, match="none of the 2 captions matches a chunk"):
+            captions_cli._run_prune(args, settings, repo_root=tmp_path)
+
+        # THEN
+        assert captions_path.read_text(encoding="utf-8") == original
+
 
 class TestMain:
     """_main resolves the captions path before any corpus work, for every command."""

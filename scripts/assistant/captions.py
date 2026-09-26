@@ -273,6 +273,8 @@ def _run_prune(args: argparse.Namespace, settings: Settings, repo_root: Path) ->
     :param args: Parsed CLI arguments (strategy, size, overlap_pct, wave).
     :param settings: Application settings.
     :param repo_root: Repository root.
+    :raises SystemExit: If the captions file is non-empty and none of its entries matches
+        a chunk under the given flags.
     """
     config = ChunkerConfig(strategy=args.strategy, size=args.size, overlap_pct=args.overlap_pct)
     documents = load_corpus(settings, repo_root, args.wave)
@@ -280,6 +282,12 @@ def _run_prune(args: argparse.Namespace, settings: Settings, repo_root: Path) ->
     embeddings = make_embeddings(settings) if config.strategy == "semantic" else None
     _, _, _, keys = _find_missing(documents, config, captions, embeddings)
     kept = {key: caption for key, caption in captions.items() if key in keys}
+    if captions and not kept:
+        raise SystemExit(
+            f"error: none of the {len(captions)} captions matches a chunk under these flags; "
+            "check --strategy, --size, --overlap-pct and --wave against the collection you "
+            "build. Nothing was removed."
+        )
     removed = len(captions) - len(kept)
     if removed:
         _write_captions(_resolve_captions_path(settings, repo_root), kept)

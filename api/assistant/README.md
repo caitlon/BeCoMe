@@ -93,7 +93,9 @@ a warning, by count only, when just some chunks miss one.
    captions were added versus replaced.
 4. `captions.py prune`, with the same flags as `missing`, drops the captions whose fragment no
    longer exists. Pass the flags of the collection you build: under a different chunker or
-   wave, captions that are still in use would count as stale.
+   wave, captions that are still in use would count as stale. `missing` reports how many
+   captions `prune` would drop, so run it first; `prune` refuses outright when not a single
+   caption matches a fragment.
 5. Commit the updated captions file in the corpus repository.
 6. Rebuild the collection: rerun `ingest.py` (see "Start" above), so the new captions take effect.
 
