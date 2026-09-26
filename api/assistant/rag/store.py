@@ -104,6 +104,12 @@ async def create_collection(engine: PGEngine, table: str, vector_size: int, hybr
     )
 
 
+# How long the swap waits for readers to release the live table. A search holds its lock for
+# well under a second; a longer hold is a stuck session, and waiting on it would hang the
+# build with no output.
+_SWAP_LOCK_TIMEOUT = "10s"
+
+
 async def swap_in_staging(conn: psycopg.AsyncConnection[Any], table: str) -> None:
     """Replace a collection's live table with its staging table, in the caller's transaction.
 
@@ -117,8 +123,12 @@ async def swap_in_staging(conn: psycopg.AsyncConnection[Any], table: str) -> Non
     :return: None.
     :raises ValueError: If table cannot be staged; see staging_table.
     :raises psycopg.errors.UndefinedTable: If the staging table does not exist.
+    :raises psycopg.errors.LockNotAvailable: If another session holds the live table
+        longer than _SWAP_LOCK_TIMEOUT; the caller's transaction is then aborted and
+        the live table is untouched.
     """
     staging = staging_table(table)
+    await conn.execute("SELECT set_config('lock_timeout', %s, true)", (_SWAP_LOCK_TIMEOUT,))
     # A table name cannot be a query parameter, so sql.Identifier quotes it instead, on
     # top of the plain-identifier check above. Rendered to a string before execute(),
     # where a static scanner rule for SQLAlchemy misreads sql.SQL().format() as injection.

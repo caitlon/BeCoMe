@@ -709,12 +709,17 @@ class TestRebuild:
                 psycopg.sql.SQL("SELECT content FROM {}").format(psycopg.sql.Identifier(spec.name))
             )
             rows = cursor.fetchall()
+            cursor.execute("SELECT to_regclass(%s)", (f"public.{spec.name}_staging",))
+            staging_exists = cursor.fetchone()[0]
         # Closing the cursor does not end the connection's transaction (psycopg3
         # defaults to autocommit=False): left open, the read above's lock on
         # spec.name would block the third build's DROP TABLE further down, forever.
         postgresql.commit()
         assert len(rows) == 1
         assert "alpha" in rows[0][0]
+        # The failed build never reaches the swap, so the staging table it wrote
+        # is left behind until the next successful build replaces it.
+        assert staging_exists is not None
         assert await _registry_snapshot(postgresql, spec.name) == before
 
         # AND WHEN
