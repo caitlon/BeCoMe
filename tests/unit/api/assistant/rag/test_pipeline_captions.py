@@ -13,6 +13,15 @@ from api.assistant.rag.pipeline import CollectionSpec, build_collection, load_ca
 from api.config import Settings
 
 
+@pytest.fixture(autouse=True)
+def _isolated_from_dotenv(tmp_path, monkeypatch):
+    """Run each test where no .env exists, so Settings never sees a developer's real corpus."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("ASSISTANT_PRIVATE_CORPUS_MANIFEST", raising=False)
+    monkeypatch.delenv("ASSISTANT_PRIVATE_CORPUS_DIRS", raising=False)
+    monkeypatch.delenv("ASSISTANT_CAPTIONS_FILE", raising=False)
+
+
 class TestLoadCaptions:
     """load_captions reads the chunk_key -> caption mapping the "captions" mode needs."""
 
