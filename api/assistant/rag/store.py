@@ -119,13 +119,9 @@ async def swap_in_staging(conn: psycopg.AsyncConnection[Any], table: str) -> Non
     :raises psycopg.errors.UndefinedTable: If the staging table does not exist.
     """
     staging = staging_table(table)
-    # table and staging are restricted to plain identifiers by staging_table /
-    # _validate_collection_name above, and sql.Identifier quotes and escapes whatever it
-    # is given - this is psycopg's own safe identifier composition, not string-built SQL.
-    # A table/relation name cannot be bound as a query parameter in PostgreSQL (only
-    # values can), so this is the parameterization-equivalent for a dynamic identifier.
-    # Rendered to a plain string first, since that identifier composition is what needs
-    # reviewing here, not the (trivial, argument-less) execute call that follows it.
+    # A table name cannot be a query parameter, so sql.Identifier quotes it instead, on
+    # top of the plain-identifier check above. Rendered to a string before execute(),
+    # where a static scanner rule for SQLAlchemy misreads sql.SQL().format() as injection.
     drop_live = sql.SQL("DROP TABLE IF EXISTS {}").format(sql.Identifier(table)).as_string(conn)
     rename_staging = (
         sql.SQL("ALTER TABLE {} RENAME TO {}")
