@@ -52,6 +52,12 @@ def strip_think_block(reply: str) -> str:
     return (reply[:start] + reply[end + len(_THINK_CLOSE) :]).strip()
 
 
+# The embeddings client sends up to 1000 texts per request by default, and llama-server
+# answers only once it has embedded all of them, so the request timeout must cover the
+# whole batch. Throughput does not depend on the batch size, so a small batch costs nothing.
+_EMBEDDING_BATCH_SIZE = 64
+
+
 def make_embeddings(settings: Settings) -> OpenAIEmbeddings:
     """Build the embeddings client, pointed at the local embedding llama-server.
 
@@ -60,7 +66,9 @@ def make_embeddings(settings: Settings) -> OpenAIEmbeddings:
     embedding endpoint does not accept.
 
     There is no separate embedding timeout setting: settings.assistant_llm_timeout_seconds
-    (the chat model's own timeout) bounds this client's requests too.
+    (the chat model's own timeout) bounds this client's requests too. Requests carry at
+    most 64 texts each, so that timeout bounds one small batch rather than the whole
+    corpus.
 
     :param settings: Application settings.
     :return: An OpenAIEmbeddings client for settings.assistant_embedding_base_url.
@@ -71,6 +79,7 @@ def make_embeddings(settings: Settings) -> OpenAIEmbeddings:
         model=settings.assistant_embedding_model,
         check_embedding_ctx_length=False,
         timeout=settings.assistant_llm_timeout_seconds,
+        chunk_size=_EMBEDDING_BATCH_SIZE,
     )
 
 
