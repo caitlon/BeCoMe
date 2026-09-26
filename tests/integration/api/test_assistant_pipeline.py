@@ -14,6 +14,7 @@ from pathlib import Path
 import psycopg
 import pytest
 from langchain_core.language_models.fake_chat_models import FakeListChatModel
+from openai import BadRequestError
 
 from api.assistant.rag.chunkers import ChunkerConfig
 from api.assistant.rag.enrich import chunk_key
@@ -73,6 +74,57 @@ class _FakeEmbeddingHandler(BaseHTTPRequestHandler):
 def fake_embedding_server():
     """Start a local HTTP server answering like a hosted embeddings endpoint."""
     server = HTTPServer(("127.0.0.1", 0), _FakeEmbeddingHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{server.server_port}/v1"
+    finally:
+        server.shutdown()
+        thread.join()
+
+
+def _make_failing_after_first_handler() -> type[BaseHTTPRequestHandler]:
+    """Build a handler class that answers its first POST like _FakeEmbeddingHandler and
+    returns HTTP 400 to every later one.
+
+    A fresh class per call, closing over its own counter: http.server creates one
+    handler instance per request, so counting on self would never see past request 1,
+    and two servers built from this factory must not share a counter.
+
+    :return: A BaseHTTPRequestHandler subclass for HTTPServer.
+    """
+    request_count = {"n": 0}
+
+    class _FailingAfterFirstHandler(BaseHTTPRequestHandler):
+        def do_POST(self) -> None:
+            request_count["n"] += 1
+            if request_count["n"] == 1:
+                _FakeEmbeddingHandler.do_POST(self)
+                return
+            body = json.dumps(
+                {"error": {"message": "simulated failure", "type": "invalid_request_error"}}
+            ).encode("utf-8")
+            self.send_response(400)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, format_str, *args):
+            pass  # keep pytest output free of one line per fake HTTP request
+
+    return _FailingAfterFirstHandler
+
+
+@pytest.fixture
+def failing_embedding_server():
+    """Start a fake embedding server that answers the dimension probe, then 400s.
+
+    build_collection's first request (embed_query's dimension probe) succeeds; every
+    request after that - the document batch - gets HTTP 400, which the openai client
+    does not retry, so a build against this server fails fast on the batch embed call.
+    """
+    server = HTTPServer(("127.0.0.1", 0), _make_failing_after_first_handler())
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
@@ -411,6 +463,23 @@ async def _registry_rows(postgresql, name: str) -> list[tuple]:
         return await cursor.fetchall()
 
 
+async def _registry_snapshot(postgresql, name: str) -> tuple | None:
+    """Read (chunk_count, corpus_hash, created_at) for one collection's registry row.
+
+    :param postgresql: The pytest-postgresql fixture.
+    :param name: The collection name (assistant_collections.name).
+    :return: That row, or None if there is no registry row for name.
+    """
+    dsn = _plain_dsn(_connection_url(postgresql))
+    async with await psycopg.AsyncConnection.connect(dsn) as conn, conn.cursor() as cursor:
+        await cursor.execute(
+            "SELECT chunk_count, corpus_hash, created_at FROM assistant_collections "
+            "WHERE name = %s",
+            (name,),
+        )
+        return await cursor.fetchone()
+
+
 @pytest.fixture
 def tagged_corpus(tmp_path):
     """A local corpus that is its own git repository, tagged wave-1.
@@ -535,6 +604,134 @@ class TestCollectionRegistry:
         # THEN
         rows = await _registry_rows(postgresql, spec.name)
         assert rows[0][-1] == "wave-1"
+
+
+class TestRebuild:
+    """A second build with the same name replaces the collection instead of appending."""
+
+    @pytest.mark.asyncio
+    async def test_a_second_build_replaces_the_first(
+        self, tmp_path, postgresql, fake_embedding_server
+    ):
+        """
+        GIVEN a one-file corpus and a fresh database
+        WHEN build_collection runs twice with the same spec
+        THEN the table holds exactly chunk_count rows, and no staging table is left
+             behind
+        """
+        # GIVEN
+        (tmp_path / "docs").mkdir()
+        (tmp_path / "docs" / "index.md").write_text(
+            "# BeCoMe\n\nOne alpha sentence.\n", encoding="utf-8"
+        )
+        settings = Settings(
+            secret_key="test-secret-key",
+            assistant_vector_db_url=_connection_url(postgresql),
+            assistant_embedding_base_url=fake_embedding_server,
+            assistant_embedding_model="fake-embedding-model",
+        )
+        spec = CollectionSpec(
+            name="docs_test_rebuild",
+            chunker=ChunkerConfig(strategy="markdown_headers", size=500, overlap_pct=10),
+            context="none",
+            wave=1,
+        )
+
+        # WHEN
+        await build_collection(spec, settings, repo_root=tmp_path)
+        chunk_count = await build_collection(spec, settings, repo_root=tmp_path)
+
+        # THEN
+        assert chunk_count == 1
+        with postgresql.cursor() as cursor:
+            cursor.execute(
+                psycopg.sql.SQL("SELECT count(*) FROM {}").format(psycopg.sql.Identifier(spec.name))
+            )
+            assert cursor.fetchone()[0] == chunk_count
+            cursor.execute("SELECT to_regclass(%s)", (f"public.{spec.name}_staging",))
+            assert cursor.fetchone()[0] is None
+        # postgresql.cursor() does not autocommit (psycopg3 default): leaving this
+        # open would hold a lock "idle in transaction" past the end of the test.
+        postgresql.commit()
+
+    @pytest.mark.asyncio
+    async def test_a_failed_build_keeps_the_previous_collection(
+        self, tmp_path, postgresql, fake_embedding_server, failing_embedding_server
+    ):
+        """
+        GIVEN a first successful build of a corpus whose one sentence contains "alpha"
+        WHEN the corpus changes to a sentence with "beta" and a second build runs
+             against a fake embedding server that 400s every request after the
+             dimension probe
+        THEN build_collection raises, the table still holds exactly the "alpha" row,
+             and the registry row (chunk_count, corpus_hash, created_at) is unchanged
+        AND WHEN a third build runs against the normal fake server
+        THEN the table holds exactly the "beta" row and no staging table remains
+        """
+        # GIVEN
+        (tmp_path / "docs").mkdir()
+        (tmp_path / "docs" / "index.md").write_text(
+            "# BeCoMe\n\nOne alpha sentence.\n", encoding="utf-8"
+        )
+        vector_db_url = _connection_url(postgresql)
+        settings = Settings(
+            secret_key="test-secret-key",
+            assistant_vector_db_url=vector_db_url,
+            assistant_embedding_base_url=fake_embedding_server,
+            assistant_embedding_model="fake-embedding-model",
+        )
+        spec = CollectionSpec(
+            name="docs_test_rebuild_failure",
+            chunker=ChunkerConfig(strategy="markdown_headers", size=500, overlap_pct=10),
+            context="none",
+            wave=1,
+        )
+        await build_collection(spec, settings, repo_root=tmp_path)
+        before = await _registry_snapshot(postgresql, spec.name)
+
+        # WHEN: the corpus changes and the second build hits a server that 400s
+        # every request after the dimension probe
+        (tmp_path / "docs" / "index.md").write_text(
+            "# BeCoMe\n\nOne beta sentence.\n", encoding="utf-8"
+        )
+        failing_settings = Settings(
+            secret_key="test-secret-key",
+            assistant_vector_db_url=vector_db_url,
+            assistant_embedding_base_url=failing_embedding_server,
+            assistant_embedding_model="fake-embedding-model",
+        )
+
+        # THEN
+        with pytest.raises(BadRequestError):
+            await build_collection(spec, failing_settings, repo_root=tmp_path)
+        with postgresql.cursor() as cursor:
+            cursor.execute(
+                psycopg.sql.SQL("SELECT content FROM {}").format(psycopg.sql.Identifier(spec.name))
+            )
+            rows = cursor.fetchall()
+        # Closing the cursor does not end the connection's transaction (psycopg3
+        # defaults to autocommit=False): left open, the read above's lock on
+        # spec.name would block the third build's DROP TABLE further down, forever.
+        postgresql.commit()
+        assert len(rows) == 1
+        assert "alpha" in rows[0][0]
+        assert await _registry_snapshot(postgresql, spec.name) == before
+
+        # AND WHEN
+        chunk_count = await build_collection(spec, settings, repo_root=tmp_path)
+
+        # THEN
+        assert chunk_count == 1
+        with postgresql.cursor() as cursor:
+            cursor.execute(
+                psycopg.sql.SQL("SELECT content FROM {}").format(psycopg.sql.Identifier(spec.name))
+            )
+            rows = cursor.fetchall()
+            assert len(rows) == 1
+            assert "beta" in rows[0][0]
+            cursor.execute("SELECT to_regclass(%s)", (f"public.{spec.name}_staging",))
+            assert cursor.fetchone()[0] is None
+        postgresql.commit()
 
 
 def _load_eval_retrieval():

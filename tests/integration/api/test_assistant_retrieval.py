@@ -11,7 +11,7 @@ from langchain_core.embeddings import DeterministicFakeEmbedding
 
 from api.assistant.rag.models import make_embeddings
 from api.assistant.rag.retrieval import DocsRetriever, RetrievalConfig
-from api.assistant.rag.store import ensure_collection, make_engine, open_store
+from api.assistant.rag.store import create_collection, make_engine, open_store
 from api.config import Settings
 
 pytestmark = pytest.mark.skipif(
@@ -89,7 +89,7 @@ def _require_pgvector(postgresql):
     Checked through pg_available_extensions before anything calls CREATE EXTENSION, so
     a developer machine with PostgreSQL but no pgvector next to it (Homebrew's
     postgresql@16 formula does not carry it - see api/assistant/README.md) gets a clear
-    skip instead of ensure_collection's own CREATE EXTENSION IF NOT EXISTS failing with
+    skip instead of create_collection's own CREATE EXTENSION IF NOT EXISTS failing with
     sqlalchemy.exc.NotSupportedError. CI is not exposed to this path: Task 124.3's
     "Verify the pgvector extension is installed" step already fails the job before
     pytest runs if the apt install is broken, so a CI run either has pgvector for real
@@ -129,7 +129,7 @@ class TestDocsRetrieverAgainstRealPgvector:
         embeddings = make_embeddings(settings)
         engine = make_engine(_connection_url(postgresql))
         try:
-            await ensure_collection(
+            await create_collection(
                 engine, table="docs_test_retrieval", vector_size=8, hybrid=False
             )
             store = open_store(engine, table="docs_test_retrieval", embeddings=embeddings)
@@ -185,7 +185,7 @@ class TestDocsRetrieverAgainstRealPgvector:
         embeddings = make_embeddings(settings)
         engine = make_engine(_connection_url(postgresql))
         try:
-            await ensure_collection(
+            await create_collection(
                 engine, table="docs_test_retrieval_ranking", vector_size=8, hybrid=False
             )
             store = open_store(engine, table="docs_test_retrieval_ranking", embeddings=embeddings)

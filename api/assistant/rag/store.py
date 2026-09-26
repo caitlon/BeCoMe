@@ -1,19 +1,20 @@
-"""pgvector-backed storage: connection pool, collection creation, store access.
+"""pgvector-backed storage: collection creation, rebuild swap, store access.
 
 Talks to the assistant's own vector database (docker-compose profile "assistant",
 Settings.assistant_vector_db_url), never the application's own Postgres.
 """
 
 import re
+from typing import Any
 
+import psycopg
 from langchain_core.embeddings import Embeddings
 from langchain_postgres import PGEngine, PGVectorStore
 from langchain_postgres.v2.hybrid_search_config import HybridSearchConfig
-from psycopg.errors import DuplicateTable
-from sqlalchemy.exc import ProgrammingError
+from psycopg import sql
 
 # PostgreSQL's own identifier limit is 63 bytes. langchain-postgres 0.0.18 escapes
-# table_name in ensure_collection's own CREATE TABLE call (PGEngine.ainit_vectorstore_table
+# table_name in create_collection's own CREATE TABLE call (PGEngine.ainit_vectorstore_table
 # doubles an embedded double quote), but open_store's later PGVectorStore/AsyncPGVectorStore
 # interpolates table_name straight into its insert, search and delete SQL with no escaping
 # at all - a name containing a double quote breaks out of the quoted identifier there. Both
@@ -57,19 +58,34 @@ def make_engine(url: str) -> PGEngine:
     return PGEngine.from_connection_string(url=url)
 
 
-async def ensure_collection(engine: PGEngine, table: str, vector_size: int, hybrid: bool) -> None:
-    """Create the collection's table if it does not already exist.
+_STAGING_SUFFIX = "_staging"
 
-    Idempotent: calling this again for a table that already exists is a no-op, since
-    re-running the ingest CLI for an existing collection name is a normal workflow
-    (a second corpus wave refreshes an existing collection). The no-op
-    does not check whether hybrid matches the table's existing shape: a second call
-    that flips hybrid for an existing table name silently keeps the old columns.
-    Whatever first sets hybrid=True must recreate the table itself when switching an
-    existing collection to hybrid.
+
+def staging_table(table: str) -> str:
+    """Name the table a rebuild of a collection is written into before it goes live.
+
+    :param table: The collection's table name.
+    :return: table followed by "_staging".
+    :raises ValueError: If table is not a plain identifier (see _validate_collection_name),
+        or is longer than 55 characters, so that its staging name would pass PostgreSQL's
+        63-character identifier limit.
+    """
+    _validate_collection_name(table)
+    staging = f"{table}{_STAGING_SUFFIX}"
+    if len(staging) > 63:
+        raise ValueError(
+            f"collection name {table!r} is too long to rebuild: its staging table "
+            f"{staging!r} would pass PostgreSQL's 63-character identifier limit, so keep "
+            f"collection names to {63 - len(_STAGING_SUFFIX)} characters"
+        )
+    return staging
+
+
+async def create_collection(engine: PGEngine, table: str, vector_size: int, hybrid: bool) -> None:
+    """Create the collection's table empty, dropping any table of the same name first.
 
     :param engine: The assistant database's connection pool.
-    :param table: Table name for this collection (pipeline.py names it per variant).
+    :param table: Table name to create.
     :param vector_size: Embedding dimensionality, decided by the embedding model.
     :param hybrid: Whether to also provision a full-text-search column for hybrid
         search. The ingest pipeline passes False (dense-only), and so do the
@@ -77,28 +93,54 @@ async def ensure_collection(engine: PGEngine, table: str, vector_size: int, hybr
         process, by reciprocal rank fusion, rather than through this column.
     :return: None.
     :raises ValueError: If table is not a plain identifier; see _validate_collection_name.
-    :raises ProgrammingError: If table creation fails for any reason other than the
-        table already existing. Only psycopg.errors.DuplicateTable (SQLSTATE 42P07)
-        is treated as an already-created collection; any other ProgrammingError (an
-        invalid column, a permission error) propagates instead of being silently
-        absorbed.
     """
     _validate_collection_name(table)
     hybrid_config = HybridSearchConfig() if hybrid else None
-    try:
-        await engine.ainit_vectorstore_table(
-            table_name=table, vector_size=vector_size, hybrid_search_config=hybrid_config
-        )
-    except ProgrammingError as exc:
-        if not isinstance(exc.orig, DuplicateTable):
-            raise
+    await engine.ainit_vectorstore_table(
+        table_name=table,
+        vector_size=vector_size,
+        hybrid_search_config=hybrid_config,
+        overwrite_existing=True,
+    )
+
+
+async def swap_in_staging(conn: psycopg.AsyncConnection[Any], table: str) -> None:
+    """Replace a collection's live table with its staging table, in the caller's transaction.
+
+    Both statements are DDL, which PostgreSQL runs transactionally: until the caller
+    commits, readers keep seeing the old table, and a rollback leaves it in place. The
+    staging table's primary-key index keeps its name; PostgreSQL picks a free name for
+    the next staging table's own index, so repeated rebuilds never collide on it.
+
+    :param conn: An open connection to the assistant's database; the caller commits.
+    :param table: The collection's table name; staging_table(table) must exist.
+    :return: None.
+    :raises ValueError: If table cannot be staged; see staging_table.
+    :raises psycopg.errors.UndefinedTable: If the staging table does not exist.
+    """
+    staging = staging_table(table)
+    # table and staging are restricted to plain identifiers by staging_table /
+    # _validate_collection_name above, and sql.Identifier quotes and escapes whatever it
+    # is given - this is psycopg's own safe identifier composition, not string-built SQL.
+    # A table/relation name cannot be bound as a query parameter in PostgreSQL (only
+    # values can), so this is the parameterization-equivalent for a dynamic identifier.
+    # Rendered to a plain string first, since that identifier composition is what needs
+    # reviewing here, not the (trivial, argument-less) execute call that follows it.
+    drop_live = sql.SQL("DROP TABLE IF EXISTS {}").format(sql.Identifier(table)).as_string(conn)
+    rename_staging = (
+        sql.SQL("ALTER TABLE {} RENAME TO {}")
+        .format(sql.Identifier(staging), sql.Identifier(table))
+        .as_string(conn)
+    )
+    await conn.execute(drop_live)
+    await conn.execute(rename_staging)
 
 
 def open_store(engine: PGEngine, table: str, embeddings: Embeddings) -> PGVectorStore:
     """Open an existing collection table as a PGVectorStore.
 
     :param engine: The assistant database's connection pool.
-    :param table: The collection's table name, already created via ensure_collection.
+    :param table: The collection's table name, already created via create_collection.
     :param embeddings: The embeddings client used to embed queries and documents.
     :return: A PGVectorStore bound to that table.
     :raises ValueError: If table is not a plain identifier; see _validate_collection_name.
