@@ -242,12 +242,11 @@ async def build_collection(spec: CollectionSpec, settings: Settings, repo_root: 
     :return: Number of chunks written to the collection.
     :raises FileNotFoundError: If spec.context is "captions" and the configured
         captions file does not exist.
-    :raises ValueError: If spec.name is too long to stage a rebuild (see
-        staging_table) - checked before any other work, or if spec.context is
-        "captions" and load_captions() rejects the configured file - checked before
-        the corpus is loaded or embedded, so a misconfigured captions build fails
-        immediately rather than after that work - or if every chunk misses a caption
-        once the corpus has been chunked.
+    :raises ValueError: If spec.context is "captions" and load_captions() rejects the
+        configured file, or if spec.name is too long to stage a rebuild (see
+        staging_table) - both checked before the corpus is loaded or embedded, so a
+        misconfigured build fails immediately rather than after that work - or if
+        every chunk misses a caption once the corpus has been chunked.
     """
     captions = load_captions(settings, repo_root) if spec.context == "captions" else None
     staging = staging_table(spec.name)
