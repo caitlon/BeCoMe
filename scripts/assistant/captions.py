@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Report which of the assistant's corpus chunks still need a caption, export them for
-captioning, and merge freshly written captions back into the captions file the
-"captions" context mode reads.
+captioning, merge freshly written captions back into the captions file the "captions"
+context mode reads, and drop captions whose chunk no longer exists.
 
     uv run python scripts/assistant/captions.py missing --strategy markdown_headers \\
         --size 500 --overlap-pct 10 --out batch.json
     uv run python scripts/assistant/captions.py merge batch-captions.json
+    uv run python scripts/assistant/captions.py prune --strategy markdown_headers \\
+        --size 500 --overlap-pct 10
 
 Reads only the corpus and the captions file: no chat model, no embedding server (for
 every chunking strategy but "semantic"), and no database. See api/assistant/README.md
@@ -89,7 +91,7 @@ def _find_missing(
     config: ChunkerConfig,
     captions: dict[str, str],
     embeddings: Embeddings | None,
-) -> tuple[int, int, list[dict[str, Any]]]:
+) -> tuple[int, int, list[dict[str, Any]], set[str]]:
     """Chunk every document and collect those with at least one uncaptioned chunk.
 
     Splits one document at a time instead of the whole corpus in one split() call, so
@@ -103,21 +105,25 @@ def _find_missing(
     :param captions: chunk_key(chunk text) -> caption, as read from the captions file.
     :param embeddings: Required for strategy="semantic"; ignored, and not needed, for
         every other strategy.
-    :return: (missing, total, batch): the total chunk count, how many have no caption,
-        and one entry per document with at least one uncaptioned chunk, in document
-        order (see _batch_entry).
+    :return: (missing, total, batch, keys): the total chunk count, how many have no
+        caption, one entry per document with at least one uncaptioned chunk in
+        document order (see _batch_entry), and chunk_key of every chunk this corpus
+        split into, captioned or not - a caption is stale when its key falls outside
+        this set.
     """
     total = 0
     missing = 0
     batch: list[dict[str, Any]] = []
+    keys: set[str] = set()
     for document in documents:
         chunks = split([document], config, embeddings=embeddings)
         total += len(chunks)
+        keys.update(chunk_key(chunk.page_content) for chunk in chunks)
         entry = _batch_entry(document, chunks, captions)
         if entry is not None:
             missing += len(entry["chunks"])
             batch.append(entry)
-    return missing, total, batch
+    return missing, total, batch, keys
 
 
 def _merge_captions(
@@ -140,6 +146,17 @@ def _merge_captions(
             added += 1
         merged[key] = caption
     return merged, added, replaced
+
+
+def _write_captions(path: Path, captions: dict[str, str]) -> None:
+    """Write the captions file, the one place its on-disk format is defined.
+
+    :param path: The captions file to write.
+    :param captions: chunk_key -> caption mapping to write.
+    """
+    path.write_text(
+        json.dumps(captions, sort_keys=True, ensure_ascii=False, indent=1), encoding="utf-8"
+    )
 
 
 def _captions_payload(text: str) -> dict[str, str]:
@@ -172,28 +189,30 @@ def _captions_payload(text: str) -> dict[str, str]:
 def _parse_args() -> argparse.Namespace:
     """Parse CLI arguments for one captions-refresh command.
 
-    :return: The parsed arguments; args.command is "missing" or "merge".
+    :return: The parsed arguments; args.command is "missing", "merge" or "prune".
     """
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    missing_parser = subparsers.add_parser(
-        "missing", help="Report chunks with no caption, and export them for captioning"
-    )
-    missing_parser.add_argument(
+    corpus_parser = argparse.ArgumentParser(add_help=False)
+    corpus_parser.add_argument(
         "--strategy",
         required=True,
         choices=["fixed", "recursive", "markdown_headers", "sentences", "semantic", "parent_child"],
         help="Chunking strategy",
     )
-    missing_parser.add_argument(
+    corpus_parser.add_argument(
         "--size", type=int, default=500, help="Target chunk size in characters"
     )
-    missing_parser.add_argument(
+    corpus_parser.add_argument(
         "--overlap-pct", type=int, default=10, help="Chunk overlap, as a percentage of size"
     )
-    missing_parser.add_argument(
-        "--wave", type=int, default=1, help="Highest corpus wave to include"
+    corpus_parser.add_argument("--wave", type=int, default=1, help="Highest corpus wave to include")
+
+    missing_parser = subparsers.add_parser(
+        "missing",
+        parents=[corpus_parser],
+        help="Report chunks with no caption, and export them for captioning",
     )
     missing_parser.add_argument(
         "--out", default=None, help="Write the documents with uncaptioned chunks to this JSON file"
@@ -204,6 +223,12 @@ def _parse_args() -> argparse.Namespace:
     )
     merge_parser.add_argument(
         "file", type=_captions_payload, help="JSON object mapping each chunk's sha to its caption"
+    )
+
+    subparsers.add_parser(
+        "prune",
+        parents=[corpus_parser],
+        help="Drop captions whose chunk no longer exists in the corpus",
     )
 
     return parser.parse_args()
@@ -220,8 +245,9 @@ def _run_missing(args: argparse.Namespace, settings: Settings, repo_root: Path) 
     documents = load_corpus(settings, repo_root, args.wave)
     captions = _read_captions_or_empty(settings, repo_root)
     embeddings = make_embeddings(settings) if config.strategy == "semantic" else None
-    missing, total, batch = _find_missing(documents, config, captions, embeddings)
-    print(f"{missing} of {total} chunks have no caption")
+    missing, total, batch, keys = _find_missing(documents, config, captions, embeddings)
+    stale = len(captions.keys() - keys)
+    print(f"{missing} of {total} chunks have no caption; {stale} captions match no chunk")
     if args.out:
         Path(args.out).write_text(json.dumps(batch, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -237,10 +263,27 @@ def _run_merge(new_captions: dict[str, str], settings: Settings, repo_root: Path
     path = _resolve_captions_path(settings, repo_root)
     existing = _read_captions_or_empty(settings, repo_root)
     merged, added, replaced = _merge_captions(new_captions, existing)
-    path.write_text(
-        json.dumps(merged, sort_keys=True, ensure_ascii=False, indent=1), encoding="utf-8"
-    )
+    _write_captions(path, merged)
     print(f"added {added}, replaced {replaced}, total {len(merged)}")
+
+
+def _run_prune(args: argparse.Namespace, settings: Settings, repo_root: Path) -> None:
+    """Run the `prune` command: drop captions whose chunk no longer exists.
+
+    :param args: Parsed CLI arguments (strategy, size, overlap_pct, wave).
+    :param settings: Application settings.
+    :param repo_root: Repository root.
+    """
+    config = ChunkerConfig(strategy=args.strategy, size=args.size, overlap_pct=args.overlap_pct)
+    documents = load_corpus(settings, repo_root, args.wave)
+    captions = _read_captions_or_empty(settings, repo_root)
+    embeddings = make_embeddings(settings) if config.strategy == "semantic" else None
+    _, _, _, keys = _find_missing(documents, config, captions, embeddings)
+    kept = {key: caption for key, caption in captions.items() if key in keys}
+    removed = len(captions) - len(kept)
+    if removed:
+        _write_captions(_resolve_captions_path(settings, repo_root), kept)
+    print(f"removed {removed}, kept {len(kept)}")
 
 
 def _main() -> None:
@@ -254,6 +297,8 @@ def _main() -> None:
         raise SystemExit(f"error: {exc}") from None
     if args.command == "missing":
         _run_missing(args, settings, repo_root)
+    elif args.command == "prune":
+        _run_prune(args, settings, repo_root)
     else:
         _run_merge(args.file, settings, repo_root)
 

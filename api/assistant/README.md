@@ -80,9 +80,10 @@ a warning, by count only, when just some chunks miss one.
 
 1. `uv run python scripts/assistant/captions.py missing --strategy markdown_headers --size 500
    --overlap-pct 10 --out batch.json` chunks the corpus exactly as a real ingest run would,
-   reports how many of its chunks have no caption yet, and, with `--out`, writes the documents
-   that do - full text and all - to a JSON file. It touches only the corpus and the captions
-   file: no chat model, no embedding server, no database.
+   reports how many of its chunks have no caption yet and how many captions match no chunk at
+   all, and, with `--out`, writes the documents that do - full text and all - to a JSON file.
+   It touches only the corpus and the captions file: no chat model, no embedding server, no
+   database.
 2. Caption every fragment the batch file lists: one or two sentences, at most 50 words, naming
    what the document is and what that specific fragment covers - not a restatement of its own
    wording - written in English, with no markup. Save the result as a JSON object mapping each
@@ -90,8 +91,11 @@ a warning, by count only, when just some chunks miss one.
 3. `uv run python scripts/assistant/captions.py merge <captioned-batch.json>` folds those
    captions into `ASSISTANT_CAPTIONS_FILE`, creating it on the first run, and reports how many
    captions were added versus replaced.
-4. Commit the updated captions file in the corpus repository.
-5. Rebuild the collection: rerun `ingest.py` (see "Start" above), so the new captions take effect.
+4. `captions.py prune`, with the same flags as `missing`, drops the captions whose fragment no
+   longer exists. Pass the flags of the collection you build: under a different chunker or
+   wave, captions that are still in use would count as stale.
+5. Commit the updated captions file in the corpus repository.
+6. Rebuild the collection: rerun `ingest.py` (see "Start" above), so the new captions take effect.
 
 ## Running the pgvector-backed tests locally
 

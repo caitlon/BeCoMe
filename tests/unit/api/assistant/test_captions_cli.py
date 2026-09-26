@@ -272,7 +272,10 @@ class TestRunMissing:
         captions_cli._run_missing(args, settings, repo_root=tmp_path)
 
         # THEN
-        assert capsys.readouterr().out.strip() == "1 of 2 chunks have no caption"
+        assert (
+            capsys.readouterr().out.strip()
+            == "1 of 2 chunks have no caption; 0 captions match no chunk"
+        )
         batch = json.loads(out_path.read_text(encoding="utf-8"))
         assert batch == [
             {
@@ -303,7 +306,10 @@ class TestRunMissing:
         captions_cli._run_missing(args, settings, repo_root=tmp_path)
 
         # THEN
-        assert capsys.readouterr().out.strip() == "1 of 1 chunks have no caption"
+        assert (
+            capsys.readouterr().out.strip()
+            == "1 of 1 chunks have no caption; 0 captions match no chunk"
+        )
         assert list(tmp_path.iterdir()) == [captions_path]
 
     def test_does_not_build_an_embeddings_client_for_a_non_semantic_strategy(
@@ -331,7 +337,103 @@ class TestRunMissing:
 
         # WHEN / THEN: no AssertionError means make_embeddings was never called
         captions_cli._run_missing(args, settings, repo_root=tmp_path)
-        assert capsys.readouterr().out.strip() == "1 of 1 chunks have no caption"
+        assert (
+            capsys.readouterr().out.strip()
+            == "1 of 1 chunks have no caption; 0 captions match no chunk"
+        )
+
+    def test_prints_how_many_captions_match_no_chunk(self, tmp_path, capsys, monkeypatch):
+        """
+        GIVEN a captions file with one entry for the corpus's only chunk and one entry
+             that matches no chunk at all
+        WHEN _run_missing runs
+        THEN it reports that stale count alongside the missing/total counts
+        """
+        # GIVEN
+        doc = Document(page_content="Solo document.", metadata={"title": "Doc", "layer": "public"})
+        monkeypatch.setattr(captions_cli, "load_corpus", lambda settings, repo_root, wave: [doc])
+        captions_path = tmp_path / "captions.json"
+        captions_path.write_text(
+            json.dumps(
+                {chunk_key(doc.page_content): "Current caption.", "stale-key": "Orphan caption."}
+            ),
+            encoding="utf-8",
+        )
+        settings = Settings(
+            secret_key="test-secret-key", assistant_captions_file=str(captions_path)
+        )
+        args = argparse.Namespace(strategy="fixed", size=500, overlap_pct=10, wave=1, out=None)
+
+        # WHEN
+        captions_cli._run_missing(args, settings, repo_root=tmp_path)
+
+        # THEN
+        assert (
+            capsys.readouterr().out.strip()
+            == "0 of 1 chunks have no caption; 1 captions match no chunk"
+        )
+
+
+class TestRunPrune:
+    """_run_prune drops captions whose chunk no longer exists in the corpus."""
+
+    def test_removes_the_stale_key_and_keeps_the_current_one(self, tmp_path, capsys, monkeypatch):
+        """
+        GIVEN a captions file with one entry matching the corpus's only chunk and one
+             entry that matches no chunk
+        WHEN _run_prune runs
+        THEN it rewrites the file holding only the matching entry, in merge's format,
+             and reports removed 1, kept 1
+        """
+        # GIVEN
+        doc = Document(page_content="Solo document.", metadata={"title": "Doc", "layer": "public"})
+        monkeypatch.setattr(captions_cli, "load_corpus", lambda settings, repo_root, wave: [doc])
+        current_key = chunk_key(doc.page_content)
+        captions_path = tmp_path / "captions.json"
+        captions_path.write_text(
+            json.dumps({current_key: "Current caption.", "stale-key": "Orphan caption."}),
+            encoding="utf-8",
+        )
+        settings = Settings(
+            secret_key="test-secret-key", assistant_captions_file=str(captions_path)
+        )
+        args = argparse.Namespace(strategy="fixed", size=500, overlap_pct=10, wave=1)
+
+        # WHEN
+        captions_cli._run_prune(args, settings, repo_root=tmp_path)
+
+        # THEN
+        assert capsys.readouterr().out.strip() == "removed 1, kept 1"
+        raw = captions_path.read_text(encoding="utf-8")
+        assert json.loads(raw) == {current_key: "Current caption."}
+        assert raw == json.dumps(
+            {current_key: "Current caption."}, sort_keys=True, ensure_ascii=False, indent=1
+        )
+
+    def test_writes_nothing_when_no_caption_is_stale(self, tmp_path, capsys, monkeypatch):
+        """
+        GIVEN a captions file whose only entry matches the corpus's only chunk
+        WHEN _run_prune runs
+        THEN it reports removed 0, kept 1 and leaves the file's bytes untouched
+        """
+        # GIVEN
+        doc = Document(page_content="Solo document.", metadata={"title": "Doc", "layer": "public"})
+        monkeypatch.setattr(captions_cli, "load_corpus", lambda settings, repo_root, wave: [doc])
+        current_key = chunk_key(doc.page_content)
+        captions_path = tmp_path / "captions.json"
+        original = json.dumps({current_key: "Current caption."})
+        captions_path.write_text(original, encoding="utf-8")
+        settings = Settings(
+            secret_key="test-secret-key", assistant_captions_file=str(captions_path)
+        )
+        args = argparse.Namespace(strategy="fixed", size=500, overlap_pct=10, wave=1)
+
+        # WHEN
+        captions_cli._run_prune(args, settings, repo_root=tmp_path)
+
+        # THEN
+        assert capsys.readouterr().out.strip() == "removed 0, kept 1"
+        assert captions_path.read_text(encoding="utf-8") == original
 
 
 class TestMain:
