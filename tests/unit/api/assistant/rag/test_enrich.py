@@ -20,6 +20,16 @@ class _RecordingChatModel(FakeListChatModel):
         return super()._call(messages, stop=stop, run_manager=run_manager, **kwargs)
 
 
+class _RecordingFakeChatModel(FakeListChatModel):
+    """FakeListChatModel that also remembers the temperature of its last call."""
+
+    recorded_temperature: float | None = None
+
+    def _call(self, *args, **kwargs) -> str:
+        self.recorded_temperature = kwargs.get("temperature")
+        return super()._call(*args, **kwargs)
+
+
 def _chunk(
     text: str,
     heading_path: str = "",
@@ -383,6 +393,32 @@ class TestCaptionsMode:
         """
         # GIVEN / WHEN / THEN
         assert chunk_key("x") == hashlib.sha256(b"x").hexdigest()
+
+
+class TestContextGenerationRunsAtZeroTemperature:
+    """Both LLM-driven context modes must write the same context for the same chunk.
+
+    A mode that samples would write different context sentences or summaries across
+    otherwise-identical builds of the same corpus, so two builds would embed
+    different text for the same chunk.
+    """
+
+    @pytest.mark.parametrize("mode", ["llm_context", "doc_summary"])
+    def test_binds_the_model_to_temperature_zero(self, mode):
+        """
+        GIVEN one chunk and a fake model that records the temperature of its call
+        WHEN enrich() runs with mode="llm_context" or mode="doc_summary"
+        THEN the model was called with temperature=0
+        """
+        # GIVEN
+        chunk = _chunk("It uses every opinion, which is its virtue and its flaw.")
+        llm = _RecordingFakeChatModel(responses=["Context or summary text."])
+
+        # WHEN
+        enrich([chunk], mode=mode, llm=llm)
+
+        # THEN
+        assert llm.recorded_temperature == 0
 
 
 class TestUnknownMode:

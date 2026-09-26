@@ -80,6 +80,8 @@ def _prepend_llm_context(chunk: Document, llm: BaseChatModel) -> Document:
     own text, so a fragment that reads as generic on its own gets the surrounding
     document's subject attached before it is embedded.
 
+    The model runs at temperature 0, so rebuilding the same corpus writes the same text.
+
     :param chunk: The chunk to enrich.
     :param llm: The chat model asked for the context sentence.
     :return: A new Document with the model's sentence prepended.
@@ -87,7 +89,7 @@ def _prepend_llm_context(chunk: Document, llm: BaseChatModel) -> Document:
     prompt = _LLM_CONTEXT_PROMPT.format(
         title=chunk.metadata.get("title", ""), chunk=chunk.page_content
     )
-    context = strip_think_block(str(llm.invoke(prompt).content))
+    context = strip_think_block(str(llm.bind(temperature=0).invoke(prompt).content))
     return Document(
         page_content=f"{context}\n\n{chunk.page_content}",
         metadata={**chunk.metadata, "chunk_text": chunk.page_content},
@@ -116,6 +118,8 @@ def _prepend_doc_summary(chunks: list[Document], llm: BaseChatModel) -> list[Doc
     that joined text are sent to the model, so the summary reads the opening of a
     long document rather than all of it.
 
+    The model runs at temperature 0, so rebuilding the same corpus writes the same text.
+
     :param chunks: Chunks to enrich, from one or more source documents.
     :param llm: The chat model asked for each document's summary.
     :return: New Documents with their source document's summary prepended.
@@ -124,10 +128,11 @@ def _prepend_doc_summary(chunks: list[Document], llm: BaseChatModel) -> list[Doc
     for chunk in chunks:
         by_source.setdefault(chunk.metadata["source"], []).append(chunk)
 
+    bound_llm = llm.bind(temperature=0)
     summaries = {
         source: strip_think_block(
             str(
-                llm.invoke(
+                bound_llm.invoke(
                     _DOC_SUMMARY_PROMPT.format(
                         document="\n\n".join(c.page_content for c in group)[
                             :_DOC_SUMMARY_CHAR_BUDGET
