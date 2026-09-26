@@ -467,6 +467,35 @@ class TestMain:
         with pytest.raises(SystemExit, match="ASSISTANT_CAPTIONS_FILE"):
             captions_cli._main()
 
+    @pytest.mark.parametrize(
+        ("command", "runner"),
+        [("missing", "_run_missing"), ("merge", "_run_merge"), ("prune", "_run_prune")],
+    )
+    def test_dispatches_each_command_to_its_own_runner(self, monkeypatch, command, runner):
+        """
+        GIVEN a configured ASSISTANT_CAPTIONS_FILE
+        WHEN _main runs each of missing, merge and prune
+        THEN exactly that command's runner is called
+        """
+        # GIVEN
+        monkeypatch.setattr(
+            captions_cli, "_parse_args", lambda: argparse.Namespace(command=command, file={})
+        )
+        monkeypatch.setattr(
+            captions_cli,
+            "get_settings",
+            lambda: Settings(secret_key="test-secret-key", assistant_captions_file="captions.json"),
+        )
+        called = []
+        for name in ("_run_missing", "_run_merge", "_run_prune"):
+            monkeypatch.setattr(captions_cli, name, lambda *args, _name=name: called.append(_name))
+
+        # WHEN
+        captions_cli._main()
+
+        # THEN
+        assert called == [runner]
+
     def test_merge_exits_before_touching_the_file_when_unset(self, monkeypatch):
         """
         GIVEN no ASSISTANT_CAPTIONS_FILE configured
