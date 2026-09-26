@@ -53,9 +53,7 @@ def _resolve_captions_path(settings: Settings, repo_root: Path) -> Path:
     :raises ValueError: If assistant_captions_file is not set.
     """
     if not settings.assistant_captions_file:
-        raise ValueError(
-            "no captions file configured: set ASSISTANT_CAPTIONS_FILE to merge captions"
-        )
+        raise ValueError("no captions file configured: set ASSISTANT_CAPTIONS_FILE")
     return repo_root / settings.assistant_captions_file
 
 
@@ -250,6 +248,10 @@ def _main() -> None:
     args = _parse_args()
     settings = get_settings()
     repo_root = Path(__file__).resolve().parents[2]
+    try:
+        _resolve_captions_path(settings, repo_root)
+    except ValueError as exc:
+        raise SystemExit(f"error: {exc}") from None
     if args.command == "missing":
         _run_missing(args, settings, repo_root)
     else:

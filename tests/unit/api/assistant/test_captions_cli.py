@@ -35,6 +35,15 @@ def _load():
 captions_cli = _load()
 
 
+@pytest.fixture(autouse=True)
+def _isolated_from_dotenv(tmp_path, monkeypatch):
+    """Run each test where no .env exists, so Settings never sees a developer's real corpus."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("ASSISTANT_PRIVATE_CORPUS_MANIFEST", raising=False)
+    monkeypatch.delenv("ASSISTANT_PRIVATE_CORPUS_DIRS", raising=False)
+    monkeypatch.delenv("ASSISTANT_CAPTIONS_FILE", raising=False)
+
+
 class TestReadCaptionsOrEmpty:
     """_read_captions_or_empty treats a not-yet-written captions file as the first run."""
 
@@ -323,3 +332,53 @@ class TestRunMissing:
         # WHEN / THEN: no AssertionError means make_embeddings was never called
         captions_cli._run_missing(args, settings, repo_root=tmp_path)
         assert capsys.readouterr().out.strip() == "1 of 1 chunks have no caption"
+
+
+class TestMain:
+    """_main resolves the captions path before any corpus work, for every command."""
+
+    def test_missing_exits_before_the_corpus_loads_when_unset(self, monkeypatch):
+        """
+        GIVEN no ASSISTANT_CAPTIONS_FILE configured
+        WHEN _main runs the `missing` command
+        THEN it raises SystemExit naming ASSISTANT_CAPTIONS_FILE, and load_corpus is
+             never called
+        """
+        # GIVEN
+        monkeypatch.setattr(
+            captions_cli,
+            "_parse_args",
+            lambda: argparse.Namespace(
+                command="missing", strategy="fixed", size=500, overlap_pct=10, wave=1, out=None
+            ),
+        )
+        monkeypatch.setattr(
+            captions_cli, "get_settings", lambda: Settings(secret_key="test-secret-key")
+        )
+
+        def _fail_if_called(settings, repo_root, wave):
+            raise AssertionError("load_corpus must not run before the captions setting is checked")
+
+        monkeypatch.setattr(captions_cli, "load_corpus", _fail_if_called)
+
+        # WHEN / THEN
+        with pytest.raises(SystemExit, match="ASSISTANT_CAPTIONS_FILE"):
+            captions_cli._main()
+
+    def test_merge_exits_before_touching_the_file_when_unset(self, monkeypatch):
+        """
+        GIVEN no ASSISTANT_CAPTIONS_FILE configured
+        WHEN _main runs the `merge` command
+        THEN it raises SystemExit naming ASSISTANT_CAPTIONS_FILE
+        """
+        # GIVEN
+        monkeypatch.setattr(
+            captions_cli, "_parse_args", lambda: argparse.Namespace(command="merge", file={})
+        )
+        monkeypatch.setattr(
+            captions_cli, "get_settings", lambda: Settings(secret_key="test-secret-key")
+        )
+
+        # WHEN / THEN
+        with pytest.raises(SystemExit, match="ASSISTANT_CAPTIONS_FILE"):
+            captions_cli._main()
