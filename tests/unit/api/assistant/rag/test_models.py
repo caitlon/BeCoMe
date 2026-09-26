@@ -73,6 +73,22 @@ class TestMakeEmbeddings:
         # THEN
         assert embeddings.request_timeout == settings.assistant_llm_timeout_seconds
 
+    def test_sends_at_most_64_texts_per_request(self):
+        """
+        GIVEN default Settings
+        WHEN make_embeddings builds a client
+        THEN its chunk_size is 64, so llama-server answers one small batch instead
+             of the whole corpus, keeping each request's timeout bound small
+        """
+        # GIVEN
+        settings = Settings(secret_key="test-secret-key")
+
+        # WHEN
+        embeddings = make_embeddings(settings)
+
+        # THEN
+        assert embeddings.chunk_size == 64
+
 
 class TestStripThinkBlock:
     """strip_think_block removes a reasoning-capable model's <think> preamble."""
