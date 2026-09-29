@@ -241,3 +241,147 @@ class TestNoCookies:
 
         # THEN
         assert cookie_headers == [None, None]
+
+
+class TestMalformedSuccessBody:
+    """A 2xx body the client cannot use is an upstream fault, not a crash."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("method", "location"),
+        [("get_project", "scale_min"), ("get_result", "best_compromise"), ("get_opinions", "peak")],
+    )
+    async def test_a_body_that_fails_the_view_schema_raises_upstream_error(self, method, location):
+        """
+        GIVEN an API that answers 200 with a body of the wrong shape, holding a marker value
+        WHEN a read method parses it
+        THEN AssistantUpstreamError is raised, naming the failing field locations, and the
+             marker appears neither in its text nor anywhere in its exception chain
+        """
+        # GIVEN
+        app = FastAPI()
+        marker = "private-marker-text"
+        bad = {"name": marker, "scale_min": marker}
+
+        @app.get("/api/v1/projects/{project_id}")
+        def get_project(project_id: str) -> dict[str, Any]:
+            return bad
+
+        @app.get("/api/v1/projects/{project_id}/result")
+        def get_result(project_id: str) -> dict[str, Any]:
+            return bad
+
+        @app.get("/api/v1/projects/{project_id}/opinions")
+        def get_opinions(project_id: str) -> list[dict[str, Any]]:
+            return [bad]
+
+        api_client = UserApiClient(app=app, access_token="t", client_ip="127.0.0.1")
+
+        # WHEN
+        with pytest.raises(AssistantUpstreamError) as excinfo:
+            await getattr(api_client, method)(str(uuid4()))
+        await api_client.aclose()
+
+        # THEN
+        error = excinfo.value
+        assert location in str(error)
+        assert marker not in str(error)
+        assert error.__cause__ is None
+        assert error.__context__ is None
+
+    @pytest.mark.asyncio
+    async def test_list_projects_wraps_a_malformed_item(self):
+        """
+        GIVEN a project list whose item lacks the required fields
+        WHEN list_projects parses it
+        THEN AssistantUpstreamError is raised
+        """
+        # GIVEN
+        app = FastAPI()
+
+        @app.get("/api/v1/projects")
+        def list_projects() -> list[dict[str, Any]]:
+            return [{"unexpected": 1}]
+
+        api_client = UserApiClient(app=app, access_token="t", client_ip="127.0.0.1")
+
+        # WHEN/THEN
+        with pytest.raises(AssistantUpstreamError):
+            await api_client.list_projects()
+        await api_client.aclose()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("method", ["get_project", "get_result", "get_opinions"])
+    async def test_a_body_that_is_not_json_raises_upstream_error(self, method):
+        """
+        GIVEN an API that answers 200 with an HTML page holding a marker
+        WHEN a read method decodes it
+        THEN AssistantUpstreamError is raised and neither it nor its chain carries the marker
+        """
+        # GIVEN
+        marker = "private-marker-text"
+        app = FastAPI()
+
+        @app.get("/api/v1/projects/{project_id}")
+        @app.get("/api/v1/projects/{project_id}/result")
+        @app.get("/api/v1/projects/{project_id}/opinions")
+        def page(project_id: str) -> Response:
+            return Response(f"<html>{marker}</html>", media_type="text/html")
+
+        api_client = UserApiClient(app=app, access_token="t", client_ip="127.0.0.1")
+
+        # WHEN
+        with pytest.raises(AssistantUpstreamError) as excinfo:
+            await getattr(api_client, method)(str(uuid4()))
+        await api_client.aclose()
+
+        # THEN
+        assert "not JSON" in str(excinfo.value)
+        assert marker not in str(excinfo.value)
+        assert excinfo.value.__cause__ is None
+
+    @pytest.mark.asyncio
+    async def test_list_projects_wraps_a_non_json_body(self):
+        """
+        GIVEN a project list endpoint that answers 200 with plain text
+        WHEN list_projects decodes it
+        THEN AssistantUpstreamError is raised
+        """
+        # GIVEN
+        app = FastAPI()
+
+        @app.get("/api/v1/projects")
+        def list_projects() -> Response:
+            return Response("not json", media_type="text/plain")
+
+        api_client = UserApiClient(app=app, access_token="t", client_ip="127.0.0.1")
+
+        # WHEN/THEN
+        with pytest.raises(AssistantUpstreamError, match="not JSON"):
+            await api_client.list_projects()
+        await api_client.aclose()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("body", ["null", "5", '{"items": []}', '"text"'])
+    async def test_a_list_page_that_is_not_a_list_raises_upstream_error(self, body):
+        """
+        GIVEN a list endpoint that answers 200 with valid JSON that is not a list
+        WHEN list_projects or get_opinions reads the page
+        THEN AssistantUpstreamError is raised instead of a TypeError
+        """
+        # GIVEN
+        app = FastAPI()
+
+        @app.get("/api/v1/projects")
+        @app.get("/api/v1/projects/{project_id}/opinions")
+        def page(project_id: str | None = None) -> Response:
+            return Response(body, media_type="application/json")
+
+        api_client = UserApiClient(app=app, access_token="t", client_ip="127.0.0.1")
+
+        # WHEN/THEN
+        with pytest.raises(AssistantUpstreamError, match="not a list"):
+            await api_client.list_projects()
+        with pytest.raises(AssistantUpstreamError, match="not a list"):
+            await api_client.get_opinions(str(uuid4()))
+        await api_client.aclose()

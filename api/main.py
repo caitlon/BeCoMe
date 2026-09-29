@@ -191,9 +191,25 @@ def create_app() -> FastAPI:
     # Settings._validate_assistant_local_only refuses to start any deployed profile
     # with assistant_enabled set.
     if settings.assistant_enabled:
+        from api.assistant.errors import (
+            AssistantRateLimitedError,
+            AssistantUnavailableError,
+            AssistantUpstreamError,
+        )
+        from api.assistant.exception_handlers import (
+            assistant_rate_limited_handler,
+            assistant_unavailable_handler,
+            assistant_upstream_handler,
+        )
         from api.routes import assistant
 
         app.include_router(assistant.router)
+        # Registered here, not in EXCEPTION_MAP, so a deployed process never imports
+        # the assistant package to build its error table. A specific class outranks
+        # the BeCoMeAPIError handler, so these answer before the generic one.
+        app.add_exception_handler(AssistantRateLimitedError, assistant_rate_limited_handler)  # type: ignore[arg-type]
+        app.add_exception_handler(AssistantUnavailableError, assistant_unavailable_handler)  # type: ignore[arg-type]
+        app.add_exception_handler(AssistantUpstreamError, assistant_upstream_handler)  # type: ignore[arg-type]
 
     return app
 

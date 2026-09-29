@@ -329,7 +329,8 @@ class TestAssistantRouterGating:
         """
         GIVEN a fresh interpreter with ASSISTANT_ENABLED set to the given value
         WHEN it imports api.main, which builds the app and its routers at import
-        THEN api.routes.assistant is in sys.modules only when the switch was on
+        THEN api.routes.assistant and the api.assistant package are in sys.modules only
+             when the switch was on, so no deploy-loaded module imports the package
 
         Parametrized over both directions on purpose: a router registered
         unconditionally would still pass the "loaded when on" case, so only the
@@ -348,6 +349,7 @@ class TestAssistantRouterGating:
             "import sys\n"
             "import api.main\n"
             "print('assistant_loaded=' + str('api.routes.assistant' in sys.modules))\n"
+            "print('package_loaded=' + str('api.assistant' in sys.modules))\n"
         )
 
         # WHEN
@@ -366,3 +368,96 @@ class TestAssistantRouterGating:
         ]
         assert marker_lines, f"no marker line in stdout: {result.stdout!r}"
         assert marker_lines[-1] == f"assistant_loaded={expect_loaded}"
+        package_lines = [
+            line for line in result.stdout.splitlines() if line.startswith("package_loaded=")
+        ]
+        assert package_lines, f"no package marker line in stdout: {result.stdout!r}"
+        assert package_lines[-1] == f"package_loaded={expect_loaded}"
+
+
+class TestAssistantExceptionHandlerGating:
+    """The assistant's error handlers exist only when the local-only flag is on."""
+
+    @pytest.fixture(autouse=True)
+    def _clear_settings_cache_after(self):
+        """Drop any Settings cached during the test, so its switch settings cannot leak."""
+        from api.config import get_settings
+
+        yield
+        get_settings.cache_clear()
+
+    @staticmethod
+    def _build_app(monkeypatch, tmp_path, *, enabled: bool):
+        """Build the app with the assistant switch set as asked.
+
+        :return: The application built by create_app.
+        """
+        from api.config import get_settings
+        from api.main import create_app
+
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("APP_ENV", "dev")
+        monkeypatch.setenv("SECRET_KEY", "a-sufficiently-strong-secret-value")
+        monkeypatch.setenv("ASSISTANT_ENABLED", "true" if enabled else "false")
+        monkeypatch.delenv("RAILWAY_ENVIRONMENT_NAME", raising=False)
+        get_settings.cache_clear()
+        return create_app()
+
+    def test_handlers_are_absent_by_default(self, monkeypatch, tmp_path):
+        """
+        GIVEN the default settings (assistant disabled)
+        WHEN the app is built
+        THEN no handler is registered for any assistant error class
+        """
+        # GIVEN/WHEN
+        app = self._build_app(monkeypatch, tmp_path, enabled=False)
+
+        # THEN
+        registered = {exc.__name__ for exc in app.exception_handlers if isinstance(exc, type)}
+        assert not registered & {
+            "AssistantRateLimitedError",
+            "AssistantUnavailableError",
+            "AssistantUpstreamError",
+        }
+
+    @pytest.mark.parametrize(
+        ("error_name", "status_code", "detail"),
+        [
+            (
+                "AssistantRateLimitedError",
+                429,
+                "Too many assistant messages. Please try again later.",
+            ),
+            ("AssistantUnavailableError", 503, "The assistant is temporarily unavailable"),
+            ("AssistantUpstreamError", 503, "The assistant is temporarily unavailable"),
+        ],
+    )
+    def test_handlers_answer_when_enabled(
+        self, monkeypatch, tmp_path, error_name, status_code, detail
+    ):
+        """
+        GIVEN the assistant switched on
+        WHEN a route raises one of its chat errors
+        THEN the response carries the mapped status and the neutral public detail
+        """
+        from fastapi.testclient import TestClient
+
+        from api.assistant import errors
+
+        # GIVEN
+        app = self._build_app(monkeypatch, tmp_path, enabled=True)
+        error = getattr(errors, error_name)
+
+        def boom() -> None:
+            raise error("internal detail that must not leak")
+
+        app.add_api_route("/__raise", boom)
+        client = TestClient(app, raise_server_exceptions=False)
+
+        # WHEN
+        response = client.get("/__raise")
+
+        # THEN
+        assert response.status_code == status_code
+        assert "internal detail" not in response.text
+        assert response.json() == {"detail": detail}
