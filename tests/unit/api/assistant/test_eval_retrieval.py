@@ -32,7 +32,9 @@ ev = _load()
 
 def _chunk(title: str) -> RetrievedChunk:
     """A RetrievedChunk with only the field the metrics care about (title)."""
-    return RetrievedChunk(text="x", title=title, section="", url=None, layer="public", score=1.0)
+    return RetrievedChunk(
+        text="x", title=title, section="", url=None, layer="public", score=1.0, chunk_text="x"
+    )
 
 
 class TestNdcgAt5:

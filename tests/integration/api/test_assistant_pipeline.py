@@ -19,6 +19,7 @@ from openai import BadRequestError
 from api.assistant.rag.chunkers import ChunkerConfig
 from api.assistant.rag.enrich import chunk_key
 from api.assistant.rag.pipeline import CollectionSpec, build_collection
+from api.assistant.rag.retrieval import DocsRetriever, RetrievalConfig
 from api.assistant.rag.store import make_engine, open_store
 from api.config import Settings
 
@@ -444,6 +445,63 @@ class TestBuildCollectionWithCaptions:
         assert len(missing_records) == 1
         assert missing_records[0].missing == 1
         assert missing_records[0].total == 2
+
+    @pytest.mark.asyncio
+    async def test_the_retriever_returns_the_chunks_own_text_without_the_caption(
+        self, tmp_path, postgresql, fake_embedding_server
+    ):
+        """
+        GIVEN a captioned collection built from a one-chunk corpus
+        WHEN DocsRetriever searches it
+        THEN chunk_text is the chunk's own text alone, while text is still the full
+             indexed text that starts with the title and caption
+        """
+        # GIVEN
+        own_text = "BeCoMe combines the arithmetic mean and the median."
+        (tmp_path / "docs").mkdir()
+        (tmp_path / "docs" / "index.md").write_text(f"# BeCoMe\n\n{own_text}\n", encoding="utf-8")
+        captions_file = tmp_path / "captions.json"
+        captions_file.write_text(
+            json.dumps({chunk_key(own_text): "Introduces the aggregation method."}),
+            encoding="utf-8",
+        )
+        settings = Settings(
+            secret_key="test-secret-key",
+            assistant_vector_db_url=_connection_url(postgresql),
+            assistant_embedding_base_url=fake_embedding_server,
+            assistant_embedding_model="fake-embedding-model",
+            assistant_captions_file=str(captions_file),
+        )
+        spec = CollectionSpec(
+            name="docs_test_captions_retrieval",
+            chunker=ChunkerConfig(strategy="markdown_headers", size=500, overlap_pct=10),
+            context="captions",
+            wave=1,
+        )
+        await build_collection(spec, settings, repo_root=tmp_path)
+        from api.assistant.rag.models import make_embeddings
+
+        engine = make_engine(_connection_url(postgresql))
+        try:
+            store = open_store(
+                engine, table="docs_test_captions_retrieval", embeddings=make_embeddings(settings)
+            )
+            retriever = DocsRetriever(
+                store=store,
+                config=RetrievalConfig(mode="dense", k=1, query_transform="none"),
+                reranker=None,
+                llm=None,
+            )
+
+            # WHEN
+            retrieved = await retriever.search("mean and median")
+        finally:
+            await engine.close()
+
+        # THEN
+        assert len(retrieved) == 1
+        assert retrieved[0].chunk_text == own_text
+        assert retrieved[0].text.startswith("BeCoMe. Introduces the aggregation method.\n\n")
 
 
 def _plain_dsn(url: str) -> str:

@@ -2,6 +2,7 @@
 
 import warnings
 from collections.abc import Callable
+from typing import Literal
 
 import httpx
 import pytest
@@ -65,10 +66,69 @@ class TestRetrievedChunk:
         import dataclasses
 
         chunk = RetrievedChunk(
-            text="x", title="T", section="S", url=None, layer="public", score=1.0
+            text="x", title="T", section="S", url=None, layer="public", score=1.0, chunk_text="x"
         )
         with pytest.raises(dataclasses.FrozenInstanceError):
             chunk.score = 0.0
+
+
+class TestRetrievedChunkOwnText:
+    """DocsRetriever exposes the chunk's own text apart from the full indexed text."""
+
+    @staticmethod
+    async def _search_one(
+        document: Document, mode: Literal["bm25", "dense", "hybrid"] = "dense"
+    ) -> RetrievedChunk:
+        """Index one document and return the single chunk a search in `mode` finds."""
+        store = _RelevanceScoredInMemoryVectorStore(DeterministicFakeEmbedding(size=16))
+        await store.aadd_documents([document])
+        config = RetrievalConfig(mode=mode, k=1, query_transform="none")
+        retriever = DocsRetriever(store=store, config=config, reranker=None, llm=None)
+        results = await retriever.search(document.page_content)
+        assert len(results) == 1
+        return results[0]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("mode", ["dense", "bm25", "hybrid"])
+    async def test_a_captioned_document_yields_its_own_text_apart_from_the_caption(self, mode):
+        """
+        GIVEN an indexed document whose page_content starts with a caption and whose
+              metadata carries the chunk's own text as chunk_text
+        WHEN search() returns it, in dense, bm25 or hybrid (fused) mode
+        THEN chunk_text is the own text alone and text is still the full indexed text
+        """
+        # GIVEN
+        own_text = "BeCoMe combines the arithmetic mean and the median."
+        indexed_text = f"Method. Introduces the aggregation method.\n\n{own_text}"
+        document = _doc(indexed_text, title="Method")
+        document.metadata["chunk_text"] = own_text
+
+        # WHEN
+        chunk = await self._search_one(document, mode)
+
+        # THEN
+        assert chunk.chunk_text == own_text
+        assert chunk.text == indexed_text
+
+    @pytest.mark.asyncio
+    async def test_a_document_without_chunk_text_metadata_falls_back_to_page_content(self):
+        """
+        GIVEN an indexed document from a collection built before chunk_text was stored,
+              so its metadata has no chunk_text and its page_content holds a blank-line
+              paragraph break
+        WHEN search() returns it
+        THEN chunk_text is the whole page_content, paragraph break included
+        """
+        # GIVEN
+        content = "First paragraph of the chunk.\n\nSecond paragraph of the chunk."
+        document = _doc(content, title="Plain")
+
+        # WHEN
+        chunk = await self._search_one(document)
+
+        # THEN
+        assert chunk.chunk_text == content
+        assert chunk.text == content
 
 
 class TestRetrievalConfigDefaults:
