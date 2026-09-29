@@ -6,6 +6,7 @@ from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 
 from api.assistant.rag.models import (
     LlamaServerReranker,
+    make_answer_model,
     make_chat_model,
     make_embeddings,
     strip_think_block,
@@ -33,6 +34,59 @@ class TestMakeChatModel:
         assert model.openai_api_base == settings.assistant_llm_base_url
         assert model.model_name == settings.assistant_llm_model
         assert model.request_timeout == settings.assistant_llm_timeout_seconds
+
+
+class TestMakeAnswerModel:
+    """make_answer_model points a ChatOpenAI client at the local answer llama-server."""
+
+    def test_builds_an_answer_client_from_settings(self):
+        """
+        GIVEN default Settings
+        WHEN make_answer_model builds a client
+        THEN it targets the answer model's base URL and name, is deterministic, caps the
+             reply at the configured tokens, and never retries a failed request
+        """
+        # GIVEN
+        settings = Settings(secret_key="test-secret-key")
+
+        # WHEN
+        model = make_answer_model(settings)
+
+        # THEN
+        assert isinstance(model, ChatOpenAI)
+        assert model.openai_api_base == settings.assistant_answer_llm_base_url
+        assert model.model_name == settings.assistant_answer_llm_model
+        assert model.temperature == 0
+        assert model.max_tokens == settings.assistant_answer_max_tokens
+        assert model.max_retries == 0
+        assert model.request_timeout == settings.assistant_llm_timeout_seconds
+
+    def test_follows_the_answer_settings_not_the_query_model_ones(self):
+        """
+        GIVEN Settings with a distinct answer model and token cap
+        WHEN make_answer_model and make_chat_model build clients
+        THEN the answer client uses the answer settings and the chat client keeps the
+             query-transform ones
+        """
+        # GIVEN
+        settings = Settings(
+            secret_key="test-secret-key",  # pragma: allowlist secret
+            assistant_answer_llm_base_url="http://127.0.0.1:9999/v1",
+            assistant_answer_llm_model="answer-model",
+            assistant_answer_max_tokens=123,
+        )
+
+        # WHEN
+        answer = make_answer_model(settings)
+        chat = make_chat_model(settings)
+
+        # THEN
+        assert answer.openai_api_base == "http://127.0.0.1:9999/v1"
+        assert answer.model_name == "answer-model"
+        assert answer.max_tokens == 123
+        assert chat.openai_api_base == settings.assistant_llm_base_url
+        assert chat.model_name == settings.assistant_llm_model
+        assert chat.max_tokens is None
 
 
 class TestMakeEmbeddings:

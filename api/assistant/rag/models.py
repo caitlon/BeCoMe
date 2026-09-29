@@ -1,6 +1,6 @@
-"""Factories for the assistant's model clients: chat, embeddings, and rerank.
+"""Factories for the assistant's model clients: chat, answer, embeddings, and rerank.
 
-The chat and embedding roles point at a locally running llama-server process each,
+The chat, answer and embedding roles point at a locally running llama-server process each,
 reached through the OpenAI-compatible API langchain_openai speaks. The rerank role
 (LlamaServerReranker) is not an OpenAI-shaped client - llama-server's /v1/rerank has no
 langchain_openai counterpart - so it talks to the endpoint directly over HTTP instead.
@@ -12,6 +12,9 @@ from pydantic import SecretStr
 
 from api.config import Settings
 
+# llama-server ignores the key, but the OpenAI client insists on one.
+_LOCAL_API_KEY = SecretStr("not-needed")
+
 
 def make_chat_model(settings: Settings) -> ChatOpenAI:
     """Build the chat model client, pointed at the local chat llama-server.
@@ -21,8 +24,30 @@ def make_chat_model(settings: Settings) -> ChatOpenAI:
     """
     return ChatOpenAI(
         base_url=settings.assistant_llm_base_url,
-        api_key=SecretStr("not-needed"),
+        api_key=_LOCAL_API_KEY,
         model=settings.assistant_llm_model,
+        timeout=settings.assistant_llm_timeout_seconds,
+    )
+
+
+def make_answer_model(settings: Settings) -> ChatOpenAI:
+    """Build the client for the model that writes chat answers.
+
+    Separate from make_chat_model, which serves the query transforms: the answer model
+    is larger, runs on its own llama-server, and has its own token cap. Temperature 0
+    keeps answers repeatable. max_retries=0 because the OpenAI client otherwise retries
+    twice, which triples the time a dead local server takes to fail.
+
+    :param settings: Application settings.
+    :return: A ChatOpenAI client for settings.assistant_answer_llm_base_url.
+    """
+    return ChatOpenAI(
+        base_url=settings.assistant_answer_llm_base_url,
+        api_key=_LOCAL_API_KEY,
+        model=settings.assistant_answer_llm_model,
+        temperature=0,
+        max_completion_tokens=settings.assistant_answer_max_tokens,
+        max_retries=0,
         timeout=settings.assistant_llm_timeout_seconds,
     )
 
@@ -75,7 +100,7 @@ def make_embeddings(settings: Settings) -> OpenAIEmbeddings:
     """
     return OpenAIEmbeddings(
         base_url=settings.assistant_embedding_base_url,
-        api_key=SecretStr("not-needed"),
+        api_key=_LOCAL_API_KEY,
         model=settings.assistant_embedding_model,
         check_embedding_ctx_length=False,
         timeout=settings.assistant_llm_timeout_seconds,
