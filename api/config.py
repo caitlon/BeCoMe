@@ -264,7 +264,8 @@ class Settings(BaseSettings):
     # without loading the assistant package in a deployed process; a test keeps them equal.
     assistant_max_history_turns: int = Field(default=10, gt=0, le=10)
     assistant_max_message_chars: int = Field(default=4000, gt=0, le=4000)
-    assistant_rate_limit_per_hour: int = 60
+    # Chat messages per user per fixed hour; 0 turns the limit off.
+    assistant_rate_limit_per_hour: int = Field(default=60, ge=0)
     assistant_llm_timeout_seconds: float = 120.0
     assistant_private_corpus_dirs: list[str] = []
     # Path to a local-only JSON manifest describing the local corpus layer (see
