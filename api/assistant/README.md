@@ -27,7 +27,13 @@ Runs only on a developer machine. `Settings` refuses to start any deployed profi
 2. In `.env`: `ASSISTANT_VECTOR_DB_URL=postgresql+psycopg://assistant@127.0.0.1:5433/assistant`.
    The URL has no default, and both the indexer and the backend read it; every other
    `ASSISTANT_*` variable is listed in `env/.env.example`.
-3. Model servers: `./scripts/assistant/run-llama-servers.sh`
+3. Model servers: `./scripts/assistant/run-llama-servers.sh` starts four: the small chat model
+   for query transforms and index building (:8081, `ASSISTANT_LLM_*`), embeddings (:8082),
+   rerank (:8083) and the answer model that writes chat answers (:8084,
+   `ASSISTANT_ANSWER_LLM_*`, Qwen3.5-9B Q8_0). The answer model adds about 10 GB of memory and
+   downloads on first start. `ASSISTANT_ANSWER_MAX_TOKENS` caps one answer and
+   `ASSISTANT_RETRIEVAL_K` is for the chat endpoint, which comes in a later change; nothing
+   reads it yet.
 4. Index the documentation: `uv run python scripts/assistant/ingest.py --name
    docs_markdown_headers_500_o10_captions_bge_m3 --strategy markdown_headers --size 500
    --overlap-pct 10 --context captions` builds the collection the backend reads by default;
@@ -42,7 +48,8 @@ Runs only on a developer machine. `Settings` refuses to start any deployed profi
    `corpus_version` from the `assistant_collections` registry, and is written to
    `supplementary/assistant-eval/<collection>-<timestamp>.json`.
 6. Backend: set `ASSISTANT_ENABLED=true` in `.env`, then run the API as usual. This turns on
-   `GET /api/v1/assistant/config` (`api/routes/assistant.py`), the only assistant route so far.
+   `GET /api/v1/assistant/config` (`api/routes/assistant.py`), the only assistant route so far;
+   its `model` field reports the answer model.
 
 ## Private corpus layer
 

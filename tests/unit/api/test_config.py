@@ -1312,3 +1312,44 @@ class TestAssistantSettings:
 
         # THEN
         assert settings.assistant_private_corpus_manifest is None
+
+    def test_answer_model_settings_have_local_defaults(self, monkeypatch, tmp_path):
+        """
+        GIVEN Settings without an explicit override and no .env file in reach
+        WHEN constructed
+        THEN the answer model targets the local :8084 server, apart from the :8081
+             query-transform model, with an 800-token answer cap and k=3 retrieval
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        for name in (
+            "ASSISTANT_ANSWER_LLM_BASE_URL",
+            "ASSISTANT_ANSWER_LLM_MODEL",
+            "ASSISTANT_ANSWER_MAX_TOKENS",
+            "ASSISTANT_RETRIEVAL_K",
+        ):
+            monkeypatch.delenv(name, raising=False)
+
+        # WHEN
+        settings = Settings(secret_key="test-secret-key")
+
+        # THEN
+        assert settings.assistant_answer_llm_base_url == "http://127.0.0.1:8084/v1"
+        assert settings.assistant_answer_llm_model == "Qwen/Qwen3.5-9B"
+        assert settings.assistant_answer_max_tokens == 800
+        assert settings.assistant_retrieval_k == 3
+
+    @pytest.mark.parametrize("field", ["assistant_answer_max_tokens", "assistant_retrieval_k"])
+    @pytest.mark.parametrize("value", [0, -1])
+    def test_rejects_a_non_positive_answer_limit(self, field, value, monkeypatch, tmp_path):
+        """
+        GIVEN a non-positive answer token cap or retrieval k
+        WHEN Settings is constructed
+        THEN it is refused, naming the field
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match=field):
+            Settings(secret_key="test-secret-key", **{field: value})

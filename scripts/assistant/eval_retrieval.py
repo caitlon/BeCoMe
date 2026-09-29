@@ -15,7 +15,7 @@ The flags default to dense search with no transform, so the assistant's own defa
 
 Needs the "assistant" extra and a running embedding llama-server. --rerank also needs
 the reranker llama-server, and a query transform needs the chat llama-server.
-scripts/assistant/run-llama-servers.sh starts all three.
+scripts/assistant/run-llama-servers.sh starts the model servers.
 """
 
 from __future__ import annotations

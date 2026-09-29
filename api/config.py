@@ -237,8 +237,17 @@ class Settings(BaseSettings):
     # api.main.create_app), so a deployed service answers 404 for the whole prefix
     # regardless of this validator.
     assistant_enabled: bool = False
+    # The model for query transforms and index building: small and fast, so search stays
+    # quick. The model that writes chat answers is the assistant_answer_llm_* pair below.
     assistant_llm_base_url: str = "http://127.0.0.1:8081/v1"
     assistant_llm_model: str = "Qwen/Qwen3-4B-Instruct-2507"
+    # The model that writes the chat answers, on its own llama-server. The token cap bounds
+    # one reply. The retrieval k is for the chat endpoint, which comes in a later change;
+    # nothing reads it yet (the retrieval evaluation keeps its own k, RetrievalConfig.k).
+    assistant_answer_llm_base_url: str = "http://127.0.0.1:8084/v1"
+    assistant_answer_llm_model: str = "Qwen/Qwen3.5-9B"
+    assistant_answer_max_tokens: int = Field(default=800, gt=0)
+    assistant_retrieval_k: int = Field(default=3, gt=0)
     assistant_embedding_base_url: str = "http://127.0.0.1:8082/v1"
     assistant_embedding_model: str = "BAAI/bge-m3"
     assistant_rerank_base_url: str = "http://127.0.0.1:8083/v1"
