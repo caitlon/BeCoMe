@@ -1379,3 +1379,17 @@ class TestAssistantSettings:
         for refused in (ceiling + 1, 0):
             with pytest.raises(ValidationError, match=field):
                 Settings(secret_key="test-secret-key", **{field: refused})
+
+    def test_rate_limit_accepts_zero_and_rejects_a_negative_value(self, monkeypatch, tmp_path):
+        """
+        GIVEN an hourly message limit of zero, which means no limit, and one below it
+        WHEN Settings is constructed
+        THEN zero is accepted and the negative value is refused, naming the field
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+
+        # WHEN/THEN
+        assert Settings(secret_key="test-secret-key", assistant_rate_limit_per_hour=0)
+        with pytest.raises(ValidationError, match="assistant_rate_limit_per_hour"):
+            Settings(secret_key="test-secret-key", assistant_rate_limit_per_hour=-1)
