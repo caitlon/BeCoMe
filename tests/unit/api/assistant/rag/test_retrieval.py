@@ -1,8 +1,10 @@
 """Unit tests for query retrieval (fakes only, no network)."""
 
+import json
 import re
 import warnings
 from collections.abc import Callable
+from pathlib import Path
 from typing import Literal
 
 import httpx
@@ -18,7 +20,10 @@ from api.assistant.rag.retrieval import (
     RetrievalConfig,
     RetrievedChunk,
     _reciprocal_rank_fusion,
+    looks_english,
 )
+
+_GOLDEN_SET = Path(__file__).parents[5] / "scripts" / "assistant" / "golden_set.jsonl"
 
 
 def _doc(text: str, title: str, heading_path: str = "") -> Document:
@@ -501,6 +506,137 @@ class TestTranslateEnTransform:
         assert queries == ["Co kombinuje BeCoMe?"]
 
 
+class TestLooksEnglish:
+    """looks_english: no Czech diacritics and at least one English function word."""
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            pytest.param("What is the best compromise in the BeCoMe method?", id="what-is-the"),
+            pytest.param("how does the median differ from the mean", id="lowercase"),
+            pytest.param("WHICH opinions count?", id="uppercase"),
+            pytest.param("Why doesn't one extreme opinion drag the median?", id="apostrophe"),
+        ],
+    )
+    def test_english_sentences_with_function_words_are_english(self, query):
+        """
+        GIVEN English questions with function words such as the, what, how, is, which
+        WHEN looks_english runs
+        THEN it returns True, whatever the letter case
+        """
+        assert looks_english(query) is True
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            pytest.param("Co znamená nízká hodnota Δmax (maximální chyba)?", id="cs-diacritics"),
+            pytest.param("Jak se počítá nejlepší kompromis?", id="cs-diacritics-2"),
+            pytest.param("Řekni mi what is the median", id="czech-letter-in-english"),
+        ],
+    )
+    def test_a_czech_diacritic_anywhere_makes_it_not_english(self, query):
+        """
+        GIVEN queries with at least one Czech diacritic letter
+        WHEN looks_english runs
+        THEN it returns False, even when English function words are present
+        """
+        assert looks_english(query) is False
+
+    def test_czech_typed_without_diacritics_is_not_english(self):
+        """
+        GIVEN a Czech question typed without diacritics and with no English function word
+        WHEN looks_english runs
+        THEN it returns False, so it still goes to translation
+        """
+        assert looks_english("Jak se pocita nejlepsi kompromis v metode BeCoMe?") is False
+
+    def test_a_query_with_no_function_word_is_not_english(self):
+        """
+        GIVEN a bare keyword query with no function word at all
+        WHEN looks_english runs
+        THEN it returns False, because the rule needs an English function word
+        """
+        assert looks_english("BeCoMe compromise median") is False
+
+    def test_words_shared_with_czech_do_not_count(self):
+        """
+        GIVEN an English question made only of words that also exist in Czech (a, i, to, do)
+        WHEN looks_english runs
+        THEN it returns False, because those words are excluded from the function-word list
+        """
+        assert looks_english("Do I add a to i?") is False
+
+    def test_empty_query_is_not_english(self):
+        """
+        GIVEN an empty query
+        WHEN looks_english runs
+        THEN it returns False
+        """
+        assert looks_english("") is False
+
+    def test_no_czech_question_in_the_golden_set_is_english(self):
+        """
+        GIVEN the committed golden set
+        WHEN looks_english runs over every question
+        THEN no Czech question is judged English, and the English ones that are judged
+             English are counted: the rule is deliberately conservative and, on this
+             set, recognises every English question
+        """
+        rows = [json.loads(line) for line in _GOLDEN_SET.read_text().splitlines() if line]
+        by_lang = {"en": [], "cs": []}
+        for row in rows:
+            by_lang[row["lang"]].append(looks_english(row["question"]))
+
+        assert len(by_lang["cs"]) == 5
+        assert not any(by_lang["cs"])
+        assert len(by_lang["en"]) == 10
+        assert sum(by_lang["en"]) == 10
+
+
+class TestTranslateEnSkipsEnglishQueries:
+    """translate_en spends a chat-model call only on questions that are not English."""
+
+    @pytest.mark.asyncio
+    async def test_an_english_query_is_searched_as_is_without_calling_the_model(self):
+        """
+        GIVEN query_transform="translate_en" and a model that records every call
+        WHEN _transformed_queries runs with an English question
+        THEN the question comes back unchanged and the model was never called
+        """
+        # GIVEN
+        store = InMemoryVectorStore(DeterministicFakeEmbedding(size=16))
+        llm = _RecordingFakeChatModel(responses=["should not be used"])
+        config = RetrievalConfig(mode="dense", query_transform="translate_en")
+        retriever = DocsRetriever(store=store, config=config, reranker=None, llm=llm)
+
+        # WHEN
+        queries = await retriever._transformed_queries("What does BeCoMe combine?")
+
+        # THEN
+        assert queries == ["What does BeCoMe combine?"]
+        assert llm.call_count == 0
+
+    @pytest.mark.asyncio
+    async def test_a_czech_query_is_still_translated(self):
+        """
+        GIVEN query_transform="translate_en" and a model that records every call
+        WHEN _transformed_queries runs with a Czech question
+        THEN the model is called once and its translation is what gets searched
+        """
+        # GIVEN
+        store = InMemoryVectorStore(DeterministicFakeEmbedding(size=16))
+        llm = _RecordingFakeChatModel(responses=["What does BeCoMe combine?"])
+        config = RetrievalConfig(mode="dense", query_transform="translate_en")
+        retriever = DocsRetriever(store=store, config=config, reranker=None, llm=llm)
+
+        # WHEN
+        queries = await retriever._transformed_queries("Co kombinuje BeCoMe?")
+
+        # THEN
+        assert queries == ["What does BeCoMe combine?"]
+        assert llm.call_count == 1
+
+
 class TestMultiQueryTransform:
     """query_transform="multi_query" searches with the original query plus paraphrases."""
 
@@ -789,8 +925,10 @@ class _RecordingFakeChatModel(FakeListChatModel):
     """FakeListChatModel that also remembers the temperature of its last call."""
 
     recorded_temperature: float | None = None
+    call_count: int = 0
 
     def _call(self, *args, **kwargs) -> str:
+        self.call_count += 1
         self.recorded_temperature = kwargs.get("temperature")
         return super()._call(*args, **kwargs)
 
@@ -833,7 +971,7 @@ class TestQueryTransformsRunAtZeroTemperature:
         retriever = DocsRetriever(store=store, config=config, reranker=None, llm=llm)
 
         # WHEN
-        await retriever._transformed_queries("What does BeCoMe combine?")
+        await retriever._transformed_queries("Co kombinuje BeCoMe?")
 
         # THEN
         assert llm.recorded_temperature == 0
