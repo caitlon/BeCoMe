@@ -6,6 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from api.config import Environment, Settings
+from api.schemas.assistant import MAX_HISTORY_ENTRIES, MAX_MESSAGE_CHARS
 
 
 def _configure_prod(monkeypatch, tmp_path) -> None:
@@ -1353,3 +1354,28 @@ class TestAssistantSettings:
         # WHEN/THEN
         with pytest.raises(ValidationError, match=field):
             Settings(secret_key="test-secret-key", **{field: value})
+
+    @pytest.mark.parametrize(
+        ("field", "ceiling"),
+        [
+            ("assistant_max_history_turns", MAX_HISTORY_ENTRIES // 2),
+            ("assistant_max_message_chars", MAX_MESSAGE_CHARS),
+        ],
+    )
+    def test_request_limits_stop_at_the_schema_ceilings(
+        self, field, ceiling, monkeypatch, tmp_path
+    ):
+        """
+        GIVEN the history and message limits, which the chat service applies on top of
+              the request schema's hard caps
+        WHEN Settings is constructed with the ceiling, one above it, and zero
+        THEN the ceiling is accepted and the other two are refused, naming the field
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+
+        # WHEN/THEN
+        assert getattr(Settings(secret_key="test-secret-key", **{field: ceiling}), field) == ceiling
+        for refused in (ceiling + 1, 0):
+            with pytest.raises(ValidationError, match=field):
+                Settings(secret_key="test-secret-key", **{field: refused})
