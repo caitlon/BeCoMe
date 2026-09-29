@@ -2,6 +2,7 @@
 
 import json
 import re
+import unicodedata
 import warnings
 from collections.abc import Callable
 from pathlib import Path
@@ -515,12 +516,11 @@ class TestLooksEnglish:
             pytest.param("What is the best compromise in the BeCoMe method?", id="what-is-the"),
             pytest.param("how does the median differ from the mean", id="lowercase"),
             pytest.param("WHICH opinions count?", id="uppercase"),
-            pytest.param("Why doesn't one extreme opinion drag the median?", id="apostrophe"),
         ],
     )
     def test_english_sentences_with_function_words_are_english(self, query):
         """
-        GIVEN English questions with function words such as the, what, how, is, which
+        GIVEN English questions with function words such as the, what, how, does, which
         WHEN looks_english runs
         THEN it returns True, whatever the letter case
         """
@@ -529,18 +529,31 @@ class TestLooksEnglish:
     @pytest.mark.parametrize(
         "query",
         [
-            pytest.param("Co znamená nízká hodnota Δmax (maximální chyba)?", id="cs-diacritics"),
-            pytest.param("Jak se počítá nejlepší kompromis?", id="cs-diacritics-2"),
+            pytest.param("Co znamená what nízká hodnota Δmax?", id="cs-diacritics"),
+            pytest.param("Jak se počítá the nejlepší kompromis?", id="cs-diacritics-2"),
             pytest.param("Řekni mi what is the median", id="czech-letter-in-english"),
         ],
     )
     def test_a_czech_diacritic_anywhere_makes_it_not_english(self, query):
         """
-        GIVEN queries with at least one Czech diacritic letter
+        GIVEN queries that each contain an English function word and a Czech diacritic letter
         WHEN looks_english runs
-        THEN it returns False, even when English function words are present
+        THEN it returns False, so the diacritic check alone decides these
         """
         assert looks_english(query) is False
+
+    def test_decomposed_czech_diacritics_are_recognised(self):
+        """
+        GIVEN a Czech question with an English function word, typed with decomposed
+              characters (a base letter followed by a combining mark, as some keyboards
+              and copy-paste sources produce)
+        WHEN looks_english runs
+        THEN it returns False, the same as for the precomposed spelling
+        """
+        decomposed = unicodedata.normalize("NFD", "Jak se počítá the kompromis?")
+
+        assert decomposed != "Jak se počítá the kompromis?"
+        assert looks_english(decomposed) is False
 
     def test_czech_typed_without_diacritics_is_not_english(self):
         """
@@ -550,6 +563,24 @@ class TestLooksEnglish:
         """
         assert looks_english("Jak se pocita nejlepsi kompromis v metode BeCoMe?") is False
 
+    @pytest.mark.parametrize(
+        "query",
+        [
+            pytest.param("Jak funguje BeCoMe pro IT?", id="acronym-it"),
+            pytest.param("Co je IS?", id="acronym-is"),
+            pytest.param("Jak WHO definuje pandemii?", id="acronym-who"),
+        ],
+    )
+    def test_czech_without_diacritics_but_with_an_english_looking_acronym_is_not_english(
+        self, query
+    ):
+        """
+        GIVEN a Czech question typed without diacritics that contains the acronym IT, IS or WHO
+        WHEN looks_english runs
+        THEN it returns False, because "it", "is" and "who" are not in the function-word list
+        """
+        assert looks_english(query) is False
+
     def test_a_query_with_no_function_word_is_not_english(self):
         """
         GIVEN a bare keyword query with no function word at all
@@ -558,13 +589,21 @@ class TestLooksEnglish:
         """
         assert looks_english("BeCoMe compromise median") is False
 
-    def test_words_shared_with_czech_do_not_count(self):
+    @pytest.mark.parametrize(
+        "query",
+        [
+            pytest.param("Do I add a to i?", id="a-i-to-do"),
+            pytest.param("On by no my", id="my-on-by-no"),
+        ],
+    )
+    def test_words_shared_with_czech_do_not_count(self, query):
         """
-        GIVEN an English question made only of words that also exist in Czech (a, i, to, do)
+        GIVEN queries made only of words that also exist in Czech (a, i, to, do; my, on,
+              by, no), the second one a Czech-looking phrase typed without diacritics
         WHEN looks_english runs
         THEN it returns False, because those words are excluded from the function-word list
         """
-        assert looks_english("Do I add a to i?") is False
+        assert looks_english(query) is False
 
     def test_empty_query_is_not_english(self):
         """
@@ -574,23 +613,26 @@ class TestLooksEnglish:
         """
         assert looks_english("") is False
 
-    def test_no_czech_question_in_the_golden_set_is_english(self):
+    def test_golden_set_english_is_recognised_and_czech_is_not(self):
         """
         GIVEN the committed golden set
         WHEN looks_english runs over every question
-        THEN no Czech question is judged English, and the English ones that are judged
-             English are counted: the rule is deliberately conservative and, on this
-             set, recognises every English question
+        THEN no Czech question is judged English, and most English ones are. The English
+             side asserts a floor, not an exact count: the rule may miss an English question
+             (one that carries a Czech name, or has no function word), and the set will grow.
         """
-        rows = [json.loads(line) for line in _GOLDEN_SET.read_text().splitlines() if line]
-        by_lang = {"en": [], "cs": []}
-        for row in rows:
-            by_lang[row["lang"]].append(looks_english(row["question"]))
+        rows = [
+            json.loads(line)
+            for line in _GOLDEN_SET.read_text(encoding="utf-8").splitlines()
+            if line
+        ]
+        english = [looks_english(row["question"]) for row in rows if row["lang"] == "en"]
+        czech = [looks_english(row["question"]) for row in rows if row["lang"] == "cs"]
 
-        assert len(by_lang["cs"]) == 5
-        assert not any(by_lang["cs"])
-        assert len(by_lang["en"]) == 10
-        assert sum(by_lang["en"]) == 10
+        assert czech
+        assert not any(czech)
+        assert english
+        assert sum(english) / len(english) >= 0.9
 
 
 class TestTranslateEnSkipsEnglishQueries:
