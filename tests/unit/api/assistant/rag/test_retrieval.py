@@ -1,5 +1,6 @@
 """Unit tests for query retrieval (fakes only, no network)."""
 
+import re
 import warnings
 from collections.abc import Callable
 from typing import Literal
@@ -129,6 +130,47 @@ class TestRetrievedChunkOwnText:
         # THEN
         assert chunk.chunk_text == content
         assert chunk.text == content
+
+
+class TestRetrievedChunkLayer:
+    """DocsRetriever passes the two known layers through and refuses anything else."""
+
+    @staticmethod
+    async def _search_with_layer(layer: str) -> list[RetrievedChunk]:
+        """Index one document stored under `layer` and search for it."""
+        document = _doc("A chunk of the source.", title="Layered")
+        document.metadata["layer"] = layer
+        store = _RelevanceScoredInMemoryVectorStore(DeterministicFakeEmbedding(size=16))
+        await store.aadd_documents([document])
+        config = RetrievalConfig(mode="dense", k=1, query_transform="none")
+        retriever = DocsRetriever(store=store, config=config, reranker=None, llm=None)
+        return await retriever.search(document.page_content)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("layer", ["public", "local"])
+    async def test_a_known_layer_comes_back_unchanged(self, layer):
+        """
+        GIVEN an indexed document stored under a known layer
+        WHEN search() returns it
+        THEN the chunk carries that layer
+        """
+        # WHEN
+        results = await self._search_with_layer(layer)
+
+        # THEN
+        assert [chunk.layer for chunk in results] == [layer]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("layer", ["secret", "locl", "", None])
+    async def test_an_unknown_layer_raises_naming_the_value(self, layer):
+        """
+        GIVEN an indexed document whose layer metadata is not "public" or "local"
+        WHEN search() returns it
+        THEN it raises a ValueError naming the bad value instead of passing it on
+        """
+        # WHEN / THEN
+        with pytest.raises(ValueError, match=re.escape(repr(layer))):
+            await self._search_with_layer(layer)
 
 
 class TestRetrievalConfigDefaults:
