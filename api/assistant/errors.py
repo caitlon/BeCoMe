@@ -19,3 +19,11 @@ class AssistantNotFoundError(AssistantError):
 
 class AssistantUpstreamError(AssistantError):
     """Raised when the underlying API answers with any other non-2xx status."""
+
+
+class AssistantUnavailableError(AssistantError):
+    """Raised when the local LLM, embedding, or rerank server cannot be reached."""
+
+
+class AssistantRateLimitedError(AssistantError):
+    """Raised when a user has spent their per-hour assistant message budget."""

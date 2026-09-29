@@ -1,6 +1,12 @@
 """Unit tests for the assistant's exception hierarchy."""
 
-from api.assistant.errors import AssistantError, AssistantNotFoundError, AssistantUpstreamError
+from api.assistant.errors import (
+    AssistantError,
+    AssistantNotFoundError,
+    AssistantRateLimitedError,
+    AssistantUnavailableError,
+    AssistantUpstreamError,
+)
 from api.exceptions import BeCoMeAPIError
 
 
@@ -39,3 +45,32 @@ class TestAssistantErrorHierarchy:
         """
         assert not issubclass(AssistantNotFoundError, AssistantUpstreamError)
         assert not issubclass(AssistantUpstreamError, AssistantNotFoundError)
+
+
+class TestChatErrorHierarchy:
+    """The chat-specific errors are assistant errors, distinct from each other."""
+
+    def test_unavailable_is_an_assistant_error(self):
+        """
+        GIVEN AssistantUnavailableError
+        WHEN its bases are inspected
+        THEN it is an AssistantError
+        """
+        assert issubclass(AssistantUnavailableError, AssistantError)
+
+    def test_rate_limited_is_an_assistant_error(self):
+        """
+        GIVEN AssistantRateLimitedError
+        WHEN its bases are inspected
+        THEN it is an AssistantError
+        """
+        assert issubclass(AssistantRateLimitedError, AssistantError)
+
+    def test_unavailable_and_upstream_are_distinguishable(self):
+        """
+        GIVEN AssistantUnavailableError and AssistantUpstreamError
+        WHEN checked against each other
+        THEN neither is a subclass of the other, so a handler can tell them apart
+        """
+        assert not issubclass(AssistantUnavailableError, AssistantUpstreamError)
+        assert not issubclass(AssistantUpstreamError, AssistantUnavailableError)

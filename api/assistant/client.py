@@ -11,6 +11,7 @@ from typing import Any
 from uuid import UUID
 
 import httpx
+from pydantic import BaseModel, ValidationError
 from starlette.types import ASGIApp
 
 from api.assistant.errors import AssistantNotFoundError, AssistantUpstreamError
@@ -41,6 +42,32 @@ def _canonical_project_id(project_id: str) -> str:
         raise AssistantNotFoundError(f"{project_id!r} is not a valid project id") from exc
 
 
+def _validate[ModelT: BaseModel](model: type[ModelT], data: Any) -> ModelT:
+    """Validate one response body against a view schema.
+
+    A 2xx answer that does not fit the schema is a fault on the API's side, so it
+    surfaces as the same error as any other unusable answer. The message names the
+    schema and the failing field locations, never a value: the body is project data,
+    and pydantic's own error text repeats it. The new error is raised outside the
+    ``except`` block, so the validation error is neither its cause nor its context and
+    cannot reach a log record through the exception chain.
+
+    :param model: The view schema to validate against.
+    :param data: The decoded JSON body, or one item of it.
+    :return: The validated view.
+    :raises AssistantUpstreamError: If data does not fit the schema.
+    """
+    try:
+        return model.model_validate(data)
+    except ValidationError as exc:
+        locations = ", ".join(
+            ".".join(str(part) for part in error["loc"]) or "<root>" for error in exc.errors()
+        )
+    raise AssistantUpstreamError(
+        f"a response body failed the {model.__name__} schema at: {locations}"
+    )
+
+
 class UserApiClient:
     """Read-only view of the API, scoped to one signed-in user's own access.
 
@@ -62,21 +89,26 @@ class UserApiClient:
             cookies=CookieJar(policy=DefaultCookiePolicy(allowed_domains=[])),
         )
 
-    async def _get(self, path: str, params: dict[str, int] | None = None) -> httpx.Response:
-        """Issue the one kind of request this client ever sends.
+    async def _get_json(self, path: str, params: dict[str, int] | None = None) -> Any:
+        """Issue the one kind of request this client ever sends and decode its body.
 
         :param path: API path to read, e.g. "/api/v1/projects".
         :param params: Query parameters, used only for pagination.
-        :return: The successful response.
+        :return: The decoded JSON body.
         :raises AssistantNotFoundError: On a 404 response.
-        :raises AssistantUpstreamError: On any other non-2xx response.
+        :raises AssistantUpstreamError: On any other non-2xx response, or a 2xx whose
+            body is not JSON. The message never carries any of the body.
         """
         response = await self._http.get(path, params=params)
         if response.status_code == httpx.codes.NOT_FOUND:
             raise AssistantNotFoundError(f"{path} returned 404")
         if response.is_error:
             raise AssistantUpstreamError(f"{path} returned {response.status_code}")
-        return response
+        try:
+            return response.json()
+        except ValueError:
+            pass
+        raise AssistantUpstreamError(f"{path} returned a body that is not JSON")
 
     async def _get_all(self, path: str) -> list[Any]:
         """Read every page of a paginated list endpoint.
@@ -87,12 +119,15 @@ class UserApiClient:
 
         :param path: API path of a list endpoint that takes limit and offset.
         :return: The items of every page, in the order the API returns them.
-        :raises AssistantUpstreamError: If the list runs past _MAX_PAGES full pages.
+        :raises AssistantUpstreamError: If a page is not a list, or the list runs past
+            _MAX_PAGES full pages.
         """
         items: list[Any] = []
         for _ in range(_MAX_PAGES):
             params = {"limit": MAX_PAGE_SIZE, "offset": len(items)}
-            page = (await self._get(path, params=params)).json()
+            page = await self._get_json(path, params=params)
+            if not isinstance(page, list):
+                raise AssistantUpstreamError(f"{path} returned a page that is not a list")
             items.extend(page)
             if len(page) < MAX_PAGE_SIZE:
                 return items
@@ -102,11 +137,11 @@ class UserApiClient:
         """List the projects the caller is a member of.
 
         :return: One ProjectBrief per project, across every page.
-        :raises AssistantUpstreamError: If the API refuses the request, or the list
-            runs past _MAX_PAGES full pages.
+        :raises AssistantUpstreamError: If the API refuses the request, answers with a
+            body that fails the schema, or the list runs past _MAX_PAGES full pages.
         """
         items = await self._get_all("/api/v1/projects")
-        return [ProjectBrief.model_validate(item) for item in items]
+        return [_validate(ProjectBrief, item) for item in items]
 
     async def get_project(self, project_id: str) -> ProjectView:
         """Get one project's details.
@@ -115,10 +150,11 @@ class UserApiClient:
         :return: The project's allowlisted details.
         :raises AssistantNotFoundError: If project_id is not a valid UUID, or the
             caller cannot see this project.
-        :raises AssistantUpstreamError: If the API answers with any other error.
+        :raises AssistantUpstreamError: If the API answers with any other error, or with
+            a body that is not JSON or fails the schema.
         """
-        response = await self._get(f"/api/v1/projects/{_canonical_project_id(project_id)}")
-        return ProjectView.model_validate(response.json())
+        body = await self._get_json(f"/api/v1/projects/{_canonical_project_id(project_id)}")
+        return _validate(ProjectView, body)
 
     async def get_result(self, project_id: str) -> ResultView | None:
         """Get a project's calculation result.
@@ -127,11 +163,11 @@ class UserApiClient:
         :return: The result, or None if no opinions have been submitted yet.
         :raises AssistantNotFoundError: If project_id is not a valid UUID, or the
             caller cannot see this project.
-        :raises AssistantUpstreamError: If the API answers with any other error.
+        :raises AssistantUpstreamError: If the API answers with any other error, or with
+            a body that is not JSON or fails the schema.
         """
-        response = await self._get(f"/api/v1/projects/{_canonical_project_id(project_id)}/result")
-        body = response.json()
-        return ResultView.model_validate(body) if body is not None else None
+        body = await self._get_json(f"/api/v1/projects/{_canonical_project_id(project_id)}/result")
+        return _validate(ResultView, body) if body is not None else None
 
     async def get_opinions(self, project_id: str) -> list[OpinionView]:
         """List a project's expert opinions.
@@ -140,11 +176,11 @@ class UserApiClient:
         :return: One OpinionView per submitted opinion, across every page.
         :raises AssistantNotFoundError: If project_id is not a valid UUID, or the
             caller cannot see this project.
-        :raises AssistantUpstreamError: If the API answers with any other error, or
-            the list runs past _MAX_PAGES full pages.
+        :raises AssistantUpstreamError: If the API answers with any other error, a body
+            that is not JSON or fails the schema, or the list runs past _MAX_PAGES full pages.
         """
         path = f"/api/v1/projects/{_canonical_project_id(project_id)}/opinions"
-        return [OpinionView.model_validate(item) for item in await self._get_all(path)]
+        return [_validate(OpinionView, item) for item in await self._get_all(path)]
 
     async def aclose(self) -> None:
         """Close the underlying HTTP client."""
