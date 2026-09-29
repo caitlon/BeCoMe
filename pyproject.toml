@@ -82,13 +82,18 @@ api = [
     "dnspython==2.8.0",
 ]
 assistant = [
-    # The latest patch releases on 2026-09-23, audited with pip-audit. pgvector is
-    # intentionally absent: langchain-postgres 0.0.18 requires pgvector<0.4 and pulls it
+    # Newest mutually compatible releases, audited with pip-audit: the agent stack
+    # (langchain, langgraph, langsmith, openai) on 2026-09-29, the rest on 2026-09-23.
+    # pgvector is intentionally absent: langchain-postgres 0.0.18 requires pgvector<0.4 and pulls it
     # in transitively; our code never imports it directly.
+    "langchain==1.4.3",
     "langchain-core==1.6.4",
     "langchain-openai==1.6.4",
     "langchain-postgres==0.0.18",
     "langchain-text-splitters==1.1.2",
+    "langgraph==1.2.12",
+    "langsmith==0.14.1",
+    "openai==3.20.0",
     "psycopg[binary]==3.3.6",
     "pypdf==6.19.0",  # security fix for page labels
     "pylatexenc==2.11",
