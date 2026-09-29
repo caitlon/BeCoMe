@@ -2,12 +2,13 @@
 
 Hybrid mode fuses dense and BM25 rankings by reciprocal rank fusion. A query_transform
 turns the query into one or more queries actually used to search: "translate_en"
-searches with the model's English translation (a query that already looks English is
-searched as it is), "multi_query" adds paraphrases of the query, and "hyde" replaces
-the query with a model-generated hypothetical answer.
+searches with the model's English translation (a query that looks English is searched
+as it is), "multi_query" adds paraphrases of the query, and "hyde" replaces the query
+with a model-generated hypothetical answer.
 """
 
 import re
+import unicodedata
 from dataclasses import dataclass
 from typing import Literal, cast, get_args
 
@@ -39,73 +40,39 @@ def _tokenize(text: str) -> list[str]:
 
 
 #: Letters that exist in Czech and not in English. Lowercase only: the query is lowercased
-#: before it is checked.
+#: (by _tokenize) before it is checked.
 _CZECH_DIACRITICS = frozenset("áčďéěíňóřšťúůýž")
 
 #: English function words for looks_english. Words that are also Czech words (a, i, to, do,
 #: my, on, by, no) are left out on purpose: they would mark a Czech question as English.
-_ENGLISH_FUNCTION_WORDS = frozenset(
-    {
-        "the",
-        "what",
-        "how",
-        "is",
-        "does",
-        "which",
-        "are",
-        "why",
-        "when",
-        "where",
-        "who",
-        "can",
-        "should",
-        "of",
-        "and",
-        "with",
-        "for",
-        "if",
-        "it",
-        "this",
-        "that",
-        "from",
-        "was",
-        "were",
-        "did",
-        "there",
-        "will",
-        "would",
-        "could",
-        "has",
-        "have",
-        "not",
-        "than",
-        "these",
-        "those",
-        "your",
-        "our",
-        "their",
-    }
+#: The same goes for "it", "is" and "who", which turn up in a Czech question as the acronyms
+#: IT, IS and WHO.
+_ENGLISH_FUNCTION_WORDS_TEXT = (
+    "the what how does which are why when where can should of and with for if this "
+    "that from was were did there will would could has have not than these those your "
+    "our their"
 )
+_ENGLISH_FUNCTION_WORDS = frozenset(_ENGLISH_FUNCTION_WORDS_TEXT.split())
 
 
 def looks_english(query: str) -> bool:
     """Say whether a question is already in English, so translating it can be skipped.
 
     A question counts as English when it has no Czech diacritic letter and at least one
-    English function word (the, what, how, is, does, which and similar; words that also
-    exist in Czech, such as a, i, to and do, do not count). Measured on 52 questions,
-    English or Czech, the rule skipped translation for 26 of the 27 English ones and for
-    none of the 25 Czech ones; skipping it for English questions lost no retrieval quality
-    and saved a model call. It errs towards translating: a Czech question typed without
-    diacritics has no English function word, so it still goes to translation.
+    English function word (the, what, how, does, which and similar; words that also
+    exist in Czech, such as a, i, to and do, do not count). English questions gain nothing
+    from translation and Czech ones need it, so only English ones skip it. A single listed
+    word is enough to skip translation, and a Czech question typed without diacritics
+    that has no listed word still goes to translation. The check assumes the question is
+    Czech or English: a German "was" or "will" would pass as English.
 
     :param query: The user's question.
     :return: True when the question looks English.
     """
-    lowered = query.lower()
-    if any(char in _CZECH_DIACRITICS for char in lowered):
+    tokens = _tokenize(unicodedata.normalize("NFC", query))
+    if any(char in _CZECH_DIACRITICS for token in tokens for char in token):
         return False
-    return any(token in _ENGLISH_FUNCTION_WORDS for token in _tokenize(lowered))
+    return any(token in _ENGLISH_FUNCTION_WORDS for token in tokens)
 
 
 @dataclass(frozen=True)
@@ -114,14 +81,16 @@ class RetrievalConfig:
 
     The defaults are the search lab's measured winner: hybrid search (reciprocal
     rank fusion of dense and bm25) over the markdown_headers 500/10 chunks with
-    captions, the query translated to English first, and no reranker - reranking
-    did not earn back its cost against that collection.
+    captions, the query translated to English first (a question the check
+    recognises as English is searched as it is), and no reranker - reranking did not earn back its
+    cost against that collection.
 
     :param mode: "dense", "bm25", or "hybrid" (reciprocal rank fusion of the other
         two).
     :param k: Number of chunks to return.
     :param rerank: Whether to rerank the candidates before truncating to k.
-    :param query_transform: "none", "translate_en", "multi_query", or "hyde".
+    :param query_transform: "none", "translate_en" (skipped for a question that
+        looks English), "multi_query", or "hyde".
     """
 
     mode: Literal["bm25", "dense", "hybrid"] = "hybrid"

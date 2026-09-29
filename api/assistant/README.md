@@ -46,7 +46,10 @@ Runs only on a developer machine. `Settings` refuses to start any deployed profi
    (`scripts/assistant/golden_set.jsonl` by default; point `--golden-set` at another file to use
    a different one). Every report also records the collection's `app_version` and
    `corpus_version` from the `assistant_collections` registry, and is written to
-   `supplementary/assistant-eval/<collection>-<timestamp>.json`.
+   `supplementary/assistant-eval/<collection>-<timestamp>.json`. Under
+   `--query-transform translate_en`, English questions that the check recognises are searched as written and only
+   non-English ones are translated, so reports for English questions are not directly
+   comparable with reports made before this change.
 6. Backend: set `ASSISTANT_ENABLED=true` in `.env`, then run the API as usual. This turns on
    `GET /api/v1/assistant/config` (`api/routes/assistant.py`), the only assistant route so far;
    its `model` field reports the answer model.
