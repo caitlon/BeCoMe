@@ -62,7 +62,15 @@ class RetrievalConfig:
 class RetrievedChunk:
     """One retrieved chunk, with exactly what a citation needs.
 
-    :param text: The chunk's text.
+    A collection built with captions indexes each chunk as its title and caption
+    followed by the chunk itself, so the indexed text is not all the source's own
+    words. text is that full indexed text, which ranking and BM25 work on.
+    chunk_text is the chunk alone. Anything that shows text to a model, or checks
+    numbers against it, must use chunk_text: a caption was written by another model
+    and is not the source.
+
+    :param text: The full indexed text of the chunk, caption included when the
+        collection was built with captions.
     :param title: The source document's title.
     :param section: The chunk's heading_path metadata.
     :param url: The source's public URL, or None.
@@ -79,6 +87,11 @@ class RetrievedChunk:
         With a query_transform other than "none", the score measures relevance to
         the transformed query or queries actually searched, not to the literal
         text passed to search().
+    :param chunk_text: The chunk's own text, without any title or caption, read from
+        the chunk_text metadata that ingestion stores on every row. A row without
+        that key comes from a collection built before ingestion stored it; there
+        this falls back to text, which in an enriched collection still includes the
+        model-written prefix.
     """
 
     text: str
@@ -87,6 +100,7 @@ class RetrievedChunk:
     url: str | None
     layer: str
     score: float
+    chunk_text: str
 
 
 #: Reciprocal rank fusion's damping constant, from the paper that introduced it
@@ -436,6 +450,7 @@ class DocsRetriever:
                 url=doc.metadata["url"],
                 layer=doc.metadata["layer"],
                 score=float(score),
+                chunk_text=doc.metadata.get("chunk_text", doc.page_content),
             )
             for doc, score in candidates[: self._config.k]
         ]
