@@ -257,8 +257,13 @@ class Settings(BaseSettings):
     assistant_collection: str = "docs_markdown_headers_500_o10_captions_bge_m3"
     assistant_mode: Literal["agent", "workflow", "hybrid"] = "hybrid"
     assistant_max_tool_calls: int = 4
-    assistant_max_history_turns: int = 10
-    assistant_max_message_chars: int = 4000
+    # Limits the chat service applies. The request schema (api/schemas/assistant.py) holds
+    # the hard ceilings, 20 history entries (10 exchanges) and 4000 characters per message,
+    # and rejects anything above them before the service runs, so these can only lower
+    # them. The numbers are repeated here because this module cannot import the schema
+    # without loading the assistant package in a deployed process; a test keeps them equal.
+    assistant_max_history_turns: int = Field(default=10, gt=0, le=10)
+    assistant_max_message_chars: int = Field(default=4000, gt=0, le=4000)
     assistant_rate_limit_per_hour: int = 60
     assistant_llm_timeout_seconds: float = 120.0
     assistant_private_corpus_dirs: list[str] = []
