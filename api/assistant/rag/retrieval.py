@@ -8,13 +8,14 @@ query, and "hyde" replaces the query with a model-generated hypothetical answer.
 
 import re
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, cast, get_args
 
 from langchain_core.documents import Document
 from langchain_core.language_models import BaseChatModel
 from langchain_core.vectorstores import VectorStore
 from rank_bm25 import BM25Okapi
 
+from api.assistant.rag.corpus import Layer
 from api.assistant.rag.models import LlamaServerReranker, strip_think_block
 
 #: Unicode-aware by default for str patterns in Python 3, so Czech diacritics count
@@ -98,7 +99,7 @@ class RetrievedChunk:
     title: str
     section: str
     url: str | None
-    layer: str
+    layer: Layer
     score: float
     chunk_text: str
 
@@ -178,6 +179,20 @@ def _clean_multi_query_variants(reply: str, original: str, limit: int) -> list[s
         if len(variants) == limit:
             break
     return variants
+
+
+def _layer_of(doc: Document) -> Layer:
+    """Read the document's layer metadata, refusing a value that is not a known layer.
+
+    :param doc: A document from the index.
+    :return: The document's layer.
+    :raises ValueError: If the layer metadata is not one of the values of Layer, which
+        means a corrupt index row.
+    """
+    layer = doc.metadata["layer"]
+    if layer not in get_args(Layer):
+        raise ValueError(f"unknown layer {layer!r} in the index: expected one of {get_args(Layer)}")
+    return cast("Layer", layer)
 
 
 class DocsRetriever:
@@ -433,6 +448,8 @@ class DocsRetriever:
             overridden). PGVectorStore has one, a bare InMemoryVectorStore does not.
         :raises ValueError: If mode is "bm25" or "hybrid" and the store's collection
             is empty or fills the fetch limit.
+        :raises ValueError: If a retrieved document's layer metadata is not a known
+            layer (a corrupt index row).
         """
         fetch_k = self._config.k * 4 if self._config.rerank else self._config.k
         search_queries = await self._transformed_queries(query)
@@ -448,7 +465,7 @@ class DocsRetriever:
                 title=doc.metadata["title"],
                 section=doc.metadata["heading_path"],
                 url=doc.metadata["url"],
-                layer=doc.metadata["layer"],
+                layer=_layer_of(doc),
                 score=float(score),
                 chunk_text=doc.metadata.get("chunk_text", doc.page_content),
             )
