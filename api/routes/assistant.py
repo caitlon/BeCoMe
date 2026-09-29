@@ -23,6 +23,8 @@ def get_assistant_config(
 ) -> AssistantConfigResponse:
     """Return which model, mode, and collection currently serve the assistant.
 
+    The model is the one that writes chat answers, not the query-transform model.
+
     Reachable only when this router is registered, which happens only when
     settings.assistant_enabled is true.
 
@@ -31,7 +33,7 @@ def get_assistant_config(
     """
     return AssistantConfigResponse(
         enabled=settings.assistant_enabled,
-        model=settings.assistant_llm_model,
+        model=settings.assistant_answer_llm_model,
         mode=settings.assistant_mode,
         collection=settings.assistant_collection,
     )

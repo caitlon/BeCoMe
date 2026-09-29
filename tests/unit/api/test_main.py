@@ -285,7 +285,7 @@ class TestAssistantRouterGating:
         """
         GIVEN the dev profile with the assistant switched on
         WHEN the app is built and its config endpoint is requested
-        THEN it answers 200 with the active model, mode, and collection
+        THEN it answers 200 with the answer model, mode, and collection
         """
         from fastapi.testclient import TestClient
 
@@ -311,7 +311,7 @@ class TestAssistantRouterGating:
         assert response.status_code == 200
         assert response.json() == {
             "enabled": True,
-            "model": "Qwen/Qwen3-4B-Instruct-2507",
+            "model": "Qwen/Qwen3.5-9B",
             "mode": "hybrid",
             "collection": "docs_markdown_headers_500_o10_captions_bge_m3",
         }
