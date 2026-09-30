@@ -4,7 +4,8 @@ The chat model is always a scripted one from ``tests/shared/assistant_fakes.py``
 retriever is the static one the shared test app installs, and the API the assistant reads
 from is the test app itself. Nothing here reaches a real model server, embedding server or
 vector database. This part holds gating and authentication, the request schema, the
-configured message length, the three modes and the message limits.
+configured message length, the three modes, the message limits, tenant isolation and what
+the model is shown.
 """
 
 from typing import Any
@@ -21,11 +22,29 @@ from api.assistant.rate_limit import get_assistant_throttle
 from api.auth.cookies import CSRF_COOKIE
 from api.config import get_settings
 from api.middleware.rate_limit import LIMIT_ASSISTANT_CHAT, limiter
-from tests.integration.api.conftest import register_and_login, register_verified
-from tests.shared.assistant_fakes import ScriptedToolCallingModel, StaticDocsRetriever
+from tests.integration.api.conftest import (
+    create_project,
+    register_and_login,
+    register_verified,
+    stored_accounts,
+    submit_opinion,
+)
+from tests.shared.assistant_fakes import (
+    ScriptedToolCallingModel,
+    StaticDocsRetriever,
+    ToolEchoingModel,
+)
 from tests.shared.helpers import DEFAULT_TEST_PASSWORD, auth_header
 
 CHAT = "/api/v1/assistant/chat"
+
+# Numbers, names and words that exist only in the owner's project, chosen so that nothing
+# else in a response or a prompt can be mistaken for them.
+OWNER_PROJECT = "Aurora Borealis Ledger"
+OWNER_FIRST_NAME = "Ottokar"
+OWNER_LAST_NAME = "Zwiebelstein"
+OWNER_POSITION = "Chief Zebra Officer"
+OWNER_LOWER, OWNER_PEAK, OWNER_UPPER = 61.04, 73.19, 88.27
 
 _ALL_MODES = ["workflow", "hybrid", "agent"]
 
@@ -115,6 +134,26 @@ def _use_model(client, model, calls: list[str] | None = None) -> None:
     client.app.dependency_overrides[deps.get_answer_model] = factory
 
 
+def _tool_call(name: str, project_id: str) -> AIMessage:
+    return AIMessage(
+        content="",
+        tool_calls=[
+            {"name": name, "args": {"project_id": project_id}, "id": "call_1", "type": "tool_call"}
+        ],
+    )
+
+
+def _shown(model: ScriptedToolCallingModel | ToolEchoingModel) -> str:
+    """Everything the model was shown across its calls, tool calls included, as one string."""
+    parts: list[str] = []
+    for call in model.seen:
+        for message in call:
+            parts.append(message.text)
+            if isinstance(message, AIMessage):
+                parts.append(repr(message.tool_calls))
+    return "\n".join(parts)
+
+
 def _sign_in_with_cookies(cookie_client, email: str, first_name: str = "Test") -> dict[str, str]:
     """Register an account, log in through the cookie flow and return the CSRF header."""
     register_verified(cookie_client, email, first_name=first_name)
@@ -123,6 +162,40 @@ def _sign_in_with_cookies(cookie_client, email: str, first_name: str = "Test") -
     )
     assert response.status_code == 200
     return {"X-CSRF-Token": cookie_client.cookies.get(CSRF_COOKIE)}
+
+
+def _owner_project(client, position: str = OWNER_POSITION) -> dict[str, Any]:
+    """Create the owner's project with one opinion and return what a test needs of it."""
+    email = "owner@example.com"
+    register_verified(client, email, first_name=OWNER_FIRST_NAME, last_name=OWNER_LAST_NAME)
+    login = client.post(
+        "/api/v1/auth/login", data={"username": email, "password": DEFAULT_TEST_PASSWORD}
+    )
+    token = login.json()["access_token"]
+    client.cookies.clear()
+    project = create_project(client, token, name=OWNER_PROJECT)
+    opinion = submit_opinion(
+        client,
+        token,
+        project["id"],
+        lower_bound=OWNER_LOWER,
+        peak=OWNER_PEAK,
+        upper_bound=OWNER_UPPER,
+        position=position,
+    )
+    assert opinion["peak"] == OWNER_PEAK
+    return {"email": email, "token": token, "id": project["id"]}
+
+
+OWNER_SECRETS = [
+    OWNER_PROJECT,
+    OWNER_FIRST_NAME,
+    OWNER_LAST_NAME,
+    OWNER_POSITION,
+    f"{OWNER_LOWER:.2f}",
+    f"{OWNER_PEAK:.2f}",
+    f"{OWNER_UPPER:.2f}",
+]
 
 
 class TestGatingAndAuth:
@@ -454,6 +527,229 @@ class TestModes:
         # THEN
         assert response.status_code == 200
         assert len(model.seen) == 1
+
+
+class TestIsolation:
+    """A user reaches a project only through their own membership, whatever the model asks for."""
+
+    @pytest.mark.parametrize(
+        ("tool", "owner_sees"),
+        [
+            ("get_project", OWNER_PROJECT),
+            ("get_project_result", f"{OWNER_PEAK:.2f}"),
+            ("get_project_opinions", OWNER_POSITION),
+        ],
+    )
+    def test_a_tool_call_for_a_foreign_project_gets_not_found_and_no_data(
+        self, assistant_settings, cookie_client, configure, tool, owner_sees
+    ):
+        """
+        GIVEN an owner's project with one opinion, in the agent mode with a model that
+            answers with the tool's own reply
+        WHEN the owner asks for their own project through the tool
+        THEN the answer carries the project's data (the positive control)
+        AND WHEN another user asks for the same project id through the same tool call
+        THEN the reply starts with not_found:, the status is 200, and nothing of the
+            owner's project, numbers, names or position is in the answer or in anything
+            the model was shown
+        """
+        # GIVEN
+        configure(ASSISTANT_MODE="agent")
+        owner = _owner_project(cookie_client)
+        owner_csrf = _sign_in_with_cookies_again(cookie_client, owner["email"])
+        owner_model = ToolEchoingModel(first_call=_tool_call(tool, owner["id"]))
+        _use_model(cookie_client, owner_model)
+
+        # WHEN the owner asks
+        owned = cookie_client.post(CHAT, json={"message": "Tell me about it"}, headers=owner_csrf)
+
+        # THEN the control holds: the tool really returns the project to its owner
+        assert owned.status_code == 200
+        assert owner_sees in owned.json()["answer"]
+        assert not owned.json()["answer"].startswith("not_found:")
+
+        # GIVEN another user
+        cookie_client.cookies.clear()
+        guest_csrf = _sign_in_with_cookies(cookie_client, "guest@example.com")
+        guest_model = ToolEchoingModel(first_call=_tool_call(tool, owner["id"]))
+        _use_model(cookie_client, guest_model)
+
+        # WHEN the guest asks for the owner's project id
+        foreign = cookie_client.post(CHAT, json={"message": "Tell me about it"}, headers=guest_csrf)
+
+        # THEN
+        assert foreign.status_code == 200
+        answer = foreign.json()["answer"]
+        assert answer.startswith("not_found:")
+        shown = _shown(guest_model)
+        for secret in OWNER_SECRETS:
+            assert secret not in answer
+            assert secret not in shown
+        assert len(guest_model.seen) == 2
+
+    @pytest.mark.parametrize("mode", ["workflow", "hybrid"])
+    @pytest.mark.parametrize("which", ["foreign", "unknown"])
+    def test_a_project_id_in_the_body_that_the_caller_cannot_see_is_a_plain_404(
+        self, assistant_settings, client, configure, mode, which
+    ):
+        """
+        GIVEN a project the caller is not a member of, or one that does not exist
+        WHEN the caller names it as the project of the chat request
+        THEN the answer has the status and the JSON body that GET /projects/{id} gives that
+            same caller for that same id, and the model is never asked
+        """
+        # GIVEN
+        configure(ASSISTANT_MODE=mode)
+        owner = _owner_project(client)
+        guest_token = register_and_login(client, "guest@example.com")
+        project_id = owner["id"] if which == "foreign" else "6f1c2d3e-4a5b-4c6d-8e7f-0a1b2c3d4e5f"
+        model = _scripted("never used")
+        _use_model(client, model)
+
+        # WHEN
+        direct = client.get(f"/api/v1/projects/{project_id}", headers=auth_header(guest_token))
+        chat = client.post(
+            CHAT,
+            json={"message": "What is the result?", "project_id": project_id},
+            headers=auth_header(guest_token),
+        )
+
+        # THEN
+        assert direct.status_code == 404
+        assert chat.status_code == direct.status_code
+        assert chat.json() == direct.json()
+        assert model.seen == []
+
+    def test_in_the_agent_mode_a_foreign_project_id_in_the_body_is_a_200_that_shows_nothing(
+        self, assistant_settings, client, configure
+    ):
+        """
+        GIVEN the agent mode, where nothing is read ahead of the model, and a project the
+            caller cannot see named as the project of the request
+        WHEN the model asks for that project through a tool
+        THEN the status is 200, the reply is not_found:, and neither the answer nor anything
+            the model was shown carries any of the owner's data
+        """
+        # GIVEN
+        configure(ASSISTANT_MODE="agent")
+        owner = _owner_project(client)
+        guest_token = register_and_login(client, "guest@example.com")
+        model = ToolEchoingModel(first_call=_tool_call("get_project_result", owner["id"]))
+        _use_model(client, model)
+
+        # WHEN
+        response = client.post(
+            CHAT,
+            json={"message": "What is the result?", "project_id": owner["id"]},
+            headers=auth_header(guest_token),
+        )
+
+        # THEN
+        assert response.status_code == 200
+        answer = response.json()["answer"]
+        assert answer.startswith("not_found:")
+        shown = _shown(model)
+        for secret in OWNER_SECRETS:
+            assert secret not in answer
+            assert secret not in shown
+        assert len(model.seen) == 2
+
+    @pytest.mark.parametrize("mode", ["workflow", "hybrid"])
+    def test_a_project_id_in_the_body_that_the_caller_owns_is_shown_to_the_model(
+        self, assistant_settings, client, configure, mode
+    ):
+        """
+        GIVEN the owner's project and a request that names it
+        WHEN the owner asks
+        THEN the answer is 200 and the model was shown the project, which is the control for
+            the 404 above: the same request shape works for a member
+        """
+        # GIVEN
+        configure(ASSISTANT_MODE=mode)
+        owner = _owner_project(client)
+        model = _scripted("It is a ledger.")
+        _use_model(client, model)
+
+        # WHEN
+        response = client.post(
+            CHAT,
+            json={"message": "What is this project?", "project_id": owner["id"]},
+            headers=auth_header(owner["token"]),
+        )
+
+        # THEN
+        assert response.status_code == 200
+        assert OWNER_PROJECT in _shown(model)
+
+
+def _sign_in_with_cookies_again(cookie_client, email: str) -> dict[str, str]:
+    """Log an already registered account in through the cookie flow; return the CSRF header."""
+    response = cookie_client.post(
+        "/api/v1/auth/login", data={"username": email, "password": DEFAULT_TEST_PASSWORD}
+    )
+    assert response.status_code == 200
+    return {"X-CSRF-Token": cookie_client.cookies.get(CSRF_COOKIE)}
+
+
+class TestWhatTheModelIsShown:
+    """The model never sees who the caller is, only what the project holds."""
+
+    @pytest.mark.parametrize("mode", ["workflow", "agent"])
+    def test_no_email_user_id_or_token_reaches_the_model(
+        self, assistant_settings, client, configure, mode
+    ):
+        """
+        GIVEN a project with two members, each with an opinion
+        WHEN the owner asks about it, once with the project fetched ahead and once through a
+            tool call
+        THEN the model was shown the project and the experts' names and positions (the
+            control), and nothing that identifies an account: no email, no user id, no token
+        """
+        # GIVEN
+        configure(ASSISTANT_MODE=mode)
+        owner = _owner_project(client)
+        expert_email = "second-expert@example.com"
+        expert_token = register_and_login(client, expert_email)
+        invitation = client.post(
+            f"/api/v1/projects/{owner['id']}/invite",
+            json={"email": expert_email},
+            headers=auth_header(owner["token"]),
+        )
+        client.post(
+            f"/api/v1/invitations/{invitation.json()['id']}/accept",
+            headers=auth_header(expert_token),
+        )
+        submit_opinion(client, expert_token, owner["id"], position="Second Opinion Holder")
+        identifiers = [
+            owner["email"],
+            expert_email,
+            owner["token"],
+            expert_token,
+            *(
+                str(account["id"])
+                for email in (owner["email"], expert_email)
+                for account in stored_accounts(client, email)
+            ),
+        ]
+        if mode == "workflow":
+            model: ScriptedToolCallingModel | ToolEchoingModel = _scripted("Two experts.")
+            body = {"message": "Who took part?", "project_id": owner["id"]}
+        else:
+            model = ToolEchoingModel(first_call=_tool_call("get_project_opinions", owner["id"]))
+            body = {"message": "Who took part?"}
+        _use_model(client, model)
+
+        # WHEN
+        response = client.post(CHAT, json=body, headers=auth_header(owner["token"]))
+
+        # THEN
+        assert response.status_code == 200
+        shown = _shown(model)
+        assert OWNER_POSITION in shown
+        assert "Second Opinion Holder" in shown
+        for identifier in identifiers:
+            assert identifier not in shown
+            assert identifier not in response.text
 
 
 class TestMessageLimit:

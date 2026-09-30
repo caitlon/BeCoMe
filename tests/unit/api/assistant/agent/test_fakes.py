@@ -6,7 +6,11 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.tools import tool
 
 from api.assistant.rag.retrieval import RetrievedChunk
-from tests.shared.assistant_fakes import ScriptedToolCallingModel, StaticDocsRetriever
+from tests.shared.assistant_fakes import (
+    ScriptedToolCallingModel,
+    StaticDocsRetriever,
+    ToolEchoingModel,
+)
 
 
 @tool
@@ -108,3 +112,61 @@ class TestStaticDocsRetriever:
 
         # THEN
         assert again == [_chunk()]
+
+
+@pytest.mark.asyncio
+class TestToolEchoingModel:
+    """The model makes its one scripted call, then answers with what the tool said."""
+
+    async def test_answers_with_the_reply_of_the_tool_it_called(self):
+        """
+        GIVEN a model scripted to call a tool once
+        WHEN an agent with that tool runs on it
+        THEN the tool runs and the final answer is the tool's own reply, word for word
+        """
+        # GIVEN
+        model = ToolEchoingModel(first_call=_call())
+        agent = create_agent(model, [_lookup])
+
+        # WHEN
+        result = await agent.ainvoke({"messages": [HumanMessage(content="Explain")]})
+
+        # THEN
+        assert result["messages"][-1].content == "about the mean: 42.00"
+
+    async def test_answers_with_the_error_text_of_a_call_the_agent_refused(self):
+        """
+        GIVEN a model scripted to call a tool that does not exist
+        WHEN an agent runs on it
+        THEN the final answer is what the agent said back about that call, not an empty reply
+        """
+        # GIVEN
+        model = ToolEchoingModel(first_call=_call(name="no_such_tool"))
+        agent = create_agent(model, [_lookup])
+
+        # WHEN
+        result = await agent.ainvoke({"messages": [HumanMessage(content="Explain")]})
+
+        # THEN
+        assert "no_such_tool" in result["messages"][-1].content
+
+    async def test_records_the_messages_of_every_call(self):
+        """
+        GIVEN a model that has been called twice by an agent
+        WHEN its seen list is read
+        THEN it holds one entry per call, and the second one includes the tool's reply
+        """
+        # GIVEN
+        model = ToolEchoingModel(first_call=_call())
+        agent = create_agent(model, [_lookup])
+
+        # WHEN
+        await agent.ainvoke({"messages": [HumanMessage(content="Explain")]})
+
+        # THEN
+        assert len(model.seen) == 2
+        assert [m.content for m in model.seen[0]] == ["Explain"]
+        assert any(
+            isinstance(m, ToolMessage) and m.content == "about the mean: 42.00"
+            for m in model.seen[1]
+        )
