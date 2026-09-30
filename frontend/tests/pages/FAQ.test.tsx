@@ -1,14 +1,19 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { render, framerMotionMock, unauthenticatedAuthMock, expectSectionIds, getGithubLinks } from '@tests/utils';
 import FAQ from '@/pages/FAQ';
+import i18n from '@/i18n';
 
 vi.mock('@/contexts/AuthContext', () => unauthenticatedAuthMock);
 
 vi.mock('framer-motion', () => framerMotionMock);
 
 describe('FAQ', () => {
+  afterEach(async () => {
+    await i18n.changeLanguage('en');
+  });
+
   it('renders page heading', () => {
     render(<FAQ />);
 
@@ -88,5 +93,26 @@ describe('FAQ', () => {
     const { container } = render(<FAQ />);
 
     expectSectionIds(container, ['method', 'fuzzyNumbers', 'results', 'application', 'troubleshooting']);
+  });
+
+  it.each([
+    [
+      'en',
+      'What input formats are supported?',
+      'One format: a fuzzy triangular number. It has three values, Lower, Peak and Upper: the lowest value you would accept, the one you consider most likely, and the highest. If you are certain, enter the same value in all three fields. A Likert scale input is not available yet.',
+    ],
+    [
+      'cs',
+      'Jaké vstupní formáty jsou podporovány?',
+      'Jeden formát: fuzzy trojúhelníkové číslo. Tvoří ho tři hodnoty, Dolní, Vrchol a Horní: nejnižší hodnota, kterou byste přijali, ta, kterou považujete za nejpravděpodobnější, a nejvyšší. Pokud jste si jisti, zadejte do všech tří polí stejnou hodnotu. Zadávání na Likertově škále zatím není k dispozici.',
+    ],
+  ])('input formats answer describes the one triangular format (%s)', async (language, question, answer) => {
+    const user = userEvent.setup();
+    await i18n.changeLanguage(language);
+
+    render(<FAQ />);
+    await user.click(screen.getByRole('button', { name: question }));
+
+    expect(screen.getByText(answer)).toBeInTheDocument();
   });
 });

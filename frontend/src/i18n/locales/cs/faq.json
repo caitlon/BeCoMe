@@ -58,7 +58,7 @@
     },
     "whatInputFormats": {
       "question": "Jaké vstupní formáty jsou podporovány?",
-      "answer": "Tři formáty: Přesné číslo (jedna přesná hodnota), Fuzzy (trojúhelníkové číslo s dolní, vrcholem, horní) a Likertova škála (lingvistické termíny od 'Rozhodně nesouhlasím' po 'Rozhodně souhlasím')."
+      "answer": "Jeden formát: fuzzy trojúhelníkové číslo. Tvoří ho tři hodnoty, Dolní, Vrchol a Horní: nejnižší hodnota, kterou byste přijali, ta, kterou považujete za nejpravděpodobnější, a nejvyšší. Pokud jste si jisti, zadejte do všech tří polí stejnou hodnotu. Zadávání na Likertově škále zatím není k dispozici."
     }
   },
   "troubleshooting": {
