@@ -791,10 +791,10 @@ describe('ApiClient', () => {
         json: () => Promise.resolve({ detail: 'accepted' }),
       });
 
-      await api.forgotPassword('user@example.com', 'turnstile-token-3');
+      await api.forgotPassword('user@example.com', 'en', 'turnstile-token-3');
       expect(turnstileHeader(mockFetch.mock.calls[0])).toBe('turnstile-token-3');
 
-      await api.forgotPassword('user@example.com');
+      await api.forgotPassword('user@example.com', 'en');
       expect(turnstileHeader(mockFetch.mock.calls[1])).toBeUndefined();
     });
 
@@ -823,12 +823,12 @@ describe('ApiClient', () => {
         json: () => Promise.resolve({ detail: 'accepted' }),
       });
 
-      await api.forgotPassword('user@example.com', '');
+      await api.forgotPassword('user@example.com', 'en', '');
       expect(turnstileHeader(mockFetch.mock.calls[0])).toBeUndefined();
     });
   });
 
-  // The two calls that send an email tell the API which language to write it in,
+  // The calls that send an email tell the API which language to write it in,
   // through the standard Accept-Language header and never a body field (the request
   // models reject unknown fields, and the SPA and API deploy separately).
   describe('Email language header', () => {
@@ -872,6 +872,16 @@ describe('ApiClient', () => {
       }
     );
 
+    it.each(['en', 'cs'] as const)(
+      'forgotPassword sends Accept-Language %s',
+      async (language) => {
+        await api.forgotPassword('user@example.com', language);
+
+        expect(headersOf(mockFetch.mock.calls[0])['Accept-Language']).toBe(language);
+        expect(bodyOf(mockFetch.mock.calls[0])).toEqual({ email: 'user@example.com' });
+      }
+    );
+
     it('keeps the Turnstile header next to the language header', async () => {
       await api.register({ email: 'a@example.com', password: 'password123' } as never, 'cs', 'tok');
 
@@ -882,7 +892,7 @@ describe('ApiClient', () => {
     });
 
     it('sends no Accept-Language header on a call that sends no email', async () => {
-      await api.forgotPassword('user@example.com');
+      await api.login('user@example.com', 'pass');
 
       expect(headersOf(mockFetch.mock.calls[0])['Accept-Language']).toBeUndefined();
     });

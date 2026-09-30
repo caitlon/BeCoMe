@@ -55,7 +55,7 @@ function turnstileHeaders(token?: string | null): Record<string, string> {
 }
 
 /**
- * Carries the interface language on the two calls that send an email. The API
+ * Carries the interface language on the calls that send an email. The API
  * reads it as the standard Accept-Language header (api/dependencies.py) rather than
  * a body field: the request models reject unknown fields, and the SPA and the API
  * deploy separately, so a new field would fail with 422 against an API that has not
@@ -418,10 +418,14 @@ class ApiClient {
     }
   }
 
-  async forgotPassword(email: string, turnstileToken?: string | null): Promise<void> {
+  async forgotPassword(
+    email: string,
+    language: SupportedLanguage,
+    turnstileToken?: string | null
+  ): Promise<void> {
     return this.request<void>('/auth/forgot-password', {
       method: 'POST',
-      headers: turnstileHeaders(turnstileToken),
+      headers: { ...languageHeaders(language), ...turnstileHeaders(turnstileToken) },
       body: JSON.stringify({ email }),
     });
   }
