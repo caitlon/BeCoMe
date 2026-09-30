@@ -56,14 +56,16 @@ _DATE_ISO = re.compile(r"(?<![\w.])\d{4}-\d{2}-\d{2}(?!\d)")
 _DATE_DOTTED = re.compile(r"(?<![\w.])\d{1,2}\. ?\d{1,2}\. ?\d{4}(?!\d)")
 # A word, its hyphen-joined digit run, and its dot-joined digit tail (v1.2.3, COVID-19.5).
 # Whether the word holds a digit and a letter, or is a capitalised name before a hyphen
-# and digits, is decided in _drop_words.
-_WORD = re.compile(r"(\w+)(-\d+)?((?:\.\d+)*)")
+# and digits, is decided in _drop_words. A word never starts right after a number or a
+# dot (12.5m2, x.y6_1), so a number glued to a unit is left to the neighbour rule of
+# _scan_numbers. A hyphen-joined digit run is left out when a word character follows it
+# (870-14cm.104), so that the mixed word 14cm.104 is found whole.
+_WORD = re.compile(r"(?<![\w.])(\w+)(-\d+(?!\w))?((?:\.\d+)*)")
 # What replaces a dropped token: neither whitespace nor a letter, so that a hyphen right
 # after it does not read as a sign, and the digits around it do not run together.
 _DROPPED = "\x00"
 # A list number at the start of a line: 1. or 2) or (3), behind any markdown decoration.
-_LIST_NUMBER = re.compile(r"^[>#*_\- \t]*\d+[.)][*_]*\s", re.MULTILINE)
-_LIST_NUMBER_IN_BRACKETS = re.compile(r"^[>#*_\- \t]*\(\d+\)[*_]*\s", re.MULTILINE)
+_LIST_MARKER = re.compile(r"^[>#*_\- \t]*(\()?\d+([.)])[*_]*\s", re.MULTILINE)
 # An ordinal inside a sentence, as Czech writes it: one or two digits, a dot, then
 # whitespace on the same line. Whether it is one is decided by the case of the next letter.
 _ORDINAL = re.compile(r"(?<![\d.,])\d{1,2}\.([^\S\r\n]+)(\S)")
@@ -74,14 +76,15 @@ _LINK_AFTER = re.compile(r"\([^()\[\]\s]*\)")
 # wins), and the pattern of each. Only the caller of _read decides what a form means.
 _SPACE = "[ \u00a0\u202f]"
 _NUMBER_FORMS = {
-    "spaced": rf"\d{{1,3}}(?:{_SPACE}\d{{3}})+(?!\d)(?:,\d+)?",
+    "spaced": rf"\d{{1,3}}(?:{_SPACE}\d{{3}})+(?!\d)(?:[.,]\d+)?",
     "grouped": r"\d{1,3}(?:,\d{3})+\.\d+",
-    "dotted": r"\d{1,3}(?:\.\d{3})+,\d+",
+    "dotted": r"[1-9]\d{0,2}(?:\.\d{3})+,\d+(?!\d|[.,]\d)",
     "commas": r"\d+(?:\.\d+)?(?:,\d+(?:\.\d+)?)+",
     "dotgroup": r"\d{1,3}(?:\.\d{3})+(?!\d)",
     "plain": r"\d+(?:\.\d+)?",
 }
 _NUMBER = re.compile("|".join(f"(?P<{form}>{pattern})" for form, pattern in _NUMBER_FORMS.items()))
+_ZERO_LED_GROUP = re.compile(r"0\d\d")
 _LETTER_OR_UNDERSCORE = re.compile(r"[^\W\d]")
 _MINUS_SIGNS = "-\u2212"
 _SIGN_PREFIXES = "([{=,;:"
@@ -161,6 +164,10 @@ class _Token:
 def _read_spaced(text: str) -> list[list[Decimal]]:
     """Read ``1 000`` or ``1 000,5``: one number, or a list when no group starts with 0.
 
+    A dot decimal after the last group (``56 123.025``) is read the same way, as one
+    number or as a list of two, because a table of numbers separated by spaces looks
+    like a number written with space-grouped thousands.
+
     :param text: The matched text.
     :return: The readings.
     """
@@ -210,13 +217,14 @@ def _read_commas(text: str) -> list[list[Decimal]]:
     """Read comma-joined digit groups: a list, a decimal comma, or thousands.
 
     A later part of exactly three digits that starts with zero is a thousands group and
-    never a list member. Parts with a dot decimal can only be a list.
+    never a list member; a part such as ``0.5`` is a decimal, not such a group. Parts
+    with a dot decimal can only be a list.
 
     :param text: The matched text.
     :return: The readings.
     """
     parts = text.split(",")
-    zero_led = any(len(part) == 3 and part.startswith("0") for part in parts[1:])
+    zero_led = any(_ZERO_LED_GROUP.fullmatch(part) for part in parts[1:])
     readings = [] if zero_led else [[Decimal(part) for part in parts]]
     if "." in text:
         return readings
@@ -328,6 +336,8 @@ def _replace_citations(text: str, filler: str) -> str:
     pieces: list[str] = []
     position = 0
     for start, end, _numbers in _citation_spans(text):
+        if start < position:
+            continue
         link = _LINK_AFTER.match(text, end)
         pieces.append(text[position:start])
         pieces.append(filler)
@@ -356,7 +366,9 @@ def _drop_words(text: str) -> str:
     digit run after it stays. A word made of letters that starts with a capital, a
     hyphen and a digit run (``COVID-19``, ``GPT-4``, ``ISO-8601``, ``\u010cSN-73``) is a
     name and goes whole. A lowercase word before a hyphen (``error-15.3``, ``peak-3``,
-    ``n-1``) is not a name.
+    ``n-1``) is not a name. A word that starts right after a number or a dot
+    (``12.5m2``, ``a.6_1``) is left alone, so a number glued to its unit is judged by
+    the neighbour rule of :func:`_scan_numbers`, not cut in pieces.
 
     :param text: The text to clean.
     :return: The text with each dropped token replaced by a filler.
@@ -393,8 +405,7 @@ def _strip_answer(answer: str) -> str:
     text = _DATE_ISO.sub(_DROPPED, text)
     text = _DATE_DOTTED.sub(_DROPPED, text)
     text = _drop_words(text)
-    text = _LIST_NUMBER.sub("", text)
-    text = _LIST_NUMBER_IN_BRACKETS.sub("", text)
+    text = _LIST_MARKER.sub(lambda match: match[0] if match[1] and match[2] == "." else "", text)
     return _drop_ordinals(text)
 
 
@@ -473,7 +484,12 @@ def find_ungrounded_numbers(answer: str, grounding_texts: list[str]) -> list[str
     ``100 200 300`` is one number or three. A group of exactly three digits that starts
     with zero (``5,000,000``, ``5 000``) is a thousands group and never a list member,
     but ``5,000`` still passes when the data holds 5, because a comma before three
-    digits may be a decimal comma.
+    digits may be a decimal comma. ``1.422,7`` is one number with dot-grouped thousands
+    and a decimal comma, never a list of two, unless a dot or a comma and a digit
+    follow it (``(1.500,2.500)``, ``(1.884,90,12.1)`` are lists).
+
+    A token that fits no reading (``1,000,5``, ``5.5,000``, ``0.000.000``) is reported
+    as written, even when the grounding holds the same text.
 
     A number written with ``d`` decimals is grounded when some number in the grounding
     texts, quantized to ``d`` decimals, equals it under round-half-up or under
