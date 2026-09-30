@@ -83,6 +83,11 @@ _UNIT_LIMIT = 20
 _LABEL_LIMIT = 40
 _ID_LIMIT = 40
 
+# What the API client can fail with, as far as a tool is concerned: its own refusal of an
+# answer, and whatever the in-process transport re-raises from a route that did not handle
+# it (a database failure, say), which reaches the tool unchanged.
+_BACKEND_FAILURES: tuple[type[Exception], ...] = (AssistantUpstreamError, *UNAVAILABLE_ERRORS)
+
 _MAX_PROJECTS = 50
 _MAX_OPINIONS = 50
 
@@ -241,7 +246,7 @@ async def list_my_projects(runtime: ToolRuntime[AssistantContext]) -> str:
     ctx = runtime.context
     try:
         projects = await ctx.client.list_projects()
-    except AssistantUpstreamError as exc:
+    except _BACKEND_FAILURES as exc:
         return _reply(ctx, _unavailable("list_my_projects", exc))
     if not projects:
         return _reply(ctx, _NO_PROJECTS)
@@ -264,7 +269,7 @@ async def get_project(project_id: str, runtime: ToolRuntime[AssistantContext]) -
         project = await ctx.client.get_project(project_id)
     except AssistantNotFoundError:
         return _reply(ctx, _NOT_FOUND)
-    except AssistantUpstreamError as exc:
+    except _BACKEND_FAILURES as exc:
         return _reply(ctx, _unavailable("get_project", exc))
     return _reply(ctx, render_project(project))
 
@@ -285,7 +290,7 @@ async def get_project_result(project_id: str, runtime: ToolRuntime[AssistantCont
         result = await ctx.client.get_result(project_id)
     except AssistantNotFoundError:
         return _reply(ctx, _NOT_FOUND)
-    except AssistantUpstreamError as exc:
+    except _BACKEND_FAILURES as exc:
         return _reply(ctx, _unavailable("get_project_result", exc))
     if result is None:
         return _reply(ctx, _NO_RESULT_YET)
@@ -308,7 +313,7 @@ async def get_project_opinions(project_id: str, runtime: ToolRuntime[AssistantCo
         opinions = await ctx.client.get_opinions(project_id)
     except AssistantNotFoundError:
         return _reply(ctx, _NOT_FOUND)
-    except AssistantUpstreamError as exc:
+    except _BACKEND_FAILURES as exc:
         return _reply(ctx, _unavailable("get_project_opinions", exc))
     if not opinions:
         return _reply(ctx, _NO_OPINIONS)

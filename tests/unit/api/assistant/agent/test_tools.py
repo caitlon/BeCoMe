@@ -419,6 +419,61 @@ class TestProjectToolErrors:
 
 
 @pytest.mark.asyncio
+class TestFailuresRaisedThroughTheApplication:
+    """The in-process transport re-raises what the application did not handle."""
+
+    @staticmethod
+    def _failing_client(error: Exception) -> AsyncMock:
+        client = AsyncMock(spec=UserApiClient)
+        for method in (
+            client.list_projects,
+            client.get_project,
+            client.get_result,
+            client.get_opinions,
+        ):
+            method.side_effect = error
+        return client
+
+    @staticmethod
+    def _arguments(tool) -> dict[str, str]:
+        return {} if tool is list_my_projects else {"project_id": PROJECT_ID}
+
+    @pytest.mark.parametrize("error", _unavailable_errors(), ids=lambda e: type(e).__name__)
+    @pytest.mark.parametrize("tool", [list_my_projects, *PROJECT_TOOLS], ids=lambda t: t.name)
+    async def test_a_failing_backend_becomes_the_unavailable_reply(self, tool, error):
+        """
+        GIVEN a client whose call fails with a connection, status or database error,
+            as a route's unhandled failure does through the in-process transport
+        WHEN a tool that reads the API runs
+        THEN the reply is the unavailable line, appended to tool_outputs, with none of
+            the error's own text, and one warning names the tool and the class only
+        """
+        ctx = _ctx(self._failing_client(error))
+
+        with captured_log_records("api.assistant.agent.tools") as records:
+            result = await tool.ainvoke({**self._arguments(tool), "runtime": _runtime(ctx)})
+
+        assert result == tools._UNAVAILABLE
+        assert "secret-host" not in result
+        assert ctx.tool_outputs == [result]
+        assert [(r.event, r.tool, r.reason) for r in records] == [
+            ("assistant_tool_unavailable", tool.name, type(error).__name__)
+        ]
+
+    @pytest.mark.parametrize("tool", [list_my_projects, *PROJECT_TOOLS], ids=lambda t: t.name)
+    async def test_an_error_outside_the_list_still_propagates(self, tool):
+        """
+        GIVEN a client that fails with an error that is not an availability failure
+        WHEN a tool that reads the API runs
+        THEN the error propagates, because that is the chat service's business
+        """
+        ctx = _ctx(self._failing_client(RuntimeError("bug")))
+
+        with pytest.raises(RuntimeError, match="bug"):
+            await tool.ainvoke({**self._arguments(tool), "runtime": _runtime(ctx)})
+
+
+@pytest.mark.asyncio
 class TestGetProject:
     async def test_returns_project_details_for_an_own_project(self):
         """
