@@ -30,8 +30,9 @@ opinions sit in aggregate. The **median** shows where the middle of the panel si
 moves when one person takes an extreme position. BeCoMe takes the midpoint of the two, and reports
 the distance between them as a separate number.
 
-That second number is the part most methods leave out. It says how far apart the panel was, so a
-compromise from a divided room cannot be quoted as if it came from a unanimous one.
+That second number is the part most methods leave out. It says how far apart the average and the
+median landed. A divided panel can still produce a small one, so read it together with the chart of
+the individual opinions, as [reading the result](reading-the-result.md) explains.
 
 ## When it fits
 

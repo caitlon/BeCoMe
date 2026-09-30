@@ -47,8 +47,9 @@ Open the project and click **Invite Experts**. You invite by email address, and 
 belong to someone who already has an account. There is no invitation to a stranger: the person
 signs up first, then you invite them.
 
-They will find the invitation in their **Invitations** tab. Until they accept it they are not on
-the panel and their absence does not hold anything up.
+They will find the invitation in their **Invitations** tab. No email is sent, so tell them to
+look there. Until they accept it they are not on the panel and their absence does not hold anything
+up.
 
 ## What happens next
 

@@ -1,7 +1,7 @@
 # Reading the result
 
 You get four numbers and a chart. Three of the numbers are candidate answers and the fourth tells
-you how much to trust them.
+you how far apart they landed.
 
 ## The four figures
 
@@ -17,10 +17,10 @@ its virtue and its flaw. One expert at an extreme drags it.
 extremes are, so an outlier cannot drag it. That is its virtue, and its flaw is the same: it also
 ignores a genuine minority.
 
-**Maximum error (Δmax)** is not an error in your data. It is the distance between the centers of
-the mean and the median, halved, which is also exactly how far the compromise had to travel from
-each of them. When the panel agrees, both land in the same place and Δmax is near zero. When the
-panel splits, the two diverge and Δmax is the price of reconciling them.
+**Maximum error (Δmax)** is not an error in your data. It is the distance between the centers of the
+mean and the median, halved, which is also exactly how far the compromise had to travel from each of
+them. When the panel agrees, both land in the same place and Δmax is near zero. When the two land
+apart, Δmax is the price of reconciling them.
 
 Δmax is read against your scale, never on its own, and the app does that for you. It divides Δmax
 by the width of the scale and labels the result: up to 20 percent is high agreement, up to 40 is
