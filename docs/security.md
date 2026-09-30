@@ -105,13 +105,14 @@ defenses hold independently: `is_demo` filtering keeps the accounts from being f
 and pre-verification means even a lookup that did find one could not fall into the branch
 that mints it an activation token.
 
-The activation and password-reset emails are written in English or Czech, and `register`,
-`resend-verification` and `forgot-password` take the language from the `Accept-Language` request
-header. The header is untrusted input, so
-`get_email_language` in `api/dependencies.py` reads only its first 200 characters and its first
-10 ranges, reduces the result to `en` or `cs`, and falls back to `en` for anything else. The
-raw value is never logged and never echoed in a response, and a malformed header changes
-nothing about the answer, so it cannot be used to tell one branch from another.
+All three emails are written in English or Czech: the activation email, the password-reset
+email, and the notice sent when someone signs up with an address that already has an account.
+`register`, `resend-verification` and `forgot-password` take the language from the
+`Accept-Language` request header. The header is untrusted input, so `get_email_language` in
+`api/dependencies.py` reads only its first 200 characters and its first 10 ranges, reduces the
+result to `en` or `cs`, and falls back to `en` for anything else. The raw value is never logged
+and never echoed in a response, and a malformed header changes nothing about the answer, so it
+cannot be used to tell one branch from another.
 
 **A submission is bound to the link it mints, never to the account.** The activation token
 carries the submitted password hash and names (`email_verification_tokens`, all three
