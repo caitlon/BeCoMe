@@ -12,37 +12,34 @@ from decimal import ROUND_DOWN, ROUND_HALF_UP, Context, Decimal
 # A bracket group: square brackets, or the full-width lenticular ones some models emit.
 _BRACKET = re.compile(r"\[([^\[\]]*)\]|\u3010([^\u3010\u3011]*)\u3011")
 
-# The words that may label a citation, in any case: source, reference, excerpt and
-# passage in English and Czech, and source in Russian. Any other word before a number
-# (``[lower 6, upper 11]``, ``[Q1-Q3]``) makes the bracket ordinary text.
+# The words that may label a citation, in any case: source, document, reference,
+# excerpt and passage in English and Czech, and source in Russian, each with the short
+# endings that make its plural and its cases. The whole word must match, so a longer
+# word that only begins like one (``[reflection 3]``, ``[docker 3]``,
+# ``[document-like 3]``) does not label a citation, and neither does any other word
+# before a number (``[lower 6, upper 11]``, ``[Q1-Q3]``): the bracket is ordinary text.
 _LABEL_WORDS = (
-    "source",
-    "sources",
-    "src",
-    "doc",
-    "docs",
-    "document",
-    "ref",
-    "refs",
-    "reference",
-    "excerpt",
-    "passage",
-    "zdroj",
-    "zdroje",
-    "dokument",
-    "\u00faryvek",
-    "pas\u00e1\u017e",
-    "\u0438\u0441\u0442\u043e\u0447\u043d\u0438\u043a",
+    r"sources?",
+    r"src",
+    r"docs?",
+    r"documents?",
+    r"refs?",
+    r"references?",
+    r"excerpts?",
+    r"passages?",
+    r"zdroj(?:e|u|y|\u016f|\u016fm|ech)?",
+    r"dokument(?:y|u|\u016f)?",
+    r"\u00faryv(?:ek|ky|ku|k\u016f)",
+    r"pas\u00e1\u017e(?:e|\u00ed)?",
+    r"\u0438\u0441\u0442\u043e\u0447\u043d\u0438\u043a"
+    r"(?:\u0430|\u0443|\u043e\u043c|\u0435|\u0438|\u043e\u0432|"
+    r"\u0430\u043c|\u0430\u043c\u0438|\u0430\u0445)?",
 )
 
 # What a citation looks like inside a bracket: integers of one to three digits separated
 # by commas, semicolons, spaces, hyphens or en dashes, each with an optional label word
 # in front (then an optional space, dot, colon, hash or numero sign).
-_LABEL = (
-    "(?:"
-    + "|".join(re.escape(word) for word in sorted(_LABEL_WORDS, key=len, reverse=True))
-    + r")[\s.:#\u2116]*"
-)
+_LABEL = "(?:" + "|".join(_LABEL_WORDS) + r")[\s.:#\u2116]*"
 _CITATION_ITEM = rf"(?:{_LABEL})?[0-9]{{1,3}}"
 _CITATION_CONTENT = re.compile(
     rf"\s*{_CITATION_ITEM}(?:[,;\s\-\u2013]+{_CITATION_ITEM})*\s*", re.IGNORECASE
@@ -80,7 +77,9 @@ _SPACE = "[ \u00a0\u202f]"
 _NUMBER = re.compile(
     rf"(?P<spaced>[0-9]{{1,3}}(?:{_SPACE}[0-9]{{3}})+(?![0-9])(?:,[0-9]+)?)"
     r"|(?P<grouped>[0-9]{1,3}(?:,[0-9]{3})+\.[0-9]+)"
+    r"|(?P<dotted>[0-9]{1,3}(?:\.[0-9]{3})+,[0-9]+)"
     r"|(?P<commas>[0-9]+(?:\.[0-9]+)?(?:,[0-9]+(?:\.[0-9]+)?)+)"
+    r"|(?P<dotgroup>[0-9]{1,3}(?:\.[0-9]{3})+(?![0-9]))"
     r"|(?P<plain>[0-9]+(?:\.[0-9]+)?)"
 )
 _LETTER_OR_UNDERSCORE = re.compile(r"[^\W\d]")
@@ -174,13 +173,23 @@ def _readings(form: str, text: str, negative: bool) -> list[list[Decimal]]:
             readings.append([Decimal(group.replace(",", ".")) for group in groups])
     elif form == "grouped":
         readings = [[Decimal(text.replace(",", ""))]]
+    elif form == "dotted":
+        readings = [[Decimal(text.replace(".", "").replace(",", "."))]]
+    elif form == "dotgroup":
+        readings = []
+        if not text.startswith("0"):
+            readings.append([Decimal(text.replace(".", ""))])
+        if text.count(".") == 1:
+            readings.append([Decimal(text)])
     elif form == "commas":
         parts = text.split(",")
-        readings = [[Decimal(part) for part in parts]]
+        zero_led = any(len(part) == 3 and part.startswith("0") for part in parts[1:])
+        readings = [] if zero_led else [[Decimal(part) for part in parts]]
         if "." not in text:
             if len(parts) == 2:
                 readings.append([Decimal(f"{parts[0]}.{parts[1]}")])
-            if len(parts[0]) <= 3 and all(len(part) == 3 for part in parts[1:]):
+            thousands = len(parts[0]) <= 3 and all(len(part) == 3 for part in parts[1:])
+            if thousands and not parts[0].startswith("0"):
                 readings.append([Decimal("".join(parts))])
     else:
         readings = [[Decimal(text)]]
@@ -368,11 +377,15 @@ def find_ungrounded_numbers(answer: str, grounding_texts: list[str]) -> list[str
     and ordinals; the order is in ``_strip_answer``. A number is then a digit run, with
     a sign when a minus opens the text or follows whitespace, an opening bracket, an
     equals sign or a separator (comma, semicolon, colon), and never one that sits next
-    to a letter or an underscore. Thousands may be grouped with spaces (``1 000``) or
-    commas (``1,234.56``). A token is read every way it can be, and is grounded when
-    one reading has all its numbers grounded: ``14,19`` is 14.19 or 14 and 19,
-    ``1,234`` is 1234 or 1 and 234, ``6,8.75,11`` is three numbers, and ``100 200 300``
-    is one number or three.
+    to a letter or an underscore. Thousands may be grouped with spaces (``1 000``),
+    commas (``1,234.56``) or dots with a decimal comma (``1.000,50``). A token is read
+    every way it can be, and is grounded when one reading has all its numbers grounded:
+    ``14,19`` is 14.19 or 14 and 19, ``1,234`` is 1234 or 1 and 234, ``1.234`` is 1.234
+    or 1234, ``12.345.678`` is only 12345678, ``6,8.75,11`` is three numbers, and
+    ``100 200 300`` is one number or three. A group of exactly three digits that starts
+    with zero (``5,000,000``, ``5 000``) is a thousands group and never a list member,
+    but ``5,000`` still passes when the data holds 5, because a comma before three
+    digits may be a decimal comma.
 
     A number written with ``d`` decimals is grounded when some number in the grounding
     texts, quantized to ``d`` decimals, equals it under round-half-up or under
