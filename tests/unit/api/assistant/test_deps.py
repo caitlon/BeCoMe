@@ -1,20 +1,30 @@
 """Tests for the assistant's dependency factories (fakes only, no network)."""
 
 import logging
+import threading
+from contextlib import asynccontextmanager
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, ClassVar
 from unittest.mock import MagicMock, patch
+from uuid import UUID, uuid4
 
 import httpx
 import openai
 import pytest
+from fastapi import FastAPI, Request
+from fastapi.testclient import TestClient
 from sqlalchemy.exc import OperationalError
 
 from api.assistant import deps
-from api.assistant.errors import AssistantUnavailableError
+from api.assistant.agent.context import AssistantContext
+from api.assistant.errors import AssistantRateLimitedError, AssistantUnavailableError
 from api.assistant.rag.retrieval import RetrievalConfig
 from api.config import Settings
+from api.exceptions import ValidationError
+from api.schemas.assistant import AssistantChatRequest
 from tests.shared.helpers import captured_log_records
+
+PROJECT_ID = "3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b"
 
 
 @pytest.fixture(autouse=True)
@@ -33,6 +43,18 @@ def _settings(**overrides: Any) -> Settings:
         "assistant_vector_db_url": "postgresql+psycopg://x@127.0.0.1:1/x",
     }
     return Settings(**{**fields, **overrides})
+
+
+def _request(client_host: str = "203.0.113.5") -> Request:
+    scope = {
+        "type": "http",
+        "method": "POST",
+        "path": "/api/v1/assistant/chat",
+        "headers": [],
+        "app": FastAPI(),
+        "client": (client_host, 12345),
+    }
+    return Request(scope)
 
 
 class TestModelFactories:
@@ -278,6 +300,257 @@ class TestClearCaches:
         assert all(new is not old for new, old in zip(after, before, strict=True))
 
 
+class TestGetAssistantService:
+    """The service is built per request from the settings and the answer model."""
+
+    def test_wires_the_settings_and_the_answer_model(self):
+        """
+        GIVEN settings and an answer model
+        WHEN the service dependency is called
+        THEN AssistantService is built from exactly those two
+        """
+        # GIVEN
+        settings = _settings()
+        answer_model = MagicMock()
+
+        # WHEN
+        with patch.object(deps, "AssistantService") as service_cls:
+            service = deps.get_assistant_service(settings, answer_model)
+
+        # THEN
+        service_cls.assert_called_once_with(settings, answer_model)
+        assert service is service_cls.return_value
+
+
+class TestEnforceMessageLimit:
+    """The hourly cap is spent through the throttle, off the event loop."""
+
+    @pytest.mark.asyncio
+    async def test_a_message_within_budget_passes(self):
+        """
+        GIVEN a throttle that allows the message
+        WHEN the limit dependency runs
+        THEN it returns and the throttle was asked about that user
+        """
+        # GIVEN
+        throttle = MagicMock()
+        throttle.hit.return_value = True
+        user = MagicMock(id=uuid4())
+
+        # WHEN
+        await deps.enforce_message_limit(user, throttle)
+
+        # THEN
+        throttle.hit.assert_called_once_with(user.id)
+
+    @pytest.mark.asyncio
+    async def test_a_spent_budget_raises_the_rate_limited_error(self):
+        """
+        GIVEN a throttle that refuses the message
+        WHEN the limit dependency runs
+        THEN AssistantRateLimitedError is raised
+        """
+        # GIVEN
+        throttle = MagicMock()
+        throttle.hit.return_value = False
+
+        # WHEN/THEN
+        with pytest.raises(AssistantRateLimitedError):
+            await deps.enforce_message_limit(MagicMock(id=uuid4()), throttle)
+
+    @pytest.mark.asyncio
+    async def test_the_throttle_runs_in_a_worker_thread(self):
+        """
+        GIVEN a throttle that records the thread it is called on
+        WHEN the limit dependency runs on the event loop
+        THEN the throttle was called on another thread, so a Redis round trip cannot
+             stall every other request
+        """
+        # GIVEN
+        threads: list[int] = []
+
+        class _Throttle:
+            def hit(self, user_id: UUID) -> bool:
+                threads.append(threading.get_ident())
+                return True
+
+        # WHEN
+        await deps.enforce_message_limit(MagicMock(id=uuid4()), _Throttle())
+
+        # THEN
+        assert threads
+        assert threads[0] != threading.get_ident()
+
+
+class _FakeClient:
+    """Stands in for UserApiClient: records how it was built and whether it was closed."""
+
+    instances: ClassVar[list["_FakeClient"]] = []
+
+    def __init__(self, app: Any, access_token: str, client_ip: str) -> None:
+        self.app = app
+        self.access_token = access_token
+        self.client_ip = client_ip
+        self.closed = 0
+        _FakeClient.instances.append(self)
+
+    async def aclose(self) -> None:
+        self.closed += 1
+
+
+@pytest.fixture
+def fake_client():
+    """Replace UserApiClient in the deps module with a recording fake."""
+    _FakeClient.instances = []
+    with patch.object(deps, "UserApiClient", _FakeClient):
+        yield _FakeClient
+
+
+class TestOpenChatTurn:
+    """The client and the context are built for one request and the client is always closed."""
+
+    @staticmethod
+    def _open(data: AssistantChatRequest, request: Request, retriever: Any):
+        return asynccontextmanager(deps.open_chat_turn)(request, data, "token-abc", retriever)
+
+    @pytest.mark.asyncio
+    async def test_builds_a_client_for_this_caller_and_a_context_around_it(self, fake_client):
+        """
+        GIVEN a request naming a project and a locale
+        WHEN the turn is opened
+        THEN the client carries the caller's token and address, and the context holds
+             that client, the given retriever, the project id as a string and the locale
+        """
+        # GIVEN
+        request = _request("203.0.113.5")
+        retriever = MagicMock()
+        data = AssistantChatRequest(message="hi", project_id=UUID(PROJECT_ID), locale="cs")
+
+        # WHEN
+        async with self._open(data, request, retriever) as turn:
+            # THEN
+            assert turn.request is data
+            ctx = turn.context
+            assert isinstance(ctx, AssistantContext)
+            (client,) = fake_client.instances
+            assert client.app is request.app
+            assert client.access_token == "token-abc"
+            assert client.client_ip == "203.0.113.5"
+            assert ctx.client is client
+            assert ctx.retriever is retriever
+            assert ctx.current_project_id == PROJECT_ID
+            assert isinstance(ctx.current_project_id, str)
+            assert ctx.locale == "cs"
+            assert ctx.tool_outputs == []
+
+    @pytest.mark.asyncio
+    async def test_a_request_without_a_project_has_no_current_project(self, fake_client):
+        """
+        GIVEN a request that names no project
+        WHEN the turn is opened
+        THEN the context has no current project
+        """
+        # WHEN
+        async with self._open(AssistantChatRequest(message="hi"), _request(), MagicMock()) as turn:
+            # THEN
+            assert turn.context.current_project_id is None
+
+    @pytest.mark.asyncio
+    async def test_closes_the_client_when_the_turn_ends(self, fake_client):
+        """
+        GIVEN an opened turn
+        WHEN the block ends normally
+        THEN the client was closed exactly once
+        """
+        # WHEN
+        async with self._open(AssistantChatRequest(message="hi"), _request(), MagicMock()):
+            (client,) = fake_client.instances
+            assert client.closed == 0
+
+        # THEN
+        assert client.closed == 1
+
+    @pytest.mark.asyncio
+    async def test_closes_the_client_when_the_turn_fails(self, fake_client):
+        """
+        GIVEN an opened turn
+        WHEN the block raises
+        THEN the client was still closed exactly once and the error propagates
+        """
+        # WHEN
+        with pytest.raises(RuntimeError, match="boom"):
+            async with self._open(AssistantChatRequest(message="hi"), _request(), MagicMock()):
+                raise RuntimeError("boom")
+
+        # THEN
+        (client,) = fake_client.instances
+        assert client.closed == 1
+
+    @pytest.mark.asyncio
+    async def test_each_turn_gets_its_own_client_and_source_registry(self, fake_client):
+        """
+        GIVEN two turns opened one after the other
+        WHEN their contexts are compared
+        THEN neither the client nor the source registry is shared, so one caller's token
+             never reaches another caller's request
+        """
+        # WHEN
+        async with self._open(AssistantChatRequest(message="a"), _request(), MagicMock()) as one:
+            pass
+        async with self._open(AssistantChatRequest(message="b"), _request(), MagicMock()) as two:
+            pass
+
+        # THEN
+        assert one.context.client is not two.context.client
+        assert one.context.sources is not two.context.sources
+        assert one.context.tool_outputs is not two.context.tool_outputs
+
+
+class TestMessageLength:
+    """A message longer than assistant_max_message_chars is refused before anything is built."""
+
+    def test_a_message_of_the_configured_length_passes(self):
+        """
+        GIVEN a limit of ten characters
+        WHEN a message of exactly ten is checked
+        THEN the same request comes back
+        """
+        # GIVEN
+        data = AssistantChatRequest(message="x" * 10)
+
+        # WHEN
+        checked = deps.get_chat_request(data, _settings(assistant_max_message_chars=10))
+
+        # THEN
+        assert checked is data
+
+    def test_one_character_more_is_refused_without_echoing_the_text(self):
+        """
+        GIVEN a limit of ten characters
+        WHEN a message of eleven is checked
+        THEN the domain ValidationError is raised, naming the limit and not the text
+        """
+        # GIVEN
+        data = AssistantChatRequest(message="secret text")
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="10") as raised:
+            deps.get_chat_request(data, _settings(assistant_max_message_chars=10))
+        assert "secret text" not in str(raised.value)
+
+    def test_the_default_limit_lets_the_schema_ceiling_through(self):
+        """
+        GIVEN the default settings
+        WHEN a message of 4000 characters, the schema's own ceiling, is checked
+        THEN it passes
+        """
+        # GIVEN
+        data = AssistantChatRequest(message="x" * 4000)
+
+        # WHEN/THEN
+        assert deps.get_chat_request(data, _settings()) is data
+
+
 class TestBuildFailures:
     """A backend that is down while a process-wide object is built is unavailable, not a bug."""
 
@@ -397,3 +670,89 @@ class TestBuildFailures:
 
         # THEN
         assert retriever is not None
+
+
+def _mini_app() -> tuple[FastAPI, list[Any]]:
+    """Build an app whose one route takes the turn dependency and reports what it saw."""
+    app = FastAPI()
+    opened: list[Any] = []
+
+    def _counting_retriever() -> Any:
+        return MagicMock()
+
+    app.dependency_overrides[deps.get_docs_retriever] = _counting_retriever
+
+    @app.post("/turn")
+    async def turn_route(turn: deps.PreparedTurnDep) -> dict[str, Any]:
+        opened.append(turn)
+        return {"message": turn.request.message, "project": turn.context.current_project_id}
+
+    return app, opened
+
+
+class TestPreparedTurnThroughFastAPI:
+    """The body is read and validated once, and the route sees what the dependency built."""
+
+    def test_the_body_is_validated_once_and_reaches_route_and_context(self, fake_client):
+        """
+        GIVEN a route that takes the turn dependency
+        WHEN a valid body is posted with a bearer token
+        THEN the client was built once with that token, and the route's request and the
+             context's project come from the same body
+        """
+        # GIVEN
+        app, opened = _mini_app()
+
+        # WHEN
+        response = TestClient(app).post(
+            "/turn",
+            json={"message": "hi", "project_id": PROJECT_ID},
+            headers={"Authorization": "Bearer token-xyz"},
+        )
+
+        # THEN
+        assert response.status_code == 200
+        assert response.json()["message"] == "hi"
+        assert response.json()["project"] == PROJECT_ID
+        assert len(opened) == 1
+        (client,) = fake_client.instances
+        assert client.access_token == "token-xyz"  # pragma: allowlist secret
+        assert client.closed == 1
+
+    def test_an_invalid_body_is_refused_once_and_builds_no_client(self, fake_client):
+        """
+        GIVEN a route that takes the turn dependency
+        WHEN a body with an unknown field is posted
+        THEN the answer is one 422 error for that field, and no client was built
+        """
+        # GIVEN
+        app, opened = _mini_app()
+
+        # WHEN
+        response = TestClient(app).post(
+            "/turn",
+            json={"message": "hi", "unknown": 1},
+            headers={"Authorization": "Bearer token-xyz"},
+        )
+
+        # THEN
+        assert response.status_code == 422
+        assert [error["loc"] for error in response.json()["detail"]] == [["body", "unknown"]]
+        assert opened == []
+        assert fake_client.instances == []
+
+    def test_a_request_without_a_token_builds_no_client(self, fake_client):
+        """
+        GIVEN a route that takes the turn dependency
+        WHEN a valid body is posted with neither a cookie nor a bearer token
+        THEN the answer is 401 and no client was built
+        """
+        # GIVEN
+        app, _ = _mini_app()
+
+        # WHEN
+        response = TestClient(app).post("/turn", json={"message": "hi"})
+
+        # THEN
+        assert response.status_code == 401
+        assert fake_client.instances == []
