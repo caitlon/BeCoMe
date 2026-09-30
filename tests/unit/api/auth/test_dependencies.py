@@ -6,9 +6,11 @@ from uuid import uuid4
 
 import jwt
 import pytest
-from fastapi import HTTPException
+from fastapi import FastAPI, HTTPException
+from fastapi.testclient import TestClient
 
-from api.auth.dependencies import get_current_token_payload, get_current_user
+from api.auth.cookies import ACCESS_COOKIE
+from api.auth.dependencies import AccessToken, get_current_token_payload, get_current_user
 from api.auth.jwt import ALGORITHM, create_access_token, revoke_token
 from api.auth.revocation_store import InMemoryRevocationStore
 from api.config import get_settings
@@ -183,3 +185,48 @@ class TestGetCurrentTokenPayload:
             get_current_token_payload(token, store)
 
         assert exc_info.value.status_code == 401
+
+
+class TestAccessTokenDependency:
+    """AccessToken is the public name of the token CurrentUser validates."""
+
+    @staticmethod
+    def _client() -> TestClient:
+        app = FastAPI()
+
+        @app.get("/token")
+        def read_token(token: AccessToken) -> dict[str, str]:
+            return {"token": token}
+
+        return TestClient(app, base_url="https://testserver")
+
+    def test_reads_the_bearer_header(self):
+        """
+        GIVEN a request with only a bearer token
+        WHEN a route asks for the access token
+        THEN it is that token
+        """
+        response = self._client().get("/token", headers={"Authorization": "Bearer from-header"})
+
+        assert response.json() == {"token": "from-header"}
+
+    def test_the_session_cookie_comes_before_the_bearer_header(self):
+        """
+        GIVEN a request with a session cookie and a different bearer token
+        WHEN a route asks for the access token
+        THEN it is the cookie's, the same choice CurrentUser makes
+        """
+        client = self._client()
+        client.cookies.set(ACCESS_COOKIE, "from-cookie")
+
+        response = client.get("/token", headers={"Authorization": "Bearer from-header"})
+
+        assert response.json() == {"token": "from-cookie"}
+
+    def test_a_request_with_neither_is_401(self):
+        """
+        GIVEN a request with no cookie and no bearer token
+        WHEN a route asks for the access token
+        THEN the answer is 401
+        """
+        assert self._client().get("/token").status_code == 401

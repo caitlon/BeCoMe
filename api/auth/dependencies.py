@@ -105,6 +105,12 @@ async def get_current_user(
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
 
+# The caller's own access token, the one ``CurrentUser`` validates: the session cookie
+# first, else the Bearer header. For code that acts with the caller's own permissions. It
+# only extracts the token and is not proof of authentication: a route still needs
+# ``CurrentUser``.
+AccessToken = Annotated[str, Depends(_get_access_token)]
+
 
 async def get_current_user_fresh(
     token: Annotated[str, Depends(_get_access_token)],
