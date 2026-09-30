@@ -39,7 +39,7 @@ Settings read `APP_ENV` from the process environment (shell, Docker, Railway, CI
 - **`APP_ENV`** (`dev` / `test` / `prod`) is the deployment profile. It drives debug output, CORS origins, the database it expects, and the deploy startup guard.
 - **`TESTING`** (`1`/`true`) marks an automated test run. Only automated test runs set it: pytest, the CI jobs, and `scripts/ci/e2e-local.sh`. It disables rate limiting and the deploy startup checks, and is never present on a deployed service.
 
-This separation is what lets staging be realistic. A staging deploy sets `APP_ENV=test` with no `TESTING`, so its rate limits match production. The pytest suite sets `APP_ENV=test` together with `TESTING=1`, which keeps tests fast. The unit and integration suites build their own in-memory SQLite engines, and the end-to-end runs use PostgreSQL.
+This separation is what lets staging be realistic. A staging deploy sets `APP_ENV=test` with no `TESTING`, so its rate limits match production. The pytest suite sets `APP_ENV=test` together with `TESTING=1`, which keeps tests fast. The unit and integration suites mostly build their own in-memory SQLite engines, and the end-to-end runs use PostgreSQL.
 
 ## Profiles in detail
 
@@ -57,7 +57,7 @@ uv run uvicorn api.main:app --reload
 
 ### test (staging and the test suite)
 
-Two consumers share this profile. A deployed staging service uses PostgreSQL with debug off and rate limiting on, which mirrors production for manual QA. It meets the same startup invariants as production: a strong secret, PostgreSQL, Redis, a privileged `MIGRATION_DATABASE_URL`, the Cloudflare origin secret, non-localhost `CORS_ORIGINS`, a non-loopback `FRONTEND_BASE_URL`, a working email provider, and debug off. The automated suite runs the same profile but adds `TESTING=1`, so it turns rate limiting off and skips the startup guard. Its unit and integration tests use in-memory SQLite, and its end-to-end runs use PostgreSQL. The test conftests set both variables before any `api` import.
+Two consumers share this profile. A deployed staging service uses PostgreSQL with debug off and rate limiting on, which mirrors production for manual QA. It meets the same startup invariants as production: a strong secret, PostgreSQL, Redis, a privileged `MIGRATION_DATABASE_URL`, the Cloudflare origin secret, non-localhost `CORS_ORIGINS`, a non-loopback `FRONTEND_BASE_URL`, a working email provider, and debug off. The automated suite runs the same profile but adds `TESTING=1`, so it turns rate limiting off and skips the startup guard. Its unit and integration tests mostly use in-memory SQLite, and its end-to-end runs use PostgreSQL. The test conftests set both variables before any `api` import.
 
 ### prod
 
