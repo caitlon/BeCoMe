@@ -6,7 +6,7 @@ test.describe('Public Pages', () => {
 
     await expect(
       page.getByRole('heading', { level: 1 })
-    ).toContainText('Group Decisions,');
+    ).toContainText('Many expert opinions,');
 
     await expect(
       page.getByRole('link', { name: /Start Your Project/i })

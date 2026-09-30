@@ -11,8 +11,8 @@ test.describe('Czech Localization', () => {
     await page.goto('/');
 
     // Hero section
-    await expect(page.getByText('Skupinová rozhodnutí,')).toBeVisible({ timeout: 10000 });
-    await expect(page.getByText('Přesně změřená')).toBeVisible();
+    await expect(page.getByText('Mnoho názorů expertů,')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('jeden nejlepší kompromis')).toBeVisible();
 
     // How it works section
     await expect(page.getByText('Jak to funguje')).toBeVisible();
