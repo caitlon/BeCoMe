@@ -49,7 +49,11 @@ export function PageShell({
     <div className={cn("min-h-screen bg-background", variant === "content" && "flex flex-col")}>
       <Navbar />
       {beforeMain}
-      <main id="main-content" className={cn(MAIN_CLASSES[variant], mainClassName)}>
+      <main
+        id="main-content"
+        tabIndex={-1}
+        className={cn(MAIN_CLASSES[variant], mainClassName)}
+      >
         {children}
       </main>
       {afterMain}
