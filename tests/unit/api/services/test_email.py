@@ -39,7 +39,9 @@ class TestConsoleEmailSender:
         sender = ConsoleEmailSender(_settings())
         with patch("api.services.email.console_email_sender.logger") as mock_logger:
             asyncio.run(
-                sender.send_password_reset(to_email="user@example.com", reset_url=self._RESET_URL)
+                sender.send_password_reset(
+                    to_email="user@example.com", reset_url=self._RESET_URL, language="en"
+                )
             )
         return mock_logger
 
@@ -84,11 +86,36 @@ class TestConsoleEmailSender:
 
         # WHEN
         asyncio.run(
-            sender.send_password_reset(to_email="user@example.com", reset_url=self._RESET_URL)
+            sender.send_password_reset(
+                to_email="user@example.com", reset_url=self._RESET_URL, language="en"
+            )
         )
 
         # THEN
         assert self._RESET_URL in capsys.readouterr().out
+
+    @pytest.mark.parametrize("language", ["en", "cs"])
+    def test_stdout_marker_is_the_same_in_every_language(self, capsys, language):
+        """
+        GIVEN a console email sender
+        WHEN a password reset email is sent in either language
+        THEN stdout carries the one marker line the end-to-end tests parse, unchanged
+        """
+        # GIVEN
+        sender = ConsoleEmailSender(_settings())
+
+        # WHEN
+        asyncio.run(
+            sender.send_password_reset(
+                to_email="user@example.com", reset_url=self._RESET_URL, language=language
+            )
+        )
+
+        # THEN
+        assert capsys.readouterr().out == (
+            f"[console email] password reset link for {hash_email('user@example.com')}: "
+            f"{self._RESET_URL}\n"
+        )
 
     def _send_verification(self):
         """Send a verification email through the console sender with the logger patched."""
@@ -303,6 +330,7 @@ class TestResendEmailSender:
             sender.send_password_reset(
                 to_email="user@example.com",
                 reset_url="https://app.example/reset-password?token=abc",
+                language="en",
             )
         )
 
@@ -332,6 +360,7 @@ class TestResendEmailSender:
             sender.send_password_reset(
                 to_email="user@example.com",
                 reset_url="https://app.example/reset",
+                language="en",
             )
         )
 
@@ -362,13 +391,78 @@ class TestResendEmailSender:
         # WHEN
         asyncio.run(
             sender.send_password_reset(
-                to_email="user@example.com", reset_url="https://app.example/reset"
+                to_email="user@example.com",
+                reset_url="https://app.example/reset",
+                language="en",
             )
         )
 
         # THEN
         html = client.post.call_args.kwargs["json"]["html"]
-        assert f"you can ignore this email. The link expires in {phrase}.</p>" in html
+        assert f"The link expires in {phrase}." in html
+
+    def test_reset_payload_carries_subject_html_and_a_plain_text_part(self):
+        """
+        GIVEN a Resend sender with an injected client
+        WHEN a password reset email is sent in English
+        THEN the payload has the English subject, a full html document and a tag-free text
+            part with the link alone on a line and the expiry
+        """
+        # GIVEN
+        response = MagicMock()
+        response.raise_for_status = MagicMock()
+        client = MagicMock()
+        client.post = AsyncMock(return_value=response)
+        sender = ResendEmailSender(_settings(password_reset_token_ttl_minutes=60), client=client)
+
+        # WHEN
+        asyncio.run(
+            sender.send_password_reset(
+                to_email="user@example.com",
+                reset_url="https://app.example/reset-password?token=abc",
+                language="en",
+            )
+        )
+
+        # THEN
+        payload = client.post.call_args.kwargs["json"]
+        assert payload["subject"] == "Reset your BeCoMe password"
+        assert payload["html"].lstrip().startswith("<!DOCTYPE html>")
+        assert "Reset password:\nhttps://app.example/reset-password?token=abc" in payload["text"]
+        assert "https://app.example/reset-password?token=abc" in payload["text"].splitlines()
+        assert "The link expires in 1 hour." in payload["text"]
+        assert "<" not in payload["text"]
+
+    def test_reset_payload_is_czech_when_the_language_is_czech(self):
+        """
+        GIVEN a Resend sender with an injected client
+        WHEN a password reset email is sent in Czech
+        THEN the subject, html and text are all Czech and the lifetime is declined
+        """
+        # GIVEN
+        response = MagicMock()
+        response.raise_for_status = MagicMock()
+        client = MagicMock()
+        client.post = AsyncMock(return_value=response)
+        sender = ResendEmailSender(_settings(password_reset_token_ttl_minutes=120), client=client)
+
+        # WHEN
+        asyncio.run(
+            sender.send_password_reset(
+                to_email="user@example.com",
+                reset_url="https://app.example/reset-password?token=abc",
+                language="cs",
+            )
+        )
+
+        # THEN
+        payload = client.post.call_args.kwargs["json"]
+        assert payload["subject"] == "BeCoMe: obnovení hesla"
+        assert '<html lang="cs"' in payload["html"]
+        assert "Odkaz platí 2 hodiny." in payload["html"]
+        assert "Obnovit heslo:\nhttps://app.example/reset-password?token=abc" in payload["text"]
+        assert "Odkaz platí 2 hodiny." in payload["text"]
+        assert "Reset" not in payload["subject"] + payload["html"] + payload["text"]
 
     def test_raises_send_error_on_http_status_error(self):
         """
@@ -391,6 +485,7 @@ class TestResendEmailSender:
                 sender.send_password_reset(
                     to_email="user@example.com",
                     reset_url="https://app.example/reset",
+                    language="en",
                 )
             )
 
@@ -411,6 +506,7 @@ class TestResendEmailSender:
                 sender.send_password_reset(
                     to_email="user@example.com",
                     reset_url="https://app.example/reset",
+                    language="en",
                 )
             )
 
@@ -439,6 +535,7 @@ class TestResendEmailSender:
                 sender.send_password_reset(
                     to_email="user@example.com",
                     reset_url="https://app.example/reset",
+                    language="en",
                 )
             )
 

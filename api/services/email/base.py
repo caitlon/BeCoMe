@@ -16,12 +16,15 @@ class EmailSender(ABC):
     """
 
     @abstractmethod
-    async def send_password_reset(self, *, to_email: str, reset_url: str) -> None:
+    async def send_password_reset(
+        self, *, to_email: str, reset_url: str, language: EmailLanguage
+    ) -> None:
         """Send (or log) a password-reset message.
 
         :param to_email: Recipient email address.
         :param reset_url: Full frontend link the user clicks to reset; it already
             carries the raw reset token as a query parameter.
+        :param language: Language the message is written in.
         :raises EmailSendError: If a real send fails.
         """
 

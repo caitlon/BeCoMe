@@ -56,7 +56,9 @@ class ConsoleEmailSender(EmailSender):
         """Store settings for signature parity with real senders."""
         self._settings = settings
 
-    async def send_password_reset(self, *, to_email: str, reset_url: str) -> None:
+    async def send_password_reset(
+        self, *, to_email: str, reset_url: str, language: EmailLanguage
+    ) -> None:
         """Log the reset link; perform no network call.
 
         The log record masks the single-use token, so a rotating file or a log drain
@@ -66,6 +68,8 @@ class ConsoleEmailSender(EmailSender):
 
         :param to_email: Recipient email address.
         :param reset_url: Full frontend reset link (carries the raw token).
+        :param language: Language the real message would be written in; unused here,
+            since the log line stays the same for every language.
         """
         email_hash = hash_email(to_email)
         logger.info(

@@ -11,7 +11,7 @@ import httpx
 from api.auth.logging import hash_email
 from api.services.email.base import EmailLanguage, EmailSender
 from api.services.email.exceptions import EmailSendError
-from api.services.email.messages import format_lifetime, render_verification_email
+from api.services.email.messages import render_password_reset_email, render_verification_email
 
 if TYPE_CHECKING:
     from api.config import Settings
@@ -101,18 +101,25 @@ class ResendEmailSender(EmailSender):
         self._settings = settings
         self._client = client
 
-    async def send_password_reset(self, *, to_email: str, reset_url: str) -> None:
+    async def send_password_reset(
+        self, *, to_email: str, reset_url: str, language: EmailLanguage
+    ) -> None:
         """Send a password-reset email via Resend.
 
         :param to_email: Recipient email address.
         :param reset_url: Full frontend reset link.
+        :param language: Language the message is written in.
         :raises EmailSendError: If the API rejects the request or transport fails.
         """
+        message = render_password_reset_email(
+            reset_url, self._settings.password_reset_token_ttl_minutes, language
+        )
         payload: dict[str, object] = {
             "from": f"{self._settings.email_from_name} <{self._settings.email_from}>",
             "to": [to_email],
-            "subject": "Reset your BeCoMe password",
-            "html": self._build_html(reset_url),
+            "subject": message.subject,
+            "html": message.html,
+            "text": message.text,
         }
         headers = {"Authorization": f"Bearer {self._settings.email_api_key}"}
         email_hash = hash_email(to_email)
@@ -190,20 +197,6 @@ class ResendEmailSender(EmailSender):
             raise EmailSendError(f"Failed to send registration attempt notice: {exc}") from exc
         _log_send_result(
             "registration_notice", email_hash, start=start, status_code=response.status_code
-        )
-
-    def _build_html(self, reset_url: str) -> str:
-        """Render the reset-email HTML body.
-
-        :param reset_url: Full frontend reset link.
-        :return: HTML message body, with the expiry window matching the config.
-        """
-        window = format_lifetime(self._settings.password_reset_token_ttl_minutes, "en")
-        return (
-            "<p>We received a request to reset your BeCoMe password.</p>"
-            f'<p><a href="{reset_url}">Reset your password</a></p>'
-            "<p>If you did not request this you can ignore this email. "
-            f"The link expires in {window}.</p>"
         )
 
     def _build_registration_attempt_html(self, *, login_url: str, reset_url: str) -> str:
