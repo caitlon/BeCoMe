@@ -1,5 +1,6 @@
 """Tests for the two ways an assistant answer is generated: one model call, or an agent."""
 
+import json
 import logging
 from unittest.mock import AsyncMock
 
@@ -11,6 +12,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, System
 from api.assistant.agent.context import AssistantContext, SourceRegistry
 from api.assistant.agent.generation import (
     AgentGenerator,
+    CutOffAnswerError,
     DirectGenerator,
     _tool_failed,
     answer_text,
@@ -241,6 +243,29 @@ class TestDirectGenerator:
 
         assert text == "Done."
 
+    async def test_a_reply_cut_off_inside_its_reasoning_raises_the_cut_off_error(self):
+        """
+        GIVEN a model whose reply opens a reasoning block and never closes it
+        WHEN the turn is generated
+        THEN CutOffAnswerError is raised, which the service tells from a blank answer
+        """
+        model = _model(AIMessage(content="<think>I was still working out"))
+
+        with pytest.raises(CutOffAnswerError):
+            await DirectGenerator(model).generate(_user(), _ctx(), QUESTION)
+
+    async def test_a_reply_that_is_only_a_closed_reasoning_block_is_blank_not_cut_off(self):
+        """
+        GIVEN a model whose whole reply is a reasoning block that closes
+        WHEN the turn is generated
+        THEN the text is empty and nothing is raised, so a blank answer stays a blank answer
+        """
+        model = _model(AIMessage(content="<think>all of it</think>"))
+
+        text, _ = await DirectGenerator(model).generate(_user(), _ctx(), QUESTION)
+
+        assert text == ""
+
 
 @pytest.mark.asyncio
 class TestAgentGenerator:
@@ -362,7 +387,7 @@ class TestAgentGenerator:
         assert (record.tool, record.reason) == ("list_my_projects", "RuntimeError")
         assert "secret-host" not in record.getMessage()
         assert record.exc_info is None
-        assert _extra_fields(record) == {"event", "tool", "reason"}
+        assert _extra_fields(record) == {"event", "tool", "reason", "where"}
         assert not any("secret-host" in str(value) for value in vars(record).values())
 
     async def test_a_tool_name_made_of_arbitrary_text_leaves_no_trace_in_the_record(self):
@@ -573,3 +598,110 @@ class TestAgentGenerator:
         text, _ = await AgentGenerator(model, max_tool_calls=2).generate(_user(), _ctx(), QUESTION)
 
         assert text == ""
+
+    async def test_a_final_reply_cut_off_inside_its_reasoning_raises_the_cut_off_error(self):
+        """
+        GIVEN a model whose final reply opens a reasoning block and never closes it
+        WHEN the turn is generated
+        THEN CutOffAnswerError is raised
+        """
+        model = _model(_search(), AIMessage(content="<think>then I looked at"))
+
+        with pytest.raises(CutOffAnswerError):
+            await AgentGenerator(model, max_tool_calls=4).generate(
+                _user(), _ctx([_chunk()]), QUESTION
+            )
+
+    async def test_a_fallback_reply_cut_off_inside_its_reasoning_raises_the_cut_off_error(self):
+        """
+        GIVEN a run that hits the model-call limit and a fallback call cut off in its reasoning
+        WHEN the turn is generated
+        THEN CutOffAnswerError is raised
+        """
+        model = _model(
+            _call("nope", 1),
+            _call("nope", 2),
+            _call("nope", 3),
+            _call("nope", 4),
+            AIMessage(content="<think>out of tok"),
+        )
+
+        with pytest.raises(CutOffAnswerError):
+            await AgentGenerator(model, max_tool_calls=2).generate(_user(), _ctx(), QUESTION)
+
+
+def _failure_request(name: str = "list_my_projects") -> ToolCallRequest:
+    runtime = ToolRuntime(
+        state={},
+        context=_ctx(),
+        config={},
+        stream_writer=lambda _: None,
+        tool_call_id="call-1",
+        store=None,
+    )
+    return ToolCallRequest(
+        tool_call={"name": name, "args": {}, "id": "call-1", "type": "tool_call"},
+        tool=None,
+        state={},
+        runtime=runtime,
+    )
+
+
+def _raised_here() -> RuntimeError:
+    """Raise and catch an error in this file, returning it with its traceback."""
+    try:
+        raise RuntimeError("secret-host:5432 refused")
+    except RuntimeError as exc:
+        return exc
+
+
+class TestToolFailureLocation:
+    """The ERROR record of a failed tool says where the exception came from, not what it said."""
+
+    def test_where_is_the_repository_relative_file_and_line_of_the_innermost_frame(self):
+        """
+        GIVEN an exception raised in this test file
+        WHEN the failure is reported
+        THEN the record's where is this file, relative to the repository, and the raising line
+        """
+        exc = _raised_here()
+        assert exc.__traceback__ is not None
+        line = exc.__traceback__.tb_lineno
+
+        with captured_log_records("api.assistant.agent.generation") as records:
+            _tool_failed(exc, _failure_request())
+
+        (record,) = records
+        assert record.where == f"tests/unit/api/assistant/agent/test_generation.py:{line}"
+        assert _extra_fields(record) == {"event", "tool", "reason", "where"}
+        assert not any("secret-host" in str(value) for value in vars(record).values())
+
+    def test_a_frame_outside_the_repository_is_named_by_its_file_name_only(self):
+        """
+        GIVEN an exception raised inside the standard library
+        WHEN the failure is reported
+        THEN where holds the bare file name and line, never an absolute path
+        """
+        try:
+            json.loads("{")
+        except json.JSONDecodeError as exc:
+            error = exc
+
+        with captured_log_records("api.assistant.agent.generation") as records:
+            _tool_failed(error, _failure_request())
+
+        (record,) = records
+        assert record.where.startswith("decoder.py:")
+        assert "/" not in record.where
+
+    def test_an_exception_that_was_never_raised_has_an_unknown_location(self):
+        """
+        GIVEN an exception with no traceback
+        WHEN the failure is reported
+        THEN where is "unknown"
+        """
+        with captured_log_records("api.assistant.agent.generation") as records:
+            _tool_failed(RuntimeError("bug"), _failure_request())
+
+        (record,) = records
+        assert record.where == "unknown"

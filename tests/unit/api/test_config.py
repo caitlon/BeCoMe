@@ -1452,13 +1452,16 @@ class TestAssistantSettings:
         """
         GIVEN the smallest positive tool-call limit
         WHEN Settings is constructed
-        THEN it is accepted
+        THEN it is accepted and keeps that value
         """
         # GIVEN
         monkeypatch.chdir(tmp_path)
 
-        # WHEN/THEN
-        assert Settings(secret_key="test-secret-key", assistant_max_tool_calls=1)
+        # WHEN
+        settings = Settings(secret_key="test-secret-key", assistant_max_tool_calls=1)
+
+        # THEN
+        assert settings.assistant_max_tool_calls == 1
 
     def test_turn_timeout_defaults_to_three_minutes(self, monkeypatch, tmp_path):
         """

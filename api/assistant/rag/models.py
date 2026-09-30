@@ -77,6 +77,21 @@ def strip_think_block(reply: str) -> str:
     return (reply[:start] + reply[end + len(_THINK_CLOSE) :]).strip()
 
 
+def has_unclosed_think_block(reply: str) -> bool:
+    """Say whether a reply ends inside a <think> block that never closes.
+
+    Only the last opening tag counts: an earlier block is closed by the closing tag that
+    follows it, and a closing tag written in the text with no opening tag before it is
+    not a block at all. A reply cut off while the model was still reasoning is such a
+    reply. It is not changed here, and :func:`strip_think_block` still keeps it as it is.
+
+    :param reply: The model's raw reply text.
+    :return: True when the last <think> has no </think> after it.
+    """
+    opened = reply.rfind(_THINK_OPEN)
+    return opened != -1 and _THINK_CLOSE not in reply[opened:]
+
+
 # The embeddings client sends up to 1000 texts per request by default, and llama-server
 # answers only once it has embedded all of them, so the request timeout must cover the
 # whole batch. Throughput does not depend on the batch size, so a small batch costs nothing.

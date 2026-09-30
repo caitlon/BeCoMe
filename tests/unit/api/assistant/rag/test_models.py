@@ -6,6 +6,7 @@ from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 
 from api.assistant.rag.models import (
     LlamaServerReranker,
+    has_unclosed_think_block,
     make_answer_model,
     make_chat_model,
     make_embeddings,
@@ -191,6 +192,46 @@ class TestStripThinkBlock:
 
         # THEN
         assert result == "<think>Still reasoning about the answer"
+
+
+class TestHasUnclosedThinkBlock:
+    """has_unclosed_think_block says whether the last <think> block of a reply never closes."""
+
+    @pytest.mark.parametrize(
+        "reply",
+        [
+            "<think>Still reasoning",
+            "Half an answer <think>and then",
+            "<think>a</think>Text <think>b",
+            "<think>a</think>One <think>b</think> two <think>c",
+            "Text </think> then <think>c",
+        ],
+    )
+    def test_true_when_the_last_block_never_closes(self, reply):
+        """
+        GIVEN a reply whose last <think> block has no closing tag after it
+        WHEN the check runs
+        THEN it reports an unclosed block
+        """
+        assert has_unclosed_think_block(reply) is True
+
+    @pytest.mark.parametrize(
+        "reply",
+        [
+            "",
+            "Plain answer.",
+            " Plain answer, </think> here. ",
+            "<think>x</think>Answer.",
+            "<think>a</think>Text <think>b</think> tail",
+        ],
+    )
+    def test_false_when_every_block_closes_or_there_is_none(self, reply):
+        """
+        GIVEN a reply with no <think> block, or whose blocks all close
+        WHEN the check runs
+        THEN it reports no unclosed block, a stray closing tag included
+        """
+        assert has_unclosed_think_block(reply) is False
 
 
 class _FakeResponse:
