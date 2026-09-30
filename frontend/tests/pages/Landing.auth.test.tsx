@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import { render, framerMotionMock } from '@tests/utils';
 import Landing from '@/pages/Landing';
 
@@ -17,10 +17,14 @@ vi.mock('@/contexts/AuthContext', () => ({
 vi.mock('framer-motion', () => framerMotionMock);
 
 describe('Landing - Authenticated', () => {
-  it('shows "Go to Projects" button linking to /projects', () => {
+  it('shows "Go to Projects" in the hero and the call to action, both linking to /projects', () => {
     render(<Landing />);
-    const heroButton = screen.getByRole('link', { name: /go to projects/i });
-    expect(heroButton).toHaveAttribute('href', '/projects');
+    const main = within(screen.getByRole('main'));
+
+    const buttons = main.getAllByRole('link', { name: /go to projects/i });
+    expect(buttons).toHaveLength(2);
+    buttons.forEach((button) => expect(button).toHaveAttribute('href', '/projects'));
+    expect(main.queryByRole('link', { name: 'Create Account' })).not.toBeInTheDocument();
   });
 
   it('renders multiple /projects links for authenticated users (hero + CTA)', () => {
