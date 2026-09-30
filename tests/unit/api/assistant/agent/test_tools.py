@@ -134,6 +134,18 @@ def _one_closing_tag_at_the_end(reply: str) -> bool:
     return reply.count("</project_data>") == 1 and reply.endswith("\n</project_data>")
 
 
+class _RecordingApp:
+    """A tiny ASGI app that records the path of every request and answers 404."""
+
+    def __init__(self) -> None:
+        self.paths: list[str] = []
+
+    async def __call__(self, scope, receive, send) -> None:
+        self.paths.append(scope["path"])
+        await send({"type": "http.response.start", "status": 404, "headers": []})
+        await send({"type": "http.response.body", "body": b""})
+
+
 PROJECT_TOOLS = [get_project, get_project_result, get_project_opinions]
 ALL_TOOLS = [search_docs, list_my_projects, *PROJECT_TOOLS]
 
@@ -386,21 +398,38 @@ class TestProjectToolErrors:
 
     @pytest.mark.parametrize("tool", PROJECT_TOOLS, ids=lambda t: t.name)
     @pytest.mark.parametrize("bad_id", ["foreign-id", "", "../../users", f"{PROJECT_ID}/opinions"])
-    async def test_a_project_id_that_is_not_a_uuid_is_refused_before_any_request(
-        self, tool, bad_id
-    ):
+    async def test_a_project_id_that_is_not_a_uuid_never_reaches_the_api(self, tool, bad_id):
         """
-        GIVEN a project id that is not a UUID
-        WHEN the tool runs
-        THEN the reply is the not_found line and the client was never called
+        GIVEN the real API client over an app that records every request
+        WHEN a project tool runs with an id that is not a UUID
+        THEN the reply is the not_found line and no request reached the app
         """
-        client = AsyncMock(spec=UserApiClient)
-        ctx = _ctx(client)
+        app = _RecordingApp()
+        ctx = _ctx(UserApiClient(app, "token", "127.0.0.1"))
 
         result = await tool.ainvoke({"project_id": bad_id, "runtime": _runtime(ctx)})
 
         assert result == tools._NOT_FOUND
-        assert client.mock_calls == []
+        assert app.paths == []
+
+    @pytest.mark.parametrize(
+        ("tool", "suffix"),
+        [(get_project, ""), (get_project_result, "/result"), (get_project_opinions, "/opinions")],
+        ids=lambda v: getattr(v, "name", v),
+    )
+    async def test_a_project_id_that_is_a_uuid_does_reach_the_api(self, tool, suffix):
+        """
+        GIVEN the real API client over an app that records every request and answers 404
+        WHEN a project tool runs with a UUID
+        THEN one request for that project reached the app and the reply is not_found
+        """
+        app = _RecordingApp()
+        ctx = _ctx(UserApiClient(app, "token", "127.0.0.1"))
+
+        result = await tool.ainvoke({"project_id": PROJECT_ID, "runtime": _runtime(ctx)})
+
+        assert result == tools._NOT_FOUND
+        assert app.paths == [f"/api/v1/projects/{PROJECT_ID}{suffix}"]
 
     @pytest.mark.parametrize("tool", PROJECT_TOOLS, ids=lambda t: t.name)
     async def test_does_not_swallow_an_unexpected_error(self, tool):

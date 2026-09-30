@@ -3,8 +3,9 @@
 Every reply a tool gives the model is a data block, or one line that starts with one of
 three fixed prefixes.
 
-- ``not_found:`` the caller cannot see the project, or the id is not a project id. The
-  text does not say whether the project exists.
+- ``not_found:`` the caller cannot see the project, or the id is not a project id (the
+  API client refuses such an id before it sends anything). The text does not say whether
+  the project exists.
 - ``unavailable:`` a service the tool depends on failed. A failing API is never reported
   as not found.
 - ``no_result:`` the request was fine and there is nothing to show. Each case has its
@@ -22,7 +23,6 @@ fetches ahead of the model, so a fact is written one way wherever the model meet
 
 import logging
 from collections.abc import Sequence
-from uuid import UUID
 
 from langchain.tools import ToolRuntime, tool
 from langchain_core.tools import BaseTool
@@ -165,19 +165,6 @@ def render_opinions(opinions: Sequence[OpinionView]) -> str:
     return _block(lines)
 
 
-def _is_project_id(value: str) -> bool:
-    """Tell whether a model-supplied string is a UUID.
-
-    :param value: The string the model gave as a project id.
-    :return: True if it parses as a UUID.
-    """
-    try:
-        UUID(value)
-    except ValueError:
-        return False
-    return True
-
-
 def _reply(ctx: AssistantContext, text: str) -> str:
     """Keep a reply as grounding for the number check and hand it back.
 
@@ -263,8 +250,6 @@ async def get_project(project_id: str, runtime: ToolRuntime[AssistantContext]) -
         ``unavailable:`` line.
     """
     ctx = runtime.context
-    if not _is_project_id(project_id):
-        return _reply(ctx, _NOT_FOUND)
     try:
         project = await ctx.client.get_project(project_id)
     except AssistantNotFoundError:
@@ -284,8 +269,6 @@ async def get_project_result(project_id: str, runtime: ToolRuntime[AssistantCont
         ``unavailable:`` line.
     """
     ctx = runtime.context
-    if not _is_project_id(project_id):
-        return _reply(ctx, _NOT_FOUND)
     try:
         result = await ctx.client.get_result(project_id)
     except AssistantNotFoundError:
@@ -307,8 +290,6 @@ async def get_project_opinions(project_id: str, runtime: ToolRuntime[AssistantCo
         ``unavailable:`` line.
     """
     ctx = runtime.context
-    if not _is_project_id(project_id):
-        return _reply(ctx, _NOT_FOUND)
     try:
         opinions = await ctx.client.get_opinions(project_id)
     except AssistantNotFoundError:
