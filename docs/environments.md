@@ -65,7 +65,7 @@ PostgreSQL, debug off. Every deployed service runs a startup guard (`_validate_d
 
 | File | Role |
 |------|------|
-| `api/config.py` | Defines the `Environment` enum, resolves `APP_ENV`, builds the dotenv list, and runs the prod guard |
+| `api/config.py` | Defines the `Environment` enum, resolves `APP_ENV`, builds the dotenv list, and runs the deploy guard |
 | `.env` | Shared base values, loaded first (gitignored) |
 | `.env.<stage>` | Per-profile overrides, loaded second (gitignored) |
 | `env/.env.example`, `env/.env.dev.example`, `env/.env.test.example`, `env/.env.prod.example` | Tracked templates to copy from |
