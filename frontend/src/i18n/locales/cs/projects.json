@@ -150,6 +150,7 @@
     "email": "E-mail",
     "role": "Role",
     "joined": "Přidal se",
+    "actions": "Akce",
     "transferOwnershipLabel": "Učinit uživatele {{name}} vlastníkem"
   },
   "transferOwnership": {

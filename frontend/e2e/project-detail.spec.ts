@@ -180,10 +180,10 @@ baseTest.describe('Project Detail: Multi-Context', () => {
     // Owner reloads to see team member
     await ownerPage.reload();
 
-    // Click team member row to open profile dialog
-    const memberRow = ownerPage.getByRole('button', { name: /View profile of Team Expert/i });
-    await expect(memberRow).toBeVisible({ timeout: 10000 });
-    await memberRow.click();
+    // Click the team member's name button to open profile dialog
+    const memberButton = ownerPage.getByRole('button', { name: /View profile of Team Expert/i });
+    await expect(memberButton).toBeVisible({ timeout: 10000 });
+    await memberButton.click();
 
     // Profile dialog should show member name
     const profileDialog = ownerPage.getByRole('dialog');

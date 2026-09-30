@@ -51,7 +51,11 @@ export const TeamTable = ({
               <TableHead>{t("team.email")}</TableHead>
               <TableHead>{t("team.role")}</TableHead>
               <TableHead>{t("team.joined")}</TableHead>
-              {isAdmin && <TableHead></TableHead>}
+              {isAdmin && (
+                <TableHead>
+                  <span className="sr-only">{t("team.actions")}</span>
+                </TableHead>
+              )}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -62,16 +66,6 @@ export const TeamTable = ({
                   key={member.user_id}
                   className="cursor-pointer hover:bg-muted/50 transition-colors"
                   onClick={() => onMemberClick(member)}
-                  role="button"
-                  tabIndex={0}
-                  aria-label={t("memberProfile.viewProfile", { name: fullName })}
-                  aria-current={selectedMemberId === member.user_id ? "true" : undefined}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      onMemberClick(member);
-                    }
-                  }}
                 >
                   <TableCell className="font-medium">
                     <div className="flex items-center gap-2">
@@ -83,7 +77,20 @@ export const TeamTable = ({
                           {`${member.first_name[0]}${member.last_name?.[0] || ""}`.toUpperCase()}
                         </AvatarFallback>
                       </Avatar>
-                      <span>{fullName}</span>
+                      {/* The row click is a mouse convenience; this button is the one
+                          keyboard and screen-reader route to the profile. */}
+                      <button
+                        type="button"
+                        className="cursor-pointer rounded-sm text-left ring-offset-background hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                        aria-label={t("memberProfile.viewProfile", { name: fullName })}
+                        aria-current={selectedMemberId === member.user_id ? "true" : undefined}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onMemberClick(member);
+                        }}
+                      >
+                        {fullName}
+                      </button>
                     </div>
                   </TableCell>
                   <TableCell className="text-muted-foreground">
