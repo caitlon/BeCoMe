@@ -30,7 +30,7 @@ cd BeCoMe
 uv sync                    # core library only
 uv sync --extra api        # add the REST API
 uv sync --extra dev        # add testing, linting, type checking
-uv sync --extra assistant  # add the local assistant (developer machines only)
+uv sync --extra dev --extra api --extra assistant  # dev, api and the local assistant (developer machines only)
 uv sync --all-extras       # everything
 
 source .venv/bin/activate  # macOS and Linux

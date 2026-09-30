@@ -101,8 +101,9 @@ api/
 The sections below cover the routes of a deployed service. The assistant's two routes,
 `GET /api/v1/assistant/config` and `POST /api/v1/assistant/chat`, are not listed here. They exist
 only when `ASSISTANT_ENABLED=true`, and a deployed profile refuses to start with that setting on,
-so a deployed service answers 404 for the whole `/api/v1/assistant` prefix. Their behavior is in
-the [assistant README](https://github.com/caitlon/BeCoMe/blob/prod/api/assistant/README.md).
+so on a deployed service every request that reaches routing answers 404 for the whole
+`/api/v1/assistant` prefix. Their behavior is in the
+[assistant README](https://github.com/caitlon/BeCoMe/blob/prod/api/assistant/README.md).
 
 ### Authentication
 
@@ -294,7 +295,7 @@ Environment variables (a `.env` file works too):
 | `DEBUG` | `false` | Debug mode; must stay off on a deployed service (startup fails otherwise) |
 | `API_VERSION` | `1.0.0b1` | API version (auto-read from pyproject.toml) |
 | `CORS_ORIGINS` | `http://localhost:3000,http://localhost:8080` | Allowed CORS origins |
-| `REDIS_URL` | *required when deployed* | Redis for rate limiting, token revocation, and auth throttles |
+| `REDIS_URL` | *required when deployed* | Redis for rate limiting, token revocation, auth throttles, and the local assistant's hourly counter |
 | `CLOUDFLARE_ORIGIN_SECRET` | *required when deployed* | Shared secret proving the request came through Cloudflare; every deployed environment sits behind it, so each needs its own value paired with a Transform Rule for that environment's API host |
 | `TURNSTILE_ENABLED` | `false` | Bot check on the four open auth endpoints. A deployed service starts with it off, and records `turnstile_disabled` at ERROR: it is the way out of a Cloudflare siteverify outage, since the check is fail-closed |
 | `TURNSTILE_SECRET_KEY` | *required when the check is on* | Cloudflare Turnstile secret, paired with the widget whose sitekey the frontend build carries |
