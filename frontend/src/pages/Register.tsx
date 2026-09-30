@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useId, useMemo, useRef, useState } from "react";
 import { Link } from "react-router";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -113,6 +113,7 @@ const Register = () => {
   const password = useWatch({ control, name: "password", defaultValue: "" });
   const emailRequirements = getEmailRequirements(email, t);
   const passwordRequirements = getPasswordRequirements(password, t);
+  const passwordChecklistId = useId();
 
   const onSubmit = async (data: RegisterFormData) => {
     setIsLoading(true);
@@ -188,9 +189,11 @@ const Register = () => {
             autoComplete="new-password"
             placeholder={t("register.passwordPlaceholder")}
             error={errors.password}
+            aria-describedby={passwordChecklistId}
             {...register("password")}
           />
           <ValidationChecklist
+            id={passwordChecklistId}
             title={t("passwordRequirements.title")}
             requirements={passwordRequirements}
             show={!!password}

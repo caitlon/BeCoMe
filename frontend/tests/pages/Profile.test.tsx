@@ -242,6 +242,20 @@ describe('Profile - Change Password', () => {
     expect(screen.getByText(/at least 12 characters/i)).toBeInTheDocument();
   });
 
+  it('ties the password requirements to the new password field and says which are met', async () => {
+    const user = userEvent.setup();
+    render(<Profile />);
+
+    const input = screen.getByLabelText('New Password');
+    expect(input).toHaveAttribute('aria-required', 'true');
+
+    await user.type(input, 'Password');
+
+    const checklist = document.getElementById(input.getAttribute('aria-describedby') ?? '');
+    expect(checklist).toHaveTextContent('At least 12 characters not met');
+    expect(checklist).toHaveTextContent('An uppercase letter (A-Z) met');
+  });
+
   it('disables update button when fields are empty', () => {
     render(<Profile />);
 

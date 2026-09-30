@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { screen } from '@testing-library/react';
 import { render } from '@tests/utils';
+import i18n from '@/i18n';
 import { ValidationChecklist, Requirement } from '@/components/forms/ValidationChecklist';
 
 describe('ValidationChecklist', () => {
@@ -77,5 +78,72 @@ describe('ValidationChecklist', () => {
     render(<ValidationChecklist requirements={baseRequirements} />);
 
     expect(screen.getByText('At least 8 characters')).toBeInTheDocument();
+  });
+
+  describe('state in words', () => {
+    const itemText = (label: string) => screen.getByText(label).parentElement;
+
+    it('says in English whether each requirement is met', () => {
+      render(<ValidationChecklist requirements={baseRequirements} />);
+
+      expect(itemText('At least 8 characters')).toHaveTextContent(
+        'At least 8 characters not met'
+      );
+      expect(itemText('Contains uppercase letter')).toHaveTextContent(
+        'Contains uppercase letter met'
+      );
+    });
+
+    it('says in Czech whether each requirement is met', async () => {
+      await i18n.changeLanguage('cs');
+      try {
+        const { unmount } = render(<ValidationChecklist requirements={baseRequirements} />);
+
+        expect(itemText('At least 8 characters')).toHaveTextContent(
+          'At least 8 characters nesplněno'
+        );
+        expect(itemText('Contains uppercase letter')).toHaveTextContent(
+          'Contains uppercase letter splněno'
+        );
+
+        // Unmount before reverting the language so the change below does not
+        // re-render this already-asserted list outside act().
+        unmount();
+      } finally {
+        await i18n.changeLanguage('en');
+      }
+    });
+
+    it('switches an item from not met to met when the rule becomes met', () => {
+      const { rerender } = render(<ValidationChecklist requirements={baseRequirements} />);
+
+      expect(itemText('Contains number')).toHaveTextContent('Contains number not met');
+
+      rerender(
+        <ValidationChecklist
+          requirements={baseRequirements.map((req) =>
+            req.label === 'Contains number' ? { ...req, met: true } : req
+          )}
+        />
+      );
+
+      expect(itemText('Contains number')).toHaveTextContent('Contains number met');
+      expect(itemText('Contains number')).not.toHaveTextContent('not met');
+    });
+
+    it('keeps the state text out of sight', () => {
+      render(<ValidationChecklist requirements={baseRequirements} />);
+
+      const state = itemText('Contains number')?.querySelector('.sr-only');
+      expect(state).toHaveTextContent('not met');
+    });
+  });
+
+  it('puts the given id on the list so a field can reference it', () => {
+    render(<ValidationChecklist id="rules" requirements={baseRequirements} />);
+
+    expect(document.getElementById('rules')).toContainElement(
+      screen.getByText('Contains number')
+    );
   });
 });

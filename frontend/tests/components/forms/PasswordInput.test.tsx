@@ -90,4 +90,38 @@ describe('PasswordInput', () => {
     expect(input).toHaveAttribute('aria-describedby')
     expect(input).toHaveAttribute('aria-invalid', 'true')
   })
+
+  it('lists an extra described-by id next to the error id', () => {
+    render(
+      <PasswordInput
+        label="Password"
+        name="password"
+        aria-describedby="rules"
+        error={{ type: 'required', message: 'Required' }}
+      />
+    )
+
+    expect(screen.getByLabelText('Password')).toHaveAttribute(
+      'aria-describedby',
+      'password-error rules'
+    )
+  })
+
+  it('lists an extra described-by id when there is no error', () => {
+    render(<PasswordInput label="Password" name="password" aria-describedby="rules" />)
+
+    expect(screen.getByLabelText('Password')).toHaveAttribute('aria-describedby', 'rules')
+  })
+
+  it('has no aria-describedby when there is neither an error nor an extra id', () => {
+    render(<PasswordInput label="Password" name="password" />)
+
+    expect(screen.getByLabelText('Password')).not.toHaveAttribute('aria-describedby')
+  })
+
+  it('exposes the required state', () => {
+    render(<PasswordInput label="Password" name="password" />)
+
+    expect(screen.getByLabelText('Password')).toHaveAttribute('aria-required', 'true')
+  })
 })

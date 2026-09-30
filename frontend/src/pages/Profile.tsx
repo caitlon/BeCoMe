@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useId, useMemo, useRef, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -108,6 +108,7 @@ const Profile = () => {
     defaultValue: "",
   });
   const passwordRequirements = getPasswordRequirements(newPassword, tAuth);
+  const passwordChecklistId = useId();
 
   // Delete account
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -372,9 +373,11 @@ const Profile = () => {
                     label={t("changePassword.newPassword")}
                     autoComplete="new-password"
                     error={passwordForm.formState.errors.newPassword}
+                    aria-describedby={passwordChecklistId}
                     {...passwordForm.register("newPassword")}
                   />
                   <ValidationChecklist
+                    id={passwordChecklistId}
                     title={tAuth("passwordRequirements.title")}
                     requirements={passwordRequirements}
                     show={!!newPassword}

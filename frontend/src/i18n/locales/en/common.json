@@ -100,7 +100,9 @@
     "opensInNewTab": "opens in new tab",
     "skipToContent": "Skip to main content",
     "close": "Close",
-    "notifications": "Notifications ({hotkey})"
+    "notifications": "Notifications ({hotkey})",
+    "requirementMet": "met",
+    "requirementNotMet": "not met"
   },
   "centroidChart": {
     "centroidValue": "Centroid",
