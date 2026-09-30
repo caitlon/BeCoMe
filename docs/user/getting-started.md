@@ -13,8 +13,9 @@ Open it before you create anything of your own. It is finished work, so you can 
 looks like and what the chart is telling you without first having to produce a panel. The
 [worked example](worked-example.md) walks through the same numbers in detail.
 
-The example project is read-only in the ways that matter. You cannot invite experts into it, and
-that is deliberate: it exists so that everyone's copy tells the same story.
+You can add your own opinion to the example project to see how the compromise moves, and delete the
+project when you no longer need it. You cannot invite experts into it, and that is deliberate:
+everyone's copy starts from the same thirteen opinions.
 
 ![The projects list on a new account, with the example project at the top](img/projects-list.png)
 
