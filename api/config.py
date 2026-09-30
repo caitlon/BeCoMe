@@ -267,6 +267,10 @@ class Settings(BaseSettings):
     # Chat messages per user per fixed hour; 0 turns the limit off.
     assistant_rate_limit_per_hour: int = Field(default=60, ge=0)
     assistant_llm_timeout_seconds: float = 120.0
+    # The longest one chat turn may take, fetching and generation together. A model call
+    # has its own timeout above, so a stalled server outlives this deadline by at most
+    # one request; a turn that runs out of time answers "unavailable".
+    assistant_turn_timeout_seconds: float = Field(default=180.0, gt=0)
     assistant_private_corpus_dirs: list[str] = []
     # Path to a local-only JSON manifest describing the local corpus layer (see
     # api/assistant/rag/corpus.py::build_manifest). It sits at the root of a private
