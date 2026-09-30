@@ -57,57 +57,11 @@ _DATE_DOTTED = re.compile(r"(?<![\w.])\d{1,2}\. ?\d{1,2}\. ?\d{4}(?!\d)")
 # A word, its hyphen-joined digit run, and its dot- or comma-joined digit tail (v1.2.3,
 # Qwen3,5, COVID-19.5). Whether the word holds a digit and a letter, or is a capitalised
 # name before a hyphen and digits, is decided in _drop_words. A word never starts right
-# after a number or a dot (84.3W-1, x.y6_1), so a name is not cut out of a number glued
-# to it. A hyphen-joined digit run is left out when a word character follows it
-# (870-14cm.104), so that the mixed word 14cm.104 is found whole.
-_WORD = re.compile(_LABEL, re.IGNORECASE)
-_CITED_RANGE = re.compile(r"(\d{1,3})(?:\s*[-\u2013]\s*(\d{1,3}))?")
-
-# What is dropped from an answer before its numbers are scanned. A link's target stops
-# at the first bracket, parenthesis or space, so that a text made of unclosed "](" never
-# makes the scan run to the end of the text once per bracket.
-_LINK_TARGET = re.compile(r"\]\([^()\[\]\s]+\)")
-_BARE_URL = re.compile(r"https?://\S+")
-_DATE_ISO = re.compile(r"(?<![\w.])\d{4}-\d{2}-\d{2}(?!\d)")
-_DATE_DOTTED = re.compile(r"(?<![\w.])\d{1,2}\. ?\d{1,2}\. ?\d{4}(?!\d)")
-# A word, its hyphen-joined digit run, and its dot- or comma-joined digit tail (v1.2.3,
-# Qwen3,5, COVID-19.5). Whether the word holds a digit and a letter, or is a capitalised
-# name before a hyphen and digits, is decided in _drop_words. A hyphen-joined digit run
-# is left out when a word character follows it (870-14cm.104), so that the mixed word
-# 14cm.104 is found whole.
-_WORD = re.compile(_LABEL, re.IGNORECASE)
-_CITED_RANGE = re.compile(r"(\d{1,3})(?:\s*[-\u2013]\s*(\d{1,3}))?")
-
-# What is dropped from an answer before its numbers are scanned. A link's target stops
-# at the first bracket, parenthesis or space, so that a text made of unclosed "](" never
-# makes the scan run to the end of the text once per bracket.
-_LINK_TARGET = re.compile(r"\]\([^()\[\]\s]+\)")
-_BARE_URL = re.compile(r"https?://\S+")
-_DATE_ISO = re.compile(r"(?<![\w.])\d{4}-\d{2}-\d{2}(?!\d)")
-_DATE_DOTTED = re.compile(r"(?<![\w.])\d{1,2}\. ?\d{1,2}\. ?\d{4}(?!\d)")
-# A word, its hyphen-joined digit run, and its dot- or comma-joined digit tail (v1.2.3,
-# Qwen3,5, COVID-19.5). Whether the word holds a digit and a letter, or is a capitalised
-# name before a hyphen and digits, is decided in _drop_words. A word never starts right
-# after a number or a dot (12.5m2, x.y6_1), so a number glued to a unit is left to the
-# neighbour rule of _scan_numbers. A hyphen-joined digit run is left out when a word
-# character follows it (870-14cm.104), so that the mixed word 14cm.104 is found whole.
-_WORD = re.compile(_LABEL, re.IGNORECASE)
-_CITED_RANGE = re.compile(r"(\d{1,3})(?:\s*[-\u2013]\s*(\d{1,3}))?")
-
-# What is dropped from an answer before its numbers are scanned. A link's target stops
-# at the first bracket, parenthesis or space, so that a text made of unclosed "](" never
-# makes the scan run to the end of the text once per bracket.
-_LINK_TARGET = re.compile(r"\]\([^()\[\]\s]+\)")
-_BARE_URL = re.compile(r"https?://\S+")
-_DATE_ISO = re.compile(r"(?<![\w.])\d{4}-\d{2}-\d{2}(?!\d)")
-_DATE_DOTTED = re.compile(r"(?<![\w.])\d{1,2}\. ?\d{1,2}\. ?\d{4}(?!\d)")
-# A word, its hyphen-joined digit run, and its dot- or comma-joined digit tail (v1.2.3,
-# Qwen3,5, COVID-19.5). Whether the word holds a digit and a letter, or is a capitalised
-# name before a hyphen and digits, is decided in _drop_words. A word never starts right after a number or a
-# dot (12.5m2, x.y6_1), so a number glued to a unit is left to the neighbour rule of
-# _scan_numbers. A hyphen-joined digit run is left out when a word character follows it
-# (870-14cm.104), so that the mixed word 14cm.104 is found whole.
-_WORD = re.compile(r"(?<![\w.])(\w+)(-\d+(?!\w))?((?:[.,]\d+)*)")
+# after a word character (12.5m2, 84.3W-1), so a number glued to a unit is left to the
+# neighbour rule of _scan_numbers; a name after a dot (docs.GPT-4) is still a name. A
+# hyphen-joined digit run is left out when a word character follows it (870-14cm.104),
+# so that the mixed word 14cm.104 is found whole.
+_WORD = re.compile(r"(?<!\w)(\w+)(-\d+(?!\w))?((?:[.,]\d+)*)")
 # What replaces a dropped token: neither whitespace nor a letter, so that a hyphen right
 # after it does not read as a sign, and the digits around it do not run together.
 _DROPPED = "\x00"
@@ -429,8 +383,9 @@ def _drop_words(text: str) -> str:
     A word made of letters that starts with a capital, a hyphen and a digit run
     (``COVID-19``, ``GPT-4``, ``ISO-8601``, ``\u010cSN-73``) is a name and goes whole. A
     lowercase word before a hyphen (``error-15.3``, ``peak-3``, ``n-1``) is not a name.
-    A word that starts right after a number or a dot (``84.3W-1``, ``12.5m2``) is left
-    alone: the number glued to it is judged by the neighbour rule.
+    A word that starts right after a word character (``84.3W-1``, ``12.5m2``) is left
+    alone: the number glued to it is judged by the neighbour rule. A name after a dot
+    (``docs.GPT-4``) is a name like any other.
 
     :param text: The text to clean.
     :return: The text with each dropped token replaced by a filler.
@@ -451,12 +406,16 @@ def _strip_answer(answer: str) -> str:
     """Remove what is not a data point from an answer, before its numbers are scanned.
 
     The drops run in this order: the target of every markdown link, bare URLs,
-    citation-like brackets, dates, words that hold digits, list numbering (``1.``,
-    ``2)``, ``(3)``, behind markdown decoration), and last ordinals. Links and URLs go
-    first so that a digit in an address is never read; citations go before the words
-    because ``[doc1]`` is a citation; dates and words go before numbering and ordinals
-    because those match on a number and a dot. A dropped token leaves a filler that is
-    not whitespace, so a hyphen right after it (``doc1-5``) is not read as a minus sign.
+    citation-like brackets, dates, the digits of identifiers and names (see
+    :func:`_drop_words`: a word that mixes letters and digits stays, only its digit tail
+    goes, and a capitalised name before a hyphen and digits goes whole), list numbering
+    (``1.``, ``2)``, ``(3)``, behind markdown decoration), and last ordinals. Links and
+    URLs go first so that a digit in an address is never read; citations go before the
+    words because ``[doc1]`` is a citation; dates and words go before numbering and
+    ordinals because those match on a number and a dot. A URL, a citation, a date, a
+    name and a digit tail are each replaced by a filler that is not whitespace, so a
+    hyphen right after one (``[1]-5``) is not read as a minus sign and the digits around
+    it do not run together.
 
     :param answer: The model's final answer text.
     :return: The cleaned text.
