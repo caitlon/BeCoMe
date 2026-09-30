@@ -10,6 +10,7 @@ from api.assistant.agent import tracing
 from api.config import Settings
 
 _ENDPOINT = "https://eu.api.smith.langchain.com"
+_API_KEY = "lsv2_test"  # pragma: allowlist secret
 _AMBIENT_TRACING_VARIABLES = ["LANGSMITH_TRACING", "LANGCHAIN_TRACING_V2"]
 
 
@@ -40,7 +41,7 @@ def _isolated_tracing(monkeypatch, tmp_path):
 
 def _settings(**overrides) -> Settings:
     base = {
-        "secret_key": "test-secret-key-for-ci",
+        "secret_key": "test-secret-key-for-ci",  # pragma: allowlist secret
         "assistant_langsmith_enabled": False,
         "assistant_langsmith_api_key": None,
         "assistant_langsmith_endpoint": _ENDPOINT,
@@ -52,7 +53,7 @@ def _settings(**overrides) -> Settings:
 
 def _enabled_settings(**overrides) -> Settings:
     return _settings(
-        assistant_langsmith_enabled=True, assistant_langsmith_api_key="lsv2_test", **overrides
+        assistant_langsmith_enabled=True, assistant_langsmith_api_key=_API_KEY, **overrides
     )
 
 
@@ -130,7 +131,7 @@ class TestEnabledScope:
             context = get_tracing_context()
 
         assert context["client"].api_url == _ENDPOINT
-        assert context["client"].api_key == "lsv2_test"
+        assert context["client"].api_key == _API_KEY
         assert context["project_name"] == "local-proj"
 
     def test_builds_one_client_for_the_whole_process(self):
@@ -146,7 +147,7 @@ class TestEnabledScope:
                 with tracing.tracing_scope(_enabled_settings()):
                     clients.append(get_tracing_context()["client"])
 
-        client_cls.assert_called_once_with(api_key="lsv2_test", api_url=_ENDPOINT)
+        client_cls.assert_called_once_with(api_key=_API_KEY, api_url=_ENDPOINT)
         assert clients == [fake_client, fake_client]
 
     def test_an_error_inside_the_scope_propagates(self):
