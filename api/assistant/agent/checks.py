@@ -12,12 +12,14 @@ from decimal import ROUND_DOWN, ROUND_HALF_UP, Context, Decimal
 # A bracket group: square brackets, or the full-width lenticular ones some models emit.
 _BRACKET = re.compile(r"\[([^\[\]]*)\]|\u3010([^\u3010\u3011]*)\u3011")
 
-# What a citation looks like inside a bracket: an optional label word (letters of any
-# script, then an optional space, dot, colon, hash or numero sign) and then integers of
-# one to three digits separated by commas, semicolons, spaces, hyphens or en dashes.
-_CITATION_CONTENT = re.compile(
-    r"\s*(?:[^\W\d_]+[\s.:#\u2116]*)?(?P<ints>[0-9]{1,3}(?:[,;\s\-\u2013]+[0-9]{1,3})*)\s*"
-)
+# What a citation looks like inside a bracket: integers of one to three digits separated
+# by commas, semicolons, spaces, hyphens or en dashes, each with an optional label word
+# in front (letters of any script, then an optional space, dot, colon, hash or numero
+# sign).
+_LABEL = r"[^\W\d_]+[\s.:#\u2116]*"
+_CITATION_ITEM = rf"(?:{_LABEL})?[0-9]{{1,3}}"
+_CITATION_CONTENT = re.compile(rf"\s*{_CITATION_ITEM}(?:[,;\s\-\u2013]+{_CITATION_ITEM})*\s*")
+_LABEL_WORD = re.compile(_LABEL)
 _CITED_RANGE = re.compile(r"([0-9]{1,3})(?:\s*[-\u2013]\s*([0-9]{1,3}))?")
 
 # What is dropped from an answer before its numbers are scanned.
@@ -26,15 +28,18 @@ _BARE_URL = re.compile(r"https?://\S+")
 _DATE = re.compile(
     r"(?<![\w.])(?:[0-9]{4}-[0-9]{2}-[0-9]{2}|[0-9]{1,2}\.[ ]?[0-9]{1,2}\.[ ]?[0-9]{4})(?![0-9])"
 )
-# A word that holds both a letter and a digit (v1, Qwen3, doc1, 1st, H2O), with any
-# dot-joined digit tail (v1.2.3, Qwen3.5). The lookbehind keeps a digit tail that
+# A word that holds both a letter and a digit (v1, Qwen3, doc1, 1st, H2O), or letters, a
+# hyphen and a digit run (COVID-19, GPT-4, ISO-8601), with any dot-joined digit tail
+# (v1.2.3, Qwen3.5). The lookbehind keeps a digit tail that
 # follows a plain number ("14.19px") for the neighbour check instead.
-_MIXED_TOKEN = re.compile(r"(?<![\w.])(?=\w*[^\W\d])(?=\w*[0-9])\w+(?:\.[0-9]+)*")
+_MIXED_TOKEN = re.compile(
+    r"(?<![\w.])(?:(?=\w*[^\W\d])(?=\w*[0-9])\w+|[^\W\d_]+-[0-9]+)(?:\.[0-9]+)*"
+)
 # A list number at the start of a line: 1. or 2) or (3), behind any markdown decoration.
 _LIST_NUMBERING = re.compile(r"^[>#*_\- \t]*(?:\([0-9]+\)|[0-9]+[.)])[*_]*\s", re.MULTILINE)
-# An ordinal inside a sentence, as Czech writes it: one or two digits, a dot, whitespace.
-# Whether it is one is decided by the case of the next letter.
-_ORDINAL = re.compile(r"(?<![0-9.,])[0-9]{1,2}\.(\s+)(\S)")
+# An ordinal inside a sentence, as Czech writes it: one or two digits, a dot, then spaces
+# on the same line. Whether it is one is decided by the case of the next letter.
+_ORDINAL = re.compile(r"(?<![0-9.,])[0-9]{1,2}\.([ \t\xa0]+)(\S)")
 # A markdown link's target, when it directly follows a citation.
 _LINK_AFTER = re.compile(r"\([^)\s]*\)")
 
@@ -43,12 +48,12 @@ _SPACE = "[ \u00a0\u202f]"
 _NUMBER = re.compile(
     rf"(?P<spaced>[0-9]{{1,3}}(?:{_SPACE}[0-9]{{3}})+(?![0-9])(?:,[0-9]+)?)"
     r"|(?P<grouped>[0-9]{1,3}(?:,[0-9]{3})+\.[0-9]+)"
-    r"|(?P<commas>[0-9]+(?:,[0-9]+)+)"
+    r"|(?P<commas>[0-9]+(?:\.[0-9]+)?(?:,[0-9]+(?:\.[0-9]+)?)+)"
     r"|(?P<plain>[0-9]+(?:\.[0-9]+)?)"
 )
 _LETTER_OR_UNDERSCORE = re.compile(r"[^\W\d]")
 _MINUS_SIGNS = "-\u2212"
-_SIGN_PREFIXES = "([{="
+_SIGN_PREFIXES = "([{=,;:"
 
 
 def _cited_numbers(content: str) -> set[int] | None:
@@ -58,11 +63,10 @@ def _cited_numbers(content: str) -> set[int] | None:
     :return: The named integers, ranges expanded, or None when the bracket is not a
         citation (a decimal, four digits, words).
     """
-    match = _CITATION_CONTENT.fullmatch(content)
-    if match is None:
+    if _CITATION_CONTENT.fullmatch(content) is None:
         return None
     numbers: set[int] = set()
-    for found in _CITED_RANGE.finditer(match["ints"]):
+    for found in _CITED_RANGE.finditer(_LABEL_WORD.sub("", content)):
         first = int(found[1])
         last = int(found[2]) if found[2] is not None else first
         numbers.update(range(first, last + 1) if first <= last else (first, last))
@@ -90,8 +94,11 @@ def check_citations(answer: str, valid_numbers: set[int]) -> bool:
     ``[Source 1]``, ``[doc1]`` or the full-width ``\u30101\u3011``; a range names every
     number in it, and a markdown link ``[1](https://...)`` counts as the citation
     ``[1]``. A bracket holding a decimal, such as ``[11.54, 14.19]``, is not a citation.
-    Known limit: a square-bracketed group of bare integers is read as a citation, so a
-    fuzzy number written ``[6, 8, 11]`` is misread.
+    Every number in a bracket may carry its own label (``[Source 1, Source 2]``).
+    Known limits: a square-bracketed group of bare integers is read as a citation, so a
+    fuzzy number written ``[6, 8, 11]`` is misread; and the full-width form with a
+    dagger, a number followed by a dagger and a word inside full-width brackets, as some
+    models write it, is not read.
 
     :param answer: The model's final answer text.
     :param valid_numbers: The source numbers handed out this turn, one-based.
@@ -126,28 +133,33 @@ def _readings(form: str, text: str, negative: bool) -> list[list[Decimal]]:
     :return: The readings, each a list of numbers.
     """
     if form == "spaced":
-        readings = [[Decimal(re.sub(_SPACE, "", text).replace(",", "."))]]
+        readings = [
+            [Decimal(re.sub(_SPACE, "", text).replace(",", "."))],
+            [Decimal(part.replace(",", ".")) for part in re.split(_SPACE, text)],
+        ]
     elif form == "grouped":
         readings = [[Decimal(text.replace(",", ""))]]
     elif form == "commas":
         parts = text.split(",")
         readings = [[Decimal(part) for part in parts]]
-        if len(parts) == 2:
-            readings.append([Decimal(f"{parts[0]}.{parts[1]}")])
-        if len(parts[0]) <= 3 and all(len(part) == 3 for part in parts[1:]):
-            readings.append([Decimal("".join(parts))])
+        if "." not in text:
+            if len(parts) == 2:
+                readings.append([Decimal(f"{parts[0]}.{parts[1]}")])
+            if len(parts[0]) <= 3 and all(len(part) == 3 for part in parts[1:]):
+                readings.append([Decimal("".join(parts))])
     else:
         readings = [[Decimal(text)]]
     if negative:
-        readings = [[-reading[0], *reading[1:]] for reading in readings]
+        readings = [[reading[0].copy_negate(), *reading[1:]] for reading in readings]
     return readings
 
 
 def _has_minus_sign(text: str, start: int) -> bool:
     """Tell whether a minus directly before a number is its sign.
 
-    It is when it opens the text or follows whitespace, an opening bracket or an equals
-    sign (``lower=-2.50``); in ``20-40`` it is a range.
+    It is when it opens the text or follows whitespace, an opening bracket, an equals
+    sign, a comma, a semicolon or a colon (``lower=-2.50``, ``(-5,-3)``, ``peak:-3``);
+    in ``20-40`` it is a range.
 
     :param text: The scanned text.
     :param start: Index of the number's first digit.
@@ -304,15 +316,16 @@ def find_ungrounded_numbers(answer: str, grounding_texts: list[str]) -> list[str
     """Return the numbers in the answer that no grounding text supports.
 
     Before scanning, the answer loses the target of markdown links, bare URLs,
-    citation-like brackets (see :func:`strip_citations`), dates, tokens that mix letters
-    and digits (``v1.2``, ``Qwen3.5``, ``doc1``, ``1st``, ``H2O``), list numbering and
-    ordinals; the order is in ``_strip_answer``. A number is then a digit run, with a
-    sign when a minus opens the text or follows whitespace, an opening bracket or an
-    equals sign, and never one that sits next to a letter or an underscore. Thousands
-    may be grouped with spaces (``1 000``) or commas (``1,234.56``), and a comma between
-    digit groups is read every way it can be: ``14,19`` as the decimal 14.19 or as 14
-    and 19, ``1,234`` as 1234 or as 1 and 234, ``6,8,11`` as three numbers. A token is
-    grounded when one of its readings has all its numbers grounded.
+    citation-like brackets (see :func:`strip_citations`), dates, names that hold a digit
+    (``v1.2``, ``Qwen3.5``, ``doc1``, ``1st``, ``H2O``, ``COVID-19``), list numbering
+    and ordinals; the order is in ``_strip_answer``. A number is then a digit run, with
+    a sign when a minus opens the text or follows whitespace, an opening bracket, an
+    equals sign or a separator (comma, semicolon, colon), and never one that sits next
+    to a letter or an underscore. Thousands may be grouped with spaces (``1 000``) or
+    commas (``1,234.56``). A token is read every way it can be, and is grounded when
+    one reading has all its numbers grounded: ``14,19`` is 14.19 or 14 and 19,
+    ``1,234`` is 1234 or 1 and 234, ``6,8.75,11`` is three numbers, and ``100 200 300``
+    is one number or three.
 
     A number written with ``d`` decimals is grounded when some number in the grounding
     texts, quantized to ``d`` decimals, equals it under round-half-up or under
