@@ -6,7 +6,7 @@ per language, so a language is added by writing one more entry to each table, ad
 value to ``EmailLanguage`` in ``api/services/email/base.py`` and to
 ``_SUPPORTED_EMAIL_LANGUAGES`` in ``api/dependencies.py``. Nothing in this module reads
 settings or touches the network, so tests and previews can call
-:func:`render_verification_email` directly.
+:func:`render_verification_email` and :func:`render_password_reset_email` directly.
 """
 
 from dataclasses import asdict, dataclass
@@ -126,6 +126,57 @@ VERIFICATION_COPIES: dict[EmailLanguage, EmailCopy] = {
     "cs": _VERIFICATION_CS,
 }
 
+_PASSWORD_RESET_EN = EmailCopy(
+    lang="en",
+    subject="Reset your BeCoMe password",
+    preheader="Use the link in this email to choose a new password.",
+    wordmark="BeCoMe",
+    heading="Reset your password",
+    body=(
+        "We received a request to reset the password for your BeCoMe account. Use the "
+        "button below to choose a new one."
+    ),
+    button_label="Reset password",
+    fallback="If the button doesn't work, copy and paste this link into your browser:",
+    expiry="The link expires in {window}.",
+    not_you=(
+        "If you didn't ask for this, you can ignore this email. Your password stays the same."
+    ),
+    footer=(
+        "You're receiving this email from BeCoMe at becomify.app because a password reset "
+        "was requested for this address. It's an automatic message, so please don't reply."
+    ),
+)
+
+_PASSWORD_RESET_CS = EmailCopy(
+    lang="cs",
+    subject="BeCoMe: obnovení hesla",
+    preheader="Pomocí odkazu v e-mailu si zvolíte nové heslo.",
+    wordmark="BeCoMe",
+    heading="Obnovení hesla",
+    body=(
+        "Obdrželi jsme žádost o obnovení hesla k vašemu účtu BeCoMe. Tlačítkem níže si "
+        "zvolíte nové heslo."
+    ),
+    button_label="Obnovit heslo",
+    fallback="Pokud tlačítko nefunguje, zkopírujte tento odkaz do prohlížeče:",
+    expiry="Odkaz platí {window}.",
+    not_you=(
+        "Pokud jste o obnovení nežádali, můžete tento e-mail ignorovat. Vaše heslo zůstává "
+        "beze změny."
+    ),
+    footer=(
+        "Tento e-mail vám posílá aplikace BeCoMe (becomify.app), protože někdo požádal o "
+        "obnovení hesla pro tuto adresu. Jde o automatickou zprávu, na kterou prosím "
+        "neodpovídejte."
+    ),
+)
+
+PASSWORD_RESET_COPIES: dict[EmailLanguage, EmailCopy] = {
+    "en": _PASSWORD_RESET_EN,
+    "cs": _PASSWORD_RESET_CS,
+}
+
 # One wording for every email. English has no separate form for 2 to 4, so the second and
 # third entries repeat.
 _LIFETIME_UNITS: dict[EmailLanguage, LifetimeUnits] = {
@@ -203,3 +254,16 @@ def render_verification_email(
     :return: Subject, HTML document and plain-text alternative.
     """
     return _render(VERIFICATION_COPIES[language], verify_url, expiry_minutes, language)
+
+
+def render_password_reset_email(
+    reset_url: str, expiry_minutes: int, language: EmailLanguage
+) -> RenderedEmail:
+    """Render the password-reset email in a language.
+
+    :param reset_url: Full frontend reset link.
+    :param expiry_minutes: Lifetime of the link in minutes.
+    :param language: Language the message is written in.
+    :return: Subject, HTML document and plain-text alternative.
+    """
+    return _render(PASSWORD_RESET_COPIES[language], reset_url, expiry_minutes, language)

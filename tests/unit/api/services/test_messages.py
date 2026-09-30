@@ -16,10 +16,12 @@ import pytest
 
 from api.services.email.base import EmailLanguage
 from api.services.email.messages import (
+    PASSWORD_RESET_COPIES,
     VERIFICATION_COPIES,
     EmailCopy,
     RenderedEmail,
     format_lifetime,
+    render_password_reset_email,
     render_verification_email,
 )
 
@@ -57,6 +59,53 @@ _CS_FOOTER = (
     "Tento e-mail vám posílá aplikace BeCoMe (becomify.app), protože se vaší e-mailovou "
     "adresou někdo zaregistroval. Jde o automatickou zprávu, na kterou prosím neodpovídejte."
 )
+
+_RESET_URL = "https://app.example/reset-password?token=abc"
+
+# The reset copy as it must read, per language. The expiry sentence is checked apart,
+# since it carries the lifetime.
+_RESET = {
+    "en": {
+        "subject": "Reset your BeCoMe password",
+        "preheader": "Use the link in this email to choose a new password.",
+        "heading": "Reset your password",
+        "body": (
+            "We received a request to reset the password for your BeCoMe account. "
+            "Use the button below to choose a new one."
+        ),
+        "button_label": "Reset password",
+        "fallback": "If the button doesn't work, copy and paste this link into your browser:",
+        "not_you": (
+            "If you didn't ask for this, you can ignore this email. Your password stays the same."
+        ),
+        "footer": (
+            "You're receiving this email from BeCoMe at becomify.app because a password "
+            "reset was requested for this address. It's an automatic message, so please "
+            "don't reply."
+        ),
+    },
+    "cs": {
+        "subject": "BeCoMe: obnovení hesla",
+        "preheader": "Pomocí odkazu v e-mailu si zvolíte nové heslo.",
+        "heading": "Obnovení hesla",
+        "body": (
+            "Obdrželi jsme žádost o obnovení hesla k vašemu účtu BeCoMe. Tlačítkem níže "
+            "si zvolíte nové heslo."
+        ),
+        "button_label": "Obnovit heslo",
+        "fallback": "Pokud tlačítko nefunguje, zkopírujte tento odkaz do prohlížeče:",
+        "not_you": (
+            "Pokud jste o obnovení nežádali, můžete tento e-mail ignorovat. Vaše heslo "
+            "zůstává beze změny."
+        ),
+        "footer": (
+            "Tento e-mail vám posílá aplikace BeCoMe (becomify.app), protože někdo požádal "
+            "o obnovení hesla pro tuto adresu. Jde o automatickou zprávu, na kterou prosím "
+            "neodpovídejte."
+        ),
+    },
+}
+_RESET_EXPIRY = {"en": "The link expires in {window}.", "cs": "Odkaz platí {window}."}
 
 # Fields that land in the head of the document or are rebuilt before they are placed.
 _HEAD_FIELDS = {"lang", "subject", "preheader", "expiry"}
@@ -537,6 +586,197 @@ class TestCzechRendering:
         assert f"Odkaz platí {phrase}." in rendered.text
 
 
+def _render_reset(
+    url: str = _RESET_URL, minutes: int = 60, language: EmailLanguage = "en"
+) -> RenderedEmail:
+    """Render the password-reset email for a link, a lifetime in minutes and a language."""
+    return render_password_reset_email(url, minutes, language)
+
+
+@pytest.mark.parametrize("language", ["en", "cs"])
+class TestPasswordResetEmail:
+    """The reset email is the same layout with its own copy, in either language."""
+
+    def test_the_copy_is_the_agreed_wording(self, language: EmailLanguage):
+        """
+        GIVEN the reset copy of a language
+        WHEN its text fields are compared with the agreed wording
+        THEN every one matches
+        """
+        # GIVEN
+        copy = asdict(PASSWORD_RESET_COPIES[language])
+
+        # THEN
+        assert {name: copy[name] for name in _RESET[language]} == _RESET[language]
+        assert copy["expiry"] == _RESET_EXPIRY[language]
+        assert copy["lang"] == language
+
+    def test_the_subject_is_the_title(self, language: EmailLanguage):
+        """
+        GIVEN a reset link
+        WHEN the email is rendered
+        THEN the subject is the reset subject and the document title carries it
+        """
+        # WHEN
+        rendered = _render_reset(language=language)
+
+        # THEN
+        assert rendered.subject == _RESET[language]["subject"]
+        assert f"<title>{html_lib.escape(rendered.subject, quote=True)}</title>" in rendered.html
+
+    def test_html_is_one_complete_document_in_the_language(self, language: EmailLanguage):
+        """
+        GIVEN a reset link
+        WHEN the email is rendered
+        THEN the html is a full document declaring the language
+        """
+        # WHEN
+        html = _render_reset(language=language).html
+
+        # THEN
+        assert html.lstrip().startswith("<!DOCTYPE html>")
+        assert f'<html lang="{language}"' in html
+        assert html.rstrip().endswith("</html>")
+
+    def test_heading_button_and_links_carry_the_copy_and_the_url(self, language: EmailLanguage):
+        """
+        GIVEN a reset link
+        WHEN the email is rendered
+        THEN the heading is the content of the h1, and the button and the fallback both link
+            to the URL
+        """
+        # GIVEN
+        copy = _RESET[language]
+        button = rf'<a href="{re.escape(_RESET_URL)}"[^>]*>\s*{copy["button_label"]}\s*</a>'
+
+        # WHEN
+        html = _render_reset(language=language).html
+
+        # THEN
+        assert re.search(rf"<h1[^>]*>\s*{copy['heading']}\s*</h1>", html)
+        assert re.search(button, html)
+        assert f'<a href="{_RESET_URL}" class="fallback-link"' in html
+        assert f">{_RESET_URL}</a>" in html
+
+    def test_every_sentence_of_the_copy_is_in_the_html(self, language: EmailLanguage):
+        """
+        GIVEN a reset link
+        WHEN the email is rendered
+        THEN the text nodes of the html hold every visible field of the copy, and the
+            preheader sits in its hidden line
+        """
+        # GIVEN
+        copy = _RESET[language]
+        rendered = _render_reset(language=language)
+        parser = _TextNodes()
+        parser.feed(rendered.html)
+        nodes = [html_lib.unescape(node) for node in parser.nodes]
+
+        # THEN
+        for name in ("heading", "body", "button_label", "fallback", "not_you", "footer"):
+            assert any(copy[name] in node for node in nodes), name
+        assert f">{html_lib.escape(copy['preheader'], quote=True)}</div>" in rendered.html
+
+    def test_url_is_escaped_in_the_html_and_raw_in_the_text(self, language: EmailLanguage):
+        """
+        GIVEN a URL holding an ampersand, a double quote and an angle bracket
+        WHEN the email is rendered
+        THEN the html carries the escaped form in both hrefs and the visible text and never
+            the raw one, while the text part holds it as given
+        """
+        # WHEN
+        rendered = _render_reset(url=_HOSTILE_URL, language=language)
+
+        # THEN
+        assert _HOSTILE_URL not in rendered.html
+        assert rendered.html.count(_HOSTILE_URL_ESCAPED) == 3
+        assert rendered.html.count(f'href="{_HOSTILE_URL_ESCAPED}"') == 2
+        assert _HOSTILE_URL in rendered.text.splitlines()
+
+    def test_text_part_is_the_copy_in_order(self, language: EmailLanguage):
+        """
+        GIVEN a reset link and a lifetime of an hour
+        WHEN the email is rendered
+        THEN the text part is the copy in order, with the link alone under the button label
+            and no markup
+        """
+        # GIVEN
+        copy = _RESET[language]
+        window = {"en": "1 hour", "cs": "1 hodinu"}[language]
+        expiry = _RESET_EXPIRY[language].format(window=window)
+
+        # WHEN
+        text = _render_reset(language=language).text
+
+        # THEN
+        assert text.split("\n\n") == [
+            "BeCoMe",
+            copy["heading"],
+            copy["body"],
+            f"{copy['button_label']}:\n{_RESET_URL}",
+            f"{expiry} {copy['not_you']}",
+            copy["footer"],
+        ]
+        assert not re.search(r"</?[A-Za-z]", text)
+        assert "$" not in text
+
+    @pytest.mark.parametrize("minutes", [1, 30, 60, 90, 120, 1440])
+    def test_the_lifetime_is_stated_in_the_html_and_the_text(
+        self, language: EmailLanguage, minutes: int
+    ):
+        """
+        GIVEN a lifetime
+        WHEN the reset email is rendered
+        THEN the expiry sentence states it in that language, in both parts
+        """
+        # GIVEN
+        sentence = _RESET_EXPIRY[language].format(window=format_lifetime(minutes, language))
+
+        # WHEN
+        rendered = _render_reset(minutes=minutes, language=language)
+
+        # THEN
+        assert sentence in rendered.html
+        assert sentence in rendered.text
+
+
+class TestPasswordResetEmailInCzech:
+    """No English survives in the Czech reset email."""
+
+    @pytest.mark.parametrize("field", list(_RESET["en"]))
+    def test_no_english_sentence_survives(self, field: str):
+        """
+        GIVEN a Czech reset email
+        WHEN its html and text are searched for each English sentence of the reset copy
+        THEN none is found
+        """
+        # GIVEN
+        sentence = _RESET["en"][field]
+
+        # WHEN
+        rendered = _render_reset(language="cs")
+
+        # THEN
+        assert html_lib.escape(sentence, quote=True) not in rendered.html
+        assert sentence not in rendered.text
+
+    @pytest.mark.parametrize("minutes", [1, 2, 5, 30, 60, 120])
+    def test_the_lifetime_sentence_has_no_english_word(self, minutes: int):
+        """
+        GIVEN any lifetime
+        WHEN the reset email is rendered in Czech
+        THEN the sentence about it is Czech throughout
+        """
+        # WHEN
+        rendered = _render_reset(minutes=minutes, language="cs")
+
+        # THEN
+        body = rendered.html.split("<body")[1].lower()
+        for word in ("hour", "minute", "expire"):
+            assert word not in body
+            assert word not in rendered.text.lower()
+
+
 class TestFormatLifetime:
     """The lifetime wording that every email shares."""
 
@@ -569,18 +809,23 @@ class TestFormatLifetime:
     def test_every_supported_language_has_unit_words(self, language: EmailLanguage):
         """
         GIVEN a language the email type supports
-        WHEN a lifetime is written in it and the verification email is rendered in it
-        THEN both succeed and yield text, so a language missing from a table fails here
+        WHEN a lifetime is written in it and the verification and password-reset emails
+            are rendered in it
+        THEN all succeed and yield text, so a language missing from a table fails here
         """
         # WHEN
         window = format_lifetime(60, language)
-        rendered = render_verification_email("https://example.test/verify?token=abc", 60, language)
+        rendered = [
+            render_verification_email("https://example.test/verify?token=abc", 60, language),
+            render_password_reset_email("https://example.test/reset?token=abc", 60, language),
+        ]
 
         # THEN
         assert window
-        assert rendered.subject
-        assert rendered.html
-        assert rendered.text
+        for message in rendered:
+            assert message.subject
+            assert message.html
+            assert message.text
 
 
 class TestLayoutFile:

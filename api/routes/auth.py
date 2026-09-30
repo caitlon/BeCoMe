@@ -630,6 +630,7 @@ async def forgot_password(
     service: Annotated[PasswordResetService, Depends(get_password_reset_service)],
     email_service: Annotated[EmailSender, Depends(get_email_service)],
     throttle: Annotated[EmailSendThrottle, Depends(get_reset_email_throttle)],
+    language: PreferredEmailLanguage,
 ) -> dict[str, str]:
     """Start the password reset flow for the given email.
 
@@ -642,6 +643,8 @@ async def forgot_password(
     :param data: Email to send the reset link to
     :param service: Password reset service
     :param email_service: Email sender
+    :param throttle: Per-address cap on reset emails
+    :param language: Language of the email, from the ``Accept-Language`` header
     :return: A fixed acknowledgement message
     """
     # Cap reset emails per address (a hashed key) so a known inbox cannot be flooded by
@@ -651,7 +654,9 @@ async def forgot_password(
         reset_url = service.create_reset_token(data.email)
         if reset_url is not None:
             await _send_quietly(
-                email_service.send_password_reset(to_email=data.email, reset_url=reset_url),
+                email_service.send_password_reset(
+                    to_email=data.email, reset_url=reset_url, language=language
+                ),
                 "password_reset_email_failed",
             )
 

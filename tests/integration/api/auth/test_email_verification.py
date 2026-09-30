@@ -250,7 +250,9 @@ class TestRegistrationBranches:
         class FailingEmailSender(EmailSender):
             """Simulate a provider that fails on every send."""
 
-            async def send_password_reset(self, *, to_email: str, reset_url: str) -> None:
+            async def send_password_reset(
+                self, *, to_email: str, reset_url: str, language: str
+            ) -> None:
                 """Raise to simulate a provider failure."""
                 raise EmailSendError("send failed")
 
