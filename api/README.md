@@ -146,8 +146,10 @@ which costs the guesser rather than capping the pair. A completed password reset
 login lockout, and answers the same opaque `400` an unusable token gets when an activation
 confirmed the account while the reset was in flight. `POST /auth/resend-verification` takes
 `{email, password}` and answers `202` for any address. The link it mails carries the submitted
-password like any other. See `docs/security.md` for why each branch behaves as it
-does.
+password like any other. Both endpoints write the email in English or Czech, taken from the
+`Accept-Language` request header: the best-weighted `cs` or `en` range wins, and a missing or
+unusable header means English. The header never changes the response, so a bad value is not
+an error. See `docs/security.md` for why each branch behaves as it does.
 
 **Session transport.** Login and refresh set the access and refresh tokens as
 `Secure; HttpOnly; SameSite=Strict` cookies (the refresh cookie stays scoped to
