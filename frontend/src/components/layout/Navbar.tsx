@@ -69,6 +69,7 @@ export function Navbar() {
   }, [closeMenuOnEscape]);
 
   const isAuthPage = ['/login', '/register'].includes(location.pathname);
+  const displayName = [user?.first_name, user?.last_name].filter(Boolean).join(" ");
 
   const isActive = (path: string) =>
     location.pathname === path || location.pathname.startsWith(path + "/");
@@ -106,7 +107,7 @@ export function Navbar() {
         </Link>
 
         {/* Desktop Navigation */}
-        <div className="hidden md:flex items-center gap-6">
+        <div className="hidden xl:flex items-center gap-6">
           {navItems.map(({ to, label }) => (
             <Button key={to} variant="ghost" size="sm" className={cn(isActive(to) && "text-foreground border-b-2 border-primary rounded-none")} asChild>
               <Link to={to} aria-current={isActive(to) ? "page" : undefined}>{label}</Link>
@@ -134,8 +135,8 @@ export function Navbar() {
                         }
                       </AvatarFallback>
                     </Avatar>
-                    <span className="text-sm">
-                      {user?.first_name} {user?.last_name}
+                    <span className="text-sm max-w-36 truncate" title={displayName}>
+                      {displayName}
                     </span>
                     <ChevronDown className="h-4 w-4" />
                   </Button>
@@ -174,7 +175,7 @@ export function Navbar() {
         </div>
 
         {/* Mobile Menu Button */}
-        <div className="md:hidden flex items-center gap-2">
+        <div className="xl:hidden flex items-center gap-2">
           <LanguageSwitcher />
           <ThemeToggle />
           {!isAuthPage && (
@@ -200,7 +201,7 @@ export function Navbar() {
             id="mobile-menu"
             role="region"
             aria-label={t("a11y.mobileNavigation")}
-            className="md:hidden bg-background/95 backdrop-blur-md border-b border-border"
+            className="xl:hidden bg-background/95 backdrop-blur-md border-b border-border"
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
