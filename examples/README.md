@@ -1,6 +1,6 @@
 # BeCoMe examples
 
-Three case studies from Czech public policy show the BeCoMe method in action. Each loads real expert data, walks through the calculation, and displays intermediate results.
+Three case studies from Czech public policy show the BeCoMe method in action. The flood study uses real expert data. The budget and cross-border studies use the illustrative data from the authors' Excel workbook. Each example loads its data, walks through the calculation, and displays intermediate results.
 
 ## Contents
 
@@ -18,9 +18,9 @@ Three case studies from Czech public policy show the BeCoMe method in action. Ea
 
 ```
 examples/
-├── analyze_budget_case.py      # COVID-19 budget (22 experts, even)
+├── analyze_budget_case.py      # COVID-19 budget (22 experts, even, illustrative)
 ├── analyze_floods_case.py      # Flood prevention (13 experts, odd)
-├── analyze_pendlers_case.py    # Cross-border travel (22 experts, Likert)
+├── analyze_pendlers_case.py    # Cross-border travel (22 experts, Likert, illustrative)
 ├── data/                       # Case study datasets
 ├── utils/                      # Data loading, display, formatting
 └── visualizations/             # Interactive Jupyter charts
@@ -28,16 +28,16 @@ examples/
 
 ## Case studies
 
-**Budget case** (`analyze_budget_case.py`). 22 government officials estimated COVID-19 budget
-support needs in billions of CZK. With an even expert count, this case shows how the median
-averages the two middle values.
+**Budget case** (`analyze_budget_case.py`). An illustrative panel of 22 government roles estimated
+COVID-19 budget support needs in billions of CZK. With an even expert count, this case
+shows how the median averages the two middle values.
 
 **Floods case** (`analyze_floods_case.py`). Land owners, hydrologists, and rescue coordinators
 disagreed sharply on flood prevention measures. The 13 experts produced highly polarized
 opinions. That makes this case useful for understanding how BeCoMe handles outliers when the
 expert count is odd.
 
-**Pendlers case** (`analyze_pendlers_case.py`). Public health officials rated cross-border
+**Pendlers case** (`analyze_pendlers_case.py`). An illustrative panel rated cross-border
 travel policies on a Likert scale (0, 25, 50, 75, 100). Unlike the other cases, this one uses
 crisp values, where the lower bound, the peak, and the upper bound are all equal.
 
