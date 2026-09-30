@@ -40,6 +40,9 @@ test.describe('Accessibility - Skip Link', () => {
     test.skip(browserName === 'firefox', 'headless Firefox on CI does not focus the page');
 
     await page.goto('/');
+    // Wait for the landing page itself: while the route is still loading, App renders a
+    // placeholder <main>, and the target of the link must be the real one.
+    await expect(page.locator('main#main-content h1').first()).toBeVisible();
     const skip = page.locator('a.skip-to-content');
 
     await skip.focus();
