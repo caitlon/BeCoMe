@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { screen, within } from '@testing-library/react';
 import { render, framerMotionMock } from '@tests/utils';
 import CaseStudy from '@/pages/CaseStudy';
+import i18n from '@/i18n';
 
 const { mockParams } = vi.hoisted(() => ({
   mockParams: { value: { id: 'budget' } },
@@ -182,6 +183,52 @@ describe('CaseStudy - scrollTo', () => {
 
     expect(scrollToSpy).toHaveBeenCalledWith(0, 0);
     scrollToSpy.mockRestore();
+  });
+});
+
+describe('CaseStudy - document title', () => {
+  afterEach(() => {
+    mockParams.value = { id: 'budget' };
+    document.title = '';
+  });
+
+  it('names the study in the tab title', () => {
+    mockParams.value = { id: 'budget' };
+    render(<CaseStudy />);
+
+    expect(document.title).toBe('Case Study: COVID-19 Budget Support - BeCoMe');
+  });
+
+  it('gives each study its own tab title', () => {
+    mockParams.value = { id: 'floods' };
+    render(<CaseStudy />);
+    const floodsTitle = document.title;
+
+    mockParams.value = { id: 'pendlers' };
+    render(<CaseStudy />);
+
+    expect(document.title).not.toBe(floodsTitle);
+  });
+
+  it('uses the Czech study title in the Czech interface', async () => {
+    await i18n.changeLanguage('cs');
+    try {
+      mockParams.value = { id: 'budget' };
+      const { unmount } = render(<CaseStudy />);
+
+      expect(document.title).toBe('Případová studie: Podpora rozpočtu COVID-19 - BeCoMe');
+
+      unmount();
+    } finally {
+      await i18n.changeLanguage('en');
+    }
+  });
+
+  it('keeps the generic title for an unknown id', () => {
+    mockParams.value = { id: 'nonexistent' };
+    render(<CaseStudy />);
+
+    expect(document.title).toBe('Case Study - BeCoMe');
   });
 });
 

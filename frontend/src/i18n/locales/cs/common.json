@@ -125,6 +125,7 @@
     "profile": "Profil",
     "onboarding": "Začínáme",
     "caseStudy": "Případová studie",
+    "caseStudyDetail": "Případová studie: {{name}}",
     "documentation": "Dokumentace",
     "faq": "Časté dotazy",
     "caseStudies": "Případové studie",
