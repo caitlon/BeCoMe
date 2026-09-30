@@ -295,7 +295,7 @@ Environment variables (a `.env` file works too):
 | `DEBUG` | `false` | Debug mode; must stay off on a deployed service (startup fails otherwise) |
 | `API_VERSION` | `1.0.0b1` | API version (auto-read from pyproject.toml) |
 | `CORS_ORIGINS` | `http://localhost:3000,http://localhost:8080` | Allowed CORS origins |
-| `REDIS_URL` | *required when deployed* | Redis for rate limiting, token revocation, auth throttles, and the local assistant's hourly counter |
+| `REDIS_URL` | *required when deployed* | Redis for rate limiting, token revocation, and auth throttles. On a developer machine the local assistant's hourly counter uses it too when it is set |
 | `CLOUDFLARE_ORIGIN_SECRET` | *required when deployed* | Shared secret proving the request came through Cloudflare; every deployed environment sits behind it, so each needs its own value paired with a Transform Rule for that environment's API host |
 | `TURNSTILE_ENABLED` | `false` | Bot check on the four open auth endpoints. A deployed service starts with it off, and records `turnstile_disabled` at ERROR: it is the way out of a Cloudflare siteverify outage, since the check is fail-closed |
 | `TURNSTILE_SECRET_KEY` | *required when the check is on* | Cloudflare Turnstile secret, paired with the widget whose sitekey the frontend build carries |
@@ -312,7 +312,7 @@ Environment variables (a `.env` file works too):
 | `SENTRY_DSN` | *optional* | Sentry DSN for backend error tracking (disabled when unset) |
 | `BETTERSTACK_SOURCE_TOKEN` | *optional* | Better Stack log source token (ships `api.*` logs when set together with the host below) |
 | `BETTERSTACK_INGESTING_HOST` | *optional* | Better Stack ingesting host for log shipping (per-environment source) |
-| `ASSISTANT_ENABLED` | `false` | Registers the local-only assistant routes. Startup fails when it is `true` on a deployed profile or on Railway. The other `ASSISTANT_*` variables are listed in `env/.env.example` and explained in the [assistant README](https://github.com/caitlon/BeCoMe/blob/prod/api/assistant/README.md) |
+| `ASSISTANT_ENABLED` | `false` | Registers the local-only assistant routes. Startup fails when it is `true` on a deployed profile or on Railway. The other `ASSISTANT_*` variables are listed and commented in `env/.env.example`. The [assistant README](https://github.com/caitlon/BeCoMe/blob/prod/api/assistant/README.md) covers setup and limits |
 
 Profile photos live in a private Railway Storage Bucket (S3-compatible), served through the
 `GET /api/v1/users/{id}/photo` proxy. When the bucket variables are absent, photo upload is

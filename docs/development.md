@@ -63,8 +63,8 @@ pip install -e ".[dev,viz,notebook]"
 | `assistant` | langchain, langgraph, langsmith, openai, langchain-postgres, psycopg, pypdf, rank-bm25 | The local-only assistant (`ASSISTANT_ENABLED=true`), see [the assistant README](https://github.com/caitlon/BeCoMe/blob/prod/api/assistant/README.md) |
 
 The API test directories, `tests/unit/api/` and `tests/integration/api/`, import the assistant's
-packages at module level. Running them needs `uv sync --extra dev --extra api --extra assistant`,
-which is also what CI installs.
+packages at module level. Running them needs `uv sync --extra dev --extra api --extra assistant`.
+CI's test job installs the same three extras and adds `docs`.
 
 ## Configuration
 

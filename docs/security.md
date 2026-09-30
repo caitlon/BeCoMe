@@ -399,8 +399,9 @@ own limit. On top of that, routes carry tighter limits by risk:
 Only those routes carry a decorator. Everything else is bounded by the two global ceilings
 alone, which is the point of having them. The hourly assistant cap is the only row of this table
 applied through a dependency. The `enforce_message_limit` dependency applies it before the
-per-address limit runs, and `api/assistant/rate_limit.py` keeps the counter in Redis when
-`REDIS_URL` is set and in memory otherwise.
+`20/minute` per-IP limit runs, so a request that limit refuses has already spent one hourly
+message. `api/assistant/rate_limit.py` keeps the counter in Redis when `REDIS_URL` is set and in
+memory otherwise.
 
 The limiter keys on the real client IP, and the rule is not hop-based. `get_client_ip`
 (`api/utils/client_ip.py`) reads `CF-Connecting-IP` only when the request carries the
