@@ -8,7 +8,7 @@ Software that helps a panel of experts turn genuine disagreement into one defens
 ![TypeScript](https://img.shields.io/badge/typescript-6.0+-blue.svg)
 ![FastAPI](https://img.shields.io/badge/fastapi-0.141+-green.svg)
 ![React](https://img.shields.io/badge/react-19+-blue.svg)
-![Tests](https://img.shields.io/badge/tests-2813%20passed-brightgreen)
+![Tests](https://img.shields.io/badge/tests-4294%20passed-brightgreen)
 ![Coverage](https://img.shields.io/badge/coverage-99%25-brightgreen)
 
 ## Contents
