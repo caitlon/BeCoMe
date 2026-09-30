@@ -34,7 +34,7 @@
       "__Secure-refresh_token obnovuje relaci, aniž by se znovu ptal na heslo. Platí 7 dní a odesílá se pouze na přihlašovací cesty.",
       "__Host-csrf_token chrání formuláře před podvržením požadavku z cizího webu."
     ],
-    "outro": "Všechny tři jsou nezbytně nutné pro službu, kterou jste si výslovně vyžádali, a pravidla ePrivacy proto pro ně nevyžadují souhlas a žádná lišta se nezobrazuje. Formuláře pro přihlášení, registraci a obnovu hesla navíc načítají widget Cloudflare pro kontrolu robotů, který běží v rámu z challenges.cloudflare.com a může si podle podmínek Cloudflare ukládat vlastní data; jde o bezpečnostní opatření, nikoli o sledování. Volba jazyka a motivu se pamatuje v místním úložišti prohlížeče pod klíči become-language a become-theme a do vašeho účtu se neukládá. S požadavkem se odesílá jen tam, kde na ní závisí výsledek: jazyk u potvrzovacího e-mailu a u vašeho ukázkového projektu, obojí u zprávy, kterou exportujete."
+    "outro": "Všechny tři jsou nezbytně nutné pro službu, kterou jste si výslovně vyžádali, a pravidla ePrivacy proto pro ně nevyžadují souhlas a žádná lišta se nezobrazuje. Formuláře pro přihlášení, registraci a obnovu hesla navíc načítají widget Cloudflare pro kontrolu robotů, který běží v rámu z challenges.cloudflare.com a může si podle podmínek Cloudflare ukládat vlastní data; jde o bezpečnostní opatření, nikoli o sledování. Volba jazyka a motivu se pamatuje v místním úložišti prohlížeče pod klíči become-language a become-theme a do vašeho účtu se neukládá. S požadavkem se odesílá jen tam, kde na ní závisí výsledek: jazyk u e-mailů, které vám posíláme, a u vašeho ukázkového projektu, obojí u zprávy, kterou exportujete."
   },
   "processors": {
     "heading": "Kdo další s údaji nakládá",
