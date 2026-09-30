@@ -8,7 +8,7 @@ import logging
 from functools import lru_cache
 
 from sqlalchemy import Engine, text
-from sqlalchemy.engine import make_url
+from sqlalchemy.engine import URL, make_url
 from sqlmodel import SQLModel, create_engine
 
 from api.config import LOOPBACK_HOSTS, Settings, get_settings
@@ -16,19 +16,42 @@ from api.config import LOOPBACK_HOSTS, Settings, get_settings
 logger = logging.getLogger("api.db.engine")
 
 
-def _is_local_database(database_url: str) -> bool:
-    """Check whether a database URL points at this machine.
+_LOOPBACK_ADDRESSES = frozenset({"127.0.0.1", "::1"})
 
-    A host given in the query string (``?host=...``, how libpq URLs name a Unix
-    socket directory) counts when the URL itself carries none, so a remote host
-    cannot slip through as a "socket".
+
+def _query_entries(url: URL, key: str) -> list[str] | None:
+    """Read a libpq list parameter from the URL query.
+
+    :param url: Parsed database URL.
+    :param key: Query parameter name, such as ``host`` or ``hostaddr``.
+    :return: Every comma-separated entry across all repeats, or None if the
+        parameter is absent.
+    """
+    value = url.query.get(key)
+    if value is None:
+        return None
+    values = (value,) if isinstance(value, str) else value
+    return [entry for item in values for entry in item.split(",")]
+
+
+def _is_local_database(database_url: str) -> bool:
+    """Check whether the driver will connect to this machine.
+
+    libpq lets ``host`` and ``hostaddr`` in the query string override the URL
+    host, so the query wins when it names one, and every entry must be local:
+    failing closed on any other keeps a remote host from passing as a socket.
 
     :param database_url: SQLAlchemy URL of the database.
-    :return: True for a loopback host or a Unix socket, False for anything else.
+    :return: True for loopback hosts and Unix sockets only, False for anything else.
     """
     url = make_url(database_url)
-    host = url.host or url.query.get("host") or ""
-    return isinstance(host, str) and (host in LOOPBACK_HOSTS or host.startswith("/"))
+    hostaddrs = _query_entries(url, "hostaddr")
+    if hostaddrs is not None and not all(addr in _LOOPBACK_ADDRESSES for addr in hostaddrs):
+        return False
+    hosts = _query_entries(url, "host")
+    if hosts is None:
+        hosts = [url.host or ""]
+    return all(host in LOOPBACK_HOSTS or host.startswith("/") for host in hosts)
 
 
 def _requires_tls(settings: Settings) -> bool:
@@ -41,6 +64,11 @@ def _requires_tls(settings: Settings) -> bool:
     laptop whose ``DATABASE_URL`` points at a deployed database keeps the
     encrypted connection while the docker-compose PostgreSQL, which has SSL off,
     still connects.
+
+    Two limits follow from judging by the URL alone: a deployed database reached
+    through a local port-forward or tunnel counts as local and gets ``prefer``,
+    and a URL with no host defers to libpq's own defaults (``PGHOST``), which
+    settings cannot see.
 
     :param settings: Application settings.
     :return: True when ``sslmode=require`` must be used, False for ``prefer``.
