@@ -397,10 +397,10 @@ own limit. On top of that, routes carry tighter limits by risk:
 | Assistant messages | `60/hour` per user | The same route, as a fixed one-hour window per account (`ASSISTANT_RATE_LIMIT_PER_HOUR`, `0` switches it off). A spent budget answers `429` |
 
 Only those routes carry a decorator. Everything else is bounded by the two global ceilings
-alone, which is the point of having them. The hourly assistant cap is the one limit that is not
-a decorator. The `enforce_message_limit` dependency applies it before the per-address limit runs,
-and `api/assistant/rate_limit.py` keeps the counter in Redis when `REDIS_URL` is set and in memory
-otherwise.
+alone, which is the point of having them. The hourly assistant cap is the only row of this table
+applied through a dependency. The `enforce_message_limit` dependency applies it before the
+per-address limit runs, and `api/assistant/rate_limit.py` keeps the counter in Redis when
+`REDIS_URL` is set and in memory otherwise.
 
 The limiter keys on the real client IP, and the rule is not hop-based. `get_client_ip`
 (`api/utils/client_ip.py`) reads `CF-Connecting-IP` only when the request carries the
@@ -503,8 +503,8 @@ The local assistant has a check of its own, separate from the nine invariants.
 `assistant_enabled` defaults to `false`, and `_validate_assistant_local_only` refuses to start
 when it is `true` on any deploy. The check also fires when `RAILWAY_ENVIRONMENT_NAME` is set, so
 a Railway process that carries `TESTING=1` and slips past `is_deploy` is still refused. The
-assistant router is registered only when the setting is on, so a deployed service answers 404
-for the whole `/api/v1/assistant` prefix.
+assistant router is registered only when the setting is on, so on a deployed service every request
+that reaches routing answers 404 for the whole `/api/v1/assistant` prefix.
 
 ## Network and edge
 
@@ -576,20 +576,21 @@ response body, raw email addresses, activation or reset tokens and the URLs carr
 and free-text user content such as a project description.
 
 Two specific traps are worth naming. First, `_digest()` in `api/auth/login_throttle.py`,
-`api/auth/email_throttle.py` and `api/assistant/rate_limit.py` is a **plain, unkeyed** SHA-256 of the identifier. It exists to
-key the store, not to reach a log. Writing it out would rebuild exactly the oracle the key
-in `hash_email` prevents, so records in those modules name the flow (`key_prefix`, `op`) and
-never the account. The address-scoped event belongs at the call site in
+`api/auth/email_throttle.py` and `api/assistant/rate_limit.py` is a **plain, unkeyed** SHA-256 of
+the identifier. It exists to key the store, not to reach a log. Writing it out would rebuild
+exactly the oracle the key in `hash_email` prevents, so no record in those modules names the
+account. The two in `api/auth/` name the flow (`key_prefix`, `op`), and the assistant's names only
+its event. The address-scoped event belongs at the call site in
 `api/routes/auth.py`, which has the keyed tag. Second, `api/logging_config.py` pins
 `sqlalchemy.engine` at WARNING, and that logger must stay above DEBUG on any deployed
 service: its DEBUG level prints bound query parameters, which on this schema means bcrypt
 hashes, addresses, names, and reset-token hashes shipped to the log drain in the clear. That
 pin matters because the dev deploy now runs at `LOG_LEVEL=DEBUG` against a real database.
 
-The login lockout and the email cap both fail open, and that is now alerted rather than silent. A Redis outage lifts
-the per-account login lockout and the per-address email cap while the request still
-succeeds, so each failure path logs `throttle_store_unavailable` naming the operation and
-the flow. Those records go out at **ERROR**, and that level is the alert. The app
+The login lockout and the email cap both fail open, and that is now alerted rather than silent.
+A Redis outage lifts the per-account login lockout and the per-address email cap while the
+request still succeeds, so each failure path logs `throttle_store_unavailable` naming the
+operation and the flow. Those records go out at **ERROR**, and that level is the alert. The app
 initializes Sentry without a `LoggingIntegration`, so the SDK's default `event_level` of
 ERROR is what turns a record into an issue, and an issue is the only thing that pages. At
 WARNING these records were a breadcrumb on some later event, which meant the brute-force
@@ -597,7 +598,8 @@ lockout could stay off for the length of an outage with nothing raised anywhere,
 request it happened during returns normally, so there is no other symptom to notice. The
 accepted risk is unchanged. What changed is that it now announces itself. The local-only
 assistant's hourly cap fails open the same way, and logs `assistant_throttle_unavailable` at
-ERROR. Its message contains `throttle store unavailable`, so the same rule catches it.
+ERROR. That record is for whoever reads the local log. The assistant cannot run on a deployed
+service, so the deployed alert rule below is not expected to fire for it.
 
 The level alone is not the whole alert, because the project's only other rule fires on
 *high priority* issues and Sentry does not necessarily rank a logged error that high. A
