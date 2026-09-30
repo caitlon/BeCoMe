@@ -33,6 +33,7 @@ The API runs at `http://localhost:8000`. Interactive documentation:
 
 ```text
 api/
+├── assistant/          # Local-only chat assistant (agent, RAG, model clients); see its README
 ├── auth/               # Authentication & authorization
 │   ├── jwt.py              # Token creation/validation (rotation family / sid)
 │   ├── password.py         # Password hashing (bcrypt)
@@ -61,6 +62,7 @@ api/
 │   ├── opinions.py         # /api/v1/projects/{id}/opinions
 │   ├── invitations.py      # /api/v1/invitations/*
 │   ├── calculate.py        # /api/v1/calculate
+│   ├── assistant.py        # /api/v1/assistant/* (local-only, registered when ASSISTANT_ENABLED)
 │   └── health.py           # /api/v1/health
 ├── schemas/            # Pydantic DTOs
 │   ├── auth.py             # Login, register, tokens
@@ -95,6 +97,12 @@ api/
 ```
 
 ## API endpoints
+
+The sections below cover the routes of a deployed service. The assistant's two routes,
+`GET /api/v1/assistant/config` and `POST /api/v1/assistant/chat`, are not listed here. They exist
+only when `ASSISTANT_ENABLED=true`, and a deployed profile refuses to start with that setting on,
+so a deployed service answers 404 for the whole `/api/v1/assistant` prefix. Their behavior is in
+the [assistant README](https://github.com/caitlon/BeCoMe/blob/prod/api/assistant/README.md).
 
 ### Authentication
 
@@ -303,6 +311,7 @@ Environment variables (a `.env` file works too):
 | `SENTRY_DSN` | *optional* | Sentry DSN for backend error tracking (disabled when unset) |
 | `BETTERSTACK_SOURCE_TOKEN` | *optional* | Better Stack log source token (ships `api.*` logs when set together with the host below) |
 | `BETTERSTACK_INGESTING_HOST` | *optional* | Better Stack ingesting host for log shipping (per-environment source) |
+| `ASSISTANT_ENABLED` | `false` | Registers the local-only assistant routes. Startup fails when it is `true` on a deployed profile or on Railway. The other `ASSISTANT_*` variables are listed in `env/.env.example` and explained in the [assistant README](https://github.com/caitlon/BeCoMe/blob/prod/api/assistant/README.md) |
 
 Profile photos live in a private Railway Storage Bucket (S3-compatible), served through the
 `GET /api/v1/users/{id}/photo` proxy. When the bucket variables are absent, photo upload is
@@ -356,7 +365,7 @@ The test suite includes:
 - End-to-end tests: full API workflows (`tests/e2e/`)
 
 ```bash
-# Run all API tests
+# Run all API tests (needs `uv sync --extra dev --extra api --extra assistant`)
 uv run pytest tests/unit/api/ tests/integration/api/ -v
 
 # Run with coverage
