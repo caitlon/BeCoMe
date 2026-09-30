@@ -1,15 +1,20 @@
 import { forwardRef, useImperativeHandle } from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { act, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { render } from '@tests/utils';
+import i18n from '@/i18n';
 import { ResendVerification } from '@/components/auth/ResendVerification';
 
 const mockResendVerification = vi.fn();
 vi.mock('@/lib/api', () => ({
   api: {
-    resendVerification: (email: string, password: string, turnstileToken?: string | null) =>
-      mockResendVerification(email, password, turnstileToken),
+    resendVerification: (
+      email: string,
+      password: string,
+      language: string,
+      turnstileToken?: string | null
+    ) => mockResendVerification(email, password, language, turnstileToken),
   },
 }));
 
@@ -67,15 +72,55 @@ describe('ResendVerification', () => {
     await user.click(getButton());
 
     await waitFor(() => {
-      // Third argument is the Turnstile token; the check is off in this suite (no
-      // VITE_TURNSTILE_SITE_KEY), so the widget never mints one and resendVerification
-      // is called with null exactly as it was before the bot check existed.
+      // Third argument is the interface language, fourth the Turnstile token; the
+      // check is off in this suite (no VITE_TURNSTILE_SITE_KEY), so the widget never
+      // mints one and resendVerification is called with null exactly as it was before
+      // the bot check existed.
       expect(mockResendVerification).toHaveBeenCalledWith(
         'user@example.com',
         'CorrectHorse123!',
+        'en',
         null
       );
     });
+  });
+
+  // The new link is written in the language the visitor is using. i18n.language can
+  // carry a region ("cs-CZ") or a language with no resources ("de-DE"), so the
+  // component clamps it before it reaches the API.
+  it.each([
+    ['cs', 'cs'],
+    ['cs-CZ', 'cs'],
+    ['en', 'en'],
+    ['de-DE', 'en'],
+  ])('sends the language for interface language %s as %s', async (interfaceLanguage, expected) => {
+    // GIVEN
+    const user = userEvent.setup();
+    mockResendVerification.mockResolvedValueOnce(undefined);
+    render(<ResendVerification email="user@example.com" password="CorrectHorse123!" />);
+    const button = getButton();
+
+    // WHEN
+    await act(async () => {
+      await i18n.changeLanguage(interfaceLanguage);
+    });
+    try {
+      await user.click(button);
+
+      // THEN
+      await waitFor(() => {
+        expect(mockResendVerification).toHaveBeenCalledWith(
+          'user@example.com',
+          'CorrectHorse123!',
+          expected,
+          null
+        );
+      });
+    } finally {
+      await act(async () => {
+        await i18n.changeLanguage('en');
+      });
+    }
   });
 
   it('shows a loading state while the request is in flight', async () => {
@@ -182,6 +227,7 @@ describe('ResendVerification', () => {
         expect(mockResendVerification).toHaveBeenCalledWith(
           'user@example.com',
           'CorrectHorse123!',
+          'en',
           'mock-turnstile-token'
         );
       });

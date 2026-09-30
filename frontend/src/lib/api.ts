@@ -17,6 +17,7 @@ import {
   ChangePasswordInput,
   ApiError,
 } from '@/types/api';
+import type { SupportedLanguage } from '@/i18n';
 import { logger } from '@/lib/logger';
 import {
   HttpError,
@@ -51,6 +52,20 @@ const TURNSTILE_HEADER = 'X-Turnstile-Token';
  */
 function turnstileHeaders(token?: string | null): Record<string, string> {
   return token ? { [TURNSTILE_HEADER]: token } : {};
+}
+
+/**
+ * Carries the interface language on the two calls that send an email. The API
+ * reads it as the standard Accept-Language header (api/dependencies.py) rather than
+ * a body field: the request models reject unknown fields, and the SPA and the API
+ * deploy separately, so a new field would fail with 422 against an API that has not
+ * redeployed yet, while an old API simply ignores the header.
+ */
+const LANGUAGE_HEADER = 'Accept-Language';
+
+/** The Accept-Language header for a call whose email follows the interface language. */
+function languageHeaders(language: SupportedLanguage): Record<string, string> {
+  return { [LANGUAGE_HEADER]: language };
 }
 
 /**
@@ -341,10 +356,14 @@ class ApiClient {
   // Auth
   // Registration no longer signs anyone in: it only queues an activation
   // email, so there is no user object to return.
-  async register(data: RegisterInput, turnstileToken?: string | null): Promise<void> {
+  async register(
+    data: RegisterInput,
+    language: SupportedLanguage,
+    turnstileToken?: string | null
+  ): Promise<void> {
     return this.request<void>('/auth/register', {
       method: 'POST',
-      headers: turnstileHeaders(turnstileToken),
+      headers: { ...languageHeaders(language), ...turnstileHeaders(turnstileToken) },
       body: JSON.stringify(data),
     });
   }
@@ -424,11 +443,12 @@ class ApiClient {
   async resendVerification(
     email: string,
     password: string,
+    language: SupportedLanguage,
     turnstileToken?: string | null
   ): Promise<void> {
     return this.request<void>('/auth/resend-verification', {
       method: 'POST',
-      headers: turnstileHeaders(turnstileToken),
+      headers: { ...languageHeaders(language), ...turnstileHeaders(turnstileToken) },
       body: JSON.stringify({ email, password }),
     });
   }

@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { SubmitButton, TurnstileField, TurnstileFieldHandle } from "@/components/forms";
+import { toSupportedLanguage } from "@/i18n";
 import { api } from "@/lib/api";
 import { isTurnstileRequired } from "@/lib/turnstile";
 
@@ -19,7 +20,7 @@ type ResendStatus = "idle" | "success" | "error";
  * account). See api.resendVerification, which requires that password too.
  */
 export function ResendVerification({ email, password }: ResendVerificationProps) {
-  const { t } = useTranslation("auth");
+  const { t, i18n } = useTranslation("auth");
   const [isLoading, setIsLoading] = useState(false);
   const [status, setStatus] = useState<ResendStatus>("idle");
 
@@ -30,7 +31,12 @@ export function ResendVerification({ email, password }: ResendVerificationProps)
   const handleResend = async () => {
     setIsLoading(true);
     try {
-      await api.resendVerification(email, password, turnstileToken);
+      await api.resendVerification(
+        email,
+        password,
+        toSupportedLanguage(i18n.language),
+        turnstileToken
+      );
       setStatus("success");
     } catch {
       setStatus("error");

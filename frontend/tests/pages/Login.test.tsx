@@ -70,8 +70,8 @@ vi.mock('@/components/forms', async (importOriginal) => {
 const mockResendVerification = vi.fn();
 vi.mock('@/lib/api', () => ({
   api: {
-    resendVerification: (email: string, password: string) =>
-      mockResendVerification(email, password),
+    resendVerification: (email: string, password: string, language: string) =>
+      mockResendVerification(email, password, language),
   },
 }));
 
@@ -333,7 +333,8 @@ describe('Login', () => {
       await waitFor(() => {
         expect(mockResendVerification).toHaveBeenCalledWith(
           'unverified@example.com',
-          'CorrectHorse123!'
+          'CorrectHorse123!',
+          'en'
         );
       });
     });
