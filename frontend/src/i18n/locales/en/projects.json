@@ -198,14 +198,14 @@
     "emailPlaceholder": "expert@example.com",
     "info": "The user must already have an account. They will see the invitation in their \"Invitations\" tab.",
     "cancel": "Cancel",
-    "invite": "Send Invitation",
-    "inviting": "Sending...",
+    "invite": "Invite",
+    "inviting": "Inviting...",
     "inviteAnother": "Invite Another",
     "done": "Done",
     "successTitle": "Invitation created",
     "successDescription": "The invitation is not sent by email. The expert will see it in their \"Invitations\" tab.",
     "errorTitle": "Invitation failed",
-    "errorMessage": "Failed to send invitation",
+    "errorMessage": "Failed to create the invitation",
     "validation": {
       "emailInvalid": "Invalid email address"
     }
