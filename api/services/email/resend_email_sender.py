@@ -11,7 +11,7 @@ import httpx
 from api.auth.logging import hash_email
 from api.services.email.base import EmailLanguage, EmailSender
 from api.services.email.exceptions import EmailSendError
-from api.services.email.verification_email import format_lifetime, render_verification_email
+from api.services.email.messages import format_lifetime, render_verification_email
 
 if TYPE_CHECKING:
     from api.config import Settings
