@@ -211,7 +211,7 @@ async def register(
     :param email_service: Email sender
     :param policy: Registration address policy (disposable domains, DNS)
     :param throttle: Per-address cap on the emails registration can trigger
-    :param language: Language of the activation email, from ``Accept-Language``
+    :param language: Language of the activation email or the notice, from ``Accept-Language``
     :return: A fixed acknowledgement message
     :raises DisposableEmailDomainError: If the domain is a known disposable provider
     :raises UnresolvableEmailDomainError: If the domain cannot receive mail
@@ -254,6 +254,7 @@ async def register(
                 to_email=data.email,
                 login_url=f"{frontend}/login",
                 reset_url=f"{frontend}/forgot-password",
+                language=language,
             ),
             "registration_notice_email_failed",
         )

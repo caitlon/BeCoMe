@@ -112,7 +112,7 @@ class TestForgotPassword:
                 raise EmailSendError("send failed")
 
             async def send_registration_attempt_notice(
-                self, *, to_email: str, login_url: str, reset_url: str
+                self, *, to_email: str, login_url: str, reset_url: str, language: str
             ) -> None:
                 """Raise to simulate a provider failure."""
                 raise EmailSendError("send failed")

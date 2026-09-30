@@ -14,6 +14,7 @@ from api.services.email.exceptions import EmailSendError
 from api.services.email.messages import (
     RenderedEmail,
     render_password_reset_email,
+    render_registration_notice_email,
     render_verification_email,
 )
 
@@ -138,33 +139,19 @@ class ResendEmailSender(EmailSender):
         await self._send_message("verification", "verification email", to_email, message)
 
     async def send_registration_attempt_notice(
-        self, *, to_email: str, login_url: str, reset_url: str
+        self, *, to_email: str, login_url: str, reset_url: str, language: EmailLanguage
     ) -> None:
         """Send a registration-attempt notice via Resend.
 
         :param to_email: Recipient email address (the existing account's address).
         :param login_url: Full frontend sign-in link.
         :param reset_url: Full frontend password-reset link.
+        :param language: Language the message is written in.
         :raises EmailSendError: If the API rejects the request or transport fails.
         """
-        payload: dict[str, object] = {
-            "from": f"{self._settings.email_from_name} <{self._settings.email_from}>",
-            "to": [to_email],
-            "subject": "You already have a BeCoMe account",
-            "html": self._build_registration_attempt_html(login_url=login_url, reset_url=reset_url),
-        }
-        headers = {"Authorization": f"Bearer {self._settings.email_api_key}"}
-        email_hash = hash_email(to_email)
-        _log_send_started("registration_notice", email_hash, self._settings.email_api_url)
-        start = perf_counter()
-        try:
-            response = await self._post(payload, headers)
-            response.raise_for_status()
-        except httpx.HTTPError as exc:
-            _log_send_result("registration_notice", email_hash, start=start, exc=exc)
-            raise EmailSendError(f"Failed to send registration attempt notice: {exc}") from exc
-        _log_send_result(
-            "registration_notice", email_hash, start=start, status_code=response.status_code
+        message = render_registration_notice_email(login_url, reset_url, language)
+        await self._send_message(
+            "registration_notice", "registration attempt notice", to_email, message
         )
 
     async def _send_message(
@@ -196,22 +183,6 @@ class ResendEmailSender(EmailSender):
             _log_send_result(kind, email_hash, start=start, exc=exc)
             raise EmailSendError(f"Failed to send {label}: {exc}") from exc
         _log_send_result(kind, email_hash, start=start, status_code=response.status_code)
-
-    def _build_registration_attempt_html(self, *, login_url: str, reset_url: str) -> str:
-        """Render the registration-attempt-notice HTML body.
-
-        :param login_url: Full frontend sign-in link.
-        :param reset_url: Full frontend password-reset link.
-        :return: HTML message body.
-        """
-        return (
-            "<p>Someone tried to sign up using this email address. "
-            "Your account is untouched.</p>"
-            f'<p><a href="{login_url}">Sign in</a>, or '
-            f'<a href="{reset_url}">reset your password</a> if you no longer '
-            "remember it.</p>"
-            "<p>You do not have to do anything unless you want to.</p>"
-        )
 
     async def _post(self, payload: dict[str, object], headers: dict[str, str]) -> httpx.Response:
         """POST the payload using the injected client or a fresh one.

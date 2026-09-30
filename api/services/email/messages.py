@@ -9,8 +9,8 @@ Every human-readable string is held here: a message is one table of :class:`Emai
 language, so a language is added by writing one more entry to each table, adding its value to
 ``EmailLanguage`` in ``api/services/email/base.py`` and to ``_SUPPORTED_EMAIL_LANGUAGES`` in
 ``api/dependencies.py``. Nothing in this module reads settings or touches the network, so
-tests and previews can call :func:`render_verification_email` and
-:func:`render_password_reset_email` directly.
+tests and previews can call :func:`render_verification_email`,
+:func:`render_password_reset_email` and :func:`render_registration_notice_email` directly.
 """
 
 from dataclasses import asdict, dataclass
@@ -188,6 +188,56 @@ PASSWORD_RESET_COPIES: dict[EmailLanguage, EmailCopy] = {
     "cs": _PASSWORD_RESET_CS,
 }
 
+_REGISTRATION_NOTICE_EN = EmailCopy(
+    lang="en",
+    subject="You already have a BeCoMe account",
+    preheader="Someone tried to sign up with this address. Your account has not changed.",
+    wordmark="BeCoMe",
+    heading="You already have an account",
+    body=(
+        "Someone tried to sign up for BeCoMe with this email address, which already has an "
+        "account. If it was you, sign in instead."
+    ),
+    button_label="Sign in",
+    fallback="If the button doesn't work, copy and paste this link into your browser:",
+    expiry="",
+    not_you="If it wasn't you, you don't have to do anything. Your account has not changed.",
+    footer=(
+        "You're receiving this email from BeCoMe at becomify.app because someone entered "
+        "this address in the sign-up form. It's an automatic message, so please don't reply."
+    ),
+    secondary_lead="Forgot your password?",
+    secondary_link="Reset it.",
+)
+
+_REGISTRATION_NOTICE_CS = EmailCopy(
+    lang="cs",
+    subject="BeCoMe: účet s touto adresou už existuje",
+    preheader="Někdo se pokusil zaregistrovat pod touto adresou. Váš účet zůstává beze změny.",
+    wordmark="BeCoMe",
+    heading="Účet už máte",
+    body=(
+        "Někdo se pokusil zaregistrovat do aplikace BeCoMe pod touto e-mailovou adresou, ke "
+        "které už účet existuje. Pokud jste to byli vy, stačí se přihlásit."
+    ),
+    button_label="Přihlásit se",
+    fallback="Pokud tlačítko nefunguje, zkopírujte tento odkaz do prohlížeče:",
+    expiry="",
+    not_you="Pokud jste to nebyli vy, nemusíte dělat nic. Váš účet zůstává beze změny.",
+    footer=(
+        "Tento e-mail vám posílá aplikace BeCoMe (becomify.app), protože někdo zadal tuto "
+        "adresu do registračního formuláře. Jde o automatickou zprávu, na kterou prosím "
+        "neodpovídejte."
+    ),
+    secondary_lead="Zapomněli jste heslo?",
+    secondary_link="Obnovte si ho.",
+)
+
+REGISTRATION_NOTICE_COPIES: dict[EmailLanguage, EmailCopy] = {
+    "en": _REGISTRATION_NOTICE_EN,
+    "cs": _REGISTRATION_NOTICE_CS,
+}
+
 # One wording for every email. English has no separate form for 2 to 4, so the second and
 # third entries repeat.
 _LIFETIME_UNITS: dict[EmailLanguage, LifetimeUnits] = {
@@ -347,4 +397,19 @@ def render_password_reset_email(
     """
     return _render(
         PASSWORD_RESET_COPIES[language], reset_url, language, expiry_minutes=expiry_minutes
+    )
+
+
+def render_registration_notice_email(
+    login_url: str, reset_url: str, language: EmailLanguage
+) -> RenderedEmail:
+    """Render the notice sent when someone signs up with an address that has an account.
+
+    :param login_url: Full frontend sign-in link, which the button opens.
+    :param reset_url: Full frontend password-reset link, offered under the button.
+    :param language: Language the message is written in.
+    :return: Subject, HTML document and plain-text alternative.
+    """
+    return _render(
+        REGISTRATION_NOTICE_COPIES[language], login_url, language, secondary_url=reset_url
     )
