@@ -1456,6 +1456,18 @@ class TestUnitsThatHoldDigits:
         """
         assert find_ungrounded_numbers("It covers 12.5 m2", ["nothing"]) == ["12.5"]
 
+    @pytest.mark.parametrize(
+        "text",
+        ["results.COVID-19.csv", "data.COVID-19 cases", "docs.GPT-4", "done.ISO-8601"],
+    )
+    def test_a_name_after_a_dot_is_a_name(self, text: str):
+        """
+        GIVEN a capitalised name with a hyphenated number, written right after a dot
+        WHEN the grounding has nothing
+        THEN nothing is flagged, as for the same name after a space
+        """
+        assert find_ungrounded_numbers(f"See {text} now", ["nothing"]) == []
+
     def test_a_word_after_a_dot_keeps_its_glued_digits_out_of_the_check(self):
         """
         GIVEN x.y6_1,3, an identifier after a dot whose digits a comma continues

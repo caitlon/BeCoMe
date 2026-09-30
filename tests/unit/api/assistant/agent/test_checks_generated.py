@@ -34,8 +34,7 @@ _ALPHABET = (
     + list("1. ")
 )
 
-# The one shape that reads two ways and is read one way on purpose: a dot-grouped number
-# with a decimal comma (1.422,7) is one number, not a list of 1.422 and 7.
+# The ways a formatted number is written.
 _FORMATS = (
     "dot",
     "comma",
@@ -50,6 +49,8 @@ _FORMATS = (
     "minus",
 )
 
+# The one shape that reads two ways and is read one way on purpose: a dot-grouped number
+# with a decimal comma (1.422,7) is one number, not a list of 1.422 and 7.
 _DOTTED = re.compile(r"[1-9]\d{0,2}(?:\.\d{3})+,\d")
 
 
