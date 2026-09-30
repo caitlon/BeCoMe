@@ -1447,7 +1447,7 @@ class TestAssistantSettings:
         settings = Settings(
             secret_key="test-secret-key",
             assistant_langsmith_enabled=True,
-            assistant_langsmith_api_key="lsv2_test",
+            assistant_langsmith_api_key="lsv2_test",  # pragma: allowlist secret
         )
 
         # THEN
