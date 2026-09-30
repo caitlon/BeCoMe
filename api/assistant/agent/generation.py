@@ -115,15 +115,19 @@ class DirectGenerator:
 def _tool_failed(exc: Exception, request: ToolCallRequest) -> str:
     """Turn an exception nobody handled inside a tool into the tools' unavailable reply.
 
-    The record carries the tool and the exception's class name only: never the message,
-    which can name a host or a path, and never a traceback.
+    The tools catch the outages themselves, so what arrives here is a bug, and it is
+    logged at ERROR so error tracking sees it whatever the mode. The record carries the
+    tool and the exception's class name only: never the message, which can name a host
+    or a path, and never a traceback. The tool name comes from the model's call, so it
+    is written only when it is one of the assistant's tools, and as ``unknown`` otherwise.
 
     :param exc: What the tool raised.
     :param request: The call that failed.
     :return: The ``unavailable:`` line, which the model reads as the tool's reply.
     """
-    name = request.tool_call["name"]
-    logger.warning(
+    called = request.tool_call["name"]
+    name = called if called in _TOOL_NAMES else "unknown"
+    logger.error(
         "assistant tool %s failed",
         name,
         extra={"event": "assistant_tool_failed", "tool": name, "reason": type(exc).__name__},
