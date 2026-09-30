@@ -20,7 +20,8 @@ from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 #: (``openai``), an HTTP client failure of the same kind (``httpx``), and a database
 #: that refuses or drops the connection (SQLAlchemy ``OperationalError``), or whose
 #: connection is unusable (``InterfaceError``) or cannot be had from the pool in time
-#: (the pool's ``TimeoutError``). ``DBAPIError`` as a whole is left out on purpose: it
+#: (the pool's ``TimeoutError``), and the builtin ``ConnectionError``, which some database
+#: drivers raise bare for a refused connection. ``DBAPIError`` as a whole is left out on purpose: it
 #: also holds data errors such as ``IntegrityError``, which are bugs, not outages.
 UNAVAILABLE_ERRORS: tuple[type[Exception], ...] = (
     openai.APIConnectionError,
@@ -30,4 +31,5 @@ UNAVAILABLE_ERRORS: tuple[type[Exception], ...] = (
     OperationalError,
     InterfaceError,
     PoolTimeoutError,
+    ConnectionError,
 )
