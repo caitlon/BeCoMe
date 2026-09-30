@@ -14,7 +14,7 @@ from api.assistant.agent.generation import (
     user_message,
 )
 from api.assistant.agent.prompt import SYSTEM_PROMPT
-from api.assistant.agent.tools import _UNAVAILABLE
+from api.assistant.agent.tools import UNAVAILABLE_REPLY
 from api.assistant.client import UserApiClient
 from api.assistant.rag.retrieval import DocsRetriever, RetrievedChunk
 from tests.shared.assistant_fakes import ScriptedToolCallingModel
@@ -276,8 +276,8 @@ class TestAgentGenerator:
             )
 
         assert (text, tools) == ("I could not look it up.", [])
-        assert model.seen[1][-1].content == _UNAVAILABLE
-        assert ctx.tool_outputs == [_UNAVAILABLE]
+        assert model.seen[1][-1].content == UNAVAILABLE_REPLY
+        assert ctx.tool_outputs == [UNAVAILABLE_REPLY]
         (record,) = records
         assert record.levelno == logging.WARNING
         assert record.event == "assistant_tool_failed"

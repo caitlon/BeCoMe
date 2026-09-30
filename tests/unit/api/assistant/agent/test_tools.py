@@ -271,7 +271,7 @@ class TestSearchDocs:
 
         result = await search_docs.ainvoke({"query": "x", "runtime": _runtime(ctx)})
 
-        assert result == tools._UNAVAILABLE
+        assert result == tools.UNAVAILABLE_REPLY
         assert "secret-host" not in result
         assert "upstream said no" not in result
 
@@ -343,7 +343,7 @@ class TestListMyProjects:
 
         result = await list_my_projects.ainvoke({"runtime": _runtime(ctx)})
 
-        assert result == tools._UNAVAILABLE
+        assert result == tools.UNAVAILABLE_REPLY
         assert ctx.tool_outputs == [result]
 
     async def test_a_hostile_project_name_cannot_close_the_block(self):
@@ -399,7 +399,7 @@ class TestProjectToolErrors:
 
         result = await tool.ainvoke({"project_id": PROJECT_ID, "runtime": _runtime(ctx)})
 
-        assert result == tools._UNAVAILABLE
+        assert result == tools.UNAVAILABLE_REPLY
         assert "500" not in result
         assert ctx.tool_outputs == [result]
 
@@ -489,7 +489,7 @@ class TestFailuresRaisedThroughTheApplication:
         with captured_log_records("api.assistant.agent.tools") as records:
             result = await tool.ainvoke({**self._arguments(tool), "runtime": _runtime(ctx)})
 
-        assert result == tools._UNAVAILABLE
+        assert result == tools.UNAVAILABLE_REPLY
         assert "secret-host" not in result
         assert ctx.tool_outputs == [result]
         assert [(r.event, r.tool, r.reason) for r in records] == [

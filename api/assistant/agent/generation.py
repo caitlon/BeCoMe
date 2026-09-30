@@ -32,7 +32,7 @@ from langchain_core.messages import (
 
 from api.assistant.agent.context import AssistantContext
 from api.assistant.agent.prompt import SYSTEM_PROMPT, render_context_block
-from api.assistant.agent.tools import _UNAVAILABLE, ASSISTANT_TOOLS
+from api.assistant.agent.tools import ASSISTANT_TOOLS, UNAVAILABLE_REPLY
 from api.assistant.rag.models import strip_think_block
 
 logger = logging.getLogger(__name__)
@@ -129,8 +129,8 @@ def _tool_failed(exc: Exception, request: ToolCallRequest) -> str:
         extra={"event": "assistant_tool_failed", "tool": name, "reason": type(exc).__name__},
     )
     ctx = cast(AssistantContext, request.runtime.context)
-    ctx.tool_outputs.append(_UNAVAILABLE)
-    return _UNAVAILABLE
+    ctx.tool_outputs.append(UNAVAILABLE_REPLY)
+    return UNAVAILABLE_REPLY
 
 
 def _tools_that_ran(produced: Sequence[BaseMessage]) -> list[str]:
