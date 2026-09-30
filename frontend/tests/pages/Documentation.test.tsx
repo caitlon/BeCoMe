@@ -105,4 +105,35 @@ describe('Documentation', () => {
       }
     });
   });
+
+  describe('result wording', () => {
+    afterEach(async () => {
+      await i18n.changeLanguage('en');
+    });
+
+    it.each([
+      {
+        lang: 'en',
+        texts: [
+          'The optimal aggregation of all expert opinions. It lies midway between the arithmetic mean (Γ) and the median (Ω), so it uses every opinion without letting an extreme one dominate.',
+          'If max error is high relative to the scale, the mean and the median landed far apart. That happens when the opinions lean to one side or a few of them sit far from the rest.',
+        ],
+      },
+      {
+        lang: 'cs',
+        texts: [
+          'Optimální agregace všech expertních názorů. Leží uprostřed mezi aritmetickým průměrem (Γ) a mediánem (Ω), takže využívá každý názor a žádný extrémní názor nepřevládne.',
+          'Pokud je maximální chyba vzhledem ke škále vysoká, průměr a medián leží daleko od sebe. To se stává, když jsou názory vychýlené k jedné straně nebo když se několik z nich výrazně liší od ostatních.',
+        ],
+      },
+    ])('describes the result without claiming consensus in $lang', async ({ lang, texts }) => {
+      await i18n.changeLanguage(lang);
+
+      render(<Documentation />);
+
+      for (const text of texts) {
+        expect(screen.getByText(text)).toBeInTheDocument();
+      }
+    });
+  });
 });

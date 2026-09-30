@@ -59,7 +59,7 @@
     "intro": "Poté, co experti odešlou své názory, BeCoMe vypočítá optimální skupinové rozhodnutí.",
     "bestCompromise": {
       "title": "Nejlepší kompromis (ΓΩMean)",
-      "description": "Optimální agregace všech expertních názorů. Kombinuje aritmetický průměr (Γ) a medián (Ω) pro nalezení hodnoty, která nejlépe reprezentuje skupinový konsenzus.",
+      "description": "Optimální agregace všech expertních názorů. Leží uprostřed mezi aritmetickým průměrem (Γ) a mediánem (Ω), takže využívá každý názor a žádný extrémní názor nepřevládne.",
       "centroid": "Centroid je \"těžiště\" trojúhelníkového čísla - jediná hodnota reprezentující celkový odhad."
     },
     "arithmeticMean": {
@@ -73,7 +73,7 @@
     "maxError": {
       "title": "Maximální chyba (Δmax)",
       "description": "Polovina vzdálenosti mezi aritmetickým průměrem a mediánem, což je zároveň vzdálenost kompromisu od každého z nich. Nízká hodnota sama o sobě neznamená, že se experti shodli, protože ji může dát i panel rozdělený do dvou táborů. Podívejte se i na graf jednotlivých názorů.",
-      "interpretation": "Pokud je maximální chyba vysoká vzhledem ke škále, naznačuje to významnou neshodu mezi experty."
+      "interpretation": "Pokud je maximální chyba vzhledem ke škále vysoká, průměr a medián leží daleko od sebe. To se stává, když jsou názory vychýlené k jedné straně nebo když se několik z nich výrazně liší od ostatních."
     }
   },
   "visualization": {
