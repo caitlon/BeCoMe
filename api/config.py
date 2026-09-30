@@ -242,8 +242,8 @@ class Settings(BaseSettings):
     assistant_llm_base_url: str = "http://127.0.0.1:8081/v1"
     assistant_llm_model: str = "Qwen/Qwen3-4B-Instruct-2507"
     # The model that writes the chat answers, on its own llama-server. The token cap bounds
-    # one reply. The retrieval k is for the chat endpoint, which comes in a later change;
-    # nothing reads it yet (the retrieval evaluation keeps its own k, RetrievalConfig.k).
+    # one reply. The retrieval k is how many passages the chat endpoint's search returns (the
+    # retrieval evaluation keeps its own k, RetrievalConfig.k).
     assistant_answer_llm_base_url: str = "http://127.0.0.1:8084/v1"
     assistant_answer_llm_model: str = "Qwen/Qwen3.5-9B"
     assistant_answer_max_tokens: int = Field(default=800, gt=0)
@@ -261,11 +261,12 @@ class Settings(BaseSettings):
     # The most tool calls one turn may make in agent and hybrid mode. It must be above
     # zero: an agent that can call nothing, or that always falls back, is a misconfiguration.
     assistant_max_tool_calls: int = Field(default=4, gt=0)
-    # Limits the chat service applies. The request schema (api/schemas/assistant.py) holds
-    # the hard ceilings, 20 history entries (10 exchanges) and 4000 characters per message,
-    # and rejects anything above them before the service runs, so these can only lower
-    # them. The numbers are repeated here because this module cannot import the schema
-    # without loading the assistant package in a deployed process; a test keeps them equal.
+    # Limits the chat service and the chat route apply. The request schema
+    # (api/schemas/assistant.py) holds the hard ceilings, 20 history entries (10 exchanges)
+    # and 4000 characters per message, and rejects anything above them before the service
+    # runs, so these can only lower them. The numbers are repeated here because this module
+    # cannot import the schema without loading the assistant package in a deployed process;
+    # a test keeps them equal.
     assistant_max_history_turns: int = Field(default=10, gt=0, le=10)
     assistant_max_message_chars: int = Field(default=4000, gt=0, le=4000)
     # Chat messages per user per fixed hour; 0 turns the limit off.

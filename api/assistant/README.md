@@ -7,6 +7,9 @@ Runs only on a developer machine. `Settings` refuses to start any deployed profi
 
 - [Prerequisites](#prerequisites)
 - [Start](#start)
+- [The chat endpoint](#the-chat-endpoint)
+    - [Modes](#modes)
+    - [Limits](#limits)
 - [Private corpus layer](#private-corpus-layer)
 - [Chunk captions](#chunk-captions)
     - [Refreshing captions after a corpus or chunker change](#refreshing-captions-after-a-corpus-or-chunker-change)
@@ -32,8 +35,7 @@ Runs only on a developer machine. `Settings` refuses to start any deployed profi
    rerank (:8083) and the answer model that writes chat answers (:8084,
    `ASSISTANT_ANSWER_LLM_*`, Qwen3.5-9B Q8_0). The answer model adds about 10 GB of memory and
    downloads on first start. `ASSISTANT_ANSWER_MAX_TOKENS` caps one answer and
-   `ASSISTANT_RETRIEVAL_K` is for the chat endpoint, which comes in a later change; nothing
-   reads it yet.
+   `ASSISTANT_RETRIEVAL_K` is how many passages the chat endpoint's search returns.
 4. Index the documentation: `uv run python scripts/assistant/ingest.py --name
    docs_markdown_headers_500_o10_captions_bge_m3 --strategy markdown_headers --size 500
    --overlap-pct 10 --context captions` builds the collection the backend reads by default;
@@ -51,8 +53,64 @@ Runs only on a developer machine. `Settings` refuses to start any deployed profi
    non-English ones are translated, so reports for English questions are not directly
    comparable with reports made before this change.
 6. Backend: set `ASSISTANT_ENABLED=true` in `.env`, then run the API as usual. This turns on
-   `GET /api/v1/assistant/config` (`api/routes/assistant.py`), the only assistant route so far;
-   its `model` field reports the answer model.
+   `GET /api/v1/assistant/config` and `POST /api/v1/assistant/chat`
+   (`api/routes/assistant.py`); the `model` field of the first reports the answer model.
+
+## The chat endpoint
+
+`POST /api/v1/assistant/chat` answers one question, as the signed-in user. It takes the same
+session as every other route: the access cookie with the `X-CSRF-Token` header, or a bearer
+token. The body is an `AssistantChatRequest` (`api/schemas/assistant.py`): `message`, an
+optional `history` of earlier `user` and `assistant` turns, an optional `project_id` for the
+project the user is looking at, and `locale` (`en` or `cs`). The answer carries the text, the
+documentation `sources` it may cite as `[n]`, the `tools_used` and the grounding `checks`.
+
+The assistant reads project data through the application's own API, with the caller's own
+access token, so it sees exactly the projects the caller is a member of. What a project the
+caller cannot see does depends on the mode. In `workflow` and `hybrid` the project named by
+`project_id` is read ahead of the model, so the request is answered `404` exactly as
+`GET /api/v1/projects/{id}` answers it. In `agent` mode nothing is read ahead: the request is
+answered `200`, and a tool asked for such a project tells the model `not_found:` and nothing
+else, so the answer says it found nothing. A failing model server, embedding server, vector
+database or application answers `503` with a fixed message, including when the vector database
+is down or its URL is not set on the first request after a start, and a spent message budget
+`429`.
+
+### Modes
+
+`ASSISTANT_MODE` picks how a turn runs:
+
+- `workflow` (the default): the code searches the documentation and, when the request names a
+  project, reads the project, its result and its opinions, and the model answers once with no
+  tools.
+- `hybrid`: the code fetches the same, except the opinions, and the model may then call the
+  tools.
+- `agent`: nothing is fetched ahead; the model calls the tools, at most
+  `ASSISTANT_MAX_TOOL_CALLS` times.
+
+Two models take part. The answer model writes every answer; the small chat model
+(`ASSISTANT_LLM_*`) only translates search queries, so the retriever is given that one.
+
+### Limits
+
+- **Message limit.** `ASSISTANT_RATE_LIMIT_PER_HOUR` messages per user in a fixed hour
+  (default 60), counted in Redis when `REDIS_URL` is set and in memory otherwise. It is spent
+  first, before the API client, the retriever or any model is built, so a message it refuses
+  costs no model call; a message with an invalid body still spends one. Set it to `0` to switch
+  it off, for a measurement run that sends many questions from one account.
+- **Message length.** `ASSISTANT_MAX_MESSAGE_CHARS` (default 4000, which is also the ceiling of
+  the request schema) can only lower the length of a message. A longer one is answered `422`
+  like any other invalid request, before the API client is built, before the retriever is built
+  and before any model call; it still spends one message of the hourly budget. A body the schema
+  rejects (an unknown field, a message over 4000) is different: FastAPI keeps resolving the other
+  dependencies after a body error, so the retriever may be built first, and on a cold start with
+  the database down such a request answers `503`, not `422`.
+- **Per-address limit.** `LIMIT_ASSISTANT_CHAT` (`20/minute`, `api/middleware/rate_limit.py`)
+  applies to every address on top of that. It is checked inside the route, after the
+  dependencies, so a message it refuses has already spent one hourly message and had an API
+  client built and closed; it makes no model call.
+- **Turn timeout.** `ASSISTANT_TURN_TIMEOUT_SECONDS` (default 180) bounds one turn, fetching and
+  generation together; a turn that outlives it is answered `503`.
 
 ## Private corpus layer
 
