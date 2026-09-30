@@ -5,15 +5,17 @@ added by swapping the strings alone. The renderers are pure functions, so every 
 here calls them directly with no settings and no network.
 """
 
+import hashlib
 import html as html_lib
 import re
-from dataclasses import asdict, fields
+from dataclasses import asdict, fields, replace
 from html.parser import HTMLParser
 from importlib.resources import files
 from typing import get_args
 
 import pytest
 
+from api.services.email import messages
 from api.services.email.base import EmailLanguage
 from api.services.email.messages import (
     PASSWORD_RESET_COPIES,
@@ -109,8 +111,10 @@ _RESET_EXPIRY = {"en": "The link expires in {window}.", "cs": "Odkaz platí {win
 
 # Fields that land in the head of the document or are rebuilt before they are placed.
 _HEAD_FIELDS = {"lang", "subject", "preheader", "expiry"}
-# Placeholders the caller fills besides the copy.
-_CALLER_PLACEHOLDERS = {"action_url"}
+# Fields the renderer sets as paragraphs under the link, not through a placeholder each.
+_ROW_FIELDS = {"expiry", "not_you", "secondary_lead", "secondary_link"}
+# Placeholders the renderer fills besides the copy.
+_CALLER_PLACEHOLDERS = {"action_url", "rows"}
 
 
 def _render(url: str = _URL, minutes: int = _DAY, language: EmailLanguage = "en") -> RenderedEmail:
@@ -309,11 +313,12 @@ class TestEveryPartOfTheCopyReachesTheMessage:
         """
         GIVEN the layout file
         WHEN its placeholders are listed
-        THEN they are exactly the text fields of the copy plus the link, so a line
-            deleted from the layout, or a field the layout never uses, is caught
+        THEN they are exactly the text fields of the copy that the layout places itself, plus
+            the link and the rows, so a line deleted from the layout, or a field the layout
+            never uses, is caught
         """
         # GIVEN
-        expected = {f.name for f in fields(EmailCopy)} | _CALLER_PLACEHOLDERS
+        expected = {f.name for f in fields(EmailCopy)} - _ROW_FIELDS | _CALLER_PLACEHOLDERS
 
         # WHEN
         placeholders = set(re.findall(r"\$([a-z_]+)", _layout()))
@@ -331,7 +336,9 @@ class TestEveryPartOfTheCopyReachesTheMessage:
         # GIVEN
         copy = VERIFICATION_COPIES[language]
         text_fields = {
-            name: value for name, value in asdict(copy).items() if name not in _HEAD_FIELDS
+            name: value
+            for name, value in asdict(copy).items()
+            if value and name not in _HEAD_FIELDS
         }
 
         # WHEN
@@ -777,6 +784,113 @@ class TestPasswordResetEmailInCzech:
             assert word not in rendered.text.lower()
 
 
+# SHA-256 over subject, html and text of the verification and password-reset emails as first
+# shipped in the shared layout. Whatever builds the rows under the link must not move a byte
+# of them. A deliberate change to either email means new digests here.
+_GOLDEN = [
+    (
+        "verification",
+        "en",
+        1440,
+        "0477df76cfab3c0dafabbd46ff8faafb2f2847cc8f5f3dfeca52db690b865414",  # pragma: allowlist secret
+    ),
+    (
+        "verification",
+        "cs",
+        60,
+        "2dd61b9f96df7967b325d2cfbc9e753dc36a15283ce75108bc3f501afcca1206",  # pragma: allowlist secret
+    ),
+    (
+        "password_reset",
+        "en",
+        60,
+        "6281ad20697ac7c4c25a32f5a1a6c45e8efd87932232f897ed1abbafc917de56",  # pragma: allowlist secret
+    ),
+    (
+        "password_reset",
+        "cs",
+        30,
+        "9af44ef4c079eab8d147e8b0763539bc0a25412e4edf5cfc19440ad2ead4972b",  # pragma: allowlist secret
+    ),
+]
+
+
+@pytest.mark.parametrize(("kind", "language", "minutes", "digest"), _GOLDEN)
+def test_verification_and_reset_emails_keep_their_bytes(
+    kind: str, language: EmailLanguage, minutes: int, digest: str
+):
+    """
+    GIVEN the verification and the password-reset email, each in a language and a lifetime
+    WHEN they are rendered
+    THEN the digest of subject, html and text is the one recorded when the two shared the
+        layout, so the way rows are built cannot move a byte of either
+    """
+    # GIVEN
+    render = {
+        "verification": render_verification_email,
+        "password_reset": render_password_reset_email,
+    }[kind]
+
+    # WHEN
+    rendered = render(_URL, minutes, language)
+
+    # THEN
+    parts = "\0".join((rendered.subject, rendered.html, rendered.text))
+    assert hashlib.sha256(parts.encode()).hexdigest() == digest
+
+
+class TestSecondaryLinkRow:
+    """A copy with a second link gets one more row, between the fallback and the closing line."""
+
+    def test_the_row_carries_the_escaped_link_and_sits_before_the_expiry(self):
+        """
+        GIVEN a copy with a question and a second link, and a URL that needs escaping
+        WHEN it is rendered with a lifetime
+        THEN the html holds the row with the escaped link between the fallback link and the
+            expiry sentence, and the text part holds the link alone under the question
+        """
+        # GIVEN
+        copy = replace(
+            VERIFICATION_COPIES["en"], secondary_lead="Lost it?", secondary_link="Try again."
+        )
+
+        # WHEN
+        rendered = messages._render(copy, _URL, "en", expiry_minutes=60, secondary_url=_HOSTILE_URL)
+
+        # THEN
+        row = f'Lost it? <a href="{_HOSTILE_URL_ESCAPED}" class="fallback-link"'
+        assert _HOSTILE_URL not in rendered.html
+        assert rendered.html.index(f">{_URL}</a>") < rendered.html.index(row)
+        assert rendered.html.index(row) < rendered.html.index("The link expires in 1 hour.")
+        assert "Try again.</a></p>" in rendered.html
+        assert "Lost it? Try again:" in rendered.text
+        assert _HOSTILE_URL in rendered.text.splitlines()
+
+
+class TestACopyWithNoClosingLines:
+    """A message with neither an expiry nor a closing sentence leaves no gap behind."""
+
+    def test_neither_part_holds_an_empty_paragraph(self):
+        """
+        GIVEN a copy with an empty closing sentence, rendered with no lifetime
+        WHEN both parts are read
+        THEN the text part has no run of blank lines and the html has no empty paragraph
+            and no rule
+        """
+        # GIVEN
+        copy = replace(VERIFICATION_COPIES["en"], not_you="")
+
+        # WHEN
+        rendered = messages._render(copy, _URL, "en")
+
+        # THEN
+        assert "\n\n\n" not in rendered.text
+        assert "" not in rendered.text.split("\n\n")
+        assert rendered.text.split("\n\n")[-1] == copy.footer
+        assert not re.search(r"<p[^>]*>\s*</p>", rendered.html)
+        assert "border-top:" not in rendered.html
+
+
 class TestFormatLifetime:
     """The lifetime wording that every email shares."""
 
@@ -809,8 +923,7 @@ class TestFormatLifetime:
     def test_every_supported_language_has_unit_words(self, language: EmailLanguage):
         """
         GIVEN a language the email type supports
-        WHEN a lifetime is written in it and the verification and password-reset emails
-            are rendered in it
+        WHEN a lifetime is written in it and the two emails are rendered in it
         THEN all succeed and yield text, so a language missing from a table fails here
         """
         # WHEN

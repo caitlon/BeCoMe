@@ -11,7 +11,11 @@ import httpx
 from api.auth.logging import hash_email
 from api.services.email.base import EmailLanguage, EmailSender
 from api.services.email.exceptions import EmailSendError
-from api.services.email.messages import render_password_reset_email, render_verification_email
+from api.services.email.messages import (
+    RenderedEmail,
+    render_password_reset_email,
+    render_verification_email,
+)
 
 if TYPE_CHECKING:
     from api.config import Settings
@@ -114,26 +118,7 @@ class ResendEmailSender(EmailSender):
         message = render_password_reset_email(
             reset_url, self._settings.password_reset_token_ttl_minutes, language
         )
-        payload: dict[str, object] = {
-            "from": f"{self._settings.email_from_name} <{self._settings.email_from}>",
-            "to": [to_email],
-            "subject": message.subject,
-            "html": message.html,
-            "text": message.text,
-        }
-        headers = {"Authorization": f"Bearer {self._settings.email_api_key}"}
-        email_hash = hash_email(to_email)
-        _log_send_started("password_reset", email_hash, self._settings.email_api_url)
-        start = perf_counter()
-        try:
-            response = await self._post(payload, headers)
-            response.raise_for_status()
-        except httpx.HTTPError as exc:
-            _log_send_result("password_reset", email_hash, start=start, exc=exc)
-            raise EmailSendError(f"Failed to send password reset email: {exc}") from exc
-        _log_send_result(
-            "password_reset", email_hash, start=start, status_code=response.status_code
-        )
+        await self._send_message("password_reset", "password reset email", to_email, message)
 
     async def send_email_verification(
         self, *, to_email: str, verify_url: str, language: EmailLanguage
@@ -150,24 +135,7 @@ class ResendEmailSender(EmailSender):
             self._settings.email_verification_token_ttl_hours * _MINUTES_PER_HOUR,
             language,
         )
-        payload: dict[str, object] = {
-            "from": f"{self._settings.email_from_name} <{self._settings.email_from}>",
-            "to": [to_email],
-            "subject": message.subject,
-            "html": message.html,
-            "text": message.text,
-        }
-        headers = {"Authorization": f"Bearer {self._settings.email_api_key}"}
-        email_hash = hash_email(to_email)
-        _log_send_started("verification", email_hash, self._settings.email_api_url)
-        start = perf_counter()
-        try:
-            response = await self._post(payload, headers)
-            response.raise_for_status()
-        except httpx.HTTPError as exc:
-            _log_send_result("verification", email_hash, start=start, exc=exc)
-            raise EmailSendError(f"Failed to send verification email: {exc}") from exc
-        _log_send_result("verification", email_hash, start=start, status_code=response.status_code)
+        await self._send_message("verification", "verification email", to_email, message)
 
     async def send_registration_attempt_notice(
         self, *, to_email: str, login_url: str, reset_url: str
@@ -198,6 +166,36 @@ class ResendEmailSender(EmailSender):
         _log_send_result(
             "registration_notice", email_hash, start=start, status_code=response.status_code
         )
+
+    async def _send_message(
+        self, kind: str, label: str, to_email: str, message: RenderedEmail
+    ) -> None:
+        """Post one rendered message and record how the call ended.
+
+        :param kind: Which email it is, as the log records name it.
+        :param label: How an operator-facing error text names the email.
+        :param to_email: Recipient email address.
+        :param message: Subject, HTML and plain-text parts to send.
+        :raises EmailSendError: If the API rejects the request or transport fails.
+        """
+        payload: dict[str, object] = {
+            "from": f"{self._settings.email_from_name} <{self._settings.email_from}>",
+            "to": [to_email],
+            "subject": message.subject,
+            "html": message.html,
+            "text": message.text,
+        }
+        headers = {"Authorization": f"Bearer {self._settings.email_api_key}"}
+        email_hash = hash_email(to_email)
+        _log_send_started(kind, email_hash, self._settings.email_api_url)
+        start = perf_counter()
+        try:
+            response = await self._post(payload, headers)
+            response.raise_for_status()
+        except httpx.HTTPError as exc:
+            _log_send_result(kind, email_hash, start=start, exc=exc)
+            raise EmailSendError(f"Failed to send {label}: {exc}") from exc
+        _log_send_result(kind, email_hash, start=start, status_code=response.status_code)
 
     def _build_registration_attempt_html(self, *, login_url: str, reset_url: str) -> str:
         """Render the registration-attempt-notice HTML body.

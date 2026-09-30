@@ -1,12 +1,16 @@
 """Render transactional emails as an HTML document and a plain-text part.
 
-The markup lives in ``layout.html`` and carries no words, and every message shares it.
-Every human-readable string is held here: a message is one table of :class:`EmailCopy`
-per language, so a language is added by writing one more entry to each table, adding its
-value to ``EmailLanguage`` in ``api/services/email/base.py`` and to
-``_SUPPORTED_EMAIL_LANGUAGES`` in ``api/dependencies.py``. Nothing in this module reads
-settings or touches the network, so tests and previews can call
-:func:`render_verification_email` and :func:`render_password_reset_email` directly.
+The page markup lives in ``layout.html`` and carries no words, and every message shares it.
+The paragraphs under the links (the second link, the expiry and closing lines) are built in
+this module with their own font, colours and rule, so restyling the layout means changing
+``_NOTE_TYPE`` and ``_RULE`` here as well.
+
+Every human-readable string is held here: a message is one table of :class:`EmailCopy` per
+language, so a language is added by writing one more entry to each table, adding its value to
+``EmailLanguage`` in ``api/services/email/base.py`` and to ``_SUPPORTED_EMAIL_LANGUAGES`` in
+``api/dependencies.py``. Nothing in this module reads settings or touches the network, so
+tests and previews can call :func:`render_verification_email` and
+:func:`render_password_reset_email` directly.
 """
 
 from dataclasses import asdict, dataclass
@@ -45,8 +49,13 @@ class EmailCopy:
     :param fallback: Line above the raw link, for clients that do not show the button.
     :param expiry: Sentence about the link's lifetime, with a ``{window}`` slot that
         :func:`format_lifetime` fills, so a sentence is never half in another language.
+        Empty for a message whose link has no lifetime.
     :param not_you: Line for someone who did not ask for the email.
     :param footer: Closing line that says who sent the email and why.
+    :param secondary_lead: Question that introduces a second link under the button, or empty
+        when the message has none.
+    :param secondary_link: Text of that second link. Its full stop, if any, stays out of the
+        plain-text part.
     """
 
     lang: str
@@ -60,6 +69,8 @@ class EmailCopy:
     expiry: str
     not_you: str
     footer: str
+    secondary_lead: str = ""
+    secondary_link: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -213,34 +224,100 @@ def format_lifetime(minutes: int, language: EmailLanguage) -> str:
     return f"{count} {word}"
 
 
-def _render(
-    copy: EmailCopy, action_url: str, expiry_minutes: int, language: EmailLanguage
-) -> RenderedEmail:
-    """Fill the layout and the plain-text part with one copy and one link.
+_FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif"
+_NOTE_TYPE = f"font-family:{_FONT};font-size:14px;line-height:20px;color:#595959;"
+_RULE = "padding:20px 0 0 0;border-top:1px solid #E6E6E6;"
+# Copy fields that reach the layout through the paragraphs built here, not one placeholder each.
+_ROW_FIELDS = {"expiry", "not_you", "secondary_lead", "secondary_link"}
 
-    Every value placed into the HTML is escaped, the link included. The plain-text
-    part is not markup, so it carries the link as given.
+
+def _secondary_row(copy: EmailCopy, url: str) -> str:
+    """Build the paragraph with a second link, for a message that has one.
+
+    :param copy: Text of the message in the language.
+    :param url: Full link the second link opens.
+    :return: An escaped ``<p>`` element.
+    """
+    return (
+        f'<p class="muted" style="margin:0 0 28px 0;{_NOTE_TYPE}">'
+        f"{escape(copy.secondary_lead, quote=True)} "
+        f'<a href="{escape(url, quote=True)}" class="fallback-link" '
+        'style="color:#1A1A1A;text-decoration:underline;">'
+        f"{escape(copy.secondary_link, quote=True)}</a></p>"
+    )
+
+
+def _note_rows(notes: list[str]) -> list[str]:
+    """Build the closing paragraphs under the links, the first one under a rule.
+
+    The last paragraph carries no bottom margin, so the card keeps the same padding whether
+    a message has one closing paragraph or two.
+
+    :param notes: Sentences in the order they read.
+    :return: Escaped ``<p>`` elements.
+    """
+    rows = []
+    for index, note in enumerate(notes):
+        first, last = index == 0, index == len(notes) - 1
+        css_class = "muted rule" if first else "muted"
+        margin = "0" if last else "0 0 8px 0"
+        rule = _RULE if first else ""
+        rows.append(
+            f'<p class="{css_class}" style="margin:{margin};{rule}{_NOTE_TYPE}">'
+            f"{escape(note, quote=True)}</p>"
+        )
+    return rows
+
+
+def _render(
+    copy: EmailCopy,
+    action_url: str,
+    language: EmailLanguage,
+    *,
+    expiry_minutes: int | None = None,
+    secondary_url: str | None = None,
+) -> RenderedEmail:
+    """Fill the layout and the plain-text part with one copy and its links.
+
+    Every value placed into the HTML is escaped, the links included. The plain-text
+    part is not markup, so it carries the links as given. The paragraphs under the links are
+    built here, so a message without a second link or a lifetime leaves no empty row.
 
     :param copy: Text of the message in the language.
     :param action_url: Full frontend link the button opens.
-    :param expiry_minutes: Lifetime of the link in minutes.
     :param language: Language the message is written in.
+    :param expiry_minutes: Lifetime of the link in minutes, or ``None`` for a message
+        that has no expiry sentence.
+    :param secondary_url: Full link of the second link, or ``None`` for a message without one.
     :return: Subject, HTML document and plain-text alternative.
     """
-    expiry = copy.expiry.format(window=format_lifetime(expiry_minutes, language))
-    values = {**asdict(copy), "expiry": expiry, "action_url": action_url}
-    html = _LAYOUT.substitute({key: escape(value, quote=True) for key, value in values.items()})
-    text = "\n\n".join(
-        (
-            copy.wordmark,
-            copy.heading,
-            copy.body,
-            f"{copy.button_label}:\n{action_url}",
-            f"{expiry} {copy.not_you}",
-            copy.footer,
-        )
+    expiry = (
+        copy.expiry.format(window=format_lifetime(expiry_minutes, language))
+        if expiry_minutes is not None
+        else ""
     )
-    return RenderedEmail(subject=copy.subject, html=html, text=text)
+    notes = [note for note in (expiry, copy.not_you) if note]
+    rows = [] if secondary_url is None else [_secondary_row(copy, secondary_url)]
+    rows += _note_rows(notes)
+    html = _LAYOUT.substitute(
+        {
+            **{
+                name: escape(value, quote=True)
+                for name, value in asdict(copy).items()
+                if name not in _ROW_FIELDS
+            },
+            "action_url": escape(action_url, quote=True),
+            "rows": "\n".join(rows),
+        }
+    )
+    paragraphs = [copy.wordmark, copy.heading, copy.body, f"{copy.button_label}:\n{action_url}"]
+    if secondary_url is not None:
+        label = f"{copy.secondary_lead} {copy.secondary_link.removesuffix('.')}"
+        paragraphs.append(f"{label}:\n{secondary_url}")
+    if notes:
+        paragraphs.append(" ".join(notes))
+    paragraphs.append(copy.footer)
+    return RenderedEmail(subject=copy.subject, html=html, text="\n\n".join(paragraphs))
 
 
 def render_verification_email(
@@ -253,7 +330,9 @@ def render_verification_email(
     :param language: Language the message is written in.
     :return: Subject, HTML document and plain-text alternative.
     """
-    return _render(VERIFICATION_COPIES[language], verify_url, expiry_minutes, language)
+    return _render(
+        VERIFICATION_COPIES[language], verify_url, language, expiry_minutes=expiry_minutes
+    )
 
 
 def render_password_reset_email(
@@ -266,4 +345,6 @@ def render_password_reset_email(
     :param language: Language the message is written in.
     :return: Subject, HTML document and plain-text alternative.
     """
-    return _render(PASSWORD_RESET_COPIES[language], reset_url, expiry_minutes, language)
+    return _render(
+        PASSWORD_RESET_COPIES[language], reset_url, language, expiry_minutes=expiry_minutes
+    )
