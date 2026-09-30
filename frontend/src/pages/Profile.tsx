@@ -57,12 +57,12 @@ const Profile = () => {
         firstName: z
           .string()
           .min(1, tAuth("validation.firstNameRequired"))
-          .max(100)
+          .max(100, tAuth("validation.firstNameMaxLength"))
           .regex(NAME_REGEX, tAuth("validation.nameFormat")),
         // Optional on this form: the API accepts a user with no surname.
         lastName: z
           .string()
-          .max(100)
+          .max(100, tAuth("validation.lastNameMaxLength"))
           .regex(NAME_REGEX, tAuth("validation.nameFormat"))
           .or(z.literal("")),
       }),

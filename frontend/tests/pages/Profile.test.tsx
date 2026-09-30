@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { act, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { render, framerMotionMock } from '@tests/utils';
+import i18n from '@/i18n';
 import Profile from '@/pages/Profile';
 import { createUser } from '@tests/factories/user';
 
@@ -544,6 +545,39 @@ describe('Profile - Name Validation', () => {
     });
     expect(lastNameInput).toHaveAttribute('aria-invalid', 'false');
   });
+
+  // zod's own length text is English whatever the interface language, so a rule
+  // without a message of its own shows it in the Czech interface too.
+  it.each([
+    ['en', 'First Name', 'First name must be at most 100 characters'],
+    ['cs', 'First Name', 'Jméno může mít maximálně 100 znaků'],
+    ['en', 'Last Name', 'Last name must be at most 100 characters'],
+    ['cs', 'Last Name', 'Příjmení může mít maximálně 100 znaků'],
+  ])(
+    'shows the translated message in %s for the %s over the length limit',
+    async (language, label, expected) => {
+      const user = userEvent.setup();
+      render(<Profile />);
+      const input = screen.getByLabelText(label);
+      await act(async () => {
+        await i18n.changeLanguage(language);
+      });
+
+      try {
+        await user.clear(input);
+        await user.click(input);
+        await user.paste('a'.repeat(101));
+        await user.tab();
+
+        expect(await screen.findByText(expected)).toBeInTheDocument();
+        expect(screen.queryByText(/too big|expected string/i)).not.toBeInTheDocument();
+      } finally {
+        await act(async () => {
+          await i18n.changeLanguage('en');
+        });
+      }
+    }
+  );
 
   it('disables save button when name has validation errors', async () => {
     const user = userEvent.setup();
