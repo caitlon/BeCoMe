@@ -7,7 +7,8 @@
     "question": "Based on the submitted analyses of the Ministry of Industry and Trade and the Czech National Bank on the impact of the measures on the state budget of the Czech Republic, propose the total financial support in the range CZK 0-100 billion for entrepreneurs affected by the COVID-19 pandemic.",
     "context": "The COVID-19 pandemic created unprecedented economic challenges. Businesses across sectors faced closures and reduced revenue due to government-mandated restrictions. The government needed to balance fiscal responsibility with the urgent need to support affected entrepreneurs and maintain economic stability.",
     "methodology": "Each expert provided their opinion as a fuzzy triangular number with three values: best proposal (most likely value), lower limit (pessimistic estimate), and upper limit (optimistic estimate). The BeCoMe method aggregated these opinions to find the best compromise.",
-    "interpretation": "The best compromise suggests financial support of approximately 56.74 billion CZK, with a maximum estimation error of only ±0.76 billion CZK. Mean and median land on almost the same centroid, which keeps the error this small. That agreement is between the two aggregation methods themselves, not among the experts, whose individual proposals varied widely."
+    "interpretation": "The best compromise suggests financial support of approximately 48.03 billion CZK, with a maximum estimation error of ±2.20 billion CZK. The arithmetic mean (50.23) and the median (45.83) sit 4.4 billion apart, and the compromise lies halfway between them. The error describes the distance between these two aggregates, not agreement among the experts, whose individual proposals varied widely.",
+    "note": "This case study uses illustrative fictional data for demonstration purposes and is not the result of actual research."
   },
   "pendlers": {
     "title": "Cross-border Cooperation",
@@ -17,7 +18,7 @@
     "question": "I agree that cross-border travel should be allowed for those who regularly travel from one country to another to work.",
     "context": "Cross-border workers are essential for many regional economies, particularly in border areas between the Czech Republic, Germany, Austria, Poland, and Slovakia. Border closures during the pandemic disrupted the livelihoods of thousands of workers and created labor shortages in key sectors.",
     "methodology": "Experts expressed their opinions using a 5-point Likert scale: Strongly disagree (0), Rather disagree (25), Neutral (50), Rather agree (75), Strongly agree (100). The BeCoMe method converted these to fuzzy numbers and calculated the optimal group decision.",
-    "interpretation": "The best compromise of 41.48% corresponds to 'Neutral' on the Likert scale. Experts lean toward neither clear support nor clear opposition for allowing cross-border travel. The arithmetic mean and median land close together, with an error margin of just ±3.98%. That narrow margin confirms this Neutral reading is a stable summary of the panel.",
+    "interpretation": "The best compromise of 30.68% corresponds to 'Rather Disagree' on the Likert scale. The median sits at 25% and the arithmetic mean at 36.36%, so the compromise lies between them, with a maximum error of ±5.68%.",
     "note": "This case study uses illustrative fictional data for demonstration purposes and is not the result of actual research."
   },
   "floods": {
@@ -66,6 +67,6 @@
   },
   "listing": {
     "title": "Case Studies",
-    "subtitle": "Real-world applications of the BeCoMe methodology across different domains"
+    "subtitle": "One real case and two illustrative examples from the method's authors"
   }
 }
