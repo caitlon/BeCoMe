@@ -58,7 +58,7 @@
     },
     "whatInputFormats": {
       "question": "What input formats are supported?",
-      "answer": "Three formats: Crisp (single precise value), Fuzzy (triangular number with lower, peak, upper), and Likert scale (linguistic terms from 'Strongly disagree' to 'Strongly agree')."
+      "answer": "One format: a fuzzy triangular number. It has three values, Lower, Peak and Upper: the lowest value you would accept, the one you consider most likely, and the highest. If you are certain, enter the same value in all three fields. A Likert scale input is not available yet."
     }
   },
   "troubleshooting": {
