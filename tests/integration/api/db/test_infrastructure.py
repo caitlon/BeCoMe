@@ -333,9 +333,52 @@ class TestEngineHardening:
                 "require",
                 id="laptop-railway-tcp-proxy",
             ),
+            # The driver, not the URL host, decides where the connection goes: a host or
+            # hostaddr in the query string overrides it, and any non-local entry requires TLS.
+            pytest.param(
+                Environment.DEV,
+                False,
+                None,
+                "postgresql://u@localhost/db?host=db.example.com",
+                "require",
+                id="laptop-localhost-overridden-by-remote-query-host",
+            ),
+            pytest.param(
+                Environment.DEV,
+                False,
+                None,
+                "postgresql://u@/db?host=/tmp,db.example.com",
+                "require",
+                id="laptop-socket-and-remote-query-hosts",
+            ),
+            pytest.param(
+                Environment.DEV,
+                False,
+                None,
+                "postgresql://u@localhost/db?hostaddr=10.0.0.5",
+                "require",
+                id="laptop-localhost-with-remote-hostaddr",
+            ),
+            pytest.param(
+                Environment.DEV,
+                False,
+                None,
+                "postgresql://u@/db?host=/tmp",
+                "prefer",
+                id="laptop-socket-query-host",
+            ),
+            pytest.param(
+                Environment.DEV,
+                False,
+                None,
+                "postgresql://u@localhost/db?hostaddr=127.0.0.1",
+                "prefer",
+                id="laptop-localhost-with-loopback-hostaddr",
+            ),
             # A deployed service requires TLS whatever its URL says.
             pytest.param(Environment.PROD, False, None, _LOCALHOST, "require", id="prod-localhost"),
             pytest.param(Environment.PROD, False, None, _REMOTE, "require", id="prod"),
+            pytest.param(Environment.PROD, True, None, _LOCALHOST, "require", id="prod-testing"),
             pytest.param(Environment.TEST, False, None, _REMOTE, "require", id="deployed-test"),
             pytest.param(Environment.DEV, False, "dev", _LOCALHOST, "require", id="dev-on-railway"),
             # A test run only prefers it, unless it runs on Railway.

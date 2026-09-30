@@ -804,7 +804,9 @@ out of the file: they live in Railway variables.
 `api/db/engine.py` hardens the connection itself. It requires TLS on deployed databases
 (`sslmode=require`), tags each connection with an `application_name`, and repeats the
 per-session statement and idle-in-transaction timeouts client-side through libpq `options`,
-so a single runaway query cannot monopolize the database.
+so a single runaway query cannot monopolize the database. A laptop run outside tests,
+whose database is on a loopback host or a Unix socket, uses `sslmode=prefer` instead,
+because the local Docker database has no TLS.
 
 ### Network exposure
 
