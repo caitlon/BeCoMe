@@ -8,20 +8,55 @@ import logging
 from functools import lru_cache
 
 from sqlalchemy import Engine, text
+from sqlalchemy.engine import make_url
 from sqlmodel import SQLModel, create_engine
 
-from api.config import get_settings
+from api.config import LOOPBACK_HOSTS, Settings, get_settings
 
 logger = logging.getLogger("api.db.engine")
+
+
+def _is_local_database(database_url: str) -> bool:
+    """Check whether a database URL points at this machine.
+
+    A host given in the query string (``?host=...``, how libpq URLs name a Unix
+    socket directory) counts when the URL itself carries none, so a remote host
+    cannot slip through as a "socket".
+
+    :param database_url: SQLAlchemy URL of the database.
+    :return: True for a loopback host or a Unix socket, False for anything else.
+    """
+    url = make_url(database_url)
+    host = url.host or url.query.get("host") or ""
+    return isinstance(host, str) and (host in LOOPBACK_HOSTS or host.startswith("/"))
+
+
+def _requires_tls(settings: Settings) -> bool:
+    """Decide whether a PostgreSQL connection must use TLS.
+
+    A deployed service or any process on Railway always requires it, even with
+    ``TESTING`` set. A test run otherwise only prefers it: CI service containers
+    and the compose end-to-end stack reach a database without TLS under names
+    like ``db``. Any other process requires it unless the database is local, so a
+    laptop whose ``DATABASE_URL`` points at a deployed database keeps the
+    encrypted connection while the docker-compose PostgreSQL, which has SSL off,
+    still connects.
+
+    :param settings: Application settings.
+    :return: True when ``sslmode=require`` must be used, False for ``prefer``.
+    """
+    if settings.is_deploy or settings.railway_environment_name is not None:
+        return True
+    return not settings.testing and not _is_local_database(settings.database_url)
 
 
 def _create_engine() -> Engine:
     """Create database engine based on settings.
 
     SQLite uses check_same_thread=False for FastAPI compatibility. PostgreSQL
-    gets a tuned connection pool plus hardened connect arguments: required TLS,
-    a connect timeout, an application name, and per-session statement and
-    idle-in-transaction timeouts.
+    gets a tuned connection pool plus hardened connect arguments: a TLS mode (see
+    :func:`_requires_tls`), a connect timeout, an application name, and per-session
+    statement and idle-in-transaction timeouts.
 
     :return: Configured SQLAlchemy Engine instance
     """
@@ -32,14 +67,13 @@ def _create_engine() -> Engine:
     if settings.database_url.startswith("sqlite"):
         connect_args["check_same_thread"] = False
     else:
-        # Harden the PostgreSQL connection: require TLS on deployed databases
-        # (test runs fall back to "prefer" for an ephemeral local Postgres
-        # without SSL), fail fast on a slow connect, tag connections for
-        # observability, and cap runaway work with per-session statement and
-        # idle-in-transaction timeouts (milliseconds) so a single query cannot
-        # exhaust the managed database.
+        # Harden the PostgreSQL connection: TLS is required unless the database is
+        # a local one that may not offer it (see _requires_tls), fail fast on a slow
+        # connect, tag connections for observability, and cap runaway work with
+        # per-session statement and idle-in-transaction timeouts (milliseconds) so a
+        # single query cannot exhaust the managed database.
         connect_args = {
-            "sslmode": "prefer" if settings.testing else "require",
+            "sslmode": "require" if _requires_tls(settings) else "prefer",
             "connect_timeout": 10,
             "application_name": f"become-{settings.environment.value}",
             "options": "-c statement_timeout=30000 -c idle_in_transaction_session_timeout=60000",

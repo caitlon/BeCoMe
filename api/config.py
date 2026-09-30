@@ -92,7 +92,7 @@ def _env_files_for(environment: Environment) -> tuple[str, ...]:
     return (".env", f".env.{environment.value}")
 
 
-_LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", ""})
+LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", ""})
 
 
 def _has_remote_cors_origin(origins: list[str]) -> bool:
@@ -101,7 +101,7 @@ def _has_remote_cors_origin(origins: list[str]) -> bool:
     :param origins: Configured CORS origins.
     :return: True if at least one origin points at a remote host.
     """
-    return any((urlparse(origin).hostname or "") not in _LOOPBACK_HOSTS for origin in origins)
+    return any((urlparse(origin).hostname or "") not in LOOPBACK_HOSTS for origin in origins)
 
 
 class Settings(BaseSettings):
@@ -496,7 +496,7 @@ class Settings(BaseSettings):
                 f"cors_origins must include the deployed frontend origin in the {profile} "
                 "profile; the localhost defaults cannot serve real browser traffic"
             )
-        if (urlparse(self.frontend_base_url).hostname or "") in _LOOPBACK_HOSTS:
+        if (urlparse(self.frontend_base_url).hostname or "") in LOOPBACK_HOSTS:
             raise ValueError(
                 f"frontend_base_url must point at the deployed frontend in the {profile} "
                 "profile; every activation and password-reset link is built from it, so a "
