@@ -59,7 +59,7 @@
     "intro": "After experts submit their opinions, BeCoMe calculates the optimal group decision.",
     "bestCompromise": {
       "title": "Best Compromise (ΓΩMean)",
-      "description": "The optimal aggregation of all expert opinions. It combines the arithmetic mean (Γ) and median (Ω) to find the value that best represents the group consensus.",
+      "description": "The optimal aggregation of all expert opinions. It lies midway between the arithmetic mean (Γ) and the median (Ω), so it uses every opinion without letting an extreme one dominate.",
       "centroid": "The centroid is the \"center of gravity\" of the triangular number - a single value representing the overall estimate."
     },
     "arithmeticMean": {
@@ -73,7 +73,7 @@
     "maxError": {
       "title": "Maximum Error (Δmax)",
       "description": "Half the distance between the mean and the median, which is also the distance from the compromise to each of them. A low value does not by itself mean the experts agreed, because a panel split into two camps can produce one too. Check the chart of individual opinions.",
-      "interpretation": "If max error is high relative to the scale, it suggests significant disagreement among experts."
+      "interpretation": "If max error is high relative to the scale, the mean and the median landed far apart. That happens when the opinions lean to one side or a few of them sit far from the rest."
     }
   },
   "visualization": {
