@@ -155,6 +155,8 @@ describe('Register', () => {
 
     const input = getPasswordInput();
     expect(input).toHaveAttribute('aria-required', 'true');
+    expect(getConfirmPasswordInput()).toHaveAttribute('aria-required', 'true');
+    expect(input).not.toHaveAttribute('aria-describedby');
 
     await user.type(input, 'Password');
 
@@ -162,6 +164,11 @@ describe('Register', () => {
     const checklist = document.getElementById(checklistId ?? '');
     expect(checklist).toHaveTextContent('At least 12 characters not met');
     expect(checklist).toHaveTextContent('An uppercase letter (A-Z) met');
+
+    await user.clear(input);
+    await user.type(input, 'TestPass123!@#');
+
+    expect(input).not.toHaveAttribute('aria-describedby');
   });
 
   it('validates password meets 12+ characters requirement', async () => {

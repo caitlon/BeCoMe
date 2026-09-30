@@ -114,6 +114,7 @@ const Register = () => {
   const emailRequirements = getEmailRequirements(email, t);
   const passwordRequirements = getPasswordRequirements(password, t);
   const passwordChecklistId = useId();
+  const passwordChecklistShown = !!password && !passwordRequirements.every((req) => req.met);
 
   const onSubmit = async (data: RegisterFormData) => {
     setIsLoading(true);
@@ -189,14 +190,14 @@ const Register = () => {
             autoComplete="new-password"
             placeholder={t("register.passwordPlaceholder")}
             error={errors.password}
-            aria-describedby={passwordChecklistId}
+            aria-describedby={passwordChecklistShown ? passwordChecklistId : undefined}
             {...register("password")}
           />
           <ValidationChecklist
             id={passwordChecklistId}
             title={t("passwordRequirements.title")}
             requirements={passwordRequirements}
-            show={!!password}
+            show={passwordChecklistShown}
           />
         </div>
 
@@ -206,6 +207,7 @@ const Register = () => {
           autoComplete="new-password"
           placeholder={t("register.confirmPasswordPlaceholder")}
           error={errors.confirmPassword}
+          aria-required="true"
           {...register("confirmPassword")}
         />
 
