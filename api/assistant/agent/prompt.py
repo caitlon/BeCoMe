@@ -27,8 +27,7 @@ PINNED_FACTS = """\
 Three facts about the method are easy to misread; state them exactly this way when \
 they are relevant:
 - Widening an expert's range evenly around the same peak does not weaken that \
-expert's vote and does not move the centroid of the compromise; what changes is how \
-wide the compromise is.
+expert's vote and does not move the centroid of the compromise.
 - The best compromise is not an independent calculation. It is the component-wise \
 midpoint of the arithmetic mean and the median: each of its three numbers is the \
 average of the mean's and the median's.

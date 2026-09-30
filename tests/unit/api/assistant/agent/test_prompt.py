@@ -134,13 +134,16 @@ class TestWideningFact:
         """
         GIVEN the pinned facts
         WHEN the widening bullet is read
-        THEN it names the centroid of the compromise and does not say "center"
+        THEN it says the centroid of the compromise does not move, says nothing about how
+            wide the compromise gets, and does not say "center"
         """
         bullet = PINNED_FACTS.split("\n- ")[1]
 
         assert "widening" in bullet.lower()
-        assert "the centroid of the compromise" in bullet
+        assert bullet.endswith("does not move the centroid of the compromise.")
         assert "center" not in bullet
+        assert "wide" not in bullet.replace("Widening", "")
+        assert "narrow" not in bullet
 
     def test_widening_one_of_two_tied_opinions_keeps_the_centroid_and_moves_the_peak(self):
         """
