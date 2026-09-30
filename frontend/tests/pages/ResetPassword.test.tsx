@@ -88,6 +88,20 @@ describe('ResetPassword', () => {
     });
   });
 
+  it('ties the password requirements to the password field and says which are met', async () => {
+    const user = userEvent.setup();
+    render(<ResetPassword />);
+
+    const input = getPasswordInput();
+    expect(input).toHaveAttribute('aria-required', 'true');
+
+    await user.type(input, 'Password');
+
+    const checklist = document.getElementById(input.getAttribute('aria-describedby') ?? '');
+    expect(checklist).toHaveTextContent('At least 12 characters not met');
+    expect(checklist).toHaveTextContent('An uppercase letter (A-Z) met');
+  });
+
   it('shows an error when passwords do not match', async () => {
     const user = userEvent.setup();
     render(<ResetPassword />);

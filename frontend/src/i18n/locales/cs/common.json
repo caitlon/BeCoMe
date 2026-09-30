@@ -100,7 +100,9 @@
     "opensInNewTab": "otevře se v nové záložce",
     "skipToContent": "Přejít k hlavnímu obsahu",
     "close": "Zavřít",
-    "notifications": "Oznámení ({hotkey})"
+    "notifications": "Oznámení ({hotkey})",
+    "requirementMet": "splněno",
+    "requirementNotMet": "nesplněno"
   },
   "centroidChart": {
     "centroidValue": "Centroid",

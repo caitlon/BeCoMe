@@ -15,13 +15,27 @@ interface PasswordInputProps
 }
 
 const PasswordInput = React.forwardRef<HTMLInputElement, PasswordInputProps>(
-  ({ label, error, id, className, name, ...props }, ref) => {
+  (
+    {
+      label,
+      error,
+      id,
+      className,
+      name,
+      "aria-describedby": extraDescribedBy,
+      ...props
+    },
+    ref
+  ) => {
     const { t } = useTranslation("common");
     const [showPassword, setShowPassword] = useState(false);
 
     const reactId = React.useId();
     const fieldId = id ?? name ?? reactId;
     const errorId = `${fieldId}-error`;
+    const describedBy =
+      [error ? errorId : undefined, extraDescribedBy].filter(Boolean).join(" ") ||
+      undefined;
 
     return (
       <div className="space-y-2">
@@ -32,7 +46,8 @@ const PasswordInput = React.forwardRef<HTMLInputElement, PasswordInputProps>(
             id={fieldId}
             name={name}
             type={showPassword ? "text" : "password"}
-            aria-describedby={error ? errorId : undefined}
+            aria-describedby={describedBy}
+            aria-required="true"
             aria-invalid={!!error}
             className={cn("pr-10", error && "border-destructive", className)}
             {...props}
