@@ -529,6 +529,20 @@ class TestAssistantLibrariesStayOutOfDeployedProcesses:
         # THEN
         assert loaded == []
 
+    def test_the_same_probe_sees_them_when_the_switch_is_on(self, tmp_path):
+        """
+        GIVEN the same probe with the assistant switched on
+        WHEN api.main is imported
+        THEN the assistant package and langchain_core are reported, so the empty list above
+             means "not imported" and not "not looked for"
+        """
+        # WHEN
+        loaded = self._modules_loaded_by_importing_api_main(tmp_path, "true")
+
+        # THEN
+        assert "api.assistant.deps" in loaded
+        assert "langchain_core" in loaded
+
 
 class TestAssistantShutdown:
     """The application flushes the assistant's traces when it stops, and only when it is on."""

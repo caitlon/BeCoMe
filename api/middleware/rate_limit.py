@@ -59,6 +59,7 @@ LIMIT_STANDARD = "60/minute"  # Normal API endpoints
 LIMIT_WRITE = "30/minute"  # Writes that also trigger a DB write plus recalculation
 LIMIT_UPLOAD = "10/minute"  # File uploads - prevent abuse
 LIMIT_PHOTO = "120/minute"  # Public photo proxy reads (browser-cached avatars)
+LIMIT_ASSISTANT_CHAT = "20/minute"  # Every message costs model calls; the hourly cap is per user
 
 
 def rate_limit_handler(request: Request, exc: RateLimitExceeded) -> Response:
