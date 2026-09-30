@@ -344,11 +344,11 @@ class TestResendEmailSender:
         ("minutes", "phrase"),
         [(60, "1 hour"), (120, "2 hours"), (1, "1 minute"), (30, "30 minutes"), (90, "90 minutes")],
     )
-    def test_reset_email_keeps_its_english_expiry_wording(self, minutes, phrase):
+    def test_reset_email_states_its_lifetime_in_english(self, minutes, phrase):
         """
         GIVEN a Resend sender with a given reset-token TTL
         WHEN a password reset email is sent
-        THEN the expiry sentence reads exactly as it always has
+        THEN the expiry sentence gives the lifetime in English, singular for one and plural otherwise
         """
         # GIVEN
         response = MagicMock()
