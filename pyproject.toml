@@ -67,7 +67,7 @@ api = [
     "sqlmodel==0.0.42",
     "alembic==1.19.1",
     "psycopg2==2.9.12",
-    "PyJWT==2.14.0",
+    "PyJWT==2.15.0",
     "passlib[bcrypt]==1.7.4",
     "python-multipart==0.0.32",
     "email-validator==2.3.0",
