@@ -1412,6 +1412,42 @@ class TestUnitsThatHoldDigits:
         """
         assert find_ungrounded_numbers(f"It weighs {glued} in total", ["nothing"]) == []
 
+    @pytest.mark.parametrize(
+        "glued",
+        ["5,737bc", "5 000km", "12 250m2", "1\u00a0000kg", "Qwen3,5", "v1,2,3", "3,5x2"],
+    )
+    def test_a_grouped_or_comma_number_glued_to_letters_is_not_cut_in_pieces(self, glued: str):
+        """
+        GIVEN a grouped or comma-joined number written directly against letters
+        WHEN the grounding has nothing
+        THEN nothing is flagged, because the whole token is glued
+        """
+        assert find_ungrounded_numbers(f"It is {glued} here", ["nothing"]) == []
+
+    def test_the_digits_after_a_spaced_glued_unit_are_still_checked(self):
+        """
+        GIVEN a number glued to its unit, then a space and a number
+        WHEN the grounding has neither
+        THEN only the number after the space is flagged
+        """
+        assert find_ungrounded_numbers("It is 5km 7", ["nothing"]) == ["7"]
+
+    def test_a_name_that_starts_right_after_a_decimal_is_not_cut_out_of_it(self):
+        """
+        GIVEN 84.3W-1, a decimal glued to a capital and a hyphen digit
+        WHEN the grounding holds 1
+        THEN nothing is flagged, because 84.3 is glued to the W
+        """
+        assert find_ungrounded_numbers("It is 84.3W-1 here", ["1"]) == []
+
+    def test_a_digit_tail_after_a_mixed_word_with_a_dot_tail_and_a_comma_is_dropped(self):
+        """
+        GIVEN 59Q1.00,6, a mixed word followed by a dot tail and a comma continuation
+        WHEN the grounding has nothing
+        THEN nothing is flagged
+        """
+        assert find_ungrounded_numbers("It is 59Q1.00,6 here", ["nothing"]) == []
+
     def test_a_number_with_a_space_before_its_unit_is_checked(self):
         """
         GIVEN 12.5 m2, with a space
@@ -1576,3 +1612,29 @@ class TestCitationLabelSet:
 
         assert check_citations(answer, set()) is True
         assert find_ungrounded_numbers(answer, ["nothing"]) != []
+
+
+class TestUnicodeDigits:
+    """The digit class of the patterns reads every Unicode decimal digit."""
+
+    def test_a_full_width_digit_that_is_not_in_the_grounding_is_reported(self):
+        """
+        GIVEN a number written with full-width digits
+        WHEN the grounding has nothing
+        THEN it is reported as written
+        """
+        five = chr(0xFF15)
+
+        assert find_ungrounded_numbers(f"It is {five}{five}", ["nothing"]) == [f"{five}{five}"]
+
+    def test_a_full_width_digit_that_is_in_the_grounding_is_grounded(self):
+        """
+        GIVEN a number written with full-width digits
+        WHEN the grounding holds the same digits, and then the ASCII ones
+        THEN nothing is flagged
+        """
+        five = chr(0xFF15)
+
+        assert find_ungrounded_numbers(f"It is {five}{five}", [f"value {five}{five}"]) == []
+        assert find_ungrounded_numbers(f"It is {five}{five}", ["value 55"]) == []
+        assert find_ungrounded_numbers("It is 55", [f"value {five}{five}"]) == []
