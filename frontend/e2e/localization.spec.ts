@@ -18,7 +18,7 @@ test.describe('Czech Localization', () => {
     await expect(page.getByText('Jak to funguje')).toBeVisible();
     await expect(page.getByText('Sběr')).toBeVisible();
     await expect(page.getByText('Výpočet')).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Konsenzus', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Kompromis', exact: true })).toBeVisible();
 
     // Navigation
     await expect(

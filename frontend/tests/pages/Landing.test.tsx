@@ -38,7 +38,10 @@ describe('Landing', () => {
     expect(screen.getByText('How It Works')).toBeInTheDocument();
     expect(screen.getByText('Collect')).toBeInTheDocument();
     expect(screen.getByText('Calculate')).toBeInTheDocument();
-    expect(screen.getByText('Consensus')).toBeInTheDocument();
+    expect(screen.getByText('Compromise')).toBeInTheDocument();
+    expect(
+      screen.getByText('A three-step process from expert opinions to the best compromise')
+    ).toBeInTheDocument();
     expect(
       screen.getByText('Get the best compromise and its maximum error')
     ).toBeInTheDocument();
@@ -55,7 +58,7 @@ describe('Landing', () => {
   it('renders CTA section', () => {
     render(<Landing />);
 
-    expect(screen.getByText('Ready to find consensus?')).toBeInTheDocument();
+    expect(screen.getByText('Ready to find the best compromise?')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /get started free/i })).toBeInTheDocument();
   });
 
@@ -86,6 +89,17 @@ describe('Landing - Czech', () => {
     expect(
       screen.getByText('Získejte nejlepší kompromis a maximální chybu')
     ).toBeInTheDocument();
+  });
+
+  it('calls the result a compromise in the steps and the call to action', async () => {
+    await i18n.changeLanguage('cs');
+    render(<Landing />);
+
+    expect(screen.getByText('Kompromis')).toBeInTheDocument();
+    expect(
+      screen.getByText('Třístupňový proces od názorů expertů k nejlepšímu kompromisu')
+    ).toBeInTheDocument();
+    expect(screen.getByText('Připraveni najít nejlepší kompromis?')).toBeInTheDocument();
   });
 });
 
