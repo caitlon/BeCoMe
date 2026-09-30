@@ -119,18 +119,8 @@ _ORDINAL = re.compile(r"(?<![\d.,])\d{1,2}\.([^\S\r\n]+)(\S)")
 # A markdown link's target, when it directly follows a citation.
 _LINK_AFTER = re.compile(r"\([^()\[\]\s]*\)")
 
-# The forms of a number, tried in this order at each position (the first that matches
-# wins), and the pattern of each. Only the caller of _read decides what a form means.
+# The spaces that may group thousands: a space, a no-break space, a narrow no-break space.
 _SPACE = "[ \u00a0\u202f]"
-_NUMBER_FORMS = {
-    "spaced": rf"\d{{1,3}}(?:{_SPACE}\d{{3}})+(?!\d)(?:[.,]\d+)?",
-    "grouped": r"\d{1,3}(?:,\d{3})+\.\d+",
-    "dotted": r"[1-9]\d{0,2}(?:\.\d{3})+,\d+(?!\d|[.,]\d)",
-    "commas": r"\d+(?:\.\d+)?(?:,\d+(?:\.\d+)?)+",
-    "dotgroup": r"\d{1,3}(?:\.\d{3})+(?!\d)",
-    "plain": r"\d+(?:\.\d+)?",
-}
-_NUMBER = re.compile("|".join(f"(?P<{form}>{pattern})" for form, pattern in _NUMBER_FORMS.items()))
 _ZERO_LED_GROUP = re.compile(r"0\d\d")
 _LETTER_OR_UNDERSCORE = re.compile(r"[^\W\d]")
 _MINUS_SIGNS = "-\u2212"
@@ -292,14 +282,37 @@ def _read_plain(text: str) -> list[list[Decimal]]:
     return [[Decimal(text)]]
 
 
-_READERS: dict[str, Callable[[str], list[list[Decimal]]]] = {
-    "spaced": _read_spaced,
-    "grouped": _read_grouped,
-    "dotted": _read_dotted,
-    "commas": _read_commas,
-    "dotgroup": _read_dotgroup,
-    "plain": _read_plain,
+# The forms of a number, tried in this order at each position (the first that matches
+# wins): the pattern of each, and the function that reads what it matched.
+_NUMBER_FORMS: dict[str, tuple[str, Callable[[str], list[list[Decimal]]]]] = {
+    "spaced": (
+        rf"\d{{1,3}}(?:{_SPACE}\d{{3}})+(?!\d)(?:[.,]\d+)?",
+        _read_spaced,
+    ),
+    "grouped": (
+        r"\d{1,3}(?:,\d{3})+\.\d+",
+        _read_grouped,
+    ),
+    "dotted": (
+        r"[1-9]\d{0,2}(?:\.\d{3})+,\d+(?!\d|[.,]\d)",
+        _read_dotted,
+    ),
+    "commas": (
+        r"\d+(?:\.\d+)?(?:,\d+(?:\.\d+)?)+",
+        _read_commas,
+    ),
+    "dotgroup": (
+        r"\d{1,3}(?:\.\d{3})+(?!\d)",
+        _read_dotgroup,
+    ),
+    "plain": (
+        r"\d+(?:\.\d+)?",
+        _read_plain,
+    ),
 }
+_NUMBER = re.compile(
+    "|".join(f"(?P<{form}>{pattern})" for form, (pattern, _) in _NUMBER_FORMS.items())
+)
 
 
 def _readings(form: str, text: str, negative: bool) -> list[list[Decimal]]:
@@ -310,7 +323,7 @@ def _readings(form: str, text: str, negative: bool) -> list[list[Decimal]]:
     :param negative: Whether the number carries a minus sign.
     :return: The readings, each a list of numbers.
     """
-    readings = _READERS[form](text)
+    readings = _NUMBER_FORMS[form][1](text)
     if negative:
         readings = [[reading[0].copy_negate(), *reading[1:]] for reading in readings]
     return readings
