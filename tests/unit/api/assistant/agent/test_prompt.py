@@ -3,10 +3,13 @@
 from datetime import UTC, datetime
 
 from api.assistant.agent.prompt import (
+    FORMULA_NUMBERS,
     PINNED_FACTS,
     PINNED_NUMBERS,
     STYLE,
     SYSTEM_PROMPT,
+    format_excerpt,
+    format_number,
     render_context_block,
 )
 from api.assistant.rag.retrieval import RetrievedChunk
@@ -79,6 +82,60 @@ class TestSystemPrompt:
         THEN it names the project_data tags
         """
         assert "<project_data>" in STYLE
+
+
+class TestFormulaNumbers:
+    """The divisors of the method's own formulas are listed for the number check."""
+
+    def test_lists_the_divisors_of_the_midpoint_and_the_centroid(self):
+        """
+        GIVEN the formula numbers
+        WHEN they are read
+        THEN they are 2 (midpoint, half-distance) and 3 (triangular centroid)
+        """
+        assert FORMULA_NUMBERS == ("2", "3")
+
+
+class TestFormatNumber:
+    """Numbers are written with two decimals, the way the UI shows them."""
+
+    def test_rounds_to_two_decimals(self):
+        """
+        GIVEN a float with a long fraction
+        WHEN it is formatted
+        THEN two decimals remain
+        """
+        assert format_number(5.974358974358974) == "5.97"
+
+    def test_pads_a_whole_float_with_zeros(self):
+        """
+        GIVEN a whole-valued float
+        WHEN it is formatted
+        THEN two zero decimals are added
+        """
+        assert format_number(6.0) == "6.00"
+
+
+class TestFormatExcerpt:
+    """One numbered excerpt, as the model is shown it."""
+
+    def test_shows_number_title_section_and_the_chunks_own_words(self):
+        """
+        GIVEN a chunk whose indexed text carries a generated caption
+        WHEN the excerpt is formatted
+        THEN the entry has the marker, title, section and chunk_text only
+        """
+        chunk = _chunk("Own words.", text="Method. A caption.\n\nOwn words.")
+
+        assert format_excerpt(4, chunk) == "[4] Method - Step 3\nOwn words."
+
+    def test_leaves_out_an_empty_section(self):
+        """
+        GIVEN a chunk with no section
+        WHEN the excerpt is formatted
+        THEN the heading line has no dangling dash
+        """
+        assert format_excerpt(1, _chunk("Words.", section="")) == "[1] Method\nWords."
 
 
 class TestRenderContextBlock:
