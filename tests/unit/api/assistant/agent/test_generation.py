@@ -66,6 +66,12 @@ def _model(*responses: AIMessage) -> ScriptedToolCallingModel:
     return ScriptedToolCallingModel(responses=list(responses))
 
 
+def _extra_fields(record: logging.LogRecord) -> set[str]:
+    """Return the names of the fields a log call added through ``extra``."""
+    plain = set(logging.LogRecord("", 0, "", 0, "", (), None).__dict__) | {"message", "asctime"}
+    return set(vars(record)) - plain
+
+
 def _user(content: str = QUESTION) -> list[BaseMessage]:
     return [HumanMessage(content=content)]
 
@@ -278,18 +284,42 @@ class TestAgentGenerator:
         assert (record.tool, record.reason) == ("list_my_projects", "RuntimeError")
         assert "secret-host" not in record.getMessage()
         assert record.exc_info is None
+        assert _extra_fields(record) == {"event", "tool", "reason"}
+        assert not any("secret-host" in str(value) for value in vars(record).values())
 
     async def test_an_ordinary_run_makes_no_extra_model_call(self):
         """
-        GIVEN a model that uses a tool and then answers
+        GIVEN a model that uses a tool and then answers, in words that mention a limit
         WHEN the turn is generated
-        THEN the model was called exactly twice
+        THEN the model was called exactly twice and the answer is its own
         """
-        model = _model(_search(), AIMessage(content="Answer."))
+        model = _model(_search(), AIMessage(content="Stay within the limit of 5 calls."))
 
-        await AgentGenerator(model, max_tool_calls=4).generate(_user(), _ctx([_chunk()]), QUESTION)
+        text, _ = await AgentGenerator(model, max_tool_calls=4).generate(
+            _user(), _ctx([_chunk()]), QUESTION
+        )
 
+        assert text == "Stay within the limit of 5 calls."
         assert len(model.seen) == 2
+
+    async def test_earlier_answers_in_the_history_do_not_count_toward_the_limit(self):
+        """
+        GIVEN a history with three earlier answers, one tool call allowed (so three model
+              calls) and a model that answers at once
+        WHEN the turn is generated
+        THEN no fallback call is made
+        """
+        model = _model(AIMessage(content="Answered."))
+        history: list[BaseMessage] = []
+        for index in range(3):
+            history += [HumanMessage(content=f"q{index}"), AIMessage(content=f"a{index}")]
+
+        text, _ = await AgentGenerator(model, max_tool_calls=1).generate(
+            [*history, *_user()], _ctx(), QUESTION
+        )
+
+        assert text == "Answered."
+        assert len(model.seen) == 1
 
     async def test_an_answer_on_the_last_permitted_model_call_is_not_a_limit_run(self):
         """
@@ -325,8 +355,10 @@ class TestAgentGenerator:
         ctx = _ctx([_chunk()])
         history = [HumanMessage(content="Earlier"), AIMessage(content="Reply")]
 
+        with_context = HumanMessage(content=f"Some fetched context.\n\nQuestion: {QUESTION}")
+
         text, tools = await AgentGenerator(model, max_tool_calls=2).generate(
-            [*history, *_user()], ctx, QUESTION
+            [*history, with_context], ctx, QUESTION
         )
 
         assert text == "From what I found."

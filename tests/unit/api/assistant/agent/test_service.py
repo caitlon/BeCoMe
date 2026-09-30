@@ -24,7 +24,7 @@ from api.assistant.agent.prompt import (
     render_context_block,
 )
 from api.assistant.agent.service import AssistantService
-from api.assistant.agent.tools import render_opinions, render_project
+from api.assistant.agent.tools import ASSISTANT_TOOLS, render_opinions, render_project
 from api.assistant.client import UserApiClient
 from api.assistant.errors import (
     AssistantNotFoundError,
@@ -194,6 +194,16 @@ class _FailingModel(ScriptedToolCallingModel):
         raise self.error
 
 
+class _ToolBindingModel(ScriptedToolCallingModel):
+    """A model that notes which tools it was given."""
+
+    bound: list[str] = Field(default_factory=list)
+
+    def bind_tools(self, tools, **kwargs):
+        self.bound.extend(tool.name for tool in tools)
+        return self
+
+
 class _TracedModel(ScriptedToolCallingModel):
     """A model that notes, in a shared list, that it was called."""
 
@@ -324,6 +334,27 @@ class TestWorkflowMode:
         response = await AssistantService(_settings(), model).answer(_request(), _ctx())
 
         assert response.answer == "It is the midpoint."
+
+
+@pytest.mark.asyncio
+class TestTools:
+    """Only agent and hybrid give the model the five tools."""
+
+    @pytest.mark.parametrize(
+        ("mode", "gets_tools"), [("workflow", False), ("hybrid", True), ("agent", True)]
+    )
+    async def test_the_model_is_given_tools_in_agent_and_hybrid_only(self, mode, gets_tools):
+        """
+        GIVEN a model that notes the tools bound to it
+        WHEN a turn is answered in each mode
+        THEN workflow binds none, and the other two bind exactly the assistant's five
+        """
+        model = _ToolBindingModel(responses=[_say()])
+
+        await AssistantService(_settings(mode), model).answer(_request(), _ctx())
+
+        expected = {tool.name for tool in ASSISTANT_TOOLS} if gets_tools else set()
+        assert set(model.bound) == expected
 
 
 @pytest.mark.asyncio
@@ -737,6 +768,16 @@ class TestHistory:
         shown = await self._history_shown(history)
 
         assert [content for _, content in shown] == ["a" * 3000, "b" * 3000]
+
+    async def test_one_character_over_the_budget_drops_the_oldest_entry(self):
+        """
+        GIVEN entries of 3001 and 3000 characters, one character over the budget
+        WHEN a turn is answered
+        THEN the oldest is dropped and, the assistant entry then leading, that goes too
+        """
+        history = [_turn("user", "a" * 3001), _turn("assistant", "b" * 3000)]
+
+        assert await self._history_shown(history) == []
 
     async def test_a_newest_entry_over_the_budget_leaves_the_history_empty(self):
         """
