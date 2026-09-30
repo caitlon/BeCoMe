@@ -1,7 +1,9 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { screen } from '@testing-library/react';
-import { render } from '@tests/utils';
+import { render, unauthenticatedAuthMock } from '@tests/utils';
 import { Footer } from '@/components/layout/Footer';
+
+vi.mock('@/contexts/AuthContext', () => unauthenticatedAuthMock);
 
 describe('Footer', () => {
   it('renders brand link to /', () => {
