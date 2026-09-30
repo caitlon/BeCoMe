@@ -132,6 +132,8 @@ The three calls that send a localised email, `register`, `resendVerification` an
 - **Route changes.** On a change of pathname, `RouteAnnouncer` scrolls to the top, moves focus
   to `#main-content`, and announces `document.title` in a polite live region. It does nothing
   on the first load, so the skip link stays the first Tab stop.
+- **Loading placeholder.** While a page or the session check loads, `PageLoader` is the skip
+  link's target and, if it held focus when the page replaces it, hands focus to that page's `main`.
 - **Page titles.** `useDocumentTitle` sets the title to `<page> - BeCoMe`. Every component in
   `src/pages` calls it.
 - **Control names.** The close buttons of dialogs and toasts and the toast region take their
