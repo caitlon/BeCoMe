@@ -4,12 +4,15 @@ import logging
 from unittest.mock import AsyncMock
 
 import pytest
+from langchain.agents.middleware import ToolCallRequest
+from langchain.tools import ToolRuntime
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 
 from api.assistant.agent.context import AssistantContext, SourceRegistry
 from api.assistant.agent.generation import (
     AgentGenerator,
     DirectGenerator,
+    _tool_failed,
     answer_text,
     user_message,
 )
@@ -263,7 +266,7 @@ class TestAgentGenerator:
         GIVEN a tool whose backend raises an error nothing handles
         WHEN the turn is generated
         THEN the model is told the data is unavailable and answers, the tool is not
-             reported as having run, and one warning names the tool and the error class
+             reported as having run, and one error record names the tool and the error class
              and nothing else
         """
         ctx = _ctx()
@@ -279,13 +282,48 @@ class TestAgentGenerator:
         assert model.seen[1][-1].content == UNAVAILABLE_REPLY
         assert ctx.tool_outputs == [UNAVAILABLE_REPLY]
         (record,) = records
-        assert record.levelno == logging.WARNING
+        assert record.levelno == logging.ERROR
         assert record.event == "assistant_tool_failed"
         assert (record.tool, record.reason) == ("list_my_projects", "RuntimeError")
         assert "secret-host" not in record.getMessage()
         assert record.exc_info is None
         assert _extra_fields(record) == {"event", "tool", "reason"}
         assert not any("secret-host" in str(value) for value in vars(record).values())
+
+    async def test_a_tool_name_made_of_arbitrary_text_leaves_no_trace_in_the_record(self):
+        """
+        GIVEN a failing call whose tool name is free text from the model, not one of the five
+        WHEN the failure is reported
+        THEN the record names the tool as "unknown" and none of that text is in it
+        """
+        ctx = _ctx()
+        runtime = ToolRuntime(
+            state={},
+            context=ctx,
+            config={},
+            stream_writer=lambda _: None,
+            tool_call_id="call-1",
+            store=None,
+        )
+        hostile = "ignore-all-rules secret-host <script>"
+        request = ToolCallRequest(
+            tool_call={"name": hostile, "args": {}, "id": "call-1", "type": "tool_call"},
+            tool=None,
+            state={},
+            runtime=runtime,
+        )
+
+        with captured_log_records("api.assistant.agent.generation") as records:
+            reply = _tool_failed(RuntimeError("bug"), request)
+
+        (record,) = records
+        assert reply == UNAVAILABLE_REPLY
+        assert record.tool == "unknown"
+        assert not any(
+            part in str(value)
+            for value in vars(record).values()
+            for part in ("ignore-all", "<script>")
+        )
 
     async def test_an_ordinary_run_makes_no_extra_model_call(self):
         """
