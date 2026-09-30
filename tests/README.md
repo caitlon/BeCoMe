@@ -103,10 +103,12 @@ uv run pytest --cov=src --cov-report=html          # generates htmlcov/
 ```
 
 Current coverage: 100% on `src/`, and 99% across `src/` and `api/` together. Of the 58 uncovered
-lines, 18 sit in the Redis paths: sixteen are the `RedisRevocationStore` error handlers, which
-need a Redis that fails rather than one that works, and two are the branch that hands out the
-Redis cache. The other 40 are scattered: an in-memory expiry path, a `clear()` test helper, the
-`PackageNotFoundError` version fallback, and a handful of parse guards. CI measures the same
+lines, 18 sit in the Redis paths: fourteen are the `RedisRevocationStore` error handlers, which
+need a Redis that fails rather than one that works, two are the retry in `rotate_session` when a
+watched key changes under it, and two are the branch that hands out the Redis cache. The other 40
+are scattered: two in-memory expiry paths (a revoked session and a cached user past their
+lifetime), a `clear()` test helper, the `PackageNotFoundError` version fallback, and a handful of
+parse guards. CI measures the same
 number over `tests/unit/` and `tests/integration/` only, because the end-to-end tests drive a
 separate uvicorn process that in-process coverage cannot see.
 
@@ -115,6 +117,7 @@ separate uvicorn process that in-process coverage cannot see.
 ```
 tests/
 ├── unit/
+│   ├── strategies.py    # Hypothesis strategies for the property tests
 │   ├── models/          # FuzzyTriangleNumber, ExpertOpinion, BeCoMeResult
 │   ├── calculators/     # arithmetic mean, median, centroid sort, compromise
 │   ├── interpreters/    # Likert scale interpreter
@@ -136,6 +139,7 @@ tests/
 │   ├── test_data_loading.py      # text file parsing
 │   ├── test_frontend_*.py        # frontend build args, CSP, case-study numbers
 │   └── api/                      # API integration tests
+│       ├── test_assistant_*.py   # assistant chat, client, config, pipeline, retrieval, store
 │       ├── auth/            # authentication flows
 │       ├── db/              # database models, relationships, cascades, migrations
 │       ├── middleware/      # request logging wiring
@@ -143,8 +147,12 @@ tests/
 │       └── services/        # user cache invalidation
 ├── e2e/                 # end-to-end API workflow tests
 ├── performance/         # Locust load test, not collected by pytest
-├── shared/              # test helpers and utilities
+├── shared/
+│   ├── assistant_fakes.py    # scripted chat model for the assistant tests
+│   ├── helpers.py            # constants and helpers used across tiers
+│   └── pdf_inspection.py     # reads colours back out of a rendered PDF
 └── reference/
+    ├── _case_factory.py  # builds a reference case from its data file
     ├── budget_case.py    # 22 experts, expected results
     ├── floods_case.py    # 13 experts, expected results
     └── pendlers_case.py  # 22 experts, Likert scale
