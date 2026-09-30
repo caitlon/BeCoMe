@@ -7,7 +7,8 @@ three fixed prefixes.
   text does not say whether the project exists.
 - ``unavailable:`` a service the tool depends on failed. A failing API is never reported
   as not found.
-- ``no_result:`` the request was fine and there is nothing to show.
+- ``no_result:`` the request was fine and there is nothing to show. Each case has its
+  own text (no result yet, no opinions, no passages, no projects).
 
 No reply carries the text of an exception. Text written by users (project names,
 descriptions, expert names and positions) goes through
@@ -41,7 +42,12 @@ logger = logging.getLogger(__name__)
 
 _NOT_FOUND = "not_found: no such project, or you are not a member of it"
 _UNAVAILABLE = "unavailable: the data could not be read right now; ask the user to try again later"
-_NO_RESULT = "no_result: there is nothing to show for this request"
+# The four empty cases share one prefix and each says what is missing, so the model can
+# tell the user which thing it is.
+_NO_RESULT_YET = "no_result: no result has been calculated for this project yet"
+_NO_OPINIONS = "no_result: no opinions have been submitted to this project yet"
+_NO_PASSAGES = "no_result: no matching passages in the documentation"
+_NO_PROJECTS = "no_result: the user is not a member of any project"
 
 # What the model reads about each tool. The docstring below each tool is for developers;
 # this text is all the model sees, so it says what the one argument is.
@@ -77,6 +83,7 @@ _UNIT_LIMIT = 20
 _LABEL_LIMIT = 40
 _ID_LIMIT = 40
 
+_MAX_PROJECTS = 50
 _MAX_OPINIONS = 50
 
 
@@ -111,18 +118,23 @@ def render_project(project: ProjectView) -> str:
 
 
 def render_project_list(projects: Sequence[ProjectBrief]) -> str:
-    """Render the caller's projects as a data block, one line each.
+    """Render the caller's projects as a data block.
+
+    The block has a count line, then at most 50 projects, then ``... and N more
+    projects`` when there are more.
 
     :param projects: The caller's projects.
     :return: The block: each project's id, name and role.
     """
-    return _block(
-        [
+    lines = [f"Number of projects: {len(projects)}"]
+    for project in projects[:_MAX_PROJECTS]:
+        lines.append(
             f"- {clean_text(project.id, _ID_LIMIT)}: {clean_text(project.name, _NAME_LIMIT)} "
             f"({clean_text(project.role, _LABEL_LIMIT)})"
-            for project in projects
-        ]
-    )
+        )
+    if len(projects) > _MAX_PROJECTS:
+        lines.append(f"... and {len(projects) - _MAX_PROJECTS} more projects")
+    return _block(lines)
 
 
 def render_opinions(opinions: Sequence[OpinionView]) -> str:
@@ -213,7 +225,7 @@ async def search_docs(query: str, runtime: ToolRuntime[AssistantContext]) -> str
     except UNAVAILABLE_ERRORS as exc:
         return _unavailable("search_docs", exc)
     if not chunks:
-        return _NO_RESULT
+        return _NO_PASSAGES
     entries = [format_excerpt(ctx.sources.add(chunk), chunk) for chunk in chunks]
     return "<docs>\n" + "\n\n".join(entries) + "\n</docs>"
 
@@ -232,7 +244,7 @@ async def list_my_projects(runtime: ToolRuntime[AssistantContext]) -> str:
     except AssistantUpstreamError as exc:
         return _reply(ctx, _unavailable("list_my_projects", exc))
     if not projects:
-        return _reply(ctx, _NO_RESULT)
+        return _reply(ctx, _NO_PROJECTS)
     return _reply(ctx, render_project_list(projects))
 
 
@@ -276,7 +288,7 @@ async def get_project_result(project_id: str, runtime: ToolRuntime[AssistantCont
     except AssistantUpstreamError as exc:
         return _reply(ctx, _unavailable("get_project_result", exc))
     if result is None:
-        return _reply(ctx, _NO_RESULT)
+        return _reply(ctx, _NO_RESULT_YET)
     return _reply(ctx, render_context_block([], result))
 
 
@@ -299,7 +311,7 @@ async def get_project_opinions(project_id: str, runtime: ToolRuntime[AssistantCo
     except AssistantUpstreamError as exc:
         return _reply(ctx, _unavailable("get_project_opinions", exc))
     if not opinions:
-        return _reply(ctx, _NO_RESULT)
+        return _reply(ctx, _NO_OPINIONS)
     return _reply(ctx, render_opinions(opinions))
 
 
