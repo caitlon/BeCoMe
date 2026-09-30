@@ -15,7 +15,7 @@ from typing import Any
 
 from langchain_core.callbacks import CallbackManagerForLLMRun
 from langchain_core.language_models import BaseChatModel, LanguageModelInput
-from langchain_core.messages import AIMessage, BaseMessage
+from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_core.runnables import Runnable
 from langchain_core.tools import BaseTool
@@ -71,6 +71,56 @@ class ScriptedToolCallingModel(BaseChatModel):
     def _llm_type(self) -> str:
         """Return the model type name LangChain's tracing uses."""
         return "scripted-tool-calling-model"
+
+
+class ToolEchoingModel(BaseChatModel):
+    """A chat model that makes one scripted tool call, then answers with the tool's reply.
+
+    Whatever the tool said is what the "model" answers, so a test can read the tool's
+    output straight off the response and see exactly what the tool gave the model. Every
+    call's messages are recorded in ``seen``, as in :class:`ScriptedToolCallingModel`.
+
+    :ivar first_call: The response returned while no tool has replied yet.
+    :ivar seen: The messages each call was given, one list per call, in call order.
+    """
+
+    first_call: AIMessage
+    seen: list[list[BaseMessage]] = Field(default_factory=list)
+
+    def bind_tools(
+        self,
+        tools: Sequence[dict[str, Any] | type | Callable[..., Any] | BaseTool],
+        *,
+        tool_choice: str | None = None,
+        **kwargs: Any,
+    ) -> Runnable[LanguageModelInput, AIMessage]:
+        """Return this model unchanged; the scripted call needs no tool formatting."""
+        return self
+
+    def _generate(
+        self,
+        messages: list[BaseMessage],
+        stop: list[str] | None = None,
+        run_manager: CallbackManagerForLLMRun | None = None,
+        **kwargs: Any,
+    ) -> ChatResult:
+        """Return the scripted call first, then the text of the latest tool reply.
+
+        :param messages: The conversation so far; recorded in ``seen``.
+        :param stop: Unused.
+        :param run_manager: Unused.
+        :return: The scripted call while no tool has replied, else an answer that is the
+            latest tool reply's text.
+        """
+        self.seen.append(list(messages))
+        replies = [message for message in messages if isinstance(message, ToolMessage)]
+        response = AIMessage(content=replies[-1].text) if replies else self.first_call
+        return ChatResult(generations=[ChatGeneration(message=response)])
+
+    @property
+    def _llm_type(self) -> str:
+        """Return the model type name LangChain's tracing uses."""
+        return "tool-echoing-model"
 
 
 class StaticDocsRetriever:
