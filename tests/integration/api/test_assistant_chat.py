@@ -1,19 +1,27 @@
 """Integration tests for POST /api/v1/assistant/chat, through the real test application.
 
-The chat model is always a scripted one from ``tests/shared/assistant_fakes.py``, the
-retriever is the static one the shared test app installs, and the API the assistant reads
-from is the test app itself. Nothing here reaches a real model server, embedding server or
-vector database. This part holds gating and authentication, the request schema, the
-configured message length, the three modes, the message limits, tenant isolation and what
-the model is shown.
+The chat model is always a scripted one from ``tests/shared/assistant_fakes.py`` (or the
+real client pointed at a stub server on localhost, or at a closed port), the retriever is
+the static one the shared test app installs, and the API the assistant reads from is the
+test app itself. Nothing here reaches a real model server, embedding server or vector
+database.
 """
 
+import http.server
+import json
+import logging
+import threading
+from collections.abc import Iterator
+from contextlib import ExitStack, contextmanager
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import langsmith as ls
 import pytest
+from fastapi import HTTPException, Request
+from fastapi.testclient import TestClient
 from langchain_core.messages import AIMessage
+from sqlalchemy.exc import OperationalError
 
 from api.assistant import deps
 from api.assistant.agent import tracing
@@ -21,6 +29,7 @@ from api.assistant.client import UserApiClient
 from api.assistant.rate_limit import get_assistant_throttle
 from api.auth.cookies import CSRF_COOKIE
 from api.config import get_settings
+from api.db.session import get_session
 from api.middleware.rate_limit import LIMIT_ASSISTANT_CHAT, limiter
 from tests.integration.api.conftest import (
     create_project,
@@ -34,9 +43,12 @@ from tests.shared.assistant_fakes import (
     StaticDocsRetriever,
     ToolEchoingModel,
 )
-from tests.shared.helpers import DEFAULT_TEST_PASSWORD, auth_header
+from tests.shared.helpers import DEFAULT_TEST_PASSWORD, auth_header, captured_log_records
 
 CHAT = "/api/v1/assistant/chat"
+UNAVAILABLE_BODY = {"detail": "The assistant is temporarily unavailable"}
+# A database URL for a port nothing listens on: the connection is refused at once.
+UNREACHABLE_DB_URL = "postgresql+psycopg://u:p@127.0.0.1:9/db"  # pragma: allowlist secret
 
 # Numbers, names and words that exist only in the owner's project, chosen so that nothing
 # else in a response or a prompt can be mistaken for them.
@@ -752,6 +764,310 @@ class TestWhatTheModelIsShown:
             assert identifier not in response.text
 
 
+class _DownRetriever:
+    """A retriever whose search fails with the given error, by default a refused connection."""
+
+    def __init__(self, failure: Exception | None = None) -> None:
+        self._failure = failure or OperationalError(
+            "SELECT 1", {}, ConnectionRefusedError("assistant-db")
+        )
+
+    async def search(self, query: str) -> list[Any]:
+        raise self._failure
+
+
+def _break_project_reads(client, failure) -> None:
+    """Make every read of /api/v1/projects/... inside the app fail with the given error."""
+    working = client.app.dependency_overrides[get_session]
+
+    def override(request: Request):
+        if request.url.path.startswith("/api/v1/projects/"):
+            raise failure()
+        yield from working()
+
+    client.app.dependency_overrides[get_session] = override
+
+
+class TestOutages:
+    """A dependency of the assistant that is down answers 503 with a fixed message, never 500."""
+
+    @pytest.mark.parametrize("mode", _ALL_MODES)
+    def test_the_model_server_refusing_the_connection(
+        self, assistant_settings, client, configure, mode
+    ):
+        """
+        GIVEN the real chat client pointed at a local port nothing listens on
+        WHEN a question is posted
+        THEN the answer is 503 with the fixed detail
+        """
+        # GIVEN
+        configure(ASSISTANT_MODE=mode)
+        token = register_and_login(client, f"outage-{mode}@example.com")
+
+        # WHEN
+        response = client.post(CHAT, json={"message": "hi"}, headers=auth_header(token))
+
+        # THEN
+        assert response.status_code == 503
+        assert response.json() == UNAVAILABLE_BODY
+
+    @pytest.mark.parametrize(
+        "failure",
+        [
+            OperationalError("SELECT 1", {}, ConnectionRefusedError("assistant-db")),
+            ConnectionRefusedError("assistant-db"),
+        ],
+        ids=["the driver's error", "a bare refused connection"],
+    )
+    @pytest.mark.parametrize("mode", ["workflow", "hybrid"])
+    def test_the_vector_database_being_down(
+        self, assistant_settings, client, configure, mode, failure
+    ):
+        """
+        GIVEN a retriever whose database refuses the connection, wrapped by the driver or bare
+        WHEN a question is posted in a mode that searches ahead of the model
+        THEN the answer is 503 with the fixed detail and the model is never asked
+        """
+        # GIVEN
+        configure(ASSISTANT_MODE=mode)
+        token = register_and_login(client, "db-outage@example.com")
+        model = _scripted("never used")
+        _use_model(client, model)
+        client.app.dependency_overrides[deps.get_docs_retriever] = lambda: _DownRetriever(failure)
+
+        # WHEN
+        response = client.post(CHAT, json={"message": "hi"}, headers=auth_header(token))
+
+        # THEN
+        assert response.status_code == 503
+        assert response.json() == UNAVAILABLE_BODY
+        assert model.seen == []
+
+    def test_a_bug_in_the_search_is_not_reported_as_an_outage(
+        self, assistant_settings, client, configure
+    ):
+        """
+        GIVEN a retriever that fails with a ValueError, which is not an outage
+        WHEN a question is posted
+        THEN the error is not turned into the fixed 503: the answer is a plain 500
+        """
+        # GIVEN
+        configure(ASSISTANT_MODE="workflow")
+        token = register_and_login(client, "db-bug@example.com")
+        _use_model(client, _scripted("never used"))
+        client.app.dependency_overrides[deps.get_docs_retriever] = lambda: _DownRetriever(
+            ValueError("bug")
+        )
+
+        # WHEN
+        response = TestClient(client.app, raise_server_exceptions=False).post(
+            CHAT, json={"message": "hi"}, headers=auth_header(token)
+        )
+
+        # THEN
+        assert response.status_code == 500
+        assert response.json() != UNAVAILABLE_BODY
+
+    def test_in_the_agent_mode_a_down_database_is_told_to_the_model_by_the_tool(
+        self, assistant_settings, client, configure
+    ):
+        """
+        GIVEN the agent mode and a retriever whose database is down
+        WHEN the model calls the search tool
+        THEN the tool answers unavailable: to the model, and the turn still ends with an
+            answer, because the agent can carry on without the documents
+        """
+        # GIVEN
+        configure(ASSISTANT_MODE="agent")
+        token = register_and_login(client, "db-outage-agent@example.com")
+        model = ToolEchoingModel(
+            first_call=AIMessage(
+                content="",
+                tool_calls=[
+                    {"name": "search_docs", "args": {"query": "x"}, "id": "c1", "type": "tool_call"}
+                ],
+            )
+        )
+        _use_model(client, model)
+        client.app.dependency_overrides[deps.get_docs_retriever] = lambda: _DownRetriever()
+
+        # WHEN
+        response = client.post(CHAT, json={"message": "hi"}, headers=auth_header(token))
+
+        # THEN
+        assert response.status_code == 200
+        assert response.json()["answer"].startswith("unavailable:")
+
+    @pytest.mark.parametrize(
+        "failure",
+        [
+            lambda: OperationalError("SELECT 1", {}, ConnectionRefusedError("db")),
+            lambda: HTTPException(status_code=500, detail="internal"),
+        ],
+        ids=["the application's database is down", "the application answers 500"],
+    )
+    @pytest.mark.parametrize("mode", ["workflow", "hybrid"])
+    def test_the_application_failing_while_the_project_is_read(
+        self, assistant_settings, client, configure, mode, failure
+    ):
+        """
+        GIVEN the application's own project routes failing
+        WHEN the owner asks about their project
+        THEN the answer is 503 with the fixed detail and the model is never asked
+        """
+        # GIVEN
+        configure(ASSISTANT_MODE=mode)
+        owner = _owner_project(client)
+        model = _scripted("never used")
+        _use_model(client, model)
+        _break_project_reads(client, failure)
+
+        # WHEN
+        response = client.post(
+            CHAT,
+            json={"message": "What is this project?", "project_id": owner["id"]},
+            headers=auth_header(owner["token"]),
+        )
+
+        # THEN
+        assert response.status_code == 503
+        assert response.json() == UNAVAILABLE_BODY
+        assert model.seen == []
+
+
+class TestColdStartOutages:
+    """The retriever is built by the first request, and a backend that is down then is a 503."""
+
+    @staticmethod
+    def _without_the_test_retriever(client) -> None:
+        client.app.dependency_overrides.pop(deps.get_docs_retriever)
+
+    def test_an_unreachable_vector_database_is_a_503_not_a_500(
+        self, assistant_settings, client, configure
+    ):
+        """
+        GIVEN a cold process whose vector database URL points at a port nothing listens on
+        WHEN the first question arrives, the retriever not being replaced by a fake
+        THEN the answer is 503 with the fixed detail, and the model is never asked
+        """
+        # GIVEN
+        configure(ASSISTANT_VECTOR_DB_URL=UNREACHABLE_DB_URL)
+        self._without_the_test_retriever(client)
+        token = register_and_login(client, "cold-db@example.com")
+        model = _scripted("never used")
+        _use_model(client, model)
+
+        # WHEN
+        response = client.post(CHAT, json={"message": "hi"}, headers=auth_header(token))
+
+        # THEN
+        assert response.status_code == 503
+        assert response.json() == UNAVAILABLE_BODY
+        assert model.seen == []
+
+    def test_a_missing_vector_database_url_is_a_503_and_the_log_names_the_setting(
+        self, assistant_settings, client
+    ):
+        """
+        GIVEN no ASSISTANT_VECTOR_DB_URL
+        WHEN a question arrives
+        THEN the answer is the same fixed 503, and one warning names the missing setting
+        """
+        # GIVEN
+        self._without_the_test_retriever(client)
+        token = register_and_login(client, "cold-no-url@example.com")
+        _use_model(client, _scripted("never used"))
+
+        # WHEN
+        with captured_log_records("api.assistant.deps") as records:
+            response = client.post(CHAT, json={"message": "hi"}, headers=auth_header(token))
+
+        # THEN
+        assert response.status_code == 503
+        assert response.json() == UNAVAILABLE_BODY
+        (record,) = records
+        assert (record.levelno, record.event, record.setting) == (
+            logging.WARNING,
+            "assistant_setting_missing",
+            "ASSISTANT_VECTOR_DB_URL",
+        )
+
+    def test_the_failure_is_not_cached_once_a_working_retriever_is_installed(
+        self, assistant_settings, client, configure
+    ):
+        """
+        GIVEN a first request that failed because the database was unreachable
+        WHEN the caches are cleared and the retriever is replaced by a working fake
+        THEN the next request is answered 200
+        """
+        # GIVEN
+        configure(ASSISTANT_VECTOR_DB_URL=UNREACHABLE_DB_URL)
+        self._without_the_test_retriever(client)
+        token = register_and_login(client, "cold-recover@example.com")
+        _use_model(client, _scripted("Back again."))
+        failed = client.post(CHAT, json={"message": "hi"}, headers=auth_header(token))
+
+        # WHEN
+        deps.clear_caches()
+        client.app.dependency_overrides[deps.get_docs_retriever] = lambda: StaticDocsRetriever([])
+        recovered = client.post(CHAT, json={"message": "hi"}, headers=auth_header(token))
+
+        # THEN
+        assert failed.status_code == 503
+        assert recovered.status_code == 200
+        assert recovered.json()["answer"] == "Back again."
+
+    def test_the_real_factory_builds_again_after_a_failure_without_clearing_anything(
+        self, assistant_settings, client, configure
+    ):
+        """
+        GIVEN a first request that failed because the database was unreachable
+        WHEN the database comes back (the store opens) and no cache is cleared
+        THEN the next request is answered 200 by the retriever the real factory builds
+        """
+        # GIVEN
+        configure(
+            ASSISTANT_MODE="agent",
+            ASSISTANT_VECTOR_DB_URL=UNREACHABLE_DB_URL,
+        )
+        self._without_the_test_retriever(client)
+        token = register_and_login(client, "cold-again@example.com")
+        _use_model(client, _scripted("Back again."))
+        failed = client.post(CHAT, json={"message": "hi"}, headers=auth_header(token))
+
+        # WHEN
+        with patch.object(deps, "open_store", return_value=MagicMock()):
+            recovered = client.post(CHAT, json={"message": "hi"}, headers=auth_header(token))
+
+        # THEN
+        assert failed.status_code == 503
+        assert recovered.status_code == 200
+
+    def test_an_error_outside_the_list_raised_while_building_is_a_500(
+        self, assistant_settings, client, configure
+    ):
+        """
+        GIVEN a store whose opening fails with a programming error
+        WHEN a question arrives
+        THEN the answer is a plain 500 and not the fixed 503
+        """
+        # GIVEN
+        configure(ASSISTANT_VECTOR_DB_URL=UNREACHABLE_DB_URL)
+        self._without_the_test_retriever(client)
+        token = register_and_login(client, "cold-bug@example.com")
+        _use_model(client, _scripted("never used"))
+
+        # WHEN
+        with patch.object(deps, "open_store", side_effect=RuntimeError("bug")):
+            response = TestClient(client.app, raise_server_exceptions=False).post(
+                CHAT, json={"message": "hi"}, headers=auth_header(token)
+            )
+
+        # THEN
+        assert response.status_code == 500
+        assert response.json() != UNAVAILABLE_BODY
+
+
 class TestMessageLimit:
     """The hourly budget is spent per user, before anything is built, and 0 switches it off."""
 
@@ -941,3 +1257,236 @@ class TestPerAddressRefusalSpendsTheBudget:
         assert "detail" not in first[-1].json()
         assert after.status_code == 429
         assert after.json() == {"detail": "Too many assistant messages. Please try again later."}
+
+
+_ANSWER_SENTINEL = "SENTINEL-ANSWER-7f3a91c2"
+_QUESTION_SENTINEL = "SENTINEL-QUESTION-5d80b4e6"
+_POSITION_SENTINEL = "SENTINEL-POSITION-2c19e7a8"
+_SENTINELS = [_ANSWER_SENTINEL, _QUESTION_SENTINEL, _POSITION_SENTINEL]
+_LIBRARY_PREFIXES = ("openai", "httpx", "httpcore")
+_CHATTY_LOGGERS = [
+    "openai",
+    "httpx",
+    "httpx2",
+    "httpcore",
+    "httpcore2",
+    "langchain",
+    "langchain_core",
+    "langchain_openai",
+    "langgraph",
+    "langsmith",
+    "api",
+    "",
+]
+
+
+class _StubModelServer(http.server.ThreadingHTTPServer):
+    """A model server on localhost that follows a script instead of running a model.
+
+    A request that offers tools and has not yet been given a tool's reply is answered with a
+    call of ``get_project_opinions`` for ``project_id``; every other request is answered with
+    one fixed sentence. The bodies of all requests are kept, so a test can see what the
+    application sent.
+
+    :param project_id: The project the scripted tool call asks about.
+    """
+
+    def __init__(self, project_id: str) -> None:
+        super().__init__(("127.0.0.1", 0), _StubModelHandler)
+        self.project_id = project_id
+        self.bodies: list[dict[str, Any]] = []
+
+    @property
+    def base_url(self) -> str:
+        """The URL the application's model client is pointed at."""
+        return f"http://127.0.0.1:{self.server_address[1]}/v1"
+
+
+class _StubModelHandler(http.server.BaseHTTPRequestHandler):
+    server: _StubModelServer
+
+    def do_POST(self) -> None:
+        request = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
+        self.server.bodies.append(request)
+        roles = [message["role"] for message in request["messages"]]
+        if request.get("tools") and "tool" not in roles:
+            message: dict[str, Any] = {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {
+                            "name": "get_project_opinions",
+                            "arguments": json.dumps({"project_id": self.server.project_id}),
+                        },
+                    }
+                ],
+            }
+            finish_reason = "tool_calls"
+        else:
+            message = {"role": "assistant", "content": f"It says {_ANSWER_SENTINEL}."}
+            finish_reason = "stop"
+        body = json.dumps(
+            {
+                "id": "chatcmpl-stub",
+                "object": "chat.completion",
+                "created": 0,
+                "model": "test-answer-model",
+                "choices": [{"index": 0, "message": message, "finish_reason": finish_reason}],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+            }
+        ).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, format: str, *args: Any) -> None:
+        """Keep the stub quiet."""
+
+
+@contextmanager
+def _stub_model_server(project_id: str) -> Iterator[_StubModelServer]:
+    """Run the scripted model server on a free local port until the block ends."""
+    server = _StubModelServer(project_id)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield server
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def _everything_a_record_says(record: logging.LogRecord) -> str:
+    """Render a record as text, the way a handler could: message, arguments, extras, traceback."""
+    formatted = logging.Formatter("%(name)s %(levelname)s %(message)s").format(record)
+    return f"{formatted}\n{record.args!r}\n{record.__dict__!r}"
+
+
+class TestLogsCarryNoText:
+    """Nothing a user or a model wrote reaches a log record, whichever library writes it."""
+
+    @pytest.mark.parametrize("mode", ["workflow", "agent"])
+    def test_no_record_of_a_turn_holds_the_question_an_opinion_or_the_answer(
+        self, assistant_settings, client, configure, mode
+    ):
+        """
+        GIVEN the real chat client talking to a stub server on localhost, three distinct
+            sentinel strings (in the question, in an expert's position and in the model's
+            answer) and every library logger switched to DEBUG
+        WHEN a turn about the project is answered
+        THEN the answer carries the model's sentinel (so the turn really ran through the
+            client), some library records were emitted (so the capture works), and no
+            record's message, arguments or extra fields holds any sentinel
+        """
+        # GIVEN
+        owner = _owner_project(client, position=_POSITION_SENTINEL)
+        body = {"message": f"Question {_QUESTION_SENTINEL}?", "project_id": owner["id"]}
+        with _stub_model_server(owner["id"]) as server:
+            configure(ASSISTANT_MODE=mode, ASSISTANT_ANSWER_LLM_BASE_URL=server.base_url)
+
+            # WHEN
+            with ExitStack() as stack:
+                captured = [
+                    stack.enter_context(captured_log_records(name)) for name in _CHATTY_LOGGERS
+                ]
+                response = client.post(CHAT, json=body, headers=auth_header(owner["token"]))
+
+        # THEN
+        assert response.status_code == 200
+        assert _ANSWER_SENTINEL in response.json()["answer"]
+        sent = json.dumps(server.bodies)
+        assert _QUESTION_SENTINEL in sent
+        assert _POSITION_SENTINEL in sent
+        records = [record for group in captured for record in group]
+        assert any(record.name.split(".")[0].startswith(_LIBRARY_PREFIXES) for record in records)
+        for record in records:
+            text = _everything_a_record_says(record)
+            for sentinel in _SENTINELS:
+                assert sentinel not in text, f"{record.name} logged {sentinel}"
+
+
+class TestTracing:
+    """With tracing off in the settings, no environment variable turns it on."""
+
+    @pytest.mark.parametrize("mode", ["workflow", "agent"])
+    def test_a_turn_builds_no_langsmith_client_when_only_the_environment_asks_for_tracing(
+        self, assistant_settings, client, configure, monkeypatch, mode
+    ):
+        """
+        GIVEN the setting off while LANGSMITH_TRACING and LANGCHAIN_TRACING_V2 are true in
+            the environment
+        WHEN a turn is answered
+        THEN the answer is 200, the tracing module's client factory was never called and no
+            LangSmith client was constructed
+        """
+        # GIVEN
+        monkeypatch.setenv("LANGSMITH_TRACING", "true")
+        monkeypatch.setenv("LANGCHAIN_TRACING_V2", "true")
+        configure(ASSISTANT_MODE=mode, ASSISTANT_LANGSMITH_ENABLED="false")
+        token = register_and_login(client, f"tracing-{mode}@example.com")
+        _use_model(client, _scripted("Answer."))
+        factory = MagicMock(side_effect=AssertionError("a LangSmith client was requested"))
+        constructed = MagicMock(side_effect=AssertionError("a LangSmith client was constructed"))
+
+        # WHEN
+        with (
+            patch.object(tracing, "_shared_client", factory),
+            patch.object(ls.Client, "__init__", constructed),
+        ):
+            response = client.post(CHAT, json={"message": "hi"}, headers=auth_header(token))
+
+        # THEN
+        assert response.status_code == 200
+        factory.assert_not_called()
+        constructed.assert_not_called()
+
+
+class TestRetrieverWiring:
+    """The documentation the model is shown comes from the retriever the app was given."""
+
+    def test_the_passages_of_the_installed_retriever_are_the_sources_of_the_answer(
+        self, assistant_settings, client
+    ):
+        """
+        GIVEN a retriever holding one passage, installed in place of the static one
+        WHEN a question is answered in the workflow mode
+        THEN the model was shown the passage and the response lists it as a source, which
+            shows the route resolves the retriever through the dependency the tests replace
+        """
+        from api.assistant.rag.retrieval import RetrievedChunk
+
+        # GIVEN
+        token = register_and_login(client, "sources@example.com")
+        retriever = StaticDocsRetriever(
+            [
+                RetrievedChunk(
+                    text="Caption.\n\nThe compromise is the midpoint.",
+                    title="Method",
+                    section="Step 3",
+                    url=None,
+                    layer="public",
+                    score=0.9,
+                    chunk_text="The compromise is the midpoint.",
+                )
+            ]
+        )
+        client.app.dependency_overrides[deps.get_docs_retriever] = lambda: retriever
+        model = _scripted("The midpoint [1].")
+        _use_model(client, model)
+
+        # WHEN
+        response = client.post(
+            CHAT, json={"message": "What is the compromise?"}, headers=auth_header(token)
+        )
+
+        # THEN
+        assert response.status_code == 200
+        assert retriever.queries == ["What is the compromise?"]
+        assert "The compromise is the midpoint." in _shown(model)
+        assert [source["title"] for source in response.json()["sources"]] == ["Method"]
