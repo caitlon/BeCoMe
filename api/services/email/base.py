@@ -1,6 +1,10 @@
 """Abstract email-sender interface for transactional mail."""
 
 from abc import ABC, abstractmethod
+from typing import Literal
+
+EmailLanguage = Literal["en", "cs"]
+"""Languages a transactional email can be written in."""
 
 
 class EmailSender(ABC):

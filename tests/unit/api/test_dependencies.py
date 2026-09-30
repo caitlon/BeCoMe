@@ -13,6 +13,7 @@ from api.dependencies import (
     AccessLevel,
     RequireProjectAccess,
     get_email_address_policy,
+    get_email_language,
     get_email_service,
     get_password_reset_service,
     get_storage_service,
@@ -451,3 +452,129 @@ class TestRequireProjectAccess:
             dependency(project_id, current_user, project_service, membership_service)
 
         assert exc_info.value.status_code == 404
+
+
+class TestGetEmailLanguage:
+    """Tests for the Accept-Language reader that picks the email language."""
+
+    @pytest.mark.parametrize(
+        ("header", "expected"),
+        [
+            (None, "en"),
+            ("", "en"),
+            ("cs", "cs"),
+            ("cs-CZ,cs;q=0.9,en;q=0.8", "cs"),
+            ("en-US,en;q=0.9,cs;q=0.8", "en"),
+            ("sk,cs;q=0.8,en;q=0.5", "cs"),
+            ("de,fr;q=0.9", "en"),
+            ("en;q=0.2,cs;q=0.9", "cs"),
+            ("cs;q=0", "en"),
+            ("CS", "cs"),
+            (" cs ", "cs"),
+            ("*", "en"),
+            ("cs;q=abc,en", "en"),
+            (";;;,q=,==", "en"),
+        ],
+    )
+    def test_picks_the_first_supported_range_by_weight(self, header, expected):
+        """
+        GIVEN an Accept-Language value
+        WHEN the language is read
+        THEN it is the best-weighted range whose primary subtag is en or cs, else en
+        """
+        # WHEN
+        language = get_email_language(header)
+
+        # THEN
+        assert language == expected
+
+    @pytest.mark.parametrize(
+        ("header", "expected"),
+        [
+            ("cs;q=1.5", "en"),
+            ("cs;q=-1,en;q=0.1", "en"),
+            ("cs;q=nan", "en"),
+            ("cs;q=inf", "en"),
+            ("cs;q=,en", "en"),
+            ("cs;level=1", "en"),
+            ("cs;q=0.5;x=1", "en"),
+            ("en;q=0.5,cs;q=0.5", "en"),
+            ("cs;q=0.5,en;q=0.5", "cs"),
+            ("cs ; q = 0.9 , en;q=0.8", "cs"),
+            ("csb", "en"),
+            ("cs-", "cs"),
+        ],
+    )
+    def test_a_range_that_is_not_well_formed_is_dropped(self, header, expected):
+        """
+        GIVEN a range whose weight is out of bounds, not a number, or has extra parameters
+        WHEN the language is read
+        THEN that range is ignored, and equal weights keep header order
+        """
+        # WHEN
+        language = get_email_language(header)
+
+        # THEN
+        assert language == expected
+
+    def test_a_huge_header_never_fails_and_ignores_what_lies_past_the_bound(self):
+        """
+        GIVEN a 10,000 character header with cs only after the first 200 characters
+        WHEN the language is read
+        THEN the answer is en, without error
+        """
+        # GIVEN
+        header = "x" * 250 + ",cs"
+        header += "," * (10_000 - len(header))
+
+        # WHEN
+        language = get_email_language(header)
+
+        # THEN
+        assert len(header) == 10_000
+        assert language == "en"
+
+    def test_a_supported_range_inside_the_character_bound_still_wins(self):
+        """
+        GIVEN a long header whose first range is cs
+        WHEN the language is read
+        THEN the answer is cs
+        """
+        # GIVEN
+        header = "cs," + "x" * 9_997
+
+        # WHEN
+        language = get_email_language(header)
+
+        # THEN
+        assert language == "cs"
+
+    def test_only_the_first_ten_ranges_are_read(self):
+        """
+        GIVEN eleven ranges with cs in the eleventh
+        WHEN the language is read
+        THEN the answer is en
+        """
+        # GIVEN
+        header = ",".join(["de"] * 10 + ["cs"])
+
+        # WHEN
+        language = get_email_language(header)
+
+        # THEN
+        assert language == "en"
+
+    def test_the_tenth_range_is_still_read(self):
+        """
+        GIVEN ten ranges with cs in the tenth
+        WHEN the language is read
+        THEN the answer is cs
+        """
+        # GIVEN
+        header = ",".join(["de"] * 9 + ["cs"])
+
+        # WHEN
+        language = get_email_language(header)
+
+        # THEN
+        assert language == "cs"
