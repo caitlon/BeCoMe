@@ -96,7 +96,10 @@
     "centroidChartDesc": "Sloupcový graf centroidů expertních názorů s referenčními liniemi pro průměr, medián a nejlepší kompromis",
     "landscapeChartDesc": "Číselná osa zobrazující centroidy jednotlivých expertních názorů se značkami průměru, mediánu a nejlepšího kompromisu",
     "opinionValues": "Hodnoty názoru: Dolní {{lower}}, Vrchol {{peak}}, Horní {{upper}}, Centroid {{centroid}}",
-    "opensInNewTab": "otevře se v nové záložce"
+    "opensInNewTab": "otevře se v nové záložce",
+    "skipToContent": "Přejít k hlavnímu obsahu",
+    "close": "Zavřít",
+    "notifications": "Oznámení ({hotkey})"
   },
   "centroidChart": {
     "centroidValue": "Centroid",
