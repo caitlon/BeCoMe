@@ -356,13 +356,13 @@ class TestFindUngroundedNumbers:
     def test_space_grouped_thousands_are_one_number(self, space: str):
         """
         GIVEN 1 000 written with one of the three space characters
-        WHEN the grounding states 1000, and then only 1 and 5
-        THEN it is grounded, and then flagged
+        WHEN the grounding states 1000, and then only 1 and 0
+        THEN it is grounded, and then flagged as one number
         """
         written = f"1{space}000"
 
         assert find_ungrounded_numbers(f"About {written} people", ["total: 1000"]) == []
-        assert find_ungrounded_numbers(f"About {written} people", ["1 and 5"]) == [written]
+        assert find_ungrounded_numbers(f"About {written} people", ["1 and 0"]) == [written]
 
     def test_space_grouped_thousands_with_a_decimal_comma(self):
         """
@@ -766,7 +766,7 @@ class TestOrdinalsStayOnOneLine:
         """
         assert find_ungrounded_numbers("The median is 8.\nthe next", ["nothing"]) == ["8"]
 
-    @pytest.mark.parametrize("gap", [" ", "\t", "\xa0"])
+    @pytest.mark.parametrize("gap", [" ", "\t", "\xa0", "\N{NARROW NO-BREAK SPACE}"])
     def test_a_space_tab_or_no_break_space_still_makes_an_ordinal(self, gap: str):
         """
         GIVEN an ordinal followed by a space, a tab or a no-break space
@@ -895,3 +895,173 @@ class TestGuards:
         """
         assert check_citations("see [5-1]", {1, 5}) is True
         assert check_citations("see [5-1]", {1}) is False
+
+
+class TestRoundThousandsAreNotInvented:
+    """A group that starts with a zero is a thousands group, never a list member."""
+
+    @pytest.mark.parametrize(
+        "answer",
+        [
+            "The panel had 5 000 experts",
+            "About 2 000 people",
+            "It reached 20 000",
+            "A total of 5 000,5 units",
+        ],
+    )
+    def test_a_round_thousand_is_flagged_when_the_data_holds_no_such_number(self, answer: str):
+        """
+        GIVEN a grounding of small numbers and a decimal below one
+        WHEN the answer states a round thousand such as 5 000
+        THEN it is flagged, and the zero group is not read as a member that any value
+            below one grounds
+        """
+        grounding = ["20 40 2 3", "Number of experts: 5", "Maximum error: 0.83"]
+
+        assert find_ungrounded_numbers(answer, grounding) != []
+
+    def test_the_flagged_token_is_reported_as_written(self):
+        """
+        GIVEN 5 000 in the answer and small numbers in the grounding
+        WHEN the numbers are checked
+        THEN the token comes back as written
+        """
+        grounding = ["20 40 2 3", "Number of experts: 5", "Maximum error: 0.83"]
+
+        assert find_ungrounded_numbers("The panel had 5 000 experts", grounding) == ["5 000"]
+
+    def test_a_list_of_groups_without_zeros_is_still_a_list(self):
+        """
+        GIVEN (100 200 300)
+        WHEN the grounding states them separately
+        THEN nothing is flagged
+        """
+        assert find_ungrounded_numbers("Values (100 200 300)", ["100, 200, 300"]) == []
+
+    def test_a_zero_group_is_still_grounded_by_the_whole_number(self):
+        """
+        GIVEN 5 000
+        WHEN the grounding states 5000
+        THEN nothing is flagged
+        """
+        assert find_ungrounded_numbers("It is 5 000", ["5000"]) == []
+
+
+class TestNarrowCompoundNames:
+    """Only names that start with a capital lose their hyphenated number."""
+
+    @pytest.mark.parametrize(
+        ("answer", "reported"),
+        [
+            ("The error-15.3 was high", ["15.3"]),
+            ("The peak-3 was high", ["3"]),
+            ("The n-1 rule", ["1"]),
+        ],
+    )
+    def test_a_lowercase_hyphenated_number_is_still_checked(self, answer: str, reported: list[str]):
+        """
+        GIVEN a lowercase word, a hyphen and a number
+        WHEN the grounding lacks the number
+        THEN the number is reported
+        """
+        assert find_ungrounded_numbers(answer, ["nothing"]) == reported
+
+    def test_a_dropped_name_does_not_turn_a_following_hyphen_into_a_sign(self):
+        """
+        GIVEN GPT-4-5
+        WHEN the grounding has nothing
+        THEN -5 is not reported, and 5 is checked as a plain number
+        """
+        assert find_ungrounded_numbers("Use GPT-4-5 here", ["nothing"]) == ["5"]
+
+    def test_a_dropped_token_of_another_kind_does_not_make_a_sign_either(self):
+        """
+        GIVEN a mixed token, a citation and a date, each directly followed by -5
+        WHEN the grounding has 5
+        THEN nothing is flagged, because no minus became a sign
+        """
+        for answer in ("doc1-5", "[1]-5", "2026-09-29-5"):
+            assert find_ungrounded_numbers(answer, ["5"]) == []
+
+    def test_a_range_after_a_lowercase_word_is_a_range(self):
+        """
+        GIVEN x-20-40
+        WHEN the grounding has 20 and 40
+        THEN nothing is flagged
+        """
+        assert find_ungrounded_numbers("Set x-20-40 now", ["20 40"]) == []
+
+    def test_a_week_range_does_not_report_a_negative(self):
+        """
+        GIVEN week-3-5
+        WHEN the grounding has nothing
+        THEN no negative number is reported
+        """
+        assert find_ungrounded_numbers("In week-3-5", ["nothing"]) == ["3", "5"]
+
+
+class TestCitationLabelSet:
+    """Only source words label a citation; any other word makes the bracket ordinary."""
+
+    def test_a_bracket_with_quantity_words_is_not_a_citation(self):
+        """
+        GIVEN [lower 6, upper 11]
+        WHEN the citations are checked with no sources
+        THEN it passes, because the bracket is not a citation
+        """
+        assert check_citations("The range [lower 6, upper 11].", set()) is True
+
+    def test_the_numbers_of_such_a_bracket_are_checked(self):
+        """
+        GIVEN [lower 6, upper 11]
+        WHEN the grounding has 6 and 11, and then has neither
+        THEN nothing is flagged, and then both are
+        """
+        answer = "The range [lower 6, upper 11]."
+
+        assert find_ungrounded_numbers(answer, ["6 11"]) == []
+        assert find_ungrounded_numbers(answer, ["nothing"]) == ["6", "11"]
+
+    def test_a_range_of_quartile_names_is_not_a_citation(self):
+        """
+        GIVEN [Q1-Q3]
+        WHEN the citations are checked with no sources
+        THEN it passes
+        """
+        assert check_citations("Between [Q1-Q3].", set()) is True
+
+    @pytest.mark.parametrize(
+        ("form", "named"),
+        [
+            ("[Source 1, Source 2]", {1, 2}),
+            ("[SOURCE 3]", {3}),
+            ("[sources 1-2]", {1, 2}),
+            ("[src 4]", {4}),
+            ("[doc1]", {1}),
+            ("[Docs 2]", {2}),
+            ("[Document 5]", {5}),
+            ("[Ref. 3]", {3}),
+            ("[refs 2, 3]", {2, 3}),
+            ("[Reference: 4]", {4}),
+            ("[Excerpt 2]", {2}),
+            ("[Passage #6]", {6}),
+            ("[Zdroj 1]", {1}),
+            ("[zdroje 1, 2]", {1, 2}),
+            ("[Dokument 3]", {3}),
+            ("[\u00daryvek 2]", {2}),
+            ("[Pas\u00e1\u017e 4]", {4}),
+            ("[\u0438\u0441\u0442\u043e\u0447\u043d\u0438\u043a 3]", {3}),
+            ("[\u0418\u0441\u0442\u043e\u0447\u043d\u0438\u043a 3]", {3}),
+        ],
+    )
+    def test_a_source_word_labels_a_citation(self, form: str, named: set[int]):
+        """
+        GIVEN a bracket labelled with a source word, in any case, in English, Czech or Russian
+        WHEN the citations are checked against exactly the numbers it names, and against none
+        THEN it passes, and then fails, and its digits are not scanned as numbers
+        """
+        answer = f"See {form} here."
+
+        assert check_citations(answer, named) is True
+        assert check_citations(answer, set()) is False
+        assert find_ungrounded_numbers(answer, ["nothing"]) == []
