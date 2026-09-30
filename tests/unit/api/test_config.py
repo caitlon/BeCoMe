@@ -1417,6 +1417,49 @@ class TestAssistantSettings:
         with pytest.raises(ValidationError, match="assistant_mode"):
             Settings(secret_key="test-secret-key", assistant_mode="chatty")
 
+    def test_tool_call_limit_defaults_to_four(self, monkeypatch, tmp_path):
+        """
+        GIVEN Settings without an override for the tool-call limit and no .env file in reach
+        WHEN constructed
+        THEN one turn may make four tool calls
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("ASSISTANT_MAX_TOOL_CALLS", raising=False)
+
+        # WHEN
+        settings = Settings(secret_key="test-secret-key")
+
+        # THEN
+        assert settings.assistant_max_tool_calls == 4
+
+    @pytest.mark.parametrize("value", [0, -1])
+    def test_rejects_a_non_positive_tool_call_limit(self, value, monkeypatch, tmp_path):
+        """
+        GIVEN a tool-call limit of zero or below
+        WHEN Settings is constructed
+        THEN it is refused, naming the field, because an agent that can call nothing, or
+             one that always falls back, is a misconfiguration
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="assistant_max_tool_calls"):
+            Settings(secret_key="test-secret-key", assistant_max_tool_calls=value)
+
+    def test_accepts_a_tool_call_limit_of_one(self, monkeypatch, tmp_path):
+        """
+        GIVEN the smallest positive tool-call limit
+        WHEN Settings is constructed
+        THEN it is accepted
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+
+        # WHEN/THEN
+        assert Settings(secret_key="test-secret-key", assistant_max_tool_calls=1)
+
     def test_turn_timeout_defaults_to_three_minutes(self, monkeypatch, tmp_path):
         """
         GIVEN Settings without an override for the turn timeout and no .env file in reach
