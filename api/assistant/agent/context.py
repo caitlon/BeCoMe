@@ -56,6 +56,16 @@ class SourceRegistry:
             for number, chunk in enumerate(self._chunks, start=1)
         ]
 
+    def numbered(self) -> list[tuple[int, RetrievedChunk]]:
+        """Return every registered chunk with the number it was given.
+
+        The chat service uses it to show the model every source found so far in one
+        excerpts block, when a turn has to be answered from what was already gathered.
+
+        :return: One ``(number, chunk)`` pair per registered chunk, in registration order.
+        """
+        return list(enumerate(self._chunks, start=1))
+
     def texts(self) -> list[str]:
         """Return what the model is shown for each source, for the number check.
 
