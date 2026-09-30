@@ -110,6 +110,15 @@ def _opinion(name: str = "Jana Novakova", position: str = "Hydrologist 1") -> Op
     )
 
 
+def _brief(index: int) -> ProjectBrief:
+    return ProjectBrief(
+        id=f"00000000-0000-4000-8000-{index:012d}",
+        name=f"Project {index}",
+        role="expert",
+        is_example=False,
+    )
+
+
 def _unavailable_errors() -> list[Exception]:
     response = httpx.Response(500, request=_REQUEST)
     return [
@@ -230,7 +239,7 @@ class TestSearchDocs:
 
         result = await search_docs.ainvoke({"query": "nothing", "runtime": _runtime(ctx)})
 
-        assert result == tools._NO_RESULT
+        assert result == tools._NO_PASSAGES
         assert ctx.sources.refs() == []
         assert ctx.tool_outputs == []
 
@@ -300,7 +309,7 @@ class TestListMyProjects:
 
         result = await list_my_projects.ainvoke({"runtime": _runtime(ctx)})
 
-        assert result == tools._NO_RESULT
+        assert result == tools._NO_PROJECTS
         assert ctx.tool_outputs == [result]
 
     async def test_reports_a_failing_api_as_unavailable_not_as_not_found(self):
@@ -527,9 +536,37 @@ class TestRenderProjectList:
         ]
 
         assert render_project_list(projects) == (
-            f"<project_data>\n- {PROJECT_ID}: First (admin)\n- other-id: Second (expert)\n"
+            "<project_data>\n"
+            "Number of projects: 2\n"
+            f"- {PROJECT_ID}: First (admin)\n"
+            "- other-id: Second (expert)\n"
             "</project_data>"
         )
+
+    def test_shows_all_fifty_when_there_are_exactly_fifty(self):
+        """
+        GIVEN exactly fifty projects
+        WHEN the list is rendered
+        THEN all fifty rows show and there is no remainder line
+        """
+        block = render_project_list([_brief(i) for i in range(50)])
+
+        assert "Number of projects: 50" in block
+        assert block.count("\n- ") == 50
+        assert "more projects" not in block
+
+    def test_cuts_at_fifty_and_says_how_many_more(self):
+        """
+        GIVEN fifty-one projects
+        WHEN the list is rendered
+        THEN fifty rows show, the count says 51, and one line says one more
+        """
+        block = render_project_list([_brief(i) for i in range(51)])
+
+        assert "Number of projects: 51" in block
+        assert block.count("\n- ") == 50
+        assert "Project 50" not in block
+        assert "... and 1 more projects\n</project_data>" in block
 
     def test_cuts_a_long_name_and_cleans_every_string_field(self):
         """
@@ -542,7 +579,44 @@ class TestRenderProjectList:
         block = render_project_list([project])
 
         assert _one_closing_tag_at_the_end(block)
-        assert len(block.splitlines()) == 3
+        assert len(block.splitlines()) == 4
+
+
+class TestEmptyReplies:
+    """Each empty case has its own fixed text, so the model can tell the user what is missing."""
+
+    def test_the_four_texts_share_the_prefix_and_differ(self):
+        """
+        GIVEN the four texts a tool gives when there is nothing to show
+        WHEN they are read
+        THEN each starts with no_result: and no two are the same
+        """
+        texts = [
+            tools._NO_RESULT_YET,
+            tools._NO_OPINIONS,
+            tools._NO_PASSAGES,
+            tools._NO_PROJECTS,
+        ]
+
+        assert all(text.startswith("no_result:") for text in texts)
+        assert len(set(texts)) == 4
+
+    @pytest.mark.parametrize(
+        ("text", "words"),
+        [
+            (tools._NO_RESULT_YET, ("result", "calculated")),
+            (tools._NO_OPINIONS, ("opinions", "submitted")),
+            (tools._NO_PASSAGES, ("passages", "documentation")),
+            (tools._NO_PROJECTS, ("member", "project")),
+        ],
+    )
+    def test_each_text_names_what_is_missing(self, text, words):
+        """
+        GIVEN one empty-case text
+        WHEN it is read
+        THEN it names the thing that is missing
+        """
+        assert all(word in text for word in words)
 
 
 @pytest.mark.asyncio
@@ -561,7 +635,7 @@ class TestGetProjectResult:
             {"project_id": PROJECT_ID, "runtime": _runtime(ctx)}
         )
 
-        assert result == tools._NO_RESULT
+        assert result == tools._NO_RESULT_YET
         assert ctx.tool_outputs == [result]
 
     async def test_returns_exactly_the_block_the_context_renderer_writes(self):
@@ -619,7 +693,7 @@ class TestGetProjectOpinions:
             {"project_id": PROJECT_ID, "runtime": _runtime(ctx)}
         )
 
-        assert result == tools._NO_RESULT
+        assert result == tools._NO_OPINIONS
 
 
 class TestRenderOpinions:
