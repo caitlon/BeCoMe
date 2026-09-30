@@ -3,7 +3,8 @@
 import httpx
 import openai
 import pytest
-from sqlalchemy.exc import IntegrityError, OperationalError
+from sqlalchemy.exc import IntegrityError, InterfaceError, OperationalError
+from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 
 from api.assistant.upstream import UNAVAILABLE_ERRORS
 
@@ -27,6 +28,8 @@ class TestUnavailableErrors:
                 "boom", request=_REQUEST, response=httpx.Response(502, request=_REQUEST)
             ),
             OperationalError("SELECT 1", {}, Exception("connection lost")),
+            InterfaceError("SELECT 1", {}, Exception("connection closed")),
+            PoolTimeoutError("QueuePool limit of size 5 overflow 10 reached"),
         ],
         ids=lambda e: type(e).__name__,
     )
