@@ -4,7 +4,7 @@
     "title2": "jeden nejlepší kompromis",
     "subtitle": "Pro skupiny, které se musí shodnout na jednom čísle, například na rozpočtu, termínu nebo míře rizika. Každý expert zadá nejnižší, nejpravděpodobnější a nejvyšší odhad a BeCoMe z nich spočítá nejlepší kompromis.",
     "goToProjects": "Přejít na projekty",
-    "startProject": "Založit projekt"
+    "startProject": "Vytvořit účet"
   },
   "howItWorks": {
     "title": "Jak to funguje",
@@ -29,7 +29,7 @@
   },
   "cta": {
     "title": "Připraveni najít nejlepší kompromis?",
-    "subtitle": "Vytvořte svůj první projekt a začněte sbírat názory expertů ještě dnes.",
-    "button": "Začít zdarma"
+    "subtitle": "Vytvořte svůj první projekt a začněte sbírat názory expertů ještě dnes. Pro nekomerční použití zdarma.",
+    "button": "Vytvořit účet"
   }
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { act, screen } from '@testing-library/react';
+import { act, screen, within } from '@testing-library/react';
 import { render, framerMotionMock, unauthenticatedAuthMock } from '@tests/utils';
 import i18n from '@/i18n';
 import About from '@/pages/About';
@@ -66,7 +66,10 @@ describe('About', () => {
   it('has link to register page', () => {
     render(<About />);
 
-    const registerLink = screen.getByRole('link', { name: /start your project/i });
+    // The navigation bar and the footer carry the same label
+    const registerLink = within(screen.getByRole('main')).getByRole('link', {
+      name: 'Create Account',
+    });
     expect(registerLink).toHaveAttribute('href', '/register');
   });
 
