@@ -8,14 +8,11 @@ function, so every test here calls it directly with no settings and no network.
 import html as html_lib
 import re
 from html.parser import HTMLParser
+from importlib.resources import files
 
 import pytest
 
-from api.services.email.verification_email import (
-    _LAYOUT_PATH,
-    RenderedEmail,
-    render_verification_email,
-)
+from api.services.email.verification_email import RenderedEmail, render_verification_email
 
 _URL = "https://app.example/verify-email?token=abc"
 _HOSTILE_URL = 'https://app.example/verify?a=1&b="x"<y'
@@ -72,7 +69,11 @@ class TestRenderedSubject:
         WHEN the email is rendered
         THEN the subject is the fixed English subject line
         """
-        assert _render().subject == _SUBJECT
+        # WHEN
+        rendered = _render()
+
+        # THEN
+        assert rendered.subject == _SUBJECT
 
     def test_title_element_carries_the_subject(self):
         """
@@ -80,9 +81,14 @@ class TestRenderedSubject:
         WHEN its html is read
         THEN the document title equals the subject
         """
+        # GIVEN
         rendered = _render()
 
-        assert f"<title>{rendered.subject}</title>" in rendered.html
+        # WHEN
+        title = f"<title>{rendered.subject}</title>"
+
+        # THEN
+        assert title in rendered.html
 
 
 class TestRenderedHtml:
@@ -94,8 +100,10 @@ class TestRenderedHtml:
         WHEN the email is rendered
         THEN the html is a full document declaring English
         """
+        # WHEN
         rendered = _render()
 
+        # THEN
         assert rendered.html.lstrip().startswith("<!DOCTYPE html>")
         assert '<html lang="en"' in rendered.html
         assert rendered.html.rstrip().endswith("</html>")
@@ -106,8 +114,10 @@ class TestRenderedHtml:
         WHEN its html is read
         THEN the preheader and the footer sentence are present
         """
+        # WHEN
         rendered = _render()
 
+        # THEN
         assert html_lib.escape(_PREHEADER, quote=True) in rendered.html
         assert html_lib.escape(_FOOTER, quote=True) in rendered.html
 
@@ -117,7 +127,11 @@ class TestRenderedHtml:
         WHEN its html is read
         THEN the heading text is the content of an h1 element
         """
-        assert re.search(rf"<h1[^>]*>\s*{_HEADING}\s*</h1>", _render().html)
+        # WHEN
+        html = _render().html
+
+        # THEN
+        assert re.search(rf"<h1[^>]*>\s*{_HEADING}\s*</h1>", html)
 
     def test_button_label_sits_inside_the_link_to_the_url(self):
         """
@@ -125,9 +139,14 @@ class TestRenderedHtml:
         WHEN its html is read
         THEN the button label is the text of the anchor whose href is the URL
         """
+        # GIVEN
         pattern = rf'<a href="{re.escape(_URL)}"[^>]*>\s*{_BUTTON}\s*</a>'
 
-        assert re.search(pattern, _render().html)
+        # WHEN
+        html = _render().html
+
+        # THEN
+        assert re.search(pattern, html)
 
     def test_states_the_lifetime_in_the_html(self):
         """
@@ -135,35 +154,51 @@ class TestRenderedHtml:
         WHEN the email is rendered
         THEN the html says so and never mentions another window
         """
+        # WHEN
         rendered = _render(window="1 hour")
 
+        # THEN
         assert "The link expires in 1 hour." in rendered.html
         assert "24 hours" not in rendered.html
 
-    def test_url_is_escaped_in_the_href_and_in_the_visible_text(self):
+    @pytest.mark.parametrize(
+        ("field", "raw", "escaped", "occurrences"),
+        [
+            ("url", _HOSTILE_URL, _HOSTILE_URL_ESCAPED, 3),
+            ("window", "<b>1 hour</b>", "&lt;b&gt;1 hour&lt;/b&gt;", 1),
+        ],
+    )
+    def test_caller_values_are_escaped_everywhere_they_appear(
+        self, field: str, raw: str, escaped: str, occurrences: int
+    ):
+        """
+        GIVEN a link or a lifetime text holding markup characters
+        WHEN the email is rendered
+        THEN the html carries the escaped form wherever the value appears, and the raw one
+            nowhere
+        """
+        # GIVEN
+        arguments = {field: raw}
+
+        # WHEN
+        rendered = _render(**arguments)
+
+        # THEN
+        assert raw not in rendered.html
+        assert rendered.html.count(escaped) == occurrences
+
+    def test_url_sits_in_both_hrefs_and_as_visible_text(self):
         """
         GIVEN a URL holding an ampersand, a double quote and an angle bracket
         WHEN the email is rendered
-        THEN the button href, the fallback href and the visible text all carry the
-            escaped form, and the raw one is gone
+        THEN the button and the fallback link both point at it, and it is shown as text
         """
+        # WHEN
         rendered = _render(url=_HOSTILE_URL)
 
-        assert _HOSTILE_URL not in rendered.html
-        assert rendered.html.count(_HOSTILE_URL_ESCAPED) == 3
+        # THEN
         assert rendered.html.count(f'href="{_HOSTILE_URL_ESCAPED}"') == 2
         assert f">{_HOSTILE_URL_ESCAPED}</a>" in rendered.html
-
-    def test_lifetime_text_is_escaped(self):
-        """
-        GIVEN a lifetime text holding markup
-        WHEN the email is rendered
-        THEN the markup reaches the html escaped
-        """
-        rendered = _render(window="<b>1 hour</b>")
-
-        assert "<b>1 hour</b>" not in rendered.html
-        assert "&lt;b&gt;1 hour&lt;/b&gt;" in rendered.html
 
     def test_no_placeholder_survives(self):
         """
@@ -171,8 +206,10 @@ class TestRenderedHtml:
         WHEN its html and text are read
         THEN neither holds a dollar sign left over from the layout
         """
+        # WHEN
         rendered = _render()
 
+        # THEN
         assert "$" not in rendered.html
         assert "$" not in rendered.text
 
@@ -186,8 +223,10 @@ class TestRenderedText:
         WHEN the email is rendered
         THEN the text is the wordmark, heading, body, link, expiry with not-you, footer
         """
+        # WHEN
         text = _render().text
 
+        # THEN
         assert text.split("\n\n") == [
             "BeCoMe",
             _HEADING,
@@ -203,7 +242,11 @@ class TestRenderedText:
         WHEN its text is split into lines
         THEN one line is exactly the URL
         """
-        assert _URL in _render().text.splitlines()
+        # WHEN
+        lines = _render().text.splitlines()
+
+        # THEN
+        assert _URL in lines
 
     def test_holds_no_html_tags(self):
         """
@@ -211,7 +254,11 @@ class TestRenderedText:
         WHEN its text is read
         THEN no tag is in it
         """
-        assert not re.search(r"</?[A-Za-z]", _render().text)
+        # WHEN
+        text = _render().text
+
+        # THEN
+        assert not re.search(r"</?[A-Za-z]", text)
 
     def test_url_appears_raw(self):
         """
@@ -219,8 +266,10 @@ class TestRenderedText:
         WHEN the email is rendered
         THEN the text part holds it as given, since plain text is not markup
         """
+        # WHEN
         text = _render(url=_HOSTILE_URL).text
 
+        # THEN
         assert _HOSTILE_URL in text.splitlines()
         assert "&amp;" not in text
 
@@ -231,7 +280,7 @@ class TestLayoutFile:
     @pytest.fixture
     def layout(self) -> str:
         """Read the layout file as shipped."""
-        return _LAYOUT_PATH.read_text(encoding="utf-8")
+        return files("api.services.email").joinpath("layout.html").read_text(encoding="utf-8")
 
     def test_holds_no_images(self, layout: str):
         """
@@ -239,6 +288,7 @@ class TestLayoutFile:
         WHEN it is searched for image elements
         THEN there are none
         """
+        # THEN
         assert "<img" not in layout.lower()
 
     def test_holds_no_url_of_its_own(self, layout: str):
@@ -247,6 +297,7 @@ class TestLayoutFile:
         WHEN it is searched for links
         THEN none is baked in, since the only link comes from the caller
         """
+        # THEN
         assert "http" not in layout.lower()
 
     def test_holds_no_words_of_its_own(self, layout: str):
@@ -255,9 +306,11 @@ class TestLayoutFile:
         WHEN its visible text is collected
         THEN every piece is a placeholder, so a language is a matter of swapping strings
         """
+        # WHEN
         parser = _TextNodes()
         parser.feed(layout)
 
+        # THEN
         assert parser.nodes
         assert all(re.fullmatch(r"\$[a-z_]+", node) for node in parser.nodes), parser.nodes
 
@@ -267,8 +320,10 @@ class TestLayoutFile:
         WHEN each table opening is inspected
         THEN it carries role="presentation"
         """
+        # WHEN
         tables = re.findall(r"<table\b[^>]*>", layout, flags=re.IGNORECASE)
 
+        # THEN
         assert len(tables) >= 3
         assert all('role="presentation"' in table for table in tables), tables
 
@@ -278,6 +333,7 @@ class TestLayoutFile:
         WHEN its head is read
         THEN charset, viewport and both colour-scheme hints are declared
         """
+        # THEN
         assert '<meta charset="utf-8"' in layout.lower()
         assert 'name="viewport"' in layout
         assert 'name="color-scheme" content="light dark"' in layout

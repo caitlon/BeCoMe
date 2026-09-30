@@ -14,7 +14,21 @@ from string import Template
 
 @dataclass(frozen=True, slots=True)
 class VerificationCopy:
-    """Static text of the verification email, in a single language."""
+    """Static text of the verification email, in a single language.
+
+    :param lang: Language code for the ``lang`` attribute of the document.
+    :param subject: Subject line, also the document title.
+    :param preheader: Hidden line some mail clients show after the subject.
+    :param wordmark: Product name shown above the card.
+    :param heading: Main heading of the message.
+    :param body: Paragraph that says why the email was sent and what to do.
+    :param button_label: Text of the confirmation button, and of the link label in the
+        plain-text part.
+    :param fallback: Line above the raw link, for clients that do not show the button.
+    :param expiry: Sentence about the link's lifetime, with a ``{window}`` slot.
+    :param not_you: Line for someone who did not register.
+    :param footer: Closing line that says who sent the email and why.
+    """
 
     lang: str
     subject: str
