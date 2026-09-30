@@ -171,3 +171,26 @@ class TestSourceRegistry:
         registry.add(_chunk("words", title="Report 2021"))
 
         assert any("2021" in text for text in registry.texts())
+
+    def test_numbered_pairs_every_chunk_with_its_number_in_registration_order(self):
+        """
+        GIVEN two registered chunks and a repeat of the first
+        WHEN the numbered chunks are read
+        THEN each registered chunk appears once with the number it was given, and the
+            repeat adds nothing
+        """
+        registry = SourceRegistry()
+        first, second = _chunk("first"), _chunk("second", title="Other")
+        registry.add(first)
+        registry.add(second)
+        registry.add(first)
+
+        assert registry.numbered() == [(1, first), (2, second)]
+
+    def test_numbered_of_an_empty_registry_is_empty(self):
+        """
+        GIVEN an empty registry
+        WHEN the numbered chunks are read
+        THEN the list is empty
+        """
+        assert SourceRegistry().numbered() == []
