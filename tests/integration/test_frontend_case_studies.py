@@ -320,6 +320,32 @@ def _format_cs(value: float) -> str:
     return f"{value:.2f}".replace(".", ",")
 
 
+def _format_aggregate(value: float, decimal_separator: str) -> str:
+    """
+    Format a mean or median the way the interpretation prose writes it.
+
+    The prose drops trailing zeros: a median of 25 is written "25", not "25.00".
+
+    :param value: Centroid of the mean or the median
+    :param decimal_separator: "." for English prose, "," for Czech prose
+    :return: The number rounded to 2 decimal places, without trailing zeros
+    """
+    return f"{round(value, 2):g}".replace(".", decimal_separator)
+
+
+def _quotes_number(prose: str, number: str) -> bool:
+    """
+    Tell whether the prose contains the number as a whole figure.
+
+    A plain substring test would accept "25" inside "125" or "25.5".
+
+    :param prose: Interpretation text
+    :param number: Number as written in the prose, for example "45.83" or "25"
+    :return: True when the number appears and is not part of a longer figure
+    """
+    return re.search(rf"(?<![\d.,]){re.escape(number)}(?!\d|[.,]\d)", prose) is not None
+
+
 @pytest.fixture(scope="module")
 def parsed_case_studies() -> dict[str, ParsedCaseStudy]:
     """
@@ -357,6 +383,11 @@ def cs_interpretations() -> dict[str, str]:
 _CASE_IDS = sorted(_load_parsed_case_studies())
 
 _EXPECTED_CASE_IDS = frozenset({"budget", "floods", "pendlers"})
+
+# The cases whose interpretation prose also quotes the arithmetic mean and the
+# median, next to the best compromise and the maximum error. The floods prose
+# does not, so it is not listed.
+_CASES_QUOTING_AGGREGATES = ("budget", "pendlers")
 
 
 class TestStripJsComments:
@@ -542,3 +573,37 @@ class TestFrontendCaseStudyNumbers:
             f"in the interpretation prose, but it was not found. "
             f"interpretation={cs_interpretation!r}"
         )
+
+    @pytest.mark.parametrize("case_id", _CASES_QUOTING_AGGREGATES)
+    def test_interpretation_prose_quotes_calculator_mean_and_median(
+        self,
+        calculator: BeCoMeCalculator,
+        parsed_case_studies: dict[str, ParsedCaseStudy],
+        en_interpretations: dict[str, str],
+        cs_interpretations: dict[str, str],
+        case_id: str,
+    ) -> None:
+        """The mean and the median quoted in the prose must be the calculator's own.
+
+        test_interpretation_prose_matches_calculator covers only the best
+        compromise and the maximum error, so a wrong mean or median in the
+        text would otherwise reach the user unnoticed.
+        """
+        # GIVEN
+        result = calculator.calculate_compromise(parsed_case_studies[case_id].opinions)
+        aggregates = {
+            "arithmetic mean": result.arithmetic_mean.centroid,
+            "median": result.median.centroid,
+        }
+
+        # WHEN/THEN
+        for language, prose, separator in (
+            ("en", en_interpretations[case_id], "."),
+            ("cs", cs_interpretations[case_id], ","),
+        ):
+            for name, centroid in aggregates.items():
+                expected = _format_aggregate(centroid, separator)
+                assert _quotes_number(prose, expected), (
+                    f"{case_id} ({language}): expected the {name} '{expected}' in the "
+                    f"interpretation prose, but it was not found. interpretation={prose!r}"
+                )
