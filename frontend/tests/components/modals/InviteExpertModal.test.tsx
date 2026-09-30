@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { render } from '@tests/utils';
+import i18n from '@/i18n';
 import { InviteExpertModal } from '@/components/modals/InviteExpertModal';
 
 // Mock api
@@ -115,8 +116,47 @@ describe('InviteExpertModal', () => {
     await user.click(getSubmitButton());
 
     await waitFor(() => {
-      expect(screen.getByText('Invitation sent!')).toBeInTheDocument();
+      expect(screen.getByText('Invitation created')).toBeInTheDocument();
     });
+  });
+
+  it('states in English that no email is sent and where the invitation appears', async () => {
+    const user = userEvent.setup();
+    mockInviteExpert.mockResolvedValueOnce({});
+
+    render(<InviteExpertModal {...defaultProps} />);
+
+    await user.type(getEmailInput(), 'expert@test.com');
+    await user.click(getSubmitButton());
+
+    expect(await screen.findByText('Invitation created')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'The invitation is not sent by email. The expert will see it in their "Invitations" tab.'
+      )
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/sent!/i)).not.toBeInTheDocument();
+  });
+
+  it('states in Czech that no email is sent and where the invitation appears', async () => {
+    const user = userEvent.setup();
+    mockInviteExpert.mockResolvedValueOnce({});
+
+    await i18n.changeLanguage('cs');
+    try {
+      render(<InviteExpertModal {...defaultProps} />);
+
+      await user.type(getEmailInput(), 'expert@test.com');
+      await user.click(screen.getByRole('button', { name: 'Odeslat pozvánku' }));
+
+      expect(await screen.findByText('Pozvánka vytvořena')).toBeInTheDocument();
+      expect(
+        screen.getByText('Pozvánka se neposílá e-mailem. Expert ji uvidí v záložce "Pozvánky".')
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/odeslána/i)).not.toBeInTheDocument();
+    } finally {
+      await i18n.changeLanguage('en');
+    }
   });
 
   it('shows invite another button on success', async () => {
@@ -217,7 +257,7 @@ describe('InviteExpertModal', () => {
     await user.click(getSubmitButton());
 
     await waitFor(() => {
-      expect(screen.getByText('Invitation sent!')).toBeInTheDocument();
+      expect(screen.getByText('Invitation created')).toBeInTheDocument();
     });
 
     await user.click(screen.getByRole('button', { name: /done/i }));
@@ -238,7 +278,7 @@ describe('InviteExpertModal', () => {
     await user.click(getSubmitButton());
 
     await waitFor(() => {
-      expect(screen.getByText('Invitation sent!')).toBeInTheDocument();
+      expect(screen.getByText('Invitation created')).toBeInTheDocument();
     });
 
     // Click Done, which triggers handleClose with setTimeout(200ms)

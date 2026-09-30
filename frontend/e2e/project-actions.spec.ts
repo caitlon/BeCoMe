@@ -55,7 +55,7 @@ test.describe.serial('Project Actions Flow', () => {
 
     await inviteDialog.getByPlaceholder('expert@example.com').fill(expertEmail);
     await inviteDialog.getByRole('button', { name: 'Send Invitation' }).click();
-    await expect(inviteDialog.getByText('Invitation sent!')).toBeVisible({ timeout: 10000 });
+    await expect(inviteDialog.getByText('Invitation created')).toBeVisible({ timeout: 10000 });
     await inviteDialog.getByRole('button', { name: 'Done' }).click();
   });
 
@@ -179,7 +179,7 @@ test.describe.serial('Decline Invitation Flow', () => {
 
     await inviteDialog.getByPlaceholder('expert@example.com').fill(expertEmail);
     await inviteDialog.getByRole('button', { name: 'Send Invitation' }).click();
-    await expect(inviteDialog.getByText('Invitation sent!')).toBeVisible({ timeout: 10000 });
+    await expect(inviteDialog.getByText('Invitation created')).toBeVisible({ timeout: 10000 });
     await inviteDialog.getByRole('button', { name: 'Done' }).click();
   });
 
