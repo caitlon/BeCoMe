@@ -356,13 +356,13 @@ class TestFindUngroundedNumbers:
     def test_space_grouped_thousands_are_one_number(self, space: str):
         """
         GIVEN 1 000 written with one of the three space characters
-        WHEN the grounding states 1000, and then only 1 and 0
-        THEN it is grounded, and then flagged as one number
+        WHEN the grounding states 1000, and then only 1 and 5
+        THEN it is grounded, and then flagged
         """
         written = f"1{space}000"
 
         assert find_ungrounded_numbers(f"About {written} people", ["total: 1000"]) == []
-        assert find_ungrounded_numbers(f"About {written} people", ["1 and 0"]) == [written]
+        assert find_ungrounded_numbers(f"About {written} people", ["1 and 5"]) == [written]
 
     def test_space_grouped_thousands_with_a_decimal_comma(self):
         """
@@ -670,3 +670,228 @@ class TestStripCitations:
         THEN the text is unchanged
         """
         assert strip_citations("No brackets, 5 experts.") == "No brackets, 5 experts."
+
+
+class TestSignsAfterSeparators:
+    """A minus after a comma, a semicolon or a colon is a sign."""
+
+    @pytest.mark.parametrize(
+        "answer",
+        ["The bounds are (-5,-3).", "The peak:-3 is low.", "It is [-5.5,-3.5].", "Set 1;-3 now"],
+    )
+    def test_a_minus_after_a_separator_is_a_sign(self, answer: str):
+        """
+        GIVEN negative numbers written right after a comma, a colon or a semicolon
+        WHEN the grounding states them with their signs
+        THEN nothing is flagged
+        """
+        grounding = ["-5 -3 -5.5 -3.5 1"]
+
+        assert find_ungrounded_numbers(answer, grounding) == []
+
+    def test_the_same_numbers_without_signs_are_not_grounded_by_negatives(self):
+        """
+        GIVEN a grounding that only has negative values
+        WHEN the answer says the positive ones after a separator
+        THEN they are flagged
+        """
+        assert find_ungrounded_numbers("It is (5,3).", ["-5 -3"]) == ["5,3"]
+
+
+class TestCompactLists:
+    """Comma-joined elements may carry a dot decimal."""
+
+    def test_a_compact_list_with_a_dot_decimal_is_read_element_by_element(self):
+        """
+        GIVEN (6,8.75,11)
+        WHEN the grounding states 6, 8.75 and 11
+        THEN nothing is flagged
+        """
+        assert find_ungrounded_numbers("Values (6,8.75,11)", ["6 8.75 11"]) == []
+
+    def test_a_compact_pair_with_a_dot_decimal(self):
+        """
+        GIVEN 5,3.5
+        WHEN the grounding states 5 and 3.5, and then 5.3 and 5
+        THEN it is grounded, and then flagged as written
+        """
+        assert find_ungrounded_numbers("Pair 5,3.5", ["5 3.5"]) == []
+        assert find_ungrounded_numbers("Pair 5,3.5", ["5.3 5"]) == ["5,3.5"]
+
+    def test_a_compact_list_with_a_dot_decimal_is_not_a_decimal_comma(self):
+        """
+        GIVEN 5,3.5, which no single number can be
+        WHEN the grounding states only 7 and 3.5
+        THEN it is flagged, because the element 5 is missing
+        """
+        assert find_ungrounded_numbers("Pair 5,3.5", ["7 3.5"]) == ["5,3.5"]
+
+
+class TestSpaceGroupedLists:
+    """Space-separated groups of three digits can be a list as well as one number."""
+
+    def test_three_hundreds_are_grounded_by_their_members(self):
+        """
+        GIVEN (100 200 300)
+        WHEN the grounding states 100, 200 and 300 separately
+        THEN nothing is flagged
+        """
+        assert find_ungrounded_numbers("Values (100 200 300)", ["100, 200, 300"]) == []
+
+    def test_a_thousand_is_still_grounded_by_the_whole_number(self):
+        """
+        GIVEN 1 000
+        WHEN the grounding states 1000
+        THEN nothing is flagged
+        """
+        assert find_ungrounded_numbers("It is 1 000", ["1000"]) == []
+
+    def test_a_group_list_with_a_missing_member_is_flagged(self):
+        """
+        GIVEN (100 200 300)
+        WHEN the grounding lacks 300 and is not their concatenation
+        THEN the token is flagged
+        """
+        assert find_ungrounded_numbers("Values (100 200 300)", ["100 200"]) == ["100 200 300"]
+
+
+class TestOrdinalsStayOnOneLine:
+    """An ordinal's whitespace does not cross a line break."""
+
+    def test_a_number_ending_a_line_before_a_lowercase_line_is_still_checked(self):
+        """
+        GIVEN "8." at the end of a line and a lowercase word on the next
+        WHEN the grounding has no 8
+        THEN 8 is reported
+        """
+        assert find_ungrounded_numbers("The median is 8.\nthe next", ["nothing"]) == ["8"]
+
+    @pytest.mark.parametrize("gap", [" ", "\t", "\xa0"])
+    def test_a_space_tab_or_no_break_space_still_makes_an_ordinal(self, gap: str):
+        """
+        GIVEN an ordinal followed by a space, a tab or a no-break space
+        WHEN the numbers are checked
+        THEN it is not flagged
+        """
+        assert find_ungrounded_numbers(f"Ve 2.{gap}kroku", ["nothing"]) == []
+
+
+class TestCompoundNames:
+    """A digit run after letters and a hyphen belongs to a name."""
+
+    @pytest.mark.parametrize("name", ["COVID-19", "GPT-4", "ISO-8601", "SARS-2.1"])
+    def test_a_name_with_a_hyphenated_number_is_not_a_number(self, name: str):
+        """
+        GIVEN a name such as COVID-19
+        WHEN the numbers are checked against a grounding with no digits
+        THEN nothing is flagged
+        """
+        assert find_ungrounded_numbers(f"Data on {name} cases", ["nothing"]) == []
+
+    def test_a_range_of_numbers_is_still_a_range(self):
+        """
+        GIVEN 20-40
+        WHEN the grounding has 20 and 40
+        THEN nothing is flagged, and 40 is flagged when it is missing
+        """
+        assert find_ungrounded_numbers("Between 20-40", ["20 and 40"]) == []
+        assert find_ungrounded_numbers("Between 20-40", ["20"]) == ["40"]
+
+    def test_a_negative_after_a_space_is_still_negative(self):
+        """
+        GIVEN "x = -3" and "(-5)"
+        WHEN the grounding only has 3 and 5
+        THEN the signed numbers are flagged
+        """
+        assert find_ungrounded_numbers("x = -3", ["3"]) == ["-3"]
+        assert find_ungrounded_numbers("(-5)", ["5"]) == ["-5"]
+
+
+class TestNegativePrecision:
+    """A negative value keeps every digit."""
+
+    def test_a_negative_value_beyond_28_digits_is_kept(self):
+        """
+        GIVEN a negative value with 35 significant digits in the data
+        WHEN the answer quotes it to two decimals, and then quotes a nearby value
+        THEN the first is grounded and the nearby one is flagged
+        """
+        grounding = ["value=-1234567890123456789012345678.1234567"]
+        exact = "-1234567890123456789012345678.12"
+        nearby = "-1234567890123456789012345678.13"
+
+        assert find_ungrounded_numbers(f"It is {exact}", grounding) == []
+        assert find_ungrounded_numbers(f"It is {nearby}", grounding) == [nearby]
+
+    def test_a_negative_answer_beyond_28_digits_is_not_rounded_into_the_data(self):
+        """
+        GIVEN a data value that is the neighbouring whole number
+        WHEN the answer quotes a negative value with decimals beyond 28 digits
+        THEN it is flagged, not rounded onto the data
+        """
+        answer = "It is -1234567890123456789012345678.99"
+
+        assert find_ungrounded_numbers(answer, ["-1234567890123456789012345679"]) == [
+            "-1234567890123456789012345678.99"
+        ]
+
+
+class TestCitationLabels:
+    """Every number in a citation bracket may carry its own label."""
+
+    def test_a_label_before_every_number_is_one_citation(self):
+        """
+        GIVEN [Source 1, Source 2]
+        WHEN only source 1 was given, and then both
+        THEN the check fails, and then passes
+        """
+        assert check_citations("see [Source 1, Source 2]", {1}) is False
+        assert check_citations("see [Source 1, Source 2]", {1, 2}) is True
+
+    def test_the_digits_of_a_labelled_list_do_not_reach_the_number_scan(self):
+        """
+        GIVEN [Source 1, Source 2]
+        WHEN the numbers are checked against a grounding with no digits
+        THEN nothing is flagged
+        """
+        assert find_ungrounded_numbers("see [Source 1, Source 2]", ["nothing"]) == []
+
+    def test_a_label_before_a_range_end(self):
+        """
+        GIVEN [Source 1 - Source 3]
+        WHEN source 2 was not given
+        THEN the check fails
+        """
+        assert check_citations("see [Source 1 - Source 3]", {1, 3}) is False
+
+    def test_the_full_width_dagger_form_is_not_read(self):
+        """
+        GIVEN a full-width bracket holding a number, a dagger and a word
+        WHEN the citations are checked with no sources
+        THEN it is not seen as a citation (a known limit)
+        """
+        dagger = chr(0x2020)
+        answer = f"see {chr(0x3010)}4{dagger}source{chr(0x3011)}"
+
+        assert check_citations(answer, set()) is True
+
+
+class TestGuards:
+    """Two small guards, pinned."""
+
+    def test_a_citation_inside_a_link_target_after_a_citation_is_not_stripped_twice(self):
+        """
+        GIVEN a citation whose link target holds another citation-like bracket
+        WHEN citations are stripped
+        THEN the text around them is intact and nothing is repeated
+        """
+        assert strip_citations("a [1]([2]) b").split() == ["a", "b"]
+
+    def test_a_reversed_range_names_only_its_two_ends(self):
+        """
+        GIVEN the reversed range [5-1]
+        WHEN sources 1 and 5 were given, and then only 1
+        THEN it passes, and then fails (the numbers between the ends are not named)
+        """
+        assert check_citations("see [5-1]", {1, 5}) is True
+        assert check_citations("see [5-1]", {1}) is False
