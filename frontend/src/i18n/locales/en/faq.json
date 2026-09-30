@@ -21,7 +21,7 @@
     },
     "whenToUse": {
       "question": "When should I use BeCoMe?",
-      "answer": "BeCoMe is ideal for group decision-making scenarios, especially when experts have contradicting opinions or when you need to reach a quick consensus while preserving uncertainty information."
+      "answer": "BeCoMe is ideal for group decision-making scenarios, especially when experts have contradicting opinions or when you need a compromise quickly while preserving uncertainty information."
     }
   },
   "fuzzyNumbers": {
@@ -65,15 +65,15 @@
     "intro": "Solutions to common issues you might encounter while using the application.",
     "cantSeeInvitation": {
       "question": "Why can't I see the invitation?",
-      "answer": "Make sure you're logged in with the email that received the invitation. The invited user must be registered in the system before receiving invitations."
+      "answer": "Make sure you're signed in with the email address the invitation was created for. The invitation is not sent by email: it appears in your 'Invitations' tab. Only someone who already has an account can be invited, so if you registered after the owner tried, ask them to invite you again."
     },
     "noResults": {
       "question": "Why aren't results showing?",
-      "answer": "Results require at least 2 expert opinions. Make sure multiple experts have submitted their opinions in the project."
+      "answer": "Results appear as soon as the project has at least one opinion. If none are showing, no expert has saved an opinion yet."
     },
     "howToEditOpinion": {
       "question": "How do I edit my opinion?",
-      "answer": "Open the project page and modify your previously entered values. Your opinion will be updated automatically."
+      "answer": "Open the project page, change your values and click 'Update Opinion'. The result is recalculated right away."
     }
   },
   "cta": {
