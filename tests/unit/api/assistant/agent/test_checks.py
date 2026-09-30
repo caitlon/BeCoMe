@@ -1,5 +1,7 @@
 """Tests for the citation and number grounding checks."""
 
+import time
+
 import pytest
 
 from api.assistant.agent.checks import check_citations, find_ungrounded_numbers, strip_citations
@@ -877,15 +879,15 @@ class TestCitationLabels:
 
 
 class TestGuards:
-    """Two small guards, pinned."""
+    """Two small edge cases, pinned."""
 
-    def test_a_citation_inside_a_link_target_after_a_citation_is_not_stripped_twice(self):
+    def test_a_citation_in_parentheses_after_a_citation_is_stripped_on_its_own(self):
         """
-        GIVEN a citation whose link target holds another citation-like bracket
+        GIVEN a citation followed by a parenthesis that holds another citation
         WHEN citations are stripped
-        THEN the text around them is intact and nothing is repeated
+        THEN both citations go, once, and the parentheses and the words stay
         """
-        assert strip_citations("a [1]([2]) b").split() == ["a", "b"]
+        assert strip_citations("a [1]([2]) b").split() == ["a", "(", ")", "b"]
 
     def test_a_reversed_range_names_only_its_two_ends(self):
         """
@@ -1134,6 +1136,73 @@ class TestNarrowCompoundNames:
         """
         assert find_ungrounded_numbers("In week-3-5", ["nothing"]) == ["3", "5"]
 
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "\u010cSN-73",
+            "\u00daP-4",
+            "\u0413\u041e\u0421\u0422-12",
+            "\u0413\u041e\u0421\u0422-12.5",
+        ],
+    )
+    def test_a_name_that_starts_with_an_accented_or_cyrillic_capital_is_dropped(self, name: str):
+        """
+        GIVEN a name that starts with a capital outside ASCII, a hyphen and a number
+        WHEN the grounding has nothing
+        THEN the number belongs to the name and is not reported
+        """
+        assert find_ungrounded_numbers(f"Standard {name} applies", ["nothing"]) == []
+
+    def test_a_word_with_an_underscore_before_a_hyphen_is_not_a_name(self):
+        """
+        GIVEN Foo_bar-5, a capitalised word that is not made of letters only
+        WHEN the grounding has nothing
+        THEN the number is reported
+        """
+        assert find_ungrounded_numbers("Use Foo_bar-5 here", ["nothing"]) == ["5"]
+
+    def test_a_hyphen_digit_run_after_a_mixed_word_is_still_checked(self):
+        """
+        GIVEN a word that mixes letters and digits, followed by a hyphen and digits
+        WHEN the grounding has nothing
+        THEN the word goes and the hyphen-joined digits are reported
+        """
+        assert find_ungrounded_numbers("Use doc1-5 here", ["nothing"]) == ["5"]
+        assert find_ungrounded_numbers("Use Qwen3-5.5 here", ["nothing"]) == ["5.5"]
+
+    def test_a_lowercase_cyrillic_word_before_a_hyphen_is_not_a_name(self):
+        """
+        GIVEN a lowercase Cyrillic word, a hyphen and a number
+        WHEN the grounding has nothing
+        THEN the number is reported
+        """
+        answer = "\u0433\u043e\u0441\u0442-12"
+
+        assert find_ungrounded_numbers(answer, ["nothing"]) == ["12"]
+
+
+class TestAdversarialInputs:
+    """Long inputs of one repeated shape are read in linear time."""
+
+    @pytest.mark.parametrize(
+        "unit",
+        ["a", "1", "1.", "1,", "[", "]", "(", "1 ", "-", "\n1.", "a1", "1.000", "[1](", "  "],
+    )
+    def test_a_hundred_thousand_characters_of_one_shape_finish_quickly(self, unit: str):
+        """
+        GIVEN 100 000 characters made of one repeated unit
+        WHEN the numbers are checked and the citations are read
+        THEN both finish within a few seconds
+        """
+        text = unit * (100_000 // len(unit))
+        started = time.perf_counter()
+
+        find_ungrounded_numbers(text, [text])
+        check_citations(text, set())
+        strip_citations(text)
+
+        assert time.perf_counter() - started < 5.0
+
 
 class TestCitationLabelSet:
     """Only source words label a citation; any other word makes the bracket ordinary."""
@@ -1208,6 +1277,8 @@ class TestCitationLabelSet:
             ("[References 1-3]", {1, 2, 3}),
             ("[Excerpts 2]", {2}),
             ("[Passages 4, 5]", {4, 5}),
+            ("[Pas\u00e1\u017ee 3]", {3}),
+            ("[Pas\u00e1\u017e\u00ed 3]", {3}),
             ("[Zdroje 1]", {1}),
             ("[Zdroj\u016f 2]", {2}),
             ("[Dokumenty 3]", {3}),
