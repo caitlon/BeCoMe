@@ -14,6 +14,7 @@ import {
 import { AuthLayout } from "@/components/layout/AuthLayout";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { useToast } from "@/hooks/use-toast";
+import { toSupportedLanguage } from "@/i18n";
 import { api } from "@/lib/api";
 import { describeError } from "@/lib/errorMessages";
 import { isTurnstileRefusal } from "@/lib/errors";
@@ -24,7 +25,7 @@ type ForgotPasswordFormData = {
 };
 
 const ForgotPassword = () => {
-  const { t } = useTranslation("auth");
+  const { t, i18n } = useTranslation("auth");
   const { t: tCommon } = useTranslation();
   useDocumentTitle(tCommon("pageTitle.forgotPassword"));
 
@@ -56,7 +57,11 @@ const ForgotPassword = () => {
   const onSubmit = async (data: ForgotPasswordFormData) => {
     setIsLoading(true);
     try {
-      await api.forgotPassword(data.email, turnstileToken);
+      await api.forgotPassword(
+        data.email,
+        toSupportedLanguage(i18n.language),
+        turnstileToken
+      );
       setSubmitted(true);
     } catch (error) {
       // A refused bot check is the one failure this screen must not hide. It is
