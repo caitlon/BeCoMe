@@ -114,6 +114,11 @@ describe('skip link text', () => {
   it('is translated at start-up, before any language change', async () => {
     const link = addSkipLink();
     localStorage.setItem('become-language', 'cs');
+    // vi.resetModules() does not reset i18next itself (it lives in node_modules), so the
+    // re-import initialises the same singleton and the first import's listener would
+    // update the link too. Drop the listeners so only the fresh module's own start-up
+    // call, which runs once per import, can translate it.
+    i18n.off('languageChanged');
     vi.resetModules();
 
     await import('@/i18n');
