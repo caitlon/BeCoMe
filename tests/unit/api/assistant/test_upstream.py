@@ -30,6 +30,8 @@ class TestUnavailableErrors:
             OperationalError("SELECT 1", {}, Exception("connection lost")),
             InterfaceError("SELECT 1", {}, Exception("connection closed")),
             PoolTimeoutError("QueuePool limit of size 5 overflow 10 reached"),
+            ConnectionRefusedError("refused"),
+            ConnectionResetError("reset"),
         ],
         ids=lambda e: type(e).__name__,
     )
