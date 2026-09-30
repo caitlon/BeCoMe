@@ -342,7 +342,7 @@ class TestResendEmailSender:
 
     @pytest.mark.parametrize(
         ("minutes", "phrase"),
-        [(60, "1 hour"), (120, "2 hours"), (30, "30 minutes"), (90, "90 minutes")],
+        [(60, "1 hour"), (120, "2 hours"), (1, "1 minute"), (30, "30 minutes"), (90, "90 minutes")],
     )
     def test_reset_email_keeps_its_english_expiry_wording(self, minutes, phrase):
         """
