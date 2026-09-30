@@ -1,6 +1,6 @@
 # BeCoMe test suite
 
-Tests for the BeCoMe implementation: 1,730 backend tests, plus 59 end-to-end tests that skip
+Tests for the BeCoMe implementation: 3,081 backend tests, plus 59 end-to-end tests that skip
 unless a server and PostgreSQL are up. Coverage is 100% on the core library and 99% overall,
 and CI fails the run below 98%.
 
@@ -10,6 +10,7 @@ and CI fails the run below 98%.
 - [Running tests](#running-tests)
 - [Code coverage](#code-coverage)
 - [Test structure](#test-structure)
+- [Frontend tests](#frontend-tests)
 - [Writing tests](#writing-tests)
 - [Related documentation](#related-documentation)
 
@@ -101,10 +102,10 @@ uv run pytest --cov=src --cov-report=term-missing
 uv run pytest --cov=src --cov-report=html          # generates htmlcov/
 ```
 
-Current coverage: 100% on `src/`, and 99% across `src/` and `api/` together. Of the 49 uncovered
+Current coverage: 100% on `src/`, and 99% across `src/` and `api/` together. Of the 58 uncovered
 lines, 18 sit in the Redis paths: sixteen are the `RedisRevocationStore` error handlers, which
 need a Redis that fails rather than one that works, and two are the branch that hands out the
-Redis cache. The other 31 are scattered: an in-memory expiry path, a `clear()` test helper, the
+Redis cache. The other 40 are scattered: an in-memory expiry path, a `clear()` test helper, the
 `PackageNotFoundError` version fallback, and a handful of parse guards. CI measures the same
 number over `tests/unit/` and `tests/integration/` only, because the end-to-end tests drive a
 separate uvicorn process that in-process coverage cannot see.
@@ -118,8 +119,14 @@ tests/
 │   ├── calculators/     # arithmetic mean, median, centroid sort, compromise
 │   ├── interpreters/    # Likert scale interpreter
 │   ├── utilities/       # display, formatting, analysis helpers
+│   ├── docs/            # the table-of-contents generator for the docs
 │   └── api/             # API unit tests
+│       ├── assistant/       # assistant client, rate limit, ingest, views
+│       │   ├── agent/           # prompt, tools, answer checks, tracing
+│       │   └── rag/             # chunkers, corpus, loaders, retrieval, store
 │       ├── auth/            # JWT, password hashing, token blacklist
+│       ├── data/            # example project seeding
+│       ├── db/              # example columns, demo expert pool
 │       ├── middleware/      # rate limiting, security headers, exceptions
 │       ├── schemas/         # request/response validation
 │       ├── services/        # business logic (users, projects, opinions)
@@ -127,11 +134,15 @@ tests/
 ├── integration/
 │   ├── test_excel_reference.py   # validates against Excel (3 case studies)
 │   ├── test_data_loading.py      # text file parsing
+│   ├── test_frontend_*.py        # frontend build args, CSP, case-study numbers
 │   └── api/                      # API integration tests
 │       ├── auth/            # authentication flows
-│       ├── db/              # database models, relationships, cascades
-│       └── routes/          # HTTP endpoint integration tests
+│       ├── db/              # database models, relationships, cascades, migrations
+│       ├── middleware/      # request logging wiring
+│       ├── routes/          # HTTP endpoint integration tests
+│       └── services/        # user cache invalidation
 ├── e2e/                 # end-to-end API workflow tests
+├── performance/         # Locust load test, not collected by pytest
 ├── shared/              # test helpers and utilities
 └── reference/
     ├── budget_case.py    # 22 experts, expected results
@@ -139,14 +150,30 @@ tests/
     └── pendlers_case.py  # 22 experts, Likert scale
 ```
 
-**Unit tests** (1,215) check individual components in isolation, including API auth, schemas,
-services, and middleware. **Integration tests** (512) validate core calculations against Excel
+**Unit tests** (2,523) check individual components in isolation, including API auth, schemas,
+services, and middleware. **Integration tests** (558) validate core calculations against Excel
 results (tolerance: 0.001) and test API routes with a real database. **End-to-end tests** (59)
 exercise complete API workflows including auth, projects, and invitations. **Reference data**
 contains expected values from the original Excel implementation.
 
 To regenerate those counts, run `uv run pytest tests/unit/ --collect-only -q` and the same
 command for `tests/integration/` and `tests/e2e/`.
+
+## Frontend tests
+
+The frontend has its own suites, run with npm from `frontend/`. They are not part of `uv run pytest`.
+
+- **Vitest unit tests** live in `frontend/tests`: 1,154 tests in 89 files, grouped by `components`, `contexts`, `data`, `factories`, `hooks`, `i18n`, `lib`, `mocks` and `pages`, with the setup in `setup.ts`.
+- **Playwright end-to-end specs** live in `frontend/e2e`: 239 tests in six projects from `frontend/playwright.config.ts`. `chromium`, `firefox` and `webkit` run the same 71 functional specs, `wcag-audit` runs 15 accessibility checks, `visual-regression` 8 screenshot comparisons, and `docs-screenshots` 3 that photograph the app for the documentation site.
+
+```bash
+npm run test           # vitest in watch mode
+npm run test:run       # vitest, a single run
+npm run test:coverage  # vitest, a single run with the coverage gate
+npm run test:e2e       # playwright test, all projects
+```
+
+The coverage gate in `frontend/vitest.config.ts` fails the run below 98% statements, 95% branches, 97% functions and 98% lines. CI runs it through `test:coverage`, but `./scripts/ci/ci-local.sh fast` runs `test:run`, which has no gate, so run `npm run test:coverage` before pushing a frontend change.
 
 ## Writing tests
 

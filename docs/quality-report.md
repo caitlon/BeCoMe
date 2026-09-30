@@ -16,13 +16,15 @@
 
 ## Summary
 
+Measured on 2026-09-30.
+
 | Check | Status | Result |
 |-------|--------|--------|
-| mypy (strict) | Pass | No errors (24 files in `src/`+`examples/`, 92 in `api/`) |
+| mypy (strict) | Pass | No errors (22 files in `src/`+`examples/`, 124 in `api/`) |
 | ruff check | Pass | No issues |
 | ruff format | Pass | All files formatted |
-| pytest | Pass | 1730 passed (`testpaths` is unit plus integration; the e2e tier is its own run, `pytest tests/e2e/ -n 0`, and needs a live PostgreSQL) |
-| coverage | Pass | 100% on `src/` (164 statements), 98.86% on `src/`+`api/` (4307 statements, 49 uncovered). CI enforces `--cov-fail-under=98` on the full run |
+| pytest | Pass | 3081 passed (`testpaths` is unit plus integration; the e2e tier is its own run, `pytest tests/e2e/ -n 0`, and needs a live PostgreSQL) |
+| coverage | Pass | 100% on `src/` (164 statements), 99.06% on `src/`+`api/` (6150 statements, 58 uncovered). CI enforces `--cov-fail-under=98` on the full run |
 
 ## Running checks
 
@@ -53,7 +55,7 @@ HTML report: `uv run pytest --cov=src --cov-report=html` generates `htmlcov/inde
 
 ## Test breakdown
 
-Unit tests (1215) cover models, calculators, interpreters, utilities, and API components (auth, schemas, services, middleware, logging). Integration tests (512) validate core calculations against Excel reference data for all three case studies and test API routes with a real database. End-to-end tests (59) exercise full API workflows. They skip on a machine without a live PostgreSQL and run in CI. The frontend adds 1027 Vitest tests, and 229 Playwright runs across five browser projects. Edge cases include a single expert, identical opinions, empty lists, and boundary values.
+Unit tests (2523) cover models, calculators, interpreters, utilities, and API components (auth, schemas, services, middleware, logging). Integration tests (558) validate core calculations against Excel reference data for all three case studies and test API routes with a real database. End-to-end tests (59) exercise full API workflows. They skip on a machine without a live PostgreSQL and run in CI. The frontend adds 1154 Vitest tests, which CI holds to coverage thresholds of 98% statements, 95% branches, 97% functions and 98% lines (`frontend/vitest.config.ts`), and 239 Playwright tests in six projects: `chromium`, `firefox` and `webkit` run 71 each, `wcag-audit` 15, `visual-regression` 8 and `docs-screenshots` 3. Edge cases include a single expert, identical opinions, empty lists, and boundary values.
 
 To regenerate these counts, run `uv run pytest tests/unit/ --collect-only -q` for each backend tier, `npx vitest run` in `frontend/`, and `npx playwright test --list`.
 

@@ -254,8 +254,8 @@ jobs:
       # ubuntu-24.04 installs postgresql-16 (see the runner-images toolset manifest)
       # but does not put its version-specific binaries on PATH, so
       # shutil.which("pg_ctl") returns None and the PostgreSQL-gated tests (the
-      # migration test plus test_postgres_integration.py, 11 tests total) silently
-      # skip instead of running.
+      # migration tests, test_postgres_integration.py and the three assistant store,
+      # pipeline and retrieval files, 37 tests total) silently skip instead of running.
       - name: Add PostgreSQL 16 binaries to PATH
         run: echo "/usr/lib/postgresql/16/bin" >> "$GITHUB_PATH"
 

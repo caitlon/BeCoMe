@@ -155,7 +155,7 @@ BeCoMe/
 │   ├── models/                 # Fuzzy number, expert opinion
 │   ├── calculators/            # BeCoMe algorithm
 │   └── interpreters/           # Likert scale support
-├── tests/                  # Test suite (1,786 backend tests)
+├── tests/                  # Test suite (3,140 backend tests)
 │   ├── unit/                   # Unit tests (models, calculators, API)
 │   ├── integration/            # Integration tests (Excel validation, API routes, DB)
 │   ├── e2e/                    # End-to-end API tests
