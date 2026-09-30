@@ -62,6 +62,31 @@ def format_number(value: float) -> str:
     return f"{value:.2f}"
 
 
+#: The longest an enumerated string of a result (the agreement level, the Likert
+#: decision) may be once cleaned. The API sends a short fixed word; the cap is only a
+#: bound on what a wrong answer could put in front of the model.
+_LABEL_LIMIT = 40
+
+
+def clean_text(value: str, limit: int) -> str:
+    """Make text written by a user safe to put inside a ``<project_data>`` block.
+
+    Angle brackets are removed, so the text cannot open or close a tag. Every run of
+    whitespace, newlines included, becomes one space, so it cannot start a line of its
+    own that reads as an instruction. Text longer than the limit is cut and ends with
+    ``...``.
+
+    :param value: The text to clean.
+    :param limit: The most characters the result may have, the trailing ``...``
+        included. At least 3.
+    :return: The cleaned text, one line, at most ``limit`` characters.
+    """
+    text = " ".join(value.replace("<", "").replace(">", "").split())
+    if len(text) > limit:
+        text = text[: limit - 3].rstrip() + "..."
+    return text
+
+
 def format_excerpt(number: int, chunk: RetrievedChunk) -> str:
     """Write one numbered excerpt, as the model is shown it.
 
@@ -106,10 +131,11 @@ def _project_block(project: ResultView) -> str:
         _fuzzy("Median", project.median),
         f"Maximum error: {format_number(project.max_error)}",
         f"Number of experts: {project.num_experts}",
-        f"Agreement level: {project.agreement_level}",
+        f"Agreement level: {clean_text(project.agreement_level, _LABEL_LIMIT)}",
     ]
     if project.likert_value is not None and project.likert_decision is not None:
-        lines.append(f"Likert reading: {project.likert_value} ({project.likert_decision})")
+        decision = clean_text(project.likert_decision, _LABEL_LIMIT)
+        lines.append(f"Likert reading: {project.likert_value} ({decision})")
     lines.append("</project_data>")
     return "\n".join(lines)
 
@@ -125,7 +151,7 @@ def render_context_block(
 
     Chunks show their own words (``chunk_text``), never the indexed text, whose
     caption was written by another model. Floats are written with two decimals, the
-    way the UI shows them.
+    way the UI shows them. The strings of a result go through :func:`clean_text`.
 
     :param chunks: Numbered chunks, each paired with the ``[n]`` number
         :class:`~api.assistant.agent.context.SourceRegistry` assigned it.
