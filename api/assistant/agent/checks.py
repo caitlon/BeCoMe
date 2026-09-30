@@ -54,13 +54,60 @@ _LINK_TARGET = re.compile(r"\]\([^()\[\]\s]+\)")
 _BARE_URL = re.compile(r"https?://\S+")
 _DATE_ISO = re.compile(r"(?<![\w.])\d{4}-\d{2}-\d{2}(?!\d)")
 _DATE_DOTTED = re.compile(r"(?<![\w.])\d{1,2}\. ?\d{1,2}\. ?\d{4}(?!\d)")
-# A word, its hyphen-joined digit run, and its dot-joined digit tail (v1.2.3, COVID-19.5).
-# Whether the word holds a digit and a letter, or is a capitalised name before a hyphen
-# and digits, is decided in _drop_words. A word never starts right after a number or a
+# A word, its hyphen-joined digit run, and its dot- or comma-joined digit tail (v1.2.3,
+# Qwen3,5, COVID-19.5). Whether the word holds a digit and a letter, or is a capitalised
+# name before a hyphen and digits, is decided in _drop_words. A word never starts right
+# after a number or a dot (84.3W-1, x.y6_1), so a name is not cut out of a number glued
+# to it. A hyphen-joined digit run is left out when a word character follows it
+# (870-14cm.104), so that the mixed word 14cm.104 is found whole.
+_WORD = re.compile(_LABEL, re.IGNORECASE)
+_CITED_RANGE = re.compile(r"(\d{1,3})(?:\s*[-\u2013]\s*(\d{1,3}))?")
+
+# What is dropped from an answer before its numbers are scanned. A link's target stops
+# at the first bracket, parenthesis or space, so that a text made of unclosed "](" never
+# makes the scan run to the end of the text once per bracket.
+_LINK_TARGET = re.compile(r"\]\([^()\[\]\s]+\)")
+_BARE_URL = re.compile(r"https?://\S+")
+_DATE_ISO = re.compile(r"(?<![\w.])\d{4}-\d{2}-\d{2}(?!\d)")
+_DATE_DOTTED = re.compile(r"(?<![\w.])\d{1,2}\. ?\d{1,2}\. ?\d{4}(?!\d)")
+# A word, its hyphen-joined digit run, and its dot- or comma-joined digit tail (v1.2.3,
+# Qwen3,5, COVID-19.5). Whether the word holds a digit and a letter, or is a capitalised
+# name before a hyphen and digits, is decided in _drop_words. A hyphen-joined digit run
+# is left out when a word character follows it (870-14cm.104), so that the mixed word
+# 14cm.104 is found whole.
+_WORD = re.compile(_LABEL, re.IGNORECASE)
+_CITED_RANGE = re.compile(r"(\d{1,3})(?:\s*[-\u2013]\s*(\d{1,3}))?")
+
+# What is dropped from an answer before its numbers are scanned. A link's target stops
+# at the first bracket, parenthesis or space, so that a text made of unclosed "](" never
+# makes the scan run to the end of the text once per bracket.
+_LINK_TARGET = re.compile(r"\]\([^()\[\]\s]+\)")
+_BARE_URL = re.compile(r"https?://\S+")
+_DATE_ISO = re.compile(r"(?<![\w.])\d{4}-\d{2}-\d{2}(?!\d)")
+_DATE_DOTTED = re.compile(r"(?<![\w.])\d{1,2}\. ?\d{1,2}\. ?\d{4}(?!\d)")
+# A word, its hyphen-joined digit run, and its dot- or comma-joined digit tail (v1.2.3,
+# Qwen3,5, COVID-19.5). Whether the word holds a digit and a letter, or is a capitalised
+# name before a hyphen and digits, is decided in _drop_words. A word never starts right
+# after a number or a dot (12.5m2, x.y6_1), so a number glued to a unit is left to the
+# neighbour rule of _scan_numbers. A hyphen-joined digit run is left out when a word
+# character follows it (870-14cm.104), so that the mixed word 14cm.104 is found whole.
+_WORD = re.compile(_LABEL, re.IGNORECASE)
+_CITED_RANGE = re.compile(r"(\d{1,3})(?:\s*[-\u2013]\s*(\d{1,3}))?")
+
+# What is dropped from an answer before its numbers are scanned. A link's target stops
+# at the first bracket, parenthesis or space, so that a text made of unclosed "](" never
+# makes the scan run to the end of the text once per bracket.
+_LINK_TARGET = re.compile(r"\]\([^()\[\]\s]+\)")
+_BARE_URL = re.compile(r"https?://\S+")
+_DATE_ISO = re.compile(r"(?<![\w.])\d{4}-\d{2}-\d{2}(?!\d)")
+_DATE_DOTTED = re.compile(r"(?<![\w.])\d{1,2}\. ?\d{1,2}\. ?\d{4}(?!\d)")
+# A word, its hyphen-joined digit run, and its dot- or comma-joined digit tail (v1.2.3,
+# Qwen3,5, COVID-19.5). Whether the word holds a digit and a letter, or is a capitalised
+# name before a hyphen and digits, is decided in _drop_words. A word never starts right after a number or a
 # dot (12.5m2, x.y6_1), so a number glued to a unit is left to the neighbour rule of
 # _scan_numbers. A hyphen-joined digit run is left out when a word character follows it
 # (870-14cm.104), so that the mixed word 14cm.104 is found whole.
-_WORD = re.compile(r"(?<![\w.])(\w+)(-\d+(?!\w))?((?:\.\d+)*)")
+_WORD = re.compile(r"(?<![\w.])(\w+)(-\d+(?!\w))?((?:[.,]\d+)*)")
 # What replaces a dropped token: neither whitespace nor a letter, so that a hyphen right
 # after it does not read as a sign, and the digits around it do not run together.
 _DROPPED = "\x00"
@@ -359,16 +406,18 @@ def _drop_ordinals(text: str) -> str:
 
 
 def _drop_words(text: str) -> str:
-    """Remove names and identifiers that hold digits, such as ``Qwen3.5`` or ``COVID-19``.
+    """Remove the digits of names and identifiers, such as ``v1.2.3`` or ``COVID-19``.
 
     A word that holds both a letter and a digit (``v1``, ``Qwen3``, ``doc1``, ``1st``,
-    ``H2O``) is dropped with its dot-joined digit tail (``v1.2.3``); a hyphen-joined
-    digit run after it stays. A word made of letters that starts with a capital, a
-    hyphen and a digit run (``COVID-19``, ``GPT-4``, ``ISO-8601``, ``\u010cSN-73``) is a
-    name and goes whole. A lowercase word before a hyphen (``error-15.3``, ``peak-3``,
-    ``n-1``) is not a name. A word that starts right after a number or a dot
-    (``12.5m2``, ``a.6_1``) is left alone, so a number glued to its unit is judged by
-    the neighbour rule of :func:`_scan_numbers`, not cut in pieces.
+    ``H2O``) stays as it is, because the neighbour rule of :func:`_scan_numbers` already
+    skips the digits glued to its letters; only its dot- or comma-joined digit tail
+    (``v1.2.3``, ``Qwen3,5``) is replaced by a filler, so that the tail is not read as a
+    number of its own. A hyphen-joined digit run after such a word stays and is checked.
+    A word made of letters that starts with a capital, a hyphen and a digit run
+    (``COVID-19``, ``GPT-4``, ``ISO-8601``, ``\u010cSN-73``) is a name and goes whole. A
+    lowercase word before a hyphen (``error-15.3``, ``peak-3``, ``n-1``) is not a name.
+    A word that starts right after a number or a dot (``84.3W-1``, ``12.5m2``) is left
+    alone: the number glued to it is judged by the neighbour rule.
 
     :param text: The text to clean.
     :return: The text with each dropped token replaced by a filler.
@@ -377,7 +426,7 @@ def _drop_words(text: str) -> str:
     def replace(match: re.Match[str]) -> str:
         word, hyphen, tail = match.groups()
         if not word.isdecimal() and any(char.isdecimal() for char in word):
-            return _DROPPED + hyphen + tail if hyphen else _DROPPED
+            return match[0] if hyphen else word + (_DROPPED if tail else "")
         if hyphen and word.isalpha() and word[0].isupper():
             return _DROPPED
         return match[0]
@@ -470,13 +519,17 @@ def find_ungrounded_numbers(answer: str, grounding_texts: list[str]) -> list[str
     """Return the numbers in the answer that no grounding text supports.
 
     Before scanning, the answer loses the target of markdown links, bare URLs,
-    citation-like brackets (see :func:`strip_citations`), dates, names that hold a digit
-    (``v1.2``, ``Qwen3.5``, ``doc1``, ``1st``, ``H2O``, and names that start with a
-    capital of any script before a hyphen and digits, ``COVID-19``), list numbering
-    and ordinals; the order is in ``_strip_answer``. A number is then a digit run, with
-    a sign when a minus opens the text or follows whitespace, an opening bracket, an
+    citation-like brackets (see :func:`strip_citations`), dates, the dot- or comma-joined
+    digit tail of an identifier (``v1.2.3``, ``Qwen3,5``), names that start with a
+    capital of any script before a hyphen and digits (``COVID-19``), list numbering and
+    ordinals; the order is in ``_strip_answer``. A number is then a digit run, with a
+    sign when a minus opens the text or follows whitespace, an opening bracket, an
     equals sign or a separator (comma, semicolon, colon), and never one that sits next
-    to a letter or an underscore. Thousands may be grouped with spaces (``1 000``),
+    to a letter or an underscore, so a number glued to a unit (``8mm``, ``5 000km``,
+    ``12.5m2``) is not checked. The digit class of the patterns matches every Unicode
+    decimal digit, full-width ones included, and stays that way because the patterns
+    also rely on Unicode word characters: a full-width digit is a number like an ASCII
+    one. Thousands may be grouped with spaces (``1 000``),
     commas (``1,234.56``) or dots with a decimal comma (``1.000,50``). A token is read
     every way it can be, and is grounded when one reading has all its numbers grounded:
     ``14,19`` is 14.19 or 14 and 19, ``1,234`` is 1234 or 1 and 234, ``1.234`` is 1.234
@@ -499,12 +552,11 @@ def find_ungrounded_numbers(answer: str, grounding_texts: list[str]) -> list[str
     integers each labelled with a source word, is read as a citation and skipped, so a
     fuzzy number written ``[6, 8, 11]`` is not checked.
 
-    Other known limits: a number glued to a unit (``8mm``) and a number spelled as a
-    word are not checked; the check matches a bag of numbers, so a grounded number
-    attached to the wrong quantity passes; a citation written outside square
-    brackets (``(Source 3)``) is not seen by :func:`check_citations`; and a link target
-    that holds a bracket or a parenthesis is not recognised as a target (a bare
-    ``http`` address in it is still dropped).
+    Other known limits: a number spelled as a word is not checked; the check matches a
+    bag of numbers, so a grounded number attached to the wrong quantity passes; a
+    citation written outside square brackets (``(Source 3)``) is not seen by
+    :func:`check_citations`; and a link target that holds a bracket or a parenthesis is
+    not recognised as a target (a bare ``http`` address in it is still dropped).
 
     :param answer: The model's final answer text.
     :param grounding_texts: Everything the answer may legitimately quote: the source
