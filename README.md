@@ -15,7 +15,7 @@ Software that helps a panel of experts turn genuine disagreement into one defens
 
 - [The problem](#the-problem)
 - [How BeCoMe answers it](#how-become-answers-it)
-- [Three real cases](#three-real-cases)
+- [One real case and two examples](#one-real-case-and-two-examples)
 - [Try it](#try-it)
 - [Where the method comes from](#where-the-method-comes-from)
 - [Project status](#project-status)
@@ -36,17 +36,17 @@ Each expert gives three numbers instead of one: the lowest value they would acce
 
 The method then computes two things the panel already implies. The average shows where the opinions sit in aggregate. The median shows where the middle of the panel sits, and it barely moves when one person takes an extreme position. BeCoMe combines the two into a best compromise, and it reports the distance between them as a number in its own right.
 
-That second number is the useful part. On the flood panel the average landed at 20.3 percent and the median at 8.3, so the compromise came out at 14.3, with a disagreement measure of 5.97. A panel that genuinely agrees produces a small one: the COVID-19 budget panel of 22 officials scored 2.20. The method does not hide a split under a single confident-looking figure. It tells you the split is there.
+That second number is the useful part. On the flood panel the average landed at 20.3 percent and the median at 8.3, so the compromise came out at 14.3, with a disagreement measure of 5.97. When the average and the median sit close together the number is small: the authors' illustrative budget example scores 2.20. The method does not hide a split under a single confident-looking figure. It tells you the split is there.
 
-## Three real cases
+## One real case and two examples
 
-The project ships the three panels the method's authors published, with the original data.
+The project ships the three panels from the authors' own Excel workbook. The flood panel is a real case study, the one the paper reports. The other two are examples the authors built to show the method on other kinds of input, and the workbook marks them as illustrative, fictitious data.
 
 **Flood prevention.** 13 experts, split between hydrologists, land owners, rescue coordinators, and economists, on how much arable land to convert. The most polarized of the three, and the reason outlier resistance matters.
 
-**COVID-19 budget support.** 22 Czech officials, among them deputy ministers, the Police President, and the Chief Hygienist, estimating support for affected businesses in billions of CZK. This panel largely agreed, and the numbers show it.
+**COVID-19 budget support, illustrative.** A panel of 22 official roles, among them deputy ministers, the Police President, and the Chief Hygienist, estimating support for affected businesses in billions of CZK. The average and the median land close together here, although the individual proposals range widely.
 
-**Cross-border travel.** 22 senior Czech officials rating pandemic travel policy on a five-point scale. It shows the method handling ordinary survey answers as well as ranges.
+**Cross-border travel, illustrative.** The same 22 roles rating pandemic travel policy on a five-point scale. It shows the method handling ordinary survey answers as well as ranges.
 
 Every result matches the authors' own Excel workbook to within 0.001, and CI re-checks that on every pull request.
 
@@ -54,7 +54,7 @@ Every result matches the authors' own Excel workbook to within 0.001, and CI re-
 
 Open [becomify.app](https://www.becomify.app), register, create a project, invite experts, and collect opinions. Nothing to install.
 
-To run one of the published cases from a terminal instead:
+To run one of the cases from a terminal instead:
 
 ```bash
 uv sync --extra dev
@@ -69,7 +69,7 @@ The [method description](https://docs.becomify.app/method-description/) works th
 
 ## Project status
 
-This is an MVP: a working proof of concept rather than a finished product. The three published case studies run end to end, the web application is live, and the results match the reference implementation. It is under active development and the scope is still growing.
+This is an MVP: a working proof of concept rather than a finished product. The three case studies run end to end, the web application is live, and the results match the reference implementation. It is under active development and the scope is still growing.
 
 ## For developers
 

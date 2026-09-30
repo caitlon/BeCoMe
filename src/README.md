@@ -216,7 +216,7 @@ See [Tests](https://docs.becomify.app/dev/testing/) for details.
 
 ## Usage with examples
 
-The `examples/` directory shows how to use this code with real case studies. Each example loads data, calls `BeCoMeCalculator`, and displays step-by-step results. See [Examples](https://docs.becomify.app/dev/examples/).
+The `examples/` directory shows how to use this code with the three case studies. Each example loads data, calls `BeCoMeCalculator`, and displays step-by-step results. See [Examples](https://docs.becomify.app/dev/examples/).
 
 ## Related documentation
 
