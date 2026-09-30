@@ -23,6 +23,7 @@ from api.assistant.agent.context import AssistantContext
 from api.assistant.agent.generation import (
     AgentGenerator,
     AnswerGenerator,
+    CutOffAnswerError,
     DirectGenerator,
     user_message,
 )
@@ -141,14 +142,22 @@ class AssistantService:
                 if mode != "workflow" and ctx.current_project_id is not None:
                     parts.append(f"Current project id: {ctx.current_project_id}")
                 messages.append(HumanMessage(content=user_message(parts, request.message)))
+                empty_reason = "empty"
                 with tracing_scope(self._settings):
-                    text, tools_used = await self._generator.generate(
-                        messages, ctx, request.message
-                    )
+                    try:
+                        text, tools_used = await self._generator.generate(
+                            messages, ctx, request.message
+                        )
+                    except CutOffAnswerError:
+                        text, tools_used, empty_reason = "", [], "cut_off"
                 if not text:
                     logger.warning(
                         "Assistant answer was empty",
-                        extra={"event": "assistant_empty_answer", "mode": mode},
+                        extra={
+                            "event": "assistant_empty_answer",
+                            "mode": mode,
+                            "reason": empty_reason,
+                        },
                     )
                     raise AssistantUnavailableError("the model gave an empty answer")
         except TimeoutError:

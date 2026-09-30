@@ -324,13 +324,18 @@ class TestWorkflowMode:
 
         (record,) = records
         assert record.levelno == logging.WARNING
-        assert (record.event, record.mode) == ("assistant_empty_answer", "workflow")
+        assert (record.event, record.mode, record.reason) == (
+            "assistant_empty_answer",
+            "workflow",
+            "empty",
+        )
 
     async def test_an_answer_cut_off_inside_its_reasoning_is_a_failure(self):
         """
         GIVEN a model whose reply opens a reasoning block and never closes it
         WHEN a turn is answered
-        THEN AssistantUnavailableError is raised and one warning names the event and the mode
+        THEN AssistantUnavailableError is raised and one warning names the event and the mode,
+             and gives the reason cut_off, which tells it from a blank answer
         """
         model = _model(_say("<think>I was still working out the"))
 
@@ -341,7 +346,34 @@ class TestWorkflowMode:
             await AssistantService(_settings(), model).answer(_request(), _ctx())
 
         (record,) = records
-        assert (record.event, record.mode) == ("assistant_empty_answer", "workflow")
+        assert (record.event, record.mode, record.reason) == (
+            "assistant_empty_answer",
+            "workflow",
+            "cut_off",
+        )
+
+    async def test_a_cut_off_answer_of_the_agent_fallback_is_a_failure_with_that_reason(self):
+        """
+        GIVEN an agent turn that reaches the model-call limit, and a fallback call whose reply
+              is cut off inside its reasoning
+        WHEN the turn is answered
+        THEN AssistantUnavailableError is raised and the warning gives the reason cut_off
+        """
+        model = _model(*(_call("nope", index) for index in range(1, 5)), _say("<think>no tok"))
+        settings = _settings("agent", assistant_max_tool_calls=2)
+
+        with (
+            captured_log_records(SERVICE_LOGGER) as records,
+            pytest.raises(AssistantUnavailableError),
+        ):
+            await AssistantService(settings, model).answer(_request(), _ctx())
+
+        (record,) = records
+        assert (record.event, record.mode, record.reason) == (
+            "assistant_empty_answer",
+            "agent",
+            "cut_off",
+        )
 
     async def test_strips_the_reasoning_block_from_the_answer(self):
         """
@@ -529,7 +561,11 @@ class TestAgentMode:
             await AssistantService(settings, model).answer(_request(), _ctx())
 
         (record,) = records
-        assert (record.event, record.mode) == ("assistant_empty_answer", "agent")
+        assert (record.event, record.mode, record.reason) == (
+            "assistant_empty_answer",
+            "agent",
+            "empty",
+        )
         assert len(model.seen) == 5
 
 

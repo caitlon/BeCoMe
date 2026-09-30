@@ -9,6 +9,7 @@ Both send :data:`~api.assistant.agent.prompt.SYSTEM_PROMPT` unchanged.
 
 import logging
 from collections.abc import Sequence
+from pathlib import Path
 from typing import Any, Protocol, cast
 
 from langchain.agents import create_agent
@@ -33,7 +34,7 @@ from langchain_core.messages import (
 from api.assistant.agent.context import AssistantContext
 from api.assistant.agent.prompt import SYSTEM_PROMPT, render_context_block
 from api.assistant.agent.tools import ASSISTANT_TOOLS, UNAVAILABLE_REPLY
-from api.assistant.rag.models import strip_think_block
+from api.assistant.rag.models import has_unclosed_think_block, strip_think_block
 
 logger = logging.getLogger(__name__)
 
@@ -42,10 +43,18 @@ logger = logging.getLogger(__name__)
 # refused call and one to read the refusal and write its answer.
 _MODEL_CALL_SLACK = 2
 
-_THINK_OPEN = "<think>"
-_THINK_CLOSE = "</think>"
+# The repository's root, for showing where a failure came from without an absolute path.
+_REPO_ROOT = Path(__file__).resolve().parents[3]
 
 _TOOL_NAMES = frozenset(tool.name for tool in ASSISTANT_TOOLS)
+
+
+class CutOffAnswerError(Exception):
+    """Raised when a model's reply ends inside its reasoning block, so it holds no answer.
+
+    The chat service turns it into the same failure as a blank answer, and gives it its own
+    reason in the log.
+    """
 
 
 class AnswerGenerator(Protocol):
@@ -87,20 +96,30 @@ def answer_text(message: BaseMessage) -> str:
     cut off inside its reasoning, so that a block opens and never closes, has no answer:
     what is left of it is the model's half-written thoughts, and it is returned as empty.
     ``strip_think_block`` is shared with the query transforms and keeps such a reply
-    as it is, which is why the check is here.
+    as it is, which is why the check is here. The generators tell that case from a blank
+    reply with :func:`~api.assistant.rag.models.has_unclosed_think_block`.
 
     :param message: The model's reply.
     :return: The answer, stripped; empty when the reply held nothing else, or ended
         inside a reasoning block.
     """
-    text = strip_think_block(message.text)
-    opened = text.rfind(_THINK_OPEN)
-    if opened != -1 and _THINK_CLOSE not in text[opened:]:
-        return ""
-    return text
+    reply = message.text
+    return "" if has_unclosed_think_block(reply) else strip_think_block(reply)
 
 
-class DirectGenerator:
+def _answer_of(message: BaseMessage) -> str:
+    """Read the answer out of a model reply, refusing one that was cut off.
+
+    :param message: The model's reply.
+    :return: The answer, empty when the reply was only reasoning that closed.
+    :raises CutOffAnswerError: If the reply ends inside a reasoning block.
+    """
+    if has_unclosed_think_block(message.text):
+        raise CutOffAnswerError
+    return answer_text(message)
+
+
+class DirectGenerator(AnswerGenerator):
     """One model call and no tools: the way the workflow mode answers.
 
     :param chat_model: The model that writes the answer.
@@ -119,9 +138,30 @@ class DirectGenerator:
         :param ctx: Unused: no tool runs, and nothing is fetched here.
         :param question: Unused: the user message already carries it.
         :return: The answer text and an empty list, since no tool ran.
+        :raises CutOffAnswerError: If the reply ends inside a reasoning block.
         """
         response = await self._model.ainvoke([SystemMessage(content=SYSTEM_PROMPT), *messages])
-        return answer_text(response), []
+        return _answer_of(response), []
+
+
+def _raised_at(exc: BaseException) -> str:
+    """Say where an exception was raised, without its message or a traceback.
+
+    :param exc: The exception.
+    :return: ``file:line`` of the innermost frame of its traceback. A file under the
+        repository is written relative to it, which includes a library installed in the
+        repository's own ``.venv`` (``.venv/lib/.../file.py``); a file outside the
+        repository, the standard library for one, is written as its bare name, so that no
+        absolute path is written. ``unknown`` when the exception carries no traceback.
+    """
+    trace = exc.__traceback__
+    if trace is None:
+        return "unknown"
+    while trace.tb_next is not None:
+        trace = trace.tb_next
+    path = Path(trace.tb_frame.f_code.co_filename).resolve()
+    shown = path.relative_to(_REPO_ROOT) if path.is_relative_to(_REPO_ROOT) else Path(path.name)
+    return f"{shown}:{trace.tb_lineno}"
 
 
 def _tool_failed(exc: Exception, request: ToolCallRequest) -> str:
@@ -129,9 +169,12 @@ def _tool_failed(exc: Exception, request: ToolCallRequest) -> str:
 
     The tools catch the outages themselves, so what arrives here is a bug, and it is
     logged at ERROR so error tracking sees it whatever the mode. The record carries the
-    tool and the exception's class name only: never the message, which can name a host
-    or a path, and never a traceback. The tool name comes from the model's call, so it
-    is written only when it is one of the assistant's tools, and as ``unknown`` otherwise.
+    tool, the exception's class name and where it was raised (see :func:`_raised_at`):
+    never the message, which can name a host or a path, and never a traceback. The tool
+    name comes from the model's call, so it is written only when it is one of the
+    assistant's tools, and as ``unknown`` otherwise. In the installed library a call to a
+    tool that does not exist is answered by the tool node itself and never reaches this
+    handler; the guard is there in case that changes.
 
     :param exc: What the tool raised.
     :param request: The call that failed.
@@ -142,7 +185,12 @@ def _tool_failed(exc: Exception, request: ToolCallRequest) -> str:
     logger.error(
         "assistant tool %s failed",
         name,
-        extra={"event": "assistant_tool_failed", "tool": name, "reason": type(exc).__name__},
+        extra={
+            "event": "assistant_tool_failed",
+            "tool": name,
+            "reason": type(exc).__name__,
+            "where": _raised_at(exc),
+        },
     )
     ctx = cast(AssistantContext, request.runtime.context)
     ctx.tool_outputs.append(UNAVAILABLE_REPLY)
@@ -170,7 +218,7 @@ def _tools_that_ran(produced: Sequence[BaseMessage]) -> list[str]:
     return list(dict.fromkeys(name for name in names if name is not None))
 
 
-class AgentGenerator:
+class AgentGenerator(AnswerGenerator):
     """A tool-calling loop over the assistant's five tools: agent and hybrid modes.
 
     The agent is built once, here, because the system prompt does not vary by turn; each
@@ -225,7 +273,7 @@ class AgentGenerator:
         if replies > self._model_call_limit:
             text = await self._answer_from_gathered(messages, ctx, question)
         else:
-            text = answer_text(produced[-1])
+            text = _answer_of(produced[-1])
         return text, _tools_that_ran(produced)
 
     async def _answer_from_gathered(
@@ -238,14 +286,15 @@ class AgentGenerator:
         A run that reached the model-call limit was usually looping, and a loop repeats
         the same call, so a reply that appears more than once is shown once, in the order
         it first appeared. The size is bounded by ``max_tool_calls``, but not to the
-        window: four replies at their maximum field lengths come to about 54,000
-        characters, more than the answer model's 16384 tokens. A call that large is
-        rejected by the model server and ends as the unavailable failure.
+        window: at the field limits, four replies can exceed the answer model's window,
+        and a call that large is rejected by the model server, so it ends as the
+        unavailable failure (the 503).
 
         :param messages: The conversation the run started from.
         :param ctx: The turn's context, holding the sources and the tool replies.
         :param question: The user's own message.
         :return: The answer text.
+        :raises CutOffAnswerError: If the reply ends inside a reasoning block.
         """
         excerpts = render_context_block(ctx.sources.numbered(), None)
         parts = [*([excerpts] if excerpts else []), *dict.fromkeys(ctx.tool_outputs)]
@@ -253,4 +302,4 @@ class AgentGenerator:
         response = await self._model.ainvoke(
             [SystemMessage(content=SYSTEM_PROMPT), *messages[:-1], HumanMessage(content=content)]
         )
-        return answer_text(response)
+        return _answer_of(response)
