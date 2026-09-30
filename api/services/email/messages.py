@@ -90,6 +90,9 @@ class RenderedEmail:
 _LAYOUT_PATH = Path(__file__).with_name("layout.html")
 _LAYOUT = Template(_LAYOUT_PATH.read_text(encoding="utf-8"))
 
+_FALLBACK_EN = "If the button doesn't work, copy and paste this link into your browser:"
+_FALLBACK_CS = "Pokud tlačítko nefunguje, zkopírujte tento odkaz do prohlížeče:"
+
 _VERIFICATION_EN = EmailCopy(
     lang="en",
     subject="Confirm your BeCoMe email",
@@ -101,7 +104,7 @@ _VERIFICATION_EN = EmailCopy(
         "and enter your password on the next page."
     ),
     button_label="Confirm email",
-    fallback="If the button doesn't work, copy and paste this link into your browser:",
+    fallback=_FALLBACK_EN,
     expiry="The link expires in {window}.",
     not_you="If you didn't create a BeCoMe account, you can ignore this email.",
     footer=(
@@ -122,7 +125,7 @@ _VERIFICATION_CS = EmailCopy(
         "e-mailovou adresu a na další stránce zadejte své heslo."
     ),
     button_label="Potvrdit e-mail",
-    fallback="Pokud tlačítko nefunguje, zkopírujte tento odkaz do prohlížeče:",
+    fallback=_FALLBACK_CS,
     expiry="Odkaz platí {window}.",
     not_you="Pokud jste se v aplikaci BeCoMe neregistrovali, můžete tento e-mail ignorovat.",
     footer=(
@@ -148,7 +151,7 @@ _PASSWORD_RESET_EN = EmailCopy(
         "button below to choose a new one."
     ),
     button_label="Reset password",
-    fallback="If the button doesn't work, copy and paste this link into your browser:",
+    fallback=_FALLBACK_EN,
     expiry="The link expires in {window}.",
     not_you=(
         "If you didn't ask for this, you can ignore this email. Your password stays the same."
@@ -170,7 +173,7 @@ _PASSWORD_RESET_CS = EmailCopy(
         "zvolíte nové heslo."
     ),
     button_label="Obnovit heslo",
-    fallback="Pokud tlačítko nefunguje, zkopírujte tento odkaz do prohlížeče:",
+    fallback=_FALLBACK_CS,
     expiry="Odkaz platí {window}.",
     not_you=(
         "Pokud jste o obnovení nežádali, můžete tento e-mail ignorovat. Vaše heslo zůstává "
@@ -199,7 +202,7 @@ _REGISTRATION_NOTICE_EN = EmailCopy(
         "account. If it was you, sign in instead."
     ),
     button_label="Sign in",
-    fallback="If the button doesn't work, copy and paste this link into your browser:",
+    fallback=_FALLBACK_EN,
     expiry="",
     not_you="If it wasn't you, you don't have to do anything. Your account has not changed.",
     footer=(
@@ -221,7 +224,7 @@ _REGISTRATION_NOTICE_CS = EmailCopy(
         "které už účet existuje. Pokud jste to byli vy, stačí se přihlásit."
     ),
     button_label="Přihlásit se",
-    fallback="Pokud tlačítko nefunguje, zkopírujte tento odkaz do prohlížeče:",
+    fallback=_FALLBACK_CS,
     expiry="",
     not_you="Pokud jste to nebyli vy, nemusíte dělat nic. Váš účet zůstává beze změny.",
     footer=(
