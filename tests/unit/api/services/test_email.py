@@ -445,6 +445,34 @@ class TestResendEmailSender:
         assert "1 hour" in html
         assert "24 hours" not in html
 
+    def test_verification_payload_carries_a_plain_text_part(self):
+        """
+        GIVEN a Resend sender with an injected client
+        WHEN an email verification message is sent
+        THEN the payload has a tag-free text part with the link alone on a line and the expiry
+        """
+        # GIVEN
+        response = MagicMock()
+        response.raise_for_status = MagicMock()
+        client = MagicMock()
+        client.post = AsyncMock(return_value=response)
+        sender = ResendEmailSender(_settings(email_verification_token_ttl_hours=1), client=client)
+
+        # WHEN
+        asyncio.run(
+            sender.send_email_verification(
+                to_email="user@example.com",
+                verify_url="https://app.example/verify-email?token=abc",
+            )
+        )
+
+        # THEN
+        payload = client.post.call_args.kwargs["json"]
+        assert "https://app.example/verify-email?token=abc" in payload["text"].splitlines()
+        assert "The link expires in 1 hour." in payload["text"]
+        assert "<" not in payload["text"]
+        assert payload["html"].lstrip().startswith("<!DOCTYPE html>")
+
     def test_verification_raises_send_error_on_http_status_error(self):
         """
         GIVEN a Resend sender whose response is a non-2xx status
