@@ -2,22 +2,22 @@
 
 GenericFakeChatModel (langchain_core.language_models.fake_chat_models) plays back
 scripted messages but its reference page documents no ``bind_tools`` override,
-unlike every real provider integration (ChatOpenAI, ChatAnthropic, ...).
-``create_agent`` must bind tools to the model to format them for the API and to
-parse ``tool_calls`` back out of a response, so a model with no working
-``bind_tools`` cannot drive its tool-calling loop. These two classes implement the
-minimum ``BaseChatModel`` needs for that loop to run against a scripted sequence.
-Each records the messages of every call in ``seen``, so a test can assert what the
-model was shown.
+unlike every real provider integration. ``create_agent`` must bind tools to the
+model to format them for the API and to parse ``tool_calls`` back out of a
+response, so a model with no working ``bind_tools`` cannot drive its tool-calling
+loop. The class here implements the minimum ``BaseChatModel`` needs for that loop
+to run against a scripted sequence, and records the messages of every call in
+``seen``, so a test can assert what the model was shown.
 """
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Any
 
 from langchain_core.callbacks import CallbackManagerForLLMRun
-from langchain_core.language_models import BaseChatModel
+from langchain_core.language_models import BaseChatModel, LanguageModelInput
 from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
+from langchain_core.runnables import Runnable
 from langchain_core.tools import BaseTool
 from pydantic import Field, PrivateAttr
 
@@ -36,7 +36,13 @@ class ScriptedToolCallingModel(BaseChatModel):
     seen: list[list[BaseMessage]] = Field(default_factory=list)
     _call_count: int = PrivateAttr(default=0)
 
-    def bind_tools(self, tools: Sequence[BaseTool], **kwargs: Any) -> "ScriptedToolCallingModel":
+    def bind_tools(
+        self,
+        tools: Sequence[dict[str, Any] | type | Callable[..., Any] | BaseTool],
+        *,
+        tool_choice: str | None = None,
+        **kwargs: Any,
+    ) -> Runnable[LanguageModelInput, AIMessage]:
         """Return this model unchanged; scripted responses need no tool formatting."""
         return self
 
@@ -63,54 +69,3 @@ class ScriptedToolCallingModel(BaseChatModel):
     def _llm_type(self) -> str:
         """Return the model type name LangChain's tracing uses."""
         return "scripted-tool-calling-model"
-
-
-class ToolEchoingModel(BaseChatModel):
-    """A model whose first call requests one tool, and whose second call echoes
-    that tool's own result text back verbatim as the final answer.
-
-    Used by the isolation acceptance test: scripting a fixed final answer would
-    only prove the test's own string contains no leaked data, not that the tool
-    itself refused to hand any over. Echoing the real ``ToolMessage`` content makes
-    the assertion depend on what the tool actually returned.
-
-    :ivar first_call: The scripted first response, carrying the tool call to make.
-    :ivar seen: The messages each call was given, one list per call, in call order.
-    """
-
-    first_call: AIMessage
-    seen: list[list[BaseMessage]] = Field(default_factory=list)
-    _call_count: int = PrivateAttr(default=0)
-
-    def bind_tools(self, tools: Sequence[BaseTool], **kwargs: Any) -> "ToolEchoingModel":
-        """Return this model unchanged."""
-        return self
-
-    def _generate(
-        self,
-        messages: list[BaseMessage],
-        stop: list[str] | None = None,
-        run_manager: CallbackManagerForLLMRun | None = None,
-        **kwargs: Any,
-    ) -> ChatResult:
-        """Return the scripted tool call first, then echo the tool's own result.
-
-        :param messages: The conversation so far, recorded in ``seen``; on the second
-            call, the last message is the :class:`~langchain_core.messages.ToolMessage`
-            the tool node produced.
-        :param stop: Unused.
-        :param run_manager: Unused.
-        :return: The scripted first call, or an echo of the tool's result text.
-        """
-        self.seen.append(list(messages))
-        self._call_count += 1
-        if self._call_count == 1:
-            return ChatResult(generations=[ChatGeneration(message=self.first_call)])
-        tool_message = messages[-1]
-        echo = AIMessage(content=f"Tool said: {tool_message.content}")
-        return ChatResult(generations=[ChatGeneration(message=echo)])
-
-    @property
-    def _llm_type(self) -> str:
-        """Return the model type name LangChain's tracing uses."""
-        return "tool-echoing-model"

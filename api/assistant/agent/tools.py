@@ -29,6 +29,7 @@ from langchain_core.tools import BaseTool
 
 from api.assistant.agent.context import AssistantContext
 from api.assistant.agent.prompt import (
+    LABEL_LIMIT,
     clean_text,
     format_excerpt,
     format_number,
@@ -80,7 +81,6 @@ _NAME_LIMIT = 120
 _EXPERT_LIMIT = 60
 _DESCRIPTION_LIMIT = 1000
 _UNIT_LIMIT = 20
-_LABEL_LIMIT = 40
 _ID_LIMIT = 40
 
 # What the API client can fail with, as far as a tool is concerned: its own refusal of an
@@ -117,7 +117,7 @@ def render_project(project: ProjectView) -> str:
             f"Name: {clean_text(project.name, _NAME_LIMIT)}",
             f"Description: {description}",
             f"Scale: {scale}",
-            f"Your role: {clean_text(project.role, _LABEL_LIMIT)}",
+            f"Your role: {clean_text(project.role, LABEL_LIMIT)}",
         ]
     )
 
@@ -135,7 +135,7 @@ def render_project_list(projects: Sequence[ProjectBrief]) -> str:
     for project in projects[:_MAX_PROJECTS]:
         lines.append(
             f"- {clean_text(project.id, _ID_LIMIT)}: {clean_text(project.name, _NAME_LIMIT)} "
-            f"({clean_text(project.role, _LABEL_LIMIT)})"
+            f"({clean_text(project.role, LABEL_LIMIT)})"
         )
     if len(projects) > _MAX_PROJECTS:
         lines.append(f"... and {len(projects) - _MAX_PROJECTS} more projects")
