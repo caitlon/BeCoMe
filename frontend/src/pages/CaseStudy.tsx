@@ -26,7 +26,9 @@ const CaseStudy = () => {
   const { t: tCommon } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const caseStudy = useLocalizedCaseStudyById(id || "");
-  useDocumentTitle(tCommon("pageTitle.caseStudy"));
+  useDocumentTitle(
+    caseStudy ? tCommon("pageTitle.caseStudyDetail", { name: caseStudy.title }) : tCommon("pageTitle.caseStudy"),
+  );
 
   useEffect(() => {
     window.scrollTo(0, 0);

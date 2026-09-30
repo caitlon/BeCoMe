@@ -125,6 +125,7 @@
     "profile": "Profile",
     "onboarding": "Getting Started",
     "caseStudy": "Case Study",
+    "caseStudyDetail": "Case Study: {{name}}",
     "documentation": "Documentation",
     "faq": "FAQ",
     "caseStudies": "Case Studies",
