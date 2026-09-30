@@ -1394,6 +1394,29 @@ class TestAssistantSettings:
         with pytest.raises(ValidationError, match="assistant_rate_limit_per_hour"):
             Settings(secret_key="test-secret-key", assistant_rate_limit_per_hour=-1)
 
+    def test_mode_defaults_to_workflow_and_the_others_stay_selectable(self, monkeypatch, tmp_path):
+        """
+        GIVEN Settings without an override for the mode and no .env file in reach
+        WHEN constructed, and constructed again with each of the other two modes
+        THEN the default is workflow, the only mode that has been measured, and agent and
+             hybrid are still accepted
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("ASSISTANT_MODE", raising=False)
+
+        # WHEN
+        default = Settings(secret_key="test-secret-key")
+
+        # THEN
+        assert default.assistant_mode == "workflow"
+        for mode in ("agent", "hybrid"):
+            assert (
+                Settings(secret_key="test-secret-key", assistant_mode=mode).assistant_mode == mode
+            )
+        with pytest.raises(ValidationError, match="assistant_mode"):
+            Settings(secret_key="test-secret-key", assistant_mode="chatty")
+
     def test_turn_timeout_defaults_to_three_minutes(self, monkeypatch, tmp_path):
         """
         GIVEN Settings without an override for the turn timeout and no .env file in reach

@@ -255,7 +255,9 @@ class Settings(BaseSettings):
     # No default: a URL here would hard-code a password or reach a database that has none.
     assistant_vector_db_url: str = ""
     assistant_collection: str = "docs_markdown_headers_500_o10_captions_bge_m3"
-    assistant_mode: Literal["agent", "workflow", "hybrid"] = "hybrid"
+    # workflow is the default because it is the only mode whose prompt and answers have
+    # been measured; agent and hybrid, which give the model tools, stay selectable here.
+    assistant_mode: Literal["agent", "workflow", "hybrid"] = "workflow"
     assistant_max_tool_calls: int = 4
     # Limits the chat service applies. The request schema (api/schemas/assistant.py) holds
     # the hard ceilings, 20 history entries (10 exchanges) and 4000 characters per message,

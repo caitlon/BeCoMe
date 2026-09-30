@@ -312,7 +312,7 @@ class TestAssistantRouterGating:
         assert response.json() == {
             "enabled": True,
             "model": "Qwen/Qwen3.5-9B",
-            "mode": "hybrid",
+            "mode": "workflow",
             "collection": "docs_markdown_headers_500_o10_captions_bge_m3",
         }
 
