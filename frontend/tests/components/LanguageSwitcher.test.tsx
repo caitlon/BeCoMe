@@ -49,7 +49,14 @@ describe('LanguageSwitcher', () => {
     render(<LanguageSwitcher />);
 
     const button = screen.getByRole('button');
-    expect(button).toHaveAttribute('aria-label', 'Switch to Čeština');
+    expect(button).toHaveAttribute('aria-label', 'EN, switch to Čeština');
+  });
+
+  it('starts its accessible name with the visible text', () => {
+    render(<LanguageSwitcher />);
+
+    const button = screen.getByRole('button');
+    expect(button.getAttribute('aria-label')).toMatch(new RegExp(`^${button.textContent}`));
   });
 
   it('translates the accessible label when the UI language is Czech', async () => {
@@ -58,10 +65,27 @@ describe('LanguageSwitcher', () => {
       const { unmount } = render(<LanguageSwitcher />);
 
       const button = screen.getByRole('button');
-      expect(button).toHaveAttribute('aria-label', 'Přepnout na Čeština');
+      expect(button).toHaveAttribute('aria-label', 'EN, přepnout na Čeština');
 
       // Unmount before reverting the language so the language change below
       // does not re-render this already-asserted component outside act().
+      unmount();
+    } finally {
+      await i18n.changeLanguage('en');
+    }
+  });
+
+  it('starts the Czech accessible name with the visible CS label', async () => {
+    mockI18n.resolvedLanguage = 'cs';
+    mockI18n.language = 'cs';
+    await i18n.changeLanguage('cs');
+    try {
+      const { unmount } = render(<LanguageSwitcher />);
+
+      const button = screen.getByRole('button');
+      expect(button).toHaveTextContent('CS');
+      expect(button).toHaveAttribute('aria-label', 'CS, přepnout na English');
+
       unmount();
     } finally {
       await i18n.changeLanguage('en');
