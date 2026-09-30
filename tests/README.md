@@ -1,6 +1,6 @@
 # BeCoMe test suite
 
-Tests for the BeCoMe implementation: 3,081 backend tests, plus 59 end-to-end tests that skip
+Tests for the BeCoMe implementation: 3,266 backend tests, plus 59 end-to-end tests that skip
 unless a server and PostgreSQL are up. Coverage is 100% on the core library and 99% overall,
 and CI fails the run below 98%.
 
@@ -158,8 +158,8 @@ tests/
     └── pendlers_case.py  # 22 experts, Likert scale
 ```
 
-**Unit tests** (2,523) check individual components in isolation, including API auth, schemas,
-services, and middleware. **Integration tests** (558) validate core calculations against Excel
+**Unit tests** (2,611) check individual components in isolation, including API auth, schemas,
+services, and middleware. **Integration tests** (655) validate core calculations against Excel
 results (tolerance: 0.001) and test API routes with a real database. **End-to-end tests** (59)
 exercise complete API workflows including auth, projects, and invitations. **Reference data**
 contains expected values from the original Excel implementation.
@@ -171,7 +171,7 @@ command for `tests/integration/` and `tests/e2e/`.
 
 The frontend has its own suites, run with npm from `frontend/`. They are not part of `uv run pytest`.
 
-- **Vitest unit tests** live in `frontend/tests`: 1,154 tests in 89 files, grouped by `components`, `contexts`, `data`, `factories`, `hooks`, `i18n`, `lib`, `mocks` and `pages`, with the setup in `setup.ts`.
+- **Vitest unit tests** live in `frontend/tests`: 1,237 tests in 95 files, grouped by `components`, `contexts`, `data`, `factories`, `hooks`, `i18n`, `lib`, `mocks` and `pages`, with the setup in `setup.ts`.
 - **Playwright end-to-end specs** live in `frontend/e2e`: 239 tests in six projects from `frontend/playwright.config.ts`. `chromium`, `firefox` and `webkit` run the same 71 functional specs, `wcag-audit` runs 15 accessibility checks, `visual-regression` 8 screenshot comparisons, and `docs-screenshots` 3 that photograph the app for the documentation site.
 
 ```bash
