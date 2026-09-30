@@ -20,6 +20,7 @@ from api.assistant.agent.prompt import SYSTEM_PROMPT
 from api.assistant.agent.tools import UNAVAILABLE_REPLY
 from api.assistant.client import UserApiClient
 from api.assistant.rag.retrieval import DocsRetriever, RetrievedChunk
+from api.assistant.views import ProjectBrief
 from tests.shared.assistant_fakes import ScriptedToolCallingModel
 from tests.shared.helpers import captured_log_records
 
@@ -59,6 +60,10 @@ def _call(name: str, index: int = 1, **args: str) -> AIMessage:
         content="",
         tool_calls=[{"name": name, "args": args, "id": f"call-{index}", "type": "tool_call"}],
     )
+
+
+def _brief() -> ProjectBrief:
+    return ProjectBrief(id=PROJECT_ID, name="Floods", role="admin", is_example=False)
 
 
 def _search(index: int = 1) -> AIMessage:
@@ -157,6 +162,34 @@ class TestAnswerText:
         THEN the answer is empty
         """
         assert answer_text(AIMessage(content="<think>a</think>Text <think>b")) == ""
+
+    def test_a_later_block_that_closes_is_left_as_written(self):
+        """
+        GIVEN a reply with a closed reasoning block, and a second one that also closes
+        WHEN its text is read
+        THEN only the first block is removed and the answer is not emptied
+        """
+        assert answer_text(AIMessage(content="<think>a</think>Text <think>b</think> tail")) == (
+            "Text <think>b</think> tail"
+        )
+
+    def test_the_last_unclosed_block_decides_even_after_a_closed_one(self):
+        """
+        GIVEN a reply whose first block closes and whose last block never does
+        WHEN its text is read
+        THEN the answer is empty
+        """
+        reply = "<think>a</think>One <think>b</think> two <think>c"
+
+        assert answer_text(AIMessage(content=reply)) == ""
+
+    def test_a_stray_closing_tag_does_not_close_a_later_block(self):
+        """
+        GIVEN a reply with a closing tag written in the text, and then a block that never closes
+        WHEN its text is read
+        THEN the answer is empty
+        """
+        assert answer_text(AIMessage(content="Text </think> then <think>c")) == ""
 
     def test_text_with_no_reasoning_block_is_untouched(self):
         """
@@ -476,6 +509,30 @@ class TestAgentGenerator:
         assert model.seen[-1][-1].content == (
             f"no_result: the user is not a member of any project\n\nQuestion: {QUESTION}"
         )
+
+    async def test_the_fallback_call_keeps_distinct_replies_in_the_order_they_first_came(self):
+        """
+        GIVEN replies A, B, A from three calls before the model-call limit
+        WHEN the turn is generated
+        THEN the extra call's user message holds A, then B, once each, then the question
+        """
+        ctx = _ctx()
+        ctx.client.list_projects.side_effect = [[], [_brief()], []]
+        model = _model(
+            _call("list_my_projects", 1),
+            _call("list_my_projects", 2),
+            _call("list_my_projects", 3),
+            _call("list_my_projects", 4),
+            _call("list_my_projects", 5),
+            AIMessage(content="Done."),
+        )
+
+        await AgentGenerator(model, max_tool_calls=3).generate(_user(), ctx, QUESTION)
+
+        first, second, third = ctx.tool_outputs
+        assert first != second
+        assert third == first
+        assert model.seen[-1][-1].content == f"{first}\n\n{second}\n\nQuestion: {QUESTION}"
 
     async def test_the_fallback_call_of_a_run_with_nothing_gathered_is_the_bare_question(self):
         """
