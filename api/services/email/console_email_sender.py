@@ -48,7 +48,7 @@ class ConsoleEmailSender(EmailSender):
     so this sender cannot be selected there. The log record carries each token cut
     to its first characters, while the full link, token included, is printed to
     stdout and never reaches the log. Recipients are tagged with the same
-    :func:`hash_email` digest the security log uses, never the raw address.
+    :func:`hash_email` keyed tag the security log uses, never the raw address.
 
     :param settings: Application settings (kept for a uniform sender signature).
     """

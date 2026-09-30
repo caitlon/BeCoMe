@@ -194,10 +194,11 @@ class Settings(BaseSettings):
     bucket_secret_access_key: str | None = None
     bucket_region: str = "auto"
 
-    # Email (transactional: password reset, account verification). When the
-    # provider is "console" or the selected provider's credentials are unset, nothing
-    # is sent: each link is logged with its token cut to 8 characters and printed in
-    # full to stdout, so the flow still works offline in dev/CI/tests.
+    # Email (transactional: account verification, password reset and the
+    # existing-account notice). When the provider is "console" or the selected
+    # provider's credentials are unset, nothing is sent: each link is logged with
+    # its token cut to 8 characters and printed in full to stdout, so the flow
+    # still works offline in dev/CI/tests.
     email_provider: Literal["console", "http"] = "console"
     email_from: str = "no-reply@become.app"
     email_from_name: str = "BeCoMe"
