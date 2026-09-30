@@ -65,9 +65,8 @@ class TestDisabledScope:
         WHEN a scope is entered
         THEN no LangSmith client is built
         """
-        with patch.object(tracing.ls, "Client") as client_cls:
-            with tracing.tracing_scope(_settings()):
-                pass
+        with patch.object(tracing.ls, "Client") as client_cls, tracing.tracing_scope(_settings()):
+            pass
 
         client_cls.assert_not_called()
 
@@ -156,9 +155,8 @@ class TestEnabledScope:
         WHEN the body raises
         THEN the error reaches the caller
         """
-        with pytest.raises(RuntimeError, match="boom"):
-            with tracing.tracing_scope(_enabled_settings()):
-                raise RuntimeError("boom")
+        with pytest.raises(RuntimeError, match="boom"), tracing.tracing_scope(_enabled_settings()):
+            raise RuntimeError("boom")
 
 
 class TestShutdownTracing:
