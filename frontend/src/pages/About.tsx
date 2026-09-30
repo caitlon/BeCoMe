@@ -150,9 +150,12 @@ const About = () => {
                     </div>
                   </div>
                   <div className="mt-6 pt-4 border-t text-center">
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-xs text-muted-foreground break-words">
                       <strong>{t("authors.citation")}</strong>{" "}
                       {t("authors.citationText")}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      {t("authors.builtBy")}
                     </p>
                   </div>
                 </CardContent>
