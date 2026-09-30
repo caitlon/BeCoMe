@@ -21,6 +21,22 @@ test.describe('Email verification', () => {
     await expect(page).toHaveURL(/\/login/, { timeout: 15000 });
   });
 
+  test('registration tells the API which language to write the email in', async ({ page }) => {
+    const email = `verify-lang-${uniqueId()}@test.com`;
+
+    // Armed before the form is submitted: the helper clicks and waits for the inbox
+    // state, so a listener added afterwards would miss the request.
+    const registerRequest = page.waitForRequest(
+      (request) => request.method() === 'POST' && request.url().endsWith('/auth/register')
+    );
+    await submitRegistration(page, email);
+
+    // The base fixture pins the interface to English, so that is what must leave the
+    // browser. allHeaders() reads what went over the wire, not what the script set.
+    const request = await registerRequest;
+    expect((await request.allHeaders())['accept-language']).toBe('en');
+  });
+
   test('an account whose address is unconfirmed cannot sign in', async ({ page }) => {
     const email = `verify-gate-${uniqueId()}@test.com`;
     await submitRegistration(page, email);
