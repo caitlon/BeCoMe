@@ -306,7 +306,11 @@ class TestRegistrationEmailLanguage:
         assert [call["language"] for call in fake_email.verification_calls] == [expected]
 
     def test_a_garbage_header_answers_like_no_header(self, client, fake_email):
-        """A bad header is not a client error: the answer is the ordinary 202."""
+        """
+        GIVEN a registration whose Accept-Language header is garbage, and one with none
+        WHEN both are submitted
+        THEN both answer the ordinary 202, with the same body
+        """
         # WHEN
         with_header = _register_with_header(client, "a@example.com", ";;;,q=,==")
         without = _register_with_header(client, "b@example.com", None)
@@ -917,7 +921,11 @@ class TestResendVerification:
         assert [call["language"] for call in resent] == [expected]
 
     def test_a_garbage_header_answers_like_no_header(self, client, fake_email, unthrottled_email):
-        """A bad header is not a client error: the answer is the ordinary 202."""
+        """
+        GIVEN a resend whose Accept-Language header is garbage, and one with none
+        WHEN both are submitted
+        THEN both answer the ordinary 202, with the same body
+        """
         # WHEN
         with_header = _resend_with_header(client, "ghost@example.com", ";;;,q=,==")
         without = _resend_with_header(client, "ghost@example.com", None)
