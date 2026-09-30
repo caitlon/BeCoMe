@@ -172,4 +172,4 @@ Dev and staging moved off their generated `*.up.railway.app` hosts on 2026-07-31
 
 ## Where the code lives
 
-The selector and guard live in `api/config.py`: `Environment` (the enum), `_resolve_environment()` (reads `APP_ENV`), `_env_files_for()` (builds the `.env` plus `.env.<stage>` list), and the `_validate_deploy_invariants` model validator, which guards `prod` and a deployed `test`. Rate limiting reads `settings.testing` in `api/middleware/rate_limit.py`.
+The selector and guard live in `api/config.py`: `Environment` (the enum), `_resolve_environment()` (reads `APP_ENV`), `_env_files_for()` (builds the `.env` plus `.env.<stage>` list), and the `_validate_deploy_invariants` model validator, which guards every deployed service: `prod`, a deployed `test`, and the Railway dev service. Rate limiting reads `settings.testing` in `api/middleware/rate_limit.py`.
