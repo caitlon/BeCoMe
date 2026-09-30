@@ -21,6 +21,8 @@ from langchain_core.runnables import Runnable
 from langchain_core.tools import BaseTool
 from pydantic import Field, PrivateAttr
 
+from api.assistant.rag.retrieval import RetrievedChunk
+
 
 class ScriptedToolCallingModel(BaseChatModel):
     """A chat model that plays back a fixed queue of ``AIMessage`` responses.
@@ -69,3 +71,28 @@ class ScriptedToolCallingModel(BaseChatModel):
     def _llm_type(self) -> str:
         """Return the model type name LangChain's tracing uses."""
         return "scripted-tool-calling-model"
+
+
+class StaticDocsRetriever:
+    """A documentation retriever that returns the same chunks for every query.
+
+    Integration tests never reach a real vector database or embedding server: the shared
+    test application installs an empty one in place of the real retriever, and a test that
+    needs particular passages installs its own with them.
+
+    :param chunks: What every search returns.
+    :ivar queries: Every query searched for, in order.
+    """
+
+    def __init__(self, chunks: list[RetrievedChunk]) -> None:
+        self._chunks = chunks
+        self.queries: list[str] = []
+
+    async def search(self, query: str) -> list[RetrievedChunk]:
+        """Record the query and return the fixed chunks.
+
+        :param query: The search query, recorded for assertions.
+        :return: A copy of the fixed chunks.
+        """
+        self.queries.append(query)
+        return list(self._chunks)
