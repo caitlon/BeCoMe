@@ -11,7 +11,7 @@ const { mockUser, mockLogout, mockPathname } = vi.hoisted(() => ({
     id: 'user-1',
     email: 'john@example.com',
     first_name: 'John',
-    last_name: 'Doe',
+    last_name: 'Doe' as string | null,
     photo_url: null as string | null,
     created_at: '2024-01-01T00:00:00Z',
   },
@@ -171,6 +171,47 @@ describe('Navbar - User Menu', () => {
   });
 });
 
+describe('Navbar - Long user name', () => {
+  const longName = { first: 'Bohumila', last: 'Novotná-Dvořáková' };
+  const fullName = `${longName.first} ${longName.last}`;
+
+  beforeEach(() => {
+    mockUser.first_name = longName.first;
+    mockUser.last_name = longName.last;
+  });
+
+  afterEach(() => {
+    mockUser.first_name = 'John';
+    mockUser.last_name = 'Doe';
+  });
+
+  // 9rem: with this cap the widest signed-in Czech row measured (1110px) still fits
+  // inside 1280px, with 35px between the logo and the row, or 18px beside a 17px scrollbar.
+  it('caps the name in the desktop row and keeps the full name in title and the DOM', () => {
+    render(<Navbar />);
+
+    const name = screen.getByText(fullName);
+
+    expect(name).toHaveAttribute('title', fullName);
+    expect(name).toHaveClass('truncate', 'max-w-36');
+  });
+
+  it('leaves no trailing space in the text or the title when there is no last name', () => {
+    mockUser.last_name = null;
+    render(<Navbar />);
+
+    const name = screen.getByTitle(longName.first);
+
+    expect(name.textContent).toBe(longName.first);
+  });
+
+  it('keeps the full name in the accessible name of the user menu button', () => {
+    render(<Navbar />);
+
+    expect(screen.getByRole('button', { name: new RegExp(fullName) })).toBeInTheDocument();
+  });
+});
+
 describe('Navbar - Scroll Effect', () => {
   it('updates isScrolled state on scroll', () => {
     render(<Navbar />);
@@ -187,6 +228,46 @@ describe('Navbar - Scroll Effect', () => {
       globalThis.dispatchEvent(new Event('scroll'));
     });
     expect(nav.className).not.toContain('shadow');
+  });
+});
+
+describe('Navbar - Breakpoint', () => {
+  // Measured in Chromium at 1280px, Czech, signed in: the desktop row is 1001px wide
+  // with the name "Anna" and 1110px with a 26-character name capped at 9rem. The
+  // logo (86px) and the container padding (48px) come on top, so the signed-in row
+  // needs 1135px to 1244px. That rules out lg (1024px) and md (768px); the switch to
+  // the menu button sits at xl (1280px). Signed out, the same row is 799px in Czech
+  // and 706px in English.
+  it('shows the desktop row from xl up and hides it below', () => {
+    render(<Navbar />);
+
+    const desktopRow = screen.getByRole('link', { name: /about/i }).parentElement;
+
+    expect(desktopRow).toHaveClass('hidden', 'xl:flex');
+    expect(desktopRow).not.toHaveClass('lg:flex');
+    expect(desktopRow).not.toHaveClass('md:flex');
+  });
+
+  it('shows the menu button below xl and hides it from xl up', () => {
+    render(<Navbar />);
+
+    const menuControls = screen.getByRole('button', { name: /open menu/i }).parentElement;
+
+    expect(menuControls).toHaveClass('xl:hidden');
+    expect(menuControls).not.toHaveClass('lg:hidden');
+    expect(menuControls).not.toHaveClass('md:hidden');
+  });
+
+  it('hides the open mobile menu from xl up', async () => {
+    const user = userEvent.setup();
+    render(<Navbar />);
+
+    await user.click(screen.getByRole('button', { name: /open menu/i }));
+
+    const mobileMenu = screen.getByRole('region', { name: /mobile/i });
+    expect(mobileMenu).toHaveClass('xl:hidden');
+    expect(mobileMenu).not.toHaveClass('lg:hidden');
+    expect(mobileMenu).not.toHaveClass('md:hidden');
   });
 });
 
