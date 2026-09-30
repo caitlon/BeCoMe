@@ -45,8 +45,9 @@ class ConsoleEmailSender(EmailSender):
     Used in development, CI, and tests: every flow works offline and each link is
     read straight from the application log or stdout. The deployed profiles reject
     an unconfigured email provider at startup (``Settings._validate_deploy_invariants``),
-    so this sender cannot be selected there, and a link and its token only ever
-    reach a developer-visible log. Recipients are tagged with the same
+    so this sender cannot be selected there. The log record carries each token cut
+    to its first characters, while the full link, token included, is printed to
+    stdout and never reaches the log. Recipients are tagged with the same
     :func:`hash_email` digest the security log uses, never the raw address.
 
     :param settings: Application settings (kept for a uniform sender signature).

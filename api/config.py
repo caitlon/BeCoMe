@@ -195,8 +195,9 @@ class Settings(BaseSettings):
     bucket_region: str = "auto"
 
     # Email (transactional: password reset, account verification). When the
-    # provider is "console" or the selected provider's credentials are unset, the
-    # link is logged rather than sent, so the flow still works offline in dev/CI/tests.
+    # provider is "console" or the selected provider's credentials are unset, nothing
+    # is sent: each link is logged with its token cut to 8 characters and printed in
+    # full to stdout, so the flow still works offline in dev/CI/tests.
     email_provider: Literal["console", "http"] = "console"
     email_from: str = "no-reply@become.app"
     email_from_name: str = "BeCoMe"
@@ -213,7 +214,9 @@ class Settings(BaseSettings):
 
     # Kill switches for the registration email-address policy
     # (api/services/email_policy.py). Both default on; flip either to false via
-    # a Railway env var, with no deploy needed, if it starts rejecting real users.
+    # a Railway env var, with no code change needed, if it starts rejecting real users.
+    # The value takes effect when the process restarts (settings and the policy are
+    # cached), which setting a Railway variable does by default.
     disposable_email_blocking_enabled: bool = True
     mx_check_enabled: bool = True
 
@@ -329,8 +332,9 @@ class Settings(BaseSettings):
     def email_enabled(self) -> bool:
         """Check if a real email provider is fully configured.
 
-        The console provider always returns False: it logs reset links instead
-        of sending them, so it never counts as a real send.
+        The console provider always returns False: for the verification, password
+        reset and existing-account emails it logs each link masked and prints it in
+        full to stdout instead of sending, so it never counts as a real send.
 
         :return: True when the HTTP provider is selected and its API key is set.
         """
