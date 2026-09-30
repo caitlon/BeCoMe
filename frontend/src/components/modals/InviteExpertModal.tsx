@@ -107,6 +107,9 @@ export function InviteExpertModal({
             <DialogDescription className="text-lg font-medium">
               {t("invite.successTitle")}
             </DialogDescription>
+            <p className="text-sm text-muted-foreground">
+              {t("invite.successDescription")}
+            </p>
           </DialogHeader>
 
           <div className="flex justify-end gap-3">

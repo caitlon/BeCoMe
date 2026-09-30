@@ -65,7 +65,7 @@ test.describe.serial('Invitation Flow', () => {
     await dialog.getByRole('button', { name: 'Send Invitation' }).click();
 
     // Wait for success state
-    await expect(dialog.getByText('Invitation sent!')).toBeVisible({ timeout: 10000 });
+    await expect(dialog.getByText('Invitation created')).toBeVisible({ timeout: 10000 });
     await dialog.getByRole('button', { name: 'Done' }).click();
   });
 

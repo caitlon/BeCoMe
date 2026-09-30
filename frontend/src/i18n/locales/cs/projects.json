@@ -202,7 +202,8 @@
     "inviting": "Odesílání...",
     "inviteAnother": "Pozvat dalšího",
     "done": "Hotovo",
-    "successTitle": "Pozvánka odeslána!",
+    "successTitle": "Pozvánka vytvořena",
+    "successDescription": "Pozvánka se neposílá e-mailem. Expert ji uvidí v záložce \"Pozvánky\".",
     "errorTitle": "Pozvání selhalo",
     "errorMessage": "Nepodařilo se odeslat pozvánku",
     "validation": {

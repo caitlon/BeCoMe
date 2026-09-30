@@ -163,7 +163,7 @@ baseTest.describe('Project Detail: Multi-Context', () => {
     await expect(inviteDialog).toBeVisible();
     await inviteDialog.getByPlaceholder('expert@example.com').fill(expertEmail);
     await inviteDialog.getByRole('button', { name: 'Send Invitation' }).click();
-    await expect(inviteDialog.getByText('Invitation sent!')).toBeVisible({ timeout: 10000 });
+    await expect(inviteDialog.getByText('Invitation created')).toBeVisible({ timeout: 10000 });
     await inviteDialog.getByRole('button', { name: 'Done' }).click();
 
     // Expert accepts

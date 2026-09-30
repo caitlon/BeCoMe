@@ -202,7 +202,8 @@
     "inviting": "Sending...",
     "inviteAnother": "Invite Another",
     "done": "Done",
-    "successTitle": "Invitation sent!",
+    "successTitle": "Invitation created",
+    "successDescription": "The invitation is not sent by email. The expert will see it in their \"Invitations\" tab.",
     "errorTitle": "Invitation failed",
     "errorMessage": "Failed to send invitation",
     "validation": {
