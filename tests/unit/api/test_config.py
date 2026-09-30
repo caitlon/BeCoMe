@@ -1394,6 +1394,37 @@ class TestAssistantSettings:
         with pytest.raises(ValidationError, match="assistant_rate_limit_per_hour"):
             Settings(secret_key="test-secret-key", assistant_rate_limit_per_hour=-1)
 
+    def test_turn_timeout_defaults_to_three_minutes(self, monkeypatch, tmp_path):
+        """
+        GIVEN Settings without an override for the turn timeout and no .env file in reach
+        WHEN constructed
+        THEN one assistant turn may take 180 seconds
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("ASSISTANT_TURN_TIMEOUT_SECONDS", raising=False)
+
+        # WHEN
+        settings = Settings(secret_key="test-secret-key")
+
+        # THEN
+        assert settings.assistant_turn_timeout_seconds == 180.0
+
+    @pytest.mark.parametrize("value", [0, 0.0, -1.5])
+    def test_rejects_a_non_positive_turn_timeout(self, value, monkeypatch, tmp_path):
+        """
+        GIVEN a turn timeout of zero or below
+        WHEN Settings is constructed
+        THEN it is refused, naming the field, because asyncio.timeout(0) would expire
+             every turn at once
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="assistant_turn_timeout_seconds"):
+            Settings(secret_key="test-secret-key", assistant_turn_timeout_seconds=value)
+
     def test_langsmith_tracing_is_off_by_default(self, monkeypatch, tmp_path):
         """
         GIVEN Settings without an explicit override and no .env file in reach
