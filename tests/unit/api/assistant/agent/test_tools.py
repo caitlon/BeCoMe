@@ -10,7 +10,8 @@ import pytest
 from langchain.agents import create_agent
 from langchain.tools import ToolRuntime
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import IntegrityError, InterfaceError, OperationalError
+from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 
 from api.assistant.agent import tools
 from api.assistant.agent.context import AssistantContext, SourceRegistry
@@ -127,6 +128,8 @@ def _unavailable_errors() -> list[Exception]:
         httpx.ConnectError("secret-host:1234 refused"),
         httpx.HTTPStatusError("upstream said no", request=_REQUEST, response=response),
         OperationalError("SELECT 1", {}, Exception("connection to secret-host lost")),
+        InterfaceError("SELECT 1", {}, Exception("connection to secret-host closed")),
+        PoolTimeoutError("QueuePool limit reached, connection to secret-host timed out"),
     ]
 
 
@@ -272,17 +275,21 @@ class TestSearchDocs:
         assert "secret-host" not in result
         assert "upstream said no" not in result
 
-    async def test_does_not_swallow_an_unexpected_error(self):
+    @pytest.mark.parametrize(
+        "error", [RuntimeError("bug"), IntegrityError("INSERT", {}, Exception("bug"))]
+    )
+    async def test_does_not_swallow_an_unexpected_error(self, error):
         """
-        GIVEN a retriever that fails with an error that is not an availability failure
+        GIVEN a retriever that fails with an error that is not an availability failure,
+            a data error among them
         WHEN the tool runs
         THEN the error propagates, because that is the service's business
         """
         retriever = AsyncMock(spec=DocsRetriever)
-        retriever.search.side_effect = RuntimeError("bug")
+        retriever.search.side_effect = error
         ctx = _ctx(retriever=retriever)
 
-        with pytest.raises(RuntimeError, match="bug"):
+        with pytest.raises(type(error), match="bug"):
             await search_docs.ainvoke({"query": "x", "runtime": _runtime(ctx)})
 
 
@@ -489,16 +496,20 @@ class TestFailuresRaisedThroughTheApplication:
             ("assistant_tool_unavailable", tool.name, type(error).__name__)
         ]
 
+    @pytest.mark.parametrize(
+        "error", [RuntimeError("bug"), IntegrityError("INSERT", {}, Exception("bug"))]
+    )
     @pytest.mark.parametrize("tool", [list_my_projects, *PROJECT_TOOLS], ids=lambda t: t.name)
-    async def test_an_error_outside_the_list_still_propagates(self, tool):
+    async def test_an_error_outside_the_list_still_propagates(self, tool, error):
         """
-        GIVEN a client that fails with an error that is not an availability failure
+        GIVEN a client that fails with an error that is not an availability failure,
+            a data error among them
         WHEN a tool that reads the API runs
         THEN the error propagates, because that is the chat service's business
         """
-        ctx = _ctx(self._failing_client(RuntimeError("bug")))
+        ctx = _ctx(self._failing_client(error))
 
-        with pytest.raises(RuntimeError, match="bug"):
+        with pytest.raises(type(error), match="bug"):
             await tool.ainvoke({**self._arguments(tool), "runtime": _runtime(ctx)})
 
 

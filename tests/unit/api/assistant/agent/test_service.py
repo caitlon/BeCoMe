@@ -12,7 +12,8 @@ import openai
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from pydantic import Field
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import IntegrityError, InterfaceError, OperationalError
+from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 
 from api.assistant.agent import service as service_module
 from api.assistant.agent.checks import find_ungrounded_numbers, strip_citations
@@ -175,6 +176,8 @@ def _unavailable_errors() -> list[Exception]:
         httpx.ConnectError("secret-host:1234 refused"),
         httpx.HTTPStatusError("secret-host said no", request=_REQUEST, response=response),
         OperationalError("SELECT 1", {}, Exception("connection to secret-host lost")),
+        InterfaceError("SELECT 1", {}, Exception("connection to secret-host closed")),
+        PoolTimeoutError("QueuePool limit reached, connection to secret-host timed out"),
     ]
 
 
@@ -604,16 +607,19 @@ class TestFailures:
         ]
         assert model.seen == []
 
-    async def test_an_error_that_is_not_an_outage_is_not_turned_into_one(self):
+    @pytest.mark.parametrize(
+        "error", [ValueError("a bug"), IntegrityError("INSERT", {}, Exception("a bug"))]
+    )
+    async def test_an_error_that_is_not_an_outage_is_not_turned_into_one(self, error):
         """
-        GIVEN a retriever that raises a plain ValueError
+        GIVEN a retriever that raises a plain ValueError, or a database data error
         WHEN a turn is answered
-        THEN the ValueError reaches the caller, so a bug is not reported as an outage
+        THEN the error reaches the caller, so a bug is not reported as an outage
         """
         ctx = _ctx()
-        ctx.retriever.search.side_effect = ValueError("a bug")
+        ctx.retriever.search.side_effect = error
 
-        with pytest.raises(ValueError, match="a bug"):
+        with pytest.raises(type(error), match="a bug"):
             await AssistantService(_settings(), _model(_say())).answer(_request(), ctx)
 
     @pytest.mark.parametrize("mode", ["workflow", "hybrid", "agent"])
