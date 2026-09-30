@@ -4,7 +4,7 @@
     "title2": "one best compromise",
     "subtitle": "For panels that must settle on one number, such as a budget, a deadline or a risk level. Each expert gives a lowest, most likely and highest estimate, and BeCoMe combines them into the best compromise.",
     "goToProjects": "Go to Projects",
-    "startProject": "Start Your Project"
+    "startProject": "Create Account"
   },
   "howItWorks": {
     "title": "How It Works",
@@ -29,7 +29,7 @@
   },
   "cta": {
     "title": "Ready to find the best compromise?",
-    "subtitle": "Create your first project and start collecting expert opinions today.",
-    "button": "Get Started Free"
+    "subtitle": "Create your first project and start collecting expert opinions today. Free for noncommercial use.",
+    "button": "Create Account"
   }
 }

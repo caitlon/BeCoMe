@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import { render, framerMotionMock, unauthenticatedAuthMock } from '@tests/utils';
 import Landing from '@/pages/Landing';
 import i18n from '@/i18n';
@@ -25,11 +25,13 @@ describe('Landing', () => {
     ).toBeInTheDocument();
   });
 
-  it('shows "Start Your Project" button for unauthenticated users', () => {
+  it('labels every sign-up link "Create Account" for unauthenticated users', () => {
     render(<Landing />);
 
-    const startButton = screen.getByRole('link', { name: /start your project/i });
-    expect(startButton).toHaveAttribute('href', '/register');
+    // Navigation bar, hero, call to action and footer all lead to the same page
+    const signUpLinks = screen.getAllByRole('link', { name: 'Create Account' });
+    expect(signUpLinks).toHaveLength(4);
+    signUpLinks.forEach((link) => expect(link).toHaveAttribute('href', '/register'));
   });
 
   it('renders "How It Works" section', () => {
@@ -59,7 +61,16 @@ describe('Landing', () => {
     render(<Landing />);
 
     expect(screen.getByText('Ready to find the best compromise?')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /get started free/i })).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Create your first project and start collecting expert opinions today. Free for noncommercial use.'
+      )
+    ).toBeInTheDocument();
+    // Hero and call to action inside the page content
+    const signUpLinks = within(screen.getByRole('main')).getAllByRole('link', {
+      name: 'Create Account',
+    });
+    expect(signUpLinks).toHaveLength(2);
   });
 
   it('has link to about page', () => {
@@ -100,6 +111,20 @@ describe('Landing - Czech', () => {
       screen.getByText('Třístupňový proces od názorů expertů k nejlepšímu kompromisu')
     ).toBeInTheDocument();
     expect(screen.getByText('Připraveni najít nejlepší kompromis?')).toBeInTheDocument();
+  });
+
+  it('labels every sign-up link "Vytvořit účet" and states the licence condition', async () => {
+    await i18n.changeLanguage('cs');
+    render(<Landing />);
+
+    const signUpLinks = screen.getAllByRole('link', { name: 'Vytvořit účet' });
+    expect(signUpLinks).toHaveLength(4);
+    signUpLinks.forEach((link) => expect(link).toHaveAttribute('href', '/register'));
+    expect(
+      screen.getByText(
+        'Vytvořte svůj první projekt a začněte sbírat názory expertů ještě dnes. Pro nekomerční použití zdarma.'
+      )
+    ).toBeInTheDocument();
   });
 });
 

@@ -20,7 +20,7 @@ describe('Navbar - Unauthenticated Mobile Menu', () => {
     vi.clearAllMocks();
   });
 
-  it('mobile menu shows Sign In and Get Started links', async () => {
+  it('mobile menu shows Sign In and Create Account links', async () => {
     const user = userEvent.setup();
     render(<Navbar />);
 
@@ -47,14 +47,14 @@ describe('Navbar - Unauthenticated Mobile Menu', () => {
     expect(screen.getByRole('button', { name: /open menu/i })).toBeInTheDocument();
   });
 
-  it('clicking Get Started link closes mobile menu', async () => {
+  it('clicking Create Account link closes mobile menu', async () => {
     const user = userEvent.setup();
     render(<Navbar />);
 
     await user.click(screen.getByRole('button', { name: /open menu/i }));
 
     const mobileMenu = screen.getByRole('region', { name: /mobile/i });
-    const registerLink = within(mobileMenu).getByRole('link', { name: /get started/i });
+    const registerLink = within(mobileMenu).getByRole('link', { name: /create account/i });
     await user.click(registerLink);
 
     expect(screen.getByRole('button', { name: /open menu/i })).toBeInTheDocument();
