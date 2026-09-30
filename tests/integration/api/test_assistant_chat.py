@@ -4,10 +4,11 @@ The chat model is always a scripted one from ``tests/shared/assistant_fakes.py``
 retriever is the static one the shared test app installs, and the API the assistant reads
 from is the test app itself. Nothing here reaches a real model server, embedding server or
 vector database. This part holds gating and authentication, the request schema, the
-configured message length and the three modes.
+configured message length, the three modes and the message limits.
 """
 
 from typing import Any
+from unittest.mock import patch
 
 import langsmith as ls
 import pytest
@@ -19,6 +20,7 @@ from api.assistant.client import UserApiClient
 from api.assistant.rate_limit import get_assistant_throttle
 from api.auth.cookies import CSRF_COOKIE
 from api.config import get_settings
+from api.middleware.rate_limit import LIMIT_ASSISTANT_CHAT, limiter
 from tests.integration.api.conftest import register_and_login, register_verified
 from tests.shared.assistant_fakes import ScriptedToolCallingModel, StaticDocsRetriever
 from tests.shared.helpers import DEFAULT_TEST_PASSWORD, auth_header
@@ -452,3 +454,194 @@ class TestModes:
         # THEN
         assert response.status_code == 200
         assert len(model.seen) == 1
+
+
+class TestMessageLimit:
+    """The hourly budget is spent per user, before anything is built, and 0 switches it off."""
+
+    def test_the_second_message_of_a_budget_of_one_is_refused(
+        self, assistant_settings, client, configure
+    ):
+        """
+        GIVEN a budget of one message per hour
+        WHEN one user sends two messages
+        THEN the first is answered and the second is 429 with the fixed detail
+        """
+        # GIVEN
+        configure(ASSISTANT_RATE_LIMIT_PER_HOUR="1")
+        token = register_and_login(client, "budget@example.com")
+        _use_model(client, _scripted("first", "second"))
+
+        # WHEN
+        first = client.post(CHAT, json={"message": "one"}, headers=auth_header(token))
+        second = client.post(CHAT, json={"message": "two"}, headers=auth_header(token))
+
+        # THEN
+        assert first.status_code == 200
+        assert second.status_code == 429
+        assert second.json() == {"detail": "Too many assistant messages. Please try again later."}
+
+    def test_another_user_still_has_a_budget(self, assistant_settings, client, configure):
+        """
+        GIVEN a budget of one message, spent by one user
+        WHEN a second user sends their first message
+        THEN it is answered, so the cap is per user and not for everyone
+        """
+        # GIVEN
+        configure(ASSISTANT_RATE_LIMIT_PER_HOUR="1")
+        first_token = register_and_login(client, "spender@example.com")
+        second_token = register_and_login(client, "bystander@example.com")
+        _use_model(client, _scripted("one", "two"))
+        client.post(CHAT, json={"message": "one"}, headers=auth_header(first_token))
+
+        # WHEN
+        response = client.post(CHAT, json={"message": "hi"}, headers=auth_header(second_token))
+
+        # THEN
+        assert response.status_code == 200
+
+    def test_a_spent_budget_builds_no_client_and_asks_no_model(
+        self, assistant_settings, client, configure, monkeypatch
+    ):
+        """
+        GIVEN a budget of one message, spent
+        WHEN the user sends another
+        THEN the answer is 429, and neither the API client was built nor the model was asked
+            for or called, so a refused message costs nothing
+        """
+        # GIVEN
+        configure(ASSISTANT_RATE_LIMIT_PER_HOUR="1")
+        token = register_and_login(client, "order@example.com")
+        model = _scripted("one", "two")
+        model_requests: list[str] = []
+        _use_model(client, model, model_requests)
+        clients_built: list[UserApiClient] = []
+
+        class _CountingClient(UserApiClient):
+            def __init__(self, *args: Any, **kwargs: Any) -> None:
+                super().__init__(*args, **kwargs)
+                clients_built.append(self)
+
+        monkeypatch.setattr(deps, "UserApiClient", _CountingClient)
+        client.post(CHAT, json={"message": "one"}, headers=auth_header(token))
+        assert (len(model_requests), len(clients_built), len(model.seen)) == (1, 1, 1)
+
+        # WHEN
+        response = client.post(CHAT, json={"message": "two"}, headers=auth_header(token))
+
+        # THEN
+        assert response.status_code == 429
+        assert (len(model_requests), len(clients_built), len(model.seen)) == (1, 1, 1)
+
+    def test_a_message_with_an_invalid_body_still_spends_the_budget(
+        self, assistant_settings, client, configure
+    ):
+        """
+        GIVEN a budget of one message per hour
+        WHEN the user sends a message with an invalid body, and then a valid one
+        THEN the first is 422 and the second is 429: the limit is spent before the body is
+            read, which the assistant README says
+        """
+        # GIVEN
+        configure(ASSISTANT_RATE_LIMIT_PER_HOUR="1")
+        token = register_and_login(client, "invalid-then-valid@example.com")
+        _use_model(client, _scripted("never used"))
+
+        # WHEN
+        invalid = client.post(CHAT, json={"message": ""}, headers=auth_header(token))
+        valid = client.post(CHAT, json={"message": "hi"}, headers=auth_header(token))
+
+        # THEN
+        assert invalid.status_code == 422
+        assert valid.status_code == 429
+
+    def test_a_limit_of_zero_lets_any_number_of_messages_through(
+        self, assistant_settings, client, configure
+    ):
+        """
+        GIVEN the limit set to 0, which switches it off
+        WHEN one user sends many messages
+        THEN all of them are answered
+        """
+        # GIVEN
+        configure(ASSISTANT_RATE_LIMIT_PER_HOUR="0")
+        token = register_and_login(client, "unlimited@example.com")
+        _use_model(client, _scripted(*["ok"] * 8))
+
+        # WHEN
+        statuses = [
+            client.post(CHAT, json={"message": f"m{i}"}, headers=auth_header(token)).status_code
+            for i in range(8)
+        ]
+
+        # THEN
+        assert statuses == [200] * 8
+
+    def test_the_per_address_limit_of_the_route_refuses_the_message_after_it(
+        self, assistant_settings, client
+    ):
+        """
+        GIVEN the application's per-address limiter switched on for this test
+        WHEN one address posts as many messages as the route's limit allows, and one more
+        THEN the last is 429 from the limiter, and the ones before it were answered; the
+            limit itself is twenty a minute
+        """
+        # GIVEN
+        assert LIMIT_ASSISTANT_CHAT == "20/minute"
+        allowed = int(LIMIT_ASSISTANT_CHAT.split("/")[0])
+        token = register_and_login(client, "per-address@example.com")
+        _use_model(client, _scripted(*["ok"] * (allowed + 1)))
+
+        # WHEN
+        with patch.object(limiter, "enabled", True):
+            limiter.reset()
+            try:
+                statuses = [
+                    client.post(
+                        CHAT, json={"message": f"m{i}"}, headers=auth_header(token)
+                    ).status_code
+                    for i in range(allowed + 1)
+                ]
+            finally:
+                limiter.reset()
+
+        # THEN
+        assert statuses == [200] * allowed + [429]
+
+
+class TestPerAddressRefusalSpendsTheBudget:
+    """The per-address limit is checked inside the route, after the hourly message is spent."""
+
+    def test_a_message_the_limiter_refuses_has_already_spent_an_hourly_message(
+        self, assistant_settings, client, configure
+    ):
+        """
+        GIVEN an hourly budget of 21 messages, and the per-address limiter on
+        WHEN one address sends 21 messages, the last of which the limiter refuses, and the
+            limiter's own counter is then cleared and a 22nd message is sent
+        THEN the 21st is the limiter's 429, and the 22nd is our hourly 429: the refused message
+            had spent the 21st of the budget
+        """
+        # GIVEN
+        allowed = int(LIMIT_ASSISTANT_CHAT.split("/")[0])
+        configure(ASSISTANT_RATE_LIMIT_PER_HOUR=str(allowed + 1))
+        token = register_and_login(client, "refused-spends@example.com")
+        _use_model(client, _scripted(*["ok"] * (allowed + 2)))
+
+        # WHEN
+        with patch.object(limiter, "enabled", True):
+            limiter.reset()
+            try:
+                first = [
+                    client.post(CHAT, json={"message": f"m{i}"}, headers=auth_header(token))
+                    for i in range(allowed + 1)
+                ]
+            finally:
+                limiter.reset()
+        after = client.post(CHAT, json={"message": "later"}, headers=auth_header(token))
+
+        # THEN
+        assert [response.status_code for response in first] == [200] * allowed + [429]
+        assert "detail" not in first[-1].json()
+        assert after.status_code == 429
+        assert after.json() == {"detail": "Too many assistant messages. Please try again later."}
