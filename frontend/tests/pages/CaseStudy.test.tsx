@@ -57,7 +57,7 @@ describe('CaseStudy - Budget', () => {
   it('renders results card with best compromise', () => {
     render(<CaseStudy />);
 
-    expect(screen.getByText('56.74')).toBeInTheDocument();
+    expect(screen.getByText('48.03')).toBeInTheDocument();
   });
 
   it('renders opinion table with expert rows', () => {
@@ -117,18 +117,75 @@ describe('CaseStudy - Pendlers (Likert)', () => {
   it('renders LikertInterpretation in results card', () => {
     render(<CaseStudy />);
 
-    // bestCompromise = 41.48 => "Neutral" (37.5-62.5)
+    // bestCompromise = 30.68 => "Rather Disagree" (12.5-37.5)
     const interpHeading = screen.getByText(/likert interpretation/i);
     expect(interpHeading).toBeInTheDocument();
     // LikertInterpretation renders heading + label as siblings inside a wrapper div
     const interpWrapper = interpHeading.parentElement!;
-    expect(interpWrapper.textContent).toContain('Neutral');
+    expect(interpWrapper.textContent).toContain('Rather Disagree');
   });
 
   it('does NOT render opinion distribution for Likert data', () => {
     render(<CaseStudy />);
 
     expect(screen.queryByText(/opinion distribution/i)).not.toBeInTheDocument();
+  });
+});
+
+describe('CaseStudy - illustrative data note', () => {
+  afterEach(() => {
+    mockParams.value = { id: 'budget' };
+  });
+
+  it.each(['budget', 'pendlers'])('shows the note on the %s page', (id) => {
+    mockParams.value = { id };
+    render(<CaseStudy />);
+
+    expect(screen.getByText(/illustrative fictional data/i)).toBeInTheDocument();
+  });
+
+  it('does not show the note on the floods page', () => {
+    mockParams.value = { id: 'floods' };
+    render(<CaseStudy />);
+
+    expect(screen.queryByText(/illustrative fictional data/i)).not.toBeInTheDocument();
+  });
+
+  it('places the note after the description in reading order', () => {
+    mockParams.value = { id: 'budget' };
+    render(<CaseStudy />);
+
+    const description = screen.getByText(/high-ranking government officials/i);
+    const note = screen.getByText(/illustrative fictional data/i);
+    expect(description.compareDocumentPosition(note) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it.each(['budget', 'pendlers'])('shows the Czech note on the %s page', async (id) => {
+    await i18n.changeLanguage('cs');
+    try {
+      mockParams.value = { id };
+      const { unmount } = render(<CaseStudy />);
+
+      expect(screen.getByText(/ilustrativní fiktivní data/i)).toBeInTheDocument();
+
+      unmount();
+    } finally {
+      await i18n.changeLanguage('en');
+    }
+  });
+
+  it('does not show the Czech note on the floods page', async () => {
+    await i18n.changeLanguage('cs');
+    try {
+      mockParams.value = { id: 'floods' };
+      const { unmount } = render(<CaseStudy />);
+
+      expect(screen.queryByText(/ilustrativní fiktivní data/i)).not.toBeInTheDocument();
+
+      unmount();
+    } finally {
+      await i18n.changeLanguage('en');
+    }
   });
 });
 

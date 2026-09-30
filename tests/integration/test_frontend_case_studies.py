@@ -8,6 +8,11 @@ numbers match what the calculator actually produces from the same opinions.
 A mismatch means the displayed numbers no longer reflect the BeCoMe method
 and caseStudies.ts must be corrected.
 
+The expert rows shown on the site must also be the rows of the method authors'
+workbook, which examples/data/*_case.txt reproduce. The opinions parsed from
+caseStudies.ts are compared, in order, with the matching data file, so the
+site cannot carry rows the authors never published.
+
 useLocalizedCaseStudies() overwrites result.interpretation with a translated
 string from frontend/src/i18n/locales/{en,cs}/caseStudies.json at runtime, so
 this module also checks that free-text prose for the same numbers: the value
@@ -27,6 +32,7 @@ from pathlib import Path
 
 import pytest
 
+from examples.utils.data_loading import load_data_from_txt
 from src.calculators.become_calculator import BeCoMeCalculator
 from src.models.expert_opinion import ExpertOpinion
 from src.models.fuzzy_number import FuzzyTriangleNumber
@@ -34,6 +40,7 @@ from src.models.fuzzy_number import FuzzyTriangleNumber
 CASE_STUDIES_TS = (
     Path(__file__).parent.parent.parent / "frontend" / "src" / "data" / "caseStudies.ts"
 )
+EXAMPLES_DATA_DIR = Path(__file__).parent.parent.parent / "examples" / "data"
 EN_CASE_STUDIES_JSON = (
     Path(__file__).parent.parent.parent
     / "frontend"
@@ -282,12 +289,23 @@ def _load_interpretation_prose(path: Path) -> dict[str, str]:
     }
 
 
+def _opinion_row(opinion: ExpertOpinion) -> tuple[float, float, float]:
+    """
+    Reduce an expert opinion to its numeric row, leaving the expert's name out.
+
+    :param opinion: Expert opinion built from either source
+    :return: Tuple of (lower bound, peak, upper bound)
+    """
+    fuzzy_number = opinion.opinion
+    return (fuzzy_number.lower_bound, fuzzy_number.peak, fuzzy_number.upper_bound)
+
+
 def _format_en(value: float) -> str:
     """
     Format a rounded number the way English case-study prose writes it.
 
     :param value: Already-rounded number (2 decimal places)
-    :return: Fixed-point string with a dot decimal separator, e.g. "56.74"
+    :return: Fixed-point string with a dot decimal separator, e.g. "48.03"
     """
     return f"{value:.2f}"
 
@@ -297,7 +315,7 @@ def _format_cs(value: float) -> str:
     Format a rounded number the way Czech case-study prose writes it.
 
     :param value: Already-rounded number (2 decimal places)
-    :return: Fixed-point string with a comma decimal separator, e.g. "56,74"
+    :return: Fixed-point string with a comma decimal separator, e.g. "48,03"
     """
     return f"{value:.2f}".replace(".", ",")
 
@@ -381,15 +399,15 @@ class TestStripJsComments:
         source = (
             'id: "budget"\n'
             '// result: { bestCompromise: 999, maxError: 999, interpretation: "stale" },\n'
-            'result: { bestCompromise: 56.74, maxError: 0.76, interpretation: "live" },\n'
+            'result: { bestCompromise: 48.03, maxError: 2.20, interpretation: "live" },\n'
         )
 
         # WHEN
         best_compromise, max_error = _parse_stored_result(_strip_js_comments(source))
 
         # THEN
-        assert best_compromise == 56.74
-        assert max_error == 0.76
+        assert best_compromise == 48.03
+        assert max_error == 2.20
 
 
 class TestFrontendCaseStudyNumbers:
@@ -404,6 +422,38 @@ class TestFrontendCaseStudyNumbers:
         assert found >= _EXPECTED_CASE_IDS, (
             f"Expected to find case ids {sorted(_EXPECTED_CASE_IDS)} in caseStudies.ts, "
             f"but the parser only found {sorted(found)}. Check the regex parser"
+        )
+
+    @pytest.mark.parametrize("case_id", _CASE_IDS)
+    def test_expert_rows_match_authors_data_file(
+        self,
+        parsed_case_studies: dict[str, ParsedCaseStudy],
+        case_id: str,
+    ) -> None:
+        """The rows on the site must equal the rows of examples/data/<case>_case.txt, in order."""
+        # GIVEN
+        site_rows = [_opinion_row(opinion) for opinion in parsed_case_studies[case_id].opinions]
+        data_file = EXAMPLES_DATA_DIR / f"{case_id}_case.txt"
+        data_opinions, _ = load_data_from_txt(str(data_file))
+        data_rows = [_opinion_row(opinion) for opinion in data_opinions]
+
+        # WHEN
+        differing = [
+            (position, site_row, data_row)
+            for position, (site_row, data_row) in enumerate(
+                zip(site_rows, data_rows, strict=False), start=1
+            )
+            if site_row != data_row
+        ]
+
+        # THEN
+        assert len(site_rows) == len(data_rows), (
+            f"{case_id}: caseStudies.ts has {len(site_rows)} rows, {data_file.name} has "
+            f"{len(data_rows)}"
+        )
+        assert not differing, (
+            f"{case_id}: rows differ from {data_file.name} as (row, site, data) "
+            f"(lower, peak, upper): {differing}"
         )
 
     @pytest.mark.parametrize("case_id", _CASE_IDS)

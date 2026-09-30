@@ -7,7 +7,8 @@
     "question": "Na základě předložených analýz Ministerstva průmyslu a obchodu a České národní banky o dopadu opatření na státní rozpočet České republiky navrhněte celkovou finanční podporu v rozmezí 0–100 miliard Kč pro podnikatele postižené pandemií COVID-19.",
     "context": "Pandemie COVID-19 vytvořila bezprecedentní ekonomické výzvy. Podniky napříč odvětvími čelily uzavírkám a sníženým příjmům kvůli vládou nařízeným omezením. Vláda potřebovala vyvážit fiskální odpovědnost s naléhavou potřebou podpořit postižené podnikatele a udržet ekonomickou stabilitu.",
     "methodology": "Každý expert poskytl svůj názor jako fuzzy trojúhelníkové číslo se třemi hodnotami: nejlepší návrh (nejpravděpodobnější hodnota), dolní limit (pesimistický odhad) a horní limit (optimistický odhad). Metoda BeCoMe agregovala tyto názory pro nalezení nejlepšího kompromisu.",
-    "interpretation": "Nejlepší kompromis navrhuje finanční podporu přibližně 56,74 miliardy Kč s maximální chybou odhadu pouhých ±0,76 miliardy Kč. Aritmetický průměr a medián se téměř shodují ve stejném centroidu, což chybu drží tak nízko. Tato shoda je mezi oběma agregačními metodami, nikoli mezi experty samotnými, jejichž jednotlivé návrhy se v rámci panelu značně lišily."
+    "interpretation": "Nejlepší kompromis navrhuje finanční podporu přibližně 48,03 miliardy Kč s maximální chybou odhadu ±2,20 miliardy Kč. Aritmetický průměr (50,23) a medián (45,83) leží 4,4 miliardy od sebe a kompromis je v polovině mezi nimi. Chyba popisuje vzdálenost těchto dvou agregátů, nikoli shodu mezi experty, jejichž jednotlivé návrhy se v rámci panelu značně lišily.",
+    "note": "Tato případová studie používá ilustrativní fiktivní data pro demonstrační účely a není výsledkem skutečného výzkumu."
   },
   "pendlers": {
     "title": "Přeshraniční spolupráce",
@@ -17,7 +18,7 @@
     "question": "Souhlasím s tím, že přeshraniční cestování by mělo být povoleno pro ty, kteří pravidelně cestují z jedné země do druhé za prací.",
     "context": "Přeshraniční pracovníci jsou nezbytní pro mnoho regionálních ekonomik, zejména v pohraničních oblastech mezi Českou republikou, Německem, Rakouskem, Polskem a Slovenskem. Uzavření hranic během pandemie narušilo živobytí tisíců pracovníků a vytvořilo nedostatek pracovních sil v klíčových odvětvích.",
     "methodology": "Experti vyjádřili své názory pomocí 5bodové Likertovy škály: Rozhodně nesouhlasím (0), Spíše nesouhlasím (25), Neutrální (50), Spíše souhlasím (75), Rozhodně souhlasím (100). Metoda BeCoMe převedla tyto hodnoty na fuzzy čísla a vypočítala optimální skupinové rozhodnutí.",
-    "interpretation": "Nejlepší kompromis 41,48 % odpovídá hodnocení 'Neutrální' na Likertově škále. Experti se jasně nepřiklánějí ani k podpoře, ani k odmítnutí povolení přeshraničního cestování. Aritmetický průměr a medián se drží blízko sebe, s chybovou marží pouhých ±3,98 %. Tato úzká marže potvrzuje, že neutrální hodnocení je stabilním souhrnem názorů panelu.",
+    "interpretation": "Nejlepší kompromis 30,68 % odpovídá hodnocení 'Spíše nesouhlasím' na Likertově škále. Medián leží na 25 % a aritmetický průměr na 36,36 %, kompromis tedy leží mezi nimi, s maximální chybou ±5,68 %.",
     "note": "Tato případová studie používá ilustrativní fiktivní data pro demonstrační účely a není výsledkem skutečného výzkumu."
   },
   "floods": {
@@ -66,6 +67,6 @@
   },
   "listing": {
     "title": "Případové studie",
-    "subtitle": "Reálné aplikace metodiky BeCoMe v různých oblastech"
+    "subtitle": "Jedna reálná studie a dva ilustrativní příklady od autorů metody"
   }
 }

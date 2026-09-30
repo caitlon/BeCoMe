@@ -78,6 +78,11 @@ const CaseStudy = () => {
             <p className="text-lg text-muted-foreground max-w-3xl">
               {caseStudy.fullDescription}
             </p>
+            {caseStudy.note && (
+              <p className="mt-4 text-sm text-muted-foreground max-w-3xl">
+                {caseStudy.note}
+              </p>
+            )}
           </motion.div>
         </div>
       </section>
