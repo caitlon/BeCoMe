@@ -1,7 +1,8 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { screen } from '@testing-library/react';
 import { render, framerMotionMock, unauthenticatedAuthMock } from '@tests/utils';
 import Landing from '@/pages/Landing';
+import i18n from '@/i18n';
 
 vi.mock('@/contexts/AuthContext', () => unauthenticatedAuthMock);
 vi.mock('framer-motion', () => framerMotionMock);
@@ -10,15 +11,17 @@ describe('Landing', () => {
   it('renders hero section with title', () => {
     render(<Landing />);
 
-    expect(screen.getByText('Group Decisions,')).toBeInTheDocument();
-    expect(screen.getByText('Precisely Measured')).toBeInTheDocument();
+    expect(screen.getByText('Many expert opinions,')).toBeInTheDocument();
+    expect(screen.getByText('one best compromise')).toBeInTheDocument();
   });
 
   it('renders hero subtitle', () => {
     render(<Landing />);
 
     expect(
-      screen.getByText(/aggregate expert opinions using fuzzy triangular numbers/i)
+      screen.getByText(
+        'For panels that must settle on one number, such as a budget, a deadline or a risk level. Each expert gives a lowest, most likely and highest estimate, and BeCoMe combines them into the best compromise.'
+      )
     ).toBeInTheDocument();
   });
 
@@ -36,6 +39,9 @@ describe('Landing', () => {
     expect(screen.getByText('Collect')).toBeInTheDocument();
     expect(screen.getByText('Calculate')).toBeInTheDocument();
     expect(screen.getByText('Consensus')).toBeInTheDocument();
+    expect(
+      screen.getByText('Get the best compromise and its maximum error')
+    ).toBeInTheDocument();
   });
 
   it('renders "Case Studies" section', () => {
@@ -58,6 +64,28 @@ describe('Landing', () => {
 
     const learnMoreLink = screen.getByText(/learn more about the become method/i);
     expect(learnMoreLink).toHaveAttribute('href', '/about');
+  });
+});
+
+describe('Landing - Czech', () => {
+  afterEach(async () => {
+    await i18n.changeLanguage('en');
+  });
+
+  it('renders the hero headline, subtitle and third step in Czech', async () => {
+    await i18n.changeLanguage('cs');
+    render(<Landing />);
+
+    expect(screen.getByText('Mnoho názorů expertů,')).toBeInTheDocument();
+    expect(screen.getByText('jeden nejlepší kompromis')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Pro skupiny, které se musí shodnout na jednom čísle, například na rozpočtu, termínu nebo míře rizika. Každý expert zadá nejnižší, nejpravděpodobnější a nejvyšší odhad a BeCoMe z nich spočítá nejlepší kompromis.'
+      )
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('Získejte nejlepší kompromis a maximální chybu')
+    ).toBeInTheDocument();
   });
 });
 

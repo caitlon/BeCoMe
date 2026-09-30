@@ -64,7 +64,7 @@ const Landing = () => {
             </motion.h1>
 
             <motion.p
-              className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto mb-10"
+              className="text-lg md:text-xl text-muted-foreground text-balance max-w-2xl mx-auto mb-10"
               variants={fadeInUp}
             >
               {t("hero.subtitle")}

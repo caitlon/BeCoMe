@@ -1,8 +1,8 @@
 {
   "hero": {
-    "title1": "Skupinová rozhodnutí,",
-    "title2": "přesně změřená",
-    "subtitle": "Agregujte názory expertů pomocí fuzzy trojúhelníkových čísel. Najděte nejlepší kompromis matematickým konsenzem.",
+    "title1": "Mnoho názorů expertů,",
+    "title2": "jeden nejlepší kompromis",
+    "subtitle": "Pro skupiny, které se musí shodnout na jednom čísle, například na rozpočtu, termínu nebo míře rizika. Každý expert zadá nejnižší, nejpravděpodobnější a nejvyšší odhad a BeCoMe z nich spočítá nejlepší kompromis.",
     "goToProjects": "Přejít na projekty",
     "startProject": "Založit projekt"
   },
@@ -19,7 +19,7 @@
     },
     "consensus": {
       "title": "Konsenzus",
-      "description": "Získejte optimální rozhodnutí s odhadem chyby a metrikami spolehlivosti"
+      "description": "Získejte nejlepší kompromis a maximální chybu"
     },
     "learnMore": "Zjistit více o metodě BeCoMe →"
   },

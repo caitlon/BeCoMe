@@ -1,8 +1,8 @@
 {
   "hero": {
-    "title1": "Group Decisions,",
-    "title2": "Precisely Measured",
-    "subtitle": "Aggregate expert opinions using fuzzy triangular numbers. Find the best compromise through mathematical consensus.",
+    "title1": "Many expert opinions,",
+    "title2": "one best compromise",
+    "subtitle": "For panels that must settle on one number, such as a budget, a deadline or a risk level. Each expert gives a lowest, most likely and highest estimate, and BeCoMe combines them into the best compromise.",
     "goToProjects": "Go to Projects",
     "startProject": "Start Your Project"
   },
@@ -19,7 +19,7 @@
     },
     "consensus": {
       "title": "Consensus",
-      "description": "Get the optimal decision with error estimation and confidence metrics"
+      "description": "Get the best compromise and its maximum error"
     },
     "learnMore": "Learn more about the BeCoMe method →"
   },
