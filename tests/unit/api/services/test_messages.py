@@ -1103,6 +1103,57 @@ class TestACopyWithNoClosingLines:
         assert "border-top:" not in rendered.html
 
 
+@pytest.mark.parametrize("language", ["en", "cs"])
+@pytest.mark.parametrize(
+    ("copies", "render"),
+    [
+        (VERIFICATION_COPIES, render_verification_email),
+        (PASSWORD_RESET_COPIES, render_password_reset_email),
+    ],
+    ids=["verification", "password_reset"],
+)
+class TestTwoClosingRows:
+    """The expiry sentence and the "not you" line close the card as two rows."""
+
+    def test_the_rule_spacing_and_order_of_the_two_closing_rows(
+        self, copies: dict[str, EmailCopy], render, language: EmailLanguage
+    ):
+        """
+        GIVEN a verification or password-reset email, which carries an expiry sentence and a
+            "not you" line
+        WHEN its html is read
+        THEN the fallback line, the expiry sentence, the "not you" line and the footer come in
+            that order, the one rule sits on the expiry row, and only the expiry row keeps a
+            bottom margin while the last row has none
+        """
+        # GIVEN
+        copy = copies[language]
+        expiry = html_lib.escape(
+            copy.expiry.format(window=format_lifetime(60, language)), quote=True
+        )
+        not_you = html_lib.escape(copy.not_you, quote=True)
+
+        # WHEN
+        html = render(_URL, 60, language).html
+
+        # THEN
+        fallback_at = html.index(html_lib.escape(copy.fallback, quote=True))
+        expiry_at = html.index(expiry)
+        not_you_at = html.index(not_you)
+        footer_at = html.index(html_lib.escape(copy.footer, quote=True))
+        assert fallback_at < expiry_at < not_you_at < footer_at
+        assert html.count("border-top:") == 1
+        assert html.index("border-top:") < expiry_at
+        first = re.search(rf'<p class="muted rule" style="([^"]*)">{re.escape(expiry)}</p>', html)
+        last = re.search(rf'<p class="muted" style="([^"]*)">{re.escape(not_you)}</p>', html)
+        assert first is not None
+        assert last is not None
+        assert first.group(1).startswith("margin:0 0 8px 0;")
+        assert "border-top:" in first.group(1)
+        assert last.group(1).startswith("margin:0;")
+        assert "border-top:" not in last.group(1)
+
+
 class TestFormatLifetime:
     """The lifetime wording that every email shares."""
 
