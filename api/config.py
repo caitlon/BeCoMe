@@ -258,7 +258,9 @@ class Settings(BaseSettings):
     # workflow is the default because it is the only mode whose prompt and answers have
     # been measured; agent and hybrid, which give the model tools, stay selectable here.
     assistant_mode: Literal["agent", "workflow", "hybrid"] = "workflow"
-    assistant_max_tool_calls: int = 4
+    # The most tool calls one turn may make in agent and hybrid mode. It must be above
+    # zero: an agent that can call nothing, or that always falls back, is a misconfiguration.
+    assistant_max_tool_calls: int = Field(default=4, gt=0)
     # Limits the chat service applies. The request schema (api/schemas/assistant.py) holds
     # the hard ceilings, 20 history entries (10 exchanges) and 4000 characters per message,
     # and rejects anything above them before the service runs, so these can only lower
@@ -269,9 +271,10 @@ class Settings(BaseSettings):
     # Chat messages per user per fixed hour; 0 turns the limit off.
     assistant_rate_limit_per_hour: int = Field(default=60, ge=0)
     assistant_llm_timeout_seconds: float = 120.0
-    # The longest one chat turn may take, fetching and generation together. A model call
-    # has its own timeout above, so a stalled server outlives this deadline by at most
-    # one request; a turn that runs out of time answers "unavailable".
+    # The longest one chat turn may take, fetching and generation together. When it runs
+    # out, the call in flight is cancelled with the turn and the turn answers
+    # "unavailable", so a stalled server does not hold the request past this deadline.
+    # The model's own timeout above only bounds one request inside it.
     assistant_turn_timeout_seconds: float = Field(default=180.0, gt=0)
     assistant_private_corpus_dirs: list[str] = []
     # Path to a local-only JSON manifest describing the local corpus layer (see
