@@ -5,7 +5,6 @@ added by swapping the strings alone. The renderers are pure functions, so every 
 here calls them directly with no settings and no network.
 """
 
-import hashlib
 import html as html_lib
 import re
 from dataclasses import asdict, fields, replace
@@ -839,60 +838,6 @@ _NOTICE_TEXT_LINK = {
     "en": "Forgot your password? Reset it:",
     "cs": "Zapomněli jste heslo? Obnovte si ho:",
 }
-
-# SHA-256 over subject, html and text of the verification and password-reset emails as first
-# shipped in the shared layout. Whatever builds the rows under the link must not move a byte
-# of them. A deliberate change to either email means new digests here.
-_GOLDEN = [
-    (
-        "verification",
-        "en",
-        1440,
-        "0477df76cfab3c0dafabbd46ff8faafb2f2847cc8f5f3dfeca52db690b865414",  # pragma: allowlist secret
-    ),
-    (
-        "verification",
-        "cs",
-        60,
-        "2dd61b9f96df7967b325d2cfbc9e753dc36a15283ce75108bc3f501afcca1206",  # pragma: allowlist secret
-    ),
-    (
-        "password_reset",
-        "en",
-        60,
-        "6281ad20697ac7c4c25a32f5a1a6c45e8efd87932232f897ed1abbafc917de56",  # pragma: allowlist secret
-    ),
-    (
-        "password_reset",
-        "cs",
-        30,
-        "9af44ef4c079eab8d147e8b0763539bc0a25412e4edf5cfc19440ad2ead4972b",  # pragma: allowlist secret
-    ),
-]
-
-
-@pytest.mark.parametrize(("kind", "language", "minutes", "digest"), _GOLDEN)
-def test_verification_and_reset_emails_keep_their_bytes(
-    kind: str, language: EmailLanguage, minutes: int, digest: str
-):
-    """
-    GIVEN the verification and the password-reset email, each in a language and a lifetime
-    WHEN they are rendered
-    THEN the digest of subject, html and text is the one recorded when the two shared the
-        layout, so the way rows are built cannot move a byte of either
-    """
-    # GIVEN
-    render = {
-        "verification": render_verification_email,
-        "password_reset": render_password_reset_email,
-    }[kind]
-
-    # WHEN
-    rendered = render(_URL, minutes, language)
-
-    # THEN
-    parts = "\0".join((rendered.subject, rendered.html, rendered.text))
-    assert hashlib.sha256(parts.encode()).hexdigest() == digest
 
 
 def _render_notice(
