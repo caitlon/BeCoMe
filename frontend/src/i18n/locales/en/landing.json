@@ -8,7 +8,7 @@
   },
   "howItWorks": {
     "title": "How It Works",
-    "subtitle": "A three-step process to find consensus among experts",
+    "subtitle": "A three-step process from expert opinions to the best compromise",
     "collect": {
       "title": "Collect",
       "description": "Experts provide their estimates as fuzzy triangular numbers (lower, peak, upper)"
@@ -18,7 +18,7 @@
       "description": "System computes arithmetic mean, median, and identifies the best compromise"
     },
     "consensus": {
-      "title": "Consensus",
+      "title": "Compromise",
       "description": "Get the best compromise and its maximum error"
     },
     "learnMore": "Learn more about the BeCoMe method →"
@@ -28,7 +28,7 @@
     "subtitle": "One real case and two illustrative examples from the method's authors"
   },
   "cta": {
-    "title": "Ready to find consensus?",
+    "title": "Ready to find the best compromise?",
     "subtitle": "Create your first project and start collecting expert opinions today.",
     "button": "Get Started Free"
   }
