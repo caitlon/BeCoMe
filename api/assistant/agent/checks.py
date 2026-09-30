@@ -394,7 +394,9 @@ def _drop_words(text: str) -> str:
     def replace(match: re.Match[str]) -> str:
         word, hyphen, tail = match.groups()
         if not word.isdecimal() and any(char.isdecimal() for char in word):
-            return match[0] if hyphen else word + (_DROPPED if tail else "")
+            if hyphen:
+                return match[0]
+            return word + _DROPPED if tail else word
         if hyphen and word.isalpha() and word[0].isupper():
             return _DROPPED
         return match[0]
