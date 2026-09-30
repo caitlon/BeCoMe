@@ -106,7 +106,7 @@ class ConsoleEmailSender(EmailSender):
         print(f"[console email] verification link for {email_hash}: {verify_url}")
 
     async def send_registration_attempt_notice(
-        self, *, to_email: str, login_url: str, reset_url: str
+        self, *, to_email: str, login_url: str, reset_url: str, language: EmailLanguage
     ) -> None:
         """Log the registration-attempt notice; perform no network call.
 
@@ -117,6 +117,8 @@ class ConsoleEmailSender(EmailSender):
         :param to_email: Recipient email address (the existing account's address).
         :param login_url: Full frontend sign-in link.
         :param reset_url: Full frontend password-reset link.
+        :param language: Language the real message would be written in; unused here,
+            since the log line stays the same for every language.
         """
         email_hash = hash_email(to_email)
         logger.info(

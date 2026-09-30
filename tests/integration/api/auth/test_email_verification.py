@@ -263,7 +263,7 @@ class TestRegistrationBranches:
                 raise EmailSendError("send failed")
 
             async def send_registration_attempt_notice(
-                self, *, to_email: str, login_url: str, reset_url: str
+                self, *, to_email: str, login_url: str, reset_url: str, language: str
             ) -> None:
                 """Raise to simulate a provider failure."""
                 raise EmailSendError("send failed")
@@ -306,6 +306,28 @@ class TestRegistrationEmailLanguage:
         # THEN
         assert response.status_code == 202
         assert [call["language"] for call in fake_email.verification_calls] == [expected]
+
+    @pytest.mark.parametrize(
+        ("header", "expected"),
+        [("cs", "cs"), ("cs-CZ,cs;q=0.9,en;q=0.8", "cs"), (None, "en"), (";;;,q=,==", "en")],
+    )
+    def test_the_notice_language_follows_accept_language(
+        self, client, fake_email, unthrottled_email, header, expected
+    ):
+        """
+        GIVEN an address that already has a confirmed account
+        WHEN someone registers it with a given Accept-Language header, or none
+        THEN the notice to its owner is sent in the matching language, English by default
+        """
+        # GIVEN
+        register_verified(client, "owner@example.com")
+
+        # WHEN
+        response = _register_with_header(client, "owner@example.com", header)
+
+        # THEN
+        assert response.status_code == 202
+        assert [call["language"] for call in fake_email.notice_calls] == [expected]
 
     def test_a_garbage_header_answers_like_no_header(self, client, fake_email):
         """

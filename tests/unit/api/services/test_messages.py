@@ -19,11 +19,13 @@ from api.services.email import messages
 from api.services.email.base import EmailLanguage
 from api.services.email.messages import (
     PASSWORD_RESET_COPIES,
+    REGISTRATION_NOTICE_COPIES,
     VERIFICATION_COPIES,
     EmailCopy,
     RenderedEmail,
     format_lifetime,
     render_password_reset_email,
+    render_registration_notice_email,
     render_verification_email,
 )
 
@@ -784,6 +786,60 @@ class TestPasswordResetEmailInCzech:
             assert word not in rendered.text.lower()
 
 
+_LOGIN_URL = "https://app.example/login"
+_NOTICE_RESET_URL = "https://app.example/forgot-password"
+_HOSTILE_RESET_URL = 'https://app.example/reset?a=1&b="x"<z'
+_HOSTILE_RESET_URL_ESCAPED = "https://app.example/reset?a=1&amp;b=&quot;x&quot;&lt;z"
+
+# The notice copy as it must read, per language. It has no expiry sentence.
+_NOTICE = {
+    "en": {
+        "subject": "You already have a BeCoMe account",
+        "preheader": "Someone tried to sign up with this address. Your account has not changed.",
+        "heading": "You already have an account",
+        "body": (
+            "Someone tried to sign up for BeCoMe with this email address, which already has "
+            "an account. If it was you, sign in instead."
+        ),
+        "button_label": "Sign in",
+        "fallback": "If the button doesn't work, copy and paste this link into your browser:",
+        "secondary_lead": "Forgot your password?",
+        "secondary_link": "Reset it.",
+        "not_you": (
+            "If it wasn't you, you don't have to do anything. Your account has not changed."
+        ),
+        "footer": (
+            "You're receiving this email from BeCoMe at becomify.app because someone entered "
+            "this address in the sign-up form. It's an automatic message, so please don't reply."
+        ),
+    },
+    "cs": {
+        "subject": "BeCoMe: účet s touto adresou už existuje",
+        "preheader": "Někdo se pokusil zaregistrovat pod touto adresou. Váš účet zůstává beze změny.",
+        "heading": "Účet už máte",
+        "body": (
+            "Někdo se pokusil zaregistrovat do aplikace BeCoMe pod touto e-mailovou adresou, "
+            "ke které už účet existuje. Pokud jste to byli vy, stačí se přihlásit."
+        ),
+        "button_label": "Přihlásit se",
+        "fallback": "Pokud tlačítko nefunguje, zkopírujte tento odkaz do prohlížeče:",
+        "secondary_lead": "Zapomněli jste heslo?",
+        "secondary_link": "Obnovte si ho.",
+        "not_you": "Pokud jste to nebyli vy, nemusíte dělat nic. Váš účet zůstává beze změny.",
+        "footer": (
+            "Tento e-mail vám posílá aplikace BeCoMe (becomify.app), protože někdo zadal tuto "
+            "adresu do registračního formuláře. Jde o automatickou zprávu, na kterou prosím "
+            "neodpovídejte."
+        ),
+    },
+}
+
+# How the secondary link reads in the text part, where the link text loses its full stop.
+_NOTICE_TEXT_LINK = {
+    "en": "Forgot your password? Reset it:",
+    "cs": "Zapomněli jste heslo? Obnovte si ho:",
+}
+
 # SHA-256 over subject, html and text of the verification and password-reset emails as first
 # shipped in the shared layout. Whatever builds the rows under the link must not move a byte
 # of them. A deliberate change to either email means new digests here.
@@ -837,6 +893,217 @@ def test_verification_and_reset_emails_keep_their_bytes(
     # THEN
     parts = "\0".join((rendered.subject, rendered.html, rendered.text))
     assert hashlib.sha256(parts.encode()).hexdigest() == digest
+
+
+def _render_notice(
+    login_url: str = _LOGIN_URL,
+    reset_url: str = _NOTICE_RESET_URL,
+    language: EmailLanguage = "en",
+) -> RenderedEmail:
+    """Render the registration notice for a sign-in link, a reset link and a language."""
+    return render_registration_notice_email(login_url, reset_url, language)
+
+
+@pytest.mark.parametrize("language", ["en", "cs"])
+class TestRegistrationNoticeEmail:
+    """The notice is the same layout with two links, no expiry and a closing sentence."""
+
+    def test_the_copy_is_the_agreed_wording(self, language: EmailLanguage):
+        """
+        GIVEN the notice copy of a language
+        WHEN its text fields are compared with the agreed wording
+        THEN every one matches, and the copy carries no expiry sentence
+        """
+        # GIVEN
+        copy = asdict(REGISTRATION_NOTICE_COPIES[language])
+
+        # THEN
+        assert {name: copy[name] for name in _NOTICE[language]} == _NOTICE[language]
+        assert copy["expiry"] == ""
+        assert copy["lang"] == language
+
+    def test_the_subject_is_the_title(self, language: EmailLanguage):
+        """
+        GIVEN a notice
+        WHEN it is rendered
+        THEN the subject is the notice subject and the document title carries it
+        """
+        # WHEN
+        rendered = _render_notice(language=language)
+
+        # THEN
+        assert rendered.subject == _NOTICE[language]["subject"]
+        assert f"<title>{html_lib.escape(rendered.subject, quote=True)}</title>" in rendered.html
+
+    def test_html_is_one_complete_document_in_the_language(self, language: EmailLanguage):
+        """
+        GIVEN a notice
+        WHEN it is rendered
+        THEN the html is a full document declaring the language, with no placeholder left
+        """
+        # WHEN
+        html = _render_notice(language=language).html
+
+        # THEN
+        assert html.lstrip().startswith("<!DOCTYPE html>")
+        assert f'<html lang="{language}"' in html
+        assert html.rstrip().endswith("</html>")
+        assert "$" not in html
+
+    def test_heading_button_and_links_carry_the_copy_and_the_urls(self, language: EmailLanguage):
+        """
+        GIVEN a notice
+        WHEN it is rendered
+        THEN the heading is the content of the h1, the button and the fallback link to the
+            sign-in URL, and the secondary link points at the reset URL
+        """
+        # GIVEN
+        copy = _NOTICE[language]
+        button = rf'<a href="{re.escape(_LOGIN_URL)}"[^>]*>\s*{copy["button_label"]}\s*</a>'
+        secondary = (
+            rf'<a href="{re.escape(_NOTICE_RESET_URL)}"[^>]*>\s*{copy["secondary_link"]}\s*</a>'
+        )
+
+        # WHEN
+        html = _render_notice(language=language).html
+
+        # THEN
+        assert re.search(rf"<h1[^>]*>\s*{copy['heading']}\s*</h1>", html)
+        assert re.search(button, html)
+        assert f'<a href="{_LOGIN_URL}" class="fallback-link"' in html
+        assert f">{_LOGIN_URL}</a>" in html
+        assert re.search(secondary, html)
+        assert html.count(_NOTICE_RESET_URL) == 1
+
+    def test_the_secondary_link_sits_between_the_fallback_and_the_closing_line(
+        self, language: EmailLanguage
+    ):
+        """
+        GIVEN a notice
+        WHEN its html is read in order
+        THEN the button comes first, then the fallback link, then the reset question with its
+            link, then the closing sentence, then the footer
+        """
+        # GIVEN
+        copy = _NOTICE[language]
+        html = _render_notice(language=language).html
+        markers = [
+            html.index(f">{copy['button_label']}</a>"),
+            html.index(f">{_LOGIN_URL}</a>"),
+            html.index(copy["secondary_lead"]),
+            html.index(f'href="{_NOTICE_RESET_URL}"'),
+            html.index(html_lib.escape(copy["not_you"], quote=True)),
+            html.index(html_lib.escape(copy["footer"], quote=True)),
+        ]
+
+        # THEN
+        assert markers == sorted(markers)
+
+    def test_every_sentence_of_the_copy_is_in_the_html(self, language: EmailLanguage):
+        """
+        GIVEN a notice
+        WHEN it is rendered
+        THEN the text nodes of the html hold every visible field of the copy, and the
+            preheader sits in its hidden line
+        """
+        # GIVEN
+        copy = _NOTICE[language]
+        rendered = _render_notice(language=language)
+        parser = _TextNodes()
+        parser.feed(rendered.html)
+        nodes = [html_lib.unescape(node) for node in parser.nodes]
+
+        # THEN
+        visible = ("heading", "body", "button_label", "fallback", "secondary_lead")
+        for name in (*visible, "secondary_link", "not_you", "footer"):
+            assert any(copy[name] in node for node in nodes), name
+        assert f">{html_lib.escape(copy['preheader'], quote=True)}</div>" in rendered.html
+
+    def test_both_urls_are_escaped_in_the_html_and_raw_in_the_text(self, language: EmailLanguage):
+        """
+        GIVEN two URLs each holding an ampersand, a double quote and an angle bracket
+        WHEN the notice is rendered
+        THEN the html carries the escaped forms and never the raw ones, while the text part
+            holds each as given on a line of its own
+        """
+        # WHEN
+        rendered = _render_notice(
+            login_url=_HOSTILE_URL, reset_url=_HOSTILE_RESET_URL, language=language
+        )
+
+        # THEN
+        assert _HOSTILE_URL not in rendered.html
+        assert _HOSTILE_RESET_URL not in rendered.html
+        assert rendered.html.count(_HOSTILE_URL_ESCAPED) == 3
+        assert rendered.html.count(f'href="{_HOSTILE_URL_ESCAPED}"') == 2
+        assert rendered.html.count(f'href="{_HOSTILE_RESET_URL_ESCAPED}"') == 1
+        assert {_HOSTILE_URL, _HOSTILE_RESET_URL} <= set(rendered.text.splitlines())
+
+    def test_text_part_is_the_copy_in_order(self, language: EmailLanguage):
+        """
+        GIVEN a notice
+        WHEN it is rendered
+        THEN the text part is the copy in order, each link alone under its label, no markup
+        """
+        # GIVEN
+        copy = _NOTICE[language]
+
+        # WHEN
+        text = _render_notice(language=language).text
+
+        # THEN
+        assert text.split("\n\n") == [
+            "BeCoMe",
+            copy["heading"],
+            copy["body"],
+            f"{copy['button_label']}:\n{_LOGIN_URL}",
+            f"{_NOTICE_TEXT_LINK[language]}\n{_NOTICE_RESET_URL}",
+            copy["not_you"],
+            copy["footer"],
+        ]
+        assert not re.search(r"</?[A-Za-z]", text)
+
+    def test_there_is_no_expiry_line_and_no_empty_paragraph(self, language: EmailLanguage):
+        """
+        GIVEN a notice, which carries no lifetime
+        WHEN its html and text are read
+        THEN no expiry sentence is in either, no paragraph is empty, and the single rule
+            above the closing sentence is the only border the card body draws
+        """
+        # GIVEN
+        closing = html_lib.escape(_NOTICE[language]["not_you"], quote=True)
+
+        # WHEN
+        rendered = _render_notice(language=language)
+
+        # THEN
+        assert not re.search(r"(expires|platí)", rendered.html + rendered.text)
+        assert not re.search(r"<p[^>]*>\s*</p>", rendered.html)
+        assert rendered.html.count("border-top:") == 1
+        assert re.search(
+            rf'<p class="muted rule" style="margin:0;[^"]*">{closing}</p>', rendered.html
+        )
+
+
+class TestRegistrationNoticeInCzech:
+    """No English survives in the Czech notice."""
+
+    @pytest.mark.parametrize("field", list(_NOTICE["en"]))
+    def test_no_english_sentence_survives(self, field: str):
+        """
+        GIVEN a Czech notice
+        WHEN its html and text are searched for each English sentence of the notice copy
+        THEN none is found
+        """
+        # GIVEN
+        sentence = _NOTICE["en"][field]
+
+        # WHEN
+        rendered = _render_notice(language="cs")
+
+        # THEN
+        assert html_lib.escape(sentence, quote=True) not in rendered.html
+        assert sentence not in rendered.text
 
 
 class TestSecondaryLinkRow:
@@ -923,7 +1190,7 @@ class TestFormatLifetime:
     def test_every_supported_language_has_unit_words(self, language: EmailLanguage):
         """
         GIVEN a language the email type supports
-        WHEN a lifetime is written in it and the two emails are rendered in it
+        WHEN a lifetime is written in it and the three emails are rendered in it
         THEN all succeed and yield text, so a language missing from a table fails here
         """
         # WHEN
@@ -931,6 +1198,9 @@ class TestFormatLifetime:
         rendered = [
             render_verification_email("https://example.test/verify?token=abc", 60, language),
             render_password_reset_email("https://example.test/reset?token=abc", 60, language),
+            render_registration_notice_email(
+                "https://example.test/login", "https://example.test/forgot-password", language
+            ),
         ]
 
         # THEN

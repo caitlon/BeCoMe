@@ -43,7 +43,7 @@ class EmailSender(ABC):
 
     @abstractmethod
     async def send_registration_attempt_notice(
-        self, *, to_email: str, login_url: str, reset_url: str
+        self, *, to_email: str, login_url: str, reset_url: str, language: EmailLanguage
     ) -> None:
         """Send (or log) a notice that registration was attempted with a taken address.
 
@@ -55,5 +55,6 @@ class EmailSender(ABC):
         :param to_email: Recipient email address (the existing account's address).
         :param login_url: Full frontend link to the sign-in page.
         :param reset_url: Full frontend link to the password-reset flow.
+        :param language: Language the message is written in.
         :raises EmailSendError: If a real send fails.
         """
