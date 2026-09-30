@@ -178,11 +178,11 @@ def warm_up_connection_pool() -> None:
 def create_db_and_tables() -> None:
     """Create tables for SQLite and ephemeral test databases.
 
-    Deployed PostgreSQL schemas are owned by Alembic migrations, so this is a
-    no-op there: it avoids racing ``create_all`` across uvicorn workers and keeps
-    migrations the single source of schema truth. SQLite (local development) and
-    test runs (``TESTING=1``, including the e2e PostgreSQL) keep using
-    ``create_all`` for a zero-setup, isolated schema.
+    A PostgreSQL schema outside test runs, local or deployed, is owned by Alembic
+    migrations, so this is a no-op there: it avoids racing ``create_all`` across
+    uvicorn workers and keeps migrations the single source of schema truth. SQLite
+    (the local fallback) and test runs (``TESTING=1``, including the e2e PostgreSQL)
+    keep using ``create_all`` for a zero-setup, isolated schema.
     """
     from api.db import models  # noqa: F401, registers models with SQLModel.metadata
 

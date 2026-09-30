@@ -28,7 +28,7 @@ Settings read `APP_ENV` from the process environment (shell, Docker, Railway, CI
 
 | Profile | `APP_ENV` | Where it runs | Database | Debug | Rate limiting |
 |---------|-----------|---------------|----------|-------|---------------|
-| dev | unset or `dev` | Local machine and the Railway dev service | SQLite locally, PostgreSQL on Railway | off (the `env/.env.dev.example` template turns it on) | on |
+| dev | unset or `dev` | Local machine and the Railway dev service | PostgreSQL in Docker locally (SQLite as a fallback), PostgreSQL on Railway | off (the `env/.env.dev.example` template turns it on) | on |
 | test | `test` | Staging deploy and the test suite | PostgreSQL (staging), in-memory SQLite (tests) | off | on when deployed, off under pytest |
 | prod | `prod` | Railway production | PostgreSQL | off | on |
 
@@ -45,7 +45,7 @@ This separation is what lets staging be realistic. A staging deploy sets `APP_EN
 
 ### dev
 
-The default. SQLite, debug off, localhost CORS, and no startup guard on a laptop. It needs no
+The default. PostgreSQL from `docker/docker-compose.yml` (SQLite works as a fallback), debug off, localhost CORS, and no startup guard on a laptop. It needs no
 profile file of its own, but it does need the base `.env`: `SECRET_KEY` has no default and the
 application refuses to start without it. The `env/.env.dev.example` template turns debug on, and the same profile on Railway is a deploy, so the guard applies to it.
 
@@ -143,7 +143,7 @@ In `frontend/Dockerfile`, declare an `ARG` and an `ENV` for every `VITE_*` varia
 
 ## Database schema and access
 
-**Alembic** versions the schema. Migrations live in `migrations/`. `migrations/env.py` reads its target from `ALEMBIC_DATABASE_URL`, then `MIGRATION_DATABASE_URL`, then `DATABASE_URL`, and treats `SQLModel.metadata` as the source of truth. Every deploy runs `alembic upgrade head` once through the `preDeployCommand` in `railway.toml`, before the new version goes live, so a failed migration blocks the release instead of starting a broken one. `create_db_and_tables()` still builds the schema directly, but only for SQLite (local development) and `TESTING=1` runs (the end-to-end PostgreSQL). On a deployed database it is a no-op and Alembic stays in charge.
+**Alembic** versions the schema. Migrations live in `migrations/`. `migrations/env.py` reads its target from `ALEMBIC_DATABASE_URL`, then `MIGRATION_DATABASE_URL`, then `DATABASE_URL`, and treats `SQLModel.metadata` as the source of truth. Every deploy runs `alembic upgrade head` once through the `preDeployCommand` in `railway.toml`, before the new version goes live, so a failed migration blocks the release instead of starting a broken one. `create_db_and_tables()` still builds the schema directly, but only for SQLite and `TESTING=1` runs, including the end-to-end tests on PostgreSQL. On a deployed database it is a no-op and Alembic stays in charge.
 
 The application connects through a **least-privilege role**, `become_app`. It reads and writes the application tables but cannot create, alter, or drop objects, is not a superuser, and cannot bypass row-level security. Each backend therefore carries two database URLs: `DATABASE_URL` points at `become_app` for the running app, while `MIGRATION_DATABASE_URL` points at the privileged role that Alembic uses for DDL. `api/db/engine.py` hardens the connection: it requires TLS on deployed databases, tags each connection with an `application_name`, and sets per-session statement and idle-in-transaction timeouts so one query cannot monopolize the database. The schema also carries domain `CHECK` constraints (fuzzy-number ordering, positive expert counts, scale bounds) so the database rejects invalid rows on its own.
 
