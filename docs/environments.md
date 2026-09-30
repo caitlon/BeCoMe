@@ -28,8 +28,8 @@ Settings read `APP_ENV` from the process environment (shell, Docker, Railway, CI
 
 | Profile | `APP_ENV` | Where it runs | Database | Debug | Rate limiting |
 |---------|-----------|---------------|----------|-------|---------------|
-| dev | unset or `dev` | Local machine and the Railway dev service | PostgreSQL in Docker locally (SQLite as a fallback), PostgreSQL on Railway | off (the `env/.env.dev.example` template turns it on) | on |
-| test | `test` | Staging deploy and the test suite | PostgreSQL (staging), in-memory SQLite (tests) | off | on when deployed, off under pytest |
+| dev | unset or `dev` | Local machine and the Railway dev service | Set by `DATABASE_URL`: PostgreSQL in Docker locally (SQLite if unset), PostgreSQL on Railway | off (the `env/.env.dev.example` template turns it on) | on |
+| test | `test` | Staging deploy and the test suite | PostgreSQL (staging), in-memory SQLite or PostgreSQL (tests) | off | on when deployed, off under pytest |
 | prod | `prod` | Railway production | PostgreSQL | off | on |
 
 ## The two axes
@@ -37,15 +37,17 @@ Settings read `APP_ENV` from the process environment (shell, Docker, Railway, CI
 `APP_ENV` and `TESTING` answer different questions and never substitute for each other.
 
 - **`APP_ENV`** (`dev` / `test` / `prod`) is the deployment profile. It drives debug output, CORS origins, the database it expects, and the deploy startup guard.
-- **`TESTING`** (`1`/`true`) marks an automated test run. Only pytest and CI set it. It disables rate limiting and the deploy startup checks, and is never present on a deployed service.
+- **`TESTING`** (`1`/`true`) marks an automated test run. Only automated test runs set it: pytest, the CI jobs, and `scripts/ci/e2e-local.sh`. It disables rate limiting and the deploy startup checks, and is never present on a deployed service.
 
-This separation is what lets staging be realistic. A staging deploy sets `APP_ENV=test` with no `TESTING`, so its rate limits match production. The pytest suite sets `APP_ENV=test` together with `TESTING=1`, which keeps tests fast and lets them use in-memory SQLite.
+This separation is what lets staging be realistic. A staging deploy sets `APP_ENV=test` with no `TESTING`, so its rate limits match production. The pytest suite sets `APP_ENV=test` together with `TESTING=1`, which keeps tests fast. The unit and integration suites build their own in-memory SQLite engines, and the end-to-end runs use PostgreSQL.
 
 ## Profiles in detail
 
 ### dev
 
-The default. PostgreSQL from `docker/docker-compose.yml` (SQLite works as a fallback), debug off, localhost CORS, and no startup guard on a laptop. It needs no
+The default. Debug off, localhost CORS, and no startup guard on a laptop. `DATABASE_URL`
+picks the database: the code defaults to SQLite, and the base `.env` copied from
+`env/.env.example` points it at the PostgreSQL in `docker/docker-compose.yml`. It needs no
 profile file of its own, but it does need the base `.env`: `SECRET_KEY` has no default and the
 application refuses to start without it. The `env/.env.dev.example` template turns debug on, and the same profile on Railway is a deploy, so the guard applies to it.
 
@@ -55,7 +57,7 @@ uv run uvicorn api.main:app --reload
 
 ### test (staging and the test suite)
 
-Two consumers share this profile. A deployed staging service uses PostgreSQL with debug off and rate limiting on, which mirrors production for manual QA. It meets the same startup invariants as production: a strong secret, PostgreSQL, Redis, a privileged `MIGRATION_DATABASE_URL`, the Cloudflare origin secret, non-localhost `CORS_ORIGINS`, a non-loopback `FRONTEND_BASE_URL`, a working email provider, and debug off. The automated suite runs the same profile but adds `TESTING=1`, so it uses in-memory SQLite, turns rate limiting off, and skips the startup guard. The test conftests set both variables before any `api` import.
+Two consumers share this profile. A deployed staging service uses PostgreSQL with debug off and rate limiting on, which mirrors production for manual QA. It meets the same startup invariants as production: a strong secret, PostgreSQL, Redis, a privileged `MIGRATION_DATABASE_URL`, the Cloudflare origin secret, non-localhost `CORS_ORIGINS`, a non-loopback `FRONTEND_BASE_URL`, a working email provider, and debug off. The automated suite runs the same profile but adds `TESTING=1`, so it turns rate limiting off and skips the startup guard. Its unit and integration tests use in-memory SQLite, and its end-to-end runs use PostgreSQL. The test conftests set both variables before any `api` import.
 
 ### prod
 
@@ -143,7 +145,7 @@ In `frontend/Dockerfile`, declare an `ARG` and an `ENV` for every `VITE_*` varia
 
 ## Database schema and access
 
-**Alembic** versions the schema. Migrations live in `migrations/`. `migrations/env.py` reads its target from `ALEMBIC_DATABASE_URL`, then `MIGRATION_DATABASE_URL`, then `DATABASE_URL`, and treats `SQLModel.metadata` as the source of truth. Every deploy runs `alembic upgrade head` once through the `preDeployCommand` in `railway.toml`, before the new version goes live, so a failed migration blocks the release instead of starting a broken one. `create_db_and_tables()` still builds the schema directly, but only for SQLite and `TESTING=1` runs, including the end-to-end tests on PostgreSQL. On a deployed database it is a no-op and Alembic stays in charge.
+**Alembic** versions the schema. Migrations live in `migrations/`. `migrations/env.py` reads its target from `ALEMBIC_DATABASE_URL`, then `MIGRATION_DATABASE_URL`, then `DATABASE_URL`, and treats `SQLModel.metadata` as the source of truth. Every deploy runs `alembic upgrade head` once through the `preDeployCommand` in `railway.toml`, before the new version goes live, so a failed migration blocks the release instead of starting a broken one. `create_db_and_tables()` still builds the schema directly, but only for SQLite and `TESTING=1` runs, including the end-to-end tests on PostgreSQL. On any other PostgreSQL database, local or deployed, it is a no-op and Alembic stays in charge.
 
 The application connects through a **least-privilege role**, `become_app`. It reads and writes the application tables but cannot create, alter, or drop objects, is not a superuser, and cannot bypass row-level security. Each backend therefore carries two database URLs: `DATABASE_URL` points at `become_app` for the running app, while `MIGRATION_DATABASE_URL` points at the privileged role that Alembic uses for DDL. `api/db/engine.py` hardens the connection: it requires TLS on deployed databases, tags each connection with an `application_name`, and sets per-session statement and idle-in-transaction timeouts so one query cannot monopolize the database. The schema also carries domain `CHECK` constraints (fuzzy-number ordering, positive expert counts, scale bounds) so the database rejects invalid rows on its own.
 
