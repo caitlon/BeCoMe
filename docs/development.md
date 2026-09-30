@@ -30,6 +30,7 @@ cd BeCoMe
 uv sync                    # core library only
 uv sync --extra api        # add the REST API
 uv sync --extra dev        # add testing, linting, type checking
+uv sync --extra assistant  # add the local assistant (developer machines only)
 uv sync --all-extras       # everything
 
 source .venv/bin/activate  # macOS and Linux
@@ -59,6 +60,11 @@ pip install -e ".[dev,viz,notebook]"
 | `viz` | numpy, pandas, matplotlib, plotly, seaborn | Visualization and data analysis |
 | `notebook` | jupyter, ipykernel, ipywidgets | Interactive notebooks |
 | `docs` | mkdocs, mkdocs-material | Building the documentation site |
+| `assistant` | langchain, langgraph, langsmith, openai, langchain-postgres, psycopg, pypdf, rank-bm25 | The local-only assistant (`ASSISTANT_ENABLED=true`), see [the assistant README](https://github.com/caitlon/BeCoMe/blob/prod/api/assistant/README.md) |
+
+The API test directories, `tests/unit/api/` and `tests/integration/api/`, import the assistant's
+packages at module level. Running them needs `uv sync --extra dev --extra api --extra assistant`,
+which is also what CI installs.
 
 ## Configuration
 
@@ -125,12 +131,14 @@ deployment live in [environments](environments.md).
 ```text
 BeCoMe/
 ├── api/                    # REST API (FastAPI)
+│   ├── assistant/              # Local-only chat assistant (agent, RAG, model clients); needs the assistant extra
 │   ├── auth/                   # Authentication (JWT, passwords, session cookies, throttles)
 │   ├── db/                     # Database models (SQLModel)
 │   ├── middleware/             # Rate limit, CSRF, body size, security headers, logging
 │   ├── routes/                 # HTTP endpoints
 │   ├── schemas/                # Pydantic DTOs
 │   ├── services/               # Business logic
+│   ├── utils/                  # HTML sanitization, client IP, upload and photo-link helpers
 │   └── README.md               # API documentation
 ├── frontend/               # Web UI (React + Vite)
 │   ├── src/
@@ -150,5 +158,10 @@ BeCoMe/
 │   └── reference/              # Expected values from Excel
 ├── examples/               # Case study examples
 │   └── data/                   # Dataset files
+├── scripts/                # Helper scripts
+│   ├── assistant/              # Local model servers, corpus ingestion, retrieval evaluation
+│   ├── ci/                     # Local CI runner
+│   ├── db/                     # Database backup and role setup
+│   └── docs/                   # Table-of-contents generator
 └── docs/                   # Documentation
 ```
