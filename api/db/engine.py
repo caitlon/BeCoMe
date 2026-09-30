@@ -39,12 +39,16 @@ def _is_local_database(database_url: str) -> bool:
 
     libpq lets ``host`` and ``hostaddr`` in the query string override the URL
     host, so the query wins when it names one, and every entry must be local:
-    failing closed on any other keeps a remote host from passing as a socket.
+    failing closed on any other keeps a remote host from passing as a socket. A
+    ``service`` key makes libpq read the host from ``pg_service.conf``, which
+    cannot be seen from here, so it counts as remote.
 
     :param database_url: SQLAlchemy URL of the database.
     :return: True for loopback hosts and Unix sockets only, False for anything else.
     """
     url = make_url(database_url)
+    if "service" in url.query:
+        return False
     hostaddrs = _query_entries(url, "hostaddr")
     if hostaddrs is not None and not all(addr in _LOOPBACK_ADDRESSES for addr in hostaddrs):
         return False
@@ -67,8 +71,8 @@ def _requires_tls(settings: Settings) -> bool:
 
     Two limits follow from judging by the URL alone: a deployed database reached
     through a local port-forward or tunnel counts as local and gets ``prefer``,
-    and a URL with no host defers to libpq's own defaults (``PGHOST``), which
-    settings cannot see.
+    and a URL with no host defers to libpq's own defaults (``PGHOST``,
+    ``PGHOSTADDR``, ``PGSERVICE``), which settings cannot see.
 
     :param settings: Application settings.
     :return: True when ``sslmode=require`` must be used, False for ``prefer``.
