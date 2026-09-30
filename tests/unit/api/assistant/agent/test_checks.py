@@ -946,6 +946,141 @@ class TestRoundThousandsAreNotInvented:
         """
         assert find_ungrounded_numbers("It is 5 000", ["5000"]) == []
 
+    def test_a_zero_group_that_is_not_the_first_is_still_a_thousands_group(self):
+        """
+        GIVEN 2 500 000 and 10 050, whose zero-led group is not the first after the head
+        WHEN the grounding holds their parts separately, and then the whole numbers
+        THEN they are flagged, and then grounded
+        """
+        parts = ["2, 500, 0, 10, 50"]
+
+        assert find_ungrounded_numbers("It is 2 500 000", parts) == ["2 500 000"]
+        assert find_ungrounded_numbers("It is 10 050", parts) == ["10 050"]
+        assert find_ungrounded_numbers("It is 2 500 000", ["2500000"]) == []
+        assert find_ungrounded_numbers("It is 10 050", ["10050"]) == []
+
+    def test_a_space_grouped_decimal_is_not_read_as_a_list(self):
+        """
+        GIVEN 1 000,5
+        WHEN the grounding holds 1 and 0.5 separately, and then 1000.5
+        THEN it is flagged, and then grounded
+        """
+        assert find_ungrounded_numbers("It is 1 000,5", ["1 and 0.5"]) == ["1 000,5"]
+        assert find_ungrounded_numbers("It is 1 000,5", ["1000.5"]) == []
+
+    def test_digits_around_a_dropped_citation_do_not_run_together(self):
+        """
+        GIVEN 5[1]000
+        WHEN the grounding holds 5 and 0
+        THEN nothing is flagged, because it is two numbers, not 5000
+        """
+        assert find_ungrounded_numbers("It is 5[1]000", ["5 and 0"]) == []
+        assert find_ungrounded_numbers("It is 5[1]000", ["5 and 7"]) == ["000"]
+
+
+class TestDotGroupedThousands:
+    """Czech and German answers group thousands with dots and use a decimal comma."""
+
+    def test_a_dotted_thousands_number_with_a_decimal_comma_is_one_number(self):
+        """
+        GIVEN 1.000,50
+        WHEN the grounding holds 1000.50
+        THEN nothing is flagged
+        """
+        assert find_ungrounded_numbers("It is 1.000,50", ["value 1000.50"]) == []
+
+    def test_a_dotted_thousands_number_is_reported_when_only_its_parts_are_known(self):
+        """
+        GIVEN 1.000,50
+        WHEN the grounding holds only 1 and 50
+        THEN it is flagged as written
+        """
+        assert find_ungrounded_numbers("It is 1.000,50", ["1 and 50"]) == ["1.000,50"]
+
+    def test_one_dot_group_reads_as_a_decimal_or_as_thousands(self):
+        """
+        GIVEN 1.234
+        WHEN the grounding holds 1234, and then 1.234
+        THEN it is grounded both times
+        """
+        assert find_ungrounded_numbers("It is 1.234", ["1234"]) == []
+        assert find_ungrounded_numbers("It is 1.234", ["1.234"]) == []
+
+    def test_one_dot_group_is_reported_when_neither_reading_holds(self):
+        """
+        GIVEN 7.250
+        WHEN the grounding holds 7 and 250 separately
+        THEN it is flagged
+        """
+        assert find_ungrounded_numbers("It is 7.250", ["7 and 250"]) == ["7.250"]
+
+    def test_two_dot_groups_read_only_as_thousands(self):
+        """
+        GIVEN 12.345.678
+        WHEN the grounding holds 12345678, and then only 12.345 and 678
+        THEN it is grounded, and then flagged
+        """
+        assert find_ungrounded_numbers("It is 12.345.678", ["12345678"]) == []
+        assert find_ungrounded_numbers("It is 12.345.678", ["12.345 and 678"]) == ["12.345.678"]
+
+    def test_a_decimal_below_one_is_not_read_as_a_thousands_group(self):
+        """
+        GIVEN 0.250 and 0,250, which no thousands group can start with a zero
+        WHEN the grounding holds 250, and then 0.25
+        THEN they are flagged, and then grounded
+        """
+        assert find_ungrounded_numbers("It is 0.250", ["250"]) == ["0.250"]
+        assert find_ungrounded_numbers("It is 0,250", ["250"]) == ["0,250"]
+        assert find_ungrounded_numbers("It is 0.250", ["0.25"]) == []
+        assert find_ungrounded_numbers("It is 0,250", ["0.25"]) == []
+
+    def test_a_decimal_with_four_digits_after_the_dot_is_not_a_thousands_group(self):
+        """
+        GIVEN 1.2345
+        WHEN the grounding holds 1.2345, and then 12345
+        THEN it is grounded, and then flagged
+        """
+        assert find_ungrounded_numbers("It is 1.2345", ["1.2345"]) == []
+        assert find_ungrounded_numbers("It is 1.2345", ["12345"]) == ["1.2345"]
+
+
+class TestCommaGroupsWithZeros:
+    """A comma group of three digits that starts with zero is a thousands group."""
+
+    def test_a_zero_led_comma_group_is_never_a_list_member(self):
+        """
+        GIVEN 5,000,000
+        WHEN the grounding holds 5 and 0.83
+        THEN it is flagged, because 000 is not the 0 that 0.83 truncates to
+        """
+        assert find_ungrounded_numbers("It is 5,000,000", ["5", "0.83"]) == ["5,000,000"]
+
+    def test_a_zero_led_comma_group_is_grounded_by_the_whole_number(self):
+        """
+        GIVEN 5,000,000
+        WHEN the grounding holds 5000000
+        THEN nothing is flagged
+        """
+        assert find_ungrounded_numbers("It is 5,000,000", ["5000000"]) == []
+
+    def test_short_zero_members_of_a_list_are_still_members(self):
+        """
+        GIVEN 6,0,8
+        WHEN the grounding holds 6, 0 and 8, and then only 6 and 8
+        THEN it is grounded, and then flagged
+        """
+        assert find_ungrounded_numbers("It is 6,0,8", ["6 0 8"]) == []
+        assert find_ungrounded_numbers("It is 6,0,8", ["6 8"]) == ["6,0,8"]
+
+    def test_a_comma_before_three_digits_may_be_a_decimal_comma(self):
+        """
+        GIVEN 5,000
+        WHEN the grounding holds 5, and then only 6
+        THEN it is grounded, and then flagged
+        """
+        assert find_ungrounded_numbers("It is 5,000", ["5"]) == []
+        assert find_ungrounded_numbers("It is 5,000", ["6"]) == ["5,000"]
+
 
 class TestNarrowCompoundNames:
     """Only names that start with a capital lose their hyphenated number."""
@@ -974,14 +1109,14 @@ class TestNarrowCompoundNames:
         """
         assert find_ungrounded_numbers("Use GPT-4-5 here", ["nothing"]) == ["5"]
 
-    def test_a_dropped_token_of_another_kind_does_not_make_a_sign_either(self):
+    @pytest.mark.parametrize("answer", ["doc1-5", "[1]-5", "2026-09-29-5"])
+    def test_a_dropped_token_of_another_kind_does_not_make_a_sign_either(self, answer: str):
         """
         GIVEN a mixed token, a citation and a date, each directly followed by -5
         WHEN the grounding has 5
         THEN nothing is flagged, because no minus became a sign
         """
-        for answer in ("doc1-5", "[1]-5", "2026-09-29-5"):
-            assert find_ungrounded_numbers(answer, ["5"]) == []
+        assert find_ungrounded_numbers(answer, ["5"]) == []
 
     def test_a_range_after_a_lowercase_word_is_a_range(self):
         """
@@ -1065,3 +1200,59 @@ class TestCitationLabelSet:
         assert check_citations(answer, named) is True
         assert check_citations(answer, set()) is False
         assert find_ungrounded_numbers(answer, ["nothing"]) == []
+
+    @pytest.mark.parametrize(
+        ("form", "named"),
+        [
+            ("[Documents 1, 9]", {1, 9}),
+            ("[References 1-3]", {1, 2, 3}),
+            ("[Excerpts 2]", {2}),
+            ("[Passages 4, 5]", {4, 5}),
+            ("[Zdroje 1]", {1}),
+            ("[Zdroj\u016f 2]", {2}),
+            ("[Dokumenty 3]", {3}),
+            ("[\u00daryvky 2]", {2}),
+            ("[\u0438\u0441\u0442\u043e\u0447\u043d\u0438\u043a\u0438 2]", {2}),
+            ("[\u0438\u0441\u0442\u043e\u0447\u043d\u0438\u043a\u043e\u0432 1]", {1}),
+        ],
+    )
+    def test_a_plural_or_inflected_source_word_labels_a_citation(self, form: str, named: set[int]):
+        """
+        GIVEN a bracket labelled with a plural or inflected source word
+        WHEN the citations are checked against exactly the numbers it names, and against none
+        THEN it passes, and then fails
+        """
+        answer = f"See {form} here."
+
+        assert check_citations(answer, named) is True
+        assert check_citations(answer, set()) is False
+
+    def test_a_plural_label_counts_every_number(self):
+        """
+        GIVEN [Documents 1, 9]
+        WHEN only source 1 was given
+        THEN the check fails
+        """
+        assert check_citations("see [Documents 1, 9]", {1}) is False
+
+    @pytest.mark.parametrize(
+        "form",
+        [
+            "[reflection 3]",
+            "[docker 3]",
+            "[documentation 3]",
+            "[document-like 3]",
+            "[sourcery 3]",
+            "[lower 6, upper 11]",
+        ],
+    )
+    def test_a_longer_unrelated_word_does_not_label_a_citation(self, form: str):
+        """
+        GIVEN a bracket whose word only begins like a source word
+        WHEN the citations are checked with no sources
+        THEN it passes, because the bracket is ordinary text, and its numbers are scanned
+        """
+        answer = f"See {form} here."
+
+        assert check_citations(answer, set()) is True
+        assert find_ungrounded_numbers(answer, ["nothing"]) != []
