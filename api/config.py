@@ -40,7 +40,7 @@ _APP_ENV_VAR = "APP_ENV"
 class Environment(StrEnum):
     """Deployment environment profile.
 
-    :cvar DEV: Local development. Debug on, permissive CORS, SQLite allowed.
+    :cvar DEV: Local development. Debug off unless DEBUG is set, permissive CORS, SQLite allowed.
     :cvar TEST: Deployed staging for manual QA. Debug off, rate limiting on.
     :cvar PROD: Production. Strict secret and database validation enforced.
     """

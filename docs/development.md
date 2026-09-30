@@ -109,8 +109,12 @@ grows into needing a map gets picked up on its own.
 ## Run it locally
 
 ```bash
-# Backend on http://localhost:8000
+# Database: the local PostgreSQL from docker/docker-compose.yml, then its schema
+docker compose -f docker/docker-compose.yml up -d db
 uv sync --extra api
+uv run alembic upgrade head
+
+# Backend on http://localhost:8000
 uv run uvicorn api.main:app --reload
 
 # Frontend on http://localhost:8080
