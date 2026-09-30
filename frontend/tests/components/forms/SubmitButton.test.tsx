@@ -53,16 +53,6 @@ describe('SubmitButton', () => {
     expect(screen.getByRole('button')).not.toHaveAttribute('aria-disabled');
   });
 
-  it('keeps focus when isLoading starts', () => {
-    const { rerender } = render(<SubmitButton>Submit</SubmitButton>);
-    const button = screen.getByRole('button');
-    button.focus();
-
-    rerender(<SubmitButton isLoading>Submit</SubmitButton>);
-
-    expect(button).toHaveFocus();
-  });
-
   it('ignores a click and Enter while isLoading', async () => {
     const user = userEvent.setup();
     const onClick = vi.fn();
@@ -83,6 +73,21 @@ describe('SubmitButton', () => {
     expect(onClick).not.toHaveBeenCalled();
     expect(onSubmit).not.toHaveBeenCalled();
     expect(button).toHaveFocus();
+  });
+
+  it('does not submit the form on Enter in a field while isLoading', async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn((event: React.FormEvent) => event.preventDefault());
+    render(
+      <form onSubmit={onSubmit}>
+        <input aria-label="Email" />
+        <SubmitButton isLoading>Submit</SubmitButton>
+      </form>
+    );
+
+    await user.type(screen.getByLabelText('Email'), 'a@b.cz{Enter}');
+
+    expect(onSubmit).not.toHaveBeenCalled();
   });
 
   it('submits and calls onClick when idle', async () => {
