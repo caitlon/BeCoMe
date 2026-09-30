@@ -11,6 +11,7 @@ import httpx
 from api.auth.logging import hash_email
 from api.services.email.base import EmailSender
 from api.services.email.exceptions import EmailSendError
+from api.services.email.verification_email import render_verification_email
 
 if TYPE_CHECKING:
     from api.config import Settings
@@ -146,11 +147,16 @@ class ResendEmailSender(EmailSender):
         :param verify_url: Full frontend activation link.
         :raises EmailSendError: If the API rejects the request or transport fails.
         """
+        window = _format_ttl_window(
+            self._settings.email_verification_token_ttl_hours * _MINUTES_PER_HOUR
+        )
+        message = render_verification_email(verify_url, window)
         payload: dict[str, object] = {
             "from": f"{self._settings.email_from_name} <{self._settings.email_from}>",
             "to": [to_email],
-            "subject": "Confirm your BeCoMe email",
-            "html": self._build_verification_html(verify_url),
+            "subject": message.subject,
+            "html": message.html,
+            "text": message.text,
         }
         headers = {"Authorization": f"Bearer {self._settings.email_api_key}"}
         email_hash = hash_email(to_email)
@@ -206,23 +212,6 @@ class ResendEmailSender(EmailSender):
             f'<p><a href="{reset_url}">Reset your password</a></p>'
             "<p>If you did not request this you can ignore this email. "
             f"The link expires in {window}.</p>"
-        )
-
-    def _build_verification_html(self, verify_url: str) -> str:
-        """Render the verification-email HTML body.
-
-        :param verify_url: Full frontend activation link.
-        :return: HTML message body, with the expiry window matching the config.
-        """
-        window = _format_ttl_window(
-            self._settings.email_verification_token_ttl_hours * _MINUTES_PER_HOUR
-        )
-        return (
-            "<p>Thanks for creating a BeCoMe account. Your account stays inactive "
-            "until you confirm this email address.</p>"
-            f'<p><a href="{verify_url}">Confirm your email</a></p>'
-            f"<p>The link expires in {window}. If you did not create this account, "
-            "you can ignore this email.</p>"
         )
 
     def _build_registration_attempt_html(self, *, login_url: str, reset_url: str) -> str:
