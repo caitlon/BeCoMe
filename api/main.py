@@ -44,6 +44,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     warm_up_connection_pool()
     logger.info("Application started", extra={"event": "app_startup", **lifecycle})
     yield
+    if settings.assistant_enabled:
+        # Imported only when the flag is on, like the router in create_app(), so a
+        # deployed process never loads the assistant package.
+        from api.assistant.agent.tracing import shutdown_tracing
+
+        shutdown_tracing()
     logger.info("Application stopped", extra={"event": "app_shutdown", **lifecycle})
 
 

@@ -5,7 +5,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -461,3 +461,137 @@ class TestAssistantExceptionHandlerGating:
         assert response.status_code == status_code
         assert "internal detail" not in response.text
         assert response.json() == {"detail": detail}
+
+
+_ASSISTANT_LIBRARIES = (
+    "langchain",
+    "langchain_core",
+    "langchain_openai",
+    "langgraph",
+    "langsmith",
+    "openai",
+)
+
+
+class TestAssistantLibrariesStayOutOfDeployedProcesses:
+    """A process with the assistant off never loads the assistant's libraries."""
+
+    @staticmethod
+    def _modules_loaded_by_importing_api_main(tmp_path, assistant_enabled: str) -> list[str]:
+        """Import api.main in a fresh interpreter and list the assistant modules it loaded.
+
+        :param tmp_path: A working directory with no .env file in it.
+        :param assistant_enabled: The value of ASSISTANT_ENABLED for the interpreter.
+        :return: The names of the loaded modules that belong to the assistant package or to
+            one of its libraries.
+        """
+        env = {
+            **os.environ,
+            "APP_ENV": "dev",
+            "SECRET_KEY": "a-sufficiently-strong-secret-value",  # pragma: allowlist secret
+            "ASSISTANT_ENABLED": assistant_enabled,
+            "PYTHONPATH": str(_REPO_ROOT),
+        }
+        env.pop("RAILWAY_ENVIRONMENT_NAME", None)
+        snippet = (
+            "import sys\n"
+            "import api.main\n"
+            f"libraries = {_ASSISTANT_LIBRARIES!r}\n"
+            "print('loaded=' + ' '.join(sorted(\n"
+            "    name for name in sys.modules\n"
+            "    if name == 'api.assistant' or name.startswith('api.assistant.')\n"
+            "    or name.split('.')[0] in libraries\n"
+            ")))\n"
+        )
+        result = subprocess.run(  # noqa: S603 - fixed argv, no shell; sys.executable is trusted
+            [sys.executable, "-c", snippet],
+            cwd=tmp_path,
+            env=env,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        (line,) = [row for row in result.stdout.splitlines() if row.startswith("loaded=")]
+        return line.removeprefix("loaded=").split()
+
+    def test_nothing_of_the_assistant_or_its_libraries_is_loaded_when_the_switch_is_off(
+        self, tmp_path
+    ):
+        """
+        GIVEN a fresh interpreter with the assistant switched off
+        WHEN it imports api.main, which builds the app, its middleware and its routers
+        THEN neither the assistant package nor langchain, langgraph, langsmith or openai
+             was imported, so a deployed image without the assistant extra still starts
+        """
+        # WHEN
+        loaded = self._modules_loaded_by_importing_api_main(tmp_path, "false")
+
+        # THEN
+        assert loaded == []
+
+
+class TestAssistantShutdown:
+    """The application flushes the assistant's traces when it stops, and only when it is on."""
+
+    @pytest.fixture(autouse=True)
+    def _clear_settings_cache_after(self):
+        """Drop any Settings cached during the test, so its switch settings cannot leak."""
+        from api.config import get_settings
+
+        yield
+        get_settings.cache_clear()
+
+    @staticmethod
+    def _run_app(monkeypatch, tmp_path, *, enabled: bool) -> tuple[MagicMock, list[int]]:
+        """Start and stop the app with the assistant switched as asked.
+
+        :return: The mock standing in for the tracing shutdown, and the number of times it
+            had been called while the app was running.
+        """
+        from fastapi.testclient import TestClient
+
+        from api.config import get_settings
+        from api.main import create_app
+
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("APP_ENV", "dev")
+        monkeypatch.setenv("SECRET_KEY", "a-sufficiently-strong-secret-value")
+        monkeypatch.setenv("ASSISTANT_ENABLED", "true" if enabled else "false")
+        monkeypatch.delenv("RAILWAY_ENVIRONMENT_NAME", raising=False)
+        get_settings.cache_clear()
+        with (
+            patch("api.main.create_db_and_tables"),
+            patch("api.main.warm_up_connection_pool"),
+            patch("api.assistant.agent.tracing.shutdown_tracing") as shutdown,
+        ):
+            app = create_app()
+            with TestClient(app):
+                calls_while_running = shutdown.call_count
+        return shutdown, [calls_while_running]
+
+    def test_traces_are_flushed_once_when_the_app_stops_with_the_assistant_on(
+        self, monkeypatch, tmp_path
+    ):
+        """
+        GIVEN the assistant switched on
+        WHEN the app starts and then stops
+        THEN the tracing shutdown ran exactly once, after the app had been running
+        """
+        # WHEN
+        shutdown, calls_while_running = self._run_app(monkeypatch, tmp_path, enabled=True)
+
+        # THEN
+        assert calls_while_running == [0]
+        shutdown.assert_called_once_with()
+
+    def test_nothing_is_flushed_with_the_assistant_off(self, monkeypatch, tmp_path):
+        """
+        GIVEN the assistant switched off
+        WHEN the app starts and then stops
+        THEN the tracing shutdown never ran
+        """
+        # WHEN
+        shutdown, _ = self._run_app(monkeypatch, tmp_path, enabled=False)
+
+        # THEN
+        shutdown.assert_not_called()
