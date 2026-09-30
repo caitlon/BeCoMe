@@ -18,6 +18,7 @@ import { ResendVerification } from "@/components/auth/ResendVerification";
 import { AuthLayout } from "@/components/layout/AuthLayout";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { useToast } from "@/hooks/use-toast";
+import { toSupportedLanguage } from "@/i18n";
 import { api } from "@/lib/api";
 import { describeError } from "@/lib/errorMessages";
 import { isTurnstileRequired } from "@/lib/turnstile";
@@ -50,7 +51,7 @@ const getEmailRequirements = (
 ];
 
 const Register = () => {
-  const { t } = useTranslation("auth");
+  const { t, i18n } = useTranslation("auth");
   const { t: tCommon } = useTranslation();
   useDocumentTitle(tCommon("pageTitle.register"));
   const { toast } = useToast();
@@ -123,6 +124,7 @@ const Register = () => {
           first_name: data.firstName,
           last_name: data.lastName,
         },
+        toSupportedLanguage(i18n.language),
         turnstileToken
       );
       // 202 identically for a free, unverified, or already-verified address,
