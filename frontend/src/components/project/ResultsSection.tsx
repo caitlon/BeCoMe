@@ -63,15 +63,15 @@ export const ResultsSection = ({
   const agreementLevel = result.agreement_level;
   const agreementClasses = {
     high: {
-      badge: "bg-success text-success-foreground hover:bg-success/90",
+      badge: "bg-success text-success-foreground hover:bg-success",
       progress: "[&>div]:bg-success",
     },
     moderate: {
-      badge: "bg-warning text-warning-foreground hover:bg-warning/90",
+      badge: "bg-warning text-warning-foreground hover:bg-warning",
       progress: "[&>div]:bg-warning",
     },
     low: {
-      badge: "bg-error text-error-foreground hover:bg-error/90",
+      badge: "bg-error text-error-foreground hover:bg-error",
       progress: "[&>div]:bg-error",
     },
   }[agreementLevel];
