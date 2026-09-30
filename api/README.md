@@ -148,8 +148,9 @@ confirmed the account while the reset was in flight. `POST /auth/resend-verifica
 `{email, password}` and answers `202` for any address. The link it mails carries the submitted
 password like any other. Both endpoints write the email in English or Czech, taken from the
 `Accept-Language` request header: the best-weighted `cs` or `en` range wins, and a missing or
-unusable header means English. The header never changes the response, so a bad value is not
-an error. See `docs/security.md` for why each branch behaves as it does.
+unusable header means English. `POST /auth/forgot-password` picks the language of the reset
+email from the same header by the same rule. The header never changes the response, so a bad
+value is not an error. See `docs/security.md` for why each branch behaves as it does.
 
 **Session transport.** Login and refresh set the access and refresh tokens as
 `Secure; HttpOnly; SameSite=Strict` cookies (the refresh cookie stays scoped to
@@ -291,7 +292,7 @@ Environment variables (a `.env` file works too):
 | `TURNSTILE_ENABLED` | `false` | Bot check on the four open auth endpoints. A deployed service starts with it off, and records `turnstile_disabled` at ERROR: it is the way out of a Cloudflare siteverify outage, since the check is fail-closed |
 | `TURNSTILE_SECRET_KEY` | *required when the check is on* | Cloudflare Turnstile secret, paired with the widget whose sitekey the frontend build carries |
 | `TURNSTILE_HOSTNAMES` | `[]`, *required when the check is on* | JSON array of hostnames the widget may be served from; a token minted anywhere else is refused. Never list `localhost` on production |
-| `EMAIL_PROVIDER` | `console` | Password-reset email delivery: `console` (log) or `http` (Resend) |
+| `EMAIL_PROVIDER` | `console` | Email delivery: `console` (log) or `http` (Resend) |
 | `EMAIL_API_KEY` | *required when deployed* | API key for the `http` email provider; startup fails without it on every deployed service, where the console fallback would print reset links to stdout instead of sending them |
 | `API_PUBLIC_URL` | `http://localhost:8000` | Public base URL of this API, used to build profile photo proxy links |
 | `BUCKET_NAME` | *optional* | Railway Storage Bucket name (auto-injected when a bucket is attached) |
