@@ -1,11 +1,14 @@
 """Tests for database infrastructure (engine, session, lifespan)."""
 
 from contextlib import suppress
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
 from sqlalchemy import Engine
 from sqlmodel import Session
 
+from api.config import Environment, Settings
 from api.db.engine import create_db_and_tables, get_engine, warm_up_connection_pool
 from api.db.session import get_session
 
@@ -238,8 +241,154 @@ class TestLifespan:
             _dispose_and_clear_engine()
 
 
+_LOCALHOST = "postgresql://user@localhost:5432/db"
+_REMOTE = "postgresql://user@host:5432/db"
+
+
+def _postgres_settings(
+    environment: Environment,
+    *,
+    testing: bool,
+    railway_environment_name: str | None,
+    database_url: str,
+) -> Settings:
+    """Build Settings that satisfy every deploy invariant, whatever the profile.
+
+    ``TESTING`` and ``RAILWAY_ENVIRONMENT_NAME`` are passed under their validation
+    aliases: the fields declare one and the model does not set ``populate_by_name``,
+    so the field names alone would be silently ignored.
+    """
+    return Settings(
+        environment=environment,
+        TESTING=testing,
+        RAILWAY_ENVIRONMENT_NAME=railway_environment_name,
+        secret_key="a-sufficiently-strong-secret-value-for-tests",  # pragma: allowlist secret
+        database_url=database_url,
+        redis_url="redis://localhost:6379/0",
+        cloudflare_origin_secret="an-origin-verify-secret-for-tests",  # pragma: allowlist secret
+        cors_origins=["https://app.example.com"],
+        frontend_base_url="https://app.example.com",
+        email_provider="http",
+        email_api_key="a-resend-api-key-for-tests",  # pragma: allowlist secret
+        migration_database_url="postgresql://migrator@host:5432/db",
+        turnstile_enabled=True,
+        turnstile_secret_key="a-turnstile-secret-for-tests",  # pragma: allowlist secret
+        turnstile_hostnames=["app.example.com"],
+    )
+
+
 class TestEngineHardening:
     """Tests for PostgreSQL connection-pool and connect-arg hardening."""
+
+    @pytest.mark.parametrize(
+        ("environment", "testing", "railway_environment_name", "database_url", "expected"),
+        [
+            # A laptop outside tests: local databases only prefer TLS, any other host requires it.
+            pytest.param(Environment.DEV, False, None, _LOCALHOST, "prefer", id="laptop-localhost"),
+            pytest.param(
+                Environment.DEV,
+                False,
+                None,
+                "postgresql://u@127.0.0.1/db",
+                "prefer",
+                id="laptop-127",
+            ),
+            pytest.param(
+                Environment.DEV,
+                False,
+                None,
+                "postgresql://u@[::1]:5432/db",
+                "prefer",
+                id="laptop-::1",
+            ),
+            pytest.param(
+                Environment.DEV,
+                False,
+                None,
+                "postgresql:///db?host=/tmp/pg",
+                "prefer",
+                id="laptop-socket",
+            ),
+            pytest.param(
+                Environment.DEV,
+                False,
+                None,
+                "postgresql://u@/db?host=db.example.com",
+                "require",
+                id="laptop-remote-host-in-query",
+            ),
+            pytest.param(
+                Environment.DEV,
+                False,
+                None,
+                "postgresql://u@db.example.com:5432/db",
+                "require",
+                id="laptop-remote",
+            ),
+            pytest.param(
+                Environment.DEV,
+                False,
+                None,
+                "postgresql://u@roundhouse.proxy.rlwy.net:1234/db",
+                "require",
+                id="laptop-railway-tcp-proxy",
+            ),
+            # A deployed service requires TLS whatever its URL says.
+            pytest.param(Environment.PROD, False, None, _LOCALHOST, "require", id="prod-localhost"),
+            pytest.param(Environment.PROD, False, None, _REMOTE, "require", id="prod"),
+            pytest.param(Environment.TEST, False, None, _REMOTE, "require", id="deployed-test"),
+            pytest.param(Environment.DEV, False, "dev", _LOCALHOST, "require", id="dev-on-railway"),
+            # A test run only prefers it, unless it runs on Railway.
+            pytest.param(
+                Environment.TEST, True, None, _LOCALHOST, "prefer", id="testing-localhost"
+            ),
+            pytest.param(
+                Environment.TEST,
+                True,
+                None,
+                "postgresql://u@db:5432/db",
+                "prefer",
+                id="testing-db-host",
+            ),
+            pytest.param(
+                Environment.TEST, True, "test", _LOCALHOST, "require", id="testing-on-railway"
+            ),
+        ],
+    )
+    @patch("api.db.engine.create_engine")
+    @patch("api.db.engine.get_settings")
+    def test_postgres_sslmode_follows_where_the_process_runs(
+        self,
+        mock_get_settings: MagicMock,
+        mock_create_engine: MagicMock,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+        environment: Environment,
+        testing: bool,
+        railway_environment_name: str | None,
+        database_url: str,
+        expected: str,
+    ) -> None:
+        """TLS is required on a deployed service or a remote database, else only preferred."""
+        # GIVEN: settings for one place the process can run; no .env is read
+        monkeypatch.chdir(tmp_path)
+        mock_get_settings.return_value = _postgres_settings(
+            environment,
+            testing=testing,
+            railway_environment_name=railway_environment_name,
+            database_url=database_url,
+        )
+        get_engine.cache_clear()
+
+        try:
+            # WHEN
+            get_engine()
+
+            # THEN
+            _, kwargs = mock_create_engine.call_args
+            assert kwargs["connect_args"]["sslmode"] == expected
+        finally:
+            get_engine.cache_clear()
 
     @patch("api.db.engine.create_engine")
     @patch("api.db.engine.get_settings")
