@@ -116,7 +116,7 @@ Set the database URL with the `DATABASE_URL` environment variable:
 
 ```bash
 # Local development: the PostgreSQL from docker/docker-compose.yml
-#   docker compose -f docker/docker-compose.yml up -d db
+#   docker compose --env-file .env -f docker/docker-compose.yml up -d db
 DATABASE_URL=postgresql://become:become@localhost:5432/become
 
 # Deployed environments: the least-privilege become_app role on the managed instance

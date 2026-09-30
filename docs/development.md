@@ -110,7 +110,7 @@ grows into needing a map gets picked up on its own.
 
 ```bash
 # Database: the local PostgreSQL from docker/docker-compose.yml, then its schema
-docker compose -f docker/docker-compose.yml up -d --wait db
+docker compose --env-file .env -f docker/docker-compose.yml up -d --wait db
 uv sync --extra api
 uv run alembic upgrade head
 
