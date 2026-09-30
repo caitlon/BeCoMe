@@ -109,6 +109,7 @@ const Profile = () => {
   });
   const passwordRequirements = getPasswordRequirements(newPassword, tAuth);
   const passwordChecklistId = useId();
+  const passwordChecklistShown = !!newPassword && !passwordRequirements.every((req) => req.met);
 
   // Delete account
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -373,14 +374,14 @@ const Profile = () => {
                     label={t("changePassword.newPassword")}
                     autoComplete="new-password"
                     error={passwordForm.formState.errors.newPassword}
-                    aria-describedby={passwordChecklistId}
+                    aria-describedby={passwordChecklistShown ? passwordChecklistId : undefined}
                     {...passwordForm.register("newPassword")}
                   />
                   <ValidationChecklist
                     id={passwordChecklistId}
                     title={tAuth("passwordRequirements.title")}
                     requirements={passwordRequirements}
-                    show={!!newPassword}
+                    show={passwordChecklistShown}
                   />
                 </div>
 
@@ -389,6 +390,7 @@ const Profile = () => {
                   type="password"
                   autoComplete="new-password"
                   error={passwordForm.formState.errors.confirmPassword}
+                  aria-required="true"
                   {...passwordForm.register("confirmPassword")}
                 />
 
