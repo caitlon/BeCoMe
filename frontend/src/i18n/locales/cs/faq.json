@@ -62,10 +62,10 @@
     }
   },
   "troubleshooting": {
-    "intro": "Řešení běžných problémů, které můžete při používání aplikace narazit.",
+    "intro": "Řešení běžných problémů, na které můžete při používání aplikace narazit.",
     "cantSeeInvitation": {
       "question": "Proč nevidím pozvánku?",
-      "answer": "Ujistěte se, že jste přihlášeni s e-mailem, který obdržel pozvánku. Pozvaný uživatel musí být před přijetím pozvánky registrován v systému."
+      "answer": "Ujistěte se, že jste přihlášeni s e-mailem, který obdržel pozvánku. Pozvaný uživatel musí být před obdržením pozvánky registrován v systému."
     },
     "noResults": {
       "question": "Proč se nezobrazují výsledky?",
