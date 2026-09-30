@@ -7,9 +7,12 @@ export function RouteAnnouncer() {
   const previousPathname = useRef<string | null>(null);
 
   useEffect(() => {
-    /* v8 ignore next */
-    if (previousPathname.current !== null && location.pathname === previousPathname.current) return;
+    const previous = previousPathname.current;
     previousPathname.current = location.pathname;
+
+    // A full page load has not navigated anywhere: leave focus on the document so the
+    // skip link is still the first Tab stop, and leave the title to the screen reader.
+    if (previous === null || previous === location.pathname) return;
 
     // Scroll to top on navigation
     window.scrollTo(0, 0);
