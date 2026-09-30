@@ -11,16 +11,28 @@ interface SubmitButtonProps extends ButtonProps {
 
 const SubmitButton = React.forwardRef<HTMLButtonElement, SubmitButtonProps>(
   (
-    { isLoading, loadingText, children, disabled, className, type = "submit", ...props },
+    { isLoading, loadingText, children, disabled, className, type = "submit", onClick, ...props },
     ref
   ) => {
+    // A disabled button cannot hold focus, so a keyboard user who pressed Enter on it would
+    // fall back to <body> mid-request. While loading the button stays focusable and is marked
+    // aria-disabled instead; the click handler swallows activation (a click, Enter or Space,
+    // and a form's implicit submission all arrive as a click) so nothing is sent twice.
     return (
       <Button
         ref={ref}
         type={type}
-        disabled={disabled || isLoading}
+        disabled={disabled}
         aria-busy={isLoading}
-        className={cn(className)}
+        aria-disabled={isLoading || undefined}
+        className={cn("aria-disabled:pointer-events-none aria-disabled:opacity-50", className)}
+        onClick={(event) => {
+          if (isLoading) {
+            event.preventDefault();
+            return;
+          }
+          onClick?.(event);
+        }}
         {...props}
       >
         {isLoading ? (

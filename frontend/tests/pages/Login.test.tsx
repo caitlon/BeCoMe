@@ -251,7 +251,7 @@ describe('Login', () => {
   });
 
 
-  it('disables submit while loading', async () => {
+  it('marks submit aria-disabled while loading', async () => {
     const user = userEvent.setup();
     mockLogin.mockImplementation(() => new Promise(() => {}));
 
@@ -265,7 +265,7 @@ describe('Login', () => {
 
     await waitFor(() => {
       const loadingButton = screen.getByRole('button', { name: /signing in/i });
-      expect(loadingButton).toBeDisabled();
+      expect(loadingButton).toHaveAttribute('aria-disabled', 'true');
     });
   });
 
