@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
+from api.auth.logging import hash_email
 from api.services.email.console_email_sender import ConsoleEmailSender, _mask_token
 from api.services.email.exceptions import EmailSendError
 from api.services.email.resend_email_sender import ResendEmailSender
@@ -95,7 +96,7 @@ class TestConsoleEmailSender:
         with patch("api.services.email.console_email_sender.logger") as mock_logger:
             asyncio.run(
                 sender.send_email_verification(
-                    to_email="user@example.com", verify_url=self._VERIFY_URL
+                    to_email="user@example.com", verify_url=self._VERIFY_URL, language="en"
                 )
             )
         return mock_logger
@@ -151,11 +152,36 @@ class TestConsoleEmailSender:
 
         # WHEN
         asyncio.run(
-            sender.send_email_verification(to_email="user@example.com", verify_url=self._VERIFY_URL)
+            sender.send_email_verification(
+                to_email="user@example.com", verify_url=self._VERIFY_URL, language="en"
+            )
         )
 
         # THEN
         assert self._VERIFY_URL in capsys.readouterr().out
+
+    @pytest.mark.parametrize("language", ["en", "cs"])
+    def test_verification_stdout_marker_is_the_same_in_every_language(self, capsys, language):
+        """
+        GIVEN a console email sender
+        WHEN an email verification message is sent in either language
+        THEN stdout carries the one marker line the end-to-end tests parse, unchanged
+        """
+        # GIVEN
+        sender = ConsoleEmailSender(_settings())
+
+        # WHEN
+        asyncio.run(
+            sender.send_email_verification(
+                to_email="user@example.com", verify_url=self._VERIFY_URL, language=language
+            )
+        )
+
+        # THEN
+        assert capsys.readouterr().out == (
+            f"[console email] verification link for {hash_email('user@example.com')}: "
+            f"{self._VERIFY_URL}\n"
+        )
 
     def test_registration_attempt_notice_log_masks_the_raw_token(self):
         """
@@ -314,6 +340,36 @@ class TestResendEmailSender:
         assert "30 minutes" in html
         assert "one hour" not in html
 
+    @pytest.mark.parametrize(
+        ("minutes", "phrase"),
+        [(60, "1 hour"), (120, "2 hours"), (30, "30 minutes"), (90, "90 minutes")],
+    )
+    def test_reset_email_keeps_its_english_expiry_wording(self, minutes, phrase):
+        """
+        GIVEN a Resend sender with a given reset-token TTL
+        WHEN a password reset email is sent
+        THEN the expiry sentence reads exactly as it always has
+        """
+        # GIVEN
+        response = MagicMock()
+        response.raise_for_status = MagicMock()
+        client = MagicMock()
+        client.post = AsyncMock(return_value=response)
+        sender = ResendEmailSender(
+            _settings(password_reset_token_ttl_minutes=minutes), client=client
+        )
+
+        # WHEN
+        asyncio.run(
+            sender.send_password_reset(
+                to_email="user@example.com", reset_url="https://app.example/reset"
+            )
+        )
+
+        # THEN
+        html = client.post.call_args.kwargs["json"]["html"]
+        assert f"you can ignore this email. The link expires in {phrase}.</p>" in html
+
     def test_raises_send_error_on_http_status_error(self):
         """
         GIVEN a Resend sender whose response is a non-2xx status
@@ -407,6 +463,7 @@ class TestResendEmailSender:
             sender.send_email_verification(
                 to_email="user@example.com",
                 verify_url="https://app.example/verify-email?token=abc",
+                language="en",
             )
         )
 
@@ -437,6 +494,7 @@ class TestResendEmailSender:
             sender.send_email_verification(
                 to_email="user@example.com",
                 verify_url="https://app.example/verify-email?token=abc",
+                language="en",
             )
         )
 
@@ -463,6 +521,7 @@ class TestResendEmailSender:
             sender.send_email_verification(
                 to_email="user@example.com",
                 verify_url="https://app.example/verify-email?token=abc",
+                language="en",
             )
         )
 
@@ -472,6 +531,37 @@ class TestResendEmailSender:
         assert "The link expires in 1 hour." in payload["text"]
         assert "<" not in payload["text"]
         assert payload["html"].lstrip().startswith("<!DOCTYPE html>")
+
+    def test_verification_payload_is_czech_when_the_language_is_czech(self):
+        """
+        GIVEN a Resend sender with an injected client
+        WHEN an email verification message is sent in Czech
+        THEN the subject, html and text are all Czech and the lifetime is declined
+        """
+        # GIVEN
+        response = MagicMock()
+        response.raise_for_status = MagicMock()
+        client = MagicMock()
+        client.post = AsyncMock(return_value=response)
+        sender = ResendEmailSender(_settings(email_verification_token_ttl_hours=2), client=client)
+
+        # WHEN
+        asyncio.run(
+            sender.send_email_verification(
+                to_email="user@example.com",
+                verify_url="https://app.example/verify-email?token=abc",
+                language="cs",
+            )
+        )
+
+        # THEN
+        payload = client.post.call_args.kwargs["json"]
+        assert payload["subject"] == "BeCoMe: potvrďte svůj e-mail"
+        assert '<html lang="cs"' in payload["html"]
+        assert "Odkaz platí 2 hodiny." in payload["html"]
+        assert "Potvrdit e-mail:\nhttps://app.example/verify-email?token=abc" in payload["text"]
+        assert "Odkaz platí 2 hodiny." in payload["text"]
+        assert "Confirm" not in payload["subject"] + payload["html"] + payload["text"]
 
     def test_verification_raises_send_error_on_http_status_error(self):
         """
@@ -494,6 +584,7 @@ class TestResendEmailSender:
                 sender.send_email_verification(
                     to_email="user@example.com",
                     verify_url="https://app.example/verify-email?token=abc",
+                    language="en",
                 )
             )
 

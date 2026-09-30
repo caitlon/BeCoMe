@@ -56,6 +56,7 @@ from api.auth.revocation_store import RevocationStore, get_revocation_store
 from api.auth.turnstile import require_human
 from api.config import get_settings
 from api.dependencies import (
+    PreferredEmailLanguage,
     get_email_address_policy,
     get_email_service,
     get_email_verification_service,
@@ -189,6 +190,7 @@ async def register(
     email_service: Annotated[EmailSender, Depends(get_email_service)],
     policy: Annotated[EmailAddressPolicy, Depends(get_email_address_policy)],
     throttle: Annotated[EmailSendThrottle, Depends(get_verification_email_throttle)],
+    language: PreferredEmailLanguage,
 ) -> dict[str, str]:
     """Accept a registration and email whoever owns the address.
 
@@ -209,6 +211,7 @@ async def register(
     :param email_service: Email sender
     :param policy: Registration address policy (disposable domains, DNS)
     :param throttle: Per-address cap on the emails registration can trigger
+    :param language: Language of the activation email, from ``Accept-Language``
     :return: A fixed acknowledgement message
     :raises DisposableEmailDomainError: If the domain is a known disposable provider
     :raises UnresolvableEmailDomainError: If the domain cannot receive mail
@@ -237,7 +240,9 @@ async def register(
         if _may_mail(throttle, data.email, created=result.created):
             verify_url = verification.create_verification_url(result.user, result.credentials)
             await _send_quietly(
-                email_service.send_email_verification(to_email=data.email, verify_url=verify_url),
+                email_service.send_email_verification(
+                    to_email=data.email, verify_url=verify_url, language=language
+                ),
                 "verification_email_failed",
             )
     elif throttle.allow(data.email):
@@ -462,6 +467,7 @@ async def resend_verification(
     service: Annotated[EmailVerificationService, Depends(get_email_verification_service)],
     email_service: Annotated[EmailSender, Depends(get_email_service)],
     throttle: Annotated[EmailSendThrottle, Depends(get_verification_email_throttle)],
+    language: PreferredEmailLanguage,
 ) -> dict[str, str]:
     """Email a fresh activation link, if the address has one to send.
 
@@ -481,6 +487,7 @@ async def resend_verification(
     :param service: Email verification service
     :param email_service: Email sender
     :param throttle: Per-address cap on the emails the registration flow can trigger
+    :param language: Language of the activation email, from ``Accept-Language``
     :return: A fixed acknowledgement message
     """
     # Hashed before the lookup and unconditionally, so the branch with nothing to send
@@ -496,7 +503,9 @@ async def resend_verification(
     if pending is not None and throttle.allow(data.email):
         verify_url = service.create_resend_url(pending, hashed_password)
         await _send_quietly(
-            email_service.send_email_verification(to_email=data.email, verify_url=verify_url),
+            email_service.send_email_verification(
+                to_email=data.email, verify_url=verify_url, language=language
+            ),
             "verification_email_failed",
         )
 
