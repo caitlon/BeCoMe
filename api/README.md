@@ -335,7 +335,7 @@ disabled and every other feature keeps working.
 **Migrations.** Alembic owns the PostgreSQL schema (`migrations/`), and `alembic upgrade head`
 runs before each Railway deploy. To apply it by hand against one database, run
 `ALEMBIC_DATABASE_URL=<url> uv run alembic upgrade head`. Local development runs on the same
-engine, the PostgreSQL in `docker/docker-compose.yml` (`docker compose -f docker/docker-compose.yml up -d db`), so a migration is exercised
+engine, the PostgreSQL in `docker/docker-compose.yml` (`docker compose --env-file .env -f docker/docker-compose.yml up -d db`), so a migration is exercised
 before it reaches a deployment rather than after. SQLite still works as a fallback and for the
 test suite, but it reaches the schema through `create_all` and skips migrations entirely.
 
