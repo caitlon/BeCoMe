@@ -48,14 +48,20 @@ export function CreateProjectModal({
     () =>
       z
         .object({
-          name: z.string().min(1, t("create.validation.nameRequired")).max(255),
-          description: z.string().max(1000).optional(),
+          name: z
+            .string()
+            .min(1, t("create.validation.nameRequired"))
+            .max(255, t("create.validation.nameMaxLength")),
+          description: z
+            .string()
+            .max(1000, t("create.validation.descriptionMaxLength"))
+            .optional(),
           scale_min: z.coerce.number(),
           scale_max: z.coerce.number(),
           scale_unit: z
             .string()
             .min(1, t("create.validation.unitRequired"))
-            .max(50),
+            .max(50, t("create.validation.unitMaxLength")),
         })
         .refine((data) => data.scale_max > data.scale_min, {
           error: t("create.validation.maxGreaterMin"),

@@ -84,12 +84,12 @@ const Register = () => {
           firstName: z
             .string()
             .min(1, t("validation.firstNameRequired"))
-            .max(100)
+            .max(100, t("validation.firstNameMaxLength"))
             .regex(/^[\p{L}\s'-]+$/u, t("validation.nameFormat")),
           lastName: z
             .string()
             .min(1, t("validation.lastNameRequired"))
-            .max(100)
+            .max(100, t("validation.lastNameMaxLength"))
             .regex(/^[\p{L}\s'-]+$/u, t("validation.nameFormat")),
         })
         .refine((data) => data.password === data.confirmPassword, {

@@ -187,7 +187,10 @@
     "errorTitle": "Error",
     "validation": {
       "nameRequired": "Name is required",
+      "nameMaxLength": "Name must be at most 255 characters",
+      "descriptionMaxLength": "Description must be at most 1000 characters",
       "unitRequired": "Unit is required",
+      "unitMaxLength": "Unit must be at most 50 characters",
       "maxGreaterMin": "Max must be greater than min"
     }
   },

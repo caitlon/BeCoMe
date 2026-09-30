@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { render } from '@tests/utils';
+import i18n from '@/i18n';
 import { CreateProjectModal } from '@/components/modals/CreateProjectModal';
 
 // Mock api
@@ -97,6 +98,44 @@ describe('CreateProjectModal', () => {
       expect(screen.getByText(/max.*greater.*min/i)).toBeInTheDocument();
     });
   });
+
+  // zod's own length text is English whatever the interface language, so a rule
+  // without a message of its own shows it in the Czech interface too.
+  it.each([
+    ['en', 'name', 256, 'Name must be at most 255 characters'],
+    ['cs', 'name', 256, 'Název může mít maximálně 255 znaků'],
+    ['en', 'description', 1001, 'Description must be at most 1000 characters'],
+    ['cs', 'description', 1001, 'Popis může mít maximálně 1000 znaků'],
+    ['en', 'unit', 51, 'Unit must be at most 50 characters'],
+    ['cs', 'unit', 51, 'Jednotka může mít maximálně 50 znaků'],
+  ])(
+    'shows the translated message in %s for the %s over the length limit',
+    async (language, field, length, expected) => {
+      const user = userEvent.setup();
+      render(<CreateProjectModal {...defaultProps} />);
+      const inputs: Record<string, HTMLElement> = {
+        name: getNameInput(),
+        description: screen.getByPlaceholderText('Describe your project...'),
+        unit: getUnitInput(),
+      };
+      await act(async () => {
+        await i18n.changeLanguage(language);
+      });
+
+      try {
+        await user.click(inputs[field]);
+        await user.paste('a'.repeat(length));
+        await user.tab();
+
+        expect(await screen.findByText(expected)).toBeInTheDocument();
+        expect(screen.queryByText(/too big|expected string/i)).not.toBeInTheDocument();
+      } finally {
+        await act(async () => {
+          await i18n.changeLanguage('en');
+        });
+      }
+    }
+  );
 
   it('calls api.createProject on valid submission', async () => {
     const user = userEvent.setup();
