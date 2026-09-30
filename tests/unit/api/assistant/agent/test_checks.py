@@ -2,7 +2,7 @@
 
 import pytest
 
-from api.assistant.agent.checks import check_citations, find_ungrounded_numbers
+from api.assistant.agent.checks import check_citations, find_ungrounded_numbers, strip_citations
 
 # Every citation-like form, with the numbers it names.
 _CITATION_FORMS = [
@@ -244,6 +244,22 @@ class TestFindUngroundedNumbers:
         """
         answer = "See [the docs](/docs/v12/page5) and [this step](#step-3)."
 
+        assert find_ungrounded_numbers(answer, ["nothing"]) == []
+
+    @pytest.mark.parametrize(
+        "answer",
+        [
+            "See [see the formula](method.md#step-3).",
+            "See [the guide](guide2.md).",
+            "See [1](doc1).",
+        ],
+    )
+    def test_a_bare_relative_link_target_is_not_read(self, answer: str):
+        """
+        GIVEN a markdown link whose target is a bare relative file with digits
+        WHEN the numbers are checked
+        THEN the target's digits are not flagged
+        """
         assert find_ungrounded_numbers(answer, ["nothing"]) == []
 
     def test_a_markdown_citation_link_is_not_read(self):
@@ -492,3 +508,165 @@ class TestFindUngroundedNumbers:
 
         assert find_ungrounded_numbers(answer, ["11.54 14.19 17.19"]) == []
         assert find_ungrounded_numbers(answer, ["11.54 14.19"]) == ["17,19"]
+
+    @pytest.mark.parametrize(
+        "line",
+        [
+            "(1) first",
+            "**1.** Compute the mean",
+            "- 2) item",
+            "### 3. Result",
+            "> 4. quoted",
+            "* _5._ emphasised",
+            "  - (6) nested",
+        ],
+    )
+    def test_decorated_list_numbering_is_not_a_number(self, line: str):
+        """
+        GIVEN a list item numbered with brackets or behind markdown decoration
+        WHEN the numbers are checked against a grounding with no digits
+        THEN the item number is not flagged
+        """
+        assert find_ungrounded_numbers(f"Steps:\n{line}", ["no digits"]) == []
+
+    def test_an_ordinal_inside_a_sentence_is_not_a_number(self):
+        """
+        GIVEN a Czech ordinal (a number, a dot, a lowercase word)
+        WHEN the numbers are checked against a grounding with no digits
+        THEN the ordinal is not flagged
+        """
+        assert find_ungrounded_numbers("Ve 2. kroku se pocita mediana.", ["nothing"]) == []
+
+    def test_an_ordinal_before_a_lowercase_letter_with_a_diacritic(self):
+        """
+        GIVEN an ordinal followed by a lowercase letter with a diacritic
+        WHEN the numbers are checked
+        THEN the ordinal is not flagged
+        """
+        answer = "Ve 3. \N{LATIN SMALL LETTER C WITH CARON}ast"
+
+        assert find_ungrounded_numbers(answer, ["nothing"]) == []
+
+    def test_a_number_that_ends_a_sentence_is_still_checked(self):
+        """
+        GIVEN an ungrounded number followed by a full stop and a capital
+        WHEN the numbers are checked
+        THEN the number is reported
+        """
+        answer = "The count is 13. The panel agreed."
+
+        assert find_ungrounded_numbers(answer, ["nothing"]) == ["13"]
+
+    def test_a_number_that_ends_a_sentence_before_a_capital_with_a_diacritic(self):
+        """
+        GIVEN an ungrounded number, a full stop, and a capital letter with a diacritic
+        WHEN the numbers are checked
+        THEN the number is reported
+        """
+        answer = "The count is 13. \N{LATIN CAPITAL LETTER C WITH CARON}ast two."
+
+        assert find_ungrounded_numbers(answer, ["nothing"]) == ["13"]
+
+    def test_three_digits_and_a_dot_are_not_an_ordinal(self):
+        """
+        GIVEN a three-digit number, a full stop, and a lowercase word
+        WHEN the numbers are checked
+        THEN the number is reported
+        """
+        assert find_ungrounded_numbers("It is 123. and so on", ["nothing"]) == ["123"]
+
+    @pytest.mark.parametrize(
+        "token",
+        ["v1.2.3", "Qwen3.5", "Qwen3.5-9B", "doc1", "1st", "H2O", "Python3.13.7"],
+    )
+    def test_a_token_mixing_letters_and_digits_is_dropped_whole(self, token: str):
+        """
+        GIVEN a version, a model name or an identifier with a dot-joined digit tail
+        WHEN the numbers are checked against a grounding with no digits
+        THEN no part of it is flagged
+        """
+        assert find_ungrounded_numbers(f"We used {token} here.", ["nothing"]) == []
+
+    def test_a_decimal_next_to_a_unit_is_not_read_in_pieces(self):
+        """
+        GIVEN a decimal glued to a unit
+        WHEN the numbers are checked
+        THEN neither the integer nor the fraction part is flagged
+        """
+        assert find_ungrounded_numbers("It is 8.5mm wide.", ["nothing"]) == []
+
+    @pytest.mark.parametrize(
+        "date",
+        ["2026-09-29", "29.09.2026", "29. 9. 2026", "1.10.2025"],
+    )
+    def test_a_date_is_not_a_number(self, date: str):
+        """
+        GIVEN a date written in ISO or dotted form
+        WHEN the numbers are checked against a grounding with no digits
+        THEN no part of the date is flagged
+        """
+        assert find_ungrounded_numbers(f"Calculated on {date} by the panel.", ["nothing"]) == []
+
+    def test_a_minus_after_an_equals_sign_is_a_sign(self):
+        """
+        GIVEN the project block's ``lower=-2.50``
+        WHEN the answer says -2.5, and then 2.5
+        THEN -2.5 is grounded and 2.5 is not
+        """
+        grounding = ["Median: lower=-2.50, peak=1.00"]
+
+        assert find_ungrounded_numbers("The lower bound is -2.5.", grounding) == []
+        assert find_ungrounded_numbers("The lower bound is 2.5.", grounding) == ["2.5"]
+
+
+class TestStripCitations:
+    """Citation-like brackets can be removed from a text on their own."""
+
+    @_EACH_FORM
+    def test_removes_every_citation_like_form(self, form: str, named: set[int]):
+        """
+        GIVEN a citation in one of the accepted forms
+        WHEN citations are stripped
+        THEN the words around it remain and it does not
+        """
+        assert named
+        assert strip_citations(f"The mean {form} is used.").split() == [
+            "The",
+            "mean",
+            "is",
+            "used.",
+        ]
+
+    def test_removes_the_link_target_that_follows_a_citation(self):
+        """
+        GIVEN a citation written as a markdown link
+        WHEN citations are stripped
+        THEN the target goes with it
+        """
+        assert strip_citations("See [1](https://becomify.app/docs) now").split() == ["See", "now"]
+
+    def test_keeps_a_parenthesis_that_is_not_a_link_target(self):
+        """
+        GIVEN a citation followed by a space and a parenthesis
+        WHEN citations are stripped
+        THEN the parenthesis stays
+        """
+        assert strip_citations("Result [1] (5 experts)").split() == ["Result", "(5", "experts)"]
+
+    def test_keeps_a_bracket_that_is_not_a_citation(self):
+        """
+        GIVEN a bracket holding decimals
+        WHEN citations are stripped
+        THEN the text is unchanged
+        """
+        text = "The range is [11.54, 14.19]."
+
+        assert strip_citations(text) == text
+
+    def test_a_text_without_brackets_is_unchanged(self):
+        """
+        GIVEN a text without brackets
+        WHEN citations are stripped
+        THEN the text is unchanged
+        """
+        assert strip_citations("No brackets, 5 experts.") == "No brackets, 5 experts."
