@@ -150,6 +150,7 @@
     "email": "Email",
     "role": "Role",
     "joined": "Joined",
+    "actions": "Actions",
     "transferOwnershipLabel": "Make {{name}} the owner"
   },
   "transferOwnership": {
