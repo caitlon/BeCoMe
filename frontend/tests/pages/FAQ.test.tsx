@@ -115,4 +115,55 @@ describe('FAQ', () => {
 
     expect(screen.getByText(answer)).toBeInTheDocument();
   });
+
+  it.each([
+    [
+      'en',
+      'Why aren\'t results showing?',
+      'Results appear as soon as the project has at least one opinion. If none are showing, no expert has saved an opinion yet.',
+    ],
+    [
+      'cs',
+      'Proč se nezobrazují výsledky?',
+      'Výsledky se zobrazí, jakmile má projekt alespoň jeden názor. Pokud se nezobrazují, žádný expert zatím svůj názor neuložil.',
+    ],
+    [
+      'en',
+      'How do I edit my opinion?',
+      'Open the project page, change your values and click \'Update Opinion\'. The result is recalculated right away.',
+    ],
+    [
+      'cs',
+      'Jak upravím svůj názor?',
+      'Otevřete stránku projektu, změňte své hodnoty a klikněte na \'Aktualizovat názor\'. Výsledek se ihned přepočítá.',
+    ],
+    [
+      'en',
+      'Why can\'t I see the invitation?',
+      'Make sure you\'re signed in with the email address the invitation was created for. The invitation is not sent by email: it appears in your \'Invitations\' tab. Only someone who already has an account can be invited, so if you registered after the owner tried, ask them to invite you again.',
+    ],
+    [
+      'cs',
+      'Proč nevidím pozvánku?',
+      'Ujistěte se, že jste přihlášeni pod e-mailovou adresou, pro kterou byla pozvánka vytvořena. Pozvánka se neposílá e-mailem: objeví se v záložce \'Pozvánky\'. Pozvat lze jen toho, kdo už má účet. Pokud jste se zaregistrovali až poté, co se vás vlastník projektu pokusil pozvat, požádejte ho, aby vás pozval znovu.',
+    ],
+    [
+      'en',
+      'When should I use BeCoMe?',
+      'BeCoMe is ideal for group decision-making scenarios, especially when experts have contradicting opinions or when you need a compromise quickly while preserving uncertainty information.',
+    ],
+    [
+      'cs',
+      'Kdy mám použít BeCoMe?',
+      'BeCoMe je ideální pro scénáře skupinového rozhodování, zejména když mají experti protichůdné názory nebo když potřebujete rychle najít kompromis při zachování informace o nejistotě.',
+    ],
+  ])('answer matches what the application does (%s: %s)', async (language, question, answer) => {
+    const user = userEvent.setup();
+    await i18n.changeLanguage(language);
+
+    render(<FAQ />);
+    await user.click(screen.getByRole('button', { name: question }));
+
+    expect(screen.getByText(answer)).toBeInTheDocument();
+  });
 });

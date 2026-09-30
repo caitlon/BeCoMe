@@ -21,7 +21,7 @@
     },
     "whenToUse": {
       "question": "Kdy mám použít BeCoMe?",
-      "answer": "BeCoMe je ideální pro scénáře skupinového rozhodování, zejména když mají experti protichůdné názory nebo když potřebujete dosáhnout rychlého konsenzu při zachování informace o nejistotě."
+      "answer": "BeCoMe je ideální pro scénáře skupinového rozhodování, zejména když mají experti protichůdné názory nebo když potřebujete rychle najít kompromis při zachování informace o nejistotě."
     }
   },
   "fuzzyNumbers": {
@@ -65,15 +65,15 @@
     "intro": "Řešení běžných problémů, na které můžete při používání aplikace narazit.",
     "cantSeeInvitation": {
       "question": "Proč nevidím pozvánku?",
-      "answer": "Ujistěte se, že jste přihlášeni s e-mailem, který obdržel pozvánku. Pozvaný uživatel musí být před obdržením pozvánky registrován v systému."
+      "answer": "Ujistěte se, že jste přihlášeni pod e-mailovou adresou, pro kterou byla pozvánka vytvořena. Pozvánka se neposílá e-mailem: objeví se v záložce 'Pozvánky'. Pozvat lze jen toho, kdo už má účet. Pokud jste se zaregistrovali až poté, co se vás vlastník projektu pokusil pozvat, požádejte ho, aby vás pozval znovu."
     },
     "noResults": {
       "question": "Proč se nezobrazují výsledky?",
-      "answer": "Výsledky vyžadují minimálně 2 expertní názory. Ujistěte se, že v projektu odeslalo své názory více expertů."
+      "answer": "Výsledky se zobrazí, jakmile má projekt alespoň jeden názor. Pokud se nezobrazují, žádný expert zatím svůj názor neuložil."
     },
     "howToEditOpinion": {
       "question": "Jak upravím svůj názor?",
-      "answer": "Otevřete stránku projektu a upravte dříve zadané hodnoty. Váš názor bude automaticky aktualizován."
+      "answer": "Otevřete stránku projektu, změňte své hodnoty a klikněte na 'Aktualizovat názor'. Výsledek se ihned přepočítá."
     }
   },
   "cta": {
