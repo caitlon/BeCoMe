@@ -1,8 +1,8 @@
-"""Tests for the rendered account-verification email and its layout file.
+"""Tests for the rendered transactional emails and their shared layout file.
 
 The layout is a data file with placeholders and no words of its own, so a language is
-added by swapping the strings alone. The renderer is a pure function, so every test
-here calls it directly with no settings and no network.
+added by swapping the strings alone. The renderers are pure functions, so every test
+here calls them directly with no settings and no network.
 """
 
 import html as html_lib
@@ -10,14 +10,15 @@ import re
 from dataclasses import asdict, fields
 from html.parser import HTMLParser
 from importlib.resources import files
+from typing import get_args
 
 import pytest
 
 from api.services.email.base import EmailLanguage
-from api.services.email.verification_email import (
-    COPIES,
+from api.services.email.messages import (
+    VERIFICATION_COPIES,
+    EmailCopy,
     RenderedEmail,
-    VerificationCopy,
     format_lifetime,
     render_verification_email,
 )
@@ -57,12 +58,10 @@ _CS_FOOTER = (
     "adresou někdo zaregistroval. Jde o automatickou zprávu, na kterou prosím neodpovídejte."
 )
 
-# Fields of VerificationCopy that are not text placed into the layout.
-_NON_TEXT_FIELDS = {"units"}
 # Fields that land in the head of the document or are rebuilt before they are placed.
 _HEAD_FIELDS = {"lang", "subject", "preheader", "expiry"}
 # Placeholders the caller fills besides the copy.
-_CALLER_PLACEHOLDERS = {"verify_url"}
+_CALLER_PLACEHOLDERS = {"action_url"}
 
 
 def _render(url: str = _URL, minutes: int = _DAY, language: EmailLanguage = "en") -> RenderedEmail:
@@ -265,8 +264,7 @@ class TestEveryPartOfTheCopyReachesTheMessage:
             deleted from the layout, or a field the layout never uses, is caught
         """
         # GIVEN
-        expected = {f.name for f in fields(VerificationCopy)} - _NON_TEXT_FIELDS
-        expected |= _CALLER_PLACEHOLDERS
+        expected = {f.name for f in fields(EmailCopy)} | _CALLER_PLACEHOLDERS
 
         # WHEN
         placeholders = set(re.findall(r"\$([a-z_]+)", _layout()))
@@ -282,11 +280,9 @@ class TestEveryPartOfTheCopyReachesTheMessage:
         THEN each copy field is among them or inside one, the wordmark as a node of its own
         """
         # GIVEN
-        copy = COPIES[language]
+        copy = VERIFICATION_COPIES[language]
         text_fields = {
-            name: value
-            for name, value in asdict(copy).items()
-            if name not in _NON_TEXT_FIELDS | _HEAD_FIELDS
+            name: value for name, value in asdict(copy).items() if name not in _HEAD_FIELDS
         }
 
         # WHEN
@@ -308,7 +304,7 @@ class TestEveryPartOfTheCopyReachesTheMessage:
         THEN the language, the subject and the preheader each appear where the layout puts them
         """
         # GIVEN
-        copy = COPIES[language]
+        copy = VERIFICATION_COPIES[language]
 
         # WHEN
         html = _render(language=language).html
@@ -326,7 +322,7 @@ class TestEveryPartOfTheCopyReachesTheMessage:
         THEN the wordmark, heading, body, button label, not-you and footer are in it
         """
         # GIVEN
-        copy = COPIES[language]
+        copy = VERIFICATION_COPIES[language]
 
         # WHEN
         text = _render(language=language).text
@@ -542,7 +538,7 @@ class TestCzechRendering:
 
 
 class TestFormatLifetime:
-    """The lifetime wording that both the verification and the reset email share."""
+    """The lifetime wording that every email shares."""
 
     @pytest.mark.parametrize(
         ("minutes", "expected"),
@@ -568,6 +564,23 @@ class TestFormatLifetime:
 
         # THEN
         assert window == expected
+
+    @pytest.mark.parametrize("language", get_args(EmailLanguage))
+    def test_every_supported_language_has_unit_words(self, language: EmailLanguage):
+        """
+        GIVEN a language the email type supports
+        WHEN a lifetime is written in it and the verification email is rendered in it
+        THEN both succeed and yield text, so a language missing from a table fails here
+        """
+        # WHEN
+        window = format_lifetime(60, language)
+        rendered = render_verification_email("https://example.test/verify?token=abc", 60, language)
+
+        # THEN
+        assert window
+        assert rendered.subject
+        assert rendered.html
+        assert rendered.text
 
 
 class TestLayoutFile:
