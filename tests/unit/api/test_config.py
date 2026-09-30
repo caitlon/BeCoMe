@@ -1393,3 +1393,83 @@ class TestAssistantSettings:
         assert Settings(secret_key="test-secret-key", assistant_rate_limit_per_hour=0)
         with pytest.raises(ValidationError, match="assistant_rate_limit_per_hour"):
             Settings(secret_key="test-secret-key", assistant_rate_limit_per_hour=-1)
+
+    def test_langsmith_tracing_is_off_by_default(self, monkeypatch, tmp_path):
+        """
+        GIVEN Settings without an explicit override and no .env file in reach
+        WHEN constructed
+        THEN LangSmith tracing is off and has no API key
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("ASSISTANT_LANGSMITH_ENABLED", raising=False)
+        monkeypatch.delenv("ASSISTANT_LANGSMITH_API_KEY", raising=False)
+
+        # WHEN
+        settings = Settings(secret_key="test-secret-key")
+
+        # THEN
+        assert settings.assistant_langsmith_enabled is False
+        assert settings.assistant_langsmith_api_key is None
+
+    @pytest.mark.parametrize("api_key", [None, "", "   "])
+    def test_rejects_langsmith_tracing_without_an_api_key(self, api_key, monkeypatch, tmp_path):
+        """
+        GIVEN LangSmith tracing switched on with no key, an empty key and a blank key
+        WHEN Settings is constructed
+        THEN each is refused, naming the key
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("ASSISTANT_LANGSMITH_ENABLED", raising=False)
+        monkeypatch.delenv("ASSISTANT_LANGSMITH_API_KEY", raising=False)
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="assistant_langsmith_api_key"):
+            Settings(
+                secret_key="test-secret-key",
+                assistant_langsmith_enabled=True,
+                assistant_langsmith_api_key=api_key,
+            )
+
+    def test_accepts_langsmith_tracing_with_an_api_key(self, monkeypatch, tmp_path):
+        """
+        GIVEN LangSmith tracing switched on with a key
+        WHEN Settings is constructed
+        THEN validation passes
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("ASSISTANT_LANGSMITH_ENABLED", raising=False)
+        monkeypatch.delenv("ASSISTANT_LANGSMITH_API_KEY", raising=False)
+
+        # WHEN
+        settings = Settings(
+            secret_key="test-secret-key",
+            assistant_langsmith_enabled=True,
+            assistant_langsmith_api_key="lsv2_test",
+        )
+
+        # THEN
+        assert settings.assistant_langsmith_enabled is True
+
+    def test_a_missing_key_is_fine_while_tracing_is_off(self, monkeypatch, tmp_path):
+        """
+        GIVEN LangSmith tracing switched off and no key
+        WHEN Settings is constructed
+        THEN validation passes, since the key is only needed to trace
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("ASSISTANT_LANGSMITH_ENABLED", raising=False)
+        monkeypatch.delenv("ASSISTANT_LANGSMITH_API_KEY", raising=False)
+
+        # WHEN
+        settings = Settings(
+            secret_key="test-secret-key",
+            assistant_langsmith_enabled=False,
+            assistant_langsmith_api_key=None,
+        )
+
+        # THEN
+        assert settings.assistant_langsmith_enabled is False

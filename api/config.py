@@ -281,6 +281,9 @@ class Settings(BaseSettings):
     # so its version is part of corpus_version. A relative path resolves from the
     # repository root. None means no captions file, and a "captions" build then fails.
     assistant_captions_file: str | None = None
+    # LangSmith tracing of the assistant, switched on by hand for local work. With it on,
+    # the full text of questions, tool replies and answers goes to the endpoint below, so
+    # it needs a key (_validate_assistant_langsmith) and defaults to the EU endpoint.
     assistant_langsmith_enabled: bool = False
     assistant_langsmith_api_key: str | None = None
     assistant_langsmith_endpoint: str = "https://eu.api.smith.langchain.com"
@@ -393,6 +396,29 @@ class Settings(BaseSettings):
                 "assistant_enabled must stay false on a deployed service (the "
                 f"{self.environment.value} profile here); the assistant runs only on "
                 "a developer machine"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_assistant_langsmith(self) -> "Settings":
+        """Refuse LangSmith tracing that has no API key to send it with.
+
+        With tracing on and no key, every traced call would fail to reach LangSmith,
+        and nothing would say so until somebody looked for the traces. A missing key
+        is a configuration error, raised here, at start-up. A blank key counts as
+        missing: ``ASSISTANT_LANGSMITH_API_KEY=`` in an env file arrives as an empty
+        string. With tracing off the key is not needed.
+
+        :return: The validated settings instance.
+        :raises ValueError: If assistant_langsmith_enabled is true and
+            assistant_langsmith_api_key is missing or blank.
+        """
+        if (
+            self.assistant_langsmith_enabled
+            and not (self.assistant_langsmith_api_key or "").strip()
+        ):
+            raise ValueError(
+                "assistant_langsmith_api_key must be set when assistant_langsmith_enabled is true"
             )
         return self
 
