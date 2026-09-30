@@ -38,6 +38,13 @@ describe('CaseStudy - Budget', () => {
     expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument();
   });
 
+  it('shows "Create Account" linking to /register in the call to action', () => {
+    render(<CaseStudy />);
+
+    const cta = within(screen.getByRole('main')).getByRole('link', { name: 'Create Account' });
+    expect(cta).toHaveAttribute('href', '/register');
+  });
+
   it('renders expert count and data type', () => {
     render(<CaseStudy />);
 

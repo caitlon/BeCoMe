@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { screen, within } from '@testing-library/react';
 import { render, framerMotionMock } from '@tests/utils';
-import Landing from '@/pages/Landing';
+import About from '@/pages/About';
 
 vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => ({
@@ -16,14 +16,14 @@ vi.mock('@/contexts/AuthContext', () => ({
 
 vi.mock('framer-motion', () => framerMotionMock);
 
-describe('Landing - Authenticated', () => {
-  it('shows "Go to Projects" in the hero and the call to action, both linking to /projects', () => {
-    render(<Landing />);
-    const main = within(screen.getByRole('main'));
+describe('About - Authenticated', () => {
+  it('shows one "Go to Projects" link to /projects and no "Create Account" link', () => {
+    render(<About />);
 
-    const buttons = main.getAllByRole('link', { name: /go to projects/i });
-    expect(buttons).toHaveLength(2);
-    buttons.forEach((button) => expect(button).toHaveAttribute('href', '/projects'));
     expect(screen.queryByRole('link', { name: 'Create Account' })).not.toBeInTheDocument();
+    const main = within(screen.getByRole('main'));
+    expect(main.getByRole('link', { name: 'Go to Projects' })).toHaveAttribute('href', '/projects');
+    // Call to action and footer
+    expect(screen.getAllByRole('link', { name: 'Go to Projects' })).toHaveLength(2);
   });
 });

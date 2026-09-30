@@ -17,6 +17,7 @@ import {
   useLocalizedCaseStudyById,
   useLocalizedLikertLabel,
 } from "@/hooks/useLocalizedCaseStudies";
+import { useAuth } from "@/contexts/AuthContext";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 const VISIBLE_BARS = 8;
@@ -24,6 +25,7 @@ const VISIBLE_BARS = 8;
 const CaseStudy = () => {
   const { t } = useTranslation("caseStudies");
   const { t: tCommon } = useTranslation();
+  const { isAuthenticated } = useAuth();
   const { id } = useParams<{ id: string }>();
   const caseStudy = useLocalizedCaseStudyById(id || "");
   useDocumentTitle(
@@ -388,7 +390,9 @@ const CaseStudy = () => {
             {t("common.ctaDescription")}
           </p>
           <Button size="lg" asChild>
-            <Link to="/register">{tCommon("nav.getStarted")}</Link>
+            <Link to={isAuthenticated ? "/projects" : "/register"}>
+              {isAuthenticated ? tCommon("nav.goToProjects") : tCommon("nav.getStarted")}
+            </Link>
           </Button>
         </div>
       </section>

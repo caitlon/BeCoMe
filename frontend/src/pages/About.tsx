@@ -7,12 +7,14 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PageShell } from "@/components/layout/PageShell";
 import { HeroSection } from "@/components/layout/HeroSection";
+import { useAuth } from "@/contexts/AuthContext";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { fadeInUp } from "@/lib/motion";
 
 const About = () => {
   const { t } = useTranslation("about");
   const { t: tCommon } = useTranslation();
+  const { isAuthenticated } = useAuth();
   useDocumentTitle(tCommon("pageTitle.about"));
 
   useEffect(() => {
@@ -184,8 +186,8 @@ const About = () => {
               className="gap-2 bg-transparent border-primary-foreground/30 text-primary-foreground hover:bg-primary-foreground/10"
               asChild
             >
-              <Link to="/register">
-                {t("cta.startProject")}
+              <Link to={isAuthenticated ? "/projects" : "/register"}>
+                {isAuthenticated ? tCommon("nav.goToProjects") : t("cta.startProject")}
                 <ArrowRight className="h-4 w-4" />
               </Link>
             </Button>
