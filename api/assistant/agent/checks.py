@@ -5,7 +5,7 @@ assistant, so an offline evaluation script can use them as they are.
 """
 
 import re
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from decimal import ROUND_DOWN, ROUND_HALF_UP, Context, Decimal
 
@@ -40,48 +40,48 @@ _LABEL_WORDS = (
 # by commas, semicolons, spaces, hyphens or en dashes, each with an optional label word
 # in front (then an optional space, dot, colon, hash or numero sign).
 _LABEL = "(?:" + "|".join(_LABEL_WORDS) + r")[\s.:#\u2116]*"
-_CITATION_ITEM = rf"(?:{_LABEL})?[0-9]{{1,3}}"
+_CITATION_ITEM = rf"(?:{_LABEL})?\d{{1,3}}"
 _CITATION_CONTENT = re.compile(
     rf"\s*{_CITATION_ITEM}(?:[,;\s\-\u2013]+{_CITATION_ITEM})*\s*", re.IGNORECASE
 )
 _LABEL_WORD = re.compile(_LABEL, re.IGNORECASE)
-_CITED_RANGE = re.compile(r"([0-9]{1,3})(?:\s*[-\u2013]\s*([0-9]{1,3}))?")
+_CITED_RANGE = re.compile(r"(\d{1,3})(?:\s*[-\u2013]\s*(\d{1,3}))?")
 
-# What is dropped from an answer before its numbers are scanned.
-_LINK_TARGET = re.compile(r"\]\([^)\s]+\)")
+# What is dropped from an answer before its numbers are scanned. A link's target stops
+# at the first bracket, parenthesis or space, so that a text made of unclosed "](" never
+# makes the scan run to the end of the text once per bracket.
+_LINK_TARGET = re.compile(r"\]\([^()\[\]\s]+\)")
 _BARE_URL = re.compile(r"https?://\S+")
-_DATE = re.compile(
-    r"(?<![\w.])(?:[0-9]{4}-[0-9]{2}-[0-9]{2}|[0-9]{1,2}\.[ ]?[0-9]{1,2}\.[ ]?[0-9]{4})(?![0-9])"
-)
-# A word that holds both a letter and a digit (v1, Qwen3, doc1, 1st, H2O), or a name that
-# starts with a capital, then letters, a hyphen and a digit run (COVID-19, GPT-4,
-# ISO-8601), with any dot-joined digit tail (v1.2.3, Qwen3.5). A lowercase word before a
-# hyphen (error-15.3, peak-3, n-1) is not a name. The lookbehind keeps a digit tail that
-# follows a plain number ("14.19px") for the neighbour check instead.
-_MIXED_TOKEN = re.compile(
-    r"(?<![\w.])(?:(?=\w*[^\W\d])(?=\w*[0-9])\w+|[A-Z][^\W\d_]*-[0-9]+)(?:\.[0-9]+)*"
-)
+_DATE_ISO = re.compile(r"(?<![\w.])\d{4}-\d{2}-\d{2}(?!\d)")
+_DATE_DOTTED = re.compile(r"(?<![\w.])\d{1,2}\. ?\d{1,2}\. ?\d{4}(?!\d)")
+# A word, its hyphen-joined digit run, and its dot-joined digit tail (v1.2.3, COVID-19.5).
+# Whether the word holds a digit and a letter, or is a capitalised name before a hyphen
+# and digits, is decided in _drop_words.
+_WORD = re.compile(r"(\w+)(-\d+)?((?:\.\d+)*)")
 # What replaces a dropped token: neither whitespace nor a letter, so that a hyphen right
 # after it does not read as a sign, and the digits around it do not run together.
 _DROPPED = "\x00"
 # A list number at the start of a line: 1. or 2) or (3), behind any markdown decoration.
-_LIST_NUMBERING = re.compile(r"^[>#*_\- \t]*(?:\([0-9]+\)|[0-9]+[.)])[*_]*\s", re.MULTILINE)
+_LIST_NUMBER = re.compile(r"^[>#*_\- \t]*\d+[.)][*_]*\s", re.MULTILINE)
+_LIST_NUMBER_IN_BRACKETS = re.compile(r"^[>#*_\- \t]*\(\d+\)[*_]*\s", re.MULTILINE)
 # An ordinal inside a sentence, as Czech writes it: one or two digits, a dot, then
 # whitespace on the same line. Whether it is one is decided by the case of the next letter.
-_ORDINAL = re.compile(r"(?<![0-9.,])[0-9]{1,2}\.([^\S\r\n]+)(\S)")
+_ORDINAL = re.compile(r"(?<![\d.,])\d{1,2}\.([^\S\r\n]+)(\S)")
 # A markdown link's target, when it directly follows a citation.
-_LINK_AFTER = re.compile(r"\([^)\s]*\)")
+_LINK_AFTER = re.compile(r"\([^()\[\]\s]*\)")
 
+# The forms of a number, tried in this order at each position (the first that matches
+# wins), and the pattern of each. Only the caller of _read decides what a form means.
 _SPACE = "[ \u00a0\u202f]"
-# The four forms of a number, tried in this order at each position.
-_NUMBER = re.compile(
-    rf"(?P<spaced>[0-9]{{1,3}}(?:{_SPACE}[0-9]{{3}})+(?![0-9])(?:,[0-9]+)?)"
-    r"|(?P<grouped>[0-9]{1,3}(?:,[0-9]{3})+\.[0-9]+)"
-    r"|(?P<dotted>[0-9]{1,3}(?:\.[0-9]{3})+,[0-9]+)"
-    r"|(?P<commas>[0-9]+(?:\.[0-9]+)?(?:,[0-9]+(?:\.[0-9]+)?)+)"
-    r"|(?P<dotgroup>[0-9]{1,3}(?:\.[0-9]{3})+(?![0-9]))"
-    r"|(?P<plain>[0-9]+(?:\.[0-9]+)?)"
-)
+_NUMBER_FORMS = {
+    "spaced": rf"\d{{1,3}}(?:{_SPACE}\d{{3}})+(?!\d)(?:,\d+)?",
+    "grouped": r"\d{1,3}(?:,\d{3})+\.\d+",
+    "dotted": r"\d{1,3}(?:\.\d{3})+,\d+",
+    "commas": r"\d+(?:\.\d+)?(?:,\d+(?:\.\d+)?)+",
+    "dotgroup": r"\d{1,3}(?:\.\d{3})+(?!\d)",
+    "plain": r"\d+(?:\.\d+)?",
+}
+_NUMBER = re.compile("|".join(f"(?P<{form}>{pattern})" for form, pattern in _NUMBER_FORMS.items()))
 _LETTER_OR_UNDERSCORE = re.compile(r"[^\W\d]")
 _MINUS_SIGNS = "-\u2212"
 _SIGN_PREFIXES = "([{=,;:"
@@ -158,41 +158,104 @@ class _Token:
     readings: list[list[Decimal]]
 
 
+def _read_spaced(text: str) -> list[list[Decimal]]:
+    """Read ``1 000`` or ``1 000,5``: one number, or a list when no group starts with 0.
+
+    :param text: The matched text.
+    :return: The readings.
+    """
+    groups = re.split(_SPACE, text)
+    readings = [[Decimal(re.sub(_SPACE, "", text).replace(",", "."))]]
+    if not any(group.startswith("0") for group in groups[1:]):
+        readings.append([Decimal(group.replace(",", ".")) for group in groups])
+    return readings
+
+
+def _read_grouped(text: str) -> list[list[Decimal]]:
+    """Read ``1,234.56``: comma-grouped thousands with a dot decimal.
+
+    :param text: The matched text.
+    :return: The one reading.
+    """
+    return [[Decimal(text.replace(",", ""))]]
+
+
+def _read_dotted(text: str) -> list[list[Decimal]]:
+    """Read ``1.000,50``: dot-grouped thousands with a decimal comma.
+
+    :param text: The matched text.
+    :return: The one reading.
+    """
+    return [[Decimal(text.replace(".", "").replace(",", "."))]]
+
+
+def _read_dotgroup(text: str) -> list[list[Decimal]]:
+    """Read ``1.234`` or ``12.345.678``: a decimal, or thousands, or both.
+
+    A single dot group may be a decimal; several can only be thousands, and a thousands
+    number never starts with zero.
+
+    :param text: The matched text.
+    :return: The readings.
+    """
+    readings: list[list[Decimal]] = []
+    if not text.startswith("0"):
+        readings.append([Decimal(text.replace(".", ""))])
+    if text.count(".") == 1:
+        readings.append([Decimal(text)])
+    return readings
+
+
+def _read_commas(text: str) -> list[list[Decimal]]:
+    """Read comma-joined digit groups: a list, a decimal comma, or thousands.
+
+    A later part of exactly three digits that starts with zero is a thousands group and
+    never a list member. Parts with a dot decimal can only be a list.
+
+    :param text: The matched text.
+    :return: The readings.
+    """
+    parts = text.split(",")
+    zero_led = any(len(part) == 3 and part.startswith("0") for part in parts[1:])
+    readings = [] if zero_led else [[Decimal(part) for part in parts]]
+    if "." in text:
+        return readings
+    if len(parts) == 2:
+        readings.append([Decimal(f"{parts[0]}.{parts[1]}")])
+    thousands = len(parts[0]) <= 3 and all(len(part) == 3 for part in parts[1:])
+    if thousands and not parts[0].startswith("0"):
+        readings.append([Decimal("".join(parts))])
+    return readings
+
+
+def _read_plain(text: str) -> list[list[Decimal]]:
+    """Read ``14`` or ``14.19``.
+
+    :param text: The matched text.
+    :return: The one reading.
+    """
+    return [[Decimal(text)]]
+
+
+_READERS: dict[str, Callable[[str], list[list[Decimal]]]] = {
+    "spaced": _read_spaced,
+    "grouped": _read_grouped,
+    "dotted": _read_dotted,
+    "commas": _read_commas,
+    "dotgroup": _read_dotgroup,
+    "plain": _read_plain,
+}
+
+
 def _readings(form: str, text: str, negative: bool) -> list[list[Decimal]]:
     """List the ways a matched number can be read.
 
-    :param form: Which form matched: ``spaced``, ``grouped``, ``commas`` or ``plain``.
+    :param form: Which form matched, a key of ``_NUMBER_FORMS``.
     :param text: The matched text, without a sign.
     :param negative: Whether the number carries a minus sign.
     :return: The readings, each a list of numbers.
     """
-    if form == "spaced":
-        groups = re.split(_SPACE, text)
-        readings = [[Decimal(re.sub(_SPACE, "", text).replace(",", "."))]]
-        if not any(group.startswith("0") for group in groups[1:]):
-            readings.append([Decimal(group.replace(",", ".")) for group in groups])
-    elif form == "grouped":
-        readings = [[Decimal(text.replace(",", ""))]]
-    elif form == "dotted":
-        readings = [[Decimal(text.replace(".", "").replace(",", "."))]]
-    elif form == "dotgroup":
-        readings = []
-        if not text.startswith("0"):
-            readings.append([Decimal(text.replace(".", ""))])
-        if text.count(".") == 1:
-            readings.append([Decimal(text)])
-    elif form == "commas":
-        parts = text.split(",")
-        zero_led = any(len(part) == 3 and part.startswith("0") for part in parts[1:])
-        readings = [] if zero_led else [[Decimal(part) for part in parts]]
-        if "." not in text:
-            if len(parts) == 2:
-                readings.append([Decimal(f"{parts[0]}.{parts[1]}")])
-            thousands = len(parts[0]) <= 3 and all(len(part) == 3 for part in parts[1:])
-            if thousands and not parts[0].startswith("0"):
-                readings.append([Decimal("".join(parts))])
-    else:
-        readings = [[Decimal(text)]]
+    readings = _READERS[form](text)
     if negative:
         readings = [[reading[0].copy_negate(), *reading[1:]] for reading in readings]
     return readings
@@ -265,8 +328,6 @@ def _replace_citations(text: str, filler: str) -> str:
     pieces: list[str] = []
     position = 0
     for start, end, _numbers in _citation_spans(text):
-        if start < position:
-            continue
         link = _LINK_AFTER.match(text, end)
         pieces.append(text[position:start])
         pieces.append(filler)
@@ -287,17 +348,41 @@ def _drop_ordinals(text: str) -> str:
     return _ORDINAL.sub(lambda match: match[1] + match[2] if match[2].islower() else match[0], text)
 
 
+def _drop_words(text: str) -> str:
+    """Remove names and identifiers that hold digits, such as ``Qwen3.5`` or ``COVID-19``.
+
+    A word that holds both a letter and a digit (``v1``, ``Qwen3``, ``doc1``, ``1st``,
+    ``H2O``) is dropped with its dot-joined digit tail (``v1.2.3``); a hyphen-joined
+    digit run after it stays. A word made of letters that starts with a capital, a
+    hyphen and a digit run (``COVID-19``, ``GPT-4``, ``ISO-8601``, ``\u010cSN-73``) is a
+    name and goes whole. A lowercase word before a hyphen (``error-15.3``, ``peak-3``,
+    ``n-1``) is not a name.
+
+    :param text: The text to clean.
+    :return: The text with each dropped token replaced by a filler.
+    """
+
+    def replace(match: re.Match[str]) -> str:
+        word, hyphen, tail = match.groups()
+        if not word.isdecimal() and any(char.isdecimal() for char in word):
+            return _DROPPED + hyphen + tail if hyphen else _DROPPED
+        if hyphen and word.isalpha() and word[0].isupper():
+            return _DROPPED
+        return match[0]
+
+    return _WORD.sub(replace, text)
+
+
 def _strip_answer(answer: str) -> str:
     """Remove what is not a data point from an answer, before its numbers are scanned.
 
     The drops run in this order: the target of every markdown link, bare URLs,
-    citation-like brackets, dates, tokens that mix letters and digits, list numbering
-    (``1.``, ``2)``, ``(3)``, behind markdown decoration), and last ordinals. Links and
-    URLs go first so that a digit in an address is never read; citations go before the
-    mixed tokens because ``[doc1]`` is a citation; dates and mixed tokens go before
-    numbering and ordinals because those match on a number and a dot. A dropped token
-    leaves a filler that is not whitespace, so a hyphen right after it (``doc1-5``) is
-    not read as a minus sign.
+    citation-like brackets, dates, words that hold digits, list numbering (``1.``,
+    ``2)``, ``(3)``, behind markdown decoration), and last ordinals. Links and URLs go
+    first so that a digit in an address is never read; citations go before the words
+    because ``[doc1]`` is a citation; dates and words go before numbering and ordinals
+    because those match on a number and a dot. A dropped token leaves a filler that is
+    not whitespace, so a hyphen right after it (``doc1-5``) is not read as a minus sign.
 
     :param answer: The model's final answer text.
     :return: The cleaned text.
@@ -305,9 +390,11 @@ def _strip_answer(answer: str) -> str:
     text = _LINK_TARGET.sub("]", answer)
     text = _BARE_URL.sub(_DROPPED, text)
     text = _replace_citations(text, _DROPPED)
-    text = _DATE.sub(_DROPPED, text)
-    text = _MIXED_TOKEN.sub(_DROPPED, text)
-    text = _LIST_NUMBERING.sub("", text)
+    text = _DATE_ISO.sub(_DROPPED, text)
+    text = _DATE_DOTTED.sub(_DROPPED, text)
+    text = _drop_words(text)
+    text = _LIST_NUMBER.sub("", text)
+    text = _LIST_NUMBER_IN_BRACKETS.sub("", text)
     return _drop_ordinals(text)
 
 
@@ -373,7 +460,8 @@ def find_ungrounded_numbers(answer: str, grounding_texts: list[str]) -> list[str
 
     Before scanning, the answer loses the target of markdown links, bare URLs,
     citation-like brackets (see :func:`strip_citations`), dates, names that hold a digit
-    (``v1.2``, ``Qwen3.5``, ``doc1``, ``1st``, ``H2O``, ``COVID-19``), list numbering
+    (``v1.2``, ``Qwen3.5``, ``doc1``, ``1st``, ``H2O``, and names that start with a
+    capital of any script before a hyphen and digits, ``COVID-19``), list numbering
     and ordinals; the order is in ``_strip_answer``. A number is then a digit run, with
     a sign when a minus opens the text or follows whitespace, an opening bracket, an
     equals sign or a separator (comma, semicolon, colon), and never one that sits next
@@ -397,8 +485,10 @@ def find_ungrounded_numbers(answer: str, grounding_texts: list[str]) -> list[str
 
     Other known limits: a number glued to a unit (``8mm``) and a number spelled as a
     word are not checked; the check matches a bag of numbers, so a grounded number
-    attached to the wrong quantity passes; and a citation written outside square
-    brackets (``(Source 3)``) is not seen by :func:`check_citations`.
+    attached to the wrong quantity passes; a citation written outside square
+    brackets (``(Source 3)``) is not seen by :func:`check_citations`; and a link target
+    that holds a bracket or a parenthesis is not recognised as a target (a bare
+    ``http`` address in it is still dropped).
 
     :param answer: The model's final answer text.
     :param grounding_texts: Everything the answer may legitimately quote: the source
