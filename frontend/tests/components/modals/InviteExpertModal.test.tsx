@@ -68,7 +68,10 @@ describe('InviteExpertModal', () => {
     await user.click(getSubmitButton());
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Inviting...' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Inviting...' })).toHaveAttribute(
+        'aria-disabled',
+        'true'
+      );
     });
   });
 
@@ -183,7 +186,7 @@ describe('InviteExpertModal', () => {
 
       expect(
         await screen.findByRole('button', { name: 'Vytváření pozvánky...' })
-      ).toBeDisabled();
+      ).toHaveAttribute('aria-disabled', 'true');
     } finally {
       await i18n.changeLanguage('en');
     }
