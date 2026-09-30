@@ -23,7 +23,7 @@
   },
   "expertOpinions": {
     "title": "Entering Expert Opinions",
-    "intro": "Experts answer the raised question by assessing a quantitative parameter. They can express their responses in three ways:",
+    "intro": "Experts answer the raised question by assessing a quantitative parameter. The form takes one input format, a fuzzy triangular number, and it covers three kinds of answer:",
     "crisp": {
       "title": "Crisp Number",
       "description": "A single precise value when the expert is confident about their estimate. In the interface, enter the same value in all three fields (Lower = Peak = Upper).",
@@ -31,7 +31,7 @@
     },
     "fuzzy": {
       "title": "Fuzzy Triangular Number",
-      "description": "A triangular membership function with three values representing uncertainty. This is the most common input format.",
+      "description": "A triangular membership function with three values representing uncertainty. This is the general form of an answer.",
       "lowerLabel": "Lower:",
       "lower": "Lower bound (pessimistic estimate) - the minimum realistic value",
       "peakLabel": "Peak:",
@@ -43,7 +43,7 @@
     },
     "likert": {
       "title": "Likert Scale",
-      "description": "For agreement/disagreement questions, use linguistic terms mapped to numeric values:",
+      "description": "For agreement/disagreement questions on a 0 to 100 scale, turn your position into numbers with this mapping. There is no separate Likert input yet, so you enter the numbers yourself:",
       "scale": {
         "stronglyDisagree": "Strongly disagree = 0",
         "ratherDisagree": "Rather disagree = 25",
