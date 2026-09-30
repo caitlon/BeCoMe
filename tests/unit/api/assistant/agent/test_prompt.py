@@ -1,7 +1,11 @@
 """Tests for the system prompt and the context-block renderer."""
 
+import re
 from datetime import UTC, datetime
 
+import pytest
+
+from api.assistant.agent.checks import find_ungrounded_numbers
 from api.assistant.agent.prompt import (
     FORMULA_NUMBERS,
     PINNED_FACTS,
@@ -14,6 +18,8 @@ from api.assistant.agent.prompt import (
 )
 from api.assistant.rag.retrieval import RetrievedChunk
 from api.assistant.views import FuzzyView, ResultView
+from api.db.models import Project
+from api.services.agreement_level import derive_agreement
 
 
 def _chunk(
@@ -84,16 +90,44 @@ class TestSystemPrompt:
         assert "<project_data>" in STYLE
 
 
-class TestFormulaNumbers:
-    """The divisors of the method's own formulas are listed for the number check."""
+class TestPinnedThresholds:
+    """The thresholds the prompt states are the ones the agreement rule applies."""
 
-    def test_lists_the_divisors_of_the_midpoint_and_the_centroid(self):
+    @pytest.mark.parametrize("number", PINNED_NUMBERS)
+    def test_the_agreement_label_changes_just_above_each_pinned_percent(self, number: str):
         """
-        GIVEN the formula numbers
-        WHEN they are read
-        THEN they are 2 (midpoint, half-distance) and 3 (triangular centroid)
+        GIVEN a scale 100 wide that does not start at zero
+        WHEN the error is exactly the pinned percent of the width, and just above it
+        THEN the agreement rule gives the two errors different labels
         """
-        assert FORMULA_NUMBERS == ("2", "3")
+        project = Project(name="P", scale_min=-50.0, scale_max=50.0, scale_unit="%")
+        at_threshold = derive_agreement(project, float(number))
+        just_above = derive_agreement(project, float(number) + 0.5)
+
+        assert at_threshold != just_above
+
+    def test_the_pinned_facts_state_no_other_number(self):
+        """
+        GIVEN the pinned facts
+        WHEN their digit runs are collected
+        THEN they are exactly the pinned numbers
+        """
+        assert set(re.findall(r"[0-9]+", PINNED_FACTS)) == set(PINNED_NUMBERS)
+
+
+class TestFormulaNumbers:
+    """The divisors of the method's own formulas ground an answer that states them."""
+
+    def test_passed_as_grounding_they_let_the_formulas_through(self):
+        """
+        GIVEN an answer that states the midpoint and centroid formulas
+        WHEN the numbers are checked with the formula numbers as grounding, and without
+        THEN nothing is flagged with them, and 2 and 3 are flagged without them
+        """
+        answer = "The midpoint divides by 2 and the centroid is (a + b + c) / 3."
+
+        assert find_ungrounded_numbers(answer, [*PINNED_NUMBERS, *FORMULA_NUMBERS]) == []
+        assert find_ungrounded_numbers(answer, list(PINNED_NUMBERS)) == ["2", "3"]
 
 
 class TestFormatNumber:
@@ -231,17 +265,22 @@ class TestRenderContextBlock:
         """
         assert "Agreement level: high" in render_context_block([], _result())
 
-    def test_the_likert_line_appears_only_with_a_value(self):
+    def test_the_likert_line_appears_only_with_a_value_and_a_decision(self):
         """
-        GIVEN one result with a Likert value and one without
-        WHEN both blocks are rendered
-        THEN only the first has the Likert line
+        GIVEN results with both Likert fields, with neither, and with only one of them
+        WHEN the blocks are rendered
+        THEN only the first has the Likert line, and no line reads "None"
         """
-        with_value = render_context_block([], _result(likert_value=4, likert_decision="agree"))
-        without = render_context_block([], _result())
+        both = render_context_block([], _result(likert_value=4, likert_decision="agree"))
+        neither = render_context_block([], _result())
+        value_only = render_context_block([], _result(likert_value=4))
+        decision_only = render_context_block([], _result(likert_decision="agree"))
 
-        assert "Likert reading: 4 (agree)" in with_value
-        assert "Likert" not in without
+        assert "Likert reading: 4 (agree)" in both
+        assert "Likert" not in neither
+        assert "Likert" not in value_only
+        assert "Likert" not in decision_only
+        assert "None" not in value_only
 
     def test_puts_the_excerpts_before_the_project_data(self):
         """

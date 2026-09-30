@@ -1,8 +1,6 @@
 """Tests for the source registry and the per-turn agent context."""
 
-from unittest.mock import MagicMock
-
-from api.assistant.agent.context import AssistantContext, SourceRegistry
+from api.assistant.agent.context import SourceRegistry
 from api.assistant.rag.corpus import Layer
 from api.assistant.rag.retrieval import RetrievedChunk
 
@@ -173,26 +171,3 @@ class TestSourceRegistry:
         registry.add(_chunk("words", title="Report 2021"))
 
         assert any("2021" in text for text in registry.texts())
-
-
-class TestAssistantContext:
-    """The context is a plain, mutable bag the tools append to as they run."""
-
-    def test_tool_outputs_starts_empty_and_is_mutable(self):
-        """
-        GIVEN a fresh context
-        WHEN a tool appends its output
-        THEN the output is kept
-        """
-        ctx = AssistantContext(
-            client=MagicMock(),
-            retriever=MagicMock(),
-            sources=SourceRegistry(),
-            tool_outputs=[],
-            current_project_id=None,
-            locale="en",
-        )
-
-        ctx.tool_outputs.append("<docs>...</docs>")
-
-        assert ctx.tool_outputs == ["<docs>...</docs>"]
