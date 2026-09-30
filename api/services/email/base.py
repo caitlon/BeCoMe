@@ -26,12 +26,15 @@ class EmailSender(ABC):
         """
 
     @abstractmethod
-    async def send_email_verification(self, *, to_email: str, verify_url: str) -> None:
+    async def send_email_verification(
+        self, *, to_email: str, verify_url: str, language: EmailLanguage
+    ) -> None:
         """Send (or log) an account-verification message.
 
         :param to_email: Recipient email address.
         :param verify_url: Full frontend link the user clicks to activate the account;
             it already carries the raw verification token as a query parameter.
+        :param language: Language the message is written in.
         :raises EmailSendError: If a real send fails.
         """
 

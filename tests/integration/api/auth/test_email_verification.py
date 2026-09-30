@@ -71,6 +71,31 @@ def _resend(client, email: str, password: str = DEFAULT_TEST_PASSWORD):
     )
 
 
+def _register_with_header(client, email: str, accept_language: str | None):
+    """Register with an Accept-Language header, or without one when it is ``None``."""
+    headers = {} if accept_language is None else {"Accept-Language": accept_language}
+    return client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": email,
+            "password": DEFAULT_TEST_PASSWORD,
+            "first_name": "Test",
+            "last_name": "User",
+        },
+        headers=headers,
+    )
+
+
+def _resend_with_header(client, email: str, accept_language: str | None):
+    """Ask for a fresh link with an Accept-Language header, or without one."""
+    headers = {} if accept_language is None else {"Accept-Language": accept_language}
+    return client.post(
+        "/api/v1/auth/resend-verification",
+        json={"email": email, "password": DEFAULT_TEST_PASSWORD},
+        headers=headers,
+    )
+
+
 def _mails_to(sender, email: str) -> list[dict]:
     """Return every email of any kind that went to one address."""
     return [
@@ -229,7 +254,9 @@ class TestRegistrationBranches:
                 """Raise to simulate a provider failure."""
                 raise EmailSendError("send failed")
 
-            async def send_email_verification(self, *, to_email: str, verify_url: str) -> None:
+            async def send_email_verification(
+                self, *, to_email: str, verify_url: str, language: str
+            ) -> None:
                 """Raise to simulate a provider failure."""
                 raise EmailSendError("send failed")
 
@@ -247,6 +274,46 @@ class TestRegistrationBranches:
         # THEN: the account still exists, waiting for a resend
         assert response.status_code == 202
         assert stored_accounts(client, "unreachable@example.com")
+
+
+class TestRegistrationEmailLanguage:
+    """The registration email goes out in the language the request's header names."""
+
+    @pytest.mark.parametrize(
+        ("header", "expected"),
+        [
+            ("cs", "cs"),
+            ("cs-CZ,cs;q=0.9,en;q=0.8", "cs"),
+            ("en-US,en;q=0.9", "en"),
+            (None, "en"),
+            (";;;,q=,==", "en"),
+            ("x" * 5000, "en"),
+        ],
+    )
+    def test_the_verification_email_language_follows_accept_language(
+        self, client, fake_email, header, expected
+    ):
+        """
+        GIVEN a registration with a given Accept-Language header, or none
+        WHEN it is accepted
+        THEN the verification email is sent in the matching language, English by default
+        """
+        # WHEN
+        response = _register_with_header(client, "lang@example.com", header)
+
+        # THEN
+        assert response.status_code == 202
+        assert [call["language"] for call in fake_email.verification_calls] == [expected]
+
+    def test_a_garbage_header_answers_like_no_header(self, client, fake_email):
+        """A bad header is not a client error: the answer is the ordinary 202."""
+        # WHEN
+        with_header = _register_with_header(client, "a@example.com", ";;;,q=,==")
+        without = _register_with_header(client, "b@example.com", None)
+
+        # THEN
+        assert with_header.status_code == without.status_code == 202
+        assert with_header.content == without.content
 
 
 class TestSignupTakeoverAttempts:
@@ -824,6 +891,40 @@ class TestResendVerification:
         assert _activate(client, second, OTHER_PASSWORD).status_code == 200
         assert _login(client, "again@example.com", OTHER_PASSWORD).status_code == 200
         assert _activate(client, first, DEFAULT_TEST_PASSWORD).status_code == 400
+
+    @pytest.mark.parametrize(
+        ("header", "expected"),
+        [("cs", "cs"), ("cs-CZ,cs;q=0.9,en;q=0.8", "cs"), (None, "en"), (";;;,q=,==", "en")],
+    )
+    def test_the_resent_email_language_follows_accept_language(
+        self, client, fake_email, unthrottled_email, header, expected
+    ):
+        """
+        GIVEN an unverified account and a resend with a given Accept-Language, or none
+        WHEN the resend is accepted
+        THEN the new email is sent in the matching language, English by default
+        """
+        # GIVEN
+        register(client, "again@example.com")
+        sends_after_setup = len(fake_email.verification_calls)
+
+        # WHEN
+        response = _resend_with_header(client, "again@example.com", header)
+
+        # THEN
+        assert response.status_code == 202
+        resent = fake_email.verification_calls[sends_after_setup:]
+        assert [call["language"] for call in resent] == [expected]
+
+    def test_a_garbage_header_answers_like_no_header(self, client, fake_email, unthrottled_email):
+        """A bad header is not a client error: the answer is the ordinary 202."""
+        # WHEN
+        with_header = _resend_with_header(client, "ghost@example.com", ";;;,q=,==")
+        without = _resend_with_header(client, "ghost@example.com", None)
+
+        # THEN
+        assert with_header.status_code == without.status_code == 202
+        assert with_header.content == without.content
 
     def test_a_weak_password_is_rejected_before_anything_is_looked_up(self, client, fake_email):
         """The link a resend mints becomes the account's password, so it is strength-checked.

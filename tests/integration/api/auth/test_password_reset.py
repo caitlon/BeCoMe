@@ -102,7 +102,9 @@ class TestForgotPassword:
                 """Raise to simulate a provider failure."""
                 raise EmailSendError("send failed")
 
-            async def send_email_verification(self, *, to_email: str, verify_url: str) -> None:
+            async def send_email_verification(
+                self, *, to_email: str, verify_url: str, language: str
+            ) -> None:
                 """Raise to simulate a provider failure."""
                 raise EmailSendError("send failed")
 

@@ -9,9 +9,9 @@ from typing import TYPE_CHECKING
 import httpx
 
 from api.auth.logging import hash_email
-from api.services.email.base import EmailSender
+from api.services.email.base import EmailLanguage, EmailSender
 from api.services.email.exceptions import EmailSendError
-from api.services.email.verification_email import render_verification_email
+from api.services.email.verification_email import format_lifetime, render_verification_email
 
 if TYPE_CHECKING:
     from api.config import Settings
@@ -22,18 +22,6 @@ logger = logging.getLogger("api.service.email")
 
 _TIMEOUT_SECONDS = 10.0
 _MINUTES_PER_HOUR = 60
-
-
-def _format_ttl_window(minutes: int) -> str:
-    """Render a token TTL in minutes as a human-friendly expiry window.
-
-    :param minutes: Token lifetime in minutes.
-    :return: ``"1 hour"`` / ``"N hours"`` for whole hours, else ``"N minutes"``.
-    """
-    if minutes % _MINUTES_PER_HOUR == 0:
-        hours = minutes // _MINUTES_PER_HOUR
-        return "1 hour" if hours == 1 else f"{hours} hours"
-    return f"{minutes} minutes"
 
 
 def _log_send_started(kind: str, email_hash: str, provider_url: str) -> None:
@@ -140,17 +128,21 @@ class ResendEmailSender(EmailSender):
             "password_reset", email_hash, start=start, status_code=response.status_code
         )
 
-    async def send_email_verification(self, *, to_email: str, verify_url: str) -> None:
+    async def send_email_verification(
+        self, *, to_email: str, verify_url: str, language: EmailLanguage
+    ) -> None:
         """Send an account-verification email via Resend.
 
         :param to_email: Recipient email address.
         :param verify_url: Full frontend activation link.
+        :param language: Language the message is written in.
         :raises EmailSendError: If the API rejects the request or transport fails.
         """
-        window = _format_ttl_window(
-            self._settings.email_verification_token_ttl_hours * _MINUTES_PER_HOUR
+        message = render_verification_email(
+            verify_url,
+            self._settings.email_verification_token_ttl_hours * _MINUTES_PER_HOUR,
+            language,
         )
-        message = render_verification_email(verify_url, window)
         payload: dict[str, object] = {
             "from": f"{self._settings.email_from_name} <{self._settings.email_from}>",
             "to": [to_email],
@@ -206,7 +198,7 @@ class ResendEmailSender(EmailSender):
         :param reset_url: Full frontend reset link.
         :return: HTML message body, with the expiry window matching the config.
         """
-        window = _format_ttl_window(self._settings.password_reset_token_ttl_minutes)
+        window = format_lifetime(self._settings.password_reset_token_ttl_minutes, "en")
         return (
             "<p>We received a request to reset your BeCoMe password.</p>"
             f'<p><a href="{reset_url}">Reset your password</a></p>'

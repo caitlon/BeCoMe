@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 from api.auth.logging import hash_email
-from api.services.email.base import EmailSender
+from api.services.email.base import EmailLanguage, EmailSender
 
 if TYPE_CHECKING:
     from api.config import Settings
@@ -77,7 +77,9 @@ class ConsoleEmailSender(EmailSender):
         # Deliberately not a log record. See the docstring.
         print(f"[console email] password reset link for {email_hash}: {reset_url}")
 
-    async def send_email_verification(self, *, to_email: str, verify_url: str) -> None:
+    async def send_email_verification(
+        self, *, to_email: str, verify_url: str, language: EmailLanguage
+    ) -> None:
         """Log the verification link; perform no network call.
 
         Same rationale as :meth:`send_password_reset`: the record masks the
@@ -86,6 +88,8 @@ class ConsoleEmailSender(EmailSender):
 
         :param to_email: Recipient email address.
         :param verify_url: Full frontend activation link (carries the raw token).
+        :param language: Language the real message would be written in; unused here,
+            since the log line stays the same for every language.
         """
         email_hash = hash_email(to_email)
         logger.info(
