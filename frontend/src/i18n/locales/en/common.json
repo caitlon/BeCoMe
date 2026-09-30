@@ -96,7 +96,10 @@
     "centroidChartDesc": "Bar chart showing expert opinion centroids sorted by value with reference lines for mean, median, and best compromise",
     "landscapeChartDesc": "Number line showing individual expert opinion centroids with mean, median, and best compromise markers",
     "opinionValues": "Opinion values: Lower {{lower}}, Peak {{peak}}, Upper {{upper}}, Centroid {{centroid}}",
-    "opensInNewTab": "opens in new tab"
+    "opensInNewTab": "opens in new tab",
+    "skipToContent": "Skip to main content",
+    "close": "Close",
+    "notifications": "Notifications ({hotkey})"
   },
   "centroidChart": {
     "centroidValue": "Centroid",

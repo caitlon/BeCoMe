@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import i18n, { defaultNS, resources } from '@/i18n';
 
 const expectedNamespaces: (keyof typeof resources.en)[] = [
@@ -78,5 +78,46 @@ describe('i18n configuration', () => {
 
   it('has escapeValue disabled in interpolation config', () => {
     expect(i18n.options.interpolation?.escapeValue).toBe(false);
+  });
+});
+
+describe('skip link text', () => {
+  const SKIP_LINK_ID = 'test-skip-link';
+
+  function addSkipLink() {
+    const link = document.createElement('a');
+    link.className = 'skip-to-content';
+    link.id = SKIP_LINK_ID;
+    link.textContent = 'Skip to main content';
+    document.body.appendChild(link);
+    return link;
+  }
+
+  afterEach(() => {
+    document.getElementById(SKIP_LINK_ID)?.remove();
+    localStorage.removeItem('become-language');
+  });
+
+  it('follows the interface language on language change', async () => {
+    const link = addSkipLink();
+    try {
+      await i18n.changeLanguage('cs');
+      expect(link.textContent).toBe('Přejít k hlavnímu obsahu');
+
+      await i18n.changeLanguage('en');
+      expect(link.textContent).toBe('Skip to main content');
+    } finally {
+      await i18n.changeLanguage('en');
+    }
+  });
+
+  it('is translated at start-up, before any language change', async () => {
+    const link = addSkipLink();
+    localStorage.setItem('become-language', 'cs');
+    vi.resetModules();
+
+    await import('@/i18n');
+
+    expect(link.textContent).toBe('Přejít k hlavnímu obsahu');
   });
 });
