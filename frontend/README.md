@@ -118,10 +118,10 @@ browser's language list, and falls back to English. A choice made with the langu
 is stored under the same key. Only `en` and `cs` are supported, and a regional tag such as
 `cs-CZ` resolves to Czech. The `lang` attribute of `<html>` follows the interface language.
 
-The two calls that send a localised email, `register` and `resendVerification`, pass the
-interface language in the `Accept-Language` header. `languageHeaders()` in `src/lib/api.ts`
-builds it and `get_email_language` in `api/dependencies.py` reads it. The password-reset email
-carries no language.
+The three calls that send a localised email, `register`, `resendVerification` and
+`forgotPassword`, pass the interface language in the `Accept-Language` header.
+`languageHeaders()` in `src/lib/api.ts` builds it and `get_email_language` in
+`api/dependencies.py` reads it.
 
 ## Accessibility
 
