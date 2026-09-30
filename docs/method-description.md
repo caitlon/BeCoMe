@@ -264,7 +264,7 @@ Using results from Steps 1 and 2:
 
 ### Step 4: calculate the maximum error (Δmax)
 
-The **maximum error Δmax** is a precision indicator that measures the distance between the arithmetic mean and median.
+The **maximum error Δmax** is half the distance between the centroids of the arithmetic mean and the median. The centroid of the best compromise lies exactly that far from each of them.
 
 **Formula:**
 ```
@@ -278,8 +278,8 @@ The **maximum error Δmax** is a precision indicator that measures the distance 
 ```
 
 **Interpretation:**
-- **Lower Δmax** → Higher agreement among experts
-- **Higher Δmax** → Greater disagreement or presence of outliers
+- **Lower Δmax**: the mean and the median of the panel lie closer together. This alone does not show that the experts agree: two opposed camps of equal size that mirror each other give Δmax = 0.
+- **Higher Δmax**: the mean and the median lie further apart, which happens when the opinions are skewed or a few of them sit far from the rest.
 
 #### Example (3 experts)
 
@@ -310,7 +310,7 @@ The complete BeCoMe result includes:
 | **Best Compromise (ΓΩMean)** | (10.00, 15.33, 21.17) | Final aggregated opinion |
 | **Arithmetic Mean (Γ)** | (10.00, 15.67, 22.33) | Average of all opinions |
 | **Median (Ω)** | (10.00, 15.00, 20.00) | Central tendency |
-| **Maximum Error (Δmax)** | 0.50 | Precision indicator |
+| **Maximum Error (Δmax)** | 0.50 | Half the distance between mean and median |
 | **Number of Experts (M)** | 3 | Count of opinions |
 | **Is Even?** | False | Affects median calculation |
 
@@ -383,17 +383,17 @@ Gx(Ω) = (5.5 + 8.5 + 13.0) / 3 = 9.00
 Δmax = |9.00 - 9.00| / 2 = 0.00
 ```
 
-**Interpretation:** Δmax = 0 means perfect agreement (arithmetic mean equals median).
+**Interpretation:** Δmax = 0 means the centroids of the arithmetic mean and the median coincide. That happens when all experts give the same opinion, and also when the opinions are spread symmetrically around the middle.
 
 ---
 
 ## Why combine mean and median?
 
-Arithmetic mean uses all data points but gets skewed by outliers. One extreme opinion can pull the result away from the group consensus. Median ignores everything except the central value. An outlier barely moves it, but it throws away what the non-central experts said.
+Arithmetic mean uses all data points but gets skewed by outliers. One extreme opinion can pull the result away from where most of the group sits. Median ignores everything except the central value. An outlier barely moves it, but it throws away what the non-central experts said.
 
 BeCoMe splits the difference. The mean component ensures every opinion contributes. The median component prevents extremes from dominating. When experts largely agree, Γ and Ω are close, and ΓΩMean lands near both. When opinions diverge, the compromise falls between the pulled-mean and the stable-median.
 
-The error metric Δmax quantifies this divergence. Near-zero Δmax means the mean and median nearly coincide, which is strong consensus. Large Δmax signals polarization or outliers, suggesting the group should discuss further before deciding.
+The error metric Δmax quantifies this divergence. Near-zero Δmax means the mean and median nearly coincide. A panel in agreement produces that, but so does a panel split into two equal camps that mirror each other, so a small Δmax is not proof of consensus. Large Δmax signals skewed opinions or outliers, suggesting the group should discuss further before deciding.
 
 ## Limitations
 

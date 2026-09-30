@@ -36,7 +36,7 @@ Each expert gives three numbers instead of one: the lowest value they would acce
 
 The method then computes two things the panel already implies. The average shows where the opinions sit in aggregate. The median shows where the middle of the panel sits, and it barely moves when one person takes an extreme position. BeCoMe combines the two into a best compromise, and it reports the distance between them as a number in its own right.
 
-That second number is the useful part. On the flood panel the average landed at 20.3 percent and the median at 8.3, so the compromise came out at 14.3, with a disagreement measure of 5.97. When the average and the median sit close together the number is small: the authors' illustrative budget example scores 2.20. The method does not hide a split under a single confident-looking figure. It tells you the split is there.
+That second number is the useful part. On the flood panel the average landed at 20.3 percent and the median at 8.3, so the compromise came out at 14.3, with a maximum error of 5.97. When the average and the median sit close together the number is small: the authors' illustrative budget example scores 2.20. A small number means the two summaries agree with each other, which is not the same as the experts agreeing. The method does not hide the gap under a single confident-looking figure. It reports it next to the result.
 
 ## One real case and two examples
 
