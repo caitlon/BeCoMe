@@ -26,6 +26,8 @@ Measured on 2026-09-30.
 | pytest | Pass | 3266 passed (`testpaths` is unit plus integration; the e2e tier is its own run, `pytest tests/e2e/ -n 0`, and needs a live PostgreSQL) |
 | coverage | Pass | 100% on `src/` (164 statements), 99.06% on `src/`+`api/` (6195 statements, 58 uncovered). CI enforces `--cov-fail-under=98` on the full run |
 
+The pytest count assumes `pg_ctl` from PostgreSQL 16 with pgvector on `PATH`. Without `pg_ctl`, 37 tests skip and 3229 pass (coverage 98.60%). With a PostgreSQL that lacks pgvector, 20 skip and 3246 pass (also 98.60%).
+
 ## Running checks
 
 ```bash

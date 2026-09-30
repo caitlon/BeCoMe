@@ -16,7 +16,7 @@ and CI fails the run below 98%.
 
 ## Overview
 
-Unit tests cover models, calculators, interpreters, utilities, and API components in isolation. Integration tests validate core results against the original Excel implementation (tolerance: 0.001) and drive the API routes against a database. That database is in-memory SQLite. The engine fixture turns on `PRAGMA foreign_keys`, so the `ondelete` rules declared on the models are enforced here too. A broken CASCADE or a missing RESTRICT goes red on this tier rather than waiting for Postgres. A smaller tier in `tests/integration/api/db/test_postgres_integration.py` runs against a real PostgreSQL and covers what SQLite cannot express. End-to-end tests exercise full API workflows. All tests follow the GIVEN-WHEN-THEN pattern.
+Unit tests cover models, calculators, interpreters, utilities, and API components in isolation. Integration tests validate core results against the original Excel implementation (tolerance: 0.001) and drive the API routes against a database. That database is in-memory SQLite. The engine fixture turns on `PRAGMA foreign_keys`, so the `ondelete` rules declared on the models are enforced here too. A broken CASCADE or a missing RESTRICT goes red on this tier rather than waiting for Postgres. A smaller tier runs against a real PostgreSQL and covers what SQLite cannot express: `tests/integration/api/db/test_postgres_integration.py` and `test_migrations.py` beside it, and `test_assistant_store.py`, `test_assistant_pipeline.py` and `test_assistant_retrieval.py` in `tests/integration/api/`, which also need pgvector. All five skip when `pg_ctl` is not on `PATH`. End-to-end tests exercise full API workflows. All tests follow the GIVEN-WHEN-THEN pattern.
 
 ## Running tests
 
@@ -102,15 +102,20 @@ uv run pytest --cov=src --cov-report=term-missing
 uv run pytest --cov=src --cov-report=html          # generates htmlcov/
 ```
 
-Current coverage: 100% on `src/`, and 99% across `src/` and `api/` together. Of the 58 uncovered
-lines, 18 sit in the Redis paths: fourteen are the `RedisRevocationStore` error handlers, which
-need a Redis that fails rather than one that works, two are the retry in `rotate_session` when a
-watched key changes under it, and two are the branch that hands out the Redis cache. The other 40
-are scattered: two in-memory expiry paths (a revoked session and a cached user past their
-lifetime), a `clear()` test helper, the `PackageNotFoundError` version fallback, and a handful of
-parse guards. CI measures the same
-number over `tests/unit/` and `tests/integration/` only, because the end-to-end tests drive a
-separate uvicorn process that in-process coverage cannot see.
+Current coverage: 100% on `src/`, and 99% across `src/` and `api/` together. Of the 58
+uncovered lines, 18 sit in the Redis paths: fourteen are the `RedisRevocationStore` error
+handlers, which need a Redis that fails rather than one that works, two are the retry in
+`rotate_session` when a watched key changes under it, and two are the branch that hands out
+the Redis cache. The other 40 are the legacy-refresh-token branch in `api/routes/auth.py`
+(5 lines, for a token minted before sessions existed); the two fail-closed handlers in
+`api/auth/jwt.py` that reject a token when the revocation store is down (4); the `clear()`
+test helper (5) and two in-memory expiry paths (4), one for a revoked session and one for a
+cached user past their lifetime; the `PackageNotFoundError` version fallback (2); three
+`RuntimeError` guards in `api/assistant/rag/retrieval.py` that cannot be reached (3); parse
+guards in `login_throttle.py` and `body_size.py` (4); and 13 single-line guards and branches
+spread over nine modules. CI measures the same number over `tests/unit/` and
+`tests/integration/` only, because the end-to-end tests drive a separate uvicorn process that
+in-process coverage cannot see.
 
 ## Test structure
 
@@ -139,7 +144,7 @@ tests/
 │   ├── test_data_loading.py      # text file parsing
 │   ├── test_frontend_*.py        # frontend build args, CSP, case-study numbers
 │   └── api/                      # API integration tests
-│       ├── test_assistant_*.py   # assistant chat, client, config, pipeline, retrieval, store
+│       ├── test_assistant_*.py   # assistant chat, client, config and RAG
 │       ├── auth/            # authentication flows
 │       ├── db/              # database models, relationships, cascades, migrations
 │       ├── middleware/      # request logging wiring
@@ -169,19 +174,35 @@ command for `tests/integration/` and `tests/e2e/`.
 
 ## Frontend tests
 
-The frontend has its own suites, run with npm from `frontend/`. They are not part of `uv run pytest`.
+The frontend has its own suites, run with npm from `frontend/`. They are not part of
+`uv run pytest`.
 
-- **Vitest unit tests** live in `frontend/tests`: 1,237 tests in 95 files, grouped by `components`, `contexts`, `data`, `factories`, `hooks`, `i18n`, `lib`, `mocks` and `pages`, with the setup in `setup.ts`.
-- **Playwright end-to-end specs** live in `frontend/e2e`: 239 tests in six projects from `frontend/playwright.config.ts`. `chromium`, `firefox` and `webkit` run the same 71 functional specs, `wcag-audit` runs 15 accessibility checks, `visual-regression` 8 screenshot comparisons, and `docs-screenshots` 3 that photograph the app for the documentation site.
+- **Vitest unit tests** live in `frontend/tests`: 1,237 tests in 95 files. Seven directories
+  hold them (`components`, `contexts`, `data`, `hooks`, `i18n`, `lib` and `pages`), and
+  `App.test.tsx` sits at the top level. `factories` and `mocks` hold support code rather than
+  tests, as do `setup.ts` and `utils.tsx`.
+- **Playwright end-to-end specs** live in `frontend/e2e`: 239 tests in six projects from
+  `frontend/playwright.config.ts`. `chromium`, `firefox` and `webkit` run the same 71
+  functional specs, `wcag-audit` runs 15 accessibility checks, `visual-regression` 8
+  screenshot comparisons, and `docs-screenshots` 3 that photograph the app for the
+  documentation site.
 
 ```bash
-npm run test           # vitest in watch mode
-npm run test:run       # vitest, a single run
-npm run test:coverage  # vitest, a single run with the coverage gate
-npm run test:e2e       # playwright test, all projects
+npm run test                            # vitest in watch mode
+npm run test:run                        # vitest, a single run
+npm run test:coverage                   # vitest, a single run with the coverage gate
+npm run test:e2e -- --project=chromium  # one Playwright project
 ```
 
-The coverage gate in `frontend/vitest.config.ts` fails the run below 98% statements, 95% branches, 97% functions and 98% lines. CI runs it through `test:coverage`, but `./scripts/ci/ci-local.sh fast` runs `test:run`, which has no gate, so run `npm run test:coverage` before pushing a frontend change.
+Playwright needs a live API and database, so run it through `./scripts/ci/e2e-local.sh`
+(`playwright` for the three browsers, `visual` for the regression baselines, `docs` for the
+screenshots) or name a `--project=`. A bare `npm run test:e2e` runs every project, and
+`docs-screenshots` would overwrite the tracked images in `docs/user/img/`.
+
+The coverage gate in `frontend/vitest.config.ts` fails the run below 98% statements, 95%
+branches, 97% functions and 98% lines. CI runs it through `test:coverage`, but
+`./scripts/ci/ci-local.sh fast` runs `test:run`, which has no gate, so run
+`npm run test:coverage` before pushing a frontend change.
 
 ## Writing tests
 
