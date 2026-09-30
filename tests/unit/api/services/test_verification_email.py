@@ -283,14 +283,16 @@ class TestEveryPartOfTheCopyReachesTheMessage:
         """
         # GIVEN
         copy = COPIES[language]
-        parser = _TextNodes()
-        parser.feed(_render(language=language).html)
-        nodes = [html_lib.unescape(node) for node in parser.nodes]
         text_fields = {
             name: value
             for name, value in asdict(copy).items()
             if name not in _NON_TEXT_FIELDS | _HEAD_FIELDS
         }
+
+        # WHEN
+        parser = _TextNodes()
+        parser.feed(_render(language=language).html)
+        nodes = [html_lib.unescape(node) for node in parser.nodes]
 
         # THEN
         assert text_fields
@@ -548,6 +550,8 @@ class TestFormatLifetime:
             (60, "1 hour"),
             (120, "2 hours"),
             (1440, "24 hours"),
+            (1, "1 minute"),
+            (2, "2 minutes"),
             (30, "30 minutes"),
             (45, "45 minutes"),
             (90, "90 minutes"),

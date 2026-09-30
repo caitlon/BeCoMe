@@ -98,11 +98,11 @@ _EN = VerificationCopy(
         "address was used to create an account. It's an automatic message, so please "
         "don't reply."
     ),
-    # One wording for the verification and the password-reset email alike. Minutes
-    # keep one form for every count, as the reset email has always read.
+    # One wording for the verification and the password-reset email alike. English has
+    # no separate form for 2 to 4, so the second and third entries repeat.
     units=LifetimeUnits(
         hour=("hour", "hours", "hours"),
-        minute=("minutes", "minutes", "minutes"),
+        minute=("minute", "minutes", "minutes"),
     ),
 )
 
