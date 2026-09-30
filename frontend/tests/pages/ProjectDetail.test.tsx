@@ -334,6 +334,27 @@ describe('ProjectDetail - Team Section', () => {
       expect(mockApi.transferOwnership).toHaveBeenCalledWith('project-1', 'user-2');
     });
   });
+
+  it('shows the transfer wording, not the delete wording, while the transfer is pending', async () => {
+    const user = userEvent.setup();
+    const members = [
+      createMember({ user_id: 'user-1', first_name: 'John', last_name: 'Doe', role: 'admin' }),
+      createMember({ user_id: 'user-2', first_name: 'Jane', last_name: 'Smith', role: 'expert' }),
+    ];
+    mockApi.getMembers.mockResolvedValue(members);
+    mockApi.transferOwnership.mockReturnValue(new Promise(() => {}));
+
+    render(<ProjectDetail />);
+
+    const transferButtons = await screen.findAllByRole('button', {
+      name: /make jane smith the owner/i,
+    });
+    await user.click(transferButtons[0]);
+    await user.click(await screen.findByRole('button', { name: 'Transfer ownership' }));
+
+    expect(await screen.findByText('Transferring...')).toBeInTheDocument();
+    expect(screen.queryByText('Deleting...')).not.toBeInTheDocument();
+  });
 });
 
 describe('ProjectDetail - Delete Project', () => {

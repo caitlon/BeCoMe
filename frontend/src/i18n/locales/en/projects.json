@@ -155,7 +155,8 @@
   "transferOwnership": {
     "title": "Transfer ownership?",
     "description": "{{name}} will become the project admin and you will become an expert. You will no longer be able to manage the project.",
-    "confirm": "Transfer ownership"
+    "confirm": "Transfer ownership",
+    "transferring": "Transferring..."
   },
   "memberProfile": {
     "position": "Position",
