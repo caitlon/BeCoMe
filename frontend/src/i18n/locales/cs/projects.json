@@ -155,7 +155,8 @@
   "transferOwnership": {
     "title": "Předat vlastnictví?",
     "description": "{{name}} se stane správcem projektu a vy se stanete expertem. Projekt už nebudete moci spravovat.",
-    "confirm": "Předat vlastnictví"
+    "confirm": "Předat vlastnictví",
+    "transferring": "Předávání..."
   },
   "memberProfile": {
     "position": "Pozice",
