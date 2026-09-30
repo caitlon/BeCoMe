@@ -2,7 +2,7 @@
   "meta": {
     "title": "Privacy",
     "subtitle": "What this service stores about you, why, and how to take it back.",
-    "updated": "Last updated 8 September 2026"
+    "updated": "Last updated 30 September 2026"
   },
   "controller": {
     "heading": "Who is responsible",
@@ -34,7 +34,7 @@
       "__Secure-refresh_token renews that session without asking for your password again. It lasts 7 days and is sent only to the authentication routes.",
       "__Host-csrf_token protects forms against cross-site request forgery."
     ],
-    "outro": "All three are strictly necessary for a service you explicitly requested, so the ePrivacy rules do not require a consent banner for them and none is shown. The sign-in, registration and password-reset forms also load Cloudflare's bot-check widget. It runs in a frame from challenges.cloudflare.com and may set storage of its own under Cloudflare's terms. That widget is a security measure, not a tracker. Your language and theme choices are remembered in your browser's local storage, under become-language and become-theme, and never leave it."
+    "outro": "All three are strictly necessary for a service you explicitly requested, so the ePrivacy rules do not require a consent banner for them and none is shown. The sign-in, registration and password-reset forms also load Cloudflare's bot-check widget. It runs in a frame from challenges.cloudflare.com and may set storage of its own under Cloudflare's terms. That widget is a security measure, not a tracker. Your language and theme choices are remembered in your browser's local storage, under become-language and become-theme, and are not saved to your account. They travel with a request only where its result depends on them: the language for the confirmation email and for your example project, and both for a report you export."
   },
   "processors": {
     "heading": "Who else handles it",

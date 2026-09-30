@@ -2,7 +2,7 @@
   "meta": {
     "title": "Ochrana osobních údajů",
     "subtitle": "Co o vás tato služba uchovává, proč a jak si to vzít zpět.",
-    "updated": "Aktualizováno 8. září 2026"
+    "updated": "Aktualizováno 30. září 2026"
   },
   "controller": {
     "heading": "Kdo za to odpovídá",
@@ -34,7 +34,7 @@
       "__Secure-refresh_token obnovuje relaci, aniž by se znovu ptal na heslo. Platí 7 dní a odesílá se pouze na přihlašovací cesty.",
       "__Host-csrf_token chrání formuláře před podvržením požadavku z cizího webu."
     ],
-    "outro": "Všechny tři jsou nezbytně nutné pro službu, kterou jste si výslovně vyžádali, a pravidla ePrivacy proto pro ně nevyžadují souhlas a žádná lišta se nezobrazuje. Formuláře pro přihlášení, registraci a obnovu hesla navíc načítají widget Cloudflare pro kontrolu robotů, který běží v rámu z challenges.cloudflare.com a může si podle podmínek Cloudflare ukládat vlastní data; jde o bezpečnostní opatření, nikoli o sledování. Volba jazyka a motivu se pamatuje v místním úložišti prohlížeče pod klíči become-language a become-theme a nikdy jej neopouští."
+    "outro": "Všechny tři jsou nezbytně nutné pro službu, kterou jste si výslovně vyžádali, a pravidla ePrivacy proto pro ně nevyžadují souhlas a žádná lišta se nezobrazuje. Formuláře pro přihlášení, registraci a obnovu hesla navíc načítají widget Cloudflare pro kontrolu robotů, který běží v rámu z challenges.cloudflare.com a může si podle podmínek Cloudflare ukládat vlastní data; jde o bezpečnostní opatření, nikoli o sledování. Volba jazyka a motivu se pamatuje v místním úložišti prohlížeče pod klíči become-language a become-theme a do vašeho účtu se neukládá. S požadavkem se odesílá jen tam, kde na ní závisí výsledek: jazyk u potvrzovacího e-mailu a u vašeho ukázkového projektu, obojí u zprávy, kterou exportujete."
   },
   "processors": {
     "heading": "Kdo další s údaji nakládá",
