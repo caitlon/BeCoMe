@@ -198,14 +198,14 @@
     "emailPlaceholder": "expert@example.com",
     "info": "Uživatel musí mít již účet. Pozvánku uvidí v záložce \"Pozvánky\".",
     "cancel": "Zrušit",
-    "invite": "Odeslat pozvánku",
-    "inviting": "Odesílání...",
+    "invite": "Pozvat",
+    "inviting": "Vytváření pozvánky...",
     "inviteAnother": "Pozvat dalšího",
     "done": "Hotovo",
     "successTitle": "Pozvánka vytvořena",
     "successDescription": "Pozvánka se neposílá e-mailem. Expert ji uvidí v záložce \"Pozvánky\".",
     "errorTitle": "Pozvání selhalo",
-    "errorMessage": "Nepodařilo se odeslat pozvánku",
+    "errorMessage": "Nepodařilo se vytvořit pozvánku",
     "validation": {
       "emailInvalid": "Neplatná e-mailová adresa"
     }

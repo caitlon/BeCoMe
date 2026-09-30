@@ -162,7 +162,7 @@ baseTest.describe('Project Detail: Multi-Context', () => {
     const inviteDialog = ownerPage.getByRole('dialog');
     await expect(inviteDialog).toBeVisible();
     await inviteDialog.getByPlaceholder('expert@example.com').fill(expertEmail);
-    await inviteDialog.getByRole('button', { name: 'Send Invitation' }).click();
+    await inviteDialog.getByRole('button', { name: 'Invite', exact: true }).click();
     await expect(inviteDialog.getByText('Invitation created')).toBeVisible({ timeout: 10000 });
     await inviteDialog.getByRole('button', { name: 'Done' }).click();
 

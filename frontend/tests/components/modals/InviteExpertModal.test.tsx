@@ -32,7 +32,7 @@ describe('InviteExpertModal', () => {
   });
 
   const getEmailInput = () => screen.getByPlaceholderText('expert@example.com');
-  const getSubmitButton = () => screen.getByRole('button', { name: 'Send Invitation' });
+  const getSubmitButton = () => screen.getByRole('button', { name: 'Invite' });
 
   it('renders project name in modal', () => {
     render(<InviteExpertModal {...defaultProps} />);
@@ -68,7 +68,7 @@ describe('InviteExpertModal', () => {
     await user.click(getSubmitButton());
 
     await waitFor(() => {
-      expect(screen.getByText(/sending/i)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Inviting...' })).toBeDisabled();
     });
   });
 
@@ -147,13 +147,43 @@ describe('InviteExpertModal', () => {
       render(<InviteExpertModal {...defaultProps} />);
 
       await user.type(getEmailInput(), 'expert@test.com');
-      await user.click(screen.getByRole('button', { name: 'Odeslat pozvánku' }));
+      await user.click(screen.getByRole('button', { name: 'Pozvat' }));
 
       expect(await screen.findByText('Pozvánka vytvořena')).toBeInTheDocument();
       expect(
         screen.getByText('Pozvánka se neposílá e-mailem. Expert ji uvidí v záložce "Pozvánky".')
       ).toBeInTheDocument();
       expect(screen.queryByText(/odeslána/i)).not.toBeInTheDocument();
+    } finally {
+      await i18n.changeLanguage('en');
+    }
+  });
+
+  it('names the action after what it does in Czech, while loading and on a fallback error', async () => {
+    const user = userEvent.setup();
+    mockInviteExpert.mockRejectedValueOnce('network timeout');
+
+    await i18n.changeLanguage('cs');
+    try {
+      const { unmount } = render(<InviteExpertModal {...defaultProps} />);
+
+      await user.type(getEmailInput(), 'expert@test.com');
+      await user.click(screen.getByRole('button', { name: 'Pozvat' }));
+
+      await waitFor(() => {
+        expect(mockToast.mock.calls[0][0].description).toBe('Nepodařilo se vytvořit pozvánku');
+      });
+      unmount();
+
+      mockInviteExpert.mockImplementation(() => new Promise(() => {}));
+      render(<InviteExpertModal {...defaultProps} />);
+
+      await user.type(getEmailInput(), 'expert@test.com');
+      await user.click(screen.getByRole('button', { name: 'Pozvat' }));
+
+      expect(
+        await screen.findByRole('button', { name: 'Vytváření pozvánky...' })
+      ).toBeDisabled();
     } finally {
       await i18n.changeLanguage('en');
     }
@@ -242,7 +272,7 @@ describe('InviteExpertModal', () => {
         })
       );
       const call = mockToast.mock.calls[0][0];
-      expect(call.description).toBe('Failed to send invitation');
+      expect(call.description).toBe('Failed to create the invitation');
     });
   });
 

@@ -36,9 +36,9 @@
       "form": {
         "email": "E-mail experta",
         "emailPlaceholder": "expert@example.com",
-        "invite": "Odeslat pozvánku"
+        "invite": "Pozvat"
       },
-      "hint": "Experti uvidí pozvánku ve svém přehledu",
+      "hint": "E-mail se neposílá. Experti uvidí pozvánku v záložce \"Pozvánky\".",
       "samples": [
         {
           "initials": "JN",

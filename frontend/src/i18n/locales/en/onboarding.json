@@ -36,9 +36,9 @@
       "form": {
         "email": "Expert Email",
         "emailPlaceholder": "expert@example.com",
-        "invite": "Send Invitation"
+        "invite": "Invite"
       },
-      "hint": "Experts will see the invitation in their dashboard",
+      "hint": "No email is sent. Experts see the invitation in their \"Invitations\" tab.",
       "samples": [
         {
           "initials": "JD",
