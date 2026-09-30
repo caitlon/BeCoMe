@@ -42,7 +42,11 @@ from api.assistant.views import OpinionView, ProjectBrief, ProjectView
 logger = logging.getLogger(__name__)
 
 _NOT_FOUND = "not_found: no such project, or you are not a member of it"
-_UNAVAILABLE = "unavailable: the data could not be read right now; ask the user to try again later"
+# Public because the chat service gives the model this same line when a tool fails in a
+# way the tool did not handle.
+UNAVAILABLE_REPLY = (
+    "unavailable: the data could not be read right now; ask the user to try again later"
+)
 # The four empty cases share one prefix and each says what is missing, so the model can
 # tell the user which thing it is.
 _NO_RESULT_YET = "no_result: no result has been calculated for this project yet"
@@ -195,7 +199,7 @@ def _unavailable(tool_name: str, exc: Exception) -> str:
             "reason": type(exc).__name__,
         },
     )
-    return _UNAVAILABLE
+    return UNAVAILABLE_REPLY
 
 
 @tool(description=_SEARCH_DOCS_DESCRIPTION)
