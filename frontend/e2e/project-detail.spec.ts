@@ -211,7 +211,7 @@ baseTest.describe('Project Detail: Multi-Context', () => {
     await page.reload();
     await expect(page.getByText(/best compromise/i).first()).toBeVisible({ timeout: 10000 });
 
-    // Switch to Czech (aria-label is "Switch to Čeština")
+    // Switch to Czech (aria-label is "EN, switch to Čeština")
     await page.getByRole('button', { name: /Switch to Čeština/i }).click();
 
     // Verify Czech text appears on landing page
