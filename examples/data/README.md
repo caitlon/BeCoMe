@@ -4,7 +4,7 @@ Three expert-opinion datasets from the workbook of the method's authors. The flo
 
 | Dataset | Experts | Type | Key feature |
 |---------|---------|------|-------------|
-| [budget_case.txt](budget_case.txt) | 22 (even) | Fuzzy intervals | Moderate consensus |
+| [budget_case.txt](budget_case.txt) | 22 (even) | Fuzzy intervals | Mean and median close |
 | [floods_case.txt](floods_case.txt) | 13 (odd) | Fuzzy intervals | Polarized opinions |
 | [pendlers_case.txt](pendlers_case.txt) | 22 (even) | Likert scale | Crisp values |
 
@@ -39,10 +39,10 @@ Expert2 | 12 | 18 | 25
 
 ### Budget case
 
-The illustrative panel estimates COVID-19 budget support needs (0-100 billion CZK). The 22-member panel includes deputy ministers from multiple ministries, the Police President, Fire Rescue Director, and Chief Hygienist.
+The illustrative panel estimates COVID-19 budget support needs (0-100 billion CZK). The 22 roles include deputy ministers from multiple ministries, the Police President, Fire Rescue Director, and Chief Hygienist.
 
-Opinions varied by ministry priorities: Interior proposed higher support (60-90 billion), and
-Education suggested lower (15-60 billion, peaking at 40). With an even expert count, the
+Opinions vary by role: the Interior role proposes higher support (60-90 billion), and
+the Education role lower (15-60 billion, peaking at 40). With an even expert count, the
 median calculation averages the two middle values.
 
 ```
@@ -68,9 +68,9 @@ Land owner 2 | 0 | 0 | 2
 
 ### Pendlers case
 
-The illustrative panel rates whether cross-border commuters should be allowed to travel during pandemic restrictions. Unlike other cases, responses used a Likert scale: 0 (strongly disagree), 25, 50, 75, 100 (strongly agree).
+The illustrative panel rates whether cross-border commuters should be allowed to travel during pandemic restrictions. Unlike other cases, responses use a Likert scale: 0 (strongly disagree), 25, 50, 75, 100 (strongly agree).
 
-Foreign Affairs strongly supported travel (100). Interior and Defense opposed it (0). The panel leaned toward disagreement: 14 of 22 answered 0 or 25, with "rather disagree" (25) the most common at 10. Likert values
+The Foreign Affairs role strongly supports travel (100). The Interior and Defense roles oppose it (0). The panel leans toward disagreement: 14 of 22 answer 0 or 25, with "rather disagree" (25) the most common at 10. Likert values
 are crisp, so Lower = Peak = Upper.
 
 ```
@@ -110,8 +110,8 @@ All three datasets come from the BeCoMe-FuzzyDecisionTool workbook by I. Vrana a
 ## Limitations
 
 - Small samples (13-22 experts), not large-scale surveys
-- A Czech policy context during COVID-19, which may not generalize
-- Government officials and emergency services, a specific perspective
+- A Czech policy context, which may not generalize
+- Only the floods panel is real data, and the other two are illustrative
 - Floods case reflects stakeholder conflict, not objective risk assessment
 
 ## Related documentation
