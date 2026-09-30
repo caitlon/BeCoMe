@@ -136,7 +136,9 @@ state still starts, and records `turnstile_disabled` at ERROR while it does.
 body, whether the address is free, already registered but unverified, or already registered
 and verified. The response never reveals which. The account it creates cannot log in until
 someone redeems the emailed link through `POST /auth/verify-email`. Until then
-`POST /auth/login` answers `403` with a distinct `detail`, so a client can offer a resend.
+`POST /auth/login` answers `403` with a distinct `detail`, so a client can offer a resend. For an
+address that already has a confirmed account, the owner gets a notice instead of a link, in the
+language the `Accept-Language` header names, like the activation email.
 
 A submission takes effect only when someone follows its own link *and* restates its own
 password. The password hash and names travel on the activation token, so registering an
@@ -155,11 +157,12 @@ which costs the guesser rather than capping the pair. A completed password reset
 login lockout, and answers the same opaque `400` an unusable token gets when an activation
 confirmed the account while the reset was in flight. `POST /auth/resend-verification` takes
 `{email, password}` and answers `202` for any address. The link it mails carries the submitted
-password like any other. Both endpoints write the email in English or Czech, taken from the
-`Accept-Language` request header: the best-weighted `cs` or `en` range wins, and a missing or
-unusable header means English. `POST /auth/forgot-password` picks the language of the reset
-email from the same header by the same rule. The header never changes the response, so a bad
-value is not an error. See `docs/security.md` for why each branch behaves as it does.
+password like any other. Three endpoints read the `Accept-Language` request header and write
+their email in English or Czech: `register` (the activation link, or the notice to an existing
+account's owner), `resend-verification` (the activation link) and `forgot-password` (the reset
+link). The best-weighted `cs` or `en` range wins, and a missing or unusable header means English.
+The header never changes the response, so a bad value is not an error. See `docs/security.md`
+for why each branch behaves as it does.
 
 **Session transport.** Login and refresh set the access and refresh tokens as
 `Secure; HttpOnly; SameSite=Strict` cookies (the refresh cookie stays scoped to
@@ -260,6 +263,8 @@ returns `422`. Erasure also removes the profile photo blob from object storage.
 | GET | `/api/v1/invitations` | List pending invitations |
 | POST | `/api/v1/invitations/{id}/accept` | Accept invitation |
 | POST | `/api/v1/invitations/{id}/decline` | Decline invitation |
+
+An invitation is not emailed. The invitee finds it in their list of pending invitations.
 
 ### Calculation
 
