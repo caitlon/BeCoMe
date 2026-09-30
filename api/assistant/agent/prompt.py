@@ -48,6 +48,38 @@ SYSTEM_PROMPT = f"{_OPENING}\n\n{STYLE}\n\n{PINNED_FACTS}"
 #: threshold is not reported as a number the model invented.
 PINNED_NUMBERS: tuple[str, ...] = ("20", "40")
 
+#: The divisors of the method's own formulas: the midpoint and the half-distance divide
+#: by 2, the centroid of a triangular number by 3. The chat service passes them to the
+#: number check as grounding together with PINNED_NUMBERS.
+FORMULA_NUMBERS: tuple[str, ...] = ("2", "3")
+
+
+def format_number(value: float) -> str:
+    """Write a number with two decimals, the way the UI shows it.
+
+    :param value: The number to write.
+    :return: The number with exactly two decimals.
+    """
+    return f"{value:.2f}"
+
+
+def format_excerpt(number: int, chunk: RetrievedChunk) -> str:
+    """Write one numbered excerpt, as the model is shown it.
+
+    The entry is the marker, the title, the section when there is one, and the chunk's
+    own words (``chunk_text``): the indexed text carries a caption written by another
+    model, which is not the source.
+
+    :param number: The ``[n]`` number the source registry assigned to the chunk.
+    :param chunk: The retrieved chunk.
+    :return: ``"[n] Title - Section\\nchunk_text"``, without `` - Section`` when the
+        section is empty.
+    """
+    heading = f"[{number}] {chunk.title}"
+    if chunk.section:
+        heading += f" - {chunk.section}"
+    return f"{heading}\n{chunk.chunk_text}"
+
 
 def _fuzzy(label: str, value: FuzzyView) -> str:
     """Render one fuzzy number as a single line, floats with two decimals.
@@ -57,8 +89,8 @@ def _fuzzy(label: str, value: FuzzyView) -> str:
     :return: ``"<label>: lower=..., peak=..., upper=..., centroid=..."``.
     """
     return (
-        f"{label}: lower={value.lower:.2f}, peak={value.peak:.2f}, "
-        f"upper={value.upper:.2f}, centroid={value.centroid:.2f}"
+        f"{label}: lower={format_number(value.lower)}, peak={format_number(value.peak)}, "
+        f"upper={format_number(value.upper)}, centroid={format_number(value.centroid)}"
     )
 
 
@@ -73,7 +105,7 @@ def _project_block(project: ResultView) -> str:
         _fuzzy("Best compromise", project.best_compromise),
         _fuzzy("Arithmetic mean", project.arithmetic_mean),
         _fuzzy("Median", project.median),
-        f"Maximum error: {project.max_error:.2f}",
+        f"Maximum error: {format_number(project.max_error)}",
         f"Number of experts: {project.num_experts}",
         f"Agreement level: {project.agreement_level}",
     ]
@@ -104,11 +136,7 @@ def render_context_block(
     """
     parts: list[str] = []
     if chunks:
-        entries = [
-            f"[{number}] {chunk.title}{f' - {chunk.section}' if chunk.section else ''}\n"
-            f"{chunk.chunk_text}"
-            for number, chunk in chunks
-        ]
+        entries = [format_excerpt(number, chunk) for number, chunk in chunks]
         parts.append("Excerpts:\n\n" + "\n\n".join(entries))
     if project is not None:
         parts.append(_project_block(project))
