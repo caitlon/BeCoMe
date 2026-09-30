@@ -1204,6 +1204,255 @@ class TestAdversarialInputs:
         assert time.perf_counter() - started < 5.0
 
 
+class TestDecimalsInCompactLists:
+    """A decimal below one is a list member, not a zero-led thousands group."""
+
+    @pytest.mark.parametrize(
+        ("answer", "grounding"),
+        [
+            ("The interval is [0.2,0.8]", "0.2 0.8"),
+            ("The pair is (0.5,0.7)", "0.5 0.7"),
+            ("The pair is 6,0.5", "6 0.5"),
+            ("The triple is (0.1,0.25,0.9)", "0.1 0.25 0.9"),
+        ],
+    )
+    def test_a_compact_list_with_decimals_below_one_is_grounded_by_its_members(
+        self, answer: str, grounding: str
+    ):
+        """
+        GIVEN a comma-joined list whose members include a decimal like 0.5
+        WHEN the grounding holds the members separately
+        THEN nothing is flagged
+        """
+        assert find_ungrounded_numbers(answer, [grounding]) == []
+
+    def test_a_source_holding_a_compact_list_grounds_its_members(self):
+        """
+        GIVEN a grounding text that holds [0.2,0.8]
+        WHEN the answer quotes 0.2
+        THEN nothing is flagged
+        """
+        assert find_ungrounded_numbers("The lower value is 0.2", ["range [0.2,0.8]"]) == []
+
+    def test_a_compact_list_with_decimals_is_flagged_when_the_data_lacks_a_member(self):
+        """
+        GIVEN [0.2,0.8]
+        WHEN the grounding holds only 0.2, and then nothing
+        THEN it is flagged as written
+        """
+        assert find_ungrounded_numbers("It is [0.2,0.8]", ["0.2"]) == ["0.2,0.8"]
+        assert find_ungrounded_numbers("It is [0.2,0.8]", ["nothing"]) == ["0.2,0.8"]
+
+    def test_a_group_of_four_digits_that_starts_with_zero_is_a_list_member(self):
+        """
+        GIVEN 6,0123, whose second part has four digits and is no thousands group
+        WHEN the grounding holds 6 and 123
+        THEN nothing is flagged
+        """
+        assert find_ungrounded_numbers("It is 6,0123", ["6 123"]) == []
+
+    def test_a_zero_led_group_of_three_digits_is_still_thousands(self):
+        """
+        GIVEN 5,000,000
+        WHEN the grounding holds 5 and 0.83
+        THEN it is flagged
+        """
+        assert find_ungrounded_numbers("It is 5,000,000", ["5", "0.83"]) == ["5,000,000"]
+
+
+class TestOneListMarkerPerLine:
+    """A line start loses at most one list marker; a bracketed number after it stays."""
+
+    @pytest.mark.parametrize(
+        ("answer", "reported"),
+        [
+            ("1. (42) is the answer", ["42"]),
+            ("1) (42) x", ["42"]),
+            ("- 1. (42) x", ["42"]),
+            ("1. - (2) x", ["2"]),
+            ("(1) (42) x", ["42"]),
+            ("**1.** (42) x", ["42"]),
+        ],
+    )
+    def test_a_bracketed_number_after_a_marker_is_scanned(self, answer: str, reported: list[str]):
+        """
+        GIVEN a line that opens with a list marker and then a bracketed number
+        WHEN the grounding lacks the bracketed number
+        THEN the marker is dropped and the bracketed number is reported
+        """
+        assert find_ungrounded_numbers(answer, ["nothing"]) == reported
+
+    def test_a_marker_line_on_its_own_is_still_dropped(self):
+        """
+        GIVEN lines that hold only a marker and a word
+        WHEN the grounding has no digits
+        THEN nothing is flagged
+        """
+        assert find_ungrounded_numbers("1. First\n(2) Second\n3) Third", ["nothing"]) == []
+
+    def test_an_unbalanced_parenthesis_is_not_a_marker(self):
+        """
+        GIVEN a line that opens with "(13." rather than "(13)"
+        WHEN the grounding lacks 13
+        THEN 13 is reported
+        """
+        assert find_ungrounded_numbers("(13. The panel agreed)", ["nothing"]) == ["13"]
+
+
+class TestDottedThousandsAreNotGreedy:
+    """The dotted form with a decimal comma does not swallow a list of dotted members."""
+
+    def test_a_list_of_two_dotted_members_is_a_list(self):
+        """
+        GIVEN (1.500,2.500)
+        WHEN the grounding holds 1.5 and 2.5
+        THEN nothing is flagged, and 2.5 missing makes it flagged
+        """
+        assert find_ungrounded_numbers("It is (1.500,2.500)", ["1.5 2.5"]) == []
+        assert find_ungrounded_numbers("It is (1.500,2.500)", ["1.5"]) == ["1.500,2.500"]
+
+    def test_a_decimal_comma_part_followed_by_a_dot_digit_is_not_a_dotted_number(self):
+        """
+        GIVEN 1.000,55.5
+        WHEN the grounding holds 1 and 55.5
+        THEN nothing is flagged, because it is a list
+        """
+        assert find_ungrounded_numbers("It is 1.000,55.5", ["1 55.5"]) == []
+
+    def test_a_dotted_pair_inside_a_longer_comma_list_is_a_list(self):
+        """
+        GIVEN (12.642,13,12345.88), a compact list whose first two members look like 12.642,13
+        WHEN the grounding holds the members, and then lacks 12345.88
+        THEN nothing is flagged, and then it is flagged
+        """
+        answer = "It is (12.642,13,12345.88)"
+
+        assert find_ungrounded_numbers(answer, ["12.642 13 12345.88"]) == []
+        assert find_ungrounded_numbers(answer, ["12.642 13"]) == ["12.642,13,12345.88"]
+
+    def test_a_dotted_number_that_starts_with_zero_is_a_list(self):
+        """
+        GIVEN 0.250,5
+        WHEN the grounding holds 0.250 and 5, and then 250 and 5
+        THEN it is grounded, and then flagged
+        """
+        assert find_ungrounded_numbers("It is 0.250,5", ["0.250 5"]) == []
+        assert find_ungrounded_numbers("It is 0.250,5", ["250 5"]) == ["0.250,5"]
+
+    def test_a_dotted_number_with_a_decimal_comma_is_still_one_number(self):
+        """
+        GIVEN 1.000,50
+        WHEN the grounding holds 1000.50, and then only 1 and 50
+        THEN it is grounded, and then flagged
+        """
+        assert find_ungrounded_numbers("It is 1.000,50", ["1000.50"]) == []
+        assert find_ungrounded_numbers("It is 1.000,50", ["1 and 50"]) == ["1.000,50"]
+
+
+class TestNumbersSeparatedBySpaces:
+    """Numbers in a table, written with spaces between them, are not one grouped number."""
+
+    def test_a_decimal_after_a_three_digit_number_is_read_as_one_number_or_a_pair(self):
+        """
+        GIVEN a grounding table "56 123.025"
+        WHEN the answer says 123.025 or 123,025
+        THEN nothing is flagged
+        """
+        grounding = ["values 56 123.025 0.235"]
+
+        assert find_ungrounded_numbers("It is 123.025", grounding) == []
+        assert find_ungrounded_numbers("It is 123,025", grounding) == []
+
+    def test_the_same_pair_read_as_space_thousands_is_still_a_number(self):
+        """
+        GIVEN 56 123.025 in the answer
+        WHEN the grounding holds 56123.025, and then only 56
+        THEN it is grounded, and then flagged as written
+        """
+        assert find_ungrounded_numbers("It is 56 123.025", ["56123.025"]) == []
+        assert find_ungrounded_numbers("It is 56 123.025", ["56"]) == ["56 123.025"]
+
+
+class TestTokensWithoutAReading:
+    """A token that fits no reading is reported as written, whatever the grounding says."""
+
+    @pytest.mark.parametrize("token", ["1,000,5", "5.5,000", "0.000.000"])
+    def test_a_token_that_fits_no_reading_is_reported_as_written(self, token: str):
+        """
+        GIVEN a token that is neither a decimal, a thousands number nor a list
+        WHEN the grounding holds the same text
+        THEN it is still reported as written
+        """
+        assert find_ungrounded_numbers(f"It is {token}", [f"value {token}"]) == [token]
+
+
+class TestFullWidthBracketsInLinkTargets:
+    """A citation swallowed by the link target that follows an earlier one is not cut twice."""
+
+    def test_a_full_width_citation_inside_a_link_target_goes_with_the_target(self):
+        """
+        GIVEN a citation followed by a target that holds a full-width citation and a number
+        WHEN citations are stripped
+        THEN both citations and the target go, and the words around them stay
+        """
+        text = f"a [1]({chr(0x3010)}2{chr(0x3011)}4.5) b"
+
+        assert strip_citations(text).split() == ["a", "b"]
+
+
+class TestUnitsThatHoldDigits:
+    """A number glued to a unit is not checked, even when the unit holds a digit."""
+
+    @pytest.mark.parametrize("glued", ["12.5m2", "3.5cm3", "1.5e3", "14.19px", "8mm", "2.5kg"])
+    def test_a_number_glued_to_a_unit_is_not_reported(self, glued: str):
+        """
+        GIVEN a number written directly against its unit
+        WHEN the grounding has nothing
+        THEN nothing is flagged
+        """
+        assert find_ungrounded_numbers(f"It weighs {glued} in total", ["nothing"]) == []
+
+    def test_a_number_with_a_space_before_its_unit_is_checked(self):
+        """
+        GIVEN 12.5 m2, with a space
+        WHEN the grounding lacks 12.5
+        THEN 12.5 is reported
+        """
+        assert find_ungrounded_numbers("It covers 12.5 m2", ["nothing"]) == ["12.5"]
+
+    def test_a_word_after_a_dot_keeps_its_glued_digits_out_of_the_check(self):
+        """
+        GIVEN x.y6_1,3, an identifier after a dot whose digits a comma continues
+        WHEN the grounding has nothing
+        THEN nothing is flagged, because the digits are glued to the identifier
+        """
+        assert find_ungrounded_numbers("see x.y6_1,3 here", ["nothing"]) == []
+
+    def test_a_mixed_word_after_a_hyphen_digit_run_is_dropped_whole(self):
+        """
+        GIVEN 2-1x7, where the hyphen-joined 1 is the start of the mixed word 1x7
+        WHEN the grounding has 2
+        THEN nothing is flagged
+        """
+        assert find_ungrounded_numbers("It is 2-1x7", ["2"]) == []
+
+    def test_a_mixed_word_with_a_dot_tail_after_a_hyphen_digit_run_is_dropped_whole(self):
+        """
+        GIVEN 870-14cm.104, where 14cm.104 is a word with a dot tail
+        WHEN the grounding has 870
+        THEN nothing is flagged
+        """
+        assert find_ungrounded_numbers("It is 870-14cm.104", ["870"]) == []
+
+    def test_a_number_glued_to_a_unit_after_a_hyphen_run_is_left_to_the_neighbour_rule(self):
+        """
+        GIVEN 12-5.5mm
+        WHEN the grounding holds 12
+        THEN 5.5 is not reported, because it is glued to its unit
+        """
+        assert find_ungrounded_numbers("It is 12-5.5mm", ["12"]) == []
+
+
 class TestCitationLabelSet:
     """Only source words label a citation; any other word makes the bracket ordinary."""
 
