@@ -239,6 +239,38 @@ describe('Register', () => {
     });
   });
 
+  // zod's own length text is English whatever the interface language, so a rule
+  // without a message of its own shows it in the Czech interface too.
+  it.each([
+    ['en', 'first name', getFirstNameInput, 'First name must be at most 100 characters'],
+    ['cs', 'first name', getFirstNameInput, 'Jméno může mít maximálně 100 znaků'],
+    ['en', 'last name', getLastNameInput, 'Last name must be at most 100 characters'],
+    ['cs', 'last name', getLastNameInput, 'Příjmení může mít maximálně 100 znaků'],
+  ])(
+    'shows the translated message in %s for the %s over the length limit',
+    async (language, _field, getInput, expected) => {
+      const user = userEvent.setup();
+      render(<Register />);
+      const input = getInput();
+      await act(async () => {
+        await i18n.changeLanguage(language);
+      });
+
+      try {
+        await user.click(input);
+        await user.paste('a'.repeat(101));
+        await user.tab();
+
+        expect(await screen.findByText(expected)).toBeInTheDocument();
+        expect(screen.queryByText(/too big|expected string/i)).not.toBeInTheDocument();
+      } finally {
+        await act(async () => {
+          await i18n.changeLanguage('en');
+        });
+      }
+    }
+  );
+
   it('submit button is disabled until form is valid', () => {
     render(<Register />);
 

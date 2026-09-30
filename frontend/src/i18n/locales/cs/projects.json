@@ -188,7 +188,10 @@
     "errorTitle": "Chyba",
     "validation": {
       "nameRequired": "Název je povinný",
+      "nameMaxLength": "Název může mít maximálně 255 znaků",
+      "descriptionMaxLength": "Popis může mít maximálně 1000 znaků",
       "unitRequired": "Jednotka je povinná",
+      "unitMaxLength": "Jednotka může mít maximálně 50 znaků",
       "maxGreaterMin": "Maximum musí být větší než minimum"
     }
   },
