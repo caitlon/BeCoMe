@@ -109,7 +109,7 @@ def _project_block(project: ResultView) -> str:
         f"Number of experts: {project.num_experts}",
         f"Agreement level: {project.agreement_level}",
     ]
-    if project.likert_value is not None:
+    if project.likert_value is not None and project.likert_decision is not None:
         lines.append(f"Likert reading: {project.likert_value} ({project.likert_decision})")
     lines.append("</project_data>")
     return "\n".join(lines)
