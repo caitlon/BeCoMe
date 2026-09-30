@@ -87,7 +87,7 @@ This is an MVP: a working proof of concept rather than a finished product. The t
 | [Examples](https://docs.becomify.app/dev/examples/) | The three case studies and custom data |
 | [UML diagrams](https://docs.becomify.app/uml-diagrams/) | Class, sequence, and activity diagrams |
 
-The stack is FastAPI and SQLModel on the backend, React with TypeScript and Tailwind on the frontend, PostgreSQL in the deployed environments and SQLite locally. mypy runs in strict mode, and the core library sits at 100% test coverage.
+The stack is FastAPI and SQLModel on the backend, React with TypeScript and Tailwind on the frontend, PostgreSQL in the deployed environments and in local development, with SQLite as a fallback. mypy runs in strict mode, and the core library sits at 100% test coverage.
 
 ## How to cite
 
