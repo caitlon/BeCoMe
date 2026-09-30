@@ -20,6 +20,9 @@ from api.assistant.rag.retrieval import RetrievedChunk
 from api.assistant.views import FuzzyView, ResultView
 from api.db.models import Project
 from api.services.agreement_level import derive_agreement
+from src.calculators.become_calculator import BeCoMeCalculator
+from src.models.expert_opinion import ExpertOpinion
+from src.models.fuzzy_number import FuzzyTriangleNumber
 
 
 def _chunk(
@@ -113,6 +116,56 @@ class TestPinnedThresholds:
         THEN they are exactly the pinned numbers
         """
         assert set(re.findall(r"[0-9]+", PINNED_FACTS)) == set(PINNED_NUMBERS)
+
+
+def _compromise(panel: list[tuple[float, float, float]]) -> FuzzyTriangleNumber:
+    """Run the real calculator on a panel of (lower, peak, upper) opinions."""
+    opinions = [
+        ExpertOpinion(f"e{index}", FuzzyTriangleNumber(*bounds))
+        for index, bounds in enumerate(panel)
+    ]
+    return BeCoMeCalculator().calculate_compromise(opinions).best_compromise
+
+
+class TestWideningFact:
+    """The first pinned fact says what widening an opinion does, and the calculator agrees."""
+
+    def test_the_first_fact_speaks_of_the_centroid_not_the_center(self):
+        """
+        GIVEN the pinned facts
+        WHEN the widening bullet is read
+        THEN it names the centroid of the compromise and does not say "center"
+        """
+        bullet = PINNED_FACTS.split("\n- ")[1]
+
+        assert "widening" in bullet.lower()
+        assert "the centroid of the compromise" in bullet
+        assert "center" not in bullet
+
+    def test_widening_one_of_two_tied_opinions_keeps_the_centroid_and_moves_the_peak(self):
+        """
+        GIVEN two opinions that share a centroid but have different peaks
+        WHEN one of them is widened evenly around its peak
+        THEN the compromise's centroid is unchanged and its peak changes, because a
+            different opinion becomes the median
+        """
+        before = _compromise([(0, 1, 2), (4, 5, 6), (2, 6, 7)])
+        after = _compromise([(0, 1, 2), (1, 5, 9), (2, 6, 7)])
+
+        assert after.centroid == pytest.approx(before.centroid, abs=1e-9)
+        assert after.peak != pytest.approx(before.peak, abs=1e-9)
+
+    def test_widening_an_opinion_with_no_tie_keeps_centroid_and_peak(self):
+        """
+        GIVEN a panel in which no two opinions share a centroid
+        WHEN one opinion is widened evenly around its peak
+        THEN the compromise's centroid and peak both stay
+        """
+        before = _compromise([(0, 1, 2), (3, 4, 5), (6, 8, 10)])
+        after = _compromise([(0, 1, 2), (2, 4, 6), (6, 8, 10)])
+
+        assert after.centroid == pytest.approx(before.centroid, abs=1e-9)
+        assert after.peak == pytest.approx(before.peak, abs=1e-9)
 
 
 class TestFormulaNumbers:
