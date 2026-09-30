@@ -404,7 +404,7 @@ jobs:
           DATABASE_URL: postgresql://become:become@localhost:5432/become_e2e
           SECRET_KEY: test-secret-key-for-ci
 
-  # One shard per browser. The three of them run the same 73 functional specs, and a
+  # One shard per browser. The three of them run the same 71 functional specs, and a
   # single runner cannot go wider than two workers: it advertises four cores over two
   # physical ones, and at four workers the summed test time grew 70% while the wall
   # clock fell only 13%. Extra parallelism therefore has to come from extra machines.
@@ -427,8 +427,7 @@ jobs:
         include:
           # Split so that no shard is much longer than any other, since the run ends
           # when the slowest one does. Sharding is by test rather than by file, because
-          # `fullyParallel` is on: the two webkit halves drew 35 and 34 tests and
-          # finished within a second of each other.
+          # `fullyParallel` is on: the two webkit halves hold 36 and 35 tests.
           - name: webkit-1
             browsers: webkit
             projects: --project=webkit --shard=1/2
