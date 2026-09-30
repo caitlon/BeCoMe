@@ -326,6 +326,23 @@ class TestWorkflowMode:
         assert record.levelno == logging.WARNING
         assert (record.event, record.mode) == ("assistant_empty_answer", "workflow")
 
+    async def test_an_answer_cut_off_inside_its_reasoning_is_a_failure(self):
+        """
+        GIVEN a model whose reply opens a reasoning block and never closes it
+        WHEN a turn is answered
+        THEN AssistantUnavailableError is raised and one warning names the event and the mode
+        """
+        model = _model(_say("<think>I was still working out the"))
+
+        with (
+            captured_log_records(SERVICE_LOGGER) as records,
+            pytest.raises(AssistantUnavailableError),
+        ):
+            await AssistantService(_settings(), model).answer(_request(), _ctx())
+
+        (record,) = records
+        assert (record.event, record.mode) == ("assistant_empty_answer", "workflow")
+
     async def test_strips_the_reasoning_block_from_the_answer(self):
         """
         GIVEN a model that thinks aloud before answering

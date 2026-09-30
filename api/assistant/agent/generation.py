@@ -42,6 +42,9 @@ logger = logging.getLogger(__name__)
 # refused call and one to read the refusal and write its answer.
 _MODEL_CALL_SLACK = 2
 
+_THINK_OPEN = "<think>"
+_THINK_CLOSE = "</think>"
+
 _TOOL_NAMES = frozenset(tool.name for tool in ASSISTANT_TOOLS)
 
 
@@ -80,12 +83,21 @@ def answer_text(message: BaseMessage) -> str:
     """Read the answer out of a model reply.
 
     A reply given as a list of content blocks is joined from its text parts, and the
-    reasoning block a model may put in front of its answer is removed.
+    reasoning block a model may put in front of its answer is removed. A reply that was
+    cut off inside its reasoning, so that a block opens and never closes, has no answer:
+    what is left of it is the model's half-written thoughts, and it is returned as empty.
+    ``strip_think_block`` is shared with the query transforms and keeps such a reply
+    as it is, which is why the check is here.
 
     :param message: The model's reply.
-    :return: The answer, stripped; empty when the reply held nothing else.
+    :return: The answer, stripped; empty when the reply held nothing else, or ended
+        inside a reasoning block.
     """
-    return strip_think_block(message.text)
+    text = strip_think_block(message.text)
+    opened = text.rfind(_THINK_OPEN)
+    if opened != -1 and _THINK_CLOSE not in text[opened:]:
+        return ""
+    return text
 
 
 class DirectGenerator:
@@ -223,9 +235,12 @@ class AgentGenerator:
 
         The user message is built as the workflow mode builds its own: the excerpts of
         every source in the registry, then the replies the tools gave, then the question.
-        Its size is bounded by ``max_tool_calls``: the turn made at most that many tool
-        calls, and the replies are capped in size, so the default four fit the answer
-        model's 16384-token window together with the history.
+        A run that reached the model-call limit was usually looping, and a loop repeats
+        the same call, so a reply that appears more than once is shown once, in the order
+        it first appeared. The size is bounded by ``max_tool_calls``, but not to the
+        window: four replies at their maximum field lengths come to about 54,000
+        characters, more than the answer model's 16384 tokens. A call that large is
+        rejected by the model server and ends as the unavailable failure.
 
         :param messages: The conversation the run started from.
         :param ctx: The turn's context, holding the sources and the tool replies.
@@ -233,7 +248,7 @@ class AgentGenerator:
         :return: The answer text.
         """
         excerpts = render_context_block(ctx.sources.numbered(), None)
-        parts = [*([excerpts] if excerpts else []), *ctx.tool_outputs]
+        parts = [*([excerpts] if excerpts else []), *dict.fromkeys(ctx.tool_outputs)]
         content = user_message(parts, question)
         response = await self._model.ainvoke(
             [SystemMessage(content=SYSTEM_PROMPT), *messages[:-1], HumanMessage(content=content)]

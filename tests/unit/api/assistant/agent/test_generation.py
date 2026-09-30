@@ -126,6 +126,48 @@ class TestAnswerText:
 
         assert answer_text(message) == "First. Second."
 
+    def test_a_reply_cut_off_inside_its_reasoning_is_empty(self):
+        """
+        GIVEN a reply that opens a reasoning block and is cut off before it closes
+        WHEN its text is read
+        THEN the answer is empty, not the half-written reasoning
+        """
+        assert answer_text(AIMessage(content="<think>I was working out that")) == ""
+
+    def test_text_before_a_reasoning_block_that_never_closes_is_still_empty(self):
+        """
+        GIVEN a reply with some text and then a reasoning block that never closes
+        WHEN its text is read
+        THEN the answer is empty
+        """
+        assert answer_text(AIMessage(content="Half an answer <think>and then")) == ""
+
+    def test_a_closed_reasoning_block_followed_by_text_returns_the_text(self):
+        """
+        GIVEN a reply whose reasoning block closes and is followed by the answer
+        WHEN its text is read
+        THEN the answer is the text after the block
+        """
+        assert answer_text(AIMessage(content="<think>x</think>Answer.")) == "Answer."
+
+    def test_a_second_reasoning_block_that_never_closes_is_empty(self):
+        """
+        GIVEN a reply with a closed reasoning block, some text and a second block cut off
+        WHEN its text is read
+        THEN the answer is empty
+        """
+        assert answer_text(AIMessage(content="<think>a</think>Text <think>b")) == ""
+
+    def test_text_with_no_reasoning_block_is_untouched(self):
+        """
+        GIVEN a reply with no reasoning block, only a closing tag written in the text
+        WHEN its text is read
+        THEN it is returned as it is, stripped
+        """
+        assert answer_text(AIMessage(content=" Plain answer, </think> here. ")) == (
+            "Plain answer, </think> here."
+        )
+
     def test_a_blank_reply_stays_blank(self):
         """
         GIVEN a reply that holds only whitespace after the reasoning block
@@ -411,6 +453,29 @@ class TestAgentGenerator:
                 f"\n\nQuestion: {QUESTION}"
             ),
         ]
+
+    async def test_the_fallback_call_shows_a_repeated_reply_once(self):
+        """
+        GIVEN a model that loops on the same tool call until the model-call limit, so the
+              tool gives the same reply twice
+        WHEN the turn is generated
+        THEN the extra call's user message holds that reply once, then the question
+        """
+        model = _model(
+            _call("list_my_projects", 1),
+            _call("list_my_projects", 2),
+            _call("list_my_projects", 3),
+            _call("list_my_projects", 4),
+            AIMessage(content="Nothing more."),
+        )
+        ctx = _ctx()
+
+        await AgentGenerator(model, max_tool_calls=2).generate(_user(), ctx, QUESTION)
+
+        assert ctx.tool_outputs == ["no_result: the user is not a member of any project"] * 2
+        assert model.seen[-1][-1].content == (
+            f"no_result: the user is not a member of any project\n\nQuestion: {QUESTION}"
+        )
 
     async def test_the_fallback_call_of_a_run_with_nothing_gathered_is_the_bare_question(self):
         """
