@@ -5,7 +5,7 @@ from langchain.agents import create_agent
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.tools import tool
 
-from tests.shared.assistant_fakes import ScriptedToolCallingModel, ToolEchoingModel
+from tests.shared.assistant_fakes import ScriptedToolCallingModel
 
 
 @tool
@@ -57,35 +57,3 @@ class TestScriptedToolCallingModel:
             isinstance(m, ToolMessage) and m.content == "about the mean: 42.00"
             for m in model.seen[1]
         )
-
-
-@pytest.mark.asyncio
-class TestToolEchoingModel:
-    """The model answers with the tool's own reply, so a test sees what the tool returned."""
-
-    async def test_echoes_the_tool_reply_as_the_answer(self):
-        """
-        GIVEN a model whose first call requests a tool
-        WHEN an agent with that tool runs on it
-        THEN the final answer carries the tool's own reply text
-        """
-        model = ToolEchoingModel(first_call=_call())
-        agent = create_agent(model, [_lookup])
-
-        result = await agent.ainvoke({"messages": [HumanMessage(content="Explain")]})
-
-        assert result["messages"][-1].content == "Tool said: about the mean: 42.00"
-
-    async def test_records_the_messages_of_every_call(self):
-        """
-        GIVEN an echoing model that has been called twice
-        WHEN its seen list is read
-        THEN the second entry ends with the tool's reply
-        """
-        model = ToolEchoingModel(first_call=_call())
-        agent = create_agent(model, [_lookup])
-
-        await agent.ainvoke({"messages": [HumanMessage(content="Explain")]})
-
-        assert len(model.seen) == 2
-        assert model.seen[1][-1].content == "about the mean: 42.00"

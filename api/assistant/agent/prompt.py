@@ -62,10 +62,10 @@ def format_number(value: float) -> str:
     return f"{value:.2f}"
 
 
-#: The longest an enumerated string of a result (the agreement level, the Likert
-#: decision) may be once cleaned. The API sends a short fixed word; the cap is only a
-#: bound on what a wrong answer could put in front of the model.
-_LABEL_LIMIT = 40
+#: The longest a short label may be once cleaned: an enumerated string of a result (the
+#: agreement level, the Likert decision) or a role. The API sends a short fixed word; the
+#: cap is only a bound on what a wrong answer could put in front of the model.
+LABEL_LIMIT = 40
 
 
 def clean_text(value: str, limit: int) -> str:
@@ -131,10 +131,10 @@ def _project_block(project: ResultView) -> str:
         _fuzzy("Median", project.median),
         f"Maximum error: {format_number(project.max_error)}",
         f"Number of experts: {project.num_experts}",
-        f"Agreement level: {clean_text(project.agreement_level, _LABEL_LIMIT)}",
+        f"Agreement level: {clean_text(project.agreement_level, LABEL_LIMIT)}",
     ]
     if project.likert_value is not None and project.likert_decision is not None:
-        decision = clean_text(project.likert_decision, _LABEL_LIMIT)
+        decision = clean_text(project.likert_decision, LABEL_LIMIT)
         lines.append(f"Likert reading: {project.likert_value} ({decision})")
     lines.append("</project_data>")
     return "\n".join(lines)
