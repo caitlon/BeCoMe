@@ -54,7 +54,7 @@ def _no_dotenv(monkeypatch, tmp_path):
 
 def _settings(mode: str = "workflow", **overrides: Any) -> Settings:
     fields: dict[str, Any] = {
-        "secret_key": "test-secret-key",
+        "secret_key": "test-secret-key",  # pragma: allowlist secret
         "assistant_mode": mode,
         "assistant_max_tool_calls": 4,
         "assistant_max_history_turns": 10,
