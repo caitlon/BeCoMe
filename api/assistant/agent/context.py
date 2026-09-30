@@ -57,14 +57,22 @@ class SourceRegistry:
         ]
 
     def texts(self) -> list[str]:
-        """Return the chunks' own words, for the number check.
+        """Return what the model is shown for each source, for the number check.
 
-        No ``[n]`` markers and no titles: the digits of a marker must never count as
-        grounded numbers.
+        For every registered chunk: its title, its section when there is one, and its
+        own words, as separate strings. A year in a title that the model repeats is
+        then grounded. The ``[n]`` marker is left out, because its digits must never
+        count as grounded numbers, and so is the generated caption.
 
-        :return: The ``chunk_text`` of every registered chunk, in registration order.
+        :return: The strings, chunk by chunk, in registration order.
         """
-        return [chunk.chunk_text for chunk in self._chunks]
+        texts: list[str] = []
+        for chunk in self._chunks:
+            texts.append(chunk.title)
+            if chunk.section:
+                texts.append(chunk.section)
+            texts.append(chunk.chunk_text)
+        return texts
 
 
 @dataclass

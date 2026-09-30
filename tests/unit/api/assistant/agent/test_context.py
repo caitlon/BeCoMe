@@ -132,17 +132,47 @@ class TestSourceRegistry:
         assert ref.url is None
         assert "/Users/" not in ref.model_dump_json()
 
-    def test_texts_returns_the_chunk_words_only(self):
+    def test_texts_returns_what_the_model_is_shown_except_the_marker(self):
         """
-        GIVEN chunks whose indexed text carries a title and caption
+        GIVEN chunks whose indexed text carries a generated caption
         WHEN the texts are read
-        THEN only the chunk's own words come back, with no marker or title
+        THEN each chunk gives its title, its section and its own words as separate
+            strings, with no marker and no caption
         """
         registry = SourceRegistry()
-        registry.add(_chunk("alpha", text="Title. caption\n\nalpha"))
-        registry.add(_chunk("beta", title="Other title"))
+        registry.add(_chunk("alpha", text="Title. caption\n\nalpha", title="Guide 2024"))
+        registry.add(_chunk("beta", title="Other title", section="Deep"))
 
-        assert registry.texts() == ["alpha", "beta"]
+        assert registry.texts() == [
+            "Guide 2024",
+            "Overview",
+            "alpha",
+            "Other title",
+            "Deep",
+            "beta",
+        ]
+
+    def test_texts_leaves_out_an_empty_section(self):
+        """
+        GIVEN a chunk with no section
+        WHEN the texts are read
+        THEN the title and the words come back, and no empty string
+        """
+        registry = SourceRegistry()
+        registry.add(_chunk("alpha", section=""))
+
+        assert registry.texts() == ["Method description", "alpha"]
+
+    def test_texts_lets_a_year_in_a_title_ground_the_repeated_year(self):
+        """
+        GIVEN a source whose title holds a year
+        WHEN the texts are read
+        THEN the year is among them
+        """
+        registry = SourceRegistry()
+        registry.add(_chunk("words", title="Report 2021"))
+
+        assert any("2021" in text for text in registry.texts())
 
 
 class TestAssistantContext:
