@@ -102,7 +102,7 @@ class TestPinnedThresholds:
         """
         project = Project(name="P", scale_min=-50.0, scale_max=50.0, scale_unit="%")
         at_threshold = derive_agreement(project, float(number))
-        just_above = derive_agreement(project, float(number) + 0.5)
+        just_above = derive_agreement(project, float(number) + 0.01)
 
         assert at_threshold != just_above
 

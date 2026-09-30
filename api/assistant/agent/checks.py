@@ -12,14 +12,42 @@ from decimal import ROUND_DOWN, ROUND_HALF_UP, Context, Decimal
 # A bracket group: square brackets, or the full-width lenticular ones some models emit.
 _BRACKET = re.compile(r"\[([^\[\]]*)\]|\u3010([^\u3010\u3011]*)\u3011")
 
+# The words that may label a citation, in any case: source, reference, excerpt and
+# passage in English and Czech, and source in Russian. Any other word before a number
+# (``[lower 6, upper 11]``, ``[Q1-Q3]``) makes the bracket ordinary text.
+_LABEL_WORDS = (
+    "source",
+    "sources",
+    "src",
+    "doc",
+    "docs",
+    "document",
+    "ref",
+    "refs",
+    "reference",
+    "excerpt",
+    "passage",
+    "zdroj",
+    "zdroje",
+    "dokument",
+    "\u00faryvek",
+    "pas\u00e1\u017e",
+    "\u0438\u0441\u0442\u043e\u0447\u043d\u0438\u043a",
+)
+
 # What a citation looks like inside a bracket: integers of one to three digits separated
 # by commas, semicolons, spaces, hyphens or en dashes, each with an optional label word
-# in front (letters of any script, then an optional space, dot, colon, hash or numero
-# sign).
-_LABEL = r"[^\W\d_]+[\s.:#\u2116]*"
+# in front (then an optional space, dot, colon, hash or numero sign).
+_LABEL = (
+    "(?:"
+    + "|".join(re.escape(word) for word in sorted(_LABEL_WORDS, key=len, reverse=True))
+    + r")[\s.:#\u2116]*"
+)
 _CITATION_ITEM = rf"(?:{_LABEL})?[0-9]{{1,3}}"
-_CITATION_CONTENT = re.compile(rf"\s*{_CITATION_ITEM}(?:[,;\s\-\u2013]+{_CITATION_ITEM})*\s*")
-_LABEL_WORD = re.compile(_LABEL)
+_CITATION_CONTENT = re.compile(
+    rf"\s*{_CITATION_ITEM}(?:[,;\s\-\u2013]+{_CITATION_ITEM})*\s*", re.IGNORECASE
+)
+_LABEL_WORD = re.compile(_LABEL, re.IGNORECASE)
 _CITED_RANGE = re.compile(r"([0-9]{1,3})(?:\s*[-\u2013]\s*([0-9]{1,3}))?")
 
 # What is dropped from an answer before its numbers are scanned.
@@ -28,18 +56,22 @@ _BARE_URL = re.compile(r"https?://\S+")
 _DATE = re.compile(
     r"(?<![\w.])(?:[0-9]{4}-[0-9]{2}-[0-9]{2}|[0-9]{1,2}\.[ ]?[0-9]{1,2}\.[ ]?[0-9]{4})(?![0-9])"
 )
-# A word that holds both a letter and a digit (v1, Qwen3, doc1, 1st, H2O), or letters, a
-# hyphen and a digit run (COVID-19, GPT-4, ISO-8601), with any dot-joined digit tail
-# (v1.2.3, Qwen3.5). The lookbehind keeps a digit tail that
+# A word that holds both a letter and a digit (v1, Qwen3, doc1, 1st, H2O), or a name that
+# starts with a capital, then letters, a hyphen and a digit run (COVID-19, GPT-4,
+# ISO-8601), with any dot-joined digit tail (v1.2.3, Qwen3.5). A lowercase word before a
+# hyphen (error-15.3, peak-3, n-1) is not a name. The lookbehind keeps a digit tail that
 # follows a plain number ("14.19px") for the neighbour check instead.
 _MIXED_TOKEN = re.compile(
-    r"(?<![\w.])(?:(?=\w*[^\W\d])(?=\w*[0-9])\w+|[^\W\d_]+-[0-9]+)(?:\.[0-9]+)*"
+    r"(?<![\w.])(?:(?=\w*[^\W\d])(?=\w*[0-9])\w+|[A-Z][^\W\d_]*-[0-9]+)(?:\.[0-9]+)*"
 )
+# What replaces a dropped token: neither whitespace nor a letter, so that a hyphen right
+# after it does not read as a sign, and the digits around it do not run together.
+_DROPPED = "\x00"
 # A list number at the start of a line: 1. or 2) or (3), behind any markdown decoration.
 _LIST_NUMBERING = re.compile(r"^[>#*_\- \t]*(?:\([0-9]+\)|[0-9]+[.)])[*_]*\s", re.MULTILINE)
-# An ordinal inside a sentence, as Czech writes it: one or two digits, a dot, then spaces
-# on the same line. Whether it is one is decided by the case of the next letter.
-_ORDINAL = re.compile(r"(?<![0-9.,])[0-9]{1,2}\.([ \t\xa0]+)(\S)")
+# An ordinal inside a sentence, as Czech writes it: one or two digits, a dot, then
+# whitespace on the same line. Whether it is one is decided by the case of the next letter.
+_ORDINAL = re.compile(r"(?<![0-9.,])[0-9]{1,2}\.([^\S\r\n]+)(\S)")
 # A markdown link's target, when it directly follows a citation.
 _LINK_AFTER = re.compile(r"\([^)\s]*\)")
 
@@ -94,7 +126,10 @@ def check_citations(answer: str, valid_numbers: set[int]) -> bool:
     ``[Source 1]``, ``[doc1]`` or the full-width ``\u30101\u3011``; a range names every
     number in it, and a markdown link ``[1](https://...)`` counts as the citation
     ``[1]``. A bracket holding a decimal, such as ``[11.54, 14.19]``, is not a citation.
-    Every number in a bracket may carry its own label (``[Source 1, Source 2]``).
+    Every number in a bracket may carry its own label (``[Source 1, Source 2]``), but
+    the label must be one of a fixed set of source words (source, doc, ref, reference,
+    excerpt, passage and their Czech and Russian counterparts, in any case): any other
+    word makes the bracket ordinary text, as in ``[lower 6, upper 11]``.
     Known limits: a square-bracketed group of bare integers is read as a citation, so a
     fuzzy number written ``[6, 8, 11]`` is misread; and the full-width form with a
     dagger, a number followed by a dagger and a word inside full-width brackets, as some
@@ -133,10 +168,10 @@ def _readings(form: str, text: str, negative: bool) -> list[list[Decimal]]:
     :return: The readings, each a list of numbers.
     """
     if form == "spaced":
-        readings = [
-            [Decimal(re.sub(_SPACE, "", text).replace(",", "."))],
-            [Decimal(part.replace(",", ".")) for part in re.split(_SPACE, text)],
-        ]
+        groups = re.split(_SPACE, text)
+        readings = [[Decimal(re.sub(_SPACE, "", text).replace(",", "."))]]
+        if not any(group.startswith("0") for group in groups[1:]):
+            readings.append([Decimal(group.replace(",", ".")) for group in groups])
     elif form == "grouped":
         readings = [[Decimal(text.replace(",", ""))]]
     elif form == "commas":
@@ -208,6 +243,16 @@ def strip_citations(text: str) -> str:
     :param text: The text to clean.
     :return: The text with each citation replaced by one space.
     """
+    return _replace_citations(text, " ")
+
+
+def _replace_citations(text: str, filler: str) -> str:
+    """Replace each citation-like bracket, and the link target after it, by a filler.
+
+    :param text: The text to clean.
+    :param filler: What stands in place of each citation.
+    :return: The cleaned text.
+    """
     pieces: list[str] = []
     position = 0
     for start, end, _numbers in _citation_spans(text):
@@ -215,7 +260,7 @@ def strip_citations(text: str) -> str:
             continue
         link = _LINK_AFTER.match(text, end)
         pieces.append(text[position:start])
-        pieces.append(" ")
+        pieces.append(filler)
         position = link.end() if link else end
     pieces.append(text[position:])
     return "".join(pieces)
@@ -241,16 +286,18 @@ def _strip_answer(answer: str) -> str:
     (``1.``, ``2)``, ``(3)``, behind markdown decoration), and last ordinals. Links and
     URLs go first so that a digit in an address is never read; citations go before the
     mixed tokens because ``[doc1]`` is a citation; dates and mixed tokens go before
-    numbering and ordinals because those match on a number and a dot.
+    numbering and ordinals because those match on a number and a dot. A dropped token
+    leaves a filler that is not whitespace, so a hyphen right after it (``doc1-5``) is
+    not read as a minus sign.
 
     :param answer: The model's final answer text.
     :return: The cleaned text.
     """
     text = _LINK_TARGET.sub("]", answer)
-    text = _BARE_URL.sub(" ", text)
-    text = strip_citations(text)
-    text = _DATE.sub(" ", text)
-    text = _MIXED_TOKEN.sub(" ", text)
+    text = _BARE_URL.sub(_DROPPED, text)
+    text = _replace_citations(text, _DROPPED)
+    text = _DATE.sub(_DROPPED, text)
+    text = _MIXED_TOKEN.sub(_DROPPED, text)
     text = _LIST_NUMBERING.sub("", text)
     return _drop_ordinals(text)
 
@@ -331,8 +378,9 @@ def find_ungrounded_numbers(answer: str, grounding_texts: list[str]) -> list[str
     texts, quantized to ``d`` decimals, equals it under round-half-up or under
     truncation: the data says ``14.1923076923``, so ``14.19``, ``14.2`` and ``14`` are
     grounded and ``15`` is not. Percentages are compared as written: ``0.2`` does not
-    ground ``20 %``. Known limit: a square-bracketed group of bare integers is read as
-    a citation and skipped, so a fuzzy number written ``[6, 8, 11]`` is not checked.
+    ground ``20 %``. Known limits: a square-bracketed group of bare integers, or of
+    integers each labelled with a source word, is read as a citation and skipped, so a
+    fuzzy number written ``[6, 8, 11]`` is not checked.
 
     Other known limits: a number glued to a unit (``8mm``) and a number spelled as a
     word are not checked; the check matches a bag of numbers, so a grounded number
