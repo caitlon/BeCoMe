@@ -16,10 +16,10 @@ dev = [
     "pytest==9.1.1",
     "pytest-asyncio==1.4.0",
     "pytest-cov==7.1.0",
-    "pytest-postgresql==9.0.0",
+    "pytest-postgresql==9.1.0",
     "pytest-xdist==3.8.0",
-    "hypothesis==6.165.10",
-    "ruff==0.16.5",
+    "hypothesis==6.168.3",
+    "ruff==0.16.9",
     "mypy==2.3.1",
     "pip-audit==2.10.1",
     "bandit[toml]==1.9.4",
@@ -27,16 +27,16 @@ dev = [
     "pre-commit==4.6.2",
     "pip==26.2.1",
     "types-passlib==1.7.7.20260211",
-    "boto3-stubs[s3]==1.43.83",
-    "mutmut==3.7.0",
-    "locust==2.46.4",
-    "fakeredis==2.37.1",
+    "boto3-stubs[s3]==1.43.103",
+    "mutmut==3.8.0",
+    "locust==2.46.6",
+    "fakeredis==2.38.0",
 ]
 viz = [
-    "numpy==2.5.2",
-    "pandas==3.0.5",
-    "matplotlib==3.11.1",
-    "plotly==7.0.0",
+    "numpy==2.5.3",
+    "pandas==3.0.6",
+    "matplotlib==3.11.2",
+    "plotly==7.1.0",
     "seaborn==0.13.2",
     "openpyxl==3.1.5",
     "graphviz==0.21",
@@ -45,7 +45,7 @@ notebook = [
     "jupyter==1.1.1",
     "ipykernel==7.3.0",
     "ipywidgets==8.1.9",
-    "notebook==7.6.2",
+    "notebook==7.6.3",
 ]
 docs = [
     "mkdocs==1.6.1",
@@ -54,29 +54,29 @@ docs = [
     # pulls the per-directory READMEs onto the site instead of copying them, and because
     # `scripts/docs/toc.py` imports its slug function to get the same anchors the site
     # and GitHub use.
-    "pymdown-extensions==11.0.2",
+    "pymdown-extensions==12.1",
     # Arrives with mkdocs anyway. Named because that same script imports it directly,
     # and an undeclared import is one dependency bump away from a puzzling failure.
-    "markdown==3.10.3",
+    "markdown==3.11",
 ]
 api = [
     "fastapi==0.141.1",
-    "uvicorn[standard]==0.52.4",
+    "uvicorn[standard]==0.54.0",
     "pydantic-settings==2.15.0",
     "httpx==0.28.1",
-    "sqlmodel==0.0.42",
-    "alembic==1.19.1",
-    "psycopg2==2.9.12",
+    "sqlmodel==0.0.47",
+    "alembic==1.20.0",
+    "psycopg2==2.9.13",
     "PyJWT==2.15.0",
     "passlib[bcrypt]==1.7.4",
     "python-multipart==0.0.32",
     "email-validator==2.3.0",
-    "boto3==1.43.83",
+    "boto3==1.43.103",
     "slowapi==0.1.10",
     "bleach==6.4.0",
     "pillow==12.3.0",
-    "sentry-sdk[fastapi]==2.68.1",
-    "logtail-python==0.4.0",
+    "sentry-sdk[fastapi]==2.71.0",
+    "logtail-python==0.5.1",
     "reportlab==5.0.1",
     "redis==8.1.0",
     "dnspython==2.8.0",
@@ -87,8 +87,8 @@ assistant = [
     # pgvector is intentionally absent: langchain-postgres 0.0.18 requires pgvector<0.4 and pulls it
     # in transitively; our code never imports it directly.
     "langchain==1.4.3",
-    "langchain-core==1.6.4",
-    "langchain-openai==1.6.4",
+    "langchain-core==1.6.5",
+    "langchain-openai==1.6.6",
     "langchain-postgres==0.0.18",
     "langchain-text-splitters==1.1.2",
     "langgraph==1.2.12",
@@ -101,7 +101,7 @@ assistant = [
     # contextlib.suppress(ImportError), so DeterministicFakeEmbedding - which the
     # dense-search test uses - raises NameError at call time without
     # this, not an ImportError at import time. Same pin already used by the viz extra.
-    "numpy==2.5.2",
+    "numpy==2.5.3",
     "rank-bm25==0.2.2",
 ]
 
