@@ -44,14 +44,14 @@ class UserService(BaseService):
         email: str,
         password: str,
         first_name: str,
-        last_name: str | None = None,
+        last_name: str,
     ) -> User:
         """Create a new user account.
 
         :param email: User email address (will be normalized to lowercase)
         :param password: Plain text password (will be hashed)
         :param first_name: User's first name
-        :param last_name: User's last name (optional)
+        :param last_name: User's last name
         :return: Created User instance
         :raises UserExistsError: If email already registered
         """

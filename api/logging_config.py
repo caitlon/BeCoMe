@@ -4,7 +4,7 @@ import json
 import logging
 from logging.handlers import RotatingFileHandler
 
-from logtail import LogtailHandler  # type: ignore[import-untyped]
+from logtail import LogtailHandler
 
 from api.config import Environment, Settings
 from api.logging_context import ContextFilter
