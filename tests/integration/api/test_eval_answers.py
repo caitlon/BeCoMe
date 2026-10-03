@@ -44,6 +44,7 @@ PROVENANCE_FIELDS = (  # noqa: SIM905
     "retrieval_query_transform retrieval_rerank retrieval_k answer_max_tokens query_model "
     "max_tool_calls collection code_version answer_endpoint"
 ).split()
+GOOD_ROW = json.dumps({"id": "q0", "arm": "cli", "status": "ok"})
 _ENV = {
     "ASSISTANT_MODE": "workflow",
     "ASSISTANT_RATE_LIMIT_PER_HOUR": "0",
@@ -755,18 +756,18 @@ class TestFailureHandling:
         assert "ASSISTANT_RATE_LIMIT_PER_HOUR" in ea._stop_reason("http_429", 1)
         assert "3 turns in a row" in ea._stop_reason("http_503", 3)
 
-    def test_the_streak_stop_says_a_changed_setup_needs_a_new_arm(self):
+    def test_the_streak_stop_says_when_retry_failed_is_refused(self):
         """
         GIVEN a run that stopped after 3 failed turns
         WHEN the stop message is read
-        THEN it says --retry-failed holds only while the setup is unchanged, and names the way on
+        THEN it says a changed provenance field refuses --retry-failed, and names the way on
         """
         # WHEN
         message = ea._stop_reason("http_503", 3)
 
         # THEN
-        assert "unchanged" in message
-        assert "new --arm or a new --output" in message
+        assert "refused if a recorded provenance field changed" in message
+        assert "a new --arm or a new --output asks every question again" in message
 
 
 class TestProvenance:
@@ -871,7 +872,7 @@ class TestProvenance:
         assert code == 2
         assert "different mode" in capsys.readouterr().err
 
-    def _sealed_main(self, client, tmp_path, versions, *, sealed_run=True):
+    def _main_with(self, client, tmp_path, versions, *, sealed_run, code_version):
         fixtures = _setup(client, _scripted("Sealed answer."))
         (tmp_path / "f.json").write_text(json.dumps(fixtures), encoding="utf-8")
         (tmp_path / "q.jsonl").write_text(json.dumps({"id": "q1", "question": "One?"}))
@@ -882,12 +883,23 @@ class TestProvenance:
         with (
             patch.object(ea, "SEALED_SHA256", sealed),
             patch.object(ea, "_collection_versions", return_value=versions),
+            patch.object(ea, "git_version", return_value=code_version),
             patch.object(ea, "create_app", return_value=client.app),
         ):
             return ea.main(_argv(tmp_path, "workflow", *extra))
 
+    def _sealed_main(self, client, tmp_path, versions, code_version="1a2b3c4"):
+        return self._main_with(
+            client, tmp_path, versions, sealed_run=True, code_version=code_version
+        )
+
+    def _ordinary_main(self, client, tmp_path, versions, code_version="1a2b3c4-dirty"):
+        return self._main_with(
+            client, tmp_path, versions, sealed_run=False, code_version=code_version
+        )
+
     @pytest.mark.parametrize(
-        ("versions", "missing"),
+        ("versions", "unreadable"),
         [
             ((None, None), "app_version and corpus_version"),
             (("app-1", None), "corpus_version"),
@@ -895,35 +907,56 @@ class TestProvenance:
         ],
     )
     def test_a_sealed_run_missing_either_version_is_refused(
-        self, versions, missing, assistant_settings, client, tmp_path, capsys
+        self, versions, unreadable, assistant_settings, client, tmp_path, capsys
     ):
         """
-        GIVEN a sealed questions file, a registration, and a registry that lacks a version
+        GIVEN a sealed questions file, a registration, and a version that could not be read
         WHEN main runs with --sealed-run
-        THEN it exits 2 naming what is missing, and writes nothing
+        THEN it exits 2 naming which could not be read and why that can be, and writes nothing
         """
         # WHEN
         code = self._sealed_main(client, tmp_path, versions)
 
         # THEN
+        err = capsys.readouterr().err
         assert code == 2
-        assert f"missing from the registry: {missing}" in capsys.readouterr().err
+        assert f"could not read {unreadable}" in err
+        assert "unreachable" in err
+        assert "private corpus manifest" in err
+        assert "missing from the registry" not in err
         assert not (tmp_path / "out.jsonl").exists()
 
-    def test_a_sealed_run_with_both_versions_goes_ahead(
+    @pytest.mark.parametrize("code_version", [None, "1a2b3c4-dirty", "wave-1-2-g1a2b3c4-dirty"])
+    def test_a_sealed_run_needs_a_clean_checkout(
+        self, code_version, assistant_settings, client, tmp_path, capsys
+    ):
+        """
+        GIVEN a sealed run with both versions, whose code version is unknown or dirty
+        WHEN main runs with --sealed-run
+        THEN it exits 2 saying a clean checkout is needed, and writes nothing
+        """
+        # WHEN
+        code = self._sealed_main(client, tmp_path, ("app-1", "corpus-2"), code_version)
+
+        # THEN
+        assert code == 2
+        assert "clean checkout" in capsys.readouterr().err
+        assert not (tmp_path / "out.jsonl").exists()
+
+    def test_a_sealed_run_with_both_versions_and_a_clean_checkout_goes_ahead(
         self, assistant_settings, client, tmp_path, capsys
     ):
         """
-        GIVEN a sealed questions file, a registration, and a registry holding both versions
+        GIVEN a sealed questions file, a registration, both versions and a clean checkout
         WHEN main runs with --sealed-run
-        THEN it exits 0 and warns of nothing
+        THEN it exits 0 and prints no warning
         """
         # WHEN
         code = self._sealed_main(client, tmp_path, ("app-1", "corpus-2"))
 
         # THEN
         assert code == 0
-        assert capsys.readouterr().err == ""
+        assert "warning:" not in capsys.readouterr().err
 
     @pytest.mark.parametrize(
         ("versions", "warned"),
@@ -937,27 +970,42 @@ class TestProvenance:
         self, versions, warned, assistant_settings, client, tmp_path, capsys
     ):
         """
-        GIVEN a registry that lacks a version, and a run without --sealed-run
+        GIVEN a registry that lacks a version, and an ordinary run from a dirty checkout
         WHEN main runs
         THEN it goes ahead and warns on stderr naming what is null
         """
         # WHEN
-        code = self._sealed_main(client, tmp_path, versions, sealed_run=False)
+        code = self._ordinary_main(client, tmp_path, versions)
 
         # THEN
         assert code == 0
         assert f"warning: {warned} in every row" in capsys.readouterr().err
 
+    def test_an_ordinary_run_with_both_versions_does_not_warn(
+        self, assistant_settings, client, tmp_path, capsys
+    ):
+        """
+        GIVEN both versions, and an ordinary run from a dirty checkout
+        WHEN main runs
+        THEN it exits 0 and prints no warning
+        """
+        # WHEN
+        code = self._ordinary_main(client, tmp_path, ("app-1", "corpus-2"))
+
+        # THEN
+        assert code == 0
+        assert "warning:" not in capsys.readouterr().err
+
 
 class TestInputErrors:
     """Bad inputs end in a one-line message, not a traceback."""
 
-    def _main(self, client, tmp_path, questions_text):
+    def _main(self, client, tmp_path, questions_text, *extra):
         fixtures = _setup(client, _scripted("Fine."))
         (tmp_path / "f.json").write_text(json.dumps(fixtures), encoding="utf-8")
         (tmp_path / "q.jsonl").write_text(questions_text, encoding="utf-8")
         with patch.object(ea, "create_app", return_value=client.app):
-            return ea.main(_argv(tmp_path))
+            return ea.main(_argv(tmp_path, "workflow", *extra))
 
     def test_a_truncated_last_line_in_the_output_is_named(
         self, assistant_settings, client, tmp_path, capsys
@@ -968,7 +1016,7 @@ class TestInputErrors:
         THEN it exits 2 naming the line number
         """
         # GIVEN
-        (tmp_path / "out.jsonl").write_text('{"id": "q0", "arm": "cli"}\n{"id": "q1", "ar')
+        (tmp_path / "out.jsonl").write_text(GOOD_ROW + '\n{"id": "q1", "ar')
 
         # WHEN
         code = self._main(client, tmp_path, json.dumps({"id": "q1", "question": "One?"}))
@@ -977,24 +1025,76 @@ class TestInputErrors:
         assert code == 2
         assert "line 2 is not valid JSON" in capsys.readouterr().err
 
-    @pytest.mark.parametrize("line", ["[1]", '{"x": 1}', '{"id": "q1"}', '{"arm": "cli"}'])
+    @pytest.mark.parametrize(
+        ("line", "reason"),
+        [
+            ("[1]", "not a JSON object"),
+            ('{"x": 1}', "no id"),
+            ('{"id": "q1"}', "no arm"),
+            ('{"id": "q0", "arm": "other"}', "no status"),
+            ('{"id": "q0", "arm": {"a": 1}, "status": "ok"}', "arm is not a string"),
+            ('{"id": 7, "arm": "cli", "status": "ok"}', "id is not a string"),
+        ],
+    )
     def test_an_output_line_that_is_not_an_eval_row_is_named(
-        self, line, assistant_settings, client, tmp_path, capsys
+        self, line, reason, assistant_settings, client, tmp_path, capsys
     ):
         """
-        GIVEN an output file whose second line is valid JSON but not an object with id and arm
-        WHEN main runs
-        THEN it exits 2 naming the line number and not a traceback
+        GIVEN an output file whose second line is valid JSON but not an eval row
+        WHEN main runs with --retry-failed
+        THEN it exits 2 naming the line number and the condition, and not a traceback
         """
         # GIVEN
-        (tmp_path / "out.jsonl").write_text('{"id": "q0", "arm": "cli"}\n' + line + "\n")
+        (tmp_path / "out.jsonl").write_text(GOOD_ROW + "\n" + line + "\n")
 
         # WHEN
-        code = self._main(client, tmp_path, json.dumps({"id": "q1", "question": "One?"}))
+        code = self._main(
+            client, tmp_path, json.dumps({"id": "q1", "question": "One?"}), "--retry-failed"
+        )
 
         # THEN
         assert code == 2
-        assert "line 2 is not an eval row" in capsys.readouterr().err
+        assert f"line 2 is not an eval row: {reason}" in capsys.readouterr().err
+
+    def test_a_line_separator_inside_an_answer_does_not_split_the_row(
+        self, assistant_settings, client, tmp_path
+    ):
+        """
+        GIVEN an output row whose answer holds U+2028, U+2029 and U+0085 as unescaped text
+        WHEN the file is read, and the arm is run again
+        THEN it is one row, the rerun is not refused, and no question is asked again
+        """
+        # GIVEN
+        fixtures = _setup(client, _scripted("One."))
+        output = tmp_path / "out.jsonl"
+        question = [{"id": "q1", "question": "One?"}]
+        _run(client, fixtures, question, output)
+        row = {**_rows(output)[0], "answer": "a\u2028b\u2029c\u0085d"}
+        output.write_text(json.dumps(row, ensure_ascii=False) + "\n", encoding="utf-8")
+
+        # WHEN
+        again = _run(client, fixtures, question, output)
+
+        # THEN
+        assert again["rows"] == 0
+        assert len(ea._read_rows(output)) == 1
+
+    def test_a_line_separator_inside_a_question_does_not_split_the_record(self, tmp_path):
+        """
+        GIVEN a questions file whose one question holds U+2028
+        WHEN the questions are loaded
+        THEN there is one record
+        """
+        # GIVEN
+        path = tmp_path / "q.jsonl"
+        record = {"id": "q1", "question": "a\u2028b"}
+        path.write_text(json.dumps(record, ensure_ascii=False) + "\n", encoding="utf-8")
+
+        # WHEN
+        records = ea._load_questions(path, set())
+
+        # THEN
+        assert records == [record]
 
     def test_a_question_record_that_is_not_an_object_is_refused(
         self, assistant_settings, client, tmp_path, capsys
