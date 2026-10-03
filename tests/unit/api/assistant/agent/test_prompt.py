@@ -118,6 +118,20 @@ class TestPinnedThresholds:
         """
         assert set(re.findall(r"[0-9]+", PINNED_FACTS)) == set(PINNED_NUMBERS)
 
+    def test_the_level_is_described_as_the_confidence_badge_not_expert_agreement(self):
+        """
+        GIVEN the pinned facts
+        WHEN the paragraph on the level is read
+        THEN it names the confidence badge and says the level is about the mean and the
+            median, and it does not call the label agreement
+        """
+        paragraph = PINNED_FACTS.split("\n\n")[1]
+
+        assert "confidence badge" in paragraph
+        assert "not whether the experts agree with each other" in paragraph
+        assert "agreement label" not in paragraph
+        assert '"high" agreement' not in paragraph
+
 
 def _compromise(panel: list[tuple[float, float, float]]) -> FuzzyTriangleNumber:
     """Run the real calculator on a panel of (lower, peak, upper) opinions."""

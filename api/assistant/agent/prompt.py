@@ -36,9 +36,11 @@ mean and the median landed, and a panel split into two camps can still produce a
 small maximum error when the mean falls between the camps and the median falls \
 inside one of them.
 
-The agreement label divides the maximum error by the width of the project's scale: \
-up to 20 percent of that width is "high" agreement, up to 40 percent is "moderate", \
-beyond that is "low". Report the label a tool gives you; do not recompute it."""
+The agreement level divides the maximum error by the width of the project's scale: \
+up to 20 percent of that width is "high", up to 40 percent is "moderate", beyond that \
+is "low". The results screen shows it as the confidence badge, for example "High \
+Confidence". It tells how close the mean and the median are, not whether the experts \
+agree with each other. Report the level a tool gives you; do not recompute it."""
 
 SYSTEM_PROMPT = f"{_OPENING}\n\n{STYLE}\n\n{PINNED_FACTS}"
 
