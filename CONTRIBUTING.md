@@ -1,8 +1,8 @@
 # Contributing to BeCoMe
 
 Thank you for taking an interest in BeCoMe. This page covers how to run the project, how
-changes reach the codebase, and where to report problems. The licence is
-[PolyForm Noncommercial 1.0.0](LICENSE); see the [README](README.md) for what it permits.
+changes reach the codebase, and where to report problems. The code is under the
+[PolyForm Noncommercial 1.0.0](LICENSE) licence.
 
 ## Set up and run locally
 
@@ -20,14 +20,17 @@ uv run pytest                              # backend tests
 
 To run the web application, start the local database, apply the migrations, then start the
 API and the frontend. The commands are under "Run it locally" in the development setup.
-`./scripts/ci/ci-local.sh fast` runs the lint and test steps that CI runs, without Docker.
+After `npm install` in `frontend/`, `./scripts/ci/ci-local.sh fast` runs the lint and test
+steps that CI runs, without Docker.
 
 ## Branches and pull requests
 
 Work moves through three long-lived branches: `dev`, then `test`, then `prod`. Feature and
 fix branches are named `<type>/<short-topic>`, for example `docs/contributing-guide`, and
-land in `dev` through a pull request. Nothing is committed to those three branches directly,
-and the promotion pull requests between them are opened by the maintainer.
+land in `dev` through a pull request, from a fork if you are not a collaborator. Test-only
+branches use `tests/<topic>`, because git cannot hold a `test` branch and `test/...` branches
+together. Nothing is committed to the three long-lived branches directly, and the promotion
+pull requests between them are opened by the maintainer.
 
 - Fill in the five sections of the [pull request template](.github/pull_request_template.md).
 - Keep a pull request small and about one thing. The target is 300 to 600 changed lines.
@@ -36,8 +39,9 @@ and the promotion pull requests between them are opened by the maintainer.
 - Write commit messages and titles as `<type>: <short description>`, with the types `feat`,
   `fix`, `refactor`, `test`, `docs`, `chore`, `ci` and `style`.
 - CI runs linting, type checking, secret scanning, the docs build, a dependency audit and
-  the backend, frontend and end-to-end tests. The `Check` job collects all of them and
-  must be green before a pull request is merged.
+  the backend, frontend and end-to-end tests, and fails the backend run below 98 percent
+  coverage. The `Check` job collects all of them and must be green before a pull request is
+  merged.
 
 ## Reporting problems
 
