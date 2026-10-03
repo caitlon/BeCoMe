@@ -23,15 +23,16 @@ them. When the panel agrees, both land in the same place and Δmax is near zero.
 apart, Δmax is the price of reconciling them.
 
 Δmax is read against your scale, never on its own, and the app does that for you. It divides Δmax
-by the width of the scale and labels the result: up to 20 percent is high agreement, up to 40 is
-moderate, beyond that is low. A Δmax of 6 is 6 percent of a 0 to 100 scale and 0.06 percent of a 0
+by the width of the scale and labels the result: up to 20 percent is High Confidence, up to 40 is
+Moderate, beyond that is Low. The label says how close the mean and the median are, not whether
+the experts agree. A Δmax of 6 is 6 percent of a 0 to 100 scale and 0.06 percent of a 0
 to 10000 one, and those are not the same finding.
 
 Now the part that catches people, including me. **A small Δmax does not mean the panel agreed.**
 Δmax measures how far apart the mean and the median landed, and those two can land close together
 on a panel that is deeply split, because the mean sits between the camps while the median sits
 inside one of them. The [worked example](worked-example.md) is exactly that case: two camps forty
-points apart, and the app reports high agreement, correctly by its own rule.
+points apart, and the app reports High Confidence, correctly by its own rule.
 
 Which is why the chart is not decoration.
 

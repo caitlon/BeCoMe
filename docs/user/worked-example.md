@@ -92,7 +92,7 @@ So Δmax is not a margin of error in the usual sense. It is the price of the dis
 as the distance you had to travel from either honest answer to reach the compromise.
 
 And here is the trap this panel was made for. The app divides Δmax by the width of the scale, and
-5.97 on a scale of 0 to 100 is six percent, which it labels **high agreement** in green. That label
+5.97 on a scale of 0 to 100 is six percent, which it labels **High Confidence** in green. That label
 is correct by its own rule and the rule is a reasonable one. The panel is still split into two
 camps forty points apart.
 
@@ -125,11 +125,11 @@ The data and the analysis live in the repository, so you can run this yourself:
 uv run python -m examples.analyze_floods_case
 ```
 
-It prints the same four figures and a different verdict: **low agreement**, where the application
-says high. Neither is a bug in the arithmetic. The script compares Δmax against fixed thresholds,
-the application divides it by the width of the scale first, and on a 0 to 100 scale those two rules
-disagree about 5.97. Which rule is the better one is an open question. For reading this page, take
-the numbers from either and the label from neither.
+It prints the same four figures and a different verdict: **LOW** expert agreement, where the
+application says High Confidence. Neither is a bug in the arithmetic. The script compares Δmax
+against fixed thresholds, the application divides it by the width of the scale first, and on a 0 to
+100 scale those two rules disagree about 5.97. Which rule is the better one is an open question.
+For reading this page, take the numbers from either and the label from neither.
 
 The raw opinions are in `examples/data/floods_case.txt`. Two further cases sit beside it, a
 budget allocation and a commuter study, both illustrative examples from the authors' workbook. The
