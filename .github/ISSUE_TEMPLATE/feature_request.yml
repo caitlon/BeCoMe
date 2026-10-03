@@ -1,7 +1,7 @@
 name: Feature Request
 description: Propose a new feature or enhancement
 title: "[Feature]: "
-labels: ["type:feature"]
+labels: ["type:feature", "status:needs-triage"]
 body:
   - type: markdown
     attributes:
@@ -51,7 +51,7 @@ body:
     id: area
     attributes:
       label: Area
-      description: Which part of the system does this affect? The maintainer applies the matching area label.
+      description: Which part of the system does this affect? The maintainer uses it to pick the area label.
       options:
         - Core library (src/)
         - API (api/)
