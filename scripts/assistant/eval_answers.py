@@ -141,7 +141,7 @@ def _load_questions(path: Path, project_keys: set[str]) -> list[dict[str, Any]]:
         an unknown project key. The message names the line and the key, never the question.
     """
     records = [
-        json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()
+        json.loads(line) for line in path.read_text(encoding="utf-8").split("\n") if line.strip()
     ]
     for number, record in enumerate(records, start=1):
         if not isinstance(record, dict):
@@ -154,27 +154,46 @@ def _load_questions(path: Path, project_keys: set[str]) -> list[dict[str, Any]]:
     return records
 
 
+def _row_problem(row: Any) -> str | None:
+    """Say why a decoded output line is not an eval row, or None when it is.
+
+    :param row: One decoded JSON line.
+    :return: The failed condition, such as ``no status``, or None.
+    """
+    if not isinstance(row, dict):
+        return "not a JSON object"
+    for field in ("id", "arm", "status"):
+        if field not in row:
+            return f"no {field}"
+        if not isinstance(row[field], str):
+            return f"{field} is not a string"
+    return None
+
+
 def _read_rows(path: Path) -> list[dict[str, Any]]:
     """Read every row of an output file, oldest first.
 
     :param path: The output JSONL; it may not exist yet.
     :return: The rows, or an empty list.
     :raises RunRefusedError: If a line is not valid JSON, for instance a last line cut short
-        by a crash, or is JSON but not an object with an ``id`` and an ``arm``; the message
-        names the line.
+        by a crash, or is JSON but not an object whose ``id``, ``arm`` and ``status`` are
+        strings; the message names the line and the failed condition.
     """
     if not path.exists():
         return []
     rows = []
-    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+    # Split on "\n" alone: str.splitlines also breaks at U+2028, U+2029 and U+0085, which an
+    # answer may hold unescaped, since rows are written with ensure_ascii=False.
+    for number, line in enumerate(path.read_text(encoding="utf-8").split("\n"), start=1):
         if not line.strip():
             continue
         try:
             row = json.loads(line)
         except json.JSONDecodeError:
             raise RunRefusedError(f"{path}: line {number} is not valid JSON") from None
-        if not isinstance(row, dict) or "id" not in row or "arm" not in row:
-            raise RunRefusedError(f"{path}: line {number} is not an eval row")
+        reason = _row_problem(row)
+        if reason is not None:
+            raise RunRefusedError(f"{path}: line {number} is not an eval row: {reason}")
         rows.append(row)
     return rows
 
@@ -203,9 +222,9 @@ def _stop_reason(status: str, consecutive: int) -> str | None:
     if consecutive >= MAX_CONSECUTIVE_FAILURES:
         return (
             f"stopped after {consecutive} turns in a row without an answer "
-            f"(last status: {status}). {again} --retry-failed works only while the code version "
-            "and settings are unchanged; after a code or settings fix, continue under a new "
-            "--arm or a new --output."
+            f"(last status: {status}). {again} --retry-failed is refused if a recorded "
+            "provenance field changed (the code version, the settings or the prompt); then a new "
+            "--arm or a new --output asks every question again from the start."
         )
     return None
 
@@ -524,8 +543,9 @@ def main(argv: list[str] | None = None) -> int:
         names = " and ".join(missing)
         if args.sealed_run:
             print(
-                f"a sealed run needs both of the collection's versions; missing from the "
-                f"registry: {names}",
+                f"a sealed run needs both of the collection's versions; could not read {names} "
+                "(database URL unset, database unreachable, no registry row, or the build had "
+                "no private corpus manifest)",
                 file=sys.stderr,
             )
             return 2
@@ -533,6 +553,14 @@ def main(argv: list[str] | None = None) -> int:
             f"warning: {names} {'are' if len(missing) > 1 else 'is'} null in every row",
             file=sys.stderr,
         )
+    code_version = git_version(REPO_ROOT)
+    if args.sealed_run and (code_version is None or code_version.endswith("-dirty")):
+        print(
+            "a sealed run needs a clean checkout: the code version is "
+            f"{'unknown' if code_version is None else code_version}",
+            file=sys.stderr,
+        )
+        return 2
     try:
         summary = asyncio.run(
             run_eval(
@@ -544,7 +572,7 @@ def main(argv: list[str] | None = None) -> int:
                 mode=args.mode,
                 output=args.output,
                 versions=versions,
-                code_version=git_version(REPO_ROOT),
+                code_version=code_version,
                 retry_failed=args.retry_failed,
             )
         )
