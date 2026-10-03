@@ -648,3 +648,44 @@ jobs:
         uses: SonarSource/sonarqube-scan-action@d209202bc7d53ff1cc128f7f907dac145c9d6ae9 # v8
         with:
           args: -Dsonar.projectVersion=${{ steps.sonar_version.outputs.version }}
+
+  # One result to read for the verdict of the whole run. The job rows above stay where they
+  # are; this adds a single named line that is red whenever any job that decides a pull
+  # request failed or was cancelled, and that a branch protection rule can require later by
+  # this one name instead of by a list that grows with every job added here.
+  #
+  # `always()` rather than the default: without it this job is skipped whenever a job it
+  # needs fails or is cancelled, and a skipped check reads as passing. With it, a cancelled
+  # run still ends in a red `Check`.
+  #
+  # `skipped` counts as fine, because some jobs skip on purpose (SonarCloud runs on pull
+  # requests and on pushes to `prod` only). `failure` and `cancelled` do not.
+  #
+  # The halves are listed next to the gate jobs that report them (`lint-python` and
+  # `lint-frontend` beside `lint`, `e2e-shard` beside `e2e`). `lint` has no `always()`, so
+  # when one half fails `lint` is skipped, not failed, and a list made of gates alone would
+  # read a failed lint as fine.
+  check:
+    name: Check
+    runs-on: ubuntu-24.04
+    needs:
+      - lint-python
+      - lint-frontend
+      - lint
+      - docs-build
+      - dependency-audit
+      - python-tests
+      - frontend-tests
+      - backend-e2e
+      - e2e-shard
+      - e2e
+      - sonarcloud
+    if: always()
+    timeout-minutes: 5
+    steps:
+      - name: Require every job to pass or be skipped
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          echo "$RESULTS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          echo "$RESULTS" | jq -e 'all(to_entries[]; .value.result == "success" or .value.result == "skipped")' > /dev/null
