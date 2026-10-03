@@ -1,0 +1,76 @@
+name: Feature Request
+description: Propose a new feature or enhancement
+title: "[Feature]: "
+labels: ["type:feature"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for suggesting a feature for BeCoMe!
+
+        This repository is public, so keep personal data and credentials out of the request.
+
+  - type: textarea
+    id: user-story
+    attributes:
+      label: User Story
+      description: Describe the feature from the user's perspective
+      placeholder: "As a [role], I want [capability] so that [benefit]"
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: What problem does this feature solve?
+      placeholder: Describe the current limitation or pain point
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed-solution
+    attributes:
+      label: Proposed Solution
+      description: How should this feature work?
+      placeholder: Describe the expected behavior
+
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance Criteria
+      description: How will we know when this feature is complete?
+      placeholder: |
+        - [ ] Criterion 1
+        - [ ] Criterion 2
+        - [ ] Criterion 3
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which part of the system does this affect? The maintainer applies the matching area label.
+      options:
+        - Core library (src/)
+        - API (api/)
+        - Frontend (frontend/)
+        - Infrastructure (CI/CD, Docker)
+        - Internationalization
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Have you considered any alternative approaches?
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: Screenshots, mockups, or related issues
