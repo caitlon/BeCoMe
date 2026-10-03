@@ -1,7 +1,8 @@
 ## Problem
 
 <!-- What was missing or wrong, in a sentence or two. This repository is public: keep it neutral and
-do not describe a defect that is still open. -->
+leave open defects out of the body. Report security findings through private vulnerability
+reporting instead. -->
 
 ## Change
 
@@ -14,8 +15,9 @@ not check. -->
 
 ## Migrations
 
-<!-- "None", or which migration this adds and whether it was applied on dev. -->
+<!-- "None", or the migration this adds, whether its downgrade restores the data or the migration
+rewrites rows, and that upgrade and downgrade ran on a local Postgres. -->
 
 ## Screenshots
 
-<!-- For frontend changes, before and after. Otherwise "none". -->
+<!-- For frontend changes, before and after. Otherwise "None". -->
