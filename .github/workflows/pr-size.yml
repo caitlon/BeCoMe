@@ -1,0 +1,97 @@
+name: PR Size
+
+# Puts one size label on every pull request into `dev`, so an oversized one is visible in
+# the list without opening it. Labels only: this workflow never fails a pull request over its
+# size. Promotion pull requests (`dev` into `test`, `test` into `prod`) carry commits that
+# were already reviewed on their way into `dev`, so they get no label.
+#
+# Why pull_request_target. A label can only be written with a write token, and the token of a
+# plain pull_request run is read-only for a fork or a bot such as Dependabot. The price is
+# that this job runs in the context of the base repository with that write token, so it
+# follows three rules:
+#   - it never checks out the pull request and never runs anything from it. The size comes
+#     from the files API, which returns file names and line counts as data;
+#   - it uses no third-party action, so there is nothing to pin or to poison;
+#   - the only values it reads from the event are the pull request number and the repository
+#     name, passed through env, never spliced into the script text. A title, a branch name or
+#     a body is never read.
+# Do not add a checkout, an install step or a cache to this job. If a check ever needs the
+# pull request's code, it belongs in ci.yml, on the pull_request event.
+on:
+  pull_request_target:
+    branches: [dev]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+jobs:
+  label:
+    name: Label PR size
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      pull-requests: write
+      issues: write
+      contents: read
+    # A newer push to the same pull request supersedes the run in flight, so a slow run can
+    # never overwrite the label of a later one.
+    concurrency:
+      group: pr-size-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    steps:
+      - name: Set the size label
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+
+          # Thresholds in changed lines. They mirror the target of 300 to 600 lines per pull
+          # request and its ceiling of 1000: S is under the target, M is the target, L is
+          # over the target, XL is over the ceiling.
+          M_FROM=300
+          L_FROM=601
+          XL_FROM=1001
+
+          # Files that do not count toward the size, matched against the path in the pull
+          # request. A file the pull request deletes whole is dropped separately, and a
+          # binary file such as a snapshot image reports zero lines, so it needs no pattern.
+          # Tests do count.
+          EXCLUDE_RE='(^|/)uv\.lock$|^frontend/package-lock\.json$|\.ipynb$'
+
+          total=$(gh api --paginate "repos/${GH_REPO}/pulls/${PR_NUMBER}/files" \
+            | jq -s --arg re "$EXCLUDE_RE" '
+                [ .[][]
+                  | select(.status != "removed")
+                  | select(.filename | test($re) | not)
+                  | .additions + .deletions ]
+                | add // 0')
+
+          if [ "$total" -ge "$XL_FROM" ]; then
+            label="size:XL"; color="b60205"; desc="Over 1000 changed lines. Split the pull request."
+          elif [ "$total" -ge "$L_FROM" ]; then
+            label="size:L"; color="d93f0b"; desc="601 to 1000 changed lines. Over the 300 to 600 target."
+          elif [ "$total" -ge "$M_FROM" ]; then
+            label="size:M"; color="fbca04"; desc="300 to 600 changed lines. The target size."
+          else
+            label="size:S"; color="0e8a16"; desc="Under 300 changed lines."
+          fi
+          echo "PR #${PR_NUMBER}: ${total} counted lines -> ${label}"
+
+          # Create the label when it is missing and refresh its colour and description when it
+          # exists, so running this twice leaves the same state.
+          gh label create "$label" --color "$color" --description "$desc" --force
+
+          # Add the right label first, then drop any other size label, so a run cut short in
+          # between leaves two size labels rather than none.
+          gh api -X POST "repos/${GH_REPO}/issues/${PR_NUMBER}/labels" -f "labels[]=${label}" > /dev/null
+          gh api --paginate "repos/${GH_REPO}/issues/${PR_NUMBER}/labels" --jq '.[].name' \
+            | { grep '^size:' || true; } \
+            | while IFS= read -r existing; do
+                if [ "$existing" != "$label" ]; then
+                  encoded=$(jq -rn --arg n "$existing" '$n | @uri')
+                  gh api -X DELETE "repos/${GH_REPO}/issues/${PR_NUMBER}/labels/${encoded}" > /dev/null
+                fi
+              done

@@ -113,6 +113,8 @@ Each environment tracks one git branch, and a push to that branch redeploys the 
 
 Work moves in one direction. Cut a feature branch from `dev`, open a pull request back into `dev`, and the merge auto-deploys to dev for a first live check. When a slice is ready for QA, promote `dev` to `test`. That deploy runs the `test` profile with production-like settings (rate limiting on, debug off), so manual testing is realistic. Promote `test` to `prod` to release, which deploys the `prod` profile and serves the public site. Hotfixes travel the same path instead of landing on `prod` directly.
 
+Every pull request into `dev` gets one size label from `.github/workflows/pr-size.yml`, counted over the changed lines without lock files, notebooks and files deleted whole: `size:S` under 300, `size:M` from 300 to 600, `size:L` from 601 to 1000, `size:XL` above that. The target is `size:M` or smaller. The label informs and never blocks a merge. The workflow runs on `pull_request_target`, which reads it from `dev`, so a change to the workflow itself takes effect on the pull requests opened after it merges.
+
 Each environment has its own isolated Railway Postgres (`*-db`) and its own Railway Storage Bucket for profile photos (`*-photos`).
 
 ## Railway deployment
