@@ -12,13 +12,17 @@ import hashlib
 import importlib.util
 import json
 import sys
+import time
+from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import langsmith as ls
 import psycopg
 import pytest
 from langchain_core.messages import AIMessage
+from langsmith import run_helpers
 
 from api.assistant import deps
 from api.assistant.agent.prompt import SYSTEM_PROMPT
@@ -297,6 +301,71 @@ class TestRunEval:
         assert get_settings not in client.app.dependency_overrides
 
 
+class _SlowFirstTurn(ScriptedToolCallingModel):
+    """A scripted model whose first answer takes 2.5 seconds."""
+
+    def _generate(self, messages, *args, **kwargs):
+        if not self.seen:
+            time.sleep(2.5)
+        return super()._generate(messages, *args, **kwargs)
+
+
+class _TracingProbe(StaticDocsRetriever):
+    """A retriever that records whether tracing is switched off while it searches."""
+
+    def __init__(self):
+        super().__init__([])
+        self.enabled = []
+
+    async def search(self, query):
+        self.enabled.append(run_helpers.get_tracing_context().get("enabled"))
+        return await super().search(query)
+
+
+class TestRunScope:
+    """What holds for the whole loop: the credentials and the tracing."""
+
+    def test_each_question_gets_a_fresh_token(self, assistant_settings, client, tmp_path):
+        """
+        GIVEN access tokens that live two seconds and a first turn that takes longer
+        WHEN the runner asks two questions
+        THEN the second is still answered, since its token was minted for it
+        """
+        # GIVEN
+        fixtures = _setup(client, _SlowFirstTurn(responses=_scripted("A.", "B.").responses))
+        questions = [{"id": "q1", "question": "One?"}, {"id": "q2", "question": "Two?"}]
+        output = tmp_path / "out.jsonl"
+
+        # WHEN
+        with patch("api.auth.jwt.timedelta", lambda **_: timedelta(seconds=2)):
+            _run(client, fixtures, questions, output)
+
+        # THEN
+        assert [row["status"] for row in _rows(output)] == ["ok", "ok"]
+
+    def test_tracing_is_off_while_the_documents_are_searched(
+        self, assistant_settings, client, tmp_path, monkeypatch
+    ):
+        """
+        GIVEN LANGSMITH_TRACING=true in the environment
+        WHEN the runner asks a question, whose search runs before the service's own scope
+        THEN tracing is switched off at that point
+        """
+        # GIVEN
+        monkeypatch.setenv("LANGSMITH_TRACING", "true")
+        ls.utils.get_env_var.cache_clear()
+        fixtures = _setup(client, _scripted("Fine."))
+        probe = _TracingProbe()
+        client.app.dependency_overrides[deps.get_docs_retriever] = lambda: probe
+
+        # WHEN
+        _run(client, fixtures, [{"id": "q1", "question": "One?"}], tmp_path / "out.jsonl")
+        ls.utils.get_env_var.cache_clear()
+
+        # THEN
+        assert probe.enabled == [False]
+
+
 class TestEvalSettings:
     """The settings the runner hands the service."""
 
@@ -336,25 +405,8 @@ class TestInputs:
 
         # WHEN / THEN
         with pytest.raises(ValueError, match="'x'") as raised:
-            ea._load_questions(path, {"own"}, None)
+            ea._load_questions(path, {"own"})
         assert "B?" not in str(raised.value)
-
-    def test_limit_keeps_the_first_questions(self, tmp_path):
-        """
-        GIVEN three questions and a blank line
-        WHEN they are loaded with a limit of two
-        THEN the first two come back
-        """
-        # GIVEN
-        path = tmp_path / "q.jsonl"
-        lines = [json.dumps({"id": f"q{i}", "question": "A?"}) for i in range(3)]
-        path.write_text("\n".join(lines) + "\n\n", encoding="utf-8")
-
-        # WHEN
-        loaded = ea._load_questions(path, set(), 2)
-
-        # THEN
-        assert [record["id"] for record in loaded] == ["q0", "q1"]
 
 
 class TestCollectionVersions:
@@ -415,18 +467,17 @@ class TestMain:
     ):
         """
         GIVEN a questions file, a fixtures file and an app that serves the chat
-        WHEN main runs with a limit of one
+        WHEN main runs
         THEN it exits 0, appends one row, and prints counts and the median without any text
         """
         # GIVEN
         fixtures = _setup(client, _scripted("Secret-free answer."))
         (tmp_path / "f.json").write_text(json.dumps(fixtures), encoding="utf-8")
-        records = [{"id": "q1", "question": "Plum?"}, {"id": "q2", "question": "Pear?"}]
-        (tmp_path / "q.jsonl").write_text("\n".join(map(json.dumps, records)), encoding="utf-8")
+        (tmp_path / "q.jsonl").write_text(json.dumps({"id": "q1", "question": "Plum?"}))
 
         # WHEN
         with patch.object(ea, "create_app", return_value=client.app):
-            code = ea.main(_argv(tmp_path, "workflow", "--limit", "1"))
+            code = ea.main(_argv(tmp_path))
 
         # THEN
         shown = capsys.readouterr().out
@@ -435,6 +486,19 @@ class TestMain:
         assert "rows=1 ok=1 failed=0 median_latency_s=" in shown
         assert "Plum" not in shown
         assert "Secret-free" not in shown
+
+    def test_main_exits_2_on_a_missing_questions_file(self, tmp_path, capsys):
+        """
+        GIVEN a --questions path that does not exist
+        WHEN main runs
+        THEN it exits 2 with a message instead of a traceback
+        """
+        # WHEN
+        code = ea.main(_argv(tmp_path))
+
+        # THEN
+        assert code == 2
+        assert "cannot read the questions" in capsys.readouterr().err
 
     def test_main_refuses_when_the_assistant_is_off(self, client, tmp_path, capsys):
         """
