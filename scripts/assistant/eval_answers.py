@@ -11,12 +11,11 @@ settings through a FastAPI dependency, and the runner overrides that one depende
 copy of the settings that carries the requested mode and has LangSmith tracing switched off.
 
 Needs ``ASSISTANT_ENABLED=true`` and the model servers the settings point at; the runner
-starts none. The database the app is configured with must hold the fixtures' user and
-projects (the seeding script writes the fixtures file). Set ``ASSISTANT_RATE_LIMIT_PER_HOUR=0``
-for a long run: ``LIMIT_ASSISTANT_CHAT`` (20 a minute per address) still applies.
+starts none. The database must hold the fixtures' user and projects. Set
+``ASSISTANT_RATE_LIMIT_PER_HOUR=0`` for a long run: ``LIMIT_ASSISTANT_CHAT`` (20 a minute per
+address) still applies.
 
-The output file holds answers and source titles, so it is written only where it is pointed.
-Logs carry counts and timings, never a question or an answer. Run it with --help.
+The output holds answers and source titles; logs carry counts and timings only.
 """
 
 from __future__ import annotations

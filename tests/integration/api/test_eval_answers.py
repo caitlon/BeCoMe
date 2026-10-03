@@ -35,7 +35,6 @@ ROOT = Path(__file__).resolve().parents[3]
 
 OWN_PROJECT = "Quince Harbour Tally"
 OTHER_PROJECT = "Saffron Bridge Census"
-# The credentials in the URL must never reach a row.
 ANSWER_URL = "http://runner:hunter2@127.0.0.1:9/v1"  # pragma: allowlist secret
 DB_URL = "postgresql+psycopg://u:p@127.0.0.1:9/db"  # pragma: allowlist secret
 _ENV = {
