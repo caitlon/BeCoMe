@@ -52,7 +52,16 @@ Runs only on a developer machine. `Settings` refuses to start any deployed profi
    `--query-transform translate_en`, English questions that the check recognises are searched as written and only
    non-English ones are translated, so reports for English questions are not directly
    comparable with reports made before this change.
-6. Backend: set `ASSISTANT_ENABLED=true` in `.env`, then run the API as usual. This turns on
+6. Seed the data for questions about "my project": `uv run python
+   scripts/assistant/seed_eval_fixtures.py --output supplementary/assistant-eval/fixtures.json`
+   creates in the configured local database one activated user, `eval-owner@example.test`,
+   who owns the product's example project (Floods case, 13 experts) and a second one built from
+   the pendlers case study (22 experts, calculated). The password is `--password` or generated
+   and printed once on stderr; a second run changes nothing and says "already present". The
+   JSON (user id, and per project its key, id, name, expert count and result numbers) is what an
+   evaluation run reads; the keys are listed in the script's docstring. It exits with 2 and
+   touches nothing unless the profile is `dev` and the database is SQLite or on a loopback host.
+7. Backend: set `ASSISTANT_ENABLED=true` in `.env`, then run the API as usual. This turns on
    `GET /api/v1/assistant/config` and `POST /api/v1/assistant/chat`
    (`api/routes/assistant.py`); the `model` field of the first reports the answer model.
 
