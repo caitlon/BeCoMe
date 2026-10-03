@@ -91,21 +91,36 @@ Runs only on a developer machine. `Settings` refuses to start any deployed profi
 
    Grading the answers: `scripts/assistant/grade_answers.py` reads the latest row per question
    and arm from `--answers`, joins each to its question in `--questions` by `id` (records carry
-   `id` and `lang`) and writes one grade per row to `--output`, which is overwritten. The
-   outputs are written only once every row is graded: a missing or empty answers file, or one
-   with no row of a known question, exits 2 and leaves them alone, and so does an output path
-   that is the answers file, the questions file or the other output. No model runs and the
-   grader reads no setting: the grades are checks on the text and on the row's own fields, so a
-   rerun repeats them. It reads the rows through the runner's `latest_rows`, so it needs the
-   environment the runner needs to import. A row whose turn failed is graded `completed: false`
-   with null checks. The checks are the answer's language against the question's (null when
-   the answer is too short or has no function word to decide, which the summary counts as
-   `lang_unknown`), the `[n]` citations used and how many name a source, and pseudo citations:
-   brackets such as `[Source 1]`, `[Zdroj 2]`, `[docs]`, `[data]` or `[project_data]`, while
-   `[TODO]` or `[Q1-Q3]` are ordinary text. Citations are read with
-   `api/assistant/agent/checks.py`. The per-arm summary is printed, and `--summary` writes it
-   as JSON; its `missing` counts the questions with no row in that arm, so a run that stopped
-   early does not read as complete.
+   `id` and `lang`, and optionally `answerable`, `project`, `expected_numbers`, a list of
+   numbers, `needs_opinions`, `block` and `style`) and writes one grade per row to `--output`,
+   which is overwritten. `block` and `style` are carried into the grade for later analysis and
+   are not graded. The outputs are written only once every row is graded: a missing or empty
+   answers file, or one with no row of a known question, exits 2 and leaves them alone, and so
+   does an output path that is the answers file, the questions file or the other output, and a
+   question record with a field of the wrong type. No model runs and the grader reads no
+   setting: the grades are checks on the text and on the row's own fields, so a rerun repeats
+   them. It reads the rows through the runner's `latest_rows`, so it needs the environment the
+   runner needs to import. A row whose turn failed is graded `completed: false` with null
+   checks. The checks are:
+
+   - the answer's language against the question's (null when the answer is too short or has no
+     function word to decide, which the summary counts as `lang_unknown`);
+   - the `[n]` citations used and how many name a source, and pseudo citations: brackets such
+     as `[Source 1]`, `[Zdroj 2]`, `[docs]`, `[data]` or `[project_data]`, while `[TODO]` or
+     `[Q1-Q3]` are ordinary text;
+   - how many expected numbers the answer states, as written, with a decimal comma, or rounded
+     or truncated to one decimal (`numbers_recall`);
+   - the numbers the chat service's own check flagged, and for an unanswerable question
+     whether the answer states any number;
+   - the share of local sources, and markdown;
+   - for a question that `needs_opinions`, whether the opinions tool was called. In `workflow`
+     mode, which has no tools, this is null.
+
+   Numbers and citations are read with `api/assistant/agent/checks.py`. The per-arm summary is
+   printed, and `--summary` writes it as JSON; its `missing` counts the questions with no row in
+   that arm, so a run that stopped early does not read as complete. `paired_bootstrap` gives the
+   mean paired difference of two arms with a percentile interval over resampled questions, the
+   same for a given seed.
 
    ```bash
    uv run python scripts/assistant/grade_answers.py \

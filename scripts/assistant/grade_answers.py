@@ -7,13 +7,16 @@ read. Every check is a function of the answer text and the row's own fields, so 
 gives the same grades.
 
 Per row: the answer's language and whether it matches the question's, the numeric
-citations used and how many name a real source, and the bracketed labels that are not
-source numbers. A row whose turn failed has ``completed: false`` and null grades.
+citations used and how many name a real source, the bracketed labels that are not source
+numbers, how many of the question's expected numbers the answer states, the numbers the
+product's grounding check flagged, whether an unanswerable question got a number anyway,
+the share of local sources, whether the expert-opinions tool was called, and whether the
+answer uses markdown. A row whose turn failed has ``completed: false`` and null grades.
 
-The summary per arm is printed and, with ``--summary``, written as JSON. Citations are read
-with the product's own parser (``api.assistant.agent.checks``), so the grader and the
-grounding check cannot disagree about what a citation is. Logs and prints carry counts
-only, never an answer or a question.
+The summary per arm is printed and, with ``--summary``, written as JSON. The numbers and
+citations are read with the product's own parser (``api.assistant.agent.checks``), so the
+grader and the grounding check cannot disagree about what a number is. Logs and prints
+carry counts only, never an answer or a question.
 
     uv run python scripts/assistant/grade_answers.py --answers answers.jsonl \\
         --questions questions.jsonl --output grades.jsonl --summary summary.json
@@ -23,15 +26,34 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
+import random
 import re
 import statistics
 import sys
 import unicodedata
 from collections import defaultdict
+from collections.abc import Sequence
+from decimal import ROUND_DOWN, ROUND_HALF_UP, Decimal
+from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
-from api.assistant.agent.checks import _citation_spans
+from api.assistant.agent.checks import _citation_spans, _places, _scan_numbers, _strip_answer
+from api.assistant.agent.tools import get_project_opinions
+
+OPINIONS_TOOL = get_project_opinions.name
+#: The modes whose agent can call tools. ``workflow`` has none: the service prefetches the data.
+TOOL_MODES = frozenset(["hybrid", "agent"])
+#: What an optional question field must be when present (null counts as absent).
+_FIELD_TYPES: dict[str, type] = {
+    "lang": str,
+    "block": str,
+    "style": str,
+    "project": str,
+    "answerable": bool,
+    "needs_opinions": bool,
+}
 
 #: Letters that exist in Czech and not in English (lowercase; the text is lowercased first).
 CZECH_DIACRITICS = frozenset("áčďéěíňóřšťúůýž")
@@ -98,6 +120,14 @@ def _is_english(word: str) -> bool:
     )
 
 
+_BOLD_OR_ITALIC = re.compile(
+    r"\*\*[^*\n]+\*\*|__[^_\n]+__|(?<![*\w])\*(?!\s)[^*\n]+?(?<!\s)\*(?![*\w])"
+)
+_HEADING = re.compile(r"^[ \t]{0,3}#{1,6}[ \t]+\S", re.MULTILINE)
+_LIST_ITEM = re.compile(r"^[ \t]*(?:[-*+]|\d+[.)])[ \t]+\S", re.MULTILINE)
+_ONE_DECIMAL = Decimal("0.1")
+
+
 def detect_language(text: str) -> str:
     """Say whether an answer is written in English or Czech.
 
@@ -154,14 +184,75 @@ def read_citations(answer: str, source_numbers: set[int]) -> tuple[dict[str, Any
     return {"used": sorted(used), "valid": len(used & source_numbers)}, labels
 
 
+def stated_numbers(answer: str) -> set[Decimal]:
+    """Read the numbers an answer states, as the product's grounding check reads them.
+
+    Links, URLs, citations, dates, identifiers such as ``COVID-19``, list numbering and
+    ordinals are not numbers. A token that can be read several ways (``30,68`` is 30.68 or
+    30 and 68) contributes every reading.
+
+    :param answer: The answer text.
+    :return: The values.
+    """
+    return {
+        number
+        for token in _scan_numbers(_strip_answer(answer))
+        for reading in token.readings
+        for number in reading
+    }
+
+
+def count_expected_numbers(answer: str, expected: Sequence[Any]) -> int:
+    """Count the expected numbers that an answer states.
+
+    An expected value, written by the API with two decimals, counts as stated when the
+    answer holds it as the same number, with a decimal point or a Czech decimal comma, or
+    rounded or truncated to one decimal written with one decimal (30.68 as 30.7 or 30.6).
+    A value whose decimals are zero (25.0) also counts as the integer 25. A bare integer
+    rounding of a non-integer (31 for 30.68) does not count, and a number is read whole, so
+    5.68 does not count inside 15.68.
+
+    :param answer: The answer text.
+    :param expected: The expected values, numbers or numeric strings.
+    :return: How many of them the answer states.
+    """
+    stated = stated_numbers(answer)
+    found = 0
+    for item in expected:
+        value = Decimal(str(item))
+        one_decimal = {
+            value.quantize(_ONE_DECIMAL, rounding=ROUND_HALF_UP),
+            value.quantize(_ONE_DECIMAL, rounding=ROUND_DOWN),
+        }
+        found += any(
+            number == value or (_places(number) == 1 and number in one_decimal) for number in stated
+        )
+    return found
+
+
+def has_markdown(answer: str) -> bool:
+    """Tell whether an answer uses markdown: bold or italic, a heading or a list.
+
+    :param answer: The answer text.
+    :return: True when a marker is present.
+    """
+    return any(pattern.search(answer) for pattern in (_BOLD_OR_ITALIC, _HEADING, _LIST_ITEM))
+
+
 def grade_row(row: dict[str, Any], question: dict[str, Any]) -> dict[str, Any]:
     """Grade one recorded answer against its question.
 
     :param row: A row of the runner's output.
     :param question: The question record with the same ``id``.
     :return: The grade: ``id``, ``arm``, ``status``, ``latency_s``, ``completed`` and each
-        check. A row whose status is not ``ok`` has null checks; ``lang_match`` is also null
-        when the question has no ``lang`` or the answer's language is ``unknown``.
+        check. A row whose status is not ``ok`` has null checks. ``lang_match`` is also null
+        when the question has no ``lang`` or the answer's language is ``unknown``;
+        ``numbers_recall`` without expected numbers; ``stated_any_number`` unless the question
+        has ``answerable: false``; ``called_opinions_tool`` unless the question has
+        ``needs_opinions`` and the row's ``mode`` is ``hybrid`` or ``agent`` (``workflow`` has
+        no tools, whatever ``tool_calls`` holds; there an empty list means the tool was not
+        called); ``local_source_share`` without sources. ``block`` and ``style`` are copied
+        from the question for later analysis and are not graded.
     """
     grade: dict[str, Any] = {
         "id": row["id"],
@@ -169,24 +260,51 @@ def grade_row(row: dict[str, Any], question: dict[str, Any]) -> dict[str, Any]:
         "status": row["status"],
         "latency_s": row.get("latency_s"),
         "completed": row["status"] == "ok",
+        "block": question.get("block"),
+        "style": question.get("style"),
     }
     checks = (
         "answer_lang",
         "lang_match",
         "citations",
         "pseudo_citations",
+        "expected_numbers_found",
+        "expected_numbers_total",
+        "numbers_recall",
+        "ungrounded_numbers",
+        "stated_any_number",
+        "local_source_share",
+        "called_opinions_tool",
+        "has_markdown",
     )
     grade.update(dict.fromkeys(checks))
     if not grade["completed"]:
         return grade
     answer = row["answer"]
+    sources = row["sources"] or []
     answer_lang = detect_language(answer)
     grade["answer_lang"] = answer_lang
     if question.get("lang") and answer_lang != "unknown":
         grade["lang_match"] = answer_lang == question["lang"]
     grade["citations"], grade["pseudo_citations"] = read_citations(
-        answer, {source["n"] for source in row["sources"] or []}
+        answer, {source["n"] for source in sources}
     )
+    expected = question.get("expected_numbers") or []
+    if expected:
+        found = count_expected_numbers(answer, expected)
+        grade.update(
+            expected_numbers_found=found,
+            expected_numbers_total=len(expected),
+            numbers_recall=found / len(expected),
+        )
+    grade["ungrounded_numbers"] = (row.get("checks") or {}).get("ungrounded_numbers")
+    if question.get("answerable") is False:
+        grade["stated_any_number"] = bool(_scan_numbers(_strip_answer(answer)))
+    if sources:
+        grade["local_source_share"] = sum(s["layer"] == "local" for s in sources) / len(sources)
+    if question.get("needs_opinions") and row.get("mode") in TOOL_MODES:
+        grade["called_opinions_tool"] = OPINIONS_TOOL in row["tool_calls"]
+    grade["has_markdown"] = has_markdown(answer)
     return grade
 
 
@@ -199,20 +317,31 @@ def _share(flags: list[bool]) -> float | None:
     return sum(flags) / len(flags) if flags else None
 
 
+def _mean(values: list[float]) -> float | None:
+    """Return the mean, or None for an empty list.
+
+    :param values: The values.
+    :return: The mean.
+    """
+    return statistics.fmean(values) if values else None
+
+
 def summarize_arm(
     grades: list[dict[str, Any]], questions: dict[str, dict[str, Any]]
 ) -> dict[str, Any]:
     """Summarize the grades of one arm.
 
-    Each share is taken over the completed rows the check applies to, the language match
-    over the rows whose language was decided; one with none to average is null.
+    Each share and mean is taken over the completed rows the check applies to, the language
+    match over the rows whose language was decided; one with none to average is null.
 
     :param grades: The arm's grades from :func:`grade_row`.
     :param questions: The question records by ``id``.
     :return: ``n``, ``completed_share``, ``lang_match_share``, ``lang_match_share_cs`` (Czech
         questions only), ``lang_unknown`` (completed rows whose language is ``unknown``),
-        ``pseudo_citation_share``, ``median_latency_s`` and ``missing`` (questions that have
-        no row in this arm, for instance because the run stopped early).
+        ``pseudo_citation_share``, ``numbers_recall_mean``,
+        ``unanswerable_stated_number_share``, ``local_source_share_mean``,
+        ``opinions_tool_share``, ``markdown_share``, ``median_latency_s`` and ``missing``
+        (questions that have no row in this arm, for instance because the run stopped early).
     """
     done = [grade for grade in grades if grade["completed"]]
     latencies = [g["latency_s"] for g in done if g["latency_s"] is not None]
@@ -229,18 +358,100 @@ def summarize_arm(
         ),
         "lang_unknown": sum(g["answer_lang"] == "unknown" for g in done),
         "pseudo_citation_share": _share([bool(g["pseudo_citations"]) for g in done]),
+        "numbers_recall_mean": _mean(
+            [g["numbers_recall"] for g in done if g["numbers_recall"] is not None]
+        ),
+        "unanswerable_stated_number_share": _share(
+            [g["stated_any_number"] for g in done if g["stated_any_number"] is not None]
+        ),
+        "local_source_share_mean": _mean(
+            [g["local_source_share"] for g in done if g["local_source_share"] is not None]
+        ),
+        "opinions_tool_share": _share(
+            [g["called_opinions_tool"] for g in done if g["called_opinions_tool"] is not None]
+        ),
+        "markdown_share": _share([g["has_markdown"] for g in done]),
         "median_latency_s": statistics.median(latencies) if latencies else None,
         "missing": len(questions.keys() - {grade["id"] for grade in grades}),
     }
 
 
+def paired_bootstrap(
+    a: Sequence[float],
+    b: Sequence[float],
+    *,
+    n_resamples: int = 10000,
+    seed: int,
+    level: float = 0.90,
+) -> tuple[float, float, float]:
+    """Estimate the mean paired difference of two arms with a percentile bootstrap.
+
+    The question indices are resampled with replacement, so each resample keeps the pairs
+    together. The same seed gives the same interval. The interval is read from the sorted
+    resample means by exact ranks: the lower bound is the element at index
+    ``floor(n_resamples * (1 - level) / 2)`` and the upper bound the one at
+    ``floor(n_resamples * (1 + level) / 2)``, or the last if that is past the end, so 10000
+    resamples at ``level=0.90`` give the elements 500 and 9500.
+
+    :param a: One score per question for the first arm.
+    :param b: The second arm's scores, in the same question order.
+    :param n_resamples: How many resamples to draw.
+    :param seed: Seed of the random generator.
+    :param level: Width of the interval, between 0 and 1 (0.90 is the 5th to 95th percentile).
+    :return: ``(mean of a - b, lower bound, upper bound)``.
+    :raises ValueError: If the lengths differ, the inputs are empty, ``n_resamples`` is below
+        1, or ``level`` is not between 0 and 1.
+    """
+    if len(a) != len(b):
+        raise ValueError(f"paired samples differ in length: {len(a)} and {len(b)}")
+    if not a:
+        raise ValueError("paired samples are empty")
+    if n_resamples < 1:
+        raise ValueError("n_resamples must be at least 1")
+    if not 0 < level < 1:
+        raise ValueError("level must be between 0 and 1")
+    diffs = [x - y for x, y in zip(a, b, strict=True)]
+    # A seeded generator for a reproducible resample, not for anything secret.
+    rng = random.Random(seed)  # noqa: S311
+    means = sorted(statistics.fmean(rng.choices(diffs, k=len(diffs))) for _ in range(n_resamples))
+    tail = (1 - Fraction(str(level))) / 2
+    low = means[math.floor(tail * n_resamples)]
+    high = means[min(n_resamples - 1, math.floor((1 - tail) * n_resamples))]
+    return statistics.fmean(diffs), low, high
+
+
+def _check_fields(record: dict[str, Any], number: int) -> None:
+    """Check the types of a question record's optional fields.
+
+    :param record: The decoded record.
+    :param number: Its line among the records, for the message.
+    :raises ValueError: If ``expected_numbers`` is not a list of finite numbers, or another
+        field is not of its type (null counts as absent).
+    """
+    for field, kind in _FIELD_TYPES.items():
+        if record.get(field) is not None and not isinstance(record[field], kind):
+            raise ValueError(f"question record {number}: {field} must be a {kind.__name__}")
+    if "expected_numbers" in record:
+        values = record["expected_numbers"]
+        if not isinstance(values, list) or not all(
+            isinstance(value, int | float) and not isinstance(value, bool) and math.isfinite(value)
+            for value in values
+        ):
+            raise ValueError(
+                f"question record {number}: expected_numbers must be a list of numbers"
+            )
+
+
 def _load_questions(path: Path) -> dict[str, dict[str, Any]]:
     """Read the question records by ``id``.
 
-    :param path: JSONL file; each record has ``id`` and ``lang``.
+    :param path: JSONL file; each record has ``id`` and ``lang`` and optionally ``block``,
+        ``style``, ``project`` (strings), ``answerable``, ``needs_opinions`` (booleans) and
+        ``expected_numbers`` (a list of numbers).
     :return: ``{id: record}``.
-    :raises ValueError: If a record is not valid JSON, not an object, has no id, or repeats
-        an id. The message names the line, never the question.
+    :raises ValueError: If a record is not valid JSON, not an object, has no id, repeats an
+        id, or holds a field of the wrong type. The message names the line and the field,
+        never the question.
     """
     records: dict[str, dict[str, Any]] = {}
     lines = [line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
@@ -253,6 +464,7 @@ def _load_questions(path: Path) -> dict[str, dict[str, Any]]:
             raise ValueError(f"question record {number} is not an object with an id")
         if record["id"] in records:
             raise ValueError(f"question record {number} repeats an id")
+        _check_fields(record, number)
         records[record["id"]] = record
     return records
 
