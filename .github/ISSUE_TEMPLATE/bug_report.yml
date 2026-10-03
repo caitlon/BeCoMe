@@ -1,0 +1,85 @@
+name: Bug Report
+description: Report a bug or unexpected behavior
+title: "[Bug]: "
+labels: ["type:bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for broken or unexpected behavior. This repository is public, so do not
+        post passwords, tokens, personal data or anything else you would not want read by
+        everyone, and redact it from logs and screenshots.
+
+        Do not report security problems here. Follow the
+        [security policy](https://github.com/caitlon/BeCoMe/security/policy) and report them
+        privately.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: A short, clear description of the bug
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: The steps that reproduce the issue
+      placeholder: |
+        1. Go to '...'
+        2. Click on '...'
+        3. See error
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What should have happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior
+      description: What actually happened?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which part of the project is affected? The maintainer applies the matching area label.
+      options:
+        - Core library (src/)
+        - API (api/)
+        - Frontend (frontend/)
+        - Infrastructure (CI/CD, Docker)
+        - Internationalization
+        - Documentation
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Where it happened and with which versions
+      placeholder: |
+        - Deployment: becomify.app, or a local checkout at commit <sha>
+        - Python: 3.13
+        - Browser: Chrome 120
+        - OS: macOS 14
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Error Logs
+      description: Paste the relevant error messages or stack traces. Redact secrets and personal data.
+      render: shell
