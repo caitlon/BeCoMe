@@ -1,8 +1,15 @@
 name: Technical Debt
 description: Track code quality improvements or refactoring needs
 title: "[Tech Debt]: "
-labels: ["type:tech-debt"]
+labels: ["type:tech-debt", "status:needs-triage"]
 body:
+  - type: markdown
+    attributes:
+      value: |
+        This repository is public. Keep credentials and personal data out of the description,
+        and report security problems privately through the
+        [security policy](https://github.com/caitlon/BeCoMe/security/policy).
+
   - type: textarea
     id: description
     attributes:
@@ -40,7 +47,7 @@ body:
     id: area
     attributes:
       label: Area
-      description: Which part of the project does this affect? The maintainer applies the matching area label.
+      description: Which part of the project does this affect? The maintainer uses it to pick the area label.
       options:
         - Core library (src/)
         - API (api/)
