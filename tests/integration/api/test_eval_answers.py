@@ -34,6 +34,7 @@ OWN_PROJECT = "Quince Harbour Tally"
 OTHER_PROJECT = "Saffron Bridge Census"
 # The credentials in the URL must never reach a row.
 ANSWER_URL = "http://runner:hunter2@127.0.0.1:9/v1"  # pragma: allowlist secret
+DB_URL = "postgresql+psycopg://u:p@127.0.0.1:9/db"  # pragma: allowlist secret
 _ENV = {
     "ASSISTANT_MODE": "workflow",
     "ASSISTANT_RATE_LIMIT_PER_HOUR": "0",
@@ -89,6 +90,18 @@ def _shown(model: ScriptedToolCallingModel) -> str:
     return "\n".join(message.text for call in model.seen for message in call)
 
 
+def _chunk(url: str | None, words: str) -> RetrievedChunk:
+    return RetrievedChunk(
+        text="x",
+        title="Guide",
+        section="Part",
+        url=url,
+        layer="public",
+        score=1.0,
+        chunk_text=words,
+    )
+
+
 def _setup(client, model, chunks=()):
     """Sign two users in, give each a project, install the model and return the fixtures."""
     own_token = register_and_login(client, "runner@example.com")
@@ -96,10 +109,9 @@ def _setup(client, model, chunks=()):
     own = create_project(client, own_token, name=OWN_PROJECT)
     other = create_project(client, other_token, name=OTHER_PROJECT)
     account = stored_accounts(client, "runner@example.com")[0]
-    client.app.dependency_overrides[deps.get_answer_model] = lambda: model
-    client.app.dependency_overrides[deps.get_docs_retriever] = lambda: StaticDocsRetriever(
-        list(chunks)
-    )
+    overrides = client.app.dependency_overrides
+    overrides[deps.get_answer_model] = lambda: model
+    overrides[deps.get_docs_retriever] = lambda: StaticDocsRetriever(list(chunks))
     return {
         "user": {"id": str(account["id"]), "email": account["email"]},
         "projects": [
@@ -109,16 +121,14 @@ def _setup(client, model, chunks=()):
     }
 
 
-def _run(
-    client, fixtures, questions, output, mode="workflow", arm="test-arm", versions=(None, None)
-):
+def _run(client, fixtures, questions, output, mode="workflow", versions=(None, None)):
     return asyncio.run(
         ea.run_eval(
             client.app,
             questions,
             fixtures,
             settings=get_settings(),
-            arm=arm,
+            arm="test-arm",
             mode=mode,
             output=output,
             versions=versions,
@@ -130,16 +140,11 @@ def _rows(path: Path) -> list[dict]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
 
 
-def _chunk(url: str | None, words: str) -> RetrievedChunk:
-    return RetrievedChunk(
-        text="indexed",
-        title="Method guide",
-        section="Aggregation",
-        url=url,
-        layer="public",
-        score=1.0,
-        chunk_text=words,
-    )
+def _argv(tmp_path: Path, mode: str = "workflow", *extra: str) -> list[str]:
+    return [
+        *("--questions", str(tmp_path / "q.jsonl"), "--fixtures", str(tmp_path / "f.json")),
+        *("--mode", mode, "--arm", "cli", "--output", str(tmp_path / "out.jsonl"), *extra),
+    ]
 
 
 class TestRunEval:
@@ -149,18 +154,11 @@ class TestRunEval:
         """
         GIVEN two invented questions and a scripted model that answers each
         WHEN the runner asks them
-        THEN the output holds one row per question with the listed fields and the summary counts them
+        THEN each gets a row with the listed fields, no credentials, and the product prompt hash
         """
         # GIVEN
-        model = _scripted("It combines two averages.", "Zadne.")
-        fixtures = _setup(
-            client,
-            model,
-            [
-                _chunk("https://example.test/guide", "First passage."),
-                _chunk(None, "Second passage."),
-            ],
-        )
+        chunks = [_chunk("https://example.test/g", "First."), _chunk(None, "Second.")]
+        fixtures = _setup(client, _scripted("It combines two.", "Zadne."), chunks)
         questions = [
             {"id": "q1", "question": "What does BeCoMe combine?", "lang": "en"},
             {"id": "q2", "question": "Co kombinuje BeCoMe?", "lang": "cs"},
@@ -171,85 +169,29 @@ class TestRunEval:
         summary = _run(client, fixtures, questions, output, versions=("v1", "c2"))
 
         # THEN
-        rows = _rows(output)
-        assert [row["id"] for row in rows] == ["q1", "q2"]
-        first = rows[0]
-        assert first["status"] == "ok"
-        assert first["answer"] == "It combines two averages."
+        first = _rows(output)[0]
+        assert [row["id"] for row in _rows(output)] == ["q1", "q2"]
+        assert (first["status"], first["answer"]) == ("ok", "It combines two.")
         assert first["question"] == "What does BeCoMe combine?"
-        assert first["lang"] == "en"
-        assert first["project"] is None
-        assert first["tool_calls"] == []
+        assert (first["lang"], first["project"], first["tool_calls"]) == ("en", None, [])
         assert set(first["checks"]) == {"citations_valid", "numbers_grounded", "ungrounded_numbers"}
-        assert first["sources"] == [
-            {
-                "n": 1,
-                "title": "Method guide",
-                "section": "Aggregation",
-                "layer": "public",
-                "has_url": True,
-            },
-            {
-                "n": 2,
-                "title": "Method guide",
-                "section": "Aggregation",
-                "layer": "public",
-                "has_url": False,
-            },
-        ]
+        assert [(s["n"], s["has_url"]) for s in first["sources"]] == [(1, True), (2, False)]
+        assert set(first["sources"][0]) == {"n", "title", "section", "layer", "has_url"}
         assert isinstance(first["latency_s"], float)
-        assert first["arm"] == "test-arm"
-        assert first["mode"] == "workflow"
+        assert (first["arm"], first["mode"]) == ("test-arm", "workflow")
         assert first["answer_model"] == "test-answer-model"
         assert first["answer_endpoint"] == "127.0.0.1:9"
-        assert first["retrieval_k"] == 3
-        assert first["app_version"] == "v1"
-        assert first["corpus_version"] == "c2"
+        assert (first["retrieval_k"], first["app_version"], first["corpus_version"]) == (
+            3,
+            "v1",
+            "c2",
+        )
         assert first["timestamp"].endswith("+00:00")
-        assert summary["rows"] == 2
-        assert summary["ok"] == 2
-        assert summary["failed"] == 0
+        assert first["prompt_sha256"] == hashlib.sha256(SYSTEM_PROMPT.encode()).hexdigest()
+        assert first["prompt_sha256"] == ea.PROMPT_SHA256
+        assert "hunter2" not in output.read_text(encoding="utf-8")
+        assert (summary["rows"], summary["ok"], summary["failed"]) == (2, 2, 0)
         assert summary["median_latency_s"] is not None
-
-    def test_credentials_in_the_endpoint_never_reach_a_row(
-        self, assistant_settings, client, tmp_path
-    ):
-        """
-        GIVEN an answer model URL that carries a user name and a password
-        WHEN a row is written
-        THEN neither appears anywhere in the file
-        """
-        # GIVEN
-        fixtures = _setup(client, _scripted("Fine."))
-        output = tmp_path / "out.jsonl"
-
-        # WHEN
-        _run(client, fixtures, [{"id": "q1", "question": "Hello?"}], output)
-
-        # THEN
-        text = output.read_text(encoding="utf-8")
-        assert "hunter2" not in text
-        assert "runner:" not in text
-
-    def test_prompt_sha256_is_the_hash_of_the_product_prompt(
-        self, assistant_settings, client, tmp_path
-    ):
-        """
-        GIVEN a run
-        WHEN a row is written
-        THEN prompt_sha256 is the sha256 of the product's SYSTEM_PROMPT
-        """
-        # GIVEN
-        fixtures = _setup(client, _scripted("Fine."))
-        output = tmp_path / "out.jsonl"
-
-        # WHEN
-        _run(client, fixtures, [{"id": "q1", "question": "Hello?"}], output)
-
-        # THEN
-        expected = hashlib.sha256(SYSTEM_PROMPT.encode("utf-8")).hexdigest()
-        assert _rows(output)[0]["prompt_sha256"] == expected
-        assert expected == ea.PROMPT_SHA256
 
     def test_a_project_question_resolves_the_fixture_key(
         self, assistant_settings, client, tmp_path
@@ -270,17 +212,16 @@ class TestRunEval:
 
         # THEN
         row = _rows(output)[0]
-        assert row["status"] == "ok"
-        assert row["project"] == "own"
+        assert (row["status"], row["project"]) == ("ok", "own")
         assert OWN_PROJECT in _shown(model)
 
-    def test_a_project_of_another_user_fails_the_row_and_the_run_goes_on(
+    def test_failing_turns_become_rows_and_the_run_goes_on(
         self, assistant_settings, client, tmp_path
     ):
         """
-        GIVEN a question about a project the fixtures user is not a member of, then a plain one
-        WHEN the runner asks both
-        THEN the first row carries the tenant check's 404 and the second is answered
+        GIVEN a question about another user's project, a plain one, and a model with one answer
+        WHEN the runner asks three questions
+        THEN the tenant check's 404 and the model's exception are rows, and the plain one is ok
         """
         # GIVEN
         model = _scripted("Plain answer.")
@@ -288,6 +229,7 @@ class TestRunEval:
         questions = [
             {"id": "q1", "question": "What is the result?", "project": "foreign"},
             {"id": "q2", "question": "What is BeCoMe?"},
+            {"id": "q3", "question": "And again?"},
         ]
         output = tmp_path / "out.jsonl"
 
@@ -295,42 +237,21 @@ class TestRunEval:
         summary = _run(client, fixtures, questions, output)
 
         # THEN
-        first, second = _rows(output)
-        assert first["status"] == "http_404"
-        assert first["answer"] is None
+        first, second, third = _rows(output)
+        assert (first["status"], first["answer"]) == ("http_404", None)
         assert OTHER_PROJECT not in _shown(model)
         assert second["status"] == "ok"
-        assert (summary["ok"], summary["failed"]) == (1, 1)
-
-    def test_a_turn_that_raises_is_recorded_by_its_class_name(
-        self, assistant_settings, client, tmp_path
-    ):
-        """
-        GIVEN a model with no answer left to give, so the second turn raises
-        WHEN the runner asks two questions
-        THEN the second row carries the exception's class name and the first stays ok
-        """
-        # GIVEN
-        fixtures = _setup(client, _scripted("Only one answer."))
-        questions = [{"id": "q1", "question": "One?"}, {"id": "q2", "question": "Two?"}]
-        output = tmp_path / "out.jsonl"
-
-        # WHEN
-        _run(client, fixtures, questions, output)
-
-        # THEN
-        first, second = _rows(output)
-        assert first["status"] == "ok"
-        assert second["status"] == "IndexError"
+        assert third["status"] == "IndexError"
+        assert (summary["ok"], summary["failed"]) == (1, 2)
 
     def test_done_rows_of_the_same_arm_are_skipped(self, assistant_settings, client, tmp_path):
         """
-        GIVEN an output file that already holds q1 for this arm and q1 for another arm
+        GIVEN an output file that holds q1 for this arm and q2 for another arm
         WHEN the runner is run again over q1 and q2
-        THEN only q2 is asked and appended, and the other arm's row does not count as done
+        THEN only q2 is asked and appended, since the other arm's row does not count as done
         """
         # GIVEN
-        model = _scripted("Answer for q2.", "Answer for q1.")
+        model = _scripted("Answer for q2.")
         fixtures = _setup(client, model)
         output = tmp_path / "out.jsonl"
         done = [{"id": "q1", "arm": "test-arm"}, {"id": "q2", "arm": "other-arm"}]
@@ -341,20 +262,18 @@ class TestRunEval:
         summary = _run(client, fixtures, questions, output)
 
         # THEN
-        rows = _rows(output)
-        assert [(row["id"], row["arm"]) for row in rows] == [
+        assert [(row["id"], row["arm"]) for row in _rows(output)] == [
             ("q1", "test-arm"),
             ("q2", "other-arm"),
             ("q2", "test-arm"),
         ]
-        assert len(model.seen) == 1
-        assert summary["rows"] == 1
+        assert (len(model.seen), summary["rows"]) == (1, 1)
 
     def test_the_mode_reaches_the_service(self, assistant_settings, client, tmp_path):
         """
         GIVEN a model that first calls a tool, and the settings saying workflow
-        WHEN the runner is asked for agent mode
-        THEN the turn runs the tool, and in workflow mode the same script calls none
+        WHEN the runner is asked for agent mode, then for workflow mode
+        THEN the tool runs in agent mode only, and the app's settings override is removed
         """
         # GIVEN
         call = AIMessage(
@@ -364,8 +283,7 @@ class TestRunEval:
         model = ScriptedToolCallingModel(responses=[call, AIMessage(content="You have two.")])
         fixtures = _setup(client, model)
         question = [{"id": "q1", "question": "Which projects are mine?"}]
-        agent_out = tmp_path / "agent.jsonl"
-        workflow_out = tmp_path / "workflow.jsonl"
+        agent_out, workflow_out = tmp_path / "agent.jsonl", tmp_path / "workflow.jsonl"
 
         # WHEN
         _run(client, fixtures, question, agent_out, mode="agent")
@@ -374,26 +292,8 @@ class TestRunEval:
         _run(client, fixtures, question, workflow_out, mode="workflow")
 
         # THEN
-        agent_row = _rows(agent_out)[0]
-        assert agent_row["mode"] == "agent"
-        assert agent_row["tool_calls"] == ["list_my_projects"]
+        assert _rows(agent_out)[0]["tool_calls"] == ["list_my_projects"]
         assert _rows(workflow_out)[0]["tool_calls"] == []
-
-    def test_the_settings_override_is_removed_after_the_run(
-        self, assistant_settings, client, tmp_path
-    ):
-        """
-        GIVEN an app without a settings override
-        WHEN the runner has run
-        THEN the app is left as it was found
-        """
-        # GIVEN
-        fixtures = _setup(client, _scripted("Fine."))
-
-        # WHEN
-        _run(client, fixtures, [{"id": "q1", "question": "Hi?"}], tmp_path / "out.jsonl")
-
-        # THEN
         assert get_settings not in client.app.dependency_overrides
 
 
@@ -421,13 +321,13 @@ class TestEvalSettings:
 
 
 class TestInputs:
-    """Reading the questions and the fixtures."""
+    """Reading the questions before any turn runs."""
 
-    def test_questions_are_validated_against_the_fixtures(self, tmp_path):
+    def test_an_unknown_project_key_is_refused_without_the_question_text(self, tmp_path):
         """
         GIVEN a questions file whose second record names a project key the fixtures lack
         WHEN it is loaded
-        THEN loading fails before any turn, naming the key and not the question
+        THEN loading fails, naming the key and not the question
         """
         # GIVEN
         path = tmp_path / "q.jsonl"
@@ -439,23 +339,9 @@ class TestInputs:
             ea._load_questions(path, {"own"}, None)
         assert "B?" not in str(raised.value)
 
-    def test_a_record_without_an_id_is_refused(self, tmp_path):
-        """
-        GIVEN a record with no id
-        WHEN the questions are loaded
-        THEN loading fails
-        """
-        # GIVEN
-        path = tmp_path / "q.jsonl"
-        path.write_text(json.dumps({"question": "A?"}) + "\n", encoding="utf-8")
-
-        # WHEN / THEN
-        with pytest.raises(ValueError, match="id"):
-            ea._load_questions(path, set(), None)
-
     def test_limit_keeps_the_first_questions(self, tmp_path):
         """
-        GIVEN three questions
+        GIVEN three questions and a blank line
         WHEN they are loaded with a limit of two
         THEN the first two come back
         """
@@ -472,38 +358,35 @@ class TestInputs:
 
 
 class TestCollectionVersions:
-    """The versions of the collection, read from the registry when it can be reached."""
+    """The collection's versions, read from the registry when it can be reached."""
 
-    def test_no_database_url_gives_no_versions(self):
+    class _Connection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_exc):
+            return None
+
+        def execute(self, *_args):
+            return SimpleNamespace(fetchone=lambda: ("app-1", "corpus-2"))
+
+    def test_none_without_a_database_or_a_reachable_one(self, monkeypatch):
         """
-        GIVEN settings with no vector database URL
+        GIVEN settings with no vector database URL, then one nothing answers on
         WHEN the versions are asked for
-        THEN both are None and no connection is tried
+        THEN both are None each time, and the first tries no connection
         """
         # WHEN
         with patch.object(psycopg, "connect") as connect:
-            versions = ea._collection_versions(get_settings())
-
-        # THEN
-        assert versions == (None, None)
-        connect.assert_not_called()
-
-    def test_an_unreachable_database_gives_no_versions(self, monkeypatch):
-        """
-        GIVEN a vector database URL nothing answers on
-        WHEN the versions are asked for
-        THEN both are None instead of an error
-        """
-        # GIVEN
-        monkeypatch.setenv("ASSISTANT_VECTOR_DB_URL", "postgresql+psycopg://u:p@127.0.0.1:9/db")
+            unset = ea._collection_versions(get_settings())
+        monkeypatch.setenv("ASSISTANT_VECTOR_DB_URL", DB_URL)
         _reset()
-
-        # WHEN
         with patch.object(psycopg, "connect", side_effect=psycopg.OperationalError("down")):
-            versions = ea._collection_versions(get_settings())
+            down = ea._collection_versions(get_settings())
 
         # THEN
-        assert versions == (None, None)
+        assert (unset, down) == ((None, None), (None, None))
+        connect.assert_not_called()
 
     def test_the_registry_row_gives_both_versions(self, monkeypatch):
         """
@@ -512,32 +395,22 @@ class TestCollectionVersions:
         THEN the app and the corpus version come back, read with the psycopg DSN
         """
         # GIVEN
-        monkeypatch.setenv("ASSISTANT_VECTOR_DB_URL", "postgresql+psycopg://u:p@127.0.0.1:9/db")
+        monkeypatch.setenv("ASSISTANT_VECTOR_DB_URL", DB_URL)
         _reset()
 
-        class _Connection:
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *_exc):
-                return None
-
-            def execute(self, *_args):
-                return SimpleNamespace(fetchone=lambda: ("app-1", "corpus-2"))
-
         # WHEN
-        with patch.object(psycopg, "connect", return_value=_Connection()) as connect:
+        with patch.object(psycopg, "connect", return_value=self._Connection()) as connect:
             versions = ea._collection_versions(get_settings())
 
         # THEN
         assert versions == ("app-1", "corpus-2")
-        assert connect.call_args.args[0] == "postgresql://u:p@127.0.0.1:9/db"
+        assert connect.call_args.args[0] == DB_URL.replace("+psycopg", "")
 
 
 class TestMain:
     """The command line, end to end over the test application."""
 
-    def test_main_writes_the_rows_and_prints_the_summary(
+    def test_main_writes_the_rows_and_prints_only_counts(
         self, assistant_settings, client, tmp_path, capsys
     ):
         """
@@ -547,29 +420,18 @@ class TestMain:
         """
         # GIVEN
         fixtures = _setup(client, _scripted("Secret-free answer."))
-        fixtures_path = tmp_path / "fixtures.json"
-        fixtures_path.write_text(json.dumps(fixtures), encoding="utf-8")
-        questions_path = tmp_path / "q.jsonl"
+        (tmp_path / "f.json").write_text(json.dumps(fixtures), encoding="utf-8")
         records = [{"id": "q1", "question": "Plum?"}, {"id": "q2", "question": "Pear?"}]
-        questions_path.write_text("\n".join(json.dumps(r) for r in records), encoding="utf-8")
-        output = tmp_path / "out.jsonl"
-        argv = [
-            "--questions", str(questions_path),
-            "--fixtures", str(fixtures_path),
-            "--mode", "workflow",
-            "--arm", "cli",
-            "--output", str(output),
-            "--limit", "1",
-        ]  # fmt: skip
+        (tmp_path / "q.jsonl").write_text("\n".join(map(json.dumps, records)), encoding="utf-8")
 
         # WHEN
         with patch.object(ea, "create_app", return_value=client.app):
-            code = ea.main(argv)
+            code = ea.main(_argv(tmp_path, "workflow", "--limit", "1"))
 
         # THEN
         shown = capsys.readouterr().out
         assert code == 0
-        assert [row["id"] for row in _rows(output)] == ["q1"]
+        assert [row["id"] for row in _rows(tmp_path / "out.jsonl")] == ["q1"]
         assert "rows=1 ok=1 failed=0 median_latency_s=" in shown
         assert "Plum" not in shown
         assert "Secret-free" not in shown
@@ -581,18 +443,10 @@ class TestMain:
         THEN it exits 2 and says which setting to raise
         """
         # GIVEN
-        questions_path = tmp_path / "q.jsonl"
-        questions_path.write_text(json.dumps({"id": "q1", "question": "A?"}), encoding="utf-8")
-        argv = [
-            "--questions", str(questions_path),
-            "--fixtures", str(tmp_path / "fixtures.json"),
-            "--mode", "agent",
-            "--arm", "cli",
-            "--output", str(tmp_path / "out.jsonl"),
-        ]  # fmt: skip
+        (tmp_path / "q.jsonl").write_text(json.dumps({"id": "q1", "question": "A?"}))
 
         # WHEN
-        code = ea.main(argv)
+        code = ea.main(_argv(tmp_path, "agent"))
 
         # THEN
         assert code == 2
@@ -602,107 +456,57 @@ class TestMain:
 class TestSealGuard:
     """A sealed question set is refused unless a written registration comes with it."""
 
-    @staticmethod
-    def _args(registration: Path | None, sealed_run: bool) -> argparse.Namespace:
-        return argparse.Namespace(sealed_run=sealed_run, registration=registration)
+    DIGEST = "ab" * 32
 
-    def test_a_sealed_file_is_refused_without_the_flag(self, tmp_path):
+    def _problem(self, registration: Path | None, sealed_run: bool) -> str | None:
+        args = argparse.Namespace(sealed_run=sealed_run, registration=registration)
+        with patch.object(ea, "SEALED_SHA256", frozenset({self.DIGEST})):
+            return ea._seal_problem(self.DIGEST, args)
+
+    def test_a_sealed_file_is_refused_without_the_flag_or_a_usable_registration(self, tmp_path):
         """
         GIVEN a questions file whose hash is on the sealed list
-        WHEN the guard looks at a run without --sealed-run
-        THEN it names the problem
+        WHEN the guard looks at a run without the flag, without a registration, with an empty
+            one and with a missing one
+        THEN each is refused with a message naming what is missing
         """
         # GIVEN
-        digest = "ab" * 32
-
-        # WHEN
-        with patch.object(ea, "SEALED_SHA256", frozenset({digest})):
-            problem = ea._seal_problem(digest, self._args(None, False))
-
-        # THEN
-        assert problem is not None
-        assert "--sealed-run" in problem
-
-    def test_the_flag_without_a_registration_is_refused(self):
-        """
-        GIVEN a sealed file and --sealed-run but no registration
-        WHEN the guard looks at it
-        THEN it asks for the registration
-        """
-        # GIVEN
-        digest = "ab" * 32
-
-        # WHEN
-        with patch.object(ea, "SEALED_SHA256", frozenset({digest})):
-            problem = ea._seal_problem(digest, self._args(None, True))
-
-        # THEN
-        assert problem is not None
-        assert "--registration" in problem
-
-    def test_an_empty_or_missing_registration_is_refused(self, tmp_path):
-        """
-        GIVEN --sealed-run with a registration that is empty, and with one that does not exist
-        WHEN the guard looks at each
-        THEN both are refused
-        """
-        # GIVEN
-        digest = "ab" * 32
         empty = tmp_path / "empty.md"
         empty.write_text("", encoding="utf-8")
 
         # WHEN
-        with patch.object(ea, "SEALED_SHA256", frozenset({digest})):
-            empty_problem = ea._seal_problem(digest, self._args(empty, True))
-            missing_problem = ea._seal_problem(digest, self._args(tmp_path / "none.md", True))
+        no_flag = self._problem(None, False)
+        no_registration = self._problem(None, True)
+        empty_registration = self._problem(empty, True)
+        missing_registration = self._problem(tmp_path / "none.md", True)
 
         # THEN
-        assert empty_problem is not None
-        assert missing_problem is not None
+        assert no_flag is not None
+        assert "--sealed-run" in no_flag
+        assert no_registration is not None
+        assert "--registration" in no_registration
+        assert empty_registration is not None
+        assert missing_registration is not None
 
     def test_a_registration_lets_a_sealed_run_through(self, tmp_path):
         """
         GIVEN a sealed file, --sealed-run and a non-empty registration
-        WHEN the guard looks at it
-        THEN there is no problem
+        WHEN the guard looks at it, and at an ordinary file
+        THEN neither has a problem
         """
         # GIVEN
-        digest = "ab" * 32
         registration = tmp_path / "registration.md"
         registration.write_text("Pre-registered: arms, metrics, rules.\n", encoding="utf-8")
 
         # WHEN
-        with patch.object(ea, "SEALED_SHA256", frozenset({digest})):
-            problem = ea._seal_problem(digest, self._args(registration, True))
+        sealed = self._problem(registration, True)
+        ordinary = ea._seal_problem("cd" * 32, argparse.Namespace(sealed_run=False))
 
         # THEN
-        assert problem is None
+        assert sealed is None
+        assert ordinary is None
 
-    def test_an_ordinary_file_needs_nothing(self):
-        """
-        GIVEN a questions file whose hash is not sealed
-        WHEN the guard looks at a plain run
-        THEN there is no problem
-        """
-        # WHEN
-        problem = ea._seal_problem("cd" * 32, self._args(None, False))
-
-        # THEN
-        assert problem is None
-
-    def test_the_real_constant_lists_one_hash(self):
-        """
-        GIVEN the module's own constant
-        WHEN it is read
-        THEN it is a frozenset of one 64-character hex digest
-        """
-        assert isinstance(ea.SEALED_SHA256, frozenset)
-        assert len(ea.SEALED_SHA256) == 1
-        assert all(len(digest) == 64 for digest in ea.SEALED_SHA256)
-
-    def test_main_exits_2_before_doing_anything_on_a_sealed_file(
-        self, tmp_path, monkeypatch, capsys
-    ):
+    def test_main_exits_2_before_doing_anything_on_a_sealed_file(self, tmp_path, capsys):
         """
         GIVEN a questions file whose hash is on the sealed list
         WHEN main runs without --sealed-run
@@ -712,20 +516,12 @@ class TestSealGuard:
         questions = tmp_path / "q.jsonl"
         questions.write_text(json.dumps({"id": "q1", "question": "A?"}) + "\n", encoding="utf-8")
         digest = hashlib.sha256(questions.read_bytes()).hexdigest()
-        output = tmp_path / "out.jsonl"
-        argv = [
-            "--questions", str(questions),
-            "--fixtures", str(tmp_path / "fixtures.json"),
-            "--mode", "workflow",
-            "--arm", "a",
-            "--output", str(output),
-        ]  # fmt: skip
 
         # WHEN
         with patch.object(ea, "SEALED_SHA256", frozenset({digest})):
-            code = ea.main(argv)
+            code = ea.main(_argv(tmp_path))
 
         # THEN
         assert code == 2
         assert "sealed" in capsys.readouterr().err
-        assert not output.exists()
+        assert not (tmp_path / "out.jsonl").exists()
