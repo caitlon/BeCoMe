@@ -88,6 +88,23 @@ Runs only on a developer machine. `Settings` refuses to start any deployed profi
        --fixtures supplementary/assistant-eval/fixtures.json --mode workflow --arm 9b-workflow \
        --output supplementary/assistant-eval/answers.jsonl
    ```
+
+   Grading the answers: `scripts/assistant/grade_answers.py` reads the latest row per question
+   and arm from `--answers`, joins each to its question in `--questions` by `id` (records carry
+   `id` and `lang`) and writes one grade per row to `--output`. No model runs and the grader
+   reads no setting: the grades are checks on the text and on the row's own fields, so a rerun
+   repeats them. It reads the rows through the runner's `latest_rows`, so it needs the
+   environment the runner needs to import. A row whose turn failed is graded `completed: false`
+   with null checks. The checks are the answer's language against the question's, the `[n]`
+   citations used and how many name a source, and pseudo citations such as `[docs]` or
+   `[Source 1]`; citations are read with `api/assistant/agent/checks.py`. The per-arm summary is
+   printed, and `--summary` writes it as JSON.
+
+   ```bash
+   uv run python scripts/assistant/grade_answers.py \
+       --answers supplementary/assistant-eval/answers.jsonl --questions questions.jsonl \
+       --output supplementary/assistant-eval/grades.jsonl
+   ```
 7. Backend: set `ASSISTANT_ENABLED=true` in `.env`, then run the API as usual. This turns on
    `GET /api/v1/assistant/config` and `POST /api/v1/assistant/chat`
    (`api/routes/assistant.py`); the `model` field of the first reports the answer model.
