@@ -57,9 +57,10 @@ Runs only on a developer machine. `Settings` refuses to start any deployed profi
    creates in the configured local database one activated user, `eval-owner@example.test`,
    who owns the product's example project (Floods case, 13 experts) and a second one built from
    the pendlers case study (22 experts, calculated). The password is `--password` or generated
-   and printed once on stderr; a second run changes nothing and says "already present". The
-   JSON (user id, and per project its key, id, name, expert count and result numbers) is what an
-   evaluation run reads; the keys are listed in the script's docstring. It exits with 2 and
+   and printed once on stderr, as soon as the account exists. An existing account keeps its
+   password, so `--password` has no effect on a rerun; a second run changes nothing and says
+   "already present". The JSON (user id, and per project its key, id, name, expert count and
+   result numbers) is what an evaluation run reads; the keys are listed in the script's docstring. It exits with 2 and
    touches nothing unless the profile is `dev` and the database is SQLite or on a loopback host.
 7. Backend: set `ASSISTANT_ENABLED=true` in `.env`, then run the API as usual. This turns on
    `GET /api/v1/assistant/config` and `POST /api/v1/assistant/chat`
