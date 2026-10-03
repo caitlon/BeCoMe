@@ -40,6 +40,7 @@ from urllib.parse import urlsplit
 from uuid import UUID
 
 import httpx
+import langsmith as ls
 import psycopg
 from fastapi import FastAPI
 
@@ -109,13 +110,12 @@ def _project_ids(fixtures: dict[str, Any]) -> dict[str, str]:
     return {project["key"]: project["id"] for project in fixtures["projects"]}
 
 
-def _load_questions(path: Path, project_keys: set[str], limit: int | None) -> list[dict[str, Any]]:
+def _load_questions(path: Path, project_keys: set[str]) -> list[dict[str, Any]]:
     """Read the questions and check them against the fixtures before any turn runs.
 
     :param path: JSONL file; each record has ``id`` and ``question``, and may have ``lang``
         and ``project`` (a fixtures key).
     :param project_keys: The keys the fixtures define.
-    :param limit: Keep only the first N records, or all when None.
     :return: The records, in file order.
     :raises ValueError: If a record lacks an id or a question, or names an unknown project
         key. The message names the line and the key, never the question.
@@ -129,7 +129,7 @@ def _load_questions(path: Path, project_keys: set[str], limit: int | None) -> li
         key = record.get("project")
         if key is not None and key not in project_keys:
             raise ValueError(f"question record {number} names the unknown project {key!r}")
-    return records if limit is None else records[:limit]
+    return records
 
 
 def _done(output: Path) -> set[tuple[str, str]]:
@@ -216,24 +216,26 @@ def _row_from_response(body: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _ask(
-    http: httpx.AsyncClient, record: dict[str, Any], project_id: str | None
+    http: httpx.AsyncClient, record: dict[str, Any], project_id: str | None, user_id: str
 ) -> dict[str, Any]:
     """Run one single-turn chat and return its result fields.
 
-    :param http: The in-process client, signed in as the fixtures user.
+    The access token is minted for this question: it lives 15 minutes and a run lasts longer.
+
+    :param http: The in-process client.
     :param record: The question record.
     :param project_id: The id of the project the question is asked about, or None.
+    :param user_id: The fixtures user's id.
     :return: ``status``, ``latency_s`` and, for an answered turn, the response fields.
     """
     body: dict[str, Any] = {"message": record["question"]}
     if project_id is not None:
         body["project_id"] = project_id
-    if record.get("lang") in ("en", "cs"):
-        body["locale"] = record["lang"]
     result: dict[str, Any] = {"answer": None, "sources": None, "tool_calls": None, "checks": None}
     started = time.monotonic()
     try:
-        response = await http.post(CHAT, json=body)
+        token = create_access_token(UUID(user_id))
+        response = await http.post(CHAT, json=body, headers={"Authorization": f"Bearer {token}"})
     except Exception as exc:
         result["status"] = type(exc).__name__
     else:
@@ -260,8 +262,8 @@ async def run_eval(
     """Ask the questions one after another and append one row per question to ``output``.
 
     Rows already in ``output`` for the same id and arm are skipped. While the run lasts the
-    app's settings dependency is overridden with :func:`_eval_settings`; the override is
-    removed afterwards.
+    app's settings dependency is overridden with :func:`_eval_settings` and tracing is off;
+    the override is removed afterwards.
 
     :param app: The FastAPI app with the assistant router mounted.
     :param questions: The records from :func:`_load_questions`.
@@ -287,8 +289,7 @@ async def run_eval(
         "corpus_version": versions[1],
         "prompt_sha256": PROMPT_SHA256,
     }
-    token = create_access_token(UUID(str(fixtures["user"]["id"])))
-    previous = app.dependency_overrides.get(get_settings)
+    user_id = str(fixtures["user"]["id"])
     app.dependency_overrides[get_settings] = lambda: run_settings
     ok = 0
     latencies: list[float] = []
@@ -297,12 +298,15 @@ async def run_eval(
         async with httpx.AsyncClient(
             transport=transport,
             base_url="http://eval.invalid",
-            headers={"Authorization": f"Bearer {token}"},
         ) as http:
-            with output.open("a", encoding="utf-8") as sink:
+            # Off for the whole loop: the query-transform call runs before the service's own
+            # tracing scope opens, and the environment may have tracing switched on.
+            with ls.tracing_context(enabled=False), output.open("a", encoding="utf-8") as sink:
                 for number, record in enumerate(todo, start=1):
                     key = record.get("project")
-                    result = await _ask(http, record, None if key is None else projects[key])
+                    result = await _ask(
+                        http, record, None if key is None else projects[key], user_id
+                    )
                     row = {
                         "id": record["id"],
                         "question": record["question"],
@@ -320,10 +324,7 @@ async def run_eval(
                         f"turn {number}/{len(todo)}: {result['status']} in {result['latency_s']}s"
                     )
     finally:
-        if previous is None:
-            app.dependency_overrides.pop(get_settings, None)
-        else:
-            app.dependency_overrides[get_settings] = previous
+        app.dependency_overrides.pop(get_settings, None)
     return {
         "rows": len(latencies),
         "ok": ok,
@@ -346,7 +347,6 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     )
     parser.add_argument("--arm", required=True, help="Free label written into every row")
     parser.add_argument("--output", required=True, type=Path, help="Output JSONL, appended to")
-    parser.add_argument("--limit", type=int, default=None, help="Ask only the first N questions")
     parser.add_argument(
         "--sealed-run", action="store_true", help="Allow a run over a sealed question set"
     )
@@ -366,7 +366,12 @@ def main(argv: list[str] | None = None) -> int:
     :return: The exit code: 0 on a finished run, 2 when the run is refused or misconfigured.
     """
     args = _parse_args(argv)
-    problem = _seal_problem(_sha256_file(args.questions), args)
+    try:
+        digest = _sha256_file(args.questions)
+    except OSError as exc:
+        print(f"cannot read the questions: {exc}", file=sys.stderr)
+        return 2
+    problem = _seal_problem(digest, args)
     if problem is not None:
         print(problem, file=sys.stderr)
         return 2
@@ -378,7 +383,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     try:
         fixtures = _load_fixtures(args.fixtures)
-        questions = _load_questions(args.questions, set(_project_ids(fixtures)), args.limit)
+        questions = _load_questions(args.questions, set(_project_ids(fixtures)))
     except (ValueError, KeyError, OSError) as exc:
         print(f"cannot read the inputs: {exc}", file=sys.stderr)
         return 2
