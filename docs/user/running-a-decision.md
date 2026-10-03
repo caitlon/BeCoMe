@@ -34,12 +34,12 @@ opposite. Take a panel of four and vary only the fourth opinion's width, keeping
 | `(20, 60, 100)` | `(26.25, 47.50, 68.75)` | 47.50 |
 
 Here the compromise gets wider and its centroid stays at 47.50. That holds in general: when you
-widen your range evenly around the same peak, the centroid of the compromise does not move. The
-centroid is the center of gravity of the triangle, as defined in
-[reading the result](reading-the-result.md). The peak of the compromise can still shift in some
-panels, and the compromise does not always get wider. An honest range makes the group's uncertainty
-visible instead of hiding it. So state the range you actually believe. You are not spending
-influence by admitting doubt.
+move your lower bound down and your upper bound up by the same amount and keep the peak, the
+centroid of the compromise does not move. The centroid is the center of gravity of the triangle, as
+defined in [reading the result](reading-the-result.md). The peak of the compromise can shift, and
+the compromise can even get narrower, only when two opinions have exactly the same centroid. An
+honest range makes the group's uncertainty visible instead of hiding it. So state the range you
+actually believe. You are not spending influence by admitting doubt.
 
 **A crisp number** is for the expert who is genuinely certain. Enter the same value three times:
 `(50, 50, 50)`. It is a triangle with no width, and the method treats it as one. Do not use it to
