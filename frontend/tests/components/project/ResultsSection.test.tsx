@@ -54,35 +54,8 @@ describe('ResultsSection - Results Display', () => {
 
     render(<ResultsSection result={result} project={project} showIndividual={false} setShowIndividual={vi.fn()} opinions={opinions} />);
 
-    expect(screen.getByText('Low agreement')).toBeInTheDocument();
-    expect(screen.queryByText('High agreement')).not.toBeInTheDocument();
-  });
-
-  it('shows agreement badge with results', () => {
-    const { project, opinions } = setup();
-    const result = createCalculationResult({ agreement_level: 'high' });
-
-    render(<ResultsSection result={result} project={project} showIndividual={false} setShowIndividual={vi.fn()} opinions={opinions} />);
-
-    expect(screen.getByText('High agreement')).toBeInTheDocument();
-  });
-
-  it('shows moderate agreement for medium error', () => {
-    const { project, opinions } = setup();
-    const result = createCalculationResult({ agreement_level: 'moderate' });
-
-    render(<ResultsSection result={result} project={project} showIndividual={false} setShowIndividual={vi.fn()} opinions={opinions} />);
-
-    expect(screen.getByText('Moderate agreement')).toBeInTheDocument();
-  });
-
-  it('shows low agreement for high error', () => {
-    const { project, opinions } = setup();
-    const result = createCalculationResult({ agreement_level: 'low' });
-
-    render(<ResultsSection result={result} project={project} showIndividual={false} setShowIndividual={vi.fn()} opinions={opinions} />);
-
-    expect(screen.getByText('Low agreement')).toBeInTheDocument();
+    expect(screen.getByText('Low Confidence')).toBeInTheDocument();
+    expect(screen.queryByText('High Confidence')).not.toBeInTheDocument();
   });
 
   it('toggles individual opinions visibility via checkbox', async () => {
@@ -283,7 +256,7 @@ describe('ResultsSection - Confidence Card', () => {
     render(<ResultsSection result={result} project={project} showIndividual={false} setShowIndividual={vi.fn()} opinions={opinions} />);
 
     expect(
-      screen.getByText(/tighter agreement means a more precise compromise/i)
+      screen.getByText(/how close the mean and the median are\. the closer they are, the more precise the compromise/i)
     ).toBeInTheDocument();
   });
 
@@ -296,13 +269,22 @@ describe('ResultsSection - Confidence Card', () => {
     expect(screen.getByText('12.50')).toBeInTheDocument();
   });
 
-  it('keeps the agreement badge and experts count unchanged', () => {
+  it('does not put an agreement badge beside the Delta_max number', () => {
+    const { project, opinions } = setup();
+    const result = createCalculationResult({ max_error: 12.5, agreement_level: 'high' });
+
+    render(<ResultsSection result={result} project={project} showIndividual={false} setShowIndividual={vi.fn()} opinions={opinions} />);
+
+    expect(screen.queryByText(/agreement/i)).not.toBeInTheDocument();
+    expect(screen.getByText('High Confidence')).toBeInTheDocument();
+  });
+
+  it('keeps the experts count unchanged', () => {
     const { project, opinions } = setup();
     const result = createCalculationResult({ max_error: 12.5, num_experts: 5 });
 
     render(<ResultsSection result={result} project={project} showIndividual={false} setShowIndividual={vi.fn()} opinions={opinions} />);
 
-    expect(screen.getByText('High agreement')).toBeInTheDocument();
     expect(screen.getByText('5')).toBeInTheDocument();
   });
 });
