@@ -62,6 +62,20 @@ Runs only on a developer machine. `Settings` refuses to start any deployed profi
    "already present". The JSON (user id, and per project its key, id, name, expert count and
    result numbers) is what an evaluation run reads; the keys are listed in the script's docstring. It exits with 2 and
    touches nothing unless the profile is `dev` and the database is SQLite or on a loopback host.
+
+   Answer evaluation: `scripts/assistant/eval_answers.py` asks every question of a JSONL file as
+   one single-turn chat through the real chat route, in-process and as the user the fixtures file
+   names, so authorization, the product prompt and the grounding checks run as they do for a
+   user. It never runs two questions at once and appends one row per question to `--output`,
+   skipping rows of the same `id` and `arm` already there. A question file whose hash is on the
+   sealed list is refused without `--sealed-run` and a non-empty `--registration` file. It needs
+   `ASSISTANT_ENABLED=true`; `ASSISTANT_RATE_LIMIT_PER_HOUR=0` suits a long run.
+
+   ```bash
+   uv run python scripts/assistant/eval_answers.py --questions questions.jsonl \
+       --fixtures supplementary/assistant-eval/fixtures.json --mode workflow --arm 9b-workflow \
+       --output supplementary/assistant-eval/answers.jsonl
+   ```
 7. Backend: set `ASSISTANT_ENABLED=true` in `.env`, then run the API as usual. This turns on
    `GET /api/v1/assistant/config` and `POST /api/v1/assistant/chat`
    (`api/routes/assistant.py`); the `model` field of the first reports the answer model.
