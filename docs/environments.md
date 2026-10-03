@@ -99,6 +99,8 @@ The `api` service in `docker/docker-compose.yml` reads `APP_ENV` with `${APP_ENV
 
 `.github/workflows/ci.yml` runs on every push and pull request to `dev`, `test`, and `prod`, so the deploy branches get the same full pipeline as `prod`. That pipeline covers lint, Python and frontend tests, backend and Playwright end-to-end tests, and SonarCloud (the last on pull requests and on pushes to `prod`). It sets `APP_ENV=test` on the `python-tests`, `backend-e2e`, and `e2e` jobs, including the steps that start a live server. `scripts/ci/e2e-local.sh` sets the same value for local end-to-end runs.
 
+The last job, `check` (shown as `Check`), waits on every other job in the workflow and fails unless each one succeeded or was skipped, so a failed or cancelled run ends in one red result. It runs even when a job it waits on fails, which a plain `needs` would not. Branch protection still lists the individual jobs; `Check` is not required yet.
+
 ## Development workflow
 
 Each environment tracks one git branch, and a push to that branch redeploys the environment's Railway services.
