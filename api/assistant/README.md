@@ -73,7 +73,8 @@ Runs only on a developer machine. `Settings` refuses to start any deployed profi
    limits, retrieval settings, `collection`, `prompt_sha256` and `code_version`. `app_version`
    and `corpus_version` are the collection's own, from its registry row. A question file whose
    hash is on the sealed list is refused without `--sealed-run` and a non-empty
-   `--registration` file, and a sealed run also needs those two versions.
+   `--registration` file, and a sealed run also needs both versions: a null in either one
+   exits 2, and an ordinary run prints a warning when either is null.
 
    A rerun treats every row there for the same `id` and `arm` as done, whatever its status,
    because a failed turn is a result. `--retry-failed` asks again those whose latest row is not
@@ -81,7 +82,10 @@ Runs only on a developer machine. `Settings` refuses to start any deployed profi
    `unresolved` counts the arm's pairs still not `ok`. A run whose provenance fields differ from
    the arm's rows is refused with exit 2. After 3 turns in a row without an answer the run
    stops with exit 3, and at the first `http_401` or `http_429` at once; fix the cause, then
-   rerun with `--retry-failed`. `ASSISTANT_RATE_LIMIT_PER_HOUR=0` suits a long run.
+   rerun with `--retry-failed`. That works only while the code version and settings are
+   unchanged, because the provenance guard refuses otherwise; after a code or settings fix,
+   continue under a new `--arm` or a new `--output`. `ASSISTANT_RATE_LIMIT_PER_HOUR=0` suits a
+   long run.
 
    ```bash
    uv run python scripts/assistant/eval_answers.py --questions questions.jsonl \
