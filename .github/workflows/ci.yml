@@ -650,9 +650,12 @@ jobs:
           args: -Dsonar.projectVersion=${{ steps.sonar_version.outputs.version }}
 
   # One result to read for the verdict of the whole run. The job rows above stay where they
-  # are; this adds a single named line that is red whenever any job that decides a pull
-  # request failed or was cancelled, and that a branch protection rule can require later by
-  # this one name instead of by a list that grows with every job added here.
+  # are; this adds a single named line that is red whenever any job listed in `needs` below
+  # failed or was cancelled, and that a branch protection rule can require later by this one
+  # name instead of by a list that grows with every job added here.
+  #
+  # Add every new job in this workflow to `needs`. A job missing from the list is not
+  # covered, and `tests/unit/docs/test_ci_check.py` fails when the list and the jobs differ.
   #
   # `always()` rather than the default: without it this job is skipped whenever a job it
   # needs fails or is cancelled, and a skipped check reads as passing. With it, a cancelled
@@ -688,4 +691,7 @@ jobs:
           RESULTS: ${{ toJSON(needs) }}
         run: |
           echo "$RESULTS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
-          echo "$RESULTS" | jq -e 'all(to_entries[]; .value.result == "success" or .value.result == "skipped")' > /dev/null
+          if ! echo "$RESULTS" | jq -e 'all(to_entries[]; .value.result == "success" or .value.result == "skipped")' > /dev/null; then
+            echo "::error::a job did not pass"
+            exit 1
+          fi
