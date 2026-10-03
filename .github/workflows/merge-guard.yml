@@ -7,12 +7,14 @@ name: Merge Guard
 # types to ci.yml would rerun the whole pipeline (lint, tests, end-to-end, SonarCloud) every time
 # someone sets a label. This job takes seconds and starts nothing else.
 #
-# It is a required status check on `dev`, so the label blocks the merge itself, not only the
-# reader's attention.
+# Listed among the required status checks on `dev`, it makes the label block the merge itself, not
+# only the reader's attention.
 #
 # Safety. The job reads the label list from the event payload and nothing else: no checkout, no
 # token, no third-party action. The payload reaches the script through env and is parsed with jq,
 # never spliced into the script text, because a label name is text somebody typed.
+# The check reads the labels as they were when the event fired, so re-running an old run replays
+# that old list. Remove the label and let the `unlabeled` run report, rather than re-running a red one.
 on:
   pull_request:
     branches: [dev, test, prod]
@@ -36,8 +38,17 @@ jobs:
           PR_LABELS: ${{ toJSON(github.event.pull_request.labels) }}
         run: |
           set -euo pipefail
-          if printf '%s' "$PR_LABELS" | jq -e 'any(.[]; .name == "do-not-merge")' > /dev/null; then
-            echo "::error title=Merge guard::This pull request carries the do-not-merge label. Remove the label when it may be merged."
-            exit 1
-          fi
-          echo "No do-not-merge label."
+          blocked=$(printf '%s' "$PR_LABELS" | jq 'any(.[]; .name == "do-not-merge")')
+          case "$blocked" in
+            true)
+              echo "::error title=Merge guard::This pull request carries the do-not-merge label. Remove the label when it may be merged."
+              exit 1
+              ;;
+            false)
+              echo "No do-not-merge label."
+              ;;
+            *)
+              echo "::error title=Merge guard::Could not read the label list."
+              exit 1
+              ;;
+          esac
