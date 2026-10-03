@@ -94,7 +94,7 @@ test.describe.serial('Full Application Flow', () => {
 
   test('view calculation results', async () => {
     await expect(page.getByRole('heading', { name: /Best Compromise/ })).toBeVisible({ timeout: 10000 });
-    await expect(page.getByText(/How closely the mean and median/)).toBeVisible();
+    await expect(page.getByText(/How close the mean and the median are/)).toBeVisible();
     // Arithmetic Mean and Median live in a collapsed "Supporting calculations" section
     await page.getByRole('button', { name: /Supporting calculations/ }).click();
     await expect(page.getByRole('heading', { name: /Arithmetic Mean/ })).toBeVisible();
