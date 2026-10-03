@@ -42,7 +42,7 @@ DB_URL = "postgresql+psycopg://u:p@127.0.0.1:9/db"  # pragma: allowlist secret
 PROVENANCE_FIELDS = (  # noqa: SIM905
     "mode prompt_sha256 corpus_version app_version answer_model retrieval_mode "
     "retrieval_query_transform retrieval_rerank retrieval_k answer_max_tokens query_model "
-    "max_tool_calls collection code_version"
+    "max_tool_calls collection code_version answer_endpoint"
 ).split()
 _ENV = {
     "ASSISTANT_MODE": "workflow",
@@ -724,6 +724,26 @@ class TestFailureHandling:
         assert summary["rows"] == 1
         assert "http_401" in summary["stop"]
 
+    def test_unresolved_counts_only_the_current_arm(self, assistant_settings, client, tmp_path):
+        """
+        GIVEN an output file whose latest row of another arm failed
+        WHEN this arm runs one question to ok
+        THEN the summary counts no unresolved pair, since the other arm's failure is not its own
+        """
+        # GIVEN
+        fixtures = _setup(client, _scripted("One."))
+        output = tmp_path / "out.jsonl"
+        output.write_text(
+            json.dumps({"id": "q9", "arm": "other-arm", "status": "RuntimeError"}) + "\n",
+            encoding="utf-8",
+        )
+
+        # WHEN
+        summary = _run(client, fixtures, [{"id": "q1", "question": "One?"}], output)
+
+        # THEN
+        assert (summary["ok"], summary["unresolved"]) == (1, 0)
+
     def test_the_stop_rule(self):
         """
         GIVEN turn statuses and the length of the failing streak
@@ -734,6 +754,19 @@ class TestFailureHandling:
         assert ea._stop_reason("RuntimeError", 2) is None
         assert "ASSISTANT_RATE_LIMIT_PER_HOUR" in ea._stop_reason("http_429", 1)
         assert "3 turns in a row" in ea._stop_reason("http_503", 3)
+
+    def test_the_streak_stop_says_a_changed_setup_needs_a_new_arm(self):
+        """
+        GIVEN a run that stopped after 3 failed turns
+        WHEN the stop message is read
+        THEN it says --retry-failed holds only while the setup is unchanged, and names the way on
+        """
+        # WHEN
+        message = ea._stop_reason("http_503", 3)
+
+        # THEN
+        assert "unchanged" in message
+        assert "new --arm or a new --output" in message
 
 
 class TestProvenance:
@@ -838,30 +871,82 @@ class TestProvenance:
         assert code == 2
         assert "different mode" in capsys.readouterr().err
 
-    def test_a_sealed_run_without_versions_is_refused(
-        self, assistant_settings, client, tmp_path, capsys
-    ):
-        """
-        GIVEN a sealed questions file, a registration, and a registry that cannot be read
-        WHEN main runs with --sealed-run
-        THEN it exits 2 and asks for the versions
-        """
-        # GIVEN
-        fixtures = _setup(client, _scripted("Never used."))
+    def _sealed_main(self, client, tmp_path, versions, *, sealed_run=True):
+        fixtures = _setup(client, _scripted("Sealed answer."))
         (tmp_path / "f.json").write_text(json.dumps(fixtures), encoding="utf-8")
         (tmp_path / "q.jsonl").write_text(json.dumps({"id": "q1", "question": "One?"}))
         (tmp_path / "reg.md").write_text("Pre-registered.\n", encoding="utf-8")
         digest = hashlib.sha256((tmp_path / "q.jsonl").read_bytes()).hexdigest()
-        extra = ["--sealed-run", "--registration", str(tmp_path / "reg.md")]
+        sealed = frozenset({digest}) if sealed_run else ea.SEALED_SHA256
+        extra = ["--sealed-run", "--registration", str(tmp_path / "reg.md")] if sealed_run else []
+        with (
+            patch.object(ea, "SEALED_SHA256", sealed),
+            patch.object(ea, "_collection_versions", return_value=versions),
+            patch.object(ea, "create_app", return_value=client.app),
+        ):
+            return ea.main(_argv(tmp_path, "workflow", *extra))
 
+    @pytest.mark.parametrize(
+        ("versions", "missing"),
+        [
+            ((None, None), "app_version and corpus_version"),
+            (("app-1", None), "corpus_version"),
+            ((None, "corpus-2"), "app_version"),
+        ],
+    )
+    def test_a_sealed_run_missing_either_version_is_refused(
+        self, versions, missing, assistant_settings, client, tmp_path, capsys
+    ):
+        """
+        GIVEN a sealed questions file, a registration, and a registry that lacks a version
+        WHEN main runs with --sealed-run
+        THEN it exits 2 naming what is missing, and writes nothing
+        """
         # WHEN
-        with patch.object(ea, "SEALED_SHA256", frozenset({digest})):
-            code = ea.main(_argv(tmp_path, "workflow", *extra))
+        code = self._sealed_main(client, tmp_path, versions)
 
         # THEN
         assert code == 2
-        assert "versions" in capsys.readouterr().err
+        assert f"missing from the registry: {missing}" in capsys.readouterr().err
         assert not (tmp_path / "out.jsonl").exists()
+
+    def test_a_sealed_run_with_both_versions_goes_ahead(
+        self, assistant_settings, client, tmp_path, capsys
+    ):
+        """
+        GIVEN a sealed questions file, a registration, and a registry holding both versions
+        WHEN main runs with --sealed-run
+        THEN it exits 0 and warns of nothing
+        """
+        # WHEN
+        code = self._sealed_main(client, tmp_path, ("app-1", "corpus-2"))
+
+        # THEN
+        assert code == 0
+        assert capsys.readouterr().err == ""
+
+    @pytest.mark.parametrize(
+        ("versions", "warned"),
+        [
+            ((None, None), "app_version and corpus_version are null"),
+            (("app-1", None), "corpus_version is null"),
+            ((None, "corpus-2"), "app_version is null"),
+        ],
+    )
+    def test_an_ordinary_run_warns_when_either_version_is_null(
+        self, versions, warned, assistant_settings, client, tmp_path, capsys
+    ):
+        """
+        GIVEN a registry that lacks a version, and a run without --sealed-run
+        WHEN main runs
+        THEN it goes ahead and warns on stderr naming what is null
+        """
+        # WHEN
+        code = self._sealed_main(client, tmp_path, versions, sealed_run=False)
+
+        # THEN
+        assert code == 0
+        assert f"warning: {warned} in every row" in capsys.readouterr().err
 
 
 class TestInputErrors:
@@ -891,6 +976,25 @@ class TestInputErrors:
         # THEN
         assert code == 2
         assert "line 2 is not valid JSON" in capsys.readouterr().err
+
+    @pytest.mark.parametrize("line", ["[1]", '{"x": 1}', '{"id": "q1"}', '{"arm": "cli"}'])
+    def test_an_output_line_that_is_not_an_eval_row_is_named(
+        self, line, assistant_settings, client, tmp_path, capsys
+    ):
+        """
+        GIVEN an output file whose second line is valid JSON but not an object with id and arm
+        WHEN main runs
+        THEN it exits 2 naming the line number and not a traceback
+        """
+        # GIVEN
+        (tmp_path / "out.jsonl").write_text('{"id": "q0", "arm": "cli"}\n' + line + "\n")
+
+        # WHEN
+        code = self._main(client, tmp_path, json.dumps({"id": "q1", "question": "One?"}))
+
+        # THEN
+        assert code == 2
+        assert "line 2 is not an eval row" in capsys.readouterr().err
 
     def test_a_question_record_that_is_not_an_object_is_refused(
         self, assistant_settings, client, tmp_path, capsys
