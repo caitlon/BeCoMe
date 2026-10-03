@@ -97,7 +97,7 @@
     "median": "Median (Ω)",
     "supportingCalcs": "Supporting calculations",
     "confidence": "Confidence",
-    "confidenceHint": "How closely the mean and median agree. A tighter agreement means a more precise compromise.",
+    "confidenceHint": "How close the mean and the median are. The closer they are, the more precise the compromise.",
     "confidenceLevel": {
       "high": "High",
       "moderate": "Moderate",
@@ -126,11 +126,6 @@
       "centroid": "Centroid"
     },
     "measuresCoincide": "Mean, median, and best compromise coincide for this project.",
-    "agreement": {
-      "high": "High agreement",
-      "moderate": "Moderate agreement",
-      "low": "Low agreement"
-    },
     "exampleBanner": {
       "title": "This is an example project",
       "body": "The thirteen experts below come from a published flood-prevention study and are not real people. Add your own opinion to see how the compromise moves, or delete this project if you do not need it."

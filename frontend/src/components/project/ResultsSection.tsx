@@ -183,14 +183,9 @@ export const ResultsSection = ({
               {t("detail.confidence")}{" "}
               <span className="text-xs text-muted-foreground font-normal">(Δmax)</span>
             </span>
-            <div className="flex items-center gap-2">
-              <Badge className={cn("text-xs", agreementClasses.badge)}>
-                {t(`detail.agreement.${agreementLevel}`)}
-              </Badge>
-              <span className="font-mono font-medium">
-                {result.max_error.toFixed(2)}
-              </span>
-            </div>
+            <span className="font-mono font-medium">
+              {result.max_error.toFixed(2)}
+            </span>
           </div>
           <p className="text-xs text-muted-foreground mb-2">{t("detail.confidenceHint")}</p>
           <Progress value={Math.min(errorPercent, 100)} className={cn("h-2", agreementClasses.progress)} />
