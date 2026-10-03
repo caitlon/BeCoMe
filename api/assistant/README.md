@@ -73,19 +73,24 @@ Runs only on a developer machine. `Settings` refuses to start any deployed profi
    limits, retrieval settings, `collection`, `prompt_sha256` and `code_version`. `app_version`
    and `corpus_version` are the collection's own, from its registry row. A question file whose
    hash is on the sealed list is refused without `--sealed-run` and a non-empty
-   `--registration` file, and a sealed run also needs both versions: a null in either one
-   exits 2, and an ordinary run prints a warning when either is null.
+   `--registration` file, and a sealed run also needs both versions and a clean checkout: a
+   null in either version, or a `code_version` that is null or ends in `-dirty`, exits 2. An
+   ordinary run prints a warning when either version is null.
 
    A rerun treats every row there for the same `id` and `arm` as done, whatever its status,
    because a failed turn is a result. `--retry-failed` asks again those whose latest row is not
    `ok`; the last row per `(id, arm)` wins (`latest_rows` returns them), and the summary's
    `unresolved` counts the arm's pairs still not `ok`. A run whose provenance fields differ from
-   the arm's rows is refused with exit 2. After 3 turns in a row without an answer the run
-   stops with exit 3, and at the first `http_401` or `http_429` at once; fix the cause, then
-   rerun with `--retry-failed`. That works only while the code version and settings are
-   unchanged, because the provenance guard refuses otherwise; after a code or settings fix,
-   continue under a new `--arm` or a new `--output`. `ASSISTANT_RATE_LIMIT_PER_HOUR=0` suits a
-   long run.
+   the arm's rows is refused with exit 2; the fields are listed in `_PROVENANCE_FIELDS` in the
+   script, and their values come from the settings in `api/config.py` (models, the answer
+   endpoint, token and tool-call limits, retrieval, collection), `SYSTEM_PROMPT` in
+   `api/assistant/agent/prompt.py`, the collection's registry row (the two versions) and
+   `git describe` (`code_version`). After 3 turns in a row without an answer the run stops with
+   exit 3, and at the first `http_401` or `http_429` at once; fix the cause, then rerun with
+   `--retry-failed`. After a 401 or 429 that works, since fixing either changes none of those
+   fields. After a code or settings fix, `--retry-failed` is refused as soon as one of them
+   changed; under a new `--arm` or a new `--output` the questions are asked again from the
+   start. `ASSISTANT_RATE_LIMIT_PER_HOUR=0` suits a long run.
 
    ```bash
    uv run python scripts/assistant/eval_answers.py --questions questions.jsonl \
