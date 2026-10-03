@@ -1,9 +1,8 @@
 """Tests for the answer eval runner, driven through the real test application.
 
-The chat model is a scripted one from ``tests/shared/assistant_fakes.py`` and the retriever
-is a static one, so no model server, embedding server or vector database is reached. The
-users, projects and tenant checks are the test application's own, over in-memory SQLite.
-The questions are invented here; nothing reads the sealed question set.
+The chat model is a scripted one and the retriever a static one (``tests/shared``), so no
+model server, embedding server or vector database is reached. Users, projects and tenant
+checks are the test application's own, over in-memory SQLite. The questions are invented.
 """
 
 import argparse
@@ -422,11 +421,11 @@ class TestCollectionVersions:
         def execute(self, *_args):
             return SimpleNamespace(fetchone=lambda: ("app-1", "corpus-2"))
 
-    def test_none_without_a_database_or_a_reachable_one(self, monkeypatch):
+    def test_versions_come_from_the_registry_or_are_none(self, monkeypatch):
         """
-        GIVEN settings with no vector database URL, then one nothing answers on
+        GIVEN no vector database URL, then one nothing answers on, then one with a registry row
         WHEN the versions are asked for
-        THEN both are None each time, and the first tries no connection
+        THEN the first two give (None, None), and the last the row, read with the psycopg DSN
         """
         # WHEN
         with patch.object(psycopg, "connect") as connect:
@@ -435,28 +434,13 @@ class TestCollectionVersions:
         _reset()
         with patch.object(psycopg, "connect", side_effect=psycopg.OperationalError("down")):
             down = ea._collection_versions(get_settings())
+        with patch.object(psycopg, "connect", return_value=self._Connection()) as connected:
+            found = ea._collection_versions(get_settings())
 
         # THEN
-        assert (unset, down) == ((None, None), (None, None))
+        assert (unset, down, found) == ((None, None), (None, None), ("app-1", "corpus-2"))
         connect.assert_not_called()
-
-    def test_the_registry_row_gives_both_versions(self, monkeypatch):
-        """
-        GIVEN a registry row for the configured collection
-        WHEN the versions are asked for
-        THEN the app and the corpus version come back, read with the psycopg DSN
-        """
-        # GIVEN
-        monkeypatch.setenv("ASSISTANT_VECTOR_DB_URL", DB_URL)
-        _reset()
-
-        # WHEN
-        with patch.object(psycopg, "connect", return_value=self._Connection()) as connect:
-            versions = ea._collection_versions(get_settings())
-
-        # THEN
-        assert versions == ("app-1", "corpus-2")
-        assert connect.call_args.args[0] == DB_URL.replace("+psycopg", "")
+        assert connected.call_args.args[0] == DB_URL.replace("+psycopg", "")
 
 
 class TestMain:
@@ -487,33 +471,23 @@ class TestMain:
         assert "Plum" not in shown
         assert "Secret-free" not in shown
 
-    def test_main_exits_2_on_a_missing_questions_file(self, tmp_path, capsys):
+    def test_main_exits_2_on_a_missing_file_or_a_switched_off_assistant(
+        self, client, tmp_path, capsys
+    ):
         """
-        GIVEN a --questions path that does not exist
+        GIVEN a --questions path that does not exist, then a questions file with the assistant off
         WHEN main runs
-        THEN it exits 2 with a message instead of a traceback
+        THEN it exits 2 each time, with a message instead of a traceback
         """
         # WHEN
-        code = ea.main(_argv(tmp_path))
-
-        # THEN
-        assert code == 2
-        assert "cannot read the questions" in capsys.readouterr().err
-
-    def test_main_refuses_when_the_assistant_is_off(self, client, tmp_path, capsys):
-        """
-        GIVEN settings with the assistant switched off
-        WHEN main runs
-        THEN it exits 2 and says which setting to raise
-        """
-        # GIVEN
+        missing = ea.main(_argv(tmp_path))
+        missing_message = capsys.readouterr().err
         (tmp_path / "q.jsonl").write_text(json.dumps({"id": "q1", "question": "A?"}))
-
-        # WHEN
-        code = ea.main(_argv(tmp_path, "agent"))
+        switched_off = ea.main(_argv(tmp_path, "agent"))
 
         # THEN
-        assert code == 2
+        assert (missing, switched_off) == (2, 2)
+        assert "cannot read the questions" in missing_message
         assert "ASSISTANT_ENABLED" in capsys.readouterr().err
 
 
@@ -527,46 +501,32 @@ class TestSealGuard:
         with patch.object(ea, "SEALED_SHA256", frozenset({self.DIGEST})):
             return ea._seal_problem(self.DIGEST, args)
 
-    def test_a_sealed_file_is_refused_without_the_flag_or_a_usable_registration(self, tmp_path):
+    def test_only_a_flag_with_a_non_empty_registration_lets_a_sealed_file_through(self, tmp_path):
         """
         GIVEN a questions file whose hash is on the sealed list
-        WHEN the guard looks at a run without the flag, without a registration, with an empty
-            one and with a missing one
-        THEN each is refused with a message naming what is missing
+        WHEN the guard looks at runs without the flag, without a registration, with an empty or
+            a missing one, and with a non-empty one, and at an ordinary file
+        THEN only the last two have no problem
         """
         # GIVEN
-        empty = tmp_path / "empty.md"
+        empty, filled = tmp_path / "empty.md", tmp_path / "registration.md"
         empty.write_text("", encoding="utf-8")
+        filled.write_text("Pre-registered: arms, metrics, rules.\n", encoding="utf-8")
 
         # WHEN
-        no_flag = self._problem(None, False)
-        no_registration = self._problem(None, True)
-        empty_registration = self._problem(empty, True)
-        missing_registration = self._problem(tmp_path / "none.md", True)
-
-        # THEN
-        assert no_flag is not None
-        assert "--sealed-run" in no_flag
-        assert no_registration is not None
-        assert "--registration" in no_registration
-        assert empty_registration is not None
-        assert missing_registration is not None
-
-    def test_a_registration_lets_a_sealed_run_through(self, tmp_path):
-        """
-        GIVEN a sealed file, --sealed-run and a non-empty registration
-        WHEN the guard looks at it, and at an ordinary file
-        THEN neither has a problem
-        """
-        # GIVEN
-        registration = tmp_path / "registration.md"
-        registration.write_text("Pre-registered: arms, metrics, rules.\n", encoding="utf-8")
-
-        # WHEN
-        sealed = self._problem(registration, True)
+        refusals = [
+            self._problem(None, False),
+            self._problem(None, True),
+            self._problem(empty, True),
+            self._problem(tmp_path / "none.md", True),
+        ]
+        sealed = self._problem(filled, True)
         ordinary = ea._seal_problem("cd" * 32, argparse.Namespace(sealed_run=False))
 
         # THEN
+        assert all(refusals)
+        assert "--sealed-run" in refusals[0]
+        assert "--registration" in refusals[1]
         assert sealed is None
         assert ordinary is None
 

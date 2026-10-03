@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """Answer eval runner: put questions through the real chat service and record the answers.
 
-Earlier lab scripts called the model directly with a prompt of their own. This runner asks
-every question as one single-turn chat through ``POST /api/v1/assistant/chat``, so what is
+Every question is one single-turn chat through ``POST /api/v1/assistant/chat``, so what is
 measured is what a user gets: the service, the product prompt and the grounding checks.
 
 The app is driven in-process (httpx's ASGI transport), with the fixtures user signed in by
@@ -11,17 +10,13 @@ run as in production. The mode is chosen through ``assistant_mode``: the service
 settings through a FastAPI dependency, and the runner overrides that one dependency with a
 copy of the settings that carries the requested mode and has LangSmith tracing switched off.
 
-    uv run python scripts/assistant/eval_answers.py \\
-        --questions questions.jsonl --fixtures fixtures.json \\
-        --mode workflow --arm 9b-workflow --output answers.jsonl
-
 Needs ``ASSISTANT_ENABLED=true`` and the model servers the settings point at; the runner
 starts none. The database the app is configured with must hold the fixtures' user and
 projects (the seeding script writes the fixtures file). Set ``ASSISTANT_RATE_LIMIT_PER_HOUR=0``
 for a long run: ``LIMIT_ASSISTANT_CHAT`` (20 a minute per address) still applies.
 
 The output file holds answers and source titles, so it is written only where it is pointed.
-Logs carry counts and timings, never a question or an answer.
+Logs carry counts and timings, never a question or an answer. Run it with --help.
 """
 
 from __future__ import annotations
@@ -55,15 +50,6 @@ CHAT = "/api/v1/assistant/chat"
 SEALED_SHA256 = frozenset({"e9c434888f00c817f85a4e536c4ca8db3d551a13d6851bcb74ab806fb08b6559"})
 
 PROMPT_SHA256 = hashlib.sha256(SYSTEM_PROMPT.encode("utf-8")).hexdigest()
-
-
-def _sha256_file(path: Path) -> str:
-    """Return the sha256 hex digest of a file's bytes.
-
-    :param path: The file to hash.
-    :return: The digest.
-    """
-    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def _seal_problem(digest: str, args: argparse.Namespace) -> str | None:
@@ -299,8 +285,7 @@ async def run_eval(
             transport=transport,
             base_url="http://eval.invalid",
         ) as http:
-            # Off for the whole loop: the query-transform call runs before the service's own
-            # tracing scope opens, and the environment may have tracing switched on.
+            # The query-transform call runs before the service's own tracing scope opens.
             with ls.tracing_context(enabled=False), output.open("a", encoding="utf-8") as sink:
                 for number, record in enumerate(todo, start=1):
                     key = record.get("project")
@@ -342,20 +327,11 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--questions", required=True, type=Path, help="Questions JSONL")
     parser.add_argument("--fixtures", required=True, type=Path, help="Fixtures JSON")
-    parser.add_argument(
-        "--mode", required=True, choices=["workflow", "hybrid", "agent"], help="Assistant mode"
-    )
+    parser.add_argument("--mode", required=True, choices=["workflow", "hybrid", "agent"])
     parser.add_argument("--arm", required=True, help="Free label written into every row")
     parser.add_argument("--output", required=True, type=Path, help="Output JSONL, appended to")
-    parser.add_argument(
-        "--sealed-run", action="store_true", help="Allow a run over a sealed question set"
-    )
-    parser.add_argument(
-        "--registration",
-        type=Path,
-        default=None,
-        help="The written pre-registration, for a sealed run",
-    )
+    parser.add_argument("--sealed-run", action="store_true", help="Allow a sealed question set")
+    parser.add_argument("--registration", type=Path, default=None, help="Pre-registration file")
     return parser.parse_args(argv)
 
 
@@ -367,7 +343,7 @@ def main(argv: list[str] | None = None) -> int:
     """
     args = _parse_args(argv)
     try:
-        digest = _sha256_file(args.questions)
+        digest = hashlib.sha256(args.questions.read_bytes()).hexdigest()
     except OSError as exc:
         print(f"cannot read the questions: {exc}", file=sys.stderr)
         return 2
