@@ -17,10 +17,11 @@ name: PR Size
 #     a body is never read.
 # Do not add a checkout, an install step or a cache to this job. If a check ever needs the
 # pull request's code, it belongs in ci.yml, on the pull_request event.
+# `edited` covers a pull request retargeted onto `dev` after it was opened.
 on:
   pull_request_target:
     branches: [dev]
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review, edited]
 
 permissions:
   contents: read
@@ -70,13 +71,13 @@ jobs:
                 | add // 0')
 
           if [ "$total" -ge "$XL_FROM" ]; then
-            label="size:XL"; color="b60205"; desc="Over 1000 changed lines. Split the pull request."
+            label="size:XL"; color="b60205"; desc="Over $((XL_FROM - 1)) changed lines. Split the pull request."
           elif [ "$total" -ge "$L_FROM" ]; then
-            label="size:L"; color="d93f0b"; desc="601 to 1000 changed lines. Over the 300 to 600 target."
+            label="size:L"; color="d93f0b"; desc="${L_FROM} to $((XL_FROM - 1)) changed lines. Over the ${M_FROM} to $((L_FROM - 1)) target."
           elif [ "$total" -ge "$M_FROM" ]; then
-            label="size:M"; color="fbca04"; desc="300 to 600 changed lines. The target size."
+            label="size:M"; color="fbca04"; desc="${M_FROM} to $((L_FROM - 1)) changed lines. The target size."
           else
-            label="size:S"; color="0e8a16"; desc="Under 300 changed lines."
+            label="size:S"; color="0e8a16"; desc="Under ${M_FROM} changed lines."
           fi
           echo "PR #${PR_NUMBER}: ${total} counted lines -> ${label}"
 
