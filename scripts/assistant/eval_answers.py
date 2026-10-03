@@ -69,6 +69,7 @@ _PROVENANCE_FIELDS = (
     "corpus_version",
     "app_version",
     "answer_model",
+    "answer_endpoint",
     "retrieval_mode",
     "retrieval_query_transform",
     "retrieval_rerank",
@@ -159,7 +160,8 @@ def _read_rows(path: Path) -> list[dict[str, Any]]:
     :param path: The output JSONL; it may not exist yet.
     :return: The rows, or an empty list.
     :raises RunRefusedError: If a line is not valid JSON, for instance a last line cut short
-        by a crash; the message names the line.
+        by a crash, or is JSON but not an object with an ``id`` and an ``arm``; the message
+        names the line.
     """
     if not path.exists():
         return []
@@ -168,9 +170,12 @@ def _read_rows(path: Path) -> list[dict[str, Any]]:
         if not line.strip():
             continue
         try:
-            rows.append(json.loads(line))
+            row = json.loads(line)
         except json.JSONDecodeError:
             raise RunRefusedError(f"{path}: line {number} is not valid JSON") from None
+        if not isinstance(row, dict) or "id" not in row or "arm" not in row:
+            raise RunRefusedError(f"{path}: line {number} is not an eval row")
+        rows.append(row)
     return rows
 
 
@@ -198,7 +203,9 @@ def _stop_reason(status: str, consecutive: int) -> str | None:
     if consecutive >= MAX_CONSECUTIVE_FAILURES:
         return (
             f"stopped after {consecutive} turns in a row without an answer "
-            f"(last status: {status}). {again}"
+            f"(last status: {status}). {again} --retry-failed works only while the code version "
+            "and settings are unchanged; after a code or settings fix, continue under a new "
+            "--arm or a new --output."
         )
     return None
 
@@ -508,14 +515,24 @@ def main(argv: list[str] | None = None) -> int:
         print(f"cannot read the inputs: {exc}", file=sys.stderr)
         return 2
     versions = _collection_versions(settings)
-    if versions == (None, None):
+    missing = [
+        name
+        for name, value in zip(("app_version", "corpus_version"), versions, strict=True)
+        if value is None
+    ]
+    if missing:
+        names = " and ".join(missing)
         if args.sealed_run:
             print(
-                "a sealed run needs the collection's versions; the registry is unreadable",
+                f"a sealed run needs both of the collection's versions; missing from the "
+                f"registry: {names}",
                 file=sys.stderr,
             )
             return 2
-        print("warning: app_version and corpus_version are null in every row", file=sys.stderr)
+        print(
+            f"warning: {names} {'are' if len(missing) > 1 else 'is'} null in every row",
+            file=sys.stderr,
+        )
     try:
         summary = asyncio.run(
             run_eval(
