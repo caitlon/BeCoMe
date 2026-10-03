@@ -38,6 +38,12 @@ OWN_PROJECT = "Quince Harbour Tally"
 OTHER_PROJECT = "Saffron Bridge Census"
 ANSWER_URL = "http://runner:hunter2@127.0.0.1:9/v1"  # pragma: allowlist secret
 DB_URL = "postgresql+psycopg://u:p@127.0.0.1:9/db"  # pragma: allowlist secret
+# Spelled out, not read from the script, so that dropping a field there fails a test.
+PROVENANCE_FIELDS = (  # noqa: SIM905
+    "mode prompt_sha256 corpus_version app_version answer_model retrieval_mode "
+    "retrieval_query_transform retrieval_rerank retrieval_k answer_max_tokens query_model "
+    "max_tool_calls collection code_version"
+).split()
 _ENV = {
     "ASSISTANT_MODE": "workflow",
     "ASSISTANT_RATE_LIMIT_PER_HOUR": "0",
@@ -66,6 +72,7 @@ def _load():
 
 
 ea = _load()
+assert set(PROVENANCE_FIELDS) == set(ea._PROVENANCE_FIELDS), "update PROVENANCE_FIELDS"
 
 
 def _reset() -> None:
@@ -126,6 +133,7 @@ def _setup(client, model, chunks=()):
 
 def _run(client, fixtures, questions, output, mode="workflow", versions=(None, None), **kwargs):
     kwargs.setdefault("arm", "test-arm")
+    kwargs.setdefault("code_version", "code-1")
     return asyncio.run(
         ea.run_eval(
             client.app,
@@ -191,6 +199,12 @@ class TestRunEval:
             "c2",
         )
         assert first["timestamp"].endswith("+00:00")
+        settings = get_settings()
+        assert first["answer_max_tokens"] == settings.assistant_answer_max_tokens
+        assert first["query_model"] == settings.assistant_llm_model
+        assert first["max_tool_calls"] == settings.assistant_max_tool_calls
+        assert first["collection"] == settings.assistant_collection
+        assert first["code_version"] == "code-1"
         assert first["prompt_sha256"] == hashlib.sha256(SYSTEM_PROMPT.encode()).hexdigest()
         assert first["prompt_sha256"] == ea.PROMPT_SHA256
         assert "hunter2" not in output.read_text(encoding="utf-8")
@@ -473,6 +487,7 @@ class TestMain:
         assert "Plum" not in shown
         assert "Secret-free" not in shown
         assert "app_version and corpus_version are null" in captured.err
+        assert _rows(tmp_path / "out.jsonl")[0]["code_version"] == ea.git_version(ea.REPO_ROOT)
 
     def test_main_exits_2_on_a_missing_file_or_a_switched_off_assistant(
         self, client, tmp_path, capsys
@@ -561,6 +576,19 @@ class _RaisingRetriever:
         raise RuntimeError("store down")
 
 
+class _FlakyRetriever(StaticDocsRetriever):
+    """A retriever whose searches fail or succeed in the given order."""
+
+    def __init__(self, outcomes: list[bool]):
+        super().__init__([])
+        self._outcomes = iter(outcomes)
+
+    async def search(self, query):
+        if not next(self._outcomes):
+            raise RuntimeError("store down")
+        return await super().search(query)
+
+
 class TestFailureHandling:
     """What a failed turn counts as, and when a failing environment stops the run."""
 
@@ -642,17 +670,39 @@ class TestFailureHandling:
             client.app.dependency_overrides[deps.get_docs_retriever] = lambda: working
             second = ea.main(_argv(tmp_path))
             asked_by_second = len(model.seen)
+            second_out = capsys.readouterr().out
             third = ea.main(_argv(tmp_path, "workflow", "--retry-failed"))
+            third_out = capsys.readouterr().out
 
         # THEN
         assert (stopped, rows_after_stop) == (3, 3)
         assert "RuntimeError" in message
         assert "--retry-failed" in message
         assert (second, asked_by_second) == (0, 22)
+        assert "unresolved=3" in second_out
+        assert "unresolved=0" in third_out
         assert (third, len(model.seen)) == (0, 25)
         latest = ea.latest_rows(output)
         assert len(latest) == 25
         assert {row["status"] for row in latest.values()} == {"ok"}
+
+    def test_an_ok_turn_resets_the_failure_streak(self, assistant_settings, client, tmp_path):
+        """
+        GIVEN five questions whose turns fail, succeed, fail, succeed, fail
+        WHEN the runner runs
+        THEN no streak reaches 3, so all five are asked and the run does not stop
+        """
+        # GIVEN
+        fixtures = _setup(client, _scripted("A.", "B."))
+        flaky = _FlakyRetriever([False, True, False, True, False])
+        client.app.dependency_overrides[deps.get_docs_retriever] = lambda: flaky
+        questions = [{"id": f"q{i}", "question": "Why?"} for i in range(5)]
+
+        # WHEN
+        summary = _run(client, fixtures, questions, tmp_path / "out.jsonl")
+
+        # THEN
+        assert (summary["rows"], summary["ok"], summary["stop"]) == (5, 2, None)
 
     def test_a_refused_user_stops_the_run_at_the_first_turn(
         self, assistant_settings, client, tmp_path
@@ -722,6 +772,51 @@ class TestProvenance:
         )
         assert first["retrieval_rerank"] is False
 
+    @pytest.mark.parametrize("field", PROVENANCE_FIELDS)
+    def test_a_change_in_any_provenance_field_is_refused(
+        self, field, assistant_settings, client, tmp_path
+    ):
+        """
+        GIVEN a row of this arm whose one provenance field differs from the current run's
+        WHEN the arm is run again
+        THEN the run is refused naming that field, and nothing is appended
+        """
+        # GIVEN
+        fixtures = _setup(client, _scripted("One."))
+        output = tmp_path / "out.jsonl"
+        question = [{"id": "q1", "question": "One?"}]
+        _run(client, fixtures, question, output)
+        row = {**_rows(output)[0], field: "changed"}
+        output.write_text(json.dumps(row) + "\n", encoding="utf-8")
+
+        # WHEN / THEN
+        with pytest.raises(ea.RunRefusedError, match=field):
+            _run(client, fixtures, question, output)
+        assert len(_rows(output)) == 1
+
+    def test_the_recorded_retrieval_settings_are_what_deps_builds(self, monkeypatch):
+        """
+        GIVEN settings with a vector database URL and a changed retrieval k
+        WHEN the retriever the chat route uses is built, and the runner reads the same settings
+        THEN the retrieval config the retriever holds equals the one the runner records
+        """
+        # GIVEN
+        monkeypatch.setenv("ASSISTANT_VECTOR_DB_URL", DB_URL)
+        monkeypatch.setenv("ASSISTANT_RETRIEVAL_K", "7")
+        _reset()
+
+        # WHEN
+        with (
+            patch.object(deps, "make_engine"),
+            patch.object(deps, "open_store"),
+            patch.object(deps, "make_embeddings"),
+        ):
+            retriever = deps.get_docs_retriever()
+
+        # THEN
+        assert retriever._config == ea._retrieval_config(get_settings())
+        assert retriever._config.k == 7
+
     def test_main_exits_2_on_a_refused_run(self, assistant_settings, client, tmp_path, capsys):
         """
         GIVEN an output file with a row of this arm made in workflow mode
@@ -767,3 +862,63 @@ class TestProvenance:
         assert code == 2
         assert "versions" in capsys.readouterr().err
         assert not (tmp_path / "out.jsonl").exists()
+
+
+class TestInputErrors:
+    """Bad inputs end in a one-line message, not a traceback."""
+
+    def _main(self, client, tmp_path, questions_text):
+        fixtures = _setup(client, _scripted("Fine."))
+        (tmp_path / "f.json").write_text(json.dumps(fixtures), encoding="utf-8")
+        (tmp_path / "q.jsonl").write_text(questions_text, encoding="utf-8")
+        with patch.object(ea, "create_app", return_value=client.app):
+            return ea.main(_argv(tmp_path))
+
+    def test_a_truncated_last_line_in_the_output_is_named(
+        self, assistant_settings, client, tmp_path, capsys
+    ):
+        """
+        GIVEN an output file whose second line was cut short by a crash
+        WHEN main runs
+        THEN it exits 2 naming the line number
+        """
+        # GIVEN
+        (tmp_path / "out.jsonl").write_text('{"id": "q0", "arm": "cli"}\n{"id": "q1", "ar')
+
+        # WHEN
+        code = self._main(client, tmp_path, json.dumps({"id": "q1", "question": "One?"}))
+
+        # THEN
+        assert code == 2
+        assert "line 2 is not valid JSON" in capsys.readouterr().err
+
+    def test_a_question_record_that_is_not_an_object_is_refused(
+        self, assistant_settings, client, tmp_path, capsys
+    ):
+        """
+        GIVEN a questions file whose first line is a JSON list
+        WHEN main runs
+        THEN it exits 2 saying the record is not a JSON object
+        """
+        # WHEN
+        code = self._main(client, tmp_path, "[1, 2]\n")
+
+        # THEN
+        assert code == 2
+        assert "question record 1 is not a JSON object" in capsys.readouterr().err
+
+    def test_a_missing_output_directory_is_created(self, assistant_settings, client, tmp_path):
+        """
+        GIVEN an --output whose parent directories do not exist
+        WHEN the runner runs
+        THEN they are created and the row is written
+        """
+        # GIVEN
+        fixtures = _setup(client, _scripted("Fine."))
+        output = tmp_path / "deep" / "er" / "out.jsonl"
+
+        # WHEN
+        _run(client, fixtures, [{"id": "q1", "question": "One?"}], output)
+
+        # THEN
+        assert [row["id"] for row in _rows(output)] == ["q1"]

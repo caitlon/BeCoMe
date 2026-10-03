@@ -39,6 +39,7 @@ import psycopg
 from fastapi import FastAPI
 
 from api.assistant.agent.prompt import SYSTEM_PROMPT
+from api.assistant.rag.pipeline import git_version
 from api.assistant.rag.retrieval import RetrievalConfig
 from api.auth.jwt import create_access_token
 from api.config import Settings, get_settings
@@ -50,6 +51,7 @@ CHAT = "/api/v1/assistant/chat"
 SEALED_SHA256 = frozenset({"e9c434888f00c817f85a4e536c4ca8db3d551a13d6851bcb74ab806fb08b6559"})
 
 PROMPT_SHA256 = hashlib.sha256(SYSTEM_PROMPT.encode("utf-8")).hexdigest()
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 # Consecutive turns without an answer after which the run stops: the environment is failing.
 MAX_CONSECUTIVE_FAILURES = 3
@@ -71,6 +73,11 @@ _PROVENANCE_FIELDS = (
     "retrieval_query_transform",
     "retrieval_rerank",
     "retrieval_k",
+    "answer_max_tokens",
+    "query_model",
+    "max_tool_calls",
+    "collection",
+    "code_version",
 )
 
 
@@ -129,13 +136,15 @@ def _load_questions(path: Path, project_keys: set[str]) -> list[dict[str, Any]]:
         and ``project`` (a fixtures key).
     :param project_keys: The keys the fixtures define.
     :return: The records, in file order.
-    :raises ValueError: If a record lacks an id or a question, or names an unknown project
-        key. The message names the line and the key, never the question.
+    :raises ValueError: If a record is not a JSON object, lacks an id or a question, or names
+        an unknown project key. The message names the line and the key, never the question.
     """
     records = [
         json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()
     ]
     for number, record in enumerate(records, start=1):
+        if not isinstance(record, dict):
+            raise ValueError(f"question record {number} is not a JSON object")
         if not record.get("id") or not record.get("question"):
             raise ValueError(f"question record {number} needs an id and a question")
         key = record.get("project")
@@ -149,11 +158,20 @@ def _read_rows(path: Path) -> list[dict[str, Any]]:
 
     :param path: The output JSONL; it may not exist yet.
     :return: The rows, or an empty list.
+    :raises RunRefusedError: If a line is not valid JSON, for instance a last line cut short
+        by a crash; the message names the line.
     """
     if not path.exists():
         return []
-    lines = path.read_text(encoding="utf-8").splitlines()
-    return [json.loads(line) for line in lines if line.strip()]
+    rows = []
+    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        if not line.strip():
+            continue
+        try:
+            rows.append(json.loads(line))
+        except json.JSONDecodeError:
+            raise RunRefusedError(f"{path}: line {number} is not valid JSON") from None
+    return rows
 
 
 def latest_rows(path: Path) -> dict[tuple[str, str], dict[str, Any]]:
@@ -183,6 +201,17 @@ def _stop_reason(status: str, consecutive: int) -> str | None:
             f"(last status: {status}). {again}"
         )
     return None
+
+
+def _retrieval_config(settings: Settings) -> RetrievalConfig:
+    """Return the retrieval settings the chat service searches with.
+
+    It repeats what ``deps.get_docs_retriever`` builds; a test compares the two.
+
+    :param settings: The application settings.
+    :return: The config.
+    """
+    return RetrievalConfig(k=settings.assistant_retrieval_k)
 
 
 def _provenance_problem(rows: list[dict[str, Any]], meta: dict[str, Any]) -> str | None:
@@ -320,6 +349,7 @@ async def run_eval(
     mode: str,
     output: Path,
     versions: tuple[str | None, str | None],
+    code_version: str | None,
     retry_failed: bool = False,
 ) -> dict[str, Any]:
     """Ask the questions one after another and append one row per question to ``output``.
@@ -338,14 +368,16 @@ async def run_eval(
     :param arm: A free label written into every row.
     :param mode: ``workflow``, ``hybrid`` or ``agent``.
     :param output: The JSONL file rows are appended to.
-    :param versions: ``(app_version, corpus_version)`` of the collection.
+    :param versions: ``(app_version, corpus_version)`` the collection's registry records.
+    :param code_version: The version of the code that generates the answers.
     :param retry_failed: Ask again the questions whose latest row is not ``ok``.
-    :return: ``rows`` written, ``ok`` and ``failed`` counts, ``median_latency_s`` and ``stop``,
+    :return: ``rows`` written, ``ok`` and ``failed`` counts, ``median_latency_s``, ``unresolved``,
+        how many of this arm's pairs have a non-``ok`` latest row in the whole file, and ``stop``,
         the message of the rule that ended the run early, or None.
     :raises RunRefusedError: If the arm's existing rows were made under other settings.
     """
     projects = _project_ids(fixtures)
-    retrieval = RetrievalConfig(k=settings.assistant_retrieval_k)
+    retrieval = _retrieval_config(settings)
     meta = {
         "arm": arm,
         "mode": mode,
@@ -355,8 +387,13 @@ async def run_eval(
         "retrieval_query_transform": retrieval.query_transform,
         "retrieval_rerank": retrieval.rerank,
         "retrieval_k": retrieval.k,
+        "answer_max_tokens": settings.assistant_answer_max_tokens,
+        "query_model": settings.assistant_llm_model,
+        "max_tool_calls": settings.assistant_max_tool_calls,
+        "collection": settings.assistant_collection,
         "app_version": versions[0],
         "corpus_version": versions[1],
+        "code_version": code_version,
         "prompt_sha256": PROMPT_SHA256,
     }
     problem = _provenance_problem(_read_rows(output), meta)
@@ -368,6 +405,7 @@ async def run_eval(
         if not (retry_failed and row["status"] != "ok")
     }
     todo = [record for record in questions if (record["id"], arm) not in done]
+    output.parent.mkdir(parents=True, exist_ok=True)
     run_settings = _eval_settings(settings, mode)
     user_id = str(fixtures["user"]["id"])
     app.dependency_overrides[get_settings] = lambda: run_settings
@@ -409,11 +447,15 @@ async def run_eval(
                         break
     finally:
         app.dependency_overrides.pop(get_settings, None)
+    unresolved = sum(
+        row["status"] != "ok" for (_, row_arm), row in latest_rows(output).items() if row_arm == arm
+    )
     return {
         "rows": len(latencies),
         "ok": ok,
         "failed": len(latencies) - ok,
         "median_latency_s": statistics.median(latencies) if latencies else None,
+        "unresolved": unresolved,
         "stop": stop,
     }
 
@@ -485,6 +527,7 @@ def main(argv: list[str] | None = None) -> int:
                 mode=args.mode,
                 output=args.output,
                 versions=versions,
+                code_version=git_version(REPO_ROOT),
                 retry_failed=args.retry_failed,
             )
         )
@@ -494,7 +537,8 @@ def main(argv: list[str] | None = None) -> int:
     median = summary["median_latency_s"]
     print(
         f"rows={summary['rows']} ok={summary['ok']} failed={summary['failed']} "
-        f"median_latency_s={'n/a' if median is None else f'{median:.2f}'}"
+        f"median_latency_s={'n/a' if median is None else f'{median:.2f}'} "
+        f"unresolved={summary['unresolved']}"
     )
     if summary["stop"] is not None:
         print(summary["stop"], file=sys.stderr)
