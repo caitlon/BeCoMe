@@ -16,6 +16,7 @@ from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
+from uuid import uuid4
 
 import langsmith as ls
 import psycopg
@@ -123,17 +124,18 @@ def _setup(client, model, chunks=()):
     }
 
 
-def _run(client, fixtures, questions, output, mode="workflow", versions=(None, None)):
+def _run(client, fixtures, questions, output, mode="workflow", versions=(None, None), **kwargs):
+    kwargs.setdefault("arm", "test-arm")
     return asyncio.run(
         ea.run_eval(
             client.app,
             questions,
             fixtures,
             settings=get_settings(),
-            arm="test-arm",
             mode=mode,
             output=output,
             versions=versions,
+            **kwargs,
         )
     )
 
@@ -248,28 +250,28 @@ class TestRunEval:
 
     def test_done_rows_of_the_same_arm_are_skipped(self, assistant_settings, client, tmp_path):
         """
-        GIVEN an output file that holds q1 for this arm and q2 for another arm
+        GIVEN an output file that holds q2 for another arm and q1 for this arm
         WHEN the runner is run again over q1 and q2
         THEN only q2 is asked and appended, since the other arm's row does not count as done
         """
         # GIVEN
-        model = _scripted("Answer for q2.")
+        model = _scripted("Other arm.", "First.", "Second.")
         fixtures = _setup(client, model)
         output = tmp_path / "out.jsonl"
-        done = [{"id": "q1", "arm": "test-arm"}, {"id": "q2", "arm": "other-arm"}]
-        output.write_text("".join(json.dumps(row) + "\n" for row in done), encoding="utf-8")
-        questions = [{"id": "q1", "question": "One?"}, {"id": "q2", "question": "Two?"}]
+        one, two = {"id": "q1", "question": "One?"}, {"id": "q2", "question": "Two?"}
+        _run(client, fixtures, [two], output, arm="other-arm")
+        _run(client, fixtures, [one], output)
 
         # WHEN
-        summary = _run(client, fixtures, questions, output)
+        summary = _run(client, fixtures, [one, two], output)
 
         # THEN
         assert [(row["id"], row["arm"]) for row in _rows(output)] == [
-            ("q1", "test-arm"),
             ("q2", "other-arm"),
+            ("q1", "test-arm"),
             ("q2", "test-arm"),
         ]
-        assert (len(model.seen), summary["rows"]) == (1, 1)
+        assert (len(model.seen), summary["rows"]) == (3, 1)
 
     def test_the_mode_reaches_the_service(self, assistant_settings, client, tmp_path):
         """
@@ -463,12 +465,14 @@ class TestMain:
             code = ea.main(_argv(tmp_path))
 
         # THEN
-        shown = capsys.readouterr().out
+        captured = capsys.readouterr()
+        shown = captured.out
         assert code == 0
         assert [row["id"] for row in _rows(tmp_path / "out.jsonl")] == ["q1"]
         assert "rows=1 ok=1 failed=0 median_latency_s=" in shown
         assert "Plum" not in shown
         assert "Secret-free" not in shown
+        assert "app_version and corpus_version are null" in captured.err
 
     def test_main_exits_2_on_a_missing_file_or_a_switched_off_assistant(
         self, client, tmp_path, capsys
@@ -547,4 +551,219 @@ class TestSealGuard:
         # THEN
         assert code == 2
         assert "sealed" in capsys.readouterr().err
+        assert not (tmp_path / "out.jsonl").exists()
+
+
+class _RaisingRetriever:
+    """A retriever whose search fails, as a document store that is down does."""
+
+    async def search(self, query):
+        raise RuntimeError("store down")
+
+
+class TestFailureHandling:
+    """What a failed turn counts as, and when a failing environment stops the run."""
+
+    def test_latest_rows_keeps_the_last_row_per_id_and_arm(self, tmp_path):
+        """
+        GIVEN an output file where q1 of arm a failed and was asked again, and q1 of arm b is ok
+        WHEN the winning rows are read, and when the file does not exist
+        THEN the later row wins per (id, arm), and a missing file gives nothing
+        """
+        # GIVEN
+        path = tmp_path / "out.jsonl"
+        rows = [
+            {"id": "q1", "arm": "a", "status": "RuntimeError"},
+            {"id": "q1", "arm": "b", "status": "ok"},
+            {"id": "q1", "arm": "a", "status": "ok"},
+        ]
+        path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+
+        # WHEN
+        latest = ea.latest_rows(path)
+
+        # THEN
+        assert {key: row["status"] for key, row in latest.items()} == {
+            ("q1", "a"): "ok",
+            ("q1", "b"): "ok",
+        }
+        assert ea.latest_rows(tmp_path / "none.jsonl") == {}
+
+    def test_a_failed_row_is_done_unless_retry_failed_asks_it_again(
+        self, assistant_settings, client, tmp_path
+    ):
+        """
+        GIVEN a question whose first turn failed
+        WHEN the runner runs again, then runs with retry_failed and a working retriever
+        THEN the plain rerun asks nothing, and the retry appends a row that wins
+        """
+        # GIVEN
+        model = _scripted("Now it works.")
+        fixtures = _setup(client, model)
+        client.app.dependency_overrides[deps.get_docs_retriever] = _RaisingRetriever
+        output = tmp_path / "out.jsonl"
+        question = [{"id": "q1", "question": "One?"}]
+        _run(client, fixtures, question, output)
+        client.app.dependency_overrides[deps.get_docs_retriever] = lambda: StaticDocsRetriever([])
+
+        # WHEN
+        plain = _run(client, fixtures, question, output)
+        retried = _run(client, fixtures, question, output, retry_failed=True)
+
+        # THEN
+        assert (plain["rows"], retried["rows"]) == (0, 1)
+        assert [row["status"] for row in _rows(output)] == ["RuntimeError", "ok"]
+        assert ea.latest_rows(output)[("q1", "test-arm")]["status"] == "ok"
+
+    def test_three_failures_in_a_row_stop_the_run_with_exit_3(
+        self, assistant_settings, client, tmp_path, capsys
+    ):
+        """
+        GIVEN 25 questions and a retriever that raises
+        WHEN main runs, then again with a working retriever, then with --retry-failed
+        THEN the first stops after 3 rows with exit 3, the second asks the other 22, and the
+            third asks exactly the 3 failed, so every question ends ok
+        """
+        # GIVEN
+        model = _scripted(*["Answer."] * 25)
+        fixtures = _setup(client, model)
+        (tmp_path / "f.json").write_text(json.dumps(fixtures), encoding="utf-8")
+        records = [{"id": f"q{i:02}", "question": "Why?"} for i in range(25)]
+        (tmp_path / "q.jsonl").write_text("\n".join(map(json.dumps, records)), encoding="utf-8")
+        output = tmp_path / "out.jsonl"
+        working = StaticDocsRetriever([])
+
+        # WHEN
+        client.app.dependency_overrides[deps.get_docs_retriever] = _RaisingRetriever
+        with patch.object(ea, "create_app", return_value=client.app):
+            stopped = ea.main(_argv(tmp_path))
+            message = capsys.readouterr().err
+            rows_after_stop = len(_rows(output))
+            client.app.dependency_overrides[deps.get_docs_retriever] = lambda: working
+            second = ea.main(_argv(tmp_path))
+            asked_by_second = len(model.seen)
+            third = ea.main(_argv(tmp_path, "workflow", "--retry-failed"))
+
+        # THEN
+        assert (stopped, rows_after_stop) == (3, 3)
+        assert "RuntimeError" in message
+        assert "--retry-failed" in message
+        assert (second, asked_by_second) == (0, 22)
+        assert (third, len(model.seen)) == (0, 25)
+        latest = ea.latest_rows(output)
+        assert len(latest) == 25
+        assert {row["status"] for row in latest.values()} == {"ok"}
+
+    def test_a_refused_user_stops_the_run_at_the_first_turn(
+        self, assistant_settings, client, tmp_path
+    ):
+        """
+        GIVEN a fixtures user the database does not know, and five questions
+        WHEN the runner runs
+        THEN it stops after one row at http_401, and says so
+        """
+        # GIVEN
+        fixtures = _setup(client, _scripted("Never used."))
+        fixtures["user"]["id"] = str(uuid4())
+        questions = [{"id": f"q{i}", "question": "Why?"} for i in range(5)]
+
+        # WHEN
+        summary = _run(client, fixtures, questions, tmp_path / "out.jsonl")
+
+        # THEN
+        assert summary["rows"] == 1
+        assert "http_401" in summary["stop"]
+
+    def test_the_stop_rule(self):
+        """
+        GIVEN turn statuses and the length of the failing streak
+        WHEN the rule is asked
+        THEN an ok turn and a short streak go on, a 429 stops and names the setting to change
+        """
+        assert ea._stop_reason("ok", 0) is None
+        assert ea._stop_reason("RuntimeError", 2) is None
+        assert "ASSISTANT_RATE_LIMIT_PER_HOUR" in ea._stop_reason("http_429", 1)
+        assert "3 turns in a row" in ea._stop_reason("http_503", 3)
+
+
+class TestProvenance:
+    """Rows of one arm must come from one configuration."""
+
+    def test_a_changed_mode_or_retrieval_is_refused_and_another_arm_is_not(
+        self, assistant_settings, client, tmp_path, monkeypatch
+    ):
+        """
+        GIVEN rows of arm test-arm made in workflow mode with k=3
+        WHEN the arm is run in agent mode, then with k=5, and another arm in agent mode
+        THEN the first two are refused naming the field, nothing is appended, and the third runs
+        """
+        # GIVEN
+        fixtures = _setup(client, _scripted("One.", "Other arm."))
+        output = tmp_path / "out.jsonl"
+        question = [{"id": "q1", "question": "One?"}]
+        _run(client, fixtures, question, output)
+
+        # WHEN
+        with pytest.raises(ea.RunRefusedError, match="different mode"):
+            _run(client, fixtures, question, output, mode="agent")
+        monkeypatch.setenv("ASSISTANT_RETRIEVAL_K", "5")
+        _reset()
+        with pytest.raises(ea.RunRefusedError, match="retrieval_k"):
+            _run(client, fixtures, question, output)
+        other = _run(client, fixtures, question, output, mode="agent", arm="other-arm")
+
+        # THEN
+        assert len(_rows(output)) == 2
+        assert other["rows"] == 1
+        first = _rows(output)[0]
+        assert (first["retrieval_mode"], first["retrieval_query_transform"]) == (
+            "hybrid",
+            "translate_en",
+        )
+        assert first["retrieval_rerank"] is False
+
+    def test_main_exits_2_on_a_refused_run(self, assistant_settings, client, tmp_path, capsys):
+        """
+        GIVEN an output file with a row of this arm made in workflow mode
+        WHEN main runs the arm in agent mode
+        THEN it exits 2 and names the field
+        """
+        # GIVEN
+        fixtures = _setup(client, _scripted("One."))
+        (tmp_path / "f.json").write_text(json.dumps(fixtures), encoding="utf-8")
+        (tmp_path / "q.jsonl").write_text(json.dumps({"id": "q1", "question": "One?"}))
+        with patch.object(ea, "create_app", return_value=client.app):
+            ea.main(_argv(tmp_path))
+            capsys.readouterr()
+
+            # WHEN
+            code = ea.main(_argv(tmp_path, "agent"))
+
+        # THEN
+        assert code == 2
+        assert "different mode" in capsys.readouterr().err
+
+    def test_a_sealed_run_without_versions_is_refused(
+        self, assistant_settings, client, tmp_path, capsys
+    ):
+        """
+        GIVEN a sealed questions file, a registration, and a registry that cannot be read
+        WHEN main runs with --sealed-run
+        THEN it exits 2 and asks for the versions
+        """
+        # GIVEN
+        fixtures = _setup(client, _scripted("Never used."))
+        (tmp_path / "f.json").write_text(json.dumps(fixtures), encoding="utf-8")
+        (tmp_path / "q.jsonl").write_text(json.dumps({"id": "q1", "question": "One?"}))
+        (tmp_path / "reg.md").write_text("Pre-registered.\n", encoding="utf-8")
+        digest = hashlib.sha256((tmp_path / "q.jsonl").read_bytes()).hexdigest()
+        extra = ["--sealed-run", "--registration", str(tmp_path / "reg.md")]
+
+        # WHEN
+        with patch.object(ea, "SEALED_SHA256", frozenset({digest})):
+            code = ea.main(_argv(tmp_path, "workflow", *extra))
+
+        # THEN
+        assert code == 2
+        assert "versions" in capsys.readouterr().err
         assert not (tmp_path / "out.jsonl").exists()

@@ -64,11 +64,21 @@ Runs only on a developer machine. `Settings` refuses to start any deployed profi
    touches nothing unless the profile is `dev` and the database is SQLite or on a loopback host.
 
    Answer evaluation: `scripts/assistant/eval_answers.py` asks every question of a JSONL file as
-   one single-turn chat through the real chat route, in-process and as the user the fixtures file
-   names, so authorization, the product prompt and the grounding checks run as they do for a
-   user. It never runs two questions at once and appends one row per question to `--output`,
-   skipping rows of the same `id` and `arm` already there. A question file whose hash is on the
-   sealed list is refused without `--sealed-run` and a non-empty `--registration` file. It needs
+   one single-turn chat through the real chat route, in-process and as the user a fixtures file
+   names (written by `scripts/assistant/seed_eval_fixtures.py`), so authorization, the product
+   prompt and the grounding checks run as they do for a user. It never runs two questions at
+   once and appends one row per question to `--output`, with the arm, mode, models, retrieval
+   settings, prompt hash and collection versions that produced it. A question file whose hash is
+   on the sealed list is refused without `--sealed-run` and a non-empty `--registration` file,
+   and a sealed run also needs the collection's versions.
+
+   On a rerun every row already there for the same `id` and `arm` counts as done, whatever its
+   status, because a failed turn is a result; `--retry-failed` asks again those whose latest row
+   is not `ok`, and the last row per `(id, arm)` wins (`latest_rows` in the script returns
+   them). Rows of one arm must come from one configuration: a run whose mode, prompt, versions,
+   answer model or retrieval settings differ from the arm's rows is refused with exit 2. After
+   3 turns in a row without an answer the run stops with exit 3, and at the first `http_401` or
+   `http_429` at once; fix the cause, then rerun with `--retry-failed`. It needs
    `ASSISTANT_ENABLED=true`; `ASSISTANT_RATE_LIMIT_PER_HOUR=0` suits a long run.
 
    ```bash

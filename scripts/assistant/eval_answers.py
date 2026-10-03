@@ -39,6 +39,7 @@ import psycopg
 from fastapi import FastAPI
 
 from api.assistant.agent.prompt import SYSTEM_PROMPT
+from api.assistant.rag.retrieval import RetrievalConfig
 from api.auth.jwt import create_access_token
 from api.config import Settings, get_settings
 from api.main import create_app
@@ -49,6 +50,32 @@ CHAT = "/api/v1/assistant/chat"
 SEALED_SHA256 = frozenset({"e9c434888f00c817f85a4e536c4ca8db3d551a13d6851bcb74ab806fb08b6559"})
 
 PROMPT_SHA256 = hashlib.sha256(SYSTEM_PROMPT.encode("utf-8")).hexdigest()
+
+# Consecutive turns without an answer after which the run stops: the environment is failing.
+MAX_CONSECUTIVE_FAILURES = 3
+# Statuses that are never a property of the answer, so the run stops at the first one.
+_STOP_AT_ONCE = {
+    "http_401": "the fixtures user was refused; check the user id in the fixtures file and "
+    "that the user exists and is verified in the configured database",
+    "http_429": "a rate limit is on; set ASSISTANT_RATE_LIMIT_PER_HOUR=0 for the hourly cap, or "
+    "wait a minute for LIMIT_ASSISTANT_CHAT (20 a minute per address, it has no setting)",
+}
+# What must be equal across all rows of one arm for its rows to be comparable.
+_PROVENANCE_FIELDS = (
+    "mode",
+    "prompt_sha256",
+    "corpus_version",
+    "app_version",
+    "answer_model",
+    "retrieval_mode",
+    "retrieval_query_transform",
+    "retrieval_rerank",
+    "retrieval_k",
+)
+
+
+class RunRefusedError(Exception):
+    """The run must not start; the message says why."""
 
 
 def _seal_problem(digest: str, args: argparse.Namespace) -> str | None:
@@ -117,16 +144,66 @@ def _load_questions(path: Path, project_keys: set[str]) -> list[dict[str, Any]]:
     return records
 
 
-def _done(output: Path) -> set[tuple[str, str]]:
-    """Return the ``(id, arm)`` pairs an earlier run already wrote.
+def _read_rows(path: Path) -> list[dict[str, Any]]:
+    """Read every row of an output file, oldest first.
 
-    :param output: The output JSONL; it may not exist yet.
-    :return: The finished pairs.
+    :param path: The output JSONL; it may not exist yet.
+    :return: The rows, or an empty list.
     """
-    if not output.exists():
-        return set()
-    rows = (json.loads(line) for line in output.read_text(encoding="utf-8").splitlines() if line)
-    return {(row["id"], row["arm"]) for row in rows}
+    if not path.exists():
+        return []
+    lines = path.read_text(encoding="utf-8").splitlines()
+    return [json.loads(line) for line in lines if line.strip()]
+
+
+def latest_rows(path: Path) -> dict[tuple[str, str], dict[str, Any]]:
+    """Return the winning row per ``(id, arm)``: the last one written.
+
+    A failed turn that was asked again with ``--retry-failed`` has two rows; the later wins.
+
+    :param path: The output JSONL; it may not exist yet.
+    :return: ``{(id, arm): row}``.
+    """
+    return {(row["id"], row["arm"]): row for row in _read_rows(path)}
+
+
+def _stop_reason(status: str, consecutive: int) -> str | None:
+    """Say why the run must stop after a turn, or None when it goes on.
+
+    :param status: The status of the turn just written.
+    :param consecutive: How many turns in a row, this one included, did not end ``ok``.
+    :return: The message, or None.
+    """
+    again = "Rerun with --retry-failed to ask them again once the cause is fixed."
+    if status in _STOP_AT_ONCE:
+        return f"stopped at {status}: {_STOP_AT_ONCE[status]}. {again}"
+    if consecutive >= MAX_CONSECUTIVE_FAILURES:
+        return (
+            f"stopped after {consecutive} turns in a row without an answer "
+            f"(last status: {status}). {again}"
+        )
+    return None
+
+
+def _provenance_problem(rows: list[dict[str, Any]], meta: dict[str, Any]) -> str | None:
+    """Name the fields in which this run differs from the rows its arm already holds.
+
+    :param rows: Every row of the output file.
+    :param meta: This run's row metadata.
+    :return: A message listing the differing fields, or None when the arm is consistent.
+    """
+    same_arm = [row for row in rows if row["arm"] == meta["arm"]]
+    differing = [
+        field
+        for field in _PROVENANCE_FIELDS
+        if any(row.get(field) != meta[field] for row in same_arm)
+    ]
+    if not differing:
+        return None
+    return (
+        f"the output holds rows of arm {meta['arm']!r} made under a different "
+        f"{', '.join(differing)}; use another --arm or output file"
+    )
 
 
 def _eval_settings(settings: Settings, mode: str) -> Settings:
@@ -243,12 +320,16 @@ async def run_eval(
     mode: str,
     output: Path,
     versions: tuple[str | None, str | None],
+    retry_failed: bool = False,
 ) -> dict[str, Any]:
     """Ask the questions one after another and append one row per question to ``output``.
 
-    Rows already in ``output`` for the same id and arm are skipped. While the run lasts the
-    app's settings dependency is overridden with :func:`_eval_settings` and tracing is off;
-    the override is removed afterwards.
+    Every row already in ``output`` for the same id and arm counts as done, whatever its
+    status: a failed turn is a result. With ``retry_failed`` those whose latest row is not
+    ``ok`` are asked again, and the new row wins (:func:`latest_rows`). The run stops when
+    :func:`_stop_reason` says the environment is failing. While it lasts the app's settings
+    dependency is overridden with :func:`_eval_settings` and tracing is off; the override is
+    removed afterwards.
 
     :param app: The FastAPI app with the assistant router mounted.
     :param questions: The records from :func:`_load_questions`.
@@ -258,25 +339,40 @@ async def run_eval(
     :param mode: ``workflow``, ``hybrid`` or ``agent``.
     :param output: The JSONL file rows are appended to.
     :param versions: ``(app_version, corpus_version)`` of the collection.
-    :return: ``rows`` written, ``ok`` and ``failed`` counts and ``median_latency_s``.
+    :param retry_failed: Ask again the questions whose latest row is not ``ok``.
+    :return: ``rows`` written, ``ok`` and ``failed`` counts, ``median_latency_s`` and ``stop``,
+        the message of the rule that ended the run early, or None.
+    :raises RunRefusedError: If the arm's existing rows were made under other settings.
     """
     projects = _project_ids(fixtures)
-    done = _done(output)
-    todo = [record for record in questions if (record["id"], arm) not in done]
-    run_settings = _eval_settings(settings, mode)
+    retrieval = RetrievalConfig(k=settings.assistant_retrieval_k)
     meta = {
         "arm": arm,
         "mode": mode,
         "answer_model": settings.assistant_answer_llm_model,
         "answer_endpoint": _endpoint(settings.assistant_answer_llm_base_url),
-        "retrieval_k": settings.assistant_retrieval_k,
+        "retrieval_mode": retrieval.mode,
+        "retrieval_query_transform": retrieval.query_transform,
+        "retrieval_rerank": retrieval.rerank,
+        "retrieval_k": retrieval.k,
         "app_version": versions[0],
         "corpus_version": versions[1],
         "prompt_sha256": PROMPT_SHA256,
     }
+    problem = _provenance_problem(_read_rows(output), meta)
+    if problem is not None:
+        raise RunRefusedError(problem)
+    done = {
+        key
+        for key, row in latest_rows(output).items()
+        if not (retry_failed and row["status"] != "ok")
+    }
+    todo = [record for record in questions if (record["id"], arm) not in done]
+    run_settings = _eval_settings(settings, mode)
     user_id = str(fixtures["user"]["id"])
     app.dependency_overrides[get_settings] = lambda: run_settings
-    ok = 0
+    ok = consecutive = 0
+    stop: str | None = None
     latencies: list[float] = []
     try:
         transport = httpx.ASGITransport(app=app)
@@ -307,6 +403,10 @@ async def run_eval(
                     print(
                         f"turn {number}/{len(todo)}: {result['status']} in {result['latency_s']}s"
                     )
+                    consecutive = 0 if result["status"] == "ok" else consecutive + 1
+                    stop = _stop_reason(result["status"], consecutive)
+                    if stop is not None:
+                        break
     finally:
         app.dependency_overrides.pop(get_settings, None)
     return {
@@ -314,6 +414,7 @@ async def run_eval(
         "ok": ok,
         "failed": len(latencies) - ok,
         "median_latency_s": statistics.median(latencies) if latencies else None,
+        "stop": stop,
     }
 
 
@@ -329,6 +430,7 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--mode", required=True, choices=["workflow", "hybrid", "agent"])
     parser.add_argument("--arm", required=True, help="Free label written into every row")
     parser.add_argument("--output", required=True, type=Path, help="Output JSONL, appended to")
+    parser.add_argument("--retry-failed", action="store_true", help="Ask failed questions again")
     parser.add_argument("--sealed-run", action="store_true", help="Allow a sealed question set")
     parser.add_argument("--registration", type=Path, default=None, help="Pre-registration file")
     return parser.parse_args(argv)
@@ -338,7 +440,8 @@ def main(argv: list[str] | None = None) -> int:
     """Run the eval and print the summary line.
 
     :param argv: The arguments, or None for ``sys.argv``.
-    :return: The exit code: 0 on a finished run, 2 when the run is refused or misconfigured.
+    :return: The exit code: 0 on a finished run, 2 when the run is refused or misconfigured,
+        3 when it stopped because the environment is failing.
     """
     args = _parse_args(argv)
     try:
@@ -362,23 +465,40 @@ def main(argv: list[str] | None = None) -> int:
     except (ValueError, KeyError, OSError) as exc:
         print(f"cannot read the inputs: {exc}", file=sys.stderr)
         return 2
-    summary = asyncio.run(
-        run_eval(
-            create_app(),
-            questions,
-            fixtures,
-            settings=settings,
-            arm=args.arm,
-            mode=args.mode,
-            output=args.output,
-            versions=_collection_versions(settings),
+    versions = _collection_versions(settings)
+    if versions == (None, None):
+        if args.sealed_run:
+            print(
+                "a sealed run needs the collection's versions; the registry is unreadable",
+                file=sys.stderr,
+            )
+            return 2
+        print("warning: app_version and corpus_version are null in every row", file=sys.stderr)
+    try:
+        summary = asyncio.run(
+            run_eval(
+                create_app(),
+                questions,
+                fixtures,
+                settings=settings,
+                arm=args.arm,
+                mode=args.mode,
+                output=args.output,
+                versions=versions,
+                retry_failed=args.retry_failed,
+            )
         )
-    )
+    except RunRefusedError as exc:
+        print(exc, file=sys.stderr)
+        return 2
     median = summary["median_latency_s"]
     print(
         f"rows={summary['rows']} ok={summary['ok']} failed={summary['failed']} "
         f"median_latency_s={'n/a' if median is None else f'{median:.2f}'}"
     )
+    if summary["stop"] is not None:
+        print(summary["stop"], file=sys.stderr)
+        return 3
     return 0
 
 
