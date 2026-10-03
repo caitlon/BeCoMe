@@ -78,6 +78,7 @@ from api.services.calculation_service import CalculationService
 from api.services.example_project_service import ExampleProjectService
 from api.services.likert_verdict import derive_verdict
 from api.services.opinion_service import OpinionService
+from api.services.project_membership_service import ProjectMembershipService
 from api.services.project_service import ProjectService
 from api.services.user_service import UserService
 from examples.utils.data_loading import load_data_from_txt
@@ -103,12 +104,10 @@ class SeedOutcome:
 
     :ivar payload: The JSON document described in the module docstring.
     :ivar created: Names of what this run created: ``user``, ``example``, ``pendlers``.
-    :ivar generated_password: The password generated for a new account, if any.
     """
 
     payload: dict[str, Any]
     created: set[str] = field(default_factory=set)
-    generated_password: str | None = None
 
 
 def check_target(settings: Settings) -> None:
@@ -168,18 +167,19 @@ def _demo_pool_users() -> list[User]:
     ]
 
 
-def _ensure_owner(session: Session, password: str | None) -> tuple[User, bool, str | None]:
+def _ensure_owner(session: Session, password: str | None) -> tuple[User, bool]:
     """Find the evaluation owner, or create and activate the account.
 
     :param session: Session to write through.
-    :param password: Password for a new account; generated when None.
-    :return: The account, whether this call created it, and the generated password
-        when one was made.
+    :param password: Password for a new account; generated when None, and then
+        printed to stderr as soon as the account exists, so a later failure cannot
+        leave an account whose password nobody saw.
+    :return: The account, and whether this call created it.
     """
     service = UserService(session)
     existing = service.get_by_email(OWNER_EMAIL)
     if existing is not None:
-        return existing, False, None
+        return existing, False
     chosen = password or secrets.token_urlsafe(16)
     user = service.create_user(
         email=OWNER_EMAIL,
@@ -192,7 +192,9 @@ def _ensure_owner(session: Session, password: str | None) -> tuple[User, bool, s
     session.add(user)
     session.commit()
     session.refresh(user)
-    return user, True, None if password else chosen
+    if not password:
+        print(f"generated password: {chosen}", file=sys.stderr, flush=True)
+    return user, True
 
 
 def _ensure_example_project(session: Session, owner: User) -> tuple[Project, bool]:
@@ -234,15 +236,20 @@ def _pendlers_expert_email(index: int) -> str:
 def _ensure_pendlers_project(session: Session, owner: User) -> tuple[Project, bool]:
     """Find the owner's pendlers project, or build it from the case data.
 
+    A project counts as present only once it has a calculation result. One without
+    (a run that stopped partway) is completed: experts, memberships and opinions are
+    each added only when missing, then the result is calculated.
+
     :param session: Session to write through.
     :param owner: The evaluation owner.
-    :return: The project, and whether this call created it.
+    :return: The project, and whether this call created or completed it.
     """
     projects = ProjectService(session)
+    calculations = CalculationService(session)
     owned = projects.get_owned_projects(owner.id)
-    existing = next((p for p in owned if p.name == PENDLERS_PROJECT_NAME), None)
-    if existing is not None:
-        return existing, False
+    project = next((p for p in owned if p.name == PENDLERS_PROJECT_NAME), None)
+    if project is not None and calculations.get_result(project.id) is not None:
+        return project, False
 
     opinions, metadata = load_data_from_txt(str(_PENDLERS_DATA))
     experts = [
@@ -257,18 +264,23 @@ def _ensure_pendlers_project(session: Session, owner: User) -> tuple[Project, bo
     ]
     _ensure_demo_users(session, experts)
 
-    project = projects.create_project(
-        owner.id,
-        ProjectCreate(
-            name=PENDLERS_PROJECT_NAME,
-            description=metadata.get("description"),
-            scale_min=0.0,
-            scale_max=100.0,
-        ),
-    )
+    if project is None:
+        project = projects.create_project(
+            owner.id,
+            ProjectCreate(
+                name=PENDLERS_PROJECT_NAME,
+                description=metadata.get("description"),
+                scale_min=0.0,
+                scale_max=100.0,
+            ),
+        )
+    membership = ProjectMembershipService(session)
     opinion_service = OpinionService(session)
     for expert, opinion in zip(experts, opinions, strict=True):
-        session.add(ProjectMember(project_id=project.id, user_id=expert.id, role=MemberRole.EXPERT))
+        if not membership.is_member(project.id, expert.id):
+            session.add(
+                ProjectMember(project_id=project.id, user_id=expert.id, role=MemberRole.EXPERT)
+            )
         opinion_service.upsert_opinion(
             project.id,
             expert.id,
@@ -278,7 +290,7 @@ def _ensure_pendlers_project(session: Session, owner: User) -> tuple[Project, bo
             opinion.opinion.upper_bound,
         )
     session.commit()
-    CalculationService(session).recalculate(project.id)
+    calculations.recalculate(project.id)
     session.refresh(project)
     return project, True
 
@@ -340,7 +352,7 @@ def seed_fixtures(session: Session, password: str | None) -> SeedOutcome:
         when None. Ignored when the account exists.
     :return: The output document and what this run created.
     """
-    owner, owner_new, generated = _ensure_owner(session, password)
+    owner, owner_new = _ensure_owner(session, password)
     created = {"user"} if owner_new else set()
     example, example_new = _ensure_example_project(session, owner)
     pendlers, pendlers_new = _ensure_pendlers_project(session, owner)
@@ -355,7 +367,7 @@ def seed_fixtures(session: Session, password: str | None) -> SeedOutcome:
             _project_payload(session, "pendlers", pendlers),
         ],
     }
-    return SeedOutcome(payload=payload, created=created, generated_password=generated)
+    return SeedOutcome(payload=payload, created=created)
 
 
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:
@@ -386,6 +398,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Refusing to seed: {error}", file=sys.stderr)
         return _EXIT_REFUSED
 
+    if args.output is not None:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
     create_db_and_tables()
     with Session(get_engine()) as session:
         outcome = seed_fixtures(session, args.password)
@@ -393,8 +407,6 @@ def main(argv: list[str] | None = None) -> int:
     for name in ("user", "example", "pendlers"):
         state = "created" if name in outcome.created else "already present"
         print(f"{name}: {state}", file=sys.stderr)
-    if outcome.generated_password is not None:
-        print(f"generated password: {outcome.generated_password}", file=sys.stderr)
 
     document = json.dumps(outcome.payload, indent=2)
     if args.output is not None:

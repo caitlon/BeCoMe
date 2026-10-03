@@ -1,6 +1,7 @@
 """Unit tests for the evaluation fixture seeder (in-memory SQLite, no network)."""
 
 import importlib.util
+import io
 import json
 import sys
 from pathlib import Path
@@ -227,6 +228,33 @@ class TestSeedFixtures:
         assert first.created == {"user", "example", "pendlers"}
         assert second.created == set()
 
+    def test_interrupted_pendlers_run_is_completed_by_the_next_one(self, engine, monkeypatch):
+        """
+        GIVEN a first run that failed at the 10th pendlers opinion
+        WHEN the fixtures are seeded again in a new session
+        THEN the project is completed: 22 opinions, a result, and the full payload
+        """
+        real = seed.OpinionService.upsert_opinion
+        calls = []
+
+        def flaky(self, *args, **kwargs):
+            calls.append(1)
+            if len(calls) == 10:
+                raise RuntimeError("interrupted")
+            return real(self, *args, **kwargs)
+
+        with monkeypatch.context() as patched:
+            patched.setattr(seed.OpinionService, "upsert_opinion", flaky)
+            with Session(engine) as first, pytest.raises(RuntimeError):
+                seed.seed_fixtures(first, PASSWORD)
+
+        with Session(engine) as second:
+            outcome = seed.seed_fixtures(second, None)
+
+            pendlers = next(p for p in outcome.payload["projects"] if p["key"] == "pendlers")
+            assert pendlers["expert_count"] == pendlers["result"]["num_experts"] == 22
+            assert len(second.exec(select(Project)).all()) == 2
+
     def test_existing_demo_pool_is_reused(self, session):
         """
         GIVEN a database that already carries the demo pool (as after the migration)
@@ -292,6 +320,38 @@ class TestMain:
         assert captured.out == ""
         assert written["user"]["email"] == seed.OWNER_EMAIL
         assert [p["key"] for p in written["projects"]] == ["example", "pendlers"]
+
+    def test_output_option_creates_the_missing_parent_directory(self, run_main, tmp_path):
+        """
+        GIVEN --output inside a directory that does not exist yet
+        WHEN main runs
+        THEN the directory is created and the file written
+        """
+        target = tmp_path / "nested" / "dir" / "fixtures.json"
+
+        code, _ = run_main("--password", PASSWORD, "--output", str(target))
+
+        assert code == 0
+        assert target.is_file()
+
+    def test_generated_password_is_printed_before_any_later_step_runs(self, run_main, monkeypatch):
+        """
+        GIVEN no password argument and a failure in the step after the account is created
+        WHEN main runs
+        THEN the generated password has already reached stderr
+        """
+
+        def boom(*args, **kwargs):
+            raise RuntimeError("later step failed")
+
+        monkeypatch.setattr(seed, "_ensure_example_project", boom)
+        err = io.StringIO()
+        monkeypatch.setattr(sys, "stderr", err)
+
+        with pytest.raises(RuntimeError):
+            seed.main([])
+
+        assert "generated password: " in err.getvalue()
 
     def test_generated_password_is_printed_once_and_never_on_stdout(self, run_main, session):
         """
