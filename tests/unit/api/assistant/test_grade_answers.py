@@ -101,6 +101,20 @@ class TestDetectLanguage:
         # GIVEN a text with no evidence of a language, WHEN detected, THEN unknown
         assert ga.detect_language(text) == "unknown"
 
+    @pytest.mark.parametrize(
+        "text", ["I've no idea.", "We've found nothing.", "It\u2019s not here."]
+    )
+    def test_an_apostrophe_keeps_a_contraction_one_word(self, text):
+        # GIVEN English with I've, We've or it's, whose "ve" or "s" is a Czech word alone
+        # WHEN detected, THEN it is English, not Czech
+        assert ga.detect_language(text) == "en"
+
+    @pytest.mark.parametrize("text", ["Ano, 22.", "Ne, to nelze.", "Vysledek: 30,68"])
+    def test_terse_czech_without_evidence_is_unknown(self, text):
+        # GIVEN terse Czech answers that hold no diacritic and no listed function word
+        # WHEN detected, THEN the language is not guessed
+        assert ga.detect_language(text) == "unknown"
+
     def test_tie_is_unknown(self):
         # GIVEN one Czech diacritic word and one English function word
         # WHEN detected, THEN the language is not guessed
@@ -125,6 +139,10 @@ class TestReadCitations:
             ("Viz [Zdroj 2].", "Zdroj 2"),
             ("Docs [docs].", "docs"),
             ("Docs [doc1].", "doc1"),
+            ("Docs [Docs].", "Docs"),
+            ("Data [data 3].", "data 3"),
+            ("Viz [Projekt 2].", "Projekt 2"),
+            ("Tool [tool].", "tool"),
         ],
     )
     def test_labels_are_pseudo_citations(self, answer, label):
@@ -133,6 +151,15 @@ class TestReadCitations:
         # THEN it is a pseudo citation and no source is cited
         assert labels == [label]
         assert used == {"used": [], "valid": 0}
+
+    @pytest.mark.parametrize(
+        "answer",
+        ["[TODO]", "[BeCoMe]", "[Q1-Q3]", "[i.e.]", "[v1.2]", "[sic]", "[see above]"],
+    )
+    def test_other_brackets_are_ordinary_text(self, answer):
+        # GIVEN a bracket that is not a source label
+        # WHEN read, THEN it is neither a citation nor a pseudo citation
+        assert ga.read_citations(f"Text {answer} more.", {1}) == ({"used": [], "valid": 0}, [])
 
     def test_links_numbering_decimals_and_checkboxes_are_not_citations(self):
         # GIVEN a markdown link, list numbering, a fuzzy number, words and a checkbox
@@ -180,6 +207,13 @@ class TestGradeRow:
         assert grade["citations"] == {"used": [1], "valid": 1}
         assert grade["pseudo_citations"] == ["docs"]
 
+    def test_language_match_is_null_when_the_language_is_unknown(self):
+        # GIVEN a terse Czech answer to a Czech question
+        grade = ga.grade_row(_row("Ano, 22."), {"id": "q1", "lang": "cs"})
+        # THEN the language is unknown and so is the match
+        assert grade["answer_lang"] == "unknown"
+        assert grade["lang_match"] is None
+
     def test_language_mismatch(self):
         # GIVEN a Czech question answered in English
         grade = ga.grade_row(_row("The best compromise is 30.68."), {"id": "q1", "lang": "cs"})
@@ -209,8 +243,33 @@ class TestSummarizeArm:
         assert summary["completed_share"] == pytest.approx(2 / 3)
         assert summary["lang_match_share"] == 1.0
         assert summary["lang_match_share_cs"] == 1.0
+        assert summary["lang_unknown"] == 0
         assert summary["pseudo_citation_share"] == 0.5
         assert summary["median_latency_s"] == 3.0
+        assert summary["missing"] == 0
+
+    def test_language_shares_leave_out_rows_of_unknown_language(self):
+        # GIVEN a decided match, a mismatch and a terse answer, all to Czech questions
+        questions = {q: {"id": q, "lang": "cs"} for q in ("q1", "q2", "q3")}
+        grades = [
+            ga.grade_row(_row("Nejlepší kompromis je 30,68."), questions["q1"]),
+            ga.grade_row(_row("The best compromise is 30.68.", id="q2"), questions["q2"]),
+            ga.grade_row(_row("Ano, 22.", id="q3"), questions["q3"]),
+        ]
+        # WHEN summarized, THEN the terse row is counted apart and out of both shares
+        summary = ga.summarize_arm(grades, questions)
+        assert summary["lang_unknown"] == 1
+        assert summary["lang_match_share"] == 0.5
+        assert summary["lang_match_share_cs"] == 0.5
+
+    def test_missing_counts_questions_with_no_row(self):
+        # GIVEN three questions and rows for only one of them
+        questions = {q: {"id": q} for q in ("q1", "q2", "q3")}
+        grades = [ga.grade_row(_row(), questions["q1"])]
+        # WHEN summarized, THEN the other two are missing and completed_share is still 1.0
+        summary = ga.summarize_arm(grades, questions)
+        assert summary["missing"] == 2
+        assert summary["completed_share"] == 1.0
 
     def test_empty_denominators_are_null(self):
         # GIVEN only a failed row, WHEN summarized, THEN the checks are null
@@ -221,6 +280,30 @@ class TestSummarizeArm:
         assert summary["lang_match_share"] is None
         assert summary["pseudo_citation_share"] is None
         assert summary["median_latency_s"] is None
+        assert summary["lang_unknown"] == 0
+
+
+def _files(tmp_path, rows, questions):
+    """Write an answers file and a questions file.
+
+    :param tmp_path: The test's temporary directory.
+    :param rows: Row dicts, or None for no answers file.
+    :param questions: Question records, or raw lines when they are strings.
+    :return: ``(answers, questions)`` paths.
+    """
+    answers, questions_path = tmp_path / "answers.jsonl", tmp_path / "questions.jsonl"
+    if rows is not None:
+        answers.write_text("\n".join(json.dumps(row) for row in rows), encoding="utf-8")
+    lines = [q if isinstance(q, str) else json.dumps(q) for q in questions]
+    questions_path.write_text("\n".join(lines), encoding="utf-8")
+    return answers, questions_path
+
+
+def _main(answers, questions, output, *extra):
+    """Run the grader's command line on the given paths."""
+    return ga.main(
+        ["--answers", str(answers), "--questions", str(questions), "--output", str(output), *extra]
+    )
 
 
 class TestMain:
@@ -228,33 +311,16 @@ class TestMain:
 
     def test_grades_the_latest_row_per_question_and_arm(self, tmp_path, capsys):
         # GIVEN a failed row retried to ok, a row of another arm and a row with no question
-        answers = tmp_path / "answers.jsonl"
         rows = [
             _row(None, status="Timeout", sources=None),
             _row("The best compromise is 30.68. [1]"),
             _row("Nejlepší kompromis je 30,68.", arm="b"),
             _row("Stray.", id="unknown"),
         ]
-        answers.write_text("\n".join(json.dumps(row) for row in rows), encoding="utf-8")
-        questions = tmp_path / "questions.jsonl"
-        questions.write_text(
-            json.dumps({"id": "q1", "lang": "en"}),
-            encoding="utf-8",
-        )
-        output, summary = tmp_path / "grades.jsonl", tmp_path / "summary.json"
-        # WHEN graded
-        code = ga.main(
-            [
-                "--answers",
-                str(answers),
-                "--questions",
-                str(questions),
-                "--output",
-                str(output),
-                "--summary",
-                str(summary),
-            ]
-        )
+        answers, questions = _files(tmp_path, rows, [{"id": "q1", "lang": "en"}])
+        output, summary = tmp_path / "grades.jsonl", tmp_path / "out" / "summary.json"
+        # WHEN graded, with a summary in a directory that does not exist yet
+        code = _main(answers, questions, output, "--summary", str(summary))
         # THEN the retried row wins, the stray row is skipped and nothing prints an answer
         assert code == 0
         grades = [json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()]
@@ -267,20 +333,70 @@ class TestMain:
         assert "skipped 1 rows" in captured.err
         assert "kompromis" not in captured.out
 
-    def test_unreadable_questions_exit_two(self, tmp_path, capsys):
+    def test_a_missing_questions_file_exits_two(self, tmp_path, capsys):
         # GIVEN a questions file that is missing
-        answers = tmp_path / "answers.jsonl"
-        answers.write_text("", encoding="utf-8")
+        answers, _ = _files(tmp_path, [_row()], [])
         # WHEN graded, THEN the exit code is 2 with a message
-        code = ga.main(
-            [
-                "--answers",
-                str(answers),
-                "--questions",
-                str(tmp_path / "missing.jsonl"),
-                "--output",
-                str(tmp_path / "out.jsonl"),
-            ]
-        )
-        assert code == 2
+        assert _main(answers, tmp_path / "missing.jsonl", tmp_path / "out.jsonl") == 2
         assert "cannot read the inputs" in capsys.readouterr().err
+
+    @pytest.mark.parametrize("rows", [None, []])
+    def test_a_missing_or_empty_answers_file_leaves_the_outputs_alone(self, tmp_path, rows):
+        # GIVEN existing grades and summary, and answers that are missing or empty
+        answers, questions = _files(tmp_path, rows, [{"id": "q1"}])
+        output, summary = tmp_path / "grades.jsonl", tmp_path / "summary.json"
+        output.write_text("kept grades", encoding="utf-8")
+        summary.write_text("kept summary", encoding="utf-8")
+        # WHEN graded, THEN the run fails and neither file is touched
+        assert _main(answers, questions, output, "--summary", str(summary)) == 2
+        assert output.read_text(encoding="utf-8") == "kept grades"
+        assert summary.read_text(encoding="utf-8") == "kept summary"
+
+    def test_no_row_for_a_known_question_exits_two_without_writing(self, tmp_path, capsys):
+        # GIVEN rows whose ids are not in the questions file
+        answers, questions = _files(tmp_path, [_row(id="other")], [{"id": "q1"}])
+        output = tmp_path / "grades.jsonl"
+        # WHEN graded, THEN the run fails and the output is not created
+        assert _main(answers, questions, output) == 2
+        assert not output.exists()
+        assert "no answer row" in capsys.readouterr().err
+
+    @pytest.mark.parametrize("target", ["answers", "questions"])
+    @pytest.mark.parametrize("flag", ["--output", "--summary"])
+    def test_an_output_that_is_an_input_is_refused(self, tmp_path, capsys, target, flag):
+        # GIVEN an output flag that points at one of the inputs
+        answers, questions = _files(tmp_path, [_row()], [{"id": "q1"}])
+        path = {"answers": answers, "questions": questions}[target]
+        before = path.read_text(encoding="utf-8")
+        other = tmp_path / "other.json"
+        args = [str(path), str(other)] if flag == "--output" else [str(other), str(path)]
+        # WHEN graded, THEN the exit code is 2 and the input is intact
+        code = _main(answers, questions, args[0], "--summary", args[1])
+        assert code == 2
+        assert path.read_text(encoding="utf-8") == before
+        assert "must not be an input" in capsys.readouterr().err
+
+    def test_output_and_summary_must_differ(self, tmp_path):
+        # GIVEN one path for both outputs
+        answers, questions = _files(tmp_path, [_row()], [{"id": "q1"}])
+        same = tmp_path / "same.json"
+        # WHEN graded, THEN the run is refused
+        assert _main(answers, questions, same, "--summary", str(same)) == 2
+
+    @pytest.mark.parametrize(
+        "bad",
+        ["[1, 2]", '{"lang": "en"}', "not json", '"text"'],
+    )
+    def test_a_bad_question_record_exits_two(self, tmp_path, capsys, bad):
+        # GIVEN a questions file with a record that is not an object with an id
+        answers, questions = _files(tmp_path, [_row()], [{"id": "q1"}, bad])
+        # WHEN graded, THEN the exit code is 2 and the message names the line
+        assert _main(answers, questions, tmp_path / "grades.jsonl") == 2
+        assert "question record 2" in capsys.readouterr().err
+
+    def test_a_repeated_question_id_exits_two(self, tmp_path, capsys):
+        # GIVEN two question records with the same id
+        answers, questions = _files(tmp_path, [_row()], [{"id": "q1"}, {"id": "q1"}])
+        # WHEN graded, THEN the exit code is 2 and the message names the line
+        assert _main(answers, questions, tmp_path / "grades.jsonl") == 2
+        assert "question record 2 repeats an id" in capsys.readouterr().err
