@@ -14,7 +14,7 @@ name: Merge Guard
 # token, no third-party action. The payload reaches the script through env and is parsed with jq,
 # never spliced into the script text, because a label name is text somebody typed.
 # The check reads the labels as they were when the event fired, so re-running an old run replays
-# that old list. Remove the label and let the `unlabeled` run report, rather than re-running a red one.
+# that old list, red or green. Add or remove the label and let the new run report instead.
 on:
   pull_request:
     branches: [dev, test, prod]
@@ -38,7 +38,7 @@ jobs:
           PR_LABELS: ${{ toJSON(github.event.pull_request.labels) }}
         run: |
           set -euo pipefail
-          blocked=$(printf '%s' "$PR_LABELS" | jq 'any(.[]; .name == "do-not-merge")')
+          blocked=$(printf '%s' "$PR_LABELS" | jq 'any(.[]; .name == "do-not-merge")') || blocked=unreadable
           case "$blocked" in
             true)
               echo "::error title=Merge guard::This pull request carries the do-not-merge label. Remove the label when it may be merged."
