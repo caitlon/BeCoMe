@@ -70,8 +70,8 @@ vi.mock('@/components/forms', async (importOriginal) => {
 const mockResendVerification = vi.fn();
 vi.mock('@/lib/api', () => ({
   api: {
-    resendVerification: (email: string, password: string) =>
-      mockResendVerification(email, password),
+    resendVerification: (email: string, password: string, language: string) =>
+      mockResendVerification(email, password, language),
   },
 }));
 
@@ -251,7 +251,7 @@ describe('Login', () => {
   });
 
 
-  it('disables submit while loading', async () => {
+  it('marks submit aria-disabled while loading', async () => {
     const user = userEvent.setup();
     mockLogin.mockImplementation(() => new Promise(() => {}));
 
@@ -265,7 +265,7 @@ describe('Login', () => {
 
     await waitFor(() => {
       const loadingButton = screen.getByRole('button', { name: /signing in/i });
-      expect(loadingButton).toBeDisabled();
+      expect(loadingButton).toHaveAttribute('aria-disabled', 'true');
     });
   });
 
@@ -333,7 +333,8 @@ describe('Login', () => {
       await waitFor(() => {
         expect(mockResendVerification).toHaveBeenCalledWith(
           'unverified@example.com',
-          'CorrectHorse123!'
+          'CorrectHorse123!',
+          'en'
         );
       });
     });

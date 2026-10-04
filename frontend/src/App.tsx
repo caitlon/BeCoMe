@@ -8,7 +8,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { RouteAnnouncer } from "@/components/RouteAnnouncer";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { PageSpinner } from "@/components/PageSpinner";
+import { PageLoader } from "@/components/PageLoader";
 import { createQueryClient } from "@/lib/queryClient";
 
 const Landing = lazy(() => import("./pages/Landing"));
@@ -30,14 +30,6 @@ const Onboarding = lazy(() => import("./pages/Onboarding"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 const queryClient = createQueryClient();
-
-function PageLoader() {
-  return (
-    <main id="main-content" tabIndex={-1} className="min-h-screen flex items-center justify-center">
-      <PageSpinner />
-    </main>
-  );
-}
 
 const App = () => (
   <ErrorBoundary>

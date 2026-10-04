@@ -9,6 +9,7 @@ import hashlib
 from datetime import timedelta
 from unittest.mock import patch
 
+import pytest
 from sqlmodel import select
 
 from api.auth.login_throttle import InMemoryLoginThrottle, get_login_throttle
@@ -98,16 +99,20 @@ class TestForgotPassword:
         class FailingEmailSender(EmailSender):
             """Simulate a provider that fails on every send."""
 
-            async def send_password_reset(self, *, to_email: str, reset_url: str) -> None:
+            async def send_password_reset(
+                self, *, to_email: str, reset_url: str, language: str
+            ) -> None:
                 """Raise to simulate a provider failure."""
                 raise EmailSendError("send failed")
 
-            async def send_email_verification(self, *, to_email: str, verify_url: str) -> None:
+            async def send_email_verification(
+                self, *, to_email: str, verify_url: str, language: str
+            ) -> None:
                 """Raise to simulate a provider failure."""
                 raise EmailSendError("send failed")
 
             async def send_registration_attempt_notice(
-                self, *, to_email: str, login_url: str, reset_url: str
+                self, *, to_email: str, login_url: str, reset_url: str, language: str
             ) -> None:
                 """Raise to simulate a provider failure."""
                 raise EmailSendError("send failed")
@@ -120,6 +125,43 @@ class TestForgotPassword:
 
         # THEN
         assert response.status_code == 202
+
+
+class TestForgotPasswordEmailLanguage:
+    """The reset email goes out in the language the request's header names."""
+
+    @pytest.mark.parametrize(
+        ("header", "expected"),
+        [
+            ("cs", "cs"),
+            ("cs-CZ,cs;q=0.9,en;q=0.8", "cs"),
+            ("en-US,en;q=0.9", "en"),
+            (None, "en"),
+            (";;;,q=,==", "en"),
+            ("x" * 5000, "en"),
+        ],
+    )
+    def test_the_reset_email_language_follows_accept_language(
+        self, client, fake_email, header, expected
+    ):
+        """
+        GIVEN a registered user and a forgot-password request with a given Accept-Language
+            header, or none
+        WHEN it is accepted
+        THEN the reset email is sent in the matching language, English by default
+        """
+        # GIVEN
+        _register(client, "user@example.com")
+        headers = {} if header is None else {"Accept-Language": header}
+
+        # WHEN
+        response = client.post(
+            "/api/v1/auth/forgot-password", json={"email": "user@example.com"}, headers=headers
+        )
+
+        # THEN
+        assert response.status_code == 202
+        assert [call["language"] for call in fake_email.calls] == [expected]
 
 
 class TestResetPassword:

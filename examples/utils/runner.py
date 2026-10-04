@@ -18,7 +18,6 @@ from .display import (
 from .formatting import display_case_header
 
 if TYPE_CHECKING:
-    from src.calculators.base_calculator import BaseAggregationCalculator
     from src.models.expert_opinion import ExpertOpinion
 
     from .labels import DisplayLabels, FormattingLabels
@@ -44,7 +43,7 @@ def run_analysis(
     case_title: str,
     display_labels: DisplayLabels,
     formatting_labels: FormattingLabels,
-    calculator: BaseAggregationCalculator | None = None,
+    calculator: BeCoMeCalculator | None = None,
     is_likert: bool = False,
 ) -> AnalysisResult:
     """

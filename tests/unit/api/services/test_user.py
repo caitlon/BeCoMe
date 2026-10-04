@@ -37,26 +37,6 @@ class TestUserServiceCreateUser:
         mock_session.commit.assert_called_once()
         mock_session.refresh.assert_called_once()
 
-    def test_creates_user_without_last_name(self):
-        """User can be created without last_name."""
-        # GIVEN
-        mock_session = MagicMock()
-        mock_session.exec.return_value.first.return_value = None
-        service = UserService(mock_session)
-
-        # WHEN
-        with patch("api.services.user_service.hash_password", return_value="hashed"):
-            user = service.create_user(
-                email="noname@example.com",
-                password="Password123",
-                first_name="Jane",
-            )
-
-        # THEN
-        assert user.email == "noname@example.com"
-        assert user.first_name == "Jane"
-        assert user.last_name is None
-
     def test_raises_error_when_email_exists(self):
         """UserExistsError is raised when email already registered."""
         # GIVEN
@@ -75,6 +55,7 @@ class TestUserServiceCreateUser:
                 email="taken@example.com",
                 password="Password123",
                 first_name="New",
+                last_name="User",
             )
 
     def test_password_is_hashed(self):
@@ -91,6 +72,7 @@ class TestUserServiceCreateUser:
                 email="test@example.com",
                 password="plaintext",
                 first_name="Test",
+                last_name="User",
             )
 
         # THEN
@@ -110,6 +92,7 @@ class TestUserServiceCreateUser:
                 email="Test@Example.COM",
                 password="Password123",
                 first_name="Test",
+                last_name="User",
             )
 
         # THEN

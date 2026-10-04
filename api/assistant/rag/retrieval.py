@@ -1,0 +1,607 @@
+"""Query the document index: dense search, BM25 search, and a hybrid of the two.
+
+Hybrid mode fuses dense and BM25 rankings by reciprocal rank fusion. A query_transform
+turns the query into one or more queries actually used to search: "translate_en"
+searches with the model's English translation (a query that looks English is searched
+as it is), "multi_query" adds paraphrases of the query, and "hyde" replaces the query
+with a model-generated hypothetical answer.
+"""
+
+import re
+import unicodedata
+from dataclasses import dataclass
+from typing import Literal, cast, get_args
+
+from langchain_core.documents import Document
+from langchain_core.language_models import BaseChatModel
+from langchain_core.vectorstores import VectorStore
+from rank_bm25 import BM25Okapi
+
+from api.assistant.rag.corpus import Layer
+from api.assistant.rag.models import LlamaServerReranker, strip_think_block
+
+#: Unicode-aware by default for str patterns in Python 3, so Czech diacritics count
+#: as word characters (verified directly, 2026-09-14).
+_TOKEN_PATTERN = re.compile(r"\w+")
+
+#: Generous upper bound on a lab-scale corpus's chunk count (the whole document
+#: collection this project indexes is a few thousand chunks at most). BM25 needs
+#: every document in the collection, not a vector-similarity subset of it.
+_BM25_FETCH_LIMIT = 10_000
+
+
+def _tokenize(text: str) -> list[str]:
+    """Lowercase word tokens for BM25, used to score the corpus and the query alike.
+
+    :param text: Raw text.
+    :return: Lowercase word tokens.
+    """
+    return _TOKEN_PATTERN.findall(text.lower())
+
+
+#: Letters that exist in Czech and not in English. Lowercase only: the query is lowercased
+#: (by _tokenize) before it is checked.
+_CZECH_DIACRITICS = frozenset("áčďéěíňóřšťúůýž")
+
+#: English function words for looks_english. Words that are also Czech words (a, i, to, do,
+#: my, on, by, no) are left out on purpose: they would mark a Czech question as English.
+#: The same goes for "it", "is" and "who", which turn up in a Czech question as the acronyms
+#: IT, IS and WHO.
+_ENGLISH_FUNCTION_WORDS_TEXT = (
+    "the what how does which are why when where can should of and with for if this "
+    "that from was were did there will would could has have not than these those your "
+    "our their"
+)
+_ENGLISH_FUNCTION_WORDS = frozenset(_ENGLISH_FUNCTION_WORDS_TEXT.split())
+
+
+def looks_english(query: str) -> bool:
+    """Say whether a question is already in English, so translating it can be skipped.
+
+    A question counts as English when it has no Czech diacritic letter and at least one
+    English function word (the, what, how, does, which and similar; words that also
+    exist in Czech, such as a, i, to and do, do not count). English questions gain nothing
+    from translation and Czech ones need it, so only English ones skip it. A single listed
+    word is enough to skip translation, and a Czech question typed without diacritics
+    that has no listed word still goes to translation. The check assumes the question is
+    Czech or English: a German "was" or "will" would pass as English.
+
+    :param query: The user's question.
+    :return: True when the question looks English.
+    """
+    tokens = _tokenize(unicodedata.normalize("NFC", query))
+    if any(char in _CZECH_DIACRITICS for token in tokens for char in token):
+        return False
+    return any(token in _ENGLISH_FUNCTION_WORDS for token in tokens)
+
+
+#: Czech function words for question_language, in the forms people type with and without
+#: diacritics. Words that are also English words or names (to, do, on, by, no, my, me, ten,
+#: mi, pro, ale, jake) and single letters (a, i, s, v, z, k, o, u) are left out: they would
+#: mark an English question as Czech, and "s" is what is left of "Novak's".
+_CZECH_FUNCTION_WORDS_TEXT = (
+    "je jsou jsem jsme jste byl byla bylo byt bude jak co kdo kdy kde kam proc proč kolik "
+    "jaky jaká jaký jaka jaké ktery který ktera která ktere které znamena znamená "
+    "se na pri při nebo ze že aby pokud jestli protoze protože kdyz když ani uz už "
+    "tak jako muj můj moje moji mam mám mame máme maji mají muze může muzu mohu tento "
+    "tato toto vysvetli vysvětli"
+)
+_CZECH_FUNCTION_WORDS = frozenset(_CZECH_FUNCTION_WORDS_TEXT.split())
+
+#: The letters that Czech has and English, German, Spanish, French and Portuguese do not.
+#: The acute-accented vowels are not here: Spanish, French, Portuguese and Slovak use them
+#: too. Slovak shares c-caron, s-caron, z-caron, d-caron, t-caron and n-caron with Czech, so
+#: a Slovak question can be taken for Czech; that is accepted. Lowercase only: a word is
+#: lowercased before it is checked.
+_CZECH_ONLY_LETTERS = frozenset("ěřůčšžďťň")
+
+#: Names of languages, as the word stems that start the English names and the Czech
+#: forms of them ("anglicky", "v anglictine", "do anglictiny", "cesky", "nemecky"). A
+#: question that holds one anywhere asks for, or talks about, a language, and gets no line:
+#: a stem that matches too much only costs a line. "cest" alone would match "cesta", so the
+#: Czech word for the language is matched as "cestin".
+_LANGUAGE_NAME = re.compile(
+    r"\b(?:english|czech|german|slovak|polish|russian|spanish|french|italian|ukrainian|"
+    r"anglick|anglič|anglic|česk|cesk|češt|cestin|němec|nemec|němč|nemc|slovens|slovenč|"
+    r"polsk|polšt|polst|rusk|rušt|španěl|spanel|francouz|italsk|ukrajin)",
+    re.IGNORECASE,
+)
+
+#: The longest a Czech function word may be to be skipped when it is written in capitals:
+#: SE and NA in a question are acronyms, as IT and IS are in the English list's comment.
+_ACRONYM_LENGTH = 2
+
+
+def question_language(query: str) -> Literal["cs", "en"] | None:
+    """Tell whether a question is recognisably Czech or English, and otherwise say nothing.
+
+    The line this decides is added only for a question the check is sure of. Every other
+    question, in another language, mixed, very short, or one that names a language, gets
+    None and the system prompt's own rule applies. The rules, in order:
+
+    1. A language name appears anywhere in the question ("Czech", "in German", "anglicky",
+       "v cestine", "do anglictiny"): None, so a request for a language stands and a
+       question that merely mentions one gets no line.
+    2. Count ``e``, the English function words (the list of :func:`looks_english`); ``c``,
+       the Czech function words, where one of up to two letters written in capitals (SE,
+       NA) is an acronym and is skipped; and ``d``, the words that hold a letter that only
+       Czech and its close relatives have (the caron letters and the ring u), except a
+       capitalised word that is not the first of the question, which is a name. The acute
+       vowels are no evidence: Spanish, French and Portuguese have them too.
+    3. ``"cs"`` when ``d >= 1`` or ``c >= 2``, and ``c + d > e``.
+    4. ``"en"`` when ``e >= 2`` and ``e > c + d``.
+    5. Otherwise None, a tie included.
+
+    :func:`looks_english` is not used: it answers a narrower question, whether translating
+    a search query can be skipped. A Slovak question with a caron letter, or a Polish one
+    with two Czech function words, can pass as Czech, which is accepted.
+
+    The answer evaluation (``scripts/assistant/grade_answers.py``) keeps its own word
+    lists for the language of an answer on purpose: an evaluation must not grade the
+    product with the product's own detector.
+
+    :param query: The user's question.
+    :return: ``"cs"``, ``"en"``, or None when no line should be added.
+    """
+    text = unicodedata.normalize("NFC", query)
+    if _LANGUAGE_NAME.search(text):
+        return None
+    words = _TOKEN_PATTERN.findall(text)
+    english = sum(word.lower() in _ENGLISH_FUNCTION_WORDS for word in words)
+    czech = sum(
+        word.lower() in _CZECH_FUNCTION_WORDS
+        and not (len(word) <= _ACRONYM_LENGTH and word.isupper())
+        for word in words
+    )
+    diacritic = sum(
+        any(char in _CZECH_ONLY_LETTERS for char in word.lower())
+        and not (position > 0 and word[0].isupper())
+        for position, word in enumerate(words)
+    )
+    czech_score = czech + diacritic
+    if (diacritic >= 1 or czech >= 2) and czech_score > english:
+        return "cs"
+    if english >= 2 and english > czech_score:
+        return "en"
+    return None
+
+
+@dataclass(frozen=True)
+class RetrievalConfig:
+    """Which retrieval mode to run, how many results, and its optional add-ons.
+
+    The defaults are the search lab's measured winner: hybrid search (reciprocal
+    rank fusion of dense and bm25) over the markdown_headers 500/10 chunks with
+    captions, the query translated to English first (a question the check
+    recognises as English is searched as it is), and no reranker - reranking did not earn back its
+    cost against that collection.
+
+    :param mode: "dense", "bm25", or "hybrid" (reciprocal rank fusion of the other
+        two).
+    :param k: Number of chunks to return.
+    :param rerank: Whether to rerank the candidates before truncating to k.
+    :param query_transform: "none", "translate_en" (skipped for a question that
+        looks English), "multi_query", or "hyde".
+    """
+
+    mode: Literal["bm25", "dense", "hybrid"] = "hybrid"
+    k: int = 5
+    rerank: bool = False
+    query_transform: Literal["none", "translate_en", "multi_query", "hyde"] = "translate_en"
+
+
+@dataclass(frozen=True)
+class RetrievedChunk:
+    """One retrieved chunk, with exactly what a citation needs.
+
+    A collection built with captions indexes each chunk as its title and caption
+    followed by the chunk itself, so the indexed text is not all the source's own
+    words. text is that full indexed text, which ranking and BM25 work on.
+    chunk_text is the chunk alone. Anything that shows text to a model, or checks
+    numbers against it, must use chunk_text: a caption was written by another model
+    and is not the source.
+
+    :param text: The full indexed text of the chunk, caption included when the
+        collection was built with captions.
+    :param title: The source document's title.
+    :param section: The chunk's heading_path metadata.
+    :param url: The source's public URL, or None.
+    :param layer: "public" or "local".
+    :param score: Relevance score. Higher is always more relevant: the reranker's
+        own score when rerank=True, otherwise the search mode's own score. Dense
+        mode (PGVectorStore's cosine relevance) ranges over [-1, 1]: 1.0 for an
+        identical vector, -1.0 for a perfectly anti-correlated one. A negative
+        score there is a legitimate, unremarkable result, not an error. BM25 mode
+        returns the raw BM25 score, unbounded above; a document sharing no token
+        with the query scores exactly 0.0. Hybrid mode returns the fused reciprocal
+        rank fusion score: still higher is more relevant, but on its own scale,
+        small positive numbers rather than a cosine similarity or a BM25 score.
+        With a query_transform other than "none", the score measures relevance to
+        the transformed query or queries actually searched, not to the literal
+        text passed to search().
+    :param chunk_text: The chunk's own text, without any title or caption, read from
+        the chunk_text metadata that ingestion stores on every row. A row without
+        that key comes from a collection built before ingestion stored it; there
+        this falls back to text, which in an enriched collection still includes the
+        model-written prefix.
+    """
+
+    text: str
+    title: str
+    section: str
+    url: str | None
+    layer: Layer
+    score: float
+    chunk_text: str
+
+
+#: Reciprocal rank fusion's damping constant, from the paper that introduced it
+#: (Cormack, Clarke and Buettcher, "Reciprocal Rank Fusion Outperforms Condorcet and
+#: Individual Rank Learning Methods", SIGIR 2009). Also the default of
+#: langchain-postgres's own reciprocal_rank_fusion function, though not of its
+#: HybridSearchConfig, whose fusion_function defaults to weighted_sum_ranking
+#: instead. Fusion runs in process here, over _search_dense and _search_bm25, rather
+#: than through that library's built-in hybrid search: PostgreSQL ships no Czech
+#: text-search configuration, so the built-in hybrid's full-text component would
+#: tokenize and stem the Czech half of the corpus with English rules.
+_RRF_K = 60
+
+
+def _reciprocal_rank_fusion(
+    rankings: list[list[tuple[Document, float]]], k: int = _RRF_K
+) -> list[tuple[Document, float]]:
+    """Combine any number of rankings by reciprocal rank fusion: score = sum(1 / (k + rank + 1)).
+
+    Rank-based, not score-based: dense cosine similarity and BM25 scores live on
+    different, incomparable scales, so RRF looks only at each document's position in
+    each ranking. That is also why the signature takes a list of rankings rather than
+    two named parameters: nothing here is specific to fusing exactly a dense and a
+    bm25 ranking, only to fusing rankings in general.
+
+    :param rankings: Any number of (Document, score) rankings to combine, each
+        already sorted best-first; the score half of each pair is ignored.
+    :param k: RRF's damping constant.
+    :return: Fused (Document, score) pairs, highest fused score first. A document
+        appearing in only one ranking is still included, scored from that one alone.
+    """
+    scores: dict[tuple[str, str], float] = {}
+    docs_by_key: dict[tuple[str, str], Document] = {}
+    for ranking in rankings:
+        for rank, (doc, _) in enumerate(ranking):
+            key = (str(doc.metadata.get("source", "")), doc.page_content)
+            scores[key] = scores.get(key, 0.0) + 1.0 / (k + rank + 1)
+            docs_by_key[key] = doc
+    ranked_keys = sorted(scores, key=lambda key: scores[key], reverse=True)
+    return [(docs_by_key[key], scores[key]) for key in ranked_keys]
+
+
+#: A leading numbered ("1.", "1)") or bulleted ("-", "*", or a bullet character) list
+#: marker, with the space that follows it.
+_LIST_MARKER = re.compile(r"^(?:\d+[.)]|[-*•])\s+")
+
+
+def _clean_multi_query_variants(reply: str, original: str, limit: int) -> list[str]:
+    """Turn a multi_query model reply into deduplicated, marker-free paraphrase lines.
+
+    A model asked for several paraphrases, one per line, does not reliably comply:
+    it may add a preamble line, number or bullet the lines, or repeat the original
+    query or an earlier line verbatim. Kept lines have their list marker (if any)
+    removed; a line that is only a preamble (ends with ":"), or that repeats the
+    original query or an earlier kept line once whitespace is collapsed and case is
+    ignored, is dropped instead of becoming one more full search.
+
+    :param reply: The model's reply, already stripped of any think block.
+    :param original: The original query, so an accidental repeat of it is dropped too.
+    :param limit: The maximum number of variants to keep.
+    :return: Cleaned, deduplicated paraphrase lines, in the order the model wrote
+        them, at most limit long.
+    """
+    seen = {" ".join(original.split()).casefold()}
+    variants = []
+    for raw_line in reply.splitlines():
+        line = _LIST_MARKER.sub("", raw_line.strip()).strip()
+        if not line or line.endswith(":"):
+            continue
+        key = " ".join(line.split()).casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        variants.append(line)
+        if len(variants) == limit:
+            break
+    return variants
+
+
+def _layer_of(doc: Document) -> Layer:
+    """Read the document's layer metadata, refusing a value that is not a known layer.
+
+    :param doc: A document from the index.
+    :return: The document's layer.
+    :raises ValueError: If the layer metadata is not one of the values of Layer, which
+        means a corrupt index row.
+    """
+    layer = doc.metadata["layer"]
+    if layer not in get_args(Layer):
+        raise ValueError(f"unknown layer {layer!r} in the index: expected one of {get_args(Layer)}")
+    return cast("Layer", layer)
+
+
+class DocsRetriever:
+    """Retrieve document chunks relevant to a query."""
+
+    def __init__(
+        self,
+        store: VectorStore,
+        config: RetrievalConfig,
+        reranker: LlamaServerReranker | None,
+        llm: BaseChatModel | None,
+    ) -> None:
+        """
+        :param store: The document index to search. Typed as the LangChain VectorStore
+            base class, not the more specific PGVectorStore, so every real caller
+            stays valid. In dense mode, search() depends on LangChain's
+            relevance-score conversion (VectorStore._select_relevance_score_fn);
+            PGVectorStore implements it, a bare InMemoryVectorStore does not, and
+            search() then raises NotImplementedError rather than silently
+            returning a score of unknown meaning. BM25 mode reads the store's
+            documents directly and has no such dependency.
+        :param config: mode may be "dense", "bm25", or "hybrid".
+        :param reranker: Required when config.rerank is True; ignored otherwise.
+        :param llm: Required when config.query_transform is not "none"; unused
+            otherwise.
+        :raises ValueError: If config.rerank is True but reranker is None, or if
+            query_transform is not "none" and llm is None.
+        """
+        if config.query_transform != "none" and llm is None:
+            raise ValueError(f"query_transform {config.query_transform!r} requires an llm")
+        if config.rerank and reranker is None:
+            raise ValueError("config.rerank is True but no reranker was given")
+        self._store = store
+        self._config = config
+        self._reranker = reranker
+        self._llm = llm
+        self._bm25_documents: list[Document] | None = None
+        self._bm25_index: BM25Okapi | None = None
+
+    async def _search_dense(self, query: str, fetch_k: int) -> list[tuple[Document, float]]:
+        """Dense vector search over the store, scored by LangChain's relevance conversion.
+
+        :param query: The search query.
+        :param fetch_k: How many candidates to fetch.
+        :return: (Document, score) pairs, most similar first.
+        :raises NotImplementedError: If the store has no relevance-score conversion
+            (VectorStore._select_relevance_score_fn not overridden). PGVectorStore
+            has one, a bare InMemoryVectorStore does not.
+        """
+        # Not the public asimilarity_search_with_relevance_scores: it warns - quoting
+        # the whole fetched batch, page_content included - whenever any relevance
+        # score leaves [0, 1], and PGVectorStore's cosine relevance is legitimately
+        # negative for an anti-correlated candidate, which would print chunk text to
+        # stderr on every such search. This protected method is the same conversion
+        # (_select_relevance_score_fn applied over asimilarity_search_with_score)
+        # without that warning, and still raises NotImplementedError for a store with
+        # no relevance function.
+        return await self._store._asimilarity_search_with_relevance_scores(query, k=fetch_k)
+
+    async def _ensure_bm25_index(self) -> None:
+        """Build the BM25 index once, from every document currently in the store.
+
+        Cached on this instance: rebuilt only the first time a bm25 or hybrid search
+        runs, not on every call. A retrieval evaluation running many queries against
+        one collection would otherwise rescan the whole collection once per query.
+
+        :return: None.
+        :raises ValueError: If the store's collection is empty. rank_bm25 divides
+            by the document count while building the index, so an empty corpus
+            would otherwise raise ZeroDivisionError with no indication of the
+            real cause. Also if one fetch comes back full, because a collection
+            of _BM25_FETCH_LIMIT chunks or more would be indexed only in part.
+        """
+        if self._bm25_index is not None:
+            return
+        # The public asimilarity_search_with_score, not the protected
+        # relevance-score method dense search uses: bm25 needs the collection's
+        # documents only and discards the scores, so pgvector's
+        # distance-versus-similarity convention plays no part here.
+        results = await self._store.asimilarity_search_with_score(
+            "assistant corpus", k=_BM25_FETCH_LIMIT
+        )
+        documents = [doc for doc, _ in results]
+        if not documents:
+            raise ValueError("cannot build a bm25 index: the store's collection is empty")
+        if len(documents) >= _BM25_FETCH_LIMIT:
+            raise ValueError(
+                f"cannot build a complete bm25 index: the collection fills the fetch limit "
+                f"of {_BM25_FETCH_LIMIT} chunks, so some chunks may be missing; raise "
+                "_BM25_FETCH_LIMIT"
+            )
+        self._bm25_documents = documents
+        self._bm25_index = BM25Okapi([_tokenize(doc.page_content) for doc in documents])
+
+    async def _search_bm25(self, query: str, fetch_k: int) -> list[tuple[Document, float]]:
+        """BM25 keyword search over every document currently in the store.
+
+        :param query: The search query.
+        :param fetch_k: How many candidates to return.
+        :return: (Document, score) pairs, highest BM25 score first.
+        :raises ValueError: If the store's collection is empty, or fills the fetch
+            limit.
+        """
+        await self._ensure_bm25_index()
+        if self._bm25_index is None or self._bm25_documents is None:
+            raise RuntimeError("unreachable: _ensure_bm25_index always sets both or raises")
+        scores = self._bm25_index.get_scores(_tokenize(query))
+        ranked = sorted(
+            zip(self._bm25_documents, scores, strict=True),
+            key=lambda pair: pair[1],
+            reverse=True,
+        )
+        return [(doc, float(score)) for doc, score in ranked[:fetch_k]]
+
+    async def _apply_rerank(
+        self, query: str, candidates: list[tuple[Document, float]]
+    ) -> list[tuple[Document, float]]:
+        """Rerank candidates, dense or bm25, with the configured LlamaServerReranker.
+
+        :param query: The search query.
+        :param candidates: (Document, score) pairs from dense or bm25 search.
+        :return: The same documents, reordered and rescored by the reranker.
+        """
+        if self._reranker is None:
+            raise RuntimeError("unreachable: config.rerank requires a reranker")
+        texts = [doc.page_content for doc, _ in candidates]
+        rerank_scores = await self._reranker.rerank(query, texts)
+        return sorted(
+            zip((doc for doc, _ in candidates), rerank_scores, strict=True),
+            key=lambda pair: pair[1],
+            reverse=True,
+        )
+
+    async def _search_hybrid(self, query: str, fetch_k: int) -> list[tuple[Document, float]]:
+        """Combine dense and BM25 search via reciprocal rank fusion.
+
+        :param query: The search query.
+        :param fetch_k: How many candidates to fetch from each of dense and bm25
+            search, and how many fused results to return.
+        :return: Fused (Document, score) pairs, highest fused score first.
+        """
+        dense = await self._search_dense(query, fetch_k)
+        bm25 = await self._search_bm25(query, fetch_k)
+        return _reciprocal_rank_fusion([dense, bm25])[:fetch_k]
+
+    async def _ask_llm(self, prompt: str) -> str:
+        """Send one prompt to the chat model and return its cleaned reply.
+
+        Bound to temperature=0 here, not in make_chat_model: a transform must turn
+        the same question into the same search query, or the same question finds
+        different chunks from one run to the next. Chat answers keep their own
+        temperature, set elsewhere.
+
+        :param prompt: The full prompt text.
+        :return: The reply with any <think> block removed and outer whitespace stripped.
+        :raises RuntimeError: If there is no chat model, which __init__ already refuses
+            for every query_transform that calls this.
+        """
+        if self._llm is None:
+            raise RuntimeError("unreachable: __init__ requires an llm for this query_transform")
+        response = await self._llm.bind(temperature=0).ainvoke(prompt)
+        return strip_think_block(str(response.content))
+
+    _TRANSLATE_PROMPT = (
+        "Translate the following text to English. Reply with only the translation:\n\n{query}"
+    )
+
+    async def _translate_to_english(self, query: str) -> str:
+        """Ask the model to translate the query to English.
+
+        :param query: The user's original query, in any language.
+        :return: The model's English translation, or the original query if the
+            model's reply is empty once stripped.
+        """
+        translation = await self._ask_llm(self._TRANSLATE_PROMPT.format(query=query))
+        return translation or query
+
+    _MULTI_QUERY_MAX_VARIANTS = 3
+    _MULTI_QUERY_PROMPT = (
+        "Write {n} different ways to ask this same question, one per line, no "
+        "numbering or extra text:\n\n{query}"
+    )
+
+    async def _multi_query_variants(self, query: str) -> list[str]:
+        """Ask the model to paraphrase the query, and search with the original too.
+
+        :param query: The user's original query.
+        :return: The original query, followed by up to _MULTI_QUERY_MAX_VARIANTS cleaned,
+            deduplicated paraphrase lines (see _clean_multi_query_variants).
+        """
+        prompt = self._MULTI_QUERY_PROMPT.format(n=self._MULTI_QUERY_MAX_VARIANTS, query=query)
+        reply = await self._ask_llm(prompt)
+        variants = _clean_multi_query_variants(reply, query, self._MULTI_QUERY_MAX_VARIANTS)
+        return [query, *variants]
+
+    _HYDE_PROMPT = (
+        "Write a short, plausible passage that would answer this question, as if it "
+        "came from technical documentation. Do not mention that you are guessing:\n\n{query}"
+    )
+
+    async def _hypothetical_answer(self, query: str) -> str:
+        """Ask the model to write a plausible answer, to search with instead of the query.
+
+        :param query: The user's original query.
+        :return: The model's hypothetical answer text, or the original query if the
+            model's reply is empty once stripped.
+        """
+        answer = await self._ask_llm(self._HYDE_PROMPT.format(query=query))
+        return answer or query
+
+    async def _transformed_queries(self, query: str) -> list[str]:
+        """Turn one query into the query, or queries, actually used to search.
+
+        :param query: The user's original query.
+        :return: A single query for "none", "translate_en", and "hyde" (the last
+            replacing rather than joining the original); the original query plus
+            paraphrases for "multi_query". "translate_en" keeps a query that already
+            looks English (see looks_english) and translates any other.
+        """
+        if self._config.query_transform == "translate_en":
+            if looks_english(query):
+                return [query]
+            return [await self._translate_to_english(query)]
+        if self._config.query_transform == "multi_query":
+            return await self._multi_query_variants(query)
+        if self._config.query_transform == "hyde":
+            return [await self._hypothetical_answer(query)]
+        return [query]
+
+    async def _search_one(self, query: str, fetch_k: int) -> list[tuple[Document, float]]:
+        """Run a single search in the configured mode.
+
+        :param query: One search query: the original, or one produced by a
+            query_transform.
+        :param fetch_k: How many candidates to fetch.
+        :return: (Document, score) pairs.
+        """
+        if self._config.mode == "dense":
+            return await self._search_dense(query, fetch_k)
+        if self._config.mode == "bm25":
+            return await self._search_bm25(query, fetch_k)
+        return await self._search_hybrid(query, fetch_k)
+
+    async def search(self, query: str) -> list[RetrievedChunk]:
+        """Search the index and return the top-k chunks, most relevant first.
+
+        Errors are not caught here: an unreachable store, llm, or reranker raises
+        as-is. The chat endpoint's service layer is what turns any of them into
+        AssistantUnavailableError.
+
+        :param query: The search query.
+        :return: Up to config.k RetrievedChunk, ordered by relevance (highest
+            score, most relevant, first).
+        :raises NotImplementedError: If mode is "dense" or "hybrid" and the store has
+            no relevance-score conversion (VectorStore._select_relevance_score_fn not
+            overridden). PGVectorStore has one, a bare InMemoryVectorStore does not.
+        :raises ValueError: If mode is "bm25" or "hybrid" and the store's collection
+            is empty or fills the fetch limit.
+        :raises ValueError: If a retrieved document's layer metadata is not a known
+            layer (a corrupt index row).
+        """
+        fetch_k = self._config.k * 4 if self._config.rerank else self._config.k
+        search_queries = await self._transformed_queries(query)
+        rankings = [await self._search_one(one, fetch_k) for one in search_queries]
+        candidates = (
+            rankings[0] if len(rankings) == 1 else _reciprocal_rank_fusion(rankings)[:fetch_k]
+        )
+        if self._config.rerank and candidates:
+            candidates = await self._apply_rerank(query, candidates)
+        return [
+            RetrievedChunk(
+                text=doc.page_content,
+                title=doc.metadata["title"],
+                section=doc.metadata["heading_path"],
+                url=doc.metadata["url"],
+                layer=_layer_of(doc),
+                score=float(score),
+                chunk_text=doc.metadata.get("chunk_text", doc.page_content),
+            )
+            for doc, score in candidates[: self._config.k]
+        ]

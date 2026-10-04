@@ -1,7 +1,7 @@
 # Reading the result
 
 You get four numbers and a chart. Three of the numbers are candidate answers and the fourth tells
-you how much to trust them.
+you how far apart they landed.
 
 ## The four figures
 
@@ -17,21 +17,22 @@ its virtue and its flaw. One expert at an extreme drags it.
 extremes are, so an outlier cannot drag it. That is its virtue, and its flaw is the same: it also
 ignores a genuine minority.
 
-**Maximum error (Δmax)** is not an error in your data. It is the distance between the centers of
-the mean and the median, halved, which is also exactly how far the compromise had to travel from
-each of them. When the panel agrees, both land in the same place and Δmax is near zero. When the
-panel splits, the two diverge and Δmax is the price of reconciling them.
+**Maximum error (Δmax)** is not an error in your data. It is the distance between the centers of the
+mean and the median, halved, which is also exactly how far the compromise had to travel from each of
+them. When the panel agrees, both land in the same place and Δmax is near zero. When the two land
+apart, Δmax is the price of reconciling them.
 
 Δmax is read against your scale, never on its own, and the app does that for you. It divides Δmax
-by the width of the scale and labels the result: up to 20 percent is high agreement, up to 40 is
-moderate, beyond that is low. A Δmax of 6 is 6 percent of a 0 to 100 scale and 0.06 percent of a 0
+by the width of the scale and labels the result: up to 20 percent is High Confidence, up to 40 is
+Moderate, beyond that is Low. The label says how close the mean and the median are, not whether
+the experts agree. A Δmax of 6 is 6 percent of a 0 to 100 scale and 0.06 percent of a 0
 to 10000 one, and those are not the same finding.
 
 Now the part that catches people, including me. **A small Δmax does not mean the panel agreed.**
 Δmax measures how far apart the mean and the median landed, and those two can land close together
 on a panel that is deeply split, because the mean sits between the camps while the median sits
 inside one of them. The [worked example](worked-example.md) is exactly that case: two camps forty
-points apart, and the app reports high agreement, correctly by its own rule.
+points apart, and the app reports High Confidence, correctly by its own rule.
 
 Which is why the chart is not decoration.
 

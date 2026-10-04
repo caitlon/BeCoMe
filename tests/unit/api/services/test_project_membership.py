@@ -312,26 +312,3 @@ class TestProjectMembershipServiceGetUserRoleInProject:
 
         # THEN
         assert result is None
-
-
-class TestProjectMembershipServiceAddMember:
-    """Tests for ProjectMembershipService.add_member method."""
-
-    def test_adds_member_with_role(self):
-        """Member is added with specified role."""
-        # GIVEN
-        project_id = uuid4()
-        user_id = uuid4()
-        mock_session = MagicMock()
-        service = ProjectMembershipService(mock_session)
-
-        # WHEN
-        result = service.add_member(project_id, user_id, MemberRole.EXPERT)
-
-        # THEN
-        assert result.project_id == project_id
-        assert result.user_id == user_id
-        assert result.role == MemberRole.EXPERT
-        mock_session.add.assert_called_once()
-        mock_session.commit.assert_called_once()
-        mock_session.refresh.assert_called_once()

@@ -94,8 +94,60 @@ describe('TeamTable - Pending Invitations', () => {
   });
 });
 
+describe('TeamTable - Row Semantics', () => {
+  const members = [
+    createMember({ user_id: 'user-2', first_name: 'Jane', last_name: 'Smith', role: 'expert' }),
+  ];
+
+  it('keeps rows as plain rows, not buttons', () => {
+    const { container } = render(
+      <TeamTable
+        {...baseProps}
+        members={members}
+        pendingInvitations={[createProjectInvitation()]}
+      />
+    );
+
+    // header row + member row + invitation row, all still exposed as rows
+    expect(screen.getAllByRole('row')).toHaveLength(3);
+    for (const row of container.querySelectorAll('tr')) {
+      expect(row).not.toHaveAttribute('role');
+      expect(row).not.toHaveAttribute('tabindex');
+      expect(row).not.toHaveAttribute('aria-label');
+    }
+  });
+
+  it('gives the actions column header an accessible name', () => {
+    render(<TeamTable {...baseProps} members={members} pendingInvitations={[]} />);
+
+    expect(screen.getByRole('columnheader', { name: 'Actions' })).toBeInTheDocument();
+  });
+
+  it('renders no actions column header for a non-admin', () => {
+    render(<TeamTable {...baseProps} isAdmin={false} members={members} pendingInvitations={[]} />);
+
+    expect(screen.queryByRole('columnheader', { name: 'Actions' })).not.toBeInTheDocument();
+  });
+
+  it('marks the selected member control with aria-current', () => {
+    render(
+      <TeamTable
+        {...baseProps}
+        members={members}
+        pendingInvitations={[]}
+        selectedMemberId="user-2"
+      />
+    );
+
+    expect(screen.getByRole('button', { name: /view profile of jane smith/i })).toHaveAttribute(
+      'aria-current',
+      'true'
+    );
+  });
+});
+
 describe('TeamTable - Member Row Interaction', () => {
-  it('calls onMemberClick when a member row is clicked', async () => {
+  it('calls onMemberClick once when the member control is clicked', async () => {
     const user = userEvent.setup();
     const onMemberClick = vi.fn();
     const members = [
@@ -106,10 +158,32 @@ describe('TeamTable - Member Row Interaction', () => {
 
     await user.click(screen.getByRole('button', { name: /view profile of jane smith/i }));
 
+    expect(onMemberClick).toHaveBeenCalledTimes(1);
     expect(onMemberClick).toHaveBeenCalledWith(members[0]);
   });
 
-  it('calls onMemberClick when Enter is pressed on a member row', async () => {
+  it('keeps the row click as a mouse convenience', async () => {
+    const user = userEvent.setup();
+    const onMemberClick = vi.fn();
+    const members = [
+      createMember({
+        user_id: 'user-2',
+        first_name: 'Jane',
+        last_name: 'Smith',
+        email: 'jane.smith@example.com',
+        role: 'expert',
+      }),
+    ];
+
+    render(<TeamTable {...baseProps} members={members} pendingInvitations={[]} onMemberClick={onMemberClick} />);
+
+    await user.click(screen.getByText('jane.smith@example.com'));
+
+    expect(onMemberClick).toHaveBeenCalledTimes(1);
+    expect(onMemberClick).toHaveBeenCalledWith(members[0]);
+  });
+
+  it('reaches the member control with Tab and opens it with Enter', async () => {
     const user = userEvent.setup();
     const onMemberClick = vi.fn();
     const members = [
@@ -118,14 +192,16 @@ describe('TeamTable - Member Row Interaction', () => {
 
     render(<TeamTable {...baseProps} members={members} pendingInvitations={[]} onMemberClick={onMemberClick} />);
 
-    const row = screen.getByRole('button', { name: /view profile of jane smith/i });
-    row.focus();
+    await user.tab();
+    expect(screen.getByRole('button', { name: /view profile of jane smith/i })).toHaveFocus();
+
     await user.keyboard('{Enter}');
 
+    expect(onMemberClick).toHaveBeenCalledTimes(1);
     expect(onMemberClick).toHaveBeenCalledWith(members[0]);
   });
 
-  it('calls onMemberClick when Space is pressed on a member row', async () => {
+  it('opens the member control with Space', async () => {
     const user = userEvent.setup();
     const onMemberClick = vi.fn();
     const members = [
@@ -134,27 +210,27 @@ describe('TeamTable - Member Row Interaction', () => {
 
     render(<TeamTable {...baseProps} members={members} pendingInvitations={[]} onMemberClick={onMemberClick} />);
 
-    const row = screen.getByRole('button', { name: /view profile of jane smith/i });
-    row.focus();
+    await user.tab();
     await user.keyboard(' ');
 
+    expect(onMemberClick).toHaveBeenCalledTimes(1);
     expect(onMemberClick).toHaveBeenCalledWith(members[0]);
   });
 
-  it('does not call onMemberClick on an unrelated key press', async () => {
+  it('puts the member control first in the tab order, before the row actions', async () => {
     const user = userEvent.setup();
-    const onMemberClick = vi.fn();
     const members = [
       createMember({ user_id: 'user-2', first_name: 'Jane', last_name: 'Smith', role: 'expert' }),
     ];
 
-    render(<TeamTable {...baseProps} members={members} pendingInvitations={[]} onMemberClick={onMemberClick} />);
+    render(<TeamTable {...baseProps} members={members} pendingInvitations={[]} />);
 
-    const row = screen.getByRole('button', { name: /view profile of jane smith/i });
-    row.focus();
-    await user.keyboard('{Tab}');
-
-    expect(onMemberClick).not.toHaveBeenCalled();
+    await user.tab();
+    expect(screen.getByRole('button', { name: /view profile of jane smith/i })).toHaveFocus();
+    await user.tab();
+    expect(screen.getByRole('button', { name: /make jane smith the owner/i })).toHaveFocus();
+    await user.tab();
+    expect(screen.getByRole('button', { name: /remove jane smith from team/i })).toHaveFocus();
   });
 
   it('does not call onMemberClick when the remove button is clicked, and calls onRemove instead', async () => {

@@ -63,15 +63,15 @@ export const ResultsSection = ({
   const agreementLevel = result.agreement_level;
   const agreementClasses = {
     high: {
-      badge: "bg-success text-success-foreground hover:bg-success/90",
+      badge: "bg-success text-success-foreground hover:bg-success",
       progress: "[&>div]:bg-success",
     },
     moderate: {
-      badge: "bg-warning text-warning-foreground hover:bg-warning/90",
+      badge: "bg-warning text-warning-foreground hover:bg-warning",
       progress: "[&>div]:bg-warning",
     },
     low: {
-      badge: "bg-error text-error-foreground hover:bg-error/90",
+      badge: "bg-error text-error-foreground hover:bg-error",
       progress: "[&>div]:bg-error",
     },
   }[agreementLevel];
@@ -183,14 +183,9 @@ export const ResultsSection = ({
               {t("detail.confidence")}{" "}
               <span className="text-xs text-muted-foreground font-normal">(Δmax)</span>
             </span>
-            <div className="flex items-center gap-2">
-              <Badge className={cn("text-xs", agreementClasses.badge)}>
-                {t(`detail.agreement.${agreementLevel}`)}
-              </Badge>
-              <span className="font-mono font-medium">
-                {result.max_error.toFixed(2)}
-              </span>
-            </div>
+            <span className="font-mono font-medium">
+              {result.max_error.toFixed(2)}
+            </span>
           </div>
           <p className="text-xs text-muted-foreground mb-2">{t("detail.confidenceHint")}</p>
           <Progress value={Math.min(errorPercent, 100)} className={cn("h-2", agreementClasses.progress)} />

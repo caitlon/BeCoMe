@@ -3,7 +3,7 @@
     "name": "BeCoMe"
   },
   "cancel": "Cancel",
-  "switchToLanguage": "Switch to {{language}}",
+  "switchToLanguage": "{{code}}, switch to {{language}}",
   "deleteModal": {
     "permanentlyDelete": "This will permanently delete:",
     "cannotUndo": "This action cannot be undone.",
@@ -14,7 +14,8 @@
     "about": "About",
     "signIn": "Sign In",
     "signOut": "Sign Out",
-    "getStarted": "Get Started",
+    "getStarted": "Create Account",
+    "goToProjects": "Go to Projects",
     "projects": "Projects",
     "profile": "Profile",
     "docs": "Docs",
@@ -36,7 +37,6 @@
     "documentation": "Documentation",
     "faq": "FAQ",
     "caseStudies": "Case Studies",
-    "implementation": "Implementation & Web Development",
     "implementationLine": "BeCoMe method implementation",
     "implementationUniversity": "Czech University of Life Sciences Prague",
     "feedback": "Feedback & Contact",
@@ -49,22 +49,8 @@
     "pelikan": "doc. Ing. Martin Pelikán, Ph.D.",
     "privacy": "Privacy"
   },
-  "docs": {
-    "title": "Documentation",
-    "github": "GitHub"
-  },
   "common": {
-    "loading": "Loading...",
-    "error": "Error",
-    "success": "Success",
-    "cancel": "Cancel",
-    "save": "Save",
-    "delete": "Delete",
-    "create": "Create",
-    "back": "Back",
-    "next": "Next",
-    "submit": "Submit",
-    "close": "Close"
+    "loading": "Loading..."
   },
   "password": {
     "show": "Show password",
@@ -86,8 +72,6 @@
     "lowerDesc": "Lower (pessimistic)",
     "peakDesc": "Peak (most likely)",
     "upperDesc": "Upper (optimistic)",
-    "arithmeticMean": "Arithmetic Mean (Γ)",
-    "maxError": "Max Error (Δmax)",
     "membershipFunction": "μ(x)",
     "mean": "Mean",
     "median": "Median",
@@ -113,11 +97,15 @@
     "centroidChartDesc": "Bar chart showing expert opinion centroids sorted by value with reference lines for mean, median, and best compromise",
     "landscapeChartDesc": "Number line showing individual expert opinion centroids with mean, median, and best compromise markers",
     "opinionValues": "Opinion values: Lower {{lower}}, Peak {{peak}}, Upper {{upper}}, Centroid {{centroid}}",
-    "opensInNewTab": "opens in new tab"
+    "opensInNewTab": "opens in new tab",
+    "skipToContent": "Skip to main content",
+    "close": "Close",
+    "notifications": "Notifications ({hotkey})",
+    "requirementMet": "met",
+    "requirementNotMet": "not met"
   },
   "centroidChart": {
     "centroidValue": "Centroid",
-    "yAxisLabel": "Centroid value",
     "meanLine": "Mean (Γ)",
     "medianLine": "Median (Ω)",
     "compromiseLine": "Best Compromise (ΓΩMean)",
@@ -140,6 +128,7 @@
     "profile": "Profile",
     "onboarding": "Getting Started",
     "caseStudy": "Case Study",
+    "caseStudyDetail": "Case Study: {{name}}",
     "documentation": "Documentation",
     "faq": "FAQ",
     "caseStudies": "Case Studies",

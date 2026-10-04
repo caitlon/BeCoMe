@@ -1,11 +1,10 @@
 # UML diagrams
 
-Five diagrams visualize the BeCoMe implementation from different angles.
+Four diagrams visualize the BeCoMe implementation from different angles.
 
 ## Contents
 
 - [Class diagram](#class-diagram)
-- [Class diagram: patterns](#class-diagram-patterns)
 - [Sequence diagram](#sequence-diagram)
 - [Activity diagram](#activity-diagram)
 - [Activity diagram: simplified](#activity-diagram-simplified)
@@ -21,14 +20,6 @@ Static structure of the codebase. `FuzzyTriangleNumber` holds three floats (lowe
 `BeCoMeCalculator` does the actual work: arithmetic mean, median, and the combined compromise. Results go into `BeCoMeResult`, a Pydantic model with the final fuzzy number plus intermediate values and error metric.
 
 Composition arrows show containment (ExpertOpinion contains FuzzyTriangleNumber). Dashed arrows show dependencies (calculator uses opinions, creates results).
-
-## Class diagram: patterns
-
-![Class Diagram: Patterns](diagrams/png/class-diagram-patterns.png)
-
-The same classes seen through the two structures that shape them. `MedianCalculationStrategy` has one concrete subclass per parity: `OddMedianStrategy` takes the middle opinion, `EvenMedianStrategy` averages the two around the middle, and `BeCoMeCalculator` picks between them at run time instead of branching inline.
-
-`BaseAggregationCalculator` is the abstract side. All four of its methods are abstract and it sequences none of them, so what it fixes is the interface any second aggregation method would have to meet, not a shared implementation.
 
 ## Sequence diagram
 

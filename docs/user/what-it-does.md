@@ -30,8 +30,9 @@ opinions sit in aggregate. The **median** shows where the middle of the panel si
 moves when one person takes an extreme position. BeCoMe takes the midpoint of the two, and reports
 the distance between them as a separate number.
 
-That second number is the part most methods leave out. It says how far apart the panel was, so a
-compromise from a divided room cannot be quoted as if it came from a unanimous one.
+That second number is the part most methods leave out. It says how far apart the average and the
+median landed. A divided panel can still produce a small one, so read it together with the chart of
+the individual opinions, as [reading the result](reading-the-result.md) explains.
 
 ## When it fits
 
@@ -41,8 +42,8 @@ adopt. Any question where "about forty, but it depends" is a more honest answer 
 
 It fits badly when there is a right answer someone could look up, when one person's judgment
 should win outright, or when the question is a choice between options rather than a quantity. For
-agreement questions it has a mode of its own, described in
-[running a decision](running-a-decision.md).
+agreement questions the method has a mode of its own, which the application does not offer yet:
+[running a decision](running-a-decision.md) says what works today.
 
 ## Where it comes from
 

@@ -23,7 +23,7 @@ export function LanguageSwitcher() {
       size="sm"
       onClick={toggleLanguage}
       className="h-10 px-3 hover:bg-muted transition-colors duration-300"
-      aria-label={t("switchToLanguage", { language: nextLang.name })}
+      aria-label={t("switchToLanguage", { code: currentLang.toUpperCase(), language: nextLang.name })}
     >
       <span className="text-sm font-medium">
         {currentLang.toUpperCase()}

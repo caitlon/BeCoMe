@@ -4,12 +4,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from src.calculators.base_calculator import BaseAggregationCalculator
-from src.calculators.median_strategies import (
-    EvenMedianStrategy,
-    MedianCalculationStrategy,
-    OddMedianStrategy,
-)
 from src.exceptions import EmptyOpinionsError
 from src.models.become_result import BeCoMeResult
 from src.models.fuzzy_number import FuzzyTriangleNumber
@@ -18,7 +12,7 @@ if TYPE_CHECKING:
     from src.models.expert_opinion import ExpertOpinion
 
 
-class BeCoMeCalculator(BaseAggregationCalculator):
+class BeCoMeCalculator:
     """
     Calculator for the BeCoMe (Best Compromise Mean) method.
 
@@ -81,11 +75,13 @@ class BeCoMeCalculator(BaseAggregationCalculator):
         sorted_opinions: list[ExpertOpinion] = self.sort_by_centroid(opinions)
         m: int = len(sorted_opinions)
 
-        strategy: MedianCalculationStrategy = (
-            OddMedianStrategy() if m % 2 == 1 else EvenMedianStrategy()
-        )
+        if m % 2 == 1:
+            return sorted_opinions[m // 2].opinion
 
-        return strategy.calculate(sorted_opinions)
+        upper_middle = m // 2
+        return FuzzyTriangleNumber.average(
+            [sorted_opinions[upper_middle - 1].opinion, sorted_opinions[upper_middle].opinion]
+        )
 
     def calculate_compromise(self, opinions: list[ExpertOpinion]) -> BeCoMeResult:
         """

@@ -229,8 +229,8 @@
     --success-foreground: 0 0% 100%;
     --error: 0 65% 47%;
     --error-foreground: 0 0% 100%;
-    /* 40% lightness keeps white-on-warning text at >= 4.5:1 */
-    --warning: 27 95% 40%;
+    /* 37% lightness gives white text 4.83:1, above the 4.5:1 that small text needs */
+    --warning: 27 95% 37%;
     --warning-foreground: 0 0% 100%;
 
     /* Chart series (mean/median in visualizations) */

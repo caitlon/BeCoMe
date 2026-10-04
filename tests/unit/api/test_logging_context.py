@@ -1,5 +1,6 @@
 """Tests for the request-scoped logging context and ContextFilter."""
 
+import contextvars
 import logging
 
 from api.logging_context import (
@@ -7,7 +8,6 @@ from api.logging_context import (
     get_request_id,
     get_user_id,
     reset_request_id,
-    reset_user_id,
     set_request_id,
     set_user_id,
 )
@@ -27,7 +27,7 @@ def _record() -> logging.LogRecord:
 
 
 class TestContextVars:
-    """Set/get/reset round-trips for the context variables."""
+    """Round-trips for the context variables."""
 
     def test_request_id_round_trip(self):
         """
@@ -46,21 +46,24 @@ class TestContextVars:
         reset_request_id(token)
         assert get_request_id() is None
 
-    def test_user_id_round_trip(self):
+    def test_user_id_stays_in_the_context_that_set_it(self):
         """
         GIVEN no bound user ID
-        WHEN one is set and then reset
-        THEN get reflects the value and returns to None afterwards
+        WHEN one is set inside a copied context, as each request runs in its own
+        THEN get reflects the value there and the outer context stays unset
         """
         # GIVEN
         assert get_user_id() is None
 
+        def bind_and_read() -> str | None:
+            set_user_id("user-1")
+            return get_user_id()
+
         # WHEN
-        token = set_user_id("user-1")
+        seen = contextvars.copy_context().run(bind_and_read)
 
         # THEN
-        assert get_user_id() == "user-1"
-        reset_user_id(token)
+        assert seen == "user-1"
         assert get_user_id() is None
 
 
@@ -69,21 +72,20 @@ class TestContextFilter:
 
     def test_adds_bound_context_to_record(self):
         """
-        GIVEN bound request and user IDs
-        WHEN the filter processes a record
+        GIVEN request and user IDs bound in a copied context
+        WHEN the filter processes a record there
         THEN the record gains both attributes and is kept
         """
         # GIVEN
-        rid = set_request_id("req-9")
-        uid = set_user_id("user-9")
         record = _record()
 
+        def filter_with_bound_context() -> bool:
+            set_request_id("req-9")
+            set_user_id("user-9")
+            return ContextFilter().filter(record)
+
         # WHEN
-        try:
-            kept = ContextFilter().filter(record)
-        finally:
-            reset_request_id(rid)
-            reset_user_id(uid)
+        kept = contextvars.copy_context().run(filter_with_bound_context)
 
         # THEN
         assert kept is True

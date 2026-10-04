@@ -74,7 +74,7 @@ describe('Navbar - Accessibility', () => {
   });
 
   it('mobile menu button has aria-expanded="false" initially', () => {
-    // Render at a small viewport (mobile menu button is md:hidden)
+    // Render at a small viewport (mobile menu button is xl:hidden)
     render(<Navbar />);
 
     const menuButton = screen.getByRole('button', { name: /open menu|otevřít menu/i });

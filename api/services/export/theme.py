@@ -73,7 +73,7 @@ _LIGHT = ExportPalette(
     chart_mean=colors.HexColor("#3c83f6"),
     chart_median=colors.HexColor("#21c45d"),
     agreement_high=colors.HexColor("#357937"),
-    agreement_moderate=colors.HexColor("#c75c05"),
+    agreement_moderate=colors.HexColor("#b85505"),
     agreement_low=colors.HexColor("#c62a2a"),
 )
 

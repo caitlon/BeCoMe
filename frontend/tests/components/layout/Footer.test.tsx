@@ -1,7 +1,9 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { screen } from '@testing-library/react';
-import { render } from '@tests/utils';
+import { render, unauthenticatedAuthMock } from '@tests/utils';
 import { Footer } from '@/components/layout/Footer';
+
+vi.mock('@/contexts/AuthContext', () => unauthenticatedAuthMock);
 
 describe('Footer', () => {
   it('renders brand link to /', () => {
@@ -14,7 +16,7 @@ describe('Footer', () => {
   it('renders product links', () => {
     render(<Footer />);
 
-    expect(screen.getByRole('link', { name: /get started/i })).toHaveAttribute('href', '/register');
+    expect(screen.getByRole('link', { name: /create account/i })).toHaveAttribute('href', '/register');
     expect(screen.getByRole('link', { name: /sign in/i })).toHaveAttribute('href', '/login');
     expect(screen.getByRole('link', { name: /about/i })).toHaveAttribute('href', '/about');
   });

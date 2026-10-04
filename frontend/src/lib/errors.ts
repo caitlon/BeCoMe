@@ -90,14 +90,6 @@ export class ServerError extends HttpError {
   }
 }
 
-export type ApiRequestError =
-  | NetworkError
-  | UnauthorizedError
-  | ForbiddenError
-  | RateLimitError
-  | ServerError
-  | HttpError;
-
 export const isNetworkError = (error: unknown): error is NetworkError =>
   error instanceof NetworkError;
 

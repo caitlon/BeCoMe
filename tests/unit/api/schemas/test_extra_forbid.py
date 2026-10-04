@@ -3,6 +3,7 @@
 import pytest
 from pydantic import BaseModel, ValidationError
 
+from api.schemas.assistant import AssistantChatRequest
 from api.schemas.auth import (
     ChangePasswordRequest,
     ForgotPasswordRequest,
@@ -30,6 +31,7 @@ REQUEST_MODELS: list[type[BaseModel]] = [
     InviteByEmailRequest,
     ExpertInput,
     CalculateRequest,
+    AssistantChatRequest,
 ]
 
 

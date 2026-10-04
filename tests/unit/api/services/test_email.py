@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
+from api.auth.logging import hash_email
 from api.services.email.console_email_sender import ConsoleEmailSender, _mask_token
 from api.services.email.exceptions import EmailSendError
 from api.services.email.resend_email_sender import ResendEmailSender
@@ -38,7 +39,9 @@ class TestConsoleEmailSender:
         sender = ConsoleEmailSender(_settings())
         with patch("api.services.email.console_email_sender.logger") as mock_logger:
             asyncio.run(
-                sender.send_password_reset(to_email="user@example.com", reset_url=self._RESET_URL)
+                sender.send_password_reset(
+                    to_email="user@example.com", reset_url=self._RESET_URL, language="en"
+                )
             )
         return mock_logger
 
@@ -83,11 +86,36 @@ class TestConsoleEmailSender:
 
         # WHEN
         asyncio.run(
-            sender.send_password_reset(to_email="user@example.com", reset_url=self._RESET_URL)
+            sender.send_password_reset(
+                to_email="user@example.com", reset_url=self._RESET_URL, language="en"
+            )
         )
 
         # THEN
         assert self._RESET_URL in capsys.readouterr().out
+
+    @pytest.mark.parametrize("language", ["en", "cs"])
+    def test_stdout_marker_is_the_same_in_every_language(self, capsys, language):
+        """
+        GIVEN a console email sender
+        WHEN a password reset email is sent in either language
+        THEN stdout carries the one marker line the end-to-end tests parse, unchanged
+        """
+        # GIVEN
+        sender = ConsoleEmailSender(_settings())
+
+        # WHEN
+        asyncio.run(
+            sender.send_password_reset(
+                to_email="user@example.com", reset_url=self._RESET_URL, language=language
+            )
+        )
+
+        # THEN
+        assert capsys.readouterr().out == (
+            f"[console email] password reset link for {hash_email('user@example.com')}: "
+            f"{self._RESET_URL}\n"
+        )
 
     def _send_verification(self):
         """Send a verification email through the console sender with the logger patched."""
@@ -95,7 +123,7 @@ class TestConsoleEmailSender:
         with patch("api.services.email.console_email_sender.logger") as mock_logger:
             asyncio.run(
                 sender.send_email_verification(
-                    to_email="user@example.com", verify_url=self._VERIFY_URL
+                    to_email="user@example.com", verify_url=self._VERIFY_URL, language="en"
                 )
             )
         return mock_logger
@@ -109,6 +137,7 @@ class TestConsoleEmailSender:
                     to_email="user@example.com",
                     login_url=self._LOGIN_URL,
                     reset_url=self._RESET_URL,
+                    language="en",
                 )
             )
         return mock_logger
@@ -151,11 +180,36 @@ class TestConsoleEmailSender:
 
         # WHEN
         asyncio.run(
-            sender.send_email_verification(to_email="user@example.com", verify_url=self._VERIFY_URL)
+            sender.send_email_verification(
+                to_email="user@example.com", verify_url=self._VERIFY_URL, language="en"
+            )
         )
 
         # THEN
         assert self._VERIFY_URL in capsys.readouterr().out
+
+    @pytest.mark.parametrize("language", ["en", "cs"])
+    def test_verification_stdout_marker_is_the_same_in_every_language(self, capsys, language):
+        """
+        GIVEN a console email sender
+        WHEN an email verification message is sent in either language
+        THEN stdout carries the one marker line the end-to-end tests parse, unchanged
+        """
+        # GIVEN
+        sender = ConsoleEmailSender(_settings())
+
+        # WHEN
+        asyncio.run(
+            sender.send_email_verification(
+                to_email="user@example.com", verify_url=self._VERIFY_URL, language=language
+            )
+        )
+
+        # THEN
+        assert capsys.readouterr().out == (
+            f"[console email] verification link for {hash_email('user@example.com')}: "
+            f"{self._VERIFY_URL}\n"
+        )
 
     def test_registration_attempt_notice_log_masks_the_raw_token(self):
         """
@@ -199,6 +253,7 @@ class TestConsoleEmailSender:
                 to_email="user@example.com",
                 login_url=self._LOGIN_URL,
                 reset_url=self._RESET_URL,
+                language="en",
             )
         )
 
@@ -206,6 +261,34 @@ class TestConsoleEmailSender:
         out = capsys.readouterr().out
         assert self._LOGIN_URL in out
         assert self._RESET_URL in out
+
+    @pytest.mark.parametrize("language", ["en", "cs"])
+    def test_registration_attempt_notice_stdout_marker_is_the_same_in_every_language(
+        self, capsys, language
+    ):
+        """
+        GIVEN a console email sender
+        WHEN a registration-attempt notice is sent in either language
+        THEN stdout carries the one marker line, unchanged
+        """
+        # GIVEN
+        sender = ConsoleEmailSender(_settings())
+
+        # WHEN
+        asyncio.run(
+            sender.send_registration_attempt_notice(
+                to_email="user@example.com",
+                login_url=self._LOGIN_URL,
+                reset_url=self._RESET_URL,
+                language=language,
+            )
+        )
+
+        # THEN
+        assert capsys.readouterr().out == (
+            f"[console email] registration attempt notice for {hash_email('user@example.com')}: "
+            f"login={self._LOGIN_URL} reset={self._RESET_URL}\n"
+        )
 
     def test_registration_attempt_notice_static_reset_link_is_not_masked(self, capsys):
         """
@@ -227,6 +310,7 @@ class TestConsoleEmailSender:
                     to_email="user@example.com",
                     login_url=self._LOGIN_URL,
                     reset_url=static_reset_url,
+                    language="en",
                 )
             )
 
@@ -277,6 +361,7 @@ class TestResendEmailSender:
             sender.send_password_reset(
                 to_email="user@example.com",
                 reset_url="https://app.example/reset-password?token=abc",
+                language="en",
             )
         )
 
@@ -306,6 +391,7 @@ class TestResendEmailSender:
             sender.send_password_reset(
                 to_email="user@example.com",
                 reset_url="https://app.example/reset",
+                language="en",
             )
         )
 
@@ -313,6 +399,101 @@ class TestResendEmailSender:
         html = client.post.call_args.kwargs["json"]["html"]
         assert "30 minutes" in html
         assert "one hour" not in html
+
+    @pytest.mark.parametrize(
+        ("minutes", "phrase"),
+        [(60, "1 hour"), (120, "2 hours"), (1, "1 minute"), (30, "30 minutes"), (90, "90 minutes")],
+    )
+    def test_reset_email_states_its_lifetime_in_english(self, minutes, phrase):
+        """
+        GIVEN a Resend sender with a given reset-token TTL
+        WHEN a password reset email is sent
+        THEN the expiry sentence gives the lifetime in English, singular for one and plural otherwise
+        """
+        # GIVEN
+        response = MagicMock()
+        response.raise_for_status = MagicMock()
+        client = MagicMock()
+        client.post = AsyncMock(return_value=response)
+        sender = ResendEmailSender(
+            _settings(password_reset_token_ttl_minutes=minutes), client=client
+        )
+
+        # WHEN
+        asyncio.run(
+            sender.send_password_reset(
+                to_email="user@example.com",
+                reset_url="https://app.example/reset",
+                language="en",
+            )
+        )
+
+        # THEN
+        html = client.post.call_args.kwargs["json"]["html"]
+        assert f"The link expires in {phrase}." in html
+
+    def test_reset_payload_carries_subject_html_and_a_plain_text_part(self):
+        """
+        GIVEN a Resend sender with an injected client
+        WHEN a password reset email is sent in English
+        THEN the payload has the English subject, a full html document and a tag-free text
+            part with the link alone on a line and the expiry
+        """
+        # GIVEN
+        response = MagicMock()
+        response.raise_for_status = MagicMock()
+        client = MagicMock()
+        client.post = AsyncMock(return_value=response)
+        sender = ResendEmailSender(_settings(password_reset_token_ttl_minutes=60), client=client)
+
+        # WHEN
+        asyncio.run(
+            sender.send_password_reset(
+                to_email="user@example.com",
+                reset_url="https://app.example/reset-password?token=abc",
+                language="en",
+            )
+        )
+
+        # THEN
+        payload = client.post.call_args.kwargs["json"]
+        assert payload["subject"] == "Reset your BeCoMe password"
+        assert payload["html"].lstrip().startswith("<!DOCTYPE html>")
+        assert "Reset password:\nhttps://app.example/reset-password?token=abc" in payload["text"]
+        assert "https://app.example/reset-password?token=abc" in payload["text"].splitlines()
+        assert "The link expires in 1 hour." in payload["text"]
+        assert "<" not in payload["text"]
+
+    def test_reset_payload_is_czech_when_the_language_is_czech(self):
+        """
+        GIVEN a Resend sender with an injected client
+        WHEN a password reset email is sent in Czech
+        THEN the subject, html and text are all Czech and the lifetime is declined
+        """
+        # GIVEN
+        response = MagicMock()
+        response.raise_for_status = MagicMock()
+        client = MagicMock()
+        client.post = AsyncMock(return_value=response)
+        sender = ResendEmailSender(_settings(password_reset_token_ttl_minutes=120), client=client)
+
+        # WHEN
+        asyncio.run(
+            sender.send_password_reset(
+                to_email="user@example.com",
+                reset_url="https://app.example/reset-password?token=abc",
+                language="cs",
+            )
+        )
+
+        # THEN
+        payload = client.post.call_args.kwargs["json"]
+        assert payload["subject"] == "BeCoMe: obnovení hesla"
+        assert '<html lang="cs"' in payload["html"]
+        assert "Odkaz platí 2 hodiny." in payload["html"]
+        assert "Obnovit heslo:\nhttps://app.example/reset-password?token=abc" in payload["text"]
+        assert "Odkaz platí 2 hodiny." in payload["text"]
+        assert "Reset" not in payload["subject"] + payload["html"] + payload["text"]
 
     def test_raises_send_error_on_http_status_error(self):
         """
@@ -335,6 +516,7 @@ class TestResendEmailSender:
                 sender.send_password_reset(
                     to_email="user@example.com",
                     reset_url="https://app.example/reset",
+                    language="en",
                 )
             )
 
@@ -355,6 +537,7 @@ class TestResendEmailSender:
                 sender.send_password_reset(
                     to_email="user@example.com",
                     reset_url="https://app.example/reset",
+                    language="en",
                 )
             )
 
@@ -383,6 +566,7 @@ class TestResendEmailSender:
                 sender.send_password_reset(
                     to_email="user@example.com",
                     reset_url="https://app.example/reset",
+                    language="en",
                 )
             )
 
@@ -407,6 +591,7 @@ class TestResendEmailSender:
             sender.send_email_verification(
                 to_email="user@example.com",
                 verify_url="https://app.example/verify-email?token=abc",
+                language="en",
             )
         )
 
@@ -437,6 +622,7 @@ class TestResendEmailSender:
             sender.send_email_verification(
                 to_email="user@example.com",
                 verify_url="https://app.example/verify-email?token=abc",
+                language="en",
             )
         )
 
@@ -444,6 +630,66 @@ class TestResendEmailSender:
         html = client.post.call_args.kwargs["json"]["html"]
         assert "1 hour" in html
         assert "24 hours" not in html
+
+    def test_verification_payload_carries_a_plain_text_part(self):
+        """
+        GIVEN a Resend sender with an injected client
+        WHEN an email verification message is sent
+        THEN the payload has a tag-free text part with the link alone on a line and the expiry
+        """
+        # GIVEN
+        response = MagicMock()
+        response.raise_for_status = MagicMock()
+        client = MagicMock()
+        client.post = AsyncMock(return_value=response)
+        sender = ResendEmailSender(_settings(email_verification_token_ttl_hours=1), client=client)
+
+        # WHEN
+        asyncio.run(
+            sender.send_email_verification(
+                to_email="user@example.com",
+                verify_url="https://app.example/verify-email?token=abc",
+                language="en",
+            )
+        )
+
+        # THEN
+        payload = client.post.call_args.kwargs["json"]
+        assert "https://app.example/verify-email?token=abc" in payload["text"].splitlines()
+        assert "The link expires in 1 hour." in payload["text"]
+        assert "<" not in payload["text"]
+        assert payload["html"].lstrip().startswith("<!DOCTYPE html>")
+
+    def test_verification_payload_is_czech_when_the_language_is_czech(self):
+        """
+        GIVEN a Resend sender with an injected client
+        WHEN an email verification message is sent in Czech
+        THEN the subject, html and text are all Czech and the lifetime is declined
+        """
+        # GIVEN
+        response = MagicMock()
+        response.raise_for_status = MagicMock()
+        client = MagicMock()
+        client.post = AsyncMock(return_value=response)
+        sender = ResendEmailSender(_settings(email_verification_token_ttl_hours=2), client=client)
+
+        # WHEN
+        asyncio.run(
+            sender.send_email_verification(
+                to_email="user@example.com",
+                verify_url="https://app.example/verify-email?token=abc",
+                language="cs",
+            )
+        )
+
+        # THEN
+        payload = client.post.call_args.kwargs["json"]
+        assert payload["subject"] == "BeCoMe: potvrďte svůj e-mail"
+        assert '<html lang="cs"' in payload["html"]
+        assert "Odkaz platí 2 hodiny." in payload["html"]
+        assert "Potvrdit e-mail:\nhttps://app.example/verify-email?token=abc" in payload["text"]
+        assert "Odkaz platí 2 hodiny." in payload["text"]
+        assert "Confirm" not in payload["subject"] + payload["html"] + payload["text"]
 
     def test_verification_raises_send_error_on_http_status_error(self):
         """
@@ -466,6 +712,7 @@ class TestResendEmailSender:
                 sender.send_email_verification(
                     to_email="user@example.com",
                     verify_url="https://app.example/verify-email?token=abc",
+                    language="en",
                 )
             )
 
@@ -488,6 +735,7 @@ class TestResendEmailSender:
                 to_email="user@example.com",
                 login_url="https://app.example/login",
                 reset_url="https://app.example/reset-password?token=abc",
+                language="en",
             )
         )
 
@@ -501,6 +749,64 @@ class TestResendEmailSender:
         html = call.kwargs["json"]["html"]
         assert "https://app.example/login" in html
         assert "https://app.example/reset-password?token=abc" in html
+
+    @pytest.mark.parametrize(
+        ("language", "subject", "sign_in", "reset", "marker"),
+        [
+            (
+                "en",
+                "You already have a BeCoMe account",
+                "Sign in:",
+                "Forgot your password? Reset it:",
+                "You already have an account",
+            ),
+            (
+                "cs",
+                "BeCoMe: účet s touto adresou už existuje",
+                "Přihlásit se:",
+                "Zapomněli jste heslo? Obnovte si ho:",
+                "Účet už máte",
+            ),
+        ],
+    )
+    def test_registration_attempt_notice_payload_carries_both_parts(
+        self, language, subject, sign_in, reset, marker
+    ):
+        """
+        GIVEN a Resend sender with an injected client
+        WHEN a registration-attempt notice is sent in a language
+        THEN the payload has that language's subject, a full html document and a tag-free
+            text part with each link alone on its line
+        """
+        # GIVEN
+        response = MagicMock()
+        response.raise_for_status = MagicMock()
+        client = MagicMock()
+        client.post = AsyncMock(return_value=response)
+        sender = ResendEmailSender(_settings(), client=client)
+        login_url = "https://app.example/login"
+        reset_url = "https://app.example/forgot-password"
+
+        # WHEN
+        asyncio.run(
+            sender.send_registration_attempt_notice(
+                to_email="user@example.com",
+                login_url=login_url,
+                reset_url=reset_url,
+                language=language,
+            )
+        )
+
+        # THEN
+        payload = client.post.call_args.kwargs["json"]
+        assert payload["subject"] == subject
+        assert payload["html"].lstrip().startswith("<!DOCTYPE html>")
+        assert f'<html lang="{language}"' in payload["html"]
+        assert marker in payload["html"]
+        assert f"{sign_in}\n{login_url}" in payload["text"]
+        assert f"{reset}\n{reset_url}" in payload["text"]
+        assert {login_url, reset_url} <= set(payload["text"].splitlines())
+        assert "<" not in payload["text"]
 
     def test_registration_attempt_notice_raises_send_error_on_transport_error(self):
         """
@@ -520,5 +826,6 @@ class TestResendEmailSender:
                     to_email="user@example.com",
                     login_url="https://app.example/login",
                     reset_url="https://app.example/reset-password?token=abc",
+                    language="en",
                 )
             )

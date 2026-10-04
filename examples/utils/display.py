@@ -10,7 +10,7 @@ from src.models.fuzzy_number import FuzzyTriangleNumber
 from .formatting import display_centroid, print_section
 
 if TYPE_CHECKING:
-    from src.calculators.base_calculator import BaseAggregationCalculator
+    from src.calculators.become_calculator import BeCoMeCalculator
     from src.models.expert_opinion import ExpertOpinion
 
     from .labels import DisplayLabels
@@ -24,7 +24,7 @@ def _default_display_labels() -> DisplayLabels:
 
 def display_step_1_arithmetic_mean(
     opinions: list[ExpertOpinion],
-    calculator: BaseAggregationCalculator,
+    calculator: BeCoMeCalculator,
     labels: DisplayLabels | None = None,
 ) -> tuple[FuzzyTriangleNumber, float]:
     """
@@ -124,7 +124,7 @@ def display_median_calculation_details(
 
 def display_step_2_median(
     opinions: list[ExpertOpinion],
-    calculator: BaseAggregationCalculator,
+    calculator: BeCoMeCalculator,
     is_likert: bool = False,
     labels: DisplayLabels | None = None,
 ) -> tuple[FuzzyTriangleNumber, float]:

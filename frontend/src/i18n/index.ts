@@ -115,16 +115,29 @@ export function toSupportedLanguage(language: string): SupportedLanguage {
   return language.startsWith("cs") ? "cs" : "en";
 }
 
-// Update HTML lang attribute for screen readers
+/**
+ * Keep the parts of the page that live outside React in the interface language.
+ *
+ * Sets the HTML lang attribute for screen readers and the text of the skip link,
+ * which sits in index.html so that it exists before React mounts.
+ */
+function applyDocumentLanguage(lng: string) {
+  document.documentElement.lang = lng;
+  const skipLink = document.querySelector(".skip-to-content");
+  if (skipLink) {
+    skipLink.textContent = i18n.t("a11y.skipToContent");
+  }
+}
+
 i18n.on("languageChanged", (lng) => {
   /* v8 ignore next */
   if (typeof document !== "undefined") {
-    document.documentElement.lang = lng;
+    applyDocumentLanguage(lng);
   }
 });
 /* v8 ignore next */
 if (typeof document !== "undefined") {
-  document.documentElement.lang = i18n.language;
+  applyDocumentLanguage(i18n.language);
 }
 
 export default i18n;

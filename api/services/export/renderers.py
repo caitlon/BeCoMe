@@ -1,8 +1,7 @@
 """Renderers that serialize result data into a downloadable CSV or PDF.
 
 The two renderers share a small ``ResultRenderer`` Strategy interface so the
-service can pick one by format and stay open for new formats (mirrors the
-median-strategy pattern in ``src/calculators``).
+service can pick one by format and stay open for new formats.
 """
 
 import csv
@@ -381,11 +380,8 @@ class PdfResultRenderer(ResultRenderer):
             AgreementLevel.MODERATE: self._palette.agreement_moderate,
             AgreementLevel.LOW: self._palette.agreement_low,
         }[data.agreement]
-        # The page labels its two badges differently by position: the card's reads
-        # "High Confidence", the one beside the Δmax bar reads "High agreement".
-        # The report carries one badge, in the card's position, so it takes the
-        # card's wording; the second badge would land two centimetres below the
-        # first and say the same thing twice.
+        # The report's badge uses the wording of the card badge on the page
+        # ("High Confidence").
         text = f"{labels.confidence_levels[data.agreement.value]} {labels.confidence}"
         style = ParagraphStyle(
             "badge",

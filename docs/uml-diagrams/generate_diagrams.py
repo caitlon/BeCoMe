@@ -48,7 +48,6 @@ def main() -> None:
     lang_roots = {"en": base_dir, "cs": base_dir / "cs"}
     diagrams = [
         "class-diagram",
-        "class-diagram-patterns",
         "sequence-diagram",
         "activity-diagram",
         "activity-diagram-simplified",

@@ -1,8 +1,9 @@
 import { forwardRef, useImperativeHandle } from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { act, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { render } from '@tests/utils';
+import i18n from '@/i18n';
 import Register from '@/pages/Register';
 
 // Registration no longer signs anyone in, so the page calls api.register
@@ -11,10 +12,10 @@ const mockApiRegister = vi.fn();
 const mockResendVerification = vi.fn();
 vi.mock('@/lib/api', () => ({
   api: {
-    register: (data: unknown, turnstileToken?: string | null) =>
-      mockApiRegister(data, turnstileToken),
-    resendVerification: (email: string, password: string) =>
-      mockResendVerification(email, password),
+    register: (data: unknown, language: string, turnstileToken?: string | null) =>
+      mockApiRegister(data, language, turnstileToken),
+    resendVerification: (email: string, password: string, language: string) =>
+      mockResendVerification(email, password, language),
   },
 }));
 
@@ -148,6 +149,28 @@ describe('Register', () => {
     });
   });
 
+  it('ties the password requirements to the password field and says which are met', async () => {
+    const user = userEvent.setup();
+    render(<Register />);
+
+    const input = getPasswordInput();
+    expect(input).toHaveAttribute('aria-required', 'true');
+    expect(getConfirmPasswordInput()).toHaveAttribute('aria-required', 'true');
+    expect(input).not.toHaveAttribute('aria-describedby');
+
+    await user.type(input, 'Password');
+
+    const checklistId = input.getAttribute('aria-describedby');
+    const checklist = document.getElementById(checklistId ?? '');
+    expect(checklist).toHaveTextContent('At least 12 characters not met');
+    expect(checklist).toHaveTextContent('An uppercase letter (A-Z) met');
+
+    await user.clear(input);
+    await user.type(input, 'TestPass123!@#');
+
+    expect(input).not.toHaveAttribute('aria-describedby');
+  });
+
   it('validates password meets 12+ characters requirement', async () => {
     const user = userEvent.setup();
     render(<Register />);
@@ -238,6 +261,38 @@ describe('Register', () => {
     });
   });
 
+  // zod's own length text is English whatever the interface language, so a rule
+  // without a message of its own shows it in the Czech interface too.
+  it.each([
+    ['en', 'first name', getFirstNameInput, 'First name must be at most 100 characters'],
+    ['cs', 'first name', getFirstNameInput, 'Jméno může mít maximálně 100 znaků'],
+    ['en', 'last name', getLastNameInput, 'Last name must be at most 100 characters'],
+    ['cs', 'last name', getLastNameInput, 'Příjmení může mít maximálně 100 znaků'],
+  ])(
+    'shows the translated message in %s for the %s over the length limit',
+    async (language, _field, getInput, expected) => {
+      const user = userEvent.setup();
+      render(<Register />);
+      const input = getInput();
+      await act(async () => {
+        await i18n.changeLanguage(language);
+      });
+
+      try {
+        await user.click(input);
+        await user.paste('a'.repeat(101));
+        await user.tab();
+
+        expect(await screen.findByText(expected)).toBeInTheDocument();
+        expect(screen.queryByText(/too big|expected string/i)).not.toBeInTheDocument();
+      } finally {
+        await act(async () => {
+          await i18n.changeLanguage('en');
+        });
+      }
+    }
+  );
+
   it('submit button is disabled until form is valid', () => {
     render(<Register />);
 
@@ -266,9 +321,10 @@ describe('Register', () => {
     await user.click(getSubmitButton());
 
     await waitFor(() => {
-      // Second argument is the Turnstile token; the check is off in this suite (no
-      // VITE_TURNSTILE_SITE_KEY), so the widget never mints one and register is
-      // called with null exactly as it was before the bot check existed.
+      // Second argument is the interface language, third the Turnstile token; the
+      // check is off in this suite (no VITE_TURNSTILE_SITE_KEY), so the widget never
+      // mints one and register is called with null exactly as it was before the bot
+      // check existed.
       expect(mockApiRegister).toHaveBeenCalledWith(
         {
           email: 'test@example.com',
@@ -276,6 +332,7 @@ describe('Register', () => {
           first_name: 'John',
           last_name: 'Doe',
         },
+        'en',
         null
       );
     });
@@ -329,9 +386,44 @@ describe('Register', () => {
     await waitFor(() => {
       expect(mockResendVerification).toHaveBeenCalledWith(
         'test@example.com',
-        'TestPass123!@#'
+        'TestPass123!@#',
+        'en'
       );
     });
+  });
+
+  // The confirmation email is written in the language the visitor is using, so the
+  // page hands the API its interface language. i18n.language can carry a region
+  // ("cs-CZ") or a language with no resources ("de-DE"); toSupportedLanguage clamps it.
+  it.each([
+    ['cs', 'cs'],
+    ['cs-CZ', 'cs'],
+    ['en', 'en'],
+    ['de-DE', 'en'],
+  ])('sends the language for interface language %s as %s', async (interfaceLanguage, expected) => {
+    // GIVEN
+    const user = userEvent.setup();
+    mockApiRegister.mockResolvedValueOnce(undefined);
+    render(<Register />);
+    await fillValidForm(user);
+    const submit = getSubmitButton();
+
+    // WHEN: the visitor switches language after typing, as the switcher allows
+    await act(async () => {
+      await i18n.changeLanguage(interfaceLanguage);
+    });
+    try {
+      await user.click(submit);
+
+      // THEN
+      await waitFor(() => {
+        expect(mockApiRegister).toHaveBeenCalledWith(expect.anything(), expected, null);
+      });
+    } finally {
+      await act(async () => {
+        await i18n.changeLanguage('en');
+      });
+    }
   });
 
   it('has link to login page', () => {
@@ -392,6 +484,7 @@ describe('Register', () => {
       await waitFor(() => {
         expect(mockApiRegister).toHaveBeenCalledWith(
           expect.objectContaining({ email: 'test@example.com' }),
+          'en',
           'mock-turnstile-token'
         );
       });

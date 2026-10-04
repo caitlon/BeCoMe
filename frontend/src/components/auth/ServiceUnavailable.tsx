@@ -17,6 +17,7 @@ export function ServiceUnavailable({ onRetry }: ServiceUnavailableProps) {
   return (
     <main
       id="main-content"
+      tabIndex={-1}
       role="alert"
       className="min-h-screen flex flex-col items-center justify-center gap-4 p-6 text-center"
     >

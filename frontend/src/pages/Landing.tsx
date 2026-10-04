@@ -64,7 +64,7 @@ const Landing = () => {
             </motion.h1>
 
             <motion.p
-              className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto mb-10"
+              className="text-lg md:text-xl text-muted-foreground text-balance max-w-2xl mx-auto mb-10"
               variants={fadeInUp}
             >
               {t("hero.subtitle")}
@@ -223,7 +223,7 @@ const Landing = () => {
             <p className="text-primary-foreground/80 mb-8">{t("cta.subtitle")}</p>
             <Button variant="secondary" size="lg" className="group gap-2 shadow-md hover:shadow-xl hover:scale-[1.03] transition-all duration-300" asChild>
               <Link to={isAuthenticated ? "/projects" : "/register"}>
-                {t("cta.button")}
+                {isAuthenticated ? t("hero.goToProjects") : t("cta.button")}
                 <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-1" />
               </Link>
             </Button>

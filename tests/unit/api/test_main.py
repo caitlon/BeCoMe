@@ -1,12 +1,22 @@
 """Tests for application factory wiring in api.main."""
 
 import logging
-from unittest.mock import patch
+import os
+import subprocess
+import sys
+from pathlib import Path
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 from tests.shared.helpers import captured_log_records
 
 # Not a credential: the host is unroutable and the key is a literal placeholder.
 _FAKE_DSN = "https://placeholder@localhost/0"
+
+# Repository root, used to give a subprocess a PYTHONPATH so it can import api.main
+# regardless of its own cwd.
+_REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 def _prod_env(monkeypatch, tmp_path) -> None:
@@ -235,3 +245,367 @@ class TestBotCheckStartupRecord:
 
         # THEN
         assert [record for record in records if record.levelno >= logging.ERROR] == []
+
+
+class TestAssistantRouterGating:
+    """The assistant router exists only when the local-only flag is on."""
+
+    def test_config_endpoint_is_absent_by_default(self, monkeypatch, tmp_path):
+        """
+        GIVEN the default settings (assistant disabled, no .env file in reach)
+        WHEN the app is built and its config endpoint is requested
+        THEN the whole assistant prefix is unrouted, so the response is 404
+        """
+        from fastapi.testclient import TestClient
+
+        from api.config import get_settings
+        from api.main import create_app
+
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("APP_ENV", "dev")
+        monkeypatch.setenv("SECRET_KEY", "a-sufficiently-strong-secret-value")
+        monkeypatch.delenv("ASSISTANT_ENABLED", raising=False)
+        monkeypatch.delenv("RAILWAY_ENVIRONMENT_NAME", raising=False)
+        get_settings.cache_clear()
+        try:
+            client = TestClient(create_app())
+
+            # WHEN
+            response = client.get("/api/v1/assistant/config")
+        finally:
+            get_settings.cache_clear()
+
+        # THEN
+        assert response.status_code == 404
+
+    def test_config_endpoint_serves_the_active_configuration_when_enabled(
+        self, monkeypatch, tmp_path
+    ):
+        """
+        GIVEN the dev profile with the assistant switched on
+        WHEN the app is built and its config endpoint is requested
+        THEN it answers 200 with the answer model, mode, and collection
+        """
+        from fastapi.testclient import TestClient
+
+        from api.config import get_settings
+        from api.main import create_app
+
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("APP_ENV", "dev")
+        monkeypatch.setenv("SECRET_KEY", "a-sufficiently-strong-secret-value")
+        monkeypatch.setenv("ASSISTANT_ENABLED", "true")
+        monkeypatch.delenv("RAILWAY_ENVIRONMENT_NAME", raising=False)
+        get_settings.cache_clear()
+        try:
+            client = TestClient(create_app())
+
+            # WHEN
+            response = client.get("/api/v1/assistant/config")
+        finally:
+            get_settings.cache_clear()
+
+        # THEN
+        assert response.status_code == 200
+        assert response.json() == {
+            "enabled": True,
+            "model": "Qwen/Qwen3.5-9B",
+            "mode": "workflow",
+            "collection": "docs_markdown_headers_500_o10_captions_bge_m3",
+        }
+
+    @pytest.mark.parametrize(
+        ("assistant_enabled", "expect_loaded"),
+        [
+            ("false", False),
+            ("true", True),
+        ],
+    )
+    def test_assistant_module_is_imported_only_when_the_switch_is_on(
+        self, tmp_path, assistant_enabled, expect_loaded
+    ):
+        """
+        GIVEN a fresh interpreter with ASSISTANT_ENABLED set to the given value
+        WHEN it imports api.main, which builds the app and its routers at import
+        THEN api.routes.assistant and the api.assistant package are in sys.modules only
+             when the switch was on, so no deploy-loaded module imports the package
+
+        Parametrized over both directions on purpose: a router registered
+        unconditionally would still pass the "loaded when on" case, so only the
+        "not loaded when off" case can catch that mistake.
+        """
+        # GIVEN
+        env = {
+            **os.environ,
+            "APP_ENV": "dev",
+            "SECRET_KEY": "a-sufficiently-strong-secret-value",  # pragma: allowlist secret
+            "ASSISTANT_ENABLED": assistant_enabled,
+            "PYTHONPATH": str(_REPO_ROOT),
+        }
+        env.pop("RAILWAY_ENVIRONMENT_NAME", None)
+        snippet = (
+            "import sys\n"
+            "import api.main\n"
+            "print('assistant_loaded=' + str('api.routes.assistant' in sys.modules))\n"
+            "print('package_loaded=' + str('api.assistant' in sys.modules))\n"
+        )
+
+        # WHEN
+        result = subprocess.run(  # noqa: S603 - fixed argv, no shell; sys.executable is trusted
+            [sys.executable, "-c", snippet],
+            cwd=tmp_path,
+            env=env,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+
+        # THEN
+        marker_lines = [
+            line for line in result.stdout.splitlines() if line.startswith("assistant_loaded=")
+        ]
+        assert marker_lines, f"no marker line in stdout: {result.stdout!r}"
+        assert marker_lines[-1] == f"assistant_loaded={expect_loaded}"
+        package_lines = [
+            line for line in result.stdout.splitlines() if line.startswith("package_loaded=")
+        ]
+        assert package_lines, f"no package marker line in stdout: {result.stdout!r}"
+        assert package_lines[-1] == f"package_loaded={expect_loaded}"
+
+
+class TestAssistantExceptionHandlerGating:
+    """The assistant's error handlers exist only when the local-only flag is on."""
+
+    @pytest.fixture(autouse=True)
+    def _clear_settings_cache_after(self):
+        """Drop any Settings cached during the test, so its switch settings cannot leak."""
+        from api.config import get_settings
+
+        yield
+        get_settings.cache_clear()
+
+    @staticmethod
+    def _build_app(monkeypatch, tmp_path, *, enabled: bool):
+        """Build the app with the assistant switch set as asked.
+
+        :return: The application built by create_app.
+        """
+        from api.config import get_settings
+        from api.main import create_app
+
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("APP_ENV", "dev")
+        monkeypatch.setenv("SECRET_KEY", "a-sufficiently-strong-secret-value")
+        monkeypatch.setenv("ASSISTANT_ENABLED", "true" if enabled else "false")
+        monkeypatch.delenv("RAILWAY_ENVIRONMENT_NAME", raising=False)
+        get_settings.cache_clear()
+        return create_app()
+
+    def test_handlers_are_absent_by_default(self, monkeypatch, tmp_path):
+        """
+        GIVEN the default settings (assistant disabled)
+        WHEN the app is built
+        THEN no handler is registered for any assistant error class
+        """
+        # GIVEN/WHEN
+        app = self._build_app(monkeypatch, tmp_path, enabled=False)
+
+        # THEN
+        registered = {exc.__name__ for exc in app.exception_handlers if isinstance(exc, type)}
+        assert not registered & {
+            "AssistantRateLimitedError",
+            "AssistantUnavailableError",
+            "AssistantUpstreamError",
+        }
+
+    @pytest.mark.parametrize(
+        ("error_name", "status_code", "detail"),
+        [
+            (
+                "AssistantRateLimitedError",
+                429,
+                "Too many assistant messages. Please try again later.",
+            ),
+            ("AssistantUnavailableError", 503, "The assistant is temporarily unavailable"),
+            ("AssistantUpstreamError", 503, "The assistant is temporarily unavailable"),
+        ],
+    )
+    def test_handlers_answer_when_enabled(
+        self, monkeypatch, tmp_path, error_name, status_code, detail
+    ):
+        """
+        GIVEN the assistant switched on
+        WHEN a route raises one of its chat errors
+        THEN the response carries the mapped status and the neutral public detail
+        """
+        from fastapi.testclient import TestClient
+
+        from api.assistant import errors
+
+        # GIVEN
+        app = self._build_app(monkeypatch, tmp_path, enabled=True)
+        error = getattr(errors, error_name)
+
+        def boom() -> None:
+            raise error("internal detail that must not leak")
+
+        app.add_api_route("/__raise", boom)
+        client = TestClient(app, raise_server_exceptions=False)
+
+        # WHEN
+        response = client.get("/__raise")
+
+        # THEN
+        assert response.status_code == status_code
+        assert "internal detail" not in response.text
+        assert response.json() == {"detail": detail}
+
+
+_ASSISTANT_LIBRARIES = (
+    "langchain",
+    "langchain_core",
+    "langchain_openai",
+    "langgraph",
+    "langsmith",
+    "openai",
+)
+
+
+class TestAssistantLibrariesStayOutOfDeployedProcesses:
+    """A process with the assistant off never loads the assistant's libraries."""
+
+    @staticmethod
+    def _modules_loaded_by_importing_api_main(tmp_path, assistant_enabled: str) -> list[str]:
+        """Import api.main in a fresh interpreter and list the assistant modules it loaded.
+
+        :param tmp_path: A working directory with no .env file in it.
+        :param assistant_enabled: The value of ASSISTANT_ENABLED for the interpreter.
+        :return: The names of the loaded modules that belong to the assistant package or to
+            one of its libraries.
+        """
+        env = {
+            **os.environ,
+            "APP_ENV": "dev",
+            "SECRET_KEY": "a-sufficiently-strong-secret-value",  # pragma: allowlist secret
+            "ASSISTANT_ENABLED": assistant_enabled,
+            "PYTHONPATH": str(_REPO_ROOT),
+        }
+        env.pop("RAILWAY_ENVIRONMENT_NAME", None)
+        snippet = (
+            "import sys\n"
+            "import api.main\n"
+            f"libraries = {_ASSISTANT_LIBRARIES!r}\n"
+            "print('loaded=' + ' '.join(sorted(\n"
+            "    name for name in sys.modules\n"
+            "    if name == 'api.assistant' or name.startswith('api.assistant.')\n"
+            "    or name.split('.')[0] in libraries\n"
+            ")))\n"
+        )
+        result = subprocess.run(  # noqa: S603 - fixed argv, no shell; sys.executable is trusted
+            [sys.executable, "-c", snippet],
+            cwd=tmp_path,
+            env=env,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        (line,) = [row for row in result.stdout.splitlines() if row.startswith("loaded=")]
+        return line.removeprefix("loaded=").split()
+
+    def test_nothing_of_the_assistant_or_its_libraries_is_loaded_when_the_switch_is_off(
+        self, tmp_path
+    ):
+        """
+        GIVEN a fresh interpreter with the assistant switched off
+        WHEN it imports api.main, which builds the app, its middleware and its routers
+        THEN neither the assistant package nor langchain, langgraph, langsmith or openai
+             was imported, so a deployed image without the assistant extra still starts
+        """
+        # WHEN
+        loaded = self._modules_loaded_by_importing_api_main(tmp_path, "false")
+
+        # THEN
+        assert loaded == []
+
+    def test_the_same_probe_sees_them_when_the_switch_is_on(self, tmp_path):
+        """
+        GIVEN the same probe with the assistant switched on
+        WHEN api.main is imported
+        THEN the assistant package and langchain_core are reported, so the empty list above
+             means "not imported" and not "not looked for"
+        """
+        # WHEN
+        loaded = self._modules_loaded_by_importing_api_main(tmp_path, "true")
+
+        # THEN
+        assert "api.assistant.deps" in loaded
+        assert "langchain_core" in loaded
+
+
+class TestAssistantShutdown:
+    """The application flushes the assistant's traces when it stops, and only when it is on."""
+
+    @pytest.fixture(autouse=True)
+    def _clear_settings_cache_after(self):
+        """Drop any Settings cached during the test, so its switch settings cannot leak."""
+        from api.config import get_settings
+
+        yield
+        get_settings.cache_clear()
+
+    @staticmethod
+    def _run_app(monkeypatch, tmp_path, *, enabled: bool) -> tuple[MagicMock, list[int]]:
+        """Start and stop the app with the assistant switched as asked.
+
+        :return: The mock standing in for the tracing shutdown, and the number of times it
+            had been called while the app was running.
+        """
+        from fastapi.testclient import TestClient
+
+        from api.config import get_settings
+        from api.main import create_app
+
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("APP_ENV", "dev")
+        monkeypatch.setenv("SECRET_KEY", "a-sufficiently-strong-secret-value")
+        monkeypatch.setenv("ASSISTANT_ENABLED", "true" if enabled else "false")
+        monkeypatch.delenv("RAILWAY_ENVIRONMENT_NAME", raising=False)
+        get_settings.cache_clear()
+        with (
+            patch("api.main.create_db_and_tables"),
+            patch("api.main.warm_up_connection_pool"),
+            patch("api.assistant.agent.tracing.shutdown_tracing") as shutdown,
+        ):
+            app = create_app()
+            with TestClient(app):
+                calls_while_running = shutdown.call_count
+        return shutdown, [calls_while_running]
+
+    def test_traces_are_flushed_once_when_the_app_stops_with_the_assistant_on(
+        self, monkeypatch, tmp_path
+    ):
+        """
+        GIVEN the assistant switched on
+        WHEN the app starts and then stops
+        THEN the tracing shutdown ran exactly once, after the app had been running
+        """
+        # WHEN
+        shutdown, calls_while_running = self._run_app(monkeypatch, tmp_path, enabled=True)
+
+        # THEN
+        assert calls_while_running == [0]
+        shutdown.assert_called_once_with()
+
+    def test_nothing_is_flushed_with_the_assistant_off(self, monkeypatch, tmp_path):
+        """
+        GIVEN the assistant switched off
+        WHEN the app starts and then stops
+        THEN the tracing shutdown never ran
+        """
+        # WHEN
+        shutdown, _ = self._run_app(monkeypatch, tmp_path, enabled=False)
+
+        # THEN
+        shutdown.assert_not_called()

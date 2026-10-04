@@ -54,9 +54,10 @@ from api.db.engine import create_db_and_tables
 create_db_and_tables()
 ```
 
-On SQLite (local development and the test suite), the FastAPI lifespan hook calls
-`create_db_and_tables()` at startup. Alembic owns the deployed PostgreSQL schemas
-instead: the migrations live in `migrations/` and run before each Railway deploy, and
+The FastAPI lifespan hook calls `create_db_and_tables()` at startup. It runs
+`create_all` only for SQLite and for `TESTING=1` runs, including the end-to-end tests on
+PostgreSQL. Alembic owns the schema of any other PostgreSQL database, local or deployed:
+the migrations live in `migrations/` and run before each Railway deploy, and
 `create_db_and_tables()` returns without doing anything there. For how schema management
 works, see [Environments](https://docs.becomify.app/environments/).
 
@@ -115,7 +116,7 @@ Set the database URL with the `DATABASE_URL` environment variable:
 
 ```bash
 # Local development: the PostgreSQL from docker/docker-compose.yml
-#   docker compose -f docker/docker-compose.yml up -d db
+#   docker compose --env-file .env -f docker/docker-compose.yml up -d db
 DATABASE_URL=postgresql://become:become@localhost:5432/become
 
 # Deployed environments: the least-privilege become_app role on the managed instance
@@ -134,6 +135,6 @@ api/db/
 ├── engine.py       # Database engine and table creation
 ├── models.py       # SQLModel table definitions
 ├── session.py      # Database session management (get_session)
-├── utils.py        # Utilities (utc_now, ensure_utc, EMAIL_REGEX)
+├── utils.py        # Utilities (utc_now, ensure_utc)
 └── README.md       # This file
 ```

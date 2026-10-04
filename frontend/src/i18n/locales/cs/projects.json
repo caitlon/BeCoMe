@@ -58,7 +58,6 @@
   },
   "toast": {
     "error": "Chyba",
-    "loadFailed": "Nepodařilo se načíst projekty",
     "loadProjectFailed": "Nepodařilo se načíst projekt",
     "invalidNumbers": "Zadejte prosím platná čísla",
     "lowerPeakUpper": "Hodnoty musí splňovat: dolní ≤ vrchol ≤ horní",
@@ -84,9 +83,7 @@
     "experts": "Experti",
     "scale": "Škála",
     "inviteExperts": "Pozvat experty",
-    "inviteExpert": "Pozvat experta",
     "delete": "Smazat",
-    "deleteProject": "Smazat projekt",
     "opinions": "Názory",
     "results": "Výsledky",
     "team": "Tým",
@@ -100,16 +97,12 @@
     "median": "Medián (Ω)",
     "supportingCalcs": "Pomocné výpočty",
     "confidence": "Spolehlivost",
-    "confidenceHint": "Jak blízko se shodují průměr a medián. Těsnější shoda znamená přesnější kompromis.",
+    "confidenceHint": "Jak blízko jsou si průměr a medián. Čím blíž, tím přesnější kompromis.",
     "confidenceLevel": {
       "high": "Vysoká",
       "moderate": "Střední",
       "low": "Nízká"
     },
-    "expertOpinions": "Expertní názory",
-    "noOpinions": "Zatím žádné expertní názory.",
-    "pending": "Čeká",
-    "submitted": "Odesláno",
     "yourOpinion": "Váš názor",
     "position": "Pozice",
     "positionPlaceholder": "např. Vedoucí oddělení",
@@ -133,11 +126,6 @@
       "centroid": "Centroid"
     },
     "measuresCoincide": "Průměr, medián a nejlepší kompromis se u tohoto projektu shodují.",
-    "agreement": {
-      "high": "Vysoká shoda",
-      "moderate": "Střední shoda",
-      "low": "Nízká shoda"
-    },
     "exampleBanner": {
       "title": "Toto je ukázkový projekt",
       "body": "Třináct expertů níže pochází z publikované studie protipovodňové ochrany a nejsou to skuteční lidé. Přidejte svůj názor a uvidíte, jak se kompromis posune, nebo projekt smažte, pokud ho nepotřebujete."
@@ -157,12 +145,14 @@
     "email": "E-mail",
     "role": "Role",
     "joined": "Přidal se",
+    "actions": "Akce",
     "transferOwnershipLabel": "Učinit uživatele {{name}} vlastníkem"
   },
   "transferOwnership": {
     "title": "Předat vlastnictví?",
     "description": "{{name}} se stane správcem projektu a vy se stanete expertem. Projekt už nebudete moci spravovat.",
-    "confirm": "Předat vlastnictví"
+    "confirm": "Předat vlastnictví",
+    "transferring": "Předávání..."
   },
   "memberProfile": {
     "position": "Pozice",
@@ -178,8 +168,6 @@
     "namePlaceholder": "Zadejte název projektu",
     "description": "Popis",
     "descriptionPlaceholder": "Popište svůj projekt...",
-    "question": "Otázka pro experty",
-    "questionPlaceholder": "Na jakou otázku mají experti odpovědět?",
     "scaleSettings": "Nastavení škály",
     "scaleMin": "Minimum",
     "scaleMax": "Maximum",
@@ -192,11 +180,13 @@
     "creating": "Vytváření...",
     "dialogDescription": "Nastavte nový projekt s názvem, popisem a škálou",
     "successTitle": "Projekt vytvořen",
-    "successMessage": "Váš projekt byl úspěšně vytvořen.",
     "errorTitle": "Chyba",
     "validation": {
       "nameRequired": "Název je povinný",
+      "nameMaxLength": "Název může mít maximálně 255 znaků",
+      "descriptionMaxLength": "Popis může mít maximálně 1000 znaků",
       "unitRequired": "Jednotka je povinná",
+      "unitMaxLength": "Jednotka může mít maximálně 50 znaků",
       "maxGreaterMin": "Maximum musí být větší než minimum"
     }
   },
@@ -207,26 +197,16 @@
     "emailPlaceholder": "expert@example.com",
     "info": "Uživatel musí mít již účet. Pozvánku uvidí v záložce \"Pozvánky\".",
     "cancel": "Zrušit",
-    "invite": "Odeslat pozvánku",
-    "inviting": "Odesílání...",
+    "invite": "Pozvat",
+    "inviting": "Vytváření pozvánky...",
     "inviteAnother": "Pozvat dalšího",
     "done": "Hotovo",
-    "successTitle": "Pozvánka odeslána!",
-    "successMessage": "Expert byl pozván do projektu.",
+    "successTitle": "Pozvánka vytvořena",
+    "successDescription": "Pozvánka se neposílá e-mailem. Expert ji uvidí v záložce \"Pozvánky\".",
     "errorTitle": "Pozvání selhalo",
-    "errorMessage": "Nepodařilo se odeslat pozvánku",
+    "errorMessage": "Nepodařilo se vytvořit pozvánku",
     "validation": {
       "emailInvalid": "Neplatná e-mailová adresa"
     }
-  },
-  "delete": {
-    "title": "Smazat projekt",
-    "message": "Opravdu chcete smazat tento projekt? Tuto akci nelze vrátit zpět.",
-    "cancel": "Zrušit",
-    "confirm": "Smazat",
-    "deleting": "Mazání...",
-    "successTitle": "Projekt smazán",
-    "successMessage": "Projekt byl smazán.",
-    "errorTitle": "Chyba"
   }
 }

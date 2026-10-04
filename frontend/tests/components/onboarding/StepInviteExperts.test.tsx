@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { screen } from '@testing-library/react';
 import { render, framerMotionMock } from '@tests/utils';
+import i18n from '@/i18n';
 import { StepInviteExperts } from '@/components/onboarding/StepInviteExperts';
 
 vi.mock('framer-motion', () => framerMotionMock);
@@ -28,7 +29,18 @@ describe('StepInviteExperts', () => {
   it('renders invite button with aria-label', () => {
     render(<StepInviteExperts />);
 
-    expect(screen.getByRole('button', { name: /send invitation|odeslat/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Invite' })).toBeInTheDocument();
+  });
+
+  it('labels the invite button in Czech', async () => {
+    await i18n.changeLanguage('cs');
+    try {
+      render(<StepInviteExperts />);
+
+      expect(screen.getByRole('button', { name: 'Pozvat' })).toBeInTheDocument();
+    } finally {
+      await i18n.changeLanguage('en');
+    }
   });
 
   it('renders two sample expert cards', () => {
@@ -41,6 +53,21 @@ describe('StepInviteExperts', () => {
   it('renders hint text', () => {
     render(<StepInviteExperts />);
 
-    expect(screen.getByText(/experts will see/i)).toBeInTheDocument();
+    expect(
+      screen.getByText('No email is sent. Experts see the invitation in their "Invitations" tab.'),
+    ).toBeInTheDocument();
+  });
+
+  it('renders hint text in Czech', async () => {
+    await i18n.changeLanguage('cs');
+    try {
+      render(<StepInviteExperts />);
+
+      expect(
+        screen.getByText('E-mail se neposílá. Experti uvidí pozvánku v záložce "Pozvánky".'),
+      ).toBeInTheDocument();
+    } finally {
+      await i18n.changeLanguage('en');
+    }
   });
 });

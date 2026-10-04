@@ -42,7 +42,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           enable-cache: true
 
@@ -50,7 +50,7 @@ jobs:
         run: uv python install 3.13.7
 
       - name: Install Python dependencies
-        run: uv sync --locked --extra dev --extra api
+        run: uv sync --locked --extra dev --extra api --extra assistant
 
       # mypy runs in strict mode over src/ + api/; caching .mypy_cache lets it
       # re-check only changed files instead of the whole tree every run.
@@ -90,7 +90,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           enable-cache: true
 
@@ -166,7 +166,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           enable-cache: true
 
@@ -174,12 +174,27 @@ jobs:
         run: uv python install 3.13.7
 
       - name: Install Python dependencies
-        run: uv sync --locked --extra dev --extra api
+        run: uv sync --locked --extra dev --extra api --extra assistant
 
       - name: Audit Python dependencies (pip-audit)
         run: |
           for attempt in 1 2 3; do
             uv run pip-audit --timeout 30 && exit 0
+            echo "::warning::pip-audit attempt $attempt failed (network?); retrying in 15s"
+            sleep 15
+          done
+          echo "::error::pip-audit failed after 3 attempts"
+          exit 1
+
+      # The install above holds only what CI runs. The notebook, viz and docs extras are
+      # local tooling and never deployed, but they share uv.lock and run on developer
+      # machines. Auditing an export of every extra covers them without installing them,
+      # and an extra added later is covered without editing this step.
+      - name: Audit every locked extra (pip-audit)
+        run: |
+          uv export --locked --all-extras --no-emit-project -o "$RUNNER_TEMP/all-extras.txt"
+          for attempt in 1 2 3; do
+            uv run pip-audit --timeout 30 --disable-pip -r "$RUNNER_TEMP/all-extras.txt" && exit 0
             echo "::warning::pip-audit attempt $attempt failed (network?); retrying in 15s"
             sleep 15
           done
@@ -223,7 +238,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           enable-cache: true
 
@@ -234,13 +249,13 @@ jobs:
       # table-of-contents generator, which imports the slug function the site uses, and
       # without the extra the whole file would `importorskip` its way to green.
       - name: Install Python dependencies
-        run: uv sync --locked --extra dev --extra api --extra docs
+        run: uv sync --locked --extra dev --extra api --extra docs --extra assistant
 
       # ubuntu-24.04 installs postgresql-16 (see the runner-images toolset manifest)
       # but does not put its version-specific binaries on PATH, so
       # shutil.which("pg_ctl") returns None and the PostgreSQL-gated tests (the
-      # migration test plus test_postgres_integration.py, 11 tests total) silently
-      # skip instead of running.
+      # migration tests, test_postgres_integration.py and the three assistant store,
+      # pipeline and retrieval files, 37 tests total) silently skip instead of running.
       - name: Add PostgreSQL 16 binaries to PATH
         run: echo "/usr/lib/postgresql/16/bin" >> "$GITHUB_PATH"
 
@@ -250,6 +265,22 @@ jobs:
         run: |
           command -v pg_ctl || { echo "::error::pg_ctl not found on PATH; PostgreSQL-gated tests would silently skip"; exit 1; }
           pg_ctl --version
+
+      # postgresql-16 itself ships without pgvector: the extension is a separate apt
+      # package that installs its .so and .control files into the same postgresql-16
+      # tree, which is what lets pytest-postgresql's throwaway cluster (spun up on the
+      # pg_ctl binaries confirmed above) run CREATE EXTENSION vector.
+      - name: Install the pgvector extension for PostgreSQL 16
+        run: sudo apt-get update && sudo apt-get install -y postgresql-16-pgvector
+
+      # Fail loudly if the extension is not where Postgres expects it, instead of
+      # letting a broken install reach the pgvector-gated tests as a silent skip.
+      - name: Verify the pgvector extension is installed
+        run: |
+          test -f /usr/share/postgresql/16/extension/vector.control || {
+            echo "::error::vector.control not found; postgresql-16-pgvector did not install"
+            exit 1
+          }
 
       # --cov-fail-under lives here and not in pyproject's addopts on purpose: there it
       # would apply to every local run, so `pytest tests/unit/api/services/test_x.py`
@@ -334,7 +365,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           enable-cache: true
 
@@ -373,7 +404,7 @@ jobs:
           DATABASE_URL: postgresql://become:become@localhost:5432/become_e2e
           SECRET_KEY: test-secret-key-for-ci
 
-  # One shard per browser. The three of them run the same 73 functional specs, and a
+  # One shard per browser. The three of them run the same 71 functional specs, and a
   # single runner cannot go wider than two workers: it advertises four cores over two
   # physical ones, and at four workers the summed test time grew 70% while the wall
   # clock fell only 13%. Extra parallelism therefore has to come from extra machines.
@@ -396,8 +427,7 @@ jobs:
         include:
           # Split so that no shard is much longer than any other, since the run ends
           # when the slowest one does. Sharding is by test rather than by file, because
-          # `fullyParallel` is on: the two webkit halves drew 35 and 34 tests and
-          # finished within a second of each other.
+          # `fullyParallel` is on: the two webkit halves hold 36 and 35 tests.
           - name: webkit-1
             browsers: webkit
             projects: --project=webkit --shard=1/2
@@ -453,7 +483,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           enable-cache: true
 
@@ -615,6 +645,53 @@ jobs:
 
       - name: SonarQube Cloud Scan
         if: env.SONAR_TOKEN != ''
-        uses: SonarSource/sonarqube-scan-action@22918119ff8e1ca75a623e15c8296b6ea4fbe28f # v8
+        uses: SonarSource/sonarqube-scan-action@d209202bc7d53ff1cc128f7f907dac145c9d6ae9 # v8
         with:
           args: -Dsonar.projectVersion=${{ steps.sonar_version.outputs.version }}
+
+  # One result to read for the verdict of the whole run. The job rows above stay where they
+  # are; this adds a single named line that is red whenever any job listed in `needs` below
+  # failed or was cancelled, and that a branch protection rule can require later by this one
+  # name instead of by a list that grows with every job added here.
+  #
+  # Add every new job in this workflow to `needs`. A job missing from the list is not
+  # covered, and `tests/unit/docs/test_ci_check.py` fails when the list and the jobs differ.
+  #
+  # `always()` rather than the default: without it this job is skipped whenever a job it
+  # needs fails or is cancelled, and a skipped check reads as passing. With it, a cancelled
+  # run still ends in a red `Check`.
+  #
+  # `skipped` counts as fine, because some jobs skip on purpose (SonarCloud runs on pull
+  # requests and on pushes to `prod` only). `failure` and `cancelled` do not.
+  #
+  # The halves are listed next to the gate jobs that report them (`lint-python` and
+  # `lint-frontend` beside `lint`, `e2e-shard` beside `e2e`). `lint` has no `always()`, so
+  # when one half fails `lint` is skipped, not failed, and a list made of gates alone would
+  # read a failed lint as fine.
+  check:
+    name: Check
+    runs-on: ubuntu-24.04
+    needs:
+      - lint-python
+      - lint-frontend
+      - lint
+      - docs-build
+      - dependency-audit
+      - python-tests
+      - frontend-tests
+      - backend-e2e
+      - e2e-shard
+      - e2e
+      - sonarcloud
+    if: always()
+    timeout-minutes: 5
+    steps:
+      - name: Require every job to pass or be skipped
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          echo "$RESULTS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          if ! echo "$RESULTS" | jq -e 'all(to_entries[]; .value.result == "success" or .value.result == "skipped")' > /dev/null; then
+            echo "::error::a job did not pass"
+            exit 1
+          fi

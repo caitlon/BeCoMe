@@ -1,7 +1,7 @@
 import { Navigate, useLocation } from "react-router";
 import { useAuth } from "@/contexts/AuthContext";
 import { ServiceUnavailable } from "@/components/auth/ServiceUnavailable";
-import { PageSpinner } from "@/components/PageSpinner";
+import { PageLoader } from "@/components/PageLoader";
 
 interface ProtectedRouteProps {
   readonly children: React.ReactNode;
@@ -12,11 +12,7 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
   const location = useLocation();
 
   if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <PageSpinner />
-      </div>
-    );
+    return <PageLoader />;
   }
 
   // A network/server failure while probing the session leaves the login state
@@ -27,7 +23,13 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
+    // The placeholder stays the skip link's target until the login page renders.
+    return (
+      <>
+        <PageLoader />
+        <Navigate to="/login" state={{ from: location }} replace />
+      </>
+    );
   }
 
   return <>{children}</>;

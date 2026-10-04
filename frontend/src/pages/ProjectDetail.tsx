@@ -476,6 +476,7 @@ const ProjectDetail = () => {
         })}
         onConfirm={handleTransferOwnership}
         confirmText={t("transferOwnership.confirm")}
+        loadingText={t("transferOwnership.transferring")}
       />
 
       <MemberProfileDialog

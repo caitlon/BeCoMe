@@ -36,9 +36,9 @@
       "form": {
         "email": "E-mail experta",
         "emailPlaceholder": "expert@example.com",
-        "invite": "Odeslat pozvánku"
+        "invite": "Pozvat"
       },
-      "hint": "Experti uvidí pozvánku ve svém přehledu",
+      "hint": "E-mail se neposílá. Experti uvidí pozvánku v záložce \"Pozvánky\".",
       "samples": [
         {
           "initials": "JN",
@@ -79,7 +79,7 @@
         "bestCompromise": "Nejlepší kompromis",
         "bestCompromiseDesc": "Optimální agregace všech expertních názorů",
         "maxError": "Max. chyba",
-        "maxErrorDesc": "Metrika kvality indikující úroveň shody",
+        "maxErrorDesc": "Jak daleko leží kompromis od průměru a mediánu",
         "experts": "Experti",
         "expertsDesc": "Počet shromážděných názorů"
       },
@@ -89,7 +89,6 @@
       "iconLabel": "Dokončeno",
       "title": "Jste připraveni!",
       "description": "Nyní znáte základy BeCoMe. Založte svůj první projekt a shromážděte expertní názory.",
-      "cta": "Vytvořit první projekt",
       "goToProjects": "Vytvořte svůj první projekt"
     }
   },

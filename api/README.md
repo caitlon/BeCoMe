@@ -33,6 +33,7 @@ The API runs at `http://localhost:8000`. Interactive documentation:
 
 ```text
 api/
+├── assistant/          # Local-only chat assistant (agent, RAG, model clients); see its README
 ├── auth/               # Authentication & authorization
 │   ├── jwt.py              # Token creation/validation (rotation family / sid)
 │   ├── password.py         # Password hashing (bcrypt)
@@ -46,7 +47,7 @@ api/
 │   ├── models.py           # SQLModel entities
 │   ├── engine.py           # Database engine setup
 │   ├── session.py          # Session dependency
-│   └── utils.py            # UTC helpers, email regex
+│   └── utils.py            # UTC helpers
 ├── middleware/         # Request processing
 │   ├── rate_limit.py       # SlowAPI rate limiting (logs violations)
 │   ├── csrf.py             # Session-bound CSRF check on cookie mutations
@@ -61,6 +62,7 @@ api/
 │   ├── opinions.py         # /api/v1/projects/{id}/opinions
 │   ├── invitations.py      # /api/v1/invitations/*
 │   ├── calculate.py        # /api/v1/calculate
+│   ├── assistant.py        # /api/v1/assistant/* (local-only, registered when ASSISTANT_ENABLED)
 │   └── health.py           # /api/v1/health
 ├── schemas/            # Pydantic DTOs
 │   ├── auth.py             # Login, register, tokens
@@ -96,6 +98,13 @@ api/
 
 ## API endpoints
 
+The sections below cover the routes of a deployed service. The assistant's two routes,
+`GET /api/v1/assistant/config` and `POST /api/v1/assistant/chat`, are not listed here. They exist
+only when `ASSISTANT_ENABLED=true`, and a deployed profile refuses to start with that setting on,
+so on a deployed service every request that reaches routing answers 404 for the whole
+`/api/v1/assistant` prefix. Their behavior is in the
+[assistant README](https://github.com/caitlon/BeCoMe/blob/prod/api/assistant/README.md).
+
 ### Authentication
 
 | Method | Endpoint | Description |
@@ -127,7 +136,9 @@ state still starts, and records `turnstile_disabled` at ERROR while it does.
 body, whether the address is free, already registered but unverified, or already registered
 and verified. The response never reveals which. The account it creates cannot log in until
 someone redeems the emailed link through `POST /auth/verify-email`. Until then
-`POST /auth/login` answers `403` with a distinct `detail`, so a client can offer a resend.
+`POST /auth/login` answers `403` with a distinct `detail`, so a client can offer a resend. For an
+address that already has a confirmed account, the owner gets a notice instead of a link, in the
+language the `Accept-Language` header names, like the activation email.
 
 A submission takes effect only when someone follows its own link *and* restates its own
 password. The password hash and names travel on the activation token, so registering an
@@ -146,8 +157,12 @@ which costs the guesser rather than capping the pair. A completed password reset
 login lockout, and answers the same opaque `400` an unusable token gets when an activation
 confirmed the account while the reset was in flight. `POST /auth/resend-verification` takes
 `{email, password}` and answers `202` for any address. The link it mails carries the submitted
-password like any other. See `docs/security.md` for why each branch behaves as it
-does.
+password like any other. Three endpoints read the `Accept-Language` request header and write
+their email in English or Czech: `register` (the activation link, or the notice to an existing
+account's owner), `resend-verification` (the activation link) and `forgot-password` (the reset
+link). The best-weighted `cs` or `en` range wins, and a missing or unusable header means English.
+The header never changes the response, so a bad value is not an error. See `docs/security.md`
+for why each branch behaves as it does.
 
 **Session transport.** Login and refresh set the access and refresh tokens as
 `Secure; HttpOnly; SameSite=Strict` cookies (the refresh cookie stays scoped to
@@ -249,6 +264,8 @@ returns `422`. Erasure also removes the profile photo blob from object storage.
 | POST | `/api/v1/invitations/{id}/accept` | Accept invitation |
 | POST | `/api/v1/invitations/{id}/decline` | Decline invitation |
 
+An invitation is not emailed. The invitee finds it in their list of pending invitations.
+
 ### Calculation
 
 | Method | Endpoint | Description |
@@ -284,13 +301,21 @@ Environment variables (a `.env` file works too):
 | `DEBUG` | `false` | Debug mode; must stay off on a deployed service (startup fails otherwise) |
 | `API_VERSION` | `1.0.0b1` | API version (auto-read from pyproject.toml) |
 | `CORS_ORIGINS` | `http://localhost:3000,http://localhost:8080` | Allowed CORS origins |
-| `REDIS_URL` | *required when deployed* | Redis for rate limiting, token revocation, and auth throttles |
+| `REDIS_URL` | *required when deployed* | Redis for rate limiting, token revocation, and auth throttles. On a developer machine the local assistant's hourly counter uses it too when it is set |
 | `CLOUDFLARE_ORIGIN_SECRET` | *required when deployed* | Shared secret proving the request came through Cloudflare; every deployed environment sits behind it, so each needs its own value paired with a Transform Rule for that environment's API host |
 | `TURNSTILE_ENABLED` | `false` | Bot check on the four open auth endpoints. A deployed service starts with it off, and records `turnstile_disabled` at ERROR: it is the way out of a Cloudflare siteverify outage, since the check is fail-closed |
 | `TURNSTILE_SECRET_KEY` | *required when the check is on* | Cloudflare Turnstile secret, paired with the widget whose sitekey the frontend build carries |
 | `TURNSTILE_HOSTNAMES` | `[]`, *required when the check is on* | JSON array of hostnames the widget may be served from; a token minted anywhere else is refused. Never list `localhost` on production |
-| `EMAIL_PROVIDER` | `console` | Password-reset email delivery: `console` (log) or `http` (Resend) |
+| `EMAIL_PROVIDER` | `console` | Sender for the activation, password-reset, and existing-account notice emails: `http` (Resend) delivers them, `console` delivers nothing. `console` logs each link, cutting any token to its first 8 characters, and prints the full link to stdout. `http` without `EMAIL_API_KEY` falls back to `console`. A deployed service refuses to start unless the provider is `http` and `EMAIL_API_KEY` is set |
 | `EMAIL_API_KEY` | *required when deployed* | API key for the `http` email provider; startup fails without it on every deployed service, where the console fallback would print reset links to stdout instead of sending them |
+| `EMAIL_API_URL` | `https://api.resend.com/emails` | Endpoint the `http` sender posts to |
+| `EMAIL_FROM` | `no-reply@become.app` | Sender address; with `http` it must be on a domain verified in Resend |
+| `EMAIL_FROM_NAME` | `BeCoMe` | Sender display name |
+| `FRONTEND_BASE_URL` | `http://localhost:5173`, *required when deployed* | Frontend origin every emailed link is built from. A deployed service refuses to start while its host is `localhost`, `127.0.0.1`, `::1`, or empty |
+| `PASSWORD_RESET_TOKEN_TTL_MINUTES` | `60` | How long a password-reset link stays valid |
+| `EMAIL_VERIFICATION_TOKEN_TTL_HOURS` | `24` | How long an activation link stays valid |
+| `DISPOSABLE_EMAIL_BLOCKING_ENABLED` | `true` | Registration rejects known disposable-mail domains; `false` turns the check off |
+| `MX_CHECK_ENABLED` | `true` | Registration rejects a domain that does not exist, has no MX, A, or AAAA record, or publishes a null MX (RFC 7505), even beside an A record. A timed-out or failed lookup lets the address through. `false` turns the check off |
 | `API_PUBLIC_URL` | `http://localhost:8000` | Public base URL of this API, used to build profile photo proxy links |
 | `BUCKET_NAME` | *optional* | Railway Storage Bucket name (auto-injected when a bucket is attached) |
 | `BUCKET_ENDPOINT` | *optional* | S3-compatible bucket endpoint |
@@ -301,6 +326,7 @@ Environment variables (a `.env` file works too):
 | `SENTRY_DSN` | *optional* | Sentry DSN for backend error tracking (disabled when unset) |
 | `BETTERSTACK_SOURCE_TOKEN` | *optional* | Better Stack log source token (ships `api.*` logs when set together with the host below) |
 | `BETTERSTACK_INGESTING_HOST` | *optional* | Better Stack ingesting host for log shipping (per-environment source) |
+| `ASSISTANT_ENABLED` | `false` | Registers the local-only assistant routes. Startup fails when it is `true` on a deployed profile or on Railway. The other `ASSISTANT_*` variables are listed and commented in `env/.env.example`. The [assistant README](https://github.com/caitlon/BeCoMe/blob/prod/api/assistant/README.md) covers setup and limits |
 
 Profile photos live in a private Railway Storage Bucket (S3-compatible), served through the
 `GET /api/v1/users/{id}/photo` proxy. When the bucket variables are absent, photo upload is
@@ -309,7 +335,7 @@ disabled and every other feature keeps working.
 **Migrations.** Alembic owns the PostgreSQL schema (`migrations/`), and `alembic upgrade head`
 runs before each Railway deploy. To apply it by hand against one database, run
 `ALEMBIC_DATABASE_URL=<url> uv run alembic upgrade head`. Local development runs on the same
-engine, the PostgreSQL in `docker/docker-compose.yml` (`docker compose -f docker/docker-compose.yml up -d db`), so a migration is exercised
+engine, the PostgreSQL in `docker/docker-compose.yml` (`docker compose --env-file .env -f docker/docker-compose.yml up -d db`), so a migration is exercised
 before it reaches a deployment rather than after. SQLite still works as a fallback and for the
 test suite, but it reaches the schema through `create_all` and skips migrations entirely.
 
@@ -354,7 +380,7 @@ The test suite includes:
 - End-to-end tests: full API workflows (`tests/e2e/`)
 
 ```bash
-# Run all API tests
+# Run all API tests (needs `uv sync --extra dev --extra api --extra assistant`)
 uv run pytest tests/unit/api/ tests/integration/api/ -v
 
 # Run with coverage

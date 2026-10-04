@@ -8,6 +8,11 @@ numbers match what the calculator actually produces from the same opinions.
 A mismatch means the displayed numbers no longer reflect the BeCoMe method
 and caseStudies.ts must be corrected.
 
+The expert rows shown on the site must also be the rows of the method authors'
+workbook, which examples/data/*_case.txt reproduce. The opinions parsed from
+caseStudies.ts are compared, in order, with the matching data file, so the
+site cannot carry rows the authors never published.
+
 useLocalizedCaseStudies() overwrites result.interpretation with a translated
 string from frontend/src/i18n/locales/{en,cs}/caseStudies.json at runtime, so
 this module also checks that free-text prose for the same numbers: the value
@@ -27,6 +32,7 @@ from pathlib import Path
 
 import pytest
 
+from examples.utils.data_loading import load_data_from_txt
 from src.calculators.become_calculator import BeCoMeCalculator
 from src.models.expert_opinion import ExpertOpinion
 from src.models.fuzzy_number import FuzzyTriangleNumber
@@ -34,6 +40,7 @@ from src.models.fuzzy_number import FuzzyTriangleNumber
 CASE_STUDIES_TS = (
     Path(__file__).parent.parent.parent / "frontend" / "src" / "data" / "caseStudies.ts"
 )
+EXAMPLES_DATA_DIR = Path(__file__).parent.parent.parent / "examples" / "data"
 EN_CASE_STUDIES_JSON = (
     Path(__file__).parent.parent.parent
     / "frontend"
@@ -282,12 +289,23 @@ def _load_interpretation_prose(path: Path) -> dict[str, str]:
     }
 
 
+def _opinion_row(opinion: ExpertOpinion) -> tuple[float, float, float]:
+    """
+    Reduce an expert opinion to its numeric row, leaving the expert's name out.
+
+    :param opinion: Expert opinion built from either source
+    :return: Tuple of (lower bound, peak, upper bound)
+    """
+    fuzzy_number = opinion.opinion
+    return (fuzzy_number.lower_bound, fuzzy_number.peak, fuzzy_number.upper_bound)
+
+
 def _format_en(value: float) -> str:
     """
     Format a rounded number the way English case-study prose writes it.
 
     :param value: Already-rounded number (2 decimal places)
-    :return: Fixed-point string with a dot decimal separator, e.g. "56.74"
+    :return: Fixed-point string with a dot decimal separator, e.g. "48.03"
     """
     return f"{value:.2f}"
 
@@ -297,9 +315,35 @@ def _format_cs(value: float) -> str:
     Format a rounded number the way Czech case-study prose writes it.
 
     :param value: Already-rounded number (2 decimal places)
-    :return: Fixed-point string with a comma decimal separator, e.g. "56,74"
+    :return: Fixed-point string with a comma decimal separator, e.g. "48,03"
     """
     return f"{value:.2f}".replace(".", ",")
+
+
+def _format_aggregate(value: float, decimal_separator: str) -> str:
+    """
+    Format a mean or median the way the interpretation prose writes it.
+
+    The prose drops trailing zeros: a median of 25 is written "25", not "25.00".
+
+    :param value: Centroid of the mean or the median
+    :param decimal_separator: "." for English prose, "," for Czech prose
+    :return: The number rounded to 2 decimal places, without trailing zeros
+    """
+    return f"{round(value, 2):g}".replace(".", decimal_separator)
+
+
+def _quotes_number(prose: str, number: str) -> bool:
+    """
+    Tell whether the prose contains the number as a whole figure.
+
+    A plain substring test would accept "25" inside "125" or "25.5".
+
+    :param prose: Interpretation text
+    :param number: Number as written in the prose, for example "45.83" or "25"
+    :return: True when the number appears and is not part of a longer figure
+    """
+    return re.search(rf"(?<![\d.,]){re.escape(number)}(?!\d|[.,]\d)", prose) is not None
 
 
 @pytest.fixture(scope="module")
@@ -339,6 +383,11 @@ def cs_interpretations() -> dict[str, str]:
 _CASE_IDS = sorted(_load_parsed_case_studies())
 
 _EXPECTED_CASE_IDS = frozenset({"budget", "floods", "pendlers"})
+
+# The cases whose interpretation prose also quotes the arithmetic mean and the
+# median, next to the best compromise and the maximum error. The floods prose
+# does not, so it is not listed.
+_CASES_QUOTING_AGGREGATES = ("budget", "pendlers")
 
 
 class TestStripJsComments:
@@ -381,15 +430,15 @@ class TestStripJsComments:
         source = (
             'id: "budget"\n'
             '// result: { bestCompromise: 999, maxError: 999, interpretation: "stale" },\n'
-            'result: { bestCompromise: 56.74, maxError: 0.76, interpretation: "live" },\n'
+            'result: { bestCompromise: 48.03, maxError: 2.20, interpretation: "live" },\n'
         )
 
         # WHEN
         best_compromise, max_error = _parse_stored_result(_strip_js_comments(source))
 
         # THEN
-        assert best_compromise == 56.74
-        assert max_error == 0.76
+        assert best_compromise == 48.03
+        assert max_error == 2.20
 
 
 class TestFrontendCaseStudyNumbers:
@@ -404,6 +453,38 @@ class TestFrontendCaseStudyNumbers:
         assert found >= _EXPECTED_CASE_IDS, (
             f"Expected to find case ids {sorted(_EXPECTED_CASE_IDS)} in caseStudies.ts, "
             f"but the parser only found {sorted(found)}. Check the regex parser"
+        )
+
+    @pytest.mark.parametrize("case_id", _CASE_IDS)
+    def test_expert_rows_match_authors_data_file(
+        self,
+        parsed_case_studies: dict[str, ParsedCaseStudy],
+        case_id: str,
+    ) -> None:
+        """The rows on the site must equal the rows of examples/data/<case>_case.txt, in order."""
+        # GIVEN
+        site_rows = [_opinion_row(opinion) for opinion in parsed_case_studies[case_id].opinions]
+        data_file = EXAMPLES_DATA_DIR / f"{case_id}_case.txt"
+        data_opinions, _ = load_data_from_txt(str(data_file))
+        data_rows = [_opinion_row(opinion) for opinion in data_opinions]
+
+        # WHEN
+        differing = [
+            (position, site_row, data_row)
+            for position, (site_row, data_row) in enumerate(
+                zip(site_rows, data_rows, strict=False), start=1
+            )
+            if site_row != data_row
+        ]
+
+        # THEN
+        assert len(site_rows) == len(data_rows), (
+            f"{case_id}: caseStudies.ts has {len(site_rows)} rows, {data_file.name} has "
+            f"{len(data_rows)}"
+        )
+        assert not differing, (
+            f"{case_id}: rows differ from {data_file.name} as (row, site, data) "
+            f"(lower, peak, upper): {differing}"
         )
 
     @pytest.mark.parametrize("case_id", _CASE_IDS)
@@ -492,3 +573,37 @@ class TestFrontendCaseStudyNumbers:
             f"in the interpretation prose, but it was not found. "
             f"interpretation={cs_interpretation!r}"
         )
+
+    @pytest.mark.parametrize("case_id", _CASES_QUOTING_AGGREGATES)
+    def test_interpretation_prose_quotes_calculator_mean_and_median(
+        self,
+        calculator: BeCoMeCalculator,
+        parsed_case_studies: dict[str, ParsedCaseStudy],
+        en_interpretations: dict[str, str],
+        cs_interpretations: dict[str, str],
+        case_id: str,
+    ) -> None:
+        """The mean and the median quoted in the prose must be the calculator's own.
+
+        test_interpretation_prose_matches_calculator covers only the best
+        compromise and the maximum error, so a wrong mean or median in the
+        text would otherwise reach the user unnoticed.
+        """
+        # GIVEN
+        result = calculator.calculate_compromise(parsed_case_studies[case_id].opinions)
+        aggregates = {
+            "arithmetic mean": result.arithmetic_mean.centroid,
+            "median": result.median.centroid,
+        }
+
+        # WHEN/THEN
+        for language, prose, separator in (
+            ("en", en_interpretations[case_id], "."),
+            ("cs", cs_interpretations[case_id], ","),
+        ):
+            for name, centroid in aggregates.items():
+                expected = _format_aggregate(centroid, separator)
+                assert _quotes_number(prose, expected), (
+                    f"{case_id} ({language}): expected the {name} '{expected}' in the "
+                    f"interpretation prose, but it was not found. interpretation={prose!r}"
+                )

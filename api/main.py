@@ -44,6 +44,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     warm_up_connection_pool()
     logger.info("Application started", extra={"event": "app_startup", **lifecycle})
     yield
+    if settings.assistant_enabled:
+        # Imported only when the flag is on, like the router in create_app(), so a
+        # deployed process never loads the assistant package.
+        from api.assistant.agent.tracing import shutdown_tracing
+
+        shutdown_tracing()
     logger.info("Application stopped", extra={"event": "app_shutdown", **lifecycle})
 
 
@@ -184,6 +190,32 @@ def create_app() -> FastAPI:
     app.include_router(projects.router)
     app.include_router(invitations.router)
     app.include_router(opinions.router)
+
+    # Imported only when the flag is on, so the assistant package - and, once later
+    # PRs add them, its LangChain/LangGraph imports from the "assistant" extra -
+    # never loads in a deployed process. It could not run there anyway:
+    # Settings._validate_assistant_local_only refuses to start any deployed profile
+    # with assistant_enabled set.
+    if settings.assistant_enabled:
+        from api.assistant.errors import (
+            AssistantRateLimitedError,
+            AssistantUnavailableError,
+            AssistantUpstreamError,
+        )
+        from api.assistant.exception_handlers import (
+            assistant_rate_limited_handler,
+            assistant_unavailable_handler,
+            assistant_upstream_handler,
+        )
+        from api.routes import assistant
+
+        app.include_router(assistant.router)
+        # Registered here, not in EXCEPTION_MAP, so a deployed process never imports
+        # the assistant package to build its error table. A specific class outranks
+        # the BeCoMeAPIError handler, so these answer before the generic one.
+        app.add_exception_handler(AssistantRateLimitedError, assistant_rate_limited_handler)  # type: ignore[arg-type]
+        app.add_exception_handler(AssistantUnavailableError, assistant_unavailable_handler)  # type: ignore[arg-type]
+        app.add_exception_handler(AssistantUpstreamError, assistant_upstream_handler)  # type: ignore[arg-type]
 
     return app
 

@@ -51,14 +51,3 @@ export function createMockApi(overrides: Record<string, unknown> = {}) {
     ...overrides,
   };
 }
-
-/**
- * Resets all mocks in the API object.
- */
-export function resetApiMocks(mockApi: ReturnType<typeof createMockApi>) {
-  Object.values(mockApi).forEach((mock) => {
-    if (typeof mock === 'function' && 'mockReset' in mock) {
-      (mock as ReturnType<typeof vi.fn>).mockReset();
-    }
-  });
-}

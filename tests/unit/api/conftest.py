@@ -6,6 +6,9 @@ import os
 os.environ.setdefault("APP_ENV", "test")
 os.environ.setdefault("SECRET_KEY", "test-secret-for-unit-tests")
 os.environ["TESTING"] = "1"  # Must always be set; rate limiter reads it at import time
+# The suite never inherits a developer's local switch from .env or the shell; a test
+# that needs the assistant on sets it explicitly with monkeypatch.
+os.environ["ASSISTANT_ENABLED"] = "false"
 
 from tests.shared.helpers import (  # noqa: F401
     DEFAULT_TEST_PASSWORD,

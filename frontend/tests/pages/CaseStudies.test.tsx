@@ -28,7 +28,7 @@ describe('CaseStudies', () => {
   it('renders subtitle', () => {
     render(<CaseStudies />);
 
-    expect(screen.getByText(/real-world applications|reálné aplikace/i)).toBeInTheDocument();
+    expect(screen.getByText(/one real case and two illustrative examples|jedna reálná studie a dva ilustrativní příklady/i)).toBeInTheDocument();
   });
 
   it('renders three case study cards', () => {
