@@ -111,6 +111,17 @@ class TestGoldenSetShape:
             assert row["expected_facts"], row["id"]
             assert all(fact.strip() for fact in row["expected_facts"]), row["id"]
 
+    def test_no_fact_calls_the_confidence_label_high_agreement(self):
+        """
+        GIVEN the committed golden set
+        WHEN the expected facts are searched for the retired wording
+        THEN none says "high agreement": the label is High Confidence, and it does not
+             say whether the experts agreed
+        """
+        for row in _rows():
+            for fact in row["expected_facts"]:
+                assert "high agreement" not in fact.lower(), row["id"]
+
     def test_every_gold_path_is_a_public_corpus_source(self):
         """
         GIVEN the public layer of the corpus manifest
