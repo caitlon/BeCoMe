@@ -35,6 +35,7 @@ from api.assistant.agent.context import AssistantContext
 from api.assistant.agent.prompt import SYSTEM_PROMPT, render_context_block
 from api.assistant.agent.tools import ASSISTANT_TOOLS, UNAVAILABLE_REPLY
 from api.assistant.rag.models import has_unclosed_think_block, strip_think_block
+from api.assistant.rag.retrieval import question_language
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,9 @@ _MODEL_CALL_SLACK = 2
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 
 _TOOL_NAMES = frozenset(tool.name for tool in ASSISTANT_TOOLS)
+
+# The last line of the user message when the question's language is known.
+_ANSWER_LANGUAGE_LINE = {"cs": "Answer in Czech.", "en": "Answer in English."}
 
 
 class CutOffAnswerError(Exception):
@@ -76,16 +80,26 @@ class AnswerGenerator(Protocol):
 
 
 def user_message(parts: Sequence[str], question: str) -> str:
-    """Build the user message of a turn: the context parts, then the question.
+    """Build the user message of a turn: the context parts, the question, the language line.
+
+    The context is English, and a model given English context sometimes answers a Czech
+    question in English. The code states the answer language itself, here and not in the
+    system prompt: a last line, ``Answer in Czech.`` or
+    ``Answer in English.``, when :func:`~api.assistant.rag.retrieval.question_language`
+    knows the question's language, and no line for any other language. The line is part of
+    what the model is sent and nothing else: the grounding checks read the question, not
+    this message.
 
     :param parts: The context to show the model, one string per block.
     :param question: The user's own message.
     :return: The parts and ``Question: <question>`` separated by blank lines, or the bare
-        question when there are no parts.
+        question when there are no parts, then the language line after a blank line.
     """
-    if not parts:
-        return question
-    return "\n\n".join([*parts, f"Question: {question}"])
+    message = "\n\n".join([*parts, f"Question: {question}"]) if parts else question
+    language = question_language(question)
+    if language is None:
+        return message
+    return f"{message}\n\n{_ANSWER_LANGUAGE_LINE[language]}"
 
 
 def answer_text(message: BaseMessage) -> str:

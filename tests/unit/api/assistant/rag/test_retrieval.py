@@ -22,6 +22,7 @@ from api.assistant.rag.retrieval import (
     RetrievedChunk,
     _reciprocal_rank_fusion,
     looks_english,
+    question_language,
 )
 
 _GOLDEN_SET = Path(__file__).parents[5] / "scripts" / "assistant" / "golden_set.jsonl"
@@ -505,6 +506,204 @@ class TestTranslateEnTransform:
 
         # THEN
         assert queries == ["Co kombinuje BeCoMe?"]
+
+
+class TestQuestionLanguage:
+    """question_language: Czech or English when sure, None otherwise."""
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            pytest.param("Co znamená High Confidence u mého projektu?", id="quotes-label"),
+            pytest.param("Co znamena High Confidence u meho projektu?", id="quotes-no-accents"),
+            pytest.param("Proč má můj projekt nízkou shodu?", id="diacritics"),
+            pytest.param("Jak se počítá nejlepší kompromis?", id="how"),
+            pytest.param("vysvetli mi, co je maximalni chyba", id="no-diacritics-words"),
+            pytest.param("Jaky je rozdil mezi prumerem a medianem", id="no-diacritics-jaky"),
+            pytest.param("Proc ma muj projekt nizkou shodu?", id="no-diacritics-proc"),
+            pytest.param("Řekni mi víc", id="one-czech-letter"),
+            pytest.param("Vysvětlete medián", id="two-czech-letters"),
+            pytest.param("Jak se počítá the median", id="czech-with-the"),
+            pytest.param("Jak se pocita best of both", id="two-czech-words-no-accents"),
+            pytest.param("Co znamena the median?", id="two-czech-words-and-the"),
+            pytest.param("Vysvětlete fuzzy čísla and alpha řezy", id="accents-outscore-and"),
+        ],
+    )
+    def test_czech_questions_are_czech(self, query):
+        """
+        GIVEN Czech questions, with and without diacritics, some quoting English terms
+        WHEN question_language runs
+        THEN it returns "cs"
+        """
+        assert question_language(query) == "cs"
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            pytest.param("What does High Confidence mean for my project?", id="quotes-label"),
+            pytest.param("how is the best compromise calculated", id="lowercase"),
+            pytest.param("Why is the maximum error so low?", id="why"),
+            pytest.param("Can you explain the median?", id="can"),
+            pytest.param("Which experts have not submitted an opinion?", id="which"),
+            pytest.param("Explain the difference between the mean and the median", id="the"),
+            pytest.param("WHAT IS THE AGREEMENT LEVEL", id="uppercase"),
+            pytest.param("How many experts are in my project?", id="how"),
+            pytest.param("What does Novák's estimate mean?", id="czech-surname"),
+            pytest.param("Does the panel agree with Šimůnek?", id="czech-surname-2"),
+            pytest.param("Compare Novák and Dvořák, which is the higher?", id="two-surnames"),
+            pytest.param("I like the café menu, does it have the soup?", id="acute-vowel"),
+        ],
+    )
+    def test_english_questions_are_english(self, query):
+        """
+        GIVEN English questions, some naming a Czech person or using an accented word
+        WHEN question_language runs
+        THEN it returns "en"
+        """
+        assert question_language(query) == "en"
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            pytest.param("Popište výpočet MaxAgM for the median", id="tie-two-two"),
+            pytest.param("Explain the median", id="one-english-word"),
+            pytest.param("Compare Novák and Dvořák", id="one-english-word-two-surnames"),
+            pytest.param("I like the café menu", id="one-english-word-acute-vowel"),
+            pytest.param("Novák's estimate seems too high, why?", id="one-english-word-surname"),
+            pytest.param("Was ist der Median und wie wird er berechnet?", id="german-was-wird"),
+            pytest.param("Jak funguje for loop", id="tie-one-one"),
+            pytest.param("Kolik expertu odpovedelo?", id="one-czech-word-no-accents"),
+            pytest.param("kde najdu vysledky projektu", id="one-czech-word-no-accents-2"),
+            pytest.param("Explain the průměr", id="tie-one-one-accent"),
+            pytest.param("What does proč mean?", id="tie-two-two-word"),
+            pytest.param("Show résumé stats", id="french-word"),
+            pytest.param("Summarize Novák's opinion", id="lone-accented-name"),
+            pytest.param("Show Šimůnek's estimate", id="lone-czech-name"),
+            pytest.param("Explain Dvořák's range", id="lone-czech-name-2"),
+            pytest.param("Explain NA values", id="na-acronym"),
+            pytest.param("Show SE", id="se-acronym"),
+            pytest.param("Show Jake's estimate", id="english-name"),
+            pytest.param("CO JE MEDIÁN?", id="capitals-only"),
+            pytest.param("BeCoMe?", id="no-words"),
+            pytest.param("¿Cómo se calcula el mejor compromiso?", id="spanish"),
+            pytest.param("Qu'est-ce que la méthode BeCoMe?", id="french"),
+            pytest.param("Como é calculado o compromisso?", id="portuguese"),
+            pytest.param("Jak obliczyć kompromis?", id="polish"),
+            pytest.param("Aký je rozdiel medzi priemerom a mediánom?", id="slovak"),
+            pytest.param("Wie funktioniert die Methode von BeCoMe?", id="german"),
+            pytest.param("Как считается лучший компромисс?", id="russian"),
+        ],
+    )
+    def test_a_question_that_is_not_recognisably_czech_or_english_has_none(self, query):
+        """
+        GIVEN ties between the two languages, a Czech question with one function word and no
+              accent, a lone accented name, acronyms and English names that are also Czech
+              words, capitals, and questions in other languages
+        WHEN question_language runs
+        THEN it returns None, so no line is added and the system prompt's rule applies
+        """
+        assert question_language(query) is None
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            pytest.param("Please answer in Czech: what is the median?", id="in-czech"),
+            pytest.param("Please answer in German: what is the median?", id="in-german"),
+            pytest.param("Explain in Czech what the median is", id="explain-in-czech"),
+            pytest.param("Tell me in Czech: what is the median?", id="tell-me-in-czech"),
+            pytest.param("Could you reply to me in English? Co je medián?", id="reply-to-me"),
+            pytest.param("Vysvětli mi to prosím anglicky: co je medián?", id="prosim-anglicky"),
+            pytest.param("Řekni mi anglicky, co je medián", id="rekni-anglicky"),
+            pytest.param("Přelož to do angličtiny: co je medián", id="do-anglictiny"),
+            pytest.param("Odpověz mi\nanglicky", id="newline"),
+            pytest.param("Odpověz rusky, co je medián?", id="rusky"),
+            pytest.param("Odpověz anglicky: co je medián?", id="anglicky"),
+            pytest.param("Odpovez cesky: what is the median", id="cesky"),
+            pytest.param("Odpověz německy, co je medián?", id="nemecky"),
+            pytest.param("Napiš to v angličtině", id="v-anglictine"),
+            pytest.param("Co je medián? Odpověz v češtině.", id="v-cestine"),
+            pytest.param("Co je medián? Odpověz v anglictine.", id="v-anglictine-plain"),
+            pytest.param("Odpověz v cestine, co je medián?", id="v-cestine-plain"),
+            pytest.param(
+                "Explain the Czech case study and how the panel was chosen", id="czech-case-study"
+            ),
+        ],
+    )
+    def test_a_question_that_names_the_answer_language_has_none(self, query):
+        """
+        GIVEN questions that hold a language name anywhere, whatever the phrasing: a request
+              for an answer language in either language, a request split over two lines, and
+              one that only talks about a language ("the Czech case study", an accepted cost)
+        WHEN question_language runs
+        THEN it returns None, so the request stands and no line is added
+        """
+        assert question_language(query) is None
+
+    def test_a_slovak_question_with_czech_letters_is_taken_for_czech(self):
+        """
+        GIVEN a Slovak question that holds letters Slovak shares with Czech
+        WHEN question_language runs
+        THEN it returns "cs": the closeness of the two languages is an accepted limit
+        """
+        assert question_language("Prečo je zhoda nízka?") == "cs"
+
+    def test_a_decomposed_czech_question_is_czech(self):
+        """
+        GIVEN a Czech question typed with decomposed characters (a base letter and a
+              combining mark, as some keyboards and copy-paste sources produce)
+        WHEN question_language runs
+        THEN it is normalised first and returns "cs"
+        """
+        question = unicodedata.normalize("NFD", "Vysvětlete medián")
+
+        assert question != "Vysvětlete medián"
+        assert question_language(question) == "cs"
+
+    def test_a_three_letter_czech_word_in_capitals_still_counts(self):
+        """
+        GIVEN two Czech function words of three letters, written in capitals
+        WHEN question_language runs
+        THEN they count, so the question is Czech; only words of up to two letters (SE, NA)
+             are taken for acronyms
+        """
+        assert question_language("JAK KDY") == "cs"
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            pytest.param("Jak se pocita best of both", id="czech-without-accents"),
+            pytest.param("Co znamena the median?", id="czech-without-accents-2"),
+        ],
+    )
+    def test_it_calls_a_czech_question_czech_where_looks_english_does_not(self, query):
+        """
+        GIVEN a Czech question typed without diacritics, with English words
+        WHEN looks_english and question_language run
+        THEN looks_english says English, which is right for skipping a translation it
+             cannot gain from, and question_language says Czech, because more of the
+             words are Czech
+        """
+        assert looks_english(query) is True
+        assert question_language(query) == "cs"
+
+    def test_it_agrees_with_the_language_of_every_golden_set_question(self):
+        """
+        GIVEN the questions of the golden set, each with its language
+        WHEN question_language runs on each
+        THEN a Czech question is "cs" and an English one is "en" or None, because an English
+             question with one function word gets no line, and none is ever labelled with
+             the wrong language
+        """
+        rows = [
+            json.loads(line)
+            for line in _GOLDEN_SET.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+
+        assert rows
+        for row in rows:
+            expected = {row["lang"]} if row["lang"] == "cs" else {"en", None}
+            assert question_language(row["question"]) in expected, row["id"]
 
 
 class TestLooksEnglish:

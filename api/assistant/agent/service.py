@@ -8,7 +8,9 @@ The three modes differ in what the model is given and what it may do:
 - ``agent``: nothing is fetched ahead; the model calls the tools.
 
 The system prompt is :data:`~api.assistant.agent.prompt.SYSTEM_PROMPT`, unchanged, in every
-mode. What is fetched goes into the user message, ahead of the question.
+mode. What is fetched goes into the user message, ahead of the question, and when the
+question is recognisably Czech or English the message ends with a line that states the answer
+language (see :func:`~api.assistant.agent.generation.user_message`).
 """
 
 import asyncio
