@@ -28,6 +28,7 @@ from tests.shared.helpers import captured_log_records
 
 PROJECT_ID = "3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b"
 QUESTION = "What is the compromise?"
+ENGLISH_LINE = "\n\nAnswer in English."
 
 
 def _chunk(chunk_text: str = "The compromise is the midpoint.") -> RetrievedChunk:
@@ -95,7 +96,9 @@ class TestUserMessage:
         WHEN the user message is built
         THEN the parts come first, then the labelled question, separated by blank lines
         """
-        assert user_message(["first", "second"], "Why?") == "first\n\nsecond\n\nQuestion: Why?"
+        assert user_message(["first", "second"], "Why does the median differ?") == (
+            f"first\n\nsecond\n\nQuestion: Why does the median differ?{ENGLISH_LINE}"
+        )
 
     def test_is_the_bare_question_when_there_is_no_context(self):
         """
@@ -103,7 +106,9 @@ class TestUserMessage:
         WHEN the user message is built
         THEN it is the question alone, without the label
         """
-        assert user_message([], "Why?") == "Why?"
+        assert user_message([], "Why does the median differ?") == (
+            f"Why does the median differ?{ENGLISH_LINE}"
+        )
 
 
 class TestAnswerText:
@@ -508,7 +513,7 @@ class TestAgentGenerator:
             HumanMessage(
                 content="Excerpts:\n\n[1] Method - Step 3\nThe compromise is the midpoint."
                 "\n\nno_result: the user is not a member of any project"
-                f"\n\nQuestion: {QUESTION}"
+                f"\n\nQuestion: {QUESTION}{ENGLISH_LINE}"
             ),
         ]
 
@@ -533,6 +538,7 @@ class TestAgentGenerator:
         assert ctx.tool_outputs == ["no_result: the user is not a member of any project"] * 2
         assert model.seen[-1][-1].content == (
             f"no_result: the user is not a member of any project\n\nQuestion: {QUESTION}"
+            f"{ENGLISH_LINE}"
         )
 
     async def test_the_fallback_call_keeps_distinct_replies_in_the_order_they_first_came(self):
@@ -557,7 +563,9 @@ class TestAgentGenerator:
         first, second, third = ctx.tool_outputs
         assert first != second
         assert third == first
-        assert model.seen[-1][-1].content == f"{first}\n\n{second}\n\nQuestion: {QUESTION}"
+        assert model.seen[-1][-1].content == (
+            f"{first}\n\n{second}\n\nQuestion: {QUESTION}{ENGLISH_LINE}"
+        )
 
     async def test_the_fallback_call_of_a_run_with_nothing_gathered_is_the_bare_question(self):
         """
@@ -578,7 +586,7 @@ class TestAgentGenerator:
         assert text == "No data."
         assert model.seen[-1] == [
             SystemMessage(content=SYSTEM_PROMPT),
-            HumanMessage(content=QUESTION),
+            HumanMessage(content=f"{QUESTION}{ENGLISH_LINE}"),
         ]
 
     async def test_a_blank_fallback_answer_comes_back_blank(self):

@@ -75,6 +75,97 @@ def looks_english(query: str) -> bool:
     return any(token in _ENGLISH_FUNCTION_WORDS for token in tokens)
 
 
+#: Czech function words for question_language, in the forms people type with and without
+#: diacritics. Words that are also English words or names (to, do, on, by, no, my, me, ten,
+#: mi, pro, ale, jake) and single letters (a, i, s, v, z, k, o, u) are left out: they would
+#: mark an English question as Czech, and "s" is what is left of "Novak's".
+_CZECH_FUNCTION_WORDS_TEXT = (
+    "je jsou jsem jsme jste byl byla bylo byt bude jak co kdo kdy kde kam proc proč kolik "
+    "jaky jaká jaký jaka jaké ktery který ktera která ktere které znamena znamená "
+    "se na pri při nebo ze že aby pokud jestli protoze protože kdyz když ani uz už "
+    "tak jako muj můj moje moji mam mám mame máme maji mají muze může muzu mohu tento "
+    "tato toto vysvetli vysvětli"
+)
+_CZECH_FUNCTION_WORDS = frozenset(_CZECH_FUNCTION_WORDS_TEXT.split())
+
+#: The letters that Czech has and English, German, Spanish, French and Portuguese do not.
+#: The acute-accented vowels are not here: Spanish, French, Portuguese and Slovak use them
+#: too. Slovak shares c-caron, s-caron, z-caron, d-caron, t-caron and n-caron with Czech, so
+#: a Slovak question can be taken for Czech; that is accepted. Lowercase only: a word is
+#: lowercased before it is checked.
+_CZECH_ONLY_LETTERS = frozenset("ěřůčšžďťň")
+
+#: Names of languages, as the word stems that start the English names and the Czech
+#: forms of them ("anglicky", "v anglictine", "do anglictiny", "cesky", "nemecky"). A
+#: question that holds one anywhere asks for, or talks about, a language, and gets no line:
+#: a stem that matches too much only costs a line. "cest" alone would match "cesta", so the
+#: Czech word for the language is matched as "cestin".
+_LANGUAGE_NAME = re.compile(
+    r"\b(?:english|czech|german|slovak|polish|russian|spanish|french|italian|ukrainian|"
+    r"anglick|anglič|anglic|česk|cesk|češt|cestin|němec|nemec|němč|nemc|slovens|slovenč|"
+    r"polsk|polšt|polst|rusk|rušt|španěl|spanel|francouz|italsk|ukrajin)",
+    re.IGNORECASE,
+)
+
+#: The longest a Czech function word may be to be skipped when it is written in capitals:
+#: SE and NA in a question are acronyms, as IT and IS are in the English list's comment.
+_ACRONYM_LENGTH = 2
+
+
+def question_language(query: str) -> Literal["cs", "en"] | None:
+    """Tell whether a question is recognisably Czech or English, and otherwise say nothing.
+
+    The line this decides is added only for a question the check is sure of. Every other
+    question, in another language, mixed, very short, or one that names a language, gets
+    None and the system prompt's own rule applies. The rules, in order:
+
+    1. A language name appears anywhere in the question ("Czech", "in German", "anglicky",
+       "v cestine", "do anglictiny"): None, so a request for a language stands and a
+       question that merely mentions one gets no line.
+    2. Count ``e``, the English function words (the list of :func:`looks_english`); ``c``,
+       the Czech function words, where one of up to two letters written in capitals (SE,
+       NA) is an acronym and is skipped; and ``d``, the words that hold a letter that only
+       Czech and its close relatives have (the caron letters and the ring u), except a
+       capitalised word that is not the first of the question, which is a name. The acute
+       vowels are no evidence: Spanish, French and Portuguese have them too.
+    3. ``"cs"`` when ``d >= 1`` or ``c >= 2``, and ``c + d > e``.
+    4. ``"en"`` when ``e >= 2`` and ``e > c + d``.
+    5. Otherwise None, a tie included.
+
+    :func:`looks_english` is not used: it answers a narrower question, whether translating
+    a search query can be skipped. A Slovak question with a caron letter, or a Polish one
+    with two Czech function words, can pass as Czech, which is accepted.
+
+    The answer evaluation (``scripts/assistant/grade_answers.py``) keeps its own word
+    lists for the language of an answer on purpose: an evaluation must not grade the
+    product with the product's own detector.
+
+    :param query: The user's question.
+    :return: ``"cs"``, ``"en"``, or None when no line should be added.
+    """
+    text = unicodedata.normalize("NFC", query)
+    if _LANGUAGE_NAME.search(text):
+        return None
+    words = _TOKEN_PATTERN.findall(text)
+    english = sum(word.lower() in _ENGLISH_FUNCTION_WORDS for word in words)
+    czech = sum(
+        word.lower() in _CZECH_FUNCTION_WORDS
+        and not (len(word) <= _ACRONYM_LENGTH and word.isupper())
+        for word in words
+    )
+    diacritic = sum(
+        any(char in _CZECH_ONLY_LETTERS for char in word.lower())
+        and not (position > 0 and word[0].isupper())
+        for position, word in enumerate(words)
+    )
+    czech_score = czech + diacritic
+    if (diacritic >= 1 or czech >= 2) and czech_score > english:
+        return "cs"
+    if english >= 2 and english > czech_score:
+        return "en"
+    return None
+
+
 @dataclass(frozen=True)
 class RetrievalConfig:
     """Which retrieval mode to run, how many results, and its optional add-ons.

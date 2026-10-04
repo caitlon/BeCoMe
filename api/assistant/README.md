@@ -176,6 +176,13 @@ is down or its URL is not set on the first request after a start, and a spent me
 - `agent`: nothing is fetched ahead; the model calls the tools, at most
   `ASSISTANT_MAX_TOOL_CALLS` times.
 
+In every mode the system prompt is the same constant. The code ends the turn's user message
+with `Answer in Czech.` or `Answer in English.` only when the question is recognisably Czech
+or English (`question_language` in `api/assistant/rag/retrieval.py`). A question in another
+language, a mixed or very short one, or one that names a language anywhere gets no line, and
+the system prompt's rule applies. A closely related language such as Slovak can be taken for
+Czech.
+
 Two models take part. The answer model writes every answer; the small chat model
 (`ASSISTANT_LLM_*`) only translates search queries, so the retriever is given that one.
 

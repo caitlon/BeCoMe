@@ -42,6 +42,7 @@ from tests.shared.helpers import captured_log_records
 
 PROJECT_ID = "3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b"
 QUESTION = "What is the compromise?"
+ENGLISH_LINE = "\n\nAnswer in English."
 EXCERPTS = "Excerpts:\n\n[1] Method - Step 3\nThe compromise is the midpoint."
 _REQUEST = httpx.Request("GET", "http://localhost/x")
 SERVICE_LOGGER = "api.assistant.agent.service"
@@ -249,7 +250,7 @@ class TestWorkflowMode:
 
         system, rest = _shown(model)
         assert system == SystemMessage(content=SYSTEM_PROMPT)
-        assert rest == [HumanMessage(content=f"{EXCERPTS}\n\nQuestion: {QUESTION}")]
+        assert rest == [HumanMessage(content=f"{EXCERPTS}\n\nQuestion: {QUESTION}{ENGLISH_LINE}")]
         assert [ref.title for ref in response.sources] == ["Method"]
         assert response.checks.citations_valid is True
         ctx.retriever.search.assert_awaited_once_with(QUESTION)
@@ -264,7 +265,7 @@ class TestWorkflowMode:
 
         await AssistantService(_settings(), model).answer(_request(), _ctx())
 
-        assert _shown(model)[1] == [HumanMessage(content=QUESTION)]
+        assert _shown(model)[1] == [HumanMessage(content=f"{QUESTION}{ENGLISH_LINE}")]
 
     async def test_fetches_the_project_its_result_and_its_opinions_for_a_named_project(self):
         """
@@ -287,7 +288,7 @@ class TestWorkflowMode:
         await AssistantService(_settings(), model).answer(_request(), ctx)
 
         content = _shown(model)[1][0].content
-        assert content == "\n\n".join([EXCERPTS, *blocks, f"Question: {QUESTION}"])
+        assert content == "\n\n".join([EXCERPTS, *blocks, f"Question: {QUESTION}"]) + ENGLISH_LINE
         assert "Current project id" not in content
         assert ctx.tool_outputs == blocks
         ctx.client.get_opinions.assert_awaited_once_with(PROJECT_ID)
@@ -304,7 +305,7 @@ class TestWorkflowMode:
         await AssistantService(_settings(), model).answer(_request(), ctx)
 
         assert _shown(model)[1][0].content == (
-            f"{render_project(_project())}\n\nQuestion: {QUESTION}"
+            f"{render_project(_project())}\n\nQuestion: {QUESTION}{ENGLISH_LINE}"
         )
         assert ctx.tool_outputs == [render_project(_project())]
 
@@ -440,6 +441,7 @@ class TestHybridMode:
                         f"Question: {QUESTION}",
                     ]
                 )
+                + ENGLISH_LINE
             )
         ]
         ctx.client.get_opinions.assert_not_awaited()
@@ -486,7 +488,7 @@ class TestHybridMode:
 
         await AssistantService(_settings("hybrid"), model).answer(_request(), _ctx())
 
-        assert _shown(model)[1] == [HumanMessage(content=QUESTION)]
+        assert _shown(model)[1] == [HumanMessage(content=f"{QUESTION}{ENGLISH_LINE}")]
 
 
 @pytest.mark.asyncio
@@ -522,7 +524,7 @@ class TestAgentMode:
 
         system, rest = _shown(model)
         assert system == SystemMessage(content=SYSTEM_PROMPT)
-        assert rest == [HumanMessage(content=QUESTION)]
+        assert rest == [HumanMessage(content=f"{QUESTION}{ENGLISH_LINE}")]
         ctx.retriever.search.assert_not_awaited()
 
     async def test_names_the_current_project_in_the_message(self):
@@ -537,7 +539,9 @@ class TestAgentMode:
         await AssistantService(_settings("agent"), model).answer(_request(), ctx)
 
         assert _shown(model)[1] == [
-            HumanMessage(content=f"Current project id: {PROJECT_ID}\n\nQuestion: {QUESTION}")
+            HumanMessage(
+                content=f"Current project id: {PROJECT_ID}\n\nQuestion: {QUESTION}{ENGLISH_LINE}"
+            )
         ]
         ctx.client.get_project.assert_not_awaited()
         ctx.client.get_result.assert_not_awaited()
@@ -866,6 +870,78 @@ class TestHistory:
             ("AIMessage", strip_citations("It is the midpoint [1].")),
         ]
         assert "[1]" not in shown[1][1]
+
+
+@pytest.mark.asyncio
+class TestAnswerLanguage:
+    """The language line: the last line of the turn's user message, outside the system prompt."""
+
+    @pytest.mark.parametrize("mode", ["workflow", "hybrid", "agent"])
+    @pytest.mark.parametrize(
+        ("question", "line"),
+        [
+            pytest.param("Co znamená High Confidence?", "Answer in Czech.", id="czech"),
+            pytest.param("What does High Confidence mean?", "Answer in English.", id="english"),
+            pytest.param("Wie funktioniert die Methode?", None, id="other-language"),
+        ],
+    )
+    async def test_the_user_message_ends_with_the_language_line(self, mode, question, line):
+        """
+        GIVEN a question in Czech, in English or in another language, in each mode
+        WHEN a turn is answered
+        THEN the last line of the turn's user message is the line for Czech or English and
+             nothing is added for the other language, and the system message is the
+             system prompt as it is
+        """
+        model = _model(_say())
+        ctx = _ctx(chunks=[_chunk()], project_id=PROJECT_ID, result=_result())
+
+        await AssistantService(_settings(mode), model).answer(_request(question), ctx)
+
+        system, rest = _shown(model)
+        assert system == SystemMessage(content=SYSTEM_PROMPT)
+        content = str(rest[-1].content)
+        asked = f"Question: {question}"
+        assert content.endswith(asked if line is None else f"{asked}\n\n{line}")
+        assert content.count("Answer in") == (0 if line is None else 1)
+
+    async def test_the_history_is_sent_as_it_was_written(self):
+        """
+        GIVEN a Czech question after an English earlier exchange
+        WHEN a turn is answered
+        THEN the earlier messages carry no language line, and only the new message does
+        """
+        model = _model(_say())
+        history = [_turn("user", "What is the median?"), _turn("assistant", "It is the middle.")]
+
+        await AssistantService(_settings(), model).answer(
+            _request("A co je průměr?", history), _ctx()
+        )
+
+        _, rest = _shown(model)
+        assert [message.content for message in rest[:2]] == [
+            "What is the median?",
+            "It is the middle.",
+        ]
+        assert rest[2].content == "A co je průměr?\n\nAnswer in Czech."
+
+    async def test_the_line_after_a_fallback_call_is_the_same(self):
+        """
+        GIVEN an agent run that hits the model-call limit on a Czech question
+        WHEN the turn falls back to one call over what was gathered
+        THEN that call's user message also ends with the language line
+        """
+        model = _model(
+            *(_call("nope", index) for index in range(1, 5)),
+            _say("Hotovo."),
+        )
+
+        await AssistantService(_settings("agent", assistant_max_tool_calls=2), model).answer(
+            _request("Jaké mám projekty?"), _ctx()
+        )
+
+        assert len(model.seen) == 5
+        assert model.seen[-1][-1].content == "Jaké mám projekty?\n\nAnswer in Czech."
 
 
 @pytest.mark.asyncio
