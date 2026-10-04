@@ -3,7 +3,7 @@
     "name": "BeCoMe"
   },
   "cancel": "Zrušit",
-  "switchToLanguage": "Přepnout na {{language}}",
+  "switchToLanguage": "{{code}}, přepnout na {{language}}",
   "deleteModal": {
     "permanentlyDelete": "Trvale smaže:",
     "cannotUndo": "Tuto akci nelze vrátit zpět.",
@@ -14,7 +14,8 @@
     "about": "O metodě",
     "signIn": "Přihlásit se",
     "signOut": "Odhlásit se",
-    "getStarted": "Začít",
+    "getStarted": "Vytvořit účet",
+    "goToProjects": "Přejít na projekty",
     "projects": "Projekty",
     "profile": "Profil",
     "docs": "Dokumentace",
@@ -36,7 +37,6 @@
     "documentation": "Dokumentace",
     "faq": "Časté dotazy",
     "caseStudies": "Případové studie",
-    "implementation": "Implementace a vývoj webové aplikace",
     "implementationLine": "Implementace metody BeCoMe",
     "implementationUniversity": "Česká zemědělská univerzita v Praze",
     "feedback": "Zpětná vazba a kontakt",
@@ -49,22 +49,8 @@
     "pelikan": "doc. Ing. Martin Pelikán, Ph.D.",
     "privacy": "Ochrana údajů"
   },
-  "docs": {
-    "title": "Dokumentace",
-    "github": "GitHub"
-  },
   "common": {
-    "loading": "Načítání...",
-    "error": "Chyba",
-    "success": "Úspěch",
-    "cancel": "Zrušit",
-    "save": "Uložit",
-    "delete": "Smazat",
-    "create": "Vytvořit",
-    "back": "Zpět",
-    "next": "Další",
-    "submit": "Odeslat",
-    "close": "Zavřít"
+    "loading": "Načítání..."
   },
   "password": {
     "show": "Zobrazit heslo",
@@ -86,8 +72,6 @@
     "lowerDesc": "Dolní (pesimistický)",
     "peakDesc": "Vrchol (nejpravděpodobnější)",
     "upperDesc": "Horní (optimistický)",
-    "arithmeticMean": "Aritmetický průměr (Γ)",
-    "maxError": "Max. chyba (Δmax)",
     "membershipFunction": "μ(x)",
     "mean": "Průměr",
     "median": "Medián",
@@ -113,11 +97,15 @@
     "centroidChartDesc": "Sloupcový graf centroidů expertních názorů s referenčními liniemi pro průměr, medián a nejlepší kompromis",
     "landscapeChartDesc": "Číselná osa zobrazující centroidy jednotlivých expertních názorů se značkami průměru, mediánu a nejlepšího kompromisu",
     "opinionValues": "Hodnoty názoru: Dolní {{lower}}, Vrchol {{peak}}, Horní {{upper}}, Centroid {{centroid}}",
-    "opensInNewTab": "otevře se v nové záložce"
+    "opensInNewTab": "otevře se v nové záložce",
+    "skipToContent": "Přejít k hlavnímu obsahu",
+    "close": "Zavřít",
+    "notifications": "Oznámení ({hotkey})",
+    "requirementMet": "splněno",
+    "requirementNotMet": "nesplněno"
   },
   "centroidChart": {
     "centroidValue": "Centroid",
-    "yAxisLabel": "Hodnota centroidu",
     "meanLine": "Průměr (Γ)",
     "medianLine": "Medián (Ω)",
     "compromiseLine": "Nejlepší kompromis (ΓΩMean)",
@@ -140,6 +128,7 @@
     "profile": "Profil",
     "onboarding": "Začínáme",
     "caseStudy": "Případová studie",
+    "caseStudyDetail": "Případová studie: {{name}}",
     "documentation": "Dokumentace",
     "faq": "Časté dotazy",
     "caseStudies": "Případové studie",

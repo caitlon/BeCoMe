@@ -6,10 +6,13 @@ test.describe('Public Pages', () => {
 
     await expect(
       page.getByRole('heading', { level: 1 })
-    ).toContainText('Group Decisions,');
+    ).toContainText('Many expert opinions,');
 
+    // Navigation bar, hero, call to action and footer share this label: scope to the hero
     await expect(
-      page.getByRole('link', { name: /Start Your Project/i })
+      page
+        .locator('section', { has: page.getByRole('heading', { level: 1 }) })
+        .getByRole('link', { name: 'Create Account' })
     ).toBeVisible();
 
     await expect(
@@ -57,7 +60,9 @@ test.describe('Public Pages', () => {
   test('hero CTA links to register', async ({ page }) => {
     await page.goto('/');
 
-    const cta = page.getByRole('link', { name: /Start Your Project/i });
+    const cta = page
+      .locator('section', { has: page.getByRole('heading', { level: 1 }) })
+      .getByRole('link', { name: 'Create Account' });
     await expect(cta).toBeVisible({ timeout: 10000 });
     await cta.click();
 

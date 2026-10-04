@@ -1,9 +1,11 @@
 import { Link } from "react-router";
 import { useTranslation } from "react-i18next";
 import { MessageSquare } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
 
 export function Footer() {
   const { t } = useTranslation();
+  const { isAuthenticated } = useAuth();
 
   return (
     <footer className="border-t border-border bg-card">
@@ -41,10 +43,10 @@ export function Footer() {
             <ul className="space-y-2">
               <li>
                 <Link
-                  to="/register"
+                  to={isAuthenticated ? "/projects" : "/register"}
                   className="text-sm text-muted-foreground hover:text-foreground transition-colors"
                 >
-                  {t("nav.getStarted")}
+                  {isAuthenticated ? t("nav.goToProjects") : t("nav.getStarted")}
                 </Link>
               </li>
               <li>

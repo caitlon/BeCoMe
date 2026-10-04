@@ -575,11 +575,14 @@ describe('ApiClient', () => {
         json: () => Promise.resolve({ detail: 'Check your inbox to finish signing up.' }),
       });
 
-      await api.register({
-        email: 'new@example.com',
-        password: 'password123',
-        first_name: 'New',
-      });
+      await api.register(
+        {
+          email: 'new@example.com',
+          password: 'password123',
+          first_name: 'New',
+        },
+        'en'
+      );
 
       expect(mockFetch).toHaveBeenCalledWith(
         expect.stringContaining('/auth/register'),
@@ -630,7 +633,7 @@ describe('ApiClient', () => {
         json: () => Promise.resolve({ detail: 'If that address still needs confirming, a new link is on its way.' }),
       });
 
-      await api.resendVerification('user@example.com', 'CorrectHorse123!');
+      await api.resendVerification('user@example.com', 'CorrectHorse123!', 'en');
 
       expect(mockFetch).toHaveBeenCalledWith(
         expect.stringContaining('/auth/resend-verification'),
@@ -760,10 +763,10 @@ describe('ApiClient', () => {
       });
       const data = { email: 'new@example.com', password: 'password123', first_name: 'New' };
 
-      await api.register(data, 'turnstile-token-1');
+      await api.register(data, 'en', 'turnstile-token-1');
       expect(turnstileHeader(mockFetch.mock.calls[0])).toBe('turnstile-token-1');
 
-      await api.register(data);
+      await api.register(data, 'en');
       expect(turnstileHeader(mockFetch.mock.calls[1])).toBeUndefined();
     });
 
@@ -788,10 +791,10 @@ describe('ApiClient', () => {
         json: () => Promise.resolve({ detail: 'accepted' }),
       });
 
-      await api.forgotPassword('user@example.com', 'turnstile-token-3');
+      await api.forgotPassword('user@example.com', 'en', 'turnstile-token-3');
       expect(turnstileHeader(mockFetch.mock.calls[0])).toBe('turnstile-token-3');
 
-      await api.forgotPassword('user@example.com');
+      await api.forgotPassword('user@example.com', 'en');
       expect(turnstileHeader(mockFetch.mock.calls[1])).toBeUndefined();
     });
 
@@ -802,10 +805,10 @@ describe('ApiClient', () => {
         json: () => Promise.resolve({ detail: 'accepted' }),
       });
 
-      await api.resendVerification('user@example.com', 'CorrectHorse123!', 'turnstile-token-4');
+      await api.resendVerification('user@example.com', 'CorrectHorse123!', 'en', 'turnstile-token-4');
       expect(turnstileHeader(mockFetch.mock.calls[0])).toBe('turnstile-token-4');
 
-      await api.resendVerification('user@example.com', 'CorrectHorse123!');
+      await api.resendVerification('user@example.com', 'CorrectHorse123!', 'en');
       expect(turnstileHeader(mockFetch.mock.calls[1])).toBeUndefined();
     });
 
@@ -820,8 +823,78 @@ describe('ApiClient', () => {
         json: () => Promise.resolve({ detail: 'accepted' }),
       });
 
-      await api.forgotPassword('user@example.com', '');
+      await api.forgotPassword('user@example.com', 'en', '');
       expect(turnstileHeader(mockFetch.mock.calls[0])).toBeUndefined();
+    });
+  });
+
+  // The calls that send an email tell the API which language to write it in,
+  // through the standard Accept-Language header and never a body field (the request
+  // models reject unknown fields, and the SPA and API deploy separately).
+  describe('Email language header', () => {
+    function headersOf(call: unknown[]): Record<string, string> {
+      const [, options] = call as [string, RequestInit];
+      return options.headers as Record<string, string>;
+    }
+
+    function bodyOf(call: unknown[]): Record<string, unknown> {
+      const [, options] = call as [string, RequestInit];
+      return JSON.parse(options.body as string);
+    }
+
+    beforeEach(() => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        status: 202,
+        json: () => Promise.resolve({ detail: 'accepted' }),
+      });
+    });
+
+    it.each(['en', 'cs'] as const)('register sends Accept-Language %s', async (language) => {
+      const data = { email: 'new@example.com', password: 'password123', first_name: 'New' };
+
+      await api.register(data, language);
+
+      expect(headersOf(mockFetch.mock.calls[0])['Accept-Language']).toBe(language);
+      expect(bodyOf(mockFetch.mock.calls[0])).toEqual(data);
+    });
+
+    it.each(['en', 'cs'] as const)(
+      'resendVerification sends Accept-Language %s',
+      async (language) => {
+        await api.resendVerification('user@example.com', 'CorrectHorse123!', language);
+
+        expect(headersOf(mockFetch.mock.calls[0])['Accept-Language']).toBe(language);
+        expect(bodyOf(mockFetch.mock.calls[0])).toEqual({
+          email: 'user@example.com',
+          password: 'CorrectHorse123!',
+        });
+      }
+    );
+
+    it.each(['en', 'cs'] as const)(
+      'forgotPassword sends Accept-Language %s',
+      async (language) => {
+        await api.forgotPassword('user@example.com', language);
+
+        expect(headersOf(mockFetch.mock.calls[0])['Accept-Language']).toBe(language);
+        expect(bodyOf(mockFetch.mock.calls[0])).toEqual({ email: 'user@example.com' });
+      }
+    );
+
+    it('keeps the Turnstile header next to the language header', async () => {
+      await api.register({ email: 'a@example.com', password: 'password123' } as never, 'cs', 'tok');
+
+      expect(headersOf(mockFetch.mock.calls[0])).toMatchObject({
+        'Accept-Language': 'cs',
+        'X-Turnstile-Token': 'tok',
+      });
+    });
+
+    it('sends no Accept-Language header on a call that sends no email', async () => {
+      await api.login('user@example.com', 'pass');
+
+      expect(headersOf(mockFetch.mock.calls[0])['Accept-Language']).toBeUndefined();
     });
   });
 

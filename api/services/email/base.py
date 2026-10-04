@@ -1,6 +1,10 @@
 """Abstract email-sender interface for transactional mail."""
 
 from abc import ABC, abstractmethod
+from typing import Literal
+
+EmailLanguage = Literal["en", "cs"]
+"""Languages a transactional email can be written in."""
 
 
 class EmailSender(ABC):
@@ -12,28 +16,34 @@ class EmailSender(ABC):
     """
 
     @abstractmethod
-    async def send_password_reset(self, *, to_email: str, reset_url: str) -> None:
+    async def send_password_reset(
+        self, *, to_email: str, reset_url: str, language: EmailLanguage
+    ) -> None:
         """Send (or log) a password-reset message.
 
         :param to_email: Recipient email address.
         :param reset_url: Full frontend link the user clicks to reset; it already
             carries the raw reset token as a query parameter.
+        :param language: Language the message is written in.
         :raises EmailSendError: If a real send fails.
         """
 
     @abstractmethod
-    async def send_email_verification(self, *, to_email: str, verify_url: str) -> None:
+    async def send_email_verification(
+        self, *, to_email: str, verify_url: str, language: EmailLanguage
+    ) -> None:
         """Send (or log) an account-verification message.
 
         :param to_email: Recipient email address.
         :param verify_url: Full frontend link the user clicks to activate the account;
             it already carries the raw verification token as a query parameter.
+        :param language: Language the message is written in.
         :raises EmailSendError: If a real send fails.
         """
 
     @abstractmethod
     async def send_registration_attempt_notice(
-        self, *, to_email: str, login_url: str, reset_url: str
+        self, *, to_email: str, login_url: str, reset_url: str, language: EmailLanguage
     ) -> None:
         """Send (or log) a notice that registration was attempted with a taken address.
 
@@ -45,5 +55,6 @@ class EmailSender(ABC):
         :param to_email: Recipient email address (the existing account's address).
         :param login_url: Full frontend link to the sign-in page.
         :param reset_url: Full frontend link to the password-reset flow.
+        :param language: Language the message is written in.
         :raises EmailSendError: If a real send fails.
         """

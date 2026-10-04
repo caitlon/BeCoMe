@@ -16,13 +16,17 @@
 
 ## Summary
 
+Measured on 2026-09-30.
+
 | Check | Status | Result |
 |-------|--------|--------|
-| mypy (strict) | Pass | No errors (24 files in `src/`+`examples/`, 92 in `api/`) |
+| mypy (strict) | Pass | No errors (22 files in `src/`+`examples/`, 124 in `api/`) |
 | ruff check | Pass | No issues |
 | ruff format | Pass | All files formatted |
-| pytest | Pass | 1730 passed (`testpaths` is unit plus integration; the e2e tier is its own run, `pytest tests/e2e/ -n 0`, and needs a live PostgreSQL) |
-| coverage | Pass | 100% on `src/` (197 statements), 98.86% on `src/`+`api/` (4307 statements, 49 uncovered). CI enforces `--cov-fail-under=98` on the full run |
+| pytest | Pass | 3266 passed (`testpaths` is unit plus integration; the e2e tier is its own run, `pytest tests/e2e/ -n 0`, and needs a live PostgreSQL) |
+| coverage | Pass | 100% on `src/` (164 statements), 99.06% on `src/`+`api/` (6195 statements, 58 uncovered). CI enforces `--cov-fail-under=98` on the full run |
+
+The pytest count assumes `pg_ctl` from PostgreSQL 16 with pgvector on `PATH`. Without `pg_ctl`, 37 tests skip and 3229 pass (coverage 98.60%). With a PostgreSQL that lacks pgvector, 20 skip and 3246 pass (also 98.60%).
 
 ## Running checks
 
@@ -41,21 +45,19 @@ uv run mypy src/ examples/ && uv run ruff check . && uv run pytest --cov=src
 
 | Module | Statements | Coverage |
 |--------|------------|----------|
-| calculators/base_calculator.py | 12 | 100% |
 | calculators/become_calculator.py | 28 | 100% |
-| calculators/median_strategies.py | 14 | 100% |
-| exceptions.py | 8 | 100% |
+| exceptions.py | 4 | 100% |
 | interpreters/likert_interpreter.py | 24 | 100% |
 | models/become_result.py | 24 | 100% |
 | models/expert_opinion.py | 36 | 100% |
-| models/fuzzy_number.py | 51 | 100% |
-| **Total** | **197** | **100%** |
+| models/fuzzy_number.py | 48 | 100% |
+| **Total** | **164** | **100%** |
 
 HTML report: `uv run pytest --cov=src --cov-report=html` generates `htmlcov/index.html`.
 
 ## Test breakdown
 
-Unit tests (1215) cover models, calculators, interpreters, utilities, and API components (auth, schemas, services, middleware, logging). Integration tests (512) validate core calculations against Excel reference data for all three case studies and test API routes with a real database. End-to-end tests (59) exercise full API workflows. They skip on a machine without a live PostgreSQL and run in CI. The frontend adds 1027 Vitest tests, and 229 Playwright runs across five browser projects. Edge cases include a single expert, identical opinions, empty lists, and boundary values.
+Unit tests (2611) cover models, calculators, interpreters, utilities, and API components (auth, schemas, services, middleware, logging). Integration tests (655) validate core calculations against Excel reference data for all three case studies and test API routes with a real database. End-to-end tests (59) exercise full API workflows. They skip on a machine without a live PostgreSQL and run in CI. The frontend adds 1237 Vitest tests, which CI holds to coverage thresholds of 98% statements, 95% branches, 97% functions and 98% lines (`frontend/vitest.config.ts`), and 239 Playwright tests in six projects: `chromium`, `firefox` and `webkit` run 71 each, `wcag-audit` 15, `visual-regression` 8 and `docs-screenshots` 3. Edge cases include a single expert, identical opinions, empty lists, and boundary values.
 
 To regenerate these counts, run `uv run pytest tests/unit/ --collect-only -q` for each backend tier, `npx vitest run` in `frontend/`, and `npx playwright test --list`.
 
@@ -69,7 +71,7 @@ Mutation testing measures test suite quality. mutmut introduces small code chang
 
 | Metric | Value |
 |--------|-------|
-| Tool | mutmut 2.5.1, the version `uv.lock` resolved on the run date; the project now pins 3.6.0 |
+| Tool | mutmut 2.5.1, the version `uv.lock` resolved on the run date; `pyproject.toml` pins a newer one now |
 | Target | `src/` (core library) |
 | Total mutants | 170 |
 | Killed | 120 |
@@ -129,7 +131,7 @@ Run date: 2026-02-22, on the same unresolvable commit as the mutation run above.
 | /api/v1/health | - | 1.9 | 1 | 3 | 10 | 3.2 |
 
 Environment: macOS (Apple Silicon), Python 3.13, PostgreSQL 16 (Docker), 10 concurrent users, 60s run.
-Tool: Locust 2.43.3, the version `uv.lock` resolved on the run date. The project now pins 2.46.2. Total requests: 1863, failures: 0.
+Tool: Locust 2.43.3, the version `uv.lock` resolved on the run date; `pyproject.toml` pins a newer one now. Total requests: 1863, failures: 0.
 
 ```bash
 # Start API server

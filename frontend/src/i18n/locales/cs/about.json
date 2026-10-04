@@ -11,38 +11,8 @@
   "method": {
     "title": "Metoda BeCoMe",
     "paragraph1": "Během mnoha let výzkumu na České zemědělské univerzitě v Praze (ČZU) vyvinuli výzkumníci unikátní metodu BeCoMe (Best-Compromise-Mean) pro určení optimálního skupinového rozhodnutí, které odpovídá nejlepšímu kompromisu/shodě všech expertních názorů.",
-    "paragraph2": "Optimální rozhodnutí je výsledkem výpočetně složitého matematického modelu fuzzy množin založeného na minimalizaci entropie. Tento přístup zajišťuje, že konečné rozhodnutí představuje nejvyváženější kompromis mezi všemi expertními pohledy.",
+    "paragraph2": "BeCoMe je zjednodušený nástupce metody MaxAgM. MaxAgM hledá nejlepší shodu minimalizací entropie, což je výpočetně náročné a vyžaduje specializovaný software. BeCoMe se bez toho obejde: názor každého experta je fuzzy trojúhelníkové číslo a nejlepší kompromis leží uprostřed mezi aritmetickým průměrem a mediánem všech názorů. Metoda zároveň udává maximální chybu výsledku, tedy polovinu vzdálenosti mezi průměrem a mediánem.",
     "learnMore": "Zobrazit dokumentaci"
-  },
-  "expertOpinions": {
-    "title": "Jak experti vyjadřují své názory",
-    "subtitle": "Experti odpovídají na položenou otázku a hodnotí určitý kvantitativní parametr navrhovaného řešení. Své odpovědi mohou vyjádřit třemi způsoby:",
-    "crisp": {
-      "title": "Přesné číslo",
-      "description": "Jedna přesná hodnota, když je expert přesvědčen o svém odhadu.",
-      "example": "Příklad: 50 miliard Kč"
-    },
-    "fuzzy": {
-      "title": "Fuzzy interval",
-      "description": "Trojúhelníková funkce příslušnosti se třemi hodnotami: nejlepší návrh, dolní limit a horní limit.",
-      "example": "Příklad: (40, 60, 80) — pesimistický, nejpravděpodobnější, optimistický"
-    },
-    "likert": {
-      "title": "Likertova škála",
-      "description": "Lingvistické termíny mapované na číselné hodnoty: Rozhodně nesouhlasím (0), Spíše nesouhlasím (25), Neutrální (50), Spíše souhlasím (75), Rozhodně souhlasím (100).",
-      "example": "Příklad: Spíše souhlasím = 75"
-    }
-  },
-  "results": {
-    "title": "Výsledky",
-    "bestCompromise": {
-      "title": "Nejlepší kompromis",
-      "description": "Optimální hodnota, která představuje nejlepší shodu mezi všemi expertními názory, vypočítaná pomocí matematiky fuzzy množin."
-    },
-    "maxError": {
-      "title": "Maximální chyba odhadu",
-      "description": "Metrika kvality, která indikuje úroveň nejistoty kompromisu a pomáhá rozhodovatelům pochopit spolehlivost výsledku."
-    }
   },
   "applications": {
     "title": "Aplikace",
@@ -59,7 +29,7 @@
     }
   },
   "authors": {
-    "title": "Autoři",
+    "title": "Autoři metody",
     "vrana": "Prof. Ing. Ivan Vrana, DrSc.",
     "tyrychtr": "doc. Ing. Jan Tyrychtr, Ph.D.",
     "pelikan": "doc. Ing. Martin Pelikán, Ph.D.",
@@ -67,12 +37,13 @@
     "faculty": "Provozně ekonomická fakulta",
     "university": "Česká zemědělská univerzita v Praze",
     "citation": "Citace:",
-    "citationText": "Vrana, I., Tyrychtr, J., Pelikán, M. (2020). BeCoMe-FuzzyDecisionTool, ČZU Praha."
+    "citationText": "Vrana, I., Tyrychtr, J., Pelikán, M. (2021). BeCoMe: Easy-to-implement optimized method for best-compromise group decision making: Flood-prevention and COVID-19 case studies. Environmental Modelling & Software, 136, 104953. https://doi.org/10.1016/j.envsoft.2020.104953",
+    "builtBy": "Tuto webovou aplikaci jako nezávislou implementaci metody vytvořila Ekaterina Kuzmina."
   },
   "cta": {
     "title": "Podívejte se na BeCoMe v akci",
-    "subtitle": "Prozkoumejte reálné případové studie nebo založte vlastní projekt.",
+    "subtitle": "Prozkoumejte případové studie nebo založte vlastní projekt.",
     "viewCaseStudies": "Zobrazit případové studie",
-    "startProject": "Založit projekt"
+    "startProject": "Vytvořit účet"
   }
 }

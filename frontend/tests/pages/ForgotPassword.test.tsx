@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { act, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { render } from '@tests/utils';
+import i18n from '@/i18n';
 import ForgotPassword from '@/pages/ForgotPassword';
 import { ForbiddenError, TURNSTILE_REFUSED_CODE } from '@/lib/errors';
 
@@ -9,8 +10,8 @@ import { ForbiddenError, TURNSTILE_REFUSED_CODE } from '@/lib/errors';
 const mockForgotPassword = vi.fn();
 vi.mock('@/lib/api', () => ({
   api: {
-    forgotPassword: (email: string, turnstileToken?: string | null) =>
-      mockForgotPassword(email, turnstileToken),
+    forgotPassword: (email: string, language: string, turnstileToken?: string | null) =>
+      mockForgotPassword(email, language, turnstileToken),
   },
 }));
 
@@ -99,14 +100,44 @@ describe('ForgotPassword', () => {
     await user.click(getSubmitButton());
 
     await waitFor(() => {
-      // Second argument is the Turnstile token; the check is off in this suite (no
-      // VITE_TURNSTILE_SITE_KEY), so the widget never mints one and forgotPassword
-      // is called with null exactly as it was before the bot check existed.
-      expect(mockForgotPassword).toHaveBeenCalledWith('user@example.com', null);
+      // Second argument is the interface language, third the Turnstile token; the
+      // check is off in this suite (no VITE_TURNSTILE_SITE_KEY), so the widget never
+      // mints one and forgotPassword is called with null exactly as it was before the
+      // bot check existed.
+      expect(mockForgotPassword).toHaveBeenCalledWith('user@example.com', 'en', null);
     });
     await waitFor(() => {
       expect(screen.getByText(/if that email is registered/i)).toBeInTheDocument();
     });
+  });
+
+  // The reset email is written in the language the visitor is using, so the page
+  // hands the API its interface language, the way the registration page does.
+  it.each([
+    ['en', 'en'],
+    ['cs', 'cs'],
+  ])('sends the language for interface language %s as %s', async (interfaceLanguage, expected) => {
+    const user = userEvent.setup();
+    mockForgotPassword.mockResolvedValueOnce(undefined);
+    render(<ForgotPassword />);
+    await user.type(getEmailInput(), 'user@example.com');
+    const submit = getSubmitButton();
+
+    // The visitor switches language after typing, as the switcher allows.
+    await act(async () => {
+      await i18n.changeLanguage(interfaceLanguage);
+    });
+    try {
+      await user.click(submit);
+
+      await waitFor(() => {
+        expect(mockForgotPassword).toHaveBeenCalledWith('user@example.com', expected, null);
+      });
+    } finally {
+      await act(async () => {
+        await i18n.changeLanguage('en');
+      });
+    }
   });
 
   it('shows the same success message even when the request fails (anti-enumeration)', async () => {
@@ -184,6 +215,7 @@ describe('ForgotPassword', () => {
       await waitFor(() => {
         expect(mockForgotPassword).toHaveBeenCalledWith(
           'user@example.com',
+          'en',
           'mock-turnstile-token'
         );
       });

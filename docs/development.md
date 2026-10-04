@@ -30,6 +30,7 @@ cd BeCoMe
 uv sync                    # core library only
 uv sync --extra api        # add the REST API
 uv sync --extra dev        # add testing, linting, type checking
+uv sync --extra dev --extra api --extra assistant  # dev, api and the local assistant (developer machines only)
 uv sync --all-extras       # everything
 
 source .venv/bin/activate  # macOS and Linux
@@ -59,6 +60,11 @@ pip install -e ".[dev,viz,notebook]"
 | `viz` | numpy, pandas, matplotlib, plotly, seaborn | Visualization and data analysis |
 | `notebook` | jupyter, ipykernel, ipywidgets | Interactive notebooks |
 | `docs` | mkdocs, mkdocs-material | Building the documentation site |
+| `assistant` | langchain, langgraph, langsmith, openai, langchain-postgres, psycopg, pypdf, rank-bm25 | The local-only assistant (`ASSISTANT_ENABLED=true`), see [the assistant README](https://github.com/caitlon/BeCoMe/blob/prod/api/assistant/README.md) |
+
+The API test directories, `tests/unit/api/` and `tests/integration/api/`, import the assistant's
+packages at module level. Running them needs `uv sync --extra dev --extra api --extra assistant`.
+CI's test job installs the same three extras and adds `docs`.
 
 ## Configuration
 
@@ -103,8 +109,12 @@ grows into needing a map gets picked up on its own.
 ## Run it locally
 
 ```bash
-# Backend on http://localhost:8000
+# Database: the local PostgreSQL from docker/docker-compose.yml, then its schema
+docker compose --env-file .env -f docker/docker-compose.yml up -d --wait db
 uv sync --extra api
+uv run alembic upgrade head
+
+# Backend on http://localhost:8000
 uv run uvicorn api.main:app --reload
 
 # Frontend on http://localhost:8080
@@ -125,12 +135,14 @@ deployment live in [environments](environments.md).
 ```text
 BeCoMe/
 ├── api/                    # REST API (FastAPI)
+│   ├── assistant/              # Local-only chat assistant (agent, RAG, model clients); needs the assistant extra
 │   ├── auth/                   # Authentication (JWT, passwords, session cookies, throttles)
 │   ├── db/                     # Database models (SQLModel)
 │   ├── middleware/             # Rate limit, CSRF, body size, security headers, logging
 │   ├── routes/                 # HTTP endpoints
 │   ├── schemas/                # Pydantic DTOs
 │   ├── services/               # Business logic
+│   ├── utils/                  # HTML sanitization, client IP, upload and photo-link helpers
 │   └── README.md               # API documentation
 ├── frontend/               # Web UI (React + Vite)
 │   ├── src/
@@ -143,12 +155,17 @@ BeCoMe/
 │   ├── models/                 # Fuzzy number, expert opinion
 │   ├── calculators/            # BeCoMe algorithm
 │   └── interpreters/           # Likert scale support
-├── tests/                  # Test suite (1,786 backend tests)
+├── tests/                  # Test suite (3,325 backend tests: 3,266 in the default run and 59 end-to-end)
 │   ├── unit/                   # Unit tests (models, calculators, API)
 │   ├── integration/            # Integration tests (Excel validation, API routes, DB)
 │   ├── e2e/                    # End-to-end API tests
 │   └── reference/              # Expected values from Excel
 ├── examples/               # Case study examples
 │   └── data/                   # Dataset files
+├── scripts/                # Helper scripts
+│   ├── assistant/              # Local model servers, corpus ingestion, retrieval evaluation
+│   ├── ci/                     # Local CI runner
+│   ├── db/                     # Database backup and role setup
+│   └── docs/                   # Table-of-contents generator
 └── docs/                   # Documentation
 ```

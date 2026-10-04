@@ -60,17 +60,17 @@ test.describe.serial('Invitation Flow', () => {
     const dialog = ownerPage.getByRole('dialog');
     await expect(dialog).toBeVisible();
 
-    // Enter expert email and send invitation
+    // Enter expert email and create the invitation
     await dialog.getByPlaceholder('expert@example.com').fill(expertEmail);
-    await dialog.getByRole('button', { name: 'Send Invitation' }).click();
+    await dialog.getByRole('button', { name: 'Invite', exact: true }).click();
 
     // Wait for success state
-    await expect(dialog.getByText('Invitation sent!')).toBeVisible({ timeout: 10000 });
+    await expect(dialog.getByText('Invitation created')).toBeVisible({ timeout: 10000 });
     await dialog.getByRole('button', { name: 'Done' }).click();
   });
 
   test('expert sees invitation and accepts', async () => {
-    // Reload to fetch fresh data (invitation was sent after page loaded)
+    // Reload to fetch fresh data (invitation was created after page loaded)
     await expertPage.reload();
     await expertPage.waitForLoadState('networkidle');
 

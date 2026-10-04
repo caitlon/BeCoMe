@@ -16,7 +16,6 @@ waiting for its next writer.
 from dataclasses import dataclass
 
 from api.db.models import Project
-from api.services.protocols import LikertInterpreterProtocol
 from src.interpreters.likert_interpreter import LikertDecisionInterpreter
 from src.models.fuzzy_number import FuzzyTriangleNumber
 
@@ -26,7 +25,7 @@ from src.models.fuzzy_number import FuzzyTriangleNumber
 LIKERT_SCALE_MIN = 0.0
 LIKERT_SCALE_MAX = 100.0
 
-_INTERPRETER: LikertInterpreterProtocol = LikertDecisionInterpreter()
+_INTERPRETER = LikertDecisionInterpreter()
 
 
 @dataclass(frozen=True)

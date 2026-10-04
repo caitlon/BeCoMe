@@ -28,8 +28,8 @@ Settings read `APP_ENV` from the process environment (shell, Docker, Railway, CI
 
 | Profile | `APP_ENV` | Where it runs | Database | Debug | Rate limiting |
 |---------|-----------|---------------|----------|-------|---------------|
-| dev | unset or `dev` | Local machine and the Railway dev service | SQLite locally, PostgreSQL on Railway | off (the `env/.env.dev.example` template turns it on) | on |
-| test | `test` | Staging deploy and the test suite | PostgreSQL (staging), in-memory SQLite (tests) | off | on when deployed, off under pytest |
+| dev | unset or `dev` | Local machine and the Railway dev service | Set by `DATABASE_URL`: PostgreSQL in Docker locally (SQLite if unset), PostgreSQL on Railway | off (the `env/.env.dev.example` template turns it on) | on |
+| test | `test` | Staging deploy and the test suite | PostgreSQL (staging), in-memory SQLite or PostgreSQL (tests) | off | on when deployed, off under pytest |
 | prod | `prod` | Railway production | PostgreSQL | off | on |
 
 ## The two axes
@@ -37,15 +37,17 @@ Settings read `APP_ENV` from the process environment (shell, Docker, Railway, CI
 `APP_ENV` and `TESTING` answer different questions and never substitute for each other.
 
 - **`APP_ENV`** (`dev` / `test` / `prod`) is the deployment profile. It drives debug output, CORS origins, the database it expects, and the deploy startup guard.
-- **`TESTING`** (`1`/`true`) marks an automated test run. Only pytest and CI set it. It disables rate limiting and the deploy startup checks, and is never present on a deployed service.
+- **`TESTING`** (`1`/`true`) marks an automated test run. Only automated test runs set it: pytest, the CI jobs, and `scripts/ci/e2e-local.sh`. It disables rate limiting and the deploy startup checks, and is never present on a deployed service.
 
-This separation is what lets staging be realistic. A staging deploy sets `APP_ENV=test` with no `TESTING`, so its rate limits match production. The pytest suite sets `APP_ENV=test` together with `TESTING=1`, which keeps tests fast and lets them use in-memory SQLite.
+This separation is what lets staging be realistic. A staging deploy sets `APP_ENV=test` with no `TESTING`, so its rate limits match production. The pytest suite sets `APP_ENV=test` together with `TESTING=1`, which keeps tests fast. The unit and integration suites mostly build their own in-memory SQLite engines, and the end-to-end runs use PostgreSQL.
 
 ## Profiles in detail
 
 ### dev
 
-The default. SQLite, debug off, localhost CORS, and no startup guard on a laptop. It needs no
+The default. Debug off, localhost CORS, and no startup guard on a laptop. `DATABASE_URL`
+picks the database: the code defaults to SQLite, and the base `.env` copied from
+`env/.env.example` points it at the PostgreSQL in `docker/docker-compose.yml`. It needs no
 profile file of its own, but it does need the base `.env`: `SECRET_KEY` has no default and the
 application refuses to start without it. The `env/.env.dev.example` template turns debug on, and the same profile on Railway is a deploy, so the guard applies to it.
 
@@ -55,7 +57,7 @@ uv run uvicorn api.main:app --reload
 
 ### test (staging and the test suite)
 
-Two consumers share this profile. A deployed staging service uses PostgreSQL with debug off and rate limiting on, which mirrors production for manual QA. It meets the same startup invariants as production: a strong secret, PostgreSQL, Redis, a privileged `MIGRATION_DATABASE_URL`, the Cloudflare origin secret, non-localhost `CORS_ORIGINS`, a non-loopback `FRONTEND_BASE_URL`, a working email provider, and debug off. The automated suite runs the same profile but adds `TESTING=1`, so it uses in-memory SQLite, turns rate limiting off, and skips the startup guard. The test conftests set both variables before any `api` import.
+Two consumers share this profile. A deployed staging service uses PostgreSQL with debug off and rate limiting on, which mirrors production for manual QA. It meets the same startup invariants as production: a strong secret, PostgreSQL, Redis, a privileged `MIGRATION_DATABASE_URL`, the Cloudflare origin secret, non-localhost `CORS_ORIGINS`, a non-loopback `FRONTEND_BASE_URL`, a working email provider, and debug off. The automated suite runs the same profile but adds `TESTING=1`, so it turns rate limiting off and skips the startup guard. Its unit and integration tests mostly use in-memory SQLite, and its end-to-end runs use PostgreSQL. The test conftests set both variables before any `api` import.
 
 ### prod
 
@@ -65,11 +67,11 @@ PostgreSQL, debug off. Every deployed service runs a startup guard (`_validate_d
 
 | File | Role |
 |------|------|
-| `api/config.py` | Defines the `Environment` enum, resolves `APP_ENV`, builds the dotenv list, and runs the prod guard |
+| `api/config.py` | Defines the `Environment` enum, resolves `APP_ENV`, builds the dotenv list, and runs the deploy guard |
 | `.env` | Shared base values, loaded first (gitignored) |
 | `.env.<stage>` | Per-profile overrides, loaded second (gitignored) |
 | `env/.env.example`, `env/.env.dev.example`, `env/.env.test.example`, `env/.env.prod.example` | Tracked templates to copy from |
-| `frontend/.env.development`, `.env.production`, `.env.test`, `.env.staging` | Vite per-mode values, mainly `VITE_API_URL` |
+| `frontend/.env.development`, `.env.production`, `.env.test` | Vite per-mode values, mainly `VITE_API_URL` |
 
 ## Local use
 
@@ -97,6 +99,10 @@ The `api` service in `docker/docker-compose.yml` reads `APP_ENV` with `${APP_ENV
 
 `.github/workflows/ci.yml` runs on every push and pull request to `dev`, `test`, and `prod`, so the deploy branches get the same full pipeline as `prod`. That pipeline covers lint, Python and frontend tests, backend and Playwright end-to-end tests, and SonarCloud (the last on pull requests and on pushes to `prod`). It sets `APP_ENV=test` on the `python-tests`, `backend-e2e`, and `e2e` jobs, including the steps that start a live server. `scripts/ci/e2e-local.sh` sets the same value for local end-to-end runs.
 
+The last job, `check` (shown as `Check`), waits on every other job in the workflow and fails unless each one succeeded or was skipped, so a failed or cancelled run ends in one red result. It runs even when a job it waits on fails, which a plain `needs` would not. Branch protection on `dev` requires `Check`.
+
+`.github/workflows/merge-guard.yml` runs on pull requests into `dev`, `test`, and `prod`, including the `labeled` and `unlabeled` events, and its job `Merge guard` fails while the pull request carries the `do-not-merge` label. It is a workflow of its own so that setting a label does not rerun the whole pipeline above. It checks nothing out and reads only the label list from the event. Branch protection on `dev` also requires `Merge guard`, so the label blocks the merge. The check reads the labels as they were when its event fired, so a re-run of an old run replays the old list.
+
 ## Development workflow
 
 Each environment tracks one git branch, and a push to that branch redeploys the environment's Railway services.
@@ -108,6 +114,8 @@ Each environment tracks one git branch, and a push to that branch redeploys the 
 | `prod` | prod | `APP_ENV=prod` | `prod-backend`, `prod-frontend`, `prod-db`, `prod-photos` |
 
 Work moves in one direction. Cut a feature branch from `dev`, open a pull request back into `dev`, and the merge auto-deploys to dev for a first live check. When a slice is ready for QA, promote `dev` to `test`. That deploy runs the `test` profile with production-like settings (rate limiting on, debug off), so manual testing is realistic. Promote `test` to `prod` to release, which deploys the `prod` profile and serves the public site. Hotfixes travel the same path instead of landing on `prod` directly.
+
+Every pull request into `dev` gets one size label from `.github/workflows/pr-size.yml`, counted over the changed lines without lock files, notebooks and files deleted whole: `size:S` under 300, `size:M` from 300 to 600, `size:L` from 601 to 1000, `size:XL` above that. The target is `size:M` or smaller. The label informs and never blocks a merge. The workflow runs on `pull_request_target`, which reads it from `dev`, so a change to the workflow itself takes effect on a pull request at its next push or edit after the change merges.
 
 Each environment has its own isolated Railway Postgres (`*-db`) and its own Railway Storage Bucket for profile photos (`*-photos`).
 
@@ -143,9 +151,9 @@ In `frontend/Dockerfile`, declare an `ARG` and an `ENV` for every `VITE_*` varia
 
 ## Database schema and access
 
-**Alembic** versions the schema. Migrations live in `migrations/`. `migrations/env.py` reads its target from `ALEMBIC_DATABASE_URL`, then `MIGRATION_DATABASE_URL`, then `DATABASE_URL`, and treats `SQLModel.metadata` as the source of truth. Every deploy runs `alembic upgrade head` once through the `preDeployCommand` in `railway.toml`, before the new version goes live, so a failed migration blocks the release instead of starting a broken one. `create_db_and_tables()` still builds the schema directly, but only for SQLite (local development) and `TESTING=1` runs (the end-to-end PostgreSQL). On a deployed database it is a no-op and Alembic stays in charge.
+**Alembic** versions the schema. Migrations live in `migrations/`. `migrations/env.py` reads its target from `ALEMBIC_DATABASE_URL`, then `MIGRATION_DATABASE_URL`, then `DATABASE_URL`, and treats `SQLModel.metadata` as the source of truth. Every deploy runs `alembic upgrade head` once through the `preDeployCommand` in `railway.toml`, before the new version goes live, so a failed migration blocks the release instead of starting a broken one. `create_db_and_tables()` still builds the schema directly, but only for SQLite and `TESTING=1` runs, including the end-to-end tests on PostgreSQL. On any other PostgreSQL database, local or deployed, it is a no-op and Alembic stays in charge.
 
-The application connects through a **least-privilege role**, `become_app`. It reads and writes the application tables but cannot create, alter, or drop objects, is not a superuser, and cannot bypass row-level security. Each backend therefore carries two database URLs: `DATABASE_URL` points at `become_app` for the running app, while `MIGRATION_DATABASE_URL` points at the privileged role that Alembic uses for DDL. `api/db/engine.py` hardens the connection: it requires TLS on deployed databases, tags each connection with an `application_name`, and sets per-session statement and idle-in-transaction timeouts so one query cannot monopolize the database. The schema also carries domain `CHECK` constraints (fuzzy-number ordering, positive expert counts, scale bounds) so the database rejects invalid rows on its own.
+The application connects through a **least-privilege role**, `become_app`. It reads and writes the application tables but cannot create, alter, or drop objects, is not a superuser, and cannot bypass row-level security. Each backend therefore carries two database URLs: `DATABASE_URL` points at `become_app` for the running app, while `MIGRATION_DATABASE_URL` points at the privileged role that Alembic uses for DDL. `api/db/engine.py` hardens the connection: it requires TLS on deployed databases (a laptop run on a loopback or socket database uses `prefer`), tags each connection with an `application_name`, and sets per-session statement and idle-in-transaction timeouts so one query cannot monopolize the database. The schema also carries domain `CHECK` constraints (fuzzy-number ordering, positive expert counts, scale bounds) so the database rejects invalid rows on its own.
 
 On production and staging each Postgres instance is reachable only over Railway's internal network: the public TCP proxies are gone, so the internet cannot reach those databases. A proxy can be recreated briefly when a laptop needs direct access for a migration or a dump.
 
@@ -155,9 +163,9 @@ Profile photos live in a per-environment Railway Storage Bucket (`dev-photos`, `
 
 ## Email delivery
 
-Registration and password reset both send mail through `EMAIL_PROVIDER` (`console`, which logs the link, or `http`, a Resend-style API, described in `api/README.md`). Registration now depends on delivery in a way password reset never did: the account is created unverified, and nobody can log in to it until someone opens its activation link. A deployment whose mail provider is broken or misconfigured therefore creates accounts nobody can activate. The deploy guard already required a working provider for password reset (`_validate_deploy_invariants` in `api/config.py` fails startup on a deployed service without one). That same check now also gates whether a fresh signup is usable.
+Registration and password reset both send mail through `EMAIL_PROVIDER`, which is `http` (a Resend-style API, described in `api/README.md`) or `console`. The console sender sends nothing: it logs each link with any token masked and prints the full link to stdout. Registration now depends on delivery in a way password reset never did: the account is created unverified, and nobody can log in to it until someone opens its activation link. A deployment whose mail provider is broken or misconfigured therefore creates accounts nobody can activate. The deploy guard already required a working provider for password reset (`_validate_deploy_invariants` in `api/config.py` fails startup on a deployed service without one). That same check now also gates whether a fresh signup is usable.
 
-Two settings gate the address checks in `api/services/email_policy.py` that run before a registration reaches the database, both on by default. `DISPOSABLE_EMAIL_BLOCKING_ENABLED` rejects a vendored list of known disposable-mail domains. `MX_CHECK_ENABLED` rejects a domain with no MX, A, or AAAA record, and a resolver timeout or other inconclusive result fails open rather than rejecting. Either check can be turned off with a Railway variable, no redeploy needed, if it starts rejecting real signups. `EMAIL_VERIFICATION_TOKEN_TTL_HOURS` (default `24`) sets how long an activation link stays redeemable. That is longer than the one-hour password-reset window, because people routinely open an activation email the next morning.
+Two settings gate the address checks in `api/services/email_policy.py` that run before a registration reaches the database, both on by default. `DISPOSABLE_EMAIL_BLOCKING_ENABLED` rejects a vendored list of known disposable-mail domains. `MX_CHECK_ENABLED` rejects a domain that does not exist, has no MX, A, or AAAA record, or publishes a null MX (RFC 7505), and a resolver timeout or other inconclusive result fails open rather than rejecting. Either check can be turned off with a Railway variable, with no code change, if it starts rejecting real signups. The value takes effect when the service restarts, which setting the variable triggers. `EMAIL_VERIFICATION_TOKEN_TTL_HOURS` (default `24`) sets how long an activation link stays redeemable. That is longer than the one-hour password-reset window, because people routinely open an activation email the next morning.
 
 ## Current status
 
@@ -172,4 +180,4 @@ Dev and staging moved off their generated `*.up.railway.app` hosts on 2026-07-31
 
 ## Where the code lives
 
-The selector and guard live in `api/config.py`: `Environment` (the enum), `_resolve_environment()` (reads `APP_ENV`), `_env_files_for()` (builds the `.env` plus `.env.<stage>` list), and the `_validate_deploy_invariants` model validator, which guards `prod` and a deployed `test`. Rate limiting reads `settings.testing` in `api/middleware/rate_limit.py`.
+The selector and guard live in `api/config.py`: `Environment` (the enum), `_resolve_environment()` (reads `APP_ENV`), `_env_files_for()` (builds the `.env` plus `.env.<stage>` list), and the `_validate_deploy_invariants` model validator, which guards every deployed service: `prod`, a deployed `test`, and the Railway dev service. Rate limiting reads `settings.testing` in `api/middleware/rate_limit.py`.

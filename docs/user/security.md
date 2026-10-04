@@ -52,5 +52,7 @@ work with them, including opinions that other people gave.
 ## Email
 
 Your address is used to sign you in, to confirm the account when you register, to reset a forgotten
-password, and to tell you that someone invited you to a project. It is not used for anything else,
-and it is visible to the members of projects you join.
+password, and to let you know when someone tries to register with the address of an account that is
+already confirmed. Each email is in the language the interface was in when the request was made,
+Czech or English. Invitations to a project are not emailed: you see them in the application. The
+address is not used for anything else, and it is visible to the members of projects you join.

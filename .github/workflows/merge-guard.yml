@@ -1,0 +1,54 @@
+name: Merge Guard
+
+# Fails while a pull request carries the `do-not-merge` label, so "not yet" is visible on the
+# pull request itself instead of living in a comment. Removing the label turns the check green.
+#
+# Why a workflow of its own. A label change fires `labeled` or `unlabeled`, and adding those event
+# types to ci.yml would rerun the whole pipeline (lint, tests, end-to-end, SonarCloud) every time
+# someone sets a label. This job takes seconds and starts nothing else.
+#
+# Listed among the required status checks on `dev`, it makes the label block the merge itself, not
+# only the reader's attention.
+#
+# Safety. The job reads the label list from the event payload and nothing else: no checkout, no
+# token, no third-party action. The payload reaches the script through env and is parsed with jq,
+# never spliced into the script text, because a label name is text somebody typed.
+# The check reads the labels as they were when the event fired, so re-running an old run replays
+# that old list, red or green. Add or remove the label and let the new run report instead.
+on:
+  pull_request:
+    branches: [dev, test, prod]
+    types: [opened, reopened, synchronize, labeled, unlabeled]
+
+permissions: {}
+
+jobs:
+  merge-guard:
+    name: Merge guard
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    # Two quick label changes start two runs. The newer one wins, so a slow older run cannot
+    # report a state the pull request has already left.
+    concurrency:
+      group: merge-guard-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    steps:
+      - name: Fail while do-not-merge is set
+        env:
+          PR_LABELS: ${{ toJSON(github.event.pull_request.labels) }}
+        run: |
+          set -euo pipefail
+          blocked=$(printf '%s' "$PR_LABELS" | jq 'any(.[]; .name == "do-not-merge")') || blocked=unreadable
+          case "$blocked" in
+            true)
+              echo "::error title=Merge guard::This pull request carries the do-not-merge label. Remove the label when it may be merged."
+              exit 1
+              ;;
+            false)
+              echo "No do-not-merge label."
+              ;;
+            *)
+              echo "::error title=Merge guard::Could not read the label list."
+              exit 1
+              ;;
+          esac

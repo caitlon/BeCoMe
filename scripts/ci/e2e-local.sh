@@ -12,7 +12,8 @@ set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 CONTAINER_NAME="become-e2e-db"
-DB_PORT=5433
+# 5433 belongs to become-assistant-db in docker/docker-compose.yml.
+DB_PORT=5434
 DB_USER="become"
 DB_PASS="become"
 DB_NAME="become_test"

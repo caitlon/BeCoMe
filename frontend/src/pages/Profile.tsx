@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useId, useMemo, useRef, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -57,12 +57,12 @@ const Profile = () => {
         firstName: z
           .string()
           .min(1, tAuth("validation.firstNameRequired"))
-          .max(100)
+          .max(100, tAuth("validation.firstNameMaxLength"))
           .regex(NAME_REGEX, tAuth("validation.nameFormat")),
         // Optional on this form: the API accepts a user with no surname.
         lastName: z
           .string()
-          .max(100)
+          .max(100, tAuth("validation.lastNameMaxLength"))
           .regex(NAME_REGEX, tAuth("validation.nameFormat"))
           .or(z.literal("")),
       }),
@@ -108,6 +108,8 @@ const Profile = () => {
     defaultValue: "",
   });
   const passwordRequirements = getPasswordRequirements(newPassword, tAuth);
+  const passwordChecklistId = useId();
+  const passwordChecklistShown = !!newPassword && !passwordRequirements.every((req) => req.met);
 
   // Delete account
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -372,12 +374,14 @@ const Profile = () => {
                     label={t("changePassword.newPassword")}
                     autoComplete="new-password"
                     error={passwordForm.formState.errors.newPassword}
+                    aria-describedby={passwordChecklistShown ? passwordChecklistId : undefined}
                     {...passwordForm.register("newPassword")}
                   />
                   <ValidationChecklist
+                    id={passwordChecklistId}
                     title={tAuth("passwordRequirements.title")}
                     requirements={passwordRequirements}
-                    show={!!newPassword}
+                    show={passwordChecklistShown}
                   />
                 </div>
 
@@ -386,6 +390,7 @@ const Profile = () => {
                   type="password"
                   autoComplete="new-password"
                   error={passwordForm.formState.errors.confirmPassword}
+                  aria-required="true"
                   {...passwordForm.register("confirmPassword")}
                 />
 

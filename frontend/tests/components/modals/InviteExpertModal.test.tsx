@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { render } from '@tests/utils';
+import i18n from '@/i18n';
 import { InviteExpertModal } from '@/components/modals/InviteExpertModal';
 
 // Mock api
@@ -31,7 +32,7 @@ describe('InviteExpertModal', () => {
   });
 
   const getEmailInput = () => screen.getByPlaceholderText('expert@example.com');
-  const getSubmitButton = () => screen.getByRole('button', { name: 'Send Invitation' });
+  const getSubmitButton = () => screen.getByRole('button', { name: 'Invite' });
 
   it('renders project name in modal', () => {
     render(<InviteExpertModal {...defaultProps} />);
@@ -67,7 +68,10 @@ describe('InviteExpertModal', () => {
     await user.click(getSubmitButton());
 
     await waitFor(() => {
-      expect(screen.getByText(/sending/i)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Inviting...' })).toHaveAttribute(
+        'aria-disabled',
+        'true'
+      );
     });
   });
 
@@ -115,8 +119,77 @@ describe('InviteExpertModal', () => {
     await user.click(getSubmitButton());
 
     await waitFor(() => {
-      expect(screen.getByText('Invitation sent!')).toBeInTheDocument();
+      expect(screen.getByText('Invitation created')).toBeInTheDocument();
     });
+  });
+
+  it('states in English that no email is sent and where the invitation appears', async () => {
+    const user = userEvent.setup();
+    mockInviteExpert.mockResolvedValueOnce({});
+
+    render(<InviteExpertModal {...defaultProps} />);
+
+    await user.type(getEmailInput(), 'expert@test.com');
+    await user.click(getSubmitButton());
+
+    expect(await screen.findByText('Invitation created')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'The invitation is not sent by email. The expert will see it in their "Invitations" tab.'
+      )
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/sent!/i)).not.toBeInTheDocument();
+  });
+
+  it('states in Czech that no email is sent and where the invitation appears', async () => {
+    const user = userEvent.setup();
+    mockInviteExpert.mockResolvedValueOnce({});
+
+    await i18n.changeLanguage('cs');
+    try {
+      render(<InviteExpertModal {...defaultProps} />);
+
+      await user.type(getEmailInput(), 'expert@test.com');
+      await user.click(screen.getByRole('button', { name: 'Pozvat' }));
+
+      expect(await screen.findByText('Pozvánka vytvořena')).toBeInTheDocument();
+      expect(
+        screen.getByText('Pozvánka se neposílá e-mailem. Expert ji uvidí v záložce "Pozvánky".')
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/odeslána/i)).not.toBeInTheDocument();
+    } finally {
+      await i18n.changeLanguage('en');
+    }
+  });
+
+  it('names the action after what it does in Czech, while loading and on a fallback error', async () => {
+    const user = userEvent.setup();
+    mockInviteExpert.mockRejectedValueOnce('network timeout');
+
+    await i18n.changeLanguage('cs');
+    try {
+      const { unmount } = render(<InviteExpertModal {...defaultProps} />);
+
+      await user.type(getEmailInput(), 'expert@test.com');
+      await user.click(screen.getByRole('button', { name: 'Pozvat' }));
+
+      await waitFor(() => {
+        expect(mockToast.mock.calls[0][0].description).toBe('Nepodařilo se vytvořit pozvánku');
+      });
+      unmount();
+
+      mockInviteExpert.mockImplementation(() => new Promise(() => {}));
+      render(<InviteExpertModal {...defaultProps} />);
+
+      await user.type(getEmailInput(), 'expert@test.com');
+      await user.click(screen.getByRole('button', { name: 'Pozvat' }));
+
+      expect(
+        await screen.findByRole('button', { name: 'Vytváření pozvánky...' })
+      ).toHaveAttribute('aria-disabled', 'true');
+    } finally {
+      await i18n.changeLanguage('en');
+    }
   });
 
   it('shows invite another button on success', async () => {
@@ -202,7 +275,7 @@ describe('InviteExpertModal', () => {
         })
       );
       const call = mockToast.mock.calls[0][0];
-      expect(call.description).toBe('Failed to send invitation');
+      expect(call.description).toBe('Failed to create the invitation');
     });
   });
 
@@ -217,7 +290,7 @@ describe('InviteExpertModal', () => {
     await user.click(getSubmitButton());
 
     await waitFor(() => {
-      expect(screen.getByText('Invitation sent!')).toBeInTheDocument();
+      expect(screen.getByText('Invitation created')).toBeInTheDocument();
     });
 
     await user.click(screen.getByRole('button', { name: /done/i }));
@@ -238,7 +311,7 @@ describe('InviteExpertModal', () => {
     await user.click(getSubmitButton());
 
     await waitFor(() => {
-      expect(screen.getByText('Invitation sent!')).toBeInTheDocument();
+      expect(screen.getByText('Invitation created')).toBeInTheDocument();
     });
 
     // Click Done, which triggers handleClose with setTimeout(200ms)

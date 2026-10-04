@@ -1,7 +1,8 @@
-import { describe, it, expect, vi } from 'vitest';
-import { screen } from '@testing-library/react';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { screen, within } from '@testing-library/react';
 import { render, framerMotionMock, unauthenticatedAuthMock } from '@tests/utils';
 import Landing from '@/pages/Landing';
+import i18n from '@/i18n';
 
 vi.mock('@/contexts/AuthContext', () => unauthenticatedAuthMock);
 vi.mock('framer-motion', () => framerMotionMock);
@@ -10,23 +11,27 @@ describe('Landing', () => {
   it('renders hero section with title', () => {
     render(<Landing />);
 
-    expect(screen.getByText('Group Decisions,')).toBeInTheDocument();
-    expect(screen.getByText('Precisely Measured')).toBeInTheDocument();
+    expect(screen.getByText('Many expert opinions,')).toBeInTheDocument();
+    expect(screen.getByText('one best compromise')).toBeInTheDocument();
   });
 
   it('renders hero subtitle', () => {
     render(<Landing />);
 
     expect(
-      screen.getByText(/aggregate expert opinions using fuzzy triangular numbers/i)
+      screen.getByText(
+        'For panels that must settle on one number, such as a budget, a deadline or a risk level. Each expert gives a lowest, most likely and highest estimate, and BeCoMe combines them into the best compromise.'
+      )
     ).toBeInTheDocument();
   });
 
-  it('shows "Start Your Project" button for unauthenticated users', () => {
+  it('labels every sign-up link "Create Account" for unauthenticated users', () => {
     render(<Landing />);
 
-    const startButton = screen.getByRole('link', { name: /start your project/i });
-    expect(startButton).toHaveAttribute('href', '/register');
+    // Navigation bar, hero, call to action and footer all lead to the same page
+    const signUpLinks = screen.getAllByRole('link', { name: 'Create Account' });
+    expect(signUpLinks).toHaveLength(4);
+    signUpLinks.forEach((link) => expect(link).toHaveAttribute('href', '/register'));
   });
 
   it('renders "How It Works" section', () => {
@@ -35,7 +40,13 @@ describe('Landing', () => {
     expect(screen.getByText('How It Works')).toBeInTheDocument();
     expect(screen.getByText('Collect')).toBeInTheDocument();
     expect(screen.getByText('Calculate')).toBeInTheDocument();
-    expect(screen.getByText('Consensus')).toBeInTheDocument();
+    expect(screen.getByText('Compromise')).toBeInTheDocument();
+    expect(
+      screen.getByText('A three-step process from expert opinions to the best compromise')
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('Get the best compromise and its maximum error')
+    ).toBeInTheDocument();
   });
 
   it('renders "Case Studies" section', () => {
@@ -49,8 +60,17 @@ describe('Landing', () => {
   it('renders CTA section', () => {
     render(<Landing />);
 
-    expect(screen.getByText('Ready to find consensus?')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /get started free/i })).toBeInTheDocument();
+    expect(screen.getByText('Ready to find the best compromise?')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Create your first project and start collecting expert opinions today. Free for noncommercial use.'
+      )
+    ).toBeInTheDocument();
+    // Hero and call to action inside the page content
+    const signUpLinks = within(screen.getByRole('main')).getAllByRole('link', {
+      name: 'Create Account',
+    });
+    expect(signUpLinks).toHaveLength(2);
   });
 
   it('has link to about page', () => {
@@ -58,6 +78,53 @@ describe('Landing', () => {
 
     const learnMoreLink = screen.getByText(/learn more about the become method/i);
     expect(learnMoreLink).toHaveAttribute('href', '/about');
+  });
+});
+
+describe('Landing - Czech', () => {
+  afterEach(async () => {
+    await i18n.changeLanguage('en');
+  });
+
+  it('renders the hero headline, subtitle and third step in Czech', async () => {
+    await i18n.changeLanguage('cs');
+    render(<Landing />);
+
+    expect(screen.getByText('Mnoho názorů expertů,')).toBeInTheDocument();
+    expect(screen.getByText('jeden nejlepší kompromis')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Pro skupiny, které se musí shodnout na jednom čísle, například na rozpočtu, termínu nebo míře rizika. Každý expert zadá nejnižší, nejpravděpodobnější a nejvyšší odhad a BeCoMe z nich spočítá nejlepší kompromis.'
+      )
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('Získejte nejlepší kompromis a maximální chybu')
+    ).toBeInTheDocument();
+  });
+
+  it('calls the result a compromise in the steps and the call to action', async () => {
+    await i18n.changeLanguage('cs');
+    render(<Landing />);
+
+    expect(screen.getByText('Kompromis')).toBeInTheDocument();
+    expect(
+      screen.getByText('Třístupňový proces od názorů expertů k nejlepšímu kompromisu')
+    ).toBeInTheDocument();
+    expect(screen.getByText('Připraveni najít nejlepší kompromis?')).toBeInTheDocument();
+  });
+
+  it('labels every sign-up link "Vytvořit účet" and states the licence condition', async () => {
+    await i18n.changeLanguage('cs');
+    render(<Landing />);
+
+    const signUpLinks = screen.getAllByRole('link', { name: 'Vytvořit účet' });
+    expect(signUpLinks).toHaveLength(4);
+    signUpLinks.forEach((link) => expect(link).toHaveAttribute('href', '/register'));
+    expect(
+      screen.getByText(
+        'Vytvořte svůj první projekt a začněte sbírat názory expertů ještě dnes. Pro nekomerční použití zdarma.'
+      )
+    ).toBeInTheDocument();
   });
 });
 

@@ -23,7 +23,7 @@
   },
   "expertOpinions": {
     "title": "Entering Expert Opinions",
-    "intro": "Experts answer the raised question by assessing a quantitative parameter. They can express their responses in three ways:",
+    "intro": "Experts answer the raised question by assessing a quantitative parameter. The form takes one input format, a fuzzy triangular number, and it covers three kinds of answer:",
     "crisp": {
       "title": "Crisp Number",
       "description": "A single precise value when the expert is confident about their estimate. In the interface, enter the same value in all three fields (Lower = Peak = Upper).",
@@ -31,7 +31,7 @@
     },
     "fuzzy": {
       "title": "Fuzzy Triangular Number",
-      "description": "A triangular membership function with three values representing uncertainty. This is the most common input format.",
+      "description": "A triangular membership function with three values representing uncertainty. This is the general form of an answer.",
       "lowerLabel": "Lower:",
       "lower": "Lower bound (pessimistic estimate) - the minimum realistic value",
       "peakLabel": "Peak:",
@@ -43,7 +43,7 @@
     },
     "likert": {
       "title": "Likert Scale",
-      "description": "For agreement/disagreement questions, use linguistic terms mapped to numeric values:",
+      "description": "For agreement/disagreement questions on a 0 to 100 scale, turn your position into numbers with this mapping. There is no separate Likert input yet, so you enter the numbers yourself:",
       "scale": {
         "stronglyDisagree": "Strongly disagree = 0",
         "ratherDisagree": "Rather disagree = 25",
@@ -59,7 +59,7 @@
     "intro": "After experts submit their opinions, BeCoMe calculates the optimal group decision.",
     "bestCompromise": {
       "title": "Best Compromise (ΓΩMean)",
-      "description": "The optimal aggregation of all expert opinions. It combines the arithmetic mean (Γ) and median (Ω) to find the value that best represents the group consensus.",
+      "description": "The optimal aggregation of all expert opinions. It lies midway between the arithmetic mean (Γ) and the median (Ω), so it uses every opinion without letting an extreme one dominate.",
       "centroid": "The centroid is the \"center of gravity\" of the triangular number - a single value representing the overall estimate."
     },
     "arithmeticMean": {
@@ -72,8 +72,8 @@
     },
     "maxError": {
       "title": "Maximum Error (Δmax)",
-      "description": "A quality metric indicating the uncertainty level of the compromise. Lower values indicate better agreement among experts.",
-      "interpretation": "If max error is high relative to the scale, it suggests significant disagreement among experts."
+      "description": "Half the distance between the mean and the median, which is also the distance from the compromise to each of them. A low value does not by itself mean the experts agreed, because a panel split into two camps can produce one too. Check the chart of individual opinions.",
+      "interpretation": "If max error is high relative to the scale, the mean and the median landed far apart. That happens when the opinions lean to one side or a few of them sit far from the rest."
     }
   },
   "visualization": {

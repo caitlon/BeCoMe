@@ -13,8 +13,9 @@ Open it before you create anything of your own. It is finished work, so you can 
 looks like and what the chart is telling you without first having to produce a panel. The
 [worked example](worked-example.md) walks through the same numbers in detail.
 
-The example project is read-only in the ways that matter. You cannot invite experts into it, and
-that is deliberate: it exists so that everyone's copy tells the same story.
+You can add your own opinion to the example project to see how the compromise moves, and delete the
+project when you no longer need it. You cannot invite experts into it, and that is deliberate:
+everyone's copy starts from the same thirteen opinions.
 
 ![The projects list on a new account, with the example project at the top](img/projects-list.png)
 
@@ -47,8 +48,9 @@ Open the project and click **Invite Experts**. You invite by email address, and 
 belong to someone who already has an account. There is no invitation to a stranger: the person
 signs up first, then you invite them.
 
-They will find the invitation in their **Invitations** tab. Until they accept it they are not on
-the panel and their absence does not hold anything up.
+They will find the invitation in their **Invitations** tab. No email is sent, so tell them to
+look there. Until they accept it they are not on the panel and their absence does not hold anything
+up.
 
 ## What happens next
 

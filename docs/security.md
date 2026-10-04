@@ -105,6 +105,15 @@ defenses hold independently: `is_demo` filtering keeps the accounts from being f
 and pre-verification means even a lookup that did find one could not fall into the branch
 that mints it an activation token.
 
+All three emails are written in English or Czech: the activation email, the password-reset
+email, and the notice sent when someone signs up with an address that already has an account.
+`register`, `resend-verification` and `forgot-password` take the language from the
+`Accept-Language` request header. The header is untrusted input, so `get_email_language` in
+`api/dependencies.py` reads only its first 200 characters and its first 10 ranges, reduces the
+result to `en` or `cs`, and falls back to `en` for anything else. The raw value is never logged
+and never echoed in a response, and a malformed header changes nothing about the answer, so it
+cannot be used to tell one branch from another.
+
 **A submission is bound to the link it mints, never to the account.** The activation token
 carries the submitted password hash and names (`email_verification_tokens`, all three
 columns `NOT NULL`), and the account receives them only when somebody redeems that specific
@@ -386,9 +395,15 @@ own limit. On top of that, routes carry tighter limits by risk:
 | Upload | `10/minute` | Photo upload |
 | Standard | `60/minute` | GDPR export, standalone calculate, result export |
 | Photo | `120/minute` | The public avatar proxy, which a page loads once per member |
+| Assistant chat | `20/minute` | The local assistant's chat route, which exists only on a developer's machine |
+| Assistant messages | `60/hour` per user | The same route, as a fixed one-hour window per account (`ASSISTANT_RATE_LIMIT_PER_HOUR`, `0` switches it off). A spent budget answers `429` |
 
 Only those routes carry a decorator. Everything else is bounded by the two global ceilings
-alone, which is the point of having them.
+alone, which is the point of having them. The hourly assistant cap is the only row of this table
+applied through a dependency. The `enforce_message_limit` dependency applies it before the
+`20/minute` per-IP limit runs, so a request that limit refuses has already spent one hourly
+message. `api/assistant/rate_limit.py` keeps the counter in Redis when `REDIS_URL` is set and in
+memory otherwise.
 
 The limiter keys on the real client IP, and the rule is not hop-based. `get_client_ip`
 (`api/utils/client_ip.py`) reads `CF-Connecting-IP` only when the request carries the
@@ -487,6 +502,13 @@ laptop and a CI runner carry no such marker, so the invariants guard staging wit
 breaking the local suite. The app serves the interactive API docs (`/docs`) only outside
 production.
 
+The local assistant has a check of its own, separate from the nine invariants.
+`assistant_enabled` defaults to `false`, and `_validate_assistant_local_only` refuses to start
+when it is `true` on any deploy. The check also fires when `RAILWAY_ENVIRONMENT_NAME` is set, so
+a Railway process that carries `TESTING=1` and slips past `is_deploy` is still refused. The
+assistant router is registered only when the setting is on, so on a deployed service every request
+that reaches routing answers 404 for the whole `/api/v1/assistant` prefix.
+
 ## Network and edge
 
 The public origin is `becomify.app`, served through Cloudflare, and each deployed
@@ -556,27 +578,31 @@ value, the email API key or bucket credentials, the `Authorization` header, any 
 response body, raw email addresses, activation or reset tokens and the URLs carrying them,
 and free-text user content such as a project description.
 
-Two specific traps are worth naming. First, `_digest()` in `api/auth/login_throttle.py` and
-`api/auth/email_throttle.py` is a **plain, unkeyed** SHA-256 of the identifier. It exists to
-key the store, not to reach a log. Writing it out would rebuild exactly the oracle the key
-in `hash_email` prevents, so records in those modules name the flow (`key_prefix`, `op`) and
-never the account. The address-scoped event belongs at the call site in
+Two specific traps are worth naming. First, `_digest()` in `api/auth/login_throttle.py`,
+`api/auth/email_throttle.py` and `api/assistant/rate_limit.py` is a **plain, unkeyed** SHA-256 of
+the identifier. It exists to key the store, not to reach a log. Writing it out would rebuild
+exactly the oracle the key in `hash_email` prevents, so no record in those modules names the
+account. The two in `api/auth/` name the flow (`key_prefix`, `op`), and the assistant's names only
+its event. The address-scoped event belongs at the call site in
 `api/routes/auth.py`, which has the keyed tag. Second, `api/logging_config.py` pins
 `sqlalchemy.engine` at WARNING, and that logger must stay above DEBUG on any deployed
 service: its DEBUG level prints bound query parameters, which on this schema means bcrypt
 hashes, addresses, names, and reset-token hashes shipped to the log drain in the clear. That
 pin matters because the dev deploy now runs at `LOG_LEVEL=DEBUG` against a real database.
 
-Both throttles fail open, and that is now alerted rather than silent. A Redis outage lifts
-the per-account login lockout and the per-address email cap while the request still
-succeeds, so each failure path logs `throttle_store_unavailable` naming the operation and
-the flow. Those records go out at **ERROR**, and that level is the alert. The app
+The login lockout and the email cap both fail open, and that is now alerted rather than silent.
+A Redis outage lifts the per-account login lockout and the per-address email cap while the
+request still succeeds, so each failure path logs `throttle_store_unavailable` naming the
+operation and the flow. Those records go out at **ERROR**, and that level is the alert. The app
 initializes Sentry without a `LoggingIntegration`, so the SDK's default `event_level` of
 ERROR is what turns a record into an issue, and an issue is the only thing that pages. At
 WARNING these records were a breadcrumb on some later event, which meant the brute-force
 lockout could stay off for the length of an outage with nothing raised anywhere, since the
 request it happened during returns normally, so there is no other symptom to notice. The
-accepted risk is unchanged. What changed is that it now announces itself.
+accepted risk is unchanged. What changed is that it now announces itself. The local-only
+assistant's hourly cap fails open the same way, and logs `assistant_throttle_unavailable` at
+ERROR. That record is for whoever reads the local log. The assistant cannot run on a deployed
+service, so the deployed alert rule below is not expected to fire for it.
 
 The level alone is not the whole alert, because the project's only other rule fires on
 *high priority* issues and Sentry does not necessarily rank a logged error that high. A
@@ -778,7 +804,9 @@ out of the file: they live in Railway variables.
 `api/db/engine.py` hardens the connection itself. It requires TLS on deployed databases
 (`sslmode=require`), tags each connection with an `application_name`, and repeats the
 per-session statement and idle-in-transaction timeouts client-side through libpq `options`,
-so a single runaway query cannot monopolize the database.
+so a single runaway query cannot monopolize the database. A laptop run outside tests,
+whose database is on a loopback host or a Unix socket, uses `sslmode=prefer` instead,
+because the local Docker database has no TLS.
 
 ### Network exposure
 

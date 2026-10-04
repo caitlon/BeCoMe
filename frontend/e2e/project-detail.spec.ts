@@ -162,8 +162,8 @@ baseTest.describe('Project Detail: Multi-Context', () => {
     const inviteDialog = ownerPage.getByRole('dialog');
     await expect(inviteDialog).toBeVisible();
     await inviteDialog.getByPlaceholder('expert@example.com').fill(expertEmail);
-    await inviteDialog.getByRole('button', { name: 'Send Invitation' }).click();
-    await expect(inviteDialog.getByText('Invitation sent!')).toBeVisible({ timeout: 10000 });
+    await inviteDialog.getByRole('button', { name: 'Invite', exact: true }).click();
+    await expect(inviteDialog.getByText('Invitation created')).toBeVisible({ timeout: 10000 });
     await inviteDialog.getByRole('button', { name: 'Done' }).click();
 
     // Expert accepts
@@ -180,10 +180,10 @@ baseTest.describe('Project Detail: Multi-Context', () => {
     // Owner reloads to see team member
     await ownerPage.reload();
 
-    // Click team member row to open profile dialog
-    const memberRow = ownerPage.getByRole('button', { name: /View profile of Team Expert/i });
-    await expect(memberRow).toBeVisible({ timeout: 10000 });
-    await memberRow.click();
+    // Click the team member's name button to open profile dialog
+    const memberButton = ownerPage.getByRole('button', { name: /View profile of Team Expert/i });
+    await expect(memberButton).toBeVisible({ timeout: 10000 });
+    await memberButton.click();
 
     // Profile dialog should show member name
     const profileDialog = ownerPage.getByRole('dialog');
@@ -211,7 +211,7 @@ baseTest.describe('Project Detail: Multi-Context', () => {
     await page.reload();
     await expect(page.getByText(/best compromise/i).first()).toBeVisible({ timeout: 10000 });
 
-    // Switch to Czech (aria-label is "Switch to Čeština")
+    // Switch to Czech (aria-label is "EN, switch to Čeština")
     await page.getByRole('button', { name: /Switch to Čeština/i }).click();
 
     // Verify Czech text appears on landing page

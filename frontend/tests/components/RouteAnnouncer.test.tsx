@@ -73,6 +73,33 @@ describe('RouteAnnouncer', () => {
     expect(region).toHaveTextContent('');
   });
 
+  it('leaves focus alone on the first render so the skip link stays the first Tab stop', () => {
+    const main = document.getElementById('main-content')!;
+    const focusSpy = vi.spyOn(main, 'focus');
+    document.title = 'Home - BeCoMe';
+
+    renderAnnouncer();
+
+    act(() => { vi.advanceTimersByTime(200); });
+
+    expect(focusSpy).not.toHaveBeenCalled();
+    expect(main).not.toHaveAttribute('tabindex');
+    expect(screen.getByRole('status')).toHaveTextContent('');
+  });
+
+  it('moves focus to main-content on a later route change', () => {
+    const main = document.getElementById('main-content')!;
+    const focusSpy = vi.spyOn(main, 'focus');
+
+    renderWithNavigate();
+    expect(focusSpy).not.toHaveBeenCalled();
+
+    act(() => { navigateFn('/about'); });
+
+    expect(focusSpy).toHaveBeenCalledTimes(1);
+    expect(focusSpy).toHaveBeenCalledWith({ preventScroll: true });
+  });
+
   it('announces document.title after route change', () => {
     document.title = 'Projects - BeCoMe';
 
@@ -146,19 +173,20 @@ describe('RouteAnnouncer', () => {
   });
 
   it('does not re-announce when pathname stays the same', () => {
-    document.title = 'Home - BeCoMe';
+    document.title = 'Projects - BeCoMe';
     renderWithNavigate();
 
-    // Let initial announcement fire
+    // The first render only records the path, so navigate once to get an announcement
+    act(() => { navigateFn('/projects'); });
     act(() => { vi.advanceTimersByTime(150); });
-    expect(screen.getByRole('status')).toHaveTextContent('Home - BeCoMe');
+    expect(screen.getByRole('status')).toHaveTextContent('Projects - BeCoMe');
 
     // Change title, then navigate to same path with different search params
     document.title = 'Should Not Appear';
-    act(() => { navigateFn('/?query=test'); });
+    act(() => { navigateFn('/projects?query=test'); });
     act(() => { vi.advanceTimersByTime(200); });
 
     // Still shows old announcement, since no new one triggered
-    expect(screen.getByRole('status')).toHaveTextContent('Home - BeCoMe');
+    expect(screen.getByRole('status')).toHaveTextContent('Projects - BeCoMe');
   });
 });

@@ -1,4 +1,5 @@
 import { Check, X } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 interface Requirement {
   label: string;
@@ -6,23 +7,27 @@ interface Requirement {
 }
 
 interface ValidationChecklistProps {
+  id?: string;
   title?: string;
   requirements: Requirement[];
   show?: boolean;
 }
 
 const ValidationChecklist = ({
+  id,
   title,
   requirements,
   show = true,
 }: ValidationChecklistProps) => {
+  const { t } = useTranslation("common");
+
   if (!show) return null;
 
   const allMet = requirements.every((req) => req.met);
   if (allMet) return null;
 
   return (
-    <div className="mt-3 space-y-1.5">
+    <div id={id} className="mt-3 space-y-1.5">
       {title && (
         <p className="text-xs text-muted-foreground font-medium">{title}</p>
       )}
@@ -38,7 +43,10 @@ const ValidationChecklist = ({
           ) : (
             <X className="h-3.5 w-3.5" />
           )}
-          <span>{req.label}</span>
+          <span>{req.label}</span>{" "}
+          <span className="sr-only">
+            {req.met ? t("a11y.requirementMet") : t("a11y.requirementNotMet")}
+          </span>
         </div>
       ))}
     </div>

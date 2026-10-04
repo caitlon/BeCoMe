@@ -106,11 +106,7 @@ class TestAgreementBadge:
 
     @pytest.mark.parametrize("lang", list(ReportLang))
     def test_the_badge_uses_the_wording_of_the_card_on_the_page(self, lang: ReportLang):
-        """The card's badge reads "High Confidence", not "High agreement".
-
-        The page labels its two badges differently by position, and this one sits
-        where the card's badge sits.
-        """
+        """The report's badge reads "High Confidence", as the card badge on the page does."""
         # GIVEN the labels for one language
         labels = get_labels(lang)
         renderer = PdfResultRenderer(get_palette(ReportTheme.LIGHT))

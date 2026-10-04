@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useId, useMemo, useRef, useState } from "react";
 import { Link } from "react-router";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -18,6 +18,7 @@ import { ResendVerification } from "@/components/auth/ResendVerification";
 import { AuthLayout } from "@/components/layout/AuthLayout";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { useToast } from "@/hooks/use-toast";
+import { toSupportedLanguage } from "@/i18n";
 import { api } from "@/lib/api";
 import { describeError } from "@/lib/errorMessages";
 import { isTurnstileRequired } from "@/lib/turnstile";
@@ -50,7 +51,7 @@ const getEmailRequirements = (
 ];
 
 const Register = () => {
-  const { t } = useTranslation("auth");
+  const { t, i18n } = useTranslation("auth");
   const { t: tCommon } = useTranslation();
   useDocumentTitle(tCommon("pageTitle.register"));
   const { toast } = useToast();
@@ -83,12 +84,12 @@ const Register = () => {
           firstName: z
             .string()
             .min(1, t("validation.firstNameRequired"))
-            .max(100)
+            .max(100, t("validation.firstNameMaxLength"))
             .regex(/^[\p{L}\s'-]+$/u, t("validation.nameFormat")),
           lastName: z
             .string()
             .min(1, t("validation.lastNameRequired"))
-            .max(100)
+            .max(100, t("validation.lastNameMaxLength"))
             .regex(/^[\p{L}\s'-]+$/u, t("validation.nameFormat")),
         })
         .refine((data) => data.password === data.confirmPassword, {
@@ -112,6 +113,8 @@ const Register = () => {
   const password = useWatch({ control, name: "password", defaultValue: "" });
   const emailRequirements = getEmailRequirements(email, t);
   const passwordRequirements = getPasswordRequirements(password, t);
+  const passwordChecklistId = useId();
+  const passwordChecklistShown = !!password && !passwordRequirements.every((req) => req.met);
 
   const onSubmit = async (data: RegisterFormData) => {
     setIsLoading(true);
@@ -123,6 +126,7 @@ const Register = () => {
           first_name: data.firstName,
           last_name: data.lastName,
         },
+        toSupportedLanguage(i18n.language),
         turnstileToken
       );
       // 202 identically for a free, unverified, or already-verified address,
@@ -186,12 +190,14 @@ const Register = () => {
             autoComplete="new-password"
             placeholder={t("register.passwordPlaceholder")}
             error={errors.password}
+            aria-describedby={passwordChecklistShown ? passwordChecklistId : undefined}
             {...register("password")}
           />
           <ValidationChecklist
+            id={passwordChecklistId}
             title={t("passwordRequirements.title")}
             requirements={passwordRequirements}
-            show={!!password}
+            show={passwordChecklistShown}
           />
         </div>
 
@@ -201,6 +207,7 @@ const Register = () => {
           autoComplete="new-password"
           placeholder={t("register.confirmPasswordPlaceholder")}
           error={errors.confirmPassword}
+          aria-required="true"
           {...register("confirmPassword")}
         />
 

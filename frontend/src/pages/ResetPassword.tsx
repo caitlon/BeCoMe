@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -59,6 +59,8 @@ const ResetPassword = () => {
 
   const password = useWatch({ control, name: "password", defaultValue: "" });
   const passwordRequirements = getPasswordRequirements(password, t);
+  const passwordChecklistId = useId();
+  const passwordChecklistShown = !!password && !passwordRequirements.every((req) => req.met);
 
   const onSubmit = async (data: ResetPasswordFormData) => {
     if (!token) return;
@@ -108,12 +110,14 @@ const ResetPassword = () => {
             autoComplete="new-password"
             placeholder={t("resetPassword.passwordPlaceholder")}
             error={errors.password}
+            aria-describedby={passwordChecklistShown ? passwordChecklistId : undefined}
             {...register("password")}
           />
           <ValidationChecklist
+            id={passwordChecklistId}
             title={t("passwordRequirements.title")}
             requirements={passwordRequirements}
-            show={!!password}
+            show={passwordChecklistShown}
           />
         </div>
 
@@ -123,6 +127,7 @@ const ResetPassword = () => {
           autoComplete="new-password"
           placeholder={t("resetPassword.confirmPasswordPlaceholder")}
           error={errors.confirmPassword}
+          aria-required="true"
           {...register("confirmPassword")}
         />
 

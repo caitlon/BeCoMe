@@ -95,7 +95,7 @@ class TestUserServiceLogging:
 
         # WHEN
         with patch("api.services.user_service.logger") as mock_logger:
-            service.create_user("user@example.com", "super-secret-pw", "First")
+            service.create_user("user@example.com", "super-secret-pw", "First", "Last")
 
         # THEN
         extra = mock_logger.info.call_args[1]["extra"]

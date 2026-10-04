@@ -6,6 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from api.config import Environment, Settings
+from api.schemas.assistant import MAX_HISTORY_ENTRIES, MAX_MESSAGE_CHARS
 
 
 def _configure_prod(monkeypatch, tmp_path) -> None:
@@ -1196,3 +1197,379 @@ class TestProfileLogLevelDefault:
 
         # THEN
         assert settings.log_level == "ERROR"
+
+
+class TestAssistantSettings:
+    """The local assistant is refused everywhere except a developer's own machine."""
+
+    def test_assistant_is_off_by_default(self, monkeypatch, tmp_path):
+        """
+        GIVEN Settings without an explicit override and no .env file in reach
+        WHEN constructed
+        THEN assistant_enabled defaults to False
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("ASSISTANT_ENABLED", raising=False)
+
+        # WHEN
+        settings = Settings(secret_key="test-secret-key")
+
+        # THEN
+        assert settings.assistant_enabled is False
+
+    def test_local_dev_allows_the_assistant_switched_on(self, monkeypatch, tmp_path):
+        """
+        GIVEN the dev profile with no Railway marker (a laptop)
+        WHEN Settings is constructed with assistant_enabled=true
+        THEN validation passes
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("RAILWAY_ENVIRONMENT_NAME", raising=False)
+        monkeypatch.setenv("APP_ENV", "dev")
+        monkeypatch.setenv("SECRET_KEY", "irrelevant-for-dev")
+        monkeypatch.setenv("ASSISTANT_ENABLED", "true")
+
+        # WHEN
+        settings = Settings()
+
+        # THEN
+        assert settings.assistant_enabled is True
+
+    def test_rejects_assistant_enabled_in_production(self, monkeypatch, tmp_path):
+        """
+        GIVEN a fully configured production profile
+        WHEN Settings is constructed with assistant_enabled=true
+        THEN validation fails, naming the field
+        """
+        # GIVEN
+        _configure_prod(monkeypatch, tmp_path)
+        monkeypatch.setenv("ASSISTANT_ENABLED", "true")
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="assistant_enabled"):
+            Settings()
+
+    def test_rejects_assistant_enabled_on_a_deployed_dev_service(self, monkeypatch, tmp_path):
+        """
+        GIVEN the dev profile running on Railway (a deployed service, not a laptop)
+        WHEN Settings is constructed with assistant_enabled=true
+        THEN validation fails, since is_deploy is true there too
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("TESTING", raising=False)
+        monkeypatch.setenv("RAILWAY_ENVIRONMENT_NAME", "dev")
+        monkeypatch.setenv("APP_ENV", "dev")
+        monkeypatch.setenv("SECRET_KEY", "a-sufficiently-strong-secret-value")
+        monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@host:5432/db")
+        monkeypatch.setenv("MIGRATION_DATABASE_URL", "postgresql://migrator:pass@host:5432/db")
+        monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
+        monkeypatch.setenv("CORS_ORIGINS", '["https://dev.your-domain.example"]')
+        monkeypatch.setenv("FRONTEND_BASE_URL", "https://dev.your-domain.example")
+        monkeypatch.setenv("EMAIL_PROVIDER", "http")
+        monkeypatch.setenv("EMAIL_API_KEY", "a-resend-api-key")
+        monkeypatch.setenv("CLOUDFLARE_ORIGIN_SECRET", "a-dev-origin-lock-value")
+        monkeypatch.setenv("ASSISTANT_ENABLED", "true")
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="assistant_enabled"):
+            Settings()
+
+    def test_rejects_assistant_enabled_on_railway_even_with_testing_set(
+        self, monkeypatch, tmp_path
+    ):
+        """
+        GIVEN TESTING=1 set alongside a Railway environment marker
+        WHEN Settings is constructed with assistant_enabled=true
+        THEN validation fails, since a process on Railway must never run the
+            assistant, even one that also looks like a test run
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("TESTING", "1")
+        monkeypatch.setenv("RAILWAY_ENVIRONMENT_NAME", "dev")
+        monkeypatch.setenv("APP_ENV", "dev")
+        monkeypatch.setenv("SECRET_KEY", "a-sufficiently-strong-secret-value")
+        monkeypatch.setenv("ASSISTANT_ENABLED", "true")
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="assistant_enabled"):
+            Settings()
+
+    def test_private_corpus_manifest_defaults_to_none(self, monkeypatch, tmp_path):
+        """
+        GIVEN Settings without an explicit override and no .env file in reach
+        WHEN constructed
+        THEN assistant_private_corpus_manifest defaults to None
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("ASSISTANT_PRIVATE_CORPUS_MANIFEST", raising=False)
+
+        # WHEN
+        settings = Settings(secret_key="test-secret-key")
+
+        # THEN
+        assert settings.assistant_private_corpus_manifest is None
+
+    def test_answer_model_settings_have_local_defaults(self, monkeypatch, tmp_path):
+        """
+        GIVEN Settings without an explicit override and no .env file in reach
+        WHEN constructed
+        THEN the answer model targets the local :8084 server, apart from the :8081
+             query-transform model, with an 800-token answer cap and k=3 retrieval
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        for name in (
+            "ASSISTANT_ANSWER_LLM_BASE_URL",
+            "ASSISTANT_ANSWER_LLM_MODEL",
+            "ASSISTANT_ANSWER_MAX_TOKENS",
+            "ASSISTANT_RETRIEVAL_K",
+        ):
+            monkeypatch.delenv(name, raising=False)
+
+        # WHEN
+        settings = Settings(secret_key="test-secret-key")
+
+        # THEN
+        assert settings.assistant_answer_llm_base_url == "http://127.0.0.1:8084/v1"
+        assert settings.assistant_answer_llm_model == "Qwen/Qwen3.5-9B"
+        assert settings.assistant_answer_max_tokens == 800
+        assert settings.assistant_retrieval_k == 3
+
+    @pytest.mark.parametrize("field", ["assistant_answer_max_tokens", "assistant_retrieval_k"])
+    @pytest.mark.parametrize("value", [0, -1])
+    def test_rejects_a_non_positive_answer_limit(self, field, value, monkeypatch, tmp_path):
+        """
+        GIVEN a non-positive answer token cap or retrieval k
+        WHEN Settings is constructed
+        THEN it is refused, naming the field
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match=field):
+            Settings(secret_key="test-secret-key", **{field: value})
+
+    @pytest.mark.parametrize(
+        ("field", "ceiling"),
+        [
+            ("assistant_max_history_turns", MAX_HISTORY_ENTRIES // 2),
+            ("assistant_max_message_chars", MAX_MESSAGE_CHARS),
+        ],
+    )
+    def test_request_limits_stop_at_the_schema_ceilings(
+        self, field, ceiling, monkeypatch, tmp_path
+    ):
+        """
+        GIVEN the history and message limits, which the chat service applies on top of
+              the request schema's hard caps
+        WHEN Settings is constructed with the ceiling, one above it, and zero
+        THEN the ceiling is accepted and the other two are refused, naming the field
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+
+        # WHEN/THEN
+        assert getattr(Settings(secret_key="test-secret-key", **{field: ceiling}), field) == ceiling
+        for refused in (ceiling + 1, 0):
+            with pytest.raises(ValidationError, match=field):
+                Settings(secret_key="test-secret-key", **{field: refused})
+
+    def test_rate_limit_accepts_zero_and_rejects_a_negative_value(self, monkeypatch, tmp_path):
+        """
+        GIVEN an hourly message limit of zero, which means no limit, and one below it
+        WHEN Settings is constructed
+        THEN zero is accepted and the negative value is refused, naming the field
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+
+        # WHEN/THEN
+        assert Settings(secret_key="test-secret-key", assistant_rate_limit_per_hour=0)
+        with pytest.raises(ValidationError, match="assistant_rate_limit_per_hour"):
+            Settings(secret_key="test-secret-key", assistant_rate_limit_per_hour=-1)
+
+    def test_mode_defaults_to_workflow_and_the_others_stay_selectable(self, monkeypatch, tmp_path):
+        """
+        GIVEN Settings without an override for the mode and no .env file in reach
+        WHEN constructed, and constructed again with each of the other two modes
+        THEN the default is workflow, the only mode that has been measured, and agent and
+             hybrid are still accepted
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("ASSISTANT_MODE", raising=False)
+
+        # WHEN
+        default = Settings(secret_key="test-secret-key")
+
+        # THEN
+        assert default.assistant_mode == "workflow"
+        for mode in ("agent", "hybrid"):
+            assert (
+                Settings(secret_key="test-secret-key", assistant_mode=mode).assistant_mode == mode
+            )
+        with pytest.raises(ValidationError, match="assistant_mode"):
+            Settings(secret_key="test-secret-key", assistant_mode="chatty")
+
+    def test_tool_call_limit_defaults_to_four(self, monkeypatch, tmp_path):
+        """
+        GIVEN Settings without an override for the tool-call limit and no .env file in reach
+        WHEN constructed
+        THEN one turn may make four tool calls
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("ASSISTANT_MAX_TOOL_CALLS", raising=False)
+
+        # WHEN
+        settings = Settings(secret_key="test-secret-key")
+
+        # THEN
+        assert settings.assistant_max_tool_calls == 4
+
+    @pytest.mark.parametrize("value", [0, -1])
+    def test_rejects_a_non_positive_tool_call_limit(self, value, monkeypatch, tmp_path):
+        """
+        GIVEN a tool-call limit of zero or below
+        WHEN Settings is constructed
+        THEN it is refused, naming the field, because an agent that can call nothing, or
+             one that always falls back, is a misconfiguration
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="assistant_max_tool_calls"):
+            Settings(secret_key="test-secret-key", assistant_max_tool_calls=value)
+
+    def test_accepts_a_tool_call_limit_of_one(self, monkeypatch, tmp_path):
+        """
+        GIVEN the smallest positive tool-call limit
+        WHEN Settings is constructed
+        THEN it is accepted and keeps that value
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+
+        # WHEN
+        settings = Settings(secret_key="test-secret-key", assistant_max_tool_calls=1)
+
+        # THEN
+        assert settings.assistant_max_tool_calls == 1
+
+    def test_turn_timeout_defaults_to_three_minutes(self, monkeypatch, tmp_path):
+        """
+        GIVEN Settings without an override for the turn timeout and no .env file in reach
+        WHEN constructed
+        THEN one assistant turn may take 180 seconds
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("ASSISTANT_TURN_TIMEOUT_SECONDS", raising=False)
+
+        # WHEN
+        settings = Settings(secret_key="test-secret-key")
+
+        # THEN
+        assert settings.assistant_turn_timeout_seconds == 180.0
+
+    @pytest.mark.parametrize("value", [0, 0.0, -1.5])
+    def test_rejects_a_non_positive_turn_timeout(self, value, monkeypatch, tmp_path):
+        """
+        GIVEN a turn timeout of zero or below
+        WHEN Settings is constructed
+        THEN it is refused, naming the field, because asyncio.timeout(0) would expire
+             every turn at once
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="assistant_turn_timeout_seconds"):
+            Settings(secret_key="test-secret-key", assistant_turn_timeout_seconds=value)
+
+    def test_langsmith_tracing_is_off_by_default(self, monkeypatch, tmp_path):
+        """
+        GIVEN Settings without an explicit override and no .env file in reach
+        WHEN constructed
+        THEN LangSmith tracing is off and has no API key
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("ASSISTANT_LANGSMITH_ENABLED", raising=False)
+        monkeypatch.delenv("ASSISTANT_LANGSMITH_API_KEY", raising=False)
+
+        # WHEN
+        settings = Settings(secret_key="test-secret-key")
+
+        # THEN
+        assert settings.assistant_langsmith_enabled is False
+        assert settings.assistant_langsmith_api_key is None
+
+    @pytest.mark.parametrize("api_key", [None, "", "   "])
+    def test_rejects_langsmith_tracing_without_an_api_key(self, api_key, monkeypatch, tmp_path):
+        """
+        GIVEN LangSmith tracing switched on with no key, an empty key and a blank key
+        WHEN Settings is constructed
+        THEN each is refused, naming the key
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("ASSISTANT_LANGSMITH_ENABLED", raising=False)
+        monkeypatch.delenv("ASSISTANT_LANGSMITH_API_KEY", raising=False)
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="assistant_langsmith_api_key"):
+            Settings(
+                secret_key="test-secret-key",
+                assistant_langsmith_enabled=True,
+                assistant_langsmith_api_key=api_key,
+            )
+
+    def test_accepts_langsmith_tracing_with_an_api_key(self, monkeypatch, tmp_path):
+        """
+        GIVEN LangSmith tracing switched on with a key
+        WHEN Settings is constructed
+        THEN validation passes
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("ASSISTANT_LANGSMITH_ENABLED", raising=False)
+        monkeypatch.delenv("ASSISTANT_LANGSMITH_API_KEY", raising=False)
+
+        # WHEN
+        settings = Settings(
+            secret_key="test-secret-key",
+            assistant_langsmith_enabled=True,
+            assistant_langsmith_api_key="lsv2_test",  # pragma: allowlist secret
+        )
+
+        # THEN
+        assert settings.assistant_langsmith_enabled is True
+
+    def test_a_missing_key_is_fine_while_tracing_is_off(self, monkeypatch, tmp_path):
+        """
+        GIVEN LangSmith tracing switched off and no key
+        WHEN Settings is constructed
+        THEN validation passes, since the key is only needed to trace
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("ASSISTANT_LANGSMITH_ENABLED", raising=False)
+        monkeypatch.delenv("ASSISTANT_LANGSMITH_API_KEY", raising=False)
+
+        # WHEN
+        settings = Settings(
+            secret_key="test-secret-key",
+            assistant_langsmith_enabled=False,
+            assistant_langsmith_api_key=None,
+        )
+
+        # THEN
+        assert settings.assistant_langsmith_enabled is False

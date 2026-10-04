@@ -8,20 +8,87 @@ import logging
 from functools import lru_cache
 
 from sqlalchemy import Engine, text
+from sqlalchemy.engine import URL, make_url
 from sqlmodel import SQLModel, create_engine
 
-from api.config import get_settings
+from api.config import LOOPBACK_HOSTS, Settings, get_settings
 
 logger = logging.getLogger("api.db.engine")
+
+
+_LOOPBACK_ADDRESSES = frozenset({"127.0.0.1", "::1"})
+
+
+def _query_entries(url: URL, key: str) -> list[str] | None:
+    """Read a libpq list parameter from the URL query.
+
+    :param url: Parsed database URL.
+    :param key: Query parameter name, such as ``host`` or ``hostaddr``.
+    :return: Every comma-separated entry across all repeats, or None if the
+        parameter is absent.
+    """
+    value = url.query.get(key)
+    if value is None:
+        return None
+    values = (value,) if isinstance(value, str) else value
+    return [entry for item in values for entry in item.split(",")]
+
+
+def _is_local_database(database_url: str) -> bool:
+    """Check whether the driver will connect to this machine.
+
+    libpq lets ``host`` and ``hostaddr`` in the query string override the URL
+    host, so the query wins when it names one, and every entry must be local:
+    failing closed on any other keeps a remote host from passing as a socket. A
+    ``service`` key makes libpq read the host from ``pg_service.conf``, which
+    cannot be seen from here, so it counts as remote.
+
+    :param database_url: SQLAlchemy URL of the database.
+    :return: True for loopback hosts and Unix sockets only, False for anything else.
+    """
+    url = make_url(database_url)
+    if "service" in url.query:
+        return False
+    hostaddrs = _query_entries(url, "hostaddr")
+    if hostaddrs is not None and not all(addr in _LOOPBACK_ADDRESSES for addr in hostaddrs):
+        return False
+    hosts = _query_entries(url, "host")
+    if hosts is None:
+        hosts = [url.host or ""]
+    return all(host in LOOPBACK_HOSTS or host.startswith("/") for host in hosts)
+
+
+def _requires_tls(settings: Settings) -> bool:
+    """Decide whether a PostgreSQL connection must use TLS.
+
+    A deployed service or any process on Railway always requires it, even with
+    ``TESTING`` set. A test run otherwise only prefers it: CI service containers
+    and the compose end-to-end stack reach a database without TLS under names
+    like ``db``. Any other process requires it unless the database is local, so a
+    laptop whose ``DATABASE_URL`` points at a deployed database keeps the
+    encrypted connection while the docker-compose PostgreSQL, which has SSL off,
+    still connects.
+
+    Two limits follow from judging by the URL alone: a deployed database reached
+    through a local port-forward or tunnel counts as local and gets ``prefer``,
+    and a URL with no host defers to libpq's own defaults (``PGHOST``,
+    ``PGHOSTADDR``, ``PGSERVICE``), which settings cannot see.
+
+    :param settings: Application settings.
+    :return: True when ``sslmode=require`` must be used, False for ``prefer``.
+    """
+    if settings.is_deploy or settings.railway_environment_name is not None:
+        return True
+    return not settings.testing and not _is_local_database(settings.database_url)
 
 
 def _create_engine() -> Engine:
     """Create database engine based on settings.
 
     SQLite uses check_same_thread=False for FastAPI compatibility. PostgreSQL
-    gets a tuned connection pool plus hardened connect arguments: required TLS,
-    a connect timeout, an application name, and per-session statement and
-    idle-in-transaction timeouts.
+    gets a tuned connection pool plus hardened connect arguments: a TLS mode (see
+    :func:`_requires_tls`), a connect timeout, an application name, and per-session
+    statement and idle-in-transaction timeouts.
 
     :return: Configured SQLAlchemy Engine instance
     """
@@ -32,14 +99,13 @@ def _create_engine() -> Engine:
     if settings.database_url.startswith("sqlite"):
         connect_args["check_same_thread"] = False
     else:
-        # Harden the PostgreSQL connection: require TLS on deployed databases
-        # (test runs fall back to "prefer" for an ephemeral local Postgres
-        # without SSL), fail fast on a slow connect, tag connections for
-        # observability, and cap runaway work with per-session statement and
-        # idle-in-transaction timeouts (milliseconds) so a single query cannot
-        # exhaust the managed database.
+        # Harden the PostgreSQL connection: TLS is required unless the database is
+        # a local one that may not offer it (see _requires_tls), fail fast on a slow
+        # connect, tag connections for observability, and cap runaway work with
+        # per-session statement and idle-in-transaction timeouts (milliseconds) so a
+        # single query cannot exhaust the managed database.
         connect_args = {
-            "sslmode": "prefer" if settings.testing else "require",
+            "sslmode": "require" if _requires_tls(settings) else "prefer",
             "connect_timeout": 10,
             "application_name": f"become-{settings.environment.value}",
             "options": "-c statement_timeout=30000 -c idle_in_transaction_session_timeout=60000",
@@ -112,11 +178,11 @@ def warm_up_connection_pool() -> None:
 def create_db_and_tables() -> None:
     """Create tables for SQLite and ephemeral test databases.
 
-    Deployed PostgreSQL schemas are owned by Alembic migrations, so this is a
-    no-op there: it avoids racing ``create_all`` across uvicorn workers and keeps
-    migrations the single source of schema truth. SQLite (local development) and
-    test runs (``TESTING=1``, including the e2e PostgreSQL) keep using
-    ``create_all`` for a zero-setup, isolated schema.
+    A PostgreSQL schema outside test runs, local or deployed, is owned by Alembic
+    migrations, so this is a no-op there: it avoids racing ``create_all`` across
+    uvicorn workers and keeps migrations the single source of schema truth. SQLite
+    (the local fallback) and test runs (``TESTING=1``, including the e2e PostgreSQL)
+    keep using ``create_all`` for a zero-setup, isolated schema.
     """
     from api.db import models  # noqa: F401, registers models with SQLModel.metadata
 

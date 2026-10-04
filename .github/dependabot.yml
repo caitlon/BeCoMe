@@ -11,6 +11,14 @@ updates:
     labels:
       - "dependencies"
       - "area:core"
+    # sqlmodel 0.0.45 maps datetime fields to its own UTCDateTime type, which rejects a
+    # naive value on write and hands back an aware one on read. The models here store
+    # naive UTC in timestamp-without-time-zone columns, so two email verification tests
+    # fail under it. Drop the entry once the models are moved to the new type and a
+    # column migration ships with them. Seen on PR #515.
+    ignore:
+      - dependency-name: "sqlmodel"
+        versions: [">=0.0.45"]
     groups:
       python-deps:
         patterns:
@@ -31,11 +39,15 @@ updates:
     # with an AbortError, which is what the Web Animations spec asks for. framer-motion
     # stops animations on unmount and does not catch it, so a full vitest run ends with
     # a few hundred unhandled rejections and a non-zero exit while every test passes.
-    # Narrow on purpose: 20.13 and later are still offered, and if the interaction is
-    # fixed by then the bump simply lands. Seen on PR #364.
+    # 20.14.5 still showed it, so everything from 20.12.0 up is held back. Drop the entry
+    # once the interaction is fixed. Seen on PR #364.
     ignore:
       - dependency-name: "happy-dom"
-        versions: ["20.12.x"]
+        versions: [">=20.12.0"]
+      # typescript-eslint 8 declares a peer range of typescript <6.1.0, so TypeScript 7
+      # fails npm ci. Drop the entry when typescript-eslint supports it.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
     groups:
       npm-minor-patch:
         patterns:

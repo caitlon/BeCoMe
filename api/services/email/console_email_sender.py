@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 from api.auth.logging import hash_email
-from api.services.email.base import EmailSender
+from api.services.email.base import EmailLanguage, EmailSender
 
 if TYPE_CHECKING:
     from api.config import Settings
@@ -45,9 +45,10 @@ class ConsoleEmailSender(EmailSender):
     Used in development, CI, and tests: every flow works offline and each link is
     read straight from the application log or stdout. The deployed profiles reject
     an unconfigured email provider at startup (``Settings._validate_deploy_invariants``),
-    so this sender cannot be selected there, and a link and its token only ever
-    reach a developer-visible log. Recipients are tagged with the same
-    :func:`hash_email` digest the security log uses, never the raw address.
+    so this sender cannot be selected there. The log record carries each token cut
+    to its first characters, while the full link, token included, is printed to
+    stdout and never reaches the log. Recipients are tagged with the same
+    :func:`hash_email` keyed tag the security log uses, never the raw address.
 
     :param settings: Application settings (kept for a uniform sender signature).
     """
@@ -56,7 +57,9 @@ class ConsoleEmailSender(EmailSender):
         """Store settings for signature parity with real senders."""
         self._settings = settings
 
-    async def send_password_reset(self, *, to_email: str, reset_url: str) -> None:
+    async def send_password_reset(
+        self, *, to_email: str, reset_url: str, language: EmailLanguage
+    ) -> None:
         """Log the reset link; perform no network call.
 
         The log record masks the single-use token, so a rotating file or a log drain
@@ -66,6 +69,8 @@ class ConsoleEmailSender(EmailSender):
 
         :param to_email: Recipient email address.
         :param reset_url: Full frontend reset link (carries the raw token).
+        :param language: Language the real message would be written in; unused here,
+            since the log line stays the same for every language.
         """
         email_hash = hash_email(to_email)
         logger.info(
@@ -77,7 +82,9 @@ class ConsoleEmailSender(EmailSender):
         # Deliberately not a log record. See the docstring.
         print(f"[console email] password reset link for {email_hash}: {reset_url}")
 
-    async def send_email_verification(self, *, to_email: str, verify_url: str) -> None:
+    async def send_email_verification(
+        self, *, to_email: str, verify_url: str, language: EmailLanguage
+    ) -> None:
         """Log the verification link; perform no network call.
 
         Same rationale as :meth:`send_password_reset`: the record masks the
@@ -86,6 +93,8 @@ class ConsoleEmailSender(EmailSender):
 
         :param to_email: Recipient email address.
         :param verify_url: Full frontend activation link (carries the raw token).
+        :param language: Language the real message would be written in; unused here,
+            since the log line stays the same for every language.
         """
         email_hash = hash_email(to_email)
         logger.info(
@@ -98,7 +107,7 @@ class ConsoleEmailSender(EmailSender):
         print(f"[console email] verification link for {email_hash}: {verify_url}")
 
     async def send_registration_attempt_notice(
-        self, *, to_email: str, login_url: str, reset_url: str
+        self, *, to_email: str, login_url: str, reset_url: str, language: EmailLanguage
     ) -> None:
         """Log the registration-attempt notice; perform no network call.
 
@@ -109,6 +118,8 @@ class ConsoleEmailSender(EmailSender):
         :param to_email: Recipient email address (the existing account's address).
         :param login_url: Full frontend sign-in link.
         :param reset_url: Full frontend password-reset link.
+        :param language: Language the real message would be written in; unused here,
+            since the log line stays the same for every language.
         """
         email_hash = hash_email(to_email)
         logger.info(

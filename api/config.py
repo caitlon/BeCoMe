@@ -40,7 +40,7 @@ _APP_ENV_VAR = "APP_ENV"
 class Environment(StrEnum):
     """Deployment environment profile.
 
-    :cvar DEV: Local development. Debug on, permissive CORS, SQLite allowed.
+    :cvar DEV: Local development. Debug off unless DEBUG is set, localhost CORS, SQLite allowed.
     :cvar TEST: Deployed staging for manual QA. Debug off, rate limiting on.
     :cvar PROD: Production. Strict secret and database validation enforced.
     """
@@ -92,7 +92,7 @@ def _env_files_for(environment: Environment) -> tuple[str, ...]:
     return (".env", f".env.{environment.value}")
 
 
-_LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", ""})
+LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", ""})
 
 
 def _has_remote_cors_origin(origins: list[str]) -> bool:
@@ -101,7 +101,7 @@ def _has_remote_cors_origin(origins: list[str]) -> bool:
     :param origins: Configured CORS origins.
     :return: True if at least one origin points at a remote host.
     """
-    return any((urlparse(origin).hostname or "") not in _LOOPBACK_HOSTS for origin in origins)
+    return any((urlparse(origin).hostname or "") not in LOOPBACK_HOSTS for origin in origins)
 
 
 class Settings(BaseSettings):
@@ -194,9 +194,11 @@ class Settings(BaseSettings):
     bucket_secret_access_key: str | None = None
     bucket_region: str = "auto"
 
-    # Email (transactional: password reset, account verification). When the
-    # provider is "console" or the selected provider's credentials are unset, the
-    # link is logged rather than sent, so the flow still works offline in dev/CI/tests.
+    # Email (transactional: account verification, password reset and the
+    # existing-account notice). When the provider is "console" or the selected
+    # provider's credentials are unset, nothing is sent: each link is logged with
+    # its token cut to 8 characters and printed in full to stdout, so the flow
+    # still works offline in dev/CI/tests.
     email_provider: Literal["console", "http"] = "console"
     email_from: str = "no-reply@become.app"
     email_from_name: str = "BeCoMe"
@@ -213,7 +215,9 @@ class Settings(BaseSettings):
 
     # Kill switches for the registration email-address policy
     # (api/services/email_policy.py). Both default on; flip either to false via
-    # a Railway env var, with no deploy needed, if it starts rejecting real users.
+    # a Railway env var, with no code change needed, if it starts rejecting real users.
+    # The value takes effect when the process restarts (settings and the policy are
+    # cached), which setting a Railway variable does by default.
     disposable_email_blocking_enabled: bool = True
     mx_check_enabled: bool = True
 
@@ -229,6 +233,75 @@ class Settings(BaseSettings):
     turnstile_enabled: bool = False
     turnstile_secret_key: str = ""
     turnstile_hostnames: list[str] = []
+
+    # Local AI assistant (RAG + read-only project explainer). Off everywhere by
+    # default; _validate_assistant_local_only refuses to start any deployed profile
+    # with it on, so turning it on is only ever a developer's own choice on their own
+    # machine. api/routes/assistant.py is registered only when this is true (see
+    # api.main.create_app), so a deployed service answers 404 for the whole prefix
+    # regardless of this validator.
+    assistant_enabled: bool = False
+    # The model for query transforms and index building: small and fast, so search stays
+    # quick. The model that writes chat answers is the assistant_answer_llm_* pair below.
+    assistant_llm_base_url: str = "http://127.0.0.1:8081/v1"
+    assistant_llm_model: str = "Qwen/Qwen3-4B-Instruct-2507"
+    # The model that writes the chat answers, on its own llama-server. The token cap bounds
+    # one reply. The retrieval k is how many passages the chat endpoint's search returns (the
+    # retrieval evaluation keeps its own k, RetrievalConfig.k).
+    assistant_answer_llm_base_url: str = "http://127.0.0.1:8084/v1"
+    assistant_answer_llm_model: str = "Qwen/Qwen3.5-9B"
+    assistant_answer_max_tokens: int = Field(default=800, gt=0)
+    assistant_retrieval_k: int = Field(default=3, gt=0)
+    assistant_embedding_base_url: str = "http://127.0.0.1:8082/v1"
+    assistant_embedding_model: str = "BAAI/bge-m3"
+    assistant_rerank_base_url: str = "http://127.0.0.1:8083/v1"
+    assistant_rerank_model: str = "BAAI/bge-reranker-v2-m3"
+    # No default: a URL here would hard-code a password or reach a database that has none.
+    assistant_vector_db_url: str = ""
+    assistant_collection: str = "docs_markdown_headers_500_o10_captions_bge_m3"
+    # workflow is the default because it is the only mode whose prompt and answers have
+    # been measured; agent and hybrid, which give the model tools, stay selectable here.
+    assistant_mode: Literal["agent", "workflow", "hybrid"] = "workflow"
+    # The most tool calls one turn may make in agent and hybrid mode. It must be above
+    # zero: an agent that can call nothing, or that always falls back, is a misconfiguration.
+    assistant_max_tool_calls: int = Field(default=4, gt=0)
+    # Limits the chat service and the chat route apply. The request schema
+    # (api/schemas/assistant.py) holds the hard ceilings, 20 history entries (10 exchanges)
+    # and 4000 characters per message, and rejects anything above them before the service
+    # runs, so these can only lower them. The numbers are repeated here because this module
+    # cannot import the schema without loading the assistant package in a deployed process;
+    # a test keeps them equal.
+    assistant_max_history_turns: int = Field(default=10, gt=0, le=10)
+    assistant_max_message_chars: int = Field(default=4000, gt=0, le=4000)
+    # Chat messages per user per fixed hour; 0 turns the limit off.
+    assistant_rate_limit_per_hour: int = Field(default=60, ge=0)
+    assistant_llm_timeout_seconds: float = 120.0
+    # The longest one chat turn may take, fetching and generation together. When it runs
+    # out, the call in flight is cancelled with the turn and the turn answers
+    # "unavailable", so a stalled server does not hold the request past this deadline.
+    # The model's own timeout above only bounds one request inside it.
+    assistant_turn_timeout_seconds: float = Field(default=180.0, gt=0)
+    assistant_private_corpus_dirs: list[str] = []
+    # Path to a local-only JSON manifest describing the local corpus layer (see
+    # api/assistant/rag/corpus.py::build_manifest). It sits at the root of a private
+    # corpus kept outside this repository; its relative entries resolve from its own
+    # folder, and every entry must resolve under one of assistant_private_corpus_dirs.
+    # None means no local layer: the default, and what CI runs with. Tests that need a
+    # local layer build one in a temporary folder and set this explicitly.
+    assistant_private_corpus_manifest: str | None = None
+    # Path to a JSON object mapping a chunk's key (enrich.chunk_key, the sha256 of the
+    # chunk's own text) to a caption written for that chunk; only the "captions" context
+    # mode reads it. It lives in the private corpus repository next to the local manifest,
+    # so its version is part of corpus_version. A relative path resolves from the
+    # repository root. None means no captions file, and a "captions" build then fails.
+    assistant_captions_file: str | None = None
+    # LangSmith tracing of the assistant, switched on by hand for local work. With it on,
+    # the full text of questions, tool replies and answers goes to the endpoint below, so
+    # it needs a key (_validate_assistant_langsmith) and defaults to the EU endpoint.
+    assistant_langsmith_enabled: bool = False
+    assistant_langsmith_api_key: str | None = None
+    assistant_langsmith_endpoint: str = "https://eu.api.smith.langchain.com"
+    assistant_langsmith_project: str = "become-assistant-local"
 
     def __init__(self, **kwargs: Any) -> None:
         """Load ``.env`` then ``.env.<APP_ENV>`` and inject the resolved profile.
@@ -260,8 +333,9 @@ class Settings(BaseSettings):
     def email_enabled(self) -> bool:
         """Check if a real email provider is fully configured.
 
-        The console provider always returns False: it logs reset links instead
-        of sending them, so it never counts as a real send.
+        The console provider always returns False: for the verification, password
+        reset and existing-account emails it logs each link masked and prints it in
+        full to stdout instead of sending, so it never counts as a real send.
 
         :return: True when the HTTP provider is selected and its API key is set.
         """
@@ -309,6 +383,58 @@ class Settings(BaseSettings):
         """
         if "log_level" not in self.model_fields_set:
             self.log_level = _DEFAULT_LOG_LEVELS[self.environment]
+        return self
+
+    @model_validator(mode="after")
+    def _validate_assistant_local_only(self) -> "Settings":
+        """Refuse to start with the assistant switched on anywhere but a laptop.
+
+        The assistant reads project data as the signed-in user and calls a locally
+        running LLM; neither belongs on a service that serves real traffic. Keeping
+        the guard here, right before _validate_deploy_invariants, means a deploy that
+        somehow set ASSISTANT_ENABLED fails on this message first, rather than on
+        whichever deploy invariant happens to be missing.
+
+        is_deploy alone would not catch every case: it is False whenever TESTING is
+        set, which is the pytest profile, so a Railway process that also carried
+        TESTING=1 would pass the is_deploy check while still running on a deployed
+        service. Checking railway_environment_name directly closes that gap -- a
+        process on Railway must never run the assistant, whatever else is set
+        alongside it.
+
+        :return: The validated settings instance.
+        :raises ValueError: If assistant_enabled is true while this process is
+            either a deployed service or running on Railway.
+        """
+        if self.assistant_enabled and (self.is_deploy or self.railway_environment_name is not None):
+            raise ValueError(
+                "assistant_enabled must stay false on a deployed service (the "
+                f"{self.environment.value} profile here); the assistant runs only on "
+                "a developer machine"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_assistant_langsmith(self) -> "Settings":
+        """Refuse LangSmith tracing that has no API key to send it with.
+
+        With tracing on and no key, every traced call would fail to reach LangSmith,
+        and nothing would say so until somebody looked for the traces. A missing key
+        is a configuration error, raised here, at start-up. A blank key counts as
+        missing: ``ASSISTANT_LANGSMITH_API_KEY=`` in an env file arrives as an empty
+        string. With tracing off the key is not needed.
+
+        :return: The validated settings instance.
+        :raises ValueError: If assistant_langsmith_enabled is true and
+            assistant_langsmith_api_key is missing or blank.
+        """
+        if (
+            self.assistant_langsmith_enabled
+            and not (self.assistant_langsmith_api_key or "").strip()
+        ):
+            raise ValueError(
+                "assistant_langsmith_api_key must be set when assistant_langsmith_enabled is true"
+            )
         return self
 
     @model_validator(mode="after")
@@ -370,7 +496,7 @@ class Settings(BaseSettings):
                 f"cors_origins must include the deployed frontend origin in the {profile} "
                 "profile; the localhost defaults cannot serve real browser traffic"
             )
-        if (urlparse(self.frontend_base_url).hostname or "") in _LOOPBACK_HOSTS:
+        if (urlparse(self.frontend_base_url).hostname or "") in LOOPBACK_HOSTS:
             raise ValueError(
                 f"frontend_base_url must point at the deployed frontend in the {profile} "
                 "profile; every activation and password-reset link is built from it, so a "

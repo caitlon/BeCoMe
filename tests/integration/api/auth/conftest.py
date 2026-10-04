@@ -23,20 +23,29 @@ class FakeEmailSender(EmailSender):
         self.verification_calls: list[dict[str, str]] = []
         self.notice_calls: list[dict[str, str]] = []
 
-    async def send_password_reset(self, *, to_email: str, reset_url: str) -> None:
-        """Capture the call instead of sending an email."""
-        self.calls.append({"to_email": to_email, "reset_url": reset_url})
+    async def send_password_reset(self, *, to_email: str, reset_url: str, language: str) -> None:
+        """Capture the call, language included, instead of sending an email."""
+        self.calls.append({"to_email": to_email, "reset_url": reset_url, "language": language})
 
-    async def send_email_verification(self, *, to_email: str, verify_url: str) -> None:
-        """Capture the call instead of sending an email."""
-        self.verification_calls.append({"to_email": to_email, "verify_url": verify_url})
+    async def send_email_verification(
+        self, *, to_email: str, verify_url: str, language: str
+    ) -> None:
+        """Capture the call, language included, instead of sending an email."""
+        self.verification_calls.append(
+            {"to_email": to_email, "verify_url": verify_url, "language": language}
+        )
 
     async def send_registration_attempt_notice(
-        self, *, to_email: str, login_url: str, reset_url: str
+        self, *, to_email: str, login_url: str, reset_url: str, language: str
     ) -> None:
-        """Capture the call instead of sending an email."""
+        """Capture the call, language included, instead of sending an email."""
         self.notice_calls.append(
-            {"to_email": to_email, "login_url": login_url, "reset_url": reset_url}
+            {
+                "to_email": to_email,
+                "login_url": login_url,
+                "reset_url": reset_url,
+                "language": language,
+            }
         )
 
 

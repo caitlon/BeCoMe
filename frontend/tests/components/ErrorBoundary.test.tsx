@@ -42,6 +42,21 @@ describe('ErrorBoundary', () => {
     expect(screen.getByText(/something went wrong/i)).toBeInTheDocument();
   });
 
+  it('renders the fallback as a focusable main#main-content so the skip link has a target', () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    render(
+      <ErrorBoundary>
+        <Boom />
+      </ErrorBoundary>
+    );
+
+    const main = screen.getByRole('alert');
+    expect(main.tagName).toBe('MAIN');
+    expect(main).toHaveAttribute('id', 'main-content');
+    expect(main).toHaveAttribute('tabindex', '-1');
+  });
+
   it('renders the translated fallback for the active language', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     await i18n.changeLanguage('cs');

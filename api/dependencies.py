@@ -11,7 +11,7 @@ from functools import lru_cache
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, Header, HTTPException, status
 from sqlmodel import Session
 
 from api.auth.dependencies import CurrentUser
@@ -20,7 +20,7 @@ from api.db.models import Project
 from api.db.session import get_session
 from api.services.calculation_service import CalculationService
 from api.services.data_export_service import DataExportService
-from api.services.email.base import EmailSender
+from api.services.email.base import EmailLanguage, EmailSender
 from api.services.email.console_email_sender import ConsoleEmailSender
 from api.services.email.resend_email_sender import ResendEmailSender
 from api.services.email_policy import EmailAddressPolicy
@@ -47,6 +47,11 @@ from api.services.user_service import UserService
 from src.calculators.become_calculator import BeCoMeCalculator
 
 logger = logging.getLogger("api.security")
+
+# Bounds on the untrusted Accept-Language header: whatever lies past them is never read.
+_LANGUAGE_HEADER_MAX_CHARS = 200
+_LANGUAGE_HEADER_MAX_RANGES = 10
+_SUPPORTED_EMAIL_LANGUAGES: dict[str, EmailLanguage] = {"en": "en", "cs": "cs"}
 
 # --- Calculator Factories ---
 
@@ -171,6 +176,58 @@ def get_email_service() -> EmailSender:
     if settings.email_provider == "http" and settings.email_enabled:
         return ResendEmailSender(settings)
     return ConsoleEmailSender(settings)
+
+
+def _language_range_weight(parameters: str) -> float | None:
+    """Read the weight of one Accept-Language range from its parameter text.
+
+    :param parameters: Text after the ``;`` of a range, empty when there is none.
+    :return: The weight, ``1.0`` when no parameter is given, or ``None`` when the
+        range is not well formed: anything but a lone ``q`` parameter, or a ``q``
+        that is not a number from 0 to 1.
+    """
+    if not parameters:
+        return 1.0
+    name, _, value = parameters.partition("=")
+    if name.strip() != "q":
+        return None
+    try:
+        weight = float(value.strip())
+    except ValueError:
+        return None
+    return weight if 0.0 <= weight <= 1.0 else None
+
+
+def get_email_language(
+    accept_language: Annotated[str | None, Header()] = None,
+) -> EmailLanguage:
+    """Pick the language of an email from the ``Accept-Language`` request header.
+
+    The header is untrusted input, so it is read defensively: only the first
+    ``_LANGUAGE_HEADER_MAX_CHARS`` characters and the first
+    ``_LANGUAGE_HEADER_MAX_RANGES`` ranges count. Ranges are ordered by weight, header
+    order breaking ties, and the first whose primary subtag is ``cs`` or ``en`` wins.
+    A range that is malformed, weighted ``0``, ``*`` or in another language is skipped.
+    The value is never echoed or logged, and a bad header falls back to English rather
+    than failing the request.
+
+    :param accept_language: Raw ``Accept-Language`` header value, if any.
+    :return: ``"cs"`` or ``"en"``.
+    """
+    if not accept_language:
+        return "en"
+    ranges = accept_language[:_LANGUAGE_HEADER_MAX_CHARS].split(",")[:_LANGUAGE_HEADER_MAX_RANGES]
+    weighted: list[tuple[float, str]] = []
+    for item in ranges:
+        tag, _, parameters = item.lower().partition(";")
+        weight = _language_range_weight(parameters.strip())
+        if weight:
+            weighted.append((weight, tag.strip().split("-")[0]))
+    weighted.sort(key=lambda entry: -entry[0])
+    for _, primary in weighted:
+        if primary in _SUPPORTED_EMAIL_LANGUAGES:
+            return _SUPPORTED_EMAIL_LANGUAGES[primary]
+    return "en"
 
 
 @lru_cache
@@ -340,3 +397,4 @@ require_project_admin = RequireProjectAccess(AccessLevel.ADMIN)
 # Type aliases for cleaner route signatures
 ProjectMember = Annotated[Project, Depends(require_project_member)]
 ProjectAdmin = Annotated[Project, Depends(require_project_admin)]
+PreferredEmailLanguage = Annotated[EmailLanguage, Depends(get_email_language)]

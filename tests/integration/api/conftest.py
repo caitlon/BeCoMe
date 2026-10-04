@@ -7,6 +7,9 @@ from contextlib import contextmanager
 os.environ.setdefault("APP_ENV", "test")
 os.environ.setdefault("SECRET_KEY", "test-secret-key")
 os.environ["TESTING"] = "1"  # Must always be set; rate limiter reads it at import time
+# The suite never inherits a developer's local switch from .env or the shell; a test
+# that needs the assistant on sets it explicitly with monkeypatch.
+os.environ["ASSISTANT_ENABLED"] = "false"
 
 import dns.asyncresolver
 import pytest
@@ -90,6 +93,31 @@ def create_test_app() -> FastAPI:
     app.include_router(projects.router)
     app.include_router(invitations.router)
     app.include_router(opinions.router)
+
+    # Mirrors api/main.py::create_app(): imported here, never at module level, so the
+    # shared test app still builds where the assistant extra is not installed.
+    if settings.assistant_enabled:
+        from api.assistant.deps import get_docs_retriever
+        from api.assistant.errors import (
+            AssistantRateLimitedError,
+            AssistantUnavailableError,
+            AssistantUpstreamError,
+        )
+        from api.assistant.exception_handlers import (
+            assistant_rate_limited_handler,
+            assistant_unavailable_handler,
+            assistant_upstream_handler,
+        )
+        from api.routes import assistant
+        from tests.shared.assistant_fakes import StaticDocsRetriever
+
+        app.include_router(assistant.router)
+        app.add_exception_handler(AssistantRateLimitedError, assistant_rate_limited_handler)  # type: ignore[arg-type]
+        app.add_exception_handler(AssistantUnavailableError, assistant_unavailable_handler)  # type: ignore[arg-type]
+        app.add_exception_handler(AssistantUpstreamError, assistant_upstream_handler)  # type: ignore[arg-type]
+        # No integration test may reach a real vector database or embedding server; a
+        # test that needs particular passages overrides this again with its own fake.
+        app.dependency_overrides[get_docs_retriever] = lambda: StaticDocsRetriever([])
     return app
 
 
@@ -362,6 +390,26 @@ def _reset_auth_throttles():
     clear_all()
     yield
     clear_all()
+
+
+@pytest.fixture
+def assistant_settings(monkeypatch):
+    """Switch the assistant on for one test; list this BEFORE any fixture that builds the app.
+
+    ``create_test_app()`` reads the settings once, when it builds the app, to decide
+    whether to mount the assistant router: the same gate ``api/main.py`` uses. A test
+    that wants the router must therefore raise the flag and clear the settings cache
+    before ``client`` or ``cookie_client`` builds the app, which is why this fixture has to
+    come first in the test's parameter list: pytest sets up independent fixtures in the
+    order the test names them.
+    """
+    monkeypatch.setenv("ASSISTANT_ENABLED", "1")
+    get_settings.cache_clear()
+    yield
+    # Back to the suite's own default before the cache is cleared, so nothing that reads
+    # the settings while the other fixtures tear down caches the raised flag.
+    monkeypatch.setenv("ASSISTANT_ENABLED", "false")
+    get_settings.cache_clear()
 
 
 @pytest.fixture(autouse=True)

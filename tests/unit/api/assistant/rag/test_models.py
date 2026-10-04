@@ -1,0 +1,413 @@
+"""Unit tests for the chat, embeddings, and reranker model clients (fakes only, no network)."""
+
+import httpx
+import pytest
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+
+from api.assistant.rag.models import (
+    LlamaServerReranker,
+    has_unclosed_think_block,
+    make_answer_model,
+    make_chat_model,
+    make_embeddings,
+    strip_think_block,
+)
+from api.config import Settings
+
+
+class TestMakeChatModel:
+    """make_chat_model points a ChatOpenAI client at the local chat llama-server."""
+
+    def test_builds_a_chat_client_from_settings(self):
+        """
+        GIVEN default Settings
+        WHEN make_chat_model builds a client
+        THEN it targets the configured base URL, model, and timeout
+        """
+        # GIVEN
+        settings = Settings(secret_key="test-secret-key")
+
+        # WHEN
+        model = make_chat_model(settings)
+
+        # THEN
+        assert isinstance(model, ChatOpenAI)
+        assert model.openai_api_base == settings.assistant_llm_base_url
+        assert model.model_name == settings.assistant_llm_model
+        assert model.request_timeout == settings.assistant_llm_timeout_seconds
+
+
+class TestMakeAnswerModel:
+    """make_answer_model points a ChatOpenAI client at the local answer llama-server."""
+
+    def test_builds_an_answer_client_from_settings(self):
+        """
+        GIVEN default Settings
+        WHEN make_answer_model builds a client
+        THEN it targets the answer model's base URL and name, is deterministic, caps the
+             reply at the configured tokens, and never retries a failed request
+        """
+        # GIVEN
+        settings = Settings(secret_key="test-secret-key")
+
+        # WHEN
+        model = make_answer_model(settings)
+
+        # THEN
+        assert isinstance(model, ChatOpenAI)
+        assert model.openai_api_base == settings.assistant_answer_llm_base_url
+        assert model.model_name == settings.assistant_answer_llm_model
+        assert model.temperature == 0
+        assert model.max_tokens == settings.assistant_answer_max_tokens
+        assert model.max_retries == 0
+        assert model.request_timeout == settings.assistant_llm_timeout_seconds
+
+    def test_follows_the_answer_settings_not_the_query_model_ones(self):
+        """
+        GIVEN Settings with a distinct answer model and token cap
+        WHEN make_answer_model and make_chat_model build clients
+        THEN the answer client uses the answer settings and the chat client keeps the
+             query-transform ones
+        """
+        # GIVEN
+        settings = Settings(
+            secret_key="test-secret-key",  # pragma: allowlist secret
+            assistant_answer_llm_base_url="http://127.0.0.1:9999/v1",
+            assistant_answer_llm_model="answer-model",
+            assistant_answer_max_tokens=123,
+        )
+
+        # WHEN
+        answer = make_answer_model(settings)
+        chat = make_chat_model(settings)
+
+        # THEN
+        assert answer.openai_api_base == "http://127.0.0.1:9999/v1"
+        assert answer.model_name == "answer-model"
+        assert answer.max_tokens == 123
+        assert chat.openai_api_base == settings.assistant_llm_base_url
+        assert chat.model_name == settings.assistant_llm_model
+        assert chat.max_tokens is None
+
+
+class TestMakeEmbeddings:
+    """make_embeddings points an OpenAIEmbeddings client at the local embedding role."""
+
+    def test_builds_an_embeddings_client_with_ctx_length_check_disabled(self):
+        """
+        GIVEN default Settings
+        WHEN make_embeddings builds a client
+        THEN it targets the configured base URL and model, with
+             check_embedding_ctx_length disabled (required for llama-server)
+        """
+        # GIVEN
+        settings = Settings(secret_key="test-secret-key")
+
+        # WHEN
+        embeddings = make_embeddings(settings)
+
+        # THEN
+        assert isinstance(embeddings, OpenAIEmbeddings)
+        assert embeddings.openai_api_base == settings.assistant_embedding_base_url
+        assert embeddings.model == settings.assistant_embedding_model
+        assert embeddings.check_embedding_ctx_length is False
+
+    def test_bounds_the_client_by_the_chat_model_timeout(self):
+        """
+        GIVEN default Settings
+        WHEN make_embeddings builds a client
+        THEN its request timeout is settings.assistant_llm_timeout_seconds - there is
+             no separate embedding timeout setting, so the chat one bounds it too
+        """
+        # GIVEN
+        settings = Settings(secret_key="test-secret-key")
+
+        # WHEN
+        embeddings = make_embeddings(settings)
+
+        # THEN
+        assert embeddings.request_timeout == settings.assistant_llm_timeout_seconds
+
+    def test_sends_at_most_64_texts_per_request(self):
+        """
+        GIVEN default Settings
+        WHEN make_embeddings builds a client
+        THEN its chunk_size is 64, so llama-server answers one small batch instead
+             of the whole corpus, keeping each request's timeout bound small
+        """
+        # GIVEN
+        settings = Settings(secret_key="test-secret-key")
+
+        # WHEN
+        embeddings = make_embeddings(settings)
+
+        # THEN
+        assert embeddings.chunk_size == 64
+
+
+class TestStripThinkBlock:
+    """strip_think_block removes a reasoning-capable model's <think> preamble."""
+
+    def test_removes_a_leading_think_block(self):
+        """
+        GIVEN a reply with a <think>...</think> block before the actual answer
+        WHEN strip_think_block runs
+        THEN only the text after the block remains, stripped of surrounding whitespace
+        """
+        # GIVEN
+        reply = "<think>Reasoning about the answer.</think>\n\nThe actual answer."
+
+        # WHEN
+        result = strip_think_block(reply)
+
+        # THEN
+        assert result == "The actual answer."
+
+    def test_leaves_a_reply_with_no_think_block_only_stripped(self):
+        """
+        GIVEN a reply with no <think> block at all
+        WHEN strip_think_block runs
+        THEN the reply comes back with only its surrounding whitespace removed
+        """
+        # GIVEN
+        reply = "  The actual answer.  "
+
+        # WHEN
+        result = strip_think_block(reply)
+
+        # THEN
+        assert result == "The actual answer."
+
+    def test_keeps_a_reply_whose_think_block_never_closes(self):
+        """
+        GIVEN a reply that opens a <think> block and never closes it
+        WHEN strip_think_block runs
+        THEN the reply is kept as it is, since only a complete block is removed
+        """
+        # GIVEN
+        reply = "<think>Still reasoning about the answer"
+
+        # WHEN
+        result = strip_think_block(reply)
+
+        # THEN
+        assert result == "<think>Still reasoning about the answer"
+
+
+class TestHasUnclosedThinkBlock:
+    """has_unclosed_think_block says whether the last <think> block of a reply never closes."""
+
+    @pytest.mark.parametrize(
+        "reply",
+        [
+            "<think>Still reasoning",
+            "Half an answer <think>and then",
+            "<think>a</think>Text <think>b",
+            "<think>a</think>One <think>b</think> two <think>c",
+            "Text </think> then <think>c",
+        ],
+    )
+    def test_true_when_the_last_block_never_closes(self, reply):
+        """
+        GIVEN a reply whose last <think> block has no closing tag after it
+        WHEN the check runs
+        THEN it reports an unclosed block
+        """
+        assert has_unclosed_think_block(reply) is True
+
+    @pytest.mark.parametrize(
+        "reply",
+        [
+            "",
+            "Plain answer.",
+            " Plain answer, </think> here. ",
+            "<think>x</think>Answer.",
+            "<think>a</think>Text <think>b</think> tail",
+        ],
+    )
+    def test_false_when_every_block_closes_or_there_is_none(self, reply):
+        """
+        GIVEN a reply with no <think> block, or whose blocks all close
+        WHEN the check runs
+        THEN it reports no unclosed block, a stray closing tag included
+        """
+        assert has_unclosed_think_block(reply) is False
+
+
+class _FakeResponse:
+    """Stands in for httpx.Response: only raise_for_status() and json() are used."""
+
+    def __init__(self, payload: dict) -> None:
+        self._payload = payload
+
+    def raise_for_status(self) -> None:
+        pass
+
+    def json(self) -> dict:
+        return self._payload
+
+
+class _FakeAsyncClient:
+    """Stands in for httpx.AsyncClient, recording the request and its own response."""
+
+    last_request: dict | None = None
+
+    def __init__(self, *args, **kwargs) -> None:
+        pass
+
+    async def __aenter__(self) -> "_FakeAsyncClient":
+        return self
+
+    async def __aexit__(self, *exc_info) -> bool:
+        return False
+
+    async def post(self, url: str, json: dict) -> _FakeResponse:
+        _FakeAsyncClient.last_request = {"url": url, "json": json}
+        return _FakeResponse(
+            {
+                "results": [
+                    {"index": 1, "relevance_score": 0.9},
+                    {"index": 0, "relevance_score": 0.2},
+                ]
+            }
+        )
+
+
+class _FakeAsyncClientOutOfRangeIndex:
+    """Stands in for httpx.AsyncClient, returning a result index past the input texts."""
+
+    def __init__(self, *args, **kwargs) -> None:
+        pass
+
+    async def __aenter__(self) -> "_FakeAsyncClientOutOfRangeIndex":
+        return self
+
+    async def __aexit__(self, *exc_info) -> bool:
+        return False
+
+    async def post(self, url: str, json: dict) -> _FakeResponse:
+        return _FakeResponse({"results": [{"index": 5, "relevance_score": 0.9}]})
+
+
+class _FakeAsyncClientMissingIndex:
+    """Stands in for httpx.AsyncClient, returning fewer results than input texts."""
+
+    def __init__(self, *args, **kwargs) -> None:
+        pass
+
+    async def __aenter__(self) -> "_FakeAsyncClientMissingIndex":
+        return self
+
+    async def __aexit__(self, *exc_info) -> bool:
+        return False
+
+    async def post(self, url: str, json: dict) -> _FakeResponse:
+        return _FakeResponse({"results": [{"index": 0, "relevance_score": 0.9}]})
+
+
+class _FakeAsyncClientDuplicateIndex:
+    """Stands in for httpx.AsyncClient, scoring the same index twice."""
+
+    def __init__(self, *args, **kwargs) -> None:
+        pass
+
+    async def __aenter__(self) -> "_FakeAsyncClientDuplicateIndex":
+        return self
+
+    async def __aexit__(self, *exc_info) -> bool:
+        return False
+
+    async def post(self, url: str, json: dict) -> _FakeResponse:
+        return _FakeResponse(
+            {
+                "results": [
+                    {"index": 0, "relevance_score": 0.9},
+                    {"index": 0, "relevance_score": 0.2},
+                ]
+            }
+        )
+
+
+class TestLlamaServerReranker:
+    """Async client for llama-server's /v1/rerank endpoint."""
+
+    @pytest.mark.asyncio
+    async def test_rerank_returns_scores_aligned_to_input_order(self, monkeypatch):
+        """
+        GIVEN a fake llama-server whose response lists results out of input order
+        WHEN rerank() scores two texts
+        THEN scores come back aligned to the INPUT order, not the response order,
+             and the request body carries model/query/documents as llama-server expects
+        """
+        # GIVEN
+        monkeypatch.setattr(httpx, "AsyncClient", _FakeAsyncClient)
+        reranker = LlamaServerReranker(
+            base_url="http://127.0.0.1:8083/v1", model="BAAI/bge-reranker-v2-m3", timeout=5.0
+        )
+
+        # WHEN
+        scores = await reranker.rerank("query", ["doc a", "doc b"])
+
+        # THEN
+        assert scores == [0.2, 0.9]
+        assert _FakeAsyncClient.last_request == {
+            "url": "http://127.0.0.1:8083/v1/rerank",
+            "json": {
+                "model": "BAAI/bge-reranker-v2-m3",
+                "query": "query",
+                "documents": ["doc a", "doc b"],
+            },
+        }
+
+    @pytest.mark.asyncio
+    async def test_rerank_rejects_a_result_index_outside_the_input_range(self, monkeypatch):
+        """
+        GIVEN a fake llama-server whose response names an index past the input texts
+        WHEN rerank() scores the texts
+        THEN it raises ValueError naming the bad index, not an IndexError
+        """
+        # GIVEN
+        monkeypatch.setattr(httpx, "AsyncClient", _FakeAsyncClientOutOfRangeIndex)
+        reranker = LlamaServerReranker(
+            base_url="http://127.0.0.1:8083/v1", model="BAAI/bge-reranker-v2-m3", timeout=5.0
+        )
+
+        # WHEN / THEN
+        with pytest.raises(ValueError, match="index 5"):
+            await reranker.rerank("query", ["doc a", "doc b"])
+
+    @pytest.mark.asyncio
+    async def test_rerank_rejects_a_response_that_leaves_an_index_unscored(self, monkeypatch):
+        """
+        GIVEN a fake llama-server whose response holds fewer results than input texts
+        WHEN rerank() scores three texts
+        THEN it raises ValueError naming the unscored indices, instead of returning a
+             fabricated 0.0 score for the texts the server never mentioned
+        """
+        # GIVEN
+        monkeypatch.setattr(httpx, "AsyncClient", _FakeAsyncClientMissingIndex)
+        reranker = LlamaServerReranker(
+            base_url="http://127.0.0.1:8083/v1", model="BAAI/bge-reranker-v2-m3", timeout=5.0
+        )
+
+        # WHEN / THEN
+        with pytest.raises(ValueError, match=r"\[1, 2\]"):
+            await reranker.rerank("query", ["doc a", "doc b", "doc c"])
+
+    @pytest.mark.asyncio
+    async def test_rerank_rejects_a_duplicated_result_index(self, monkeypatch):
+        """
+        GIVEN a fake llama-server whose response scores the same index twice
+        WHEN rerank() scores two texts
+        THEN it raises ValueError naming the duplicated index, instead of silently
+             overwriting the earlier score with the later one
+        """
+        # GIVEN
+        monkeypatch.setattr(httpx, "AsyncClient", _FakeAsyncClientDuplicateIndex)
+        reranker = LlamaServerReranker(
+            base_url="http://127.0.0.1:8083/v1", model="BAAI/bge-reranker-v2-m3", timeout=5.0
+        )
+
+        # WHEN / THEN
+        with pytest.raises(ValueError, match="index 0"):
+            await reranker.rerank("query", ["doc a", "doc b"])

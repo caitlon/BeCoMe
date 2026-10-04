@@ -17,11 +17,11 @@
     },
     "whyBetterThanMean": {
       "question": "Proč je BeCoMe lepší než prostý průměr?",
-      "answer": "BeCoMe zohledňuje nejistotu prostřednictvím fuzzy čísel, je robustní vůči odlehlým hodnotám díky složce mediánu a poskytuje odhad přesnosti (Δmax), který indikuje kvalitu konsenzu."
+      "answer": "BeCoMe zohledňuje nejistotu prostřednictvím fuzzy čísel, je robustní vůči odlehlým hodnotám díky složce mediánu a uvádí Δmax, tedy vzdálenost kompromisu od průměru i od mediánu."
     },
     "whenToUse": {
       "question": "Kdy mám použít BeCoMe?",
-      "answer": "BeCoMe je ideální pro scénáře skupinového rozhodování, zejména když mají experti protichůdné názory nebo když potřebujete dosáhnout rychlého konsenzu při zachování informace o nejistotě."
+      "answer": "BeCoMe je ideální pro scénáře skupinového rozhodování, zejména když mají experti protichůdné názory nebo když potřebujete rychle najít kompromis při zachování informace o nejistotě."
     }
   },
   "fuzzyNumbers": {
@@ -39,7 +39,7 @@
     "intro": "Naučte se interpretovat výsledky výpočtu BeCoMe a odhady chyb.",
     "whatIsMaxError": {
       "question": "Co znamená maximální chyba (Δmax)?",
-      "answer": "Maximální chyba Δmax = |Γ − Ω| / 2 ukazuje maximální odchylku od optima. Nižší hodnota indikuje lepší shodu mezi experty."
+      "answer": "Maximální chyba Δmax = |Γ − Ω| / 2 je polovina vzdálenosti mezi průměrem a mediánem, což je zároveň vzdálenost kompromisu od každého z nich. Nízká hodnota sama o sobě neznamená, že se experti shodli. Nízkou hodnotu může dát i panel rozdělený do dvou táborů, proto se podívejte i na graf jednotlivých názorů."
     },
     "whyDifferentMedian": {
       "question": "Proč se medián počítá jinak pro lichý a sudý počet expertů?",
@@ -58,22 +58,22 @@
     },
     "whatInputFormats": {
       "question": "Jaké vstupní formáty jsou podporovány?",
-      "answer": "Tři formáty: Přesné číslo (jedna přesná hodnota), Fuzzy (trojúhelníkové číslo s dolní, vrcholem, horní) a Likertova škála (lingvistické termíny od 'Rozhodně nesouhlasím' po 'Rozhodně souhlasím')."
+      "answer": "Jeden formát: fuzzy trojúhelníkové číslo. Tvoří ho tři hodnoty, Dolní, Vrchol a Horní: nejnižší hodnota, kterou byste přijali, ta, kterou považujete za nejpravděpodobnější, a nejvyšší. Pokud jste si jisti, zadejte do všech tří polí stejnou hodnotu. Zadávání na Likertově škále zatím není k dispozici."
     }
   },
   "troubleshooting": {
-    "intro": "Řešení běžných problémů, které můžete při používání aplikace narazit.",
+    "intro": "Řešení běžných problémů, na které můžete při používání aplikace narazit.",
     "cantSeeInvitation": {
       "question": "Proč nevidím pozvánku?",
-      "answer": "Ujistěte se, že jste přihlášeni s e-mailem, který obdržel pozvánku. Pozvaný uživatel musí být před přijetím pozvánky registrován v systému."
+      "answer": "Ujistěte se, že jste přihlášeni pod e-mailovou adresou, pro kterou byla pozvánka vytvořena. Pozvánka se neposílá e-mailem: objeví se v záložce 'Pozvánky'. Pozvat lze jen toho, kdo už má účet. Pokud jste se zaregistrovali až poté, co se vás vlastník projektu pokusil pozvat, požádejte ho, aby vás pozval znovu."
     },
     "noResults": {
       "question": "Proč se nezobrazují výsledky?",
-      "answer": "Výsledky vyžadují minimálně 2 expertní názory. Ujistěte se, že v projektu odeslalo své názory více expertů."
+      "answer": "Výsledky se zobrazí, jakmile má projekt alespoň jeden názor. Pokud se nezobrazují, žádný expert zatím svůj názor neuložil."
     },
     "howToEditOpinion": {
       "question": "Jak upravím svůj názor?",
-      "answer": "Otevřete stránku projektu a upravte dříve zadané hodnoty. Váš názor bude automaticky aktualizován."
+      "answer": "Otevřete stránku projektu, změňte své hodnoty a klikněte na 'Aktualizovat názor'. Výsledek se ihned přepočítá."
     }
   },
   "cta": {

@@ -80,8 +80,13 @@ def captured_log_records(name: str) -> Iterator[list[logging.LogRecord]]:
     :func:`api.logging_config.setup_logging` sets ``propagate = False`` on the ``api``
     tree, so a record logged after any test has built an app would never reach it. This
     attaches a handler to the named logger itself instead, and pins its level so an
-    earlier ``LOG_LEVEL`` cannot filter the record out before the handler sees it. Both
-    the handler and the level are removed on the way out.
+    earlier ``LOG_LEVEL`` cannot filter the record out before the handler sees it.
+
+    A logger can also be switched off outright. ``migrations/env.py`` calls
+    ``fileConfig``, which disables every logger that exists when a migration test runs
+    Alembic in process, and that lasts for the rest of the worker's session. So the
+    disabled loggers under ``name`` are switched back on for the capture. The handler,
+    the level and those switches are all restored on the way out.
 
     :param name: Dotted logger name, e.g. ``api.security``.
     :return: The list the handler appends to, filled as records are emitted.
@@ -100,6 +105,15 @@ def captured_log_records(name: str) -> Iterator[list[logging.LogRecord]]:
     logger = logging.getLogger(name)
     handler = _Collector(level=logging.NOTSET)
     saved_level = logger.level
+    silenced = [
+        existing
+        for key, existing in logging.Logger.manager.loggerDict.items()
+        if isinstance(existing, logging.Logger)
+        and existing.disabled
+        and (key == name or key.startswith(f"{name}."))
+    ]
+    for existing in silenced:
+        existing.disabled = False
     logger.setLevel(logging.DEBUG)
     logger.addHandler(handler)
     try:
@@ -107,3 +121,5 @@ def captured_log_records(name: str) -> Iterator[list[logging.LogRecord]]:
     finally:
         logger.removeHandler(handler)
         logger.setLevel(saved_level)
+        for existing in silenced:
+            existing.disabled = True

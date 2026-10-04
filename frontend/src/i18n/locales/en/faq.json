@@ -17,11 +17,11 @@
     },
     "whyBetterThanMean": {
       "question": "Why is BeCoMe better than a simple average?",
-      "answer": "BeCoMe accounts for uncertainty through fuzzy numbers, is robust against outliers thanks to the median component, and provides an accuracy estimate (Δmax) that indicates the quality of consensus."
+      "answer": "BeCoMe accounts for uncertainty through fuzzy numbers, is robust against outliers thanks to the median component, and reports Δmax, how far the compromise lies from both the mean and the median."
     },
     "whenToUse": {
       "question": "When should I use BeCoMe?",
-      "answer": "BeCoMe is ideal for group decision-making scenarios, especially when experts have contradicting opinions or when you need to reach a quick consensus while preserving uncertainty information."
+      "answer": "BeCoMe is ideal for group decision-making scenarios, especially when experts have contradicting opinions or when you need a compromise quickly while preserving uncertainty information."
     }
   },
   "fuzzyNumbers": {
@@ -39,7 +39,7 @@
     "intro": "Learn how to interpret BeCoMe calculation results and error estimates.",
     "whatIsMaxError": {
       "question": "What does the maximum error (Δmax) mean?",
-      "answer": "The maximum error Δmax = |Γ − Ω| / 2 shows the maximum deviation from the optimum. A lower value indicates better agreement among experts."
+      "answer": "The maximum error Δmax = |Γ − Ω| / 2 is half the distance between the mean and the median, which is also the distance from the compromise to each of them. A low value does not by itself mean the experts agreed. A panel split into two camps can give a low value too, so check the chart of individual opinions."
     },
     "whyDifferentMedian": {
       "question": "Why is the median calculated differently for odd and even expert counts?",
@@ -58,22 +58,22 @@
     },
     "whatInputFormats": {
       "question": "What input formats are supported?",
-      "answer": "Three formats: Crisp (single precise value), Fuzzy (triangular number with lower, peak, upper), and Likert scale (linguistic terms from 'Strongly disagree' to 'Strongly agree')."
+      "answer": "One format: a fuzzy triangular number. It has three values, Lower, Peak and Upper: the lowest value you would accept, the one you consider most likely, and the highest. If you are certain, enter the same value in all three fields. A Likert scale input is not available yet."
     }
   },
   "troubleshooting": {
     "intro": "Solutions to common issues you might encounter while using the application.",
     "cantSeeInvitation": {
       "question": "Why can't I see the invitation?",
-      "answer": "Make sure you're logged in with the email that received the invitation. The invited user must be registered in the system before receiving invitations."
+      "answer": "Make sure you're signed in with the email address the invitation was created for. The invitation is not sent by email: it appears in your 'Invitations' tab. Only someone who already has an account can be invited, so if you registered after the owner tried, ask them to invite you again."
     },
     "noResults": {
       "question": "Why aren't results showing?",
-      "answer": "Results require at least 2 expert opinions. Make sure multiple experts have submitted their opinions in the project."
+      "answer": "Results appear as soon as the project has at least one opinion. If none are showing, no expert has saved an opinion yet."
     },
     "howToEditOpinion": {
       "question": "How do I edit my opinion?",
-      "answer": "Open the project page and modify your previously entered values. Your opinion will be updated automatically."
+      "answer": "Open the project page, change your values and click 'Update Opinion'. The result is recalculated right away."
     }
   },
   "cta": {

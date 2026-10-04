@@ -1,0 +1,60 @@
+name: Technical Debt
+description: Track code quality improvements or refactoring needs
+title: "[Tech Debt]: "
+labels: ["type:tech-debt", "status:needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This repository is public. Keep credentials and personal data out of the description,
+        and report security problems privately through the
+        [security policy](https://github.com/caitlon/BeCoMe/security/policy).
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What needs to be improved or refactored?
+    validations:
+      required: true
+
+  - type: textarea
+    id: current-state
+    attributes:
+      label: Current State
+      description: Describe the current implementation and its problems
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed-improvement
+    attributes:
+      label: Proposed Improvement
+      description: How could this be addressed?
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - High (blocking development)
+        - Medium (should fix soon)
+        - Low (nice to have)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which part of the project does this affect? The maintainer uses it to pick the area label.
+      options:
+        - Core library (src/)
+        - API (api/)
+        - Frontend (frontend/)
+        - Infrastructure (CI/CD, Docker)
+        - Internationalization
+        - Tests
+        - Documentation
+    validations:
+      required: true

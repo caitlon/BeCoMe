@@ -52,7 +52,7 @@ export const caseStudies: CaseStudy[] = [
     title: "COVID-19 Budget Support",
     shortTitle: "Budget",
     description: "Budget allocation for pandemic response measures",
-    fullDescription: "During the COVID-19 pandemic, the Czech government needed to determine the optimal financial support for entrepreneurs affected by restrictive measures. A panel of 22 high-ranking government officials from various ministries was assembled to provide their expert opinions.",
+    fullDescription: "This example is set in the COVID-19 pandemic, when the Czech government had to determine the financial support for entrepreneurs affected by restrictive measures. It models a panel of 22 high-ranking government officials from various ministries giving their expert opinions.",
     question: "Based on the submitted analyses of the Ministry of Industry and Trade and the Czech National Bank on the impact of the measures on the state budget of the Czech Republic, propose the total financial support in the range CZK 0-100 billion for entrepreneurs affected by the COVID-19 pandemic.",
     icon: FileText,
     experts: 22,
@@ -79,25 +79,26 @@ export const caseStudies: CaseStudy[] = [
       { role: "Deputy Minister of Justice", bestProposal: 40, lowerLimit: 10, upperLimit: 50 },
       { role: "Chairman of SSHR", bestProposal: 40, lowerLimit: 40, upperLimit: 40 },
       { role: "Police President", bestProposal: 50, lowerLimit: 50, upperLimit: 50 },
-      { role: "Chief Hygienist", bestProposal: 65, lowerLimit: 45, upperLimit: 80 },
-      { role: "Economic Advisor 1", bestProposal: 55, lowerLimit: 35, upperLimit: 75 },
-      { role: "Economic Advisor 2", bestProposal: 60, lowerLimit: 40, upperLimit: 80 },
-      { role: "Regional Governor 1", bestProposal: 75, lowerLimit: 50, upperLimit: 85 },
-      { role: "Regional Governor 2", bestProposal: 70, lowerLimit: 45, upperLimit: 90 },
-      { role: "Business Association Rep", bestProposal: 85, lowerLimit: 60, upperLimit: 95 },
+      { role: "Director of Fire Rescue Service", bestProposal: 40, lowerLimit: 30, upperLimit: 50 },
+      { role: "Chief of General Staff of the ACR", bestProposal: 40, lowerLimit: 10, upperLimit: 45 },
+      { role: "Director of NÚKIB", bestProposal: 40, lowerLimit: 10, upperLimit: 80 },
+      { role: "Chief Hygienist", bestProposal: 30, lowerLimit: 10, upperLimit: 80 },
+      { role: "Director of SZÚ", bestProposal: 50, lowerLimit: 30, upperLimit: 55 },
+      { role: "Director of the Office of the Government", bestProposal: 60, lowerLimit: 60, upperLimit: 90 },
     ] as ExpertOpinion[],
     result: {
-      bestCompromise: 56.74,
-      maxError: 0.76,
-      interpretation: "The best compromise suggests financial support of approximately 56.74 billion CZK, with a maximum estimation error of only ±0.76 billion CZK. Mean and median land on almost the same centroid, which keeps the error this small. That agreement is between the two aggregation methods themselves, not among the experts, whose individual proposals varied widely.",
+      bestCompromise: 48.03,
+      maxError: 2.20,
+      interpretation: "The best compromise suggests financial support of approximately 48.03 billion CZK, with a maximum estimation error of ±2.20 billion CZK. The arithmetic mean (50.23) and the median (45.83) sit 4.4 billion apart, and the compromise lies halfway between them. The error describes the distance between these two aggregates, not agreement among the experts, whose individual proposals varied widely.",
     },
+    note: "This case study uses illustrative fictional data for demonstration purposes and is not the result of actual research.",
   },
   {
     id: "pendlers",
     title: "Cross-border Cooperation",
     shortTitle: "Pendlers",
     description: "Policy evaluation for international collaboration",
-    fullDescription: "During the COVID-19 pandemic, cross-border workers (pendlers) faced significant challenges due to border closures between countries. A panel of 22 government officials evaluated whether cross-border travel should be permitted for regular commuters.",
+    fullDescription: "This example is set in the COVID-19 pandemic, when cross-border workers (pendlers) faced border closures between countries. It models a panel of 22 government officials evaluating whether cross-border travel should be permitted for regular commuters.",
     question: "I agree that cross-border travel should be allowed for those who regularly travel from one country to another to work.",
     icon: Globe,
     experts: 22,
@@ -124,17 +125,17 @@ export const caseStudies: CaseStudy[] = [
       { role: "Deputy Minister of Justice", value: 75 },
       { role: "Chairman of SSHR", value: 25 },
       { role: "Police President", value: 50 },
+      { role: "Director of Fire Rescue Service", value: 25 },
+      { role: "Chief of General Staff of the ACR", value: 25 },
+      { role: "Director of NÚKIB", value: 25 },
       { role: "Chief Hygienist", value: 0 },
-      { role: "Border Police Chief", value: 25 },
-      { role: "Regional Governor (Border)", value: 75 },
-      { role: "Labour Union Rep", value: 100 },
-      { role: "Employers Association Rep", value: 100 },
-      { role: "Public Health Expert", value: 25 },
+      { role: "Director of SZÚ", value: 25 },
+      { role: "Director of the Office of the Government", value: 25 },
     ] as LikertOpinion[],
     result: {
-      bestCompromise: 41.48,
-      maxError: 3.98,
-      interpretation: "The best compromise of 41.48% corresponds to 'Neutral' on the Likert scale. Experts lean toward neither clear support nor clear opposition for allowing cross-border travel. The arithmetic mean and median land close together, with an error margin of just ±3.98%. That narrow margin confirms this Neutral reading is a stable summary of the panel.",
+      bestCompromise: 30.68,
+      maxError: 5.68,
+      interpretation: "The best compromise of 30.68% corresponds to 'Rather Disagree' on the Likert scale. The median sits at 25% and the arithmetic mean at 36.36%, so the compromise lies between them, with a maximum error of ±5.68%.",
     },
     note: "This case study uses illustrative fictional data for demonstration purposes and is not the result of actual research.",
   },
@@ -171,19 +172,7 @@ export const caseStudies: CaseStudy[] = [
     result: {
       bestCompromise: 14.31,
       maxError: 5.97,
-      interpretation: "The best compromise recommends converting approximately 14.31% of arable land in flood areas to retention zones. This reflects a moderate approach that addresses flood risk while limiting impact on agricultural production. The relatively low error, ±5.97%, indicates reasonable consensus despite the diverse stakeholder interests.",
+      interpretation: "The best compromise recommends converting approximately 14.31% of arable land in flood areas to retention zones. This reflects a moderate approach that addresses flood risk while limiting impact on agricultural production. The error of ±5.97% is low because the mean and the median land fairly close together, not because the stakeholders agreed. The panel splits into two camps about 40 percentage points apart.",
     },
   },
 ];
-
-export function getCaseStudyById(id: string): CaseStudy | undefined {
-  return caseStudies.find((cs) => cs.id === id);
-}
-
-export function getLikertLabel(value: number): string {
-  if (value <= 12.5) return "Strongly Disagree";
-  if (value <= 37.5) return "Rather Disagree";
-  if (value <= 62.5) return "Neutral";
-  if (value <= 87.5) return "Rather Agree";
-  return "Strongly Agree";
-}

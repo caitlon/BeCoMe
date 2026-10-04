@@ -17,6 +17,7 @@ import {
   useLocalizedCaseStudyById,
   useLocalizedLikertLabel,
 } from "@/hooks/useLocalizedCaseStudies";
+import { useAuth } from "@/contexts/AuthContext";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 const VISIBLE_BARS = 8;
@@ -24,9 +25,12 @@ const VISIBLE_BARS = 8;
 const CaseStudy = () => {
   const { t } = useTranslation("caseStudies");
   const { t: tCommon } = useTranslation();
+  const { isAuthenticated } = useAuth();
   const { id } = useParams<{ id: string }>();
   const caseStudy = useLocalizedCaseStudyById(id || "");
-  useDocumentTitle(tCommon("pageTitle.caseStudy"));
+  useDocumentTitle(
+    caseStudy ? tCommon("pageTitle.caseStudyDetail", { name: caseStudy.title }) : tCommon("pageTitle.caseStudy"),
+  );
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -76,6 +80,11 @@ const CaseStudy = () => {
             <p className="text-lg text-muted-foreground max-w-3xl">
               {caseStudy.fullDescription}
             </p>
+            {caseStudy.note && (
+              <p className="mt-4 text-sm text-muted-foreground max-w-3xl">
+                {caseStudy.note}
+              </p>
+            )}
           </motion.div>
         </div>
       </section>
@@ -381,7 +390,9 @@ const CaseStudy = () => {
             {t("common.ctaDescription")}
           </p>
           <Button size="lg" asChild>
-            <Link to="/register">{tCommon("nav.getStarted")}</Link>
+            <Link to={isAuthenticated ? "/projects" : "/register"}>
+              {isAuthenticated ? tCommon("nav.goToProjects") : tCommon("nav.getStarted")}
+            </Link>
           </Button>
         </div>
       </section>
