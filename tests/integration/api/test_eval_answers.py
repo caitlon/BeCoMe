@@ -754,6 +754,7 @@ class TestFailureHandling:
         assert ea._stop_reason("ok", 0) is None
         assert ea._stop_reason("RuntimeError", 2) is None
         assert "ASSISTANT_RATE_LIMIT_PER_HOUR" in ea._stop_reason("http_429", 1)
+        assert "wait a minute" not in ea._stop_reason("http_429", 1)
         assert "3 turns in a row" in ea._stop_reason("http_503", 3)
 
     def test_the_streak_stop_says_when_retry_failed_is_refused(self):
@@ -768,6 +769,220 @@ class TestFailureHandling:
         # THEN
         assert "refused if a recorded provenance field changed" in message
         assert "a new --arm or a new --output asks every question again" in message
+
+
+class _FakeTime:
+    """A clock that only moves when the runner sleeps or a test advances it."""
+
+    def __init__(self) -> None:
+        self.now = 0.0
+        self.sleeps: list[float] = []
+
+    def clock(self) -> float:
+        return self.now
+
+    async def sleep(self, seconds: float) -> None:
+        self.sleeps.append(seconds)
+        self.now += seconds
+
+
+class TestPacing:
+    """The runner keeps under the chat route's per-minute limit by waiting between questions."""
+
+    @staticmethod
+    def _questions(count: int) -> list[dict]:
+        return [{"id": f"q{n}", "question": f"Question {n}?"} for n in range(count)]
+
+    @staticmethod
+    def _spy_starts(fake: _FakeTime, turn_s: float = 0.0):
+        """Record the fake time each question starts at; a turn then takes ``turn_s`` of it."""
+        starts: list[float] = []
+        real_ask = ea._ask
+
+        async def spy(*args, **kwargs):
+            starts.append(fake.now)
+            result = await real_ask(*args, **kwargs)
+            fake.now += turn_s
+            return result
+
+        return starts, patch.object(ea, "_ask", spy)
+
+    @staticmethod
+    def _busiest_window(starts: list[float], window: float = 60.0) -> int:
+        return max(sum(s <= start < s + window for start in starts) for s in starts)
+
+    def test_instant_questions_wait_and_no_window_holds_more_than_the_limit_less_one(
+        self, assistant_settings, client, tmp_path
+    ):
+        """
+        GIVEN 25 questions that each answer at once and a fake clock, with the limit at 20 a minute
+        WHEN the runner asks them
+        THEN it waits, and no 60 s window holds more than 19 starts
+        """
+        # GIVEN
+        fixtures = _setup(client, _scripted(*["Answer."] * 25))
+        fake = _FakeTime()
+        starts, spy = self._spy_starts(fake)
+
+        # WHEN
+        with spy:
+            summary = _run(
+                client,
+                fixtures,
+                self._questions(25),
+                tmp_path / "out.jsonl",
+                clock=fake.clock,
+                sleep=fake.sleep,
+            )
+
+        # THEN
+        assert summary["ok"] == 25
+        assert fake.sleeps
+        assert self._busiest_window(starts) == 19
+
+    def test_turns_slower_than_the_pace_cause_no_wait(self, assistant_settings, client, tmp_path):
+        """
+        GIVEN 25 questions whose turns each take 4 s, more than 60 / 19 s
+        WHEN the runner asks them
+        THEN it never waits
+        """
+        # GIVEN
+        fixtures = _setup(client, _scripted(*["Answer."] * 25))
+        fake = _FakeTime()
+        _, spy = self._spy_starts(fake, turn_s=4.0)
+
+        # WHEN
+        with spy:
+            _run(
+                client,
+                fixtures,
+                self._questions(25),
+                tmp_path / "out.jsonl",
+                clock=fake.clock,
+                sleep=fake.sleep,
+            )
+
+        # THEN
+        assert fake.sleeps == []
+
+    def test_latency_does_not_include_the_wait(self, assistant_settings, client, tmp_path):
+        """
+        GIVEN a limit of 2 a minute, so the second question waits, and a wait that really takes 0.5 s
+        WHEN the runner asks two questions
+        THEN the wait happened and every latency_s is shorter than it
+        """
+        # GIVEN
+        fixtures = _setup(client, _scripted("One.", "Two."))
+        waited: list[float] = []
+
+        async def really_sleep(seconds: float) -> None:
+            waited.append(seconds)
+            await asyncio.sleep(0.5)
+
+        # WHEN
+        with patch.object(ea.rate_limit, "LIMIT_ASSISTANT_CHAT", "2/minute"):
+            _run(
+                client,
+                fixtures,
+                self._questions(2),
+                tmp_path / "out.jsonl",
+                sleep=really_sleep,
+            )
+
+        # THEN
+        assert len(waited) == 1
+        assert all(row["latency_s"] < 0.5 for row in _rows(tmp_path / "out.jsonl"))
+
+    def test_no_pacing_never_waits(self, assistant_settings, client, tmp_path):
+        """
+        GIVEN 25 instant questions
+        WHEN the runner asks them with pacing off
+        THEN it never waits
+        """
+        # GIVEN
+        fixtures = _setup(client, _scripted(*["Answer."] * 25))
+        fake = _FakeTime()
+
+        # WHEN
+        _run(
+            client,
+            fixtures,
+            self._questions(25),
+            tmp_path / "out.jsonl",
+            pacing=False,
+            clock=fake.clock,
+            sleep=fake.sleep,
+        )
+
+        # THEN
+        assert fake.sleeps == []
+
+    def test_the_limit_is_read_from_the_routes_constant(self, assistant_settings, client, tmp_path):
+        """
+        GIVEN the route's limit constant patched to 5 a minute
+        WHEN the runner asks 12 instant questions
+        THEN no 60 s window holds more than 4 starts
+        """
+        # GIVEN
+        fixtures = _setup(client, _scripted(*["Answer."] * 12))
+        fake = _FakeTime()
+        starts, spy = self._spy_starts(fake)
+
+        # WHEN
+        with patch.object(ea.rate_limit, "LIMIT_ASSISTANT_CHAT", "5/minute"), spy:
+            _run(
+                client,
+                fixtures,
+                self._questions(12),
+                tmp_path / "out.jsonl",
+                clock=fake.clock,
+                sleep=fake.sleep,
+            )
+
+        # THEN
+        assert self._busiest_window(starts) == 4
+
+    def test_a_limit_that_is_not_per_minute_refuses_the_run(
+        self, assistant_settings, client, tmp_path
+    ):
+        """
+        GIVEN the route's limit changed to a per-hour form
+        WHEN the runner starts
+        THEN it refuses, naming the constant, instead of pacing to a wrong number
+        """
+        # GIVEN
+        fixtures = _setup(client, _scripted("One."))
+
+        # WHEN / THEN
+        with (
+            patch.object(ea.rate_limit, "LIMIT_ASSISTANT_CHAT", "100/hour"),
+            pytest.raises(ea.RunRefusedError, match="LIMIT_ASSISTANT_CHAT"),
+        ):
+            _run(client, fixtures, self._questions(1), tmp_path / "out.jsonl")
+
+    def test_main_says_the_pacing_in_effect_and_no_pacing_switches_it_off(
+        self, assistant_settings, client, tmp_path, capsys
+    ):
+        """
+        GIVEN a one-question run
+        WHEN main runs with and without --no-pacing
+        THEN stderr names the pacing in effect each time
+        """
+        # GIVEN
+        fixtures = _setup(client, _scripted("One.", "Two."))
+        (tmp_path / "f.json").write_text(json.dumps(fixtures), encoding="utf-8")
+        (tmp_path / "q.jsonl").write_text(json.dumps({"id": "q1", "question": "Plum?"}))
+
+        # WHEN
+        with patch.object(ea, "create_app", return_value=client.app):
+            ea.main(_argv(tmp_path))
+            paced = capsys.readouterr().err
+            ea.main(_argv(tmp_path, "workflow", "--no-pacing", "--arm", "other"))
+            unpaced = capsys.readouterr().err
+
+        # THEN
+        assert "pacing: at most 19 questions per 60 s" in paced
+        assert "pacing: off" in unpaced
 
 
 class TestProvenance:

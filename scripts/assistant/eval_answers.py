@@ -12,8 +12,10 @@ copy of the settings that carries the requested mode and has LangSmith tracing s
 
 Needs ``ASSISTANT_ENABLED=true`` and the model servers the settings point at; the runner
 starts none. The database must hold the fixtures' user and projects. Set
-``ASSISTANT_RATE_LIMIT_PER_HOUR=0`` for a long run: ``LIMIT_ASSISTANT_CHAT`` (20 a minute per
-address) still applies.
+``ASSISTANT_RATE_LIMIT_PER_HOUR=0`` for a long run. ``LIMIT_ASSISTANT_CHAT`` (per address,
+per minute) is met by pacing: the runner starts at most one question fewer per 60 s than that
+limit allows, and the wait is not part of ``latency_s``. ``--no-pacing`` turns it off, for a rig
+where the limiter is off.
 
 The output holds answers and source titles; logs carry counts and timings only.
 """
@@ -24,9 +26,12 @@ import argparse
 import asyncio
 import hashlib
 import json
+import re
 import statistics
 import sys
 import time
+from collections import deque
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -44,6 +49,7 @@ from api.assistant.rag.retrieval import RetrievalConfig
 from api.auth.jwt import create_access_token
 from api.config import Settings, get_settings
 from api.main import create_app
+from api.middleware import rate_limit
 
 CHAT = "/api/v1/assistant/chat"
 
@@ -59,9 +65,12 @@ MAX_CONSECUTIVE_FAILURES = 3
 _STOP_AT_ONCE = {
     "http_401": "the fixtures user was refused; check the user id in the fixtures file and "
     "that the user exists and is verified in the configured database",
-    "http_429": "a rate limit is on; set ASSISTANT_RATE_LIMIT_PER_HOUR=0 for the hourly cap, or "
-    "wait a minute for LIMIT_ASSISTANT_CHAT (20 a minute per address, it has no setting)",
+    "http_429": "a rate limit refused the question; the per-minute limit is met by pacing, so "
+    "set ASSISTANT_RATE_LIMIT_PER_HOUR=0 for the hourly cap, and check that no other client "
+    "uses this address or that --no-pacing was not passed",
 }
+# The longest window the pacing counts in: the route's limit is per minute.
+PACING_WINDOW_S = 60.0
 # What must be equal across all rows of one arm for its rows to be comparable.
 _PROVENANCE_FIELDS = (
     "mode",
@@ -84,6 +93,55 @@ _PROVENANCE_FIELDS = (
 
 class RunRefusedError(Exception):
     """The run must not start; the message says why."""
+
+
+def _starts_per_window() -> int:
+    """Return how many questions may start in one window, one fewer than the route allows.
+
+    The route's own limit constant is read, so a change there is followed.
+
+    :return: The limit's amount minus one, and at least one.
+    :raises RunRefusedError: If the constant is not of the form ``<n>/minute``.
+    """
+    match = re.fullmatch(r"(\d+)/minute", rate_limit.LIMIT_ASSISTANT_CHAT)
+    if match is None:
+        raise RunRefusedError(
+            f"cannot pace to LIMIT_ASSISTANT_CHAT {rate_limit.LIMIT_ASSISTANT_CHAT!r}: "
+            "only <n>/minute is understood"
+        )
+    return max(1, int(match.group(1)) - 1)
+
+
+class _Pacer:
+    """Delays question starts so no rolling window holds more than ``per_window`` of them."""
+
+    def __init__(
+        self,
+        per_window: int,
+        clock: Callable[[], float],
+        sleep: Callable[[float], Awaitable[None]],
+    ) -> None:
+        """Create a pacer.
+
+        :param per_window: The most starts allowed within :data:`PACING_WINDOW_S`.
+        :param clock: Returns the current time in seconds.
+        :param sleep: Waits for the given seconds.
+        """
+        self._per_window = per_window
+        self._clock = clock
+        self._sleep = sleep
+        self._starts: deque[float] = deque()
+
+    async def wait_turn(self) -> None:
+        """Wait until a question may start, then record its start."""
+        now = self._clock()
+        while self._starts and self._starts[0] <= now - PACING_WINDOW_S:
+            self._starts.popleft()
+        if len(self._starts) >= self._per_window:
+            await self._sleep(self._starts[0] + PACING_WINDOW_S - now)
+            now = self._clock()
+            self._starts.popleft()
+        self._starts.append(now)
 
 
 def _seal_problem(digest: str, args: argparse.Namespace) -> str | None:
@@ -377,6 +435,9 @@ async def run_eval(
     versions: tuple[str | None, str | None],
     code_version: str | None,
     retry_failed: bool = False,
+    pacing: bool = True,
+    clock: Callable[[], float] = time.monotonic,
+    sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
 ) -> dict[str, Any]:
     """Ask the questions one after another and append one row per question to ``output``.
 
@@ -385,7 +446,8 @@ async def run_eval(
     ``ok`` are asked again, and the new row wins (:func:`latest_rows`). The run stops when
     :func:`_stop_reason` says the environment is failing. While it lasts the app's settings
     dependency is overridden with :func:`_eval_settings` and tracing is off; the override is
-    removed afterwards.
+    removed afterwards. With ``pacing`` each question waits first, so that no 60 s window holds
+    more starts than :func:`_starts_per_window`; the wait is outside ``latency_s``.
 
     :param app: The FastAPI app with the assistant router mounted.
     :param questions: The records from :func:`_load_questions`.
@@ -397,10 +459,14 @@ async def run_eval(
     :param versions: ``(app_version, corpus_version)`` the collection's registry records.
     :param code_version: The version of the code that generates the answers.
     :param retry_failed: Ask again the questions whose latest row is not ``ok``.
+    :param pacing: Pace the questions to the route's per-minute limit.
+    :param clock: Time source of the pacing, in seconds.
+    :param sleep: Wait function of the pacing.
     :return: ``rows`` written, ``ok`` and ``failed`` counts, ``median_latency_s``, ``unresolved``,
         how many of this arm's pairs have a non-``ok`` latest row in the whole file, and ``stop``,
         the message of the rule that ended the run early, or None.
-    :raises RunRefusedError: If the arm's existing rows were made under other settings.
+    :raises RunRefusedError: If the arm's existing rows were made under other settings, or the
+        route's limit cannot be paced to.
     """
     projects = _project_ids(fixtures)
     retrieval = _retrieval_config(settings)
@@ -431,6 +497,13 @@ async def run_eval(
         if not (retry_failed and row["status"] != "ok")
     }
     todo = [record for record in questions if (record["id"], arm) not in done]
+    pacer: _Pacer | None = None
+    if pacing:
+        per_window = _starts_per_window()
+        pacer = _Pacer(per_window, clock, sleep)
+        print(f"pacing: at most {per_window} questions per 60 s", file=sys.stderr)
+    else:
+        print("pacing: off", file=sys.stderr)
     output.parent.mkdir(parents=True, exist_ok=True)
     run_settings = _eval_settings(settings, mode)
     user_id = str(fixtures["user"]["id"])
@@ -448,6 +521,8 @@ async def run_eval(
             with ls.tracing_context(enabled=False), output.open("a", encoding="utf-8") as sink:
                 for number, record in enumerate(todo, start=1):
                     key = record.get("project")
+                    if pacer is not None:
+                        await pacer.wait_turn()
                     result = await _ask(
                         http, record, None if key is None else projects[key], user_id
                     )
@@ -501,6 +576,9 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--retry-failed", action="store_true", help="Ask failed questions again")
     parser.add_argument("--sealed-run", action="store_true", help="Allow a sealed question set")
     parser.add_argument("--registration", type=Path, default=None, help="Pre-registration file")
+    parser.add_argument(
+        "--no-pacing", action="store_true", help="Do not pace to the route's rate limit"
+    )
     return parser.parse_args(argv)
 
 
@@ -574,6 +652,7 @@ def main(argv: list[str] | None = None) -> int:
                 versions=versions,
                 code_version=code_version,
                 retry_failed=args.retry_failed,
+                pacing=not args.no_pacing,
             )
         )
     except RunRefusedError as exc:

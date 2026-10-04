@@ -90,7 +90,11 @@ Runs only on a developer machine. `Settings` refuses to start any deployed profi
    `--retry-failed`. After a 401 or 429 that works, since fixing either changes none of those
    fields. After a code or settings fix, `--retry-failed` is refused as soon as one of them
    changed; under a new `--arm` or a new `--output` the questions are asked again from the
-   start. `ASSISTANT_RATE_LIMIT_PER_HOUR=0` suits a long run.
+   start. The route's per-address limit (`LIMIT_ASSISTANT_CHAT`, `<n>/minute`) is handled by
+   pacing: the runner starts at most `n - 1` questions in any 60 s and prints the figure on
+   stderr at the start; the wait is not part of `latency_s`. `--no-pacing` turns it off, for a
+   rig where the limiter is off. The hourly cap is not paced: a long run still needs
+   `ASSISTANT_RATE_LIMIT_PER_HOUR=0`.
 
    ```bash
    uv run python scripts/assistant/eval_answers.py --questions questions.jsonl \
