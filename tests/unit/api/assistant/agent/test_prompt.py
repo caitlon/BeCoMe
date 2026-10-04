@@ -155,6 +155,7 @@ class TestWideningFact:
         bullet = PINNED_FACTS.split("\n- ")[1]
 
         assert "widening" in bullet.lower()
+        assert "by the same amount on both sides of the same peak" in bullet
         assert bullet.endswith("does not move the centroid of the compromise.")
         assert "center" not in bullet
         assert "wide" not in bullet.replace("Widening", "")
@@ -163,7 +164,7 @@ class TestWideningFact:
     def test_widening_one_of_two_tied_opinions_keeps_the_centroid_and_moves_the_peak(self):
         """
         GIVEN two opinions that share a centroid but have different peaks
-        WHEN one of them is widened evenly around its peak
+        WHEN one of them is widened by the same amount on both sides of its peak
         THEN the compromise's centroid is unchanged and its peak changes, because a
             different opinion becomes the median
         """
@@ -176,7 +177,7 @@ class TestWideningFact:
     def test_widening_an_opinion_with_no_tie_keeps_centroid_and_peak(self):
         """
         GIVEN a panel in which no two opinions share a centroid
-        WHEN one opinion is widened evenly around its peak
+        WHEN one opinion is widened by the same amount on both sides of its peak
         THEN the compromise's centroid and peak both stay
         """
         before = _compromise([(0, 1, 2), (3, 4, 5), (6, 8, 10)])
