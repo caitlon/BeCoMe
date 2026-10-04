@@ -13,7 +13,6 @@ ROOT = Path(__file__).resolve().parents[4]
 GOLDEN_SET = ROOT / "scripts" / "assistant" / "golden_set.jsonl"
 
 _MARKDOWN_HEADING = re.compile(r"^#{1,6}\s+(.+?)\s*$")
-_FENCE = re.compile(r"^\s*(```|~~~)")
 _JSON_PATH_SEPARATOR = " > "
 
 
@@ -34,20 +33,13 @@ def _markdown_headings(path: Path) -> set[str]:
     entry can name are the target's.
 
     :param path: The markdown file.
-    :return: Heading texts without their leading hashes, code fences skipped.
+    :return: Heading texts without their leading hashes.
     """
     text = path.read_text(encoding="utf-8")
     match = SNIPPET_INCLUDE.search(text)
     if match:
         text = (ROOT / match.group(1)).read_text(encoding="utf-8")
-    headings = set()
-    in_fence = False
-    for line in text.splitlines():
-        if _FENCE.match(line):
-            in_fence = not in_fence
-        elif not in_fence and (heading := _MARKDOWN_HEADING.match(line)):
-            headings.add(heading.group(1))
-    return headings
+    return {m.group(1) for line in text.splitlines() if (m := _MARKDOWN_HEADING.match(line))}
 
 
 def _json_section_exists(path: Path, section: str) -> bool:
