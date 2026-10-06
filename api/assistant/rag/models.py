@@ -54,7 +54,7 @@ def make_answer_model(settings: Settings) -> ChatOpenAI:
     )
 
 
-_THINK_OPEN = "<think>"
+THINK_OPEN = "<think>"
 _THINK_CLOSE = "</think>"
 
 
@@ -72,8 +72,8 @@ def strip_think_block(reply: str) -> str:
         leading and trailing whitespace. A reply with no complete block is only
         stripped.
     """
-    start = reply.find(_THINK_OPEN)
-    end = reply.find(_THINK_CLOSE, start + len(_THINK_OPEN)) if start != -1 else -1
+    start = reply.find(THINK_OPEN)
+    end = reply.find(_THINK_CLOSE, start + len(THINK_OPEN)) if start != -1 else -1
     if end == -1:
         return reply.strip()
     return (reply[:start] + reply[end + len(_THINK_CLOSE) :]).strip()
@@ -90,7 +90,7 @@ def has_unclosed_think_block(reply: str) -> bool:
     :param reply: The model's raw reply text.
     :return: True when the last <think> has no </think> after it.
     """
-    opened = reply.rfind(_THINK_OPEN)
+    opened = reply.rfind(THINK_OPEN)
     return opened != -1 and _THINK_CLOSE not in reply[opened:]
 
 
