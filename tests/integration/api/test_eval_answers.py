@@ -15,7 +15,7 @@ import time
 from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import langsmith as ls
@@ -25,6 +25,7 @@ from langchain_core.messages import AIMessage
 from langsmith import run_helpers
 
 from api.assistant import deps
+from api.assistant.agent import tracing
 from api.assistant.agent.prompt import SYSTEM_PROMPT
 from api.assistant.rag.retrieval import RetrievedChunk
 from api.assistant.rate_limit import get_assistant_throttle
@@ -90,6 +91,15 @@ def _runner_env(monkeypatch, tmp_path):
         monkeypatch.setenv(name, value)
     _reset()
     yield
+    _reset()
+
+
+@pytest.fixture
+def tracing_setting_on(monkeypatch):
+    """Turn the assistant's LangSmith setting on, with a stand-in client so nothing is sent."""
+    monkeypatch.setenv("ASSISTANT_LANGSMITH_ENABLED", "true")
+    monkeypatch.setenv("ASSISTANT_LANGSMITH_API_KEY", "ls-key")  # pragma: allowlist secret
+    monkeypatch.setattr(tracing, "_shared_client", MagicMock())
     _reset()
 
 
@@ -366,11 +376,12 @@ class TestRunScope:
         assert [row["status"] for row in _rows(output)] == ["ok", "ok"]
 
     def test_tracing_is_off_while_the_documents_are_searched(
-        self, assistant_settings, client, tmp_path, monkeypatch
+        self, assistant_settings, client, tmp_path, monkeypatch, tracing_setting_on
     ):
         """
-        GIVEN LANGSMITH_TRACING=true in the environment
-        WHEN the runner asks a question, whose search runs before the service's own scope
+        GIVEN LANGSMITH_TRACING=true and the assistant's tracing setting on in the environment
+        WHEN the runner asks a question without trace, whose search runs before the service's
+            own scope
         THEN tracing is switched off at that point
         """
         # GIVEN
@@ -388,10 +399,10 @@ class TestRunScope:
         assert probe.enabled == [False]
 
     def test_trace_leaves_the_tracing_scope_alone(
-        self, assistant_settings, client, tmp_path, monkeypatch
+        self, assistant_settings, client, tmp_path, monkeypatch, tracing_setting_on
     ):
         """
-        GIVEN LANGSMITH_TRACING=true in the environment
+        GIVEN LANGSMITH_TRACING=true and the assistant's tracing setting on in the environment
         WHEN the runner asks a question with trace=True
         THEN the runner does not switch tracing off around the search
         """
@@ -414,6 +425,34 @@ class TestRunScope:
 
         # THEN
         assert probe.enabled == [None]
+
+    def test_trace_with_the_setting_off_still_switches_tracing_off(
+        self, assistant_settings, client, tmp_path, monkeypatch
+    ):
+        """
+        GIVEN LANGSMITH_TRACING=true in the environment and the assistant's setting off
+        WHEN the runner asks a question with trace=True
+        THEN tracing is switched off around the search, since the setting is what traces
+        """
+        # GIVEN
+        monkeypatch.setenv("LANGSMITH_TRACING", "true")
+        ls.utils.get_env_var.cache_clear()
+        fixtures = _setup(client, _scripted("Fine."))
+        probe = _TracingProbe()
+        client.app.dependency_overrides[deps.get_docs_retriever] = lambda: probe
+
+        # WHEN
+        _run(
+            client,
+            fixtures,
+            [{"id": "q1", "question": "One?"}],
+            tmp_path / "out.jsonl",
+            trace=True,
+        )
+        ls.utils.get_env_var.cache_clear()
+
+        # THEN
+        assert probe.enabled == [False]
 
 
 class TestEvalSettings:
@@ -1037,27 +1076,49 @@ class TestPacing:
         assert "pacing: at most 19 questions per 60 s" in paced
         assert "pacing: off" in unpaced
 
-    def test_main_says_whether_tracing_is_on(self, assistant_settings, client, tmp_path, capsys):
+    @pytest.mark.parametrize(
+        ("setting_on", "flag", "expected"),
+        [
+            (True, [], "tracing: off"),
+            (True, ["--trace"], "tracing: on"),
+            (False, ["--trace"], "tracing: off"),
+            (False, [], "tracing: off"),
+        ],
+    )
+    def test_main_says_whether_tracing_is_on(
+        self,
+        assistant_settings,
+        client,
+        tmp_path,
+        capsys,
+        monkeypatch,
+        setting_on,
+        flag,
+        expected,
+    ):
         """
-        GIVEN a one-question run
-        WHEN main runs with and without --trace
-        THEN stderr names the tracing state each time
+        GIVEN a one-question run, with the assistant's tracing setting on or off
+        WHEN main runs with or without --trace
+        THEN stderr says tracing is on only when the flag is given and the setting is on
         """
         # GIVEN
-        fixtures = _setup(client, _scripted("One.", "Two."))
+        if setting_on:
+            monkeypatch.setenv("ASSISTANT_LANGSMITH_ENABLED", "true")
+            monkeypatch.setenv("ASSISTANT_LANGSMITH_API_KEY", "ls-key")  # pragma: allowlist secret
+            monkeypatch.setattr(tracing, "_shared_client", MagicMock())
+            _reset()
+        fixtures = _setup(client, _scripted("One."))
         (tmp_path / "f.json").write_text(json.dumps(fixtures), encoding="utf-8")
         (tmp_path / "q.jsonl").write_text(json.dumps({"id": "q1", "question": "Plum?"}))
 
         # WHEN
         with patch.object(ea, "create_app", return_value=client.app):
-            ea.main(_argv(tmp_path))
-            untraced = capsys.readouterr().err
-            ea.main(_argv(tmp_path, "workflow", "--trace", "--arm", "other"))
-            traced = capsys.readouterr().err
+            ea.main(_argv(tmp_path, "workflow", *flag))
+        err = capsys.readouterr().err
 
         # THEN
-        assert "tracing: off" in untraced
-        assert "tracing: on" in traced
+        assert expected in err
+        assert ("tracing: on" in err) is (expected == "tracing: on")
 
 
 class TestProvenance:

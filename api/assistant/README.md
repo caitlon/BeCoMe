@@ -69,7 +69,8 @@ Runs only on a developer machine. `Settings` refuses to start any deployed profi
    a user. A record has `id`, `question` and optionally `lang` and `project` (a fixtures key).
    Questions run one at a time, and each appends a row to `--output`: the record, `status`
    (`ok`, `http_<code>` or an exception name), `answer`, `sources`, `tool_calls`, `checks`,
-   `latency_s`, a `timestamp` and what produced it: `arm`, `mode`, models, token and tool-call
+   `latency_s`, `usage` (the turn's five usage fields, `null` on a failed turn), a `timestamp`
+   and what produced it: `arm`, `mode`, models, token and tool-call
    limits, retrieval settings, `collection`, `prompt_sha256` and `code_version`. `app_version`
    and `corpus_version` are the collection's own, from its registry row. A question file whose
    hash is on the sealed list is refused without `--sealed-run` and a non-empty
@@ -94,7 +95,8 @@ Runs only on a developer machine. `Settings` refuses to start any deployed profi
    pacing: the runner starts at most `n - 1` questions in any 60 s and prints the figure on
    stderr at the start; the wait is not part of `latency_s`. `--no-pacing` turns it off, for a
    rig where the limiter is off. The hourly cap is not paced: a long run still needs
-   `ASSISTANT_RATE_LIMIT_PER_HOUR=0`.
+   `ASSISTANT_RATE_LIMIT_PER_HOUR=0`. Tracing is off unless `--trace` is given and
+   `ASSISTANT_LANGSMITH_ENABLED` is on; it sends the question and answer text to LangSmith.
 
    ```bash
    uv run python scripts/assistant/eval_answers.py --questions questions.jsonl \
@@ -131,7 +133,10 @@ Runs only on a developer machine. `Settings` refuses to start any deployed profi
 
    Numbers and citations are read with `api/assistant/agent/checks.py`. The per-arm summary is
    printed, and `--summary` writes it as JSON; its `missing` counts the questions with no row in
-   that arm, so a run that stopped early does not read as complete. `paired_bootstrap` gives the
+   that arm, so a run that stopped early does not read as complete. It also holds
+   `median_input_tokens`, `median_output_tokens`, `median_total_tokens` and `median_llm_calls`
+   over the completed rows that carry `usage`, and `usage_incomplete`, the count of those rows
+   whose usage is partial, so the medians include partial sums. `paired_bootstrap` gives the
    mean paired difference of two arms with a percentile interval over resampled questions, the
    same for a given seed.
 

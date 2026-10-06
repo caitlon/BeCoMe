@@ -244,9 +244,10 @@ def grade_row(row: dict[str, Any], question: dict[str, Any]) -> dict[str, Any]:
 
     :param row: A row of the runner's output.
     :param question: The question record with the same ``id``.
-    :return: The grade: ``id``, ``arm``, ``status``, ``latency_s``, ``usage`` (the row's, or null), ``completed``
-        and each check. A row whose status is not ``ok`` has null checks. ``lang_match`` is also null
-        when the question has no ``lang`` or the answer's language is ``unknown``;
+    :return: The grade: ``id``, ``arm``, ``status``, ``latency_s``, ``usage`` (the row's, or
+        null), ``completed`` and each check. A row whose status is not ``ok`` has null checks.
+        ``lang_match`` is also null when the question has no ``lang`` or the answer's language
+        is ``unknown``;
         ``numbers_recall`` without expected numbers; ``stated_any_number`` unless the question
         has ``answerable: false``; ``called_opinions_tool`` unless the question has
         ``needs_opinions`` and the row's ``mode`` is ``hybrid`` or ``agent`` (``workflow`` has
@@ -343,9 +344,10 @@ def summarize_arm(
         ``unanswerable_stated_number_share``, ``local_source_share_mean``,
         ``opinions_tool_share``, ``markdown_share``, ``median_latency_s``,
         ``median_input_tokens``, ``median_output_tokens``, ``median_total_tokens`` and
-        ``median_llm_calls`` (over the completed rows that carry ``usage``), ``usage_incomplete``
-        (completed rows whose usage is not complete) and ``missing`` (questions that have no row in
-        this arm, for instance because the run stopped early).
+        ``median_llm_calls`` (over the completed rows that carry ``usage``, rows with incomplete
+        usage included, so ``usage_incomplete`` says how many of them are partial sums),
+        ``usage_incomplete`` (completed rows whose usage is not complete) and ``missing``
+        (questions that have no row in this arm, for instance because the run stopped early).
     """
     done = [grade for grade in grades if grade["completed"]]
     latencies = [g["latency_s"] for g in done if g["latency_s"] is not None]

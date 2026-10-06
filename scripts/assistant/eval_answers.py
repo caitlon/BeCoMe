@@ -460,8 +460,9 @@ async def run_eval(
     ``ok`` are asked again, and the new row wins (:func:`latest_rows`). The run stops when
     :func:`_stop_reason` says the environment is failing. While it lasts the app's settings
     dependency is overridden with :func:`_eval_settings` and tracing is off unless ``trace``;
-    the override is removed afterwards. With ``pacing`` each question waits first, so that no 60 s window holds
-    more starts than :func:`_starts_per_window`; the wait is outside ``latency_s``.
+    the override is removed afterwards. With ``pacing`` each question waits first, so that no
+    60 s window holds more starts than :func:`_starts_per_window`; the wait is outside
+    ``latency_s``.
 
     :param app: The FastAPI app with the assistant router mounted.
     :param questions: The records from :func:`_load_questions`.
@@ -520,8 +521,9 @@ async def run_eval(
     else:
         print("pacing: off", file=sys.stderr)
     output.parent.mkdir(parents=True, exist_ok=True)
-    print(f"tracing: {'on' if trace else 'off'}", file=sys.stderr)
     run_settings = _eval_settings(settings, mode, trace)
+    traced = run_settings.assistant_langsmith_enabled
+    print(f"tracing: {'on' if traced else 'off'}", file=sys.stderr)
     user_id = str(fixtures["user"]["id"])
     app.dependency_overrides[get_settings] = lambda: run_settings
     ok = consecutive = 0
@@ -534,7 +536,7 @@ async def run_eval(
             base_url="http://eval.invalid",
         ) as http:
             # The query-transform call runs before the service's own tracing scope opens.
-            scope = contextlib.nullcontext() if trace else ls.tracing_context(enabled=False)
+            scope = contextlib.nullcontext() if traced else ls.tracing_context(enabled=False)
             with scope, output.open("a", encoding="utf-8") as sink:
                 for number, record in enumerate(todo, start=1):
                     key = record.get("project")
