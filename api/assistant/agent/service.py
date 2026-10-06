@@ -15,7 +15,7 @@ language (see :func:`~api.assistant.agent.generation.user_message`).
 
 import asyncio
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 
 from langchain_core.language_models import BaseChatModel
@@ -211,7 +211,7 @@ class AssistantService:
             raise self._unavailable(exc, mode) from None
         return self._finish(turn, Generated(text, tools_used, usage), ttft_ms=None, streamed=False)
 
-    async def stream(self, turn: TurnDraft) -> AsyncIterator[str | AssistantChatResponse]:
+    async def stream(self, turn: TurnDraft) -> AsyncGenerator[str | AssistantChatResponse]:
         """Generate a prepared turn's answer, yielding its text as it arrives.
 
         The agent mode yields no text, only the final response. The time of the first piece

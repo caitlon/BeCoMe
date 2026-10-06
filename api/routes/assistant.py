@@ -7,15 +7,21 @@ any deployed profile with the flag on in the first place, so this module never e
 loads there.
 """
 
+import contextlib
+from collections.abc import AsyncIterator
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request
+from fastapi.responses import StreamingResponse
 
 from api.assistant.deps import (
     AssistantServiceDep,
     PreparedTurnDep,
     enforce_message_limit,
 )
+from api.assistant.errors import AssistantUnavailableError
+from api.assistant.exception_handlers import UNAVAILABLE_DETAIL
+from api.assistant.sse import format_event
 from api.config import Settings, get_settings
 from api.middleware.rate_limit import LIMIT_ASSISTANT_CHAT, limiter
 from api.schemas.assistant import AssistantChatResponse, AssistantConfigResponse
@@ -73,3 +79,50 @@ async def chat(
         token usage of the turn.
     """
     return await service.answer(turn.request, turn.context)
+
+
+@router.post(
+    "/chat/stream",
+    summary="Ask the assistant and read the answer as it is written",
+    dependencies=[Depends(enforce_message_limit)],
+)
+@limiter.limit(LIMIT_ASSISTANT_CHAT)
+async def chat_stream(
+    request: Request,
+    turn: PreparedTurnDep,
+    service: AssistantServiceDep,
+) -> StreamingResponse:
+    """Answer one chat turn as a stream of server-sent events.
+
+    Retrieval runs before the response opens, so a project the caller cannot see, a
+    dependency outage before the model is called, the message limit and the per-address
+    limit are answered as plain HTTP errors, exactly as ``/chat`` answers them. Once the
+    stream is open the status is already 200: a failure of the model call is sent as an
+    ``error`` event with the code and text the handlers would have used, and the stream
+    ends. The events are ``token`` (``{"text": ...}``) for each piece of the answer, then
+    ``done`` with the body ``/chat`` returns, or ``error`` (``{"code", "detail"}``).
+
+    :param request: The incoming request, read by the per-address rate limit.
+    :param turn: The validated chat request and the context built for it.
+    :param service: The assistant service for the configured mode.
+    :return: A ``text/event-stream`` response.
+    """
+    prepared = await service.prepare(turn.request, turn.context)
+
+    async def events() -> AsyncIterator[str]:
+        try:
+            async with contextlib.aclosing(service.stream(prepared)) as items:
+                async for item in items:
+                    if isinstance(item, AssistantChatResponse):
+                        yield format_event("done", item.model_dump(mode="json"))
+                    else:
+                        yield format_event("token", {"text": item})
+        except AssistantUnavailableError:
+            # The service has logged the failure already.
+            yield format_event("error", {"code": 503, "detail": UNAVAILABLE_DETAIL})
+
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
