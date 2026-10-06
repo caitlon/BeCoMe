@@ -447,6 +447,7 @@ class TestSummarizeArm:
         assert summary["median_total_tokens"] == 0
         assert summary["median_llm_calls"] == 0
         assert summary["usage_rows"] == 2
+        assert summary["usage_incomplete"] == 0
 
     def test_language_shares_leave_out_rows_of_unknown_language(self):
         # GIVEN a decided match, a mismatch and a terse answer, all to Czech questions

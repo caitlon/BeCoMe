@@ -402,7 +402,7 @@ class TestRunScope:
         """
         GIVEN LANGSMITH_TRACING=true and the assistant's tracing setting on in the environment
         WHEN the runner asks a question with trace=True
-        THEN tracing is switched on around the search, through the settings' client and project
+        THEN the tracing context is enabled while the documents are searched
         """
         # GIVEN
         monkeypatch.setenv("LANGSMITH_TRACING", "true")
@@ -423,6 +423,40 @@ class TestRunScope:
 
         # THEN
         assert probe.enabled == [True]
+
+    @pytest.mark.parametrize(
+        ("setting_on", "trace", "flushed"),
+        [(True, True, 1), (True, False, 0), (False, True, 0), (False, False, 0)],
+    )
+    def test_tracing_is_flushed_once_only_when_the_run_was_traced(
+        self, assistant_settings, client, tmp_path, monkeypatch, setting_on, trace, flushed
+    ):
+        """
+        GIVEN the assistant's tracing setting on or off
+        WHEN the runner finishes a question with or without trace
+        THEN the pending traces are flushed once if both are on, and never otherwise
+        """
+        # GIVEN
+        if setting_on:
+            monkeypatch.setenv("ASSISTANT_LANGSMITH_ENABLED", "true")
+            monkeypatch.setenv("ASSISTANT_LANGSMITH_API_KEY", "ls-key")  # pragma: allowlist secret
+            monkeypatch.setattr(tracing, "_shared_client", MagicMock())
+            _reset()
+        calls = []
+        monkeypatch.setattr(ea, "shutdown_tracing", lambda: calls.append(1))
+        fixtures = _setup(client, _scripted("Fine."))
+
+        # WHEN
+        _run(
+            client,
+            fixtures,
+            [{"id": "q1", "question": "One?"}],
+            tmp_path / "out.jsonl",
+            trace=trace,
+        )
+
+        # THEN
+        assert len(calls) == flushed
 
     def test_trace_with_the_setting_off_still_switches_tracing_off(
         self, assistant_settings, client, tmp_path, monkeypatch
@@ -1119,7 +1153,8 @@ class TestPacing:
         """
         GIVEN a one-question run, with the assistant's tracing setting on or off
         WHEN main runs with or without --trace
-        THEN stderr says tracing is on only when the flag is given and the setting is on
+        THEN stderr says tracing is on only when the flag is given and the setting is on, and
+            notes that nothing is traced when the flag is given with the setting off
         """
         # GIVEN
         if setting_on:
@@ -1139,6 +1174,8 @@ class TestPacing:
         # THEN
         assert expected in err
         assert ("tracing: on" in err) is (expected == "tracing: on")
+        note = "tracing: --trace given but ASSISTANT_LANGSMITH_ENABLED is off, nothing is traced"
+        assert (note in err) is (bool(flag) and not setting_on)
 
 
 class TestProvenance:
