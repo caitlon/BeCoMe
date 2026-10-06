@@ -152,11 +152,12 @@ Runs only on a developer machine. `Settings` refuses to start any deployed profi
    `median_ttft_ms`, the server's time to first token over the completed rows whose
    `timing.ttft_ms` is not null (null for a run over `/chat`, and for `--stream` in agent mode,
    which yields no token pieces), next to `median_latency_s`, the client's whole-request time.
-   It also holds `median_input_tokens`, `median_output_tokens`, `median_total_tokens` and
-   `median_llm_calls` over the completed rows that carry `usage`, and `usage_rows`, the number of those rows. The
-   medians include rows whose usage is a partial sum, and `usage_incomplete` says how many of the
-   `usage_rows` are such. `paired_bootstrap` gives the mean paired difference of two arms with a
-   percentile interval over resampled questions, the same for a given seed.
+   Also in it are `median_input_tokens`, `median_output_tokens`, `median_total_tokens` and
+   `median_llm_calls` over the completed rows that carry `usage`, and `usage_rows`, the number
+   of those rows. The medians include rows whose usage is a partial sum, and `usage_incomplete`
+   says how many of the `usage_rows` are such. `paired_bootstrap` gives the mean paired
+   difference of two arms with a percentile interval over resampled questions, the same for a
+   given seed.
 
    ```bash
    uv run python scripts/assistant/grade_answers.py \
