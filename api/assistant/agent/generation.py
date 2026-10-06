@@ -8,7 +8,7 @@ lets the model call the assistant's tools in a bounded loop. Both send :data:`~a
 """
 
 import logging
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncGenerator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol, cast
@@ -92,7 +92,7 @@ class AnswerGenerator(Protocol):
 
     def stream(
         self, messages: list[AnyMessage], ctx: AssistantContext, question: str
-    ) -> AsyncIterator[str | Generated]:
+    ) -> AsyncGenerator[str | Generated]:
         """Generate the answer of one turn, yielding its text as it arrives.
 
         :param messages: The conversation: the kept history, then the user message of
@@ -229,7 +229,7 @@ class DirectGenerator(AnswerGenerator):
 
     async def stream(
         self, messages: list[AnyMessage], ctx: AssistantContext, question: str
-    ) -> AsyncIterator[str | Generated]:
+    ) -> AsyncGenerator[str | Generated]:
         """Answer with a single streamed call, yielding the text as it arrives.
 
         The reply is accumulated as it streams, and only the part outside any reasoning
@@ -397,7 +397,7 @@ class AgentGenerator(AnswerGenerator):
 
     async def stream(
         self, messages: list[AnyMessage], ctx: AssistantContext, question: str
-    ) -> AsyncIterator[str | Generated]:
+    ) -> AsyncGenerator[str | Generated]:
         """Run the loop and yield its result in one piece: the agent mode does not stream.
 
         :param messages: The conversation, ending with this turn's user message.
