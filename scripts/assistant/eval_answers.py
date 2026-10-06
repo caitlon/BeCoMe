@@ -2,7 +2,10 @@
 """Answer eval runner: put questions through the real chat service and record the answers.
 
 Every question is one single-turn chat through ``POST /api/v1/assistant/chat``, so what is
-measured is what a user gets: the service, the product prompt and the grounding checks.
+measured is what a user gets: the service, the product prompt and the grounding checks. With
+``--stream`` the question goes through ``POST /api/v1/assistant/chat/stream`` instead and the
+row records the server's own timing, first-token time included. The transport is part of a row's
+provenance, so one output file never mixes the two.
 
 The app is driven in-process (httpx's ASGI transport), with the fixtures user signed in by
 a bearer token the way every route authenticates, so authorization and the tenant checks
@@ -33,7 +36,7 @@ import statistics
 import sys
 import time
 from collections import deque
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterable, Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -54,6 +57,7 @@ from api.main import create_app
 from api.middleware import rate_limit
 
 CHAT = "/api/v1/assistant/chat"
+STREAM = "/api/v1/assistant/chat/stream"
 
 # sha256 of question files that are sealed: a run over one needs a written pre-registration.
 SEALED_SHA256 = frozenset({"e9c434888f00c817f85a4e536c4ca8db3d551a13d6851bcb74ab806fb08b6559"})
@@ -90,7 +94,10 @@ _PROVENANCE_FIELDS = (
     "max_tool_calls",
     "collection",
     "code_version",
+    "transport",
 )
+# What a row written before the field existed is taken to hold: only /chat existed then.
+_PROVENANCE_DEFAULTS = {"transport": "chat"}
 
 
 class RunRefusedError(Exception):
@@ -311,7 +318,7 @@ def _provenance_problem(rows: list[dict[str, Any]], meta: dict[str, Any]) -> str
     differing = [
         field
         for field in _PROVENANCE_FIELDS
-        if any(row.get(field) != meta[field] for row in same_arm)
+        if any(row.get(field, _PROVENANCE_DEFAULTS.get(field)) != meta[field] for row in same_arm)
     ]
     if not differing:
         return None
@@ -376,7 +383,8 @@ def _row_from_response(body: dict[str, Any]) -> dict[str, Any]:
     """Pick what a row records from a successful chat response.
 
     :param body: The decoded ``AssistantChatResponse``.
-    :return: The answer, sources (with whether each has a url), tool names, checks and usage.
+    :return: The answer, sources (with whether each has a url), tool names, checks, usage and
+        the server's timing.
     """
     return {
         "answer": body["answer"],
@@ -393,11 +401,71 @@ def _row_from_response(body: dict[str, Any]) -> dict[str, Any]:
         "tool_calls": body["tools_used"],
         "checks": body["checks"],
         "usage": body["usage"],
+        "timing": body["timing"],
     }
 
 
+def parse_sse(lines: Iterable[str]) -> Iterator[tuple[str, dict[str, Any]]]:
+    """Read server-sent events from the lines of a response body.
+
+    An event ends at a blank line and at nothing else, so a line break cannot split a
+    payload; the route writes each ``data:`` on one line. An event the body ended in the
+    middle of is dropped.
+
+    :param lines: The body's lines, without their line breaks.
+    :return: ``(event name, decoded data)`` for each finished event, in order.
+    """
+    name = ""
+    data: list[str] = []
+    for line in lines:
+        if line:
+            if line.startswith("event:"):
+                name = line[len("event:") :].strip()
+            elif line.startswith("data:"):
+                data.append(line[len("data:") :].removeprefix(" "))
+        elif data:
+            yield name, json.loads("\n".join(data))
+            name, data = "", []
+        else:
+            name = ""
+
+
+async def _ask_stream(
+    http: httpx.AsyncClient, body: dict[str, Any], token: str, result: dict[str, Any]
+) -> None:
+    """Ask the streamed route and fill ``result`` from its events.
+
+    :param http: The in-process client.
+    :param body: The chat request body.
+    :param token: The access token.
+    :param result: The result being built; ``status`` is set, and the response fields on a
+        ``done`` event. An ``error`` event gives ``stream_error_<code>``; a body that ends
+        with neither gives ``stream_incomplete``.
+    """
+    headers = {"Authorization": f"Bearer {token}"}
+    async with http.stream("POST", STREAM, json=body, headers=headers) as response:
+        if response.status_code != 200:
+            result["status"] = f"http_{response.status_code}"
+            return
+        lines = [line async for line in response.aiter_lines()]
+    result["status"] = "stream_incomplete"
+    for event, payload in parse_sse(lines):
+        if event == "done":
+            result["status"] = "ok"
+            result.update(_row_from_response(payload))
+            return
+        if event == "error":
+            result["status"] = f"stream_error_{payload['code']}"
+            return
+
+
 async def _ask(
-    http: httpx.AsyncClient, record: dict[str, Any], project_id: str | None, user_id: str
+    http: httpx.AsyncClient,
+    record: dict[str, Any],
+    project_id: str | None,
+    user_id: str,
+    *,
+    stream: bool = False,
 ) -> dict[str, Any]:
     """Run one single-turn chat and return its result fields.
 
@@ -407,6 +475,7 @@ async def _ask(
     :param record: The question record.
     :param project_id: The id of the project the question is asked about, or None.
     :param user_id: The fixtures user's id.
+    :param stream: Ask the streamed route instead of ``/chat``.
     :return: ``status``, ``latency_s`` and, for an answered turn, the response fields.
     """
     body: dict[str, Any] = {"message": record["question"]}
@@ -418,19 +487,24 @@ async def _ask(
         "tool_calls": None,
         "checks": None,
         "usage": None,
+        "timing": None,
     }
     started = time.monotonic()
     try:
         token = create_access_token(UUID(user_id))
-        response = await http.post(CHAT, json=body, headers={"Authorization": f"Bearer {token}"})
+        if stream:
+            await _ask_stream(http, body, token, result)
+        else:
+            response = await http.post(
+                CHAT, json=body, headers={"Authorization": f"Bearer {token}"}
+            )
+            if response.status_code == 200:
+                result["status"] = "ok"
+                result.update(_row_from_response(response.json()))
+            else:
+                result["status"] = f"http_{response.status_code}"
     except Exception as exc:
         result["status"] = type(exc).__name__
-    else:
-        if response.status_code == 200:
-            result["status"] = "ok"
-            result.update(_row_from_response(response.json()))
-        else:
-            result["status"] = f"http_{response.status_code}"
     result["latency_s"] = round(time.monotonic() - started, 3)
     return result
 
@@ -449,6 +523,7 @@ async def run_eval(
     retry_failed: bool = False,
     pacing: bool = True,
     trace: bool = False,
+    stream: bool = False,
     clock: Callable[[], float] = time.monotonic,
     sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
 ) -> dict[str, Any]:
@@ -461,7 +536,8 @@ async def run_eval(
     dependency is overridden with :func:`_eval_settings` and tracing is off unless ``trace``;
     the override is removed afterwards. With ``pacing`` each question waits first, so that no
     60 s window holds more starts than :func:`_starts_per_window`; the wait is outside
-    ``latency_s``.
+    ``latency_s``. With ``stream`` the questions go through the streamed route, and the rows
+    record the transport.
 
     :param app: The FastAPI app with the assistant router mounted.
     :param questions: The records from :func:`_load_questions`.
@@ -475,6 +551,7 @@ async def run_eval(
     :param retry_failed: Ask again the questions whose latest row is not ``ok``.
     :param pacing: Pace the questions to the route's per-minute limit.
     :param trace: Leave LangSmith tracing as the environment sets it instead of switching it off.
+    :param stream: Ask the streamed route instead of ``/chat``.
     :param clock: Time source of the pacing, in seconds.
     :param sleep: Wait function of the pacing.
     :return: ``rows`` written, ``ok`` and ``failed`` counts, ``median_latency_s``, ``unresolved``,
@@ -502,6 +579,7 @@ async def run_eval(
         "corpus_version": versions[1],
         "code_version": code_version,
         "prompt_sha256": PROMPT_SHA256,
+        "transport": "stream" if stream else "chat",
     }
     problem = _provenance_problem(_read_rows(output), meta)
     if problem is not None:
@@ -519,6 +597,7 @@ async def run_eval(
         print(f"pacing: at most {per_window} questions per 60 s", file=sys.stderr)
     else:
         print("pacing: off", file=sys.stderr)
+    print(f"transport: {meta['transport']}", file=sys.stderr)
     output.parent.mkdir(parents=True, exist_ok=True)
     run_settings = _eval_settings(settings, mode, trace)
     traced = run_settings.assistant_langsmith_enabled
@@ -547,7 +626,7 @@ async def run_eval(
                     if pacer is not None:
                         await pacer.wait_turn()
                     result = await _ask(
-                        http, record, None if key is None else projects[key], user_id
+                        http, record, None if key is None else projects[key], user_id, stream=stream
                     )
                     row = {
                         "id": record["id"],
@@ -605,6 +684,11 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         "--trace",
         action="store_true",
         help="Leave LangSmith tracing as the environment sets it (sends question and answer text)",
+    )
+    parser.add_argument(
+        "--stream",
+        action="store_true",
+        help="Ask the streamed route and record the server's timing, first token included",
     )
     parser.add_argument(
         "--no-pacing", action="store_true", help="Do not pace to the route's rate limit"
@@ -684,6 +768,7 @@ def main(argv: list[str] | None = None) -> int:
                 retry_failed=args.retry_failed,
                 pacing=not args.no_pacing,
                 trace=args.trace,
+                stream=args.stream,
             )
         )
     except RunRefusedError as exc:

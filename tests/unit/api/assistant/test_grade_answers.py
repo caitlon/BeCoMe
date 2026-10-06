@@ -297,6 +297,19 @@ class TestGradeRow:
         assert grade["has_markdown"] is False
         assert (grade["block"], grade["style"]) == ("results", "terse")
 
+    def test_the_timing_is_copied_from_the_row_and_null_without_one(self):
+        # GIVEN a row with the server's timing and one from before rows had it
+        timing = {"ttft_ms": 420, "total_ms": 3100}
+        question = {"id": "q1"}
+        # WHEN graded
+        with_timing = ga.grade_row(_row(timing=timing), question)
+        without = ga.grade_row(_row(), question)
+        failed = ga.grade_row(_row(None, status="stream_error_503", timing=None), question)
+        # THEN the timing is carried unchanged, or null
+        assert with_timing["timing"] == timing
+        assert without["timing"] is None
+        assert failed["timing"] is None
+
     def test_language_match_is_null_when_the_language_is_unknown(self):
         # GIVEN a terse Czech answer to a Czech question
         grade = ga.grade_row(_row("Ano, 22."), {"id": "q1", "lang": "cs"})
@@ -425,6 +438,40 @@ class TestSummarizeArm:
         assert summary["usage_rows"] == 3
         assert summary["usage_incomplete"] == 2
 
+    def test_ttft_median_covers_the_rows_that_have_it(self):
+        # GIVEN completed rows with a first-token time, with a null one, and with no timing,
+        # a failed row that has one, and one more with a time
+        questions = {q: {"id": q} for q in ("q1", "q2", "q3", "q4", "q5", "q6")}
+
+        def timing(ttft_ms: int | None) -> dict:
+            return {"ttft_ms": ttft_ms, "total_ms": 5000}
+
+        grades = [
+            ga.grade_row(_row(timing=timing(300)), questions["q1"]),
+            ga.grade_row(_row(id="q2", timing=timing(900)), questions["q2"]),
+            ga.grade_row(_row(id="q3", timing=timing(None)), questions["q3"]),
+            ga.grade_row(_row(id="q4"), questions["q4"]),
+            ga.grade_row(
+                _row(None, id="q5", status="stream_error_503", timing=timing(50)),
+                questions["q5"],
+            ),
+            ga.grade_row(_row(id="q6", timing=timing(400)), questions["q6"]),
+        ]
+        # WHEN summarized
+        summary = ga.summarize_arm(grades, questions)
+        # THEN the median is over the three completed rows that have a first-token time
+        assert summary["median_ttft_ms"] == 400
+
+    def test_ttft_median_is_null_when_no_row_has_a_first_token_time(self):
+        # GIVEN completed rows answered in one piece, and one with no timing
+        questions = {q: {"id": q} for q in ("q1", "q2")}
+        grades = [
+            ga.grade_row(_row(timing={"ttft_ms": None, "total_ms": 900}), questions["q1"]),
+            ga.grade_row(_row(id="q2"), questions["q2"]),
+        ]
+        # WHEN summarized, THEN there is no median
+        assert ga.summarize_arm(grades, questions)["median_ttft_ms"] is None
+
     def test_zero_token_usage_gives_zero_medians_not_none(self):
         # GIVEN completed rows that all report zero tokens
         questions = {q: {"id": q} for q in ("q1", "q2")}
@@ -485,6 +532,7 @@ class TestSummarizeArm:
         assert summary["local_source_share_mean"] is None
         assert summary["markdown_share"] is None
         assert summary["median_latency_s"] is None
+        assert summary["median_ttft_ms"] is None
         assert summary["median_input_tokens"] is None
         assert summary["median_output_tokens"] is None
         assert summary["median_total_tokens"] is None

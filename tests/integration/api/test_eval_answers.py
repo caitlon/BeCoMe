@@ -47,7 +47,7 @@ DB_URL = "postgresql+psycopg://u:p@127.0.0.1:9/db"  # pragma: allowlist secret
 PROVENANCE_FIELDS = (  # noqa: SIM905
     "mode prompt_sha256 corpus_version app_version answer_model retrieval_mode "
     "retrieval_query_transform retrieval_rerank retrieval_k answer_max_tokens query_model "
-    "max_tool_calls collection code_version answer_endpoint"
+    "max_tool_calls collection code_version answer_endpoint transport"
 ).split()
 GOOD_ROW = json.dumps({"id": "q0", "arm": "cli", "status": "ok"})
 _ENV = {
@@ -1175,6 +1175,180 @@ class TestPacing:
         # THEN
         assert "pacing: at most 19 questions per 60 s" in paced
         assert "pacing: off" in unpaced
+
+
+class TestStream:
+    """``--stream`` asks the streamed route and records the server's own timing."""
+
+    def test_stream_rows_carry_timing(self, assistant_settings, client, tmp_path):
+        """
+        GIVEN the same two questions asked over the stream route and over /chat
+        WHEN the runner records both
+        THEN the streamed rows carry usage and the server's timing with an integer first-token
+             time, their answers equal the /chat answers, and the /chat rows have no first token
+        """
+        # GIVEN
+        fixtures = _setup(
+            client, _scripted("It combines two.", "Zadne.", "It combines two.", "Zadne.")
+        )
+        questions = [{"id": "q1", "question": "What is it?"}, {"id": "q2", "question": "Kolik?"}]
+        streamed_out = tmp_path / "streamed.jsonl"
+        chat_out = tmp_path / "chat.jsonl"
+
+        # WHEN
+        _run(client, fixtures, questions, streamed_out, stream=True)
+        _run(client, fixtures, questions, chat_out)
+
+        # THEN
+        streamed, chat = _rows(streamed_out), _rows(chat_out)
+        for row in streamed:
+            assert row["status"] == "ok"
+            assert isinstance(row["timing"]["ttft_ms"], int)
+            assert row["timing"]["ttft_ms"] >= 0
+            assert isinstance(row["timing"]["total_ms"], int)
+            assert row["usage"]["complete"] is True
+            assert row["transport"] == "stream"
+        assert [row["answer"] for row in streamed] == [row["answer"] for row in chat]
+        for row in chat:
+            assert row["timing"]["ttft_ms"] is None
+            assert isinstance(row["timing"]["total_ms"], int)
+            assert row["transport"] == "chat"
+
+    def test_a_stream_error_event_is_a_failed_turn(self, assistant_settings, client, tmp_path):
+        """
+        GIVEN a model that dies after its first piece
+        WHEN the runner asks a question over the stream route
+        THEN the row's status names the error event's code, and answer and timing are null
+        """
+        # GIVEN
+        model = ScriptedToolCallingModel(
+            responses=[AIMessage(content="One two three.")], fail_after_chunks=1
+        )
+        fixtures = _setup(client, model)
+        output = tmp_path / "out.jsonl"
+
+        # WHEN
+        summary = _run(client, fixtures, [{"id": "q1", "question": "Plum?"}], output, stream=True)
+
+        # THEN
+        (row,) = _rows(output)
+        assert row["status"] == "stream_error_503"
+        assert (row["answer"], row["timing"], row["usage"]) == (None, None, None)
+        assert (summary["ok"], summary["failed"]) == (0, 1)
+
+    def test_a_refusal_before_the_stream_opens_is_an_http_status(
+        self, assistant_settings, client, tmp_path
+    ):
+        """
+        GIVEN a question about another user's project
+        WHEN the runner asks it over the stream route
+        THEN the row's status is the plain http_404, as on /chat
+        """
+        # GIVEN
+        fixtures = _setup(client, _scripted("Never used."))
+        output = tmp_path / "out.jsonl"
+        question = [{"id": "q1", "question": "Result?", "project": "foreign"}]
+
+        # WHEN
+        _run(client, fixtures, question, output, stream=True)
+
+        # THEN
+        (row,) = _rows(output)
+        assert (row["status"], row["answer"], row["timing"]) == ("http_404", None, None)
+
+    def test_events_are_split_on_blank_lines_only(self):
+        """
+        GIVEN the lines of two events whose JSON holds an escaped newline
+        WHEN they are parsed
+        THEN there are two events and the payloads are intact
+        """
+        # GIVEN
+        lines = [
+            "event: token",
+            'data: {"text":"one\\n\\ntwo"}',
+            "",
+            "event: done",
+            'data: {"answer":"a\\nb"}',
+            "",
+        ]
+
+        # WHEN
+        events = list(ea.parse_sse(lines))
+
+        # THEN
+        assert events == [("token", {"text": "one\n\ntwo"}), ("done", {"answer": "a\nb"})]
+
+    def test_an_event_cut_short_by_the_end_of_the_body_is_not_yielded(self):
+        """
+        GIVEN lines that end before the blank line of the last event
+        WHEN they are parsed
+        THEN only the finished event comes out
+        """
+        lines = ["event: token", 'data: {"text":"a"}', "", "event: done", 'data: {"ans']
+
+        assert list(ea.parse_sse(lines)) == [("token", {"text": "a"})]
+
+    def test_main_prints_the_transport(self, assistant_settings, client, tmp_path, capsys):
+        """
+        GIVEN a one-question run
+        WHEN main runs with and without --stream
+        THEN stderr names the transport in effect each time
+        """
+        # GIVEN
+        fixtures = _setup(client, _scripted("One.", "Two."))
+        (tmp_path / "f.json").write_text(json.dumps(fixtures), encoding="utf-8")
+        (tmp_path / "q.jsonl").write_text(json.dumps({"id": "q1", "question": "Plum?"}))
+
+        # WHEN
+        with patch.object(ea, "create_app", return_value=client.app):
+            ea.main(_argv(tmp_path, "workflow", "--stream"))
+            streamed = capsys.readouterr().err
+            ea.main(_argv(tmp_path, "workflow", "--arm", "other"))
+            plain = capsys.readouterr().err
+
+        # THEN
+        assert "transport: stream" in streamed
+        assert "transport: chat" in plain
+
+    def test_a_resumed_file_with_the_other_transport_is_refused(
+        self, assistant_settings, client, tmp_path
+    ):
+        """
+        GIVEN rows of an arm recorded over /chat
+        WHEN the arm is run again over the stream route
+        THEN the run is refused naming transport, and nothing is appended
+        """
+        # GIVEN
+        fixtures = _setup(client, _scripted("One."))
+        output = tmp_path / "out.jsonl"
+        question = [{"id": "q1", "question": "One?"}]
+        _run(client, fixtures, question, output)
+
+        # WHEN / THEN
+        with pytest.raises(ea.RunRefusedError, match="transport"):
+            _run(client, fixtures, question, output, stream=True)
+        assert len(_rows(output)) == 1
+
+    def test_rows_from_before_the_stream_existed_count_as_chat(
+        self, assistant_settings, client, tmp_path
+    ):
+        """
+        GIVEN a row of the arm written before rows had a transport field
+        WHEN the arm is resumed over /chat, and then over the stream route
+        THEN the first run is accepted and the second is refused
+        """
+        # GIVEN
+        fixtures = _setup(client, _scripted("One.", "Two."))
+        output = tmp_path / "out.jsonl"
+        _run(client, fixtures, [{"id": "q1", "question": "One?"}], output)
+        legacy = {key: value for key, value in _rows(output)[0].items() if key != "transport"}
+        output.write_text(json.dumps(legacy) + "\n", encoding="utf-8")
+        second = [{"id": "q2", "question": "Two?"}]
+
+        # WHEN / THEN
+        with pytest.raises(ea.RunRefusedError, match="transport"):
+            _run(client, fixtures, second, output, stream=True)
+        assert _run(client, fixtures, second, output)["rows"] == 1
 
 
 class TestProvenance:
