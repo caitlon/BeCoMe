@@ -1330,6 +1330,30 @@ class TestStream:
         assert result["status"] == "stream_incomplete"
         assert (result["answer"], result["usage"], result["timing"]) == (None, None, None)
 
+    def test_a_chat_body_that_is_not_json_is_a_failed_turn(self, assistant_settings):
+        """
+        GIVEN a 200 response from the chat route whose body is not JSON
+        WHEN the runner asks a question over the plain route
+        THEN the status is JSONDecodeError and answer, usage and timing are null
+        """
+
+        # GIVEN
+        def _not_json():
+            raise json.JSONDecodeError("Expecting value", "not json", 0)
+
+        async def _post(*args, **kwargs):
+            return SimpleNamespace(status_code=200, json=_not_json)
+
+        http = SimpleNamespace(post=_post)
+        record = {"id": "q1", "question": "Plum?"}
+
+        # WHEN
+        result = asyncio.run(ea._ask(http, record, None, str(uuid4()), stream=False))
+
+        # THEN
+        assert result["status"] == "JSONDecodeError"
+        assert (result["answer"], result["usage"], result["timing"]) == (None, None, None)
+
     def test_an_answer_with_a_unicode_line_separator_survives_the_stream(
         self, assistant_settings, client, tmp_path
     ):
