@@ -804,16 +804,21 @@ class TestStream:
         """
         GIVEN the agent mode, which does not stream
         WHEN the turn is streamed
-        THEN no text piece is yielded and the response carries the answer, without a ttft
+        THEN no text piece is yielded and the response carries the answer, without a ttft,
+             and the assistant_turn record has streamed True and no ttft_ms
         """
-        pieces, response = await _drain(
-            AssistantService(_settings("agent"), _model(_say("It is the midpoint."))),
-            _request(),
-            _ctx(),
-        )
+        with captured_log_records(SERVICE_LOGGER) as records:
+            pieces, response = await _drain(
+                AssistantService(_settings("agent"), _model(_say("It is the midpoint."))),
+                _request(),
+                _ctx(),
+            )
         assert pieces == []
         assert response.answer == "It is the midpoint."
         assert response.timing.ttft_ms is None
+        (record,) = [r for r in records if getattr(r, "event", "") == "assistant_turn"]
+        assert record.streamed is True
+        assert record.ttft_ms is None
 
     async def test_an_outage_after_the_first_piece_is_unavailable(self):
         """
@@ -905,6 +910,49 @@ class TestStream:
         (record,) = records
         assert (record.event, record.mode) == ("assistant_turn_timeout", "workflow")
         assert isinstance(record.duration_ms, int)
+
+    async def test_prepare_is_unavailable_when_the_retriever_is_down(self):
+        """
+        GIVEN a retriever whose search fails with a connection error
+        WHEN the turn is prepared
+        THEN AssistantUnavailableError is raised, the outage is logged and the model is
+             never called
+        """
+        model = _model(_say())
+        ctx = _ctx()
+        ctx.retriever.search.side_effect = httpx.ConnectError("down")
+
+        with (
+            captured_log_records(SERVICE_LOGGER) as records,
+            pytest.raises(AssistantUnavailableError),
+        ):
+            await AssistantService(_settings(), model).prepare(_request(), ctx)
+
+        assert [(r.event, r.reason) for r in records] == [
+            ("assistant_dependency_unavailable", "ConnectError")
+        ]
+        assert model.seen == []
+
+    async def test_ttft_counts_from_the_model_call_not_from_the_turn(self):
+        """
+        GIVEN a retriever that takes 150 ms and a model that waits 30 ms before each piece
+        WHEN the turn is streamed
+        THEN the time to first token is under 100 ms while the turn took at least 150 ms
+        """
+        ctx = _ctx()
+
+        async def slow_search(query: str) -> list[RetrievedChunk]:
+            await asyncio.sleep(0.15)
+            return []
+
+        ctx.retriever.search.side_effect = slow_search
+        model = ScriptedToolCallingModel(responses=[_say("Yes.")], stream_delay_s=0.03)
+
+        _, response = await _drain(AssistantService(_settings(), model), _request(), ctx)
+
+        assert response.timing.ttft_ms is not None
+        assert response.timing.ttft_ms < 100
+        assert response.timing.total_ms >= 150
 
 
 @pytest.mark.asyncio
