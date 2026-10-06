@@ -245,14 +245,15 @@ def grade_row(row: dict[str, Any], question: dict[str, Any]) -> dict[str, Any]:
     :param row: A row of the runner's output.
     :param question: The question record with the same ``id``.
     :return: The grade: ``id``, ``arm``, ``status``, ``latency_s``, ``usage`` and ``timing``
-        (the row's, or null), ``completed`` and each check. A row whose status is not ``ok`` has null checks.
-        ``lang_match`` is also null when the question has no ``lang`` or the answer's language
-        is ``unknown``; ``numbers_recall`` without expected numbers; ``stated_any_number``
-        unless the question has ``answerable: false``; ``called_opinions_tool`` unless the
-        question has ``needs_opinions`` and the row's ``mode`` is ``hybrid`` or ``agent``
-        (``workflow`` has no tools, whatever ``tool_calls`` holds; there an empty list means
-        the tool was not called); ``local_source_share`` without sources. ``block`` and
-        ``style`` are copied from the question for later analysis and are not graded.
+        (the row's, or null), ``completed`` and each check. A row whose status is not ``ok``
+        has null checks. ``lang_match`` is also null when the question has no ``lang`` or the
+        answer's language is ``unknown``; ``numbers_recall`` without expected numbers;
+        ``stated_any_number`` unless the question has ``answerable: false``;
+        ``called_opinions_tool`` unless the question has ``needs_opinions`` and the row's
+        ``mode`` is ``hybrid`` or ``agent`` (``workflow`` has no tools, whatever ``tool_calls``
+        holds; there an empty list means the tool was not called); ``local_source_share``
+        without sources. ``block`` and ``style`` are copied from the question for later
+        analysis and are not graded.
     """
     grade: dict[str, Any] = {
         "id": row["id"],
