@@ -244,8 +244,8 @@ def grade_row(row: dict[str, Any], question: dict[str, Any]) -> dict[str, Any]:
 
     :param row: A row of the runner's output.
     :param question: The question record with the same ``id``.
-    :return: The grade: ``id``, ``arm``, ``status``, ``latency_s``, ``usage`` (the row's, or
-        null), ``completed`` and each check. A row whose status is not ``ok`` has null checks.
+    :return: The grade: ``id``, ``arm``, ``status``, ``latency_s``, ``usage`` and ``timing``
+        (the row's, or null), ``completed`` and each check. A row whose status is not ``ok`` has null checks.
         ``lang_match`` is also null when the question has no ``lang`` or the answer's language
         is ``unknown``; ``numbers_recall`` without expected numbers; ``stated_any_number``
         unless the question has ``answerable: false``; ``called_opinions_tool`` unless the
@@ -260,6 +260,7 @@ def grade_row(row: dict[str, Any], question: dict[str, Any]) -> dict[str, Any]:
         "status": row["status"],
         "latency_s": row.get("latency_s"),
         "usage": row.get("usage"),
+        "timing": row.get("timing"),
         "completed": row["status"] == "ok",
         "block": question.get("block"),
         "style": question.get("style"),
@@ -342,6 +343,8 @@ def summarize_arm(
         ``pseudo_citation_share``, ``numbers_recall_mean``,
         ``unanswerable_stated_number_share``, ``local_source_share_mean``,
         ``opinions_tool_share``, ``markdown_share``, ``median_latency_s``,
+        ``median_ttft_ms`` (the server's time to first token, over the completed rows whose
+        ``timing.ttft_ms`` is not null: a streamed run; null when there are none),
         ``median_input_tokens``, ``median_output_tokens``, ``median_total_tokens`` and
         ``median_llm_calls`` (over the completed rows that carry ``usage``, rows with incomplete
         usage included, so ``usage_incomplete`` says how many of them are partial sums),
@@ -352,6 +355,7 @@ def summarize_arm(
     done = [grade for grade in grades if grade["completed"]]
     latencies = [g["latency_s"] for g in done if g["latency_s"] is not None]
     usages = [g["usage"] for g in done if g["usage"] is not None]
+    ttfts = [g["timing"]["ttft_ms"] for g in done if (g["timing"] or {}).get("ttft_ms") is not None]
     return {
         "n": len(grades),
         "completed_share": _share([grade["completed"] for grade in grades]),
@@ -379,6 +383,7 @@ def summarize_arm(
         ),
         "markdown_share": _share([g["has_markdown"] for g in done]),
         "median_latency_s": statistics.median(latencies) if latencies else None,
+        "median_ttft_ms": statistics.median(ttfts) if ttfts else None,
         **{
             f"median_{key}": statistics.median(u[key] for u in usages) if usages else None
             for key in ("input_tokens", "output_tokens", "total_tokens", "llm_calls")
