@@ -135,8 +135,9 @@ Runs only on a developer machine. `Settings` refuses to start any deployed profi
    printed, and `--summary` writes it as JSON; its `missing` counts the questions with no row in
    that arm, so a run that stopped early does not read as complete. It also holds
    `median_input_tokens`, `median_output_tokens`, `median_total_tokens` and `median_llm_calls`
-   over the completed rows that carry `usage`, and `usage_incomplete`, the count of those rows
-   whose usage is partial, so the medians include partial sums. `paired_bootstrap` gives the
+   over the completed rows that carry `usage`, `usage_rows`, the number of those rows, and
+   `usage_incomplete`, the count of them whose usage is partial, so the medians include partial
+   sums. `paired_bootstrap` gives the
    mean paired difference of two arms with a percentile interval over resampled questions, the
    same for a given seed.
 

@@ -31,7 +31,11 @@ from api.assistant.rag.retrieval import RetrievedChunk
 from api.assistant.rate_limit import get_assistant_throttle
 from api.config import get_settings
 from tests.integration.api.conftest import create_project, register_and_login, stored_accounts
-from tests.shared.assistant_fakes import ScriptedToolCallingModel, StaticDocsRetriever
+from tests.shared.assistant_fakes import (
+    DEFAULT_USAGE,
+    ScriptedToolCallingModel,
+    StaticDocsRetriever,
+)
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -201,13 +205,7 @@ class TestRunEval:
         assert [(s["n"], s["has_url"]) for s in first["sources"]] == [(1, True), (2, False)]
         assert set(first["sources"][0]) == {"n", "title", "section", "layer", "has_url"}
         assert isinstance(first["latency_s"], float)
-        assert set(first["usage"]) == {
-            "input_tokens",
-            "output_tokens",
-            "total_tokens",
-            "llm_calls",
-            "complete",
-        }
+        assert first["usage"] == {**DEFAULT_USAGE, "llm_calls": 1, "complete": True}
         assert (first["arm"], first["mode"]) == ("test-arm", "workflow")
         assert first["answer_model"] == "test-answer-model"
         assert first["answer_endpoint"] == "127.0.0.1:9"
@@ -398,13 +396,13 @@ class TestRunScope:
         # THEN
         assert probe.enabled == [False]
 
-    def test_trace_leaves_the_tracing_scope_alone(
+    def test_trace_switches_tracing_on_while_the_documents_are_searched(
         self, assistant_settings, client, tmp_path, monkeypatch, tracing_setting_on
     ):
         """
         GIVEN LANGSMITH_TRACING=true and the assistant's tracing setting on in the environment
         WHEN the runner asks a question with trace=True
-        THEN the runner does not switch tracing off around the search
+        THEN tracing is switched on around the search, through the settings' client and project
         """
         # GIVEN
         monkeypatch.setenv("LANGSMITH_TRACING", "true")
@@ -424,7 +422,7 @@ class TestRunScope:
         ls.utils.get_env_var.cache_clear()
 
         # THEN
-        assert probe.enabled == [None]
+        assert probe.enabled == [True]
 
     def test_trace_with_the_setting_off_still_switches_tracing_off(
         self, assistant_settings, client, tmp_path, monkeypatch
@@ -449,6 +447,28 @@ class TestRunScope:
             tmp_path / "out.jsonl",
             trace=True,
         )
+        ls.utils.get_env_var.cache_clear()
+
+        # THEN
+        assert probe.enabled == [False]
+
+    def test_setting_off_without_trace_switches_tracing_off(
+        self, assistant_settings, client, tmp_path, monkeypatch
+    ):
+        """
+        GIVEN LANGSMITH_TRACING=true in the environment and the assistant's setting off
+        WHEN the runner asks a question without trace
+        THEN tracing is switched off around the search
+        """
+        # GIVEN
+        monkeypatch.setenv("LANGSMITH_TRACING", "true")
+        ls.utils.get_env_var.cache_clear()
+        fixtures = _setup(client, _scripted("Fine."))
+        probe = _TracingProbe()
+        client.app.dependency_overrides[deps.get_docs_retriever] = lambda: probe
+
+        # WHEN
+        _run(client, fixtures, [{"id": "q1", "question": "One?"}], tmp_path / "out.jsonl")
         ls.utils.get_env_var.cache_clear()
 
         # THEN

@@ -26,7 +26,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import contextlib
 import hashlib
 import json
 import re
@@ -42,11 +41,11 @@ from urllib.parse import urlsplit
 from uuid import UUID
 
 import httpx
-import langsmith as ls
 import psycopg
 from fastapi import FastAPI
 
 from api.assistant.agent.prompt import SYSTEM_PROMPT
+from api.assistant.agent.tracing import shutdown_tracing, tracing_scope
 from api.assistant.rag.pipeline import git_version
 from api.assistant.rag.retrieval import RetrievalConfig
 from api.auth.jwt import create_access_token
@@ -535,8 +534,9 @@ async def run_eval(
             transport=transport,
             base_url="http://eval.invalid",
         ) as http:
-            # The query-transform call runs before the service's own tracing scope opens.
-            scope = contextlib.nullcontext() if traced else ls.tracing_context(enabled=False)
+            # The query-transform call runs before the service's own tracing scope opens, so the
+            # same switch wraps the loop: it suppresses ambient tracing when the setting is off.
+            scope = tracing_scope(run_settings)
             with scope, output.open("a", encoding="utf-8") as sink:
                 for number, record in enumerate(todo, start=1):
                     key = record.get("project")
@@ -567,6 +567,8 @@ async def run_eval(
                         break
     finally:
         app.dependency_overrides.pop(get_settings, None)
+        if traced:
+            shutdown_tracing()
     unresolved = sum(
         row["status"] != "ok" for (_, row_arm), row in latest_rows(output).items() if row_arm == arm
     )
