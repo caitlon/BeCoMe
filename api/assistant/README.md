@@ -9,6 +9,7 @@ Runs only on a developer machine. `Settings` refuses to start any deployed profi
 - [Start](#start)
 - [The chat endpoint](#the-chat-endpoint)
     - [Modes](#modes)
+    - [Streaming](#streaming)
     - [Limits](#limits)
 - [Private corpus layer](#private-corpus-layer)
 - [Chunk captions](#chunk-captions)
@@ -208,7 +209,34 @@ are also on the `assistant_turn` log record.
 
 The `timing` field holds `ttft_ms`, the milliseconds from the start of the answer model's call to
 its first piece of answer text, and `total_ms`, the whole turn with retrieval included. `ttft_ms`
-is null unless the turn was streamed, which no route does yet.
+is null unless the turn was streamed, which only `/chat/stream` does.
+
+### Streaming
+
+`POST /api/v1/assistant/chat/stream` takes the same body, session, CSRF header, message limit and
+per-address limit as `/chat` and answers as `text/event-stream`, with `Cache-Control: no-cache` and
+`X-Accel-Buffering: no`. Each event is a name line, one `data:` line of JSON and a blank line:
+
+```
+event: token
+data: {"text":"It is the midpoint "}
+
+event: done
+data: {"answer":"It is the midpoint [1].","sources":[],"tools_used":[],"checks":{...},"usage":{...},"timing":{"ttft_ms":412,"total_ms":2310}}
+
+event: error
+data: {"code":503,"detail":"The assistant is temporarily unavailable"}
+```
+
+`token` carries a piece of the answer and the pieces join to the answer in `done`, whose body is
+what `/chat` returns. `error` ends the stream in place of `done`.
+
+Everything before the first token is a plain HTTP error, as on `/chat`: retrieval runs before the
+response opens, so a project the caller cannot see is `404`, an outage of the vector database or
+the API is `503`, and a spent budget is `429`. Only a failure of the model call itself, or a turn
+that outlives its deadline, arrives as an `error` event, because the status is already 200 by
+then. In `agent` mode nothing streams: the body is the `done` event alone. `timing.ttft_ms` is
+measured from the start of the model call, so it leaves out retrieval.
 
 ### Limits
 
