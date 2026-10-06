@@ -99,6 +99,20 @@ class TurnUsage(BaseModel):
     complete: bool
 
 
+class TurnTiming(BaseModel):
+    """How long one chat turn took, in milliseconds.
+
+    ``ttft_ms`` is the time from the start of the answer model's call to its first piece
+    of answer text, known only for a streamed turn; it is None for a turn answered in one
+    piece. ``total_ms`` is the whole turn, retrieval included.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    ttft_ms: int | None
+    total_ms: int
+
+
 class AssistantChatResponse(BaseModel):
     """The assistant's answer to one chat turn."""
 
@@ -107,3 +121,4 @@ class AssistantChatResponse(BaseModel):
     tools_used: list[str]
     checks: AnswerChecks
     usage: TurnUsage
+    timing: TurnTiming

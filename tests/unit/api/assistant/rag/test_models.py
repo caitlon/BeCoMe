@@ -45,7 +45,8 @@ class TestMakeAnswerModel:
         GIVEN default Settings
         WHEN make_answer_model builds a client
         THEN it targets the answer model's base URL and name, is deterministic, caps the
-             reply at the configured tokens, and never retries a failed request
+             reply at the configured tokens, never retries a failed request, and asks
+             for the usage on the last streamed chunk
         """
         # GIVEN
         settings = Settings(secret_key="test-secret-key")
@@ -60,6 +61,7 @@ class TestMakeAnswerModel:
         assert model.temperature == 0
         assert model.max_tokens == settings.assistant_answer_max_tokens
         assert model.max_retries == 0
+        assert model.stream_usage is True
         assert model.request_timeout == settings.assistant_llm_timeout_seconds
 
     def test_follows_the_answer_settings_not_the_query_model_ones(self):
