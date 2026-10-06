@@ -68,19 +68,17 @@ Runs only on a developer machine. `Settings` refuses to start any deployed profi
    one single-turn chat through the real chat route, in-process and as the user the fixtures
    file names, so authorization, the product prompt and the grounding checks run as they do for
    a user. A record has `id`, `question` and optionally `lang` and `project` (a fixtures key).
-   Questions run one at a time, and each appends a row to `--output`: the record, `status`
-   (`ok`, `http_<code>` or an exception name), `answer`, `sources`, `tool_calls`, `checks`,
-   `latency_s`, `usage` (the turn's five usage fields, `null` on a failed turn), `timing` (the
-   server's own `ttft_ms` and `total_ms`, `null` on a failed turn; `ttft_ms` is `null` unless the
-   turn was streamed), a `timestamp` and what produced it: `arm`, `mode`, models, token and
-   tool-call limits, retrieval settings, `collection`, `prompt_sha256`, `code_version` and
-   `transport`. `app_version` and `corpus_version` are the collection's own, from its registry
-   row. A question file whose
-   hash is on the sealed list is refused without `--sealed-run` and a non-empty
-   `--registration` file, and a sealed run also needs both versions and a clean checkout: a
-   null in either version, or a `code_version` that is null or ends in `-dirty`, exits 2. An
-   ordinary run prints a warning when either version is null. A `/chat` body that is not valid
-   JSON is recorded as a failed turn, with the status `JSONDecodeError`, and does not stop the run.
+   Questions run one at a time, and each appends a row to `--output`: the record, `status` (`ok`,
+   `http_<code>` or an exception name), `answer`, `sources`, `tool_calls`, `checks`, `latency_s`,
+   `usage` (the turn's five usage fields, `null` on a failed turn), `timing` (the server's own
+   `ttft_ms` and `total_ms`, `null` on a failed turn; `ttft_ms` is `null` unless the turn was
+   streamed), a `timestamp` and what produced it: `arm`, `mode`, models, token and tool-call limits,
+   retrieval settings, `collection`, `prompt_sha256`, `code_version` and `transport`. `app_version`
+   and `corpus_version` are the collection's own, from its registry row. A question file whose hash
+   is on the sealed list is refused without `--sealed-run` and a non-empty `--registration` file,
+   and a sealed run also needs both versions and a clean checkout: a null in either version, or a
+   `code_version` that is null or ends in `-dirty`, exits 2. An ordinary run prints a warning when
+   either version is null.
 
    A rerun treats every row there for the same `id` and `arm` as done, whatever its status,
    because a failed turn is a result. `--retry-failed` asks again those whose latest row is not
@@ -103,10 +101,12 @@ Runs only on a developer machine. `Settings` refuses to start any deployed profi
    `ASSISTANT_LANGSMITH_ENABLED` is on; it sends the question and answer text to LangSmith.
 
    `--stream` asks `POST /api/v1/assistant/chat/stream` instead of `/chat` and reads its events,
-   so the rows carry a first-token time, except in agent mode, which yields no token pieces and
-   leaves `ttft_ms` null. A turn whose stream ends in an `error` event has the
-   status `stream_error_<code>`, and a body that ends with neither `done` nor `error` has
-   `stream_incomplete`; a refusal before the stream opens is an `http_<code>` as on `/chat`.
+   so the rows carry a first-token time, except in the agent and hybrid modes, which yield the
+   whole answer at once and leave `ttft_ms` null. A turn whose stream ends in an `error` event has
+   the status `stream_error_<code>`, and a body that ends with neither `done` nor `error` has
+   `stream_incomplete`; a refusal before the stream opens is an `http_<code>` as on `/chat`. A
+   `/chat` body that is not valid JSON is recorded with the status `JSONDecodeError`. It is a failed
+   turn like any other, so three in a row still stop the run.
    The transport (`stream` or `chat`) is a row's `transport` field and a provenance field, so
    a file already holding rows of an arm over one transport refuses the other under that arm;
    rows written before the field existed count as `chat`. The runner prints
@@ -149,9 +149,10 @@ Runs only on a developer machine. `Settings` refuses to start any deployed profi
    Numbers and citations are read with `api/assistant/agent/checks.py`. The per-arm summary is
    printed, and `--summary` writes it as JSON; its `missing` counts the questions with no row in
    that arm, so a run that stopped early does not read as complete. It also holds
-   `median_ttft_ms`, the server's time to first token over the completed rows whose
-   `timing.ttft_ms` is not null (null for a run over `/chat`, and for `--stream` in agent mode,
-   which yields no token pieces), next to `median_latency_s`, the client's whole-request time.
+   `median_ttft_ms`, the server's time from the model call to the first piece, retrieval
+   excluded, over the completed rows whose `timing.ttft_ms` is not null (null for a run over
+   `/chat`, and for `--stream` in the agent and hybrid modes, which yield the whole answer at
+   once), next to `median_latency_s`, the client's whole-request time.
    Also in it are `median_input_tokens`, `median_output_tokens`, `median_total_tokens` and
    `median_llm_calls` over the completed rows that carry `usage`, and `usage_rows`, the number
    of those rows. The medians include rows whose usage is a partial sum, and `usage_incomplete`
