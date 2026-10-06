@@ -16,12 +16,16 @@ from typing import Any
 from langchain_core.callbacks import CallbackManagerForLLMRun
 from langchain_core.language_models import BaseChatModel, LanguageModelInput
 from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
+from langchain_core.messages.ai import UsageMetadata
 from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_core.runnables import Runnable
 from langchain_core.tools import BaseTool
 from pydantic import Field, PrivateAttr
 
 from api.assistant.rag.retrieval import RetrievedChunk
+
+# What a scripted reply reports as its token usage when the test gave it none.
+DEFAULT_USAGE: UsageMetadata = {"input_tokens": 10, "output_tokens": 5, "total_tokens": 15}
 
 
 class ScriptedToolCallingModel(BaseChatModel):
@@ -30,11 +34,17 @@ class ScriptedToolCallingModel(BaseChatModel):
     ``bind_tools`` returns the instance unchanged: every scripted response already
     carries whatever ``tool_calls`` the test wants, so there is nothing to format.
 
+    A response with no ``usage_metadata`` is returned with :data:`DEFAULT_USAGE`, as a real
+    model server reports usage on every reply; a test that sets its own metadata keeps it,
+    and one that needs a reply without any sets ``report_usage`` to false.
+
     :ivar responses: The messages to return, one per call, in order.
+    :ivar report_usage: Whether a response with no ``usage_metadata`` gets the default.
     :ivar seen: The messages each call was given, one list per call, in call order.
     """
 
     responses: list[AIMessage]
+    report_usage: bool = True
     seen: list[list[BaseMessage]] = Field(default_factory=list)
     _call_count: int = PrivateAttr(default=0)
 
@@ -64,6 +74,8 @@ class ScriptedToolCallingModel(BaseChatModel):
         """
         self.seen.append(list(messages))
         response = self.responses[self._call_count]
+        if self.report_usage and response.usage_metadata is None:
+            response = response.model_copy(update={"usage_metadata": DEFAULT_USAGE})
         self._call_count += 1
         return ChatResult(generations=[ChatGeneration(message=response)])
 

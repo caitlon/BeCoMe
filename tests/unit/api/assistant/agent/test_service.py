@@ -36,7 +36,7 @@ from api.assistant.rag.retrieval import DocsRetriever, RetrievedChunk
 from api.assistant.views import FuzzyView, OpinionView, ProjectView, ResultView
 from api.config import Settings
 from api.exceptions import ProjectNotFoundError
-from api.schemas.assistant import AssistantChatRequest, ChatTurn
+from api.schemas.assistant import AssistantChatRequest, ChatTurn, TurnUsage
 from tests.shared.assistant_fakes import ScriptedToolCallingModel
 from tests.shared.helpers import captured_log_records
 
@@ -1100,6 +1100,57 @@ class TestObservability:
         assert not any(
             secret in text for text in texts for secret in ("Zebra", "midpoint", PROJECT_ID)
         )
+
+    async def test_the_record_carries_the_token_usage_of_the_turn(self):
+        """
+        GIVEN an agent turn of two model replies that report 100 and 200 input tokens
+        WHEN it is answered
+        THEN the record carries the summed tokens and the number of calls
+        """
+        model = _model(
+            _call("list_my_projects").model_copy(
+                update={
+                    "usage_metadata": {"input_tokens": 100, "output_tokens": 7, "total_tokens": 107}
+                }
+            ),
+            _say().model_copy(
+                update={
+                    "usage_metadata": {"input_tokens": 200, "output_tokens": 3, "total_tokens": 203}
+                }
+            ),
+        )
+
+        with captured_log_records(SERVICE_LOGGER) as records:
+            await AssistantService(_settings("agent"), model).answer(_request(), _ctx())
+
+        (record,) = records
+        assert (
+            record.input_tokens,
+            record.output_tokens,
+            record.total_tokens,
+            record.llm_calls,
+        ) == (300, 10, 310, 2)
+
+    async def test_the_response_carries_the_usage_of_the_turn(self):
+        """
+        GIVEN a workflow turn answered by one reply with the fake's default usage
+        WHEN it is answered
+        THEN the response holds that usage, for one call, and complete
+        """
+        model = _model(_say())
+
+        response = await AssistantService(_settings(), model).answer(_request(), _ctx())
+
+        assert response.usage == TurnUsage(
+            input_tokens=10, output_tokens=5, total_tokens=15, llm_calls=1, complete=True
+        )
+        assert response.model_dump()["usage"] == {
+            "input_tokens": 10,
+            "output_tokens": 5,
+            "total_tokens": 15,
+            "llm_calls": 1,
+            "complete": True,
+        }
 
     async def test_the_record_counts_the_ungrounded_numbers(self):
         """

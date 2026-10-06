@@ -151,7 +151,8 @@ session as every other route: the access cookie with the `X-CSRF-Token` header, 
 token. The body is an `AssistantChatRequest` (`api/schemas/assistant.py`): `message`, an
 optional `history` of earlier `user` and `assistant` turns, an optional `project_id` for the
 project the user is looking at, and `locale` (`en` or `cs`). The answer carries the text, the
-documentation `sources` it may cite as `[n]`, the `tools_used` and the grounding `checks`.
+documentation `sources` it may cite as `[n]`, the `tools_used`, the grounding `checks` and the
+token `usage` of the turn.
 
 The assistant reads project data through the application's own API, with the caller's own
 access token, so it sees exactly the projects the caller is a member of. What a project the
@@ -185,6 +186,14 @@ Czech.
 
 Two models take part. The answer model writes every answer; the small chat model
 (`ASSISTANT_LLM_*`) only translates search queries, so the retriever is given that one.
+
+The `usage` field of the response, `input_tokens`, `output_tokens`, `total_tokens`, `llm_calls`
+and `complete`, adds up what the answer model's server reported for the replies of the turn:
+the one reply in `workflow`, every reply of the tool loop and the extra call after a loop that
+hit its limit in the other modes. It leaves out the query translation, which runs in the
+retriever with the small chat model. `complete` is false when a reply reported no usage; its
+tokens are then missing from the sums, though it still counts in `llm_calls`. The four numbers
+are also on the `assistant_turn` log record.
 
 ### Limits
 

@@ -499,7 +499,8 @@ class TestModes:
         """
         GIVEN the assistant in the given mode and a model that answers in one line
         WHEN a plain question is posted
-        THEN the answer is that line, with no sources or tools, and its checks hold
+        THEN the answer is that line, with no sources or tools, its checks hold, and it
+             reports the tokens of the one model reply
         """
         # GIVEN
         configure(ASSISTANT_MODE=mode)
@@ -518,6 +519,13 @@ class TestModes:
             "sources": [],
             "tools_used": [],
             "checks": {"citations_valid": True, "numbers_grounded": True, "ungrounded_numbers": []},
+            "usage": {
+                "input_tokens": 10,
+                "output_tokens": 5,
+                "total_tokens": 15,
+                "llm_calls": 1,
+                "complete": True,
+            },
         }
 
     def test_the_default_mode_is_the_workflow(self, assistant_settings, client, monkeypatch):
