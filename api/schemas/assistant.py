@@ -106,4 +106,4 @@ class AssistantChatResponse(BaseModel):
     sources: list[SourceRef]
     tools_used: list[str]
     checks: AnswerChecks
-    usage: TurnUsage | None = None
+    usage: TurnUsage

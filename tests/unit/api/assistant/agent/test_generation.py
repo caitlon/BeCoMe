@@ -15,6 +15,7 @@ from api.assistant.agent.generation import (
     CutOffAnswerError,
     DirectGenerator,
     _tool_failed,
+    _usage_of,
     answer_text,
     user_message,
 )
@@ -229,6 +230,19 @@ class TestAnswerText:
         THEN it is the empty string, for the caller to treat as a failure
         """
         assert answer_text(AIMessage(content="<think>all my tokens</think>  ")) == ""
+
+
+class TestUsageOf:
+    """The usage of a turn is summed over the model's replies."""
+
+    def test_a_sequence_with_no_model_reply_is_refused(self):
+        """
+        GIVEN messages that no model wrote
+        WHEN their usage is summed
+        THEN a ValueError says a turn needs a model reply
+        """
+        with pytest.raises(ValueError, match="at least one model reply"):
+            _usage_of([HumanMessage(content=QUESTION)])
 
 
 @pytest.mark.asyncio
@@ -755,6 +769,28 @@ class TestAgentGenerator:
 
         assert usage == TurnUsage(
             input_tokens=100, output_tokens=10, total_tokens=110, llm_calls=2, complete=False
+        )
+
+    async def test_a_fallback_reply_without_usage_is_incomplete_and_keeps_the_loop_tokens(self):
+        """
+        GIVEN a run that hits the model-call limit and a fallback reply reporting no usage
+        WHEN the turn is generated
+        THEN the usage sums the four loop replies, counts five calls, and is incomplete
+        """
+        model = ScriptedToolCallingModel(
+            responses=[
+                *(_used(_call("nope", index), 100, 10) for index in range(1, 5)),
+                AIMessage(content="From what I found."),
+            ],
+            report_usage=False,
+        )
+
+        _, _, usage = await AgentGenerator(model, max_tool_calls=2).generate(
+            _user(), _ctx(), QUESTION
+        )
+
+        assert usage == TurnUsage(
+            input_tokens=400, output_tokens=40, total_tokens=440, llm_calls=5, complete=False
         )
 
 

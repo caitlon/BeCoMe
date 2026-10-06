@@ -1130,6 +1130,7 @@ class TestObservability:
             record.total_tokens,
             record.llm_calls,
         ) == (300, 10, 310, 2)
+        assert record.usage_complete is True
 
     async def test_the_response_carries_the_usage_of_the_turn(self):
         """
@@ -1151,6 +1152,22 @@ class TestObservability:
             "llm_calls": 1,
             "complete": True,
         }
+
+    async def test_a_reply_without_usage_marks_the_response_and_the_record_incomplete(self):
+        """
+        GIVEN a model whose reply reports no usage
+        WHEN the turn is answered
+        THEN the response's usage is incomplete and so is the record's usage_complete
+        """
+        model = ScriptedToolCallingModel(responses=[_say()], report_usage=False)
+
+        with captured_log_records(SERVICE_LOGGER) as records:
+            response = await AssistantService(_settings(), model).answer(_request(), _ctx())
+
+        (record,) = records
+        assert response.usage.complete is False
+        assert response.usage.llm_calls == 1
+        assert record.usage_complete is False
 
     async def test_the_record_counts_the_ungrounded_numbers(self):
         """
