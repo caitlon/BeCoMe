@@ -30,6 +30,7 @@ from api.assistant.rate_limit import get_assistant_throttle
 from api.auth.cookies import CSRF_COOKIE
 from api.config import get_settings
 from api.db.session import get_session
+from api.logging_context import ContextFilter
 from api.middleware.rate_limit import LIMIT_ASSISTANT_CHAT, limiter
 from tests.integration.api.conftest import (
     create_project,
@@ -46,6 +47,7 @@ from tests.shared.assistant_fakes import (
 from tests.shared.helpers import DEFAULT_TEST_PASSWORD, auth_header, captured_log_records
 
 CHAT = "/api/v1/assistant/chat"
+STREAM = "/api/v1/assistant/chat/stream"
 UNAVAILABLE_BODY = {"detail": "The assistant is temporarily unavailable"}
 # A database URL for a port nothing listens on: the connection is refused at once.
 UNREACHABLE_DB_URL = "postgresql+psycopg://u:p@127.0.0.1:9/db"  # pragma: allowlist secret
@@ -1502,3 +1504,198 @@ class TestRetrieverWiring:
         assert retriever.queries == ["What is the compromise?"]
         assert "The compromise is the midpoint." in _shown(model)
         assert [source["title"] for source in response.json()["sources"]] == ["Method"]
+
+
+def _events(body: str) -> list[tuple[str, dict[str, Any]]]:
+    """Parse a server-sent-event body into (event, payload) pairs."""
+    events = []
+    for block in body.split("\n\n"):
+        if not block.strip():
+            continue
+        lines = block.splitlines()
+        name = next(line[len("event: ") :] for line in lines if line.startswith("event: "))
+        data = next(line[len("data: ") :] for line in lines if line.startswith("data: "))
+        events.append((name, json.loads(data)))
+    return events
+
+
+class TestStreamRoute:
+    """The streaming route sends the answer as events and refuses like the chat route."""
+
+    def test_tokens_then_done_carry_the_answer_and_the_timing(self, assistant_settings, client):
+        """
+        GIVEN a model that writes a short answer
+        WHEN the question is posted to the stream route
+        THEN the body is event-stream with the two anti-buffering headers, token events whose
+            texts join to the answer of the one done event, and the done event holds the
+            usage, the checks, the sources and a first-token time
+        """
+        # GIVEN
+        token = register_and_login(client, "stream@example.com")
+        _use_model(client, _scripted("It is the midpoint [1]."))
+
+        # WHEN
+        response = client.post(STREAM, json={"message": "hi"}, headers=auth_header(token))
+
+        # THEN
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("text/event-stream")
+        assert response.headers["cache-control"] == "no-cache"
+        assert response.headers["x-accel-buffering"] == "no"
+        events = _events(response.text)
+        names = [name for name, _ in events]
+        assert names[-1] == "done"
+        assert names.count("done") == 1
+        assert set(names[:-1]) == {"token"}
+        done = events[-1][1]
+        assert "".join(payload["text"] for _, payload in events[:-1]) == done["answer"]
+        assert done["usage"]["complete"] is True
+        assert done["checks"]["citations_valid"] is not None
+        assert "sources" in done
+        assert isinstance(done["timing"]["ttft_ms"], int)
+        assert done["timing"]["total_ms"] >= done["timing"]["ttft_ms"]
+
+    def test_an_outage_after_the_first_token_ends_the_stream_with_an_error_event(
+        self, assistant_settings, client
+    ):
+        """
+        GIVEN a model that dies after its first piece
+        WHEN the question is posted to the stream route
+        THEN the status is already 200, a token event comes first, and the stream ends with
+            an error event that holds the public 503 detail and no done event
+        """
+        # GIVEN
+        token = register_and_login(client, "stream-outage@example.com")
+        model = ScriptedToolCallingModel(
+            responses=[AIMessage(content="One two three.")], fail_after_chunks=1
+        )
+        _use_model(client, model)
+
+        # WHEN
+        response = client.post(STREAM, json={"message": "hi"}, headers=auth_header(token))
+
+        # THEN
+        assert response.status_code == 200
+        events = _events(response.text)
+        assert events[0][0] == "token"
+        assert events[-1] == ("error", {"code": 503, "detail": UNAVAILABLE_BODY["detail"]})
+        assert "done" not in [name for name, _ in events]
+
+    def test_a_project_the_caller_cannot_see_is_a_plain_404(self, assistant_settings, client):
+        """
+        GIVEN the owner's project and another signed-in user
+        WHEN that user names the project in a stream request
+        THEN the answer is a plain JSON 404 and not an event stream, and no model was asked
+        """
+        # GIVEN
+        owner = _owner_project(client)
+        guest_token = register_and_login(client, "stream-guest@example.com")
+        model = _scripted("never used")
+        _use_model(client, model)
+
+        # WHEN
+        response = client.post(
+            STREAM,
+            json={"message": "What is this?", "project_id": owner["id"]},
+            headers=auth_header(guest_token),
+        )
+
+        # THEN
+        assert response.status_code == 404
+        assert response.headers["content-type"].startswith("application/json")
+        assert response.json() == {"detail": "Project not found"}
+        assert model.seen == []
+
+    def test_the_stream_route_needs_csrf_like_chat(self, assistant_settings, cookie_client):
+        """
+        GIVEN a user signed in with cookies
+        WHEN a stream request carries no CSRF header, and then one that does
+        THEN the first is 403 and asks no model, and the second is streamed
+        """
+        # GIVEN
+        csrf = _sign_in_with_cookies(cookie_client, "stream-cookie@example.com")
+        model = _scripted("Fine.")
+        _use_model(cookie_client, model)
+
+        # WHEN
+        refused = cookie_client.post(STREAM, json={"message": "hi"})
+        allowed = cookie_client.post(STREAM, json={"message": "hi"}, headers=csrf)
+
+        # THEN
+        assert refused.status_code == 403
+        assert allowed.status_code == 200
+        assert _events(allowed.text)[-1][0] == "done"
+        assert len(model.seen) == 1
+
+    def test_the_stream_route_spends_the_hourly_budget(self, assistant_settings, client, configure):
+        """
+        GIVEN a budget of one message per hour
+        WHEN one user sends two stream requests
+        THEN the first is streamed and the second is a plain 429 with the fixed detail
+        """
+        # GIVEN
+        configure(ASSISTANT_RATE_LIMIT_PER_HOUR="1")
+        token = register_and_login(client, "stream-budget@example.com")
+        _use_model(client, _scripted("first", "second"))
+
+        # WHEN
+        first = client.post(STREAM, json={"message": "one"}, headers=auth_header(token))
+        second = client.post(STREAM, json={"message": "two"}, headers=auth_header(token))
+
+        # THEN
+        assert first.status_code == 200
+        assert second.status_code == 429
+        assert second.json() == {"detail": "Too many assistant messages. Please try again later."}
+
+    def test_agent_mode_streams_only_the_done_event(self, assistant_settings, client, configure):
+        """
+        GIVEN the agent mode and a model that calls one tool before it answers
+        WHEN the question is posted to the stream route
+        THEN the body holds exactly one event, done, that names the tool
+        """
+        # GIVEN
+        configure(ASSISTANT_MODE="agent")
+        owner = _owner_project(client)
+        model = ToolEchoingModel(first_call=_tool_call("get_project_result", owner["id"]))
+        _use_model(client, model)
+
+        # WHEN
+        response = client.post(
+            STREAM,
+            json={"message": "What is the result?", "project_id": owner["id"]},
+            headers=auth_header(owner["token"]),
+        )
+
+        # THEN
+        assert response.status_code == 200
+        events = _events(response.text)
+        assert [name for name, _ in events] == ["done"]
+        assert events[0][1]["tools_used"] == ["get_project_result"]
+
+    def test_the_turn_record_keeps_the_request_id_while_streaming(self, assistant_settings, client):
+        """
+        GIVEN a request that carries an X-Request-ID, and the context filter on the service's
+            logger, as the application's handlers carry it
+        WHEN the turn is streamed, so its assistant_turn record is written while the body is
+            sent, after the request middleware has returned
+        THEN that record carries the request id the caller sent
+        """
+        # GIVEN
+        token = register_and_login(client, "stream-request-id@example.com")
+        _use_model(client, _scripted("Yes."))
+        headers = {**auth_header(token), "X-Request-ID": "stream-abc123"}
+        service_logger = logging.getLogger("api.assistant.agent.service")
+        context_filter = ContextFilter()
+        service_logger.addFilter(context_filter)
+
+        # WHEN
+        try:
+            with captured_log_records(service_logger.name) as records:
+                response = client.post(STREAM, json={"message": "hi"}, headers=headers)
+        finally:
+            service_logger.removeFilter(context_filter)
+
+        # THEN
+        assert response.status_code == 200
+        (record,) = [r for r in records if getattr(r, "event", "") == "assistant_turn"]
+        assert record.request_id == "stream-abc123"

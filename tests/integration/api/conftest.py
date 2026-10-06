@@ -38,6 +38,7 @@ from api.dependencies import get_email_address_policy
 from api.middleware.csrf import CSRFMiddleware
 from api.middleware.exception_handlers import register_exception_handlers
 from api.middleware.rate_limit import limiter
+from api.middleware.request_logging import RequestLoggingMiddleware
 from api.routes import auth, calculate, health, invitations, opinions, projects, users
 from api.services.email_policy import EmailAddressPolicy
 from api.services.email_verification_service import EmailVerificationService, PendingCredentials
@@ -82,6 +83,9 @@ def create_test_app() -> FastAPI:
 
     # CSRF double-submit guard (dormant unless the request carries the csrf_token cookie).
     app.add_middleware(CSRFMiddleware)
+
+    # Binds the request id, which a streamed assistant turn's log record must keep.
+    app.add_middleware(RequestLoggingMiddleware)
 
     # Register exception handlers (OCP: centralized error handling)
     register_exception_handlers(app)

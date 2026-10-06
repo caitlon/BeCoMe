@@ -20,7 +20,7 @@ from api.assistant.errors import (
 
 logger = logging.getLogger(__name__)
 
-_UNAVAILABLE_DETAIL = "The assistant is temporarily unavailable"
+UNAVAILABLE_DETAIL = "The assistant is temporarily unavailable"
 
 
 def _log(request: Request, exc: Exception, *, event: str, status_code: int, level: int) -> None:
@@ -75,7 +75,7 @@ def assistant_unavailable_handler(request: Request, exc: AssistantUnavailableErr
     """
     status_code = status.HTTP_503_SERVICE_UNAVAILABLE
     _log(request, exc, event="assistant_unavailable", status_code=status_code, level=logging.ERROR)
-    return JSONResponse(status_code=status_code, content={"detail": _UNAVAILABLE_DETAIL})
+    return JSONResponse(status_code=status_code, content={"detail": UNAVAILABLE_DETAIL})
 
 
 def assistant_upstream_handler(request: Request, exc: AssistantUpstreamError) -> JSONResponse:
@@ -92,4 +92,4 @@ def assistant_upstream_handler(request: Request, exc: AssistantUpstreamError) ->
     _log(
         request, exc, event="assistant_upstream_error", status_code=status_code, level=logging.ERROR
     )
-    return JSONResponse(status_code=status_code, content={"detail": _UNAVAILABLE_DETAIL})
+    return JSONResponse(status_code=status_code, content={"detail": UNAVAILABLE_DETAIL})
