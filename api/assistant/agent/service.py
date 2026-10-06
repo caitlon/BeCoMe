@@ -152,7 +152,7 @@ class AssistantService:
                             messages, ctx, request.message
                         )
                     except CutOffAnswerError:
-                        text, tools_used, usage, empty_reason = "", [], None, "cut_off"
+                        text, tools_used, empty_reason = "", [], "cut_off"
                 if not text:
                     logger.warning(
                         "Assistant answer was empty",
@@ -208,10 +208,11 @@ class AssistantService:
                 "citations_valid": citations_valid,
                 "numbers_grounded": not ungrounded,
                 "ungrounded_number_count": len(ungrounded),
-                "input_tokens": usage.input_tokens if usage else None,
-                "output_tokens": usage.output_tokens if usage else None,
-                "total_tokens": usage.total_tokens if usage else None,
-                "llm_calls": usage.llm_calls if usage else None,
+                "input_tokens": usage.input_tokens,
+                "output_tokens": usage.output_tokens,
+                "total_tokens": usage.total_tokens,
+                "llm_calls": usage.llm_calls,
+                "usage_complete": usage.complete,
                 "duration_ms": round((time.monotonic() - started) * 1000),
             },
         )

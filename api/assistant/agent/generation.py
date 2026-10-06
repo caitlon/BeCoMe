@@ -2,10 +2,9 @@
 
 An :class:`AnswerGenerator` takes the conversation the chat service assembled and the
 turn's context, and returns the answer text, the names of the tools that ran and the
-tokens the model used (:class:`~api.schemas.assistant.TurnUsage`). There
-are two: :class:`DirectGenerator` makes one model call with no tools, and
-:class:`AgentGenerator` lets the model call the assistant's tools in a bounded loop.
-Both send :data:`~api.assistant.agent.prompt.SYSTEM_PROMPT` unchanged.
+tokens the model used (:class:`~api.schemas.assistant.TurnUsage`). There are two:
+:class:`DirectGenerator` makes one model call with no tools, and :class:`AgentGenerator`
+lets the model call the assistant's tools in a bounded loop. Both send :data:`~api.assistant.agent.prompt.SYSTEM_PROMPT` unchanged.
 """
 
 import logging
@@ -68,7 +67,7 @@ class AnswerGenerator(Protocol):
 
     async def generate(
         self, messages: list[AnyMessage], ctx: AssistantContext, question: str
-    ) -> tuple[str, list[str], TurnUsage | None]:
+    ) -> tuple[str, list[str], TurnUsage]:
         """Generate the answer of one turn.
 
         :param messages: The conversation: the kept history, then the user message of
@@ -76,7 +75,7 @@ class AnswerGenerator(Protocol):
         :param ctx: The turn's context.
         :param question: The user's own message, as asked, without any context around it.
         :return: The answer text, the names of the tools that ran, each once, in the order
-            they first ran, and the usage of the model's replies (see :func:`_usage_of`).
+            they first ran, and the usage of the model's replies in the turn.
         """
         ...
 
@@ -135,7 +134,7 @@ def _answer_of(message: BaseMessage) -> str:
     return answer_text(message)
 
 
-def _usage_of(replies: Sequence[BaseMessage]) -> TurnUsage | None:
+def _usage_of(replies: Sequence[BaseMessage]) -> TurnUsage:
     """Sum the token usage the model reported over its replies of one turn.
 
     A reply that reports no usage adds nothing to the sums and makes the result incomplete,
@@ -143,11 +142,13 @@ def _usage_of(replies: Sequence[BaseMessage]) -> TurnUsage | None:
 
     :param replies: The messages the model wrote this turn; anything else in the sequence
         is skipped.
-    :return: The summed usage, or ``None`` when there is no model reply in it.
+    :return: The summed usage.
+    :raises ValueError: If there is no model reply in the sequence, which a generator that
+        got an answer never has.
     """
     messages = [message for message in replies if isinstance(message, AIMessage)]
     if not messages:
-        return None
+        raise ValueError("a turn's usage needs at least one model reply")
     reported = [message.usage_metadata for message in messages if message.usage_metadata]
     return TurnUsage(
         input_tokens=sum(usage["input_tokens"] for usage in reported),
@@ -170,7 +171,7 @@ class DirectGenerator(AnswerGenerator):
 
     async def generate(
         self, messages: list[AnyMessage], ctx: AssistantContext, question: str
-    ) -> tuple[str, list[str], TurnUsage | None]:
+    ) -> tuple[str, list[str], TurnUsage]:
         """Answer with a single call over the system prompt and the messages.
 
         :param messages: The conversation, ending with this turn's user message.
@@ -290,7 +291,7 @@ class AgentGenerator(AnswerGenerator):
 
     async def generate(
         self, messages: list[AnyMessage], ctx: AssistantContext, question: str
-    ) -> tuple[str, list[str], TurnUsage | None]:
+    ) -> tuple[str, list[str], TurnUsage]:
         """Run the loop, and fall back to one direct call when it ends on its limit.
 
         The model-call limit ends a run by adding a message of its own that says the

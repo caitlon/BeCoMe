@@ -15,6 +15,7 @@ from api.schemas.assistant import (
     AssistantChatResponse,
     ChatTurn,
     SourceRef,
+    TurnUsage,
 )
 
 
@@ -238,7 +239,7 @@ class TestAssistantChatResponse:
         """
         GIVEN a response with one source and passing checks
         WHEN it is dumped
-        THEN the nested sources and checks appear as plain data
+        THEN the nested sources, checks and usage appear as plain data
         """
         response = AssistantChatResponse(
             answer="The compromise is 14.31 [1].",
@@ -247,6 +248,9 @@ class TestAssistantChatResponse:
             ],
             tools_used=["search_docs"],
             checks=AnswerChecks(citations_valid=True, numbers_grounded=True, ungrounded_numbers=[]),
+            usage=TurnUsage(
+                input_tokens=120, output_tokens=30, total_tokens=150, llm_calls=2, complete=False
+            ),
         )
 
         dumped = response.model_dump()
@@ -254,3 +258,10 @@ class TestAssistantChatResponse:
         assert dumped["sources"][0]["n"] == 1
         assert dumped["checks"]["numbers_grounded"] is True
         assert dumped["tools_used"] == ["search_docs"]
+        assert dumped["usage"] == {
+            "input_tokens": 120,
+            "output_tokens": 30,
+            "total_tokens": 150,
+            "llm_calls": 2,
+            "complete": False,
+        }
