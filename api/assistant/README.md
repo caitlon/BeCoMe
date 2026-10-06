@@ -192,6 +192,12 @@ Czech.
 Two models take part. The answer model writes every answer; the small chat model
 (`ASSISTANT_LLM_*`) only translates search queries, so the retriever is given that one.
 
+The answer model (`make_answer_model`) asks the server for usage on the last streamed chunk
+(`stream_usage=True`), which a streamed turn needs for its token counts. `DirectGenerator.stream()`
+yields the answer as it arrives, withholding any reasoning block, and its pieces always join to
+the text `generate()` returns. `AgentGenerator.stream()` yields the whole answer once, since the
+agent mode does not stream.
+
 The `usage` field of the response, `input_tokens`, `output_tokens`, `total_tokens`, `llm_calls`
 and `complete`, adds up what the answer model's server reported for the replies of the turn:
 the one reply in `workflow`, every reply of the tool loop and the extra call after a loop that
@@ -199,6 +205,10 @@ hit its limit in the other modes. It leaves out the query translation, which run
 retriever with the small chat model. `complete` is false when a reply reported no usage; its
 tokens are then missing from the sums, though it still counts in `llm_calls`. The four numbers
 are also on the `assistant_turn` log record.
+
+The `timing` field holds `ttft_ms`, the milliseconds from the start of the answer model's call to
+its first piece of answer text, and `total_ms`, the whole turn with retrieval included. `ttft_ms`
+is null unless the turn was streamed, which no route does yet.
 
 ### Limits
 
