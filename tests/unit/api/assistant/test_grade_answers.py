@@ -410,18 +410,18 @@ class TestSummarizeArm:
 
         grades = [
             ga.grade_row(_row(usage=usage(1000, 2)), questions["q1"]),
-            ga.grade_row(_row(id="q2", usage=usage(3000, 4, complete=False)), questions["q2"]),
+            ga.grade_row(_row(id="q2", usage=usage(1200, 3, complete=False)), questions["q2"]),
             ga.grade_row(_row(id="q3"), questions["q3"]),
             ga.grade_row(_row(None, id="q4", status="Timeout", usage=None), questions["q4"]),
-            ga.grade_row(_row(id="q5", usage=usage(5000, 6, complete=False)), questions["q5"]),
+            ga.grade_row(_row(id="q5", usage=usage(5000, 9, complete=False)), questions["q5"]),
         ]
         # WHEN summarized
         summary = ga.summarize_arm(grades, questions)
         # THEN the medians are over the three rows with usage and two of them are incomplete
-        assert summary["median_input_tokens"] == 3000
-        assert summary["median_output_tokens"] == 300
-        assert summary["median_total_tokens"] == 3300
-        assert summary["median_llm_calls"] == 4
+        assert summary["median_input_tokens"] == 1200
+        assert summary["median_output_tokens"] == 120
+        assert summary["median_total_tokens"] == 1320
+        assert summary["median_llm_calls"] == 3
         assert summary["usage_rows"] == 3
         assert summary["usage_incomplete"] == 2
 

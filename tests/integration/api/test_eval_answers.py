@@ -98,13 +98,18 @@ def _runner_env(monkeypatch, tmp_path):
     _reset()
 
 
-@pytest.fixture
-def tracing_setting_on(monkeypatch):
+def _enable_tracing_setting(monkeypatch) -> None:
     """Turn the assistant's LangSmith setting on, with a stand-in client so nothing is sent."""
     monkeypatch.setenv("ASSISTANT_LANGSMITH_ENABLED", "true")
     monkeypatch.setenv("ASSISTANT_LANGSMITH_API_KEY", "ls-key")  # pragma: allowlist secret
     monkeypatch.setattr(tracing, "_shared_client", MagicMock())
     _reset()
+
+
+@pytest.fixture
+def tracing_setting_on(monkeypatch):
+    """Turn the assistant's LangSmith setting on, with a stand-in client so nothing is sent."""
+    _enable_tracing_setting(monkeypatch)
 
 
 def _scripted(*answers: str) -> ScriptedToolCallingModel:
@@ -438,19 +443,16 @@ class TestRunScope:
         """
         # GIVEN
         if setting_on:
-            monkeypatch.setenv("ASSISTANT_LANGSMITH_ENABLED", "true")
-            monkeypatch.setenv("ASSISTANT_LANGSMITH_API_KEY", "ls-key")  # pragma: allowlist secret
-            monkeypatch.setattr(tracing, "_shared_client", MagicMock())
-            _reset()
+            _enable_tracing_setting(monkeypatch)
         calls = []
         monkeypatch.setattr(ea, "shutdown_tracing", lambda: calls.append(1))
-        fixtures = _setup(client, _scripted("Fine."))
+        fixtures = _setup(client, _scripted("Fine.", "Also fine."))
 
         # WHEN
         _run(
             client,
             fixtures,
-            [{"id": "q1", "question": "One?"}],
+            [{"id": "q1", "question": "One?"}, {"id": "q2", "question": "Two?"}],
             tmp_path / "out.jsonl",
             trace=trace,
         )
@@ -507,6 +509,50 @@ class TestRunScope:
 
         # THEN
         assert probe.enabled == [False]
+
+    @pytest.mark.parametrize(
+        ("setting_on", "flag", "expected"),
+        [
+            (True, [], "tracing: off"),
+            (True, ["--trace"], "tracing: on"),
+            (False, ["--trace"], "tracing: off"),
+            (False, [], "tracing: off"),
+        ],
+    )
+    def test_main_says_whether_tracing_is_on(
+        self,
+        assistant_settings,
+        client,
+        tmp_path,
+        capsys,
+        monkeypatch,
+        setting_on,
+        flag,
+        expected,
+    ):
+        """
+        GIVEN a one-question run, with the assistant's tracing setting on or off
+        WHEN main runs with or without --trace
+        THEN stderr says tracing is on only when the flag is given and the setting is on, and
+            notes that nothing is traced when the flag is given with the setting off
+        """
+        # GIVEN
+        if setting_on:
+            _enable_tracing_setting(monkeypatch)
+        fixtures = _setup(client, _scripted("One."))
+        (tmp_path / "f.json").write_text(json.dumps(fixtures), encoding="utf-8")
+        (tmp_path / "q.jsonl").write_text(json.dumps({"id": "q1", "question": "Plum?"}))
+
+        # WHEN
+        with patch.object(ea, "create_app", return_value=client.app):
+            ea.main(_argv(tmp_path, "workflow", *flag))
+        err = capsys.readouterr().err
+
+        # THEN
+        assert expected in err
+        assert ("tracing: on" in err) is (expected == "tracing: on")
+        note = "tracing: --trace given but ASSISTANT_LANGSMITH_ENABLED is off, nothing is traced"
+        assert (note in err) is (bool(flag) and not setting_on)
 
 
 class TestEvalSettings:
@@ -1129,53 +1175,6 @@ class TestPacing:
         # THEN
         assert "pacing: at most 19 questions per 60 s" in paced
         assert "pacing: off" in unpaced
-
-    @pytest.mark.parametrize(
-        ("setting_on", "flag", "expected"),
-        [
-            (True, [], "tracing: off"),
-            (True, ["--trace"], "tracing: on"),
-            (False, ["--trace"], "tracing: off"),
-            (False, [], "tracing: off"),
-        ],
-    )
-    def test_main_says_whether_tracing_is_on(
-        self,
-        assistant_settings,
-        client,
-        tmp_path,
-        capsys,
-        monkeypatch,
-        setting_on,
-        flag,
-        expected,
-    ):
-        """
-        GIVEN a one-question run, with the assistant's tracing setting on or off
-        WHEN main runs with or without --trace
-        THEN stderr says tracing is on only when the flag is given and the setting is on, and
-            notes that nothing is traced when the flag is given with the setting off
-        """
-        # GIVEN
-        if setting_on:
-            monkeypatch.setenv("ASSISTANT_LANGSMITH_ENABLED", "true")
-            monkeypatch.setenv("ASSISTANT_LANGSMITH_API_KEY", "ls-key")  # pragma: allowlist secret
-            monkeypatch.setattr(tracing, "_shared_client", MagicMock())
-            _reset()
-        fixtures = _setup(client, _scripted("One."))
-        (tmp_path / "f.json").write_text(json.dumps(fixtures), encoding="utf-8")
-        (tmp_path / "q.jsonl").write_text(json.dumps({"id": "q1", "question": "Plum?"}))
-
-        # WHEN
-        with patch.object(ea, "create_app", return_value=client.app):
-            ea.main(_argv(tmp_path, "workflow", *flag))
-        err = capsys.readouterr().err
-
-        # THEN
-        assert expected in err
-        assert ("tracing: on" in err) is (expected == "tracing: on")
-        note = "tracing: --trace given but ASSISTANT_LANGSMITH_ENABLED is off, nothing is traced"
-        assert (note in err) is (bool(flag) and not setting_on)
 
 
 class TestProvenance:
