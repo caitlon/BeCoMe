@@ -15,6 +15,7 @@ from api.schemas.assistant import (
     AssistantChatResponse,
     ChatTurn,
     SourceRef,
+    TurnTiming,
     TurnUsage,
 )
 
@@ -251,6 +252,7 @@ class TestAssistantChatResponse:
             usage=TurnUsage(
                 input_tokens=120, output_tokens=30, total_tokens=150, llm_calls=2, complete=False
             ),
+            timing=TurnTiming(ttft_ms=None, total_ms=1234),
         )
 
         dumped = response.model_dump()
@@ -265,3 +267,38 @@ class TestAssistantChatResponse:
             "llm_calls": 2,
             "complete": False,
         }
+        assert dumped["timing"] == {"ttft_ms": None, "total_ms": 1234}
+
+    def test_the_response_requires_timing(self):
+        """
+        GIVEN a response built without timing
+        WHEN it is validated
+        THEN it is refused
+        """
+        with pytest.raises(ValidationError):
+            AssistantChatResponse(
+                answer="x",
+                sources=[],
+                tools_used=[],
+                checks=AnswerChecks(
+                    citations_valid=True, numbers_grounded=True, ungrounded_numbers=[]
+                ),
+                usage=TurnUsage(
+                    input_tokens=1, output_tokens=1, total_tokens=2, llm_calls=1, complete=True
+                ),
+            )
+
+
+class TestTurnTiming:
+    """A turn's timing says how long it took, and when the first token came."""
+
+    def test_the_non_streamed_turn_has_no_first_token_time(self):
+        """
+        GIVEN a timing with no first-token time
+        WHEN it is built
+        THEN ttft_ms is None and total_ms is kept
+        """
+        timing = TurnTiming(ttft_ms=None, total_ms=1234)
+
+        assert timing.ttft_ms is None
+        assert timing.total_ms == 1234

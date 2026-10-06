@@ -499,8 +499,8 @@ class TestModes:
         """
         GIVEN the assistant in the given mode and a model that answers in one line
         WHEN a plain question is posted
-        THEN the answer is that line, with no sources or tools, its checks hold, and it
-             reports the tokens of the one model reply
+        THEN the answer is that line, with no sources or tools, its checks hold, it
+             reports the tokens of the one model reply, and its timing has no first-token time
         """
         # GIVEN
         configure(ASSISTANT_MODE=mode)
@@ -514,7 +514,11 @@ class TestModes:
 
         # THEN
         assert response.status_code == 200
-        assert response.json() == {
+        body = response.json()
+        timing = body.pop("timing")
+        assert timing["ttft_ms"] is None
+        assert timing["total_ms"] >= 0
+        assert body == {
             "answer": "BeCoMe is a fuzzy compromise method.",
             "sources": [],
             "tools_used": [],

@@ -48,6 +48,8 @@ def make_answer_model(settings: Settings) -> ChatOpenAI:
         temperature=0,
         max_completion_tokens=settings.assistant_answer_max_tokens,
         max_retries=0,
+        # The last streamed chunk then carries the usage, which a streamed turn needs.
+        stream_usage=True,
         timeout=settings.assistant_llm_timeout_seconds,
     )
 

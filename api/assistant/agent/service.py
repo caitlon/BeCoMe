@@ -45,6 +45,7 @@ from api.schemas.assistant import (
     AssistantChatRequest,
     AssistantChatResponse,
     ChatTurn,
+    TurnTiming,
 )
 
 logger = logging.getLogger(__name__)
@@ -196,6 +197,7 @@ class AssistantService:
                 *FORMULA_NUMBERS,
             ],
         )
+        duration_ms = round((time.monotonic() - started) * 1000)
         logger.info(
             "Assistant turn answered",
             extra={
@@ -213,7 +215,7 @@ class AssistantService:
                 "total_tokens": usage.total_tokens,
                 "llm_calls": usage.llm_calls,
                 "usage_complete": usage.complete,
-                "duration_ms": round((time.monotonic() - started) * 1000),
+                "duration_ms": duration_ms,
             },
         )
         return AssistantChatResponse(
@@ -226,6 +228,7 @@ class AssistantService:
                 ungrounded_numbers=ungrounded,
             ),
             usage=usage,
+            timing=TurnTiming(ttft_ms=None, total_ms=duration_ms),
         )
 
     async def _fetch(self, request: AssistantChatRequest, ctx: AssistantContext) -> list[str]:
