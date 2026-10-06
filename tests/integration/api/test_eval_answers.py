@@ -191,6 +191,13 @@ class TestRunEval:
         assert [(s["n"], s["has_url"]) for s in first["sources"]] == [(1, True), (2, False)]
         assert set(first["sources"][0]) == {"n", "title", "section", "layer", "has_url"}
         assert isinstance(first["latency_s"], float)
+        assert set(first["usage"]) == {
+            "input_tokens",
+            "output_tokens",
+            "total_tokens",
+            "llm_calls",
+            "complete",
+        }
         assert (first["arm"], first["mode"]) == ("test-arm", "workflow")
         assert first["answer_model"] == "test-answer-model"
         assert first["answer_endpoint"] == "127.0.0.1:9"
@@ -257,7 +264,7 @@ class TestRunEval:
 
         # THEN
         first, second, third = _rows(output)
-        assert (first["status"], first["answer"]) == ("http_404", None)
+        assert (first["status"], first["answer"], first["usage"]) == ("http_404", None, None)
         assert OTHER_PROJECT not in _shown(model)
         assert second["status"] == "ok"
         assert third["status"] == "IndexError"
@@ -380,6 +387,34 @@ class TestRunScope:
         # THEN
         assert probe.enabled == [False]
 
+    def test_trace_leaves_the_tracing_scope_alone(
+        self, assistant_settings, client, tmp_path, monkeypatch
+    ):
+        """
+        GIVEN LANGSMITH_TRACING=true in the environment
+        WHEN the runner asks a question with trace=True
+        THEN the runner does not switch tracing off around the search
+        """
+        # GIVEN
+        monkeypatch.setenv("LANGSMITH_TRACING", "true")
+        ls.utils.get_env_var.cache_clear()
+        fixtures = _setup(client, _scripted("Fine."))
+        probe = _TracingProbe()
+        client.app.dependency_overrides[deps.get_docs_retriever] = lambda: probe
+
+        # WHEN
+        _run(
+            client,
+            fixtures,
+            [{"id": "q1", "question": "One?"}],
+            tmp_path / "out.jsonl",
+            trace=True,
+        )
+        ls.utils.get_env_var.cache_clear()
+
+        # THEN
+        assert probe.enabled == [None]
+
 
 class TestEvalSettings:
     """The settings the runner hands the service."""
@@ -397,11 +432,29 @@ class TestEvalSettings:
         assert get_settings().assistant_langsmith_enabled is True
 
         # WHEN
-        settings = ea._eval_settings(get_settings(), "hybrid")
+        settings = ea._eval_settings(get_settings(), "hybrid", False)
 
         # THEN
         assert settings.assistant_langsmith_enabled is False
         assert settings.assistant_mode == "hybrid"
+
+    def test_trace_keeps_the_environments_tracing_setting(self, monkeypatch):
+        """
+        GIVEN settings with LangSmith tracing switched on by the environment
+        WHEN the runner builds the settings it runs under with trace
+        THEN tracing stays as the environment gave it and the mode is the requested one
+        """
+        # GIVEN
+        monkeypatch.setenv("ASSISTANT_LANGSMITH_ENABLED", "true")
+        monkeypatch.setenv("ASSISTANT_LANGSMITH_API_KEY", "ls-key")  # pragma: allowlist secret
+        _reset()
+
+        # WHEN
+        traced = ea._eval_settings(get_settings(), "agent", True)
+
+        # THEN
+        assert traced.assistant_langsmith_enabled is True
+        assert traced.assistant_mode == "agent"
 
 
 class TestInputs:
@@ -983,6 +1036,28 @@ class TestPacing:
         # THEN
         assert "pacing: at most 19 questions per 60 s" in paced
         assert "pacing: off" in unpaced
+
+    def test_main_says_whether_tracing_is_on(self, assistant_settings, client, tmp_path, capsys):
+        """
+        GIVEN a one-question run
+        WHEN main runs with and without --trace
+        THEN stderr names the tracing state each time
+        """
+        # GIVEN
+        fixtures = _setup(client, _scripted("One.", "Two."))
+        (tmp_path / "f.json").write_text(json.dumps(fixtures), encoding="utf-8")
+        (tmp_path / "q.jsonl").write_text(json.dumps({"id": "q1", "question": "Plum?"}))
+
+        # WHEN
+        with patch.object(ea, "create_app", return_value=client.app):
+            ea.main(_argv(tmp_path))
+            untraced = capsys.readouterr().err
+            ea.main(_argv(tmp_path, "workflow", "--trace", "--arm", "other"))
+            traced = capsys.readouterr().err
+
+        # THEN
+        assert "tracing: off" in untraced
+        assert "tracing: on" in traced
 
 
 class TestProvenance:

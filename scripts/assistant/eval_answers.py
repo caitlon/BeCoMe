@@ -8,7 +8,9 @@ The app is driven in-process (httpx's ASGI transport), with the fixtures user si
 a bearer token the way every route authenticates, so authorization and the tenant checks
 run as in production. The mode is chosen through ``assistant_mode``: the service reads its
 settings through a FastAPI dependency, and the runner overrides that one dependency with a
-copy of the settings that carries the requested mode and has LangSmith tracing switched off.
+copy of the settings that carries the requested mode and has LangSmith tracing switched off
+unless ``--trace`` is passed, because tracing sends the question and answer text to a remote
+service.
 
 Needs ``ASSISTANT_ENABLED=true`` and the model servers the settings point at; the runner
 starts none. The database must hold the fixtures' user and projects. Set
@@ -24,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import hashlib
 import json
 import re
@@ -319,19 +322,22 @@ def _provenance_problem(rows: list[dict[str, Any]], meta: dict[str, Any]) -> str
     )
 
 
-def _eval_settings(settings: Settings, mode: str) -> Settings:
-    """Copy the settings with the requested mode and LangSmith tracing off.
+def _eval_settings(settings: Settings, mode: str, trace: bool) -> Settings:
+    """Copy the settings with the requested mode, and with LangSmith tracing off unless traced.
 
     Tracing sends the full text of questions and answers to a remote service, so the runner
-    never leaves it on, whatever the environment says.
+    leaves it off, whatever the environment says, unless ``trace`` is set; then the
+    environment's setting stands.
 
     :param settings: The application settings.
     :param mode: ``workflow``, ``hybrid`` or ``agent``.
+    :param trace: Keep the environment's tracing setting instead of switching it off.
     :return: The settings the service runs under.
     """
-    return settings.model_copy(
-        update={"assistant_mode": mode, "assistant_langsmith_enabled": False}
-    )
+    update: dict[str, Any] = {"assistant_mode": mode}
+    if not trace:
+        update["assistant_langsmith_enabled"] = False
+    return settings.model_copy(update=update)
 
 
 def _collection_versions(settings: Settings) -> tuple[str | None, str | None]:
@@ -371,7 +377,7 @@ def _row_from_response(body: dict[str, Any]) -> dict[str, Any]:
     """Pick what a row records from a successful chat response.
 
     :param body: The decoded ``AssistantChatResponse``.
-    :return: The answer, sources (with whether each has a url), tool names and checks.
+    :return: The answer, sources (with whether each has a url), tool names, checks and usage.
     """
     return {
         "answer": body["answer"],
@@ -387,6 +393,7 @@ def _row_from_response(body: dict[str, Any]) -> dict[str, Any]:
         ],
         "tool_calls": body["tools_used"],
         "checks": body["checks"],
+        "usage": body["usage"],
     }
 
 
@@ -406,7 +413,13 @@ async def _ask(
     body: dict[str, Any] = {"message": record["question"]}
     if project_id is not None:
         body["project_id"] = project_id
-    result: dict[str, Any] = {"answer": None, "sources": None, "tool_calls": None, "checks": None}
+    result: dict[str, Any] = {
+        "answer": None,
+        "sources": None,
+        "tool_calls": None,
+        "checks": None,
+        "usage": None,
+    }
     started = time.monotonic()
     try:
         token = create_access_token(UUID(user_id))
@@ -436,6 +449,7 @@ async def run_eval(
     code_version: str | None,
     retry_failed: bool = False,
     pacing: bool = True,
+    trace: bool = False,
     clock: Callable[[], float] = time.monotonic,
     sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
 ) -> dict[str, Any]:
@@ -445,8 +459,8 @@ async def run_eval(
     status: a failed turn is a result. With ``retry_failed`` those whose latest row is not
     ``ok`` are asked again, and the new row wins (:func:`latest_rows`). The run stops when
     :func:`_stop_reason` says the environment is failing. While it lasts the app's settings
-    dependency is overridden with :func:`_eval_settings` and tracing is off; the override is
-    removed afterwards. With ``pacing`` each question waits first, so that no 60 s window holds
+    dependency is overridden with :func:`_eval_settings` and tracing is off unless ``trace``;
+    the override is removed afterwards. With ``pacing`` each question waits first, so that no 60 s window holds
     more starts than :func:`_starts_per_window`; the wait is outside ``latency_s``.
 
     :param app: The FastAPI app with the assistant router mounted.
@@ -460,6 +474,7 @@ async def run_eval(
     :param code_version: The version of the code that generates the answers.
     :param retry_failed: Ask again the questions whose latest row is not ``ok``.
     :param pacing: Pace the questions to the route's per-minute limit.
+    :param trace: Leave LangSmith tracing as the environment sets it instead of switching it off.
     :param clock: Time source of the pacing, in seconds.
     :param sleep: Wait function of the pacing.
     :return: ``rows`` written, ``ok`` and ``failed`` counts, ``median_latency_s``, ``unresolved``,
@@ -505,7 +520,8 @@ async def run_eval(
     else:
         print("pacing: off", file=sys.stderr)
     output.parent.mkdir(parents=True, exist_ok=True)
-    run_settings = _eval_settings(settings, mode)
+    print(f"tracing: {'on' if trace else 'off'}", file=sys.stderr)
+    run_settings = _eval_settings(settings, mode, trace)
     user_id = str(fixtures["user"]["id"])
     app.dependency_overrides[get_settings] = lambda: run_settings
     ok = consecutive = 0
@@ -518,7 +534,8 @@ async def run_eval(
             base_url="http://eval.invalid",
         ) as http:
             # The query-transform call runs before the service's own tracing scope opens.
-            with ls.tracing_context(enabled=False), output.open("a", encoding="utf-8") as sink:
+            scope = contextlib.nullcontext() if trace else ls.tracing_context(enabled=False)
+            with scope, output.open("a", encoding="utf-8") as sink:
                 for number, record in enumerate(todo, start=1):
                     key = record.get("project")
                     if pacer is not None:
@@ -576,6 +593,11 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--retry-failed", action="store_true", help="Ask failed questions again")
     parser.add_argument("--sealed-run", action="store_true", help="Allow a sealed question set")
     parser.add_argument("--registration", type=Path, default=None, help="Pre-registration file")
+    parser.add_argument(
+        "--trace",
+        action="store_true",
+        help="Leave LangSmith tracing as the environment sets it (sends question and answer text)",
+    )
     parser.add_argument(
         "--no-pacing", action="store_true", help="Do not pace to the route's rate limit"
     )
@@ -653,6 +675,7 @@ def main(argv: list[str] | None = None) -> int:
                 code_version=code_version,
                 retry_failed=args.retry_failed,
                 pacing=not args.no_pacing,
+                trace=args.trace,
             )
         )
     except RunRefusedError as exc:

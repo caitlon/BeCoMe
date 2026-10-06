@@ -395,6 +395,34 @@ class TestSummarizeArm:
         assert summary["median_latency_s"] == 3.0
         assert summary["missing"] == 0
 
+    def test_token_medians_cover_the_completed_rows_that_carry_usage(self):
+        # GIVEN two completed rows with usage (one incomplete), one without, and a failed one
+        questions = {q: {"id": q} for q in ("q1", "q2", "q3", "q4")}
+
+        def usage(tokens: int, calls: int, complete: bool = True) -> dict:
+            return {
+                "input_tokens": tokens,
+                "output_tokens": tokens // 10,
+                "total_tokens": tokens + tokens // 10,
+                "llm_calls": calls,
+                "complete": complete,
+            }
+
+        grades = [
+            ga.grade_row(_row(usage=usage(1000, 2)), questions["q1"]),
+            ga.grade_row(_row(id="q2", usage=usage(3000, 4, complete=False)), questions["q2"]),
+            ga.grade_row(_row(id="q3"), questions["q3"]),
+            ga.grade_row(_row(None, id="q4", status="Timeout", usage=None), questions["q4"]),
+        ]
+        # WHEN summarized
+        summary = ga.summarize_arm(grades, questions)
+        # THEN the medians are over the two rows with usage and one of them is incomplete
+        assert summary["median_input_tokens"] == 2000
+        assert summary["median_output_tokens"] == 200
+        assert summary["median_total_tokens"] == 2200
+        assert summary["median_llm_calls"] == 3
+        assert summary["usage_incomplete"] == 1
+
     def test_language_shares_leave_out_rows_of_unknown_language(self):
         # GIVEN a decided match, a mismatch and a terse answer, all to Czech questions
         questions = {q: {"id": q, "lang": "cs"} for q in ("q1", "q2", "q3")}
@@ -431,6 +459,9 @@ class TestSummarizeArm:
         assert summary["local_source_share_mean"] is None
         assert summary["markdown_share"] is None
         assert summary["median_latency_s"] is None
+        assert summary["median_input_tokens"] is None
+        assert summary["median_llm_calls"] is None
+        assert summary["usage_incomplete"] == 0
         assert summary["lang_unknown"] == 0
 
 
