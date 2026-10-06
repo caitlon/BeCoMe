@@ -119,12 +119,13 @@ class ScriptedToolCallingModel(BaseChatModel):
             else _split_keeping_spaces(response.text)
         )
         usage = response.usage_metadata or (DEFAULT_USAGE if self.report_usage else None)
-        for index, piece in enumerate(pieces or [""]):
+        chunks = pieces or [""]
+        for index, piece in enumerate(chunks):
             if self.stream_delay_s:
                 await asyncio.sleep(self.stream_delay_s)
             if self.fail_after_chunks is not None and index >= self.fail_after_chunks:
                 raise httpx.ConnectError("the model server went away")
-            last = index == len(pieces) - 1
+            last = index == len(chunks) - 1
             chunk = AIMessageChunk(content=piece, usage_metadata=usage if last else None)
             yield ChatGenerationChunk(message=chunk)
 

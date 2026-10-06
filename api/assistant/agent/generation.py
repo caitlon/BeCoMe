@@ -199,7 +199,7 @@ def _visible(buffer: str) -> str:
     shown = strip_think_block(buffer)
     for length in range(min(len(THINK_OPEN) - 1, len(shown)), 0, -1):
         if THINK_OPEN.startswith(shown[-length:]):
-            return shown[:-length]
+            return shown[:-length].rstrip()
     return shown
 
 
@@ -243,19 +243,15 @@ class DirectGenerator(AnswerGenerator):
         :param question: Unused: the user message already carries it.
         :return: Pieces of answer text, then one :class:`Generated`.
         :raises CutOffAnswerError: If the reply ends inside a reasoning block.
-        :raises ValueError: If the model streamed no chunk, which a server that answered
-            never does.
         """
-        full: AIMessageChunk | None = None
+        full = AIMessageChunk(content="")
         emitted = 0
         async for chunk in self._model.astream([SystemMessage(content=SYSTEM_PROMPT), *messages]):
-            full = chunk if full is None else full + chunk
+            full += chunk
             visible = _visible(full.text)
             if len(visible) > emitted:
                 yield visible[emitted:]
                 emitted = len(visible)
-        if full is None:
-            raise ValueError("the model streamed no chunk")
         reply = AIMessage(content=full.text, usage_metadata=full.usage_metadata)
         final = _answer_of(reply)
         if len(final) > emitted:
