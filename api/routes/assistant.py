@@ -110,6 +110,11 @@ async def chat_stream(
     :param turn: The validated chat request and the context built for it.
     :param service: The assistant service for the configured mode.
     :return: A ``text/event-stream`` response.
+    :raises ProjectNotFoundError: If the request names a project the caller cannot see.
+    :raises AssistantUpstreamError: If the project API answers something unusable while the
+        project is fetched.
+    :raises AssistantUnavailableError: If a dependency is down or the deadline passes before
+        the model is called.
     """
     prepared = await service.prepare(turn.request, turn.context)
 
