@@ -198,7 +198,7 @@ The answer model (`make_answer_model`) asks the server for usage on the last str
 (`stream_usage=True`), which a streamed turn needs for its token counts. `DirectGenerator.stream()`
 yields the answer as it arrives, withholding any reasoning block, and its pieces always join to
 the text `generate()` returns. `AgentGenerator.stream()` yields the whole answer once, since the
-agent mode does not stream.
+`hybrid` and `agent` modes do not stream.
 
 The `usage` field of the response, `input_tokens`, `output_tokens`, `total_tokens`, `llm_calls`
 and `complete`, adds up what the answer model's server reported for the replies of the turn:
@@ -211,7 +211,7 @@ are also on the `assistant_turn` log record.
 The `timing` field holds `ttft_ms`, the milliseconds from the start of the answer model's call to
 its first piece of answer text, and `total_ms`, the whole turn with retrieval included. `ttft_ms`
 is null unless the turn was streamed, which only `/chat/stream` does, and null for a streamed turn
-in `agent` mode, which yields no text.
+in the `hybrid` and `agent` modes, which yield no text.
 
 ### Streaming
 
@@ -239,9 +239,9 @@ or the API is `503`, and a spent budget is `429`. After that the status is alrea
 failure arrives as an `error` event, with or without a token before it: a model that is down, an
 empty or cut-off answer, a turn that outlives its deadline, a project API that answers something
 unusable (all `503`), and any other exception (`500`, `Internal server error`, logged as
-`assistant_stream_failed` with the exception type and where it was raised, `file:line`). In `agent`
-mode nothing streams: the body is the `done` event alone. `timing.ttft_ms` is measured from the
-start of the model call, so it leaves out retrieval, and in `agent` mode it is null.
+`assistant_stream_failed` with the exception type and where it was raised, `file:line`). In the `hybrid`
+and `agent` modes nothing streams: the body is the `done` event alone. `timing.ttft_ms` is measured from the
+start of the model call, so it leaves out retrieval, and in the `hybrid` and `agent` modes it is null.
 
 ### Limits
 
