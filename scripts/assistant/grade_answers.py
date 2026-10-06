@@ -346,6 +346,7 @@ def summarize_arm(
         ``median_input_tokens``, ``median_output_tokens``, ``median_total_tokens`` and
         ``median_llm_calls`` (over the completed rows that carry ``usage``, rows with incomplete
         usage included, so ``usage_incomplete`` says how many of them are partial sums),
+        ``usage_rows`` (how many completed rows carried ``usage``, the medians' denominator),
         ``usage_incomplete`` (completed rows whose usage is not complete) and ``missing``
         (questions that have no row in this arm, for instance because the run stopped early).
     """
@@ -383,6 +384,7 @@ def summarize_arm(
             f"median_{key}": statistics.median(u[key] for u in usages) if usages else None
             for key in ("input_tokens", "output_tokens", "total_tokens", "llm_calls")
         },
+        "usage_rows": len(usages),
         "usage_incomplete": sum(not u["complete"] for u in usages),
         "missing": len(questions.keys() - {grade["id"] for grade in grades}),
     }

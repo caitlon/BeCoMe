@@ -396,8 +396,8 @@ class TestSummarizeArm:
         assert summary["missing"] == 0
 
     def test_token_medians_cover_the_completed_rows_that_carry_usage(self):
-        # GIVEN two completed rows with usage (one incomplete), one without, and a failed one
-        questions = {q: {"id": q} for q in ("q1", "q2", "q3", "q4")}
+        # GIVEN three completed rows with usage (two incomplete), one without, and a failed one
+        questions = {q: {"id": q} for q in ("q1", "q2", "q3", "q4", "q5")}
 
         def usage(tokens: int, calls: int, complete: bool = True) -> dict:
             return {
@@ -413,15 +413,40 @@ class TestSummarizeArm:
             ga.grade_row(_row(id="q2", usage=usage(3000, 4, complete=False)), questions["q2"]),
             ga.grade_row(_row(id="q3"), questions["q3"]),
             ga.grade_row(_row(None, id="q4", status="Timeout", usage=None), questions["q4"]),
+            ga.grade_row(_row(id="q5", usage=usage(5000, 6, complete=False)), questions["q5"]),
         ]
         # WHEN summarized
         summary = ga.summarize_arm(grades, questions)
-        # THEN the medians are over the two rows with usage and one of them is incomplete
-        assert summary["median_input_tokens"] == 2000
-        assert summary["median_output_tokens"] == 200
-        assert summary["median_total_tokens"] == 2200
-        assert summary["median_llm_calls"] == 3
-        assert summary["usage_incomplete"] == 1
+        # THEN the medians are over the three rows with usage and two of them are incomplete
+        assert summary["median_input_tokens"] == 3000
+        assert summary["median_output_tokens"] == 300
+        assert summary["median_total_tokens"] == 3300
+        assert summary["median_llm_calls"] == 4
+        assert summary["usage_rows"] == 3
+        assert summary["usage_incomplete"] == 2
+
+    def test_zero_token_usage_gives_zero_medians_not_none(self):
+        # GIVEN completed rows that all report zero tokens
+        questions = {q: {"id": q} for q in ("q1", "q2")}
+        zero = {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "llm_calls": 0,
+            "complete": True,
+        }
+        grades = [
+            ga.grade_row(_row(id="q1", usage=zero), questions["q1"]),
+            ga.grade_row(_row(id="q2", usage=zero), questions["q2"]),
+        ]
+        # WHEN summarized
+        summary = ga.summarize_arm(grades, questions)
+        # THEN the medians are 0, since there were rows to take them over
+        assert summary["median_input_tokens"] == 0
+        assert summary["median_output_tokens"] == 0
+        assert summary["median_total_tokens"] == 0
+        assert summary["median_llm_calls"] == 0
+        assert summary["usage_rows"] == 2
 
     def test_language_shares_leave_out_rows_of_unknown_language(self):
         # GIVEN a decided match, a mismatch and a terse answer, all to Czech questions
@@ -460,7 +485,10 @@ class TestSummarizeArm:
         assert summary["markdown_share"] is None
         assert summary["median_latency_s"] is None
         assert summary["median_input_tokens"] is None
+        assert summary["median_output_tokens"] is None
+        assert summary["median_total_tokens"] is None
         assert summary["median_llm_calls"] is None
+        assert summary["usage_rows"] == 0
         assert summary["usage_incomplete"] == 0
         assert summary["lang_unknown"] == 0
 
