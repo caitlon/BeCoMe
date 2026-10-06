@@ -10,6 +10,7 @@ database.
 import http.server
 import json
 import logging
+import re
 import threading
 from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
@@ -27,6 +28,7 @@ from sqlalchemy.exc import OperationalError
 from api.assistant import deps
 from api.assistant.agent import tracing
 from api.assistant.client import UserApiClient
+from api.assistant.errors import AssistantUpstreamError
 from api.assistant.rate_limit import get_assistant_throttle
 from api.auth.cookies import CSRF_COOKIE
 from api.config import get_settings
@@ -1614,7 +1616,38 @@ class TestStreamRoute:
         (record,) = [r for r in records if getattr(r, "event", "") == "assistant_stream_failed"]
         assert record.levelno == logging.ERROR
         assert record.reason == "RuntimeError"
+        assert re.fullmatch(r".+:\d+", record.where)
         assert _ANSWER_SENTINEL not in record.getMessage()
+        assert _ANSWER_SENTINEL not in record.where
+
+    def test_an_upstream_error_after_the_first_token_ends_the_stream_with_a_503_event(
+        self, assistant_settings, client
+    ):
+        """
+        GIVEN a model that raises AssistantUpstreamError, as a tool can when the project API
+            answers something unusable, after its first piece
+        WHEN the question is posted to the stream route
+        THEN a token event comes first and the stream ends with the public 503 error event,
+            as /chat answers it, and no done event
+        """
+        # GIVEN
+        token = register_and_login(client, "stream-upstream@example.com")
+        model = ScriptedToolCallingModel(
+            responses=[AIMessage(content="One two three.")],
+            fail_after_chunks=1,
+            failure=AssistantUpstreamError("bad"),
+        )
+        _use_model(client, model)
+
+        # WHEN
+        response = client.post(STREAM, json={"message": "hi"}, headers=auth_header(token))
+
+        # THEN
+        assert response.status_code == 200
+        events = _events(response.text)
+        assert events[0][0] == "token"
+        assert events[-1] == ("error", {"code": 503, "detail": UNAVAILABLE_BODY["detail"]})
+        assert "done" not in [name for name, _ in events]
 
     def test_a_project_the_caller_cannot_see_is_a_plain_404(self, assistant_settings, client):
         """
@@ -1667,20 +1700,28 @@ class TestStreamRoute:
         GIVEN a budget of one message per hour
         WHEN one user sends two stream requests
         THEN the first is streamed and the second is a plain 429 with the fixed detail
+        AND with the same budget, a stream call followed by a /chat call refuses the /chat
+            call, because both routes spend one budget
         """
         # GIVEN
         configure(ASSISTANT_RATE_LIMIT_PER_HOUR="1")
         token = register_and_login(client, "stream-budget@example.com")
         _use_model(client, _scripted("first", "second"))
+        other_token = register_and_login(client, "stream-budget-shared@example.com")
 
         # WHEN
         first = client.post(STREAM, json={"message": "one"}, headers=auth_header(token))
         second = client.post(STREAM, json={"message": "two"}, headers=auth_header(token))
+        streamed = client.post(STREAM, json={"message": "three"}, headers=auth_header(other_token))
+        chatted = client.post(CHAT, json={"message": "four"}, headers=auth_header(other_token))
 
         # THEN
         assert first.status_code == 200
         assert second.status_code == 429
         assert second.json() == {"detail": "Too many assistant messages. Please try again later."}
+        assert streamed.status_code == 200
+        assert chatted.status_code == 429
+        assert chatted.json() == second.json()
 
     def test_the_per_address_limit_refuses_the_next_stream_call_with_a_plain_429(
         self, assistant_settings, client
@@ -1696,7 +1737,7 @@ class TestStreamRoute:
         # GIVEN
         allowed = int(LIMIT_ASSISTANT_CHAT.split("/")[0])
         token = register_and_login(client, "stream-address@example.com")
-        _use_model(client, _scripted(*["ok"] * (allowed + 1)))
+        _use_model(client, _scripted(*["ok"] * (allowed + 2)))
 
         # WHEN
         with patch.object(limiter, "enabled", True):
@@ -1706,6 +1747,7 @@ class TestStreamRoute:
                     client.post(STREAM, json={"message": f"m{i}"}, headers=auth_header(token))
                     for i in range(allowed + 1)
                 ]
+                chat = client.post(CHAT, json={"message": "chat"}, headers=auth_header(token))
             finally:
                 limiter.reset()
 
@@ -1713,6 +1755,7 @@ class TestStreamRoute:
         assert [response.status_code for response in responses] == [200] * allowed + [429]
         assert responses[-1].headers["content-type"].startswith("application/json")
         assert "detail" not in responses[-1].json()
+        assert chat.status_code == 200
 
     def test_an_outage_during_retrieval_is_a_plain_503(self, assistant_settings, client):
         """

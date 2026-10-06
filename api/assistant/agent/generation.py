@@ -268,7 +268,7 @@ class DirectGenerator(AnswerGenerator):
         yield Generated(final, [], _usage_of([reply]))
 
 
-def _raised_at(exc: BaseException) -> str:
+def raised_at(exc: BaseException) -> str:
     """Say where an exception was raised, without its message or a traceback.
 
     :param exc: The exception.
@@ -293,7 +293,7 @@ def _tool_failed(exc: Exception, request: ToolCallRequest) -> str:
 
     The tools catch the outages themselves, so what arrives here is a bug, and it is
     logged at ERROR so error tracking sees it whatever the mode. The record carries the
-    tool, the exception's class name and where it was raised (see :func:`_raised_at`):
+    tool, the exception's class name and where it was raised (see :func:`raised_at`):
     never the message, which can name a host or a path, and never a traceback. The tool
     name comes from the model's call, so it is written only when it is one of the
     assistant's tools, and as ``unknown`` otherwise. In the installed library a call to a
@@ -313,7 +313,7 @@ def _tool_failed(exc: Exception, request: ToolCallRequest) -> str:
             "event": "assistant_tool_failed",
             "tool": name,
             "reason": type(exc).__name__,
-            "where": _raised_at(exc),
+            "where": raised_at(exc),
         },
     )
     ctx = cast(AssistantContext, request.runtime.context)

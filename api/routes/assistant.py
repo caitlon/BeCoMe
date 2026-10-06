@@ -15,12 +15,13 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Request, status
 from fastapi.responses import StreamingResponse
 
+from api.assistant.agent.generation import raised_at
 from api.assistant.deps import (
     AssistantServiceDep,
     PreparedTurnDep,
     enforce_message_limit,
 )
-from api.assistant.errors import AssistantUnavailableError
+from api.assistant.errors import AssistantUnavailableError, AssistantUpstreamError
 from api.assistant.exception_handlers import UNAVAILABLE_DETAIL
 from api.assistant.sse import format_event
 from api.config import Settings, get_settings
@@ -114,24 +115,30 @@ async def chat_stream(
 
     async def events() -> AsyncIterator[str]:
         try:
-            # Closes the service's stream, and so the model's, when the client disconnects.
+            # Closes the service's stream and the model's explicitly on exit, rather than
+            # leaving that to the garbage collector.
             async with contextlib.aclosing(service.stream(prepared)) as items:
                 async for item in items:
                     if isinstance(item, AssistantChatResponse):
                         yield format_event("done", item.model_dump(mode="json"))
                     else:
                         yield format_event("token", {"text": item})
-        except AssistantUnavailableError:
+        except (AssistantUnavailableError, AssistantUpstreamError):
             # The service has logged the failure already.
             code = status.HTTP_503_SERVICE_UNAVAILABLE
             yield format_event("error", {"code": code, "detail": UNAVAILABLE_DETAIL})
         except Exception as exc:
             # The 200 is sent already, so a failure the service did not map still has to end
-            # the stream with an event; only the exception type is logged, never its text.
+            # the stream with an event; the record names the exception type and where it was
+            # raised, never its text.
             logger.error(
                 "assistant stream failed: %s",
                 type(exc).__name__,
-                extra={"event": "assistant_stream_failed", "reason": type(exc).__name__},
+                extra={
+                    "event": "assistant_stream_failed",
+                    "reason": type(exc).__name__,
+                    "where": raised_at(exc),
+                },
             )
             code = status.HTTP_500_INTERNAL_SERVER_ERROR
             yield format_event("error", {"code": code, "detail": "Internal server error"})
