@@ -4,7 +4,8 @@
 Every question is one single-turn chat through ``POST /api/v1/assistant/chat``, so what is
 measured is what a user gets: the service, the product prompt and the grounding checks. With
 ``--stream`` the question goes through ``POST /api/v1/assistant/chat/stream`` instead and the
-row records the server's own timing, first-token time included. The transport is part of a row's
+row records the server's own timing, first-token time included (null in the agent and hybrid
+modes). The transport is part of a row's
 provenance, so one output file never mixes the two.
 
 The app is driven in-process (httpx's ASGI transport), with the fixtures user signed in by
@@ -688,7 +689,10 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument(
         "--stream",
         action="store_true",
-        help="Ask the streamed route and record the server's timing, first token included",
+        help=(
+            "Ask the streamed route and record the server's timing, first token included "
+            "(null in the agent and hybrid modes)"
+        ),
     )
     parser.add_argument(
         "--no-pacing", action="store_true", help="Do not pace to the route's rate limit"
