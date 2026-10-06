@@ -523,6 +523,11 @@ async def run_eval(
     run_settings = _eval_settings(settings, mode, trace)
     traced = run_settings.assistant_langsmith_enabled
     print(f"tracing: {'on' if traced else 'off'}", file=sys.stderr)
+    if trace and not traced:
+        print(
+            "tracing: --trace given but ASSISTANT_LANGSMITH_ENABLED is off, nothing is traced",
+            file=sys.stderr,
+        )
     user_id = str(fixtures["user"]["id"])
     app.dependency_overrides[get_settings] = lambda: run_settings
     ok = consecutive = 0
@@ -536,8 +541,7 @@ async def run_eval(
         ) as http:
             # The query-transform call runs before the service's own tracing scope opens, so the
             # same switch wraps the loop: it suppresses ambient tracing when the setting is off.
-            scope = tracing_scope(run_settings)
-            with scope, output.open("a", encoding="utf-8") as sink:
+            with tracing_scope(run_settings), output.open("a", encoding="utf-8") as sink:
                 for number, record in enumerate(todo, start=1):
                     key = record.get("project")
                     if pacer is not None:

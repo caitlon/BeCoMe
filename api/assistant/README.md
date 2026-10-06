@@ -135,11 +135,10 @@ Runs only on a developer machine. `Settings` refuses to start any deployed profi
    printed, and `--summary` writes it as JSON; its `missing` counts the questions with no row in
    that arm, so a run that stopped early does not read as complete. It also holds
    `median_input_tokens`, `median_output_tokens`, `median_total_tokens` and `median_llm_calls`
-   over the completed rows that carry `usage`, `usage_rows`, the number of those rows, and
-   `usage_incomplete`, the count of them whose usage is partial, so the medians include partial
-   sums. `paired_bootstrap` gives the
-   mean paired difference of two arms with a percentile interval over resampled questions, the
-   same for a given seed.
+   over the completed rows that carry `usage`, and `usage_rows`, the number of those rows. The
+   medians include rows whose usage is a partial sum, and `usage_incomplete` says how many of the
+   `usage_rows` are such. `paired_bootstrap` gives the mean paired difference of two arms with a
+   percentile interval over resampled questions, the same for a given seed.
 
    ```bash
    uv run python scripts/assistant/grade_answers.py \
