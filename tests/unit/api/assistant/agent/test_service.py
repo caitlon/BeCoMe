@@ -32,6 +32,7 @@ from api.assistant.errors import (
     AssistantUnavailableError,
     AssistantUpstreamError,
 )
+from api.assistant.rag.models import make_answer_model
 from api.assistant.rag.retrieval import DocsRetriever, RetrievedChunk
 from api.assistant.views import FuzzyView, OpinionView, ProjectView, ResultView
 from api.config import Settings
@@ -841,6 +842,64 @@ class TestStream:
         assert [(r.event, r.reason) for r in records] == [
             ("assistant_dependency_unavailable", "ConnectError")
         ]
+
+    async def test_an_error_chunk_from_the_model_server_after_the_first_piece_is_unavailable(
+        self,
+    ):
+        """
+        GIVEN a real ChatOpenAI whose server sends one content chunk and then an error chunk
+        WHEN the turn is streamed
+        THEN the first piece was yielded, AssistantUnavailableError is raised and
+             assistant_dependency_unavailable is logged for the bare openai.APIError
+        """
+        body = (
+            'data: {"id":"c","object":"chat.completion.chunk","created":0,"model":"m",'
+            '"choices":[{"index":0,"delta":{"role":"assistant","content":"One "}}]}\n\n'
+            'data: {"error": {"message": "boom", "type": "server_error"}}\n\n'
+        )
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200, headers={"content-type": "text/event-stream"}, content=body.encode()
+            )
+
+        settings = _settings()
+        model = make_answer_model(settings)
+        client = openai.AsyncOpenAI(
+            api_key="unused",  # pragma: allowlist secret
+            base_url="http://model.test/v1",
+            http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+        )
+        model.root_async_client = client
+        model.async_client = client.chat.completions
+        service = AssistantService(settings, model)
+        turn = await service.prepare(_request(), _ctx())
+        pieces: list[str] = []
+        with (
+            captured_log_records(SERVICE_LOGGER) as records,
+            pytest.raises(AssistantUnavailableError),
+        ):
+            async for item in service.stream(turn):
+                if isinstance(item, str):
+                    pieces.append(item)
+        assert pieces == ["One"]
+        assert [(r.event, r.reason) for r in records] == [
+            ("assistant_dependency_unavailable", "APIError")
+        ]
+
+    async def test_closing_the_stream_early_closes_the_model_stream(self):
+        """
+        GIVEN a streamed turn read up to its first piece
+        WHEN the consumer closes the service's generator
+        THEN the model's own stream is closed at once, not left to the garbage collector
+        """
+        model = ScriptedToolCallingModel(responses=[_say("One two three.")])
+        service = AssistantService(_settings(), model)
+        turn = await service.prepare(_request(), _ctx())
+        items = service.stream(turn)
+        assert await anext(items) == "One"
+        await items.aclose()
+        assert model.closed_early is True
 
     async def test_an_empty_streamed_answer_is_unavailable(self):
         """
