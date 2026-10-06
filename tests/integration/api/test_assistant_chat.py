@@ -1624,11 +1624,11 @@ class TestStreamRoute:
         self, assistant_settings, client
     ):
         """
-        GIVEN a model that raises AssistantUpstreamError, as a tool can when the project API
-            answers something unusable, after its first piece
+        GIVEN a model that raises AssistantUpstreamError after its first piece (the tools catch
+            it themselves today, so the branch guards a future caller)
         WHEN the question is posted to the stream route
         THEN a token event comes first and the stream ends with the public 503 error event,
-            as /chat answers it, and no done event
+            as /chat answers it, no done event, and one WARNING record for the failure
         """
         # GIVEN
         token = register_and_login(client, "stream-upstream@example.com")
@@ -1640,7 +1640,8 @@ class TestStreamRoute:
         _use_model(client, model)
 
         # WHEN
-        response = client.post(STREAM, json={"message": "hi"}, headers=auth_header(token))
+        with captured_log_records("api.routes.assistant") as records:
+            response = client.post(STREAM, json={"message": "hi"}, headers=auth_header(token))
 
         # THEN
         assert response.status_code == 200
@@ -1648,6 +1649,9 @@ class TestStreamRoute:
         assert events[0][0] == "token"
         assert events[-1] == ("error", {"code": 503, "detail": UNAVAILABLE_BODY["detail"]})
         assert "done" not in [name for name, _ in events]
+        (record,) = [r for r in records if getattr(r, "event", "") == "assistant_upstream_error"]
+        assert record.levelno == logging.WARNING
+        assert record.reason == "AssistantUpstreamError"
 
     def test_a_project_the_caller_cannot_see_is_a_plain_404(self, assistant_settings, client):
         """

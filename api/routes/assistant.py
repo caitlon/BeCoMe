@@ -123,8 +123,18 @@ async def chat_stream(
                         yield format_event("done", item.model_dump(mode="json"))
                     else:
                         yield format_event("token", {"text": item})
-        except (AssistantUnavailableError, AssistantUpstreamError):
+        except AssistantUnavailableError:
             # The service has logged the failure already.
+            code = status.HTTP_503_SERVICE_UNAVAILABLE
+            yield format_event("error", {"code": code, "detail": UNAVAILABLE_DETAIL})
+        except AssistantUpstreamError as exc:
+            # Nothing below logs this one, so the record is written here, under the event
+            # name the /chat handler uses.
+            logger.warning(
+                "assistant upstream error: %s",
+                type(exc).__name__,
+                extra={"event": "assistant_upstream_error", "reason": type(exc).__name__},
+            )
             code = status.HTTP_503_SERVICE_UNAVAILABLE
             yield format_event("error", {"code": code, "detail": UNAVAILABLE_DETAIL})
         except Exception as exc:
