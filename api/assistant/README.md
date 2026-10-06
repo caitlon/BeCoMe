@@ -210,7 +210,8 @@ are also on the `assistant_turn` log record.
 
 The `timing` field holds `ttft_ms`, the milliseconds from the start of the answer model's call to
 its first piece of answer text, and `total_ms`, the whole turn with retrieval included. `ttft_ms`
-is null unless the turn was streamed, which only `/chat/stream` does.
+is null unless the turn was streamed, which only `/chat/stream` does, and null for a streamed turn
+in `agent` mode, which yields no text.
 
 ### Streaming
 
@@ -236,10 +237,11 @@ Everything before the model is called is a plain HTTP error, as on `/chat`: retr
 the response opens, so a project the caller cannot see is `404`, an outage of the vector database
 or the API is `503`, and a spent budget is `429`. After that the status is already 200, so every
 failure arrives as an `error` event, with or without a token before it: a model that is down, an
-empty or cut-off answer, a turn that outlives its deadline (all `503`), and any other exception
-(`500`, `Internal server error`, logged as `assistant_stream_failed` with the exception type
-only). In `agent` mode nothing streams: the body is the `done` event alone. `timing.ttft_ms` is
-measured from the start of the model call, so it leaves out retrieval.
+empty or cut-off answer, a turn that outlives its deadline, a project API that answers something
+unusable (all `503`), and any other exception (`500`, `Internal server error`, logged as
+`assistant_stream_failed` with the exception type and where it was raised, `file:line`). In `agent`
+mode nothing streams: the body is the `done` event alone. `timing.ttft_ms` is measured from the
+start of the model call, so it leaves out retrieval, and in `agent` mode it is null.
 
 ### Limits
 
