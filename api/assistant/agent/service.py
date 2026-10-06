@@ -121,7 +121,8 @@ class AssistantService:
 
         :param request: The validated chat request.
         :param ctx: Per-turn context (client, retriever, source registry, project).
-        :return: The answer, its sources, the tools that ran and the grounding checks.
+        :return: The answer, its sources, the tools that ran, the grounding checks and the
+            tokens the answer model used.
         :raises ProjectNotFoundError: If the request names a project the caller cannot see.
         :raises AssistantUpstreamError: If the API answers something unusable while the
             project is fetched.
@@ -147,11 +148,11 @@ class AssistantService:
                 empty_reason = "empty"
                 with tracing_scope(self._settings):
                     try:
-                        text, tools_used = await self._generator.generate(
+                        text, tools_used, usage = await self._generator.generate(
                             messages, ctx, request.message
                         )
                     except CutOffAnswerError:
-                        text, tools_used, empty_reason = "", [], "cut_off"
+                        text, tools_used, usage, empty_reason = "", [], None, "cut_off"
                 if not text:
                     logger.warning(
                         "Assistant answer was empty",
@@ -207,6 +208,10 @@ class AssistantService:
                 "citations_valid": citations_valid,
                 "numbers_grounded": not ungrounded,
                 "ungrounded_number_count": len(ungrounded),
+                "input_tokens": usage.input_tokens if usage else None,
+                "output_tokens": usage.output_tokens if usage else None,
+                "total_tokens": usage.total_tokens if usage else None,
+                "llm_calls": usage.llm_calls if usage else None,
                 "duration_ms": round((time.monotonic() - started) * 1000),
             },
         )
@@ -219,6 +224,7 @@ class AssistantService:
                 numbers_grounded=not ungrounded,
                 ungrounded_numbers=ungrounded,
             ),
+            usage=usage,
         )
 
     async def _fetch(self, request: AssistantChatRequest, ctx: AssistantContext) -> list[str]:

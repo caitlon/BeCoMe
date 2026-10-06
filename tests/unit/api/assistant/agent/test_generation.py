@@ -23,6 +23,7 @@ from api.assistant.agent.tools import UNAVAILABLE_REPLY
 from api.assistant.client import UserApiClient
 from api.assistant.rag.retrieval import DocsRetriever, RetrievedChunk
 from api.assistant.views import ProjectBrief
+from api.schemas.assistant import TurnUsage
 from tests.shared.assistant_fakes import ScriptedToolCallingModel
 from tests.shared.helpers import captured_log_records
 
@@ -85,6 +86,19 @@ def _extra_fields(record: logging.LogRecord) -> set[str]:
 
 def _user(content: str = QUESTION) -> list[BaseMessage]:
     return [HumanMessage(content=content)]
+
+
+def _used(message: AIMessage, input_tokens: int, output_tokens: int) -> AIMessage:
+    """Give a scripted reply its own token usage."""
+    return message.model_copy(
+        update={
+            "usage_metadata": {
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "total_tokens": input_tokens + output_tokens,
+            }
+        }
+    )
 
 
 class TestUserMessage:
@@ -230,7 +244,7 @@ class TestDirectGenerator:
         model = _model(AIMessage(content="It is the midpoint."))
         messages = [HumanMessage(content="Earlier"), AIMessage(content="Reply"), *_user()]
 
-        text, tools = await DirectGenerator(model).generate(messages, _ctx(), QUESTION)
+        text, tools, _ = await DirectGenerator(model).generate(messages, _ctx(), QUESTION)
 
         assert (text, tools) == ("It is the midpoint.", [])
         assert len(model.seen) == 1
@@ -244,7 +258,7 @@ class TestDirectGenerator:
         """
         model = _model(AIMessage(content="<think>x</think>Done."))
 
-        text, _ = await DirectGenerator(model).generate(_user(), _ctx(), QUESTION)
+        text, _, _ = await DirectGenerator(model).generate(_user(), _ctx(), QUESTION)
 
         assert text == "Done."
 
@@ -267,9 +281,39 @@ class TestDirectGenerator:
         """
         model = _model(AIMessage(content="<think>all of it</think>"))
 
-        text, _ = await DirectGenerator(model).generate(_user(), _ctx(), QUESTION)
+        text, _, _ = await DirectGenerator(model).generate(_user(), _ctx(), QUESTION)
 
         assert text == ""
+
+    async def test_reports_the_usage_of_its_one_reply(self):
+        """
+        GIVEN a model whose reply reports 120 input and 30 output tokens
+        WHEN the turn is generated
+        THEN the usage is those numbers, one call, and complete
+        """
+        model = _model(_used(AIMessage(content="It is the midpoint."), 120, 30))
+
+        _, _, usage = await DirectGenerator(model).generate(_user(), _ctx(), QUESTION)
+
+        assert usage == TurnUsage(
+            input_tokens=120, output_tokens=30, total_tokens=150, llm_calls=1, complete=True
+        )
+
+    async def test_a_reply_without_usage_is_an_incomplete_zero(self):
+        """
+        GIVEN a model whose reply carries no usage metadata
+        WHEN the turn is generated
+        THEN the usage is zero for one call, and marked incomplete
+        """
+        model = ScriptedToolCallingModel(
+            responses=[AIMessage(content="It is the midpoint.")], report_usage=False
+        )
+
+        _, _, usage = await DirectGenerator(model).generate(_user(), _ctx(), QUESTION)
+
+        assert usage == TurnUsage(
+            input_tokens=0, output_tokens=0, total_tokens=0, llm_calls=1, complete=False
+        )
 
 
 @pytest.mark.asyncio
@@ -285,7 +329,9 @@ class TestAgentGenerator:
         model = _model(_search(), AIMessage(content="It is the midpoint [1]."))
         ctx = _ctx([_chunk()])
 
-        text, tools = await AgentGenerator(model, max_tool_calls=4).generate(_user(), ctx, QUESTION)
+        text, tools, _ = await AgentGenerator(model, max_tool_calls=4).generate(
+            _user(), ctx, QUESTION
+        )
 
         assert (text, tools) == ("It is the midpoint [1].", ["search_docs"])
         assert [ref.title for ref in ctx.sources.refs()] == ["Method"]
@@ -317,7 +363,9 @@ class TestAgentGenerator:
             AIMessage(content="Done."),
         )
 
-        _, tools = await AgentGenerator(model, max_tool_calls=4).generate(_user(), _ctx(), QUESTION)
+        _, tools, _ = await AgentGenerator(model, max_tool_calls=4).generate(
+            _user(), _ctx(), QUESTION
+        )
 
         assert tools == ["list_my_projects", "search_docs"]
 
@@ -329,7 +377,7 @@ class TestAgentGenerator:
         """
         model = _model(_call("delete_everything"), AIMessage(content="I cannot do that."))
 
-        text, tools = await AgentGenerator(model, max_tool_calls=4).generate(
+        text, tools, _ = await AgentGenerator(model, max_tool_calls=4).generate(
             _user(), _ctx(), QUESTION
         )
 
@@ -345,7 +393,7 @@ class TestAgentGenerator:
             _call("get_project_result", projectid=PROJECT_ID), AIMessage(content="Not able.")
         )
 
-        text, tools = await AgentGenerator(model, max_tool_calls=4).generate(
+        text, tools, _ = await AgentGenerator(model, max_tool_calls=4).generate(
             _user(), _ctx(), QUESTION
         )
 
@@ -360,7 +408,9 @@ class TestAgentGenerator:
         model = _model(_search(1), _search(2), _search(3), AIMessage(content="Here it is."))
         ctx = _ctx([_chunk()])
 
-        text, tools = await AgentGenerator(model, max_tool_calls=2).generate(_user(), ctx, QUESTION)
+        text, tools, _ = await AgentGenerator(model, max_tool_calls=2).generate(
+            _user(), ctx, QUESTION
+        )
 
         assert (text, tools) == ("Here it is.", ["search_docs"])
         assert ctx.retriever.search.await_count == 2
@@ -379,7 +429,7 @@ class TestAgentGenerator:
         model = _model(_call("list_my_projects"), AIMessage(content="I could not look it up."))
 
         with captured_log_records("api.assistant.agent.generation") as records:
-            text, tools = await AgentGenerator(model, max_tool_calls=4).generate(
+            text, tools, _ = await AgentGenerator(model, max_tool_calls=4).generate(
                 _user(), ctx, QUESTION
             )
 
@@ -438,7 +488,7 @@ class TestAgentGenerator:
         """
         model = _model(_search(), AIMessage(content="Stay within the limit of 5 calls."))
 
-        text, _ = await AgentGenerator(model, max_tool_calls=4).generate(
+        text, _, _ = await AgentGenerator(model, max_tool_calls=4).generate(
             _user(), _ctx([_chunk()]), QUESTION
         )
 
@@ -457,7 +507,7 @@ class TestAgentGenerator:
         for index in range(3):
             history += [HumanMessage(content=f"q{index}"), AIMessage(content=f"a{index}")]
 
-        text, _ = await AgentGenerator(model, max_tool_calls=1).generate(
+        text, _, _ = await AgentGenerator(model, max_tool_calls=1).generate(
             [*history, *_user()], _ctx(), QUESTION
         )
 
@@ -473,7 +523,7 @@ class TestAgentGenerator:
         """
         model = _model(_search(1), _search(2), AIMessage(content="Answered in time."))
 
-        text, _ = await AgentGenerator(model, max_tool_calls=1).generate(
+        text, _, _ = await AgentGenerator(model, max_tool_calls=1).generate(
             _user(), _ctx([_chunk()]), QUESTION
         )
 
@@ -500,7 +550,7 @@ class TestAgentGenerator:
 
         with_context = HumanMessage(content=f"Some fetched context.\n\nQuestion: {QUESTION}")
 
-        text, tools = await AgentGenerator(model, max_tool_calls=2).generate(
+        text, tools, _ = await AgentGenerator(model, max_tool_calls=2).generate(
             [*history, with_context], ctx, QUESTION
         )
 
@@ -581,7 +631,9 @@ class TestAgentGenerator:
             AIMessage(content="No data."),
         )
 
-        text, _ = await AgentGenerator(model, max_tool_calls=2).generate(_user(), _ctx(), QUESTION)
+        text, _, _ = await AgentGenerator(model, max_tool_calls=2).generate(
+            _user(), _ctx(), QUESTION
+        )
 
         assert text == "No data."
         assert model.seen[-1] == [
@@ -603,7 +655,9 @@ class TestAgentGenerator:
             AIMessage(content="<think>out of tokens</think>"),
         )
 
-        text, _ = await AgentGenerator(model, max_tool_calls=2).generate(_user(), _ctx(), QUESTION)
+        text, _, _ = await AgentGenerator(model, max_tool_calls=2).generate(
+            _user(), _ctx(), QUESTION
+        )
 
         assert text == ""
 
@@ -636,6 +690,72 @@ class TestAgentGenerator:
 
         with pytest.raises(CutOffAnswerError):
             await AgentGenerator(model, max_tool_calls=2).generate(_user(), _ctx(), QUESTION)
+
+    async def test_sums_the_usage_of_every_reply_of_the_loop(self):
+        """
+        GIVEN a model that searches twice and then answers, each reply with its own usage
+        WHEN the turn is generated
+        THEN the usage is the sum over the three replies, and complete
+        """
+        model = _model(
+            _used(_search(1), 100, 10),
+            _used(_search(2), 200, 20),
+            _used(AIMessage(content="It is the midpoint."), 300, 40),
+        )
+
+        _, _, usage = await AgentGenerator(model, max_tool_calls=4).generate(
+            _user(), _ctx([_chunk()]), QUESTION
+        )
+
+        assert usage == TurnUsage(
+            input_tokens=600, output_tokens=70, total_tokens=670, llm_calls=3, complete=True
+        )
+
+    async def test_the_usage_of_a_limit_run_includes_the_fallback_call_and_not_the_limit_note(self):
+        """
+        GIVEN two tool calls allowed, a model that keeps asking for tools, and a fallback reply
+        WHEN the turn is generated
+        THEN the usage is the four loop replies plus the fallback reply, five calls, and
+             the limit's own message, which no model wrote, is not counted as a missing one
+        """
+        model = _model(
+            _call("nope", 1),
+            _call("nope", 2),
+            _call("nope", 3),
+            _call("nope", 4),
+            _used(AIMessage(content="From what I found."), 50, 5),
+        )
+
+        _, _, usage = await AgentGenerator(model, max_tool_calls=2).generate(
+            _user(), _ctx(), QUESTION
+        )
+
+        assert usage == TurnUsage(
+            input_tokens=4 * 10 + 50,
+            output_tokens=4 * 5 + 5,
+            total_tokens=4 * 15 + 55,
+            llm_calls=5,
+            complete=True,
+        )
+
+    async def test_a_reply_without_usage_leaves_partial_sums_and_marks_them_incomplete(self):
+        """
+        GIVEN a loop whose first reply reports usage and whose second reports none
+        WHEN the turn is generated
+        THEN the usage counts the first, still counts two calls, and is incomplete
+        """
+        model = ScriptedToolCallingModel(
+            responses=[_used(_search(), 100, 10), AIMessage(content="It is the midpoint.")],
+            report_usage=False,
+        )
+
+        _, _, usage = await AgentGenerator(model, max_tool_calls=4).generate(
+            _user(), _ctx([_chunk()]), QUESTION
+        )
+
+        assert usage == TurnUsage(
+            input_tokens=100, output_tokens=10, total_tokens=110, llm_calls=2, complete=False
+        )
 
 
 def _failure_request(name: str = "list_my_projects") -> ToolCallRequest:

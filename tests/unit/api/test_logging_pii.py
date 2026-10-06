@@ -40,6 +40,11 @@ ALLOWED_KEYS = frozenset(
         "sid",
         # The count of tokens issued, never a token.
         "token_count",
+        # Integer counts of the model's tokens (text units) in one assistant turn, summed
+        # from the usage the model server reports; never a credential.
+        "input_tokens",
+        "output_tokens",
+        "total_tokens",
     }
 )
 

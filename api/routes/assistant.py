@@ -69,6 +69,7 @@ async def chat(
     :param turn: The validated chat request and the context built for it, whose API client
         carries the caller's own access token.
     :param service: The assistant service for the configured mode.
-    :return: The answer, its sources, the tools that ran and the grounding checks.
+    :return: The answer, its sources, the tools that ran, the grounding checks and the
+        token usage of the turn.
     """
     return await service.answer(turn.request, turn.context)

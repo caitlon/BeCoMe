@@ -83,6 +83,22 @@ class AnswerChecks(BaseModel):
     ungrounded_numbers: list[str]
 
 
+class TurnUsage(BaseModel):
+    """The tokens the answer model used in one chat turn, summed over its replies.
+
+    ``complete`` is false when a reply reported no usage: its tokens are then missing from
+    the sums, though it is still counted in ``llm_calls``.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    input_tokens: int
+    output_tokens: int
+    total_tokens: int
+    llm_calls: int
+    complete: bool
+
+
 class AssistantChatResponse(BaseModel):
     """The assistant's answer to one chat turn."""
 
@@ -90,3 +106,4 @@ class AssistantChatResponse(BaseModel):
     sources: list[SourceRef]
     tools_used: list[str]
     checks: AnswerChecks
+    usage: TurnUsage | None = None

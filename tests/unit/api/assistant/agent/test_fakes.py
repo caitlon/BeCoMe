@@ -7,6 +7,7 @@ from langchain_core.tools import tool
 
 from api.assistant.rag.retrieval import RetrievedChunk
 from tests.shared.assistant_fakes import (
+    DEFAULT_USAGE,
     ScriptedToolCallingModel,
     StaticDocsRetriever,
     ToolEchoingModel,
@@ -44,6 +45,26 @@ class TestScriptedToolCallingModel:
         assert result["messages"][-1].content == "Done."
         tool_messages = [m for m in result["messages"] if isinstance(m, ToolMessage)]
         assert [m.content for m in tool_messages] == ["about the mean: 42.00"]
+
+    async def test_reports_the_default_usage_unless_a_reply_has_its_own_or_it_is_off(self):
+        """
+        GIVEN replies with no usage, with its own usage, and a model told to report none
+        WHEN each is called
+        THEN the first gets the default, the second keeps its own, and the third has none
+        """
+        own = {"input_tokens": 1, "output_tokens": 2, "total_tokens": 3}
+        model = ScriptedToolCallingModel(
+            responses=[AIMessage(content="a"), AIMessage(content="b", usage_metadata=own)]
+        )
+        silent = ScriptedToolCallingModel(responses=[AIMessage(content="c")], report_usage=False)
+
+        first = await model.ainvoke("x")
+        second = await model.ainvoke("x")
+        third = await silent.ainvoke("x")
+
+        assert first.usage_metadata == DEFAULT_USAGE
+        assert second.usage_metadata == own
+        assert third.usage_metadata is None
 
     async def test_records_the_messages_of_every_call(self):
         """
