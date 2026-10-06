@@ -46,8 +46,10 @@ class ScriptedToolCallingModel(BaseChatModel):
     :ivar report_usage: Whether a response with no ``usage_metadata`` gets the default.
     :ivar stream_chunks: The pieces a streamed call yields, when the test sets them; else
         the reply is split after every space.
-    :ivar fail_after_chunks: When set, a streamed call raises a connection error after
-        that many pieces.
+    :ivar fail_after_chunks: When set, a streamed call raises ``failure`` after that many
+        pieces.
+    :ivar failure: What a streamed call raises at ``fail_after_chunks``; by default a
+        connection error.
     :ivar stream_delay_s: Seconds a streamed call waits before each piece.
     :ivar closed_early: Set when a streamed call ended before it yielded its last piece,
         because the consumer closed it or because it raised.
@@ -58,6 +60,7 @@ class ScriptedToolCallingModel(BaseChatModel):
     report_usage: bool = True
     stream_chunks: list[str] | None = None
     fail_after_chunks: int | None = None
+    failure: Exception | None = None
     stream_delay_s: float = 0.0
     closed_early: bool = False
     seen: list[list[BaseMessage]] = Field(default_factory=list)
@@ -104,14 +107,14 @@ class ScriptedToolCallingModel(BaseChatModel):
         """Play back the next scripted response in pieces, the usage on the last one.
 
         The pieces are ``stream_chunks`` when the test set them, else the reply split
-        after every space. ``fail_after_chunks`` raises a connection error after that many
-        pieces, as a model server that dies mid-answer does.
+        after every space. ``fail_after_chunks`` raises ``failure`` after that many pieces: by
+        default a connection error, as a model server that dies mid-answer does.
 
         :param messages: The conversation so far; recorded in ``seen``.
         :param stop: Unused.
         :param run_manager: Unused.
         :return: The pieces as chunks.
-        :raises httpx.ConnectError: After ``fail_after_chunks`` pieces.
+        :raises Exception: ``failure``, after ``fail_after_chunks`` pieces.
         """
         self.seen.append(list(messages))
         response = self.responses[self._call_count]
@@ -129,7 +132,7 @@ class ScriptedToolCallingModel(BaseChatModel):
                 if self.stream_delay_s:
                     await asyncio.sleep(self.stream_delay_s)
                 if self.fail_after_chunks is not None and index >= self.fail_after_chunks:
-                    raise httpx.ConnectError("the model server went away")
+                    raise self.failure or httpx.ConnectError("the model server went away")
                 last = index == len(chunks) - 1
                 chunk = AIMessageChunk(content=piece, usage_metadata=usage if last else None)
                 yield ChatGenerationChunk(message=chunk)

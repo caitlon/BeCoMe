@@ -16,6 +16,7 @@ from contextlib import ExitStack, contextmanager
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+import httpx
 import langsmith as ls
 import pytest
 from fastapi import HTTPException, Request
@@ -1581,6 +1582,40 @@ class TestStreamRoute:
         assert events[-1] == ("error", {"code": 503, "detail": UNAVAILABLE_BODY["detail"]})
         assert "done" not in [name for name, _ in events]
 
+    def test_any_other_failure_after_the_first_token_ends_the_stream_with_a_500_event(
+        self, assistant_settings, client
+    ):
+        """
+        GIVEN a model that raises a RuntimeError, which is not an outage, after its first piece
+        WHEN the question is posted to the stream route
+        THEN a token event comes first and the stream ends with an error event that holds code
+            500 and a fixed detail, no done event, and one ERROR record that names the
+            exception type but not its text
+        """
+        # GIVEN
+        token = register_and_login(client, "stream-bug@example.com")
+        model = ScriptedToolCallingModel(
+            responses=[AIMessage(content="One two three.")],
+            fail_after_chunks=1,
+            failure=RuntimeError(_ANSWER_SENTINEL),
+        )
+        _use_model(client, model)
+
+        # WHEN
+        with captured_log_records("api.routes.assistant") as records:
+            response = client.post(STREAM, json={"message": "hi"}, headers=auth_header(token))
+
+        # THEN
+        assert response.status_code == 200
+        events = _events(response.text)
+        assert events[0][0] == "token"
+        assert events[-1] == ("error", {"code": 500, "detail": "Internal server error"})
+        assert "done" not in [name for name, _ in events]
+        (record,) = [r for r in records if getattr(r, "event", "") == "assistant_stream_failed"]
+        assert record.levelno == logging.ERROR
+        assert record.reason == "RuntimeError"
+        assert _ANSWER_SENTINEL not in record.getMessage()
+
     def test_a_project_the_caller_cannot_see_is_a_plain_404(self, assistant_settings, client):
         """
         GIVEN the owner's project and another signed-in user
@@ -1646,6 +1681,62 @@ class TestStreamRoute:
         assert first.status_code == 200
         assert second.status_code == 429
         assert second.json() == {"detail": "Too many assistant messages. Please try again later."}
+
+    def test_the_per_address_limit_refuses_the_next_stream_call_with_a_plain_429(
+        self, assistant_settings, client
+    ):
+        """
+        GIVEN the per-address limiter on, and one address that has made the allowed number of
+            stream calls
+        WHEN it makes one more
+        THEN that call is the limiter's plain JSON 429 and not an event stream; slowapi
+            scopes its counter by endpoint, so /chat has a counter of its own, while the
+            hourly budget is shared by both routes
+        """
+        # GIVEN
+        allowed = int(LIMIT_ASSISTANT_CHAT.split("/")[0])
+        token = register_and_login(client, "stream-address@example.com")
+        _use_model(client, _scripted(*["ok"] * (allowed + 1)))
+
+        # WHEN
+        with patch.object(limiter, "enabled", True):
+            limiter.reset()
+            try:
+                responses = [
+                    client.post(STREAM, json={"message": f"m{i}"}, headers=auth_header(token))
+                    for i in range(allowed + 1)
+                ]
+            finally:
+                limiter.reset()
+
+        # THEN
+        assert [response.status_code for response in responses] == [200] * allowed + [429]
+        assert responses[-1].headers["content-type"].startswith("application/json")
+        assert "detail" not in responses[-1].json()
+
+    def test_an_outage_during_retrieval_is_a_plain_503(self, assistant_settings, client):
+        """
+        GIVEN a retriever whose search cannot reach its server
+        WHEN the question is posted to the stream route
+        THEN the answer is a plain JSON 503 with the fixed detail and not an event stream,
+            because retrieval runs before the response opens, and the model is never asked
+        """
+        # GIVEN
+        token = register_and_login(client, "stream-retrieval@example.com")
+        model = _scripted("never used")
+        _use_model(client, model)
+        client.app.dependency_overrides[deps.get_docs_retriever] = lambda: _DownRetriever(
+            httpx.ConnectError("the embedding server went away")
+        )
+
+        # WHEN
+        response = client.post(STREAM, json={"message": "hi"}, headers=auth_header(token))
+
+        # THEN
+        assert response.status_code == 503
+        assert response.headers["content-type"].startswith("application/json")
+        assert response.json() == UNAVAILABLE_BODY
+        assert model.seen == []
 
     def test_agent_mode_streams_only_the_done_event(self, assistant_settings, client, configure):
         """

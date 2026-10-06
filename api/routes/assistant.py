@@ -8,10 +8,11 @@ loads there.
 """
 
 import contextlib
+import logging
 from collections.abc import AsyncIterator
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, status
 from fastapi.responses import StreamingResponse
 
 from api.assistant.deps import (
@@ -27,6 +28,7 @@ from api.middleware.rate_limit import LIMIT_ASSISTANT_CHAT, limiter
 from api.schemas.assistant import AssistantChatResponse, AssistantConfigResponse
 
 router = APIRouter(prefix="/api/v1/assistant", tags=["assistant"])
+logger = logging.getLogger(__name__)
 
 
 @router.get("/config", summary="Get the local assistant's active configuration")
@@ -98,9 +100,10 @@ async def chat_stream(
     dependency outage before the model is called, the message limit and the per-address
     limit are answered as plain HTTP errors, exactly as ``/chat`` answers them. Once the
     stream is open the status is already 200: a failure of the model call is sent as an
-    ``error`` event with the code and text the handlers would have used, and the stream
-    ends. The events are ``token`` (``{"text": ...}``) for each piece of the answer, then
-    ``done`` with the body ``/chat`` returns, or ``error`` (``{"code", "detail"}``).
+    ``error`` event with the code and text the handlers would have used (any other
+    exception is sent as code 500), and the stream ends. The events are ``token``
+    (``{"text": ...}``) for each piece of the answer, then ``done`` with the body ``/chat``
+    returns, or ``error`` (``{"code", "detail"}``).
 
     :param request: The incoming request, read by the per-address rate limit.
     :param turn: The validated chat request and the context built for it.
@@ -111,6 +114,7 @@ async def chat_stream(
 
     async def events() -> AsyncIterator[str]:
         try:
+            # Closes the service's stream, and so the model's, when the client disconnects.
             async with contextlib.aclosing(service.stream(prepared)) as items:
                 async for item in items:
                     if isinstance(item, AssistantChatResponse):
@@ -119,7 +123,18 @@ async def chat_stream(
                         yield format_event("token", {"text": item})
         except AssistantUnavailableError:
             # The service has logged the failure already.
-            yield format_event("error", {"code": 503, "detail": UNAVAILABLE_DETAIL})
+            code = status.HTTP_503_SERVICE_UNAVAILABLE
+            yield format_event("error", {"code": code, "detail": UNAVAILABLE_DETAIL})
+        except Exception as exc:
+            # The 200 is sent already, so a failure the service did not map still has to end
+            # the stream with an event; only the exception type is logged, never its text.
+            logger.error(
+                "assistant stream failed: %s",
+                type(exc).__name__,
+                extra={"event": "assistant_stream_failed", "reason": type(exc).__name__},
+            )
+            code = status.HTTP_500_INTERNAL_SERVER_ERROR
+            yield format_event("error", {"code": code, "detail": "Internal server error"})
 
     return StreamingResponse(
         events(),
