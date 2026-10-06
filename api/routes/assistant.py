@@ -128,9 +128,9 @@ async def chat_stream(
             code = status.HTTP_503_SERVICE_UNAVAILABLE
             yield format_event("error", {"code": code, "detail": UNAVAILABLE_DETAIL})
         except AssistantUpstreamError as exc:
-            # Nothing below logs this one, so the record is written here, under the event
-            # name the /chat handler uses.
-            logger.warning(
+            # Nothing below logs this one, so the record is written here, at the level and
+            # under the event name the /chat handler uses, so error tracking sees both routes.
+            logger.error(
                 "assistant upstream error: %s",
                 type(exc).__name__,
                 extra={"event": "assistant_upstream_error", "reason": type(exc).__name__},

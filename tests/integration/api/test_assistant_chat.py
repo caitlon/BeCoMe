@@ -1650,7 +1650,7 @@ class TestStreamRoute:
         assert events[-1] == ("error", {"code": 503, "detail": UNAVAILABLE_BODY["detail"]})
         assert "done" not in [name for name, _ in events]
         (record,) = [r for r in records if getattr(r, "event", "") == "assistant_upstream_error"]
-        assert record.levelno == logging.WARNING
+        assert record.levelno == logging.ERROR
         assert record.reason == "AssistantUpstreamError"
 
     def test_a_project_the_caller_cannot_see_is_a_plain_404(self, assistant_settings, client):

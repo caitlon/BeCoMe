@@ -214,8 +214,8 @@ class AssistantService:
     async def stream(self, turn: TurnDraft) -> AsyncGenerator[str | AssistantChatResponse]:
         """Generate a prepared turn's answer, yielding its text as it arrives.
 
-        The `hybrid` and `agent` modes yield no text, only the final response. The time of the first piece
-        is the turn's time to first token. The deadline bounds each wait for the model's
+        The `hybrid` and `agent` modes yield no text, only the final response. The time of the first
+        piece is the turn's time to first token. The deadline bounds each wait for the model's
         next piece, and the turn as a whole, because it is one point in time.
 
         :param turn: What :meth:`prepare` built.

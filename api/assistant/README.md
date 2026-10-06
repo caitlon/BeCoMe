@@ -235,10 +235,11 @@ what `/chat` returns. `error` ends the stream in place of `done`.
 
 Everything before the model is called is a plain HTTP error, as on `/chat`: retrieval runs before
 the response opens, so a project the caller cannot see is `404`, an outage of the vector database
-or the API is `503`, and a spent budget is `429`. After that the status is already 200, so every
-failure arrives as an `error` event, with or without a token before it: a model that is down, an
-empty or cut-off answer, a turn that outlives its deadline, a project API that answers something
-unusable (all `503`), and any other exception (`500`, `Internal server error`, logged as
+or the API, or a project API that answers something unusable, is `503`, and a spent budget is
+`429`. After that the status is already 200, so every failure arrives as an `error` event, with or
+without a token before it: a model that is down, an empty or cut-off answer, a turn that outlives
+its deadline (all `503`; the upstream-error branch is only defensive, since the tools catch an
+unusable project API), and any other exception (`500`, `Internal server error`, logged as
 `assistant_stream_failed` with the exception type and where it was raised, `file:line`). In the `hybrid`
 and `agent` modes nothing streams: the body is the `done` event alone. `timing.ttft_ms` is measured from the
 start of the model call, so it leaves out retrieval, and in the `hybrid` and `agent` modes it is null.
