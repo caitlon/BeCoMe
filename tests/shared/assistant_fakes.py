@@ -10,14 +10,15 @@ to run against a scripted sequence, and records the messages of every call in
 ``seen``, so a test can assert what the model was shown.
 """
 
-from collections.abc import Callable, Sequence
+from collections.abc import AsyncIterator, Callable, Sequence
 from typing import Any
 
-from langchain_core.callbacks import CallbackManagerForLLMRun
+import httpx
+from langchain_core.callbacks import AsyncCallbackManagerForLLMRun, CallbackManagerForLLMRun
 from langchain_core.language_models import BaseChatModel, LanguageModelInput
-from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
+from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, ToolMessage
 from langchain_core.messages.ai import UsageMetadata
-from langchain_core.outputs import ChatGeneration, ChatResult
+from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
 from langchain_core.runnables import Runnable
 from langchain_core.tools import BaseTool
 from pydantic import Field, PrivateAttr
@@ -38,13 +39,21 @@ class ScriptedToolCallingModel(BaseChatModel):
     model server reports usage on every reply; a test that sets its own metadata keeps it,
     and one that needs a reply without any sets ``report_usage`` to false.
 
+    A streamed call plays the next response back in pieces (see :meth:`_astream`).
+
     :ivar responses: The messages to return, one per call, in order.
     :ivar report_usage: Whether a response with no ``usage_metadata`` gets the default.
+    :ivar stream_chunks: The pieces a streamed call yields, when the test sets them; else
+        the reply is split after every space.
+    :ivar fail_after_chunks: When set, a streamed call raises a connection error after
+        that many pieces.
     :ivar seen: The messages each call was given, one list per call, in call order.
     """
 
     responses: list[AIMessage]
     report_usage: bool = True
+    stream_chunks: list[str] | None = None
+    fail_after_chunks: int | None = None
     seen: list[list[BaseMessage]] = Field(default_factory=list)
     _call_count: int = PrivateAttr(default=0)
 
@@ -79,10 +88,52 @@ class ScriptedToolCallingModel(BaseChatModel):
         self._call_count += 1
         return ChatResult(generations=[ChatGeneration(message=response)])
 
+    async def _astream(
+        self,
+        messages: list[BaseMessage],
+        stop: list[str] | None = None,
+        run_manager: AsyncCallbackManagerForLLMRun | None = None,
+        **kwargs: Any,
+    ) -> AsyncIterator[ChatGenerationChunk]:
+        """Play back the next scripted response in pieces, the usage on the last one.
+
+        The pieces are ``stream_chunks`` when the test set them, else the reply split
+        after every space. ``fail_after_chunks`` raises a connection error after that many
+        pieces, as a model server that dies mid-answer does.
+
+        :param messages: The conversation so far; recorded in ``seen``.
+        :param stop: Unused.
+        :param run_manager: Unused.
+        :return: The pieces as chunks.
+        :raises httpx.ConnectError: After ``fail_after_chunks`` pieces.
+        """
+        self.seen.append(list(messages))
+        response = self.responses[self._call_count]
+        self._call_count += 1
+        pieces = (
+            self.stream_chunks
+            if self.stream_chunks is not None
+            else _split_keeping_spaces(response.text)
+        )
+        usage = response.usage_metadata or (DEFAULT_USAGE if self.report_usage else None)
+        for index, piece in enumerate(pieces or [""]):
+            if self.fail_after_chunks is not None and index >= self.fail_after_chunks:
+                raise httpx.ConnectError("the model server went away")
+            last = index == len(pieces) - 1
+            chunk = AIMessageChunk(content=piece, usage_metadata=usage if last else None)
+            yield ChatGenerationChunk(message=chunk)
+
     @property
     def _llm_type(self) -> str:
         """Return the model type name LangChain's tracing uses."""
         return "scripted-tool-calling-model"
+
+
+def _split_keeping_spaces(text: str) -> list[str]:
+    """Split a reply after every space, so that the pieces join back to it exactly."""
+    pieces = [piece + " " for piece in text.split(" ")]
+    pieces[-1] = pieces[-1][:-1]
+    return [piece for piece in pieces if piece]
 
 
 class ToolEchoingModel(BaseChatModel):

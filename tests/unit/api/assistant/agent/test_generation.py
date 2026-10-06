@@ -4,6 +4,7 @@ import json
 import logging
 from unittest.mock import AsyncMock
 
+import httpx
 import pytest
 from langchain.agents.middleware import ToolCallRequest
 from langchain.tools import ToolRuntime
@@ -12,8 +13,10 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, System
 from api.assistant.agent.context import AssistantContext, SourceRegistry
 from api.assistant.agent.generation import (
     AgentGenerator,
+    AnswerGenerator,
     CutOffAnswerError,
     DirectGenerator,
+    Generated,
     _tool_failed,
     _usage_of,
     answer_text,
@@ -328,6 +331,165 @@ class TestDirectGenerator:
         assert usage == TurnUsage(
             input_tokens=0, output_tokens=0, total_tokens=0, llm_calls=1, complete=False
         )
+
+
+async def _collect(
+    generator: AnswerGenerator, messages: list[BaseMessage], ctx: AssistantContext
+) -> tuple[list[str], Generated]:
+    """Stream a turn and return the pieces it yielded and the final result."""
+    pieces: list[str] = []
+    final: Generated | None = None
+    async for item in generator.stream(messages, ctx, QUESTION):
+        if isinstance(item, Generated):
+            final = item
+        else:
+            pieces.append(item)
+    assert final is not None
+    return pieces, final
+
+
+@pytest.mark.asyncio
+class TestDirectGeneratorStream:
+    """One streamed model call, no tools: the pieces are the answer as it arrives."""
+
+    async def test_the_pieces_join_to_the_answer(self):
+        """
+        GIVEN a model that streams "It is the midpoint."
+        WHEN the turn is streamed
+        THEN the pieces join to the answer, no tool ran, and the usage is the reply's
+        """
+        model = _model(AIMessage(content="It is the midpoint."))
+
+        pieces, final = await _collect(DirectGenerator(model), _user(), _ctx())
+
+        assert "".join(pieces) == "It is the midpoint."
+        assert final.text == "It is the midpoint."
+        assert final.tools_used == []
+        assert final.usage == TurnUsage(
+            input_tokens=10, output_tokens=5, total_tokens=15, llm_calls=1, complete=True
+        )
+
+    async def test_sends_the_system_prompt_then_the_messages(self):
+        """
+        GIVEN a model that answers once
+        WHEN a turn with a history is streamed
+        THEN the model saw the system prompt and then the messages, once
+        """
+        model = _model(AIMessage(content="Hello."))
+        messages = [HumanMessage(content="Earlier"), AIMessage(content="Reply"), *_user()]
+
+        await _collect(DirectGenerator(model), messages, _ctx())
+
+        assert model.seen == [[SystemMessage(content=SYSTEM_PROMPT), *messages]]
+
+    async def test_reasoning_is_withheld_and_the_answer_follows(self):
+        """
+        GIVEN a reply that opens with a reasoning block
+        WHEN the turn is streamed
+        THEN nothing of the block reaches the pieces and the answer does
+        """
+        model = _model(AIMessage(content="<think>hmm hmm</think> The answer."))
+
+        pieces, final = await _collect(DirectGenerator(model), _user(), _ctx())
+
+        assert "".join(pieces) == "The answer."
+        assert "hmm" not in "".join(pieces)
+        assert final.text == "The answer."
+
+    async def test_a_think_tag_split_across_chunks_is_still_withheld(self):
+        """
+        GIVEN chunks "<thi", "nk>secret</think>", " Done."
+        WHEN the turn is streamed
+        THEN neither "secret" nor the half-arrived tag appears in the pieces
+        """
+        model = ScriptedToolCallingModel(
+            responses=[AIMessage(content="<think>secret</think> Done.")],
+            stream_chunks=["<thi", "nk>secret</think>", " Done."],
+        )
+
+        pieces, final = await _collect(DirectGenerator(model), _user(), _ctx())
+
+        assert "".join(pieces) == "Done."
+        assert final.text == "Done."
+
+    async def test_an_angle_bracket_that_is_not_a_tag_is_delivered(self):
+        """
+        GIVEN chunks "a <", " b" (an inequality, not a tag)
+        WHEN the turn is streamed
+        THEN the pieces join to "a < b" exactly
+        """
+        model = ScriptedToolCallingModel(
+            responses=[AIMessage(content="a < b")], stream_chunks=["a <", " b"]
+        )
+
+        pieces, final = await _collect(DirectGenerator(model), _user(), _ctx())
+
+        assert "".join(pieces) == "a < b" == final.text
+
+    async def test_a_trailing_angle_bracket_is_delivered_in_the_end(self):
+        """
+        GIVEN chunks "a ", "<" and then the end of the reply
+        WHEN the turn is streamed
+        THEN the withheld "<" is yielded after the last chunk and the pieces join to "a <"
+        """
+        model = ScriptedToolCallingModel(
+            responses=[AIMessage(content="a <")], stream_chunks=["a ", "<"]
+        )
+
+        pieces, final = await _collect(DirectGenerator(model), _user(), _ctx())
+
+        assert pieces[-1] == "<"
+        assert "".join(pieces) == "a <" == final.text
+
+    async def test_a_reply_cut_off_inside_its_reasoning_is_refused(self):
+        """
+        GIVEN a reply that opens a reasoning block and never closes it
+        WHEN the turn is streamed
+        THEN CutOffAnswerError is raised and no piece was yielded
+        """
+        model = _model(AIMessage(content="<think>still thinking"))
+        pieces: list[str] = []
+
+        with pytest.raises(CutOffAnswerError):
+            async for item in DirectGenerator(model).stream(_user(), _ctx(), QUESTION):
+                if isinstance(item, str):
+                    pieces.append(item)
+
+        assert pieces == []
+
+    async def test_a_stream_without_usage_is_incomplete(self):
+        """
+        GIVEN a model that streams without reporting usage
+        WHEN the turn is streamed
+        THEN the usage counts zero, one call, and is incomplete
+        """
+        model = ScriptedToolCallingModel(
+            responses=[AIMessage(content="Plain.")], report_usage=False
+        )
+
+        _, final = await _collect(DirectGenerator(model), _user(), _ctx())
+
+        assert final.usage == TurnUsage(
+            input_tokens=0, output_tokens=0, total_tokens=0, llm_calls=1, complete=False
+        )
+
+    async def test_a_model_that_dies_mid_answer_raises_after_the_first_pieces(self):
+        """
+        GIVEN a model server that goes away after two pieces
+        WHEN the turn is streamed
+        THEN the first pieces were yielded and the connection error then propagates
+        """
+        model = ScriptedToolCallingModel(
+            responses=[AIMessage(content="one two three four")], fail_after_chunks=2
+        )
+        pieces: list[str] = []
+
+        with pytest.raises(httpx.ConnectError):
+            async for item in DirectGenerator(model).stream(_user(), _ctx(), QUESTION):
+                if isinstance(item, str):
+                    pieces.append(item)
+
+        assert "".join(pieces) == "one two"
 
 
 @pytest.mark.asyncio
@@ -792,6 +954,22 @@ class TestAgentGenerator:
         assert usage == TurnUsage(
             input_tokens=400, output_tokens=40, total_tokens=440, llm_calls=5, complete=False
         )
+
+    async def test_stream_yields_the_whole_answer_once(self):
+        """
+        GIVEN a model that searches the documents and then answers
+        WHEN the turn is streamed
+        THEN the only item is one Generated whose text, tools and usage match generate
+        """
+        responses = [_search(), AIMessage(content="It is the midpoint [1].")]
+        generator = AgentGenerator(_model(*responses), max_tool_calls=4)
+        expected = await AgentGenerator(_model(*responses), max_tool_calls=4).generate(
+            _user(), _ctx([_chunk()]), QUESTION
+        )
+
+        items = [item async for item in generator.stream(_user(), _ctx([_chunk()]), QUESTION)]
+
+        assert items == [Generated(*expected)]
 
 
 def _failure_request(name: str = "list_my_projects") -> ToolCallRequest:
