@@ -19,6 +19,7 @@ class TestUnavailableErrors:
         [
             openai.APIConnectionError(request=_REQUEST),
             openai.APITimeoutError(request=_REQUEST),
+            openai.APIError("boom", request=_REQUEST, body=None),
             openai.APIStatusError(
                 "boom", response=httpx.Response(503, request=_REQUEST), body=None
             ),
