@@ -1288,6 +1288,70 @@ class TestStream:
 
         assert list(ea.parse_sse(lines)) == [("token", {"text": "a"})]
 
+    def test_several_data_lines_of_one_event_form_one_payload(self):
+        """
+        GIVEN an event whose JSON is spread over two ``data:`` lines
+        WHEN it is parsed
+        THEN the lines are joined with a newline into one payload, as the SSE spec says
+        """
+        lines = ["event: done", 'data: {"answer":', 'data: "a"}', ""]
+
+        assert list(ea.parse_sse(lines)) == [("done", {"answer": "a"})]
+
+    def test_a_body_that_ends_after_a_token_is_an_incomplete_stream(self, assistant_settings):
+        """
+        GIVEN a 200 response whose body ends after a token event, with no done or error
+        WHEN the runner asks a question over it
+        THEN the status is stream_incomplete and answer, usage and timing are null
+        """
+
+        # GIVEN
+        class _Response:
+            status_code = 200
+
+            async def aiter_lines(self):
+                for line in ("event: token", 'data: {"text":"a"}', ""):
+                    yield line
+
+        class _Opened:
+            async def __aenter__(self):
+                return _Response()
+
+            async def __aexit__(self, *exc_info):
+                return False
+
+        http = SimpleNamespace(stream=lambda *args, **kwargs: _Opened())
+        record = {"id": "q1", "question": "Plum?"}
+
+        # WHEN
+        result = asyncio.run(ea._ask(http, record, None, str(uuid4()), stream=True))
+
+        # THEN
+        assert result["status"] == "stream_incomplete"
+        assert (result["answer"], result["usage"], result["timing"]) == (None, None, None)
+
+    def test_an_answer_with_a_unicode_line_separator_survives_the_stream(
+        self, assistant_settings, client, tmp_path
+    ):
+        """
+        GIVEN a model whose answer holds U+2028
+        WHEN the runner asks the question over the stream route
+        THEN the row is ok and its answer is intact
+        """
+        # GIVEN
+        answer = "It combines\u2028two."
+        fixtures = _setup(client, _scripted(answer))
+        output = tmp_path / "out.jsonl"
+
+        # WHEN
+        _run(client, fixtures, [{"id": "q1", "question": "What is it?"}], output, stream=True)
+
+        # THEN
+        # Not _rows: splitlines would cut the file at the U+2028 inside the answer.
+        (row,) = ea.latest_rows(output).values()
+        assert row["status"] == "ok"
+        assert row["answer"] == answer
+
     def test_main_prints_the_transport(self, assistant_settings, client, tmp_path, capsys):
         """
         GIVEN a one-question run
@@ -1327,6 +1391,25 @@ class TestStream:
         # WHEN / THEN
         with pytest.raises(ea.RunRefusedError, match="transport"):
             _run(client, fixtures, question, output, stream=True)
+        assert len(_rows(output)) == 1
+
+    def test_a_resumed_stream_file_with_the_chat_transport_is_refused(
+        self, assistant_settings, client, tmp_path
+    ):
+        """
+        GIVEN rows of an arm recorded over the stream route
+        WHEN the arm is run again over /chat
+        THEN the run is refused naming transport, and nothing is appended
+        """
+        # GIVEN
+        fixtures = _setup(client, _scripted("One."))
+        output = tmp_path / "out.jsonl"
+        question = [{"id": "q1", "question": "One?"}]
+        _run(client, fixtures, question, output, stream=True)
+
+        # WHEN / THEN
+        with pytest.raises(ea.RunRefusedError, match="transport"):
+            _run(client, fixtures, question, output, stream=False)
         assert len(_rows(output)) == 1
 
     def test_rows_from_before_the_stream_existed_count_as_chat(
