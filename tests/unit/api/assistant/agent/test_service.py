@@ -891,7 +891,7 @@ class TestStream:
         """
         GIVEN a streamed turn read up to its first piece
         WHEN the consumer closes the service's generator
-        THEN the model's own stream is closed at once, not left to the garbage collector
+        THEN the fake's model stream is closed through the chain
         """
         model = ScriptedToolCallingModel(responses=[_say("One two three.")])
         service = AssistantService(_settings(), model)
