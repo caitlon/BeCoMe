@@ -98,8 +98,9 @@ api/
 
 ## API endpoints
 
-The sections below cover the routes of a deployed service. The assistant's two routes,
-`GET /api/v1/assistant/config` and `POST /api/v1/assistant/chat`, are not listed here. They exist
+The sections below cover the routes of a deployed service. The assistant's three routes,
+`GET /api/v1/assistant/config`, `POST /api/v1/assistant/chat` and
+`POST /api/v1/assistant/chat/stream`, are not listed here. They exist
 only when `ASSISTANT_ENABLED=true`, and a deployed profile refuses to start with that setting on,
 so on a deployed service every request that reaches routing answers 404 for the whole
 `/api/v1/assistant` prefix. Their behavior is in the

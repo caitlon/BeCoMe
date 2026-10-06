@@ -1,4 +1,4 @@
-"""Integration tests for POST /api/v1/assistant/chat, through the real test application.
+"""Integration tests for POST /api/v1/assistant/chat and /chat/stream, through the real test app.
 
 The chat model is always a scripted one from ``tests/shared/assistant_fakes.py`` (or the
 real client pointed at a stub server on localhost, or at a closed port), the retriever is

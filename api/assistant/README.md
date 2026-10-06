@@ -147,8 +147,9 @@ Runs only on a developer machine. `Settings` refuses to start any deployed profi
        --output supplementary/assistant-eval/grades.jsonl
    ```
 7. Backend: set `ASSISTANT_ENABLED=true` in `.env`, then run the API as usual. This turns on
-   `GET /api/v1/assistant/config` and `POST /api/v1/assistant/chat`
-   (`api/routes/assistant.py`); the `model` field of the first reports the answer model.
+   `GET /api/v1/assistant/config`, `POST /api/v1/assistant/chat` and
+   `POST /api/v1/assistant/chat/stream` (`api/routes/assistant.py`); the `model` field of the
+   first reports the answer model.
 
 ## The chat endpoint
 
@@ -231,11 +232,13 @@ data: {"code":503,"detail":"The assistant is temporarily unavailable"}
 `token` carries a piece of the answer and the pieces join to the answer in `done`, whose body is
 what `/chat` returns. `error` ends the stream in place of `done`.
 
-Everything before the first token is a plain HTTP error, as on `/chat`: retrieval runs before the
-response opens, so a project the caller cannot see is `404`, an outage of the vector database or
-the API is `503`, and a spent budget is `429`. Only a failure of the model call itself, or a turn
-that outlives its deadline, arrives as an `error` event, because the status is already 200 by
-then. In `agent` mode nothing streams: the body is the `done` event alone. `timing.ttft_ms` is
+Everything before the model is called is a plain HTTP error, as on `/chat`: retrieval runs before
+the response opens, so a project the caller cannot see is `404`, an outage of the vector database
+or the API is `503`, and a spent budget is `429`. After that the status is already 200, so every
+failure arrives as an `error` event, with or without a token before it: a model that is down, an
+empty or cut-off answer, a turn that outlives its deadline (all `503`), and any other exception
+(`500`, `Internal server error`, logged as `assistant_stream_failed` with the exception type
+only). In `agent` mode nothing streams: the body is the `done` event alone. `timing.ttft_ms` is
 measured from the start of the model call, so it leaves out retrieval.
 
 ### Limits
@@ -255,7 +258,9 @@ measured from the start of the model call, so it leaves out retrieval.
 - **Per-address limit.** `LIMIT_ASSISTANT_CHAT` (`20/minute`, `api/middleware/rate_limit.py`)
   applies to every address on top of that. It is checked inside the route, after the
   dependencies, so a message it refuses has already spent one hourly message and had an API
-  client built and closed; it makes no model call.
+  client built and closed; it makes no model call. Each route has its own counter, so `/chat`
+  and `/chat/stream` each allow `20/minute` per address, while the hourly message limit is
+  shared by both.
 - **Turn timeout.** `ASSISTANT_TURN_TIMEOUT_SECONDS` (default 180) bounds one turn, fetching and
   generation together; a turn that outlives it is answered `503`.
 
