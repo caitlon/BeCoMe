@@ -15,7 +15,8 @@ language (see :func:`~api.assistant.agent.generation.user_message`).
 
 import asyncio
 import logging
-import time
+from collections.abc import AsyncIterator
+from dataclasses import dataclass
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
@@ -27,6 +28,7 @@ from api.assistant.agent.generation import (
     AnswerGenerator,
     CutOffAnswerError,
     DirectGenerator,
+    Generated,
     user_message,
 )
 from api.assistant.agent.prompt import (
@@ -88,6 +90,26 @@ def _kept_history(history: list[ChatTurn], max_turns: int) -> list[ChatTurn]:
     return kept
 
 
+@dataclass
+class TurnDraft:
+    """A turn ready for generation: what the service built before the model is called.
+
+    :ivar request: The validated chat request.
+    :ivar ctx: The turn's context.
+    :ivar kept: The part of the client's history the model is sent.
+    :ivar messages: The conversation for the model, ending with this turn's user message.
+    :ivar started: The event loop's clock when :meth:`AssistantService.prepare` began.
+    :ivar deadline_at: The event loop's clock when the turn runs out of time.
+    """
+
+    request: AssistantChatRequest
+    ctx: AssistantContext
+    kept: list[ChatTurn]
+    messages: list[AnyMessage]
+    started: float
+    deadline_at: float
+
+
 class AssistantService:
     """Answers one chat turn using the mode configured in ``Settings``.
 
@@ -107,30 +129,24 @@ class AssistantService:
             else AgentGenerator(chat_model, settings.assistant_max_tool_calls)
         )
 
-    async def answer(
-        self, request: AssistantChatRequest, ctx: AssistantContext
-    ) -> AssistantChatResponse:
-        """Answer one turn in the configured mode.
+    async def prepare(self, request: AssistantChatRequest, ctx: AssistantContext) -> TurnDraft:
+        """Build everything a turn needs before the model is called.
 
-        The whole turn, fetching and generation, runs under
-        ``assistant_turn_timeout_seconds``. The documents are searched with the last
-        message alone, not with the history: a follow-up that only makes sense with the
-        earlier turns is searched as it stands, which is a known limit.
-
-        A check that fails changes the flags of the response and nothing else: the answer
-        is not generated again.
+        The documents are searched with the last message alone, not with the history: a
+        follow-up that only makes sense with the earlier turns is searched as it stands,
+        which is a known limit. The fetching runs under ``assistant_turn_timeout_seconds``,
+        so that a caller that streams the answer meets its failures before any byte is sent.
 
         :param request: The validated chat request.
         :param ctx: Per-turn context (client, retriever, source registry, project).
-        :return: The answer, its sources, the tools that ran, the grounding checks and the
-            tokens the answer model used.
+        :return: The turn, with the messages for the model and the deadline of the whole turn.
         :raises ProjectNotFoundError: If the request names a project the caller cannot see.
         :raises AssistantUpstreamError: If the API answers something unusable while the
             project is fetched.
-        :raises AssistantUnavailableError: If a model or data server is down, the answer
-            is empty, or the turn outlives its deadline.
+        :raises AssistantUnavailableError: If a data server is down or the deadline passes
+            while fetching.
         """
-        started = time.monotonic()
+        started = asyncio.get_running_loop().time()
         mode = self._settings.assistant_mode
         kept = _kept_history(request.history, self._settings.assistant_max_history_turns)
         messages: list[AnyMessage] = [
@@ -139,51 +155,125 @@ class AssistantService:
             else AIMessage(content=turn.content)
             for turn in kept
         ]
-        deadline = asyncio.timeout(self._settings.assistant_turn_timeout_seconds)
+        deadline_at = started + self._settings.assistant_turn_timeout_seconds
         try:
-            async with deadline:
+            async with asyncio.timeout_at(deadline_at) as deadline:
                 parts = [] if mode == "agent" else await self._fetch(request, ctx)
                 if mode != "workflow" and ctx.current_project_id is not None:
                     parts.append(f"Current project id: {ctx.current_project_id}")
                 messages.append(HumanMessage(content=user_message(parts, request.message)))
+        except TimeoutError:
+            if not deadline.expired():
+                raise
+            raise self._timed_out(mode, started) from None
+        except UNAVAILABLE_ERRORS as exc:
+            raise self._unavailable(exc, mode) from None
+        return TurnDraft(request, ctx, kept, messages, started, deadline_at)
+
+    async def answer(
+        self, request: AssistantChatRequest, ctx: AssistantContext
+    ) -> AssistantChatResponse:
+        """Answer one turn in the configured mode.
+
+        The whole turn, fetching and generation, runs under
+        ``assistant_turn_timeout_seconds``. A check that fails changes the flags of the
+        response and nothing else: the answer is not generated again.
+
+        :param request: The validated chat request.
+        :param ctx: Per-turn context (client, retriever, source registry, project).
+        :return: The answer, its sources, the tools that ran, the grounding checks, the
+            tokens the answer model used and the time the turn took.
+        :raises ProjectNotFoundError: If the request names a project the caller cannot see.
+        :raises AssistantUpstreamError: If the API answers something unusable while the
+            project is fetched.
+        :raises AssistantUnavailableError: If a model or data server is down, the answer
+            is empty, or the turn outlives its deadline.
+        """
+        turn = await self.prepare(request, ctx)
+        mode = self._settings.assistant_mode
+        try:
+            async with asyncio.timeout_at(turn.deadline_at) as deadline:
                 empty_reason = "empty"
                 with tracing_scope(self._settings):
                     try:
                         text, tools_used, usage = await self._generator.generate(
-                            messages, ctx, request.message
+                            turn.messages, ctx, request.message
                         )
                     except CutOffAnswerError:
                         text, tools_used, empty_reason = "", [], "cut_off"
                 if not text:
-                    logger.warning(
-                        "Assistant answer was empty",
-                        extra={
-                            "event": "assistant_empty_answer",
-                            "mode": mode,
-                            "reason": empty_reason,
-                        },
-                    )
-                    raise AssistantUnavailableError("the model gave an empty answer")
+                    raise self._empty_answer(mode, empty_reason)
         except TimeoutError:
             if not deadline.expired():
                 raise
-            duration_ms = round((time.monotonic() - started) * 1000)
-            logger.warning(
-                "Assistant turn timed out",
-                extra={"event": "assistant_turn_timeout", "mode": mode, "duration_ms": duration_ms},
-            )
-            raise AssistantUnavailableError("the assistant turn ran out of time") from None
+            raise self._timed_out(mode, turn.started) from None
         except UNAVAILABLE_ERRORS as exc:
-            logger.warning(
-                "Assistant dependency unavailable",
-                extra={
-                    "event": "assistant_dependency_unavailable",
-                    "mode": mode,
-                    "reason": type(exc).__name__,
-                },
-            )
-            raise AssistantUnavailableError("a server the assistant needs is unavailable") from None
+            raise self._unavailable(exc, mode) from None
+        return self._finish(turn, Generated(text, tools_used, usage), ttft_ms=None, streamed=False)
 
+    async def stream(self, turn: TurnDraft) -> AsyncIterator[str | AssistantChatResponse]:
+        """Generate a prepared turn's answer, yielding its text as it arrives.
+
+        The agent mode yields no text, only the final response. The time of the first piece
+        is the turn's time to first token. The deadline bounds each wait for the model's
+        next piece, and the turn as a whole, because it is one point in time.
+
+        :param turn: What :meth:`prepare` built.
+        :return: Pieces of answer text, then the response as the last item.
+        :raises AssistantUnavailableError: If a model server is down, the answer is empty or
+            cut off, or the turn outlives its deadline, after zero or more pieces.
+        """
+        mode = self._settings.assistant_mode
+        loop = asyncio.get_running_loop()
+        model_started = loop.time()
+        ttft_ms: int | None = None
+        generated: Generated | None = None
+        empty_reason = "empty"
+        items = self._generator.stream(turn.messages, turn.ctx, turn.request.message)
+        try:
+            with tracing_scope(self._settings):
+                while True:
+                    # The deadline bounds only the wait for the model's next piece, never the
+                    # yield: a timeout that fired while the consumer held a piece would
+                    # cancel the consumer instead of this generator.
+                    try:
+                        async with asyncio.timeout_at(turn.deadline_at) as deadline:
+                            item = await anext(items, None)
+                    except TimeoutError:
+                        if not deadline.expired():
+                            raise
+                        raise self._timed_out(mode, turn.started) from None
+                    except CutOffAnswerError:
+                        empty_reason = "cut_off"
+                        break
+                    if item is None:
+                        break
+                    if isinstance(item, Generated):
+                        generated = item
+                    elif item:
+                        if ttft_ms is None:
+                            ttft_ms = round((loop.time() - model_started) * 1000)
+                        yield item
+        except UNAVAILABLE_ERRORS as exc:
+            raise self._unavailable(exc, mode) from None
+        finally:
+            await items.aclose()
+        if generated is None or not generated.text:
+            raise self._empty_answer(mode, empty_reason)
+        yield self._finish(turn, generated, ttft_ms=ttft_ms, streamed=True)
+
+    def _finish(
+        self, turn: TurnDraft, generated: Generated, *, ttft_ms: int | None, streamed: bool
+    ) -> AssistantChatResponse:
+        """Check the answer, record the turn and build the response.
+
+        :param turn: What :meth:`prepare` built.
+        :param generated: What the generator produced.
+        :param ttft_ms: Milliseconds from the model call to the first piece, when streamed.
+        :param streamed: Whether the answer was delivered piece by piece.
+        :return: The response.
+        """
+        ctx, text, usage = turn.ctx, generated.text, generated.usage
         sources = ctx.sources.refs()
         citations_valid = check_citations(text, {source.n for source in sources})
         ungrounded = find_ungrounded_numbers(
@@ -191,21 +281,21 @@ class AssistantService:
             [
                 *ctx.sources.texts(),
                 *ctx.tool_outputs,
-                request.message,
-                *(turn.content for turn in kept if turn.role == "user"),
+                turn.request.message,
+                *(turn_.content for turn_ in turn.kept if turn_.role == "user"),
                 *PINNED_NUMBERS,
                 *FORMULA_NUMBERS,
             ],
         )
-        duration_ms = round((time.monotonic() - started) * 1000)
+        duration_ms = round((asyncio.get_running_loop().time() - turn.started) * 1000)
         logger.info(
             "Assistant turn answered",
             extra={
                 "event": "assistant_turn",
-                "mode": mode,
+                "mode": self._settings.assistant_mode,
                 "model": self._settings.assistant_answer_llm_model,
-                "tool_names": tools_used,
-                "tool_call_count": len(tools_used),
+                "tool_names": generated.tools_used,
+                "tool_call_count": len(generated.tools_used),
                 "source_count": len(sources),
                 "citations_valid": citations_valid,
                 "numbers_grounded": not ungrounded,
@@ -216,20 +306,54 @@ class AssistantService:
                 "llm_calls": usage.llm_calls,
                 "usage_complete": usage.complete,
                 "duration_ms": duration_ms,
+                "ttft_ms": ttft_ms,
+                "streamed": streamed,
             },
         )
         return AssistantChatResponse(
             answer=text,
             sources=sources,
-            tools_used=tools_used,
+            tools_used=generated.tools_used,
             checks=AnswerChecks(
                 citations_valid=citations_valid,
                 numbers_grounded=not ungrounded,
                 ungrounded_numbers=ungrounded,
             ),
             usage=usage,
-            timing=TurnTiming(ttft_ms=None, total_ms=duration_ms),
+            timing=TurnTiming(ttft_ms=ttft_ms, total_ms=duration_ms),
         )
+
+    @staticmethod
+    def _timed_out(mode: str, started: float) -> AssistantUnavailableError:
+        """Log that the turn outlived its deadline and build the error to raise."""
+        duration_ms = round((asyncio.get_running_loop().time() - started) * 1000)
+        logger.warning(
+            "Assistant turn timed out",
+            extra={"event": "assistant_turn_timeout", "mode": mode, "duration_ms": duration_ms},
+        )
+        return AssistantUnavailableError("the assistant turn ran out of time")
+
+    @staticmethod
+    def _unavailable(exc: Exception, mode: str) -> AssistantUnavailableError:
+        """Log a server outage by its class name only and build the error to raise."""
+        logger.warning(
+            "Assistant dependency unavailable",
+            extra={
+                "event": "assistant_dependency_unavailable",
+                "mode": mode,
+                "reason": type(exc).__name__,
+            },
+        )
+        return AssistantUnavailableError("a server the assistant needs is unavailable")
+
+    @staticmethod
+    def _empty_answer(mode: str, reason: str) -> AssistantUnavailableError:
+        """Log that the model gave no answer and build the error to raise."""
+        logger.warning(
+            "Assistant answer was empty",
+            extra={"event": "assistant_empty_answer", "mode": mode, "reason": reason},
+        )
+        return AssistantUnavailableError("the model gave an empty answer")
 
     async def _fetch(self, request: AssistantChatRequest, ctx: AssistantContext) -> list[str]:
         """Fetch what the model is shown ahead of the question, in workflow and hybrid modes.

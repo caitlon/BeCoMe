@@ -10,6 +10,7 @@ to run against a scripted sequence, and records the messages of every call in
 ``seen``, so a test can assert what the model was shown.
 """
 
+import asyncio
 from collections.abc import AsyncIterator, Callable, Sequence
 from typing import Any
 
@@ -47,6 +48,7 @@ class ScriptedToolCallingModel(BaseChatModel):
         the reply is split after every space.
     :ivar fail_after_chunks: When set, a streamed call raises a connection error after
         that many pieces.
+    :ivar stream_delay_s: Seconds a streamed call waits before each piece.
     :ivar seen: The messages each call was given, one list per call, in call order.
     """
 
@@ -54,6 +56,7 @@ class ScriptedToolCallingModel(BaseChatModel):
     report_usage: bool = True
     stream_chunks: list[str] | None = None
     fail_after_chunks: int | None = None
+    stream_delay_s: float = 0.0
     seen: list[list[BaseMessage]] = Field(default_factory=list)
     _call_count: int = PrivateAttr(default=0)
 
@@ -117,6 +120,8 @@ class ScriptedToolCallingModel(BaseChatModel):
         )
         usage = response.usage_metadata or (DEFAULT_USAGE if self.report_usage else None)
         for index, piece in enumerate(pieces or [""]):
+            if self.stream_delay_s:
+                await asyncio.sleep(self.stream_delay_s)
             if self.fail_after_chunks is not None and index >= self.fail_after_chunks:
                 raise httpx.ConnectError("the model server went away")
             last = index == len(pieces) - 1

@@ -36,7 +36,12 @@ from api.assistant.rag.retrieval import DocsRetriever, RetrievedChunk
 from api.assistant.views import FuzzyView, OpinionView, ProjectView, ResultView
 from api.config import Settings
 from api.exceptions import ProjectNotFoundError
-from api.schemas.assistant import AssistantChatRequest, ChatTurn, TurnUsage
+from api.schemas.assistant import (
+    AssistantChatRequest,
+    AssistantChatResponse,
+    ChatTurn,
+    TurnUsage,
+)
 from tests.shared.assistant_fakes import ScriptedToolCallingModel
 from tests.shared.helpers import captured_log_records
 
@@ -735,6 +740,171 @@ class TestFailures:
             await AssistantService(_settings(), _model(_say())).answer(_request(), ctx)
 
         assert records == []
+
+
+async def _drain(service, request, ctx):
+    turn = await service.prepare(request, ctx)
+    pieces: list[str] = []
+    response = None
+    async for item in service.stream(turn):
+        if isinstance(item, AssistantChatResponse):
+            response = item
+        else:
+            pieces.append(item)
+    assert response is not None
+    return pieces, response
+
+
+@pytest.mark.asyncio
+class TestStream:
+    """The same turn, prepared and then streamed."""
+
+    async def test_the_pieces_join_to_the_answer_and_the_response_matches_answer(self):
+        """
+        GIVEN a scripted reply
+        WHEN the turn is streamed
+        THEN the pieces join to the response's answer, and the response equals answer()'s
+             apart from timing
+        """
+        model = _model(_say("It is the midpoint [1]."))
+        pieces, streamed = await _drain(AssistantService(_settings(), model), _request(), _ctx())
+        assert "".join(pieces) == streamed.answer
+        direct = await AssistantService(
+            _settings(), _model(_say("It is the midpoint [1]."))
+        ).answer(_request(), _ctx())
+        assert streamed.model_dump(exclude={"timing"}) == direct.model_dump(exclude={"timing"})
+        assert streamed.timing.ttft_ms is not None
+        assert direct.timing.ttft_ms is None
+
+    async def test_the_record_carries_the_first_token_time(self):
+        """
+        GIVEN a streamed turn
+        WHEN it is answered
+        THEN the assistant_turn record has streamed True and an integer ttft_ms
+        """
+        with captured_log_records(SERVICE_LOGGER) as records:
+            await _drain(AssistantService(_settings(), _model(_say("Yes."))), _request(), _ctx())
+        (record,) = [r for r in records if getattr(r, "event", "") == "assistant_turn"]
+        assert record.streamed is True
+        assert isinstance(record.ttft_ms, int)
+
+    async def test_an_answer_gives_a_record_that_is_not_streamed_and_has_no_ttft(self):
+        """
+        GIVEN a turn answered in one piece
+        WHEN it is answered
+        THEN the assistant_turn record has streamed False and no first token time
+        """
+        with captured_log_records(SERVICE_LOGGER) as records:
+            await AssistantService(_settings(), _model(_say("Yes."))).answer(_request(), _ctx())
+        (record,) = [r for r in records if getattr(r, "event", "") == "assistant_turn"]
+        assert record.streamed is False
+        assert record.ttft_ms is None
+
+    async def test_the_agent_mode_yields_only_the_response(self):
+        """
+        GIVEN the agent mode, which does not stream
+        WHEN the turn is streamed
+        THEN no text piece is yielded and the response carries the answer, without a ttft
+        """
+        pieces, response = await _drain(
+            AssistantService(_settings("agent"), _model(_say("It is the midpoint."))),
+            _request(),
+            _ctx(),
+        )
+        assert pieces == []
+        assert response.answer == "It is the midpoint."
+        assert response.timing.ttft_ms is None
+
+    async def test_an_outage_after_the_first_piece_is_unavailable(self):
+        """
+        GIVEN a model that dies after one chunk
+        WHEN the turn is streamed
+        THEN one piece was yielded and AssistantUnavailableError is raised
+        """
+        model = ScriptedToolCallingModel(responses=[_say("One two three.")], fail_after_chunks=1)
+        service = AssistantService(_settings(), model)
+        turn = await service.prepare(_request(), _ctx())
+        pieces: list[str] = []
+        with (
+            captured_log_records(SERVICE_LOGGER) as records,
+            pytest.raises(AssistantUnavailableError),
+        ):
+            async for item in service.stream(turn):
+                if isinstance(item, str):
+                    pieces.append(item)
+        assert pieces == ["One"]
+        assert [(r.event, r.reason) for r in records] == [
+            ("assistant_dependency_unavailable", "ConnectError")
+        ]
+
+    async def test_an_empty_streamed_answer_is_unavailable(self):
+        """
+        GIVEN a model that streams an empty reply
+        WHEN the turn is streamed
+        THEN AssistantUnavailableError is raised and assistant_empty_answer is logged
+        """
+        service = AssistantService(_settings(), _model(_say("")))
+        turn = await service.prepare(_request(), _ctx())
+        with (
+            captured_log_records(SERVICE_LOGGER) as records,
+            pytest.raises(AssistantUnavailableError),
+        ):
+            async for _ in service.stream(turn):
+                pass
+        assert any(getattr(r, "event", "") == "assistant_empty_answer" for r in records)
+
+    async def test_an_answer_cut_off_inside_its_reasoning_is_unavailable_with_that_reason(self):
+        """
+        GIVEN a model whose streamed reply ends inside a reasoning block
+        WHEN the turn is streamed
+        THEN AssistantUnavailableError is raised and the empty-answer record says cut_off
+        """
+        service = AssistantService(_settings(), _model(_say("<think>I wonder")))
+        turn = await service.prepare(_request(), _ctx())
+        with (
+            captured_log_records(SERVICE_LOGGER) as records,
+            pytest.raises(AssistantUnavailableError),
+        ):
+            async for _ in service.stream(turn):
+                pass
+        (record,) = [r for r in records if getattr(r, "event", "") == "assistant_empty_answer"]
+        assert record.reason == "cut_off"
+
+    async def test_prepare_refuses_a_project_the_caller_cannot_see(self):
+        """
+        GIVEN a named project that the API answers 404 for
+        WHEN the turn is prepared
+        THEN ProjectNotFoundError is raised before any model call
+        """
+        model = _model(_say())
+        ctx = _ctx(project_id=PROJECT_ID)
+        ctx.client.get_project.side_effect = AssistantNotFoundError("404")
+
+        with pytest.raises(ProjectNotFoundError, match=f"Project {PROJECT_ID} not found"):
+            await AssistantService(_settings(), model).prepare(_request(), ctx)
+
+        assert model.seen == []
+
+    async def test_a_stream_that_outlives_the_deadline_is_unavailable(self):
+        """
+        GIVEN a model that waits 200 ms before its first piece and a deadline of 50 ms
+        WHEN the turn is streamed
+        THEN AssistantUnavailableError is raised and assistant_turn_timeout is logged
+        """
+        model = ScriptedToolCallingModel(responses=[_say("Late.")], stream_delay_s=0.2)
+        service = AssistantService(_settings(assistant_turn_timeout_seconds=0.05), model)
+        turn = await service.prepare(_request(), _ctx())
+
+        with (
+            captured_log_records(SERVICE_LOGGER) as records,
+            pytest.raises(AssistantUnavailableError),
+        ):
+            async for _ in service.stream(turn):
+                pass
+
+        (record,) = records
+        assert (record.event, record.mode) == ("assistant_turn_timeout", "workflow")
+        assert isinstance(record.duration_ms, int)
 
 
 @pytest.mark.asyncio
