@@ -9,6 +9,7 @@ lets the model call the assistant's tools in a bounded loop. Both send :data:`~a
 
 import logging
 from collections.abc import AsyncGenerator, Sequence
+from contextlib import aclosing
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol, cast
@@ -246,12 +247,20 @@ class DirectGenerator(AnswerGenerator):
         """
         full = AIMessageChunk(content="")
         emitted = 0
-        async for chunk in self._model.astream([SystemMessage(content=SYSTEM_PROMPT), *messages]):
-            full += chunk
-            visible = _visible(full.text)
-            if len(visible) > emitted:
-                yield visible[emitted:]
-                emitted = len(visible)
+        # Closing this generator early closes the model's stream at once, not whenever the
+        # garbage collector gets to it. ``astream`` is typed as an iterator, but every chat
+        # model's is an async generator, which has ``aclose``.
+        stream = cast(
+            "AsyncGenerator[AIMessageChunk]",
+            self._model.astream([SystemMessage(content=SYSTEM_PROMPT), *messages]),
+        )
+        async with aclosing(stream) as chunks:
+            async for chunk in chunks:
+                full += chunk
+                visible = _visible(full.text)
+                if len(visible) > emitted:
+                    yield visible[emitted:]
+                    emitted = len(visible)
         reply = AIMessage(content=full.text, usage_metadata=full.usage_metadata)
         final = _answer_of(reply)
         if len(final) > emitted:

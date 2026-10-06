@@ -49,6 +49,8 @@ class ScriptedToolCallingModel(BaseChatModel):
     :ivar fail_after_chunks: When set, a streamed call raises a connection error after
         that many pieces.
     :ivar stream_delay_s: Seconds a streamed call waits before each piece.
+    :ivar closed_early: Set when a streamed call ended before it yielded its last piece,
+        because the consumer closed it or because it raised.
     :ivar seen: The messages each call was given, one list per call, in call order.
     """
 
@@ -57,6 +59,7 @@ class ScriptedToolCallingModel(BaseChatModel):
     stream_chunks: list[str] | None = None
     fail_after_chunks: int | None = None
     stream_delay_s: float = 0.0
+    closed_early: bool = False
     seen: list[list[BaseMessage]] = Field(default_factory=list)
     _call_count: int = PrivateAttr(default=0)
 
@@ -120,14 +123,19 @@ class ScriptedToolCallingModel(BaseChatModel):
         )
         usage = response.usage_metadata or (DEFAULT_USAGE if self.report_usage else None)
         chunks = pieces or [""]
-        for index, piece in enumerate(chunks):
-            if self.stream_delay_s:
-                await asyncio.sleep(self.stream_delay_s)
-            if self.fail_after_chunks is not None and index >= self.fail_after_chunks:
-                raise httpx.ConnectError("the model server went away")
-            last = index == len(chunks) - 1
-            chunk = AIMessageChunk(content=piece, usage_metadata=usage if last else None)
-            yield ChatGenerationChunk(message=chunk)
+        finished = False
+        try:
+            for index, piece in enumerate(chunks):
+                if self.stream_delay_s:
+                    await asyncio.sleep(self.stream_delay_s)
+                if self.fail_after_chunks is not None and index >= self.fail_after_chunks:
+                    raise httpx.ConnectError("the model server went away")
+                last = index == len(chunks) - 1
+                chunk = AIMessageChunk(content=piece, usage_metadata=usage if last else None)
+                yield ChatGenerationChunk(message=chunk)
+            finished = True
+        finally:
+            self.closed_early = not finished
 
     @property
     def _llm_type(self) -> str:
