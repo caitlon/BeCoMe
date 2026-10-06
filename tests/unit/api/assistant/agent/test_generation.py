@@ -430,7 +430,7 @@ class TestDirectGeneratorStream:
         """
         GIVEN chunks "a ", "<" and then the end of the reply
         WHEN the turn is streamed
-        THEN the withheld "<" is yielded after the last chunk and the pieces join to "a <"
+        THEN the withheld " <" is yielded after the last chunk and the pieces join to "a <"
         """
         model = ScriptedToolCallingModel(
             responses=[AIMessage(content="a <")], stream_chunks=["a ", "<"]
@@ -438,8 +438,37 @@ class TestDirectGeneratorStream:
 
         pieces, final = await _collect(DirectGenerator(model), _user(), _ctx())
 
-        assert pieces[-1] == "<"
+        assert pieces[-1] == " <"
         assert "".join(pieces) == "a <" == final.text
+
+    async def test_whitespace_before_a_withheld_tag_is_not_sent_twice(self):
+        """
+        GIVEN chunks "foo <", "think>x</think>"
+        WHEN the turn is streamed
+        THEN the pieces join to "foo", the same as the final text
+        """
+        model = ScriptedToolCallingModel(
+            responses=[AIMessage(content="foo <think>x</think>")],
+            stream_chunks=["foo <", "think>x</think>"],
+        )
+
+        pieces, final = await _collect(DirectGenerator(model), _user(), _ctx())
+
+        assert "".join(pieces) == final.text == "foo"
+
+    async def test_an_empty_reply_still_carries_the_usage(self):
+        """
+        GIVEN a scripted reply with no text
+        WHEN the turn is streamed
+        THEN one Generated comes with empty text and the default usage, complete
+        """
+        model = _model(AIMessage(content=""))
+
+        pieces, final = await _collect(DirectGenerator(model), _user(), _ctx())
+
+        assert "".join(pieces) == "" == final.text
+        assert final.usage.complete is True
+        assert final.usage.total_tokens == 15
 
     async def test_a_reply_cut_off_inside_its_reasoning_is_refused(self):
         """
