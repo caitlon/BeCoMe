@@ -74,12 +74,13 @@ Runs only on a developer machine. `Settings` refuses to start any deployed profi
    server's own `ttft_ms` and `total_ms`, `null` on a failed turn; `ttft_ms` is `null` unless the
    turn was streamed), a `timestamp` and what produced it: `arm`, `mode`, models, token and
    tool-call limits, retrieval settings, `collection`, `prompt_sha256`, `code_version` and
-   `transport`. `app_version`
-   and `corpus_version` are the collection's own, from its registry row. A question file whose
+   `transport`. `app_version` and `corpus_version` are the collection's own, from its registry
+   row. A question file whose
    hash is on the sealed list is refused without `--sealed-run` and a non-empty
    `--registration` file, and a sealed run also needs both versions and a clean checkout: a
    null in either version, or a `code_version` that is null or ends in `-dirty`, exits 2. An
-   ordinary run prints a warning when either version is null.
+   ordinary run prints a warning when either version is null. A `/chat` body that is not valid
+   JSON is recorded as a failed turn, with the status `JSONDecodeError`, and does not stop the run.
 
    A rerun treats every row there for the same `id` and `arm` as done, whatever its status,
    because a failed turn is a result. `--retry-failed` asks again those whose latest row is not
@@ -102,7 +103,8 @@ Runs only on a developer machine. `Settings` refuses to start any deployed profi
    `ASSISTANT_LANGSMITH_ENABLED` is on; it sends the question and answer text to LangSmith.
 
    `--stream` asks `POST /api/v1/assistant/chat/stream` instead of `/chat` and reads its events,
-   so the rows carry a first-token time. A turn whose stream ends in an `error` event has the
+   so the rows carry a first-token time, except in agent mode, which yields no token pieces and
+   leaves `ttft_ms` null. A turn whose stream ends in an `error` event has the
    status `stream_error_<code>`, and a body that ends with neither `done` nor `error` has
    `stream_incomplete`; a refusal before the stream opens is an `http_<code>` as on `/chat`.
    The transport (`stream` or `chat`) is a row's `transport` field and a provenance field, so
@@ -148,10 +150,10 @@ Runs only on a developer machine. `Settings` refuses to start any deployed profi
    printed, and `--summary` writes it as JSON; its `missing` counts the questions with no row in
    that arm, so a run that stopped early does not read as complete. It also holds
    `median_ttft_ms`, the server's time to first token over the completed rows whose
-   `timing.ttft_ms` is not null (null for a run over `/chat`), next to `median_latency_s`, the
-   client's whole-request time. It also holds
-   `median_input_tokens`, `median_output_tokens`, `median_total_tokens` and `median_llm_calls`
-   over the completed rows that carry `usage`, and `usage_rows`, the number of those rows. The
+   `timing.ttft_ms` is not null (null for a run over `/chat`, and for `--stream` in agent mode,
+   which yields no token pieces), next to `median_latency_s`, the client's whole-request time.
+   It also holds `median_input_tokens`, `median_output_tokens`, `median_total_tokens` and
+   `median_llm_calls` over the completed rows that carry `usage`, and `usage_rows`, the number of those rows. The
    medians include rows whose usage is a partial sum, and `usage_incomplete` says how many of the
    `usage_rows` are such. `paired_bootstrap` gives the mean paired difference of two arms with a
    percentile interval over resampled questions, the same for a given seed.
