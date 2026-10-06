@@ -48,10 +48,22 @@ class TestFormatEvent:
         assert "Příliš žluťoučký kůň" in text
         assert "\\u" not in text
 
-    def test_the_text_ends_with_a_blank_line(self):
+    def test_the_unicode_line_separators_are_escaped(self):
         """
-        GIVEN any payload
+        GIVEN a payload whose string holds U+2028, U+2029 and U+0085
         WHEN it is formatted
-        THEN the text ends with two newlines, the terminator of an event
+        THEN the text stays on one data line, because those three are line breaks to some
+            parsers, and the data still parses back to the same string
         """
-        assert format_event("done", {"answer": "x"}).endswith("\n\n")
+        # GIVEN
+        text = "a\u2028b\u2029c\u0085d"
+
+        # WHEN
+        framed = format_event("token", {"text": text})
+
+        # THEN
+        # str.splitlines breaks on all three, as httpx's aiter_lines does
+        name_line, data_line, blank_line = framed.splitlines()
+        assert name_line == "event: token"
+        assert blank_line == ""
+        assert json.loads(data_line[len("data: ") :]) == {"text": text}
