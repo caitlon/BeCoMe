@@ -70,9 +70,11 @@ Runs only on a developer machine. `Settings` refuses to start any deployed profi
    a user. A record has `id`, `question` and optionally `lang` and `project` (a fixtures key).
    Questions run one at a time, and each appends a row to `--output`: the record, `status`
    (`ok`, `http_<code>` or an exception name), `answer`, `sources`, `tool_calls`, `checks`,
-   `latency_s`, `usage` (the turn's five usage fields, `null` on a failed turn), a `timestamp`
-   and what produced it: `arm`, `mode`, models, token and tool-call
-   limits, retrieval settings, `collection`, `prompt_sha256` and `code_version`. `app_version`
+   `latency_s`, `usage` (the turn's five usage fields, `null` on a failed turn), `timing` (the
+   server's own `ttft_ms` and `total_ms`, `null` on a failed turn; `ttft_ms` is `null` unless the
+   turn was streamed), a `timestamp` and what produced it: `arm`, `mode`, models, token and
+   tool-call limits, retrieval settings, `collection`, `prompt_sha256`, `code_version` and
+   `transport`. `app_version`
    and `corpus_version` are the collection's own, from its registry row. A question file whose
    hash is on the sealed list is refused without `--sealed-run` and a non-empty
    `--registration` file, and a sealed run also needs both versions and a clean checkout: a
@@ -98,6 +100,16 @@ Runs only on a developer machine. `Settings` refuses to start any deployed profi
    rig where the limiter is off. The hourly cap is not paced: a long run still needs
    `ASSISTANT_RATE_LIMIT_PER_HOUR=0`. Tracing is off unless `--trace` is given and
    `ASSISTANT_LANGSMITH_ENABLED` is on; it sends the question and answer text to LangSmith.
+
+   `--stream` asks `POST /api/v1/assistant/chat/stream` instead of `/chat` and reads its events,
+   so the rows carry a first-token time. A turn whose stream ends in an `error` event has the
+   status `stream_error_<code>`, and a body that ends with neither `done` nor `error` has
+   `stream_incomplete`; a refusal before the stream opens is an `http_<code>` as on `/chat`.
+   The transport (`stream` or `chat`) is a row's `transport` field and a provenance field, so
+   a file already holding rows of an arm over one transport refuses the other under that arm;
+   rows written before the field existed count as `chat`. The runner prints
+   `transport: stream` or `transport: chat` on stderr at the start, next to the pacing line.
+   The pacing, the retry rules and the stop rules are the same for both.
 
    ```bash
    uv run python scripts/assistant/eval_answers.py --questions questions.jsonl \
@@ -135,6 +147,9 @@ Runs only on a developer machine. `Settings` refuses to start any deployed profi
    Numbers and citations are read with `api/assistant/agent/checks.py`. The per-arm summary is
    printed, and `--summary` writes it as JSON; its `missing` counts the questions with no row in
    that arm, so a run that stopped early does not read as complete. It also holds
+   `median_ttft_ms`, the server's time to first token over the completed rows whose
+   `timing.ttft_ms` is not null (null for a run over `/chat`), next to `median_latency_s`, the
+   client's whole-request time. It also holds
    `median_input_tokens`, `median_output_tokens`, `median_total_tokens` and `median_llm_calls`
    over the completed rows that carry `usage`, and `usage_rows`, the number of those rows. The
    medians include rows whose usage is a partial sum, and `usage_incomplete` says how many of the
