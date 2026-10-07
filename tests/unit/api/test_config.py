@@ -1699,7 +1699,7 @@ class TestAssistantProviderSettings:
         THEN it is refused with the shape the URL must have
         """
         # WHEN/THEN
-        with pytest.raises(ValidationError, match=r"https://host\[:port\]/v1"):
+        with pytest.raises(ValidationError, match=r"must be an https:// URL with a host"):
             Settings(
                 secret_key="test-secret-key",
                 assistant_api_key_ovh=_FAKE_KEY,

@@ -425,10 +425,9 @@ class Settings(BaseSettings):
 
         The assistant reads project data as the signed-in user and calls an LLM, local by
         default or a hosted provider per role; neither belongs on a service that serves
-        real traffic. Keeping
-        the guard here, right before _validate_deploy_invariants, means a deploy that
-        somehow set ASSISTANT_ENABLED fails on this message first, rather than on
-        whichever deploy invariant happens to be missing.
+        real traffic. Keeping the guard here, right before _validate_deploy_invariants,
+        means a deploy that somehow set ASSISTANT_ENABLED fails on this message first,
+        rather than on whichever deploy invariant happens to be missing.
 
         is_deploy alone would not catch every case: it is False whenever TESTING is
         set, which is the pytest profile, so a Railway process that also carried
@@ -476,8 +475,8 @@ class Settings(BaseSettings):
             parsed = urlparse(getattr(self, url_name))
             if not parsed.scheme or not parsed.hostname:
                 raise ValueError(
-                    f"{url_name} must be a base URL of the form https://host[:port]/v1 "
-                    f"when {provider_name} is api"
+                    f"{url_name} must be an https:// URL with a host, the provider's "
+                    f"OpenAI-compatible endpoint, when {provider_name} is api"
                 )
             if parsed.scheme != "https":
                 raise ValueError(f"{url_name} must use https when {provider_name} is api")
