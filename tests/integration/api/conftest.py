@@ -10,6 +10,11 @@ os.environ["TESTING"] = "1"  # Must always be set; rate limiter reads it at impo
 # The suite never inherits a developer's local switch from .env or the shell; a test
 # that needs the assistant on sets it explicitly with monkeypatch.
 os.environ["ASSISTANT_ENABLED"] = "false"
+# Likewise the model providers: a developer's .env may point a role at a hosted API, which
+# the test servers on loopback URLs would then be refused for.
+os.environ.pop("ASSISTANT_API_KEY_OVH", None)
+for _role in ("ANSWER", "LLM", "EMBEDDING"):
+    os.environ[f"ASSISTANT_{_role}_PROVIDER"] = "local"
 
 import dns.asyncresolver
 import pytest
@@ -21,7 +26,7 @@ from sqlalchemy import event
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine, select
 
-from api.config import get_settings
+from api.config import Settings, get_settings
 from api.db.models import (  # noqa: F401 - models required for SQLModel.metadata.create_all
     CalculationResult,
     EmailVerificationToken,
@@ -50,6 +55,15 @@ from tests.shared.helpers import (  # noqa: F401
     insert_demo_experts,
     mock_datetime_offset,
 )
+
+# The base URLs go back to the code defaults for the same reason; the field defaults are
+# read from Settings, which this block can only import once the imports above are done.
+for _url_setting in (
+    "assistant_answer_llm_base_url",
+    "assistant_llm_base_url",
+    "assistant_embedding_base_url",
+):
+    os.environ[_url_setting.upper()] = Settings.model_fields[_url_setting].default
 
 # Registration address policy for the integration app, with the DNS half switched off so
 # no test ever depends on a live resolver. The blocklist half stays on: it is a local

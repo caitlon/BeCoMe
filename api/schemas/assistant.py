@@ -30,9 +30,9 @@ class AssistantConfigResponse(BaseModel):
     model: str
     mode: str
     collection: str
-    answer_provider: str
-    query_provider: str
-    embedding_provider: str
+    answer_provider: Literal["local", "api"]
+    query_provider: Literal["local", "api"]
+    embedding_provider: Literal["local", "api"]
 
 
 class ChatTurn(BaseModel):

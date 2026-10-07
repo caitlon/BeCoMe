@@ -13,6 +13,7 @@ from api.schemas.assistant import (
     AnswerChecks,
     AssistantChatRequest,
     AssistantChatResponse,
+    AssistantConfigResponse,
     ChatTurn,
     SourceRef,
     TurnTiming,
@@ -302,3 +303,30 @@ class TestTurnTiming:
 
         assert timing.ttft_ms is None
         assert timing.total_ms == 1234
+
+
+class TestAssistantConfigResponse:
+    """The config response names where each model role runs, and only local or api."""
+
+    @pytest.mark.parametrize("field", ["answer_provider", "query_provider", "embedding_provider"])
+    def test_rejects_a_provider_other_than_local_or_api(self, field):
+        """
+        GIVEN a config response whose one provider is neither local nor api
+        WHEN it is built
+        THEN it is refused, naming the field
+        """
+        # GIVEN
+        fields = {
+            "enabled": True,
+            "model": "m",
+            "mode": "workflow",
+            "collection": "c",
+            "answer_provider": "local",
+            "query_provider": "local",
+            "embedding_provider": "local",
+            field: "cloud",
+        }
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match=field):
+            AssistantConfigResponse(**fields)

@@ -51,7 +51,7 @@ class TestMakeAnswerModel:
              for the usage on the last streamed chunk
         """
         # GIVEN
-        settings = Settings(secret_key="test-secret-key")
+        settings = _settings()
 
         # WHEN
         model = make_answer_model(settings)
@@ -74,8 +74,7 @@ class TestMakeAnswerModel:
              query-transform ones
         """
         # GIVEN
-        settings = Settings(
-            secret_key="test-secret-key",  # pragma: allowlist secret
+        settings = _settings(
             assistant_answer_llm_base_url="http://127.0.0.1:9999/v1",
             assistant_answer_llm_model="answer-model",
             assistant_answer_max_tokens=123,
@@ -151,17 +150,30 @@ class TestMakeEmbeddings:
 
 _API_KEY = "ovh-test-key"  # pragma: allowlist secret
 _REMOTE_URL = "https://models.example.test/v1"
+_BASE_URL_SETTINGS = (
+    "assistant_answer_llm_base_url",
+    "assistant_llm_base_url",
+    "assistant_embedding_base_url",
+)
 
 
 def _settings(**overrides) -> Settings:
-    """Settings with every role local, unless an override says otherwise."""
+    """Settings with every role local at its default URL, unless an override says otherwise.
+
+    Init arguments beat the environment and .env, so a developer who points a role at a
+    hosted provider in their own .env does not change what these tests build.
+    """
     isolated = {
         "assistant_answer_provider": "local",
         "assistant_llm_provider": "local",
         "assistant_embedding_provider": "local",
         "assistant_api_key_ovh": None,
+        **{name: Settings.model_fields[name].default for name in _BASE_URL_SETTINGS},
     }
-    return Settings(secret_key="test-secret-key", **{**isolated, **overrides})
+    return Settings(
+        secret_key="test-secret-key",  # pragma: allowlist secret
+        **{**isolated, **overrides},
+    )
 
 
 def _api_settings() -> Settings:
@@ -181,12 +193,12 @@ class TestApiProvider:
     """A role on the hosted API sends the key and, for chat models, switches reasoning off."""
 
     @pytest.mark.parametrize("make", [make_chat_model, make_answer_model])
-    def test_a_chat_client_carries_the_key_the_retries_and_the_reasoning_switch(self, make):
+    def test_a_chat_client_carries_the_key_and_the_reasoning_switch(self, make):
         """
         GIVEN settings with the answer and query roles on the hosted API
         WHEN a chat client is built
-        THEN it holds the configured key instead of the local placeholder, retries twice,
-             and sends reasoning_effort none in the request body
+        THEN it holds the configured key instead of the local placeholder and sends
+             reasoning_effort none in the request body
         """
         # GIVEN
         settings = _api_settings()
@@ -197,14 +209,13 @@ class TestApiProvider:
         # THEN
         assert model.openai_api_key is not None
         assert model.openai_api_key.get_secret_value() == _API_KEY
-        assert model.max_retries == 2
         assert model.extra_body == {"reasoning_effort": "none"}
 
-    def test_the_embeddings_client_carries_the_key_and_the_retries(self):
+    def test_the_embeddings_client_carries_the_key(self):
         """
         GIVEN settings with the embedding role on the hosted API
         WHEN make_embeddings builds a client
-        THEN it holds the configured key and retries twice
+        THEN it holds the configured key
         """
         # GIVEN
         settings = _api_settings()
@@ -215,13 +226,13 @@ class TestApiProvider:
         # THEN
         assert embeddings.openai_api_key is not None
         assert embeddings.openai_api_key.get_secret_value() == _API_KEY
-        assert embeddings.max_retries == 2
 
     def test_the_answer_client_keeps_its_other_settings_in_api_mode(self):
         """
         GIVEN settings with the answer role on the hosted API
         WHEN make_answer_model builds a client
-        THEN it is still deterministic, capped, and asks for the usage on the last chunk
+        THEN it is still deterministic, capped, asks for the usage on the last chunk, and
+             retries twice because the hosted API fails now and then
         """
         # GIVEN
         settings = _api_settings()
@@ -234,6 +245,7 @@ class TestApiProvider:
         assert model.temperature == 0
         assert model.max_tokens == settings.assistant_answer_max_tokens
         assert model.stream_usage is True
+        assert model.max_retries == 2
 
     def test_each_role_follows_its_own_provider(self):
         """
@@ -333,7 +345,7 @@ class TestApiProvider:
 
 
 class TestLocalProviderIsUnchanged:
-    """A role on the local server keeps the placeholder key, its retries and no extra body."""
+    """A role on the local server keeps the placeholder key and no extra body."""
 
     def test_local_clients_hold_the_placeholder_key_and_send_no_reasoning_switch(self):
         """
@@ -356,7 +368,6 @@ class TestLocalProviderIsUnchanged:
         assert answer.extra_body is None
         assert chat.extra_body is None
         assert answer.max_retries == 0
-        assert embeddings.max_retries == OpenAIEmbeddings(api_key="x").max_retries
 
 
 class TestStripThinkBlock:

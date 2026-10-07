@@ -1631,7 +1631,7 @@ class TestAssistantProviderSettings:
     @pytest.mark.parametrize(("provider", "url"), _PROVIDER_ROLES)
     def test_accepts_api_mode_with_a_key_and_a_remote_url(self, provider, url):
         """
-        GIVEN one role in api mode with a key and a non-loopback URL
+        GIVEN one role in api mode with a key and a remote https URL
         WHEN Settings is constructed
         THEN validation passes and the key is held as a secret
         """
@@ -1649,20 +1649,61 @@ class TestAssistantProviderSettings:
         assert _FAKE_KEY not in repr(settings)
 
     @pytest.mark.parametrize(("provider", "url"), _PROVIDER_ROLES)
-    @pytest.mark.parametrize("loopback", ["http://127.0.0.1:8081/v1", "http://localhost:8081/v1"])
+    @pytest.mark.parametrize(
+        "loopback",
+        [
+            "https://127.0.0.1:8081/v1",
+            "https://127.0.0.2/v1",
+            "https://localhost:8081/v1",
+            "https://[::1]/v1",
+        ],
+    )
     def test_rejects_api_mode_with_a_loopback_url(self, provider, url, loopback):
         """
-        GIVEN one role in api mode with a key but a loopback base URL
+        GIVEN one role in api mode with a key but a loopback base URL, even an https one
+              or a loopback address other than 127.0.0.1
         WHEN Settings is constructed
         THEN it is refused, naming the role's URL setting, because the key would go to a
              local server that ignores it
         """
         # WHEN/THEN
-        with pytest.raises(ValidationError, match=url):
+        with pytest.raises(ValidationError, match=f"{url}.*loopback"):
             Settings(
                 secret_key="test-secret-key",
                 assistant_api_key_ovh=_FAKE_KEY,
                 **{provider: "api", url: loopback},
+            )
+
+    @pytest.mark.parametrize(("provider", "url"), _PROVIDER_ROLES)
+    def test_rejects_api_mode_over_cleartext_http(self, provider, url):
+        """
+        GIVEN one role in api mode with a key and a remote URL that is plain http
+        WHEN Settings is constructed
+        THEN it is refused, naming the role's URL setting, because the key and every
+             prompt would cross the network unencrypted
+        """
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match=f"{url}.*https"):
+            Settings(
+                secret_key="test-secret-key",
+                assistant_api_key_ovh=_FAKE_KEY,
+                **{provider: "api", url: "http://api.example.com/v1"},
+            )
+
+    @pytest.mark.parametrize(("provider", "url"), _PROVIDER_ROLES)
+    @pytest.mark.parametrize("unparsable", ["models.example.com/v1", "", "https:///v1"])
+    def test_rejects_api_mode_with_an_unparsable_url(self, provider, url, unparsable):
+        """
+        GIVEN one role in api mode with a key and a base URL missing its scheme or host
+        WHEN Settings is constructed
+        THEN it is refused with the shape the URL must have
+        """
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match=r"https://host\[:port\]/v1"):
+            Settings(
+                secret_key="test-secret-key",
+                assistant_api_key_ovh=_FAKE_KEY,
+                **{provider: "api", url: unparsable},
             )
 
     @pytest.mark.parametrize(("provider", "url"), _PROVIDER_ROLES)

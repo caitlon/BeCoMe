@@ -1,5 +1,6 @@
 """Application configuration using Pydantic Settings."""
 
+import ipaddress
 import os
 from enum import StrEnum
 from functools import lru_cache
@@ -101,6 +102,21 @@ _ASSISTANT_PROVIDER_ROLES = (
     ("assistant_llm_provider", "assistant_llm_base_url"),
     ("assistant_embedding_provider", "assistant_embedding_base_url"),
 )
+
+
+def _is_loopback_host(host: str) -> bool:
+    """Return whether a URL host is "localhost" or any loopback IP address.
+
+    :param host: Hostname as ``urlparse`` returns it (no brackets around an IPv6 address).
+    :return: True for localhost and for every address in 127.0.0.0/8 or ::1.
+    """
+    host = host.rstrip(".")
+    if host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
 
 
 def _has_remote_cors_origin(origins: list[str]) -> bool:
@@ -266,7 +282,8 @@ class Settings(BaseSettings):
     # role's base URL above, "api" is a hosted OpenAI-compatible endpoint at that same base
     # URL, paid for with assistant_api_key_ovh (OVHcloud, an EU provider). The roles switch
     # independently; the reranker has no hosted counterpart and always stays local.
-    # _validate_assistant_providers refuses an api role with no key or a loopback URL.
+    # _validate_assistant_providers refuses an api role with no key, a non-https URL or a
+    # loopback host.
     assistant_answer_provider: Literal["local", "api"] = "local"
     assistant_llm_provider: Literal["local", "api"] = "local"
     assistant_embedding_provider: Literal["local", "api"] = "local"
@@ -433,17 +450,21 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _validate_assistant_providers(self) -> "Settings":
-        """Refuse a model role set to the hosted API that cannot reach it.
+        """Refuse a model role set to the hosted API that cannot safely reach it.
 
         A role in api mode sends every prompt, and the key, to its base URL. With no key
-        the first request would fail with a 401 nobody reads at start-up, and with a
-        loopback URL the key would go to a local server that ignores it while the role
-        looks hosted. A blank key counts as missing: ``ASSISTANT_API_KEY_OVH=`` in an env
-        file arrives as an empty string. A role in local mode needs neither.
+        the first request would fail with a 401 nobody reads at start-up. The URL must be
+        https, so neither the key nor a prompt crosses the network in clear text; that also
+        rules out every plain-http spelling of a local server in one check. A loopback host
+        is refused on top of that, because an https loopback address would send the key to a
+        local server that ignores it while the role looks hosted. A blank key counts as
+        missing: ``ASSISTANT_API_KEY_OVH=`` in an env file arrives as an empty string. A
+        role in local mode needs neither.
 
         :return: The validated settings instance.
         :raises ValueError: If a role is in api mode and assistant_api_key_ovh is missing
-            or blank, or that role's base URL is a loopback address.
+            or blank, or that role's base URL is not an https URL with a host, or its host
+            is a loopback address.
         """
         key = self.assistant_api_key_ovh.get_secret_value() if self.assistant_api_key_ovh else ""
         for provider_name, url_name in _ASSISTANT_PROVIDER_ROLES:
@@ -451,7 +472,15 @@ class Settings(BaseSettings):
                 continue
             if not key.strip():
                 raise ValueError(f"assistant_api_key_ovh must be set when {provider_name} is api")
-            if (urlparse(getattr(self, url_name)).hostname or "") in LOOPBACK_HOSTS:
+            parsed = urlparse(getattr(self, url_name))
+            if not parsed.scheme or not parsed.hostname:
+                raise ValueError(
+                    f"{url_name} must be a base URL of the form https://host[:port]/v1 "
+                    f"when {provider_name} is api"
+                )
+            if parsed.scheme != "https":
+                raise ValueError(f"{url_name} must use https when {provider_name} is api")
+            if _is_loopback_host(parsed.hostname):
                 raise ValueError(
                     f"{url_name} must not be a loopback address when {provider_name} is api"
                 )

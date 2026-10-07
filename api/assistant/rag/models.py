@@ -7,8 +7,6 @@ OpenAI-compatible endpoint (settings ``assistant_*_provider`` set to "api"). The
 langchain_openai counterpart - so it talks to the endpoint directly over HTTP instead.
 """
 
-from typing import Any
-
 import httpx
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from pydantic import SecretStr
@@ -17,7 +15,8 @@ from api.config import Settings
 
 # llama-server ignores the key, but the OpenAI client insists on one.
 _LOCAL_API_KEY = SecretStr("not-needed")
-# A hosted endpoint, unlike a local server, fails now and then for reasons a retry cures.
+# The answer model alone sets its retries: the hosted endpoint fails now and then for
+# reasons a retry cures, a dead local server only gets slower with them.
 _API_MAX_RETRIES = 2
 # Hosted Qwen3.5 reasons by default and spends every token on it, returning no text; this
 # switch, measured on OVHcloud, turns the reasoning off. The enable_thinking forms are refused.
@@ -40,8 +39,9 @@ def _api_key(settings: Settings, provider: str) -> SecretStr:
 def make_chat_model(settings: Settings) -> ChatOpenAI:
     """Build the chat model client, pointed at the chat llama-server or the hosted API.
 
-    In api mode (settings.assistant_llm_provider) the client sends the hosted key, retries
-    twice, and switches the model's reasoning off; in local mode it is as it always was.
+    In api mode (settings.assistant_llm_provider) the client sends the hosted key and
+    switches the model's reasoning off; in local mode it is as it always was. The client
+    keeps the SDK's own retries in both modes.
 
     :param settings: Application settings.
     :return: A ChatOpenAI client for settings.assistant_llm_base_url.
@@ -52,7 +52,6 @@ def make_chat_model(settings: Settings) -> ChatOpenAI:
         api_key=_api_key(settings, settings.assistant_llm_provider),
         model=settings.assistant_llm_model,
         timeout=settings.assistant_llm_timeout_seconds,
-        max_retries=_API_MAX_RETRIES if hosted else None,
         extra_body=_API_CHAT_EXTRA_BODY if hosted else None,
     )
 
@@ -143,21 +142,18 @@ def make_embeddings(settings: Settings) -> OpenAIEmbeddings:
     most 64 texts each, so that timeout bounds one small batch rather than the whole
     corpus.
 
-    In api mode (settings.assistant_embedding_provider) the client sends the hosted key.
+    In api mode (settings.assistant_embedding_provider) the client sends the hosted key. The
+    client keeps the SDK's own retries in both modes.
 
     :param settings: Application settings.
     :return: An OpenAIEmbeddings client for settings.assistant_embedding_base_url.
     """
-    hosted = settings.assistant_embedding_provider == "api"
-    # A local server keeps the client's own retry default; only the hosted API sets it.
-    retries: dict[str, Any] = {"max_retries": _API_MAX_RETRIES} if hosted else {}
     return OpenAIEmbeddings(
         base_url=settings.assistant_embedding_base_url,
         api_key=_api_key(settings, settings.assistant_embedding_provider),
         model=settings.assistant_embedding_model,
         check_embedding_ctx_length=False,
         timeout=settings.assistant_llm_timeout_seconds,
-        **retries,
         chunk_size=_EMBEDDING_BATCH_SIZE,
     )
 
