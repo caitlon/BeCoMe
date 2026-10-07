@@ -7,6 +7,7 @@ Runs only on a developer machine. `Settings` refuses to start any deployed profi
 
 - [Prerequisites](#prerequisites)
 - [Start](#start)
+- [Model providers](#model-providers)
 - [The chat endpoint](#the-chat-endpoint)
     - [Modes](#modes)
     - [Streaming](#streaming)
@@ -169,6 +170,25 @@ Runs only on a developer machine. `Settings` refuses to start any deployed profi
    `GET /api/v1/assistant/config`, `POST /api/v1/assistant/chat` and
    `POST /api/v1/assistant/chat/stream` (`api/routes/assistant.py`); the `model` field of the
    first reports the answer model.
+
+## Model providers
+
+All three model roles run on local llama-servers by default. Each can instead use a hosted
+OpenAI-compatible endpoint, switched on its own: `ASSISTANT_ANSWER_PROVIDER`,
+`ASSISTANT_LLM_PROVIDER` (the query model) and `ASSISTANT_EMBEDDING_PROVIDER`, each `local` or
+`api`. A role set to `api` sends its requests to that role's base URL
+(`ASSISTANT_ANSWER_LLM_BASE_URL`, `ASSISTANT_LLM_BASE_URL`, `ASSISTANT_EMBEDDING_BASE_URL`),
+so point the URL at the provider, OVHcloud's AI Endpoints being the EU one, and set the model
+name to match. `Settings` refuses to start when an `api` role has no `ASSISTANT_API_KEY_OVH`
+or a loopback base URL.
+
+The key is read from the environment only, held as a secret, and never logged, returned by
+`GET /api/v1/assistant/config` or written to the evaluation rows. In `api` mode the two chat
+models also send `reasoning_effort: "none"`: measured on OVHcloud, Qwen3.5-9B otherwise spends
+every token on reasoning and returns no text. The reranker has no hosted counterpart and always
+stays local. The config endpoint reports `answer_provider`, `query_provider` and
+`embedding_provider`, and the answer-evaluation runner records the same three in each row, so
+rows made on different providers are never mixed in one output file.
 
 ## The chat endpoint
 
