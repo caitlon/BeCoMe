@@ -314,6 +314,9 @@ class TestAssistantRouterGating:
             "model": "Qwen/Qwen3.5-9B",
             "mode": "workflow",
             "collection": "docs_markdown_headers_500_o10_captions_bge_m3",
+            "answer_provider": "local",
+            "query_provider": "local",
+            "embedding_provider": "local",
         }
 
     @pytest.mark.parametrize(

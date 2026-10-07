@@ -6,6 +6,17 @@ from api.config import get_settings
 from tests.integration.api.conftest import create_test_app
 
 
+@pytest.fixture(autouse=True)
+def _local_providers(monkeypatch):
+    """Keep a developer's own shell and .env out of the provider settings.
+
+    An environment variable beats .env, so pinning the providers here covers both.
+    """
+    monkeypatch.delenv("ASSISTANT_API_KEY_OVH", raising=False)
+    for name in ("ANSWER", "LLM", "EMBEDDING"):
+        monkeypatch.setenv(f"ASSISTANT_{name}_PROVIDER", "local")
+
+
 class TestAssistantRouterGating:
     """The whole /assistant/* prefix follows assistant_enabled, like every other route."""
 
@@ -65,8 +76,6 @@ class TestAssistantRouterGating:
         monkeypatch.setenv("ASSISTANT_API_KEY_OVH", key)
         monkeypatch.setenv("ASSISTANT_ANSWER_PROVIDER", "api")
         monkeypatch.setenv("ASSISTANT_ANSWER_LLM_BASE_URL", url)
-        monkeypatch.delenv("ASSISTANT_LLM_PROVIDER", raising=False)
-        monkeypatch.delenv("ASSISTANT_EMBEDDING_PROVIDER", raising=False)
         get_settings.cache_clear()
 
         # WHEN

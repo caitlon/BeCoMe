@@ -1479,7 +1479,8 @@ class TestStream:
 
         # THEN
         assert result["rows"] == 1
-        assert {row["answer_provider"] for row in _rows(output)[1:]} == {"local"}
+        for provider in sorted(providers):
+            assert {row[provider] for row in _rows(output)[1:]} == {"local"}
 
 
 class TestProvenance:
