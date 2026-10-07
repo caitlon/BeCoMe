@@ -502,7 +502,8 @@ laptop and a CI runner carry no such marker, so the invariants guard staging wit
 breaking the local suite. The app serves the interactive API docs (`/docs`) only outside
 production.
 
-The local assistant has a check of its own, separate from the nine invariants.
+The assistant, which runs its models locally by default or at a hosted provider per role,
+has a check of its own, separate from the nine invariants.
 `assistant_enabled` defaults to `false`, and `_validate_assistant_local_only` refuses to start
 when it is `true` on any deploy. The check also fires when `RAILWAY_ENVIRONMENT_NAME` is set, so
 a Railway process that carries `TESTING=1` and slips past `is_deploy` is still refused. The

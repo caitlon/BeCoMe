@@ -1,7 +1,7 @@
 """The failures that mean a service the assistant depends on cannot answer right now.
 
-The assistant reads from a local model server, an embedding and rerank server, the
-document index in PostgreSQL and the application's own API. When any of them fails
+The assistant reads from a model server (local by default, or a hosted provider per
+role), an embedding and rerank server, the document index in PostgreSQL and the application's own API. When any of them fails
 in one of the ways listed here, the chat service answers "temporarily unavailable"
 and a tool tells the model the data is unavailable, instead of reporting a fault in
 the question.
