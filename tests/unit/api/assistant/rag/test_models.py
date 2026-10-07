@@ -1,5 +1,7 @@
 """Unit tests for the chat, embeddings, and reranker model clients (fakes only, no network)."""
 
+import json
+
 import httpx
 import pytest
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
@@ -145,6 +147,178 @@ class TestMakeEmbeddings:
 
         # THEN
         assert embeddings.chunk_size == 64
+
+
+_API_KEY = "ovh-test-key"  # pragma: allowlist secret
+_REMOTE_URL = "https://models.example.test/v1"
+
+
+def _settings(**overrides) -> Settings:
+    """Settings with every role local, unless an override says otherwise."""
+    return Settings(secret_key="test-secret-key", **overrides)
+
+
+def _api_settings() -> Settings:
+    """Settings with every role on the hosted API, at a remote URL, with a key."""
+    return _settings(
+        assistant_api_key_ovh=_API_KEY,
+        assistant_answer_provider="api",
+        assistant_llm_provider="api",
+        assistant_embedding_provider="api",
+        assistant_answer_llm_base_url=_REMOTE_URL,
+        assistant_llm_base_url=_REMOTE_URL,
+        assistant_embedding_base_url=_REMOTE_URL,
+    )
+
+
+class TestApiProvider:
+    """A role on the hosted API sends the key and, for chat models, switches reasoning off."""
+
+    @pytest.mark.parametrize("make", [make_chat_model, make_answer_model])
+    def test_a_chat_client_carries_the_key_the_retries_and_the_reasoning_switch(self, make):
+        """
+        GIVEN settings with the answer and query roles on the hosted API
+        WHEN a chat client is built
+        THEN it holds the configured key instead of the local placeholder, retries twice,
+             and sends reasoning_effort none in the request body
+        """
+        # GIVEN
+        settings = _api_settings()
+
+        # WHEN
+        model = make(settings)
+
+        # THEN
+        assert model.openai_api_key is not None
+        assert model.openai_api_key.get_secret_value() == _API_KEY
+        assert model.max_retries == 2
+        assert model.extra_body == {"reasoning_effort": "none"}
+
+    def test_the_embeddings_client_carries_the_key_and_the_retries(self):
+        """
+        GIVEN settings with the embedding role on the hosted API
+        WHEN make_embeddings builds a client
+        THEN it holds the configured key and retries twice
+        """
+        # GIVEN
+        settings = _api_settings()
+
+        # WHEN
+        embeddings = make_embeddings(settings)
+
+        # THEN
+        assert embeddings.openai_api_key is not None
+        assert embeddings.openai_api_key.get_secret_value() == _API_KEY
+        assert embeddings.max_retries == 2
+
+    def test_the_answer_client_keeps_its_other_settings_in_api_mode(self):
+        """
+        GIVEN settings with the answer role on the hosted API
+        WHEN make_answer_model builds a client
+        THEN it is still deterministic, capped, and asks for the usage on the last chunk
+        """
+        # GIVEN
+        settings = _api_settings()
+
+        # WHEN
+        model = make_answer_model(settings)
+
+        # THEN
+        assert model.openai_api_base == _REMOTE_URL
+        assert model.temperature == 0
+        assert model.max_tokens == settings.assistant_answer_max_tokens
+        assert model.stream_usage is True
+
+    def test_each_role_follows_its_own_provider(self):
+        """
+        GIVEN only the answer role on the hosted API
+        WHEN the three clients are built
+        THEN the other two keep the local placeholder key and send no reasoning switch
+        """
+        # GIVEN
+        settings = _settings(
+            assistant_api_key_ovh=_API_KEY,
+            assistant_answer_provider="api",
+            assistant_answer_llm_base_url=_REMOTE_URL,
+        )
+
+        # WHEN
+        answer = make_answer_model(settings)
+        chat = make_chat_model(settings)
+        embeddings = make_embeddings(settings)
+
+        # THEN
+        assert answer.openai_api_key.get_secret_value() == _API_KEY
+        assert chat.openai_api_key.get_secret_value() == "not-needed"
+        assert chat.extra_body is None
+        assert embeddings.openai_api_key.get_secret_value() == "not-needed"
+
+    @pytest.mark.parametrize("make", [make_chat_model, make_answer_model])
+    def test_a_call_carries_a_bearer_header_and_the_reasoning_switch(self, make):
+        """
+        GIVEN an api-mode chat client whose HTTP transport is a recording fake
+        WHEN it is invoked
+        THEN the request carries Authorization: Bearer with the key, and a body that holds
+             reasoning_effort none
+        """
+        # GIVEN
+        seen: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen.append(request)
+            return httpx.Response(
+                200,
+                json={
+                    "id": "c",
+                    "object": "chat.completion",
+                    "created": 0,
+                    "model": "m",
+                    "choices": [
+                        {
+                            "index": 0,
+                            "message": {"role": "assistant", "content": "ok"},
+                            "finish_reason": "stop",
+                        }
+                    ],
+                },
+            )
+
+        model = make(_api_settings())
+        model.root_client._client = httpx.Client(transport=httpx.MockTransport(handler))
+
+        # WHEN
+        reply = model.invoke("hello")
+
+        # THEN
+        assert reply.content == "ok"
+        assert seen[0].headers["authorization"] == f"Bearer {_API_KEY}"
+        assert json.loads(seen[0].content)["reasoning_effort"] == "none"
+
+
+class TestLocalProviderIsUnchanged:
+    """A role on the local server keeps the placeholder key, its retries and no extra body."""
+
+    def test_local_clients_hold_the_placeholder_key_and_send_no_reasoning_switch(self):
+        """
+        GIVEN default settings, every role local
+        WHEN the three clients are built
+        THEN each holds the placeholder key, the chat clients send no extra body, and the
+             answer client still never retries
+        """
+        # GIVEN
+        settings = _settings()
+
+        # WHEN
+        answer = make_answer_model(settings)
+        chat = make_chat_model(settings)
+        embeddings = make_embeddings(settings)
+
+        # THEN
+        for client in (answer, chat, embeddings):
+            assert client.openai_api_key.get_secret_value() == "not-needed"
+        assert answer.extra_body is None
+        assert chat.extra_body is None
+        assert answer.max_retries == 0
 
 
 class TestStripThinkBlock:

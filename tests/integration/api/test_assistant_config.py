@@ -2,6 +2,7 @@
 
 import pytest
 
+from api.config import get_settings
 from tests.integration.api.conftest import create_test_app
 
 
@@ -32,6 +33,54 @@ class TestAssistantRouterGating:
         # THEN
         assert response.status_code == 200
         assert response.json()["enabled"] is True
+
+    def test_config_endpoint_reports_every_role_as_local_by_default(
+        self, assistant_settings, client
+    ):
+        """
+        GIVEN the test app with the flag on and no provider switched
+        WHEN the config endpoint is requested
+        THEN the answer, query and embedding providers are all local
+        """
+        # WHEN
+        body = client.get("/api/v1/assistant/config").json()
+
+        # THEN
+        assert body["answer_provider"] == "local"
+        assert body["query_provider"] == "local"
+        assert body["embedding_provider"] == "local"
+
+    def test_config_endpoint_reports_a_role_on_the_api_without_a_key_or_a_url(
+        self, assistant_settings, client, monkeypatch
+    ):
+        """
+        GIVEN settings with the answer role on the hosted API, a key and a remote URL
+        WHEN the config endpoint is requested
+        THEN the answer provider reads api, the others stay local, and neither the key nor
+             the URL appears anywhere in the body
+        """
+        # GIVEN
+        key = "ovh-test-key"  # pragma: allowlist secret
+        url = "https://models.example.test/v1"
+        monkeypatch.setenv("ASSISTANT_API_KEY_OVH", key)
+        monkeypatch.setenv("ASSISTANT_ANSWER_PROVIDER", "api")
+        monkeypatch.setenv("ASSISTANT_ANSWER_LLM_BASE_URL", url)
+        monkeypatch.delenv("ASSISTANT_LLM_PROVIDER", raising=False)
+        monkeypatch.delenv("ASSISTANT_EMBEDDING_PROVIDER", raising=False)
+        get_settings.cache_clear()
+
+        # WHEN
+        response = client.get("/api/v1/assistant/config")
+
+        # THEN
+        body = response.json()
+        assert (body["answer_provider"], body["query_provider"], body["embedding_provider"]) == (
+            "api",
+            "local",
+            "local",
+        )
+        assert key not in response.text
+        assert url not in response.text
 
 
 class TestTestAppMirrorsTheMainApp:

@@ -1,7 +1,8 @@
 """Factories for the assistant's model clients: chat, answer, embeddings, and rerank.
 
 The chat, answer and embedding roles point at a locally running llama-server process each,
-reached through the OpenAI-compatible API langchain_openai speaks. The rerank role
+reached through the OpenAI-compatible API langchain_openai speaks, or, per role, at a hosted
+OpenAI-compatible endpoint (settings ``assistant_*_provider`` set to "api"). The rerank role
 (LlamaServerReranker) is not an OpenAI-shaped client - llama-server's /v1/rerank has no
 langchain_openai counterpart - so it talks to the endpoint directly over HTTP instead.
 """
@@ -14,19 +15,43 @@ from api.config import Settings
 
 # llama-server ignores the key, but the OpenAI client insists on one.
 _LOCAL_API_KEY = SecretStr("not-needed")
+# A hosted endpoint, unlike a local server, fails now and then for reasons a retry cures.
+_API_MAX_RETRIES = 2
+# Hosted Qwen3.5 reasons by default and spends every token on it, returning no text; this
+# switch, measured on OVHcloud, turns the reasoning off. The enable_thinking forms are refused.
+_API_CHAT_EXTRA_BODY = {"reasoning_effort": "none"}
+
+
+def _api_key(settings: Settings, provider: str) -> SecretStr:
+    """Pick the key a role sends: the hosted key in api mode, the placeholder otherwise.
+
+    :param settings: Application settings.
+    :param provider: The role's provider setting, "local" or "api".
+    :return: assistant_api_key_ovh for an api role (Settings guarantees it is set), else
+        the placeholder a local server ignores.
+    """
+    if provider == "api" and settings.assistant_api_key_ovh is not None:
+        return settings.assistant_api_key_ovh
+    return _LOCAL_API_KEY
 
 
 def make_chat_model(settings: Settings) -> ChatOpenAI:
-    """Build the chat model client, pointed at the local chat llama-server.
+    """Build the chat model client, pointed at the chat llama-server or the hosted API.
+
+    In api mode (settings.assistant_llm_provider) the client sends the hosted key, retries
+    twice, and switches the model's reasoning off; in local mode it is as it always was.
 
     :param settings: Application settings.
     :return: A ChatOpenAI client for settings.assistant_llm_base_url.
     """
+    hosted = settings.assistant_llm_provider == "api"
     return ChatOpenAI(
         base_url=settings.assistant_llm_base_url,
-        api_key=_LOCAL_API_KEY,
+        api_key=_api_key(settings, settings.assistant_llm_provider),
         model=settings.assistant_llm_model,
         timeout=settings.assistant_llm_timeout_seconds,
+        max_retries=_API_MAX_RETRIES if hosted else None,
+        extra_body=_API_CHAT_EXTRA_BODY if hosted else None,
     )
 
 
@@ -35,19 +60,23 @@ def make_answer_model(settings: Settings) -> ChatOpenAI:
 
     Separate from make_chat_model, which serves the query transforms: the answer model
     is larger, runs on its own llama-server, and has its own token cap. Temperature 0
-    keeps answers repeatable. max_retries=0 because the OpenAI client otherwise retries
-    twice, which triples the time a dead local server takes to fail.
+    keeps answers repeatable. A local server gets max_retries=0 because the OpenAI client
+    otherwise retries twice, which triples the time a dead server takes to fail; the hosted
+    API (settings.assistant_answer_provider = "api") gets two retries, its hosted key, and
+    the reasoning switch of make_chat_model.
 
     :param settings: Application settings.
     :return: A ChatOpenAI client for settings.assistant_answer_llm_base_url.
     """
+    hosted = settings.assistant_answer_provider == "api"
     return ChatOpenAI(
         base_url=settings.assistant_answer_llm_base_url,
-        api_key=_LOCAL_API_KEY,
+        api_key=_api_key(settings, settings.assistant_answer_provider),
         model=settings.assistant_answer_llm_model,
         temperature=0,
         max_completion_tokens=settings.assistant_answer_max_tokens,
-        max_retries=0,
+        max_retries=_API_MAX_RETRIES if hosted else 0,
+        extra_body=_API_CHAT_EXTRA_BODY if hosted else None,
         # The last streamed chunk then carries the usage, which a streamed turn needs.
         stream_usage=True,
         timeout=settings.assistant_llm_timeout_seconds,
@@ -101,7 +130,7 @@ _EMBEDDING_BATCH_SIZE = 64
 
 
 def make_embeddings(settings: Settings) -> OpenAIEmbeddings:
-    """Build the embeddings client, pointed at the local embedding llama-server.
+    """Build the embeddings client, pointed at the embedding llama-server or the hosted API.
 
     check_embedding_ctx_length=False is required: without it OpenAIEmbeddings sends
     tiktoken-encoded integer tokens instead of raw text, which llama-server's
@@ -112,15 +141,18 @@ def make_embeddings(settings: Settings) -> OpenAIEmbeddings:
     most 64 texts each, so that timeout bounds one small batch rather than the whole
     corpus.
 
+    In api mode (settings.assistant_embedding_provider) the client sends the hosted key.
+
     :param settings: Application settings.
     :return: An OpenAIEmbeddings client for settings.assistant_embedding_base_url.
     """
     return OpenAIEmbeddings(
         base_url=settings.assistant_embedding_base_url,
-        api_key=_LOCAL_API_KEY,
+        api_key=_api_key(settings, settings.assistant_embedding_provider),
         model=settings.assistant_embedding_model,
         check_embedding_ctx_length=False,
         timeout=settings.assistant_llm_timeout_seconds,
+        max_retries=_API_MAX_RETRIES,
         chunk_size=_EMBEDDING_BATCH_SIZE,
     )
 

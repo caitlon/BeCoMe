@@ -51,6 +51,9 @@ def get_assistant_config(
         model=settings.assistant_answer_llm_model,
         mode=settings.assistant_mode,
         collection=settings.assistant_collection,
+        answer_provider=settings.assistant_answer_provider,
+        query_provider=settings.assistant_llm_provider,
+        embedding_provider=settings.assistant_embedding_provider,
     )
 
 

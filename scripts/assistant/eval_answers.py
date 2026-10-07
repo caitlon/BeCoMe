@@ -96,9 +96,18 @@ _PROVENANCE_FIELDS = (
     "collection",
     "code_version",
     "transport",
+    "answer_provider",
+    "query_provider",
+    "embedding_provider",
 )
-# What a row written before the field existed is taken to hold: only /chat existed then.
-_PROVENANCE_DEFAULTS = {"transport": "chat"}
+# What a row written before the field existed is taken to hold: only /chat existed, and
+# every model role ran on a local server.
+_PROVENANCE_DEFAULTS = {
+    "transport": "chat",
+    "answer_provider": "local",
+    "query_provider": "local",
+    "embedding_provider": "local",
+}
 
 
 class RunRefusedError(Exception):
@@ -581,6 +590,9 @@ async def run_eval(
         "code_version": code_version,
         "prompt_sha256": PROMPT_SHA256,
         "transport": "stream" if stream else "chat",
+        "answer_provider": settings.assistant_answer_provider,
+        "query_provider": settings.assistant_llm_provider,
+        "embedding_provider": settings.assistant_embedding_provider,
     }
     problem = _provenance_problem(_read_rows(output), meta)
     if problem is not None:
