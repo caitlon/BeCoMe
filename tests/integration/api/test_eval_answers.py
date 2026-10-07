@@ -47,7 +47,8 @@ DB_URL = "postgresql+psycopg://u:p@127.0.0.1:9/db"  # pragma: allowlist secret
 PROVENANCE_FIELDS = (  # noqa: SIM905
     "mode prompt_sha256 corpus_version app_version answer_model retrieval_mode "
     "retrieval_query_transform retrieval_rerank retrieval_k answer_max_tokens query_model "
-    "max_tool_calls collection code_version answer_endpoint transport"
+    "max_tool_calls collection code_version answer_endpoint transport "
+    "answer_provider query_provider embedding_provider"
 ).split()
 GOOD_ROW = json.dumps({"id": "q0", "arm": "cli", "status": "ok"})
 _ENV = {
@@ -1456,6 +1457,29 @@ class TestStream:
         with pytest.raises(ea.RunRefusedError, match="transport"):
             _run(client, fixtures, second, output, stream=True)
         assert _run(client, fixtures, second, output)["rows"] == 1
+
+    def test_rows_from_before_the_providers_existed_count_as_local(
+        self, assistant_settings, client, tmp_path
+    ):
+        """
+        GIVEN a row of the arm written before rows recorded a provider per role
+        WHEN the arm is resumed with every role local
+        THEN the run is accepted and appends its row
+        """
+        # GIVEN
+        fixtures = _setup(client, _scripted("One.", "Two."))
+        output = tmp_path / "out.jsonl"
+        _run(client, fixtures, [{"id": "q1", "question": "One?"}], output)
+        providers = {"answer_provider", "query_provider", "embedding_provider"}
+        legacy = {k: v for k, v in _rows(output)[0].items() if k not in providers}
+        output.write_text(json.dumps(legacy) + "\n", encoding="utf-8")
+
+        # WHEN
+        result = _run(client, fixtures, [{"id": "q2", "question": "Two?"}], output)
+
+        # THEN
+        assert result["rows"] == 1
+        assert {row["answer_provider"] for row in _rows(output)[1:]} == {"local"}
 
 
 class TestProvenance:

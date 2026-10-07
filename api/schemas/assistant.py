@@ -20,12 +20,19 @@ MAX_HISTORY_CONTENT_CHARS = 8000
 
 
 class AssistantConfigResponse(BaseModel):
-    """Which model, mode, and document collection currently serve the assistant."""
+    """Which model, mode, and document collection currently serve the assistant.
+
+    The three providers say where each model role runs, ``local`` or ``api``. The
+    response never carries a key or a URL.
+    """
 
     enabled: bool
     model: str
     mode: str
     collection: str
+    answer_provider: str
+    query_provider: str
+    embedding_provider: str
 
 
 class ChatTurn(BaseModel):
