@@ -7,7 +7,7 @@ from importlib.metadata import PackageNotFoundError, version
 from typing import Annotated, Any, Literal
 from urllib.parse import urlparse
 
-from pydantic import BeforeValidator, Field, model_validator
+from pydantic import BeforeValidator, Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 try:
@@ -93,6 +93,14 @@ def _env_files_for(environment: Environment) -> tuple[str, ...]:
 
 
 LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", ""})
+
+# Each assistant model role that can run hosted: its provider setting, and the base URL
+# setting a hosted role sends its requests to.
+_ASSISTANT_PROVIDER_ROLES = (
+    ("assistant_answer_provider", "assistant_answer_llm_base_url"),
+    ("assistant_llm_provider", "assistant_llm_base_url"),
+    ("assistant_embedding_provider", "assistant_embedding_base_url"),
+)
 
 
 def _has_remote_cors_origin(origins: list[str]) -> bool:
@@ -254,6 +262,15 @@ class Settings(BaseSettings):
     assistant_retrieval_k: int = Field(default=3, gt=0)
     assistant_embedding_base_url: str = "http://127.0.0.1:8082/v1"
     assistant_embedding_model: str = "BAAI/bge-m3"
+    # Where each of the three model roles runs: "local" is the llama-server named by the
+    # role's base URL above, "api" is a hosted OpenAI-compatible endpoint at that same base
+    # URL, paid for with assistant_api_key_ovh (OVHcloud, an EU provider). The roles switch
+    # independently; the reranker has no hosted counterpart and always stays local.
+    # _validate_assistant_providers refuses an api role with no key or a loopback URL.
+    assistant_answer_provider: Literal["local", "api"] = "local"
+    assistant_llm_provider: Literal["local", "api"] = "local"
+    assistant_embedding_provider: Literal["local", "api"] = "local"
+    assistant_api_key_ovh: SecretStr | None = None
     assistant_rerank_base_url: str = "http://127.0.0.1:8083/v1"
     assistant_rerank_model: str = "BAAI/bge-reranker-v2-m3"
     # No default: a URL here would hard-code a password or reach a database that has none.
@@ -412,6 +429,32 @@ class Settings(BaseSettings):
                 f"{self.environment.value} profile here); the assistant runs only on "
                 "a developer machine"
             )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_assistant_providers(self) -> "Settings":
+        """Refuse a model role set to the hosted API that cannot reach it.
+
+        A role in api mode sends every prompt, and the key, to its base URL. With no key
+        the first request would fail with a 401 nobody reads at start-up, and with a
+        loopback URL the key would go to a local server that ignores it while the role
+        looks hosted. A blank key counts as missing: ``ASSISTANT_API_KEY_OVH=`` in an env
+        file arrives as an empty string. A role in local mode needs neither.
+
+        :return: The validated settings instance.
+        :raises ValueError: If a role is in api mode and assistant_api_key_ovh is missing
+            or blank, or that role's base URL is a loopback address.
+        """
+        key = self.assistant_api_key_ovh.get_secret_value() if self.assistant_api_key_ovh else ""
+        for provider_name, url_name in _ASSISTANT_PROVIDER_ROLES:
+            if getattr(self, provider_name) != "api":
+                continue
+            if not key.strip():
+                raise ValueError(f"assistant_api_key_ovh must be set when {provider_name} is api")
+            if (urlparse(getattr(self, url_name)).hostname or "") in LOOPBACK_HOSTS:
+                raise ValueError(
+                    f"{url_name} must not be a loopback address when {provider_name} is api"
+                )
         return self
 
     @model_validator(mode="after")
