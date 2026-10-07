@@ -1573,3 +1573,120 @@ class TestAssistantSettings:
 
         # THEN
         assert settings.assistant_langsmith_enabled is False
+
+
+_PROVIDER_ROLES = [
+    ("assistant_answer_provider", "assistant_answer_llm_base_url"),
+    ("assistant_llm_provider", "assistant_llm_base_url"),
+    ("assistant_embedding_provider", "assistant_embedding_base_url"),
+]
+_REMOTE_URL = "https://models.example.test/v1"
+_FAKE_KEY = "ovh-test-key"  # pragma: allowlist secret
+
+
+@pytest.fixture
+def provider_env(monkeypatch, tmp_path) -> None:
+    """Keep a developer's own .env and shell out of the provider settings tests."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("ASSISTANT_API_KEY_OVH", raising=False)
+    for provider, _ in _PROVIDER_ROLES:
+        monkeypatch.delenv(provider.upper(), raising=False)
+
+
+@pytest.mark.usefixtures("provider_env")
+class TestAssistantProviderSettings:
+    """Each model role runs locally or through the hosted API, and api mode needs a key."""
+
+    def test_every_role_is_local_by_default_without_a_key(self):
+        """
+        GIVEN Settings with no override and no key in reach
+        WHEN constructed
+        THEN all three roles are local and no key is held
+        """
+        # WHEN
+        settings = Settings(secret_key="test-secret-key")
+
+        # THEN
+        assert settings.assistant_answer_provider == "local"
+        assert settings.assistant_llm_provider == "local"
+        assert settings.assistant_embedding_provider == "local"
+        assert settings.assistant_api_key_ovh is None
+
+    @pytest.mark.parametrize(("provider", "url"), _PROVIDER_ROLES)
+    @pytest.mark.parametrize("api_key", [None, "", "   "])
+    def test_rejects_api_mode_without_a_key(self, provider, url, api_key):
+        """
+        GIVEN one role in api mode with a remote URL and no key, an empty key or a blank key
+        WHEN Settings is constructed
+        THEN it is refused, naming the key and the role's provider setting
+        """
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match=f"assistant_api_key_ovh.*{provider}"):
+            Settings(
+                secret_key="test-secret-key",
+                assistant_api_key_ovh=api_key,
+                **{provider: "api", url: _REMOTE_URL},
+            )
+
+    @pytest.mark.parametrize(("provider", "url"), _PROVIDER_ROLES)
+    def test_accepts_api_mode_with_a_key_and_a_remote_url(self, provider, url):
+        """
+        GIVEN one role in api mode with a key and a non-loopback URL
+        WHEN Settings is constructed
+        THEN validation passes and the key is held as a secret
+        """
+        # WHEN
+        settings = Settings(
+            secret_key="test-secret-key",
+            assistant_api_key_ovh=_FAKE_KEY,
+            **{provider: "api", url: _REMOTE_URL},
+        )
+
+        # THEN
+        assert getattr(settings, provider) == "api"
+        assert settings.assistant_api_key_ovh is not None
+        assert settings.assistant_api_key_ovh.get_secret_value() == _FAKE_KEY
+        assert _FAKE_KEY not in repr(settings)
+
+    @pytest.mark.parametrize(("provider", "url"), _PROVIDER_ROLES)
+    @pytest.mark.parametrize("loopback", ["http://127.0.0.1:8081/v1", "http://localhost:8081/v1"])
+    def test_rejects_api_mode_with_a_loopback_url(self, provider, url, loopback):
+        """
+        GIVEN one role in api mode with a key but a loopback base URL
+        WHEN Settings is constructed
+        THEN it is refused, naming the role's URL setting, because the key would go to a
+             local server that ignores it
+        """
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match=url):
+            Settings(
+                secret_key="test-secret-key",
+                assistant_api_key_ovh=_FAKE_KEY,
+                **{provider: "api", url: loopback},
+            )
+
+    @pytest.mark.parametrize(("provider", "url"), _PROVIDER_ROLES)
+    def test_local_mode_needs_no_key_and_allows_a_loopback_url(self, provider, url):
+        """
+        GIVEN one role in local mode with a loopback URL and no key
+        WHEN Settings is constructed
+        THEN validation passes
+        """
+        # WHEN
+        settings = Settings(
+            secret_key="test-secret-key",
+            **{provider: "local", url: "http://127.0.0.1:9999/v1"},
+        )
+
+        # THEN
+        assert getattr(settings, provider) == "local"
+
+    def test_rejects_an_unknown_provider(self):
+        """
+        GIVEN a provider name that is neither local nor api
+        WHEN Settings is constructed
+        THEN it is refused, naming the field
+        """
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="assistant_answer_provider"):
+            Settings(secret_key="test-secret-key", assistant_answer_provider="cloud")
