@@ -288,6 +288,9 @@ class Settings(BaseSettings):
     assistant_llm_provider: Literal["local", "api"] = "local"
     assistant_embedding_provider: Literal["local", "api"] = "local"
     assistant_api_key_ovh: SecretStr | None = None
+    # The value the hosted chat models send as reasoning_effort. "none" is what OVHcloud's
+    # Qwen needs to answer at all; None sends nothing, for a provider that rejects the parameter.
+    assistant_api_reasoning_effort: Literal["none", "low", "medium", "high"] | None = "none"
     assistant_rerank_base_url: str = "http://127.0.0.1:8083/v1"
     assistant_rerank_model: str = "BAAI/bge-reranker-v2-m3"
     # No default: a URL here would hard-code a password or reach a database that has none.
