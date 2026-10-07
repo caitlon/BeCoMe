@@ -7,6 +7,8 @@ OpenAI-compatible endpoint (settings ``assistant_*_provider`` set to "api"). The
 langchain_openai counterpart - so it talks to the endpoint directly over HTTP instead.
 """
 
+from typing import Any
+
 import httpx
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from pydantic import SecretStr
@@ -146,13 +148,16 @@ def make_embeddings(settings: Settings) -> OpenAIEmbeddings:
     :param settings: Application settings.
     :return: An OpenAIEmbeddings client for settings.assistant_embedding_base_url.
     """
+    hosted = settings.assistant_embedding_provider == "api"
+    # A local server keeps the client's own retry default; only the hosted API sets it.
+    retries: dict[str, Any] = {"max_retries": _API_MAX_RETRIES} if hosted else {}
     return OpenAIEmbeddings(
         base_url=settings.assistant_embedding_base_url,
         api_key=_api_key(settings, settings.assistant_embedding_provider),
         model=settings.assistant_embedding_model,
         check_embedding_ctx_length=False,
         timeout=settings.assistant_llm_timeout_seconds,
-        max_retries=_API_MAX_RETRIES,
+        **retries,
         chunk_size=_EMBEDDING_BATCH_SIZE,
     )
 

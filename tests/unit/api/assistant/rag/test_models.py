@@ -155,7 +155,13 @@ _REMOTE_URL = "https://models.example.test/v1"
 
 def _settings(**overrides) -> Settings:
     """Settings with every role local, unless an override says otherwise."""
-    return Settings(secret_key="test-secret-key", **overrides)
+    isolated = {
+        "assistant_answer_provider": "local",
+        "assistant_llm_provider": "local",
+        "assistant_embedding_provider": "local",
+        "assistant_api_key_ovh": None,
+    }
+    return Settings(secret_key="test-secret-key", **{**isolated, **overrides})
 
 
 def _api_settings() -> Settings:
@@ -294,6 +300,37 @@ class TestApiProvider:
         assert seen[0].headers["authorization"] == f"Bearer {_API_KEY}"
         assert json.loads(seen[0].content)["reasoning_effort"] == "none"
 
+    def test_an_embeddings_call_carries_a_bearer_header(self):
+        """
+        GIVEN an api-mode embeddings client whose HTTP transport is a recording fake
+        WHEN it embeds a query
+        THEN the request carries Authorization: Bearer with the key
+        """
+        # GIVEN
+        seen: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen.append(request)
+            return httpx.Response(
+                200,
+                json={
+                    "object": "list",
+                    "model": "m",
+                    "data": [{"object": "embedding", "index": 0, "embedding": [0.1, 0.2]}],
+                    "usage": {"prompt_tokens": 1, "total_tokens": 1},
+                },
+            )
+
+        embeddings = make_embeddings(_api_settings())
+        embeddings.client._client._client = httpx.Client(transport=httpx.MockTransport(handler))
+
+        # WHEN
+        vector = embeddings.embed_query("hello")
+
+        # THEN
+        assert vector == [0.1, 0.2]
+        assert seen[0].headers["authorization"] == f"Bearer {_API_KEY}"
+
 
 class TestLocalProviderIsUnchanged:
     """A role on the local server keeps the placeholder key, its retries and no extra body."""
@@ -319,6 +356,7 @@ class TestLocalProviderIsUnchanged:
         assert answer.extra_body is None
         assert chat.extra_body is None
         assert answer.max_retries == 0
+        assert embeddings.max_retries == OpenAIEmbeddings(api_key="x").max_retries
 
 
 class TestStripThinkBlock:
