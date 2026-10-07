@@ -8,7 +8,7 @@ from importlib.metadata import PackageNotFoundError, version
 from typing import Annotated, Any, Literal
 from urllib.parse import urlparse
 
-from pydantic import BeforeValidator, Field, SecretStr, model_validator
+from pydantic import BeforeValidator, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 try:
@@ -290,6 +290,7 @@ class Settings(BaseSettings):
     assistant_api_key_ovh: SecretStr | None = None
     # The value the hosted chat models send as reasoning_effort. "none" is what OVHcloud's
     # Qwen needs to answer at all; None sends nothing, for a provider that rejects the parameter.
+    # An empty environment value means None.
     assistant_api_reasoning_effort: Literal["none", "low", "medium", "high"] | None = "none"
     assistant_rerank_base_url: str = "http://127.0.0.1:8083/v1"
     assistant_rerank_model: str = "BAAI/bge-reranker-v2-m3"
@@ -403,6 +404,14 @@ class Settings(BaseSettings):
             not self.testing
             and (self.environment is Environment.TEST or self.railway_environment_name is not None)
         )
+
+    @field_validator("assistant_api_reasoning_effort", mode="before")
+    @classmethod
+    def _empty_reasoning_effort_is_none(cls, value: object) -> object:
+        """Map an empty or whitespace-only value to None, so the environment can send nothing."""
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
     @model_validator(mode="after")
     def _apply_profile_log_level(self) -> "Settings":

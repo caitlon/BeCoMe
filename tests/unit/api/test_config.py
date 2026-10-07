@@ -1731,3 +1731,32 @@ class TestAssistantProviderSettings:
         # WHEN/THEN
         with pytest.raises(ValidationError, match="assistant_answer_provider"):
             Settings(secret_key="test-secret-key", assistant_answer_provider="cloud")
+
+    @pytest.mark.parametrize(("raw", "expected"), [("", None), ("   ", None), ("low", "low")])
+    def test_reasoning_effort_reads_the_environment(self, monkeypatch, raw, expected):
+        """
+        GIVEN ASSISTANT_API_REASONING_EFFORT set to an empty, blank or valid value
+        WHEN Settings is constructed
+        THEN an empty or blank value means None (send nothing) and a valid one is kept
+        """
+        # GIVEN
+        monkeypatch.setenv("ASSISTANT_API_REASONING_EFFORT", raw)
+
+        # WHEN
+        settings = Settings(secret_key="test-secret-key")
+
+        # THEN
+        assert settings.assistant_api_reasoning_effort == expected
+
+    def test_reasoning_effort_refuses_a_wrong_case(self, monkeypatch):
+        """
+        GIVEN ASSISTANT_API_REASONING_EFFORT set to "High"
+        WHEN Settings is constructed
+        THEN it is refused, naming the field
+        """
+        # GIVEN
+        monkeypatch.setenv("ASSISTANT_API_REASONING_EFFORT", "High")
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="assistant_api_reasoning_effort"):
+            Settings(secret_key="test-secret-key")
