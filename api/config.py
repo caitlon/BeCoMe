@@ -423,8 +423,9 @@ class Settings(BaseSettings):
     def _validate_assistant_local_only(self) -> "Settings":
         """Refuse to start with the assistant switched on anywhere but a laptop.
 
-        The assistant reads project data as the signed-in user and calls a locally
-        running LLM; neither belongs on a service that serves real traffic. Keeping
+        The assistant reads project data as the signed-in user and calls an LLM, local by
+        default or a hosted provider per role; neither belongs on a service that serves
+        real traffic. Keeping
         the guard here, right before _validate_deploy_invariants, means a deploy that
         somehow set ASSISTANT_ENABLED fails on this message first, rather than on
         whichever deploy invariant happens to be missing.
