@@ -190,14 +190,17 @@ documentation. In `agent` and `hybrid` modes the model also receives the project
 data its tools read as the signed-in user, and that data goes to the provider too. In
 `workflow` mode the answer role receives the project's details, result and opinions
 (`AssistantService._fetch`). Building the index with an `api` embedding role sends the corpus
-text to the provider. The owner accepted this on the grounds that the provider is EU-resident and bound by a data processing
-agreement (DPA). A role left `local` sends nothing off the machine.
+text to the provider. With a hosted query-model role, the context modes `llm_context` and
+`doc_summary` of the index build (`pipeline.py`, `enrich`) also send corpus text to the
+chat provider. The owner accepted this on the grounds that the provider is EU-resident and
+bound by a data processing agreement (DPA). A role left `local` sends nothing off the machine.
 
 The key is read from the environment only, held as a secret, and never logged, returned by
 `GET /api/v1/assistant/config` or written to the evaluation rows. In `api` mode the two chat
-models also send `reasoning_effort`, set by `ASSISTANT_API_REASONING_EFFORT` (`none` by default):
-measured on OVHcloud, Qwen3.5-9B otherwise spends every token on reasoning and returns no text. The reranker has no hosted counterpart and always
-stays local. The config endpoint reports `answer_provider`, `query_provider` and
+models also send `reasoning_effort`, set by `ASSISTANT_API_REASONING_EFFORT` (`none` by
+default; an empty value sends nothing): measured on OVHcloud, Qwen3.5-9B otherwise spends
+every token on reasoning and returns no text. The reranker has no hosted counterpart and
+always stays local. The config endpoint reports `answer_provider`, `query_provider` and
 `embedding_provider`, and the answer-evaluation runner records the same three in each row, so
 rows made on different providers are never mixed in one output file.
 

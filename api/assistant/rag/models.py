@@ -54,7 +54,7 @@ def make_chat_model(settings: Settings) -> ChatOpenAI:
     """Build the chat model client, pointed at the chat llama-server or the hosted API.
 
     In api mode (settings.assistant_llm_provider) the client sends the hosted key and
-    switches the model's reasoning off; in local mode it is as it always was. The client
+    sends the configured ``reasoning_effort``; in local mode it is as it always was. The client
     keeps the SDK's own retries in both modes.
 
     :param settings: Application settings.

@@ -2,9 +2,9 @@
 
 The assistant reads from a model server (local by default, or a hosted provider per
 role), an embedding and rerank server, the document index in PostgreSQL and the
-application's own API. When any of them fails in one of the ways listed here, the chat service answers "temporarily unavailable"
-and a tool tells the model the data is unavailable, instead of reporting a fault in
-the question.
+application's own API. When any of them fails in one of the ways listed here, the chat
+service answers "temporarily unavailable" and a tool tells the model the data is
+unavailable, instead of reporting a fault in the question.
 
 This module is imported only by code that loads when the assistant is enabled, and
 never by ``api/assistant/errors.py``: that module loads in every deployed process,
