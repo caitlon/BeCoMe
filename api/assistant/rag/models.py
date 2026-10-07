@@ -18,9 +18,23 @@ _LOCAL_API_KEY = SecretStr("not-needed")
 # The answer model alone sets its retries: the hosted endpoint fails now and then for
 # reasons a retry cures, a dead local server only gets slower with them.
 _API_MAX_RETRIES = 2
-# Hosted Qwen3.5 reasons by default and spends every token on it, returning no text; this
-# switch, measured on OVHcloud, turns the reasoning off. The enable_thinking forms are refused.
-_API_CHAT_EXTRA_BODY = {"reasoning_effort": "none"}
+
+
+def _api_chat_extra_body(settings: Settings, hosted: bool) -> dict[str, str] | None:
+    """Build the extra request body a hosted chat model sends.
+
+    Hosted Qwen3.5 reasons by default and spends every token on it, returning no text; the
+    reasoning_effort "none", measured on OVHcloud, turns the reasoning off. The
+    enable_thinking forms are refused.
+
+    :param settings: Application settings.
+    :param hosted: Whether the role runs on the hosted API.
+    :return: {"reasoning_effort": <setting>}, or None for a local role or an unset setting.
+    """
+    effort = settings.assistant_api_reasoning_effort
+    if not hosted or effort is None:
+        return None
+    return {"reasoning_effort": effort}
 
 
 def _api_key(settings: Settings, provider: str) -> SecretStr:
@@ -52,7 +66,7 @@ def make_chat_model(settings: Settings) -> ChatOpenAI:
         api_key=_api_key(settings, settings.assistant_llm_provider),
         model=settings.assistant_llm_model,
         timeout=settings.assistant_llm_timeout_seconds,
-        extra_body=_API_CHAT_EXTRA_BODY if hosted else None,
+        extra_body=_api_chat_extra_body(settings, hosted),
     )
 
 
@@ -77,7 +91,7 @@ def make_answer_model(settings: Settings) -> ChatOpenAI:
         temperature=0,
         max_completion_tokens=settings.assistant_answer_max_tokens,
         max_retries=_API_MAX_RETRIES if hosted else 0,
-        extra_body=_API_CHAT_EXTRA_BODY if hosted else None,
+        extra_body=_api_chat_extra_body(settings, hosted),
         # The last streamed chunk then carries the usage, which a streamed turn needs.
         stream_usage=True,
         timeout=settings.assistant_llm_timeout_seconds,

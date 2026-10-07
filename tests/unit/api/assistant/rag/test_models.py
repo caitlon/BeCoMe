@@ -168,6 +168,7 @@ def _settings(**overrides) -> Settings:
         "assistant_llm_provider": "local",
         "assistant_embedding_provider": "local",
         "assistant_api_key_ovh": None,
+        "assistant_api_reasoning_effort": "none",
         **{name: Settings.model_fields[name].default for name in _BASE_URL_SETTINGS},
     }
     return Settings(
@@ -176,7 +177,7 @@ def _settings(**overrides) -> Settings:
     )
 
 
-def _api_settings() -> Settings:
+def _api_settings(**overrides) -> Settings:
     """Settings with every role on the hosted API, at a remote URL, with a key."""
     return _settings(
         assistant_api_key_ovh=_API_KEY,
@@ -186,6 +187,7 @@ def _api_settings() -> Settings:
         assistant_answer_llm_base_url=_REMOTE_URL,
         assistant_llm_base_url=_REMOTE_URL,
         assistant_embedding_base_url=_REMOTE_URL,
+        **overrides,
     )
 
 
@@ -210,6 +212,26 @@ class TestApiProvider:
         assert model.openai_api_key is not None
         assert model.openai_api_key.get_secret_value() == _API_KEY
         assert model.extra_body == {"reasoning_effort": "none"}
+
+    @pytest.mark.parametrize("make", [make_chat_model, make_answer_model])
+    @pytest.mark.parametrize(
+        ("effort", "expected"),
+        [("low", {"reasoning_effort": "low"}), (None, None)],
+    )
+    def test_the_reasoning_switch_follows_the_setting(self, make, effort, expected):
+        """
+        GIVEN settings with the hosted API and a reasoning effort of low, or none at all
+        WHEN a chat client is built
+        THEN it sends that effort, or no extra body when the setting is None
+        """
+        # GIVEN
+        settings = _api_settings(assistant_api_reasoning_effort=effort)
+
+        # WHEN
+        model = make(settings)
+
+        # THEN
+        assert model.extra_body == expected
 
     def test_the_embeddings_client_carries_the_key(self):
         """
