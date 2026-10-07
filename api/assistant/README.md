@@ -180,9 +180,11 @@ OpenAI-compatible endpoint, switched on its own: `ASSISTANT_ANSWER_PROVIDER`,
 (`ASSISTANT_ANSWER_LLM_BASE_URL`, `ASSISTANT_LLM_BASE_URL`, `ASSISTANT_EMBEDDING_BASE_URL`),
 so point the URL at the provider, OVHcloud's AI Endpoints being the EU one, and set the model
 name to match. `Settings` refuses to start when an `api` role has no `ASSISTANT_API_KEY_OVH`,
-a base URL that is not `https://host[:port]/v1`, or a loopback host.
+a base URL that is not an `https://` URL of the provider's OpenAI-compatible endpoint (the
+validator checks the scheme and the host, not the path), or a loopback host.
 
-An `api` role sends the question text to the provider, together with the public documentation
+An `api` role sends the question text and the earlier turns of the conversation to the
+provider, together with the public documentation
 excerpts retrieved for it. In `agent` and `hybrid` modes the model also receives the project
 data its tools read as the signed-in user, and that data goes to the provider too. The owner
 accepted this on the grounds that the provider is EU-resident and bound by a data processing
