@@ -212,7 +212,8 @@ token. The body is an `AssistantChatRequest` (`api/schemas/assistant.py`): `mess
 optional `history` of earlier `user` and `assistant` turns, an optional `project_id` for the
 project the user is looking at, and `locale` (`en` or `cs`). The answer carries the text, the
 documentation `sources` it may cite as `[n]`, the `tools_used`, the grounding `checks` and the
-token `usage` of the turn.
+token `usage` of the turn. Each source carries a `snippet`, the first words of the passage in
+plain text, at most 240 characters.
 
 The assistant reads project data through the application's own API, with the caller's own
 access token, so it sees exactly the projects the caller is a member of. What a project the

@@ -220,7 +220,7 @@ class TestSourceRef:
         WHEN a SourceRef is built
         THEN it is accepted
         """
-        ref = SourceRef(n=1, title="Method", section="Intro", url=None, layer=layer)
+        ref = SourceRef(n=1, title="Method", section="Intro", snippet="", url=None, layer=layer)
 
         assert ref.layer == layer
 
@@ -231,7 +231,31 @@ class TestSourceRef:
         THEN validation fails
         """
         with pytest.raises(ValidationError):
-            SourceRef(n=1, title="Method", section="Intro", url=None, layer="private")
+            SourceRef(n=1, title="Method", section="Intro", snippet="", url=None, layer="private")
+
+    @pytest.mark.parametrize("url", ["https://becomify.app/docs", None])
+    def test_accepts_an_https_url_or_none(self, url):
+        """
+        GIVEN an https url, or no url at all
+        WHEN a SourceRef is built
+        THEN it is accepted and keeps the value
+        """
+        ref = SourceRef(n=1, title="Method", section="", snippet="", url=url, layer="public")
+
+        assert ref.url == url
+
+    @pytest.mark.parametrize(
+        "url",
+        ["javascript:alert(1)", "http://becomify.app/docs", "data:text/html,x", "/docs", ""],
+    )
+    def test_rejects_a_url_that_is_not_https(self, url):
+        """
+        GIVEN a url the browser would render as a link but that is not https
+        WHEN a SourceRef is built
+        THEN validation fails
+        """
+        with pytest.raises(ValidationError):
+            SourceRef(n=1, title="Method", section="", snippet="", url=url, layer="public")
 
 
 class TestAssistantChatResponse:
@@ -246,7 +270,14 @@ class TestAssistantChatResponse:
         response = AssistantChatResponse(
             answer="The compromise is 14.31 [1].",
             sources=[
-                SourceRef(n=1, title="Worked example", section="Result", url=None, layer="public")
+                SourceRef(
+                    n=1,
+                    title="Worked example",
+                    section="Result",
+                    snippet="The compromise is 14.31.",
+                    url=None,
+                    layer="public",
+                )
             ],
             tools_used=["search_docs"],
             checks=AnswerChecks(citations_valid=True, numbers_grounded=True, ungrounded_numbers=[]),
@@ -259,6 +290,7 @@ class TestAssistantChatResponse:
         dumped = response.model_dump()
 
         assert dumped["sources"][0]["n"] == 1
+        assert dumped["sources"][0]["snippet"] == "The compromise is 14.31."
         assert dumped["checks"]["numbers_grounded"] is True
         assert dumped["tools_used"] == ["search_docs"]
         assert dumped["usage"] == {

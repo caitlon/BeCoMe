@@ -73,13 +73,34 @@ class AssistantChatRequest(BaseModel):
 
 
 class SourceRef(BaseModel):
-    """One documentation passage the answer may cite as ``[n]``."""
+    """One documentation passage the answer may cite as ``[n]``.
+
+    ``snippet`` is the first words of the passage, plain text, at most 240 characters.
+    ``url`` is None or an ``https://`` address: the browser renders it as a link.
+    """
 
     n: int
     title: str
     section: str
+    snippet: str
     url: str | None
     layer: Layer
+
+    @field_validator("url")
+    @classmethod
+    def _require_https(cls, value: str | None) -> str | None:
+        """Refuse any url that is not an ``https://`` address, returning None unchanged.
+
+        The index is ours, so this is defence in depth against a ``javascript:`` or
+        ``data:`` address reaching a link in the browser.
+
+        :param value: The source url, if any.
+        :return: The same value, untouched.
+        :raises ValueError: If the url does not start with ``https://``.
+        """
+        if value is not None and not value.startswith("https://"):
+            raise ValueError("url must start with https://")
+        return value
 
 
 class AnswerChecks(BaseModel):

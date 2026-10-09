@@ -1,10 +1,39 @@
 """Per-request context threaded through the agent, and the registry of cited sources."""
 
+import re
+import unicodedata
 from dataclasses import dataclass
 
 from api.assistant.client import UserApiClient
 from api.assistant.rag.retrieval import DocsRetriever, RetrievedChunk
 from api.schemas.assistant import SourceRef
+
+# The longest excerpt of a passage a source reference carries, ellipsis included.
+SNIPPET_CHARS = 240
+
+_WHITESPACE_RUN = re.compile(r"\s+")
+
+
+def _excerpt(text: str, limit: int = SNIPPET_CHARS) -> str:
+    """Return the first words of a passage as plain text on one line.
+
+    Whitespace runs collapse to one space and control characters are dropped. A text over
+    the limit is cut at the last space that leaves room for the ellipsis, or without
+    regard to spaces when it has none, so the result never exceeds ``limit`` characters.
+
+    :param text: The passage as indexed.
+    :param limit: The most characters the result may have, ellipsis included.
+    :return: The tidied text, ending in an ellipsis when it was cut.
+    """
+    spaced = _WHITESPACE_RUN.sub(" ", text)
+    plain = "".join(
+        char for char in spaced if char == " " or not unicodedata.category(char).startswith("C")
+    ).strip()
+    if len(plain) <= limit:
+        return plain
+    head = plain[: limit - 1]
+    cut = head.rfind(" ")
+    return (head[:cut] if cut > 0 else head).rstrip() + "\u2026"
 
 
 class SourceRegistry:
@@ -50,6 +79,7 @@ class SourceRegistry:
                 n=number,
                 title=chunk.title,
                 section=chunk.section,
+                snippet=_excerpt(chunk.chunk_text),
                 url=None if chunk.layer == "local" else chunk.url,
                 layer=chunk.layer,
             )
