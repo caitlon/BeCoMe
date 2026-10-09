@@ -29,5 +29,8 @@
   "composer": {
     "placeholder": "Ask a question…",
     "hint": "Enter to send · Shift+Enter for a new line"
+  },
+  "message": {
+    "noSuchSource": "No such source"
   }
 }

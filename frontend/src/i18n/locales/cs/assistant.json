@@ -29,5 +29,8 @@
   "composer": {
     "placeholder": "Napište otázku…",
     "hint": "Enter odešle · Shift+Enter nový řádek"
+  },
+  "message": {
+    "noSuchSource": "Zdroj neexistuje"
   }
 }
