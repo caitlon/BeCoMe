@@ -503,6 +503,34 @@ describe('AuthContext', () => {
       }
     })
 
+    it('logs a listener that throws a non-Error value by its string form', async () => {
+      vi.mocked(api.getCurrentUser).mockResolvedValue(createUser({ id: '1' }))
+      vi.mocked(api.logout).mockResolvedValue(undefined)
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      track(
+        registerSignOutListener(() => {
+          throw 'plain string failure'
+        })
+      )
+
+      try {
+        const { result } = renderHook(() => useAuth(), { wrapper: AuthTestProviders })
+        await waitFor(() => {
+          expect(result.current.isAuthenticated).toBe(true)
+        })
+
+        await act(async () => {
+          await result.current.logout()
+        })
+
+        expect(consoleErrorSpy).toHaveBeenCalledWith('[ERROR] Sign-out listener failed', {
+          error: 'plain string failure',
+        })
+      } finally {
+        consoleErrorSpy.mockRestore()
+      }
+    })
+
     it('notifies only after the query cache is cleared', async () => {
       vi.mocked(api.getCurrentUser).mockResolvedValue(createUser({ id: '1' }))
       vi.mocked(api.logout).mockResolvedValue(undefined)

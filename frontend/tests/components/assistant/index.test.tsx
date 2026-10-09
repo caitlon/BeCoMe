@@ -23,6 +23,14 @@ describe('components/assistant build gate', () => {
       expect(AssistantEntry).toBeNull();
     });
 
+    it('is null when VITE_ASSISTANT_ENABLED is absent from the environment altogether', async () => {
+      vi.stubEnv('VITE_ASSISTANT_ENABLED', undefined);
+
+      const { AssistantEntry } = await import('@/components/assistant');
+
+      expect(AssistantEntry).toBeNull();
+    });
+
     it('is a lazy component when VITE_ASSISTANT_ENABLED is exactly "true"', async () => {
       vi.stubEnv('VITE_ASSISTANT_ENABLED', 'true');
 
@@ -52,6 +60,17 @@ describe('components/assistant build gate', () => {
       expect(screen.getByText('child content')).toBeInTheDocument();
     });
 
+    it('is a passthrough for any value other than the literal string "true"', async () => {
+      vi.stubEnv('VITE_ASSISTANT_ENABLED', 'TRUE');
+
+      const { AssistantProvider } = await import('@/components/assistant');
+      const { AssistantUIProvider } = await import('@/contexts/AssistantUIContext');
+
+      expect(AssistantProvider).not.toBe(AssistantUIProvider);
+      render(<AssistantProvider><div>child content</div></AssistantProvider>);
+      expect(screen.getByText('child content')).toBeInTheDocument();
+    });
+
     it('is the real AssistantUIProvider when enabled', async () => {
       vi.stubEnv('VITE_ASSISTANT_ENABLED', 'true');
 
@@ -65,6 +84,17 @@ describe('components/assistant build gate', () => {
   describe('AssistantHeaderSlot / AssistantResultSlot', () => {
     it('render nothing when disabled', async () => {
       vi.stubEnv('VITE_ASSISTANT_ENABLED', '');
+
+      const { AssistantHeaderSlot, AssistantResultSlot } = await import('@/components/assistant');
+      const { container: header } = render(<AssistantHeaderSlot />);
+      const { container: result } = render(<AssistantResultSlot projectId="p1" />);
+
+      expect(header).toBeEmptyDOMElement();
+      expect(result).toBeEmptyDOMElement();
+    });
+
+    it('render nothing for any value other than the literal string "true"', async () => {
+      vi.stubEnv('VITE_ASSISTANT_ENABLED', 'TRUE');
 
       const { AssistantHeaderSlot, AssistantResultSlot } = await import('@/components/assistant');
       const { container: header } = render(<AssistantHeaderSlot />);

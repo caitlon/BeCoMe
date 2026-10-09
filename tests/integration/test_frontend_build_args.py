@@ -27,6 +27,11 @@ _ENVIRONMENTS_DOC = _PROJECT_ROOT / "docs" / "environments.md"
 _ENV_READ = re.compile(r"import\.meta\.env\.(VITE_[A-Z0-9_]+)")
 _BUILD_ARG = re.compile(r"^\s*ARG\s+(VITE_[A-Z0-9_]+)", re.MULTILINE)
 
+# Developer-only switches the SPA reads but no deployed build may receive. They are
+# read from frontend/.env.development.local, so declaring one as an ARG would let a
+# Railway service variable turn the feature on in a deployment.
+_NEVER_A_BUILD_ARG = frozenset({"VITE_ASSISTANT_ENABLED"})
+
 
 def _variables_read_by_the_spa() -> set[str]:
     """Return every VITE_ variable the SPA's source reads.
@@ -53,8 +58,10 @@ class TestFrontendBuildArgs:
         image is served, and whatever the variable was meant to switch on is
         simply never on.
         """
-        missing = _variables_read_by_the_spa() - set(
-            _BUILD_ARG.findall(_DOCKERFILE.read_text(encoding="utf-8"))
+        missing = (
+            _variables_read_by_the_spa()
+            - _NEVER_A_BUILD_ARG
+            - set(_BUILD_ARG.findall(_DOCKERFILE.read_text(encoding="utf-8")))
         )
 
         assert not missing, f"read by the SPA, never declared as ARG: {sorted(missing)}"
@@ -77,3 +84,19 @@ class TestFrontendBuildArgs:
         missing = {name for name in declared if name not in documented}
 
         assert not missing, f"built into the image, documented nowhere: {sorted(missing)}"
+
+    def test_no_developer_only_switch_is_declared_as_a_build_arg(self):
+        """
+        GIVEN the VITE_ variables that are developer-only build-time switches
+        WHEN the build arguments frontend/Dockerfile declares are read
+        THEN none of those variables is among them
+
+        A build argument is how a Railway service variable reaches the bundle. Declaring
+        one of these switches there would let a deployment turn on a feature that is
+        meant to exist only in a developer's own build.
+        """
+        declared = set(_BUILD_ARG.findall(_DOCKERFILE.read_text(encoding="utf-8")))
+
+        leaked = _NEVER_A_BUILD_ARG & declared
+
+        assert not leaked, f"developer-only switch declared as ARG: {sorted(leaked)}"

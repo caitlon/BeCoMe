@@ -41,4 +41,38 @@ describe('useAssistantConfig', () => {
 
     expect(mockGetAssistantConfig).not.toHaveBeenCalled();
   });
+
+  it('does not retry a 404 under the default retry policy', async () => {
+    mockGetAssistantConfig.mockReset();
+    mockGetAssistantConfig.mockRejectedValue(new HttpError('Not Found', 404));
+    // The shared wrapper turns retries off for every query, which would hide a
+    // missing `retry: false` in the hook itself; this client keeps the defaults.
+    const client = new QueryClient();
+    const defaultRetryWrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    );
+
+    const { result } = renderHook(() => useAssistantConfig(true), { wrapper: defaultRetryWrapper });
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(mockGetAssistantConfig).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not request again when the hook remounts after a 404', async () => {
+    mockGetAssistantConfig.mockReset();
+    mockGetAssistantConfig.mockRejectedValue(new HttpError('Not Found', 404));
+    const client = new QueryClient();
+    const sharedClientWrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    );
+
+    const first = renderHook(() => useAssistantConfig(true), { wrapper: sharedClientWrapper });
+    await waitFor(() => expect(first.result.current.isError).toBe(true));
+    first.unmount();
+
+    const second = renderHook(() => useAssistantConfig(true), { wrapper: sharedClientWrapper });
+    await waitFor(() => expect(second.result.current.isError).toBe(true));
+
+    expect(mockGetAssistantConfig).toHaveBeenCalledTimes(1);
+  });
 });
