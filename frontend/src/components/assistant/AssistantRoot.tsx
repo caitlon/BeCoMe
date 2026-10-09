@@ -3,6 +3,7 @@ import { useAuth, registerSignOutListener } from "@/contexts/AuthContext";
 import { useAssistantUI } from "@/contexts/AssistantUIContext";
 import { useAssistantConfig } from "./useAssistantConfig";
 import { AssistantPanel } from "./AssistantPanel";
+import { clearAssistantHistory } from "./useAssistantChat";
 import "./i18n";
 
 /**
@@ -31,7 +32,15 @@ export default function AssistantRoot() {
     [setAvailable, closeAssistant]
   );
 
-  useEffect(() => registerSignOutListener(closeAssistant), [closeAssistant]);
+  // One listener for both, so a later user in the same tab never sees these answers.
+  useEffect(
+    () =>
+      registerSignOutListener(() => {
+        clearAssistantHistory();
+        closeAssistant();
+      }),
+    [closeAssistant]
+  );
 
   if (!available) {
     return null;

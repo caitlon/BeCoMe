@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import i18n from '@/i18n';
 import AssistantRoot from '@/components/assistant/AssistantRoot';
+import { STORAGE_PREFIX } from '@/components/assistant/useAssistantChat';
 import { AssistantUIProvider, useAssistantUI } from '@/contexts/AssistantUIContext';
 
 const mockSetAvailable = vi.fn();
@@ -54,6 +55,7 @@ describe('AssistantRoot', () => {
     mockUI = { isOpen: false, projectId: null };
     signOutListener = undefined;
     useRealUI = false;
+    window.sessionStorage.clear();
   });
 
   it('renders nothing and reports unavailable while the config query is loading', async () => {
@@ -126,6 +128,32 @@ describe('AssistantRoot', () => {
 
     unmount();
     expect(mockUnsubscribe).toHaveBeenCalled();
+  });
+
+  it('forgets every stored conversation on sign-out and leaves other storage alone', () => {
+    mockUseAssistantConfig.mockReturnValue(enabledConfig);
+    window.sessionStorage.setItem(`${STORAGE_PREFIX}:u1:general`, '[]');
+    window.sessionStorage.setItem('unrelated', 'kept');
+    render(<AssistantRoot />);
+
+    signOutListener?.();
+
+    expect(window.sessionStorage.getItem(`${STORAGE_PREFIX}:u1:general`)).toBeNull();
+    expect(window.sessionStorage.getItem('unrelated')).toBe('kept');
+  });
+
+  it('forgets the stored conversations before it closes the panel', () => {
+    mockUseAssistantConfig.mockReturnValue(enabledConfig);
+    window.sessionStorage.setItem(`${STORAGE_PREFIX}:u1:general`, '[]');
+    let storedWhenClosed: string | null = 'not read';
+    mockCloseAssistant.mockImplementation(() => {
+      storedWhenClosed = window.sessionStorage.getItem(`${STORAGE_PREFIX}:u1:general`);
+    });
+    render(<AssistantRoot />);
+
+    signOutListener?.();
+
+    expect(storedWhenClosed).toBeNull();
   });
 
   it('registers the assistant i18n bundle for both locales', () => {
