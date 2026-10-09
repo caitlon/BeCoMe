@@ -20,6 +20,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import { useAssistantProjectScope } from "@/components/assistant";
 import { NotFoundState } from "@/components/NotFoundState";
 import { PageSpinner } from "@/components/PageSpinner";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -77,6 +78,8 @@ const ProjectDetail = () => {
 
   /* v8 ignore next -- defensive fallback: id always provided by route params */
   const projectId = id ?? "";
+
+  useAssistantProjectScope(id);
 
   const projectQuery = useQuery({
     queryKey: queryKeys.project(projectId),

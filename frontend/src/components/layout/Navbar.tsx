@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { AssistantHeaderSlot } from "@/components/assistant";
 import { useAuth } from "@/contexts/AuthContext";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Menu, X, ChevronDown, User, LogOut } from "lucide-react";
@@ -170,12 +171,14 @@ export function Navbar() {
             </>
           )}
 
+          <AssistantHeaderSlot />
           <LanguageSwitcher />
           <ThemeToggle />
         </div>
 
         {/* Mobile Menu Button */}
         <div className="xl:hidden flex items-center gap-2">
+          <AssistantHeaderSlot />
           <LanguageSwitcher />
           <ThemeToggle />
           {!isAuthPage && (
