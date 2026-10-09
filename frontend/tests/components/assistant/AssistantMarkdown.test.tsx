@@ -269,6 +269,24 @@ describe('AssistantMarkdown', () => {
       expect(container.textContent).toBe('a [1] b [2] c');
     });
 
+    it.each([
+      ['See [1][2].', ['[1]', '[2]']],
+      ['[1] opens the line', ['[1]']],
+    ])('turns the citations in %j into anchors in order', (content, names) => {
+      renderMarkdown(content, { sourceNumbers: [1, 2] });
+
+      expect(screen.getAllByRole('link').map((a) => a.textContent)).toEqual(names);
+    });
+
+    it('keeps the citation anchor node while the content grows', () => {
+      const { rerender } = renderMarkdown('A [1].', { sourceNumbers: [1] });
+      const cite = screen.getByRole('link', { name: '[1]' });
+
+      rerender(<AssistantMarkdown content="A [1]. More" messageId="m1" sourceNumbers={[1]} />);
+
+      expect(screen.getByRole('link', { name: '[1]' })).toBe(cite);
+    });
+
     it('leaves [1] literal inside inline code', () => {
       renderMarkdown('use `arr[1]` here', { sourceNumbers: [1] });
 
