@@ -3,7 +3,7 @@ import { renderHook, act, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { I18nextProvider } from 'react-i18next'
-import { AuthProvider, useAuth } from '@/contexts/AuthContext'
+import { AuthProvider, useAuth, registerSignOutListener } from '@/contexts/AuthContext'
 import { useToast } from '@/hooks/use-toast'
 import { api } from '@/lib/api'
 import { UnauthorizedError, ForbiddenError, ServerError, NetworkError } from '@/lib/errors'
@@ -376,6 +376,98 @@ describe('AuthContext', () => {
         description: 'Your session has expired. Please sign in again.',
         variant: 'destructive',
       })
+    })
+  })
+
+  describe('registerSignOutListener', () => {
+    it('fires on logout', async () => {
+      vi.mocked(api.getCurrentUser).mockResolvedValue(createUser({ id: '1' }))
+      vi.mocked(api.logout).mockResolvedValue(undefined)
+      const listener = vi.fn()
+      const unsubscribe = registerSignOutListener(listener)
+
+      const { result } = renderHook(() => useAuth(), { wrapper: AuthTestProviders })
+      await waitFor(() => {
+        expect(result.current.isAuthenticated).toBe(true)
+      })
+      expect(listener).not.toHaveBeenCalled()
+
+      await act(async () => {
+        await result.current.logout()
+      })
+
+      expect(listener).toHaveBeenCalledTimes(1)
+      unsubscribe()
+    })
+
+    it('fires when the session expires', async () => {
+      vi.mocked(api.getCurrentUser).mockResolvedValue(createUser({ id: '1' }))
+      const listener = vi.fn()
+      const unsubscribe = registerSignOutListener(listener)
+
+      const { result } = renderHook(() => useAuth(), { wrapper: AuthTestProviders })
+      await waitFor(() => {
+        expect(result.current.isAuthenticated).toBe(true)
+      })
+
+      const onSessionExpired = vi.mocked(api.setOnSessionExpired).mock.calls[0][0]
+      act(() => {
+        onSessionExpired?.()
+      })
+
+      expect(listener).toHaveBeenCalledTimes(1)
+      unsubscribe()
+    })
+
+    it('fires when the session probe is refused with 401 or 403', async () => {
+      vi.mocked(api.getCurrentUser).mockRejectedValueOnce(new UnauthorizedError())
+      const listener = vi.fn()
+      const unsubscribe = registerSignOutListener(listener)
+
+      const { result } = renderHook(() => useAuth(), { wrapper: AuthTestProviders })
+      await waitFor(() => {
+        expect(result.current.status).toBe('unauthenticated')
+      })
+      expect(listener).toHaveBeenCalledTimes(1)
+
+      vi.mocked(api.getCurrentUser).mockRejectedValueOnce(new ForbiddenError('nope'))
+      await act(async () => {
+        await result.current.refreshUser()
+      })
+
+      expect(listener).toHaveBeenCalledTimes(2)
+      unsubscribe()
+    })
+
+    it('stays silent when the probe fails for a non-auth reason', async () => {
+      vi.mocked(api.getCurrentUser).mockRejectedValue(new ServerError('boom'))
+      const listener = vi.fn()
+      const unsubscribe = registerSignOutListener(listener)
+
+      const { result } = renderHook(() => useAuth(), { wrapper: AuthTestProviders })
+      await waitFor(() => {
+        expect(result.current.status).toBe('serviceUnavailable')
+      })
+
+      expect(listener).not.toHaveBeenCalled()
+      unsubscribe()
+    })
+
+    it('stops calling a listener once it is unsubscribed', async () => {
+      vi.mocked(api.getCurrentUser).mockResolvedValue(createUser({ id: '1' }))
+      vi.mocked(api.logout).mockResolvedValue(undefined)
+      const listener = vi.fn()
+      registerSignOutListener(listener)()
+
+      const { result } = renderHook(() => useAuth(), { wrapper: AuthTestProviders })
+      await waitFor(() => {
+        expect(result.current.isAuthenticated).toBe(true)
+      })
+      await act(async () => {
+        await result.current.logout()
+      })
+
+      expect(listener).not.toHaveBeenCalled()
     })
   })
 })
