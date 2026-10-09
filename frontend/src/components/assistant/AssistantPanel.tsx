@@ -1,10 +1,11 @@
-import { skipToken, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Send, Sparkles, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetClose, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import { useMediaQuery } from "@/hooks/use-media-query";
+import { api } from "@/lib/api";
 import { queryKeys } from "@/lib/queryKeys";
 import { cn } from "@/lib/utils";
 import type { ProjectWithRole } from "@/types/api";
@@ -14,11 +15,15 @@ const SUGGESTION_INDEXES = [0, 1, 2] as const;
 
 function ProjectScopeLabel({ projectId }: { readonly projectId: string }) {
   const { t } = useTranslation("assistant");
-  // Reads the project page's cached entry (same key) and never fetches, so
-  // opening the panel adds no request; without the entry the label is generic.
+  // Reads the project page's cached entry (same key) and never fetches on its
+  // own, so opening the panel adds no request; without the entry the label is
+  // generic. The real queryFn matters: the options of the last observer are
+  // what a refetch of the shared key runs, so a placeholder here would break
+  // the project page's own invalidation while the panel is open.
   const projectQuery = useQuery<ProjectWithRole>({
     queryKey: queryKeys.project(projectId),
-    queryFn: skipToken,
+    queryFn: () => api.getProject(projectId),
+    enabled: false,
   });
 
   return projectQuery.data?.name

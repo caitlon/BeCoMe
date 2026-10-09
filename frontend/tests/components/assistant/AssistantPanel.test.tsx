@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import { useState, type ReactNode } from 'react';
 import i18n from '@/i18n';
 import { api } from '@/lib/api';
@@ -67,6 +67,45 @@ describe('AssistantPanel', () => {
     expect(screen.getByRole('dialog')).toHaveAccessibleDescription('Project “Flood prevention”');
     expect(screen.getByText('Ask about this project')).toBeInTheDocument();
     expect(getProject).not.toHaveBeenCalled();
+  });
+
+  it('shows the three project suggestions when a project is open', () => {
+    renderPanel({ projectId: 'p1' }, 'Flood prevention');
+
+    for (const text of [
+      'What does the result mean?',
+      'Why is the confidence moderate?',
+      'How is the best compromise computed?',
+    ]) {
+      expect(screen.getByRole('button', { name: text })).toBeInTheDocument();
+    }
+    expect(screen.queryByRole('button', { name: 'What is a fuzzy opinion?' })).not.toBeInTheDocument();
+  });
+
+  it('leaves the project page able to refetch the shared project query while it is open', async () => {
+    const getProject = vi.spyOn(api, 'getProject').mockResolvedValue({ id: 'p1', name: 'Renamed' } as never);
+    // The app's staleTime, so mounting the page observer does not itself refetch;
+    // no retries, because a retry would pick up the page's queryFn and mask the failure.
+    const client = new QueryClient({ defaultOptions: { queries: { staleTime: 30_000, retry: false } } });
+    client.setQueryData(queryKeys.project('p1'), { id: 'p1', name: 'Old name' });
+    // Stands in for ProjectDetail: an active observer of the same key with the real fetcher.
+    function ProjectPage() {
+      useQuery({ queryKey: queryKeys.project('p1'), queryFn: () => api.getProject('p1') });
+      return null;
+    }
+    render(
+      <QueryClientProvider client={client}>
+        <ProjectPage />
+        <AssistantPanel open onOpenChange={vi.fn()} projectId="p1" />
+      </QueryClientProvider>
+    );
+    expect(screen.getByRole('dialog')).toHaveAccessibleDescription('Project “Old name”');
+
+    await client.invalidateQueries({ queryKey: queryKeys.project('p1') });
+
+    expect(getProject).toHaveBeenCalledTimes(1);
+    expect(client.getQueryState(queryKeys.project('p1'))?.status).toBe('success');
+    await waitFor(() => expect(screen.getByRole('dialog')).toHaveAccessibleDescription('Project “Renamed”'));
   });
 
   it('creates no query entry at all when there is no project', () => {
