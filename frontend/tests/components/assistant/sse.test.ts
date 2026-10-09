@@ -354,6 +354,24 @@ describe('readAssistantSseStream', () => {
     expect((error as NetworkError).cause).toBe(failure);
   });
 
+  it('throws NetworkError when a read fails and the signal that was passed has not aborted', async () => {
+    const failure = new TypeError('network error');
+    let sent = false;
+    const body = new ReadableStream<Uint8Array>({
+      pull(streamController) {
+        if (sent) return Promise.reject(failure);
+        sent = true;
+        streamController.enqueue(encoder.encode(frame('token', { text: 'Hi' })));
+        return undefined;
+      },
+    });
+
+    const error: unknown = await collect(body, new AbortController().signal).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(NetworkError);
+    expect((error as NetworkError).cause).toBe(failure);
+  });
+
   it('throws the AbortError, not NetworkError, when an abort makes the pending read reject', async () => {
     const controller = new AbortController();
     const body = new ReadableStream<Uint8Array>({
