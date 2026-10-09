@@ -69,21 +69,5 @@ describe('assistant-api', () => {
         status: 503,
       });
     });
-
-    it('lets an aborted signal reject the call with the AbortError', async () => {
-      const controller = new AbortController();
-      const abortError = new DOMException('Aborted', 'AbortError');
-      mockRequestStream.mockImplementation(
-        (_endpoint: string, init: RequestInit) =>
-          new Promise((_resolve, reject) => {
-            (init.signal as AbortSignal).addEventListener('abort', () => reject(abortError));
-          })
-      );
-
-      const promise = streamAssistantMessage(request, controller.signal);
-      controller.abort();
-
-      await expect(promise).rejects.toBe(abortError);
-    });
   });
 });

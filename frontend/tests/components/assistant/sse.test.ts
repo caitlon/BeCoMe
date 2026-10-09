@@ -33,6 +33,11 @@ function streamFromChunks(chunks: (string | Uint8Array)[]): ReadableStream<Uint8
   });
 }
 
+/** A body that never delivers anything: a read on it stays pending. */
+function stalledBody(): ReadableStream<Uint8Array> {
+  return new ReadableStream<Uint8Array>({ pull: () => new Promise<void>(() => {}) });
+}
+
 async function collect(
   stream: ReadableStream<Uint8Array>,
   signal?: AbortSignal
@@ -100,8 +105,8 @@ describe('readAssistantSseStream', () => {
 
   it('keeps a multibyte character that arrives split across chunks', async () => {
     const bytes = encoder.encode(frame('token', { text: 'Příliš žluťoučký' }) + frame('done', DONE_PAYLOAD));
-    const euro = bytes.indexOf(0xc5); // first byte of a two-byte letter
-    const events = await collect(streamFromChunks([bytes.slice(0, euro + 1), bytes.slice(euro + 1)]));
+    const twoByteLetterIndex = bytes.indexOf(0xc5); // index of the lead byte of a two-byte letter
+    const events = await collect(streamFromChunks([bytes.slice(0, twoByteLetterIndex + 1), bytes.slice(twoByteLetterIndex + 1)]));
 
     expect(events[0]).toEqual({ type: 'token', text: 'Příliš žluťoučký' });
   });
@@ -205,13 +210,70 @@ describe('readAssistantSseStream', () => {
     expect(cancelled).toBe(true);
   });
 
-  it('throws the AbortError at once for a signal that is already aborted', async () => {
+  it('throws the AbortError at once for a signal that is already aborted, without reading', async () => {
     const controller = new AbortController();
     controller.abort();
+    await expect(collect(stalledBody(), controller.signal)).rejects.toMatchObject({ name: 'AbortError' });
+  });
 
-    await expect(
-      collect(streamFromChunks([frame('done', DONE_PAYLOAD)]), controller.signal)
-    ).rejects.toMatchObject({ name: 'AbortError' });
+  it('delivers no event buffered in the same chunk once the signal has aborted', async () => {
+    const controller = new AbortController();
+    const chunk =
+      frame('token', { text: 'a' }) +
+      frame('token', { text: 'b' }) +
+      frame('token', { text: 'c' }) +
+      frame('done', DONE_PAYLOAD);
+    const received: AssistantSseEvent[] = [];
+
+    const run = (async () => {
+      for await (const event of readAssistantSseStream(streamFromChunks([chunk]), controller.signal)) {
+        received.push(event);
+        controller.abort();
+      }
+    })();
+
+    await expect(run).rejects.toMatchObject({ name: 'AbortError' });
+    expect(received).toEqual([{ type: 'token', text: 'a' }]);
+  });
+
+  it('cancels the source when the consumer stops iterating early', async () => {
+    let cancelled = false;
+    let index = 0;
+    const chunks = [frame('token', { text: 'a' }), frame('token', { text: 'b' })];
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        controller.enqueue(encoder.encode(chunks[index++ % chunks.length]));
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+
+    for await (const event of readAssistantSseStream(body)) {
+      expect(event).toEqual({ type: 'token', text: 'a' });
+      break;
+    }
+
+    expect(cancelled).toBe(true);
+  });
+
+  it('skips a block that has data but no event line', async () => {
+    const events = await collect(
+      streamFromChunks(['data: {"text":"orphan"}\n\n', frame('done', DONE_PAYLOAD)])
+    );
+
+    expect(events.map((event) => event.type)).toEqual(['done']);
+  });
+
+  it.each([
+    ['token data that is not JSON', 'event: token\ndata: {"text":\n\n'],
+    ['a token whose text is not a string', 'event: token\ndata: {"text":5}\n\n'],
+    ['a token with no text', 'event: token\ndata: {}\n\n'],
+    ['an error whose code is not a number', 'event: error\ndata: {"code":"503","detail":"x"}\n\n'],
+    ['an error whose detail is not a string', 'event: error\ndata: {"code":503,"detail":7}\n\n'],
+    ['a done whose payload is not an object', 'event: done\ndata: null\n\n'],
+  ])('throws StreamIncompleteError for %s', async (_label, block) => {
+    await expect(collect(streamFromChunks([block]))).rejects.toBeInstanceOf(StreamIncompleteError);
   });
 
   it('lets a failure of the underlying body reach the caller', async () => {

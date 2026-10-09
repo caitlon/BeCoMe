@@ -6,6 +6,7 @@ export type AssistantSseEvent =
   | { readonly type: "done"; readonly response: AssistantChatResponse }
   | { readonly type: "error"; readonly code: number; readonly detail: string };
 
+// The backend frames events with "\n" only (api/assistant/sse.py), so "\r\n" is out of scope.
 const EVENT_SEPARATOR = "\n\n";
 
 /**
@@ -16,7 +17,9 @@ const EVENT_SEPARATOR = "\n\n";
  *
  * `done` and `error` end the stream. A body that closes without either throws
  * StreamIncompleteError, so a connection cut mid-answer is never mistaken for a
- * finished one. Aborting `signal` cancels the reader and throws its AbortError.
+ * finished one, and so does a block whose payload is not the JSON shape its event
+ * promises, since nothing after it can be trusted. Aborting `signal` cancels the
+ * reader and throws its AbortError, also for events already buffered.
  */
 export async function* readAssistantSseStream(
   body: ReadableStream<Uint8Array>,
@@ -44,6 +47,7 @@ export async function* readAssistantSseStream(
         const event = parseBlock(buffer.slice(0, boundary));
         buffer = buffer.slice(boundary + EVENT_SEPARATOR.length);
         if (event) {
+          throwIfAborted(signal);
           yield event;
           if (event.type !== "token") return;
         }
@@ -77,17 +81,38 @@ function parseBlock(block: string): AssistantSseEvent | null {
     }
   }
 
-  if (data === null) return null;
+  if (name === null || data === null) return null;
   switch (name) {
-    case "token":
-      return { type: "token", text: (JSON.parse(data) as { text: string }).text };
+    case "token": {
+      const payload = parsePayload(data);
+      if (typeof payload.text !== "string") throw malformed(name);
+      return { type: "token", text: payload.text };
+    }
     case "done":
-      return { type: "done", response: JSON.parse(data) as AssistantChatResponse };
+      return { type: "done", response: parsePayload(data) as unknown as AssistantChatResponse };
     case "error": {
-      const { code, detail } = JSON.parse(data) as { code: number; detail: string };
-      return { type: "error", code, detail };
+      const payload = parsePayload(data);
+      if (typeof payload.code !== "number" || typeof payload.detail !== "string") {
+        throw malformed(name);
+      }
+      return { type: "error", code: payload.code, detail: payload.detail };
     }
     default:
       return null;
   }
+}
+
+function parsePayload(data: string): Record<string, unknown> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(data);
+  } catch {
+    throw new StreamIncompleteError("The stream carried an event that is not valid JSON");
+  }
+  if (typeof parsed !== "object" || parsed === null) throw malformed("");
+  return parsed as Record<string, unknown>;
+}
+
+function malformed(name: string): StreamIncompleteError {
+  return new StreamIncompleteError(`The stream carried a malformed ${name || "event"} payload`);
 }
