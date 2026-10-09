@@ -1507,6 +1507,7 @@ class TestRetrieverWiring:
         assert retriever.queries == ["What is the compromise?"]
         assert "The compromise is the midpoint." in _shown(model)
         assert [source["title"] for source in response.json()["sources"]] == ["Method"]
+        assert response.json()["sources"][0]["snippet"] == "The compromise is the midpoint."
 
 
 def _events(body: str) -> list[tuple[str, dict[str, Any]]]:
@@ -1533,8 +1534,23 @@ class TestStreamRoute:
             texts join to the answer of the one done event, and the done event holds the
             usage, the checks, the sources and a first-token time
         """
+        from api.assistant.rag.retrieval import RetrievedChunk
+
         # GIVEN
         token = register_and_login(client, "stream@example.com")
+        client.app.dependency_overrides[deps.get_docs_retriever] = lambda: StaticDocsRetriever(
+            [
+                RetrievedChunk(
+                    text="Caption.\n\nThe compromise is the midpoint.",
+                    title="Method",
+                    section="Step 3",
+                    url=None,
+                    layer="public",
+                    score=0.9,
+                    chunk_text="The compromise is the midpoint.",
+                )
+            ]
+        )
         _use_model(client, _scripted("It is the midpoint [1]."))
 
         # WHEN
@@ -1554,7 +1570,7 @@ class TestStreamRoute:
         assert "".join(payload["text"] for _, payload in events[:-1]) == done["answer"]
         assert done["usage"]["complete"] is True
         assert done["checks"]["citations_valid"] is not None
-        assert "sources" in done
+        assert done["sources"][0]["snippet"] == "The compromise is the midpoint."
         assert isinstance(done["timing"]["ttft_ms"], int)
         assert done["timing"]["total_ms"] >= done["timing"]["ttft_ms"]
 
