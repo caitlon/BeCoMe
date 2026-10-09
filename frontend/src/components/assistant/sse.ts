@@ -81,7 +81,7 @@ function parseBlock(block: string): AssistantSseEvent | null {
     }
   }
 
-  if (name === null || data === null) return null;
+  if (data === null) return null;
   switch (name) {
     case "token": {
       const payload = parsePayload(data);
@@ -109,7 +109,9 @@ function parsePayload(data: string): Record<string, unknown> {
   } catch {
     throw new StreamIncompleteError("The stream carried an event that is not valid JSON");
   }
-  if (typeof parsed !== "object" || parsed === null) throw malformed("");
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw malformed("");
+  }
   return parsed as Record<string, unknown>;
 }
 

@@ -271,9 +271,13 @@ describe('readAssistantSseStream', () => {
     ['a token with no text', 'event: token\ndata: {}\n\n'],
     ['an error whose code is not a number', 'event: error\ndata: {"code":"503","detail":"x"}\n\n'],
     ['an error whose detail is not a string', 'event: error\ndata: {"code":503,"detail":7}\n\n'],
-    ['a done whose payload is not an object', 'event: done\ndata: null\n\n'],
+    ['a done whose payload is null', 'event: done\ndata: null\n\n'],
+    ['a done whose payload is an array', 'event: done\ndata: []\n\n'],
   ])('throws StreamIncompleteError for %s', async (_label, block) => {
-    await expect(collect(streamFromChunks([block]))).rejects.toBeInstanceOf(StreamIncompleteError);
+    // A valid done follows the bad block, so only the payload check can be what throws.
+    await expect(
+      collect(streamFromChunks([block, frame('done', DONE_PAYLOAD)]))
+    ).rejects.toBeInstanceOf(StreamIncompleteError);
   });
 
   it('lets a failure of the underlying body reach the caller', async () => {
