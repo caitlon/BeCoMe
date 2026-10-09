@@ -1,6 +1,6 @@
 import { ReactNode } from 'react'
 import { renderHook, act, waitFor } from '@testing-library/react'
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { I18nextProvider } from 'react-i18next'
 import { AuthProvider, useAuth, registerSignOutListener } from '@/contexts/AuthContext'
@@ -380,11 +380,19 @@ describe('AuthContext', () => {
   })
 
   describe('registerSignOutListener', () => {
+    // Listeners live in a module-level set, so any a test leaves behind would fire in later tests.
+    const unsubscribers: Array<() => void> = []
+    const track = (unsubscribe: () => void) => unsubscribers.push(unsubscribe)
+
+    afterEach(() => {
+      unsubscribers.splice(0).forEach((unsubscribe) => unsubscribe())
+    })
+
     it('fires on logout', async () => {
       vi.mocked(api.getCurrentUser).mockResolvedValue(createUser({ id: '1' }))
       vi.mocked(api.logout).mockResolvedValue(undefined)
       const listener = vi.fn()
-      const unsubscribe = registerSignOutListener(listener)
+      track(registerSignOutListener(listener))
 
       const { result } = renderHook(() => useAuth(), { wrapper: AuthTestProviders })
       await waitFor(() => {
@@ -397,13 +405,12 @@ describe('AuthContext', () => {
       })
 
       expect(listener).toHaveBeenCalledTimes(1)
-      unsubscribe()
     })
 
     it('fires when the session expires', async () => {
       vi.mocked(api.getCurrentUser).mockResolvedValue(createUser({ id: '1' }))
       const listener = vi.fn()
-      const unsubscribe = registerSignOutListener(listener)
+      track(registerSignOutListener(listener))
 
       const { result } = renderHook(() => useAuth(), { wrapper: AuthTestProviders })
       await waitFor(() => {
@@ -416,13 +423,12 @@ describe('AuthContext', () => {
       })
 
       expect(listener).toHaveBeenCalledTimes(1)
-      unsubscribe()
     })
 
     it('fires when the session probe is refused with 401 or 403', async () => {
       vi.mocked(api.getCurrentUser).mockRejectedValueOnce(new UnauthorizedError())
       const listener = vi.fn()
-      const unsubscribe = registerSignOutListener(listener)
+      track(registerSignOutListener(listener))
 
       const { result } = renderHook(() => useAuth(), { wrapper: AuthTestProviders })
       await waitFor(() => {
@@ -436,13 +442,12 @@ describe('AuthContext', () => {
       })
 
       expect(listener).toHaveBeenCalledTimes(2)
-      unsubscribe()
     })
 
     it('stays silent when the probe fails for a non-auth reason', async () => {
       vi.mocked(api.getCurrentUser).mockRejectedValue(new ServerError('boom'))
       const listener = vi.fn()
-      const unsubscribe = registerSignOutListener(listener)
+      track(registerSignOutListener(listener))
 
       const { result } = renderHook(() => useAuth(), { wrapper: AuthTestProviders })
       await waitFor(() => {
@@ -450,7 +455,6 @@ describe('AuthContext', () => {
       })
 
       expect(listener).not.toHaveBeenCalled()
-      unsubscribe()
     })
 
     it('stops calling a listener once it is unsubscribed', async () => {
@@ -468,6 +472,66 @@ describe('AuthContext', () => {
       })
 
       expect(listener).not.toHaveBeenCalled()
+    })
+
+    it('keeps notifying the rest, and lets logout resolve, when one listener throws', async () => {
+      vi.mocked(api.getCurrentUser).mockResolvedValue(createUser({ id: '1' }))
+      vi.mocked(api.logout).mockResolvedValue(undefined)
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const throwing = vi.fn(() => {
+        throw new Error('listener blew up')
+      })
+      const healthy = vi.fn()
+      track(registerSignOutListener(throwing))
+      track(registerSignOutListener(healthy))
+
+      try {
+        const { result } = renderHook(() => useAuth(), { wrapper: AuthTestProviders })
+        await waitFor(() => {
+          expect(result.current.isAuthenticated).toBe(true)
+        })
+
+        await act(async () => {
+          await expect(result.current.logout()).resolves.toBeUndefined()
+        })
+
+        expect(throwing).toHaveBeenCalledTimes(1)
+        expect(healthy).toHaveBeenCalledTimes(1)
+        expect(result.current.status).toBe('unauthenticated')
+      } finally {
+        consoleErrorSpy.mockRestore()
+      }
+    })
+
+    it('notifies only after the query cache is cleared', async () => {
+      vi.mocked(api.getCurrentUser).mockResolvedValue(createUser({ id: '1' }))
+      vi.mocked(api.logout).mockResolvedValue(undefined)
+      const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      const wrapper = ({ children }: { children: ReactNode }) => (
+        <QueryClientProvider client={queryClient}>
+          <I18nextProvider i18n={i18n}>
+            <AuthProvider>{children}</AuthProvider>
+          </I18nextProvider>
+        </QueryClientProvider>
+      )
+      let cacheSeenByListener: unknown = 'not called'
+      track(
+        registerSignOutListener(() => {
+          cacheSeenByListener = queryClient.getQueryData(['projects'])
+        })
+      )
+
+      const { result } = renderHook(() => useAuth(), { wrapper })
+      await waitFor(() => {
+        expect(result.current.isAuthenticated).toBe(true)
+      })
+      queryClient.setQueryData(['projects'], [{ id: 'p1' }])
+
+      await act(async () => {
+        await result.current.logout()
+      })
+
+      expect(cacheSeenByListener).toBeUndefined()
     })
   })
 })

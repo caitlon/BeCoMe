@@ -41,8 +41,18 @@ export function registerSignOutListener(listener: () => void): () => void {
   };
 }
 
+// A throwing listener must not keep the rest from running, nor the caller from
+// finishing its sign-out.
 function notifySignOutListeners() {
-  signOutListeners.forEach((listener) => listener());
+  signOutListeners.forEach((listener) => {
+    try {
+      listener();
+    } catch (err) {
+      logger.error('Sign-out listener failed', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  });
 }
 
 export function AuthProvider({ children }: { readonly children: React.ReactNode }) {
@@ -128,9 +138,9 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
     }
     setUser(null);
     setStatus('unauthenticated');
-    notifySignOutListeners();
     // Drop cached queries so the next account on this tab cannot see them.
     queryClient.clear();
+    notifySignOutListeners();
     if (logoutFailed) {
       throw logoutError;
     }

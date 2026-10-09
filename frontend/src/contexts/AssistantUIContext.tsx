@@ -21,7 +21,7 @@ const DEFAULT_VALUE: AssistantUIValue = {
 };
 
 /**
- * Shared open/closed state for the assistant panel (BCM-120/BCM-128), mounted
+ * Shared open/closed state for the assistant panel, mounted
  * once in App.tsx (via the AssistantProvider gate, components/assistant/index.tsx)
  * so the header button and the "ask about this result" button -- two
  * unrelated, route-remounted points in the tree -- open the same

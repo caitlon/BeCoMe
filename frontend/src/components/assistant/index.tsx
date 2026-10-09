@@ -2,7 +2,7 @@ import { lazy, Suspense, type ComponentType, type LazyExoticComponent, type Reac
 import { AssistantUIProvider } from "@/contexts/AssistantUIContext";
 
 /**
- * Build-time kill switch for the whole local assistant feature (BCM-120),
+ * Build-time kill switch for the whole local assistant feature,
  * computed once so every export below shares the same answer. Vite
  * statically replaces `import.meta.env.VITE_ASSISTANT_ENABLED` with a
  * literal at build time, so when it is not exactly "true" every branch below
@@ -10,9 +10,9 @@ import { AssistantUIProvider } from "@/contexts/AssistantUIContext";
  * `import()` calls together with it -- neither the AssistantRoot chunk nor
  * the triggers chunk (buttons, assistant.json content, every
  * /api/v1/assistant/* path) reaches `dist/`. That only holds for
- * `vite build`; `vite dev` serves unbundled ESM and never tree-shakes (see
- * this task's Step 5 and the closing task, Task 128.13, for the real
- * build+grep verification).
+ * `vite build`; `vite dev` serves unbundled ESM and never tree-shakes. The
+ * real check is a production build plus a grep of `dist/assets` for the
+ * chunk names.
  *
  * The variable itself lives only in a developer's own
  * frontend/.env.development.local (gitignored via the repo's `*.local`

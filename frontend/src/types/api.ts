@@ -156,18 +156,16 @@ export interface ApiError {
   code?: string;
 }
 
-// Local AI assistant (BCM-120). Field names match api/schemas/assistant.py exactly,
+// Local AI assistant. Field names match api/schemas/assistant.py exactly,
 // so the wire JSON needs no translation layer.
-export type AssistantProvider = 'local' | 'api';
-
 export interface AssistantConfigResponse {
   enabled: boolean;
   model: string;
   mode: 'agent' | 'workflow' | 'hybrid';
   collection: string;
-  answer_provider: AssistantProvider;
-  query_provider: AssistantProvider;
-  embedding_provider: AssistantProvider;
+  answer_provider: 'local' | 'api';
+  query_provider: 'local' | 'api';
+  embedding_provider: 'local' | 'api';
 }
 
 export interface ChatTurn {
