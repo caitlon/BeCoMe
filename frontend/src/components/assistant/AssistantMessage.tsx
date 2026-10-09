@@ -9,13 +9,13 @@ import { AssistantSources } from "./AssistantSources";
 import { cleanChecks, cleanSources, cleanToolsUsed, sourceAnchorId } from "./message-shape";
 import type { AssistantMessage as AssistantMessageData, AssistantMessageError } from "./useAssistantChat";
 
-const KNOWN_TOOLS = [
+const KNOWN_TOOLS = new Set([
   "search_docs",
   "list_my_projects",
   "get_project",
   "get_project_result",
   "get_project_opinions",
-];
+]);
 
 interface FailureBlockProps {
   readonly cut: boolean;
@@ -92,7 +92,7 @@ function ChecksLines({ checks }: { readonly checks: AnswerChecks }) {
 
 function ToolsLine({ tools }: { readonly tools: readonly string[] }) {
   const { t } = useTranslation("assistant");
-  const labels = tools.map((tool) => (KNOWN_TOOLS.includes(tool) ? t(`message.tools.${tool}`) : tool));
+  const labels = tools.map((tool) => (KNOWN_TOOLS.has(tool) ? t(`message.tools.${tool}`) : tool));
 
   return (
     <p className="mt-2 flex items-center gap-1.5 text-[11.5px] text-muted-foreground">
