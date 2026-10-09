@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/collapsible";
 import { ProjectWithRole, Opinion, CalculationResult } from "@/types/api";
 import { CentroidBarChart } from "@/components/visualizations/CentroidBarChart";
+import { AssistantResultSlot } from "@/components/assistant";
 import { cn } from "@/lib/utils";
 import { TriangleVisualization } from "./TriangleVisualization";
 import { OpinionLandscape } from "./OpinionLandscape";
@@ -105,6 +106,7 @@ export const ResultsSection = ({
                 {t(`detail.confidenceLevel.${agreementLevel}`)} {t("detail.confidence")}
               </Badge>
             </div>
+            <AssistantResultSlot projectId={project.id} />
           </div>
           <div className="grid grid-cols-3 gap-4 text-center border-t pt-4">
             <div>

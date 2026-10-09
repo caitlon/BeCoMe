@@ -5,6 +5,7 @@ interface AssistantUIValue {
   readonly isOpen: boolean;
   readonly projectId: string | null;
   readonly setAvailable: (available: boolean) => void;
+  readonly setProjectScope: (projectId: string | null) => void;
   readonly openAssistant: (projectId?: string) => void;
   readonly closeAssistant: () => void;
 }
@@ -16,6 +17,7 @@ const DEFAULT_VALUE: AssistantUIValue = {
   isOpen: false,
   projectId: null,
   setAvailable: () => {},
+  setProjectScope: () => {},
   openAssistant: () => {},
   closeAssistant: () => {},
 };
@@ -44,7 +46,15 @@ export function AssistantUIProvider({ children }: { readonly children: ReactNode
   const closeAssistant = useCallback(() => setIsOpen(false), []);
 
   const value = useMemo(
-    () => ({ isAvailable, isOpen, projectId, setAvailable, openAssistant, closeAssistant }),
+    () => ({
+      isAvailable,
+      isOpen,
+      projectId,
+      setAvailable,
+      setProjectScope: setProjectId,
+      openAssistant,
+      closeAssistant,
+    }),
     [isAvailable, isOpen, projectId, openAssistant, closeAssistant]
   );
 
