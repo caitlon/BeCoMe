@@ -1,0 +1,143 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { ReactNode } from 'react';
+import i18n from '@/i18n';
+import { api } from '@/lib/api';
+import { queryKeys } from '@/lib/queryKeys';
+import { AssistantPanel } from '@/components/assistant/AssistantPanel';
+import '@/components/assistant/i18n';
+
+let mockIsDesktop = true;
+vi.mock('@/hooks/use-media-query', () => ({ useMediaQuery: () => mockIsDesktop }));
+
+function renderPanel(props: Partial<React.ComponentProps<typeof AssistantPanel>> = {}, seededName?: string) {
+  const client = new QueryClient();
+  if (seededName) client.setQueryData(queryKeys.project('p1'), { id: 'p1', name: seededName });
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  );
+  const onOpenChange = vi.fn();
+  render(<AssistantPanel open onOpenChange={onOpenChange} projectId={null} {...props} />, { wrapper });
+  return { onOpenChange };
+}
+
+describe('AssistantPanel', () => {
+  beforeEach(() => {
+    mockIsDesktop = true;
+  });
+
+  afterEach(async () => {
+    await i18n.changeLanguage('en');
+  });
+
+  it('has an accessible title and a description naming the scope', () => {
+    renderPanel();
+
+    const dialog = screen.getByRole('dialog', { name: 'Assistant' });
+    expect(dialog).toHaveAccessibleDescription('Method and app');
+  });
+
+  it('shows the project name from the cache when scoped, without fetching', () => {
+    const getProject = vi.spyOn(api, 'getProject');
+
+    renderPanel({ projectId: 'p1' }, 'Flood prevention');
+
+    expect(screen.getByRole('dialog')).toHaveAccessibleDescription('Project “Flood prevention”');
+    expect(screen.getByText('Ask about this project')).toBeInTheDocument();
+    expect(getProject).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the generic subtitle while the project name is not cached', () => {
+    renderPanel({ projectId: 'p1' });
+
+    expect(screen.getByRole('dialog')).toHaveAccessibleDescription('Method and app');
+    expect(screen.getByText('What does the result mean?')).toBeInTheDocument();
+  });
+
+  it('shows the general empty state and suggestions with no project', () => {
+    renderPanel();
+
+    expect(screen.getByText('Ask about the method or the app')).toBeInTheDocument();
+    expect(screen.getByText('Sees only what you see in this project.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'What is a fuzzy opinion?' })).toBeInTheDocument();
+    expect(screen.getByText('The assistant can be wrong. Check the result page.')).toBeInTheDocument();
+  });
+
+  it('hands the clicked suggestion to onSuggestion', async () => {
+    const onSuggestion = vi.fn();
+    renderPanel({ onSuggestion });
+
+    await userEvent.click(screen.getByRole('button', { name: 'How do I invite experts?' }));
+
+    expect(onSuggestion).toHaveBeenCalledWith('How do I invite experts?');
+  });
+
+  it('ignores a suggestion click when no handler is given', async () => {
+    renderPanel();
+
+    await userEvent.click(screen.getByRole('button', { name: 'How do I invite experts?' }));
+
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
+
+  it('renders the composer and the clear button disabled', () => {
+    renderPanel();
+
+    expect(screen.getByRole('textbox', { name: 'Ask a question…' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Clear conversation' })).toBeDisabled();
+    expect(screen.getByText('0 / 4000')).toBeInTheDocument();
+  });
+
+  it('closes through its close button and on Escape', async () => {
+    const { onOpenChange } = renderPanel();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(onOpenChange).toHaveBeenLastCalledWith(false);
+
+    onOpenChange.mockClear();
+    await userEvent.keyboard('{Escape}');
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it('does not close on a click outside, and leaves the page interactive on desktop', async () => {
+    const pageClick = vi.fn();
+    render(<button onClick={pageClick}>page button</button>);
+    const { onOpenChange } = renderPanel();
+
+    await userEvent.click(screen.getByRole('button', { name: 'page button' }));
+
+    expect(pageClick).toHaveBeenCalledTimes(1);
+    expect(onOpenChange).not.toHaveBeenCalled();
+  });
+
+  it('is a bottom sheet below the md breakpoint', () => {
+    mockIsDesktop = false;
+    renderPanel();
+
+    expect(screen.getByRole('dialog').className).toContain('h-[94dvh]');
+    expect(screen.getByRole('dialog').className).toContain('inset-x-0');
+  });
+
+  it('is a side sheet on desktop', () => {
+    renderPanel();
+
+    expect(screen.getByRole('dialog').className).toContain('sm:max-w-[440px]');
+  });
+
+  it('renders nothing when closed', () => {
+    renderPanel({ open: false });
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('speaks Czech when the language is Czech', async () => {
+    await i18n.changeLanguage('cs');
+    renderPanel();
+
+    expect(screen.getByRole('dialog', { name: 'Asistent' })).toBeInTheDocument();
+    expect(screen.getByText('Zeptejte se na metodu nebo aplikaci')).toBeInTheDocument();
+  });
+});
