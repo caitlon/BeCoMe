@@ -1,16 +1,24 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, renderHook, screen } from '@testing-library/react';
+import { act, render, renderHook, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 // The slots import ./triggers lazily; a stand-in with a real button makes
 // "the slot rendered its lazy child" observable instead of "did not throw".
+const triggers = vi.hoisted(() => ({ throws: false }));
 vi.mock('@/components/assistant/triggers', () => ({
-  HeaderTrigger: () => <button type="button">header trigger</button>,
-  ResultTrigger: ({ projectId }: { projectId: string }) => <button type="button">result trigger {projectId}</button>,
+  HeaderTrigger: () => {
+    if (triggers.throws) throw new Error('chunk failed');
+    return <button type="button">header trigger</button>;
+  },
+  ResultTrigger: ({ projectId }: { projectId: string }) => {
+    if (triggers.throws) throw new Error('chunk failed');
+    return <button type="button">result trigger {projectId}</button>;
+  },
 }));
 
 describe('components/assistant build gate', () => {
   beforeEach(() => {
+    triggers.throws = false;
     // A fresh module instance per test: every export below is computed once
     // from `enabled` at module scope, so re-reading any of them after
     // vi.stubEnv requires re-evaluating the module, exactly like
@@ -123,6 +131,31 @@ describe('components/assistant build gate', () => {
 
       render(<AssistantResultSlot projectId="p1" />);
       expect(await screen.findByRole('button', { name: 'result trigger p1' })).toBeInTheDocument();
+    });
+  });
+
+  describe('a slot whose chunk fails', () => {
+    it('renders nothing and leaves the page around it alone', async () => {
+      vi.stubEnv('VITE_ASSISTANT_ENABLED', 'true');
+      triggers.throws = true;
+      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const { AssistantHeaderSlot, AssistantResultSlot } = await import('@/components/assistant');
+
+      render(
+        <>
+          <p>page content</p>
+          <AssistantHeaderSlot />
+          <AssistantResultSlot projectId="p1" />
+        </>
+      );
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      });
+
+      expect(screen.getByText('page content')).toBeInTheDocument();
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      expect(screen.queryByRole('button')).not.toBeInTheDocument();
+      consoleError.mockRestore();
     });
   });
 

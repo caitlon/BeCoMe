@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, type ComponentType, type LazyExoticComponent, type ReactNode } from "react";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AssistantUIProvider, useAssistantUI } from "@/contexts/AssistantUIContext";
 
 /**
@@ -54,9 +55,11 @@ const LazyHeaderTrigger: LazyExoticComponent<ComponentType> | null = enabled
 export function AssistantHeaderSlot() {
   if (!LazyHeaderTrigger) return null;
   return (
-    <Suspense fallback={null}>
-      <LazyHeaderTrigger />
-    </Suspense>
+    <ErrorBoundary fallback={null}>
+      <Suspense fallback={null}>
+        <LazyHeaderTrigger />
+      </Suspense>
+    </ErrorBoundary>
   );
 }
 
@@ -72,9 +75,11 @@ export interface AssistantResultSlotProps {
 export function AssistantResultSlot({ projectId }: AssistantResultSlotProps) {
   if (!LazyResultTrigger) return null;
   return (
-    <Suspense fallback={null}>
-      <LazyResultTrigger projectId={projectId} />
-    </Suspense>
+    <ErrorBoundary fallback={null}>
+      <Suspense fallback={null}>
+        <LazyResultTrigger projectId={projectId} />
+      </Suspense>
+    </ErrorBoundary>
   );
 }
 

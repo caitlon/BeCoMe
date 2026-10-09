@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import i18n from '@/i18n';
 import { api } from '@/lib/api';
 import { queryKeys } from '@/lib/queryKeys';
@@ -20,7 +20,27 @@ function renderPanel(props: Partial<React.ComponentProps<typeof AssistantPanel>>
   );
   const onOpenChange = vi.fn();
   render(<AssistantPanel open onOpenChange={onOpenChange} projectId={null} {...props} />, { wrapper });
-  return { onOpenChange };
+  return { onOpenChange, client };
+}
+
+function OpenerHarness() {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button onClick={() => setOpen(true)}>opener</button>
+      <button>elsewhere</button>
+      <AssistantPanel open={open} onOpenChange={setOpen} projectId={null} />
+    </>
+  );
+}
+
+function renderHarness() {
+  const client = new QueryClient();
+  render(
+    <QueryClientProvider client={client}>
+      <OpenerHarness />
+    </QueryClientProvider>
+  );
 }
 
 describe('AssistantPanel', () => {
@@ -47,6 +67,12 @@ describe('AssistantPanel', () => {
     expect(screen.getByRole('dialog')).toHaveAccessibleDescription('Project “Flood prevention”');
     expect(screen.getByText('Ask about this project')).toBeInTheDocument();
     expect(getProject).not.toHaveBeenCalled();
+  });
+
+  it('creates no query entry at all when there is no project', () => {
+    const { client } = renderPanel();
+
+    expect(client.getQueryCache().getAll()).toEqual([]);
   });
 
   it('falls back to the generic subtitle while the project name is not cached', () => {
@@ -111,6 +137,37 @@ describe('AssistantPanel', () => {
 
     expect(pageClick).toHaveBeenCalledTimes(1);
     expect(onOpenChange).not.toHaveBeenCalled();
+  });
+
+  it.each([['desktop', true], ['mobile', false]])(
+    'gives focus back to the opener on close, on %s',
+    async (_name, isDesktop) => {
+      mockIsDesktop = isDesktop;
+      renderHarness();
+      const opener = screen.getByRole('button', { name: 'opener' });
+
+      await userEvent.click(opener);
+      await screen.findByRole('dialog');
+      expect(opener).not.toHaveFocus();
+
+      await userEvent.keyboard('{Escape}');
+
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+      await waitFor(() => expect(opener).toHaveFocus());
+    }
+  );
+
+  it('does not pull focus back when the user moved it elsewhere on the page', async () => {
+    renderHarness();
+    await userEvent.click(screen.getByRole('button', { name: 'opener' }));
+    await screen.findByRole('dialog');
+    const elsewhere = screen.getByRole('button', { name: 'elsewhere' });
+
+    await userEvent.click(elsewhere);
+    await userEvent.keyboard('{Escape}');
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(elsewhere).toHaveFocus();
   });
 
   it('is a bottom sheet below the md breakpoint', () => {
