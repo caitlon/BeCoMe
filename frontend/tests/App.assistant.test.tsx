@@ -28,7 +28,7 @@ describe('App assistant mount', () => {
     vi.unstubAllEnvs();
   });
 
-  it('mounts the assistant outside the routed tree in a build with the flag', async () => {
+  it('mounts the assistant inside the router and outside the routes in a build with the flag', async () => {
     vi.stubEnv('VITE_ASSISTANT_ENABLED', 'true');
     const { default: App } = await import('@/App');
 
