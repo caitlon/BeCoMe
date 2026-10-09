@@ -1,5 +1,7 @@
 """Tests for the source registry and the per-turn agent context."""
 
+import pytest
+
 from api.assistant.agent.context import SNIPPET_CHARS, SourceRegistry, _excerpt
 from api.assistant.rag.corpus import Layer
 from api.assistant.rag.retrieval import RetrievedChunk
@@ -141,8 +143,8 @@ class TestSourceRegistry:
 
         snippet = registry.refs()[0].snippet
 
+        assert snippet == ("word " * 47).strip() + " word\u2026"
         assert len(snippet) <= SNIPPET_CHARS
-        assert snippet.endswith("\u2026")
 
     def test_refs_of_a_local_chunk_exposes_no_path(self):
         """
@@ -244,6 +246,15 @@ class TestExcerpt:
         """
         assert _excerpt("al\x00pha\x1b[0m be\u200bta") == "alpha[0m beta"
 
+    @pytest.mark.parametrize("text", ["a \x00 b", "a\n\x00\nb", "a\x00 \x1b b"])
+    def test_a_dropped_control_character_leaves_no_double_space(self, text):
+        """
+        GIVEN text where a control character sits between spaces or newlines
+        WHEN the excerpt is made
+        THEN the words are joined by a single space
+        """
+        assert _excerpt(text) == "a b"
+
     def test_leaves_short_text_untouched(self):
         """
         GIVEN text no longer than the limit
@@ -259,6 +270,18 @@ class TestExcerpt:
         THEN it is cut at the last space before the limit and ends with an ellipsis
         """
         assert _excerpt("alpha beta gamma", limit=12) == "alpha beta\u2026"
+
+    def test_a_cut_may_use_the_space_just_inside_the_limit(self):
+        """
+        GIVEN text whose last word boundary falls on the last character the limit leaves
+            room for
+        WHEN the excerpt is made
+        THEN that word is kept and the result is exactly as long as the limit
+        """
+        excerpt = _excerpt("abc def ghi", 8)
+
+        assert excerpt == "abc def\u2026"
+        assert len(excerpt) == 8
 
     def test_cuts_at_the_limit_when_there_is_no_space(self):
         """

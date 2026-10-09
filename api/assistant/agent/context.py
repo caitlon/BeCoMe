@@ -1,6 +1,5 @@
 """Per-request context threaded through the agent, and the registry of cited sources."""
 
-import re
 import unicodedata
 from dataclasses import dataclass
 
@@ -11,29 +10,28 @@ from api.schemas.assistant import SourceRef
 # The longest excerpt of a passage a source reference carries, ellipsis included.
 SNIPPET_CHARS = 240
 
-_WHITESPACE_RUN = re.compile(r"\s+")
-
 
 def _excerpt(text: str, limit: int = SNIPPET_CHARS) -> str:
     """Return the first words of a passage as plain text on one line.
 
-    Whitespace runs collapse to one space and control characters are dropped. A text over
-    the limit is cut at the last space that leaves room for the ellipsis, or without
-    regard to spaces when it has none, so the result never exceeds ``limit`` characters.
+    Control characters are dropped first and whitespace runs, including those a dropped
+    character leaves behind, then collapse to one space. A text over the limit is cut at
+    the last space that leaves room for the ellipsis, or without regard to spaces when it
+    has none, so the result never exceeds ``limit`` characters.
 
     :param text: The passage as indexed.
     :param limit: The most characters the result may have, ellipsis included.
     :return: The tidied text, ending in an ellipsis when it was cut.
     """
-    spaced = _WHITESPACE_RUN.sub(" ", text)
-    plain = "".join(
-        char for char in spaced if char == " " or not unicodedata.category(char).startswith("C")
-    ).strip()
+    kept = "".join(
+        char for char in text if char.isspace() or not unicodedata.category(char).startswith("C")
+    )
+    plain = " ".join(kept.split())
     if len(plain) <= limit:
         return plain
-    head = plain[: limit - 1]
-    cut = head.rfind(" ")
-    return (head[:cut] if cut > 0 else head).rstrip() + "\u2026"
+    cut = plain.rfind(" ", 0, limit)
+    head = plain[:cut] if cut > 0 else plain[: limit - 1]
+    return head + "\u2026"
 
 
 class SourceRegistry:
@@ -70,7 +68,8 @@ class SourceRegistry:
         """Return every registered chunk as a response-ready source reference.
 
         A local-layer source never carries a url: the layer is private, and whatever
-        the index holds in that field must not reach a browser.
+        the index holds in that field must not reach a browser. It still carries a short
+        excerpt of its own words in ``snippet``; only the url is withheld.
 
         :return: One reference per registered chunk, in registration order.
         """
