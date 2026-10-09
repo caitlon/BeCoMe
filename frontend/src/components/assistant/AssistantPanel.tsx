@@ -1,16 +1,30 @@
-import { useQuery } from "@tanstack/react-query";
+import { skipToken, useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Send, Sparkles, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetClose, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import { useMediaQuery } from "@/hooks/use-media-query";
-import { api } from "@/lib/api";
 import { queryKeys } from "@/lib/queryKeys";
 import { cn } from "@/lib/utils";
+import type { ProjectWithRole } from "@/types/api";
 
 const MAX_QUESTION_LENGTH = 4000;
 const SUGGESTION_INDEXES = [0, 1, 2] as const;
+
+function ProjectScopeLabel({ projectId }: { readonly projectId: string }) {
+  const { t } = useTranslation("assistant");
+  // Reads the project page's cached entry (same key) and never fetches, so
+  // opening the panel adds no request; without the entry the label is generic.
+  const projectQuery = useQuery<ProjectWithRole>({
+    queryKey: queryKeys.project(projectId),
+    queryFn: skipToken,
+  });
+
+  return projectQuery.data?.name
+    ? t("panel.scopeProject", { name: projectQuery.data.name })
+    : t("panel.scopeGeneral");
+}
 
 export interface AssistantPanelProps {
   readonly open: boolean;
@@ -28,18 +42,7 @@ export function AssistantPanel({ open, onOpenChange, projectId, onSuggestion }: 
   const { t } = useTranslation("assistant");
   const isDesktop = useMediaQuery("(min-width: 768px)");
 
-  // Reads the project page's cached entry (same key) and never fetches, so
-  // opening the panel adds no request; without the entry the subtitle is generic.
-  const projectQuery = useQuery({
-    queryKey: queryKeys.project(projectId ?? ""),
-    queryFn: () => api.getProject(projectId ?? ""),
-    enabled: false,
-  });
-  const projectName = projectId ? projectQuery.data?.name : undefined;
-  const scoped = projectId !== null;
-  const subtitle = projectName
-    ? t("panel.scopeProject", { name: projectName })
-    : t("panel.scopeGeneral");
+  const scoped = Boolean(projectId);
   const suggestionsKey = scoped ? "empty.suggestionsProject" : "empty.suggestionsGeneral";
 
   return (
@@ -61,7 +64,9 @@ export function AssistantPanel({ open, onOpenChange, projectId, onSuggestion }: 
             <SheetTitle className="font-display text-lg font-medium leading-tight">
               {t("panel.title")}
             </SheetTitle>
-            <SheetDescription className="truncate text-xs">{subtitle}</SheetDescription>
+            <SheetDescription className="truncate text-xs">
+              {projectId ? <ProjectScopeLabel projectId={projectId} /> : t("panel.scopeGeneral")}
+            </SheetDescription>
           </div>
           <Button variant="ghost" size="icon" disabled aria-label={t("panel.clear")} title={t("panel.clear")}>
             <Trash2 className="h-4 w-4" />

@@ -81,12 +81,14 @@ const App = () => (
                     </Routes>
                   </ErrorBoundary>
                 </Suspense>
+                {AssistantEntry && (
+                  <ErrorBoundary fallback={null}>
+                    <Suspense fallback={null}>
+                      <AssistantEntry />
+                    </Suspense>
+                  </ErrorBoundary>
+                )}
               </BrowserRouter>
-              {AssistantEntry && (
-                <Suspense fallback={null}>
-                  <AssistantEntry />
-                </Suspense>
-              )}
             </AssistantProvider>
           </TooltipProvider>
         </AuthProvider>
