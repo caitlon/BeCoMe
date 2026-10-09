@@ -1,0 +1,35 @@
+{
+  "trigger": {
+    "header": "Assistant",
+    "result": "Explain this result"
+  },
+  "panel": {
+    "title": "Assistant",
+    "scopeProject": "Project “{{name}}”",
+    "scopeGeneral": "Method and app",
+    "seesOnly": "Sees only what you see in this project.",
+    "clear": "Clear conversation",
+    "close": "Close",
+    "footer": "The assistant can be wrong. Check the result page."
+  },
+  "empty": {
+    "titleProject": "Ask about this project",
+    "titleGeneral": "Ask about the method or the app",
+    "hint": "Answers come from the documentation and from this project’s data. Every claim is followed by its source.",
+    "suggestionsProject": [
+      "What does the result mean?",
+      "Why is the confidence moderate?",
+      "How is the best compromise computed?"
+    ],
+    "suggestionsGeneral": [
+      "What is a fuzzy opinion?",
+      "How do I invite experts?",
+      "What does Δmax say?"
+    ]
+  },
+  "composer": {
+    "placeholder": "Ask a question…",
+    "hint": "Enter to send · Shift+Enter for a new line",
+    "send": "Send"
+  }
+}
