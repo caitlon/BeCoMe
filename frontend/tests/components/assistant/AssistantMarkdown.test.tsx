@@ -85,6 +85,23 @@ describe('AssistantMarkdown', () => {
     expect(container.querySelector('[node]')).toBeNull();
   });
 
+  it.each(['one  \ntwo', 'one\\\ntwo'])('keeps a hard line break (%j) as a <br>', (content) => {
+    const { container } = renderMarkdown(content);
+
+    expect(container.querySelectorAll('p br')).toHaveLength(1);
+  });
+
+  it('keeps the same first paragraph node while the content grows, as a stream does', () => {
+    const { container, rerender } = renderMarkdown('First paragraph');
+    const paragraph = container.querySelector('p');
+
+    rerender(<AssistantMarkdown content={'First paragraph grows\n\nSecond'} messageId="m1" />);
+
+    expect(container.querySelector('p')).toBe(paragraph);
+    expect(paragraph).toHaveTextContent('First paragraph grows');
+    expect(container.querySelectorAll('p')).toHaveLength(2);
+  });
+
   it('does not render tables, blockquotes or code blocks as their own elements', () => {
     const { container } = renderMarkdown('> quoted\n\n```\nfenced\n```\n\n| a | b |\n|---|---|\n| 1 | 2 |');
 
@@ -148,8 +165,8 @@ describe('AssistantMarkdown', () => {
       expect(cls).not.toContain('no-underline');
     });
 
-    it('shows a huge marker literally and struck through', () => {
-      const { container } = renderMarkdown('Claim [99999999999999999999].', { sourceNumbers: [1] });
+    it('shows a huge marker literally and struck through, even when it is in the sources', () => {
+      const { container } = renderMarkdown('Claim [99999999999999999999].', { sourceNumbers: [1e20] });
 
       expect(screen.queryByRole('link')).not.toBeInTheDocument();
       expect(screen.getByText('[99999999999999999999]').closest('s')).not.toBeNull();
@@ -224,11 +241,20 @@ describe('AssistantMarkdown', () => {
       });
     });
 
-    it('treats every [n] as struck through when there are no sources at all', () => {
-      renderMarkdown('Claim [1].');
+    it('treats every [n] as struck through when the sources are known to be empty', () => {
+      renderMarkdown('Claim [1].', { sourceNumbers: [] });
 
       expect(screen.queryByRole('link')).not.toBeInTheDocument();
       expect(screen.getByText('[1]').closest('s')).not.toBeNull();
+      expect(document.body).toHaveTextContent('No such source');
+    });
+
+    it('leaves [n] as plain text while the sources are not known yet', () => {
+      const { container } = renderMarkdown('Claim [1] and **bold [2]**.');
+
+      expect(screen.queryByRole('link')).not.toBeInTheDocument();
+      expect(container.querySelector('s')).toBeNull();
+      expect(container.textContent).toBe('Claim [1] and bold [2].');
     });
 
     it('finds citations inside list items, bold and italic text', () => {
