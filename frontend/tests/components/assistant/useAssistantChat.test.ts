@@ -1,7 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
+import { Storage } from 'happy-dom';
 import i18n from '@/i18n';
-import { useAssistantChat } from '@/components/assistant/useAssistantChat';
+import {
+  STORAGE_PREFIX,
+  clearAssistantHistory,
+  useAssistantChat,
+  type AssistantMessage,
+} from '@/components/assistant/useAssistantChat';
 import type { AssistantSseEvent } from '@/components/assistant/sse';
 import {
   HttpError,
@@ -74,6 +80,24 @@ function openStream() {
   };
 }
 
+function storedMessage(
+  index: number,
+  role: 'user' | 'assistant',
+  status: AssistantMessage['status'] = 'done',
+  content = `${role} ${index}`
+): AssistantMessage {
+  return { id: `m${index}`, role, content, status, createdAt: 1000 + index };
+}
+
+function seed(messages: AssistantMessage[], userId = 'u1', projectId = 'general') {
+  window.sessionStorage.setItem(`${STORAGE_PREFIX}:${userId}:${projectId}`, JSON.stringify(messages));
+}
+
+function stored(userId = 'u1', projectId = 'general'): AssistantMessage[] | null {
+  const raw = window.sessionStorage.getItem(`${STORAGE_PREFIX}:${userId}:${projectId}`);
+  return raw === null ? null : (JSON.parse(raw) as AssistantMessage[]);
+}
+
 function setup(props: { projectId?: string | null; userId?: string } = {}) {
   return renderHook(
     (p: { projectId: string | null; userId: string }) => useAssistantChat(p),
@@ -103,6 +127,7 @@ describe('useAssistantChat', () => {
     mockReadAssistantSseStream.mockReset();
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
     mockStreamAssistantMessage.mockResolvedValue({ body: {} } as Response);
+    window.sessionStorage.clear();
   });
 
   afterEach(async () => {
@@ -385,17 +410,18 @@ describe('useAssistantChat', () => {
       expect(result.current.draft).toBe('');
     });
 
-    it('empties the conversation and aborts the request in flight', async () => {
+    it('empties the conversation, aborts the request in flight and drops the stored copy', async () => {
       const stream = openStream();
       const { result } = setup();
       ask(result);
       stream.token('Partial');
-      await waitFor(() => expect(result.current.messages[1].content).toBe('Partial'));
+      await waitFor(() => expect(stored()).toHaveLength(2));
 
       act(() => result.current.clear());
 
       expect(result.current.messages).toHaveLength(0);
       expect(mockStreamAssistantMessage.mock.calls[0][1].aborted).toBe(true);
+      expect(stored()).toBeNull();
       await waitFor(() => expect(result.current.isPending).toBe(false));
       expect(result.current.messages).toHaveLength(0);
     });
@@ -430,6 +456,26 @@ describe('useAssistantChat', () => {
       expect(mockStreamAssistantMessage.mock.calls[1][1].aborted).toBe(true);
     });
 
+    it('drops the stored copy on clear even while a token render is still on its way', async () => {
+      // A token that has been read but not yet rendered must not cost the clear its
+      // write. Whether it lands before the clear's own render depends on scheduling,
+      // so the order is tried many times over.
+      for (let round = 0; round < 60; round += 1) {
+        const stream = openStream();
+        const { result, unmount } = setup();
+        ask(result);
+        stream.token('Partial');
+        await waitFor(() => expect(stored()).toHaveLength(2));
+
+        act(() => result.current.clear());
+
+        expect(stored()).toBeNull();
+        unmount();
+        await nextTick();
+        window.sessionStorage.clear();
+      }
+    });
+
     it('lets a new question go out right after a clear', async () => {
       openStream();
       const { result } = setup();
@@ -459,7 +505,7 @@ describe('useAssistantChat', () => {
       expect(result.current.messages).toHaveLength(2);
     });
 
-    it('aborts the request when the hook unmounts', async () => {
+    it('aborts the request when the hook unmounts and does not store the partial', async () => {
       const stream = openStream();
       const { result, unmount } = setup();
       ask(result);
@@ -467,8 +513,19 @@ describe('useAssistantChat', () => {
       await waitFor(() => expect(result.current.messages[1].content).toBe('Partial'));
 
       unmount();
+      await nextTick();
 
       expect(mockStreamAssistantMessage.mock.calls[0][1].aborted).toBe(true);
+      // Only what the append wrote is there: the answer still empty.
+      expect(stored()?.[1]).toMatchObject({ status: 'pending', content: '' });
+    });
+
+    it('leaves storage alone when it unmounts with nothing in flight', () => {
+      const { unmount } = setup();
+
+      unmount();
+
+      expect(stored()).toBeNull();
     });
   });
 
@@ -775,5 +832,370 @@ describe('useAssistantChat', () => {
       await waitFor(() => expect(result.current.isPending).toBe(false));
       expect(result.current.messages).toEqual([]);
     });
+  });
+
+  describe('persistence', () => {
+    it('saves the conversation under the user and project key', async () => {
+      const stream = openStream();
+      const { result } = setup({ projectId: 'p1', userId: 'u7' });
+
+      ask(result, 'hi');
+      await waitFor(() => expect(stored('u7', 'p1')?.[0].content).toBe('hi'));
+      stream.token('Part');
+      stream.done();
+
+      await waitFor(() => expect(stored('u7', 'p1')?.[1].status).toBe('done'));
+      expect(stored('u7', 'p1')?.map((m) => m.role)).toEqual(['user', 'assistant']);
+      expect(stored('u7', 'general')).toBeNull();
+      expect(stored('u1', 'p1')).toBeNull();
+    });
+
+    it('loads the saved conversation on mount', () => {
+      seed([storedMessage(0, 'user'), storedMessage(1, 'assistant')], 'u1', 'p1');
+
+      const { result } = setup({ projectId: 'p1' });
+
+      expect(result.current.messages.map((m) => m.content)).toEqual(['user 0', 'assistant 1']);
+    });
+
+    it('turns a message stored as pending into a cut one on load', () => {
+      seed([storedMessage(0, 'user'), storedMessage(1, 'assistant', 'pending', 'Half')]);
+
+      const { result } = setup();
+
+      expect(result.current.messages[1]).toMatchObject({ status: 'cut', content: 'Half' });
+      expect(result.current.isPending).toBe(false);
+    });
+
+    it('keeps at most the last 40 messages, in memory after a load and in storage', async () => {
+      seed(Array.from({ length: 45 }, (_, i) => storedMessage(i, i % 2 === 0 ? 'user' : 'assistant')));
+      openStream().done();
+      const { result } = setup();
+      expect(result.current.messages).toHaveLength(40);
+      expect(result.current.messages[0].id).toBe('m5');
+
+      ask(result, 'next');
+
+      await waitFor(() => expect(result.current.isPending).toBe(false));
+      expect(stored()).toHaveLength(40);
+      expect(stored()?.[39]).toMatchObject({ role: 'assistant', content: RESPONSE.answer });
+    });
+
+    it.each([
+      ['not JSON', 'not json'],
+      ['not a list', '{"a":1}'],
+    ])('starts empty when the stored value is %s', (_name, raw) => {
+      window.sessionStorage.setItem(`${STORAGE_PREFIX}:u1:general`, raw);
+
+      const { result } = setup();
+
+      expect(result.current.messages).toEqual([]);
+    });
+
+    it('drops stored entries that are not messages', () => {
+      seed([
+        storedMessage(0, 'user'),
+        { id: 1 } as unknown as AssistantMessage,
+        null as unknown as AssistantMessage,
+        { ...storedMessage(2, 'assistant'), status: 'weird' as AssistantMessage['status'] },
+        { ...storedMessage(3, 'assistant'), role: 'system' as AssistantMessage['role'] },
+      ]);
+
+      const { result } = setup();
+
+      expect(result.current.messages.map((m) => m.id)).toEqual(['m0']);
+    });
+
+    it('keeps a stored message whose optional parts have the right shape', () => {
+      const full = {
+        ...storedMessage(1, 'assistant'),
+        error: { code: 429, detail: 'Too many requests', retryAfter: 30 },
+        sources: [SOURCE],
+        toolsUsed: ['search_docs'],
+        checks: CHECKS,
+        timing: { ttft_ms: 12, total_ms: 340 },
+      };
+      seed([storedMessage(0, 'user'), full as AssistantMessage]);
+
+      const { result } = setup();
+
+      expect(result.current.messages[1]).toEqual(full);
+    });
+
+    it.each([
+      ['an error that is not an object', { error: 'boom' }],
+      ['an error without a numeric code', { error: { code: '500', detail: 'x' } }],
+      ['an error without a string detail', { error: { code: 500, detail: 7 } }],
+      ['an error with a retryAfter that is not a number', { error: { code: 429, detail: 'x', retryAfter: '30' } }],
+      ['a null error', { error: null }],
+      ['sources that are not a list', { sources: { n: 1 } }],
+      ['toolsUsed that is not a list', { toolsUsed: 'search_docs' }],
+      ['checks that are a list', { checks: [] }],
+      ['checks that are a string', { checks: 'ok' }],
+      ['timing that is not an object', { timing: 12 }],
+    ])('drops a stored message with %s', (_name, bad) => {
+      seed([storedMessage(0, 'user'), { ...storedMessage(1, 'assistant'), ...bad } as unknown as AssistantMessage]);
+
+      const { result } = setup();
+
+      expect(result.current.messages.map((m) => m.id)).toEqual(['m0']);
+    });
+
+    it('switches to the conversation of another project and back', async () => {
+      seed([storedMessage(0, 'user')], 'u1', 'general');
+      seed([storedMessage(1, 'user'), storedMessage(2, 'assistant')], 'u1', 'p2');
+      const { result, rerender } = setup();
+      expect(result.current.messages).toHaveLength(1);
+
+      rerender({ projectId: 'p2', userId: 'u1' });
+      expect(result.current.messages).toHaveLength(2);
+
+      rerender({ projectId: null, userId: 'u1' });
+      expect(result.current.messages.map((m) => m.id)).toEqual(['m0']);
+      expect(stored('u1', 'p2')).toHaveLength(2);
+    });
+
+    it('does not show one user the conversation of another', () => {
+      seed([storedMessage(0, 'user')], 'u1');
+
+      const { result } = setup({ userId: 'u2' });
+
+      expect(result.current.messages).toEqual([]);
+    });
+
+    it('does not store the partial of an answer cut off by a conversation change', async () => {
+      const stream = openStream();
+      const { result, rerender } = setup();
+      ask(result);
+      stream.token('Partial');
+      await waitFor(() => expect(result.current.messages[1].content).toBe('Partial'));
+
+      rerender({ projectId: 'p2', userId: 'u1' });
+
+      expect(mockStreamAssistantMessage.mock.calls[0][1].aborted).toBe(true);
+      expect(result.current.messages).toEqual([]);
+      await waitFor(() => expect(result.current.isPending).toBe(false));
+      expect(result.current.messages).toEqual([]);
+      expect(stored('u1', 'general')?.[1]).toMatchObject({ status: 'pending', content: '' });
+      expect(stored('u1', 'p2')).toBeNull();
+    });
+
+    it('swaps to the conversation of another user and aborts the request in flight', async () => {
+      seed([storedMessage(0, 'user'), storedMessage(1, 'assistant')], 'u2');
+      const stream = openStream();
+      const { result, rerender } = setup();
+      ask(result);
+      stream.token('Partial');
+      await waitFor(() => expect(result.current.messages[1].content).toBe('Partial'));
+
+      rerender({ projectId: null, userId: 'u2' });
+      await nextTick();
+
+      expect(mockStreamAssistantMessage.mock.calls[0][1].aborted).toBe(true);
+      expect(result.current.messages.map((m) => m.id)).toEqual(['m0', 'm1']);
+      expect(result.current.isPending).toBe(false);
+      expect(stored('u2')?.map((m) => m.id)).toEqual(['m0', 'm1']);
+    });
+
+    it('writes nothing on mount, whatever it loaded', () => {
+      seed([storedMessage(0, 'user'), storedMessage(1, 'assistant', 'pending', 'Half')]);
+      const setItem = vi.spyOn(window.sessionStorage, 'setItem');
+      const removeItem = vi.spyOn(window.sessionStorage, 'removeItem');
+
+      setup();
+      setup({ userId: 'nobody' });
+
+      expect(setItem).not.toHaveBeenCalled();
+      expect(removeItem).not.toHaveBeenCalled();
+    });
+
+    it('turns a stored pending answer that has no text into an empty cut one', () => {
+      seed([storedMessage(0, 'user'), storedMessage(1, 'assistant', 'pending', '')]);
+
+      const { result } = setup();
+
+      expect(result.current.messages.map((m) => m.id)).toEqual(['m0', 'm1']);
+      expect(result.current.messages[1]).toMatchObject({ status: 'cut', content: '' });
+      expect(result.current.isPending).toBe(false);
+    });
+
+    it('removes the stored copy when an idle conversation is cleared', () => {
+      seed([storedMessage(0, 'user'), storedMessage(1, 'assistant')]);
+      const { result } = setup();
+      expect(result.current.messages).toHaveLength(2);
+
+      act(() => result.current.clear());
+
+      expect(result.current.messages).toEqual([]);
+      expect(stored()).toBeNull();
+    });
+
+    it('leaves storage empty when sign-out clears it and the panel then unmounts with a turn in flight', async () => {
+      const stream = openStream();
+      const { result, unmount } = setup();
+      ask(result);
+      stream.token('Partial');
+      await waitFor(() => expect(result.current.messages[1].content).toBe('Partial'));
+
+      clearAssistantHistory();
+      unmount();
+      await nextTick();
+
+      expect(stored()).toBeNull();
+    });
+
+    it('leaves storage empty when sign-out clears it and the turn then settles in a mounted hook', async () => {
+      const stream = openStream();
+      const { result } = setup();
+      ask(result);
+      stream.token('Partial');
+      await waitFor(() => expect(result.current.messages[1].content).toBe('Partial'));
+
+      clearAssistantHistory();
+      stream.done();
+
+      await waitFor(() => expect(result.current.messages[1].status).toBe('done'));
+      expect(stored()).toBeNull();
+    });
+
+    it('leaves storage empty when the turn settles after clear()', async () => {
+      let release: () => void = () => undefined;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      mockReadAssistantSseStream.mockImplementation(() =>
+        (async function* () {
+          yield { type: 'token', text: 'Partial' } as const;
+          await gate;
+          yield { type: 'done', response: RESPONSE } as const;
+        })()
+      );
+      const { result } = setup();
+      ask(result);
+      await waitFor(() => expect(result.current.messages[1].content).toBe('Partial'));
+
+      act(() => result.current.clear());
+      release();
+      await nextTick();
+
+      expect(result.current.messages).toEqual([]);
+      expect(stored()).toBeNull();
+    });
+
+    it('keeps working when storage is full', async () => {
+      const setItem = vi.spyOn(window.sessionStorage, 'setItem').mockImplementation(() => {
+        throw new DOMException('The quota has been exceeded', 'QuotaExceededError');
+      });
+      const reported: unknown[] = [];
+      const onError = (event: Event) => reported.push(event);
+      window.addEventListener('error', onError);
+      openStream().done();
+      const { result } = setup();
+
+      ask(result, 'hi');
+
+      await waitFor(() => expect(result.current.messages[1]?.status).toBe('done'));
+      window.removeEventListener('error', onError);
+      expect(setItem).toHaveBeenCalled();
+      expect(reported).toEqual([]);
+    });
+
+    it('keeps working when storage refuses every read and write', async () => {
+      vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+        throw new DOMException('blocked', 'SecurityError');
+      });
+      vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+        throw new DOMException('blocked', 'SecurityError');
+      });
+      vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {
+        throw new DOMException('blocked', 'SecurityError');
+      });
+      // React reports an error thrown from an effect on the window, not to the test.
+      const reported: unknown[] = [];
+      const onError = (event: Event) => reported.push(event);
+      window.addEventListener('error', onError);
+      openStream().done();
+      const { result } = setup();
+
+      ask(result, 'hi');
+
+      await waitFor(() => expect(result.current.messages[1]?.status).toBe('done'));
+      act(() => result.current.clear());
+      window.removeEventListener('error', onError);
+      expect(result.current.messages).toEqual([]);
+      expect(reported).toEqual([]);
+    });
+
+    it('writes storage when a turn is appended and when it settles, never per token', async () => {
+      const setItem = vi.spyOn(window.sessionStorage, 'setItem');
+      const stream = openStream();
+      const { result } = setup();
+
+      ask(result, 'hi');
+      await waitFor(() => expect(stored()).toHaveLength(2));
+      expect(setItem).toHaveBeenCalledTimes(1);
+      for (let i = 0; i < 25; i += 1) stream.token(`t${i} `);
+      await waitFor(() => expect(result.current.messages[1].content).toContain('t24 '));
+      expect(setItem).toHaveBeenCalledTimes(1);
+      stream.done();
+
+      await waitFor(() => expect(stored()?.[1].status).toBe('done'));
+      expect(setItem).toHaveBeenCalledTimes(2);
+    });
+
+    it('stores a turn that fails before any token', async () => {
+      mockStreamAssistantMessage.mockRejectedValueOnce(new HttpError('Not Found', 404));
+      const { result } = setup();
+
+      ask(result, 'hi');
+
+      await waitFor(() => expect(stored()?.[1].status).toBe('error'));
+      expect(stored()?.[1].error).toEqual({ code: 404, detail: 'Not Found' });
+    });
+
+    it('stores a cut answer with its partial text', async () => {
+      const stream = openStream();
+      const { result } = setup();
+
+      ask(result);
+      stream.token('Half');
+      stream.fail(new StreamIncompleteError());
+
+      await waitFor(() => expect(stored()?.[1].status).toBe('cut'));
+      expect(stored()?.[1].content).toBe('Half');
+    });
+  });
+});
+
+describe('clearAssistantHistory', () => {
+  beforeEach(() => {
+    window.sessionStorage.clear();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('removes every conversation of every user and project and nothing else', () => {
+    seed([storedMessage(0, 'user')], 'u1', 'general');
+    seed([storedMessage(0, 'user')], 'u1', 'p1');
+    seed([storedMessage(0, 'user')], 'u2', 'p1');
+    window.sessionStorage.setItem('theme', 'dark');
+    window.sessionStorage.setItem(`${STORAGE_PREFIX}x`, 'no colon, not ours');
+
+    clearAssistantHistory();
+
+    expect(window.sessionStorage.length).toBe(2);
+    expect(window.sessionStorage.getItem('theme')).toBe('dark');
+    expect(window.sessionStorage.getItem(`${STORAGE_PREFIX}x`)).not.toBeNull();
+  });
+
+  it('does not throw when storage is blocked', () => {
+    vi.spyOn(window.sessionStorage, 'key').mockImplementation(() => {
+      throw new DOMException('blocked', 'SecurityError');
+    });
+    seed([storedMessage(0, 'user')]);
+
+    expect(() => clearAssistantHistory()).not.toThrow();
   });
 });
