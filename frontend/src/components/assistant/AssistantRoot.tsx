@@ -1,10 +1,39 @@
+import { useEffect } from "react";
+import { useAuth, registerSignOutListener } from "@/contexts/AuthContext";
+import { useAssistantUI } from "@/contexts/AssistantUIContext";
+import { useAssistantConfig } from "./useAssistantConfig";
+import { AssistantPanel } from "./AssistantPanel";
+import "./i18n";
+
 /**
- * Placeholder so `vite build` can resolve the dynamic import in
- * components/assistant/index.tsx from the very first commit of the gate --
- * module resolution happens before dead-code elimination proves the branch
- * referencing this file unreachable, so the file must exist on disk in both
- * build states. A later change replaces this body with the real panel wiring.
+ * The lazy chunk's entry point (see components/assistant/index.tsx for the
+ * build-time gate). Everything imported from here -- the panel, its hooks,
+ * the locale JSON behind ./i18n -- exists only in this chunk, which a
+ * production build without VITE_ASSISTANT_ENABLED never emits.
  */
 export default function AssistantRoot() {
-  return null;
+  const { isAuthenticated } = useAuth();
+  const { isOpen, projectId, setAvailable, closeAssistant } = useAssistantUI();
+  const configQuery = useAssistantConfig(isAuthenticated);
+  const available = isAuthenticated && configQuery.isSuccess && configQuery.data.enabled;
+
+  useEffect(() => {
+    setAvailable(available);
+  }, [available, setAvailable]);
+
+  useEffect(() => registerSignOutListener(closeAssistant), [closeAssistant]);
+
+  if (!available) {
+    return null;
+  }
+
+  return (
+    <AssistantPanel
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open) closeAssistant();
+      }}
+      projectId={projectId}
+    />
+  );
 }

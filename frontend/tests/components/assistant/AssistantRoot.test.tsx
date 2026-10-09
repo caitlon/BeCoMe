@@ -1,0 +1,133 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { act, render, screen, waitFor } from '@testing-library/react';
+import i18n from '@/i18n';
+import AssistantRoot from '@/components/assistant/AssistantRoot';
+
+const mockSetAvailable = vi.fn();
+const mockCloseAssistant = vi.fn();
+let mockAuth = { isAuthenticated: true };
+let mockUI = { isOpen: false, projectId: null as string | null };
+let signOutListener: (() => void) | undefined;
+const mockUnsubscribe = vi.fn();
+
+vi.mock('@/contexts/AuthContext', () => ({
+  useAuth: () => mockAuth,
+  registerSignOutListener: (listener: () => void) => {
+    signOutListener = listener;
+    return mockUnsubscribe;
+  },
+}));
+vi.mock('@/contexts/AssistantUIContext', () => ({
+  useAssistantUI: () => ({
+    ...mockUI,
+    setAvailable: mockSetAvailable,
+    closeAssistant: mockCloseAssistant,
+  }),
+}));
+
+const mockUseAssistantConfig = vi.fn();
+vi.mock('@/components/assistant/useAssistantConfig', () => ({
+  useAssistantConfig: (enabled: boolean) => mockUseAssistantConfig(enabled),
+}));
+vi.mock('@/components/assistant/AssistantPanel', () => ({
+  AssistantPanel: ({ open, projectId, onOpenChange }: {
+    open: boolean; projectId: string | null; onOpenChange: (open: boolean) => void;
+  }) => (
+    <div data-testid="panel" data-open={String(open)} data-project={projectId ?? ''}>
+      <button onClick={() => onOpenChange(false)}>dismiss</button>
+      <button onClick={() => onOpenChange(true)}>reopen</button>
+    </div>
+  ),
+}));
+
+const enabledConfig = { isSuccess: true, data: { enabled: true, model: 'x' } };
+
+describe('AssistantRoot', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockAuth = { isAuthenticated: true };
+    mockUI = { isOpen: false, projectId: null };
+    signOutListener = undefined;
+  });
+
+  it('renders nothing and reports unavailable while the config query is loading', async () => {
+    mockUseAssistantConfig.mockReturnValue({ isSuccess: false, data: undefined });
+
+    render(<AssistantRoot />);
+
+    expect(screen.queryByTestId('panel')).not.toBeInTheDocument();
+    await waitFor(() => expect(mockSetAvailable).toHaveBeenCalledWith(false));
+  });
+
+  it('renders nothing when the config query fails (404, feature off server-side)', async () => {
+    mockUseAssistantConfig.mockReturnValue({ isSuccess: false, data: undefined, isError: true });
+
+    render(<AssistantRoot />);
+
+    expect(screen.queryByTestId('panel')).not.toBeInTheDocument();
+    await waitFor(() => expect(mockSetAvailable).toHaveBeenCalledWith(false));
+  });
+
+  it('renders nothing when the backend answers enabled: false', async () => {
+    mockUseAssistantConfig.mockReturnValue({ isSuccess: true, data: { enabled: false } });
+
+    render(<AssistantRoot />);
+
+    expect(screen.queryByTestId('panel')).not.toBeInTheDocument();
+    await waitFor(() => expect(mockSetAvailable).toHaveBeenCalledWith(false));
+  });
+
+  it('asks for the config only for a signed-in user, and is unavailable for a guest', async () => {
+    mockAuth = { isAuthenticated: false };
+    mockUseAssistantConfig.mockReturnValue(enabledConfig);
+
+    render(<AssistantRoot />);
+
+    expect(mockUseAssistantConfig).toHaveBeenCalledWith(false);
+    expect(screen.queryByTestId('panel')).not.toBeInTheDocument();
+    await waitFor(() => expect(mockSetAvailable).toHaveBeenCalledWith(false));
+  });
+
+  it('marks the assistant available and passes the open state down once the config is enabled', async () => {
+    mockUI = { isOpen: true, projectId: 'p1' };
+    mockUseAssistantConfig.mockReturnValue(enabledConfig);
+
+    render(<AssistantRoot />);
+
+    await waitFor(() => expect(mockSetAvailable).toHaveBeenCalledWith(true));
+    const panel = screen.getByTestId('panel');
+    expect(panel).toHaveAttribute('data-open', 'true');
+    expect(panel).toHaveAttribute('data-project', 'p1');
+  });
+
+  it('closes the assistant when the panel asks to close, and ignores a request to open', async () => {
+    mockUseAssistantConfig.mockReturnValue(enabledConfig);
+    render(<AssistantRoot />);
+
+    await act(async () => screen.getByText('reopen').click());
+    expect(mockCloseAssistant).not.toHaveBeenCalled();
+
+    await act(async () => screen.getByText('dismiss').click());
+    expect(mockCloseAssistant).toHaveBeenCalledTimes(1);
+  });
+
+  it('closes the assistant on sign-out and stops listening on unmount', () => {
+    mockUseAssistantConfig.mockReturnValue(enabledConfig);
+    const { unmount } = render(<AssistantRoot />);
+
+    signOutListener?.();
+    expect(mockCloseAssistant).toHaveBeenCalledTimes(1);
+
+    unmount();
+    expect(mockUnsubscribe).toHaveBeenCalled();
+  });
+
+  it('registers the assistant i18n bundle for both locales', () => {
+    mockUseAssistantConfig.mockReturnValue({ isSuccess: false, data: undefined });
+
+    render(<AssistantRoot />);
+
+    expect(i18n.hasResourceBundle('en', 'assistant')).toBe(true);
+    expect(i18n.hasResourceBundle('cs', 'assistant')).toBe(true);
+  });
+});
