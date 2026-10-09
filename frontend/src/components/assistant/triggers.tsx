@@ -8,12 +8,12 @@ import "./i18n";
  * The header button. Lives in this lazy chunk (loaded only through
  * components/assistant/index.tsx's AssistantHeaderSlot) rather than in
  * Navbar.tsx itself, so that Navbar -- always bundled -- never references an
- * assistant.json key or the "assistant" i18n namespace at all. It opens the
- * panel for the project the current page registered, if any.
+ * assistant.json key or the "assistant" i18n namespace at all. The context
+ * opens the panel for the project the current page registered, if any.
  */
 export function HeaderTrigger() {
   const { t } = useTranslation("assistant");
-  const { isAvailable, projectId, openAssistant } = useAssistantUI();
+  const { isAvailable, openAssistant } = useAssistantUI();
 
   if (!isAvailable) return null;
 
@@ -21,7 +21,7 @@ export function HeaderTrigger() {
     <Button
       variant="ghost"
       size="icon"
-      onClick={() => openAssistant(projectId ?? undefined)}
+      onClick={() => openAssistant()}
       aria-label={t("trigger.header")}
       title={t("trigger.header")}
       className="w-10 h-10 hover:bg-muted transition-colors duration-300"

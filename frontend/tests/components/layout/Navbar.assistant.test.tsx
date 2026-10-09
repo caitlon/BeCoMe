@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { screen } from '@testing-library/react';
+import { act, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { render } from '@tests/utils';
 
@@ -35,9 +35,15 @@ describe('Navbar assistant trigger (real slot + lazy chunk)', () => {
 
   it('renders no trigger in a build without the flag', async () => {
     vi.stubEnv('VITE_ASSISTANT_ENABLED', '');
+    // Already loaded, so a gate that wrongly let the slot through would render
+    // the button within one flush instead of staying pending forever.
+    await import('@/components/assistant/triggers');
     const { Navbar: FreshNavbar } = await import('@/components/layout/Navbar');
 
     render(<FreshNavbar />);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
 
     expect(screen.queryByRole('button', { name: 'Assistant' })).not.toBeInTheDocument();
   });
@@ -52,6 +58,18 @@ describe('Navbar assistant trigger (real slot + lazy chunk)', () => {
     await user.click(buttons[0]);
 
     expect(buttons).toHaveLength(2);
-    expect(mockOpenAssistant).toHaveBeenCalledWith(undefined);
+    expect(mockOpenAssistant).toHaveBeenCalledWith();
+  });
+
+  it('puts the trigger immediately before the language switcher in each group', async () => {
+    vi.stubEnv('VITE_ASSISTANT_ENABLED', 'true');
+    const { Navbar: FreshNavbar } = await import('@/components/layout/Navbar');
+
+    render(<FreshNavbar />);
+    const buttons = await screen.findAllByRole('button', { name: 'Assistant' });
+
+    for (const button of buttons) {
+      expect(button.nextElementSibling).toHaveTextContent(/^EN$/);
+    }
   });
 });

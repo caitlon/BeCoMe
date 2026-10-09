@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { screen } from '@testing-library/react';
+import { act, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { render, framerMotionMock } from '@tests/utils';
 import { createProjectWithRole, createCalculationResult, createOpinion } from '@tests/factories/project';
@@ -41,8 +41,14 @@ describe('ResultsSection assistant trigger (real slot + lazy chunk)', () => {
 
   it('renders no trigger in a build without the flag', async () => {
     vi.stubEnv('VITE_ASSISTANT_ENABLED', '');
+    // Already loaded, so a gate that wrongly let the slot through would render
+    // the button within one flush instead of staying pending forever.
+    await import('@/components/assistant/triggers');
 
     await renderResults();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
 
     expect(screen.queryByRole('button', { name: 'Explain this result' })).not.toBeInTheDocument();
   });

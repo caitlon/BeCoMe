@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, renderHook, screen } from '@testing-library/react';
-import type { ReactNode } from 'react';
+import userEvent from '@testing-library/user-event';
 
 // The slots import ./triggers lazily; a stand-in with a real button makes
 // "the slot rendered its lazy child" observable instead of "did not throw".
@@ -127,24 +127,64 @@ describe('components/assistant build gate', () => {
   });
 
   describe('useAssistantProjectScope', () => {
-    it('registers the project with the UI context and clears it on unmount when enabled', async () => {
-      vi.stubEnv('VITE_ASSISTANT_ENABLED', 'true');
-
+    async function importHarness() {
       const { AssistantProvider, useAssistantProjectScope } = await import('@/components/assistant');
       const { useAssistantUI } = await import('@/contexts/AssistantUIContext');
-      const wrapper = ({ children }: { children: ReactNode }) => <AssistantProvider>{children}</AssistantProvider>;
-      const { result, rerender } = renderHook(
-        ({ id }: { id: string | undefined }) => {
-          useAssistantProjectScope(id);
-          return useAssistantUI();
-        },
-        { wrapper, initialProps: { id: 'project-9' as string | undefined } }
-      );
 
-      expect(result.current.projectId).toBe('project-9');
+      function Reader() {
+        const { projectId, openAssistant, closeAssistant } = useAssistantUI();
+        return (
+          <>
+            <span data-testid="panel-project">{projectId ?? 'none'}</span>
+            <button onClick={() => openAssistant()}>open</button>
+            <button onClick={closeAssistant}>close</button>
+          </>
+        );
+      }
+      function ScopedChild({ id }: { id: string | undefined }) {
+        useAssistantProjectScope(id);
+        return null;
+      }
+      function Harness({ scoped, id }: { scoped: boolean; id: string | undefined }) {
+        return (
+          <AssistantProvider>
+            <Reader />
+            {scoped && <ScopedChild id={id} />}
+          </AssistantProvider>
+        );
+      }
+      return Harness;
+    }
 
-      rerender({ id: undefined });
-      expect(result.current.projectId).toBeNull();
+    it('lets the header open the panel for the page project, and forgets it when the page unmounts', async () => {
+      vi.stubEnv('VITE_ASSISTANT_ENABLED', 'true');
+      const Harness = await importHarness();
+      const user = userEvent.setup();
+
+      const { rerender } = render(<Harness scoped id="project-9" />);
+      await user.click(screen.getByText('open'));
+      expect(screen.getByTestId('panel-project')).toHaveTextContent('project-9');
+
+      await user.click(screen.getByText('close'));
+      rerender(<Harness scoped={false} id="project-9" />);
+      await user.click(screen.getByText('open'));
+      expect(screen.getByTestId('panel-project')).toHaveTextContent('none');
+    });
+
+    it('follows the page project as it changes and clears it when the id goes away', async () => {
+      vi.stubEnv('VITE_ASSISTANT_ENABLED', 'true');
+      const Harness = await importHarness();
+      const user = userEvent.setup();
+
+      const { rerender } = render(<Harness scoped id="project-1" />);
+      rerender(<Harness scoped id="project-2" />);
+      await user.click(screen.getByText('open'));
+      expect(screen.getByTestId('panel-project')).toHaveTextContent('project-2');
+
+      await user.click(screen.getByText('close'));
+      rerender(<Harness scoped id={undefined} />);
+      await user.click(screen.getByText('open'));
+      expect(screen.getByTestId('panel-project')).toHaveTextContent('none');
     });
 
     it('is a no-op when disabled', async () => {

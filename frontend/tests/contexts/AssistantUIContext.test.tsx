@@ -18,7 +18,7 @@ describe('AssistantUIContext', () => {
       result.current.openAssistant('project-1');
       result.current.closeAssistant();
       result.current.setAvailable(true);
-      result.current.setProjectScope('project-1');
+      result.current.setPageProjectId('project-1');
     }).not.toThrow();
   });
 
@@ -31,6 +31,7 @@ describe('AssistantUIContext', () => {
 
     act(() => result.current.closeAssistant());
     expect(result.current.isOpen).toBe(false);
+    expect(result.current.projectId).toBeNull();
   });
 
   it('opens with no project id for the header button', () => {
@@ -49,14 +50,33 @@ describe('AssistantUIContext', () => {
     expect(result.current.isAvailable).toBe(true);
   });
 
-  it('scopes the panel to the open project without opening it, and clears the scope', () => {
+  it('opens for the page project, and keeps it when the page scope is cleared meanwhile', () => {
     const { result } = renderHook(() => useAssistantUI(), { wrapper: AssistantUIProvider });
 
-    act(() => result.current.setProjectScope('project-7'));
-    expect(result.current.projectId).toBe('project-7');
-    expect(result.current.isOpen).toBe(false);
+    act(() => result.current.setPageProjectId('project-A'));
+    act(() => result.current.openAssistant());
+    expect(result.current.projectId).toBe('project-A');
 
-    act(() => result.current.setProjectScope(null));
+    act(() => result.current.setPageProjectId(null));
+    expect(result.current.isOpen).toBe(true);
+    expect(result.current.projectId).toBe('project-A');
+  });
+
+  it('prefers an explicit project over the page project', () => {
+    const { result } = renderHook(() => useAssistantUI(), { wrapper: AssistantUIProvider });
+
+    act(() => result.current.setPageProjectId('project-A'));
+    act(() => result.current.openAssistant('project-B'));
+
+    expect(result.current.projectId).toBe('project-B');
+  });
+
+  it('does not open the panel by recording a page project', () => {
+    const { result } = renderHook(() => useAssistantUI(), { wrapper: AssistantUIProvider });
+
+    act(() => result.current.setPageProjectId('project-7'));
+
+    expect(result.current.isOpen).toBe(false);
     expect(result.current.projectId).toBeNull();
   });
 });
