@@ -236,6 +236,22 @@ describe('readAssistantSseStream', () => {
     expect(received).toEqual([{ type: 'token', text: 'a' }]);
   });
 
+  it('throws the AbortError, not StreamIncompleteError, for a malformed block buffered behind a yielded token', async () => {
+    const controller = new AbortController();
+    const chunk = frame('token', { text: 'a' }) + 'event: token\ndata: {"text":\n\n';
+    const received: AssistantSseEvent[] = [];
+
+    const run = (async () => {
+      for await (const event of readAssistantSseStream(streamFromChunks([chunk]), controller.signal)) {
+        received.push(event);
+        controller.abort();
+      }
+    })();
+
+    await expect(run).rejects.toMatchObject({ name: 'AbortError' });
+    expect(received).toEqual([{ type: 'token', text: 'a' }]);
+  });
+
   it('cancels the source when the consumer stops iterating early', async () => {
     let cancelled = false;
     let index = 0;
@@ -273,6 +289,26 @@ describe('readAssistantSseStream', () => {
     ['an error whose detail is not a string', 'event: error\ndata: {"code":503,"detail":7}\n\n'],
     ['a done whose payload is null', 'event: done\ndata: null\n\n'],
     ['a done whose payload is an array', 'event: done\ndata: []\n\n'],
+    ['a done whose payload is an empty object', 'event: done\ndata: {}\n\n'],
+    [
+      'a done with no checks',
+      `event: done\ndata: ${JSON.stringify({ ...DONE_PAYLOAD, checks: undefined })}\n\n`,
+    ],
+    [
+      'a done whose checks lack a boolean flag',
+      `event: done\ndata: ${JSON.stringify({ ...DONE_PAYLOAD, checks: { ...DONE_PAYLOAD.checks, numbers_grounded: 'yes' } })}\n\n`,
+    ],
+    [
+      'a done whose sources is not an array',
+      `event: done\ndata: ${JSON.stringify({ ...DONE_PAYLOAD, sources: {} })}\n\n`,
+    ],
+    [
+      'a done whose timing is a string',
+      `event: done\ndata: ${JSON.stringify({ ...DONE_PAYLOAD, timing: 'fast' })}\n\n`,
+    ],
+    ['a token block with no data line', 'event: token\n\n'],
+    ['a done block with no data line', 'event: done\n\n'],
+    ['an error block with no data line', 'event: error\n\n'],
   ])('throws StreamIncompleteError for %s', async (_label, block) => {
     // A valid done follows the bad block, so only the payload check can be what throws.
     await expect(

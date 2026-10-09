@@ -51,6 +51,22 @@ describe('streamAssistantMessage through the real ApiClient', () => {
     });
   });
 
+  it('rejects with an AbortError at once when Stop lands during a refresh that never settles', async () => {
+    const fetchMock = vi.fn((url: string) =>
+      url.endsWith('/auth/refresh')
+        ? new Promise<Response>(() => {})
+        : Promise.resolve(new Response('{}', { status: 401 }))
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const controller = new AbortController();
+
+    const promise = streamAssistantMessage(request, controller.signal);
+    setTimeout(() => controller.abort(), 10);
+
+    await expect(promise).rejects.toMatchObject({ name: 'AbortError' });
+    expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith('/auth/refresh'))).toBe(true);
+  });
+
   it('still reports a network failure as a NetworkError when nothing aborted', async () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new TypeError('Failed to fetch'))));
 
