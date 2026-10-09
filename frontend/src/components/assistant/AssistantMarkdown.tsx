@@ -23,18 +23,20 @@ const CITE_CLASS = `${CITE_BASE} no-underline cursor-pointer`;
 const UNKNOWN_CITE_CLASS = `${CITE_BASE} line-through opacity-60`;
 
 interface CitationContextValue {
-  readonly known: ReadonlySet<number>;
+  /** Undefined while the sources are not known: the marker stays plain text. */
+  readonly known?: ReadonlySet<number>;
   readonly messageId: string;
   readonly onCite?: (n: number) => void;
 }
 
-const CitationContext = createContext<CitationContextValue>({ known: new Set(), messageId: "" });
+const CitationContext = createContext<CitationContextValue>({ messageId: "" });
 
 function Citation({ digits }: { readonly digits: string }) {
   const { t } = useTranslation("assistant");
   const { known, messageId, onCite } = useContext(CitationContext);
   const n = Number(digits);
 
+  if (!known) return <>[{digits}]</>;
   if (!Number.isSafeInteger(n) || !known.has(n)) {
     return (
       <s className={UNKNOWN_CITE_CLASS}>
@@ -73,7 +75,6 @@ function withCitations(children: ReactNode): ReactNode {
 }
 
 type CitingTag = "p" | "li" | "strong" | "em";
-const CITING_TAGS: readonly CitingTag[] = ["p", "li", "strong", "em"];
 
 // Built once at module level: an override whose identity changes between renders
 // makes React remount every element it renders, which drops the focus of a
@@ -85,12 +86,15 @@ const citing = (Tag: CitingTag) =>
     return createElement(Tag, props, withCitations(children));
   };
 
-const COMPONENTS = Object.fromEntries(CITING_TAGS.map((tag) => [tag, citing(tag)])) as Components;
+const COMPONENTS: Components = { p: citing("p"), li: citing("li"), strong: citing("strong"), em: citing("em") };
 
 export interface AssistantMarkdownProps {
   readonly content: string;
   readonly messageId: string;
-  /** Numbers of the sources this answer really has; any other [n] is struck through. */
+  /**
+   * Numbers of the sources this answer really has; any other [n] is struck through.
+   * Undefined means the sources are not known yet, and every [n] stays plain text.
+   */
   readonly sourceNumbers?: readonly number[];
   readonly onCite?: (n: number) => void;
 }
@@ -102,7 +106,7 @@ export interface AssistantMarkdownProps {
  * bold or italic run becomes our own element, never a markdown link.
  */
 export function AssistantMarkdown({ content, messageId, sourceNumbers, onCite }: AssistantMarkdownProps) {
-  const known = useMemo(() => new Set(sourceNumbers), [sourceNumbers]);
+  const known = useMemo(() => (sourceNumbers ? new Set(sourceNumbers) : undefined), [sourceNumbers]);
   const citation = useMemo(() => ({ known, messageId, onCite }), [known, messageId, onCite]);
 
   return (
