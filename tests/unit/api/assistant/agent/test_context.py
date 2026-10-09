@@ -1,6 +1,6 @@
 """Tests for the source registry and the per-turn agent context."""
 
-from api.assistant.agent.context import SourceRegistry
+from api.assistant.agent.context import SNIPPET_CHARS, SourceRegistry, _excerpt
 from api.assistant.rag.corpus import Layer
 from api.assistant.rag.retrieval import RetrievedChunk
 
@@ -115,6 +115,35 @@ class TestSourceRegistry:
         assert refs[1].title == "Other"
         assert refs[1].section == "Deep"
 
+    def test_refs_carries_a_snippet_of_the_passage(self):
+        """
+        GIVEN a public chunk and a local chunk, one of them with untidy whitespace
+        WHEN the references are built
+        THEN each carries the first words of its passage as a tidy snippet
+        """
+        registry = SourceRegistry()
+        registry.add(_chunk("The mean\nand the   median."))
+        registry.add(_chunk("Private words.", layer="local"))
+
+        refs = registry.refs()
+
+        assert refs[0].snippet == "The mean and the median."
+        assert refs[1].snippet == "Private words."
+
+    def test_refs_cuts_a_long_passage_to_the_snippet_limit(self):
+        """
+        GIVEN a chunk much longer than the snippet limit
+        WHEN the references are built
+        THEN the snippet fits the limit and ends with an ellipsis
+        """
+        registry = SourceRegistry()
+        registry.add(_chunk("word " * 200))
+
+        snippet = registry.refs()[0].snippet
+
+        assert len(snippet) <= SNIPPET_CHARS
+        assert snippet.endswith("\u2026")
+
     def test_refs_of_a_local_chunk_exposes_no_path(self):
         """
         GIVEN a local-layer chunk whose url holds a filesystem path
@@ -194,3 +223,56 @@ class TestSourceRegistry:
         THEN the list is empty
         """
         assert SourceRegistry().numbered() == []
+
+
+class TestExcerpt:
+    """The snippet is plain text on one line, cut at a word and marked with an ellipsis."""
+
+    def test_collapses_whitespace_runs_to_one_space(self):
+        """
+        GIVEN text with newlines, tabs and repeated spaces
+        WHEN the excerpt is made
+        THEN every run becomes a single space and the ends are trimmed
+        """
+        assert _excerpt("  one\n\ntwo\t three   four ") == "one two three four"
+
+    def test_strips_control_characters(self):
+        """
+        GIVEN text holding a null byte, an escape and a zero-width space
+        WHEN the excerpt is made
+        THEN those characters are gone and the words stay
+        """
+        assert _excerpt("al\x00pha\x1b[0m be\u200bta") == "alpha[0m beta"
+
+    def test_leaves_short_text_untouched(self):
+        """
+        GIVEN text no longer than the limit
+        WHEN the excerpt is made
+        THEN it comes back without an ellipsis
+        """
+        assert _excerpt("short text", limit=10) == "short text"
+
+    def test_cuts_at_the_last_space_before_the_limit(self):
+        """
+        GIVEN text longer than the limit
+        WHEN the excerpt is made
+        THEN it is cut at the last space before the limit and ends with an ellipsis
+        """
+        assert _excerpt("alpha beta gamma", limit=12) == "alpha beta\u2026"
+
+    def test_cuts_at_the_limit_when_there_is_no_space(self):
+        """
+        GIVEN one long word
+        WHEN the excerpt is made
+        THEN it is cut so that the text and its ellipsis fit the limit exactly
+        """
+        assert _excerpt("abcdefghij", limit=5) == "abcd\u2026"
+
+    def test_the_default_limit_is_the_snippet_length(self):
+        """
+        GIVEN text one character over the default limit
+        WHEN the excerpt is made without a limit
+        THEN it is shortened, and text at exactly the limit is not
+        """
+        assert _excerpt("a" * SNIPPET_CHARS) == "a" * SNIPPET_CHARS
+        assert _excerpt("a" * (SNIPPET_CHARS + 1)).endswith("\u2026")
