@@ -12,7 +12,7 @@ vi.mock('@/contexts/AssistantUIContext', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/contexts/AssistantUIContext')>()),
   useAssistantUI: () => ({
     isAvailable: true, isOpen: false, projectId: null,
-    setAvailable: vi.fn(), setProjectScope: vi.fn(), openAssistant: mockOpenAssistant, closeAssistant: vi.fn(),
+    setAvailable: vi.fn(), setPageProjectId: vi.fn(), openAssistant: mockOpenAssistant, closeAssistant: vi.fn(),
   }),
 }));
 
