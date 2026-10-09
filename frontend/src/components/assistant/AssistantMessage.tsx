@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AlertTriangle, Info, OctagonX } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,8 @@ const KNOWN_TOOLS = [
 
 interface FailureBlockProps {
   readonly cut: boolean;
+  /** Whether some of the answer is on screen above the block. */
+  readonly hasText: boolean;
   readonly error?: AssistantMessageError;
   readonly onRetry?: () => void;
 }
@@ -28,14 +30,14 @@ interface FailureBlockProps {
  * from fixed copy: `error.detail` is whatever the server or the network said, and is
  * never shown.
  */
-function FailureBlock({ cut, error, onRetry }: FailureBlockProps) {
+function FailureBlock({ cut, hasText, error, onRetry }: FailureBlockProps) {
   const { t } = useTranslation("assistant");
   let title = t("message.errors.generic");
   let hint: string | null = null;
 
   if (cut) {
     title = t("message.errors.cut");
-    hint = t("message.errors.cutHint");
+    hint = hasText ? t("message.errors.cutHint") : null;
   } else if (error?.code === 429) {
     const seconds = error.retryAfter;
     title =
@@ -104,6 +106,8 @@ export interface AssistantMessageProps {
 function AssistantAnswer({ message, onRetry }: AssistantMessageProps) {
   const { t } = useTranslation("assistant");
   const [openN, setOpenN] = useState<number | null>(null);
+  // A fresh object per citation click, so citing the row that is already open scrolls again.
+  const [scrollRequest, setScrollRequest] = useState<{ readonly n: number } | null>(null);
   const sources = useMemo(() => cleanSources(message.sources), [message.sources]);
   const sourceNumbers = useMemo(() => sources.map((source) => source.n), [sources]);
   const tools = cleanToolsUsed(message.toolsUsed);
@@ -111,11 +115,19 @@ function AssistantAnswer({ message, onRetry }: AssistantMessageProps) {
 
   const { status } = message;
   const partial = status === "error" || status === "cut" || status === "cancelled";
+  const hasText = message.content.trim() !== "";
 
-  function handleCite(n: number) {
+  const messageId = message.id;
+  const handleCite = useCallback((n: number) => {
     setOpenN(n);
-    document.getElementById(sourceAnchorId(message.id, n))?.scrollIntoView?.({ block: "nearest" });
-  }
+    setScrollRequest({ n });
+  }, []);
+
+  // After the render that opened the row, so its detail exists when the scroll measures it.
+  useEffect(() => {
+    if (scrollRequest === null) return;
+    document.getElementById(sourceAnchorId(messageId, scrollRequest.n))?.scrollIntoView?.({ block: "nearest" });
+  }, [scrollRequest, messageId]);
 
   function handleToggle(n: number) {
     setOpenN((current) => (current === n ? null : n));
@@ -123,10 +135,10 @@ function AssistantAnswer({ message, onRetry }: AssistantMessageProps) {
 
   return (
     <div className="text-sm">
-      {message.content.trim() !== "" && (
+      {hasText && (
         <div
           className={cn(
-            "[&_li]:my-0.5 [&_ol]:mb-2 [&_ol]:list-decimal [&_ol]:pl-[18px] [&_p]:mb-2 [&_ul]:mb-2 [&_ul]:list-disc [&_ul]:pl-[18px]",
+            "[&_code]:whitespace-pre-wrap [&_li]:my-0.5 [&_ol]:mb-2 [&_ol]:list-decimal [&_ol]:pl-[18px] [&_p]:mb-2 [&_ul]:mb-2 [&_ul]:list-disc [&_ul]:pl-[18px]",
             partial && "border-l-2 border-dashed pl-2.5 opacity-75",
           )}
         >
@@ -146,7 +158,7 @@ function AssistantAnswer({ message, onRetry }: AssistantMessageProps) {
         </p>
       )}
       {(status === "error" || status === "cut") && (
-        <FailureBlock cut={status === "cut"} error={message.error} onRetry={onRetry} />
+        <FailureBlock cut={status === "cut"} hasText={hasText} error={message.error} onRetry={onRetry} />
       )}
       {checks && <ChecksLines checks={checks} />}
       {sources.length > 0 && (
