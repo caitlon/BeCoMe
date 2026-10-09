@@ -1,6 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
+// The slots import ./triggers lazily; a stand-in with a real button makes
+// "the slot rendered its lazy child" observable instead of "did not throw".
+vi.mock('@/components/assistant/triggers', () => ({
+  HeaderTrigger: () => <button type="button">header trigger</button>,
+  ResultTrigger: ({ projectId }: { projectId: string }) => <button type="button">result trigger {projectId}</button>,
+}));
+
 describe('components/assistant build gate', () => {
   beforeEach(() => {
     // A fresh module instance per test: every export below is computed once
@@ -104,13 +111,17 @@ describe('components/assistant build gate', () => {
       expect(result).toBeEmptyDOMElement();
     });
 
-    it('mount a Suspense boundary around a lazy component when enabled', async () => {
+    it('mount the lazy trigger inside a Suspense boundary when enabled', async () => {
       vi.stubEnv('VITE_ASSISTANT_ENABLED', 'true');
 
       const { AssistantHeaderSlot, AssistantResultSlot } = await import('@/components/assistant');
+      // One at a time: React Testing Library drops the retry of a second root
+      // that suspends while the first one is still pending.
+      render(<AssistantHeaderSlot />);
+      expect(await screen.findByRole('button', { name: 'header trigger' })).toBeInTheDocument();
 
-      expect(() => render(<AssistantHeaderSlot />)).not.toThrow();
-      expect(() => render(<AssistantResultSlot projectId="p1" />)).not.toThrow();
+      render(<AssistantResultSlot projectId="p1" />);
+      expect(await screen.findByRole('button', { name: 'result trigger p1' })).toBeInTheDocument();
     });
   });
 });
