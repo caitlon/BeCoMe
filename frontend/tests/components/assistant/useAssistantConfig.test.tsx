@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { focusManager, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
@@ -18,6 +18,10 @@ function wrapper({ children }: { children: ReactNode }) {
 describe('useAssistantConfig', () => {
   beforeEach(() => {
     mockGetAssistantConfig.mockReset();
+  });
+
+  afterEach(() => {
+    focusManager.setFocused(undefined);
   });
 
   it('returns the config on success', async () => {
@@ -81,7 +85,6 @@ describe('useAssistantConfig', () => {
   });
 
   it('does not request again when the window regains focus after a 404', async () => {
-    mockGetAssistantConfig.mockReset();
     mockGetAssistantConfig.mockRejectedValue(new HttpError('Not Found', 404));
     const client = new QueryClient();
     const sharedClientWrapper = ({ children }: { children: ReactNode }) => (
@@ -97,6 +100,25 @@ describe('useAssistantConfig', () => {
       focusManager.setFocused(true);
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
+
+    expect(mockGetAssistantConfig).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not request again when the hook remounts after a success', async () => {
+    mockGetAssistantConfig.mockResolvedValue({
+      enabled: true, model: 'm', mode: 'hybrid', collection: 'c',
+    });
+    const client = new QueryClient();
+    const sharedClientWrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    );
+
+    const first = renderHook(() => useAssistantConfig(true), { wrapper: sharedClientWrapper });
+    await waitFor(() => expect(first.result.current.isSuccess).toBe(true));
+    first.unmount();
+
+    const second = renderHook(() => useAssistantConfig(true), { wrapper: sharedClientWrapper });
+    await waitFor(() => expect(second.result.current.isSuccess).toBe(true));
 
     expect(mockGetAssistantConfig).toHaveBeenCalledTimes(1);
   });

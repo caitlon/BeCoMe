@@ -24,4 +24,13 @@ describe('registerAssistantI18n', () => {
     expect(i18n.getResource('en', 'assistant', 'trigger.header')).toBe('kept');
     expect(i18n.hasResourceBundle('cs', 'assistant')).toBe(true);
   });
+
+  it('does not overwrite a Czech bundle that is already there', () => {
+    i18n.addResourceBundle('cs', 'assistant', { trigger: { header: 'kept' } });
+
+    registerAssistantI18n();
+
+    expect(i18n.getResource('cs', 'assistant', 'trigger.header')).toBe('kept');
+    expect(i18n.hasResourceBundle('en', 'assistant')).toBe(true);
+  });
 });
