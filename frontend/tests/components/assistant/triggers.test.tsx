@@ -5,7 +5,7 @@ import { render } from '@tests/utils';
 import { HeaderTrigger, ResultTrigger } from '@/components/assistant/triggers';
 
 const mockOpenAssistant = vi.fn();
-let mockState = { isAvailable: true, projectId: null as string | null };
+let mockState = { isAvailable: true };
 
 vi.mock('@/contexts/AssistantUIContext', () => ({
   useAssistantUI: () => ({ ...mockState, openAssistant: mockOpenAssistant }),
@@ -14,10 +14,10 @@ vi.mock('@/contexts/AssistantUIContext', () => ({
 describe('triggers', () => {
   beforeEach(() => {
     mockOpenAssistant.mockReset();
-    mockState = { isAvailable: true, projectId: null };
+    mockState = { isAvailable: true };
   });
 
-  it('HeaderTrigger opens the panel with no project when the page has none', async () => {
+  it('HeaderTrigger asks the context to open, which picks the page project', async () => {
     const user = userEvent.setup();
     render(<HeaderTrigger />);
 
@@ -25,17 +25,7 @@ describe('triggers', () => {
     await user.click(button);
 
     expect(button).toHaveAttribute('title', 'Assistant');
-    expect(mockOpenAssistant).toHaveBeenCalledWith(undefined);
-  });
-
-  it('HeaderTrigger opens the panel for the project the page registered', async () => {
-    mockState.projectId = 'project-42';
-    const user = userEvent.setup();
-    render(<HeaderTrigger />);
-
-    await user.click(screen.getByRole('button', { name: 'Assistant' }));
-
-    expect(mockOpenAssistant).toHaveBeenCalledWith('project-42');
+    expect(mockOpenAssistant).toHaveBeenCalledWith();
   });
 
   it('ResultTrigger opens the panel with the given project id', async () => {
