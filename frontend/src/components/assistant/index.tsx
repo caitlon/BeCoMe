@@ -1,5 +1,5 @@
-import { lazy, Suspense, type ComponentType, type LazyExoticComponent, type ReactNode } from "react";
-import { AssistantUIProvider } from "@/contexts/AssistantUIContext";
+import { lazy, Suspense, useEffect, type ComponentType, type LazyExoticComponent, type ReactNode } from "react";
+import { AssistantUIProvider, useAssistantUI } from "@/contexts/AssistantUIContext";
 
 /**
  * Build-time kill switch for the whole local assistant feature,
@@ -77,3 +77,22 @@ export function AssistantResultSlot({ projectId }: AssistantResultSlotProps) {
     </Suspense>
   );
 }
+
+function useProjectScope(projectId: string | undefined): void {
+  const { setProjectScope } = useAssistantUI();
+
+  useEffect(() => {
+    setProjectScope(projectId ?? null);
+    return () => setProjectScope(null);
+  }, [projectId, setProjectScope]);
+}
+
+/**
+ * Tells the panel which project the current page shows, so the header button
+ * opens it scoped to that project. Chosen at module load like everything above:
+ * a build without the flag gets a no-op and the hook body is dropped.
+ */
+// eslint-disable-next-line react-refresh/only-export-components -- a hook gated by the same build flag as the exports above
+export const useAssistantProjectScope: (projectId: string | undefined) => void = enabled
+  ? useProjectScope
+  : () => {};

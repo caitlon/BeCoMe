@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, renderHook, screen } from '@testing-library/react';
+import type { ReactNode } from 'react';
 
 // The slots import ./triggers lazily; a stand-in with a real button makes
 // "the slot rendered its lazy child" observable instead of "did not throw".
@@ -122,6 +123,36 @@ describe('components/assistant build gate', () => {
 
       render(<AssistantResultSlot projectId="p1" />);
       expect(await screen.findByRole('button', { name: 'result trigger p1' })).toBeInTheDocument();
+    });
+  });
+
+  describe('useAssistantProjectScope', () => {
+    it('registers the project with the UI context and clears it on unmount when enabled', async () => {
+      vi.stubEnv('VITE_ASSISTANT_ENABLED', 'true');
+
+      const { AssistantProvider, useAssistantProjectScope } = await import('@/components/assistant');
+      const { useAssistantUI } = await import('@/contexts/AssistantUIContext');
+      const wrapper = ({ children }: { children: ReactNode }) => <AssistantProvider>{children}</AssistantProvider>;
+      const { result, rerender } = renderHook(
+        ({ id }: { id: string | undefined }) => {
+          useAssistantProjectScope(id);
+          return useAssistantUI();
+        },
+        { wrapper, initialProps: { id: 'project-9' as string | undefined } }
+      );
+
+      expect(result.current.projectId).toBe('project-9');
+
+      rerender({ id: undefined });
+      expect(result.current.projectId).toBeNull();
+    });
+
+    it('is a no-op when disabled', async () => {
+      vi.stubEnv('VITE_ASSISTANT_ENABLED', '');
+
+      const { useAssistantProjectScope } = await import('@/components/assistant');
+
+      expect(() => renderHook(() => useAssistantProjectScope('project-9'))).not.toThrow();
     });
   });
 });

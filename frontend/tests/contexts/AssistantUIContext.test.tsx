@@ -18,6 +18,7 @@ describe('AssistantUIContext', () => {
       result.current.openAssistant('project-1');
       result.current.closeAssistant();
       result.current.setAvailable(true);
+      result.current.setProjectScope('project-1');
     }).not.toThrow();
   });
 
@@ -46,5 +47,16 @@ describe('AssistantUIContext', () => {
     act(() => result.current.setAvailable(true));
 
     expect(result.current.isAvailable).toBe(true);
+  });
+
+  it('scopes the panel to the open project without opening it, and clears the scope', () => {
+    const { result } = renderHook(() => useAssistantUI(), { wrapper: AssistantUIProvider });
+
+    act(() => result.current.setProjectScope('project-7'));
+    expect(result.current.projectId).toBe('project-7');
+    expect(result.current.isOpen).toBe(false);
+
+    act(() => result.current.setProjectScope(null));
+    expect(result.current.projectId).toBeNull();
   });
 });
