@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { act, renderHook, waitFor } from '@testing-library/react';
+import { focusManager, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { useAssistantConfig } from '@/components/assistant/useAssistantConfig';
 import { HttpError } from '@/lib/errors';
@@ -72,6 +72,27 @@ describe('useAssistantConfig', () => {
 
     const second = renderHook(() => useAssistantConfig(true), { wrapper: sharedClientWrapper });
     await waitFor(() => expect(second.result.current.isError).toBe(true));
+
+    expect(mockGetAssistantConfig).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not request again when the window regains focus after a 404', async () => {
+    mockGetAssistantConfig.mockReset();
+    mockGetAssistantConfig.mockRejectedValue(new HttpError('Not Found', 404));
+    const client = new QueryClient();
+    const sharedClientWrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    );
+
+    const { result } = renderHook(() => useAssistantConfig(true), { wrapper: sharedClientWrapper });
+    await waitFor(() => expect(result.current.isError).toBe(true));
+
+    // The client refetches on focus from an async listener, so let it run.
+    await act(async () => {
+      focusManager.setFocused(false);
+      focusManager.setFocused(true);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
 
     expect(mockGetAssistantConfig).toHaveBeenCalledTimes(1);
   });
