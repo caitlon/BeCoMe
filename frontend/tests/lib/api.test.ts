@@ -1821,6 +1821,21 @@ describe('ApiClient', () => {
       expect(mockFetch.mock.calls[2][1].headers['X-CSRF-Token']).toBe('after-refresh');
     });
 
+    it('throws UnauthorizedError and notifies onSessionExpired when the refresh after a 401 fails', async () => {
+      const onSessionExpired = vi.fn();
+      api.setOnSessionExpired(onSessionExpired);
+      mockFetch
+        .mockResolvedValueOnce({ ok: false, status: 401, json: () => Promise.resolve({ detail: 'Unauthorized' }) })
+        .mockResolvedValueOnce({ ok: false, status: 401, json: () => Promise.resolve({ detail: 'Refresh failed' }) });
+
+      await expect(api.requestStream('/some/stream', { method: 'POST' })).rejects.toBeInstanceOf(
+        UnauthorizedError
+      );
+
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(onSessionExpired).toHaveBeenCalledTimes(1);
+    });
+
     it('throws a RateLimitError carrying Retry-After for a 429 before the stream starts', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: false,
