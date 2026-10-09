@@ -60,6 +60,14 @@ describe('AssistantMessage', () => {
       expect(screen.getByText('bold').tagName).toBe('STRONG');
     });
 
+    it('keeps the line breaks of a fenced code block', () => {
+      const { container } = renderMessage({ content: '```\nline1\nline2\n```' });
+
+      const code = container.querySelector('code');
+      expect(code?.textContent).toBe('line1\nline2\n');
+      expect(code?.closest('[class*="[&_code]:whitespace-pre-wrap"]')).not.toBeNull();
+    });
+
     it('renders the content so far for a pending message', () => {
       renderMessage({ status: 'pending', content: 'partial words' });
 
@@ -110,6 +118,16 @@ describe('AssistantMessage', () => {
 
       expect(screen.getByText('Quote from **the page**')).toBeInTheDocument();
       expect(container.querySelector('strong')).toBeNull();
+    });
+
+    it('shows a snippet with HTML as literal text, not as an element', async () => {
+      const snippet = '<img src=x onerror=alert(1)>';
+      const { container } = renderMessage({ sources: [{ ...publicSource, snippet }] });
+
+      await userEvent.click(rowButton(/Reading the result/));
+
+      expect(screen.getByText(snippet)).toBeInTheDocument();
+      expect(container.querySelector('img')).toBeNull();
     });
 
     it('gives a public https source a safe link when expanded', async () => {
@@ -167,6 +185,19 @@ describe('AssistantMessage', () => {
       expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' });
       expect(scrollIntoView.mock.contexts[0]).toBe(container.querySelector('#assistant-src-m1-1'));
       expect(window.location.hash).toBe('');
+    });
+
+    it('scrolls only once the detail exists, and again when the open row is cited again', async () => {
+      const detailAtCall: boolean[] = [];
+      Element.prototype.scrollIntoView = vi.fn(() => {
+        detailAtCall.push(document.getElementById('assistant-src-m1-1-detail') !== null);
+      });
+      renderMessage({ sources: [publicSource] });
+
+      await userEvent.click(screen.getByRole('link', { name: '[1]' }));
+      await userEvent.click(screen.getByRole('link', { name: '[1]' }));
+
+      expect(detailAtCall).toEqual([true, true]);
     });
 
     it('still expands the source where scrollIntoView does not exist', async () => {
@@ -352,12 +383,26 @@ describe('AssistantMessage', () => {
       expect(screen.getByText('The connection dropped before the answer finished.')).toBeInTheDocument();
     });
 
-    it('renders a cut answer with no content like a failed turn: the block and no empty bubble', () => {
-      const { container } = renderMessage({ status: 'cut', content: '' });
+    it.each(['', '  \n'])('renders a cut answer with content %j as the block alone: no wrapper, no hint', (content) => {
+      const { container } = renderMessage({ status: 'cut', content });
 
       expect(screen.getByText('The connection dropped before the answer finished.')).toBeInTheDocument();
+      expect(screen.queryByText(/What arrived is shown above/)).not.toBeInTheDocument();
       expect(container.querySelector('.opacity-75')).toBeNull();
       expect(container.querySelector('p')?.textContent).toBe('The connection dropped before the answer finished.');
+    });
+
+    it('shows the "what arrived" hint only when a cut answer has text', () => {
+      renderMessage({ status: 'cut', content: 'partial' });
+
+      expect(screen.getByText(/What arrived is shown above/)).toBeInTheDocument();
+    });
+
+    it('keeps the partial text of an error turn, muted, above the block', () => {
+      const { container } = renderMessage({ status: 'error', content: 'half', error: { code: 503, detail: 'x' } });
+
+      expect(container.querySelector('.opacity-75')).toContainElement(screen.getByText('half'));
+      expect(screen.getByText('The assistant is temporarily unavailable.')).toBeInTheDocument();
     });
 
     it('offers a retry button on an error and on a cut answer when onRetry is passed', async () => {
@@ -392,10 +437,11 @@ describe('AssistantMessage', () => {
       expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument();
     });
 
-    it('shows the note even when nothing arrived before the stop', () => {
-      renderMessage({ status: 'cancelled', content: '' });
+    it.each(['', '  \n'])('shows the note and no wrapper when the content is %j', (content) => {
+      const { container } = renderMessage({ status: 'cancelled', content });
 
       expect(screen.getByText('Stopped')).toBeInTheDocument();
+      expect(container.querySelector('.opacity-75')).toBeNull();
     });
   });
 
