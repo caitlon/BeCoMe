@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readAssistantSseStream } from '@/components/assistant/sse';
 import type { AssistantSseEvent } from '@/components/assistant/sse';
-import { StreamIncompleteError } from '@/lib/errors';
+import { NetworkError, StreamIncompleteError } from '@/lib/errors';
 
 const encoder = new TextEncoder();
 
@@ -316,7 +316,7 @@ describe('readAssistantSseStream', () => {
     ).rejects.toBeInstanceOf(StreamIncompleteError);
   });
 
-  it('lets a failure of the underlying body reach the caller', async () => {
+  it('throws NetworkError with the cause when the body fails before any chunk', async () => {
     const failure = new Error('network reset');
     const body = new ReadableStream<Uint8Array>({
       pull(streamController) {
@@ -324,6 +324,52 @@ describe('readAssistantSseStream', () => {
       },
     });
 
-    await expect(collect(body)).rejects.toBe(failure);
+    const error: unknown = await collect(body).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(NetworkError);
+    expect((error as NetworkError).cause).toBe(failure);
+  });
+
+  it('throws NetworkError with the cause when the connection drops after a chunk was read', async () => {
+    // A real stream whose pull rejects on its second call: the way fetch() surfaces a
+    // connection lost mid-body, as a bare TypeError from reader.read().
+    const failure = new TypeError('network error');
+    let sent = false;
+    const body = new ReadableStream<Uint8Array>({
+      pull(streamController) {
+        if (sent) return Promise.reject(failure);
+        sent = true;
+        streamController.enqueue(encoder.encode(frame('token', { text: 'Hi' })));
+        return undefined;
+      },
+    });
+    const received: AssistantSseEvent[] = [];
+
+    const error: unknown = await (async () => {
+      for await (const event of readAssistantSseStream(body)) received.push(event);
+    })().catch((e: unknown) => e);
+
+    expect(received).toEqual([{ type: 'token', text: 'Hi' }]);
+    expect(error).toBeInstanceOf(NetworkError);
+    expect((error as NetworkError).cause).toBe(failure);
+  });
+
+  it('throws the AbortError, not NetworkError, when an abort makes the pending read reject', async () => {
+    const controller = new AbortController();
+    const body = new ReadableStream<Uint8Array>({
+      start(streamController) {
+        // Registered before the reader's own listener, so the stream is already
+        // errored when the reader cancels it.
+        controller.signal.addEventListener('abort', () =>
+          streamController.error(new TypeError('network error'))
+        );
+      },
+      pull: () => new Promise<void>(() => {}),
+    });
+
+    const run = collect(body, controller.signal);
+    controller.abort();
+
+    await expect(run).rejects.toMatchObject({ name: 'AbortError' });
   });
 });

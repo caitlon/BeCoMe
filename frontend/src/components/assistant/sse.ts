@@ -1,5 +1,5 @@
 import type { AssistantChatResponse } from "@/types/api";
-import { StreamIncompleteError } from "@/lib/errors";
+import { NetworkError, StreamIncompleteError } from "@/lib/errors";
 
 export type AssistantSseEvent =
   | { readonly type: "token"; readonly text: string }
@@ -20,8 +20,10 @@ const EVENT_SEPARATOR = "\n\n";
  * StreamIncompleteError, so a connection cut mid-answer is never mistaken for a
  * finished one, and so does a block whose payload is not the JSON shape its event
  * promises (for `done`, the required fields of AssistantChatResponse), since nothing
- * after it can be trusted. Aborting `signal` cancels the reader and throws its
- * AbortError, also for events already buffered, whatever they hold.
+ * after it can be trusted. A read that fails for any other reason, such as a
+ * connection dropped mid-body, throws NetworkError with the original error as its
+ * `cause`. Aborting `signal` cancels the reader and throws its AbortError, also for
+ * events already buffered, whatever they hold.
  */
 export async function* readAssistantSseStream(
   body: ReadableStream<Uint8Array>,
@@ -39,8 +41,18 @@ export async function* readAssistantSseStream(
   try {
     for (;;) {
       throwIfAborted(signal);
-      const { done, value } = await reader.read();
+      let chunk: ReadableStreamReadResult<Uint8Array>;
+      try {
+        chunk = await reader.read();
+      } catch (error) {
+        // An abort cancels the reader, which can reject the read it interrupted.
+        throwIfAborted(signal);
+        throw new NetworkError("The connection broke while the answer was streaming", {
+          cause: error,
+        });
+      }
       throwIfAborted(signal);
+      const { done, value } = chunk;
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
 
