@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
   NetworkError,
+  StreamIncompleteError,
   HttpError,
   UnauthorizedError,
   ForbiddenError,
@@ -30,6 +31,18 @@ function mockResponse(
     headers: { get: (name: string) => headers[name] ?? null },
   } as unknown as Response;
 }
+
+describe('StreamIncompleteError', () => {
+  it('carries its own kind and a default message, and is not a service-unavailable failure', () => {
+    const error = new StreamIncompleteError();
+    expect(error.message).toBe('The stream ended before it completed');
+    expect(error.kind).toBe('streamIncomplete');
+    expect(error.name).toBe('StreamIncompleteError');
+    expect(error).toBeInstanceOf(Error);
+    expect(isServiceUnavailable(error)).toBe(false);
+    expect(isRetryable(error)).toBe(false);
+  });
+});
 
 describe('NetworkError', () => {
   it('defaults to a generic message', () => {

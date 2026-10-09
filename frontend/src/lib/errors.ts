@@ -34,6 +34,19 @@ export class NetworkError extends Error {
 }
 
 /**
+ * A streamed response ended before it said it was finished: the body closed with
+ * no terminal event, so whatever was received is a truncated answer.
+ */
+export class StreamIncompleteError extends Error {
+  readonly kind = 'streamIncomplete' as const;
+
+  constructor(message = 'The stream ended before it completed') {
+    super(message);
+    this.name = 'StreamIncompleteError';
+  }
+}
+
+/**
  * Base class for any non-2xx HTTP response. Kept as the general fallback.
  *
  * `code` is the API's machine-readable name for this answer, present only on the
