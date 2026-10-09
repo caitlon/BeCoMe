@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import i18n from '@/i18n';
 import AssistantRoot from '@/components/assistant/AssistantRoot';
+import { AssistantUIProvider, useAssistantUI } from '@/contexts/AssistantUIContext';
 
 const mockSetAvailable = vi.fn();
 const mockCloseAssistant = vi.fn();
@@ -17,13 +18,17 @@ vi.mock('@/contexts/AuthContext', () => ({
     return mockUnsubscribe;
   },
 }));
-vi.mock('@/contexts/AssistantUIContext', () => ({
-  useAssistantUI: () => ({
-    ...mockUI,
-    setAvailable: mockSetAvailable,
-    closeAssistant: mockCloseAssistant,
-  }),
-}));
+let useRealUI = false;
+vi.mock('@/contexts/AssistantUIContext', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/contexts/AssistantUIContext')>();
+  return {
+    ...actual,
+    useAssistantUI: () =>
+      useRealUI
+        ? actual.useAssistantUI()
+        : { ...mockUI, setAvailable: mockSetAvailable, closeAssistant: mockCloseAssistant },
+  };
+});
 
 const mockUseAssistantConfig = vi.fn();
 vi.mock('@/components/assistant/useAssistantConfig', () => ({
@@ -48,6 +53,7 @@ describe('AssistantRoot', () => {
     mockAuth = { isAuthenticated: true };
     mockUI = { isOpen: false, projectId: null };
     signOutListener = undefined;
+    useRealUI = false;
   });
 
   it('renders nothing and reports unavailable while the config query is loading', async () => {
@@ -129,5 +135,36 @@ describe('AssistantRoot', () => {
 
     expect(i18n.hasResourceBundle('en', 'assistant')).toBe(true);
     expect(i18n.hasResourceBundle('cs', 'assistant')).toBe(true);
+  });
+
+  it('drops availability and closes the panel when the root unmounts', async () => {
+    useRealUI = true;
+    mockUseAssistantConfig.mockReturnValue(enabledConfig);
+    function Reader() {
+      const { isAvailable, isOpen, openAssistant } = useAssistantUI();
+      return (
+        <>
+          <span data-testid="state">{`${isAvailable}/${isOpen}`}</span>
+          <button onClick={() => openAssistant()}>open</button>
+        </>
+      );
+    }
+    function Harness({ showRoot }: { showRoot: boolean }) {
+      return (
+        <AssistantUIProvider>
+          <Reader />
+          {showRoot && <AssistantRoot />}
+        </AssistantUIProvider>
+      );
+    }
+
+    const { rerender } = render(<Harness showRoot />);
+    await waitFor(() => expect(screen.getByTestId('state')).toHaveTextContent('true/false'));
+    await act(async () => screen.getByText('open').click());
+    expect(screen.getByTestId('state')).toHaveTextContent('true/true');
+
+    rerender(<Harness showRoot={false} />);
+
+    await waitFor(() => expect(screen.getByTestId('state')).toHaveTextContent('false/false'));
   });
 });

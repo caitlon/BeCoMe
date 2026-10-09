@@ -9,7 +9,6 @@
     "scopeGeneral": "Metoda a aplikace",
     "seesOnly": "Vidí jen to, co v projektu vidíte vy.",
     "clear": "Vymazat konverzaci",
-    "close": "Zavřít",
     "footer": "Asistent se může mýlit. Ověřte na stránce výsledku."
   },
   "empty": {
@@ -29,7 +28,6 @@
   },
   "composer": {
     "placeholder": "Napište otázku…",
-    "hint": "Enter odešle · Shift+Enter nový řádek",
-    "send": "Odeslat"
+    "hint": "Enter odešle · Shift+Enter nový řádek"
   }
 }

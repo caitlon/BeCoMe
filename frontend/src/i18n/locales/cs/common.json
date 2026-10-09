@@ -3,6 +3,7 @@
     "name": "BeCoMe"
   },
   "cancel": "Zrušit",
+  "send": "Odeslat",
   "switchToLanguage": "{{code}}, přepnout na {{language}}",
   "deleteModal": {
     "permanentlyDelete": "Trvale smaže:",

@@ -9,7 +9,6 @@
     "scopeGeneral": "Method and app",
     "seesOnly": "Sees only what you see in this project.",
     "clear": "Clear conversation",
-    "close": "Close",
     "footer": "The assistant can be wrong. Check the result page."
   },
   "empty": {
@@ -29,7 +28,6 @@
   },
   "composer": {
     "placeholder": "Ask a question…",
-    "hint": "Enter to send · Shift+Enter for a new line",
-    "send": "Send"
+    "hint": "Enter to send · Shift+Enter for a new line"
   }
 }
