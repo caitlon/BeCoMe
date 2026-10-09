@@ -31,6 +31,35 @@
     "hint": "Enter odešle · Shift+Enter nový řádek"
   },
   "message": {
-    "noSuchSource": "Zdroj neexistuje"
+    "sources": "Zdroje",
+    "localCopy": "Místní kopie",
+    "localHint": "Z neveřejného korpusu (diplomová práce, články). Veřejná stránka není.",
+    "publicLayer": "Dokumentace",
+    "openSource": "Otevřít stránku",
+    "noSuchSource": "Zdroj neexistuje",
+    "numbersNotConfirmed": "Čísla, která zdroje nepotvrzují: {{numbers}}",
+    "citationInvalid": "Citace odkazuje na neexistující zdroj.",
+    "read": "Načteno: {{tools}}",
+    "tools": {
+      "search_docs": "dokumentace",
+      "list_my_projects": "projekty",
+      "get_project": "projekt",
+      "get_project_result": "výsledek",
+      "get_project_opinions": "názory"
+    },
+    "stopped": "Zastaveno",
+    "stoppedHint": "Částečná odpověď. S další otázkou se neodesílá.",
+    "retry": "Zkusit znovu",
+    "errors": {
+      "rateLimited": "Limit zpráv vyčerpán. Zkuste to znovu za {{minutes}} min.",
+      "rateLimitedGeneric": "Limit zpráv vyčerpán. Zkuste to znovu později.",
+      "unavailable": "Asistent je dočasně nedostupný.",
+      "unavailableHint": "Model neodpovídá.",
+      "notFound": "Tento projekt není dostupný.",
+      "notFoundHint": "Mohl být smazán nebo už nejste jeho členem.",
+      "generic": "Něco se pokazilo. Zkuste to prosím znovu.",
+      "cut": "Spojení se přerušilo před dokončením odpovědi.",
+      "cutHint": "Co dorazilo, je výše. S další otázkou se neodesílá."
+    }
   }
 }
