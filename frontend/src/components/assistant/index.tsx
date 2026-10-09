@@ -79,12 +79,12 @@ export function AssistantResultSlot({ projectId }: AssistantResultSlotProps) {
 }
 
 function useProjectScope(projectId: string | undefined): void {
-  const { setProjectScope } = useAssistantUI();
+  const { setPageProjectId } = useAssistantUI();
 
   useEffect(() => {
-    setProjectScope(projectId ?? null);
-    return () => setProjectScope(null);
-  }, [projectId, setProjectScope]);
+    setPageProjectId(projectId ?? null);
+    return () => setPageProjectId(null);
+  }, [projectId, setPageProjectId]);
 }
 
 /**
