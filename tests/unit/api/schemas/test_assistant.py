@@ -246,7 +246,16 @@ class TestSourceRef:
 
     @pytest.mark.parametrize(
         "url",
-        ["javascript:alert(1)", "http://becomify.app/docs", "data:text/html,x", "/docs", ""],
+        [
+            "javascript:alert(1)",
+            "http://becomify.app/docs",
+            "data:text/html,x",
+            "/docs",
+            "",
+            "HTTPS://docs.becomify.app/x",
+            "https:docs",
+            " https://docs.becomify.app/x",
+        ],
     )
     def test_rejects_a_url_that_is_not_https(self, url):
         """

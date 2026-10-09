@@ -271,6 +271,41 @@ class TestExcerpt:
         """
         assert _excerpt("alpha beta gamma", limit=12) == "alpha beta\u2026"
 
+    def test_a_space_exactly_at_the_limit_is_not_a_place_to_cut(self):
+        """
+        GIVEN text whose space falls at index equal to the limit
+        WHEN the excerpt is made
+        THEN the cut uses the earlier space, because the ellipsis needs that slot
+        """
+        assert _excerpt("abc defg hij", 8) == "abc\u2026"
+
+    @pytest.mark.parametrize("text", ["", " ", " \n\t  ", "\x00"])
+    def test_empty_or_blank_text_gives_an_empty_excerpt(self, text):
+        """
+        GIVEN text that is empty, only whitespace, or only a control character
+        WHEN the excerpt is made
+        THEN the result is an empty string
+        """
+        assert _excerpt(text) == ""
+
+    @pytest.mark.parametrize("text", ["ab", "abc def", "word " * 10])
+    def test_a_limit_of_one_leaves_only_the_ellipsis(self, text):
+        """
+        GIVEN non-empty text longer than one character and a limit of one
+        WHEN the excerpt is made
+        THEN only the ellipsis remains
+        """
+        assert _excerpt(text, limit=1) == "\u2026"
+
+    def test_a_zero_width_joiner_is_dropped_from_an_emoji_sequence(self):
+        """
+        GIVEN an emoji sequence joined by a zero-width joiner (category Cf)
+        WHEN the excerpt is made
+        THEN the joiner is removed and the two emoji stay side by side; this documents
+            the current behaviour, not a wish to split the sequence
+        """
+        assert _excerpt("\U0001f469\u200d\U0001f4bb") == "\U0001f469\U0001f4bb"
+
     def test_a_cut_may_use_the_space_just_inside_the_limit(self):
         """
         GIVEN text whose last word boundary falls on the last character the limit leaves
