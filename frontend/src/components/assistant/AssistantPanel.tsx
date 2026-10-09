@@ -45,6 +45,7 @@ export interface AssistantPanelProps {
  */
 export function AssistantPanel({ open, onOpenChange, projectId, onSuggestion }: AssistantPanelProps) {
   const { t } = useTranslation("assistant");
+  const { t: tCommon } = useTranslation("common");
   const isDesktop = useMediaQuery("(min-width: 768px)");
 
   const scoped = Boolean(projectId);
@@ -77,7 +78,7 @@ export function AssistantPanel({ open, onOpenChange, projectId, onSuggestion }: 
             <Trash2 className="h-4 w-4" />
           </Button>
           <SheetClose asChild>
-            <Button variant="ghost" size="icon" aria-label={t("panel.close")} title={t("panel.close")}>
+            <Button variant="ghost" size="icon" aria-label={tCommon("a11y.close")} title={tCommon("a11y.close")}>
               <X className="h-4 w-4" />
             </Button>
           </SheetClose>
@@ -121,7 +122,7 @@ export function AssistantPanel({ open, onOpenChange, projectId, onSuggestion }: 
               aria-label={t("composer.placeholder")}
               className="min-h-11 resize-none"
             />
-            <Button size="icon" disabled aria-label={t("composer.send")} title={t("composer.send")}>
+            <Button size="icon" disabled aria-label={tCommon("send")} title={tCommon("send")}>
               <Send className="h-4 w-4" />
             </Button>
           </div>

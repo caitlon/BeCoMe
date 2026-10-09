@@ -21,6 +21,16 @@ export default function AssistantRoot() {
     setAvailable(available);
   }, [available, setAvailable]);
 
+  // If this root goes away (for example its error boundary swallowed a throw),
+  // the context must not keep reporting the feature available with no panel.
+  useEffect(
+    () => () => {
+      setAvailable(false);
+      closeAssistant();
+    },
+    [setAvailable, closeAssistant]
+  );
+
   useEffect(() => registerSignOutListener(closeAssistant), [closeAssistant]);
 
   if (!available) {
