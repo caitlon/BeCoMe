@@ -89,6 +89,42 @@ function applyFailure(
   return { ...m, status: "error", error: toError(error) };
 }
 
+function patchMessage(
+  messages: AssistantMessage[],
+  id: string,
+  patch: (m: AssistantMessage) => AssistantMessage
+): AssistantMessage[] {
+  return messages.map((m) => (m.id === id ? patch(m) : m));
+}
+
+function markFailed(m: AssistantMessage): AssistantMessage {
+  return { ...m, status: "error" };
+}
+
+// What the stream has produced so far; the caller reads it after a failure to tell
+// a refusal (nothing was said) from a cut answer.
+interface StreamProgress {
+  finished: boolean;
+  hasContent: boolean;
+}
+
+async function consumeStream(
+  body: ReadableStream<Uint8Array>,
+  signal: AbortSignal,
+  progress: StreamProgress,
+  onEvent: (event: AssistantSseEvent) => void
+): Promise<void> {
+  for await (const event of readAssistantSseStream(body, signal)) {
+    // The reader stops on an abort by itself; this keeps a cancel final even
+    // for an event it had already handed over.
+    if (signal.aborted) break;
+    if (event.type !== "token") progress.finished = true;
+    else if (event.text) progress.hasContent = true;
+    onEvent(event);
+  }
+  if (!progress.finished) throw new StreamIncompleteError();
+}
+
 /**
  * `userId` is the signed-in user the conversation belongs to. The hook does not read
  * it: a conversation lives in memory and is told apart by project alone.
@@ -161,10 +197,7 @@ export function useAssistantChat({
     };
 
     const patchAnswer = (patch: (m: AssistantMessage) => AssistantMessage) =>
-      setThread((prev) => ({
-        ...prev,
-        messages: prev.messages.map((m) => (m.id === pendingId ? patch(m) : m)),
-      }));
+      setThread((prev) => ({ ...prev, messages: patchMessage(prev.messages, pendingId, patch) }));
 
     // Nothing was answered, so the question goes back into the box, unless the
     // user has already started typing another one. The question is marked as
@@ -173,12 +206,10 @@ export function useAssistantChat({
       setDraft((d) => d || text);
       setThread((prev) => ({
         ...prev,
-        messages: prev.messages.map((m) =>
-          m.id === userMessage.id ? { ...m, status: "error" } : m
-        ),
+        messages: patchMessage(prev.messages, userMessage.id, markFailed),
       }));
     };
-    let hasContent = false;
+    const progress: StreamProgress = { finished: false, hasContent: false };
 
     const controller = new AbortController();
     abortRef.current = controller;
@@ -193,25 +224,18 @@ export function useAssistantChat({
       );
       if (!response.body) throw new StreamIncompleteError();
 
-      let finished = false;
-      for await (const event of readAssistantSseStream(response.body, controller.signal)) {
-        // The reader stops on an abort by itself; this keeps a cancel final even
-        // for an event it had already handed over.
-        if (controller.signal.aborted) break;
-        if (event.type === "token" && event.text) hasContent = true;
-        if (event.type !== "token") finished = true;
+      await consumeStream(response.body, controller.signal, progress, (event) => {
         patchAnswer((m) => applyEvent(m, event));
-        if (event.type === "error" && !hasContent) restoreDraft();
-      }
-      if (!finished) throw new StreamIncompleteError();
+        if (event.type === "error" && !progress.hasContent) restoreDraft();
+      });
     } catch (error) {
       const aborted = controller.signal.aborted;
       // The class only: a message can carry a host or a piece of the user's text.
       if (!aborted) {
         logger.error("Assistant turn failed", { error: error instanceof Error ? error.name : typeof error });
       }
-      patchAnswer((m) => applyFailure(m, error, aborted, hasContent));
-      if (!aborted && !hasContent) restoreDraft();
+      patchAnswer((m) => applyFailure(m, error, aborted, progress.hasContent));
+      if (!aborted && !progress.hasContent) restoreDraft();
     } finally {
       if (abortRef.current === controller) abortRef.current = null;
     }
