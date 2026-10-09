@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen } from '@tests/utils';
+import { useState } from 'react';
+import { fireEvent, render, screen } from '@tests/utils';
 import userEvent from '@testing-library/user-event';
 import { AssistantMarkdown } from '@/components/assistant/AssistantMarkdown';
 import '@/components/assistant/i18n';
@@ -65,6 +66,7 @@ describe('AssistantMarkdown', () => {
     expect(container.querySelector('img')).toBeNull();
     expect(screen.queryByRole('img')).not.toBeInTheDocument();
     expect(container.innerHTML).not.toContain('evil.example');
+    expect(container.textContent).not.toContain('secret-alt');
   });
 
   it('skips raw HTML instead of rendering it', () => {
@@ -112,6 +114,13 @@ describe('AssistantMarkdown', () => {
       expect(window.location.hash).toBe('');
     });
 
+    it('prevents the default navigation of a citation click itself', () => {
+      renderMarkdown('Claim [2].', { sourceNumbers: [2], onCite: vi.fn() });
+
+      // fireEvent returns false when a listener called preventDefault.
+      expect(fireEvent.click(screen.getByRole('link', { name: '[2]' }))).toBe(false);
+    });
+
     it('clicking a citation works without an onCite handler', async () => {
       renderMarkdown('Claim [2].', { sourceNumbers: [2] });
 
@@ -127,7 +136,92 @@ describe('AssistantMarkdown', () => {
       const marker = screen.getByText('[4]');
       expect(marker.closest('s')).not.toBeNull();
       expect(marker.closest('s')).not.toHaveAttribute('tabindex');
+      expect(marker.closest('s')).not.toHaveAttribute('title');
       expect(document.body).toHaveTextContent('No such source');
+    });
+
+    it('gives the unknown marker a line-through that no-underline does not cancel', () => {
+      renderMarkdown('Claim [4].', { sourceNumbers: [1] });
+
+      const cls = screen.getByText('[4]').closest('s')?.className ?? '';
+      expect(cls).toContain('line-through');
+      expect(cls).not.toContain('no-underline');
+    });
+
+    it('shows a huge marker literally and struck through', () => {
+      const { container } = renderMarkdown('Claim [99999999999999999999].', { sourceNumbers: [1] });
+
+      expect(screen.queryByRole('link')).not.toBeInTheDocument();
+      expect(screen.getByText('[99999999999999999999]').closest('s')).not.toBeNull();
+      expect(container.textContent).not.toContain('e+20');
+    });
+
+    it.each(['***[1]***', '**bold *[1]***'])('makes a citation inside nested emphasis (%s) the anchor', (content) => {
+      renderMarkdown(content, { sourceNumbers: [1] });
+
+      expect(screen.getByRole('link', { name: '[1]' })).toHaveAttribute('href', '#assistant-src-m1-1');
+    });
+
+    it('keeps the same DOM nodes when sourceNumbers and onCite are fresh on every render', () => {
+      const { rerender } = renderMarkdown('Claim [1] here.', { sourceNumbers: [1], onCite: vi.fn() });
+      const link = screen.getByRole('link', { name: '[1]' });
+      const paragraph = link.closest('p');
+
+      rerender(<AssistantMarkdown content="Claim [1] here." messageId="m1" sourceNumbers={[1]} onCite={vi.fn()} />);
+
+      expect(screen.getByRole('link', { name: '[1]' })).toBe(link);
+      expect(link.closest('p')).toBe(paragraph);
+      expect(screen.getByText(/Claim/)).toBe(paragraph);
+    });
+
+    it('uses the new onCite after a rerender', async () => {
+      const first = vi.fn();
+      const second = vi.fn();
+      const { rerender } = renderMarkdown('Claim [1].', { sourceNumbers: [1], onCite: first });
+
+      rerender(<AssistantMarkdown content="Claim [1]." messageId="m1" sourceNumbers={[1]} onCite={second} />);
+      await userEvent.click(screen.getByRole('link', { name: '[1]' }));
+
+      expect(first).not.toHaveBeenCalled();
+      expect(second).toHaveBeenCalledExactlyOnceWith(1);
+    });
+
+    describe('in a parent that re-renders on every cite', () => {
+      function Parent() {
+        const [count, setCount] = useState(0);
+        return (
+          <>
+            <output>{count}</output>
+            <AssistantMarkdown
+              content="Claim [1]."
+              messageId="m1"
+              sourceNumbers={[1]}
+              onCite={() => setCount((c) => c + 1)}
+            />
+          </>
+        );
+      }
+
+      it('keeps focus on the citation after a click', async () => {
+        render(<Parent />);
+        const link = screen.getByRole('link', { name: '[1]' });
+
+        await userEvent.click(link);
+
+        expect(screen.getByRole('status')).toHaveTextContent('1');
+        expect(document.activeElement).toBe(link);
+      });
+
+      it('keeps focus on the citation after Enter', async () => {
+        render(<Parent />);
+        const link = screen.getByRole('link', { name: '[1]' });
+        link.focus();
+
+        await userEvent.keyboard('{Enter}');
+
+        expect(screen.getByRole('status')).toHaveTextContent('1');
+        expect(document.activeElement).toBe(link);
+      });
     });
 
     it('treats every [n] as struck through when there are no sources at all', () => {
