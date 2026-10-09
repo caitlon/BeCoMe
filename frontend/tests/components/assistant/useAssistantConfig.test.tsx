@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { focusManager, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
@@ -16,6 +16,10 @@ function wrapper({ children }: { children: ReactNode }) {
 }
 
 describe('useAssistantConfig', () => {
+  beforeEach(() => {
+    mockGetAssistantConfig.mockReset();
+  });
+
   it('returns the config on success', async () => {
     mockGetAssistantConfig.mockResolvedValueOnce({
       enabled: true, model: 'Qwen/Qwen3-4B-Instruct-2507', mode: 'hybrid', collection: 'docs_default',
