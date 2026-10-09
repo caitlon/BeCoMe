@@ -229,11 +229,17 @@ class ApiClient {
     this.onSessionExpired?.();
   }
 
-  private async request<T>(
+  /**
+   * The pipeline behind every JSON and streamed call: request ID and CSRF header,
+   * credentials, and one silent refresh-and-retry on a 401. Returns the Response
+   * once it is known to be ok, with its body untouched, so request<T>() can parse
+   * it and requestStream() can hand it over to be read as a stream.
+   */
+  private async requestRaw(
     endpoint: string,
     options: RequestInit = {},
     opts: { isAuthProbe?: boolean; isRetry?: boolean } = {}
-  ): Promise<T> {
+  ): Promise<Response> {
     const { isAuthProbe = false, isRetry = false } = opts;
     const requestId = crypto.randomUUID();
     const method = options.method ?? 'GET';
@@ -279,7 +285,7 @@ class ApiClient {
           this.handleTerminalUnauthorized(isAuthProbe, endpoint);
           throw new UnauthorizedError();
         }
-        return this.request<T>(endpoint, options, { isAuthProbe, isRetry: true });
+        return this.requestRaw(endpoint, options, { isAuthProbe, isRetry: true });
       }
 
       const error = await toHttpError(response);
@@ -302,6 +308,16 @@ class ApiClient {
 
     logger.debug('API response', { method, endpoint, status: response.status, requestId });
 
+    return response;
+  }
+
+  private async request<T>(
+    endpoint: string,
+    options: RequestInit = {},
+    opts: { isAuthProbe?: boolean; isRetry?: boolean } = {}
+  ): Promise<T> {
+    const response = await this.requestRaw(endpoint, options, opts);
+
     if (response.status === 204) {
       return undefined as T;
     }
@@ -317,6 +333,16 @@ class ApiClient {
    */
   async requestJson<T>(endpoint: string, init?: RequestInit): Promise<T> {
     return this.request<T>(endpoint, init);
+  }
+
+  /**
+   * Like requestJson, but hands back the Response unread so the caller can read
+   * its body as a ReadableStream. It runs through the same pipeline: credentials,
+   * the CSRF header, and one silent refresh-and-retry on a 401. A non-2xx answer
+   * before the stream opens is thrown as the usual typed error.
+   */
+  async requestStream(endpoint: string, init?: RequestInit): Promise<Response> {
+    return this.requestRaw(endpoint, init);
   }
 
   /**

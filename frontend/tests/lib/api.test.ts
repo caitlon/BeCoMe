@@ -1768,4 +1768,86 @@ describe('ApiClient', () => {
       expect(options.credentials).toBe('include');
     });
   });
+
+  describe('requestStream', () => {
+    it('sends credentials and the CSRF token, and returns the response with its stream body intact', async () => {
+      const stream = new ReadableStream();
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          headers: csrfHeaders('tok'),
+          json: () => Promise.resolve({}),
+        })
+        .mockResolvedValueOnce({ ok: true, status: 200, body: stream });
+      await api.getCurrentUser();
+
+      const response = await api.requestStream('/some/stream', { method: 'POST' });
+
+      expect(response.body).toBe(stream);
+      const [url, options] = mockFetch.mock.calls[1];
+      expect(url).toContain('/some/stream');
+      expect(options.credentials).toBe('include');
+      expect(options.headers['X-CSRF-Token']).toBe('tok');
+    });
+
+    it('passes the abort signal and extra headers through to fetch', async () => {
+      const controller = new AbortController();
+      mockFetch.mockResolvedValueOnce({ ok: true, status: 200, body: new ReadableStream() });
+
+      await api.requestStream('/some/stream', {
+        method: 'POST',
+        signal: controller.signal,
+        headers: { Accept: 'text/event-stream' },
+      });
+
+      const [, options] = mockFetch.mock.calls[0];
+      expect(options.signal).toBe(controller.signal);
+      expect(options.headers.Accept).toBe('text/event-stream');
+    });
+
+    it('retries after a silent refresh on a 401 before the stream starts, returning the retried response', async () => {
+      const stream = new ReadableStream();
+      mockFetch
+        .mockResolvedValueOnce({ ok: false, status: 401, json: () => Promise.resolve({ detail: 'Unauthorized' }) })
+        .mockResolvedValueOnce({ ok: true, status: 200, headers: csrfHeaders('after-refresh') })
+        .mockResolvedValueOnce({ ok: true, status: 200, body: stream });
+
+      const response = await api.requestStream('/some/stream', { method: 'POST' });
+
+      expect(response.body).toBe(stream);
+      expect(mockFetch).toHaveBeenCalledTimes(3);
+      expect(mockFetch.mock.calls[1][0]).toContain('/auth/refresh');
+      expect(mockFetch.mock.calls[2][1].headers['X-CSRF-Token']).toBe('after-refresh');
+    });
+
+    it('throws a RateLimitError carrying Retry-After for a 429 before the stream starts', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 429,
+        headers: new Headers({ 'Retry-After': '30' }),
+        json: () => Promise.resolve({ detail: 'Too many requests' }),
+      });
+
+      await expect(api.requestStream('/some/stream', { method: 'POST' })).rejects.toMatchObject({
+        kind: 'rateLimited',
+        retryAfter: 30,
+      });
+    });
+
+    it('throws a ServerError for a 503 and an HttpError for a 404 before the stream starts', async () => {
+      mockFetch
+        .mockResolvedValueOnce({ ok: false, status: 503, json: () => Promise.resolve({ detail: 'down' }) })
+        .mockResolvedValueOnce({ ok: false, status: 404, json: () => Promise.resolve({ detail: 'Not found' }) });
+
+      await expect(api.requestStream('/some/stream')).rejects.toMatchObject({
+        kind: 'server',
+        status: 503,
+      });
+      await expect(api.requestStream('/some/stream')).rejects.toMatchObject({
+        kind: 'client',
+        status: 404,
+      });
+    });
+  });
 });
