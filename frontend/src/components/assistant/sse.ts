@@ -13,13 +13,15 @@ const EVENT_SEPARATOR = "\n\n";
  * Reads the body of POST /assistant/chat/stream (api/assistant/README.md,
  * "Streaming"): `token {text}` pieces, then `done <AssistantChatResponse>` or
  * `error {code, detail}`. Events are separated by a blank line and carry one
- * `data:` line of JSON. A block with an unknown event name, or none, is skipped.
+ * `data:` line of JSON. A block with an unknown event name, or none, is skipped;
+ * a block with a known name and no `data:` line is malformed.
  *
  * `done` and `error` end the stream. A body that closes without either throws
  * StreamIncompleteError, so a connection cut mid-answer is never mistaken for a
  * finished one, and so does a block whose payload is not the JSON shape its event
- * promises, since nothing after it can be trusted. Aborting `signal` cancels the
- * reader and throws its AbortError, also for events already buffered.
+ * promises (for `done`, the required fields of AssistantChatResponse), since nothing
+ * after it can be trusted. Aborting `signal` cancels the reader and throws its
+ * AbortError, also for events already buffered, whatever they hold.
  */
 export async function* readAssistantSseStream(
   body: ReadableStream<Uint8Array>,
@@ -44,10 +46,10 @@ export async function* readAssistantSseStream(
 
       let boundary = buffer.indexOf(EVENT_SEPARATOR);
       while (boundary !== -1) {
+        throwIfAborted(signal);
         const event = parseBlock(buffer.slice(0, boundary));
         buffer = buffer.slice(boundary + EVENT_SEPARATOR.length);
         if (event) {
-          throwIfAborted(signal);
           yield event;
           if (event.type !== "token") return;
         }
@@ -81,17 +83,19 @@ function parseBlock(block: string): AssistantSseEvent | null {
     }
   }
 
-  if (data === null) return null;
   switch (name) {
     case "token": {
-      const payload = parsePayload(data);
+      const payload = parsePayload(requireData(data, name));
       if (typeof payload.text !== "string") throw malformed(name);
       return { type: "token", text: payload.text };
     }
-    case "done":
-      return { type: "done", response: parsePayload(data) as unknown as AssistantChatResponse };
+    case "done": {
+      const payload = parsePayload(requireData(data, name));
+      if (!isChatResponse(payload)) throw malformed(name);
+      return { type: "done", response: payload };
+    }
     case "error": {
-      const payload = parsePayload(data);
+      const payload = parsePayload(requireData(data, name));
       if (typeof payload.code !== "number" || typeof payload.detail !== "string") {
         throw malformed(name);
       }
@@ -102,6 +106,31 @@ function parseBlock(block: string): AssistantSseEvent | null {
   }
 }
 
+function requireData(data: string | null, name: string): string {
+  if (data === null) throw malformed(name);
+  return data;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isChatResponse(payload: Record<string, unknown>): payload is Record<string, unknown> &
+  AssistantChatResponse {
+  const { checks } = payload;
+  return (
+    typeof payload.answer === "string" &&
+    Array.isArray(payload.sources) &&
+    Array.isArray(payload.tools_used) &&
+    isRecord(checks) &&
+    typeof checks.citations_valid === "boolean" &&
+    typeof checks.numbers_grounded === "boolean" &&
+    Array.isArray(checks.ungrounded_numbers) &&
+    isRecord(payload.usage) &&
+    isRecord(payload.timing)
+  );
+}
+
 function parsePayload(data: string): Record<string, unknown> {
   let parsed: unknown;
   try {
@@ -109,10 +138,8 @@ function parsePayload(data: string): Record<string, unknown> {
   } catch {
     throw new StreamIncompleteError("The stream carried an event that is not valid JSON");
   }
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-    throw malformed("");
-  }
-  return parsed as Record<string, unknown>;
+  if (!isRecord(parsed)) throw malformed("");
+  return parsed;
 }
 
 function malformed(name: string): StreamIncompleteError {
