@@ -60,17 +60,18 @@ function Citation({ digits }: { readonly digits: string }) {
 }
 
 function withCitations(children: ReactNode): ReactNode {
-  return Children.map(children, (child, childIndex) => {
+  // Children.map keys the elements the callback returns by position itself.
+  return Children.map(children, (child) => {
     if (typeof child !== "string") return child;
-    const parts = child.split(CITATION);
-    // split with one capture group alternates text and the captured digits.
-    return (
-      <Fragment key={childIndex}>
-        {parts.map((part, partIndex) => (
-          <Fragment key={partIndex}>{partIndex % 2 === 1 ? <Citation digits={part} /> : part}</Fragment>
-        ))}
-      </Fragment>
-    );
+    const pieces: ReactNode[] = [];
+    let end = 0;
+    for (const match of child.matchAll(CITATION)) {
+      if (match.index > end) pieces.push(<Fragment key={`t${end}`}>{child.slice(end, match.index)}</Fragment>);
+      pieces.push(<Citation key={`c${match.index}`} digits={match[1]} />);
+      end = match.index + match[0].length;
+    }
+    if (end < child.length) pieces.push(<Fragment key={`t${end}`}>{child.slice(end)}</Fragment>);
+    return <Fragment>{pieces}</Fragment>;
   });
 }
 
