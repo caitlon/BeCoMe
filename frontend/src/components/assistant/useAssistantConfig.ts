@@ -5,7 +5,7 @@ import type { HttpError } from "@/lib/errors";
 
 /**
  * GET /api/v1/assistant/config. A 404 means the backend router was never
- * mounted (assistant_enabled=False server-side, BCM-122) -- that is the
+ * mounted (assistant_enabled=False server-side) -- that is the
  * expected "feature is off" answer, not a transient failure, so this query
  * never retries: retrying a 404 only delays the panel from correctly hiding
  * itself. staleTime is infinite because this value cannot change for the
