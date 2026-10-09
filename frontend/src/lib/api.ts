@@ -310,6 +310,16 @@ class ApiClient {
   }
 
   /**
+   * Public escape hatch for a caller outside this class that needs the same
+   * typed request/refresh/retry pipeline as every method below, without a
+   * dedicated method here for its own endpoint. The endpoint string is the
+   * caller's argument, so nothing endpoint-specific lives in this file.
+   */
+  async requestJson<T>(endpoint: string, init?: RequestInit): Promise<T> {
+    return this.request<T>(endpoint, init);
+  }
+
+  /**
    * Shared 401-retry-with-refresh wrapper for the two endpoints that build
    * their own fetch calls instead of going through request() (FormData/Blob
    * bodies do not fit the JSON request() contract). Returns the raw Response
