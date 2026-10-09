@@ -38,6 +38,7 @@
     "openSource": "Otevřít stránku",
     "noSuchSource": "Zdroj neexistuje",
     "numbersNotConfirmed": "Čísla, která zdroje nepotvrzují: {{numbers}}",
+    "numbersNotConfirmedGeneric": "Některá čísla zdroje nepotvrzují.",
     "citationInvalid": "Citace odkazuje na neexistující zdroj.",
     "read": "Načteno: {{tools}}",
     "tools": {

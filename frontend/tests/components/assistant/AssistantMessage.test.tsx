@@ -111,23 +111,16 @@ describe('AssistantMessage', () => {
       expect(screen.getByText(/Quote from the article/)).toBeInTheDocument();
     });
 
-    it('shows the snippet as a plain text node, never as markdown', async () => {
-      const { container } = renderMessage({ sources: [publicSource] });
-
-      await userEvent.click(rowButton(/Reading the result/));
-
-      expect(screen.getByText('Quote from **the page**')).toBeInTheDocument();
-      expect(container.querySelector('strong')).toBeNull();
-    });
-
-    it('shows a snippet with HTML as literal text, not as an element', async () => {
-      const snippet = '<img src=x onerror=alert(1)>';
+    it.each([
+      ['markdown', 'Quote from **the page**', 'strong'],
+      ['HTML', '<img src=x onerror=alert(1)>', 'img'],
+    ])('shows a snippet with %s as literal text, never as an element', async (_label, snippet, tag) => {
       const { container } = renderMessage({ sources: [{ ...publicSource, snippet }] });
 
       await userEvent.click(rowButton(/Reading the result/));
 
       expect(screen.getByText(snippet)).toBeInTheDocument();
-      expect(container.querySelector('img')).toBeNull();
+      expect(container.querySelector(tag)).toBeNull();
     });
 
     it('gives a public https source a safe link when expanded', async () => {
@@ -221,6 +214,24 @@ describe('AssistantMessage', () => {
       expect(screen.getByText('[4]').closest('s')).not.toBeNull();
     });
 
+    it.each(['pending', 'cut', 'cancelled', 'error'] as const)(
+      'leaves a [1] in a %s answer as plain text, since its sources are not known',
+      (status) => {
+        const { container } = renderMessage({ status, content: 'See [1].' });
+
+        expect(container.querySelector('s')).toBeNull();
+        expect(screen.queryByRole('link')).not.toBeInTheDocument();
+        expect(container).toHaveTextContent('See [1].');
+        expect(container).not.toHaveTextContent('No such source');
+      },
+    );
+
+    it('shows a source row without a dangling separator when its section is empty', () => {
+      renderMessage({ sources: [{ ...publicSource, section: '' }] });
+
+      expect(rowButton(/Reading the result/).textContent).toBe('[1]Reading the result');
+    });
+
     it('drops malformed sources without throwing and keeps the good ones', () => {
       const sources = [
         { ...publicSource, title: undefined },
@@ -242,21 +253,16 @@ describe('AssistantMessage', () => {
     it('treats a source stored without a snippet as an empty quote', async () => {
       const older: Record<string, unknown> = { ...publicSource };
       delete older.snippet;
-      renderMessage({ sources: [older as unknown as typeof publicSource] });
+      const { container } = renderMessage({ sources: [older as unknown as typeof publicSource] });
 
       await userEvent.click(rowButton(/Reading the result/));
 
       expect(screen.getByRole('link', { name: 'Open the page' })).toBeInTheDocument();
+      expect(container.querySelector('q')).toBeNull();
     });
 
-    it('renders no sources block for a non-array value', () => {
-      renderMessage({ sources: 'nope' as unknown as Message['sources'] });
-
-      expect(screen.queryByText('Sources')).not.toBeInTheDocument();
-    });
-
-    it('renders no sources block when there are none', () => {
-      renderMessage({ sources: [] });
+    it.each(['nope', []])('renders no sources block for %j', (sources) => {
+      renderMessage({ sources: sources as Message['sources'] });
 
       expect(screen.queryByText('Sources')).not.toBeInTheDocument();
     });
@@ -284,34 +290,34 @@ describe('AssistantMessage', () => {
       expect(screen.getByText(/points to no source/)).toBeInTheDocument();
     });
 
-    it('shows nothing when both checks pass', () => {
-      renderMessage({ checks: { citations_valid: true, numbers_grounded: true, ungrounded_numbers: [] } });
+    it.each([
+      ['both checks pass', { citations_valid: true, numbers_grounded: true, ungrounded_numbers: [] }],
+      ['the flags are not booleans', { citations_valid: 'false', numbers_grounded: 'false', ungrounded_numbers: [] }],
+    ])('shows nothing when %s', (_label, checks) => {
+      renderMessage({ checks: checks as unknown as Message['checks'] });
 
       expect(screen.queryByText(/Numbers not confirmed/)).not.toBeInTheDocument();
       expect(screen.queryByText(/points to no source/)).not.toBeInTheDocument();
     });
 
-    it('ignores checks whose flags are not booleans', () => {
-      renderMessage({
-        checks: { citations_valid: 'false', numbers_grounded: 'false', ungrounded_numbers: [] } as unknown as Message['checks'],
-      });
+    it.each([
+      ['en', 'Some numbers are not confirmed by the sources.'],
+      ['cs', 'Některá čísla zdroje nepotvrzují.'],
+    ])('shows a line without a list when numbers are not grounded but none are named (%s)', async (lang, text) => {
+      await i18n.changeLanguage(lang);
+      renderMessage({ checks: { citations_valid: true, numbers_grounded: false, ungrounded_numbers: [] } });
 
-      expect(screen.queryByText(/Numbers not confirmed/)).not.toBeInTheDocument();
-      expect(screen.queryByText(/points to no source/)).not.toBeInTheDocument();
+      expect(screen.getByText(text)).toBeInTheDocument();
     });
   });
 
   describe('tools line', () => {
     it('names the known tools with short labels', () => {
-      renderMessage({ toolsUsed: ['get_project', 'get_project_result', 'get_project_opinions'] });
+      renderMessage({
+        toolsUsed: ['search_docs', 'list_my_projects', 'get_project', 'get_project_result', 'get_project_opinions'],
+      });
 
-      expect(screen.getByText('Read: project, result, opinions')).toBeInTheDocument();
-    });
-
-    it('labels the other known tools', () => {
-      renderMessage({ toolsUsed: ['search_docs', 'list_my_projects'] });
-
-      expect(screen.getByText('Read: documentation, projects')).toBeInTheDocument();
+      expect(screen.getByText('Read: documentation, projects, project, result, opinions')).toBeInTheDocument();
     });
 
     it('shows an unknown tool by its raw name', () => {
@@ -381,6 +387,7 @@ describe('AssistantMessage', () => {
       expect(screen.getByText('The best compromise is')).toBeInTheDocument();
       expect(container.querySelector('.opacity-75')).toContainElement(screen.getByText('The best compromise is'));
       expect(screen.getByText('The connection dropped before the answer finished.')).toBeInTheDocument();
+      expect(screen.getByText(/What arrived is shown above/)).toBeInTheDocument();
     });
 
     it.each(['', '  \n'])('renders a cut answer with content %j as the block alone: no wrapper, no hint', (content) => {
@@ -390,12 +397,6 @@ describe('AssistantMessage', () => {
       expect(screen.queryByText(/What arrived is shown above/)).not.toBeInTheDocument();
       expect(container.querySelector('.opacity-75')).toBeNull();
       expect(container.querySelector('p')?.textContent).toBe('The connection dropped before the answer finished.');
-    });
-
-    it('shows the "what arrived" hint only when a cut answer has text', () => {
-      renderMessage({ status: 'cut', content: 'partial' });
-
-      expect(screen.getByText(/What arrived is shown above/)).toBeInTheDocument();
     });
 
     it('keeps the partial text of an error turn, muted, above the block', () => {
@@ -437,10 +438,11 @@ describe('AssistantMessage', () => {
       expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument();
     });
 
-    it.each(['', '  \n'])('shows the note and no wrapper when the content is %j', (content) => {
+    it.each(['', '  \n'])('shows Stopped without the partial-answer hint or a wrapper when the content is %j', (content) => {
       const { container } = renderMessage({ status: 'cancelled', content });
 
       expect(screen.getByText('Stopped')).toBeInTheDocument();
+      expect(screen.queryByText(/Partial answer/)).not.toBeInTheDocument();
       expect(container.querySelector('.opacity-75')).toBeNull();
     });
   });

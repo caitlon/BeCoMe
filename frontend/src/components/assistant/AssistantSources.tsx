@@ -31,7 +31,7 @@ function SourceRow({ messageId, source, open, onToggle }: SourceRowProps) {
           <span className="min-w-[18px] text-[11px] font-semibold">[{source.n}]</span>
           <span className="min-w-0">
             <span className="underline decoration-muted-foreground underline-offset-2">{source.title}</span>
-            <span> · {source.section}</span>
+            {source.section !== "" && <span> · {source.section}</span>}
           </span>
         </button>
         {isLocal && (
