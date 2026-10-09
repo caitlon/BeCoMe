@@ -31,6 +31,35 @@
     "hint": "Enter to send · Shift+Enter for a new line"
   },
   "message": {
-    "noSuchSource": "No such source"
+    "sources": "Sources",
+    "localCopy": "Local copy",
+    "localHint": "From the private corpus (thesis, articles). No public page.",
+    "publicLayer": "Documentation",
+    "openSource": "Open the page",
+    "noSuchSource": "No such source",
+    "numbersNotConfirmed": "Numbers not confirmed by the sources: {{numbers}}",
+    "citationInvalid": "A citation points to no source.",
+    "read": "Read: {{tools}}",
+    "tools": {
+      "search_docs": "documentation",
+      "list_my_projects": "projects",
+      "get_project": "project",
+      "get_project_result": "result",
+      "get_project_opinions": "opinions"
+    },
+    "stopped": "Stopped",
+    "stoppedHint": "Partial answer. Not sent with your next question.",
+    "retry": "Try again",
+    "errors": {
+      "rateLimited": "Message limit reached. Try again in {{minutes}} min.",
+      "rateLimitedGeneric": "Message limit reached. Try again later.",
+      "unavailable": "The assistant is temporarily unavailable.",
+      "unavailableHint": "The model is not responding.",
+      "notFound": "This project is not available.",
+      "notFoundHint": "It may have been deleted or you are no longer a member.",
+      "generic": "Something went wrong. Please try again.",
+      "cut": "The connection dropped before the answer finished.",
+      "cutHint": "What arrived is shown above. It is not sent with your next question."
+    }
   }
 }
