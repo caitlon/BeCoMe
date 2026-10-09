@@ -4,7 +4,7 @@ import { HttpError, RateLimitError, StreamIncompleteError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
 import type { AnswerChecks, ChatTurn, SourceRef, TurnTiming } from "@/types/api";
 import { streamAssistantMessage } from "./assistant-api";
-import { readAssistantSseStream } from "./sse";
+import { readAssistantSseStream, type AssistantSseEvent } from "./sse";
 
 export type AssistantMessageStatus = "pending" | "done" | "error" | "cut" | "cancelled";
 
@@ -55,6 +55,38 @@ function toError(error: unknown): AssistantMessageError {
     return { code: error.status, detail: error.message };
   }
   return { code: 0, detail: error instanceof Error ? error.message : String(error) };
+}
+
+function applyEvent(m: AssistantMessage, event: AssistantSseEvent): AssistantMessage {
+  switch (event.type) {
+    case "token":
+      return { ...m, content: m.content + event.text };
+    case "done":
+      return {
+        ...m,
+        content: event.response.answer,
+        status: "done",
+        sources: event.response.sources,
+        toolsUsed: event.response.tools_used,
+        checks: event.response.checks,
+        timing: event.response.timing,
+      };
+    case "error":
+      return { ...m, status: "error", error: { code: event.code, detail: event.detail } };
+  }
+}
+
+function applyFailure(
+  m: AssistantMessage,
+  error: unknown,
+  aborted: boolean,
+  hasContent: boolean
+): AssistantMessage {
+  if (aborted) return { ...m, status: "cancelled" };
+  // Once an answer has begun, whatever breaks the stream leaves a cut answer:
+  // a refusal from the server can only come before the first token.
+  if (hasContent) return { ...m, status: "cut" };
+  return { ...m, status: "error", error: toError(error) };
 }
 
 /**
@@ -166,46 +198,20 @@ export function useAssistantChat({
         // The reader stops on an abort by itself; this keeps a cancel final even
         // for an event it had already handed over.
         if (controller.signal.aborted) break;
-        if (event.type === "token") {
-          if (event.text) hasContent = true;
-          patchAnswer((m) => ({ ...m, content: m.content + event.text }));
-        } else if (event.type === "done") {
-          finished = true;
-          patchAnswer((m) => ({
-            ...m,
-            content: event.response.answer,
-            status: "done",
-            sources: event.response.sources,
-            toolsUsed: event.response.tools_used,
-            checks: event.response.checks,
-            timing: event.response.timing,
-          }));
-        } else {
-          finished = true;
-          patchAnswer((m) => ({
-            ...m,
-            status: "error",
-            error: { code: event.code, detail: event.detail },
-          }));
-          if (!hasContent) restoreDraft();
-        }
+        if (event.type === "token" && event.text) hasContent = true;
+        if (event.type !== "token") finished = true;
+        patchAnswer((m) => applyEvent(m, event));
+        if (event.type === "error" && !hasContent) restoreDraft();
       }
       if (!finished) throw new StreamIncompleteError();
     } catch (error) {
+      const aborted = controller.signal.aborted;
       // The class only: a message can carry a host or a piece of the user's text.
-      if (!controller.signal.aborted) {
+      if (!aborted) {
         logger.error("Assistant turn failed", { error: error instanceof Error ? error.name : typeof error });
       }
-      if (controller.signal.aborted) {
-        patchAnswer((m) => ({ ...m, status: "cancelled" }));
-      } else if (hasContent) {
-        // Once an answer has begun, whatever breaks the stream leaves a cut answer:
-        // a refusal from the server can only come before the first token.
-        patchAnswer((m) => ({ ...m, status: "cut" }));
-      } else {
-        patchAnswer((m) => ({ ...m, status: "error", error: toError(error) }));
-        if (!hasContent) restoreDraft();
-      }
+      patchAnswer((m) => applyFailure(m, error, aborted, hasContent));
+      if (!aborted && !hasContent) restoreDraft();
     } finally {
       if (abortRef.current === controller) abortRef.current = null;
     }
