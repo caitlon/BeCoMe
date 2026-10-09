@@ -217,10 +217,10 @@ describe('AssistantMessage', () => {
     it.each(['pending', 'cut', 'cancelled', 'error'] as const)(
       'leaves a [1] in a %s answer as plain text, since its sources are not known',
       (status) => {
-        const { container } = renderMessage({ status, content: 'See [1].' });
+        const { container } = renderMessage({ status, content: 'See [1].', sources: [publicSource] });
 
         expect(container.querySelector('s')).toBeNull();
-        expect(screen.queryByRole('link')).not.toBeInTheDocument();
+        expect(screen.queryByRole('link', { name: '[1]' })).not.toBeInTheDocument();
         expect(container).toHaveTextContent('See [1].');
         expect(container).not.toHaveTextContent('No such source');
       },
@@ -343,7 +343,7 @@ describe('AssistantMessage', () => {
   });
 
   describe('failed turns', () => {
-    const SECRET = 'Traceback: db password hunter2 at /srv/app.py';
+    const DETAIL = 'Traceback: db password hunter2 at /srv/app.py';
 
     it.each([
       [429, 120, 'Message limit reached. Try again in 2 min.'],
@@ -359,7 +359,7 @@ describe('AssistantMessage', () => {
       [0, undefined, 'Something went wrong. Please try again.'],
       [500, undefined, 'Something went wrong. Please try again.'],
     ])('code %s with retryAfter %s shows a fixed message and never the detail', (code, retryAfter, text) => {
-      renderMessage({ status: 'error', content: '', error: { code, detail: SECRET, retryAfter } });
+      renderMessage({ status: 'error', content: '', error: { code, detail: DETAIL, retryAfter } });
 
       expect(screen.getByText(text)).toBeInTheDocument();
       expect(document.body).not.toHaveTextContent('hunter2');
