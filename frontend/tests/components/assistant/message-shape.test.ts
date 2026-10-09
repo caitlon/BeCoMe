@@ -55,6 +55,7 @@ describe('cleanSources', () => {
     ['n zero', { ...good, n: 0 }],
     ['n negative', { ...good, n: -2 }],
     ['n fractional', { ...good, n: 1.5 }],
+    ['n beyond the safe integers', { ...good, n: 1e21 }],
     ['n NaN', { ...good, n: Number.NaN }],
     ['missing title', { ...good, title: undefined }],
     ['numeric section', { ...good, section: 4 }],

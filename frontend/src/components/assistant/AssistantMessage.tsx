@@ -72,7 +72,11 @@ function ChecksLines({ checks }: { readonly checks: AnswerChecks }) {
   const { t } = useTranslation("assistant");
   const lines: string[] = [];
   if (!checks.numbers_grounded) {
-    lines.push(t("message.numbersNotConfirmed", { numbers: checks.ungrounded_numbers.join(", ") }));
+    lines.push(
+      checks.ungrounded_numbers.length > 0
+        ? t("message.numbersNotConfirmed", { numbers: checks.ungrounded_numbers.join(", ") })
+        : t("message.numbersNotConfirmedGeneric"),
+    );
   }
   if (!checks.citations_valid) {
     lines.push(t("message.citationInvalid"));
@@ -145,7 +149,7 @@ function AssistantAnswer({ message, onRetry }: AssistantMessageProps) {
           <AssistantMarkdown
             content={message.content}
             messageId={message.id}
-            sourceNumbers={sourceNumbers}
+            sourceNumbers={status === "done" ? sourceNumbers : undefined}
             onCite={handleCite}
           />
         </div>
@@ -154,7 +158,7 @@ function AssistantAnswer({ message, onRetry }: AssistantMessageProps) {
         <p className="mt-1.5 flex items-center gap-1.5 text-xs text-muted-foreground">
           <OctagonX className="h-3 w-3 shrink-0" aria-hidden="true" />
           <span>{t("message.stopped")}</span>
-          <span>· {t("message.stoppedHint")}</span>
+          {hasText && <span>· {t("message.stoppedHint")}</span>}
         </p>
       )}
       {(status === "error" || status === "cut") && (

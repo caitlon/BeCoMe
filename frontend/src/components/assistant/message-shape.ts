@@ -12,7 +12,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function toSource(value: unknown): SourceRef | null {
   if (!isRecord(value)) return null;
   const { n, title, section, snippet, url, layer } = value;
-  if (typeof n !== "number" || !Number.isInteger(n) || n < 1) return null;
+  if (typeof n !== "number" || !Number.isSafeInteger(n) || n < 1) return null;
   if (typeof title !== "string" || typeof section !== "string") return null;
   if (layer !== "public" && layer !== "local") return null;
   if (url !== null && typeof url !== "string") return null;
