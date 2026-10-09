@@ -1,0 +1,35 @@
+{
+  "trigger": {
+    "header": "Asistent",
+    "result": "Vysvětlit výsledek"
+  },
+  "panel": {
+    "title": "Asistent",
+    "scopeProject": "Projekt „{{name}}“",
+    "scopeGeneral": "Metoda a aplikace",
+    "seesOnly": "Vidí jen to, co v projektu vidíte vy.",
+    "clear": "Vymazat konverzaci",
+    "close": "Zavřít",
+    "footer": "Asistent se může mýlit. Ověřte na stránce výsledku."
+  },
+  "empty": {
+    "titleProject": "Zeptejte se na tento projekt",
+    "titleGeneral": "Zeptejte se na metodu nebo aplikaci",
+    "hint": "Odpovědi vycházejí z dokumentace a z dat tohoto projektu. Za každým tvrzením je zdroj.",
+    "suggestionsProject": [
+      "Co výsledek znamená?",
+      "Proč je spolehlivost střední?",
+      "Jak se počítá nejlepší kompromis?"
+    ],
+    "suggestionsGeneral": [
+      "Co je fuzzy názor?",
+      "Jak pozvu experty?",
+      "Co říká Δmax?"
+    ]
+  },
+  "composer": {
+    "placeholder": "Napište otázku…",
+    "hint": "Enter odešle · Shift+Enter nový řádek",
+    "send": "Odeslat"
+  }
+}
