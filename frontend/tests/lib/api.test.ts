@@ -1751,4 +1751,21 @@ describe('ApiClient', () => {
       );
     });
   });
+
+  describe('requestJson', () => {
+    it('delegates to the same request pipeline as the typed methods (base URL, credentials, JSON parsing)', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ hello: 'world' }),
+      });
+
+      const result = await api.requestJson<{ hello: string }>('/some/endpoint');
+
+      expect(result).toEqual({ hello: 'world' });
+      const [url, options] = mockFetch.mock.calls[0];
+      expect(url).toContain('/some/endpoint');
+      expect(options.credentials).toBe('include');
+    });
+  });
 });

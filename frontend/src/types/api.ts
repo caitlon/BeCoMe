@@ -155,3 +155,66 @@ export interface ApiError {
    */
   code?: string;
 }
+
+// Local AI assistant (BCM-120). Field names match api/schemas/assistant.py exactly,
+// so the wire JSON needs no translation layer.
+export type AssistantProvider = 'local' | 'api';
+
+export interface AssistantConfigResponse {
+  enabled: boolean;
+  model: string;
+  mode: 'agent' | 'workflow' | 'hybrid';
+  collection: string;
+  answer_provider: AssistantProvider;
+  query_provider: AssistantProvider;
+  embedding_provider: AssistantProvider;
+}
+
+export interface ChatTurn {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export interface AssistantChatRequest {
+  message: string;
+  history: ChatTurn[];
+  project_id: string | null;
+  locale: 'en' | 'cs';
+}
+
+export interface SourceRef {
+  n: number;
+  title: string;
+  section: string;
+  snippet: string;
+  url: string | null;
+  layer: 'public' | 'local';
+}
+
+export interface AnswerChecks {
+  citations_valid: boolean;
+  numbers_grounded: boolean;
+  ungrounded_numbers: string[];
+}
+
+export interface TurnUsage {
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  llm_calls: number;
+  complete: boolean;
+}
+
+export interface TurnTiming {
+  ttft_ms: number | null;
+  total_ms: number;
+}
+
+export interface AssistantChatResponse {
+  answer: string;
+  sources: SourceRef[];
+  tools_used: string[];
+  checks: AnswerChecks;
+  usage: TurnUsage;
+  timing: TurnTiming;
+}
