@@ -8,6 +8,12 @@ interface ImportMetaEnv {
   readonly VITE_APP_ENV?: string;
   /** Cloudflare Turnstile sitekey. Absent or empty means the bot check stays off. */
   readonly VITE_TURNSTILE_SITE_KEY?: string;
+  /**
+   * Build-time kill switch for the local AI assistant (BCM-120). Only ever
+   * set in a developer's own frontend/.env.development.local (gitignored);
+   * absent from every Docker/Railway build. See components/assistant/index.tsx.
+   */
+  readonly VITE_ASSISTANT_ENABLED?: string;
 }
 
 interface ImportMeta {
