@@ -26,7 +26,9 @@ run_lint() {
   uv run bandit -c pyproject.toml -r src api --severity-level medium
   uv run mypy src/ api/
   uv run detect-secrets-hook --baseline .secrets.baseline $(git ls-files -- ':!:migrations' ':!:frontend/src/i18n' ':!:uv.lock' ':!:frontend/package-lock.json')
-  cd "$PROJECT_ROOT/frontend" && npm run lint && npm run typecheck
+  cd "$PROJECT_ROOT/frontend"
+  npm run lint
+  npm run typecheck
   echo ""
   echo "Lint passed."
 }
@@ -37,7 +39,8 @@ run_test() {
   SECRET_KEY=test-secret-key TESTING=1 \
     uv run pytest tests/unit/ tests/integration/ \
       --cov=src --cov=api --cov-report=term-missing
-  cd "$PROJECT_ROOT/frontend" && npm run test:run
+  cd "$PROJECT_ROOT/frontend"
+  npm run test:run
   echo ""
   echo "Tests passed."
 }
