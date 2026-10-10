@@ -55,8 +55,8 @@ export function AssistantPendingStatus({ active, mode, seconds, hasProject }: As
   const { t } = useTranslation("assistant");
 
   return (
-    <p role="status" className="sr-only">
+    <output className="sr-only">
       {active ? t(`message.pending.${pendingLabel(mode, seconds, hasProject)}`).replace(/…$/, "") : ""}
-    </p>
+    </output>
   );
 }
