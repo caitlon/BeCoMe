@@ -9,8 +9,8 @@ import { api } from "@/lib/api";
 import { queryKeys } from "@/lib/queryKeys";
 import { cn } from "@/lib/utils";
 import type { ProjectWithRole } from "@/types/api";
+import { MAX_QUESTION_LENGTH } from "./AssistantComposer";
 
-const MAX_QUESTION_LENGTH = 4000;
 const SUGGESTION_INDEXES = [0, 1, 2] as const;
 
 function ProjectScopeLabel({ projectId }: { readonly projectId: string }) {
