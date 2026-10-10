@@ -64,7 +64,8 @@ function HistorySeparator() {
   const { t } = useTranslation("assistant");
 
   return (
-    <div role="separator" className="flex items-center gap-2 text-[11px] text-muted-foreground">
+    // A separator's children are not exposed to assistive technology, so the name carries the text.
+    <div role="separator" aria-label={t("feed.older")} className="flex items-center gap-2 text-[11px] text-muted-foreground">
       <span className="h-px flex-1 bg-border" />
       <span>{t("feed.older")}</span>
       <span className="h-px flex-1 bg-border" />

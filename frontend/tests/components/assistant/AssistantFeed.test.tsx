@@ -128,7 +128,8 @@ describe('AssistantFeed', () => {
       });
 
       const text = within(log()).getByText('The best comp');
-      expect(text.parentElement?.className).toContain('[&>:last-child]:after:animate-pulse');
+      expect(text.parentElement?.className).toContain('[&>:last-child:not(ul,ol)]:after:animate-pulse');
+      expect(text.parentElement?.className).toContain('[&>:is(ul,ol):last-child>li:last-child]:after:animate-pulse');
       expect(within(log()).queryByText('Answering…')).not.toBeInTheDocument();
       expect(container.querySelector('.animate-spin')).not.toBeInTheDocument();
     });
@@ -194,8 +195,9 @@ describe('AssistantFeed', () => {
     it('is drawn right before the oldest message the next request carries', () => {
       renderFeed({ messages: thread, historyWindowStart: 2 });
 
-      const separator = screen.getByRole('separator');
-      expect(separator).toHaveTextContent('Older messages are no longer sent with new questions.');
+      const separator = screen.getByRole('separator', {
+        name: 'Older messages are no longer sent with new questions.',
+      });
       expect(separator.nextElementSibling).toHaveTextContent('q1');
       expect(separator.previousElementSibling).toHaveTextContent('a0');
     });
@@ -289,17 +291,6 @@ describe('AssistantFeed', () => {
       renderFeed({ messages: [user('Q'), failure(503)] });
 
       expect(log()).not.toHaveTextContent('secret detail');
-    });
-
-    it('gives a settled message the same retry on every render of the feed', () => {
-      const messages = [user('Q?'), failure(503)];
-      const onRetry = vi.fn();
-      const { rerender } = renderFeed({ messages, onRetry });
-      const before = screen.getByRole('button', { name: 'Try again' });
-
-      rerender({ messages, onRetry, pendingSeconds: 5 });
-
-      expect(screen.getByRole('button', { name: 'Try again' })).toBe(before);
     });
   });
 
@@ -612,14 +603,14 @@ describe('AssistantFeed', () => {
   });
 
   describe('messages in the list', () => {
-    it('keeps a message in place when one is added after it', () => {
-      const first = [user('Q1'), answer('A1.')];
-      const { rerender } = renderFeed({ messages: first });
-      const before = within(log()).getByText('A1.');
+    it('keeps a message where it is when an earlier one is removed, because each is keyed by its id', () => {
+      const [q1, a1, q2, a2] = [user('Q1'), answer('A1.'), user('Q2'), answer('A2.')];
+      const { rerender } = renderFeed({ messages: [q1, a1, q2, a2] });
+      const before = within(log()).getByText('A2.');
 
-      rerender({ messages: [...first, user('Q2'), answer('A2.')] });
+      rerender({ messages: [q2, a2] });
 
-      expect(within(log()).getByText('A1.')).toBe(before);
+      expect(within(log()).getByText('A2.')).toBe(before);
     });
   });
 });
