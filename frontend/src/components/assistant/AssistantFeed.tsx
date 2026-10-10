@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useAssistantUI } from "@/contexts/AssistantUIContext";
 import type { AssistantConfigResponse } from "@/types/api";
 import { AssistantMessage, type NotFoundActions } from "./AssistantMessage";
-import { AssistantPending } from "./AssistantPending";
+import { AssistantPending, AssistantPendingStatus } from "./AssistantPending";
 import type { AssistantMessage as AssistantMessageData } from "./useAssistantChat";
 
 // How far from the bottom the user may be and still count as following the answer.
@@ -48,7 +48,8 @@ function useStickToBottom(ref: RefObject<HTMLDivElement | null>, messages: reado
 function useRetryAfterElapsed(message: AssistantMessageData | undefined): boolean {
   const seconds = message?.error?.code === 429 ? message.error.retryAfter : undefined;
   const readyAt = message && seconds !== undefined && Number.isFinite(seconds) ? message.createdAt + seconds * 1000 : 0;
-  const [elapsedFor, setElapsedFor] = useState(0);
+  // A wait that is over already when the block first renders must not show the retry a tick late.
+  const [elapsedFor, setElapsedFor] = useState(() => (readyAt !== 0 && readyAt <= Date.now() ? readyAt : 0));
 
   useEffect(() => {
     if (readyAt === 0) return;
@@ -80,6 +81,8 @@ export interface AssistantFeedProps {
   readonly mode: AssistantConfigResponse["mode"];
   /** Sends the given question again as a new turn. */
   readonly onRetry: (text: string) => void;
+  /** The conversation is about a project, not the general thread. */
+  readonly projectScoped?: boolean;
 }
 
 /**
@@ -94,6 +97,7 @@ export function AssistantFeed({
   pendingSeconds,
   mode,
   onRetry,
+  projectScoped = false,
 }: AssistantFeedProps) {
   const { t } = useTranslation("assistant");
   const { openAssistant, closeAssistant } = useAssistantUI();
@@ -117,8 +121,11 @@ export function AssistantFeed({
     [retryable, onRetry, question],
   );
   const notFound = useMemo<NotFoundActions | undefined>(
-    () => (projectGone ? { onAskWithout: () => openAssistant(null), onOpenProjects: closeAssistant } : undefined),
-    [projectGone, openAssistant, closeAssistant],
+    () =>
+      projectGone
+        ? { onAskWithout: projectScoped ? () => openAssistant(null) : undefined, onOpenProjects: closeAssistant }
+        : undefined,
+    [projectGone, projectScoped, openAssistant, closeAssistant],
   );
 
   // The divider says where the next request's memory begins, so there is nothing to
@@ -129,34 +136,38 @@ export function AssistantFeed({
       : -1;
 
   return (
-    <div
-      ref={scrollRef}
-      role="log"
-      aria-label={t("feed.label")}
-      aria-busy={isPending}
-      onScroll={handleScroll}
-      className="flex-1 overflow-y-auto break-words px-4 py-4"
-    >
-      <div className="flex flex-col gap-3">
-        {messages.map((message, index) => {
-          const isLast = message === last;
-          const waiting = message.status === "pending";
-          return (
-            <Fragment key={message.id}>
-              {index === separatorAt && <HistorySeparator />}
-              {!(waiting && message.content.trim() === "") && (
-                <AssistantMessage
-                  message={message}
-                  onRetry={isLast ? handleRetry : undefined}
-                  notFound={isLast ? notFound : undefined}
-                  announce={isLast && message.id !== openedWithId}
-                />
-              )}
-              {waiting && <AssistantPending mode={mode} seconds={pendingSeconds} hasText={message.content.trim() !== ""} />}
-            </Fragment>
-          );
-        })}
+    <>
+      <div
+        ref={scrollRef}
+        role="log"
+        aria-label={t("feed.label")}
+        aria-busy={isPending}
+        onScroll={handleScroll}
+        className="flex-1 overflow-y-auto break-words px-4 py-4"
+      >
+        <div className="flex flex-col gap-3">
+          {messages.map((message, index) => {
+            const isLast = message === last;
+            const unanswered = message.status === "pending" && message.content.trim() === "";
+            return (
+              <Fragment key={message.id}>
+                {index === separatorAt && <HistorySeparator />}
+                {unanswered ? (
+                  <AssistantPending mode={mode} seconds={pendingSeconds} hasProject={projectScoped} />
+                ) : (
+                  <AssistantMessage
+                    message={message}
+                    onRetry={isLast ? handleRetry : undefined}
+                    notFound={isLast ? notFound : undefined}
+                    announce={isLast && message.id !== openedWithId}
+                  />
+                )}
+              </Fragment>
+            );
+          })}
+        </div>
       </div>
-    </div>
+      <AssistantPendingStatus active={isPending} mode={mode} seconds={pendingSeconds} hasProject={projectScoped} />
+    </>
   );
 }

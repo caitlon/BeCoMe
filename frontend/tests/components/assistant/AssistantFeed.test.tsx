@@ -34,6 +34,7 @@ function props(overrides: Partial<AssistantFeedProps> = {}): AssistantFeedProps 
     pendingSeconds: 0,
     mode: 'workflow',
     onRetry: vi.fn(),
+    projectScoped: true,
     ...overrides,
   };
 }
@@ -85,7 +86,7 @@ describe('AssistantFeed', () => {
     it('shows the indicator and no empty bubble for an answer with no text yet', () => {
       renderFeed({ messages: waiting, isPending: true });
 
-      expect(screen.getByText('Answering…')).toBeInTheDocument();
+      expect(within(log()).getByText('Answering…')).toBeInTheDocument();
       expect(log().firstElementChild?.children).toHaveLength(2);
     });
 
@@ -99,43 +100,89 @@ describe('AssistantFeed', () => {
     ])('names the phase by the seconds waited without a stream: %is', (seconds, label) => {
       renderFeed({ messages: waiting, isPending: true, mode: 'hybrid', pendingSeconds: seconds });
 
-      expect(screen.getByText(label)).toBeInTheDocument();
+      expect(within(log()).getByText(label)).toBeInTheDocument();
     });
 
-    it('shows the phase rather than a cursor when a mode that does not stream has text', () => {
-      const { container } = renderFeed({
-        messages: [user('Q'), answer('Some text', { status: 'pending' })],
-        isPending: true,
-        mode: 'hybrid',
-        pendingSeconds: 1,
+    it('names two phases, not three, in a conversation that has no project to read', () => {
+      const { rerender } = renderFeed({
+        messages: waiting, isPending: true, mode: 'hybrid', pendingSeconds: 4, projectScoped: false,
       });
+      expect(within(log()).getByText('Searching the documentation…')).toBeInTheDocument();
+      expect(within(log()).queryByText('Reading the project…')).not.toBeInTheDocument();
 
-      expect(screen.getByText('Searching the documentation…')).toBeInTheDocument();
-      expect(container.querySelector('span[aria-hidden="true"].animate-pulse')).not.toBeInTheDocument();
+      rerender({ messages: waiting, isPending: true, mode: 'hybrid', pendingSeconds: 8, projectScoped: false });
+
+      expect(within(log()).getByText('Writing the answer. This can take up to a minute.')).toBeInTheDocument();
     });
 
     it('treats agent mode like hybrid', () => {
       renderFeed({ messages: waiting, isPending: true, mode: 'agent', pendingSeconds: 4 });
 
-      expect(screen.getByText('Reading the project…')).toBeInTheDocument();
+      expect(within(log()).getByText('Reading the project…')).toBeInTheDocument();
     });
 
-    it('streams the text with a cursor after it in workflow mode', () => {
+    it('puts the streaming cursor on the text itself and shows no indicator once text has come', () => {
       const { container } = renderFeed({
         messages: [user('Q'), answer('The best comp', { status: 'pending' })],
         isPending: true,
       });
 
-      expect(screen.getByText('The best comp')).toBeInTheDocument();
-      expect(container.querySelector('span[aria-hidden="true"].animate-pulse')).toBeInTheDocument();
-      expect(screen.queryByText('Answering…')).not.toBeInTheDocument();
+      const text = within(log()).getByText('The best comp');
+      expect(text.parentElement?.className).toContain('[&>:last-child]:after:animate-pulse');
+      expect(within(log()).queryByText('Answering…')).not.toBeInTheDocument();
+      expect(container.querySelector('.animate-spin')).not.toBeInTheDocument();
+    });
+
+    it('takes the cursor away when the answer is done', () => {
+      renderFeed({ messages: [user('Q'), answer('Done.')] });
+
+      expect(within(log()).getByText('Done.').parentElement?.className).not.toContain('after:animate-pulse');
+    });
+
+    describe('announcement for a screen reader', () => {
+      const status = () => screen.getByRole('status');
+
+      it('lives outside the busy log, and says nothing while no turn runs', () => {
+        renderFeed({ messages: [user('Q'), answer('A.')] });
+
+        expect(log()).not.toContainElement(status());
+        expect(status()).toBeEmptyDOMElement();
+      });
+
+      it('names the phase, and changes its text only when the phase changes', () => {
+        const mutations: string[] = [];
+        const { rerender } = renderFeed({ messages: waiting, isPending: true, mode: 'hybrid', pendingSeconds: 0 });
+        const observer = new MutationObserver((records) =>
+          records.forEach(() => mutations.push(status().textContent ?? ''))
+        );
+        observer.observe(status(), { childList: true, characterData: true, subtree: true });
+        expect(status()).toHaveTextContent(/^Searching the documentation$/);
+
+        for (const seconds of [1, 2]) {
+          rerender({ messages: waiting, isPending: true, mode: 'hybrid', pendingSeconds: seconds });
+        }
+        expect(observer.takeRecords()).toHaveLength(0);
+
+        rerender({ messages: waiting, isPending: true, mode: 'hybrid', pendingSeconds: 3 });
+        expect(status()).toHaveTextContent(/^Reading the project$/);
+        observer.disconnect();
+      });
+
+      it('is silent again once the answer has arrived', () => {
+        const { rerender } = renderFeed({ messages: waiting, isPending: true, mode: 'hybrid' });
+        expect(status()).toHaveTextContent(/^Searching the documentation$/);
+
+        rerender({ messages: [waiting[0], answer('A.')], isPending: false, mode: 'hybrid' });
+
+        expect(status()).toBeEmptyDOMElement();
+      });
     });
 
     it('speaks Czech', async () => {
       await i18n.changeLanguage('cs');
       renderFeed({ messages: waiting, isPending: true, mode: 'hybrid', pendingSeconds: 9 });
 
-      expect(screen.getByText('Píšu odpověď. Může to trvat až minutu.')).toBeInTheDocument();
+      expect(within(screen.getByRole('log')).getByText('Píšu odpověď. Může to trvat až minutu.')).toBeInTheDocument();
     });
   });
 
@@ -290,8 +337,17 @@ describe('AssistantFeed', () => {
         ],
       });
 
-      act(() => {
-        vi.advanceTimersByTime(0);
+      expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
+    });
+
+    it('offers the retry on the first render for a Retry-After of 0', () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+      vi.setSystemTime(1_000_000);
+      renderFeed({
+        messages: [
+          user('Q?'),
+          failure(429, { createdAt: 1_000_000, error: { code: 429, detail: 'x', retryAfter: 0 } }),
+        ],
       });
 
       expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
@@ -380,6 +436,13 @@ describe('AssistantFeed', () => {
       expect(screen.getByTestId('ui')).toHaveTextContent(/^false\//);
     });
 
+    it('offers only the project list when the conversation is not about a project', () => {
+      renderFeed({ messages: [user('Q?'), failure(404)], projectScoped: false });
+
+      expect(screen.queryByRole('button', { name: 'Ask without the project' })).not.toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'Open projects' })).toBeInTheDocument();
+    });
+
     it('offers it only on the last answer', () => {
       renderFeed({ messages: [user('Q1?'), failure(404), user('Q2?'), failure(404)] });
 
@@ -432,6 +495,31 @@ describe('AssistantFeed', () => {
     });
   });
 
+  describe('rendering cost of the last answer', () => {
+    it('does not render a cut answer that has a retry again when only the clock moved', () => {
+      const messages = [user('Q?'), answer('Half of the answer', { status: 'cut' })];
+      const onRetry = vi.fn();
+      const { rerender } = renderFeed({ messages, onRetry });
+      expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
+      markdownRenders.mockClear();
+
+      rerender({ messages, onRetry, pendingSeconds: 5 });
+      rerender({ messages, onRetry, pendingSeconds: 6 });
+
+      expect(markdownRenders).not.toHaveBeenCalled();
+    });
+
+    it('does the same for a missing project that has its actions', () => {
+      const messages = [user('Q?'), failure(404, { content: 'Some text' })];
+      const { rerender } = renderFeed({ messages });
+      markdownRenders.mockClear();
+
+      rerender({ messages, pendingSeconds: 5 });
+
+      expect(markdownRenders).not.toHaveBeenCalled();
+    });
+  });
+
   describe('scrolling', () => {
     function geometry(element: HTMLElement, { scrollHeight, clientHeight, scrollTop }: Record<string, number>) {
       Object.defineProperty(element, 'scrollHeight', { value: scrollHeight, configurable: true });
@@ -448,6 +536,15 @@ describe('AssistantFeed', () => {
       renderFeed({ messages: [user('Q?'), answer('A.')] });
 
       expect(log().scrollTop).toBe(777);
+    });
+
+    it('follows the first content that arrives in a feed that opened with none from the user', () => {
+      const { rerender } = renderFeed({ messages: [answer('A.')] });
+      vi.spyOn(Element.prototype, 'scrollHeight', 'get').mockReturnValue(500);
+
+      rerender({ messages: [answer('A. And more.')] });
+
+      expect(log().scrollTop).toBe(500);
     });
 
     it('follows new content while the user is at the bottom', () => {
@@ -493,6 +590,24 @@ describe('AssistantFeed', () => {
       rerender({ messages: [...done, asked, answer('', { status: 'pending' })], isPending: true });
 
       expect(log().scrollTop).toBe(1000);
+    });
+  });
+
+  describe('edges', () => {
+    it('renders an empty log for no messages', () => {
+      renderFeed({ messages: [] });
+
+      expect(log().firstElementChild?.children).toHaveLength(0);
+      expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    });
+
+    it('shows a cut answer that has no text as the block alone, with its retry', async () => {
+      const { feedProps } = renderFeed({ messages: [user('Q?'), answer('', { status: 'cut' })] });
+
+      expect(screen.getByText('The connection dropped before the answer finished.')).toBeInTheDocument();
+      expect(screen.queryByText(/What arrived is shown above/)).not.toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
+      expect(feedProps.onRetry).toHaveBeenCalledWith('Q?');
     });
   });
 
