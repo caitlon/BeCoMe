@@ -3,7 +3,7 @@ import { createContext, useCallback, useContext, useMemo, useState, type ReactNo
 interface AssistantUIValue {
   readonly isAvailable: boolean;
   readonly isOpen: boolean;
-  /** The project the open panel was opened for; null for the general panel. */
+  /** The project the panel was last opened for (it stays after a close); null for the general panel. */
   readonly projectId: string | null;
   readonly setAvailable: (available: boolean) => void;
   /** Records which project the current page shows, without touching the panel. */

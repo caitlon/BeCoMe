@@ -134,7 +134,11 @@ function historyWindow(messages: AssistantMessage[]): number[] {
   messages.forEach((m, index) => {
     if (m.status === "done") indexes.push(index);
   });
-  return indexes.slice(-MAX_HISTORY_ENTRIES);
+  const sent = indexes.slice(-MAX_HISTORY_ENTRIES);
+  // A turn whose answer was cut leaves its question in the list alone, which can move the
+  // cut of 20 onto an answer; the window then starts at the next question instead.
+  while (sent.length > 0 && messages[sent[0]].role === "assistant") sent.shift();
+  return sent;
 }
 
 function toError(error: unknown): AssistantMessageError {
@@ -192,7 +196,8 @@ function markFailed(m: AssistantMessage): AssistantMessage {
 }
 
 // A retried turn is asked again, so its earlier copy of the question is marked failed, as
-// a refused one is: otherwise the next request would carry the question twice.
+// a refused one is: otherwise the next request would carry the question twice. Only the
+// last turn is looked at, since the panel offers a retry on the last answer alone.
 function failRetriedQuestion(messages: AssistantMessage[], text: string): AssistantMessage[] {
   const answer = messages[messages.length - 1];
   const question = messages[messages.length - 2];

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { createRef } from 'react';
+import { createRef, useState } from 'react';
 import { fireEvent, render, screen } from '@tests/utils';
 import userEvent from '@testing-library/user-event';
 import i18n from '@/i18n';
@@ -23,6 +23,7 @@ const box = () => screen.getByRole('textbox', { name: 'Ask a question…' });
 
 describe('AssistantComposer', () => {
   afterEach(async () => {
+    vi.restoreAllMocks();
     await i18n.changeLanguage('en');
   });
 
@@ -43,6 +44,40 @@ describe('AssistantComposer', () => {
 
       expect(props.onSend).not.toHaveBeenCalled();
       expect(props.onChange).toHaveBeenCalledWith('hello\n');
+    });
+
+    it('does nothing for the Enter Safari reports after the composition ended (keyCode 229)', () => {
+      const props = setup({ value: 'hello' });
+
+      const notPrevented = fireEvent.keyDown(box(), { key: 'Enter', keyCode: 229 });
+
+      expect(notPrevented).toBe(true);
+      expect(props.onSend).not.toHaveBeenCalled();
+    });
+
+    it('sends one request for two Enters in a row', async () => {
+      const onSend = vi.fn();
+      function Harness() {
+        const [value, setValue] = useState('hello');
+        return (
+          <AssistantComposer
+            value={value}
+            onChange={setValue}
+            onSend={() => {
+              onSend();
+              setValue('');
+            }}
+            onCancel={vi.fn()}
+            isPending={false}
+          />
+        );
+      }
+      render(<Harness />);
+      box().focus();
+
+      await userEvent.keyboard('{Enter}{Enter}');
+
+      expect(onSend).toHaveBeenCalledTimes(1);
     });
 
     it('does nothing for an Enter that confirms an IME candidate', () => {
@@ -123,6 +158,29 @@ describe('AssistantComposer', () => {
 
       expect(MAX_QUESTION_LENGTH).toBe(4000);
       expect(box()).toHaveAttribute('maxlength', '4000');
+    });
+
+    it('grows to the height of its text and scrolls past six lines', () => {
+      vi.spyOn(Element.prototype, 'scrollHeight', 'get').mockReturnValue(96);
+      const { rerender } = render(
+        <AssistantComposer value="a" onChange={vi.fn()} onSend={vi.fn()} onCancel={vi.fn()} isPending={false} />
+      );
+      expect(box().style.height).toBe('96px');
+
+      vi.spyOn(Element.prototype, 'scrollHeight', 'get').mockReturnValue(200);
+      rerender(
+        <AssistantComposer value={'a\n'.repeat(10)} onChange={vi.fn()} onSend={vi.fn()} onCancel={vi.fn()} isPending={false} />
+      );
+
+      expect(box().style.height).toBe('200px');
+      expect(box()).toHaveClass('max-h-[8.5rem]', 'overflow-y-auto');
+    });
+
+    it('hands the ref to a callback ref as well', () => {
+      const refCallback = vi.fn();
+      setup({ textareaRef: refCallback });
+
+      expect(refCallback).toHaveBeenCalledWith(box());
     });
 
     it('counts the characters against the limit', () => {
