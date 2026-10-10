@@ -14,7 +14,7 @@ import "./i18n";
  */
 export default function AssistantRoot() {
   const { isAuthenticated, status, user } = useAuth();
-  const { isOpen, projectId, setAvailable, closeAssistant } = useAssistantUI();
+  const { isOpen, projectId, setAvailable, closeAssistant, forgetProject } = useAssistantUI();
   // refreshUser flips the status to "loading" while it re-reads the same session (after the
   // profile is saved, say) and keeps the user. That is not a sign-out, and unmounting the
   // panel for it would abort a running turn; a real sign-out clears the user as well.
@@ -42,8 +42,9 @@ export default function AssistantRoot() {
       registerSignOutListener(() => {
         clearAssistantHistory();
         closeAssistant();
+        forgetProject();
       }),
-    [closeAssistant]
+    [closeAssistant, forgetProject]
   );
 
   // `available` implies a signed-in user; the check is for the type, which cannot know it.

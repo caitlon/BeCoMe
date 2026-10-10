@@ -132,8 +132,11 @@ export function AssistantPanel({ open, onOpenChange, projectId, userId, mode }: 
 
   const scoped = Boolean(projectId);
   const canClear = messages.length > 0 && !isPending;
-  // One that has since started a turn, been emptied, or lost its sheet to a close is stale too.
-  if (confirmingFor !== null && (!open || !canClear)) setConfirmingFor(null);
+  // One that has since moved to another conversation (and back), started a turn, been
+  // emptied, or lost its sheet to a close is stale too.
+  if (confirmingFor !== null && (confirmingFor !== conversationKey || !open || !canClear)) {
+    setConfirmingFor(null);
+  }
 
   function handleSuggestion(text: string) {
     chat.setDraft(text);

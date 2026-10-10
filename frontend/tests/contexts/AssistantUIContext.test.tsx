@@ -17,6 +17,7 @@ describe('AssistantUIContext', () => {
     expect(() => {
       result.current.openAssistant('project-1');
       result.current.closeAssistant();
+      result.current.forgetProject();
       result.current.setAvailable(true);
       result.current.setPageProjectId('project-1');
     }).not.toThrow();
@@ -32,6 +33,17 @@ describe('AssistantUIContext', () => {
     act(() => result.current.closeAssistant());
     expect(result.current.isOpen).toBe(false);
     expect(result.current.projectId).toBe('project-123');
+  });
+
+  it('forgets the kept project on request, for a sign-out', () => {
+    const { result } = renderHook(() => useAssistantUI(), { wrapper: AssistantUIProvider });
+    act(() => result.current.openAssistant('project-123'));
+    act(() => result.current.closeAssistant());
+
+    act(() => result.current.forgetProject());
+
+    expect(result.current.projectId).toBeNull();
+    expect(result.current.isOpen).toBe(false);
   });
 
   it('replaces the kept project on the next open', () => {
