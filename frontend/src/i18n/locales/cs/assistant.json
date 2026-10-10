@@ -31,6 +31,10 @@
     "hint": "Enter odešle · Shift+Enter nový řádek",
     "stop": "Zastavit"
   },
+  "feed": {
+    "label": "Konverzace",
+    "older": "Starší zprávy se k novým otázkám už neposílají."
+  },
   "message": {
     "sources": "Zdroje",
     "localCopy": "Místní kopie",
@@ -62,6 +66,14 @@
       "generic": "Něco se pokazilo. Zkuste to prosím znovu.",
       "cut": "Spojení se přerušilo před dokončením odpovědi.",
       "cutHint": "Co dorazilo, je výše. S další otázkou se neodesílá."
+    },
+    "askWithout": "Ptát se bez projektu",
+    "openProjects": "Otevřít projekty",
+    "pending": {
+      "searching": "Hledám v dokumentaci…",
+      "reading": "Čtu projekt…",
+      "writing": "Píšu odpověď. Může to trvat až minutu.",
+      "answering": "Odpovídám…"
     }
   }
 }

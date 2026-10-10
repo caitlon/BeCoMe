@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Link } from "react-router";
 import { AlertTriangle, Info, OctagonX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -17,12 +18,38 @@ const KNOWN_TOOLS = new Set([
   "get_project_opinions",
 ]);
 
+/** The two ways out of a project that is gone (a 404 on the last answer). */
+export interface NotFoundActions {
+  readonly onAskWithout: () => void;
+  readonly onOpenProjects: () => void;
+}
+
 interface FailureBlockProps {
   readonly cut: boolean;
   /** Whether some of the answer is on screen above the block. */
   readonly hasText: boolean;
   readonly error?: AssistantMessageError;
   readonly onRetry?: () => void;
+  readonly notFound?: NotFoundActions;
+  /** Announce the block to screen readers; off for a block that was already there. */
+  readonly announce?: boolean;
+}
+
+function NotFoundButtons({ actions }: { readonly actions: NotFoundActions }) {
+  const { t } = useTranslation("assistant");
+
+  return (
+    <div className="mt-2 flex flex-wrap gap-2">
+      <Button type="button" variant="outline" size="sm" onClick={actions.onAskWithout}>
+        {t("message.askWithout")}
+      </Button>
+      <Button asChild variant="ghost" size="sm">
+        <Link to="/projects" onClick={actions.onOpenProjects}>
+          {t("message.openProjects")}
+        </Link>
+      </Button>
+    </div>
+  );
 }
 
 /**
@@ -30,7 +57,7 @@ interface FailureBlockProps {
  * from fixed copy: `error.detail` is whatever the server or the network said, and is
  * never shown.
  */
-function FailureBlock({ cut, hasText, error, onRetry }: FailureBlockProps) {
+function FailureBlock({ cut, hasText, error, onRetry, notFound, announce }: FailureBlockProps) {
   const { t } = useTranslation("assistant");
   let title = t("message.errors.generic");
   let hint: string | null = null;
@@ -53,7 +80,10 @@ function FailureBlock({ cut, hasText, error, onRetry }: FailureBlockProps) {
   }
 
   return (
-    <div className="mt-2 flex items-start gap-2.5 rounded-lg border border-destructive/50 bg-destructive/5 px-3 py-2.5 text-[13px]">
+    <div
+      role={announce ? "alert" : undefined}
+      className="mt-2 flex items-start gap-2.5 rounded-lg border border-destructive/50 bg-destructive/5 px-3 py-2.5 text-[13px]"
+    >
       <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" aria-hidden="true" />
       <div>
         <p className="font-medium">{title}</p>
@@ -63,6 +93,7 @@ function FailureBlock({ cut, hasText, error, onRetry }: FailureBlockProps) {
             {t("message.retry")}
           </Button>
         )}
+        {notFound && <NotFoundButtons actions={notFound} />}
       </div>
     </div>
   );
@@ -105,9 +136,11 @@ function ToolsLine({ tools }: { readonly tools: readonly string[] }) {
 export interface AssistantMessageProps {
   readonly message: AssistantMessageData;
   readonly onRetry?: () => void;
+  readonly notFound?: NotFoundActions;
+  readonly announce?: boolean;
 }
 
-function AssistantAnswer({ message, onRetry }: AssistantMessageProps) {
+function AssistantAnswer({ message, onRetry, notFound, announce }: AssistantMessageProps) {
   const { t } = useTranslation("assistant");
   const [openN, setOpenN] = useState<number | null>(null);
   // A fresh object per citation click, so citing the row that is already open scrolls again.
@@ -162,7 +195,14 @@ function AssistantAnswer({ message, onRetry }: AssistantMessageProps) {
         </p>
       )}
       {(status === "error" || status === "cut") && (
-        <FailureBlock cut={status === "cut"} hasText={hasText} error={message.error} onRetry={onRetry} />
+        <FailureBlock
+          cut={status === "cut"}
+          hasText={hasText}
+          error={message.error}
+          onRetry={onRetry}
+          notFound={notFound}
+          announce={announce}
+        />
       )}
       {checks && <ChecksLines checks={checks} />}
       {sources.length > 0 && (
@@ -173,8 +213,17 @@ function AssistantAnswer({ message, onRetry }: AssistantMessageProps) {
   );
 }
 
-/** One turn of the conversation. The user's text is never read as markdown. */
-export function AssistantMessage({ message, onRetry }: AssistantMessageProps) {
+/**
+ * One turn of the conversation. The user's text is never read as markdown. Memoised:
+ * react-markdown reparses an answer on every render, and during a stream the feed
+ * renders on every token, so a settled message must not follow it.
+ */
+export const AssistantMessage = memo(function AssistantMessage({
+  message,
+  onRetry,
+  notFound,
+  announce,
+}: AssistantMessageProps) {
   if (message.role === "user") {
     return (
       <div className="ml-auto max-w-[80%] whitespace-pre-wrap rounded-xl rounded-br-sm bg-primary px-3 py-2 text-sm text-primary-foreground">
@@ -182,5 +231,5 @@ export function AssistantMessage({ message, onRetry }: AssistantMessageProps) {
       </div>
     );
   }
-  return <AssistantAnswer message={message} onRetry={onRetry} />;
-}
+  return <AssistantAnswer message={message} onRetry={onRetry} notFound={notFound} announce={announce} />;
+});
