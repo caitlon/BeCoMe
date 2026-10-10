@@ -7,7 +7,7 @@ import { AssistantUIProvider, useAssistantUI } from '@/contexts/AssistantUIConte
 
 const mockSetAvailable = vi.fn();
 const mockCloseAssistant = vi.fn();
-let mockAuth: { isAuthenticated: boolean; user: { id: string } | null } = {
+let mockAuth: { isAuthenticated: boolean; status?: string; user: { id: string } | null } = {
   isAuthenticated: true,
   user: { id: 'u1' },
 };
@@ -119,6 +119,30 @@ describe('AssistantRoot', () => {
 
     expect(screen.getByTestId('panel')).toHaveAttribute('data-user', 'user-42');
     expect(screen.getByTestId('panel')).toHaveAttribute('data-mode', 'hybrid');
+  });
+
+  it('keeps the panel while the session is re-read for the same user', () => {
+    mockUseAssistantConfig.mockReturnValue(enabledConfig);
+    mockAuth = { isAuthenticated: false, status: 'loading', user: { id: 'u1' } };
+
+    render(<AssistantRoot />);
+
+    expect(screen.getByTestId('panel')).toHaveAttribute('data-user', 'u1');
+    expect(mockUseAssistantConfig).toHaveBeenCalledWith(true);
+  });
+
+  it.each([
+    ['the first load, before any user is known', { isAuthenticated: false, status: 'loading', user: null }],
+    ['a sign-out', { isAuthenticated: false, status: 'unauthenticated', user: null }],
+    ['an unavailable service', { isAuthenticated: false, status: 'serviceUnavailable', user: { id: 'u1' } }],
+  ])('renders no panel on %s', (_name, auth) => {
+    mockUseAssistantConfig.mockReturnValue(enabledConfig);
+    mockAuth = auth;
+
+    render(<AssistantRoot />);
+
+    expect(screen.queryByTestId('panel')).not.toBeInTheDocument();
+    expect(mockUseAssistantConfig).toHaveBeenCalledWith(false);
   });
 
   it('renders no panel for a session that has no user yet', () => {
