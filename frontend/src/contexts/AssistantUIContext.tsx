@@ -8,7 +8,8 @@ interface AssistantUIValue {
   readonly setAvailable: (available: boolean) => void;
   /** Records which project the current page shows, without touching the panel. */
   readonly setPageProjectId: (projectId: string | null) => void;
-  readonly openAssistant: (projectId?: string) => void;
+  /** No argument: the page's project. `null`: the general panel, whatever page this is. */
+  readonly openAssistant: (projectId?: string | null) => void;
   readonly closeAssistant: () => void;
 }
 
@@ -38,8 +39,9 @@ const DEFAULT_VALUE: AssistantUIValue = {
  * Two project ids on purpose. `pageProjectId` follows the page (set and
  * cleared by the scope hook as routes change); `projectId` belongs to the
  * panel, is fixed when it opens (the argument, else the page's project) and
- * is cleared only on close, so navigating while the panel is open does not
- * quietly change what it is about.
+ * is replaced only by the next open, so navigating while the panel is open does
+ * not quietly change what it is about. Closing keeps it, because the conversation
+ * is stored under it and a turn still being answered belongs to that conversation.
  */
 export function AssistantUIProvider({ children }: { readonly children: ReactNode }) {
   const [isAvailable, setAvailable] = useState(false);
@@ -48,8 +50,8 @@ export function AssistantUIProvider({ children }: { readonly children: ReactNode
   const [pageProjectId, setPageProjectId] = useState<string | null>(null);
 
   const openAssistant = useCallback(
-    (nextProjectId?: string) => {
-      setProjectId(nextProjectId ?? pageProjectId);
+    (nextProjectId?: string | null) => {
+      setProjectId(nextProjectId === undefined ? pageProjectId : nextProjectId);
       setIsOpen(true);
     },
     [pageProjectId]
@@ -57,7 +59,6 @@ export function AssistantUIProvider({ children }: { readonly children: ReactNode
 
   const closeAssistant = useCallback(() => {
     setIsOpen(false);
-    setProjectId(null);
   }, []);
 
   const value = useMemo(

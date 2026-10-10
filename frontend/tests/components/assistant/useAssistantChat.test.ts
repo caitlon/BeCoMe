@@ -658,6 +658,135 @@ describe('useAssistantChat', () => {
     });
   });
 
+  describe('retry', () => {
+    it('sends the given question as a new turn, whatever is in the box', async () => {
+      const stream = openStream();
+      const { result } = setup({ projectId: 'project-1' });
+      ask(result, 'Why?');
+      stream.token('Half');
+      stream.fail(new StreamIncompleteError());
+      await waitFor(() => expect(result.current.messages[1].status).toBe('cut'));
+      act(() => result.current.setDraft('something else'));
+
+      openStream().done();
+      await act(() => result.current.retry('Why?'));
+
+      expect(mockStreamAssistantMessage).toHaveBeenCalledTimes(2);
+      expect(mockStreamAssistantMessage.mock.calls[1][0]).toMatchObject({
+        message: 'Why?', project_id: 'project-1',
+      });
+      expect(result.current.messages).toHaveLength(4);
+      expect(result.current.messages[3]).toMatchObject({ status: 'done', content: RESPONSE.answer });
+      expect(result.current.draft).toBe('something else');
+    });
+
+    it('empties the box when the failed question was put back into it', async () => {
+      const stream = openStream();
+      const { result } = setup();
+      ask(result, 'Why?');
+      stream.error(503, 'down');
+      await waitFor(() => expect(result.current.draft).toBe('Why?'));
+
+      openStream().done();
+      await act(() => result.current.retry('Why?'));
+
+      expect(result.current.draft).toBe('');
+      expect(result.current.messages[3].status).toBe('done');
+    });
+
+    it('does not send the failed question a second time in the history', async () => {
+      const stream = openStream();
+      const { result } = setup();
+      ask(result, 'Why?');
+      stream.error(503, 'down');
+      await waitFor(() => expect(result.current.isPending).toBe(false));
+
+      openStream().done();
+      await act(() => result.current.retry('Why?'));
+
+      expect(mockStreamAssistantMessage.mock.calls[1][0].history).toEqual([]);
+    });
+
+    it('leaves the question of a cut turn out of the history of its retry', async () => {
+      const stream = openStream();
+      const { result } = setup();
+      ask(result, 'Why?');
+      stream.token('Half');
+      stream.fail(new StreamIncompleteError());
+      await waitFor(() => expect(result.current.messages[1].status).toBe('cut'));
+
+      openStream().done();
+      await act(() => result.current.retry('Why?'));
+
+      expect(mockStreamAssistantMessage.mock.calls[1][0].history).toEqual([]);
+      expect(result.current.messages[0].status).toBe('error');
+      expect(result.current.messages).toHaveLength(4);
+      expect(result.current.messages[2]).toMatchObject({ role: 'user', content: 'Why?', status: 'done' });
+    });
+
+    it('keeps the answered turns before the retried one in the history', async () => {
+      const stream = openStream();
+      const { result } = setup();
+      ask(result, 'q0');
+      stream.done({ ...RESPONSE, answer: 'a0' });
+      await waitFor(() => expect(result.current.isPending).toBe(false));
+      ask(result, 'q1');
+      stream.token('Half');
+      stream.fail(new StreamIncompleteError());
+      await waitFor(() => expect(result.current.messages[3].status).toBe('cut'));
+
+      openStream().done();
+      await act(() => result.current.retry('q1'));
+
+      expect(mockStreamAssistantMessage.mock.calls[2][0].history).toEqual([
+        { role: 'user', content: 'q0' },
+        { role: 'assistant', content: 'a0' },
+      ]);
+    });
+
+    it('leaves an answered question alone when its text is asked again', async () => {
+      openStream().done({ ...RESPONSE, answer: 'a0' });
+      const { result } = setup();
+      ask(result, 'Why?');
+      await waitFor(() => expect(result.current.isPending).toBe(false));
+
+      openStream().done();
+      await act(() => result.current.retry('Why?'));
+
+      expect(result.current.messages[0].status).toBe('done');
+      expect(mockStreamAssistantMessage.mock.calls[1][0].history).toEqual([
+        { role: 'user', content: 'Why?' },
+        { role: 'assistant', content: 'a0' },
+      ]);
+    });
+
+    it('marks no earlier question failed when the text is not that of the failed turn', async () => {
+      const stream = openStream();
+      const { result } = setup();
+      ask(result, 'Why?');
+      stream.token('Half');
+      stream.fail(new StreamIncompleteError());
+      await waitFor(() => expect(result.current.messages[1].status).toBe('cut'));
+
+      openStream().done();
+      await act(() => result.current.retry('Something else'));
+
+      expect(result.current.messages[0].status).toBe('done');
+    });
+
+    it('is refused while a turn is pending, and for an empty question', async () => {
+      openStream();
+      const { result } = setup();
+      ask(result, 'first');
+      await waitFor(() => expect(result.current.isPending).toBe(true));
+
+      await act(() => result.current.retry('again'));
+      await act(() => result.current.retry(''));
+
+      expect(mockStreamAssistantMessage).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('history window', () => {
     /** One answered exchange, `n` times over, each answer `a<i>` to the question `q<i>`. */
     async function converse(result: Chat, stream: ReturnType<typeof openStream>, n: number) {

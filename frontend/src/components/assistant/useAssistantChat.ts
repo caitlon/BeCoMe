@@ -191,6 +191,16 @@ function markFailed(m: AssistantMessage): AssistantMessage {
   return { ...m, status: "error" };
 }
 
+// A retried turn is asked again, so its earlier copy of the question is marked failed, as
+// a refused one is: otherwise the next request would carry the question twice.
+function failRetriedQuestion(messages: AssistantMessage[], text: string): AssistantMessage[] {
+  const answer = messages[messages.length - 1];
+  const question = messages[messages.length - 2];
+  const failed = answer?.status === "error" || answer?.status === "cut";
+  if (!failed || question?.role !== "user" || question.content !== text) return messages;
+  return patchMessage(messages, question.id, markFailed);
+}
+
 // What the stream has produced so far; the caller reads it after a failure to tell
 // a refusal (nothing was said) from a cut answer.
 interface StreamProgress {
@@ -290,15 +300,17 @@ export function useAssistantChat({
     [storageKey]
   );
 
-  const sendMessage = useCallback(async () => {
-    const text = draft.trim();
+  // Sends `text` as a new turn: the draft's text for a send, or the question of a
+  // failed turn for a retry.
+  const send = useCallback(async (text: string, retried = false) => {
     if (!text || abortRef.current) return;
+    const earlier = retried ? failRetriedQuestion(current.messages, text) : current.messages;
 
     const startedAtMs = Date.now();
     const pendingId = crypto.randomUUID();
-    const history: ChatTurn[] = historyWindow(current.messages).map((index) => ({
-      role: current.messages[index].role,
-      content: current.messages[index].content,
+    const history: ChatTurn[] = historyWindow(earlier).map((index) => ({
+      role: earlier[index].role,
+      content: earlier[index].content,
     }));
     const userMessage: AssistantMessage = {
       id: crypto.randomUUID(),
@@ -338,10 +350,12 @@ export function useAssistantChat({
     abortRef.current = controller;
     setThread({
       ...current,
-      messages: [...current.messages, userMessage, answer].slice(-MAX_MESSAGES),
+      messages: [...earlier, userMessage, answer].slice(-MAX_MESSAGES),
       writes: current.writes + 1,
     });
-    setDraft("");
+    // A retried question was put back into the box by the failure; one the user has
+    // replaced with something else stays.
+    setDraft((d) => (d.trim() === text ? "" : d));
     setNow(startedAtMs);
 
     try {
@@ -366,7 +380,10 @@ export function useAssistantChat({
     } finally {
       if (abortRef.current === controller) abortRef.current = null;
     }
-  }, [draft, current, projectId]);
+  }, [current, projectId]);
+
+  const sendMessage = useCallback(() => send(draft.trim()), [send, draft]);
+  const retry = useCallback((text: string) => send(text, true), [send]);
 
   const cancel = useCallback(() => {
     abortRef.current?.abort();
@@ -386,6 +403,7 @@ export function useAssistantChat({
     draft,
     setDraft,
     sendMessage,
+    retry,
     cancel,
     clear,
     isPending,
