@@ -10,10 +10,11 @@ import { AssistantSources } from "./AssistantSources";
 import { cleanChecks, cleanSources, cleanToolsUsed, sourceAnchorId } from "./message-shape";
 import type { AssistantMessage as AssistantMessageData, AssistantMessageError } from "./useAssistantChat";
 
-// A blinking bar after the last block of text, so it sits at the end of the last line
-// without the markdown renderer knowing about it.
+// A blinking bar after the last line of text, so the markdown renderer knows nothing about it:
+// the last block, or the last item when that block is a list.
 const STREAMING_CURSOR =
-  "[&>:last-child]:after:ml-0.5 [&>:last-child]:after:inline-block [&>:last-child]:after:h-4 [&>:last-child]:after:w-0.5 [&>:last-child]:after:animate-pulse [&>:last-child]:after:bg-foreground [&>:last-child]:after:align-middle [&>:last-child]:after:content-[''] motion-reduce:[&>:last-child]:after:animate-none";
+  "[&>:last-child:not(ul,ol)]:after:ml-0.5 [&>:last-child:not(ul,ol)]:after:inline-block [&>:last-child:not(ul,ol)]:after:h-4 [&>:last-child:not(ul,ol)]:after:w-0.5 [&>:last-child:not(ul,ol)]:after:animate-pulse [&>:last-child:not(ul,ol)]:after:bg-foreground [&>:last-child:not(ul,ol)]:after:align-middle [&>:last-child:not(ul,ol)]:after:content-[''] motion-reduce:[&>:last-child:not(ul,ol)]:after:animate-none " +
+  "[&>:is(ul,ol):last-child>li:last-child]:after:ml-0.5 [&>:is(ul,ol):last-child>li:last-child]:after:inline-block [&>:is(ul,ol):last-child>li:last-child]:after:h-4 [&>:is(ul,ol):last-child>li:last-child]:after:w-0.5 [&>:is(ul,ol):last-child>li:last-child]:after:animate-pulse [&>:is(ul,ol):last-child>li:last-child]:after:bg-foreground [&>:is(ul,ol):last-child>li:last-child]:after:align-middle [&>:is(ul,ol):last-child>li:last-child]:after:content-[''] motion-reduce:[&>:is(ul,ol):last-child>li:last-child]:after:animate-none";
 
 const KNOWN_TOOLS = new Set([
   "search_docs",
