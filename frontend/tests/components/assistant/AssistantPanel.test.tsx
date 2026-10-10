@@ -388,7 +388,9 @@ describe('AssistantPanel', () => {
       expect(screen.getByRole('button', { name: 'Keep' })).toBeInTheDocument();
 
       rerender(ui(null));
+      expect(screen.queryByRole('button', { name: 'Keep' })).not.toBeInTheDocument();
 
+      rerender(ui('p1'));
       expect(screen.queryByRole('button', { name: 'Keep' })).not.toBeInTheDocument();
     });
 

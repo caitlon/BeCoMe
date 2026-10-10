@@ -7,6 +7,7 @@ import { AssistantUIProvider, useAssistantUI } from '@/contexts/AssistantUIConte
 
 const mockSetAvailable = vi.fn();
 const mockCloseAssistant = vi.fn();
+const mockForgetProject = vi.fn();
 let mockAuth: { isAuthenticated: boolean; status?: string; user: { id: string } | null } = {
   isAuthenticated: true,
   user: { id: 'u1' },
@@ -30,7 +31,7 @@ vi.mock('@/contexts/AssistantUIContext', async (importOriginal) => {
     useAssistantUI: () =>
       useRealUI
         ? actual.useAssistantUI()
-        : { ...mockUI, setAvailable: mockSetAvailable, closeAssistant: mockCloseAssistant },
+        : { ...mockUI, setAvailable: mockSetAvailable, closeAssistant: mockCloseAssistant, forgetProject: mockForgetProject },
   };
 });
 
@@ -165,12 +166,13 @@ describe('AssistantRoot', () => {
     expect(mockCloseAssistant).toHaveBeenCalledTimes(1);
   });
 
-  it('closes the assistant on sign-out and stops listening on unmount', () => {
+  it('closes the assistant and forgets its project on sign-out, and stops listening on unmount', () => {
     mockUseAssistantConfig.mockReturnValue(enabledConfig);
     const { unmount } = render(<AssistantRoot />);
 
     signOutListener?.();
     expect(mockCloseAssistant).toHaveBeenCalledTimes(1);
+    expect(mockForgetProject).toHaveBeenCalledTimes(1);
 
     unmount();
     expect(mockUnsubscribe).toHaveBeenCalled();

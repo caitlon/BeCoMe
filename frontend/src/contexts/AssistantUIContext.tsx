@@ -11,6 +11,8 @@ interface AssistantUIValue {
   /** No argument: the page's project. `null`: the general panel, whatever page this is. */
   readonly openAssistant: (projectId?: string | null) => void;
   readonly closeAssistant: () => void;
+  /** For a sign-out: the panel forgets the project it was last opened for. */
+  readonly forgetProject: () => void;
 }
 
 const AssistantUIContext = createContext<AssistantUIValue | undefined>(undefined);
@@ -23,6 +25,7 @@ const DEFAULT_VALUE: AssistantUIValue = {
   setPageProjectId: () => {},
   openAssistant: () => {},
   closeAssistant: () => {},
+  forgetProject: () => {},
 };
 
 /**
@@ -33,7 +36,8 @@ const DEFAULT_VALUE: AssistantUIValue = {
  * independent ones. Deliberately tiny and free of any assistant-specific
  * copy: it is always bundled, while every string, every network call and the
  * trigger buttons live in this feature's lazy chunks. Callers are the two
- * triggers (triggers.tsx), the panel root, and the page-scope hook in
+ * triggers (triggers.tsx), the panel root, the feed (AssistantFeed.tsx, for the
+ * way out of a missing project), and the page-scope hook in
  * components/assistant/index.tsx; Navbar and ResultsSection only render slots.
  *
  * Two project ids on purpose. `pageProjectId` follows the page (set and
@@ -61,6 +65,10 @@ export function AssistantUIProvider({ children }: { readonly children: ReactNode
     setIsOpen(false);
   }, []);
 
+  const forgetProject = useCallback(() => {
+    setProjectId(null);
+  }, []);
+
   const value = useMemo(
     () => ({
       isAvailable,
@@ -70,8 +78,9 @@ export function AssistantUIProvider({ children }: { readonly children: ReactNode
       setPageProjectId,
       openAssistant,
       closeAssistant,
+      forgetProject,
     }),
-    [isAvailable, isOpen, projectId, openAssistant, closeAssistant]
+    [isAvailable, isOpen, projectId, openAssistant, closeAssistant, forgetProject]
   );
 
   return <AssistantUIContext.Provider value={value}>{children}</AssistantUIContext.Provider>;
