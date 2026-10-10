@@ -7,7 +7,10 @@ import { AssistantUIProvider, useAssistantUI } from '@/contexts/AssistantUIConte
 
 const mockSetAvailable = vi.fn();
 const mockCloseAssistant = vi.fn();
-let mockAuth = { isAuthenticated: true };
+let mockAuth: { isAuthenticated: boolean; user: { id: string } | null } = {
+  isAuthenticated: true,
+  user: { id: 'u1' },
+};
 let mockUI = { isOpen: false, projectId: null as string | null };
 let signOutListener: (() => void) | undefined;
 const mockUnsubscribe = vi.fn();
@@ -36,22 +39,22 @@ vi.mock('@/components/assistant/useAssistantConfig', () => ({
   useAssistantConfig: (enabled: boolean) => mockUseAssistantConfig(enabled),
 }));
 vi.mock('@/components/assistant/AssistantPanel', () => ({
-  AssistantPanel: ({ open, projectId, onOpenChange }: {
-    open: boolean; projectId: string | null; onOpenChange: (open: boolean) => void;
+  AssistantPanel: ({ open, projectId, userId, mode, onOpenChange }: {
+    open: boolean; projectId: string | null; userId: string; mode: string; onOpenChange: (open: boolean) => void;
   }) => (
-    <div data-testid="panel" data-open={String(open)} data-project={projectId ?? ''}>
+    <div data-testid="panel" data-open={String(open)} data-project={projectId ?? ''} data-user={userId} data-mode={mode}>
       <button onClick={() => onOpenChange(false)}>dismiss</button>
       <button onClick={() => onOpenChange(true)}>reopen</button>
     </div>
   ),
 }));
 
-const enabledConfig = { isSuccess: true, data: { enabled: true, model: 'x' } };
+const enabledConfig = { isSuccess: true, data: { enabled: true, model: 'x', mode: 'hybrid' } };
 
 describe('AssistantRoot', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockAuth = { isAuthenticated: true };
+    mockAuth = { isAuthenticated: true, user: { id: 'u1' } };
     mockUI = { isOpen: false, projectId: null };
     signOutListener = undefined;
     useRealUI = false;
@@ -86,7 +89,7 @@ describe('AssistantRoot', () => {
   });
 
   it('asks for the config only for a signed-in user, and is unavailable for a guest', async () => {
-    mockAuth = { isAuthenticated: false };
+    mockAuth = { isAuthenticated: false, user: null };
     mockUseAssistantConfig.mockReturnValue(enabledConfig);
 
     render(<AssistantRoot />);
@@ -106,6 +109,25 @@ describe('AssistantRoot', () => {
     const panel = screen.getByTestId('panel');
     expect(panel).toHaveAttribute('data-open', 'true');
     expect(panel).toHaveAttribute('data-project', 'p1');
+  });
+
+  it('gives the panel the signed-in user and the mode of the backend', () => {
+    mockUseAssistantConfig.mockReturnValue(enabledConfig);
+    mockAuth = { isAuthenticated: true, user: { id: 'user-42' } };
+
+    render(<AssistantRoot />);
+
+    expect(screen.getByTestId('panel')).toHaveAttribute('data-user', 'user-42');
+    expect(screen.getByTestId('panel')).toHaveAttribute('data-mode', 'hybrid');
+  });
+
+  it('renders no panel for a session that has no user yet', () => {
+    mockUseAssistantConfig.mockReturnValue(enabledConfig);
+    mockAuth = { isAuthenticated: true, user: null };
+
+    render(<AssistantRoot />);
+
+    expect(screen.queryByTestId('panel')).not.toBeInTheDocument();
   });
 
   it('closes the assistant when the panel asks to close, and ignores a request to open', async () => {
