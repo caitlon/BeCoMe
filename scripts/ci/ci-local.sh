@@ -65,11 +65,11 @@ case "${1:-all}" in
   e2e)         run_e2e ;;
   e2e-backend) run_e2e_backend ;;
   e2e-pw)      run_e2e_playwright ;;
-  fast)        run_lint && run_test ;;
+  fast)        run_lint; run_test ;;
   smoke)       "$PROJECT_ROOT/scripts/ci/smoke-test.sh" "${@:2}" ;;
   sonar)       "$PROJECT_ROOT/scripts/ci/sonar-local.sh" "${@:2}" ;;
   mutmut)      "$PROJECT_ROOT/scripts/ci/mutmut-run.sh" "${@:2}" ;;
-  all)         run_lint && run_test && run_e2e ;;
+  all)         run_lint; run_test; run_e2e ;;
   *)
     echo "Usage: $0 {lint|test|e2e|e2e-backend|e2e-pw|fast|smoke|sonar|mutmut|all}"
     exit 1
