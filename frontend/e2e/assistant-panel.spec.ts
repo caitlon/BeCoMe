@@ -115,9 +115,14 @@ async function openPanel(page: Page, path = '/about') {
 
 const box = (page: Page) => page.getByRole('textbox', { name: 'Ask a question…' });
 
-async function ask(page: Page, question = QUESTION) {
-  await box(page).fill(question);
+async function ask(page: Page) {
+  await box(page).fill(QUESTION);
   await box(page).press('Enter');
+}
+
+/** The WCAG violations inside the open panel. */
+async function auditDialog(page: Page) {
+  return (await new AxeBuilder({ page }).include('[role="dialog"]').withTags(WCAG_TAGS).analyze()).violations;
 }
 
 test.describe('Assistant panel', () => {
@@ -139,10 +144,7 @@ test.describe('Assistant panel', () => {
     await feed.getByRole('button', { name: /Reading the result/ }).click();
     await expect(feed.getByText(SOURCE.snippet)).toBeVisible();
 
-    const violations = (
-      await new AxeBuilder({ page }).include('[role="dialog"]').withTags(WCAG_TAGS).analyze()
-    ).violations;
-    expect(violations).toEqual([]);
+    expect(await auditDialog(page)).toEqual([]);
   });
 
   test('Stop ends a running answer, and Escape does not', async ({ page }) => {
@@ -159,7 +161,10 @@ test.describe('Assistant panel', () => {
     await expect(box(page)).toBeEnabled();
 
     await page.keyboard.press('Escape');
-    await expect(page.getByRole('dialog', { name: 'Assistant' })).toBeVisible();
+    // A closing sheet stays in the DOM through its exit animation, so "visible" alone would
+    // pass a sheet that has begun to close: wait out the animation, then read the state.
+    await page.waitForTimeout(500);
+    await expect(page.getByRole('dialog', { name: 'Assistant' })).toHaveAttribute('data-state', 'open');
     await expect(stop).toBeVisible();
 
     await stop.click();
@@ -178,6 +183,22 @@ test.describe('Assistant panel', () => {
     await expect(box(page)).toHaveValue(QUESTION);
     await expect(page.getByRole('button', { name: 'Try again' })).toHaveCount(0);
     await expect(page.getByText('internal detail')).toHaveCount(0);
+  });
+
+  test('a rate limit with no Retry-After, as the API sends it, offers Try again at once', async ({ page }) => {
+    let calls = 0;
+    await mockApp(page, (route) => (++calls === 1 ? refused(429)(route) : streamed(route)));
+    await openPanel(page);
+
+    await ask(page);
+
+    await expect(page.getByText('Message limit reached. Try again later.')).toBeVisible();
+    await expect(box(page)).toHaveValue(QUESTION);
+    const retried = page.waitForRequest(STREAM);
+    await page.getByRole('button', { name: 'Try again' }).click();
+
+    expect(questionOf(await retried)).toBe(QUESTION);
+    await expect(page.getByRole('log')).toContainText('is the midpoint of the mean and the median');
   });
 
   test('an unavailable model keeps the question and Try again re-sends it', async ({ page }) => {
@@ -254,11 +275,7 @@ test.describe('Assistant panel', () => {
       await expect(page.getByRole('group', { name: 'Clear the conversation? This cannot be undone.' })).toBeVisible();
       await expect(page.locator('html')).toHaveClass(new RegExp(theme));
 
-      const violations = (
-        await new AxeBuilder({ page }).include('[role="dialog"]').withTags(WCAG_TAGS).analyze()
-      ).violations;
-
-      expect(violations).toEqual([]);
+      expect(await auditDialog(page)).toEqual([]);
     });
   }
 
