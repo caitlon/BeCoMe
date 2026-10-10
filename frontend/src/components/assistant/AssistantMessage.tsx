@@ -10,6 +10,11 @@ import { AssistantSources } from "./AssistantSources";
 import { cleanChecks, cleanSources, cleanToolsUsed, sourceAnchorId } from "./message-shape";
 import type { AssistantMessage as AssistantMessageData, AssistantMessageError } from "./useAssistantChat";
 
+// A blinking bar after the last block of text, so it sits at the end of the last line
+// without the markdown renderer knowing about it.
+const STREAMING_CURSOR =
+  "[&>:last-child]:after:ml-0.5 [&>:last-child]:after:inline-block [&>:last-child]:after:h-4 [&>:last-child]:after:w-0.5 [&>:last-child]:after:animate-pulse [&>:last-child]:after:bg-foreground [&>:last-child]:after:align-middle [&>:last-child]:after:content-[''] motion-reduce:[&>:last-child]:after:animate-none";
+
 const KNOWN_TOOLS = new Set([
   "search_docs",
   "list_my_projects",
@@ -18,9 +23,10 @@ const KNOWN_TOOLS = new Set([
   "get_project_opinions",
 ]);
 
-/** The two ways out of a project that is gone (a 404 on the last answer). */
+/** The ways out of a project that is gone (a 404 on the last answer). */
 export interface NotFoundActions {
-  readonly onAskWithout: () => void;
+  /** Absent in a conversation that is not about a project: there is nothing to ask without. */
+  readonly onAskWithout?: () => void;
   readonly onOpenProjects: () => void;
 }
 
@@ -40,9 +46,11 @@ function NotFoundButtons({ actions }: { readonly actions: NotFoundActions }) {
 
   return (
     <div className="mt-2 flex flex-wrap gap-2">
-      <Button type="button" variant="outline" size="sm" onClick={actions.onAskWithout}>
-        {t("message.askWithout")}
-      </Button>
+      {actions.onAskWithout && (
+        <Button type="button" variant="outline" size="sm" onClick={actions.onAskWithout}>
+          {t("message.askWithout")}
+        </Button>
+      )}
       <Button asChild variant="ghost" size="sm">
         <Link to="/projects" onClick={actions.onOpenProjects}>
           {t("message.openProjects")}
@@ -177,6 +185,7 @@ function AssistantAnswer({ message, onRetry, notFound, announce }: AssistantMess
           className={cn(
             "[&_code]:whitespace-pre-wrap [&_li]:my-0.5 [&_ol]:mb-2 [&_ol]:list-decimal [&_ol]:pl-[18px] [&_p]:mb-2 [&_ul]:mb-2 [&_ul]:list-disc [&_ul]:pl-[18px]",
             partial && "border-l-2 border-dashed pl-2.5 opacity-75",
+            status === "pending" && STREAMING_CURSOR,
           )}
         >
           <AssistantMarkdown
