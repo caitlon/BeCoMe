@@ -149,11 +149,13 @@ test.describe('Assistant panel', () => {
     // Never answered: the request hangs until the page aborts it.
     await mockApp(page, () => new Promise(() => undefined));
     await openPanel(page);
+    const aborted = page.waitForEvent('requestfailed', (request) => request.url().includes('/assistant/chat/stream'));
 
     await ask(page);
     const stop = page.getByRole('button', { name: 'Stop' });
     await expect(stop).toBeVisible();
-    await expect(page.getByText('Answering…')).toBeVisible();
+    await expect(page.getByRole('log').getByText('Answering…')).toBeVisible();
+    await expect(page.getByRole('dialog').getByRole('status')).toHaveText('Answering');
     await expect(box(page)).toBeEnabled();
 
     await page.keyboard.press('Escape');
@@ -161,6 +163,7 @@ test.describe('Assistant panel', () => {
     await expect(stop).toBeVisible();
 
     await stop.click();
+    expect((await aborted).failure()?.errorText).toMatch(/abort/i);
     await expect(page.getByText('Stopped')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Send' })).toBeVisible();
   });
@@ -239,6 +242,25 @@ test.describe('Assistant panel', () => {
     expect(questionOf(await retried)).toBe(QUESTION);
     await expect(page.getByRole('log')).toContainText('is the midpoint of the mean and the median');
   });
+
+  for (const theme of ['light', 'dark'] as const) {
+    test(`the clear confirmation passes the WCAG audit in the ${theme} theme`, async ({ page }) => {
+      await page.addInitScript((value) => localStorage.setItem('become-theme', value), theme);
+      await mockApp(page, streamed);
+      await openPanel(page);
+      await ask(page);
+      await expect(page.getByRole('log')).toContainText('is the midpoint');
+      await page.getByRole('button', { name: 'Clear conversation' }).click();
+      await expect(page.getByRole('group', { name: 'Clear the conversation? This cannot be undone.' })).toBeVisible();
+      await expect(page.locator('html')).toHaveClass(new RegExp(theme));
+
+      const violations = (
+        await new AxeBuilder({ page }).include('[role="dialog"]').withTags(WCAG_TAGS).analyze()
+      ).violations;
+
+      expect(violations).toEqual([]);
+    });
+  }
 
   test('clearing asks first and then empties the conversation', async ({ page }) => {
     await mockApp(page, streamed);
