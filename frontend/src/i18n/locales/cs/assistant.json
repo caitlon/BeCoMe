@@ -28,7 +28,8 @@
   },
   "composer": {
     "placeholder": "Napište otázku…",
-    "hint": "Enter odešle · Shift+Enter nový řádek"
+    "hint": "Enter odešle · Shift+Enter nový řádek",
+    "stop": "Zastavit"
   },
   "message": {
     "sources": "Zdroje",

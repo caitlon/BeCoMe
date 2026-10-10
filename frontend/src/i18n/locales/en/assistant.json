@@ -28,7 +28,8 @@
   },
   "composer": {
     "placeholder": "Ask a question…",
-    "hint": "Enter to send · Shift+Enter for a new line"
+    "hint": "Enter to send · Shift+Enter for a new line",
+    "stop": "Stop"
   },
   "message": {
     "sources": "Sources",
