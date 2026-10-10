@@ -1,4 +1,4 @@
-import type { KeyboardEvent, Ref } from "react";
+import { useImperativeHandle, useLayoutEffect, useRef, type KeyboardEvent, type Ref } from "react";
 import { useTranslation } from "react-i18next";
 import { Send, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -6,6 +6,9 @@ import { Textarea } from "@/components/ui/textarea";
 
 /** Mirrors AssistantChatRequest.message (api/schemas/assistant.py). */
 export const MAX_QUESTION_LENGTH = 4000;
+
+// What a keydown reports while an input method is handling the key.
+const IME_KEY_CODE = 229;
 
 export interface AssistantComposerProps {
   readonly value: string;
@@ -19,8 +22,10 @@ export interface AssistantComposerProps {
 
 /**
  * The question box. Enter sends, Shift+Enter breaks the line, and an Enter that
- * confirms an IME candidate does neither. The box is never disabled, because the
- * hook puts a refused question back into it while the user may be typing.
+ * confirms an IME candidate does neither: Safari reports that one after the
+ * composition has ended, with `isComposing` already false, but with keyCode 229.
+ * The box is never disabled, because the hook puts a refused question back into
+ * it while the user may be typing. It grows with its text, and scrolls past six lines.
  */
 export function AssistantComposer({
   value,
@@ -33,9 +38,22 @@ export function AssistantComposer({
   const { t } = useTranslation("assistant");
   const { t: tCommon } = useTranslation("common");
   const canSend = value.trim() !== "" && !isPending;
+  const innerRef = useRef<HTMLTextAreaElement>(null);
+  // The element is the handle: the parent focuses it, this component measures it.
+  useImperativeHandle(textareaRef, () => innerRef.current as HTMLTextAreaElement, []);
+
+  // After every change of the text, however it came (typing, a suggestion, a restored question).
+  useLayoutEffect(() => {
+    const element = innerRef.current;
+    if (!element) return;
+    element.style.height = "auto";
+    element.style.height = `${element.scrollHeight}px`;
+  }, [value]);
 
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
-    if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
+    if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing || event.keyCode === IME_KEY_CODE) {
+      return;
+    }
     event.preventDefault();
     if (canSend) onSend();
   }
@@ -44,7 +62,7 @@ export function AssistantComposer({
     <div className="border-t px-4 pb-3 pt-2.5">
       <div className="flex items-end gap-2">
         <Textarea
-          ref={textareaRef}
+          ref={innerRef}
           value={value}
           onChange={(event) => onChange(event.target.value)}
           onKeyDown={handleKeyDown}
@@ -52,7 +70,7 @@ export function AssistantComposer({
           rows={1}
           placeholder={t("composer.placeholder")}
           aria-label={t("composer.placeholder")}
-          className="min-h-11 resize-none"
+          className="max-h-[8.5rem] min-h-11 resize-none overflow-y-auto"
         />
         {isPending ? (
           <Button

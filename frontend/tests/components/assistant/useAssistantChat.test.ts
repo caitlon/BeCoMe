@@ -852,6 +852,30 @@ describe('useAssistantChat', () => {
       ]);
     });
 
+    it('starts the window on a question, never between a question and its answer', async () => {
+      // Ten answered exchanges, then a question whose answer was cut: 21 messages count as
+      // sent, so the last 20 would begin with the answer to the first question.
+      const thread: AssistantMessage[] = [];
+      for (let i = 0; i < 10; i += 1) {
+        thread.push(storedMessage(thread.length, 'user', 'done', `q${i}`));
+        thread.push(storedMessage(thread.length, 'assistant', 'done', `a${i}`));
+      }
+      thread.push(storedMessage(thread.length, 'user', 'done', 'q10'));
+      thread.push(storedMessage(thread.length, 'assistant', 'cut', 'part'));
+      seed(thread);
+      mockStreamAssistantMessage.mockClear();
+      openStream().done();
+      const { result } = setup();
+
+      expect(result.current.historyWindowStart).toBe(2);
+      ask(result, 'next');
+
+      const { history } = mockStreamAssistantMessage.mock.calls[0][0];
+      expect(history[0]).toEqual({ role: 'user', content: 'q1' });
+      expect(history).toHaveLength(19);
+      expect(history[18]).toEqual({ role: 'user', content: 'q10' });
+    });
+
     it('exposes the index of the oldest message inside the window', async () => {
       const stream = openStream();
       const { result } = setup();
