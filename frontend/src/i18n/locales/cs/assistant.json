@@ -9,6 +9,9 @@
     "scopeGeneral": "Metoda a aplikace",
     "seesOnly": "Vidí jen to, co v projektu vidíte vy.",
     "clear": "Vymazat konverzaci",
+    "clearConfirm": "Vymazat konverzaci? Nelze vrátit zpět.",
+    "clearYes": "Vymazat",
+    "clearNo": "Ponechat",
     "footer": "Asistent se může mýlit. Ověřte na stránce výsledku."
   },
   "empty": {

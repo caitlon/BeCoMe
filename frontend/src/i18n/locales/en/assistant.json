@@ -9,6 +9,9 @@
     "scopeGeneral": "Method and app",
     "seesOnly": "Sees only what you see in this project.",
     "clear": "Clear conversation",
+    "clearConfirm": "Clear the conversation? This cannot be undone.",
+    "clearYes": "Clear",
+    "clearNo": "Keep",
     "footer": "The assistant can be wrong. Check the result page."
   },
   "empty": {

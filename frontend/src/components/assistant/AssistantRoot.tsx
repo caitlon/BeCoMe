@@ -13,7 +13,7 @@ import "./i18n";
  * production build without VITE_ASSISTANT_ENABLED never emits.
  */
 export default function AssistantRoot() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const { isOpen, projectId, setAvailable, closeAssistant } = useAssistantUI();
   const configQuery = useAssistantConfig(isAuthenticated);
   const available = isAuthenticated && configQuery.isSuccess && configQuery.data.enabled;
@@ -42,7 +42,8 @@ export default function AssistantRoot() {
     [closeAssistant]
   );
 
-  if (!available) {
+  // `available` implies a signed-in user; the check is for the type, which cannot know it.
+  if (!available || !user) {
     return null;
   }
 
@@ -53,6 +54,8 @@ export default function AssistantRoot() {
         if (!open) closeAssistant();
       }}
       projectId={projectId}
+      userId={user.id}
+      mode={configQuery.data.mode}
     />
   );
 }
