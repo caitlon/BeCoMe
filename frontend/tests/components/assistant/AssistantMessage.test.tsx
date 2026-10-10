@@ -424,6 +424,33 @@ describe('AssistantMessage', () => {
 
       expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument();
     });
+
+    it('is an alert only when told to announce it', () => {
+      const failed: Partial<Message> = { status: 'error', content: '', error: { code: 503, detail: 'x' } };
+      const { unmount } = render(<AssistantMessage message={{ ...base, ...failed }} announce />);
+      expect(screen.getByRole('alert')).toHaveTextContent('The assistant is temporarily unavailable.');
+      unmount();
+
+      render(<AssistantMessage message={{ ...base, ...failed }} />);
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+
+    it('offers the two ways out of a missing project when given them, and not otherwise', async () => {
+      const notFound = { onAskWithout: vi.fn(), onOpenProjects: vi.fn() };
+      const gone: Partial<Message> = { status: 'error', content: '', error: { code: 404, detail: 'x' } };
+      const { unmount } = render(<AssistantMessage message={{ ...base, ...gone }} notFound={notFound} />);
+
+      await userEvent.click(screen.getByRole('button', { name: 'Ask without the project' }));
+      await userEvent.click(screen.getByRole('link', { name: 'Open projects' }));
+
+      expect(notFound.onAskWithout).toHaveBeenCalledTimes(1);
+      expect(notFound.onOpenProjects).toHaveBeenCalledTimes(1);
+      unmount();
+
+      renderMessage(gone);
+      expect(screen.queryByRole('button', { name: 'Ask without the project' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: 'Open projects' })).not.toBeInTheDocument();
+    });
   });
 
   describe('cancelled', () => {

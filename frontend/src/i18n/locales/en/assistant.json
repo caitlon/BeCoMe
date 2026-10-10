@@ -31,6 +31,10 @@
     "hint": "Enter to send · Shift+Enter for a new line",
     "stop": "Stop"
   },
+  "feed": {
+    "label": "Conversation",
+    "older": "Older messages are no longer sent with new questions."
+  },
   "message": {
     "sources": "Sources",
     "localCopy": "Local copy",
@@ -62,6 +66,14 @@
       "generic": "Something went wrong. Please try again.",
       "cut": "The connection dropped before the answer finished.",
       "cutHint": "What arrived is shown above. It is not sent with your next question."
+    },
+    "askWithout": "Ask without the project",
+    "openProjects": "Open projects",
+    "pending": {
+      "searching": "Searching the documentation…",
+      "reading": "Reading the project…",
+      "writing": "Writing the answer. This can take up to a minute.",
+      "answering": "Answering…"
     }
   }
 }
