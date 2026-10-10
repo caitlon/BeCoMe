@@ -22,7 +22,7 @@ describe('AssistantUIContext', () => {
     }).not.toThrow();
   });
 
-  it('opens with a project id and closes again', () => {
+  it('opens with a project id and closes again, keeping the project the conversation is under', () => {
     const { result } = renderHook(() => useAssistantUI(), { wrapper: AssistantUIProvider });
 
     act(() => result.current.openAssistant('project-123'));
@@ -31,6 +31,16 @@ describe('AssistantUIContext', () => {
 
     act(() => result.current.closeAssistant());
     expect(result.current.isOpen).toBe(false);
+    expect(result.current.projectId).toBe('project-123');
+  });
+
+  it('replaces the kept project on the next open', () => {
+    const { result } = renderHook(() => useAssistantUI(), { wrapper: AssistantUIProvider });
+    act(() => result.current.openAssistant('project-123'));
+    act(() => result.current.closeAssistant());
+
+    act(() => result.current.openAssistant());
+
     expect(result.current.projectId).toBeNull();
   });
 
@@ -69,6 +79,17 @@ describe('AssistantUIContext', () => {
     act(() => result.current.openAssistant('project-B'));
 
     expect(result.current.projectId).toBe('project-B');
+  });
+
+  it('opens the general panel on an explicit null, even on a project page', () => {
+    const { result } = renderHook(() => useAssistantUI(), { wrapper: AssistantUIProvider });
+
+    act(() => result.current.setPageProjectId('project-A'));
+    act(() => result.current.openAssistant('project-A'));
+    act(() => result.current.openAssistant(null));
+
+    expect(result.current.isOpen).toBe(true);
+    expect(result.current.projectId).toBeNull();
   });
 
   it('does not open the panel by recording a page project', () => {
