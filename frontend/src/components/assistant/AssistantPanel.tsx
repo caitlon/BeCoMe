@@ -52,7 +52,7 @@ function ClearConfirm({ onConfirm, onCancel }: ClearConfirmProps) {
   return (
     <div role="group" aria-label={question} className="flex items-center gap-2 border-b bg-muted/50 px-4 py-2 text-[13px]">
       <span className="flex-1">{question}</span>
-      <Button type="button" variant="ghost" size="sm" className="text-destructive" onClick={onConfirm}>
+      <Button type="button" variant="outline" size="sm" className="border-destructive" onClick={onConfirm}>
         {t("panel.clearYes")}
       </Button>
       <Button ref={keepRef} type="button" variant="ghost" size="sm" onClick={onCancel}>
@@ -125,12 +125,15 @@ export function AssistantPanel({ open, onOpenChange, projectId, userId, mode }: 
   const { messages, isPending } = chat;
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const clearButtonRef = useRef<HTMLButtonElement>(null);
-  const [confirming, setConfirming] = useState(false);
+  // The confirmation belongs to one conversation: another one, or none, does not inherit it.
+  const conversationKey = `${userId}:${projectId ?? "general"}`;
+  const [confirmingFor, setConfirmingFor] = useState<string | null>(null);
+  const confirming = confirmingFor === conversationKey;
 
   const scoped = Boolean(projectId);
   const canClear = messages.length > 0 && !isPending;
-  // A confirmation for a conversation that has since started a turn, or been emptied, is stale.
-  if (confirming && !canClear) setConfirming(false);
+  // One that has since started a turn, been emptied, or lost its sheet to a close is stale too.
+  if (confirmingFor !== null && (!open || !canClear)) setConfirmingFor(null);
 
   function handleSuggestion(text: string) {
     chat.setDraft(text);
@@ -138,13 +141,13 @@ export function AssistantPanel({ open, onOpenChange, projectId, userId, mode }: 
   }
 
   function handleCancelClear() {
-    setConfirming(false);
+    setConfirmingFor(null);
     clearButtonRef.current?.focus();
   }
 
   function handleConfirmClear() {
     chat.clear();
-    setConfirming(false);
+    setConfirmingFor(null);
     textareaRef.current?.focus();
   }
 
@@ -166,6 +169,11 @@ export function AssistantPanel({ open, onOpenChange, projectId, userId, mode }: 
         showCloseButton={false}
         onInteractOutside={(event) => event.preventDefault()}
         onEscapeKeyDown={handleEscape}
+        onOpenAutoFocus={(event) => {
+          // The question box, not the first button of the header: the panel is opened to ask.
+          event.preventDefault();
+          textareaRef.current?.focus();
+        }}
         className={cn(
           "flex flex-col gap-0 p-0",
           isDesktop ? "w-full sm:max-w-[440px]" : "h-[94dvh] rounded-t-2xl",
@@ -188,7 +196,7 @@ export function AssistantPanel({ open, onOpenChange, projectId, userId, mode }: 
             variant="ghost"
             size="icon"
             disabled={!canClear}
-            onClick={() => setConfirming(true)}
+            onClick={() => setConfirmingFor(conversationKey)}
             aria-label={t("panel.clear")}
             title={t("panel.clear")}
           >
@@ -207,12 +215,14 @@ export function AssistantPanel({ open, onOpenChange, projectId, userId, mode }: 
           <EmptyState scoped={scoped} onSuggestion={handleSuggestion} />
         ) : (
           <AssistantFeed
+            key={conversationKey}
             messages={messages}
             historyWindowStart={chat.historyWindowStart}
             isPending={isPending}
             pendingSeconds={chat.pendingSeconds}
             mode={mode}
             onRetry={chat.retry}
+            projectScoped={scoped}
           />
         )}
 

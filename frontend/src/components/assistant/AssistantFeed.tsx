@@ -83,7 +83,7 @@ export interface AssistantFeedProps {
   /** Sends the given question again as a new turn. */
   readonly onRetry: (text: string) => void;
   /** The conversation is about a project, not the general thread. */
-  readonly projectScoped?: boolean;
+  readonly projectScoped: boolean;
 }
 
 /**
@@ -98,7 +98,7 @@ export function AssistantFeed({
   pendingSeconds,
   mode,
   onRetry,
-  projectScoped = false,
+  projectScoped,
 }: AssistantFeedProps) {
   const { t } = useTranslation("assistant");
   const { openAssistant, closeAssistant } = useAssistantUI();

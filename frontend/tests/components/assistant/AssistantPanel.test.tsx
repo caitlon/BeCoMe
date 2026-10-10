@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import { useState, type ReactNode } from 'react';
@@ -176,6 +176,12 @@ describe('AssistantPanel', () => {
     expect(chat.sendMessage).not.toHaveBeenCalled();
   });
 
+  it('puts the focus in the question box when the panel opens', async () => {
+    renderPanel();
+
+    await waitFor(() => expect(screen.getByRole('textbox', { name: 'Ask a question…' })).toHaveFocus());
+  });
+
   it('keeps the conversation for the signed-in user and the open project', () => {
     renderPanel({ projectId: 'p1', userId: 'user-7' });
 
@@ -241,7 +247,48 @@ describe('AssistantPanel', () => {
       });
       renderPanel({ mode: 'hybrid' });
 
-      expect(screen.getByText('Searching the documentation…')).toBeInTheDocument();
+      expect(within(screen.getByRole('log')).getByText('Searching the documentation…')).toBeInTheDocument();
+    });
+
+    it('tells the feed whether the conversation is about a project: no reading phase without one', () => {
+      chat = makeChat({
+        messages: [answered[0], { id: 'm3', role: 'assistant', content: '', status: 'pending', createdAt: 2 }],
+        isPending: true,
+        pendingSeconds: 4,
+      });
+      const { unmount } = render(
+        <QueryClientProvider client={new QueryClient()}>
+          <AssistantPanel open onOpenChange={vi.fn()} projectId="p1" userId="u1" mode="hybrid" />
+        </QueryClientProvider>
+      );
+      expect(within(screen.getByRole('log')).getByText('Reading the project…')).toBeInTheDocument();
+      unmount();
+
+      renderPanel({ mode: 'hybrid' });
+
+      expect(within(screen.getByRole('log')).getByText('Searching the documentation…')).toBeInTheDocument();
+    });
+
+    it('does not announce the old failure of another conversation as new when the thread swaps', () => {
+      chat = makeChat({ messages: answered });
+      const client = new QueryClient();
+      const ui = (projectId: string | null) => (
+        <QueryClientProvider client={client}>
+          <AssistantPanel open onOpenChange={vi.fn()} projectId={projectId} userId="u1" mode="workflow" />
+        </QueryClientProvider>
+      );
+      const { rerender } = render(ui('p1'));
+
+      chat = makeChat({
+        messages: [
+          { id: 'g1', role: 'user', content: 'Old?', status: 'error', createdAt: 1 },
+          { id: 'g2', role: 'assistant', content: '', status: 'error', error: { code: 503, detail: 'x' }, createdAt: 1 },
+        ],
+      });
+      rerender(ui(null));
+
+      expect(screen.getByText('The assistant is temporarily unavailable.')).toBeInTheDocument();
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     });
   });
 
@@ -308,6 +355,41 @@ describe('AssistantPanel', () => {
 
       await userEvent.keyboard('{Escape}');
       expect(onOpenChange).toHaveBeenCalledWith(false);
+    });
+
+    it('drops the confirmation when the sheet is closed, and it is not there when reopened', async () => {
+      chat = makeChat({ messages: answered });
+      const client = new QueryClient();
+      const ui = (open: boolean, projectId: string | null = null) => (
+        <QueryClientProvider client={client}>
+          <AssistantPanel open={open} onOpenChange={vi.fn()} projectId={projectId} userId="u1" mode="workflow" />
+        </QueryClientProvider>
+      );
+      const { rerender } = render(ui(true));
+      await userEvent.click(screen.getByRole('button', { name: 'Clear conversation' }));
+      expect(screen.getByRole('button', { name: 'Keep' })).toBeInTheDocument();
+
+      rerender(ui(false));
+      rerender(ui(true));
+
+      expect(screen.queryByRole('button', { name: 'Keep' })).not.toBeInTheDocument();
+    });
+
+    it('does not carry the confirmation over to another conversation', async () => {
+      chat = makeChat({ messages: answered });
+      const client = new QueryClient();
+      const ui = (projectId: string | null) => (
+        <QueryClientProvider client={client}>
+          <AssistantPanel open onOpenChange={vi.fn()} projectId={projectId} userId="u1" mode="workflow" />
+        </QueryClientProvider>
+      );
+      const { rerender } = render(ui('p1'));
+      await userEvent.click(screen.getByRole('button', { name: 'Clear conversation' }));
+      expect(screen.getByRole('button', { name: 'Keep' })).toBeInTheDocument();
+
+      rerender(ui(null));
+
+      expect(screen.queryByRole('button', { name: 'Keep' })).not.toBeInTheDocument();
     });
 
     it('drops the confirmation when a turn starts under it, and does not bring it back', async () => {

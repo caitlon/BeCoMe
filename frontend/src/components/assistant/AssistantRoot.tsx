@@ -13,10 +13,14 @@ import "./i18n";
  * production build without VITE_ASSISTANT_ENABLED never emits.
  */
 export default function AssistantRoot() {
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, status, user } = useAuth();
   const { isOpen, projectId, setAvailable, closeAssistant } = useAssistantUI();
-  const configQuery = useAssistantConfig(isAuthenticated);
-  const available = isAuthenticated && configQuery.isSuccess && configQuery.data.enabled;
+  // refreshUser flips the status to "loading" while it re-reads the same session (after the
+  // profile is saved, say) and keeps the user. That is not a sign-out, and unmounting the
+  // panel for it would abort a running turn; a real sign-out clears the user as well.
+  const signedIn = isAuthenticated || (status === "loading" && user !== null);
+  const configQuery = useAssistantConfig(signedIn);
+  const available = signedIn && configQuery.isSuccess && configQuery.data.enabled;
 
   useEffect(() => {
     setAvailable(available);
