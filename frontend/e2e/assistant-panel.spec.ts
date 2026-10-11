@@ -162,8 +162,7 @@ test.describe('Assistant panel', () => {
 
     await page.keyboard.press('Escape');
     // A closing sheet stays in the DOM through its exit animation, so "visible" alone would
-    // pass a sheet that has begun to close: wait out the animation, then read the state.
-    await page.waitForTimeout(500);
+    // pass a sheet that has begun to close: read its state, which flips the moment it does.
     await expect(page.getByRole('dialog', { name: 'Assistant' })).toHaveAttribute('data-state', 'open');
     await expect(stop).toBeVisible();
 
@@ -278,6 +277,64 @@ test.describe('Assistant panel', () => {
       expect(await auditDialog(page)).toEqual([]);
     });
   }
+
+  test('on a phone the panel is a bottom sheet that can be closed', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await mockApp(page, streamed);
+    await page.goto('/about');
+    await page.getByRole('button', { name: 'Open menu' }).click();
+    await page.getByRole('button', { name: 'Assistant' }).first().click();
+    const dialog = page.getByRole('dialog', { name: 'Assistant' });
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toHaveAttribute('data-state', 'open');
+
+    await expect(async () => {
+      const sheet = await dialog.boundingBox();
+      expect(sheet?.x).toBe(0);
+      expect(sheet?.width).toBe(390);
+      expect((sheet?.y ?? 0) + (sheet?.height ?? 0)).toBe(844);
+      expect(sheet?.height).toBeLessThan(844);
+    }).toPass();
+
+    await ask(page);
+    await expect(page.getByRole('log')).toContainText('is the midpoint of the mean and the median');
+
+    await dialog.getByRole('button', { name: 'Close' }).click();
+    await expect(dialog).toBeHidden();
+  });
+
+  test('speaks Czech when the interface is Czech', async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem('become-language', 'cs'));
+    await mockApp(page, streamed);
+    await page.goto('/about');
+    await page.getByRole('button', { name: 'Asistent' }).first().click();
+    const dialog = page.getByRole('dialog', { name: 'Asistent' });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByText('Zeptejte se na metodu nebo aplikaci')).toBeVisible();
+
+    const requestSent = page.waitForRequest(STREAM);
+    const field = dialog.getByRole('textbox', { name: 'Napište otázku…' });
+    await field.fill(QUESTION);
+    await field.press('Enter');
+
+    expect((await requestSent).postDataJSON()).toMatchObject({ locale: 'cs' });
+    await expect(dialog.getByRole('log', { name: 'Konverzace' })).toContainText('is the midpoint of the mean and the median');
+    await expect(dialog.getByRole('button', { name: /Reading the result/ })).toBeVisible();
+  });
+
+  test('draws the whole conversation in the dark theme', async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem('become-theme', 'dark'));
+    await mockApp(page, streamed);
+    await openPanel(page);
+    await expect(page.locator('html')).toHaveClass(/dark/);
+
+    await ask(page);
+
+    const feed = page.getByRole('log', { name: 'Conversation' });
+    await expect(feed).toContainText('is the midpoint of the mean and the median');
+    await expect(feed.getByRole('button', { name: /Reading the result/ })).toBeVisible();
+    expect(await auditDialog(page)).toEqual([]);
+  });
 
   test('clearing asks first and then empties the conversation', async ({ page }) => {
     await mockApp(page, streamed);
