@@ -1,8 +1,14 @@
 """Tests for rate limiting middleware."""
 
+import logging
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+from fastapi import FastAPI, Request
+from fastapi.testclient import TestClient
+from slowapi import Limiter
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 from starlette.responses import JSONResponse
 
 from api.middleware.rate_limit import build_limiter, rate_limit_handler
@@ -89,7 +95,7 @@ class TestRetryAfterHeader:
         """Run the handler with slowapi's own response stubbed."""
         response = response or JSONResponse({"error": "x"}, status_code=429)
         with (
-            patch("api.middleware.rate_limit.logger"),
+            patch("api.middleware.rate_limit.get_client_ip", return_value="203.0.113.7"),
             patch("api.middleware.rate_limit._rate_limit_exceeded_handler", return_value=response),
             patch("api.middleware.rate_limit.time.time", return_value=1000.0),
         ):
@@ -147,6 +153,70 @@ class TestRetryAfterHeader:
         response = self._handle(request, self._exc(window_seconds=3600))
 
         assert response.headers["Retry-After"] == "3600"
+
+    def test_logs_when_the_stats_call_fails(self, caplog):
+        """
+        GIVEN a store that raises when asked for the window stats
+        WHEN rate_limit_handler runs
+        THEN a WARNING names the event, without the key or the error text in the message
+        """
+        request = self._request(
+            view_rate_limit=(MagicMock(), ["k"]), reset=RuntimeError("store down")
+        )
+
+        with caplog.at_level(logging.WARNING, logger="api.ratelimit"):
+            self._handle(request, self._exc())
+
+        records = [
+            r for r in caplog.records if getattr(r, "event", None) == "rate_limit_window_unreadable"
+        ]
+        assert len(records) == 1
+        assert records[0].levelno == logging.WARNING
+
+    def test_answers_one_second_when_the_exception_has_no_limit(self):
+        """
+        GIVEN no recorded limit and an exception that carries no limit either
+        WHEN rate_limit_handler runs
+        THEN Retry-After is 1, the floor, rather than an error
+        """
+        request = self._request(view_rate_limit=None)
+        exc = MagicMock()
+        exc.limit = None
+
+        response = self._handle(request, exc)
+
+        assert response.headers["Retry-After"] == "1"
+
+    def test_a_real_limiter_answers_the_third_request_with_a_wait(self):
+        """
+        GIVEN a real in-memory limiter allowing 2 requests per 10 seconds
+        WHEN a client sends three requests through SlowAPIMiddleware
+        THEN the third is 429 with an integer Retry-After between 1 and 10
+        """
+
+        # GIVEN
+        def key(request: Request) -> str:
+            return "test-client"
+
+        app = FastAPI()
+        app.state.limiter = Limiter(key_func=key, default_limits=["2/10 seconds"], enabled=True)
+        app.add_exception_handler(RateLimitExceeded, rate_limit_handler)  # type: ignore[arg-type]
+        app.add_middleware(SlowAPIMiddleware)
+
+        @app.get("/ping")
+        def ping() -> dict[str, str]:
+            return {}
+
+        client = TestClient(app)
+
+        # WHEN
+        statuses = [client.get("/ping").status_code for _ in range(2)]
+        third = client.get("/ping")
+
+        # THEN
+        assert statuses == [200, 200]
+        assert third.status_code == 429
+        assert 1 <= int(third.headers["Retry-After"]) <= 10
 
     def test_keeps_a_retry_after_slowapi_already_set(self):
         """
