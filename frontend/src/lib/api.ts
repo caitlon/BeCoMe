@@ -119,6 +119,19 @@ async function parseErrorBody(response: Response): Promise<{ detail: string; cod
   return { detail: '', code };
 }
 
+/**
+ * Reads a Retry-After header as whole seconds. The header is either a count of seconds
+ * or an HTTP-date; a date becomes the seconds left until it (0 once it has passed), and
+ * anything else is undefined rather than NaN, which would be stored as null.
+ */
+function parseRetryAfter(header: string | null): number | undefined {
+  const value = header?.trim();
+  if (!value) return undefined;
+  if (/^\d+$/.test(value)) return Number(value);
+  const date = Date.parse(value);
+  return Number.isNaN(date) ? undefined : Math.max(0, Math.ceil((date - Date.now()) / 1000));
+}
+
 /** Classifies a non-ok response into the typed error taxonomy. */
 export async function toHttpError(response: Response): Promise<HttpError> {
   const { detail, code } = await parseErrorBody(response);
@@ -131,9 +144,7 @@ export async function toHttpError(response: Response): Promise<HttpError> {
     return new ForbiddenError(message, code);
   }
   if (response.status === 429) {
-    const retryAfterHeader = response.headers.get('Retry-After');
-    const retryAfter = retryAfterHeader ? Number(retryAfterHeader) : undefined;
-    return new RateLimitError(message, retryAfter, code);
+    return new RateLimitError(message, parseRetryAfter(response.headers.get('Retry-After')), code);
   }
   if (response.status >= 500) {
     return new ServerError(message, response.status, code);
@@ -230,6 +241,25 @@ class ApiClient {
   }
 
   /**
+   * One silent refresh after a 401. When it fails, the session is over and this
+   * throws UnauthorizedError, after notifying subscribers unless it was the probe.
+   */
+  private async refreshOrExpire(isAuthProbe: boolean, endpoint: string): Promise<void> {
+    try {
+      await this.refreshSession();
+    } catch (refreshError) {
+      // A network/5xx refresh failure means the service is down, not that the
+      // session is gone, so surface the typed error (letting react-query retry
+      // and AuthContext show "service unavailable") instead of a false logout.
+      if (isServiceUnavailable(refreshError)) {
+        throw refreshError;
+      }
+      this.handleTerminalUnauthorized(isAuthProbe, endpoint);
+      throw new UnauthorizedError();
+    }
+  }
+
+  /**
    * The pipeline behind every JSON and streamed call: request ID and CSRF header,
    * credentials, and one silent refresh-and-retry on a 401. Returns the Response
    * once it is known to be ok, with its body untouched, so request<T>() can parse
@@ -273,18 +303,7 @@ class ApiClient {
       // a probe (mount-time "am I logged in?" check) stays silent, everything
       // else notifies onSessionExpired.
       if (response.status === 401 && !isRetry) {
-        try {
-          await this.refreshSession();
-        } catch (refreshError) {
-          // A network/5xx refresh failure means the service is down, not that the
-          // session is gone, so surface the typed error (letting react-query retry
-          // and AuthContext show "service unavailable") instead of a false logout.
-          if (isServiceUnavailable(refreshError)) {
-            throw refreshError;
-          }
-          this.handleTerminalUnauthorized(isAuthProbe, endpoint);
-          throw new UnauthorizedError();
-        }
+        await this.refreshOrExpire(isAuthProbe, endpoint);
         return this.requestRaw(endpoint, options, { isAuthProbe, isRetry: true });
       }
 
