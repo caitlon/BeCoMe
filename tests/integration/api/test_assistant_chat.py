@@ -1109,6 +1109,7 @@ class TestMessageLimit:
         assert first.status_code == 200
         assert second.status_code == 429
         assert second.json() == {"detail": "Too many assistant messages. Please try again later."}
+        assert 1 <= int(second.headers["Retry-After"]) <= 3600
 
     def test_another_user_still_has_a_budget(self, assistant_settings, client, configure):
         """
@@ -1739,6 +1740,7 @@ class TestStreamRoute:
         assert first.status_code == 200
         assert second.status_code == 429
         assert second.json() == {"detail": "Too many assistant messages. Please try again later."}
+        assert 1 <= int(second.headers["Retry-After"]) <= 3600
         assert streamed.status_code == 200
         assert chatted.status_code == 429
         assert chatted.json() == second.json()

@@ -385,6 +385,32 @@ class TestEnforceMessageLimit:
         assert threads
         assert threads[0] != threading.get_ident()
 
+    @pytest.mark.asyncio
+    async def test_retry_after_runs_in_a_worker_thread(self):
+        """
+        GIVEN a refusing throttle that records the thread retry_after is called on
+        WHEN the limit dependency runs on the event loop
+        THEN retry_after ran on another thread, so a Redis round trip cannot stall the loop
+        """
+        # GIVEN
+        threads: list[int] = []
+
+        class _Throttle:
+            def hit(self, user_id: UUID) -> bool:
+                return False
+
+            def retry_after(self, user_id: UUID) -> int:
+                threads.append(threading.get_ident())
+                return 5
+
+        # WHEN
+        with pytest.raises(AssistantRateLimitedError):
+            await deps.enforce_message_limit(MagicMock(id=uuid4()), _Throttle())
+
+        # THEN
+        assert threads
+        assert threads[0] != threading.get_ident()
+
 
 class _FakeClient:
     """Stands in for UserApiClient: records how it was built and whether it was closed."""
