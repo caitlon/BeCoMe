@@ -17,6 +17,10 @@ import { sourceAnchorId } from "./message-shape";
 // text and nothing in an answer can point the browser at another address.
 const ALLOWED_ELEMENTS = ["p", "strong", "em", "ul", "ol", "li", "code", "br"];
 const CITATION = /\[([1-9]\d*)\]/g;
+// The start of a reference-style definition ("[1]: url") at the head of a line, behind any
+// quote or list markers. Markdown would swallow the definition and turn every "[1]" in the
+// answer into a link reference, which loses the brackets.
+const NUMERIC_DEFINITION = /^((?:[ \t]*(?:>|[-*+]|\d+[.)]))*[ \t]*)\[([1-9]\d*)\](?=:)/gm;
 const CITE_BASE = "mx-0.5 rounded border px-1 align-[1px] text-[11px] font-semibold text-muted-foreground";
 const CITE_CLASS = `${CITE_BASE} no-underline cursor-pointer`;
 // Its own list: `no-underline` would beat the line-through the <s> brings along.
@@ -75,6 +79,10 @@ function withCitations(children: ReactNode): ReactNode {
   });
 }
 
+// Escaping the opening bracket makes the line plain text, so no definition exists and
+// the "[n]" in it is a citation like any other.
+const neutraliseDefinitions = (content: string) => content.replace(NUMERIC_DEFINITION, "$1\\[$2]");
+
 type CitingTag = "p" | "li" | "strong" | "em";
 
 // Built once at module level: an override whose identity changes between renders
@@ -101,19 +109,22 @@ export interface AssistantMarkdownProps {
 }
 
 /**
- * Renders one assistant answer from an allowlist of elements. `skipHtml` drops raw
- * HTML (react-markdown never parses it into elements without rehype-raw, which is
- * deliberately absent). A `[n]` marker in the text of a paragraph, list item,
- * bold or italic run becomes our own element, never a markdown link.
+ * Renders one assistant answer from an allowlist of elements. Raw HTML is shown as
+ * text: react-markdown never parses it into elements without rehype-raw, which is
+ * deliberately absent. A `[n]` marker in the text of a paragraph, list item, bold or
+ * italic run becomes our own element: an in-page anchor when the sources are known and
+ * include n, a struck-through marker when they do not, plain text while they are unknown.
+ * A "[n]: url" line is shown as text, so it cannot turn the markers into markdown links.
  */
 export function AssistantMarkdown({ content, messageId, sourceNumbers, onCite }: AssistantMarkdownProps) {
   const known = useMemo(() => (sourceNumbers ? new Set(sourceNumbers) : undefined), [sourceNumbers]);
   const citation = useMemo(() => ({ known, messageId, onCite }), [known, messageId, onCite]);
+  const text = useMemo(() => neutraliseDefinitions(content), [content]);
 
   return (
     <CitationContext value={citation}>
-      <Markdown allowedElements={ALLOWED_ELEMENTS} unwrapDisallowed skipHtml components={COMPONENTS}>
-        {content}
+      <Markdown allowedElements={ALLOWED_ELEMENTS} unwrapDisallowed components={COMPONENTS}>
+        {text}
       </Markdown>
     </CitationContext>
   );

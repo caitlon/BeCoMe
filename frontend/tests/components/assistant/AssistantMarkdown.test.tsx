@@ -69,14 +69,23 @@ describe('AssistantMarkdown', () => {
     expect(container.textContent).not.toContain('secret-alt');
   });
 
-  it('skips raw HTML instead of rendering it', () => {
-    const { container } = renderMarkdown('<div data-testid="raw">hi</div>\n\n<script>alert(1)</script>\n\nafter');
+  it('shows raw HTML as text and never as an element', () => {
+    const { container } = renderMarkdown(
+      '<div data-testid="raw">hi</div>\n\n<script>alert(1)</script>\n\n<img src=x onerror=alert(2)>\n\nafter'
+    );
 
     expect(screen.queryByTestId('raw')).not.toBeInTheDocument();
+    expect(container.querySelector('div[data-testid]')).toBeNull();
     expect(container.querySelector('script')).toBeNull();
-    expect(container).not.toHaveTextContent('<div');
-    expect(container).not.toHaveTextContent('alert(1)');
+    expect(container.querySelector('img')).toBeNull();
+    expect(container.querySelector('[onerror]')).toBeNull();
     expect(screen.getByText('after')).toBeInTheDocument();
+  });
+
+  it('keeps text that looks like a tag, as in a comparison', () => {
+    const { container } = renderMarkdown('Here x<y and y>z holds.');
+
+    expect(container.textContent).toBe('Here x<y and y>z holds.');
   });
 
   it('does not leak the hast node prop onto DOM elements', () => {
@@ -292,6 +301,43 @@ describe('AssistantMarkdown', () => {
 
       expect(screen.queryByRole('link')).not.toBeInTheDocument();
       expect(screen.getByText('arr[1]').tagName).toBe('CODE');
+    });
+
+    describe('with a reference-style definition in the answer', () => {
+      const answer = 'Claim [1].\n\n[1]: https://example.com/page "Title"';
+
+      it.each([
+        ['at the start of a line', answer],
+        ['indented', 'Claim [1].\n\n   [1]: https://example.com/page'],
+        ['in a list item', 'Claim [1].\n\n- [1]: https://example.com/page'],
+        ['in a quote', 'Claim [1].\n\n> [1]: https://example.com/page'],
+        ['over two lines', 'Claim [1].\n\n[1]:\n  https://example.com/page'],
+      ])('keeps [1] as a citation anchor and links nothing out (%s)', (_label, content) => {
+        const { container } = renderMarkdown(content, { sourceNumbers: [1] });
+
+        const links = screen.getAllByRole('link');
+        expect(links.length).toBeGreaterThan(0);
+        for (const link of links) {
+          expect(link).toHaveAttribute('href', '#assistant-src-m1-1');
+          expect(link.textContent).toBe('[1]');
+        }
+        expect(container.querySelector('a[href^="http"]')).toBeNull();
+      });
+
+      it('keeps the brackets as plain text while the sources are not known', () => {
+        const { container } = renderMarkdown(answer);
+
+        expect(screen.queryByRole('link')).not.toBeInTheDocument();
+        expect(container.textContent).toContain('Claim [1].');
+        expect(container.textContent).toContain('[1]: https://example.com/page');
+      });
+
+      it('leaves a definition with a non-numeric label alone', () => {
+        const { container } = renderMarkdown('See [docs].\n\n[docs]: https://example.com/page');
+
+        expect(screen.queryByRole('link')).not.toBeInTheDocument();
+        expect(container.textContent).toContain('See docs.');
+      });
     });
 
     it.each(['[0]', '[-1]', '[1.5]', '[a]', '[]', '[01]'])('does not treat %s as a citation', (marker) => {
