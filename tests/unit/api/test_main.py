@@ -65,7 +65,7 @@ class TestDocsExposure:
 
 
 class TestCorsExposedHeaders:
-    """The browser is allowed to read the CSRF token header off a cross-origin reply."""
+    """The browser is allowed to read the CSRF token and Retry-After headers cross-origin."""
 
     def test_csrf_token_header_is_readable_cross_origin(self, monkeypatch, tmp_path):
         """A cross-origin response names X-CSRF-Token in Access-Control-Expose-Headers.
@@ -95,6 +95,30 @@ class TestCorsExposedHeaders:
 
         assert response.status_code == 200
         assert "X-CSRF-Token" in response.headers["access-control-expose-headers"]
+
+    def test_retry_after_header_is_readable_cross_origin(self, monkeypatch, tmp_path):
+        """A cross-origin response names Retry-After in Access-Control-Expose-Headers.
+
+        The 429 answers carry the wait in that header, and the SPA's retry timer reads it;
+        a cross-origin script sees it only when CORS exposes it.
+        """
+        from fastapi.testclient import TestClient
+
+        from api.config import get_settings
+        from api.main import create_app
+
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("APP_ENV", "dev")
+        monkeypatch.setenv("SECRET_KEY", "a-sufficiently-strong-secret-value")
+        monkeypatch.setenv("CORS_ORIGINS", '["https://app.example.com"]')
+        get_settings.cache_clear()
+        try:
+            client = TestClient(create_app())
+            response = client.get("/api/v1/health", headers={"Origin": "https://app.example.com"})
+        finally:
+            get_settings.cache_clear()
+
+        assert "Retry-After" in response.headers["access-control-expose-headers"]
 
 
 class TestCorsAllowedHeaders:
@@ -451,8 +475,10 @@ class TestAssistantExceptionHandlerGating:
         app = self._build_app(monkeypatch, tmp_path, enabled=True)
         error = getattr(errors, error_name)
 
+        extra = {"retry_after": 5} if error is errors.AssistantRateLimitedError else {}
+
         def boom() -> None:
-            raise error("internal detail that must not leak")
+            raise error("internal detail that must not leak", **extra)
 
         app.add_api_route("/__raise", boom)
         client = TestClient(app, raise_server_exceptions=False)
@@ -464,6 +490,7 @@ class TestAssistantExceptionHandlerGating:
         assert response.status_code == status_code
         assert "internal detail" not in response.text
         assert response.json() == {"detail": detail}
+        assert response.headers.get("Retry-After") == ("5" if status_code == 429 else None)
 
 
 _ASSISTANT_LIBRARIES = (

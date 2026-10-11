@@ -405,6 +405,11 @@ applied through a dependency. The `enforce_message_limit` dependency applies it 
 message. `api/assistant/rate_limit.py` keeps the counter in Redis when `REDIS_URL` is set and in
 memory otherwise.
 
+The slowapi limits and the hourly assistant cap answer `429` with a `Retry-After` header in whole
+seconds: the time left in the limit's window, or until that user's hourly window closes.
+`CORSMiddleware` lists the header in `expose_headers`, so the SPA can read it and start its retry
+timer.
+
 The limiter keys on the real client IP, and the rule is not hop-based. `get_client_ip`
 (`api/utils/client_ip.py`) reads `CF-Connecting-IP` only when the request carries the
 `X-Origin-Verify` header matching `CLOUDFLARE_ORIGIN_SECRET`. Anything else, including a
