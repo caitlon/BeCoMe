@@ -26,30 +26,38 @@ export async function streamAssistantMessage(
   request: AssistantChatRequest,
   signal: AbortSignal
 ): Promise<Response> {
+  const abort = rejectOnAbort(signal);
   try {
-    const pending = api.requestStream("/assistant/chat/stream", {
-      method: "POST",
-      signal,
-      headers: { Accept: "text/event-stream" },
-      body: JSON.stringify(request),
-    });
-    // If the abort wins the race, `pending` is still in flight and its later
-    // rejection would go unhandled.
-    pending.catch(() => undefined);
-    return await Promise.race([pending, rejectOnAbort(signal)]);
+    // Promise.race subscribes to both promises, so a rejection of the request that
+    // arrives after the abort has won is handled there and not left unhandled.
+    return await Promise.race([
+      api.requestStream("/assistant/chat/stream", {
+        method: "POST",
+        signal,
+        headers: { Accept: "text/event-stream" },
+        body: JSON.stringify(request),
+      }),
+      abort.promise,
+    ]);
   } catch (error) {
     if (!signal.aborted) throw error;
     const cause = error instanceof NetworkError ? error.cause : error;
     throw cause instanceof DOMException && cause.name === "AbortError"
       ? cause
       : new DOMException("The operation was aborted", "AbortError");
+  } finally {
+    abort.dispose();
   }
 }
 
-function rejectOnAbort(signal: AbortSignal): Promise<never> {
-  return new Promise<never>((_resolve, reject) => {
-    const abort = (): void => reject(new DOMException("The operation was aborted", "AbortError"));
-    if (signal.aborted) abort();
-    else signal.addEventListener("abort", abort, { once: true });
+// A promise that rejects when `signal` aborts, and a way to drop its listener once the
+// request it races against has settled.
+function rejectOnAbort(signal: AbortSignal): { promise: Promise<never>; dispose: () => void } {
+  let onAbort: () => void = () => undefined;
+  const promise = new Promise<never>((_resolve, reject) => {
+    onAbort = () => reject(new DOMException("The operation was aborted", "AbortError"));
+    if (signal.aborted) onAbort();
+    else signal.addEventListener("abort", onAbort, { once: true });
   });
+  return { promise, dispose: () => signal.removeEventListener("abort", onAbort) };
 }
