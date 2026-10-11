@@ -76,7 +76,7 @@ function isStoredMessage(value: unknown): value is AssistantMessage {
       (isRecord(error) &&
         typeof error.code === "number" &&
         typeof error.detail === "string" &&
-        (error.retryAfter == null || typeof error.retryAfter === "number"))) &&
+        (error.retryAfter === undefined || typeof error.retryAfter === "number"))) &&
     (sources === undefined || Array.isArray(sources)) &&
     (toolsUsed === undefined || Array.isArray(toolsUsed)) &&
     (checks === undefined || isRecord(checks)) &&
@@ -85,23 +85,16 @@ function isStoredMessage(value: unknown): value is AssistantMessage {
 }
 
 // A request cannot outlive the page that made it, so a message stored as pending
-// is a partial answer that was cut off, empty or not. A retryAfter of null is what
-// JSON makes of a NaN stored by an older build; it reads as no delay at all.
-function fromStorage(m: AssistantMessage): AssistantMessage {
-  const settled: AssistantMessage = m.status === "pending" ? { ...m, status: "cut" } : m;
-  const { error } = settled;
-  if (!error || (error as { retryAfter?: number | null }).retryAfter !== null) return settled;
-  return { ...settled, error: { code: error.code, detail: error.detail } };
-}
-
+// is a partial answer that was cut off, empty or not.
 // Anything that is not a JSON array of messages (an object, null, a number) throws on
 // `.filter` and ends up in the catch, the same as unparsable text.
 function loadMessages(key: string): AssistantMessage[] {
   try {
-    return JSON.parse(window.sessionStorage.getItem(key) ?? "[]")
+    const parsed: unknown[] = JSON.parse(window.sessionStorage.getItem(key) ?? "[]");
+    return parsed
       .filter(isStoredMessage)
       .slice(-MAX_MESSAGES)
-      .map(fromStorage);
+      .map((m) => (m.status === "pending" ? { ...m, status: "cut" } : m));
   } catch {
     return [];
   }

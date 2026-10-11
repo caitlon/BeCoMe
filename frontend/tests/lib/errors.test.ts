@@ -230,7 +230,7 @@ describe('toHttpError / safeFetch (api.ts error production)', () => {
       expect(await retryAfterOf('0')).toBe(0);
     });
 
-    it.each([['soon'], ['not-a-date'], ['   ']])('leaves %j undefined', async (header) => {
+    it.each([['soon'], ['not-a-date'], ['   '], ['1.5'], ['-5'], ['+5']])('leaves %j undefined', async (header) => {
       expect(await retryAfterOf(header)).toBeUndefined();
     });
   });
