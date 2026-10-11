@@ -17,10 +17,12 @@ import { sourceAnchorId } from "./message-shape";
 // text and nothing in an answer can point the browser at another address.
 const ALLOWED_ELEMENTS = ["p", "strong", "em", "ul", "ol", "li", "code", "br"];
 const CITATION = /\[([1-9]\d*)\]/g;
-// The start of a reference-style definition ("[1]: url") at the head of a line, behind any
-// quote or list markers; markdown trims spaces inside the label. Markdown would swallow the
-// definition and turn every "[1]" in the answer into a link reference, which loses the brackets.
-const DEFINITION_START = /^((?:[ \t]*(?:>|[-*+]|\d+[.)]))*[ \t]*)\[(?=[ \t]*[1-9]\d*[ \t]*\]:)/;
+// A reference-style definition ("[1]: url") starts a line, behind any quote or list markers, and
+// markdown trims spaces inside its label. Markdown would swallow the definition and turn every
+// "[1]" in the answer into a link reference, which loses the brackets.
+const LEADING_MARKERS = /^(?:[ \t]*(?:>|[-*+]|\d+[.)]))*[ \t]*/;
+const NUMERIC_LABEL = /^\[[ \t]*[1-9]\d*[ \t]*\]:/;
+const ESCAPED_BRACKET = String.raw`\[`;
 const FENCE = /^ {0,3}(`{3,}(?=[^`]*$)|~{3,})/;
 // Any line with four leading spaces or a tab is taken for code, a list continuation included.
 const INDENTED_CODE = /^(?: {4}|\t)/;
@@ -82,6 +84,12 @@ function withCitations(children: ReactNode): ReactNode {
   });
 }
 
+function escapeDefinition(line: string): string {
+  const rest = line.replace(LEADING_MARKERS, "");
+  if (!NUMERIC_LABEL.test(rest)) return line;
+  return line.slice(0, line.length - rest.length) + ESCAPED_BRACKET + rest.slice(1);
+}
+
 // Escaping the opening bracket makes the line plain text, so no definition exists and
 // the "[n]" in it is a citation like any other. Top-level fenced and indented code is left as
 // written; code inside lists and quotes is only approximated.
@@ -92,11 +100,11 @@ function neutraliseDefinitions(content: string): string {
     .map((line) => {
       const run = FENCE.exec(line)?.[1];
       if (fence) {
-        if (line.trim() === run && run.length >= fence.length && run[0] === fence[0]) fence = undefined;
+        if (line.trim() === run && run.length >= fence.length && run.startsWith(fence[0])) fence = undefined;
         return line;
       }
       if (run) fence = run;
-      return run || INDENTED_CODE.test(line) ? line : line.replace(DEFINITION_START, "$1\\[");
+      return run || INDENTED_CODE.test(line) ? line : escapeDefinition(line);
     })
     .join("\n");
 }
