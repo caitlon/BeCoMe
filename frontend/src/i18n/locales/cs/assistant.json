@@ -41,7 +41,7 @@
   "message": {
     "sources": "Zdroje",
     "localCopy": "Místní kopie",
-    "localHint": "Z neveřejného korpusu (diplomová práce, články). Veřejná stránka není.",
+    "localHint": "Z diplomové práce a článků, které nemají veřejnou stránku.",
     "publicLayer": "Dokumentace",
     "openSource": "Otevřít stránku",
     "noSuchSource": "Zdroj neexistuje",

@@ -158,7 +158,7 @@ describe('AssistantMessage', () => {
 
       expect(screen.queryByRole('link', { name: 'Open the page' })).not.toBeInTheDocument();
       expect(document.body.innerHTML).not.toContain('example.com/leak');
-      expect(screen.getAllByText(/private corpus/).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/thesis and articles, which have no public page/).length).toBeGreaterThan(0);
     });
 
     it('shows no Local copy badge for a public source', () => {
@@ -488,6 +488,10 @@ describe('AssistantMessage', () => {
 
       expect(screen.getByText('Zdroje')).toBeInTheDocument();
       expect(screen.getByText('Místní kopie')).toBeInTheDocument();
+      expect(screen.getByText('Místní kopie')).toHaveAttribute(
+        'title',
+        'Z diplomové práce a článků, které nemají veřejnou stránku.'
+      );
       expect(screen.getByText('Čísla, která zdroje nepotvrzují: 17')).toBeInTheDocument();
       expect(screen.getByText('Citace odkazuje na neexistující zdroj.')).toBeInTheDocument();
       expect(screen.getByText('Načteno: výsledek')).toBeInTheDocument();

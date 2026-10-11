@@ -41,7 +41,7 @@
   "message": {
     "sources": "Sources",
     "localCopy": "Local copy",
-    "localHint": "From the private corpus (thesis, articles). No public page.",
+    "localHint": "From the thesis and articles, which have no public page.",
     "publicLayer": "Documentation",
     "openSource": "Open the page",
     "noSuchSource": "No such source",
