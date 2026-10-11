@@ -79,6 +79,9 @@ describe('AssistantMarkdown', () => {
     expect(container.querySelector('script')).toBeNull();
     expect(container.querySelector('img')).toBeNull();
     expect(container.querySelector('[onerror]')).toBeNull();
+    expect(container.textContent).toContain('<div data-testid="raw">hi</div>');
+    expect(container.textContent).toContain('<script>alert(1)</script>');
+    expect(container.textContent).toContain('<img src=x onerror=alert(2)>');
     expect(screen.getByText('after')).toBeInTheDocument();
   });
 
@@ -322,6 +325,32 @@ describe('AssistantMarkdown', () => {
           expect(link.textContent).toBe('[1]');
         }
         expect(container.querySelector('a[href^="http"]')).toBeNull();
+      });
+
+      it('also catches a label padded with spaces, which markdown trims', () => {
+        renderMarkdown('Claim [1].\n\n[ 1 ]: https://example.com', { sourceNumbers: [1] });
+
+        expect(screen.getByRole('link', { name: '[1]' })).toHaveAttribute('href', '#assistant-src-m1-1');
+      });
+
+      it.each([
+        ['a backtick fence', '```\n[1]: https://example.com\n```'],
+        ['a tilde fence', '~~~text\n[1]: https://example.com\n~~~'],
+        ['a longer fence', '````\n```\n[1]: https://example.com\n````'],
+        ['an unclosed fence', '```\n[1]: https://example.com'],
+        ['an indented code line', '    [1]: https://example.com'],
+        ['a tab-indented code line', '\t[1]: https://example.com'],
+      ])('leaves a definition-like line in %s as it is', (_label, code) => {
+        const { container } = renderMarkdown(`Claim.\n\n${code}`, { sourceNumbers: [1] });
+
+        expect(container.textContent).not.toContain('\\');
+        expect(container.textContent).toContain('[1]: https://example.com');
+      });
+
+      it('resumes after a closed fence', () => {
+        renderMarkdown('```\ncode\n```\n\nClaim [1].\n\n[1]: https://example.com', { sourceNumbers: [1] });
+
+        expect(screen.getAllByRole('link').map((a) => a.textContent)).toEqual(['[1]', '[1]']);
       });
 
       it('keeps the brackets as plain text while the sources are not known', () => {

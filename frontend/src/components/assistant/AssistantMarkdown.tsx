@@ -18,9 +18,12 @@ import { sourceAnchorId } from "./message-shape";
 const ALLOWED_ELEMENTS = ["p", "strong", "em", "ul", "ol", "li", "code", "br"];
 const CITATION = /\[([1-9]\d*)\]/g;
 // The start of a reference-style definition ("[1]: url") at the head of a line, behind any
-// quote or list markers. Markdown would swallow the definition and turn every "[1]" in the
-// answer into a link reference, which loses the brackets.
-const NUMERIC_DEFINITION = /^((?:[ \t]*(?:>|[-*+]|\d+[.)]))*[ \t]*)\[([1-9]\d*)\](?=:)/gm;
+// quote or list markers; markdown trims spaces inside the label. Markdown would swallow the
+// definition and turn every "[1]" in the answer into a link reference, which loses the brackets.
+const DEFINITION_START = /^((?:[ \t]*(?:>|[-*+]|\d+[.)]))*[ \t]*)\[(?=[ \t]*[1-9]\d*[ \t]*\]:)/;
+const FENCE = /^ {0,3}(`{3,}|~{3,})/;
+// Any line with four leading spaces or a tab is taken for code, a list continuation included.
+const INDENTED_CODE = /^(?: {4}|\t)/;
 const CITE_BASE = "mx-0.5 rounded border px-1 align-[1px] text-[11px] font-semibold text-muted-foreground";
 const CITE_CLASS = `${CITE_BASE} no-underline cursor-pointer`;
 // Its own list: `no-underline` would beat the line-through the <s> brings along.
@@ -80,8 +83,22 @@ function withCitations(children: ReactNode): ReactNode {
 }
 
 // Escaping the opening bracket makes the line plain text, so no definition exists and
-// the "[n]" in it is a citation like any other.
-const neutraliseDefinitions = (content: string) => content.replace(NUMERIC_DEFINITION, "$1\\[$2]");
+// the "[n]" in it is a citation like any other. Code is left as written.
+function neutraliseDefinitions(content: string): string {
+  let fence: string | undefined;
+  return content
+    .split("\n")
+    .map((line) => {
+      const run = FENCE.exec(line)?.[1];
+      if (fence) {
+        if (line.trim() === run && run.length >= fence.length && run[0] === fence[0]) fence = undefined;
+        return line;
+      }
+      if (run) fence = run;
+      return run || INDENTED_CODE.test(line) ? line : line.replace(DEFINITION_START, "$1\\[");
+    })
+    .join("\n");
+}
 
 type CitingTag = "p" | "li" | "strong" | "em";
 
@@ -123,6 +140,7 @@ export function AssistantMarkdown({ content, messageId, sourceNumbers, onCite }:
 
   return (
     <CitationContext value={citation}>
+      {/* No rehype-raw here, so raw HTML stays text; adding one needs skipHtml back or a sanitizer. */}
       <Markdown allowedElements={ALLOWED_ELEMENTS} unwrapDisallowed components={COMPONENTS}>
         {text}
       </Markdown>
