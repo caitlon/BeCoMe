@@ -90,6 +90,47 @@ class TestInMemoryAssistantThrottle:
         # THEN
         assert allowed is True
 
+    def test_retry_after_is_the_whole_seconds_left_in_the_window(self):
+        """
+        GIVEN a spent budget whose window opened at t=1000
+        WHEN retry_after is asked at t=1600.5
+        THEN it is the time left, rounded up to a whole second
+        """
+        # GIVEN
+        throttle = InMemoryAssistantThrottle(max_per_hour=1, window_seconds=3600)
+        user_id = uuid4()
+        with patch.object(rate_limit.time, "monotonic", return_value=1000.0):
+            throttle.hit(user_id)
+            throttle.hit(user_id)
+
+        # WHEN
+        with patch.object(rate_limit.time, "monotonic", return_value=1600.5):
+            seconds = throttle.retry_after(user_id)
+
+        # THEN
+        assert seconds == 3000
+
+    def test_retry_after_is_one_second_for_an_unknown_or_closed_window(self):
+        """
+        GIVEN one user never seen and one whose window has just closed
+        WHEN retry_after is asked for each
+        THEN both get the one-second floor, never zero
+        """
+        # GIVEN
+        throttle = InMemoryAssistantThrottle(max_per_hour=1, window_seconds=3600)
+        user_id = uuid4()
+        with patch.object(rate_limit.time, "monotonic", return_value=0.0):
+            throttle.hit(user_id)
+
+        # WHEN
+        with patch.object(rate_limit.time, "monotonic", return_value=3600.0):
+            closed = throttle.retry_after(user_id)
+        unknown = throttle.retry_after(uuid4())
+
+        # THEN
+        assert closed == 1
+        assert unknown == 1
+
     def test_expired_windows_are_dropped(self):
         """
         GIVEN many users whose windows have all expired
@@ -273,6 +314,81 @@ class TestRedisAssistantThrottle:
 
         assert throttle.hit(uuid4()) is True
         assert throttle.hit(uuid4()) is True
+
+    def test_retry_after_is_the_remaining_ttl(self):
+        """
+        GIVEN a spent budget whose key has 100 seconds left
+        WHEN retry_after is asked
+        THEN it is that TTL
+        """
+        # GIVEN
+        fake = fakeredis.FakeStrictRedis()
+        throttle = RedisAssistantThrottle(fake, max_per_hour=1, window_seconds=3600)
+        user_id = uuid4()
+        throttle.hit(user_id)
+        throttle.hit(user_id)
+        fake.expire(_key(fake), 100)
+
+        # WHEN
+        seconds = throttle.retry_after(user_id)
+
+        # THEN
+        assert seconds == 100
+
+    def test_retry_after_is_one_second_when_the_key_has_just_gone(self):
+        """
+        GIVEN a window that closed between the refusal and the question (TTL -2)
+        WHEN retry_after is asked
+        THEN it is one second
+        """
+        throttle = RedisAssistantThrottle(fakeredis.FakeStrictRedis(), max_per_hour=1)
+
+        assert throttle.retry_after(uuid4()) == 1
+
+    def test_retry_after_is_the_full_window_when_the_key_has_no_expiry(self):
+        """
+        GIVEN a key left without a TTL (-1)
+        WHEN retry_after is asked
+        THEN it is the full window, the longest the cap can last
+        """
+        # GIVEN
+        fake = fakeredis.FakeStrictRedis()
+        throttle = RedisAssistantThrottle(fake, max_per_hour=1, window_seconds=3600)
+        user_id = uuid4()
+        throttle.hit(user_id)
+        fake.persist(_key(fake))
+
+        # WHEN
+        seconds = throttle.retry_after(user_id)
+
+        # THEN
+        assert seconds == 3600
+
+    def test_retry_after_is_the_full_window_and_logs_when_the_store_is_unavailable(self, caplog):
+        """
+        GIVEN a store whose TTL lookup raises a Redis error
+        WHEN retry_after is asked
+        THEN it is the full window, and a record names the event without the digest
+        """
+        # GIVEN
+        client = MagicMock()
+        client.ttl.side_effect = redis.RedisError("down")
+        throttle = RedisAssistantThrottle(client, max_per_hour=1, window_seconds=3600)
+        user_id = uuid4()
+
+        # WHEN
+        with caplog.at_level(logging.WARNING, logger="api.security"):
+            seconds = throttle.retry_after(user_id)
+
+        # THEN
+        assert seconds == 3600
+        records = [
+            r
+            for r in caplog.records
+            if getattr(r, "event", None) == "assistant_throttle_retry_unavailable"
+        ]
+        assert len(records) == 1
+        assert rate_limit._digest(user_id) not in str(records[0].__dict__)
 
     def test_zero_means_no_limit_and_never_touches_redis(self):
         """

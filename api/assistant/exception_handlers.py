@@ -54,7 +54,7 @@ def assistant_rate_limited_handler(
 
     :param request: FastAPI request.
     :param exc: The raised error.
-    :return: A 429 JSON response.
+    :return: A 429 JSON response with a ``Retry-After`` header.
     """
     status_code = status.HTTP_429_TOO_MANY_REQUESTS
     _log(
@@ -63,6 +63,7 @@ def assistant_rate_limited_handler(
     return JSONResponse(
         status_code=status_code,
         content={"detail": "Too many assistant messages. Please try again later."},
+        headers={"Retry-After": str(exc.retry_after)},
     )
 
 
