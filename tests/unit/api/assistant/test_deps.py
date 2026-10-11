@@ -348,15 +348,19 @@ class TestEnforceMessageLimit:
         """
         GIVEN a throttle that refuses the message
         WHEN the limit dependency runs
-        THEN AssistantRateLimitedError is raised
+        THEN AssistantRateLimitedError is raised carrying the seconds the throttle reports
         """
         # GIVEN
         throttle = MagicMock()
         throttle.hit.return_value = False
+        throttle.retry_after.return_value = 1234
+        user = MagicMock(id=uuid4())
 
         # WHEN/THEN
-        with pytest.raises(AssistantRateLimitedError):
-            await deps.enforce_message_limit(MagicMock(id=uuid4()), throttle)
+        with pytest.raises(AssistantRateLimitedError) as caught:
+            await deps.enforce_message_limit(user, throttle)
+        assert caught.value.retry_after == 1234
+        throttle.retry_after.assert_called_once_with(user.id)
 
     @pytest.mark.asyncio
     async def test_the_throttle_runs_in_a_worker_thread(self):

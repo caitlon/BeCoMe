@@ -167,14 +167,19 @@ async def enforce_message_limit(current_user: CurrentUser, throttle: AssistantTh
 
     Listed first among the route's dependencies, so a spent budget answers before the
     API client, the retriever's store or any model is touched. ``hit`` is synchronous
-    and may talk to Redis, so it runs in a worker thread.
+    and may talk to Redis, so it runs in a worker thread, as does ``retry_after``, which is
+    asked only after a refusal.
 
     :param current_user: The authenticated caller.
     :param throttle: The hourly message cap.
-    :raises AssistantRateLimitedError: When this hour's budget is already spent.
+    :raises AssistantRateLimitedError: When this hour's budget is already spent; it carries
+        the seconds until the window closes.
     """
     if not await run_in_threadpool(throttle.hit, current_user.id):
-        raise AssistantRateLimitedError("the hourly assistant message budget is spent")
+        retry_after = await run_in_threadpool(throttle.retry_after, current_user.id)
+        raise AssistantRateLimitedError(
+            "the hourly assistant message budget is spent", retry_after=retry_after
+        )
 
 
 @dataclass(frozen=True)

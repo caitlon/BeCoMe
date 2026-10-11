@@ -36,7 +36,7 @@ class TestAssistantExceptionHandlers:
         [
             (
                 assistant_rate_limited_handler,
-                AssistantRateLimitedError(_PRIVATE_TEXT),
+                AssistantRateLimitedError(_PRIVATE_TEXT, retry_after=90),
                 429,
                 "Too many assistant messages. Please try again later.",
                 "assistant_rate_limited",
@@ -80,6 +80,22 @@ class TestAssistantExceptionHandlers:
         assert len(records) == 1
         assert records[0].request_id == "req-1"
         assert _PRIVATE_TEXT not in records[0].getMessage()
+
+    def test_the_rate_limited_answer_carries_retry_after(self):
+        """
+        GIVEN a rate-limited error holding 1234 seconds
+        WHEN its handler runs
+        THEN the 429 has a Retry-After header of that many whole seconds
+        """
+        # GIVEN
+        exc = AssistantRateLimitedError(_PRIVATE_TEXT, retry_after=1234)
+
+        # WHEN
+        response = assistant_rate_limited_handler(_request(), exc)
+
+        # THEN
+        assert response.status_code == 429
+        assert response.headers["Retry-After"] == "1234"
 
     def test_the_upstream_failure_is_logged_at_error(self, caplog):
         """

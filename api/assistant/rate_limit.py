@@ -20,12 +20,17 @@ profile with it on), and deployed profiles refuse to start without Redis anyway,
 store outage here costs one developer an unenforced local cap, not a public endpoint its
 protection.
 
+A refused message also learns how long the refusal lasts: ``retry_after`` reports the
+seconds until the user's window closes, for the ``Retry-After`` header of the 429. A Redis
+error there answers with the full window, the longest the wait can be.
+
 The Redis key holds an unkeyed digest of the user id. Never log it: anyone holding the
 logs could hash a known id and confirm it appears.
 """
 
 import hashlib
 import logging
+import math
 import threading
 import time
 from functools import lru_cache
@@ -76,6 +81,8 @@ class AssistantThrottle(Protocol):
 
     def hit(self, user_id: UUID) -> bool: ...
 
+    def retry_after(self, user_id: UUID) -> int: ...
+
 
 class InMemoryAssistantThrottle:
     """Process-local throttle for dev and tests (not shared across processes).
@@ -117,6 +124,19 @@ class InMemoryAssistantThrottle:
             self._counts[key] = (count, opened)
         return count <= self._max
 
+    def retry_after(self, user_id: UUID) -> int:
+        """Report how long until the user's window closes; call it after a refusal.
+
+        :param user_id: The user whose message was refused.
+        :return: Whole seconds until the window closes, at least 1.
+        """
+        now = time.monotonic()
+        with self._lock:
+            entry = self._counts.get(_digest(user_id))
+        if entry is None:
+            return 1
+        return max(1, math.ceil(self._window - (now - entry[1])))
+
 
 class RedisAssistantThrottle:
     """Redis-backed throttle shared across processes; fails open on a store outage.
@@ -151,6 +171,31 @@ class RedisAssistantThrottle:
             _log_store_unavailable(e)
             return True
         return int(results[1]) <= self._max
+
+    def retry_after(self, user_id: UUID) -> int:
+        """Report how long until the user's window closes; call it after a refusal.
+
+        A key that is gone means the window closed just now, so the wait is one second.
+        A key with no expiry cannot be told apart from a fresh window, so it gets the
+        full window; so does an unreachable store.
+
+        :param user_id: The user whose message was refused.
+        :return: Whole seconds until the window closes, at least 1.
+        """
+        try:
+            ttl = int(self._client.ttl(f"{KEY_PREFIX}:{_digest(user_id)}"))
+        except redis.RedisError as e:
+            logger.warning(
+                "Assistant throttle store unavailable, retry time not known",
+                extra={"event": "assistant_throttle_retry_unavailable"},
+                exc_info=e,
+            )
+            return self._window
+        if ttl == -2:
+            return 1
+        if ttl == -1:
+            return self._window
+        return max(1, ttl)
 
 
 @lru_cache

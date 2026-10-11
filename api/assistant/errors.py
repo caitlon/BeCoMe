@@ -26,4 +26,12 @@ class AssistantUnavailableError(AssistantError):
 
 
 class AssistantRateLimitedError(AssistantError):
-    """Raised when a user has spent their per-hour assistant message budget."""
+    """Raised when a user has spent their per-hour assistant message budget.
+
+    :param message: Description for the log; never shown to the caller.
+    :param retry_after: Whole seconds until the user's window closes, sent as ``Retry-After``.
+    """
+
+    def __init__(self, message: str, *, retry_after: int) -> None:
+        super().__init__(message)
+        self.retry_after = retry_after
