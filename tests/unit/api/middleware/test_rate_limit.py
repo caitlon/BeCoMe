@@ -3,6 +3,8 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+from starlette.responses import JSONResponse
+
 from api.middleware.rate_limit import build_limiter, rate_limit_handler
 
 
@@ -59,6 +61,106 @@ class TestRateLimitHandler:
         # THEN
         assert result is sentinel
         mock_delegate.assert_called_once_with(request, exc)
+
+
+class TestRetryAfterHeader:
+    """The 429 tells the client how long to wait, which slowapi leaves out by default."""
+
+    @staticmethod
+    def _request(*, view_rate_limit, reset: float | Exception = 0.0) -> MagicMock:
+        """Build a request whose limiter reports ``reset`` as the window's close time."""
+        request = MagicMock()
+        request.state.view_rate_limit = view_rate_limit
+        stats = request.app.state.limiter.limiter.get_window_stats
+        if isinstance(reset, Exception):
+            stats.side_effect = reset
+        else:
+            stats.return_value = (reset, 0)
+        return request
+
+    @staticmethod
+    def _exc(window_seconds: int = 60) -> MagicMock:
+        """Build a RateLimitExceeded stand-in whose limit lasts ``window_seconds``."""
+        exc = MagicMock()
+        exc.limit.limit.get_expiry.return_value = window_seconds
+        return exc
+
+    def _handle(self, request: MagicMock, exc: MagicMock, response=None) -> JSONResponse:
+        """Run the handler with slowapi's own response stubbed."""
+        response = response or JSONResponse({"error": "x"}, status_code=429)
+        with (
+            patch("api.middleware.rate_limit.logger"),
+            patch("api.middleware.rate_limit._rate_limit_exceeded_handler", return_value=response),
+            patch("api.middleware.rate_limit.time.time", return_value=1000.0),
+        ):
+            return rate_limit_handler(request, exc)
+
+    def test_uses_the_window_reset_time_from_the_limiter(self):
+        """
+        GIVEN a limit whose window closes 12.2 seconds from now
+        WHEN rate_limit_handler runs
+        THEN Retry-After is that wait rounded up to 13 whole seconds
+        """
+        limit = MagicMock()
+        request = self._request(view_rate_limit=(limit, ["1.2.3.4"]), reset=1012.2)
+
+        response = self._handle(request, self._exc())
+
+        assert response.headers["Retry-After"] == "13"
+        request.app.state.limiter.limiter.get_window_stats.assert_called_once_with(limit, "1.2.3.4")
+
+    def test_waits_at_least_one_second(self):
+        """
+        GIVEN a window that has already closed by the time the handler reads it
+        WHEN rate_limit_handler runs
+        THEN Retry-After is 1, never zero or negative
+        """
+        request = self._request(view_rate_limit=(MagicMock(), ["k"]), reset=990.0)
+
+        response = self._handle(request, self._exc())
+
+        assert response.headers["Retry-After"] == "1"
+
+    def test_falls_back_to_the_limit_window_without_a_recorded_limit(self):
+        """
+        GIVEN no view_rate_limit on the request
+        WHEN rate_limit_handler runs
+        THEN Retry-After is the full length of the limit's window
+        """
+        request = self._request(view_rate_limit=None)
+
+        response = self._handle(request, self._exc(window_seconds=60))
+
+        assert response.headers["Retry-After"] == "60"
+        request.app.state.limiter.limiter.get_window_stats.assert_not_called()
+
+    def test_falls_back_to_the_limit_window_when_the_stats_call_fails(self):
+        """
+        GIVEN a store that raises when asked for the window stats
+        WHEN rate_limit_handler runs
+        THEN Retry-After is the full length of the limit's window
+        """
+        request = self._request(
+            view_rate_limit=(MagicMock(), ["k"]), reset=RuntimeError("store down")
+        )
+
+        response = self._handle(request, self._exc(window_seconds=3600))
+
+        assert response.headers["Retry-After"] == "3600"
+
+    def test_keeps_a_retry_after_slowapi_already_set(self):
+        """
+        GIVEN a slowapi response that already carries Retry-After
+        WHEN rate_limit_handler runs
+        THEN that value is left alone
+        """
+        existing = JSONResponse({"error": "x"}, status_code=429, headers={"Retry-After": "7"})
+        request = self._request(view_rate_limit=(MagicMock(), ["k"]), reset=1500.0)
+
+        response = self._handle(request, self._exc(), existing)
+
+        assert response.headers["Retry-After"] == "7"
+        request.app.state.limiter.limiter.get_window_stats.assert_not_called()
 
 
 class TestRateLimitWiring:
