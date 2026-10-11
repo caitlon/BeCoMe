@@ -47,7 +47,10 @@ export function AssistantComposer({
     const element = innerRef.current;
     if (!element) return;
     element.style.height = "auto";
-    element.style.height = `${element.scrollHeight}px`;
+    // scrollHeight leaves the border out, and the box is border-box: without it the box
+    // is 2px short and the scrollbar shows from the second line.
+    const border = element.offsetHeight - element.clientHeight;
+    element.style.height = `${element.scrollHeight + border}px`;
   }, [value]);
 
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {

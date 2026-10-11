@@ -176,6 +176,18 @@ describe('AssistantComposer', () => {
       expect(box()).toHaveClass('max-h-[8.5rem]', 'overflow-y-auto');
     });
 
+    it('adds the border to the height of its text, as the box is border-box', () => {
+      vi.spyOn(Element.prototype, 'scrollHeight', 'get').mockReturnValue(96);
+      vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(98);
+      vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(96);
+
+      render(
+        <AssistantComposer value="a" onChange={vi.fn()} onSend={vi.fn()} onCancel={vi.fn()} isPending={false} />
+      );
+
+      expect(box().style.height).toBe('98px');
+    });
+
     it('hands the ref to a callback ref as well', () => {
       const refCallback = vi.fn();
       setup({ textareaRef: refCallback });
