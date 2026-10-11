@@ -89,25 +89,19 @@ describe('assistant-api', () => {
       expect(removed).toHaveBeenCalledWith('abort', listener);
     });
 
-    it('raises no unhandled rejection when the request fails after an abort won the race', async () => {
-      const unhandled = vi.fn();
-      process.on('unhandledRejection', unhandled);
+    it('subscribes to a request that is still in flight when the abort wins the race', async () => {
+      // A bare thenable, since vi.fn() attaches its own handlers to a Promise it returns,
+      // which would hide a late rejection that nothing handles.
+      const then = vi.fn();
+      mockRequestStream.mockReturnValueOnce({ then });
       const controller = new AbortController();
-      let failRequest: (reason: Error) => void = () => undefined;
-      mockRequestStream.mockReturnValueOnce(
-        new Promise<Response>((_resolve, reject) => {
-          failRequest = reject;
-        })
-      );
 
       const promise = streamAssistantMessage(request, controller.signal);
       controller.abort();
-      await expect(promise).rejects.toMatchObject({ name: 'AbortError' });
-      failRequest(new Error('late failure'));
-      await new Promise((resolve) => setTimeout(resolve, 0));
 
-      process.off('unhandledRejection', unhandled);
-      expect(unhandled).not.toHaveBeenCalled();
+      await expect(promise).rejects.toMatchObject({ name: 'AbortError' });
+      expect(then).toHaveBeenCalledTimes(1);
+      expect(then).toHaveBeenCalledWith(expect.any(Function), expect.any(Function));
     });
 
     it('propagates a rejection from requestStream unchanged', async () => {

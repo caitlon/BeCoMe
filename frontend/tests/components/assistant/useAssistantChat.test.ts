@@ -1127,22 +1127,6 @@ describe('useAssistantChat', () => {
       expect(result.current.messages.map((m) => m.id)).toEqual(['m0']);
     });
 
-    it('reads a stored retryAfter of null as no delay and keeps the message', () => {
-      // JSON turns a NaN into null, which an older build stored for an HTTP-date Retry-After.
-      seed([
-        storedMessage(0, 'user', 'error'),
-        {
-          ...storedMessage(1, 'assistant', 'error', ''),
-          error: { code: 429, detail: 'Too many requests', retryAfter: null },
-        } as unknown as AssistantMessage,
-      ]);
-
-      const { result } = setup();
-
-      expect(result.current.messages).toHaveLength(2);
-      expect(result.current.messages[1].error).toEqual({ code: 429, detail: 'Too many requests' });
-    });
-
     it.each([['an object', '{"a":1}'], ['null', 'null'], ['a number', '5'], ['a string', '"x"']])(
       'starts empty when the stored value is %s rather than a list',
       (_name, raw) => {

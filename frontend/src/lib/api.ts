@@ -128,6 +128,8 @@ function parseRetryAfter(header: string | null): number | undefined {
   const value = header?.trim();
   if (!value) return undefined;
   if (/^\d+$/.test(value)) return Number(value);
+  // Date.parse also reads '1.5' or '-5' as a date; an HTTP-date always has a month name.
+  if (!/[a-z]/i.test(value)) return undefined;
   const date = Date.parse(value);
   return Number.isNaN(date) ? undefined : Math.max(0, Math.ceil((date - Date.now()) / 1000));
 }
