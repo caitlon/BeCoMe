@@ -4,6 +4,7 @@ import { HttpError, RateLimitError, StreamIncompleteError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
 import type { AnswerChecks, ChatTurn, SourceRef, TurnTiming } from "@/types/api";
 import { streamAssistantMessage } from "./assistant-api";
+import { isRecord } from "./message-shape";
 import { readAssistantSseStream, type AssistantSseEvent } from "./sse";
 
 const MESSAGE_STATUSES = ["pending", "done", "error", "cut", "cancelled"] as const;
@@ -29,8 +30,13 @@ export interface AssistantMessage {
   readonly createdAt: number;
 }
 
-/** sessionStorage keys are `${STORAGE_PREFIX}:${userId}:${projectId ?? "general"}`. */
-export const STORAGE_PREFIX = "assistant-chat";
+const STORAGE_BASE = "assistant-chat";
+/**
+ * sessionStorage keys are `${STORAGE_PREFIX}:${userId}:${projectId ?? "general"}`. The
+ * version is bumped when the stored shape changes, e.g. SourceRef; a key of an older
+ * version is never read, and sign-out still removes it.
+ */
+export const STORAGE_PREFIX = `${STORAGE_BASE}:v1`;
 
 // AssistantChatRequest.history takes at most 20 entries (api/schemas/assistant.py).
 const MAX_HISTORY_ENTRIES = 20;
@@ -56,10 +62,6 @@ function storageKeyFor(userId: string, projectId: string | null): string {
   return `${STORAGE_PREFIX}:${userId}:${projectId ?? "general"}`;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function isStoredMessage(value: unknown): value is AssistantMessage {
   if (!isRecord(value)) return false;
   const { error, sources, toolsUsed, checks, timing } = value;
@@ -74,7 +76,7 @@ function isStoredMessage(value: unknown): value is AssistantMessage {
       (isRecord(error) &&
         typeof error.code === "number" &&
         typeof error.detail === "string" &&
-        (error.retryAfter === undefined || typeof error.retryAfter === "number"))) &&
+        (error.retryAfter == null || typeof error.retryAfter === "number"))) &&
     (sources === undefined || Array.isArray(sources)) &&
     (toolsUsed === undefined || Array.isArray(toolsUsed)) &&
     (checks === undefined || isRecord(checks)) &&
@@ -83,15 +85,23 @@ function isStoredMessage(value: unknown): value is AssistantMessage {
 }
 
 // A request cannot outlive the page that made it, so a message stored as pending
-// is a partial answer that was cut off, empty or not.
+// is a partial answer that was cut off, empty or not. A retryAfter of null is what
+// JSON makes of a NaN stored by an older build; it reads as no delay at all.
+function fromStorage(m: AssistantMessage): AssistantMessage {
+  const settled: AssistantMessage = m.status === "pending" ? { ...m, status: "cut" } : m;
+  const { error } = settled;
+  if (!error || (error as { retryAfter?: number | null }).retryAfter !== null) return settled;
+  return { ...settled, error: { code: error.code, detail: error.detail } };
+}
+
+// Anything that is not a JSON array of messages (an object, null, a number) throws on
+// `.filter` and ends up in the catch, the same as unparsable text.
 function loadMessages(key: string): AssistantMessage[] {
   try {
-    const parsed: unknown = JSON.parse(window.sessionStorage.getItem(key) ?? "[]");
-    if (!Array.isArray(parsed)) return [];
-    return parsed
+    return JSON.parse(window.sessionStorage.getItem(key) ?? "[]")
       .filter(isStoredMessage)
       .slice(-MAX_MESSAGES)
-      .map((m) => (m.status === "pending" ? { ...m, status: "cut" } : m));
+      .map(fromStorage);
   } catch {
     return [];
   }
@@ -119,7 +129,7 @@ export function clearAssistantHistory(): void {
     const keys: string[] = [];
     for (let i = 0; i < storage.length; i += 1) {
       const key = storage.key(i);
-      if (key?.startsWith(`${STORAGE_PREFIX}:`)) keys.push(key);
+      if (key?.startsWith(`${STORAGE_BASE}:`)) keys.push(key);
     }
     keys.forEach((key) => storage.removeItem(key));
   } catch {
@@ -149,6 +159,14 @@ function toError(error: unknown): AssistantMessageError {
     return { code: error.status, detail: error.message };
   }
   return { code: 0, detail: error instanceof Error ? error.message : String(error) };
+}
+
+// The class only: a message can carry a host or a piece of the user's text. A refusal
+// from the server (a 404, a 429, a 503) is an expected outcome, so it is a warning.
+function logTurnFailure(error: unknown): void {
+  const context = { error: error instanceof Error ? error.name : typeof error };
+  if (error instanceof HttpError) logger.warn("Assistant turn failed", context);
+  else logger.error("Assistant turn failed", context);
 }
 
 function applyEvent(m: AssistantMessage, event: AssistantSseEvent): AssistantMessage {
@@ -343,10 +361,11 @@ export function useAssistantChat({
     // failed too, so the next request does not carry it a second time.
     const restoreDraft = () => {
       setDraft((d) => d || text);
+      // No write is asked for: this always runs in the same tick as the settle that
+      // does, so one render carries both changes into storage.
       setThread((prev) => ({
         ...prev,
         messages: patchMessage(prev.messages, userMessage.id, markFailed),
-        writes: prev.writes + 1,
       }));
     };
     const progress: StreamProgress = { finished: false, hasContent: false };
@@ -376,10 +395,7 @@ export function useAssistantChat({
       });
     } catch (error) {
       const aborted = controller.signal.aborted;
-      // The class only: a message can carry a host or a piece of the user's text.
-      if (!aborted) {
-        logger.error("Assistant turn failed", { error: error instanceof Error ? error.name : typeof error });
-      }
+      if (!aborted) logTurnFailure(error);
       settleAnswer((m) => applyFailure(m, error, aborted, progress.hasContent));
       if (!aborted && !progress.hasContent) restoreDraft();
     } finally {

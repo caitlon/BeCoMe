@@ -125,7 +125,6 @@ describe('useAssistantChat', () => {
   beforeEach(() => {
     mockStreamAssistantMessage.mockReset();
     mockReadAssistantSseStream.mockReset();
-    vi.spyOn(console, 'error').mockImplementation(() => undefined);
     mockStreamAssistantMessage.mockResolvedValue({ body: {} } as Response);
     window.sessionStorage.clear();
   });
@@ -167,6 +166,7 @@ describe('useAssistantChat', () => {
     });
 
     it('logs the class of a failed turn and never its message', async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => undefined);
       const stream = openStream();
       const { result } = setup();
 
@@ -178,7 +178,23 @@ describe('useAssistantChat', () => {
       expect(JSON.stringify(vi.mocked(console.error).mock.calls)).not.toContain('secret host name');
     });
 
+    it('logs a refusal from the server as a warning, not an error', async () => {
+      const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      mockStreamAssistantMessage.mockRejectedValueOnce(new RateLimitError('secret detail', 30));
+      const { result } = setup();
+
+      ask(result);
+
+      await waitFor(() => expect(result.current.messages[1].status).toBe('error'));
+      expect(warn).toHaveBeenCalledWith('[WARN] Assistant turn failed', { error: 'HttpError' });
+      expect(JSON.stringify(warn.mock.calls)).not.toContain('secret detail');
+      expect(error).not.toHaveBeenCalled();
+    });
+
     it('does not log a cancel', async () => {
+      const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
       mockStreamAssistantMessage.mockImplementation(
         (_request: unknown, signal: AbortSignal) =>
           new Promise((_resolve, reject) => {
@@ -191,7 +207,8 @@ describe('useAssistantChat', () => {
       act(() => result.current.cancel());
 
       await waitFor(() => expect(result.current.messages[1].status).toBe('cancelled'));
-      expect(console.error).not.toHaveBeenCalled();
+      expect(error).not.toHaveBeenCalled();
+      expect(warn).not.toHaveBeenCalled();
     });
 
     it('replaces the text with the final answer and attaches the extras on done', async () => {
@@ -415,6 +432,8 @@ describe('useAssistantChat', () => {
       const { result } = setup();
       ask(result);
       stream.token('Partial');
+      await waitFor(() => expect(result.current.messages[1].content).toBe('Partial'));
+      expect(result.current.messages[1].status).toBe('pending');
       await waitFor(() => expect(stored()).toHaveLength(2));
 
       act(() => result.current.clear());
@@ -988,6 +1007,21 @@ describe('useAssistantChat', () => {
   });
 
   describe('persistence', () => {
+    it('keys the conversation by version, and never reads a key of no version', async () => {
+      window.sessionStorage.setItem(
+        'assistant-chat:u1:general',
+        JSON.stringify([storedMessage(0, 'user')])
+      );
+      mockStreamAssistantMessage.mockRejectedValueOnce(new HttpError('Not Found', 404));
+      const { result } = setup();
+      expect(result.current.messages).toEqual([]);
+
+      ask(result, 'hi');
+
+      await waitFor(() => expect(stored()).toHaveLength(2));
+      expect(window.sessionStorage.getItem('assistant-chat:v1:u1:general')).not.toBeNull();
+    });
+
     it('saves the conversation under the user and project key', async () => {
       const stream = openStream();
       const { result } = setup({ projectId: 'p1', userId: 'u7' });
@@ -1058,6 +1092,33 @@ describe('useAssistantChat', () => {
 
       expect(result.current.messages.map((m) => m.id)).toEqual(['m0']);
     });
+
+    it('reads a stored retryAfter of null as no delay and keeps the message', () => {
+      // JSON turns a NaN into null, which an older build stored for an HTTP-date Retry-After.
+      seed([
+        storedMessage(0, 'user', 'error'),
+        {
+          ...storedMessage(1, 'assistant', 'error', ''),
+          error: { code: 429, detail: 'Too many requests', retryAfter: null },
+        } as unknown as AssistantMessage,
+      ]);
+
+      const { result } = setup();
+
+      expect(result.current.messages).toHaveLength(2);
+      expect(result.current.messages[1].error).toEqual({ code: 429, detail: 'Too many requests' });
+    });
+
+    it.each([['an object', '{"a":1}'], ['null', 'null'], ['a number', '5'], ['a string', '"x"']])(
+      'starts empty when the stored value is %s rather than a list',
+      (_name, raw) => {
+        window.sessionStorage.setItem(`${STORAGE_PREFIX}:u1:general`, raw);
+
+        const { result } = setup();
+
+        expect(result.current.messages).toEqual([]);
+      }
+    );
 
     it('keeps a stored message whose optional parts have the right shape', () => {
       const full = {
@@ -1251,6 +1312,9 @@ describe('useAssistantChat', () => {
       window.removeEventListener('error', onError);
       expect(setItem).toHaveBeenCalled();
       expect(reported).toEqual([]);
+      // restoreAllMocks leaves a spy on happy-dom's storage in place, and a later test
+      // that seeds storage would hit the quota error.
+      setItem.mockRestore();
     });
 
     it('keeps working when storage refuses every read and write', async () => {
@@ -1279,6 +1343,43 @@ describe('useAssistantChat', () => {
       expect(reported).toEqual([]);
     });
 
+    it('writes nothing for the other conversation when a turn settles after the switch', async () => {
+      seed([storedMessage(1, 'user'), storedMessage(2, 'assistant')], 'u1', 'p2');
+      const stream = openStream();
+      const { result, rerender } = setup();
+      ask(result);
+      stream.token('Partial');
+      await waitFor(() => expect(result.current.messages[1].content).toBe('Partial'));
+      const setItem = vi.spyOn(window.sessionStorage, 'setItem');
+      const removeItem = vi.spyOn(window.sessionStorage, 'removeItem');
+
+      rerender({ projectId: 'p2', userId: 'u1' });
+      await nextTick();
+      await nextTick();
+
+      expect(mockStreamAssistantMessage.mock.calls[0][1].aborted).toBe(true);
+      expect(result.current.messages.map((m) => m.id)).toEqual(['m1', 'm2']);
+      expect(setItem).not.toHaveBeenCalled();
+      expect(removeItem).not.toHaveBeenCalled();
+    });
+
+    it('writes nothing for the conversation it switches to', async () => {
+      seed([storedMessage(1, 'user'), storedMessage(2, 'assistant')], 'u1', 'p2');
+      const stream = openStream();
+      const { result, rerender } = setup();
+      ask(result);
+      stream.done();
+      await waitFor(() => expect(stored()?.[1].status).toBe('done'));
+      const setItem = vi.spyOn(window.sessionStorage, 'setItem');
+      const removeItem = vi.spyOn(window.sessionStorage, 'removeItem');
+
+      rerender({ projectId: 'p2', userId: 'u1' });
+
+      expect(result.current.messages.map((m) => m.id)).toEqual(['m1', 'm2']);
+      expect(setItem).not.toHaveBeenCalled();
+      expect(removeItem).not.toHaveBeenCalled();
+    });
+
     it('writes storage when a turn is appended and when it settles, never per token', async () => {
       const setItem = vi.spyOn(window.sessionStorage, 'setItem');
       const stream = openStream();
@@ -1297,6 +1398,7 @@ describe('useAssistantChat', () => {
     });
 
     it('stores a turn that fails before any token', async () => {
+      const setItem = vi.spyOn(window.sessionStorage, 'setItem');
       mockStreamAssistantMessage.mockRejectedValueOnce(new HttpError('Not Found', 404));
       const { result } = setup();
 
@@ -1304,6 +1406,9 @@ describe('useAssistantChat', () => {
 
       await waitFor(() => expect(stored()?.[1].status).toBe('error'));
       expect(stored()?.[1].error).toEqual({ code: 404, detail: 'Not Found' });
+      // The question is stored as failed in the same write that stores the refusal.
+      expect(stored()?.[0].status).toBe('error');
+      expect(setItem).toHaveBeenCalledTimes(2);
     });
 
     it('stores a cut answer with its partial text', async () => {
@@ -1333,14 +1438,15 @@ describe('clearAssistantHistory', () => {
     seed([storedMessage(0, 'user')], 'u1', 'general');
     seed([storedMessage(0, 'user')], 'u1', 'p1');
     seed([storedMessage(0, 'user')], 'u2', 'p1');
+    window.sessionStorage.setItem('assistant-chat:u1:general', '[]');
     window.sessionStorage.setItem('theme', 'dark');
-    window.sessionStorage.setItem(`${STORAGE_PREFIX}x`, 'no colon, not ours');
+    window.sessionStorage.setItem('assistant-chatx', 'no colon, not ours');
 
     clearAssistantHistory();
 
     expect(window.sessionStorage.length).toBe(2);
     expect(window.sessionStorage.getItem('theme')).toBe('dark');
-    expect(window.sessionStorage.getItem(`${STORAGE_PREFIX}x`)).not.toBeNull();
+    expect(window.sessionStorage.getItem('assistant-chatx')).not.toBeNull();
   });
 
   it('does not throw when storage is blocked', () => {
