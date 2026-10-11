@@ -12,6 +12,7 @@ React frontend for BeCoMe (Best Compromise Mean), the system that aggregates exp
 - [Internationalisation](#internationalisation)
 - [Accessibility](#accessibility)
 - [Layout](#layout)
+- [Assistant](#assistant)
 - [Testing](#testing)
 
 ## Tech stack
@@ -150,6 +151,25 @@ The three calls that send a localised email, `register`, `resendVerification` an
 
 The navigation bar shows its full row from the `xl` breakpoint (1280 px) and a menu button
 below it, and a long signed-in name is truncated.
+
+## Assistant
+
+The assistant panel is behind the build flag `VITE_ASSISTANT_ENABLED`. It is off by default,
+and a default build carries no assistant code, strings, i18n keys or endpoint paths. The
+panel and its triggers are lazy chunks that exist only when the flag is set.
+Build with the flag to include it:
+```bash
+VITE_ASSISTANT_ENABLED=true npm run build
+```
+
+The feature lives in `src/components/assistant/`. Its backend half needs `ASSISTANT_ENABLED`
+on the API and runs only on a developer machine for now (`api/assistant/README.md`).
+
+`e2e/assistant-panel.spec.ts` needs no backend: it answers every API request with a route.
+It is skipped unless the flag is in the environment when Playwright starts its dev server:
+```bash
+VITE_ASSISTANT_ENABLED=true npx playwright test e2e/assistant-panel.spec.ts --project=chromium
+```
 
 ## Testing
 

@@ -486,6 +486,11 @@ database for an unbounded result set. The GDPR export is the one deliberate exce
 list caps, since Article 20 requires the full dataset. `api/README.md` records the
 exemption, and the route itself carries no note.
 
+Text a model writes reaches the browser only through the optional assistant panel, which
+renders answers with react-markdown limited to an element allowlist (`p`, `strong`, `em`,
+`ul`, `ol`, `li`, `code`, `br`, with `unwrapDisallowed`), loads no raw-HTML plugin, and
+turns a source into a link only when its URL is `https://`.
+
 ## Configuration and profiles
 
 The app runs under one of three profiles selected by `APP_ENV`: `dev`, `test`, `prod`
