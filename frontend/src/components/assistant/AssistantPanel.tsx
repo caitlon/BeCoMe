@@ -50,7 +50,7 @@ function ClearConfirm({ onConfirm, onCancel }: ClearConfirmProps) {
   }, []);
 
   return (
-    <fieldset aria-label={question} className="m-0 flex min-w-0 items-center gap-2 border-b bg-muted/50 px-4 py-2 text-[13px]">
+    <fieldset aria-label={question} className="flex min-w-0 items-center gap-2 border-b bg-muted/50 px-4 py-2 text-[13px]">
       <span className="flex-1">{question}</span>
       <Button type="button" variant="outline" size="sm" className="border-destructive" onClick={onConfirm}>
         {t("panel.clearYes")}
