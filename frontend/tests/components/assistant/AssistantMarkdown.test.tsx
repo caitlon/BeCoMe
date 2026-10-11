@@ -347,6 +347,19 @@ describe('AssistantMarkdown', () => {
         expect(container.textContent).toContain('[1]: https://example.com');
       });
 
+      it('does not take an inline code span at the start of a line for a fence', () => {
+        renderMarkdown('```x``` text\n\nClaim [1].\n\n[1]: https://example.com', { sourceNumbers: [1] });
+
+        expect(screen.getAllByRole('link').map((a) => a.textContent)).toEqual(['[1]', '[1]']);
+      });
+
+      it('does not close a backtick fence with a tilde line', () => {
+        const { container } = renderMarkdown('```\n~~~\n[1]: https://example.com\n```', { sourceNumbers: [1] });
+
+        expect(container.textContent).not.toContain('\\');
+        expect(container.textContent).toContain('[1]: https://example.com');
+      });
+
       it('resumes after a closed fence', () => {
         renderMarkdown('```\ncode\n```\n\nClaim [1].\n\n[1]: https://example.com', { sourceNumbers: [1] });
 

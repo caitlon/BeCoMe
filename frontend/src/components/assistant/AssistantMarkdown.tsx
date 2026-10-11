@@ -21,7 +21,7 @@ const CITATION = /\[([1-9]\d*)\]/g;
 // quote or list markers; markdown trims spaces inside the label. Markdown would swallow the
 // definition and turn every "[1]" in the answer into a link reference, which loses the brackets.
 const DEFINITION_START = /^((?:[ \t]*(?:>|[-*+]|\d+[.)]))*[ \t]*)\[(?=[ \t]*[1-9]\d*[ \t]*\]:)/;
-const FENCE = /^ {0,3}(`{3,}|~{3,})/;
+const FENCE = /^ {0,3}(`{3,}(?=[^`]*$)|~{3,})/;
 // Any line with four leading spaces or a tab is taken for code, a list continuation included.
 const INDENTED_CODE = /^(?: {4}|\t)/;
 const CITE_BASE = "mx-0.5 rounded border px-1 align-[1px] text-[11px] font-semibold text-muted-foreground";
@@ -83,7 +83,8 @@ function withCitations(children: ReactNode): ReactNode {
 }
 
 // Escaping the opening bracket makes the line plain text, so no definition exists and
-// the "[n]" in it is a citation like any other. Code is left as written.
+// the "[n]" in it is a citation like any other. Top-level fenced and indented code is left as
+// written; code inside lists and quotes is only approximated.
 function neutraliseDefinitions(content: string): string {
   let fence: string | undefined;
   return content
@@ -140,7 +141,8 @@ export function AssistantMarkdown({ content, messageId, sourceNumbers, onCite }:
 
   return (
     <CitationContext value={citation}>
-      {/* No rehype-raw here, so raw HTML stays text; adding one needs skipHtml back or a sanitizer. */}
+      {/* No rehype-raw here, so raw HTML stays text; adding one parses HTML into elements,
+          so it must be paired with rehype-sanitize. */}
       <Markdown allowedElements={ALLOWED_ELEMENTS} unwrapDisallowed components={COMPONENTS}>
         {text}
       </Markdown>
