@@ -161,12 +161,18 @@ function toError(error: unknown): AssistantMessageError {
   return { code: 0, detail: error instanceof Error ? error.message : String(error) };
 }
 
-// The class only: a message can carry a host or a piece of the user's text. A refusal
-// from the server (a 404, a 429, a 503) is an expected outcome, so it is a warning.
+// The refusals the endpoint gives by design: not found, invalid, rate limited, disabled.
+const EXPECTED_REFUSALS: ReadonlySet<number> = new Set([404, 422, 429, 503]);
+
+// The class only: a message can carry a host or a piece of the user's text. An expected
+// refusal is a warning; any other failure, a 500 included, stays an error.
 function logTurnFailure(error: unknown): void {
   const context = { error: error instanceof Error ? error.name : typeof error };
-  if (error instanceof HttpError) logger.warn("Assistant turn failed", context);
-  else logger.error("Assistant turn failed", context);
+  if (error instanceof HttpError && EXPECTED_REFUSALS.has(error.status)) {
+    logger.warn("Assistant turn failed", context);
+  } else {
+    logger.error("Assistant turn failed", context);
+  }
 }
 
 function applyEvent(m: AssistantMessage, event: AssistantSseEvent): AssistantMessage {

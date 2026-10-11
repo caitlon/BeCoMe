@@ -192,6 +192,40 @@ describe('useAssistantChat', () => {
       expect(error).not.toHaveBeenCalled();
     });
 
+    it.each([
+      ['a 404', new HttpError('Not Found', 404)],
+      ['a 422', new HttpError('Unprocessable Entity', 422)],
+      ['a 503', new ServerError('Service Unavailable', 503)],
+    ])('logs %s as a warning too', async (_name, failure) => {
+      const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      mockStreamAssistantMessage.mockRejectedValueOnce(failure);
+      const { result } = setup();
+
+      ask(result);
+
+      await waitFor(() => expect(result.current.messages[1].status).toBe('error'));
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(error).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['a 500', new ServerError('Internal Server Error', 500)],
+      ['a 502', new ServerError('Bad Gateway', 502)],
+      ['a 400', new HttpError('Bad Request', 400)],
+    ])('keeps %s logged as an error', async (_name, failure) => {
+      const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      mockStreamAssistantMessage.mockRejectedValueOnce(failure);
+      const { result } = setup();
+
+      ask(result);
+
+      await waitFor(() => expect(result.current.messages[1].status).toBe('error'));
+      expect(error).toHaveBeenCalledWith('[ERROR] Assistant turn failed', { error: 'HttpError' });
+      expect(warn).not.toHaveBeenCalled();
+    });
+
     it('does not log a cancel', async () => {
       const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
