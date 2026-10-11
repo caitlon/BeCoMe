@@ -27,6 +27,7 @@ React frontend for BeCoMe (Best Compromise Mean), the system that aggregates exp
 - React Router (routing)
 - i18next with react-i18next (English and Czech)
 - Sentry (`@sentry/react`, browser error tracking)
+- react-markdown (assistant answers, rendered from an allowlist of elements)
 - Cloudflare Turnstile (bot check on the sign-in, registration, password reset and resend-verification forms)
 - Vitest with Testing Library (unit tests)
 - Playwright with axe-core (end-to-end and accessibility tests)
