@@ -13,6 +13,7 @@
 #   UVICORN_WORKERS  - Number of API workers (default: 4)
 #   DEBUG            - Enable debug mode (default: false)
 #   CORS_ORIGINS     - JSON array of allowed origins, e.g. '["http://localhost:3000"]'
+#   ASSISTANT_ENABLED - Build the API image with the assistant extra (default: false)
 #
 # Production considerations:
 #   - Always set SECRET_KEY via environment variable
@@ -55,6 +56,8 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile
+      args:
+        ASSISTANT_ENABLED: ${ASSISTANT_ENABLED:-false}
     container_name: become-api
     restart: unless-stopped
     ports:

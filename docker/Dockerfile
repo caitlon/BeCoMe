@@ -29,11 +29,27 @@ ENV UV_LINK_MODE=copy
 # Copy dependency files first (better caching)
 COPY pyproject.toml uv.lock ./
 
+# The assistant extra ships only in an image built with ASSISTANT_ENABLED set. The
+# arg has the runtime setting's name on purpose: Railway passes service variables as
+# build args, so the one ASSISTANT_ENABLED=true on a dev or test service both
+# installs the extra and turns the feature on, while prod never sets it (Settings
+# refuses it there) and keeps the lean image. The truthy words are the ones pydantic
+# reads as true, so a value the app accepts never builds an image without the extra.
+# Both uv syncs below read the result: sync is exact, and a second sync without the
+# extra would uninstall what the first one added. The arg stays in this stage; the
+# runtime stage gets only the venv.
+ARG ASSISTANT_ENABLED=false
+RUN EXTRAS="--extra api" && \
+    case "$(printf '%s' "${ASSISTANT_ENABLED}" | tr '[:upper:]' '[:lower:]')" in \
+        1|t|true|y|yes|on) EXTRAS="${EXTRAS} --extra assistant" ;; \
+    esac && \
+    printf '%s' "${EXTRAS}" > /tmp/uv-extras
+
 # Install dependencies first (without project) for better layer caching.
 # No BuildKit --mount=type=cache here: Railway's Metal builder rejects custom
 # cache mounts (it does its own layer caching), so this relies on Docker's own
 # layer cache, so the deps layer is only rebuilt when pyproject.toml or uv.lock change.
-RUN uv sync --locked --no-install-project --no-dev --extra api
+RUN uv sync --locked --no-install-project --no-dev $(cat /tmp/uv-extras)
 
 # Copy application code
 COPY src/ ./src/
@@ -41,7 +57,7 @@ COPY api/ ./api/
 COPY README.md ./
 
 # Install project with dependencies
-RUN uv sync --locked --no-dev --extra api
+RUN uv sync --locked --no-dev $(cat /tmp/uv-extras)
 
 # ============================================
 # Stage 2: Runtime
