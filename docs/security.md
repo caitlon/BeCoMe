@@ -518,10 +518,11 @@ has a check of its own, separate from the nine invariants.
 is `true` in the `prod` profile, or on a Railway environment whose name is not `dev` or `test`
 (compared stripped and case-insensitively, so an unknown or renamed environment is refused). The
 profile and the name are checked independently. On any deploy the validator also requires the
-three model roles to be `api`, since a local model server is not reachable there; the key, https
-and loopback checks stay in `_validate_assistant_providers`. Both checks also fire when
-`RAILWAY_ENVIRONMENT_NAME` is set, so a Railway process that carries `TESTING=1` and slips past
-`is_deploy` is still held to them. The assistant router is registered only when the setting is on,
+three model roles to be `api`, since a local model server is not reachable there, and refuses
+`assistant_langsmith_enabled`, since tracing would send the text of questions, tool replies and
+answers to LangSmith. The key, https and loopback checks stay in `_validate_assistant_providers`.
+All three checks also fire when `RAILWAY_ENVIRONMENT_NAME` is set, so a Railway process that
+carries `TESTING=1` and slips past `is_deploy` is still held to them. The assistant router is registered only when the setting is on,
 so a service that leaves it off answers 404 for the whole `/api/v1/assistant` prefix.
 
 ## Network and edge
