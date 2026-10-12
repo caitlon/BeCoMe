@@ -31,7 +31,7 @@ router = APIRouter(prefix="/api/v1/assistant", tags=["assistant"])
 logger = logging.getLogger(__name__)
 
 
-@router.get("/config", summary="Get the local assistant's active configuration")
+@router.get("/config", summary="Get the assistant's active configuration")
 def get_assistant_config(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> AssistantConfigResponse:

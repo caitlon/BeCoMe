@@ -156,7 +156,7 @@ export interface ApiError {
   code?: string;
 }
 
-// Local AI assistant. Field names match api/schemas/assistant.py exactly,
+// AI assistant. Field names match api/schemas/assistant.py exactly,
 // so the wire JSON needs no translation layer.
 export interface AssistantConfigResponse {
   enabled: boolean;

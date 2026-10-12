@@ -3,7 +3,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AssistantUIProvider, useAssistantUI } from "@/contexts/AssistantUIContext";
 
 /**
- * Build-time kill switch for the whole local assistant feature,
+ * Build-time kill switch for the whole assistant feature,
  * computed once so every export below shares the same answer. Vite
  * statically replaces `import.meta.env.VITE_ASSISTANT_ENABLED` with a
  * literal at build time, so when it is not exactly "true" every branch below

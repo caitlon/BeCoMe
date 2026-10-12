@@ -340,7 +340,8 @@ class Settings(BaseSettings):
     assistant_captions_file: str | None = None
     # LangSmith tracing of the assistant, switched on by hand for local work. With it on,
     # the full text of questions, tool replies and answers goes to the endpoint below, so
-    # it needs a key (_validate_assistant_langsmith) and defaults to the EU endpoint.
+    # it needs a key (_validate_assistant_langsmith), defaults to the EU endpoint and is
+    # refused on a deployed service (_validate_assistant_deploy).
     assistant_langsmith_enabled: bool = False
     assistant_langsmith_api_key: str | None = None
     assistant_langsmith_endpoint: str = "https://eu.api.smith.langchain.com"
@@ -446,10 +447,13 @@ class Settings(BaseSettings):
         on Railway ``dev`` and APP_ENV=dev on Railway ``prod`` are both refused. The Railway
         name is checked against an allowlist, so an unknown or renamed environment is
         refused too. A deployed service has no llama-server to reach, so every model role
-        there must be api; a laptop and a CI runner keep local roles. Keeping the guard
-        here, right before _validate_deploy_invariants, means a deploy that sets
-        ASSISTANT_ENABLED wrongly fails on this message first, rather than on whichever
-        deploy invariant happens to be missing.
+        there must be api; a laptop and a CI runner keep local roles. LangSmith tracing
+        is refused on a deployed service too: it sends the text of questions, tool
+        replies and answers, which is project data read as the signed-in user, to a
+        third-party endpoint. Keeping the guard here, right before
+        _validate_deploy_invariants, means a deploy that sets ASSISTANT_ENABLED wrongly
+        fails on this message first, rather than on whichever deploy invariant happens
+        to be missing.
 
         is_deploy alone would not catch every case: it is False whenever TESTING is
         set, which is the pytest profile, so a Railway process that also carried
@@ -460,7 +464,7 @@ class Settings(BaseSettings):
         :return: The validated settings instance.
         :raises ValueError: If assistant_enabled is true in the prod profile or on a
             Railway environment outside the allowlist, or on a deployed service while a
-            model role is still local.
+            model role is still local or assistant_langsmith_enabled is true.
         """
         if not self.assistant_enabled:
             return self
@@ -484,6 +488,11 @@ class Settings(BaseSettings):
                 raise ValueError(
                     f"{', '.join(local_roles)} must be api on a deployed service; a local "
                     "model server is not reachable there"
+                )
+            if self.assistant_langsmith_enabled:
+                raise ValueError(
+                    "assistant_langsmith_enabled must be false on a deployed service; "
+                    "tracing sends project data to LangSmith"
                 )
         return self
 

@@ -1,9 +1,15 @@
-# Local assistant
+# Assistant
 
 Runs on a developer machine and on the Railway `dev` and `test` services. `Settings` refuses to
 start production (the `prod` profile, or any Railway environment other than `dev` and `test`)
 with `ASSISTANT_ENABLED=true`, and on a deployed service it requires all three model roles to be
 `api`.
+
+On the dev and test services every model role runs hosted: `ASSISTANT_ANSWER_PROVIDER`,
+`ASSISTANT_LLM_PROVIDER` and `ASSISTANT_EMBEDDING_PROVIDER` are `api`, each base URL is the OVH
+endpoint, and `ASSISTANT_API_KEY_OVH` holds the key. LangSmith tracing is refused there too. The
+deployed image with the assistant extra and the corpus database are follow-up steps that are not
+done yet. `env/.env.dev.example` and `env/.env.test.example` list the variables.
 
 ## Contents
 

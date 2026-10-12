@@ -2,7 +2,7 @@
 
 When tracing is on, the full text of questions, tool replies and answers goes to the
 configured LangSmith endpoint. It is switched on by hand, for local work, and the
-endpoint defaults to the EU region. With it off, which is the default, nothing is
+endpoint defaults to the EU region. Settings refuses it on a deployed service. With it off, which is the default, nothing is
 traced and nothing leaves the machine.
 """
 
@@ -66,7 +66,7 @@ def tracing_scope(settings: Settings) -> Iterator[None]:
     When it is on, tracing is scoped to this one call rather than switched on
     process-wide. The full text of questions, tool replies and answers then goes to
     the configured LangSmith endpoint, so it is for local work, switched on by hand,
-    against the EU endpoint by default.
+    against the EU endpoint by default, and Settings refuses it on a deployed service.
 
     :param settings: Application settings.
     :return: A context manager that traces what runs inside it when tracing is
