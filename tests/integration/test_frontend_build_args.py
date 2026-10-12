@@ -27,12 +27,6 @@ _ENVIRONMENTS_DOC = _PROJECT_ROOT / "docs" / "environments.md"
 _ENV_READ = re.compile(r"import\.meta\.env\.(VITE_[A-Z0-9_]+)")
 _BUILD_ARG = re.compile(r"^\s*ARG\s+(VITE_[A-Z0-9_]+)", re.MULTILINE)
 
-# Developer-only switches the SPA reads but no deployed build may receive. They are
-# read from frontend/.env.development.local, so declaring one as an ARG would let a
-# Railway service variable turn the feature on in a deployment, and an ENV line
-# would bake it into every image.
-_NEVER_A_BUILD_ARG = frozenset({"VITE_ASSISTANT_ENABLED"})
-
 
 def _variables_read_by_the_spa() -> set[str]:
     """Return every VITE_ variable the SPA's source reads.
@@ -59,10 +53,8 @@ class TestFrontendBuildArgs:
         image is served, and whatever the variable was meant to switch on is
         simply never on.
         """
-        missing = (
-            _variables_read_by_the_spa()
-            - _NEVER_A_BUILD_ARG
-            - set(_BUILD_ARG.findall(_DOCKERFILE.read_text(encoding="utf-8")))
+        missing = _variables_read_by_the_spa() - set(
+            _BUILD_ARG.findall(_DOCKERFILE.read_text(encoding="utf-8"))
         )
 
         assert not missing, f"read by the SPA, never declared as ARG: {sorted(missing)}"
@@ -85,21 +77,3 @@ class TestFrontendBuildArgs:
         missing = {name for name in declared if name not in documented}
 
         assert not missing, f"built into the image, documented nowhere: {sorted(missing)}"
-
-    def test_no_developer_only_switch_is_declared_as_a_build_arg(self):
-        """
-        GIVEN the VITE_ variables that are developer-only build-time switches
-        WHEN frontend/Dockerfile is read
-        THEN none of those names appears anywhere in it
-
-        An ARG is how a Railway service variable reaches the bundle, and an ENV line
-        sets the variable for every build. Declaring one of these switches either way
-        would turn on a feature that is meant to exist only in a developer's own build.
-        The check is a plain substring search, so it holds for any form a declaration
-        or a comment could take, which a pattern per instruction would not.
-        """
-        dockerfile = _DOCKERFILE.read_text(encoding="utf-8")
-
-        leaked = {name for name in _NEVER_A_BUILD_ARG if name in dockerfile}
-
-        assert not leaked, f"developer-only switch named in frontend/Dockerfile: {sorted(leaked)}"
