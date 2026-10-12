@@ -77,6 +77,8 @@ cd .. && SECRET_KEY=dev-secret uv run uvicorn api.main:app --reload
 - `VITE_APP_ENV`: the `dev`, `test`, or `prod` tag on Sentry events.
 - `VITE_TURNSTILE_SITE_KEY`: Cloudflare Turnstile site key. When it is empty, the forms draw
   no widget and submit without a token.
+- `VITE_ASSISTANT_ENABLED`: build flag for the assistant panel. Only the exact string `true`
+  includes it in the bundle; prod leaves it unset. See the Assistant section.
 
 Declare every one of them as both an `ARG` and an `ENV` in `Dockerfile`, before
 `RUN npm run build`. Railway passes service variables to the build as build args, but Docker

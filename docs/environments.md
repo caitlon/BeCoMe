@@ -95,7 +95,7 @@ APP_ENV=prod uv run uvicorn api.main:app
 
 The `api` service in `docker/docker-compose.yml` reads `APP_ENV` with `${APP_ENV:-dev}`, so local Compose runs as dev unless you override it. `docker/Dockerfile.dev` pins `APP_ENV=dev`. The production `docker/Dockerfile` does not hardcode it. The value comes from the platform.
 
-The same Dockerfile takes an `ASSISTANT_ENABLED` build arg, `false` by default. When it reads as true (`1`, `true`, `t`, `yes`, `y` or `on`, in any case, the same words pydantic accepts), the builder installs the `assistant` extra on top of `api`; otherwise the image is the lean one. The arg shares the name of the runtime setting so that Railway, which passes service variables as build args, builds and enables the assistant from one variable. Compose forwards it from your shell with `${ASSISTANT_ENABLED:-false}`.
+The same Dockerfile takes an `ASSISTANT_ENABLED` build arg, `false` by default. When it reads as true (`1`, `true`, `t`, `yes`, `y` or `on`, in any case, the same words pydantic accepts), the builder installs the `assistant` extra on top of `api`; otherwise the image is the lean one. The arg shares the name of the runtime setting so that Railway, which passes service variables as build args, builds and enables the assistant from one variable. Compose forwards it from your shell with `${ASSISTANT_ENABLED:-false}`, but only as a build arg: the `api` container does not receive it, so the assistant stays off in Compose unless you also add `ASSISTANT_ENABLED` and the other `ASSISTANT_*` settings to the service's `environment`.
 
 ## CI
 
@@ -151,7 +151,7 @@ Log format follows the deploy, not the profile. `api/logging_config.py` emits hu
 
 In `frontend/Dockerfile`, declare an `ARG` and an `ENV` for every `VITE_*` variable the SPA reads. Railway passes service variables to the build as build args, but Docker only exposes the ones the Dockerfile declares. Vite then inlines `undefined` for anything missing at build time, silently and with no build error. That gap left `VITE_SENTRY_DSN` set on all three frontend services while `Sentry.init` was tree-shaken out of every bundle.
 
-`VITE_ASSISTANT_ENABLED` is read only as the exact string `true`. Unset or empty, the assistant code is left out of the bundle.
+`VITE_ASSISTANT_ENABLED` is read only as the exact string `true`. Unset or empty, the assistant code is left out of the bundle. Prod leaves it unset, as it does the backend's `ASSISTANT_ENABLED`. The API also accepts `1`, `yes`, `on` and the other pydantic spellings, the SPA does not, so set `true` on both services.
 
 ## Database schema and access
 
