@@ -1439,6 +1439,23 @@ class TestAssistantSettings:
         assert settings.assistant_enabled is True
         assert settings.assistant_answer_provider == "local"
 
+    def test_rejects_local_roles_in_a_test_profile_deploy_without_railway(
+        self, monkeypatch, tmp_path
+    ):
+        """
+        GIVEN APP_ENV=test with TESTING unset and no Railway marker (a test-profile deploy,
+            so is_deploy is true), the assistant on and one role left local
+        WHEN Settings is constructed
+        THEN the hosted-roles rule refuses it, naming that role
+        """
+        # GIVEN
+        self._configure_deployed_assistant(monkeypatch, tmp_path, profile="test", railway_name=None)
+        monkeypatch.setenv("ASSISTANT_ANSWER_PROVIDER", "local")
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="assistant_answer_provider must be api"):
+            Settings()
+
     @pytest.mark.parametrize(
         ("profile", "railway_name", "testing"),
         [("dev", "dev", False), ("test", "test", False), ("dev", "dev", True)],

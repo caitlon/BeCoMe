@@ -2,8 +2,8 @@
 
 When tracing is on, the full text of questions, tool replies and answers goes to the
 configured LangSmith endpoint. It is switched on by hand, for local work, and the
-endpoint defaults to the EU region. Settings refuses it on a deployed service. With it off, which is the default, nothing is
-traced and nothing leaves the machine.
+endpoint defaults to the EU region. Settings refuses it on a deployed service. With it off,
+which is the default, nothing is traced and nothing leaves the machine.
 """
 
 from collections.abc import Iterator
