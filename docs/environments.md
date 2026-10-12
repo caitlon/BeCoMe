@@ -95,6 +95,8 @@ APP_ENV=prod uv run uvicorn api.main:app
 
 The `api` service in `docker/docker-compose.yml` reads `APP_ENV` with `${APP_ENV:-dev}`, so local Compose runs as dev unless you override it. `docker/Dockerfile.dev` pins `APP_ENV=dev`. The production `docker/Dockerfile` does not hardcode it. The value comes from the platform.
 
+The same Dockerfile takes an `ASSISTANT_ENABLED` build arg, `false` by default. When it reads as true (`1`, `true`, `t`, `yes`, `y` or `on`, in any case, the same words pydantic accepts), the builder installs the `assistant` extra on top of `api`; otherwise the image is the lean one. The arg shares the name of the runtime setting so that Railway, which passes service variables as build args, builds and enables the assistant from one variable. Compose forwards it from your shell with `${ASSISTANT_ENABLED:-false}`.
+
 ## CI
 
 `.github/workflows/ci.yml` runs on every push and pull request to `dev`, `test`, and `prod`, so the deploy branches get the same full pipeline as `prod`. That pipeline covers lint, Python and frontend tests, backend and Playwright end-to-end tests, and SonarCloud (the last on pull requests and on pushes to `prod`). It sets `APP_ENV=test` on the `python-tests`, `backend-e2e`, and `e2e` jobs, including the steps that start a live server. `scripts/ci/e2e-local.sh` sets the same value for local end-to-end runs.
@@ -121,7 +123,7 @@ Each environment has its own isolated Railway Postgres (`*-db`) and its own Rail
 
 ## Railway deployment
 
-The root `railway.toml` carries the API build and deploy settings: it points at `docker/Dockerfile` and the `/api/v1/health` check. Railway reads that file from the repository root for every service in the project, so the frontend cannot share it without trying to build the API image. The frontend service therefore has its own config file, `frontend/railway.json`, chosen per service through the Railway "Railway Config File" setting (the absolute path `/frontend/railway.json`). It pins `frontend/Dockerfile` and a `/` health check. Everything else that differs between environments lives in per-environment service variables.
+The root `railway.toml` carries the API build and deploy settings: it points at `docker/Dockerfile` and the `/api/v1/health` check. Railway reads that file from the repository root for every service in the project, so the frontend cannot share it without trying to build the API image. The frontend service therefore has its own config file, `frontend/railway.json`, chosen per service through the Railway "Railway Config File" setting (the absolute path `/frontend/railway.json`). It pins `frontend/Dockerfile` and a `/` health check. Everything else that differs between environments lives in per-environment service variables. The one exception that reaches the image is `ASSISTANT_ENABLED`: set to `true` on the dev and test backends, it also installs the `assistant` extra at build time, and prod never sets it.
 
 | Variable | dev | test | prod |
 |----------|-----|------|------|
@@ -136,7 +138,7 @@ The root `railway.toml` carries the API build and deploy settings: it points at 
 | `DEBUG` | `false` | `false` | `false` |
 | `LOG_LEVEL` | `DEBUG` | `INFO` | `INFO` |
 | `API_PUBLIC_URL` | dev API URL | test API URL | prod API URL |
-| `VITE_API_URL` / `VITE_SENTRY_DSN` / `VITE_APP_ENV` / `VITE_TURNSTILE_SITE_KEY` (frontend build args) | dev values | test values | prod values |
+| `VITE_API_URL` / `VITE_SENTRY_DSN` / `VITE_APP_ENV` / `VITE_TURNSTILE_SITE_KEY` / `VITE_ASSISTANT_ENABLED` (frontend build args) | dev values | test values | prod values |
 | `BUCKET_NAME` / `BUCKET_ENDPOINT` / `BUCKET_ACCESS_KEY_ID` / `BUCKET_SECRET_ACCESS_KEY` | injected from `dev-photos` | injected from `test-photos` | injected from `prod-photos` |
 
 A deployed service that leaves `APP_ENV` unset falls back to the dev profile. The startup guard still runs there, because it keys off `RAILWAY_ENVIRONMENT_NAME` rather than the profile name, so an unset variable cannot weaken a deploy. Set the profile explicitly anyway (`dev`, `test`, or `prod`), so that the log level, the log format, and the `.env.<APP_ENV>` overlay are the ones you meant.
@@ -148,6 +150,8 @@ Log format follows the deploy, not the profile. `api/logging_config.py` emits hu
 `VITE_TURNSTILE_SITE_KEY` is the sitekey paired with the API's `TURNSTILE_SECRET_KEY` on the same service. Provisioning an environment that sets the three `TURNSTILE_*` variables and omits this one switches the check on with no widget in the bundle: no token reaches the API, and every sign-in, sign-up, password reset and resend answers `403`.
 
 In `frontend/Dockerfile`, declare an `ARG` and an `ENV` for every `VITE_*` variable the SPA reads. Railway passes service variables to the build as build args, but Docker only exposes the ones the Dockerfile declares. Vite then inlines `undefined` for anything missing at build time, silently and with no build error. That gap left `VITE_SENTRY_DSN` set on all three frontend services while `Sentry.init` was tree-shaken out of every bundle.
+
+`VITE_ASSISTANT_ENABLED` is read only as the exact string `true`. Unset or empty, the assistant code is left out of the bundle.
 
 ## Database schema and access
 
