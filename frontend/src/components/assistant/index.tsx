@@ -15,10 +15,11 @@ import { AssistantUIProvider, useAssistantUI } from "@/contexts/AssistantUIConte
  * real check is a production build plus a grep of `dist/assets` for the
  * chunk names.
  *
- * The variable itself lives only in a developer's own
- * frontend/.env.development.local (gitignored via the repo's `*.local`
- * pattern); docker/Dockerfile, frontend/Dockerfile and every Railway service
- * never set it, so every deployed build takes the disabled branch below.
+ * Only a build with the variable set to exactly `true` includes the
+ * assistant: a developer's own frontend/.env.development.local (gitignored
+ * via the repo's `*.local` pattern), or the dev and test frontend services,
+ * which pass it through frontend/Dockerfile. Prod leaves it unset, so its
+ * build takes the disabled branch below.
  */
 const enabled = import.meta.env.VITE_ASSISTANT_ENABLED === "true";
 
