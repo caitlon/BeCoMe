@@ -1199,8 +1199,17 @@ class TestProfileLogLevelDefault:
         assert settings.log_level == "ERROR"
 
 
+_PROVIDER_ROLES = [
+    ("assistant_answer_provider", "assistant_answer_llm_base_url"),
+    ("assistant_llm_provider", "assistant_llm_base_url"),
+    ("assistant_embedding_provider", "assistant_embedding_base_url"),
+]
+_REMOTE_URL = "https://models.example.test/v1"
+_FAKE_KEY = "ovh-test-key"  # pragma: allowlist secret
+
+
 class TestAssistantSettings:
-    """The local assistant is refused everywhere except a developer's own machine."""
+    """The assistant runs on a laptop and on dev/test with hosted roles, never in production."""
 
     def test_assistant_is_off_by_default(self, monkeypatch, tmp_path):
         """
@@ -1237,66 +1246,215 @@ class TestAssistantSettings:
         # THEN
         assert settings.assistant_enabled is True
 
-    def test_rejects_assistant_enabled_in_production(self, monkeypatch, tmp_path):
-        """
-        GIVEN a fully configured production profile
-        WHEN Settings is constructed with assistant_enabled=true
-        THEN validation fails, naming the field
-        """
-        # GIVEN
-        _configure_prod(monkeypatch, tmp_path)
-        monkeypatch.setenv("ASSISTANT_ENABLED", "true")
+    @staticmethod
+    def _configure_deployed_assistant(
+        monkeypatch, tmp_path, *, profile: str, railway_name: str | None, testing: bool = False
+    ) -> None:
+        """Set a fully valid deployed service with the assistant on and every role hosted.
 
-        # WHEN/THEN
-        with pytest.raises(ValidationError, match="assistant_enabled"):
-            Settings()
-
-    def test_rejects_assistant_enabled_on_a_deployed_dev_service(self, monkeypatch, tmp_path):
+        Every deploy invariant is set explicitly, because Settings loads the real .env
+        locally and CI runs clean. Each test then changes the one part it is about.
         """
-        GIVEN the dev profile running on Railway (a deployed service, not a laptop)
-        WHEN Settings is constructed with assistant_enabled=true
-        THEN validation fails, since is_deploy is true there too
-        """
-        # GIVEN
         monkeypatch.chdir(tmp_path)
-        monkeypatch.delenv("TESTING", raising=False)
-        monkeypatch.setenv("RAILWAY_ENVIRONMENT_NAME", "dev")
-        monkeypatch.setenv("APP_ENV", "dev")
+        if testing:
+            monkeypatch.setenv("TESTING", "1")
+        else:
+            monkeypatch.delenv("TESTING", raising=False)
+        if railway_name is None:
+            monkeypatch.delenv("RAILWAY_ENVIRONMENT_NAME", raising=False)
+        else:
+            monkeypatch.setenv("RAILWAY_ENVIRONMENT_NAME", railway_name)
+        monkeypatch.setenv("APP_ENV", profile)
         monkeypatch.setenv("SECRET_KEY", "a-sufficiently-strong-secret-value")
         monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@host:5432/db")
         monkeypatch.setenv("MIGRATION_DATABASE_URL", "postgresql://migrator:pass@host:5432/db")
         monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
-        monkeypatch.setenv("CORS_ORIGINS", '["https://dev.your-domain.example"]')
-        monkeypatch.setenv("FRONTEND_BASE_URL", "https://dev.your-domain.example")
+        monkeypatch.setenv("CLOUDFLARE_ORIGIN_SECRET", "an-origin-verify-secret")
+        monkeypatch.setenv("CORS_ORIGINS", '["https://app.example.com"]')
+        monkeypatch.setenv("FRONTEND_BASE_URL", "https://app.example.com")
         monkeypatch.setenv("EMAIL_PROVIDER", "http")
         monkeypatch.setenv("EMAIL_API_KEY", "a-resend-api-key")
-        monkeypatch.setenv("CLOUDFLARE_ORIGIN_SECRET", "a-dev-origin-lock-value")
+        monkeypatch.setenv("DEBUG", "false")
+        monkeypatch.setenv("TURNSTILE_ENABLED", "true")
+        monkeypatch.setenv("TURNSTILE_SECRET_KEY", "a-turnstile-secret")
+        monkeypatch.setenv("TURNSTILE_HOSTNAMES", '["app.example.com"]')
         monkeypatch.setenv("ASSISTANT_ENABLED", "true")
+        monkeypatch.setenv("ASSISTANT_API_KEY_OVH", _FAKE_KEY)
+        for provider, url in _PROVIDER_ROLES:
+            monkeypatch.setenv(provider.upper(), "api")
+            monkeypatch.setenv(url.upper(), _REMOTE_URL)
+
+    @pytest.mark.parametrize(
+        ("profile", "railway_name"),
+        [("dev", "dev"), ("test", "test"), ("dev", " Dev "), ("test", "TEST")],
+    )
+    def test_allows_the_assistant_on_the_dev_and_test_services(
+        self, monkeypatch, tmp_path, profile, railway_name
+    ):
+        """
+        GIVEN a deployed dev or test service with every model role hosted
+        WHEN Settings is constructed with assistant_enabled=true
+        THEN validation passes, the Railway name compared stripped and case-insensitively
+        """
+        # GIVEN
+        self._configure_deployed_assistant(
+            monkeypatch, tmp_path, profile=profile, railway_name=railway_name
+        )
+
+        # WHEN
+        settings = Settings()
+
+        # THEN
+        assert settings.assistant_enabled is True
+        assert settings.is_deploy
+
+    @pytest.mark.parametrize(
+        ("profile", "railway_name"),
+        [
+            ("prod", None),
+            ("prod", "prod"),
+            ("prod", "dev"),
+            ("dev", "prod"),
+            ("test", "prod"),
+            ("dev", "PROD"),
+            ("dev", " prod "),
+            ("dev", "production"),
+            ("dev", "staging"),
+            ("dev", "pr-123"),
+            ("dev", ""),
+        ],
+    )
+    def test_rejects_the_assistant_in_production_or_an_unknown_railway_environment(
+        self, monkeypatch, tmp_path, profile, railway_name
+    ):
+        """
+        GIVEN a fully configured service that is production by profile, by Railway
+            environment name, or whose Railway environment is not a known non-production one
+        WHEN Settings is constructed with assistant_enabled=true
+        THEN validation fails, naming the field
+        """
+        # GIVEN
+        self._configure_deployed_assistant(
+            monkeypatch, tmp_path, profile=profile, railway_name=railway_name
+        )
 
         # WHEN/THEN
         with pytest.raises(ValidationError, match="assistant_enabled"):
             Settings()
 
-    def test_rejects_assistant_enabled_on_railway_even_with_testing_set(
-        self, monkeypatch, tmp_path
+    @pytest.mark.parametrize(("provider", "url"), _PROVIDER_ROLES)
+    @pytest.mark.parametrize(("profile", "railway_name"), [("dev", "dev"), ("test", "test")])
+    def test_rejects_a_local_role_on_a_deployed_service(
+        self, monkeypatch, tmp_path, profile, railway_name, provider, url
     ):
         """
-        GIVEN TESTING=1 set alongside a Railway environment marker
+        GIVEN a deployed dev or test service with one model role left local
         WHEN Settings is constructed with assistant_enabled=true
-        THEN validation fails, since a process on Railway must never run the
-            assistant, even one that also looks like a test run
+        THEN validation fails, naming that role's provider setting
+        """
+        # GIVEN
+        self._configure_deployed_assistant(
+            monkeypatch, tmp_path, profile=profile, railway_name=railway_name
+        )
+        monkeypatch.setenv(provider.upper(), "local")
+        monkeypatch.setenv(url.upper(), "http://127.0.0.1:8081/v1")
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match=f"{provider}.*api") as excinfo:
+            Settings()
+        assert _FAKE_KEY not in str(excinfo.value)
+
+    def test_names_every_local_role_in_one_message(self, monkeypatch, tmp_path):
+        """
+        GIVEN a deployed dev service with all three roles left local
+        WHEN Settings is constructed with assistant_enabled=true
+        THEN the message lists all three provider settings
+        """
+        # GIVEN
+        self._configure_deployed_assistant(monkeypatch, tmp_path, profile="dev", railway_name="dev")
+        for provider, _ in _PROVIDER_ROLES:
+            monkeypatch.setenv(provider.upper(), "local")
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError) as excinfo:
+            Settings()
+        for provider, _ in _PROVIDER_ROLES:
+            assert provider in str(excinfo.value)
+
+    @pytest.mark.parametrize("railway_name", ["dev", "prod"])
+    def test_checks_a_railway_process_even_with_testing_set(
+        self, monkeypatch, tmp_path, railway_name
+    ):
+        """
+        GIVEN TESTING=1 set alongside a Railway environment marker, so is_deploy is false
+        WHEN Settings is constructed with assistant_enabled=true
+        THEN the prod rule and the hosted-roles rule still apply, since a process on
+            Railway is a deployed service whatever else is set alongside it
+        """
+        # GIVEN
+        self._configure_deployed_assistant(
+            monkeypatch, tmp_path, profile="dev", railway_name=railway_name, testing=True
+        )
+        monkeypatch.setenv("ASSISTANT_ANSWER_PROVIDER", "local")
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="assistant_"):
+            Settings()
+
+    def test_allows_a_hosted_railway_dev_process_with_testing_set(self, monkeypatch, tmp_path):
+        """
+        GIVEN TESTING=1 alongside Railway environment dev, every role hosted
+        WHEN Settings is constructed with assistant_enabled=true
+        THEN validation passes
+        """
+        # GIVEN
+        self._configure_deployed_assistant(
+            monkeypatch, tmp_path, profile="dev", railway_name="dev", testing=True
+        )
+
+        # WHEN/THEN
+        assert Settings().assistant_enabled is True
+
+    def test_prod_with_the_assistant_off_is_unaffected(self, monkeypatch, tmp_path):
+        """
+        GIVEN a fully configured production service with local roles and the assistant off
+        WHEN Settings is constructed
+        THEN validation passes, since the assistant rules apply only when it is enabled
+        """
+        # GIVEN
+        self._configure_deployed_assistant(
+            monkeypatch, tmp_path, profile="prod", railway_name="prod"
+        )
+        monkeypatch.setenv("ASSISTANT_ENABLED", "false")
+        monkeypatch.setenv("ASSISTANT_ANSWER_PROVIDER", "local")
+
+        # WHEN
+        settings = Settings()
+
+        # THEN
+        assert settings.assistant_enabled is False
+
+    def test_laptop_keeps_local_roles(self, monkeypatch, tmp_path):
+        """
+        GIVEN the dev profile with no Railway marker, the assistant on and every role local
+        WHEN Settings is constructed
+        THEN validation passes
         """
         # GIVEN
         monkeypatch.chdir(tmp_path)
-        monkeypatch.setenv("TESTING", "1")
-        monkeypatch.setenv("RAILWAY_ENVIRONMENT_NAME", "dev")
+        monkeypatch.delenv("RAILWAY_ENVIRONMENT_NAME", raising=False)
         monkeypatch.setenv("APP_ENV", "dev")
-        monkeypatch.setenv("SECRET_KEY", "a-sufficiently-strong-secret-value")
+        monkeypatch.setenv("SECRET_KEY", "irrelevant-for-dev")
         monkeypatch.setenv("ASSISTANT_ENABLED", "true")
+        for provider, _ in _PROVIDER_ROLES:
+            monkeypatch.delenv(provider.upper(), raising=False)
 
-        # WHEN/THEN
-        with pytest.raises(ValidationError, match="assistant_enabled"):
-            Settings()
+        # WHEN
+        settings = Settings()
+
+        # THEN
+        assert settings.assistant_enabled is True
+        assert settings.assistant_answer_provider == "local"
 
     def test_private_corpus_manifest_defaults_to_none(self, monkeypatch, tmp_path):
         """
@@ -1573,15 +1731,6 @@ class TestAssistantSettings:
 
         # THEN
         assert settings.assistant_langsmith_enabled is False
-
-
-_PROVIDER_ROLES = [
-    ("assistant_answer_provider", "assistant_answer_llm_base_url"),
-    ("assistant_llm_provider", "assistant_llm_base_url"),
-    ("assistant_embedding_provider", "assistant_embedding_base_url"),
-]
-_REMOTE_URL = "https://models.example.test/v1"
-_FAKE_KEY = "ovh-test-key"  # pragma: allowlist secret
 
 
 @pytest.fixture

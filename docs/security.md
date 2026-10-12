@@ -514,11 +514,15 @@ production.
 
 The assistant, which runs its models locally by default or at a hosted provider per role,
 has a check of its own, separate from the nine invariants.
-`assistant_enabled` defaults to `false`, and `_validate_assistant_local_only` refuses to start
-when it is `true` on any deploy. The check also fires when `RAILWAY_ENVIRONMENT_NAME` is set, so
-a Railway process that carries `TESTING=1` and slips past `is_deploy` is still refused. The
-assistant router is registered only when the setting is on, so on a deployed service every request
-that reaches routing answers 404 for the whole `/api/v1/assistant` prefix.
+`assistant_enabled` defaults to `false`, and `_validate_assistant_deploy` refuses to start when it
+is `true` in the `prod` profile, or on a Railway environment whose name is not `dev` or `test`
+(compared stripped and case-insensitively, so an unknown or renamed environment is refused). The
+profile and the name are checked independently. On any deploy the validator also requires the
+three model roles to be `api`, since a local model server is not reachable there; the key, https
+and loopback checks stay in `_validate_assistant_providers`. Both checks also fire when
+`RAILWAY_ENVIRONMENT_NAME` is set, so a Railway process that carries `TESTING=1` and slips past
+`is_deploy` is still held to them. The assistant router is registered only when the setting is on,
+so a service that leaves it off answers 404 for the whole `/api/v1/assistant` prefix.
 
 ## Network and edge
 
@@ -610,10 +614,10 @@ ERROR is what turns a record into an issue, and an issue is the only thing that 
 WARNING these records were a breadcrumb on some later event, which meant the brute-force
 lockout could stay off for the length of an outage with nothing raised anywhere, since the
 request it happened during returns normally, so there is no other symptom to notice. The
-accepted risk is unchanged. What changed is that it now announces itself. The local-only
-assistant's hourly cap fails open the same way, and logs `assistant_throttle_unavailable` at
-ERROR. That record is for whoever reads the local log. The assistant cannot run on a deployed
-service, so the deployed alert rule below is not expected to fire for it.
+accepted risk is unchanged. What changed is that it now announces itself. The assistant's
+hourly cap fails open the same way, and logs `assistant_throttle_unavailable` at ERROR. The
+assistant cannot run in production, so the production alert rule below is not expected to fire
+for it; on the dev and test services the record is for whoever reads their log.
 
 The level alone is not the whole alert, because the project's only other rule fires on
 *high priority* issues and Sentry does not necessarily rank a logged error that high. A

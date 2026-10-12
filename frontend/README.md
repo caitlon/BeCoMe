@@ -163,7 +163,8 @@ VITE_ASSISTANT_ENABLED=true npm run build
 ```
 
 The feature lives in `src/components/assistant/`. Its backend half needs `ASSISTANT_ENABLED`
-on the API and runs only on a developer machine for now (`api/assistant/README.md`).
+on the API and runs on a developer machine and on the dev and test services, never in production
+(`api/assistant/README.md`).
 
 `e2e/assistant-panel.spec.ts` needs no backend: it answers every API request with a route.
 It is skipped unless the flag is in the environment when Playwright starts its dev server:

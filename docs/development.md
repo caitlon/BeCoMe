@@ -30,7 +30,7 @@ cd BeCoMe
 uv sync                    # core library only
 uv sync --extra api        # add the REST API
 uv sync --extra dev        # add testing, linting, type checking
-uv sync --extra dev --extra api --extra assistant  # dev, api and the local assistant (developer machines only)
+uv sync --extra dev --extra api --extra assistant  # dev, api and the assistant
 uv sync --all-extras       # everything
 
 source .venv/bin/activate  # macOS and Linux
@@ -60,7 +60,7 @@ pip install -e ".[dev,viz,notebook]"
 | `viz` | numpy, pandas, matplotlib, plotly, seaborn | Visualization and data analysis |
 | `notebook` | jupyter, ipykernel, ipywidgets | Interactive notebooks |
 | `docs` | mkdocs, mkdocs-material | Building the documentation site |
-| `assistant` | langchain, langgraph, langsmith, openai, langchain-postgres, psycopg, pypdf, rank-bm25 | The local-only assistant (`ASSISTANT_ENABLED=true`), see [the assistant README](https://github.com/caitlon/BeCoMe/blob/prod/api/assistant/README.md) |
+| `assistant` | langchain, langgraph, langsmith, openai, langchain-postgres, psycopg, pypdf, rank-bm25 | The assistant (`ASSISTANT_ENABLED=true`; never in production), see [the assistant README](https://github.com/caitlon/BeCoMe/blob/prod/api/assistant/README.md) |
 
 The API test directories, `tests/unit/api/` and `tests/integration/api/`, import the assistant's
 packages at module level. Running them needs `uv sync --extra dev --extra api --extra assistant`.
@@ -135,7 +135,7 @@ deployment live in [environments](environments.md).
 ```text
 BeCoMe/
 ├── api/                    # REST API (FastAPI)
-│   ├── assistant/              # Local-only chat assistant (agent, RAG, model clients); needs the assistant extra
+│   ├── assistant/              # Chat assistant (agent, RAG, model clients); needs the assistant extra
 │   ├── auth/                   # Authentication (JWT, passwords, session cookies, throttles)
 │   ├── db/                     # Database models (SQLModel)
 │   ├── middleware/             # Rate limit, CSRF, body size, security headers, logging

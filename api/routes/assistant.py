@@ -1,10 +1,9 @@
-"""Local assistant endpoints: its configuration and the chat.
+"""Assistant endpoints: its configuration and the chat.
 
 This router is registered only when Settings.assistant_enabled is true (see
-api.main.create_app), so every deployed profile answers 404 for the whole
-/api/v1/assistant prefix. Settings._validate_assistant_local_only refuses to start
-any deployed profile with the flag on in the first place, so this module never even
-loads there.
+api.main.create_app), so a service that leaves the flag off answers 404 for the whole
+/api/v1/assistant prefix. Settings._validate_assistant_deploy refuses to start production
+with the flag on in the first place, so this module never even loads there.
 """
 
 import contextlib
