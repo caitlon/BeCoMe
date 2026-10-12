@@ -272,7 +272,7 @@ class TestBotCheckStartupRecord:
 
 
 class TestAssistantRouterGating:
-    """The assistant router exists only when the local-only flag is on."""
+    """The assistant router exists only when the ASSISTANT_ENABLED flag is on."""
 
     def test_config_endpoint_is_absent_by_default(self, monkeypatch, tmp_path):
         """
@@ -403,7 +403,7 @@ class TestAssistantRouterGating:
 
 
 class TestAssistantExceptionHandlerGating:
-    """The assistant's error handlers exist only when the local-only flag is on."""
+    """The assistant's error handlers exist only when the ASSISTANT_ENABLED flag is on."""
 
     @pytest.fixture(autouse=True)
     def _clear_settings_cache_after(self):

@@ -1381,25 +1381,109 @@ class TestAssistantSettings:
         for provider, _ in _PROVIDER_ROLES:
             assert provider in str(excinfo.value)
 
-    @pytest.mark.parametrize("railway_name", ["dev", "prod"])
-    def test_checks_a_railway_process_even_with_testing_set(
-        self, monkeypatch, tmp_path, railway_name
-    ):
+    def test_checks_the_railway_environment_even_with_testing_set(self, monkeypatch, tmp_path):
         """
-        GIVEN TESTING=1 set alongside a Railway environment marker, so is_deploy is false
+        GIVEN TESTING=1 alongside Railway environment prod, so is_deploy is false, with
+            every role hosted
         WHEN Settings is constructed with assistant_enabled=true
-        THEN the prod rule and the hosted-roles rule still apply, since a process on
-            Railway is a deployed service whatever else is set alongside it
+        THEN the environment rule still refuses it, since a process on Railway is a
+            deployed service whatever else is set alongside it
         """
         # GIVEN
         self._configure_deployed_assistant(
-            monkeypatch, tmp_path, profile="dev", railway_name=railway_name, testing=True
+            monkeypatch, tmp_path, profile="dev", railway_name="prod", testing=True
+        )
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="assistant_enabled must stay false"):
+            Settings()
+
+    def test_checks_the_hosted_roles_even_with_testing_set(self, monkeypatch, tmp_path):
+        """
+        GIVEN TESTING=1 alongside Railway environment dev, so is_deploy is false, with
+            one role left local
+        WHEN Settings is constructed with assistant_enabled=true
+        THEN the hosted-roles rule still refuses it, naming that role
+        """
+        # GIVEN
+        self._configure_deployed_assistant(
+            monkeypatch, tmp_path, profile="dev", railway_name="dev", testing=True
         )
         monkeypatch.setenv("ASSISTANT_ANSWER_PROVIDER", "local")
 
         # WHEN/THEN
-        with pytest.raises(ValidationError, match="assistant_"):
+        with pytest.raises(ValidationError, match="assistant_answer_provider must be api"):
             Settings()
+
+    def test_allows_local_roles_in_the_ci_test_profile(self, monkeypatch, tmp_path):
+        """
+        GIVEN APP_ENV=test with TESTING=1 and no Railway marker (the CI test runner),
+            the assistant on and every role local
+        WHEN Settings is constructed
+        THEN validation passes, since the runner is not a deployed service
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("RAILWAY_ENVIRONMENT_NAME", raising=False)
+        monkeypatch.setenv("APP_ENV", "test")
+        monkeypatch.setenv("TESTING", "1")
+        monkeypatch.setenv("SECRET_KEY", "irrelevant-for-test")
+        monkeypatch.setenv("ASSISTANT_ENABLED", "true")
+        for provider, _ in _PROVIDER_ROLES:
+            monkeypatch.delenv(provider.upper(), raising=False)
+
+        # WHEN
+        settings = Settings()
+
+        # THEN
+        assert settings.assistant_enabled is True
+        assert settings.assistant_answer_provider == "local"
+
+    @pytest.mark.parametrize(
+        ("profile", "railway_name", "testing"),
+        [("dev", "dev", False), ("test", "test", False), ("dev", "dev", True)],
+    )
+    def test_rejects_langsmith_tracing_on_a_deployed_service(
+        self, monkeypatch, tmp_path, profile, railway_name, testing
+    ):
+        """
+        GIVEN a deployed dev or test service, or a Railway process with TESTING set,
+            with every role hosted and LangSmith tracing on
+        WHEN Settings is constructed with assistant_enabled=true
+        THEN validation fails, naming assistant_langsmith_enabled
+        """
+        # GIVEN
+        self._configure_deployed_assistant(
+            monkeypatch, tmp_path, profile=profile, railway_name=railway_name, testing=testing
+        )
+        monkeypatch.setenv("ASSISTANT_LANGSMITH_ENABLED", "true")
+        monkeypatch.setenv("ASSISTANT_LANGSMITH_API_KEY", "lsv2_test")  # pragma: allowlist secret
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="assistant_langsmith_enabled must be false"):
+            Settings()
+
+    def test_allows_langsmith_tracing_on_a_laptop(self, monkeypatch, tmp_path):
+        """
+        GIVEN the dev profile with no Railway marker, the assistant on and LangSmith
+            tracing on with a key
+        WHEN Settings is constructed
+        THEN validation passes, since tracing is for local work
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("RAILWAY_ENVIRONMENT_NAME", raising=False)
+        monkeypatch.setenv("APP_ENV", "dev")
+        monkeypatch.setenv("SECRET_KEY", "irrelevant-for-dev")
+        monkeypatch.setenv("ASSISTANT_ENABLED", "true")
+        monkeypatch.setenv("ASSISTANT_LANGSMITH_ENABLED", "true")
+        monkeypatch.setenv("ASSISTANT_LANGSMITH_API_KEY", "lsv2_test")  # pragma: allowlist secret
+
+        # WHEN
+        settings = Settings()
+
+        # THEN
+        assert settings.assistant_langsmith_enabled is True
 
     def test_allows_a_hosted_railway_dev_process_with_testing_set(self, monkeypatch, tmp_path):
         """

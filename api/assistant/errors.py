@@ -1,4 +1,4 @@
-"""Exceptions raised by the local assistant while it acts on a user's behalf."""
+"""Exceptions raised by the assistant while it acts on a user's behalf."""
 
 from api.exceptions import BeCoMeAPIError
 

@@ -395,7 +395,7 @@ own limit. On top of that, routes carry tighter limits by risk:
 | Upload | `10/minute` | Photo upload |
 | Standard | `60/minute` | GDPR export, standalone calculate, result export |
 | Photo | `120/minute` | The public avatar proxy, which a page loads once per member |
-| Assistant chat | `20/minute` | The local assistant's chat route, which exists only on a developer's machine |
+| Assistant chat | `20/minute` | The assistant's chat route, which exists only when `ASSISTANT_ENABLED` is on: on a developer's machine and on the dev and test services, never in production |
 | Assistant messages | `60/hour` per user | The same route, as a fixed one-hour window per account (`ASSISTANT_RATE_LIMIT_PER_HOUR`, `0` switches it off). A spent budget answers `429` |
 
 Only those routes carry a decorator. Everything else is bounded by the two global ceilings

@@ -33,7 +33,7 @@ The API runs at `http://localhost:8000`. Interactive documentation:
 
 ```text
 api/
-├── assistant/          # Local-only chat assistant (agent, RAG, model clients); see its README
+├── assistant/          # Chat assistant (agent, RAG, model clients); see its README
 ├── auth/               # Authentication & authorization
 │   ├── jwt.py              # Token creation/validation (rotation family / sid)
 │   ├── password.py         # Password hashing (bcrypt)
@@ -62,7 +62,7 @@ api/
 │   ├── opinions.py         # /api/v1/projects/{id}/opinions
 │   ├── invitations.py      # /api/v1/invitations/*
 │   ├── calculate.py        # /api/v1/calculate
-│   ├── assistant.py        # /api/v1/assistant/* (local-only, registered when ASSISTANT_ENABLED)
+│   ├── assistant.py        # /api/v1/assistant/* (registered when ASSISTANT_ENABLED; never in prod)
 │   └── health.py           # /api/v1/health
 ├── schemas/            # Pydantic DTOs
 │   ├── auth.py             # Login, register, tokens
@@ -302,7 +302,7 @@ Environment variables (a `.env` file works too):
 | `DEBUG` | `false` | Debug mode; must stay off on a deployed service (startup fails otherwise) |
 | `API_VERSION` | `1.0.0b1` | API version (auto-read from pyproject.toml) |
 | `CORS_ORIGINS` | `http://localhost:3000,http://localhost:8080` | Allowed CORS origins |
-| `REDIS_URL` | *required when deployed* | Redis for rate limiting, token revocation, and auth throttles. On a developer machine the local assistant's hourly counter uses it too when it is set |
+| `REDIS_URL` | *required when deployed* | Redis for rate limiting, token revocation, and auth throttles. The assistant's hourly counter uses it too when it is enabled and the variable is set |
 | `CLOUDFLARE_ORIGIN_SECRET` | *required when deployed* | Shared secret proving the request came through Cloudflare; every deployed environment sits behind it, so each needs its own value paired with a Transform Rule for that environment's API host |
 | `TURNSTILE_ENABLED` | `false` | Bot check on the four open auth endpoints. A deployed service starts with it off, and records `turnstile_disabled` at ERROR: it is the way out of a Cloudflare siteverify outage, since the check is fail-closed |
 | `TURNSTILE_SECRET_KEY` | *required when the check is on* | Cloudflare Turnstile secret, paired with the widget whose sitekey the frontend build carries |
