@@ -101,9 +101,9 @@ api/
 The sections below cover the routes of a deployed service. The assistant's three routes,
 `GET /api/v1/assistant/config`, `POST /api/v1/assistant/chat` and
 `POST /api/v1/assistant/chat/stream`, are not listed here. They exist
-only when `ASSISTANT_ENABLED=true`, and a deployed profile refuses to start with that setting on,
-so on a deployed service every request that reaches routing answers 404 for the whole
-`/api/v1/assistant` prefix. Their behavior is in the
+only when `ASSISTANT_ENABLED=true`. Production refuses to start with that setting on, and the
+Railway `dev` and `test` services need all three model roles set to `api`. A service that leaves
+it off answers 404 for the whole `/api/v1/assistant` prefix. Their behavior is in the
 [assistant README](https://github.com/caitlon/BeCoMe/blob/prod/api/assistant/README.md).
 
 ### Authentication
@@ -327,7 +327,7 @@ Environment variables (a `.env` file works too):
 | `SENTRY_DSN` | *optional* | Sentry DSN for backend error tracking (disabled when unset) |
 | `BETTERSTACK_SOURCE_TOKEN` | *optional* | Better Stack log source token (ships `api.*` logs when set together with the host below) |
 | `BETTERSTACK_INGESTING_HOST` | *optional* | Better Stack ingesting host for log shipping (per-environment source) |
-| `ASSISTANT_ENABLED` | `false` | Registers the local-only assistant routes. Startup fails when it is `true` on a deployed profile or on Railway. The other `ASSISTANT_*` variables are listed and commented in `env/.env.example`. The [assistant README](https://github.com/caitlon/BeCoMe/blob/prod/api/assistant/README.md) covers setup and limits |
+| `ASSISTANT_ENABLED` | `false` | Registers the assistant routes. Startup fails when it is `true` in the `prod` profile or on a Railway environment other than `dev` and `test`, and on a deploy when a model role is not `api`. The other `ASSISTANT_*` variables are listed and commented in `env/.env.example`. The [assistant README](https://github.com/caitlon/BeCoMe/blob/prod/api/assistant/README.md) covers setup and limits |
 
 Profile photos live in a private Railway Storage Bucket (S3-compatible), served through the
 `GET /api/v1/users/{id}/photo` proxy. When the bucket variables are absent, photo upload is

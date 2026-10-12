@@ -103,11 +103,11 @@ services:
   # ============================================
   # Assistant vector database (pgvector) - local only
   # ============================================
-  # Backs the local AI assistant's RAG index. The "assistant" profile keeps
-  # this out of a plain `docker compose up`: nothing outside a developer's own laptop
-  # ever sets ASSISTANT_ENABLED=true (Settings._validate_assistant_local_only in
-  # api/config.py refuses to start any deployed profile with it on), so no deployed
-  # environment has a reason to start this container either.
+  # Backs the AI assistant's RAG index on a developer's laptop. The "assistant" profile
+  # keeps this out of a plain `docker compose up`. The deployed dev and test services
+  # point ASSISTANT_VECTOR_DB_URL at their own database, and Settings._validate_assistant_deploy
+  # in api/config.py refuses to start production with the assistant on, so no deployed
+  # environment has a reason to start this container.
   assistant-db:
     image: pgvector/pgvector:0.8.6-pg16
     container_name: become-assistant-db

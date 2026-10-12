@@ -103,6 +103,11 @@ _ASSISTANT_PROVIDER_ROLES = (
     ("assistant_embedding_provider", "assistant_embedding_base_url"),
 )
 
+# Railway environments the assistant may run in. An allowlist, so it fails closed: the real
+# names are dev, test and prod, but before 2026-09-12 they were production and staging, and a
+# renamed or preview environment (pr-123) must be refused rather than allowed.
+_ASSISTANT_RAILWAY_ENVIRONMENTS = frozenset({"dev", "test"})
+
 
 def _is_loopback_host(host: str) -> bool:
     """Return whether a URL host is "localhost" or any loopback IP address.
@@ -258,12 +263,12 @@ class Settings(BaseSettings):
     turnstile_secret_key: str = ""
     turnstile_hostnames: list[str] = []
 
-    # Local AI assistant (RAG + read-only project explainer). Off everywhere by
-    # default; _validate_assistant_local_only refuses to start any deployed profile
-    # with it on, so turning it on is only ever a developer's own choice on their own
-    # machine. api/routes/assistant.py is registered only when this is true (see
-    # api.main.create_app), so a deployed service answers 404 for the whole prefix
-    # regardless of this validator.
+    # AI assistant (RAG + read-only project explainer). Off everywhere by default;
+    # _validate_assistant_deploy refuses to start production, or a Railway environment
+    # other than dev and test, with it on, and on a deploy it demands every model role be
+    # api. api/routes/assistant.py is registered only when this is true (see
+    # api.main.create_app), so a service that leaves it off answers 404 for the whole
+    # prefix.
     assistant_enabled: bool = False
     # The model for query transforms and index building: small and fast, so search stays
     # quick. The model that writes chat answers is the assistant_answer_llm_* pair below.
@@ -432,32 +437,54 @@ class Settings(BaseSettings):
         return self
 
     @model_validator(mode="after")
-    def _validate_assistant_local_only(self) -> "Settings":
-        """Refuse to start with the assistant switched on anywhere but a laptop.
+    def _validate_assistant_deploy(self) -> "Settings":
+        """Refuse the assistant in production, and on a deploy require hosted model roles.
 
-        The assistant reads project data as the signed-in user and calls an LLM, local by
-        default or a hosted provider per role; neither belongs on a service that serves
-        real traffic. Keeping the guard here, right before _validate_deploy_invariants,
-        means a deploy that somehow set ASSISTANT_ENABLED fails on this message first,
-        rather than on whichever deploy invariant happens to be missing.
+        The assistant reads project data as the signed-in user and calls an LLM, so it may
+        run on a laptop and on the dev and test services, never in production. Production
+        is refused by profile and by Railway environment name, independently: APP_ENV=prod
+        on Railway ``dev`` and APP_ENV=dev on Railway ``prod`` are both refused. The Railway
+        name is checked against an allowlist, so an unknown or renamed environment is
+        refused too. A deployed service has no llama-server to reach, so every model role
+        there must be api; a laptop and a CI runner keep local roles. Keeping the guard
+        here, right before _validate_deploy_invariants, means a deploy that sets
+        ASSISTANT_ENABLED wrongly fails on this message first, rather than on whichever
+        deploy invariant happens to be missing.
 
         is_deploy alone would not catch every case: it is False whenever TESTING is
         set, which is the pytest profile, so a Railway process that also carried
         TESTING=1 would pass the is_deploy check while still running on a deployed
         service. Checking railway_environment_name directly closes that gap -- a
-        process on Railway must never run the assistant, whatever else is set
-        alongside it.
+        process on Railway is held to both rules, whatever else is set alongside it.
 
         :return: The validated settings instance.
-        :raises ValueError: If assistant_enabled is true while this process is
-            either a deployed service or running on Railway.
+        :raises ValueError: If assistant_enabled is true in the prod profile or on a
+            Railway environment outside the allowlist, or on a deployed service while a
+            model role is still local.
         """
-        if self.assistant_enabled and (self.is_deploy or self.railway_environment_name is not None):
+        if not self.assistant_enabled:
+            return self
+        on_railway = self.railway_environment_name is not None
+        railway_name = (self.railway_environment_name or "").strip().lower()
+        if self.environment is Environment.PROD or (
+            on_railway and railway_name not in _ASSISTANT_RAILWAY_ENVIRONMENTS
+        ):
             raise ValueError(
-                "assistant_enabled must stay false on a deployed service (the "
-                f"{self.environment.value} profile here); the assistant runs only on "
-                "a developer machine"
+                "assistant_enabled must stay false in production and in any Railway "
+                f"environment other than dev and test (the {self.environment.value} profile "
+                f"here, Railway environment {self.railway_environment_name!r})"
             )
+        if self.is_deploy or on_railway:
+            local_roles = [
+                provider_name
+                for provider_name, _ in _ASSISTANT_PROVIDER_ROLES
+                if getattr(self, provider_name) != "api"
+            ]
+            if local_roles:
+                raise ValueError(
+                    f"{', '.join(local_roles)} must be api on a deployed service; a local "
+                    "model server is not reachable there"
+                )
         return self
 
     @model_validator(mode="after")

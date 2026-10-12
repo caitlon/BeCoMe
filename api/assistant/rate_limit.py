@@ -14,11 +14,10 @@ expiry, and that user would stay locked out for good.
 A limit of zero switches the cap off; both backends then allow everything without
 touching their store.
 
-Failing open on a Redis error is deliberate. The assistant runs only on a developer's
-own machine (``Settings._validate_assistant_local_only`` refuses to start any deployed
-profile with it on), and deployed profiles refuse to start without Redis anyway, so a
-store outage here costs one developer an unenforced local cap, not a public endpoint its
-protection.
+Failing open on a Redis error is deliberate. The assistant never runs in
+production (``Settings._validate_assistant_deploy`` refuses to start it there), and
+deployed profiles refuse to start without Redis anyway, so a store outage here costs the
+dev and test services an unenforced cap, not a public endpoint its protection.
 
 A refused message also learns how long the refusal lasts: ``retry_after`` reports the
 seconds until the user's window closes, for the ``Retry-After`` header of the 429. A Redis

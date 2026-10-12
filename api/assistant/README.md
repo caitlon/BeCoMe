@@ -1,7 +1,9 @@
 # Local assistant
 
-Runs only on a developer machine. `Settings` refuses to start any deployed profile with
-`ASSISTANT_ENABLED=true`.
+Runs on a developer machine and on the Railway `dev` and `test` services. `Settings` refuses to
+start production (the `prod` profile, or any Railway environment other than `dev` and `test`)
+with `ASSISTANT_ENABLED=true`, and on a deployed service it requires all three model roles to be
+`api`.
 
 ## Contents
 
