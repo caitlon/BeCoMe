@@ -113,7 +113,6 @@ def _result() -> ResultView:
 def _opinion() -> OpinionView:
     return OpinionView(
         expert_name="Jana Novakova",
-        position="Hydrologist",
         lower_bound=37.0,
         peak=42.0,
         upper_bound=47.0,

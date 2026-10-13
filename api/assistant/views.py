@@ -65,12 +65,14 @@ class ResultView(BaseModel):
 
 
 class OpinionView(BaseModel):
-    """One expert's opinion, with the expert named but never identified."""
+    """One expert's opinion, with the expert named but never identified.
+
+    The expert's position is not a field: the assistant never sees it.
+    """
 
     model_config = ConfigDict(extra="ignore", frozen=True)
 
     expert_name: str
-    position: str
     lower_bound: float
     peak: float
     upper_bound: float

@@ -1,10 +1,12 @@
 """LangSmith tracing for the assistant agent, opt-in through one setting.
 
 When tracing is on, the full text of questions, tool replies and answers goes to the
-configured LangSmith endpoint. ``assistant_langsmith_enabled`` is the only switch, in every
-environment, and a deployed service may use only the EU endpoint (Settings refuses the
-rest). With it off, which is the default, nothing is traced and nothing leaves the machine,
-whatever the LangSmith library's own environment variables say.
+configured LangSmith endpoint, except that the expert names in an opinions block are
+replaced with ``Expert 1``, ``Expert 2`` and so on before anything leaves the process (see
+:func:`~api.assistant.agent.tools.mask_opinion_names`). ``assistant_langsmith_enabled`` is
+the only switch, in every environment, and a deployed service may use only the EU endpoint
+(Settings refuses the rest). With it off, which is the default, nothing is traced and
+nothing leaves the machine, whatever the LangSmith library's own environment variables say.
 
 A turn is one trace: :func:`start_turn` opens a root run in ``prepare``, and the scope of
 each phase (prepare, then generation) hangs its runs under it until :func:`end_turn`.
@@ -14,12 +16,19 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 
 import langsmith as ls
+from langsmith.anonymizer import CallableNodeProcessor, create_anonymizer
 from langsmith.run_trees import RunTree
 
+from api.assistant.agent.tools import mask_opinion_names
 from api.config import Settings
 
 # The longest the application waits for pending traces to reach LangSmith on shutdown.
 _FLUSH_TIMEOUT_SECONDS = 10.0
+
+# How deep the anonymizer looks for strings in a run's inputs, outputs and metadata. The
+# library's default is 10 and it skips anything deeper without a word, which would leave a
+# name in a deeply nested state untouched.
+_MASK_MAX_DEPTH = 50
 
 # The one client of the process. It batches traces on a background thread, so building
 # one per turn would start a thread per turn and lose the batching.
@@ -33,7 +42,8 @@ def _shared_client(settings: Settings) -> ls.Client:
     taken from ``LANGSMITH_API_KEY`` or ``LANGSMITH_ENDPOINT`` in the environment, so
     the data region is a setting rather than whatever the shell happens to hold. The
     settings of a process do not change, so the client is not rebuilt when they are
-    read again.
+    read again. The client's anonymizer masks the expert names of every opinions block in
+    the inputs, outputs, error and metadata of every run it sends.
 
     :param settings: Application settings, with tracing enabled.
     :return: The shared client.
@@ -44,6 +54,9 @@ def _shared_client(settings: Settings) -> ls.Client:
         _client = ls.Client(
             api_key=key.get_secret_value() if key else None,
             api_url=settings.assistant_langsmith_endpoint,
+            anonymizer=create_anonymizer(
+                CallableNodeProcessor(mask_opinion_names), max_depth=_MASK_MAX_DEPTH
+            ),
         )
     return _client
 
@@ -71,7 +84,8 @@ def tracing_scope(settings: Settings, parent: RunTree | None = None) -> Iterator
 
     When it is on, tracing is scoped to this one call rather than switched on
     process-wide. The full text of questions, tool replies and answers then goes to
-    the configured LangSmith endpoint.
+    the configured LangSmith endpoint, with the expert names in opinion blocks replaced
+    before anything leaves the process.
 
     :param settings: Application settings.
     :param parent: The turn's root run from :func:`start_turn`. The runs made inside the
