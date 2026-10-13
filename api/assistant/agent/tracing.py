@@ -43,7 +43,8 @@ def _shared_client(settings: Settings) -> ls.Client:
     the data region is a setting rather than whatever the shell happens to hold. The
     settings of a process do not change, so the client is not rebuilt when they are
     read again. The client's anonymizer masks the expert names of every opinions block in
-    the inputs, outputs, error and metadata of every run it sends.
+    the inputs, outputs and metadata of every run it sends. Run errors carry only an
+    exception class name here, so they hold no opinions block.
 
     :param settings: Application settings, with tracing enabled.
     :return: The shared client.

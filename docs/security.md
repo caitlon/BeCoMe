@@ -518,10 +518,10 @@ has a check of its own, separate from the nine invariants.
 is `true` in the `prod` profile, or on a Railway environment whose name is not `dev` or `test`
 (compared stripped and case-insensitively, so an unknown or renamed environment is refused). The
 profile and the name are checked independently. On any deploy the validator also requires the
-three model roles to be `api`, since a local model server is not reachable there. Tracing sends
-the text of questions, tool replies and answers to LangSmith, with the expert names in opinion
-blocks replaced by `Expert 1`, `Expert 2` and so on before they leave the process (the model is
-never shown an expert's position), so with `assistant_langsmith_enabled`
+three model roles to be `api`, since a local model server is not reachable there. The model is
+never shown an expert's position. Tracing sends the text of questions, tool replies and answers
+to LangSmith, with the expert names in opinion blocks replaced by `Expert 1`, `Expert 2` and so
+on before they leave the process. With `assistant_langsmith_enabled`
 on, a deployed service must use the EU endpoint and a named project other than the local default,
 and the LangSmith library's own switches (`LANGSMITH_TRACING` and its `LANGCHAIN_` variants) and
 its `RUNS_ENDPOINTS` lists are refused there: `assistant_langsmith_enabled` is the only way to
