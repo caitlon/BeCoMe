@@ -628,7 +628,7 @@ class Settings(BaseSettings):
                 "assistant_langsmith_endpoint must be the EU endpoint on a deployed service"
             )
         project = self.assistant_langsmith_project.strip()
-        if not project or project == _LANGSMITH_LOCAL_PROJECT:
+        if not project or project.lower() == _LANGSMITH_LOCAL_PROJECT:
             raise ValueError(
                 "assistant_langsmith_project must be set to a project other than "
                 f"{_LANGSMITH_LOCAL_PROJECT} when tracing is on on a deployed service"

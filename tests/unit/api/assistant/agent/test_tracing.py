@@ -28,6 +28,8 @@ def _isolated_tracing(monkeypatch, tmp_path):
         "ASSISTANT_LANGSMITH_ENDPOINT",
         "ASSISTANT_LANGSMITH_PROJECT",
         *_AMBIENT_TRACING_VARIABLES,
+        "LANGSMITH_TRACING_V2",
+        "LANGCHAIN_TRACING",
         "LANGSMITH_ENDPOINT",
         "LANGSMITH_API_KEY",
     ):
