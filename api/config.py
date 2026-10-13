@@ -114,6 +114,9 @@ _ASSISTANT_RAILWAY_ENVIRONMENTS = frozenset({"dev", "test"})
 _TLS_REQUIRING_SSLMODES = frozenset({"require", "verify-ca", "verify-full"})
 
 _POSTGRES_DEFAULT_PORT = 5432
+_VECTOR_DB_DRIVERNAME = "postgresql+psycopg"
+# libpq takes these from the query string ahead of the URL's own host, port and database.
+_LIBPQ_TARGET_PARAMETERS = frozenset({"host", "hostaddr", "port", "dbname", "service"})
 
 
 def _is_loopback_host(host: str) -> bool:
@@ -145,10 +148,12 @@ def _parse_postgres_url(url: str) -> URL | None:
 
     :param url: SQLAlchemy URL, such as ``postgresql+psycopg://...`` or ``postgresql://...``.
     :return: The parsed URL, or None when it is empty, malformed or not PostgreSQL.
+        SQLAlchemy raises a plain ``ValueError`` for some malformed URLs (a password read
+        as a port), and its text can carry the password, so both errors end here.
     """
     try:
         parsed = make_url(url)
-    except ArgumentError:
+    except (ArgumentError, ValueError):
         return None
     return parsed if parsed.get_backend_name() == "postgresql" else None
 
@@ -178,13 +183,10 @@ def _demands_tls(url: URL) -> bool:
     """Return whether a URL's ``sslmode`` stops libpq from falling back to clear text.
 
     :param url: Parsed PostgreSQL URL.
-    :return: True for ``require``, ``verify-ca`` and ``verify-full``. When the parameter
-        repeats, libpq honours the last value, so that one decides.
+    :return: True for ``require``, ``verify-ca`` and ``verify-full``. A repeated parameter
+        reaches libpq as a tuple it rejects, so it never counts as demanding TLS.
     """
-    sslmode = url.query.get("sslmode")
-    if not isinstance(sslmode, str):
-        sslmode = sslmode[-1] if sslmode else None
-    return sslmode in _TLS_REQUIRING_SSLMODES
+    return url.query.get("sslmode") in _TLS_REQUIRING_SSLMODES
 
 
 class Settings(BaseSettings):
@@ -562,9 +564,11 @@ class Settings(BaseSettings):
 
         Messages never carry the URL or a part of it, since it holds the role's password.
 
-        :raises ValueError: If assistant_vector_db_url is empty, not a PostgreSQL URL, the
-            same database as database_url or migration_database_url, or without a
-            ``sslmode`` of require, verify-ca or verify-full.
+        :raises ValueError: If assistant_vector_db_url is empty, not a
+            ``postgresql+psycopg`` URL (the driver the vector store's engine needs), without a database name, carrying a libpq host, hostaddr,
+            port, dbname or service parameter, the same database as database_url or
+            migration_database_url, or without a ``sslmode`` of require, verify-ca or
+            verify-full.
         """
         if not self.assistant_vector_db_url.strip():
             raise ValueError(
@@ -572,10 +576,22 @@ class Settings(BaseSettings):
                 "lives in its own PostgreSQL database with pgvector, not the application's"
             )
         vector_url = _parse_postgres_url(self.assistant_vector_db_url)
-        if vector_url is None:
+        if vector_url is None or vector_url.drivername != _VECTOR_DB_DRIVERNAME:
             raise ValueError(
-                "assistant_vector_db_url must be a postgresql+psycopg:// URL naming the "
-                "corpus database, with sslmode=require"
+                f"assistant_vector_db_url must be a {_VECTOR_DB_DRIVERNAME}:// URL naming the "
+                "corpus database, with sslmode=require; the vector store's async engine "
+                "connects through psycopg 3 only"
+            )
+        if not vector_url.database:
+            raise ValueError(
+                "assistant_vector_db_url must name the corpus database, as the path after "
+                "the host and port"
+            )
+        if _LIBPQ_TARGET_PARAMETERS & vector_url.query.keys():
+            raise ValueError(
+                "assistant_vector_db_url must not carry host, hostaddr, port, dbname or "
+                "service query parameters, which libpq lets override the URL; put the host, "
+                "port and database in the URL itself"
             )
         for other in (self.database_url, self.migration_database_url or ""):
             other_url = _parse_postgres_url(other)

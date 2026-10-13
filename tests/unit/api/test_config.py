@@ -1520,12 +1520,11 @@ class TestAssistantSettings:
     @pytest.mark.parametrize(
         "vector_url",
         [
-            f"postgresql://corpus_reader:{_VECTOR_PASSWORD}@host:5432/db?sslmode=require",
             f"postgresql+psycopg://corpus_reader:{_VECTOR_PASSWORD}@host:5432/db?sslmode=require",
             f"postgresql+psycopg://corpus_reader:{_VECTOR_PASSWORD}@HOST.:5432/db?sslmode=require",
             f"postgresql+psycopg://corpus_reader:{_VECTOR_PASSWORD}@host/db?sslmode=require",
         ],
-        ids=["same-scheme", "other-driver", "host-case-and-dot", "default-port"],
+        ids=["other-driver", "host-case-and-dot", "default-port"],
     )
     def test_rejects_a_vector_database_that_is_the_application_database(
         self, monkeypatch, tmp_path, shared_with, vector_url
@@ -1655,6 +1654,156 @@ class TestAssistantSettings:
         with pytest.raises(ValidationError, match="assistant_vector_db_url must be") as excinfo:
             Settings()
         assert _VECTOR_PASSWORD not in str(excinfo.value)
+
+    @pytest.mark.parametrize(
+        "vector_url",
+        [
+            f"postgresql+psycopg://corpus_reader:{_VECTOR_PASSWORD}/corpus?sslmode=require",
+            f"postgresql+psycopg://corpus_reader:{_VECTOR_PASSWORD}?sslmode=require",
+        ],
+        ids=["password-then-path", "password-then-query"],
+    )
+    def test_does_not_leak_the_password_of_a_vector_url_that_fails_to_parse(
+        self, monkeypatch, tmp_path, vector_url
+    ):
+        """
+        GIVEN a deployed dev service whose vector URL makes SQLAlchemy raise a plain
+            ValueError (the password read as a port)
+        WHEN Settings is constructed
+        THEN validation fails naming assistant_vector_db_url, and the error holds no part
+            of the URL
+        """
+        # GIVEN
+        self._configure_deployed_assistant(monkeypatch, tmp_path, profile="dev", railway_name="dev")
+        monkeypatch.setenv("ASSISTANT_VECTOR_DB_URL", vector_url)
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="assistant_vector_db_url must be") as excinfo:
+            Settings()
+        assert _VECTOR_PASSWORD not in str(excinfo.value)
+        assert "corpus_reader" not in str(excinfo.value)
+
+    @pytest.mark.parametrize("variable", ["DATABASE_URL", "MIGRATION_DATABASE_URL"])
+    def test_skips_the_comparison_for_an_application_url_that_fails_to_parse(
+        self, monkeypatch, tmp_path, variable
+    ):
+        """
+        GIVEN a deployed dev service whose DATABASE_URL or MIGRATION_DATABASE_URL makes
+            SQLAlchemy raise a plain ValueError, and a valid vector URL
+        WHEN Settings is constructed
+        THEN validation passes without raising and the secret never reaches an error
+        """
+        # GIVEN
+        self._configure_deployed_assistant(monkeypatch, tmp_path, profile="dev", railway_name="dev")
+        monkeypatch.setenv(variable, f"postgresql+psycopg://app:{_VECTOR_PASSWORD}/appdb")
+
+        # WHEN/THEN
+        assert Settings().assistant_vector_db_url == _VECTOR_URL
+
+    @pytest.mark.parametrize(
+        "vector_url",
+        [
+            f"postgresql://corpus_reader:{_VECTOR_PASSWORD}@corpus-db:5432/corpus?sslmode=require",
+            f"postgresql+asyncpg://corpus_reader:{_VECTOR_PASSWORD}@corpus-db:5432/corpus"
+            "?sslmode=require",
+            f"postgresql+psycopg2://corpus_reader:{_VECTOR_PASSWORD}@corpus-db:5432/corpus"
+            "?sslmode=require",
+            f"mysql://corpus_reader:{_VECTOR_PASSWORD}@corpus-db:3306/corpus",
+            "sqlite:///corpus.db",
+        ],
+        ids=["bare-postgresql", "asyncpg", "psycopg2", "mysql", "sqlite"],
+    )
+    def test_rejects_a_vector_url_the_vector_store_cannot_connect_with(
+        self, monkeypatch, tmp_path, vector_url
+    ):
+        """
+        GIVEN a deployed dev service whose vector URL is not postgresql+psycopg://, the
+            driver the vector store's async engine needs
+        WHEN Settings is constructed
+        THEN validation fails at boot naming postgresql+psycopg, with no part of the URL
+        """
+        # GIVEN
+        self._configure_deployed_assistant(monkeypatch, tmp_path, profile="dev", railway_name="dev")
+        monkeypatch.setenv("ASSISTANT_VECTOR_DB_URL", vector_url)
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match=r"must be a postgresql\+psycopg:// URL") as e:
+            Settings()
+        assert _VECTOR_PASSWORD not in str(e.value)
+        assert "corpus-db" not in str(e.value)
+
+    @pytest.mark.parametrize(
+        "authority",
+        ["corpus_reader:{pw}@corpus-db:5432", "corpus_reader:{pw}@corpus-db:5432/"],
+        ids=["no-path", "empty-path"],
+    )
+    def test_rejects_a_vector_url_without_a_database_name(self, monkeypatch, tmp_path, authority):
+        """
+        GIVEN a deployed dev service whose vector URL names no database
+        WHEN Settings is constructed
+        THEN validation fails saying the URL must name the corpus database, and the message
+            echoes no part of the URL
+        """
+        # GIVEN
+        self._configure_deployed_assistant(monkeypatch, tmp_path, profile="dev", railway_name="dev")
+        monkeypatch.setenv(
+            "ASSISTANT_VECTOR_DB_URL",
+            f"postgresql+psycopg://{authority.format(pw=_VECTOR_PASSWORD)}?sslmode=require",
+        )
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="must name the corpus database") as excinfo:
+            Settings()
+        assert _VECTOR_PASSWORD not in str(excinfo.value)
+        assert "corpus-db" not in str(excinfo.value)
+
+    @pytest.mark.parametrize(
+        "override",
+        ["host=app-db", "hostaddr=10.0.0.5", "port=5433", "dbname=appdb", "service=app"],
+    )
+    def test_rejects_a_vector_url_whose_query_overrides_the_connection_target(
+        self, monkeypatch, tmp_path, override
+    ):
+        """
+        GIVEN a deployed dev service whose vector URL carries a libpq host, hostaddr, port,
+            dbname or service parameter, which libpq lets win over the URL's own parts
+        WHEN Settings is constructed
+        THEN validation fails telling the operator to put them in the URL, and the message
+            echoes no part of the URL
+        """
+        # GIVEN
+        self._configure_deployed_assistant(monkeypatch, tmp_path, profile="dev", railway_name="dev")
+        monkeypatch.setenv(
+            "ASSISTANT_VECTOR_DB_URL",
+            f"postgresql+psycopg://corpus_reader:{_VECTOR_PASSWORD}@/corpus"
+            f"?{override}&sslmode=require",
+        )
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="must not carry host, hostaddr") as excinfo:
+            Settings()
+        assert "in the URL itself" in str(excinfo.value)
+        assert _VECTOR_PASSWORD not in str(excinfo.value)
+        assert "app-db" not in str(excinfo.value)
+
+    def test_rejects_a_repeated_sslmode_in_the_vector_url(self, monkeypatch, tmp_path):
+        """
+        GIVEN a deployed dev service whose vector URL repeats sslmode, which SQLAlchemy
+            hands to libpq as one tuple-shaped value that libpq rejects
+        WHEN Settings is constructed
+        THEN validation fails on the missing TLS demand, whichever value comes last
+        """
+        # GIVEN
+        self._configure_deployed_assistant(monkeypatch, tmp_path, profile="dev", railway_name="dev")
+        monkeypatch.setenv(
+            "ASSISTANT_VECTOR_DB_URL",
+            f"postgresql+psycopg://corpus_reader:{_VECTOR_PASSWORD}@corpus-db:5432/corpus"
+            "?sslmode=disable&sslmode=require",
+        )
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="assistant_vector_db_url must require TLS"):
+            Settings()
 
     def test_does_not_check_the_vector_database_with_the_assistant_off(self, monkeypatch, tmp_path):
         """
