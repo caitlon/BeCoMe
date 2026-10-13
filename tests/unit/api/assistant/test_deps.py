@@ -5,7 +5,7 @@ import threading
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from typing import Any, ClassVar
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID, uuid4
 
 import httpx
@@ -19,6 +19,7 @@ from api.assistant import deps
 from api.assistant.agent.context import AssistantContext
 from api.assistant.errors import AssistantRateLimitedError, AssistantUnavailableError
 from api.assistant.rag.retrieval import RetrievalConfig
+from api.assistant.rag.store import CollectionUnavailableError
 from api.config import Settings
 from api.exceptions import ValidationError
 from api.schemas.assistant import AssistantChatRequest
@@ -43,6 +44,11 @@ def _settings(**overrides: Any) -> Settings:
         "assistant_vector_db_url": "postgresql+psycopg://x@127.0.0.1:1/x",
     }
     return Settings(**{**fields, **overrides})
+
+
+def _engine() -> MagicMock:
+    """Stand in for a PGEngine whose close is awaitable."""
+    return MagicMock(name="engine", close=AsyncMock())
 
 
 def _request(client_host: str = "203.0.113.5") -> Request:
@@ -160,8 +166,8 @@ class TestGetDocsRetriever:
         """
         GIVEN settings naming a vector database and a collection
         WHEN the retriever is built
-        THEN the engine is made from that URL and the store opened on that collection with
-             the embeddings client
+        THEN the engine is made from that URL, capped at 30 seconds a statement, and the
+             store opened on that collection with the embeddings client
         """
         # GIVEN
         settings = _settings(assistant_collection="some_collection")
@@ -170,7 +176,9 @@ class TestGetDocsRetriever:
         built = self._build(settings)
 
         # THEN
-        built.make_engine.assert_called_once_with(settings.assistant_vector_db_url)
+        built.make_engine.assert_called_once_with(
+            settings.assistant_vector_db_url, statement_timeout_ms=30000
+        )
         built.open_store.assert_called_once_with(
             built.make_engine.return_value,
             "some_collection",
@@ -595,6 +603,7 @@ class TestBuildFailures:
             OperationalError("SELECT 1", {}, Exception("connection refused by secret-host")),
             ConnectionRefusedError("secret-host refused"),
             openai.APIConnectionError(request=httpx.Request("GET", "http://secret-host/")),
+            CollectionUnavailableError("collection 'secret_table' cannot be opened"),
         ],
         ids=lambda e: type(e).__name__,
     )
@@ -604,16 +613,17 @@ class TestBuildFailures:
         """
         GIVEN a store that cannot be opened because its backend is down
         WHEN the retriever is requested
-        THEN AssistantUnavailableError is raised and one warning records the event, the mode
-             and the error class, never the error's text
+        THEN AssistantUnavailableError is raised, the engine's pool is closed, and one
+             warning records the event, the mode and the error class, never the error's text
         """
         # GIVEN
         settings = _settings()
+        engine = _engine()
 
         # WHEN
         with (
             patch.object(deps, "get_settings", return_value=settings),
-            patch.object(deps, "make_engine"),
+            patch.object(deps, "make_engine", return_value=engine),
             patch.object(deps, "make_embeddings"),
             patch.object(deps, "open_store", side_effect=failure),
             pytest.raises(AssistantUnavailableError),
@@ -621,6 +631,7 @@ class TestBuildFailures:
             deps.get_docs_retriever()
 
         # THEN
+        engine.close.assert_awaited_once()
         (record,) = records
         assert record.levelno == logging.WARNING
         assert (record.event, record.mode, record.reason) == (
@@ -628,7 +639,10 @@ class TestBuildFailures:
             settings.assistant_mode,
             type(failure).__name__,
         )
-        assert not any("secret-host" in str(value) for value in vars(record).values())
+        assert not any(
+            "secret-host" in str(value) or "secret_table" in str(value)
+            for value in vars(record).values()
+        )
 
     def test_an_error_outside_the_list_still_surfaces_as_itself(self):
         """
@@ -639,7 +653,7 @@ class TestBuildFailures:
         # WHEN/THEN
         with (
             patch.object(deps, "get_settings", return_value=_settings()),
-            patch.object(deps, "make_engine"),
+            patch.object(deps, "make_engine", return_value=_engine()),
             patch.object(deps, "make_embeddings"),
             patch.object(deps, "open_store", side_effect=RuntimeError("bug")),
             pytest.raises(RuntimeError, match="bug"),
@@ -685,7 +699,7 @@ class TestBuildFailures:
         with (
             patch.object(deps, "get_settings", return_value=settings),
             patch.object(deps, "get_query_model", return_value=MagicMock()),
-            patch.object(deps, "make_engine"),
+            patch.object(deps, "make_engine", return_value=_engine()),
             patch.object(deps, "make_embeddings"),
             patch.object(
                 deps, "open_store", side_effect=[ConnectionRefusedError("down"), MagicMock()]

@@ -11,6 +11,7 @@ cached: the API client carries the caller's own access token, and sharing it wou
 one user's token to another user's turn.
 """
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator, Iterator
 from contextlib import contextmanager
@@ -43,6 +44,9 @@ from api.schemas.assistant import AssistantChatRequest
 from api.utils.client_ip import get_client_ip
 
 logger = logging.getLogger(__name__)
+
+# The cap on one statement of the retriever's searches, in milliseconds (see make_engine).
+_STATEMENT_TIMEOUT_MS = 30000
 
 
 @contextmanager
@@ -103,11 +107,13 @@ def get_docs_retriever() -> DocsRetriever:
     model are built only when the config asks for them.
 
     Opening the store reaches the vector database, so the first request of a process can
-    meet a database that is down: that, and a missing ``ASSISTANT_VECTOR_DB_URL``, are
-    ``AssistantUnavailableError``. A missing URL is logged by setting name only.
+    meet a database that is down, or a collection that is missing: that, and a missing
+    ``ASSISTANT_VECTOR_DB_URL``, are ``AssistantUnavailableError``. A missing URL is logged
+    by setting name only. A store that fails to open closes its engine first.
 
     :return: A retriever over the configured collection.
-    :raises AssistantUnavailableError: If the vector database is down, or its URL is not set.
+    :raises AssistantUnavailableError: If the vector database is down, the collection cannot be
+        opened, or the URL is not set.
     """
     settings = get_settings()
     if not settings.assistant_vector_db_url:
@@ -118,8 +124,16 @@ def get_docs_retriever() -> DocsRetriever:
         raise AssistantUnavailableError("the assistant's vector database is not configured")
     with _outage_as_unavailable(settings):
         config = RetrievalConfig(k=settings.assistant_retrieval_k)
-        engine = make_engine(settings.assistant_vector_db_url)
-        store = open_store(engine, settings.assistant_collection, make_embeddings(settings))
+        engine = make_engine(
+            settings.assistant_vector_db_url, statement_timeout_ms=_STATEMENT_TIMEOUT_MS
+        )
+        try:
+            store = open_store(engine, settings.assistant_collection, make_embeddings(settings))
+        except Exception:
+            # A failed build is not cached, so every request would build another pool:
+            # release this one before the error goes on.
+            asyncio.run(engine.close())
+            raise
         reranker = (
             LlamaServerReranker(
                 settings.assistant_rerank_base_url,
