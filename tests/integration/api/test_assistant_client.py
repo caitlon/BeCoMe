@@ -57,7 +57,6 @@ class TestOwnProjectAccess:
         assert detail.id == project["id"]
         assert detail.name == "Alice's project"
         assert len(opinions) == 1
-        assert opinions[0].position == "Expert"
         assert result is not None
         assert result.num_experts == 1
 

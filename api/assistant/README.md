@@ -112,7 +112,8 @@ variables.
    stderr at the start; the wait is not part of `latency_s`. `--no-pacing` turns it off, for a
    rig where the limiter is off. The hourly cap is not paced: a long run still needs
    `ASSISTANT_RATE_LIMIT_PER_HOUR=0`. Tracing is off unless `--trace` is given and
-   `ASSISTANT_LANGSMITH_ENABLED` is on; it sends the question and answer text to LangSmith.
+   `ASSISTANT_LANGSMITH_ENABLED` is on; it sends the question and answer text to LangSmith, with
+   the expert names in opinion blocks replaced by `Expert 1`, `Expert 2` and so on first.
    In the running service, with the setting on, one chat turn is one trace: an `assistant_turn`
    run holding the query translation, the document search and the answer calls. In the agent
    mode the search shows as the tool call instead.

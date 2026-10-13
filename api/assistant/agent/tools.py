@@ -12,9 +12,10 @@ three fixed prefixes.
   own text (no result yet, no opinions, no passages, no projects).
 
 No reply carries the text of an exception. Text written by users (project names,
-descriptions, expert names and positions) goes through
+descriptions, expert names) goes through
 :func:`~api.assistant.agent.prompt.clean_text` before it enters a reply, so it cannot
-close a ``<project_data>`` block or start a line of its own.
+close a ``<project_data>`` block or start a line of its own. An expert's position is never
+put in a reply at all.
 
 The functions that write a data block (``render_project``, ``render_project_list``,
 ``render_opinions``) are public: the chat service calls the same ones for what it
@@ -22,6 +23,7 @@ fetches ahead of the model, so a fact is written one way wherever the model meet
 """
 
 import logging
+import re
 from collections.abc import Sequence
 
 from langchain.tools import ToolRuntime, tool
@@ -80,7 +82,7 @@ _GET_PROJECT_OPINIONS_DESCRIPTION = (
 )
 
 # Limits on the free text a reply carries, in characters. Fifty opinion rows must stay
-# small in a 16k-token window, so an expert's name and position are the tightest.
+# small in a 16k-token window, so an expert's name is the tightest.
 _NAME_LIMIT = 120
 _EXPERT_LIMIT = 60
 _DESCRIPTION_LIMIT = 1000
@@ -146,27 +148,70 @@ def render_project_list(projects: Sequence[ProjectBrief]) -> str:
     return _block(lines)
 
 
+# The count line that opens an opinions block, and the shape of one opinion row, written
+# once so that the renderer and the mask applied to LangSmith traces cannot drift apart:
+# the mask reads exactly what the renderer writes. The row's literals contain no regex
+# metacharacter, so the template is used as a pattern as it stands.
+_OPINION_COUNT_PREFIX = "Number of opinions: "
+_OPINION_VALUES_TEMPLATE = "lower={}, peak={}, upper={}, centroid={}"
+_OPINION_COUNT_LINE = re.compile(_OPINION_COUNT_PREFIX + r"\d+")
+# The name is taken greedily up to the fixed tail, so a name that itself contains the tail
+# is masked whole.
+_OPINION_ROW = re.compile(
+    "- (?P<name>.*): " + _OPINION_VALUES_TEMPLATE.format(*[r"-?\d+\.\d{2}"] * 4)
+)
+
+
 def render_opinions(opinions: Sequence[OpinionView]) -> str:
     """Render a project's expert opinions as a data block.
 
     The block has a count line, then at most 50 opinions, then ``... and N more
-    opinions`` when there are more.
+    opinions`` when there are more. An opinion's position is left out.
 
     :param opinions: The project's opinions.
     :return: The block.
     """
-    lines = [f"Number of opinions: {len(opinions)}"]
+    lines = [f"{_OPINION_COUNT_PREFIX}{len(opinions)}"]
     for opinion in opinions[:_MAX_OPINIONS]:
         name = clean_text(opinion.expert_name, _EXPERT_LIMIT)
-        position = clean_text(opinion.position, _EXPERT_LIMIT)
-        lines.append(
-            f"- {name} ({position}): lower={format_number(opinion.lower_bound)}, "
-            f"peak={format_number(opinion.peak)}, upper={format_number(opinion.upper_bound)}, "
-            f"centroid={format_number(opinion.centroid)}"
+        values = _OPINION_VALUES_TEMPLATE.format(
+            format_number(opinion.lower_bound),
+            format_number(opinion.peak),
+            format_number(opinion.upper_bound),
+            format_number(opinion.centroid),
         )
+        lines.append(f"- {name}: {values}")
     if len(opinions) > _MAX_OPINIONS:
         lines.append(f"... and {len(opinions) - _MAX_OPINIONS} more opinions")
     return _block(lines)
+
+
+def mask_opinion_names(text: str) -> str:
+    """Replace the expert names in every opinions block of a text with ``Expert 1``, ``Expert 2``.
+
+    A block is found by its shape alone, the count line :func:`render_opinions` writes and
+    the rows that follow it, so no list of names is needed. Every row is masked, the
+    asker's own included, because the block does not say which row is theirs. The numbers
+    stay. A row-shaped line that is not directly under a count line is left as it is.
+
+    :param text: Any text; one that holds no opinions block comes back unchanged.
+    :return: The text with each block's names replaced, numbered from 1 within the block.
+    """
+    if _OPINION_COUNT_PREFIX not in text:
+        return text
+    masked: list[str] = []
+    row_number = 0
+    in_block = False
+    for line in text.split("\n"):
+        if _OPINION_COUNT_LINE.fullmatch(line):
+            in_block, row_number = True, 0
+        elif in_block and (row := _OPINION_ROW.fullmatch(line)):
+            row_number += 1
+            line = f"- Expert {row_number}:" + line[row.end("name") + 1 :]
+        else:
+            in_block = False
+        masked.append(line)
+    return "\n".join(masked)
 
 
 def _reply(ctx: AssistantContext, text: str) -> str:

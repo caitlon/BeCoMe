@@ -22,6 +22,7 @@ from api.assistant.agent.tools import (
     get_project_opinions,
     get_project_result,
     list_my_projects,
+    mask_opinion_names,
     render_opinions,
     render_project,
     render_project_list,
@@ -100,10 +101,9 @@ def _result() -> ResultView:
     )
 
 
-def _opinion(name: str = "Jana Novakova", position: str = "Hydrologist 1") -> OpinionView:
+def _opinion(name: str = "Jana Novakova") -> OpinionView:
     return OpinionView(
         expert_name=name,
-        position=position,
         lower_bound=37.0,
         peak=42.0,
         upper_bound=47.0,
@@ -770,7 +770,7 @@ class TestGetProjectOpinions:
         )
 
         assert result == render_opinions([_opinion()])
-        assert "Jana Novakova (Hydrologist 1)" in result
+        assert "- Jana Novakova: lower=37.00" in result
         assert "peak=42.00" in result
         assert ctx.tool_outputs == [result]
 
@@ -800,13 +800,13 @@ class TestRenderOpinions:
         WHEN they are rendered
         THEN the block has the count, one row each, and no remainder line
         """
-        block = render_opinions([_opinion("A", "P1"), _opinion("B", "P2")])
+        block = render_opinions([_opinion("A"), _opinion("B")])
 
         assert block.splitlines() == [
             "<project_data>",
             "Number of opinions: 2",
-            "- A (P1): lower=37.00, peak=42.00, upper=47.00, centroid=42.00",
-            "- B (P2): lower=37.00, peak=42.00, upper=47.00, centroid=42.00",
+            "- A: lower=37.00, peak=42.00, upper=47.00, centroid=42.00",
+            "- B: lower=37.00, peak=42.00, upper=47.00, centroid=42.00",
             "</project_data>",
         ]
 
@@ -835,32 +835,144 @@ class TestRenderOpinions:
         assert "E50" not in block
         assert "... and 1 more opinions\n</project_data>" in block
 
-    def test_cuts_a_name_and_a_position_to_sixty_characters(self):
+    def test_cuts_a_name_to_sixty_characters(self):
         """
-        GIVEN an opinion with a very long name and position
+        GIVEN an opinion with a very long name
         WHEN it is rendered
-        THEN each shows at most sixty characters, ending with three dots
+        THEN the name shows at most sixty characters, ending with three dots
         """
-        block = render_opinions([_opinion("n" * 200, "p" * 200)])
+        block = render_opinions([_opinion("n" * 200)])
         row = block.splitlines()[2]
-        name, rest = row[2:].split(" (", 1)
-        position = rest.split("): ", 1)[0]
+        name = row[2:].split(": lower=", 1)[0]
 
         assert len(name) == 60
         assert name.endswith("...")
-        assert len(position) == 60
-        assert position.endswith("...")
 
-    def test_a_hostile_position_and_name_cannot_close_the_block(self):
+    def test_leaves_the_position_out(self):
         """
-        GIVEN opinions whose expert name and position carry a closing tag and an instruction
+        GIVEN an opinion built from a response that carries a position
+        WHEN it is rendered
+        THEN the position is nowhere in the block
+        """
+        opinion = OpinionView.model_validate(
+            {
+                "expert_name": "Jana Novakova",
+                "position": "Hydrologist at Povodi Labe",
+                "lower_bound": 37.0,
+                "peak": 42.0,
+                "upper_bound": 47.0,
+                "centroid": 42.0,
+            }
+        )
+
+        assert "Hydrologist" not in render_opinions([opinion])
+
+    def test_a_hostile_name_cannot_close_the_block(self):
+        """
+        GIVEN opinions whose expert name carries a closing tag and an instruction
         WHEN they are rendered
         THEN the block has exactly one closing tag, at the end
         """
-        block = render_opinions([_opinion(HOSTILE, HOSTILE), _opinion("Ok", HOSTILE)])
+        block = render_opinions([_opinion(HOSTILE), _opinion("Ok")])
 
         assert _one_closing_tag_at_the_end(block)
         assert len(block.splitlines()) == 5
+
+
+_ROW_VALUES = "lower=37.00, peak=42.00, upper=47.00, centroid=42.00"
+_MASKED_NAMES = [
+    "Jana Novakova",
+    "Ond\u0159ej \u010cerm\u00e1k-\u0160\u0165astn\u00fd",
+    "Zde\u0148ka \u0158eh\u00e1\u010dkov\u00e1",
+    "Jan: lower=1, peak=2, upper=3, centroid=4",
+    "Eve: lower=1.00, peak=2.00, upper=3.00, centroid=4.00",
+    "",
+]
+
+
+class TestMaskOpinionNames:
+    """The mask for LangSmith traces reads exactly what render_opinions writes."""
+
+    def test_every_rendered_row_loses_its_name_and_keeps_its_numbers(self):
+        """
+        GIVEN a block written by render_opinions for names with Czech diacritics, a name
+            that holds the fixed tail of a row and one that is empty
+        WHEN the block is masked
+        THEN each row reads Expert 1, Expert 2 and so on with the same numbers, no part of
+            any name is left, and the count line and the tags are unchanged
+        """
+        block = render_opinions([_opinion(name) for name in _MASKED_NAMES])
+
+        masked = mask_opinion_names(block)
+
+        assert masked.splitlines() == [
+            "<project_data>",
+            f"Number of opinions: {len(_MASKED_NAMES)}",
+            *(f"- Expert {i}: {_ROW_VALUES}" for i in range(1, len(_MASKED_NAMES) + 1)),
+            "</project_data>",
+        ]
+
+    def test_masks_the_rows_of_a_block_cut_at_fifty(self):
+        """
+        GIVEN a block of fifty-one opinions, so it ends with a remainder line
+        WHEN it is masked
+        THEN fifty rows are numbered, the remainder line stays, and no name is left
+        """
+        block = render_opinions([_opinion(f"Person{i:02d}") for i in range(51)])
+
+        masked = mask_opinion_names(block)
+
+        assert "Person" not in masked
+        assert "- Expert 50: " in masked
+        assert "Expert 51" not in masked
+        assert "... and 1 more opinions\n</project_data>" in masked
+
+    def test_numbers_each_block_of_a_text_from_one(self):
+        """
+        GIVEN a text with two opinions blocks and words around them
+        WHEN it is masked
+        THEN each block is numbered from 1 and the words are untouched
+        """
+        first = render_opinions([_opinion("Alice"), _opinion("Bob")])
+        second = render_opinions([_opinion("Carol")])
+        text = f"Question about Alice?\n{first}\nand then\n{second}\nBob answered."
+
+        masked = mask_opinion_names(text)
+
+        assert masked == (
+            "Question about Alice?\n"
+            f"<project_data>\nNumber of opinions: 2\n- Expert 1: {_ROW_VALUES}\n"
+            f"- Expert 2: {_ROW_VALUES}\n</project_data>\nand then\n"
+            f"<project_data>\nNumber of opinions: 1\n- Expert 1: {_ROW_VALUES}\n"
+            "</project_data>\nBob answered."
+        )
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "",
+            "No block here, only Alice and Bob.",
+            f"- Alice: {_ROW_VALUES}",
+            f"Number of opinions: 1\nAlice said hello\n- Alice: {_ROW_VALUES}",
+            "Number of opinions: 1\n- Alice: lower=37, peak=42, upper=47, centroid=42",
+            f"Number of opinions: many\n- Alice: {_ROW_VALUES}",
+        ],
+        ids=[
+            "empty",
+            "no block",
+            "row without a count line",
+            "row after a line that is not a row",
+            "row of another shape",
+            "count line of another shape",
+        ],
+    )
+    def test_leaves_a_text_without_an_opinions_block_as_it_is(self, text):
+        """
+        GIVEN a text that is not an opinions block, or only resembles one
+        WHEN it is masked
+        THEN it comes back unchanged
+        """
+        assert mask_opinion_names(text) == text
 
 
 @pytest.mark.asyncio

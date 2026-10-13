@@ -20,9 +20,11 @@ from unittest.mock import MagicMock, patch
 import httpx
 import langsmith as ls
 import pytest
+import requests
 from fastapi import HTTPException, Request
 from fastapi.testclient import TestClient
 from langchain_core.messages import AIMessage
+from requests.adapters import HTTPAdapter
 from sqlalchemy.exc import OperationalError
 
 from api.assistant import deps
@@ -183,10 +185,12 @@ def _sign_in_with_cookies(cookie_client, email: str, first_name: str = "Test") -
     return {"X-CSRF-Token": cookie_client.cookies.get(CSRF_COOKIE)}
 
 
-def _owner_project(client, position: str = OWNER_POSITION) -> dict[str, Any]:
+def _owner_project(
+    client, position: str = OWNER_POSITION, first_name: str = OWNER_FIRST_NAME
+) -> dict[str, Any]:
     """Create the owner's project with one opinion and return what a test needs of it."""
     email = "owner@example.com"
-    register_verified(client, email, first_name=OWNER_FIRST_NAME, last_name=OWNER_LAST_NAME)
+    register_verified(client, email, first_name=first_name, last_name=OWNER_LAST_NAME)
     login = client.post(
         "/api/v1/auth/login", data={"username": email, "password": DEFAULT_TEST_PASSWORD}
     )
@@ -204,6 +208,29 @@ def _owner_project(client, position: str = OWNER_POSITION) -> dict[str, Any]:
     )
     assert opinion["peak"] == OWNER_PEAK
     return {"email": email, "token": token, "id": project["id"]}
+
+
+def _add_member(
+    client, owner: dict[str, Any], email: str, first_name: str, last_name: str, position: str
+) -> str:
+    """Invite a second account to the owner's project, accept, and submit its opinion.
+
+    :return: The second member's access token.
+    """
+    register_verified(client, email, first_name=first_name, last_name=last_name)
+    login = client.post(
+        "/api/v1/auth/login", data={"username": email, "password": DEFAULT_TEST_PASSWORD}
+    )
+    token = login.json()["access_token"]
+    client.cookies.clear()
+    invitation = client.post(
+        f"/api/v1/projects/{owner['id']}/invite",
+        json={"email": email},
+        headers=auth_header(owner["token"]),
+    )
+    client.post(f"/api/v1/invitations/{invitation.json()['id']}/accept", headers=auth_header(token))
+    submit_opinion(client, token, owner["id"], position=position)
+    return token
 
 
 OWNER_SECRETS = [
@@ -568,7 +595,7 @@ class TestIsolation:
         [
             ("get_project", OWNER_PROJECT),
             ("get_project_result", f"{OWNER_PEAK:.2f}"),
-            ("get_project_opinions", OWNER_POSITION),
+            ("get_project_opinions", f"{OWNER_FIRST_NAME} {OWNER_LAST_NAME}"),
         ],
     )
     def test_a_tool_call_for_a_foreign_project_gets_not_found_and_no_data(
@@ -733,24 +760,17 @@ class TestWhatTheModelIsShown:
         GIVEN a project with two members, each with an opinion
         WHEN the owner asks about it, once with the project fetched ahead and once through a
             tool call
-        THEN the model was shown the project and the experts' names and positions (the
-            control), and nothing that identifies an account: no email, no user id, no token
+        THEN the model was shown the project and the experts' names (the control), and
+            nothing that identifies an account: no email, no user id, no token, and no
+            position
         """
         # GIVEN
         configure(ASSISTANT_MODE=mode)
         owner = _owner_project(client)
         expert_email = "second-expert@example.com"
-        expert_token = register_and_login(client, expert_email)
-        invitation = client.post(
-            f"/api/v1/projects/{owner['id']}/invite",
-            json={"email": expert_email},
-            headers=auth_header(owner["token"]),
+        expert_token = _add_member(
+            client, owner, expert_email, "Second", "Expert", "Second Opinion Holder"
         )
-        client.post(
-            f"/api/v1/invitations/{invitation.json()['id']}/accept",
-            headers=auth_header(expert_token),
-        )
-        submit_opinion(client, expert_token, owner["id"], position="Second Opinion Holder")
         identifiers = [
             owner["email"],
             expert_email,
@@ -776,8 +796,10 @@ class TestWhatTheModelIsShown:
         # THEN
         assert response.status_code == 200
         shown = _shown(model)
-        assert OWNER_POSITION in shown
-        assert "Second Opinion Holder" in shown
+        assert OWNER_FIRST_NAME in shown
+        assert "Second Expert" in shown
+        assert OWNER_POSITION not in shown
+        assert "Second Opinion Holder" not in shown
         for identifier in identifiers:
             assert identifier not in shown
             assert identifier not in response.text
@@ -1281,8 +1303,8 @@ class TestPerAddressRefusalSpendsTheBudget:
 
 _ANSWER_SENTINEL = "SENTINEL-ANSWER-7f3a91c2"
 _QUESTION_SENTINEL = "SENTINEL-QUESTION-5d80b4e6"
-_POSITION_SENTINEL = "SENTINEL-POSITION-2c19e7a8"
-_SENTINELS = [_ANSWER_SENTINEL, _QUESTION_SENTINEL, _POSITION_SENTINEL]
+_NAME_SENTINEL = "Sentinelnameqzxwvk"
+_SENTINELS = [_ANSWER_SENTINEL, _QUESTION_SENTINEL, _NAME_SENTINEL]
 _LIBRARY_PREFIXES = ("openai", "httpx", "httpcore")
 _CHATTY_LOGGERS = [
     "openai",
@@ -1397,7 +1419,7 @@ class TestLogsCarryNoText:
     ):
         """
         GIVEN the real chat client talking to a stub server on localhost, three distinct
-            sentinel strings (in the question, in an expert's position and in the model's
+            sentinel strings (in the question, in an expert's name and in the model's
             answer) and every library logger switched to DEBUG
         WHEN a turn about the project is answered
         THEN the answer carries the model's sentinel (so the turn really ran through the
@@ -1405,7 +1427,7 @@ class TestLogsCarryNoText:
             record's message, arguments or extra fields holds any sentinel
         """
         # GIVEN
-        owner = _owner_project(client, position=_POSITION_SENTINEL)
+        owner = _owner_project(client, first_name=_NAME_SENTINEL)
         body = {"message": f"Question {_QUESTION_SENTINEL}?", "project_id": owner["id"]}
         with _stub_model_server(owner["id"]) as server:
             configure(ASSISTANT_MODE=mode, ASSISTANT_ANSWER_LLM_BASE_URL=server.base_url)
@@ -1422,7 +1444,7 @@ class TestLogsCarryNoText:
         assert _ANSWER_SENTINEL in response.json()["answer"]
         sent = json.dumps(server.bodies)
         assert _QUESTION_SENTINEL in sent
-        assert _POSITION_SENTINEL in sent
+        assert _NAME_SENTINEL in sent
         records = [record for group in captured for record in group]
         assert any(record.name.split(".")[0].startswith(_LIBRARY_PREFIXES) for record in records)
         for record in records:
@@ -1583,6 +1605,123 @@ class TestTracingOneTracePerTurn:
         assert response.status_code == 200
         assert recording.created == []
         assert recording.updated == []
+
+
+class _CapturingClient(ls.Client):
+    """A real LangSmith client, anonymizer and serialization included, that sends nothing.
+
+    Each request body the client would have sent is kept as text. The session is closed
+    to the network, so a request that slipped past ``request_with_retries`` would fail
+    rather than leave the machine.
+
+    :ivar bodies: The body of every request the client made, as text.
+    """
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(auto_batch_tracing=False, **kwargs)
+        self.bodies: list[str] = []
+        self.session.mount("http://", _NoNetworkAdapter())
+        self.session.mount("https://", _NoNetworkAdapter())
+
+    def request_with_retries(self, method: Any, pathname: str, **kwargs: Any) -> requests.Response:
+        data = (kwargs.get("request_kwargs") or {}).get("data")
+        if data is not None:
+            self.bodies.append(data.decode() if isinstance(data, bytes) else str(data))
+        return requests.Response()
+
+
+class _NoNetworkAdapter(HTTPAdapter):
+    """A transport adapter that refuses to send anything."""
+
+    def send(self, *args: Any, **kwargs: Any) -> requests.Response:
+        raise requests.ConnectionError("the test allows no network traffic")
+
+
+class TestTracesCarryNoMemberData:
+    """What reaches LangSmith holds no expert name and no position, whichever mode answers."""
+
+    @pytest.fixture
+    def clients(self, monkeypatch, configure):
+        """Switch tracing on and build the shared client as a capturing one, anonymizer kept."""
+        monkeypatch.setenv("ASSISTANT_LANGSMITH_API_KEY", "ls-key")  # pragma: allowlist secret
+        configure(ASSISTANT_LANGSMITH_ENABLED="true", ASSISTANT_LANGSMITH_PROJECT="minimised")
+        built: list[_CapturingClient] = []
+
+        def build(**kwargs: Any) -> _CapturingClient:
+            built.append(_CapturingClient(**kwargs))
+            return built[-1]
+
+        with patch.object(tracing.ls, "Client", build):
+            yield built
+
+    @pytest.mark.parametrize("endpoint", [CHAT, STREAM])
+    @pytest.mark.parametrize("mode", ["workflow", "agent"])
+    def test_the_model_sees_names_and_the_trace_sees_neither_names_nor_positions(
+        self, assistant_settings, client, configure, clients, mode, endpoint
+    ):
+        """
+        GIVEN a project with two members who each submitted an opinion, with distinctive
+            names and positions, and tracing on to a client that keeps what it would send
+        WHEN the owner asks about it through the real route, once with the opinions fetched
+            ahead and once through the tool
+        THEN the model was shown both members' names and no position, and everything the
+            client would have sent to LangSmith holds no name and no position, but holds
+            the question, the placeholders Expert 1 and Expert 2 and the numbers
+        """
+        # GIVEN
+        configure(ASSISTANT_MODE=mode)
+        owner = _owner_project(client, position="Hydrologist at Povodi Labe")
+        _add_member(
+            client,
+            owner,
+            "second-expert@example.com",
+            "Bohumila",
+            "Kratochvilova",
+            "Dam Safety Officer at Lipno",
+        )
+        names = [OWNER_FIRST_NAME, OWNER_LAST_NAME, "Bohumila", "Kratochvilova"]
+        positions = ["Hydrologist", "Povodi Labe", "Dam Safety", "Lipno"]
+        question = "Which expert is furthest from the rest?"
+        if mode == "workflow":
+            model: ScriptedToolCallingModel | ToolEchoingModel = _scripted("Two experts.")
+            body = {"message": question, "project_id": owner["id"]}
+        else:
+            model = ToolEchoingModel(first_call=_tool_call("get_project_opinions", owner["id"]))
+            body = {"message": question}
+        _use_model(client, model)
+
+        # WHEN
+        response = client.post(endpoint, json=body, headers=auth_header(owner["token"]))
+
+        # THEN
+        assert response.status_code == 200
+        shown = _shown(model)
+        for name in names:
+            assert name in shown
+        for position in positions:
+            assert position not in shown
+        (traced,) = clients
+        payload = "\n".join(traced.bodies)
+        # Every kind of run went through the anonymizing client, not only the root run.
+        runs = [json.loads(body) for body in traced.bodies]
+        created = {(run["name"], run["run_type"]) for run in runs if "name" in run}
+        assert ("assistant_turn", "chain") in created
+        assert any(run_type == "llm" for _, run_type in created)
+        llm_inputs = [
+            json.dumps(run["inputs"])
+            for run in runs
+            if run.get("run_type") == "llm" and "inputs" in run
+        ]
+        assert any("Expert 1" in text for text in llm_inputs)
+        if mode == "agent":
+            assert ("get_project_opinions", "tool") in created
+        assert "assistant_turn" in payload
+        assert question in payload
+        assert "Expert 1" in payload
+        assert "Expert 2" in payload
+        assert f"{OWNER_PEAK:.2f}" in payload
+        for secret in [*names, *positions]:
+            assert secret not in payload
 
 
 class TestRetrieverWiring:

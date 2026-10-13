@@ -7,6 +7,8 @@ import pytest
 from langsmith.run_helpers import get_tracing_context
 
 from api.assistant.agent import tracing
+from api.assistant.agent.tools import render_opinions
+from api.assistant.views import OpinionView
 from api.config import Settings
 
 _ENDPOINT = "https://eu.api.smith.langchain.com"
@@ -51,6 +53,12 @@ def _settings(**overrides) -> Settings:
     }
     base.update(overrides)
     return Settings(**base)
+
+
+def _opinion(name: str) -> OpinionView:
+    return OpinionView(
+        expert_name=name, lower_bound=37.0, peak=42.0, upper_bound=47.0, centroid=42.0
+    )
 
 
 def _enabled_settings(**overrides) -> Settings:
@@ -149,7 +157,9 @@ class TestEnabledScope:
                 with tracing.tracing_scope(_enabled_settings()):
                     clients.append(get_tracing_context()["client"])
 
-        client_cls.assert_called_once_with(api_key=_API_KEY, api_url=_ENDPOINT)
+        client_cls.assert_called_once()
+        assert client_cls.call_args.kwargs["api_key"] == _API_KEY
+        assert client_cls.call_args.kwargs["api_url"] == _ENDPOINT
         assert clients == [fake_client, fake_client]
 
     def test_an_error_inside_the_scope_propagates(self):
@@ -160,6 +170,69 @@ class TestEnabledScope:
         """
         with pytest.raises(RuntimeError, match="boom"), tracing.tracing_scope(_enabled_settings()):
             raise RuntimeError("boom")
+
+
+class TestAnonymizer:
+    """The shared client masks expert names in opinion blocks, wherever they sit in a run."""
+
+    @staticmethod
+    def _anonymizer():
+        """Build the shared client with the library's class patched and return its anonymizer."""
+        with patch.object(tracing.ls, "Client") as client_cls:
+            tracing._shared_client(_enabled_settings())
+        return client_cls.call_args.kwargs["anonymizer"]
+
+    def test_masks_a_block_nested_in_lists_and_dicts(self):
+        """
+        GIVEN a run payload that holds an opinions block three levels down, in a list of
+            messages, next to a question that names the same person
+        WHEN the client's anonymizer is applied
+        THEN the block's names are replaced, the question and the numbers are not
+        """
+        block = render_opinions([_opinion("Alice Novak"), _opinion("Bob Dvorak")])
+        payload = {
+            "messages": [
+                [{"kwargs": {"content": "Why is Alice Novak far from the rest?"}}],
+                [{"kwargs": {"content": f"Context:\n{block}"}}],
+            ],
+            "metadata": {"note": "plain"},
+        }
+
+        masked = self._anonymizer()(payload)
+
+        assert (
+            masked["messages"][0][0]["kwargs"]["content"] == "Why is Alice Novak far from the rest?"
+        )
+        content = masked["messages"][1][0]["kwargs"]["content"]
+        assert "Alice" not in content
+        assert "Bob" not in content
+        assert "- Expert 1: lower=37.00" in content
+        assert "- Expert 2: lower=37.00" in content
+        assert masked["metadata"] == {"note": "plain"}
+
+    def test_masks_a_block_deeper_than_the_librarys_default_depth(self):
+        """
+        GIVEN a block eleven levels down, below the depth the library searches by default
+        WHEN the client's anonymizer is applied
+        THEN the block's names are replaced all the same
+        """
+        payload: object = render_opinions([_opinion("Alice Novak")])
+        for _ in range(11):
+            payload = {"inner": payload}
+
+        masked = self._anonymizer()(payload)
+
+        assert "Alice" not in str(masked)
+
+    def test_leaves_a_payload_without_a_block_as_it_is(self):
+        """
+        GIVEN a payload with no opinions block
+        WHEN the client's anonymizer is applied
+        THEN it comes back equal
+        """
+        payload = {"question": "Why?", "items": ["a", 1, None]}
+
+        assert self._anonymizer()(payload) == payload
 
 
 class TestTurnRun:
