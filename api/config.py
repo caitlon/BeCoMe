@@ -574,8 +574,8 @@ class Settings(BaseSettings):
         vector_url = _parse_postgres_url(self.assistant_vector_db_url)
         if vector_url is None:
             raise ValueError(
-                "assistant_vector_db_url must be a PostgreSQL URL, such as "
-                "postgresql+psycopg://user:password@host:5432/database?sslmode=require"
+                "assistant_vector_db_url must be a postgresql+psycopg:// URL naming the "
+                "corpus database, with sslmode=require"
             )
         for other in (self.database_url, self.migration_database_url or ""):
             other_url = _parse_postgres_url(other)
