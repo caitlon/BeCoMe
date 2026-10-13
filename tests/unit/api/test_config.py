@@ -1206,6 +1206,13 @@ _PROVIDER_ROLES = [
 ]
 _REMOTE_URL = "https://models.example.test/v1"
 _FAKE_KEY = "ovh-test-key"  # pragma: allowlist secret
+_DEPLOYED_DATABASE_URL = "postgresql://user:pass@host:5432/db"
+_DEPLOYED_MIGRATION_URL = "postgresql://migrator:pass@host:5432/db"
+_VECTOR_PASSWORD = "vec-reader-pw"  # pragma: allowlist secret
+_VECTOR_URL = (
+    f"postgresql+psycopg://corpus_reader:{_VECTOR_PASSWORD}@corpus-db.railway.internal:5432"
+    "/corpus?sslmode=require"
+)
 
 
 class TestAssistantSettings:
@@ -1266,8 +1273,8 @@ class TestAssistantSettings:
             monkeypatch.setenv("RAILWAY_ENVIRONMENT_NAME", railway_name)
         monkeypatch.setenv("APP_ENV", profile)
         monkeypatch.setenv("SECRET_KEY", "a-sufficiently-strong-secret-value")
-        monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@host:5432/db")
-        monkeypatch.setenv("MIGRATION_DATABASE_URL", "postgresql://migrator:pass@host:5432/db")
+        monkeypatch.setenv("DATABASE_URL", _DEPLOYED_DATABASE_URL)
+        monkeypatch.setenv("MIGRATION_DATABASE_URL", _DEPLOYED_MIGRATION_URL)
         monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
         monkeypatch.setenv("CLOUDFLARE_ORIGIN_SECRET", "an-origin-verify-secret")
         monkeypatch.setenv("CORS_ORIGINS", '["https://app.example.com"]')
@@ -1280,6 +1287,7 @@ class TestAssistantSettings:
         monkeypatch.setenv("TURNSTILE_HOSTNAMES", '["app.example.com"]')
         monkeypatch.setenv("ASSISTANT_ENABLED", "true")
         monkeypatch.setenv("ASSISTANT_API_KEY_OVH", _FAKE_KEY)
+        monkeypatch.setenv("ASSISTANT_VECTOR_DB_URL", _VECTOR_URL)
         for provider, url in _PROVIDER_ROLES:
             monkeypatch.setenv(provider.upper(), "api")
             monkeypatch.setenv(url.upper(), _REMOTE_URL)
@@ -1479,6 +1487,202 @@ class TestAssistantSettings:
         # WHEN/THEN
         with pytest.raises(ValidationError, match="assistant_langsmith_enabled must be false"):
             Settings()
+
+    @pytest.mark.parametrize(
+        ("profile", "railway_name", "testing"),
+        [("dev", "dev", False), ("test", "test", False), ("test", None, False), ("dev", "dev", True)],
+    )
+    def test_rejects_an_empty_vector_database_url_on_a_deployed_service(
+        self, monkeypatch, tmp_path, profile, railway_name, testing
+    ):
+        """
+        GIVEN a deployed service, or a Railway process with TESTING set, with the assistant
+            on and no ASSISTANT_VECTOR_DB_URL
+        WHEN Settings is constructed
+        THEN validation fails, naming assistant_vector_db_url
+        """
+        # GIVEN
+        self._configure_deployed_assistant(
+            monkeypatch, tmp_path, profile=profile, railway_name=railway_name, testing=testing
+        )
+        monkeypatch.setenv("ASSISTANT_VECTOR_DB_URL", "")
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="assistant_vector_db_url must be set"):
+            Settings()
+
+    @pytest.mark.parametrize("shared_with", ["DATABASE_URL", "MIGRATION_DATABASE_URL"])
+    @pytest.mark.parametrize(
+        "vector_url",
+        [
+            f"postgresql://corpus_reader:{_VECTOR_PASSWORD}@host:5432/db?sslmode=require",
+            f"postgresql+psycopg://corpus_reader:{_VECTOR_PASSWORD}@host:5432/db?sslmode=require",
+            f"postgresql+psycopg://corpus_reader:{_VECTOR_PASSWORD}@HOST.:5432/db?sslmode=require",
+            f"postgresql+psycopg://corpus_reader:{_VECTOR_PASSWORD}@host/db?sslmode=require",
+        ],
+        ids=["same-scheme", "other-driver", "host-case-and-dot", "default-port"],
+    )
+    def test_rejects_a_vector_database_that_is_the_application_database(
+        self, monkeypatch, tmp_path, shared_with, vector_url
+    ):
+        """
+        GIVEN a deployed dev service whose ASSISTANT_VECTOR_DB_URL names the same host, port
+            and database as DATABASE_URL or MIGRATION_DATABASE_URL, whatever the driver,
+            host spelling, port notation or credentials
+        WHEN Settings is constructed
+        THEN validation fails, and the message echoes no part of any URL
+        """
+        # GIVEN
+        self._configure_deployed_assistant(monkeypatch, tmp_path, profile="dev", railway_name="dev")
+        monkeypatch.setenv("ASSISTANT_VECTOR_DB_URL", vector_url)
+        if shared_with == "MIGRATION_DATABASE_URL":
+            # Move the app URL off the shared database so only the migration URL matches.
+            monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@other-host:5432/appdb")
+            monkeypatch.setenv("MIGRATION_DATABASE_URL", _DEPLOYED_DATABASE_URL)
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="assistant_vector_db_url must not") as excinfo:
+            Settings()
+        message = str(excinfo.value)
+        assert _VECTOR_PASSWORD not in message
+        assert "corpus_reader" not in message
+        assert "host:5432" not in message
+
+    @pytest.mark.parametrize(
+        "vector_url",
+        [
+            f"postgresql+psycopg://corpus_reader:{_VECTOR_PASSWORD}@host:5432/corpus"
+            "?sslmode=require",
+            f"postgresql+psycopg://corpus_reader:{_VECTOR_PASSWORD}@other-host:5432/db"
+            "?sslmode=require",
+            f"postgresql+psycopg://corpus_reader:{_VECTOR_PASSWORD}@host:5433/db?sslmode=require",
+        ],
+        ids=["other-database", "other-host", "other-port"],
+    )
+    def test_allows_a_vector_database_that_differs_from_the_application_database(
+        self, monkeypatch, tmp_path, vector_url
+    ):
+        """
+        GIVEN a deployed dev service whose vector URL differs from DATABASE_URL in the
+            database name, the host or the port
+        WHEN Settings is constructed
+        THEN validation passes
+        """
+        # GIVEN
+        self._configure_deployed_assistant(monkeypatch, tmp_path, profile="dev", railway_name="dev")
+        monkeypatch.setenv("ASSISTANT_VECTOR_DB_URL", vector_url)
+
+        # WHEN/THEN
+        assert Settings().assistant_vector_db_url == vector_url
+
+    def test_skips_the_same_database_comparison_for_a_non_postgres_migration_url(
+        self, monkeypatch, tmp_path
+    ):
+        """
+        GIVEN a deployed dev service whose MIGRATION_DATABASE_URL is not a PostgreSQL URL
+        WHEN Settings is constructed with a valid vector URL
+        THEN validation passes, since there is nothing to compare against
+        """
+        # GIVEN
+        self._configure_deployed_assistant(monkeypatch, tmp_path, profile="dev", railway_name="dev")
+        monkeypatch.setenv("MIGRATION_DATABASE_URL", "sqlite:///./become.db")
+
+        # WHEN/THEN
+        assert Settings().assistant_enabled is True
+
+    @pytest.mark.parametrize(
+        "query",
+        ["", "?sslmode=disable", "?sslmode=allow", "?sslmode=prefer", "?application_name=x"],
+        ids=["no-query", "disable", "allow", "prefer", "no-sslmode"],
+    )
+    def test_rejects_a_vector_database_url_without_tls(self, monkeypatch, tmp_path, query):
+        """
+        GIVEN a deployed dev service whose vector URL does not demand TLS
+        WHEN Settings is constructed
+        THEN validation fails naming assistant_vector_db_url, and the message echoes no part
+            of the URL
+        """
+        # GIVEN
+        self._configure_deployed_assistant(monkeypatch, tmp_path, profile="dev", railway_name="dev")
+        monkeypatch.setenv(
+            "ASSISTANT_VECTOR_DB_URL",
+            f"postgresql+psycopg://corpus_reader:{_VECTOR_PASSWORD}@corpus-db:5432/corpus{query}",
+        )
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="assistant_vector_db_url must require TLS") as e:
+            Settings()
+        assert _VECTOR_PASSWORD not in str(e.value)
+        assert "corpus-db" not in str(e.value)
+
+    @pytest.mark.parametrize("mode", ["require", "verify-ca", "verify-full"])
+    def test_allows_a_vector_database_url_that_demands_tls(self, monkeypatch, tmp_path, mode):
+        """
+        GIVEN a deployed dev service whose vector URL carries sslmode require, verify-ca
+            or verify-full
+        WHEN Settings is constructed
+        THEN validation passes
+        """
+        # GIVEN
+        self._configure_deployed_assistant(monkeypatch, tmp_path, profile="dev", railway_name="dev")
+        monkeypatch.setenv(
+            "ASSISTANT_VECTOR_DB_URL",
+            f"postgresql+psycopg://corpus_reader:{_VECTOR_PASSWORD}@corpus-db:5432/corpus"
+            f"?sslmode={mode}",
+        )
+
+        # WHEN/THEN
+        assert Settings().assistant_enabled is True
+
+    def test_rejects_an_unparseable_vector_database_url_without_echoing_it(
+        self, monkeypatch, tmp_path
+    ):
+        """
+        GIVEN a deployed dev service whose vector URL is not a URL
+        WHEN Settings is constructed
+        THEN validation fails naming assistant_vector_db_url, with the value left out
+        """
+        # GIVEN
+        self._configure_deployed_assistant(monkeypatch, tmp_path, profile="dev", railway_name="dev")
+        monkeypatch.setenv("ASSISTANT_VECTOR_DB_URL", f"not-a-url-{_VECTOR_PASSWORD}")
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="assistant_vector_db_url must be") as excinfo:
+            Settings()
+        assert _VECTOR_PASSWORD not in str(excinfo.value)
+
+    def test_does_not_check_the_vector_database_with_the_assistant_off(self, monkeypatch, tmp_path):
+        """
+        GIVEN a deployed dev service with the assistant off and an empty vector URL
+        WHEN Settings is constructed
+        THEN validation passes, since the assistant rules apply only when it is enabled
+        """
+        # GIVEN
+        self._configure_deployed_assistant(monkeypatch, tmp_path, profile="dev", railway_name="dev")
+        monkeypatch.setenv("ASSISTANT_ENABLED", "false")
+        monkeypatch.setenv("ASSISTANT_VECTOR_DB_URL", "")
+
+        # WHEN/THEN
+        assert Settings().assistant_enabled is False
+
+    def test_does_not_check_the_vector_database_on_a_laptop(self, monkeypatch, tmp_path):
+        """
+        GIVEN the dev profile with no Railway marker, the assistant on and a vector URL that
+            is the application database with no TLS
+        WHEN Settings is constructed
+        THEN validation passes, since only a deployed service is held to the rule
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("RAILWAY_ENVIRONMENT_NAME", raising=False)
+        monkeypatch.setenv("APP_ENV", "dev")
+        monkeypatch.setenv("SECRET_KEY", "irrelevant-for-dev")
+        monkeypatch.setenv("ASSISTANT_ENABLED", "true")
+        monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@localhost:5432/db")
+        monkeypatch.setenv("ASSISTANT_VECTOR_DB_URL", "postgresql+psycopg://user:pass@localhost/db")
+
+        # WHEN/THEN
+        assert Settings().assistant_enabled is True
 
     def test_allows_langsmith_tracing_on_a_laptop(self, monkeypatch, tmp_path):
         """

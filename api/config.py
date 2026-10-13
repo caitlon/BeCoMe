@@ -10,6 +10,8 @@ from urllib.parse import urlparse
 
 from pydantic import BeforeValidator, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.engine import URL, make_url
+from sqlalchemy.exc import ArgumentError
 
 try:
     _version = version("become")
@@ -108,6 +110,11 @@ _ASSISTANT_PROVIDER_ROLES = (
 # renamed or preview environment (pr-123) must be refused rather than allowed.
 _ASSISTANT_RAILWAY_ENVIRONMENTS = frozenset({"dev", "test"})
 
+# sslmode values under which libpq refuses to fall back to a connection in clear text.
+_TLS_REQUIRING_SSLMODES = frozenset({"require", "verify-ca", "verify-full"})
+
+_POSTGRES_DEFAULT_PORT = 5432
+
 
 def _is_loopback_host(host: str) -> bool:
     """Return whether a URL host is "localhost" or any loopback IP address.
@@ -131,6 +138,53 @@ def _has_remote_cors_origin(origins: list[str]) -> bool:
     :return: True if at least one origin points at a remote host.
     """
     return any((urlparse(origin).hostname or "") not in LOOPBACK_HOSTS for origin in origins)
+
+
+def _parse_postgres_url(url: str) -> URL | None:
+    """Parse a database URL, accepting any PostgreSQL driver in its scheme.
+
+    :param url: SQLAlchemy URL, such as ``postgresql+psycopg://...`` or ``postgresql://...``.
+    :return: The parsed URL, or None when it is empty, malformed or not PostgreSQL.
+    """
+    try:
+        parsed = make_url(url)
+    except ArgumentError:
+        return None
+    return parsed if parsed.get_backend_name() == "postgresql" else None
+
+
+def _same_postgres_database(first: URL, second: URL) -> bool:
+    """Compare two PostgreSQL URLs by the database they name, not by their spelling.
+
+    The driver, the credentials and the query are ignored. The host is lower-cased and
+    stripped of a trailing dot, and a missing port is 5432.
+
+    :param first: Parsed PostgreSQL URL.
+    :param second: Parsed PostgreSQL URL.
+    :return: True when host, port and database name all match.
+    """
+
+    def identity(url: URL) -> tuple[str, int, str | None]:
+        return (
+            (url.host or "").lower().rstrip("."),
+            url.port or _POSTGRES_DEFAULT_PORT,
+            url.database,
+        )
+
+    return identity(first) == identity(second)
+
+
+def _demands_tls(url: URL) -> bool:
+    """Return whether a URL's ``sslmode`` stops libpq from falling back to clear text.
+
+    :param url: Parsed PostgreSQL URL.
+    :return: True for ``require``, ``verify-ca`` and ``verify-full``. When the parameter
+        repeats, libpq honours the last value, so that one decides.
+    """
+    sslmode = url.query.get("sslmode")
+    if not isinstance(sslmode, str):
+        sslmode = sslmode[-1] if sslmode else None
+    return sslmode in _TLS_REQUIRING_SSLMODES
 
 
 class Settings(BaseSettings):
@@ -439,7 +493,7 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _validate_assistant_deploy(self) -> "Settings":
-        """Refuse the assistant in production, and on a deploy require hosted model roles.
+        """Refuse the assistant in production, and on a deploy require hosted roles and a corpus DB.
 
         The assistant reads project data as the signed-in user and calls an LLM, so it may
         run on a laptop and on the dev and test services, never in production. Production
@@ -450,7 +504,11 @@ class Settings(BaseSettings):
         there must be api; a laptop and a CI runner keep local roles. LangSmith tracing
         is refused on a deployed service too: it sends the text of questions, tool
         replies and answers, which is project data read as the signed-in user, to a
-        third-party endpoint. Keeping the guard here, right before
+        third-party endpoint. The corpus database must be its own: a non-empty
+        assistant_vector_db_url that names neither database_url nor
+        migration_database_url, and that demands TLS, so the retrieval role cannot be
+        pointed at the application's data or reach the corpus in clear text. The messages
+        leave the URL out, because it carries a password. Keeping the guard here, right before
         _validate_deploy_invariants, means a deploy that sets ASSISTANT_ENABLED wrongly
         fails on this message first, rather than on whichever deploy invariant happens
         to be missing.
@@ -464,7 +522,9 @@ class Settings(BaseSettings):
         :return: The validated settings instance.
         :raises ValueError: If assistant_enabled is true in the prod profile or on a
             Railway environment outside the allowlist, or on a deployed service while a
-            model role is still local or assistant_langsmith_enabled is true.
+            model role is still local, assistant_langsmith_enabled is true,
+            assistant_vector_db_url is empty or not a PostgreSQL URL, names the same
+            database as database_url or migration_database_url, or does not demand TLS.
         """
         if not self.assistant_enabled:
             return self
@@ -494,7 +554,42 @@ class Settings(BaseSettings):
                     "assistant_langsmith_enabled must be false on a deployed service; "
                     "tracing sends project data to LangSmith"
                 )
+            self._validate_assistant_corpus_database()
         return self
+
+    def _validate_assistant_corpus_database(self) -> None:
+        """Require a separate, TLS-protected corpus database on a deployed service.
+
+        Messages never carry the URL or a part of it, since it holds the role's password.
+
+        :raises ValueError: If assistant_vector_db_url is empty, not a PostgreSQL URL, the
+            same database as database_url or migration_database_url, or without a
+            ``sslmode`` of require, verify-ca or verify-full.
+        """
+        if not self.assistant_vector_db_url.strip():
+            raise ValueError(
+                "assistant_vector_db_url must be set on a deployed service; the corpus "
+                "lives in its own PostgreSQL database with pgvector, not the application's"
+            )
+        vector_url = _parse_postgres_url(self.assistant_vector_db_url)
+        if vector_url is None:
+            raise ValueError(
+                "assistant_vector_db_url must be a PostgreSQL URL, such as "
+                "postgresql+psycopg://user:password@host:5432/database?sslmode=require"
+            )
+        for other in (self.database_url, self.migration_database_url or ""):
+            other_url = _parse_postgres_url(other)
+            if other_url is not None and _same_postgres_database(vector_url, other_url):
+                raise ValueError(
+                    "assistant_vector_db_url must not point at the database named by "
+                    "database_url or migration_database_url; the corpus needs a database "
+                    "of its own so the retrieval role never reaches application data"
+                )
+        if not _demands_tls(vector_url):
+            raise ValueError(
+                "assistant_vector_db_url must require TLS on a deployed service; add "
+                "sslmode=require (or verify-ca, verify-full) to the URL"
+            )
 
     @model_validator(mode="after")
     def _validate_assistant_providers(self) -> "Settings":
