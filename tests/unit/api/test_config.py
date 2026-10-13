@@ -1490,7 +1490,12 @@ class TestAssistantSettings:
 
     @pytest.mark.parametrize(
         ("profile", "railway_name", "testing"),
-        [("dev", "dev", False), ("test", "test", False), ("test", None, False), ("dev", "dev", True)],
+        [
+            ("dev", "dev", False),
+            ("test", "test", False),
+            ("test", None, False),
+            ("dev", "dev", True),
+        ],
     )
     def test_rejects_an_empty_vector_database_url_on_a_deployed_service(
         self, monkeypatch, tmp_path, profile, railway_name, testing
