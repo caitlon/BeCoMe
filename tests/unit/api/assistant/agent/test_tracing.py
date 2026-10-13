@@ -1,9 +1,12 @@
 """Tests for the LangSmith tracing scope, a no-op unless explicitly enabled."""
 
+import json
 from unittest.mock import MagicMock, patch
 
 import langsmith as ls
 import pytest
+import requests
+from langchain_core.tools import tool
 from langsmith.run_helpers import get_tracing_context
 
 from api.assistant.agent import tracing
@@ -233,6 +236,63 @@ class TestAnonymizer:
         payload = {"question": "Why?", "items": ["a", 1, None]}
 
         assert self._anonymizer()(payload) == payload
+
+
+class _CapturingClient(ls.Client):
+    """A real LangSmith client, anonymizer included, that keeps what it would send as text."""
+
+    def __init__(self, **kwargs):
+        super().__init__(auto_batch_tracing=False, **kwargs)
+        self.bodies: list[str] = []
+
+    def request_with_retries(self, method, pathname, **kwargs):
+        data = (kwargs.get("request_kwargs") or {}).get("data")
+        if data is not None:
+            self.bodies.append(data.decode() if isinstance(data, bytes) else str(data))
+        return requests.Response()
+
+
+class TestErrorsAreMasked:
+    """A name in the message of an exception that ends a run does not reach LangSmith."""
+
+    def test_a_tool_that_raises_an_opinions_block_sends_no_name(self):
+        """
+        GIVEN the real anonymizing client and a tool that raises a ValueError whose message
+            is a rendered opinions block, which LangChain stores in the run as repr(exc)
+        WHEN the tool is invoked inside the tracing scope and the error is raised
+        THEN the run was sent with an error, and nothing sent, the error included, holds a
+            name, while the placeholders and the numbers are there
+        """
+        block = render_opinions([_opinion("Alice Novak"), _opinion("Bob Dvorak")])
+
+        @tool
+        def failing_tool() -> str:
+            """Fail with the opinions of a project."""
+            raise ValueError(block)
+
+        captured: list[_CapturingClient] = []
+
+        def build(**kwargs):
+            captured.append(_CapturingClient(**kwargs))
+            return captured[-1]
+
+        with patch.object(tracing.ls, "Client", build):
+            with (
+                pytest.raises(ValueError, match="Number of opinions"),
+                tracing.tracing_scope(_enabled_settings()),
+            ):
+                failing_tool.invoke({})
+            tracing.shutdown_tracing()
+
+        (client,) = captured
+        runs = [json.loads(body) for body in client.bodies]
+        errors = [run["error"] for run in runs if run.get("error")]
+        assert errors
+        payload = "\n".join(client.bodies)
+        for name in ("Alice", "Novak", "Bob", "Dvorak"):
+            assert name not in payload
+        assert "Expert 1" in "\n".join(errors)
+        assert "37.00" in payload
 
 
 class TestTurnRun:

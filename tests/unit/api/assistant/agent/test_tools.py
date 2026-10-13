@@ -947,6 +947,50 @@ class TestMaskOpinionNames:
             "</project_data>\nBob answered."
         )
 
+    def test_masks_a_block_whose_newlines_are_escaped_as_in_a_repr(self):
+        """
+        GIVEN an exception whose message is an opinions block, as LangChain stores it in
+            a run's error: repr(exc), where each newline is a backslash and an n
+        WHEN the repr is masked
+        THEN no name is left, the numbers stay, and every break is as it was
+        """
+        block = render_opinions([_opinion("Jan Novak"), _opinion("Eva Svobodova")])
+        error = repr(ValueError(block))
+
+        masked = mask_opinion_names(error)
+
+        assert "Jan" not in masked
+        assert "Novak" not in masked
+        assert "Eva" not in masked
+        assert masked == repr(ValueError(mask_opinion_names(block)))
+
+    @pytest.mark.parametrize(
+        "name",
+        ["Jan\\nNovak", "Jan\\\\nNovak", "Jan\\", "\\n"],
+        ids=["backslash n", "doubled backslash n", "trailing backslash", "only backslash n"],
+    )
+    @pytest.mark.parametrize(
+        "wrap",
+        [lambda block: block, lambda block: repr(ValueError(block))],
+        ids=["as written", "as repr"],
+    )
+    def test_masks_a_name_that_holds_a_typed_backslash_and_n(self, name, wrap):
+        """
+        GIVEN a name that holds a typed backslash and n, which is not a line break, in a
+            block as written and in the repr of an exception carrying it
+        WHEN the text is masked
+        THEN the name is masked whole, so neither half of it is left
+        """
+        block = render_opinions([_opinion(name), _opinion("Eva")])
+
+        masked = mask_opinion_names(wrap(block))
+
+        assert "Jan" not in masked
+        assert "Novak" not in masked
+        assert "Eva" not in masked
+        assert masked.count("Expert 1") == 1
+        assert masked.count("Expert 2") == 1
+
     @pytest.mark.parametrize(
         "text",
         [
