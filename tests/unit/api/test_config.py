@@ -1211,6 +1211,7 @@ _LANGSMITH_LIBRARY_SWITCHES = [
     "LANGSMITH_TRACING",
     "LANGCHAIN_TRACING",
 ]
+_LANGSMITH_RUNS_ENDPOINTS = ["LANGSMITH_RUNS_ENDPOINTS", "LANGCHAIN_RUNS_ENDPOINTS"]
 _FAKE_KEY = "ovh-test-key"  # pragma: allowlist secret
 _DEPLOYED_DATABASE_URL = "postgresql://user:pass@host:5432/db"
 _DEPLOYED_MIGRATION_URL = "postgresql://migrator:pass@host:5432/db"
@@ -1294,7 +1295,7 @@ class TestAssistantSettings:
         monkeypatch.setenv("ASSISTANT_ENABLED", "true")
         monkeypatch.setenv("ASSISTANT_API_KEY_OVH", _FAKE_KEY)
         monkeypatch.setenv("ASSISTANT_VECTOR_DB_URL", _VECTOR_URL)
-        for name in _LANGSMITH_LIBRARY_SWITCHES:
+        for name in [*_LANGSMITH_LIBRARY_SWITCHES, *_LANGSMITH_RUNS_ENDPOINTS]:
             monkeypatch.delenv(name, raising=False)
         for provider, url in _PROVIDER_ROLES:
             monkeypatch.setenv(provider.upper(), "api")
@@ -1488,7 +1489,7 @@ class TestAssistantSettings:
         GIVEN a deployed dev or test service with every role hosted and LangSmith tracing on
             with a key, a project and the EU endpoint (however it is capitalised or ends)
         WHEN Settings is constructed
-        THEN validation passes
+        THEN validation passes and the endpoint is kept without spaces or a trailing slash
         """
         # GIVEN
         self._configure_deployed_assistant(
@@ -1504,6 +1505,7 @@ class TestAssistantSettings:
 
         # THEN
         assert settings.assistant_langsmith_enabled is True
+        assert settings.assistant_langsmith_endpoint == endpoint.strip().rstrip("/")
 
     @pytest.mark.parametrize(
         "endpoint",
@@ -1532,12 +1534,12 @@ class TestAssistantSettings:
         with pytest.raises(ValidationError, match="assistant_langsmith_endpoint must be the EU"):
             Settings()
 
-    @pytest.mark.parametrize("project", ["", "   "])
+    @pytest.mark.parametrize("project", ["", "   ", "become-assistant-local"])
     def test_rejects_langsmith_tracing_without_a_project_on_a_deployed_service(
         self, monkeypatch, tmp_path, project
     ):
         """
-        GIVEN a deployed service with LangSmith tracing on and an empty or blank project
+        GIVEN a deployed service with LangSmith tracing on and an empty, blank or local-default project
         WHEN Settings is constructed
         THEN validation fails, naming assistant_langsmith_project
         """
@@ -1553,11 +1555,12 @@ class TestAssistantSettings:
 
     @pytest.mark.parametrize("switch", _LANGSMITH_LIBRARY_SWITCHES)
     @pytest.mark.parametrize("tracing_enabled", ["true", "false"])
+    @pytest.mark.parametrize("value", ["true", "1", " YES "])
     def test_rejects_a_langsmith_library_switch_on_a_deployed_service(
-        self, monkeypatch, tmp_path, switch, tracing_enabled
+        self, monkeypatch, tmp_path, switch, tracing_enabled, value
     ):
         """
-        GIVEN a deployed service where a LangSmith library switch is true, with the
+        GIVEN a deployed service where a LangSmith library switch is true, 1 or yes, with the
             assistant's own tracing setting on or off
         WHEN Settings is constructed
         THEN validation fails and points to ASSISTANT_LANGSMITH_ENABLED, since the library
@@ -1567,10 +1570,46 @@ class TestAssistantSettings:
         self._configure_deployed_assistant(monkeypatch, tmp_path, profile="dev", railway_name="dev")
         monkeypatch.setenv("ASSISTANT_LANGSMITH_ENABLED", tracing_enabled)
         monkeypatch.setenv("ASSISTANT_LANGSMITH_API_KEY", "lsv2_test")  # pragma: allowlist secret
-        monkeypatch.setenv(switch, "true")
+        monkeypatch.setenv(switch, value)
 
         # WHEN/THEN
         with pytest.raises(ValidationError, match="use ASSISTANT_LANGSMITH_ENABLED instead"):
+            Settings()
+
+    @pytest.mark.parametrize("first", ["", "false"])
+    def test_rejects_a_later_langsmith_switch_behind_a_blank_or_false_first_one(
+        self, monkeypatch, tmp_path, first
+    ):
+        """
+        GIVEN a deployed service where LANGSMITH_TRACING_V2 is blank or false and
+            LANGSMITH_TRACING is true, which the library still reads as on
+        WHEN Settings is constructed
+        THEN validation fails, since no name hides another
+        """
+        # GIVEN
+        self._configure_deployed_assistant(monkeypatch, tmp_path, profile="dev", railway_name="dev")
+        monkeypatch.setenv("LANGSMITH_TRACING_V2", first)
+        monkeypatch.setenv("LANGSMITH_TRACING", "true")
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="use ASSISTANT_LANGSMITH_ENABLED instead"):
+            Settings()
+
+    @pytest.mark.parametrize("name", _LANGSMITH_RUNS_ENDPOINTS)
+    def test_rejects_langsmith_runs_endpoints_on_a_deployed_service(
+        self, monkeypatch, tmp_path, name
+    ):
+        """
+        GIVEN a deployed service where a LangSmith RUNS_ENDPOINTS list is set
+        WHEN Settings is constructed
+        THEN validation fails, since the library would send runs there whatever the settings say
+        """
+        # GIVEN
+        self._configure_deployed_assistant(monkeypatch, tmp_path, profile="dev", railway_name="dev")
+        monkeypatch.setenv(name, '[{"api_url": "https://elsewhere.example.test"}]')
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="_RUNS_ENDPOINTS must not be set"):
             Settings()
 
     @pytest.mark.parametrize("value", ["false", "", "0"])
@@ -1587,7 +1626,7 @@ class TestAssistantSettings:
         monkeypatch.setenv("LANGSMITH_TRACING", value)
 
         # WHEN/THEN
-        assert Settings().langsmith_library_tracing == value
+        assert Settings().langsmith_tracing == value
 
     def test_allows_a_langsmith_library_switch_on_a_laptop(self, monkeypatch, tmp_path):
         """
@@ -1607,7 +1646,7 @@ class TestAssistantSettings:
         settings = Settings()
 
         # THEN
-        assert settings.langsmith_library_tracing == "true"
+        assert settings.langsmith_tracing == "true"
 
     @pytest.mark.parametrize(
         ("profile", "railway_name", "testing"),

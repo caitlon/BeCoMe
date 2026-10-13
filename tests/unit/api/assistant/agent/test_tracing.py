@@ -193,23 +193,6 @@ class TestTurnRun:
         assert call.kwargs["session_name"] == "p"
         assert "parent_run_id" not in call.kwargs
 
-    def test_runs_made_in_the_scope_are_children_of_the_turn(self):
-        """
-        GIVEN a started turn
-        WHEN a run is traced inside a scope given the turn as its parent
-        THEN the run belongs to the turn's trace and has the turn as its parent
-        """
-        with patch.object(tracing.ls, "Client", return_value=MagicMock()):
-            run = tracing.start_turn(_enabled_settings(), "q")
-            with (
-                tracing.tracing_scope(_enabled_settings(), parent=run),
-                tracing.retrieval_span("q") as span,
-            ):
-                pass
-
-        assert span.trace_id == run.trace_id
-        assert span.parent_run_id == run.id
-
     def test_a_run_is_closed_once(self):
         """
         GIVEN a started turn that was closed with an answer
@@ -233,22 +216,6 @@ class TestTurnRun:
         THEN nothing happens
         """
         tracing.end_turn(None, error="Boom")
-
-    def test_the_search_span_is_not_sent_with_tracing_off(self):
-        """
-        GIVEN tracing off while the environment switches it on
-        WHEN a search span is entered and left inside the scope
-        THEN the shared client is never asked to create a run
-        """
-        client = MagicMock()
-        with (
-            patch.object(tracing.ls, "Client", return_value=client),
-            tracing.tracing_scope(_settings()),
-            tracing.retrieval_span("q"),
-        ):
-            pass
-
-        client.create_run.assert_not_called()
 
 
 class TestShutdownTracing:

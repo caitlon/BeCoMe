@@ -147,16 +147,3 @@ def ending_turn(run: RunTree | None) -> Iterator[None]:
         raise
     finally:
         end_turn(run)
-
-
-def retrieval_span(query: str) -> ls.trace:
-    """Trace the document search as a child of the current run.
-
-    Embeddings are not LangChain runnables and emit no callbacks, so the search would
-    otherwise be missing from the trace. Like every run made inside :func:`tracing_scope`,
-    the span is not sent when tracing is off.
-
-    :param query: The search query, the run's input.
-    :return: A context manager that yields the span; call ``end(outputs=...)`` on it.
-    """
-    return ls.trace("docs_search", run_type="retriever", inputs={"query": query})

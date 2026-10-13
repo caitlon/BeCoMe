@@ -88,8 +88,10 @@ _BASE_ENV = {
 }
 _AMBIENT_ENV = [
     "ASSISTANT_LANGSMITH_API_KEY",
-    "LANGSMITH_TRACING",
+    "LANGSMITH_TRACING_V2",
     "LANGCHAIN_TRACING_V2",
+    "LANGSMITH_TRACING",
+    "LANGCHAIN_TRACING",
     "LANGSMITH_API_KEY",
     "LANGSMITH_ENDPOINT",
 ]
@@ -1539,14 +1541,18 @@ class TestTracingOneTracePerTurn:
         assert root["session_name"] == "turns"
         assert len({str(run["trace_id"]) for run in runs}) == 1
         below = [run for run in runs if run is not root]
-        assert {run["name"] for run in below} >= {"docs_search"}
+        (search,) = [run for run in below if run["name"] == "docs_search"]
+        assert search["parent_run_id"] == root["id"]
         assert sum(run["run_type"] == "llm" for run in below) == 2
         assert all(run["parent_run_id"] is not None for run in below)
         ended = [update for update in recorder.updated if update["id"] == root["id"]]
         assert ended[-1]["outputs"] == {"answer": "The answer."}
         assert not ended[-1].get("error")
 
-    @pytest.mark.parametrize("variable", ["LANGSMITH_TRACING", "LANGCHAIN_TRACING_V2"])
+    # LANGCHAIN_TRACING alone is left out: langchain-core itself raises on it before any run.
+    @pytest.mark.parametrize(
+        "variable", ["LANGSMITH_TRACING_V2", "LANGCHAIN_TRACING_V2", "LANGSMITH_TRACING"]
+    )
     @pytest.mark.parametrize("endpoint", [CHAT, STREAM])
     def test_nothing_reaches_langsmith_when_the_setting_is_off_and_the_environment_is_on(
         self, assistant_settings, client, configure, monkeypatch, variable, endpoint

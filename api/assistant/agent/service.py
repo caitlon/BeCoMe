@@ -18,6 +18,7 @@ import logging
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 
+import langsmith as ls
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
 from langsmith.run_trees import RunTree
@@ -41,7 +42,6 @@ from api.assistant.agent.tools import render_opinions, render_project
 from api.assistant.agent.tracing import (
     end_turn,
     ending_turn,
-    retrieval_span,
     start_turn,
     tracing_scope,
 )
@@ -414,7 +414,11 @@ class AssistantService:
             if opinions:
                 project_blocks.append(render_opinions(opinions))
             ctx.tool_outputs.extend(project_blocks)
-        with retrieval_span(request.message) as span:
+        # Embeddings are not LangChain runnables and emit no callbacks, so the search is
+        # traced here, as a child of the turn's run.
+        with ls.trace(
+            "docs_search", run_type="retriever", inputs={"query": request.message}
+        ) as span:
             chunks = await ctx.retriever.search(request.message)
             span.end(
                 outputs={

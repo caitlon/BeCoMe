@@ -631,8 +631,8 @@ async def run_eval(
             transport=transport,
             base_url="http://eval.invalid",
         ) as http:
-            # The query-transform call runs before the service's own tracing scope opens, so the
-            # same switch wraps the loop: it suppresses ambient tracing when the setting is off.
+            # The service opens its own tracing scope per turn; this one wraps the loop so that
+            # ambient tracing is suppressed for anything outside a turn when the setting is off.
             with tracing_scope(run_settings), output.open("a", encoding="utf-8") as sink:
                 for number, record in enumerate(todo, start=1):
                     key = record.get("project")
