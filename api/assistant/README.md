@@ -179,7 +179,8 @@ variables.
 7. Backend: set `ASSISTANT_ENABLED=true` in `.env`, then run the API as usual. This turns on
    `GET /api/v1/assistant/config`, `POST /api/v1/assistant/chat` and
    `POST /api/v1/assistant/chat/stream` (`api/routes/assistant.py`); the `model` field of the
-   first reports the answer model.
+   first reports the answer model. Like the chat routes, the config route needs a signed-in
+   session. An anonymous request is answered `401`.
 
 ## Model providers
 
@@ -210,9 +211,10 @@ The key is read from the environment only, held as a secret, and never logged, r
 models also send `reasoning_effort`, set by `ASSISTANT_API_REASONING_EFFORT` (`none` by
 default; an empty value sends nothing): measured on OVHcloud, Qwen3.5-9B otherwise spends
 every token on reasoning and returns no text. The reranker has no hosted counterpart and
-always stays local. The config endpoint reports `answer_provider`, `query_provider` and
-`embedding_provider`, and the answer-evaluation runner records the same three in each row, so
-rows made on different providers are never mixed in one output file.
+always stays local. The config endpoint, which answers `401` without a session, reports
+`answer_provider`, `query_provider` and `embedding_provider`, and the answer-evaluation runner
+records the same three in each row, so rows made on different providers are never mixed in one
+output file.
 
 ## The chat endpoint
 
@@ -232,9 +234,9 @@ caller cannot see does depends on the mode. In `workflow` and `hybrid` the proje
 `GET /api/v1/projects/{id}` answers it. In `agent` mode nothing is read ahead: the request is
 answered `200`, and a tool asked for such a project tells the model `not_found:` and nothing
 else, so the answer says it found nothing. A failing model server, embedding server, vector
-database or application answers `503` with a fixed message, including when the vector database
-is down or its URL is not set on the first request after a start, and a spent message budget
-`429`.
+database or application answers `503` with a fixed message. On the first request after a start,
+that covers a vector database that is down, a URL that is not set, and a collection that is
+missing or that the role cannot read. A spent message budget answers `429`.
 
 ### Modes
 
@@ -380,7 +382,15 @@ The backend's `ASSISTANT_VECTOR_DB_URL` is then
 Ingest runs from a developer machine, as the owner, through a temporary TCP proxy on the
 database service. Remove the proxy afterwards.
 
+Ingest embeds the corpus through the embedding settings, which default to the local
+llama-server on `127.0.0.1:8082`. Point them at the provider for this run, so the corpus is
+embedded by the same hosted model that embeds the questions. The registry row records the
+embedding model id. `ASSISTANT_API_KEY_OVH` has to be set as well, in `.env` or the shell.
+
 ```bash
+ASSISTANT_EMBEDDING_PROVIDER=api \
+ASSISTANT_EMBEDDING_BASE_URL=https://oai.endpoints.kepler.ai.cloud.ovh.net/v1 \
+ASSISTANT_EMBEDDING_MODEL=bge-m3 \
 ASSISTANT_VECTOR_DB_URL='postgresql+psycopg://<owner>:<password>@<proxy host>:<proxy port>/<database>?sslmode=require' \
   uv run python scripts/assistant/ingest.py --name docs_markdown_headers_500_o10_captions_bge_m3 \
   --strategy markdown_headers --size 500 --overlap-pct 10 --context captions
@@ -388,6 +398,11 @@ ASSISTANT_VECTOR_DB_URL='postgresql+psycopg://<owner>:<password>@<proxy host>:<p
 
 The private corpus layer goes in with the same command once `ASSISTANT_PRIVATE_CORPUS_MANIFEST`
 and `ASSISTANT_PRIVATE_CORPUS_DIRS` are set as described above.
+
+Restart the backend after a reload. The retriever is built once per process, and it builds
+its BM25 index from the collection's documents on the first search that needs one (`hybrid`,
+the default mode, and `bm25`). A process that is already running keeps ranking with the old
+corpus.
 
 ## Chunk captions
 
