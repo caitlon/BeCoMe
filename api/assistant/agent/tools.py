@@ -155,8 +155,9 @@ def render_project_list(projects: Sequence[ProjectBrief]) -> str:
 _OPINION_COUNT_PREFIX = "Number of opinions: "
 _OPINION_VALUES_TEMPLATE = "lower={}, peak={}, upper={}, centroid={}"
 _OPINION_COUNT_LINE = re.compile(_OPINION_COUNT_PREFIX + r"\d+")
-# The name is taken greedily up to the fixed tail, so a name that itself contains the tail
-# is masked whole.
+# The pattern is applied with ``fullmatch`` and the fixed tail is anchored at the end of the
+# line, so the split between name and tail is unique and a name that itself contains the
+# tail is masked whole.
 _OPINION_ROW = re.compile(
     "- (?P<name>.*): " + _OPINION_VALUES_TEMPLATE.format(*[r"-?\d+\.\d{2}"] * 4)
 )
