@@ -140,7 +140,8 @@ def has_unclosed_think_block(reply: str) -> bool:
 
 # The embeddings client sends up to 1000 texts per request by default, and llama-server
 # answers only once it has embedded all of them, so the request timeout must cover the
-# whole batch. Throughput does not depend on the batch size, so a small batch costs nothing.
+# whole batch. For llama-server, throughput does not depend on the batch size, so a small
+# batch costs nothing.
 # The hosted API (OVHcloud AI Endpoints) refuses more than 25 texts per request, so the batch
 # stays below that.
 _EMBEDDING_BATCH_SIZE = 16
@@ -155,8 +156,8 @@ def make_embeddings(settings: Settings) -> OpenAIEmbeddings:
 
     There is no separate embedding timeout setting: settings.assistant_llm_timeout_seconds
     (the chat model's own timeout) bounds this client's requests too. Requests carry at
-    most 16 texts each, so that timeout bounds one small batch rather than the whole
-    corpus.
+    most _EMBEDDING_BATCH_SIZE texts each, so that timeout bounds one small batch rather
+    than the whole corpus.
 
     In api mode (settings.assistant_embedding_provider) the client sends the hosted key. The
     client keeps the SDK's own retries in both modes.
