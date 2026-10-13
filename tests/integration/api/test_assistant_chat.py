@@ -752,14 +752,14 @@ def _sign_in_with_cookies_again(cookie_client, email: str) -> dict[str, str]:
 class TestWhatTheModelIsShown:
     """The model never sees who the caller is, only what the project holds."""
 
-    @pytest.mark.parametrize("mode", ["workflow", "agent"])
+    @pytest.mark.parametrize("mode", _ALL_MODES)
     def test_no_email_user_id_or_token_reaches_the_model(
         self, assistant_settings, client, configure, mode
     ):
         """
         GIVEN a project with two members, each with an opinion
-        WHEN the owner asks about it, once with the project fetched ahead and once through a
-            tool call
+        WHEN the owner asks about it in each mode: with the project fetched ahead in the
+            workflow mode, through a tool call in the hybrid and agent modes
         THEN the model was shown the project and the experts' names (the control), and
             nothing that identifies an account: no email, no user id, no token, and no
             position
@@ -1655,15 +1655,15 @@ class TestTracesCarryNoMemberData:
             yield built
 
     @pytest.mark.parametrize("endpoint", [CHAT, STREAM])
-    @pytest.mark.parametrize("mode", ["workflow", "agent"])
+    @pytest.mark.parametrize("mode", _ALL_MODES)
     def test_the_model_sees_names_and_the_trace_sees_neither_names_nor_positions(
         self, assistant_settings, client, configure, clients, mode, endpoint
     ):
         """
         GIVEN a project with two members who each submitted an opinion, with distinctive
             names and positions, and tracing on to a client that keeps what it would send
-        WHEN the owner asks about it through the real route, once with the opinions fetched
-            ahead and once through the tool
+        WHEN the owner asks about it through the real route in each mode: with the opinions
+            fetched ahead in the workflow mode, through the tool in the hybrid and agent modes
         THEN the model was shown both members' names and no position, and everything the
             client would have sent to LangSmith holds no name and no position, but holds
             the question, the placeholders Expert 1 and Expert 2 and the numbers
@@ -1713,7 +1713,7 @@ class TestTracesCarryNoMemberData:
             if run.get("run_type") == "llm" and "inputs" in run
         ]
         assert any("Expert 1" in text for text in llm_inputs)
-        if mode == "agent":
+        if mode != "workflow":
             assert ("get_project_opinions", "tool") in created
         assert "assistant_turn" in payload
         assert question in payload

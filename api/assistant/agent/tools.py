@@ -187,32 +187,63 @@ def render_opinions(opinions: Sequence[OpinionView]) -> str:
     return _block(lines)
 
 
+# What ends a line. A text reaches the mask either as it was written, with real newlines, or
+# as ``repr(exc)`` and the like, where each newline is the two characters backslash and ``n``.
+# The second form also doubles every backslash, so a doubled backslash is a token of its own:
+# consumed first, it keeps a name that holds a typed backslash and ``n`` in one piece.
+_REAL_LINE_BREAK = re.compile(r"(\n)")
+_ESCAPED_LINE_BREAK = re.compile(r"(\\\\|\\n)")
+
+
+def _mask_lines(text: str, line_break: re.Pattern[str]) -> str:
+    """Mask the opinions blocks of a text whose lines end with the given break.
+
+    :param text: The text; the break is the pattern's one capturing group.
+    :param line_break: The pattern that finds a line break, a doubled backslash included
+        as a token that is not one.
+    :return: The text with each block's names replaced, every break as it was.
+    """
+    lines = [""]
+    breaks: list[str] = []
+    for index, piece in enumerate(line_break.split(text)):
+        if index % 2 == 0 or piece == "\\\\":
+            lines[-1] += piece
+        else:
+            breaks.append(piece)
+            lines.append("")
+    row_number = 0
+    in_block = False
+    for index, line in enumerate(lines):
+        if _OPINION_COUNT_LINE.fullmatch(line):
+            in_block, row_number = True, 0
+        elif in_block and (row := _OPINION_ROW.fullmatch(line)):
+            row_number += 1
+            lines[index] = f"- Expert {row_number}:" + line[row.end("name") + 1 :]
+        else:
+            in_block = False
+    joined = [lines[0]]
+    for line_break_text, line in zip(breaks, lines[1:], strict=True):
+        joined += [line_break_text, line]
+    return "".join(joined)
+
+
 def mask_opinion_names(text: str) -> str:
     """Replace the expert names in every opinions block of a text with ``Expert 1``, ``Expert 2``.
 
     A block is found by its shape alone, the count line :func:`render_opinions` writes and
     the rows that follow it, so no list of names is needed. Every row is masked, the
     asker's own included, because the block does not say which row is theirs. The numbers
-    stay. A row-shaped line that is not directly under a count line is left as it is.
+    stay. A row-shaped line that is not directly under a count line is left as it is. A
+    block is found whether its lines end with a newline or with the two characters
+    backslash and ``n``, as in ``repr(exc)``; the text is read once for each form, so a name
+    that holds a typed backslash and ``n`` cannot cut its row in two.
 
     :param text: Any text; one that holds no opinions block comes back unchanged.
     :return: The text with each block's names replaced, numbered from 1 within the block.
     """
     if _OPINION_COUNT_PREFIX not in text:
         return text
-    masked: list[str] = []
-    row_number = 0
-    in_block = False
-    for line in text.split("\n"):
-        if _OPINION_COUNT_LINE.fullmatch(line):
-            in_block, row_number = True, 0
-        elif in_block and (row := _OPINION_ROW.fullmatch(line)):
-            row_number += 1
-            line = f"- Expert {row_number}:" + line[row.end("name") + 1 :]
-        else:
-            in_block = False
-        masked.append(line)
-    return "\n".join(masked)
+    return _mask_lines(_mask_lines(text, _REAL_LINE_BREAK), _ESCAPED_LINE_BREAK)
 
 
 def _reply(ctx: AssistantContext, text: str) -> str:
