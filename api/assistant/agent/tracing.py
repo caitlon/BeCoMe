@@ -1,15 +1,20 @@
-"""LangSmith tracing scope for the assistant agent, opt-in and for local work.
+"""LangSmith tracing for the assistant agent, opt-in through one setting.
 
 When tracing is on, the full text of questions, tool replies and answers goes to the
-configured LangSmith endpoint. It is switched on by hand, for local work, and the
-endpoint defaults to the EU region. Settings refuses it on a deployed service. With it off,
-which is the default, nothing is traced and nothing leaves the machine.
+configured LangSmith endpoint. ``assistant_langsmith_enabled`` is the only switch, in every
+environment, and a deployed service may use only the EU endpoint (Settings refuses the
+rest). With it off, which is the default, nothing is traced and nothing leaves the machine,
+whatever the LangSmith library's own environment variables say.
+
+A turn is one trace: :func:`start_turn` opens a root run in ``prepare``, and the scope of
+each phase (prepare, then generation) hangs its runs under it until :func:`end_turn`.
 """
 
 from collections.abc import Iterator
 from contextlib import contextmanager
 
 import langsmith as ls
+from langsmith.run_trees import RunTree
 
 from api.config import Settings
 
@@ -35,8 +40,9 @@ def _shared_client(settings: Settings) -> ls.Client:
     """
     global _client
     if _client is None:
+        key = settings.assistant_langsmith_api_key
         _client = ls.Client(
-            api_key=settings.assistant_langsmith_api_key,
+            api_key=key.get_secret_value() if key else None,
             api_url=settings.assistant_langsmith_endpoint,
         )
     return _client
@@ -54,8 +60,8 @@ def shutdown_tracing() -> None:
 
 
 @contextmanager
-def tracing_scope(settings: Settings) -> Iterator[None]:
-    """Scope LangSmith tracing to one assistant turn, off unless enabled.
+def tracing_scope(settings: Settings, parent: RunTree | None = None) -> Iterator[None]:
+    """Scope LangSmith tracing to one phase of an assistant turn, off unless enabled.
 
     ``assistant_langsmith_enabled`` is off by default, so a laptop with no LangSmith
     account runs the assistant with nothing traced and nothing sent over the network.
@@ -65,10 +71,11 @@ def tracing_scope(settings: Settings) -> Iterator[None]:
 
     When it is on, tracing is scoped to this one call rather than switched on
     process-wide. The full text of questions, tool replies and answers then goes to
-    the configured LangSmith endpoint, so it is for local work, switched on by hand,
-    against the EU endpoint by default, and Settings refuses it on a deployed service.
+    the configured LangSmith endpoint.
 
     :param settings: Application settings.
+    :param parent: The turn's root run from :func:`start_turn`. The runs made inside the
+        scope become its children; without it they form a trace of their own.
     :return: A context manager that traces what runs inside it when tracing is
         enabled and suppresses tracing when it is not.
     """
@@ -79,6 +86,77 @@ def tracing_scope(settings: Settings) -> Iterator[None]:
     with ls.tracing_context(
         client=_shared_client(settings),
         project_name=settings.assistant_langsmith_project,
+        parent=parent,
         enabled=True,
     ):
         yield
+
+
+def start_turn(settings: Settings, question: str) -> RunTree | None:
+    """Open the root run of an assistant turn.
+
+    The run is queued for the shared client's background thread, so the caller does not
+    wait for LangSmith.
+
+    :param settings: Application settings.
+    :param question: The user's message, the run's input.
+    :return: The root run, or None when tracing is off.
+    """
+    if not settings.assistant_langsmith_enabled:
+        return None
+    run = RunTree(
+        name="assistant_turn",
+        run_type="chain",
+        inputs={"question": question},
+        project_name=settings.assistant_langsmith_project,
+        ls_client=_shared_client(settings),
+    )
+    run.post()
+    return run
+
+
+def end_turn(
+    run: RunTree | None, *, outputs: dict[str, str] | None = None, error: str | None = None
+) -> None:
+    """Close a turn's root run, once; a run already closed, or None, is left alone.
+
+    :param run: The root run from :func:`start_turn`.
+    :param outputs: What the turn produced, on success.
+    :param error: The name of the exception that ended the turn, on failure.
+    """
+    if run is None or run.end_time is not None:
+        return
+    run.end(outputs=outputs, error=error)
+    run.patch()
+
+
+@contextmanager
+def ending_turn(run: RunTree | None) -> Iterator[None]:
+    """Close the turn's root run when the block exits, with the error if it raised.
+
+    Cancellation and a closed generator count: a client that disconnects mid-stream ends
+    the turn with ``GeneratorExit`` or ``CancelledError`` as its error. A block that
+    reaches its end without calling :func:`end_turn` closes the run with no outputs.
+
+    :param run: The root run from :func:`start_turn`, or None.
+    """
+    try:
+        yield
+    except BaseException as exc:
+        end_turn(run, error=type(exc).__name__)
+        raise
+    finally:
+        end_turn(run)
+
+
+def retrieval_span(query: str) -> ls.trace:
+    """Trace the document search as a child of the current run.
+
+    Embeddings are not LangChain runnables and emit no callbacks, so the search would
+    otherwise be missing from the trace. Like every run made inside :func:`tracing_scope`,
+    the span is not sent when tracing is off.
+
+    :param query: The search query, the run's input.
+    :return: A context manager that yields the span; call ``end(outputs=...)`` on it.
+    """
+    return ls.trace("docs_search", run_type="retriever", inputs={"query": query})

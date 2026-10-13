@@ -1467,12 +1467,13 @@ class TestObservability:
         """
         GIVEN a tracing scope that notes when it opens and closes
         WHEN a turn is answered in any mode
-        THEN the model was called between the two
+        THEN preparing the turn opens and closes one scope, and the model is called inside
+            a second one
         """
         model = _TracedModel(responses=[_say()])
 
         @contextmanager
-        def scope(settings):
+        def scope(settings, parent=None):
             model.events.append("open")
             try:
                 yield
@@ -1482,4 +1483,148 @@ class TestObservability:
         with patch.object(service_module, "tracing_scope", scope):
             await AssistantService(_settings(mode), model).answer(_request(), _ctx())
 
-        assert model.events == ["open", "model", "close"]
+        assert model.events == ["open", "close", "open", "model", "close"]
+
+
+class _FakeRun:
+    """A stand-in for the turn's root LangSmith run that keeps how it was closed."""
+
+    def __init__(self) -> None:
+        self.end_time: datetime | None = None
+        self.outputs: dict[str, str] | None = None
+        self.error: str | None = None
+        self.patched = 0
+
+    def end(self, *, outputs: dict[str, str] | None = None, error: str | None = None) -> None:
+        self.end_time = datetime.now(UTC)
+        self.outputs, self.error = outputs, error
+
+    def patch(self) -> None:
+        self.patched += 1
+
+
+@pytest.fixture
+def run():
+    """Hand the service a fake root run in place of the one tracing would open."""
+    fake = _FakeRun()
+    with patch.object(service_module, "start_turn", return_value=fake):
+        yield fake
+
+
+@pytest.mark.asyncio
+class TestTurnRun:
+    """The turn's root run is closed once, with the answer or with the name of the error."""
+
+    async def test_a_failed_prepare_closes_the_run_with_the_error(self, run):
+        """
+        GIVEN a retriever whose data server is down
+        WHEN the turn is prepared
+        THEN the call raises AssistantUnavailableError and the run is patched once with
+            that error and no outputs
+        """
+        ctx = _ctx()
+        ctx.retriever.search.side_effect = httpx.ConnectError("refused")
+
+        with pytest.raises(AssistantUnavailableError):
+            await AssistantService(_settings(), _model(_say())).prepare(_request(), ctx)
+
+        assert run.error == "AssistantUnavailableError"
+        assert run.outputs is None
+        assert run.patched == 1
+
+    async def test_a_prepared_turn_keeps_the_run_open(self, run):
+        """
+        GIVEN a turn that prepares without error
+        WHEN prepare returns
+        THEN the draft carries the run and the run is not closed yet
+        """
+        turn = await AssistantService(_settings(), _model(_say())).prepare(_request(), _ctx())
+
+        assert turn.trace is run
+        assert run.end_time is None
+        assert run.patched == 0
+
+    async def test_an_answered_turn_closes_the_run_with_the_answer(self, run):
+        """
+        GIVEN a turn that answers
+        WHEN answer returns
+        THEN the run was patched once with the answer as its output and no error
+        """
+        await AssistantService(_settings(), _model(_say("It is the midpoint."))).answer(
+            _request(), _ctx()
+        )
+
+        assert run.outputs == {"answer": "It is the midpoint."}
+        assert run.error is None
+        assert run.patched == 1
+
+    async def test_a_failed_answer_closes_the_run_with_the_error(self, run):
+        """
+        GIVEN a model that gives an empty answer
+        WHEN the turn is answered
+        THEN AssistantUnavailableError is raised and the run is patched once with its name
+        """
+        with pytest.raises(AssistantUnavailableError):
+            await AssistantService(_settings(), _model(_say(""))).answer(_request(), _ctx())
+
+        assert run.error == "AssistantUnavailableError"
+        assert run.patched == 1
+
+    async def test_a_streamed_turn_closes_the_run_before_the_last_item_is_handed_over(self, run):
+        """
+        GIVEN a streamed turn read up to its final response
+        WHEN the consumer holds the response and has not asked for more
+        THEN the run is already closed with the answer, so a consumer that stops there
+            cannot turn a finished turn into a failed one
+        """
+        service = AssistantService(_settings(), _model(_say("One two.")))
+        turn = await service.prepare(_request(), _ctx())
+
+        items = service.stream(turn)
+        last = [item async for item in _until_response(items)][-1]
+
+        assert isinstance(last, AssistantChatResponse)
+        assert run.outputs == {"answer": "One two."}
+        await items.aclose()
+        assert run.error is None
+        assert run.patched == 1
+
+    async def test_a_client_that_goes_away_closes_the_run_with_the_error(self, run):
+        """
+        GIVEN a streamed turn read up to its first piece
+        WHEN the consumer closes the generator, as a dropped connection does
+        THEN the run is patched once, with the name of the exception that ended the stream
+        """
+        service = AssistantService(_settings(), _model(_say("One two three.")))
+        turn = await service.prepare(_request(), _ctx())
+
+        items = service.stream(turn)
+        await anext(items)
+        await items.aclose()
+
+        assert run.error == "GeneratorExit"
+        assert run.patched == 1
+
+    async def test_a_failed_stream_closes_the_run_with_the_error(self, run):
+        """
+        GIVEN a model that streams an empty reply
+        WHEN the turn is streamed
+        THEN AssistantUnavailableError is raised and the run is patched once with its name
+        """
+        service = AssistantService(_settings(), _model(_say("")))
+        turn = await service.prepare(_request(), _ctx())
+
+        with pytest.raises(AssistantUnavailableError):
+            async for _ in service.stream(turn):
+                pass
+
+        assert run.error == "AssistantUnavailableError"
+        assert run.patched == 1
+
+
+async def _until_response(items):
+    """Yield items up to and including the final response, and no further."""
+    async for item in items:
+        yield item
+        if isinstance(item, AssistantChatResponse):
+            return
