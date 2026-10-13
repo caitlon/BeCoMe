@@ -103,7 +103,8 @@ The sections below cover the routes of a deployed service. The assistant's three
 `POST /api/v1/assistant/chat/stream`, are not listed here. They exist
 only when `ASSISTANT_ENABLED=true`. Production refuses to start with that setting on, and the
 Railway `dev` and `test` services need all three model roles set to `api`. A service that leaves
-it off answers 404 for the whole `/api/v1/assistant` prefix. Their behavior is in the
+it off answers 404 for the whole `/api/v1/assistant` prefix. All three routes need a signed-in
+session and answer 401 without one. Their behavior is in the
 [assistant README](https://github.com/caitlon/BeCoMe/blob/prod/api/assistant/README.md).
 
 ### Authentication

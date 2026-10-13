@@ -154,6 +154,12 @@ In `frontend/Dockerfile`, declare an `ARG` and an `ENV` for every `VITE_*` varia
 
 `VITE_ASSISTANT_ENABLED` is read only as the exact string `true`. Unset or empty, the assistant code is left out of the bundle. Prod leaves it unset, as it does the backend's `ASSISTANT_ENABLED`. The API also accepts `1`, `yes`, `on` and the other pydantic spellings, the SPA does not, so set `true` on both services.
 
+The assistant's model ids default to the local llama-server ids in `api/config.py`, which the hosted provider does not serve. The startup guard checks the providers, base URLs and key of a deployed service, not these ids, so a variable left unset passes startup and fails on the first question. Set each one explicitly on `dev` and `test`:
+
+- `ASSISTANT_ANSWER_LLM_MODEL`: the model that writes chat answers, `Qwen3.5-9B` on OVHcloud.
+- `ASSISTANT_LLM_MODEL`: the query model, `Qwen3.5-9B` on OVHcloud.
+- `ASSISTANT_EMBEDDING_MODEL`: the embedding model, `bge-m3` on OVHcloud.
+
 ## Database schema and access
 
 **Alembic** versions the schema. Migrations live in `migrations/`. `migrations/env.py` reads its target from `ALEMBIC_DATABASE_URL`, then `MIGRATION_DATABASE_URL`, then `DATABASE_URL`, and treats `SQLModel.metadata` as the source of truth. Every deploy runs `alembic upgrade head` once through the `preDeployCommand` in `railway.toml`, before the new version goes live, so a failed migration blocks the release instead of starting a broken one. `create_db_and_tables()` still builds the schema directly, but only for SQLite and `TESTING=1` runs, including the end-to-end tests on PostgreSQL. On any other PostgreSQL database, local or deployed, it is a no-op and Alembic stays in charge.
