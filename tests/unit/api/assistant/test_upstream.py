@@ -6,6 +6,7 @@ import pytest
 from sqlalchemy.exc import IntegrityError, InterfaceError, OperationalError
 from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 
+from api.assistant.rag.store import CollectionUnavailableError
 from api.assistant.upstream import UNAVAILABLE_ERRORS
 
 _REQUEST = httpx.Request("GET", "http://localhost/x")
@@ -33,6 +34,7 @@ class TestUnavailableErrors:
             PoolTimeoutError("QueuePool limit of size 5 overflow 10 reached"),
             ConnectionRefusedError("refused"),
             ConnectionResetError("reset"),
+            CollectionUnavailableError("collection 'docs' cannot be opened"),
         ],
         ids=lambda e: type(e).__name__,
     )

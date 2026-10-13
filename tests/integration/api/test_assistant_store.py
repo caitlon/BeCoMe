@@ -19,6 +19,7 @@ from langchain_core.documents import Document
 from langchain_core.embeddings import DeterministicFakeEmbedding
 
 from api.assistant.rag.store import (
+    CollectionUnavailableError,
     create_collection,
     make_engine,
     open_store,
@@ -160,6 +161,24 @@ class TestOpenStore:
             # THEN
             assert len(results) == 1
             assert results[0][0].page_content == "BeCoMe combines the mean and the median."
+        finally:
+            await engine.close()
+
+    @pytest.mark.asyncio
+    async def test_a_collection_that_does_not_exist_is_unavailable(self, postgresql):
+        """
+        GIVEN a database with no table for the collection
+        WHEN open_store is asked for it
+        THEN CollectionUnavailableError is raised, not the library's bare ValueError
+        """
+        # GIVEN
+        engine = make_engine(_connection_url(postgresql))
+        try:
+            # WHEN/THEN
+            with pytest.raises(CollectionUnavailableError, match="docs_test_missing"):
+                open_store(
+                    engine, table="docs_test_missing", embeddings=DeterministicFakeEmbedding(size=8)
+                )
         finally:
             await engine.close()
 
