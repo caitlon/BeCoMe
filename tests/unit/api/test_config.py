@@ -1524,7 +1524,7 @@ class TestAssistantSettings:
             f"postgresql+psycopg://corpus_reader:{_VECTOR_PASSWORD}@HOST.:5432/db?sslmode=require",
             f"postgresql+psycopg://corpus_reader:{_VECTOR_PASSWORD}@host/db?sslmode=require",
         ],
-        ids=["other-driver", "host-case-and-dot", "default-port"],
+        ids=["app-url-other-driver", "host-case-and-dot", "default-port"],
     )
     def test_rejects_a_vector_database_that_is_the_application_database(
         self, monkeypatch, tmp_path, shared_with, vector_url
@@ -1791,7 +1791,7 @@ class TestAssistantSettings:
         GIVEN a deployed dev service whose vector URL repeats sslmode, which SQLAlchemy
             hands to libpq as one tuple-shaped value that libpq rejects
         WHEN Settings is constructed
-        THEN validation fails on the missing TLS demand, whichever value comes last
+        THEN validation fails on the TLS demand, asking for sslmode once
         """
         # GIVEN
         self._configure_deployed_assistant(monkeypatch, tmp_path, profile="dev", railway_name="dev")
@@ -1802,8 +1802,57 @@ class TestAssistantSettings:
         )
 
         # WHEN/THEN
-        with pytest.raises(ValidationError, match="assistant_vector_db_url must require TLS"):
+        with pytest.raises(ValidationError, match="assistant_vector_db_url must require TLS") as e:
             Settings()
+        assert "once" in str(e.value)
+
+    @pytest.mark.parametrize(
+        "authority",
+        ["corpus_reader:{pw}@/corpus", "/corpus"],
+        ids=["credentials-no-host", "no-authority"],
+    )
+    def test_rejects_a_vector_url_without_a_host(self, monkeypatch, tmp_path, authority):
+        """
+        GIVEN a deployed dev service whose vector URL names no host, which libpq would fill
+            in from the environment or a local socket
+        WHEN Settings is constructed
+        THEN validation fails saying the URL must name the host, and the message echoes no
+            part of the URL
+        """
+        # GIVEN
+        self._configure_deployed_assistant(monkeypatch, tmp_path, profile="dev", railway_name="dev")
+        monkeypatch.setenv(
+            "ASSISTANT_VECTOR_DB_URL",
+            f"postgresql+psycopg://{authority.format(pw=_VECTOR_PASSWORD)}?sslmode=require",
+        )
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="must name the corpus database host") as e:
+            Settings()
+        assert _VECTOR_PASSWORD not in str(e.value)
+        assert "corpus_reader" not in str(e.value)
+
+    def test_rejects_a_vector_url_with_several_hosts(self, monkeypatch, tmp_path):
+        """
+        GIVEN a deployed dev service whose vector URL lists several hosts, which libpq
+            tries in turn and which defeats the same-database comparison
+        WHEN Settings is constructed
+        THEN validation fails saying the URL must name one host, and the message echoes no
+            part of the URL
+        """
+        # GIVEN
+        self._configure_deployed_assistant(monkeypatch, tmp_path, profile="dev", railway_name="dev")
+        monkeypatch.setenv(
+            "ASSISTANT_VECTOR_DB_URL",
+            f"postgresql+psycopg://corpus_reader:{_VECTOR_PASSWORD}@apphost,corpus.internal:5432"
+            "/corpus?sslmode=require",
+        )
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="must name the corpus database host") as e:
+            Settings()
+        assert _VECTOR_PASSWORD not in str(e.value)
+        assert "apphost" not in str(e.value)
 
     def test_does_not_check_the_vector_database_with_the_assistant_off(self, monkeypatch, tmp_path):
         """

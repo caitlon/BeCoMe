@@ -507,10 +507,12 @@ class Settings(BaseSettings):
         is refused on a deployed service too: it sends the text of questions, tool
         replies and answers, which is project data read as the signed-in user, to a
         third-party endpoint. The corpus database must be its own: a non-empty
-        assistant_vector_db_url that names neither database_url nor
-        migration_database_url, and that demands TLS, so the retrieval role cannot be
-        pointed at the application's data or reach the corpus in clear text. The messages
-        leave the URL out, because it carries a password. Keeping the guard here, right before
+        assistant_vector_db_url, a ``postgresql+psycopg`` URL that names one host and a
+        database, carries no host, hostaddr, port, dbname or service query override,
+        names neither database_url nor migration_database_url, and has a single sslmode
+        of require, verify-ca or verify-full, so the retrieval role cannot be pointed at
+        the application's data or reach the corpus in clear text. The messages leave the
+        URL out, because it carries a password. Keeping the guard here, right before
         _validate_deploy_invariants, means a deploy that sets ASSISTANT_ENABLED wrongly
         fails on this message first, rather than on whichever deploy invariant happens
         to be missing.
@@ -525,8 +527,10 @@ class Settings(BaseSettings):
         :raises ValueError: If assistant_enabled is true in the prod profile or on a
             Railway environment outside the allowlist, or on a deployed service while a
             model role is still local, assistant_langsmith_enabled is true,
-            assistant_vector_db_url is empty or not a PostgreSQL URL, names the same
-            database as database_url or migration_database_url, or does not demand TLS.
+            assistant_vector_db_url is empty, not a ``postgresql+psycopg`` URL, without a
+            database or a single host, carrying a host, hostaddr, port, dbname or service
+            override, naming the same database as database_url or migration_database_url,
+            or without a single sslmode of require, verify-ca or verify-full.
         """
         if not self.assistant_enabled:
             return self
@@ -565,10 +569,11 @@ class Settings(BaseSettings):
         Messages never carry the URL or a part of it, since it holds the role's password.
 
         :raises ValueError: If assistant_vector_db_url is empty, not a
-            ``postgresql+psycopg`` URL (the driver the vector store's engine needs), without a database name, carrying a libpq host, hostaddr,
-            port, dbname or service parameter, the same database as database_url or
-            migration_database_url, or without a ``sslmode`` of require, verify-ca or
-            verify-full.
+            ``postgresql+psycopg`` URL (the driver the vector store's engine needs),
+            without a database name, carrying a libpq host, hostaddr, port, dbname or
+            service parameter, without a host or with several, the same database as
+            database_url or migration_database_url, or without a single ``sslmode`` of
+            require, verify-ca or verify-full.
         """
         if not self.assistant_vector_db_url.strip():
             raise ValueError(
@@ -593,6 +598,12 @@ class Settings(BaseSettings):
                 "service query parameters, which libpq lets override the URL; put the host, "
                 "port and database in the URL itself"
             )
+        if not vector_url.host or "," in vector_url.host:
+            raise ValueError(
+                "assistant_vector_db_url must name the corpus database host, one host, in "
+                "the URL; libpq would otherwise fill it in from the environment or try "
+                "several in turn"
+            )
         for other in (self.database_url, self.migration_database_url or ""):
             other_url = _parse_postgres_url(other)
             if other_url is not None and _same_postgres_database(vector_url, other_url):
@@ -604,7 +615,7 @@ class Settings(BaseSettings):
         if not _demands_tls(vector_url):
             raise ValueError(
                 "assistant_vector_db_url must require TLS on a deployed service; add "
-                "sslmode=require (or verify-ca, verify-full) to the URL"
+                "sslmode=require (or verify-ca, verify-full) to the URL once"
             )
 
     @model_validator(mode="after")
