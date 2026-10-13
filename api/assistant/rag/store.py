@@ -43,7 +43,7 @@ def _validate_collection_name(name: str) -> None:
 
 
 class CollectionUnavailableError(RuntimeError):
-    """The collection's table cannot be opened: it does not exist, or the role cannot read it.
+    """The collection's table cannot be opened: it is missing, unreadable or of the wrong shape.
 
     Raised by :func:`open_store` in place of the library's bare ``ValueError``, which says
     nothing about why, so the chat route can answer "unavailable" and not fail with a 500.
@@ -188,8 +188,9 @@ def open_store(engine: PGEngine, table: str, embeddings: Embeddings) -> PGVector
     :param embeddings: The embeddings client used to embed queries and documents.
     :return: A PGVectorStore bound to that table.
     :raises ValueError: If table is not a plain identifier; see _validate_collection_name.
-    :raises CollectionUnavailableError: If the table does not exist or the connected role
-        cannot read its columns; the library reports both as a bare ValueError.
+    :raises CollectionUnavailableError: If the table does not exist, the connected role
+        cannot read its columns, or a column has the wrong type (the schema drifted); the
+        library reports all three as a bare ValueError.
     """
     _validate_collection_name(table)
     try:

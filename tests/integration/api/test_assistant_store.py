@@ -17,6 +17,7 @@ import psycopg
 import pytest
 from langchain_core.documents import Document
 from langchain_core.embeddings import DeterministicFakeEmbedding
+from sqlalchemy import text
 
 from api.assistant.rag.store import (
     CollectionUnavailableError,
@@ -181,6 +182,38 @@ class TestOpenStore:
                 )
         finally:
             await engine.close()
+
+
+class TestMakeEngine:
+    """make_engine's statement cap reaches every connection the pool opens."""
+
+    @pytest.mark.asyncio
+    async def test_the_cap_is_set_only_when_asked_for(self, postgresql):
+        """
+        GIVEN pools made with and without statement_timeout_ms
+        WHEN a connection of each asks the server for its timeouts
+        THEN the capped pool reports 30s and 1min, and the other has no statement cap
+        """
+        # GIVEN
+        url = _connection_url(postgresql)
+        capped = make_engine(url, statement_timeout_ms=30000)
+        uncapped = make_engine(url)
+
+        async def _show(engine: Any, setting: str) -> str:
+            async with engine._pool.connect() as conn:
+                return str((await conn.execute(text(f"SHOW {setting}"))).scalar_one())
+
+        # WHEN
+        try:
+            statement = await capped._run_as_async(_show(capped, "statement_timeout"))
+            idle = await capped._run_as_async(_show(capped, "idle_in_transaction_session_timeout"))
+            no_cap = await uncapped._run_as_async(_show(uncapped, "statement_timeout"))
+        finally:
+            await capped.close()
+            await uncapped.close()
+
+        # THEN
+        assert (statement, idle, no_cap) == ("30s", "1min", "0")
 
 
 async def _seed_live_and_staging(postgresql, table: str) -> None:
