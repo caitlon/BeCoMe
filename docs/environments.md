@@ -164,7 +164,7 @@ On production and staging each Postgres instance is reachable only over Railway'
 
 ### Assistant corpus database
 
-The assistant retrieves from a pgvector database that is separate from the application's. On the Railway `dev` environment it is its own service, built from `docker/assistant-db/Dockerfile`: Railway's PostgreSQL image, which keeps the self-signed TLS of the application database, plus the pgvector package. It is reachable over the private network only, and prod has no such service because the assistant is refused there.
+The assistant retrieves from a pgvector database that is separate from the application's. On the Railway `dev` environment it is its own service, created from Railway's standard PostgreSQL template (`postgres-ssl:18`), which already includes pgvector and TLS. It is reachable over the private network only, and prod has no such service because the assistant is refused there.
 
 The backend reads the corpus as a read-only role, through `ASSISTANT_VECTOR_DB_URL` with `sslmode=require`. The grants are in [`api/assistant/README.md`](../api/assistant/README.md#read-only-role-for-a-deployed-corpus-database). Ingest runs from a developer machine, as the database owner, through a temporary TCP proxy on the service that is removed once the run ends.
 
