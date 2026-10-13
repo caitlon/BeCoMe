@@ -1582,7 +1582,8 @@ class TestAssistantSettings:
     ):
         """
         GIVEN a deployed service where LANGSMITH_TRACING_V2 is blank or false and
-            LANGSMITH_TRACING is true, which the library still reads as on
+            LANGSMITH_TRACING is true (the library reads the blank case as on; the
+            false case is refused too, which is stricter than the library)
         WHEN Settings is constructed
         THEN validation fails, since no name hides another
         """
