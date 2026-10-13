@@ -372,8 +372,10 @@ covers only the tables that exist when it runs.
 
 The backend's `ASSISTANT_VECTOR_DB_URL` is then
 `postgresql+psycopg://corpus_reader:<password>@<private host>:5432/<database>?sslmode=require`.
-`Settings` refuses a deployed service whose URL is empty, names the application database, or
-lacks `sslmode=require` (or `verify-ca`, `verify-full`).
+`Settings` refuses a deployed service whose URL is empty, uses another driver than
+`postgresql+psycopg`, names no database, carries a `host`, `hostaddr`, `port`, `dbname` or
+`service` query parameter, names the application database, or lacks a single
+`sslmode=require` (or `verify-ca`, `verify-full`).
 
 Ingest runs from a developer machine, as the owner, through a temporary TCP proxy on the
 database service. Remove the proxy afterwards.
