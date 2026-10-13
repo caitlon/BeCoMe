@@ -160,6 +160,97 @@ class TestEnabledScope:
             raise RuntimeError("boom")
 
 
+class TestTurnRun:
+    """The root run of a turn exists only with tracing on, and is closed once."""
+
+    def test_no_run_is_opened_with_tracing_off(self):
+        """
+        GIVEN tracing switched off in the settings
+        WHEN a turn is started
+        THEN there is no run and no client was built
+        """
+        with patch.object(tracing.ls, "Client") as client_cls:
+            run = tracing.start_turn(_settings(), "question")
+
+        assert run is None
+        client_cls.assert_not_called()
+
+    def test_the_run_is_posted_with_the_question_in_the_configured_project(self):
+        """
+        GIVEN tracing switched on for a project
+        WHEN a turn is started
+        THEN the shared client was asked to create a root run named assistant_turn with the
+            question as input, in that project
+        """
+        client = MagicMock()
+        with patch.object(tracing.ls, "Client", return_value=client):
+            run = tracing.start_turn(_enabled_settings(assistant_langsmith_project="p"), "why?")
+
+        assert run is not None
+        (call,) = client.create_run.call_args_list
+        assert call.kwargs["name"] == "assistant_turn"
+        assert call.kwargs["inputs"] == {"question": "why?"}
+        assert call.kwargs["session_name"] == "p"
+        assert "parent_run_id" not in call.kwargs
+
+    def test_runs_made_in_the_scope_are_children_of_the_turn(self):
+        """
+        GIVEN a started turn
+        WHEN a run is traced inside a scope given the turn as its parent
+        THEN the run belongs to the turn's trace and has the turn as its parent
+        """
+        with patch.object(tracing.ls, "Client", return_value=MagicMock()):
+            run = tracing.start_turn(_enabled_settings(), "q")
+            with (
+                tracing.tracing_scope(_enabled_settings(), parent=run),
+                tracing.retrieval_span("q") as span,
+            ):
+                pass
+
+        assert span.trace_id == run.trace_id
+        assert span.parent_run_id == run.id
+
+    def test_a_run_is_closed_once(self):
+        """
+        GIVEN a started turn that was closed with an answer
+        WHEN it is closed again with an error
+        THEN it was patched once and kept the answer
+        """
+        client = MagicMock()
+        with patch.object(tracing.ls, "Client", return_value=client):
+            run = tracing.start_turn(_enabled_settings(), "q")
+            tracing.end_turn(run, outputs={"answer": "a"})
+            tracing.end_turn(run, error="Late")
+
+        assert run.outputs == {"answer": "a"}
+        assert run.error is None
+        client.update_run.assert_called_once()
+
+    def test_closing_no_run_does_nothing(self):
+        """
+        GIVEN a turn with tracing off, so no run
+        WHEN it is closed
+        THEN nothing happens
+        """
+        tracing.end_turn(None, error="Boom")
+
+    def test_the_search_span_is_not_sent_with_tracing_off(self):
+        """
+        GIVEN tracing off while the environment switches it on
+        WHEN a search span is entered and left inside the scope
+        THEN the shared client is never asked to create a run
+        """
+        client = MagicMock()
+        with (
+            patch.object(tracing.ls, "Client", return_value=client),
+            tracing.tracing_scope(_settings()),
+            tracing.retrieval_span("q"),
+        ):
+            pass
+
+        client.create_run.assert_not_called()
+
+
 class TestShutdownTracing:
     """The application flushes the shared client on the way down."""
 

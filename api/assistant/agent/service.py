@@ -20,6 +20,7 @@ from dataclasses import dataclass
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
+from langsmith.run_trees import RunTree
 
 from api.assistant.agent.checks import check_citations, find_ungrounded_numbers, strip_citations
 from api.assistant.agent.context import AssistantContext
@@ -37,7 +38,13 @@ from api.assistant.agent.prompt import (
     render_context_block,
 )
 from api.assistant.agent.tools import render_opinions, render_project
-from api.assistant.agent.tracing import tracing_scope
+from api.assistant.agent.tracing import (
+    end_turn,
+    ending_turn,
+    retrieval_span,
+    start_turn,
+    tracing_scope,
+)
 from api.assistant.errors import AssistantNotFoundError, AssistantUnavailableError
 from api.assistant.upstream import UNAVAILABLE_ERRORS
 from api.config import Settings
@@ -100,6 +107,7 @@ class TurnDraft:
     :ivar messages: The conversation for the model, ending with this turn's user message.
     :ivar started: The event loop's clock when :meth:`AssistantService.prepare` began.
     :ivar deadline_at: The event loop's clock when the turn runs out of time.
+    :ivar trace: The turn's root LangSmith run, or None when tracing is off.
     """
 
     request: AssistantChatRequest
@@ -108,6 +116,7 @@ class TurnDraft:
     messages: list[AnyMessage]
     started: float
     deadline_at: float
+    trace: RunTree | None
 
 
 class AssistantService:
@@ -156,19 +165,25 @@ class AssistantService:
             for turn in kept
         ]
         deadline_at = started + self._settings.assistant_turn_timeout_seconds
+        trace = start_turn(self._settings, request.message)
         try:
-            async with asyncio.timeout_at(deadline_at) as deadline:
-                parts = [] if mode == "agent" else await self._fetch(request, ctx)
-                if mode != "workflow" and ctx.current_project_id is not None:
-                    parts.append(f"Current project id: {ctx.current_project_id}")
-                messages.append(HumanMessage(content=user_message(parts, request.message)))
-        except TimeoutError:
-            if not deadline.expired():
-                raise
-            raise self._timed_out(mode, started) from None
-        except UNAVAILABLE_ERRORS as exc:
-            raise self._unavailable(exc, mode) from None
-        return TurnDraft(request, ctx, kept, messages, started, deadline_at)
+            with tracing_scope(self._settings, parent=trace):
+                try:
+                    async with asyncio.timeout_at(deadline_at) as deadline:
+                        parts = [] if mode == "agent" else await self._fetch(request, ctx)
+                        if mode != "workflow" and ctx.current_project_id is not None:
+                            parts.append(f"Current project id: {ctx.current_project_id}")
+                        messages.append(HumanMessage(content=user_message(parts, request.message)))
+                except TimeoutError:
+                    if not deadline.expired():
+                        raise
+                    raise self._timed_out(mode, started) from None
+                except UNAVAILABLE_ERRORS as exc:
+                    raise self._unavailable(exc, mode) from None
+        except BaseException as exc:
+            end_turn(trace, error=type(exc).__name__)
+            raise
+        return TurnDraft(request, ctx, kept, messages, started, deadline_at, trace)
 
     async def answer(
         self, request: AssistantChatRequest, ctx: AssistantContext
@@ -191,25 +206,30 @@ class AssistantService:
         """
         turn = await self.prepare(request, ctx)
         mode = self._settings.assistant_mode
-        try:
-            async with asyncio.timeout_at(turn.deadline_at) as deadline:
-                empty_reason = "empty"
-                with tracing_scope(self._settings):
-                    try:
-                        text, tools_used, usage = await self._generator.generate(
-                            turn.messages, ctx, request.message
-                        )
-                    except CutOffAnswerError:
-                        text, tools_used, empty_reason = "", [], "cut_off"
-                if not text:
-                    raise self._empty_answer(mode, empty_reason)
-        except TimeoutError:
-            if not deadline.expired():
-                raise
-            raise self._timed_out(mode, turn.started) from None
-        except UNAVAILABLE_ERRORS as exc:
-            raise self._unavailable(exc, mode) from None
-        return self._finish(turn, Generated(text, tools_used, usage), ttft_ms=None, streamed=False)
+        with ending_turn(turn.trace):
+            try:
+                async with asyncio.timeout_at(turn.deadline_at) as deadline:
+                    empty_reason = "empty"
+                    with tracing_scope(self._settings, parent=turn.trace):
+                        try:
+                            text, tools_used, usage = await self._generator.generate(
+                                turn.messages, ctx, request.message
+                            )
+                        except CutOffAnswerError:
+                            text, tools_used, empty_reason = "", [], "cut_off"
+                    if not text:
+                        raise self._empty_answer(mode, empty_reason)
+            except TimeoutError:
+                if not deadline.expired():
+                    raise
+                raise self._timed_out(mode, turn.started) from None
+            except UNAVAILABLE_ERRORS as exc:
+                raise self._unavailable(exc, mode) from None
+            response = self._finish(
+                turn, Generated(text, tools_used, usage), ttft_ms=None, streamed=False
+            )
+            end_turn(turn.trace, outputs={"answer": response.answer})
+            return response
 
     async def stream(self, turn: TurnDraft) -> AsyncGenerator[str | AssistantChatResponse]:
         """Generate a prepared turn's answer, yielding its text as it arrives.
@@ -230,37 +250,42 @@ class AssistantService:
         generated: Generated | None = None
         empty_reason = "empty"
         items = self._generator.stream(turn.messages, turn.ctx, turn.request.message)
-        try:
-            with tracing_scope(self._settings):
-                while True:
-                    # The deadline bounds only the wait for the model's next piece, never the
-                    # yield: a timeout that fired while the consumer held a piece would
-                    # cancel the consumer instead of this generator.
-                    try:
-                        async with asyncio.timeout_at(turn.deadline_at) as deadline:
-                            item = await anext(items, None)
-                    except TimeoutError:
-                        if not deadline.expired():
-                            raise
-                        raise self._timed_out(mode, turn.started) from None
-                    except CutOffAnswerError:
-                        empty_reason = "cut_off"
-                        break
-                    if item is None:
-                        break
-                    if isinstance(item, Generated):
-                        generated = item
-                    elif item:
-                        if ttft_ms is None:
-                            ttft_ms = round((loop.time() - model_started) * 1000)
-                        yield item
-        except UNAVAILABLE_ERRORS as exc:
-            raise self._unavailable(exc, mode) from None
-        finally:
-            await items.aclose()
-        if generated is None or not generated.text:
-            raise self._empty_answer(mode, empty_reason)
-        yield self._finish(turn, generated, ttft_ms=ttft_ms, streamed=True)
+        with ending_turn(turn.trace):
+            try:
+                with tracing_scope(self._settings, parent=turn.trace):
+                    while True:
+                        # The deadline bounds only the wait for the model's next piece, never the
+                        # yield: a timeout that fired while the consumer held a piece would
+                        # cancel the consumer instead of this generator.
+                        try:
+                            async with asyncio.timeout_at(turn.deadline_at) as deadline:
+                                item = await anext(items, None)
+                        except TimeoutError:
+                            if not deadline.expired():
+                                raise
+                            raise self._timed_out(mode, turn.started) from None
+                        except CutOffAnswerError:
+                            empty_reason = "cut_off"
+                            break
+                        if item is None:
+                            break
+                        if isinstance(item, Generated):
+                            generated = item
+                        elif item:
+                            if ttft_ms is None:
+                                ttft_ms = round((loop.time() - model_started) * 1000)
+                            yield item
+            except UNAVAILABLE_ERRORS as exc:
+                raise self._unavailable(exc, mode) from None
+            finally:
+                await items.aclose()
+            if generated is None or not generated.text:
+                raise self._empty_answer(mode, empty_reason)
+            response = self._finish(turn, generated, ttft_ms=ttft_ms, streamed=True)
+            # Closed before the yield: the consumer may stop reading once it holds the
+            # response, and the turn has succeeded by then.
+            end_turn(turn.trace, outputs={"answer": response.answer})
+            yield response
 
     def _finish(
         self, turn: TurnDraft, generated: Generated, *, ttft_ms: int | None, streamed: bool
@@ -389,6 +414,22 @@ class AssistantService:
             if opinions:
                 project_blocks.append(render_opinions(opinions))
             ctx.tool_outputs.extend(project_blocks)
-        chunks = await ctx.retriever.search(request.message)
+        with retrieval_span(request.message) as span:
+            chunks = await ctx.retriever.search(request.message)
+            span.end(
+                outputs={
+                    "documents": [
+                        {
+                            "page_content": chunk.text,
+                            "metadata": {
+                                "title": chunk.title,
+                                "url": chunk.url,
+                                "score": chunk.score,
+                            },
+                        }
+                        for chunk in chunks
+                    ]
+                }
+            )
         excerpts = render_context_block([(ctx.sources.add(chunk), chunk) for chunk in chunks], None)
         return [*([excerpts] if excerpts else []), *project_blocks]

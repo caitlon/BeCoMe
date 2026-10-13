@@ -1465,6 +1465,120 @@ class TestTracing:
         constructed.assert_not_called()
 
 
+class _RecordingClient(ls.Client):
+    """A LangSmith client that keeps the runs it is given instead of sending them."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            api_url="http://127.0.0.1:9",
+            api_key="recording",  # pragma: allowlist secret
+            auto_batch_tracing=False,
+        )
+        self.created: list[dict[str, Any]] = []
+        self.updated: list[dict[str, Any]] = []
+
+    def create_run(self, name: str, *args: Any, **kwargs: Any) -> None:
+        self.created.append({"name": name, **kwargs})
+
+    def update_run(self, run_id: Any, **kwargs: Any) -> None:
+        self.updated.append({"id": run_id, **kwargs})
+
+
+class _TranslatingRetriever(StaticDocsRetriever):
+    """A retriever that calls a chat model before it searches, as query translation does."""
+
+    async def search(self, query: str):
+        await _scripted("translated question").ainvoke(query)
+        return await super().search(query)
+
+
+def _trace_of(recorder: _RecordingClient) -> dict[str, dict[str, Any]]:
+    """The runs of the one trace the recorder holds, by name; fails if there are several."""
+    assert len({str(run["trace_id"]) for run in recorder.created}) == 1
+    return {run["name"]: run for run in recorder.created}
+
+
+class TestTracingOneTracePerTurn:
+    """With tracing on, translation, search and generation of a turn form one trace."""
+
+    @pytest.fixture
+    def recorder(self, monkeypatch, configure):
+        """Switch tracing on in the settings and send the shared client's runs to a recorder."""
+        monkeypatch.setenv("ASSISTANT_LANGSMITH_API_KEY", "ls-key")  # pragma: allowlist secret
+        configure(ASSISTANT_LANGSMITH_ENABLED="true", ASSISTANT_LANGSMITH_PROJECT="turns")
+        recording = _RecordingClient()
+        with patch.object(tracing, "_shared_client", return_value=recording):
+            yield recording
+
+    @pytest.mark.parametrize("endpoint", [CHAT, STREAM])
+    def test_a_turn_is_one_trace_with_the_search_and_the_models_as_children(
+        self, assistant_settings, client, recorder, endpoint
+    ):
+        """
+        GIVEN tracing on, and a retriever that asks a chat model before it searches
+        WHEN a turn is answered through /chat or /chat/stream
+        THEN one trace holds an assistant_turn root with the question, in the configured
+            project, and the translation call, the document search and the answer call as
+            runs below it
+        """
+        # GIVEN
+        token = register_and_login(client, "one-trace@example.com")
+        client.app.dependency_overrides[deps.get_docs_retriever] = lambda: _TranslatingRetriever([])
+        _use_model(client, _scripted("The answer."))
+
+        # WHEN
+        response = client.post(
+            endpoint, json={"message": "Co je BeCoMe?"}, headers=auth_header(token)
+        )
+
+        # THEN
+        assert response.status_code == 200
+        runs = recorder.created
+        root = next(run for run in runs if run["name"] == "assistant_turn")
+        assert root["inputs"] == {"question": "Co je BeCoMe?"}
+        assert root["session_name"] == "turns"
+        assert len({str(run["trace_id"]) for run in runs}) == 1
+        below = [run for run in runs if run is not root]
+        assert {run["name"] for run in below} >= {"docs_search"}
+        assert sum(run["run_type"] == "llm" for run in below) == 2
+        assert all(run["parent_run_id"] is not None for run in below)
+        ended = [update for update in recorder.updated if update["id"] == root["id"]]
+        assert ended[-1]["outputs"] == {"answer": "The answer."}
+        assert not ended[-1].get("error")
+
+    @pytest.mark.parametrize("variable", ["LANGSMITH_TRACING", "LANGCHAIN_TRACING_V2"])
+    @pytest.mark.parametrize("endpoint", [CHAT, STREAM])
+    def test_nothing_reaches_langsmith_when_the_setting_is_off_and_the_environment_is_on(
+        self, assistant_settings, client, configure, monkeypatch, variable, endpoint
+    ):
+        """
+        GIVEN the setting off while a LangSmith library switch is true in the environment,
+            and a client that records what it is given
+        WHEN a turn is answered, with a retriever that calls a chat model
+        THEN the client received no run and no update
+        """
+        # GIVEN
+        monkeypatch.setenv(variable, "true")
+        ls.utils.get_env_var.cache_clear()
+        configure(ASSISTANT_LANGSMITH_ENABLED="false")
+        recording = _RecordingClient()
+        token = register_and_login(client, "no-trace@example.com")
+        client.app.dependency_overrides[deps.get_docs_retriever] = lambda: _TranslatingRetriever([])
+        _use_model(client, _scripted("The answer."))
+
+        # WHEN
+        with (
+            patch.object(ls.Client, "create_run", recording.create_run),
+            patch.object(ls.Client, "update_run", recording.update_run),
+        ):
+            response = client.post(endpoint, json={"message": "hi"}, headers=auth_header(token))
+
+        # THEN
+        assert response.status_code == 200
+        assert recording.created == []
+        assert recording.updated == []
+
+
 class TestRetrieverWiring:
     """The documentation the model is shown comes from the retriever the app was given."""
 

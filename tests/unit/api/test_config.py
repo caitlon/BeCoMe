@@ -1205,6 +1205,12 @@ _PROVIDER_ROLES = [
     ("assistant_embedding_provider", "assistant_embedding_base_url"),
 ]
 _REMOTE_URL = "https://models.example.test/v1"
+_LANGSMITH_LIBRARY_SWITCHES = [
+    "LANGSMITH_TRACING_V2",
+    "LANGCHAIN_TRACING_V2",
+    "LANGSMITH_TRACING",
+    "LANGCHAIN_TRACING",
+]
 _FAKE_KEY = "ovh-test-key"  # pragma: allowlist secret
 _DEPLOYED_DATABASE_URL = "postgresql://user:pass@host:5432/db"
 _DEPLOYED_MIGRATION_URL = "postgresql://migrator:pass@host:5432/db"
@@ -1288,6 +1294,8 @@ class TestAssistantSettings:
         monkeypatch.setenv("ASSISTANT_ENABLED", "true")
         monkeypatch.setenv("ASSISTANT_API_KEY_OVH", _FAKE_KEY)
         monkeypatch.setenv("ASSISTANT_VECTOR_DB_URL", _VECTOR_URL)
+        for name in _LANGSMITH_LIBRARY_SWITCHES:
+            monkeypatch.delenv(name, raising=False)
         for provider, url in _PROVIDER_ROLES:
             monkeypatch.setenv(provider.upper(), "api")
             monkeypatch.setenv(url.upper(), _REMOTE_URL)
@@ -1465,17 +1473,22 @@ class TestAssistantSettings:
             Settings()
 
     @pytest.mark.parametrize(
-        ("profile", "railway_name", "testing"),
-        [("dev", "dev", False), ("test", "test", False), ("dev", "dev", True)],
+        ("profile", "railway_name", "testing", "endpoint"),
+        [
+            ("dev", "dev", False, "https://eu.api.smith.langchain.com"),
+            ("test", "test", False, "https://eu.api.smith.langchain.com"),
+            ("dev", "dev", True, "https://eu.api.smith.langchain.com"),
+            ("dev", "dev", False, " HTTPS://EU.API.SMITH.LANGCHAIN.COM/ "),
+        ],
     )
-    def test_rejects_langsmith_tracing_on_a_deployed_service(
-        self, monkeypatch, tmp_path, profile, railway_name, testing
+    def test_allows_langsmith_tracing_to_the_eu_endpoint_on_a_deployed_service(
+        self, monkeypatch, tmp_path, profile, railway_name, testing, endpoint
     ):
         """
-        GIVEN a deployed dev or test service, or a Railway process with TESTING set,
-            with every role hosted and LangSmith tracing on
-        WHEN Settings is constructed with assistant_enabled=true
-        THEN validation fails, naming assistant_langsmith_enabled
+        GIVEN a deployed dev or test service with every role hosted and LangSmith tracing on
+            with a key, a project and the EU endpoint (however it is capitalised or ends)
+        WHEN Settings is constructed
+        THEN validation passes
         """
         # GIVEN
         self._configure_deployed_assistant(
@@ -1483,10 +1496,118 @@ class TestAssistantSettings:
         )
         monkeypatch.setenv("ASSISTANT_LANGSMITH_ENABLED", "true")
         monkeypatch.setenv("ASSISTANT_LANGSMITH_API_KEY", "lsv2_test")  # pragma: allowlist secret
+        monkeypatch.setenv("ASSISTANT_LANGSMITH_ENDPOINT", endpoint)
+        monkeypatch.setenv("ASSISTANT_LANGSMITH_PROJECT", "become-assistant-dev")
+
+        # WHEN
+        settings = Settings()
+
+        # THEN
+        assert settings.assistant_langsmith_enabled is True
+
+    @pytest.mark.parametrize(
+        "endpoint",
+        [
+            "https://api.smith.langchain.com",
+            "https://eu.api.smith.langchain.com.example.com",
+            "http://eu.api.smith.langchain.com",
+            "",
+        ],
+    )
+    def test_rejects_langsmith_tracing_to_another_endpoint_on_a_deployed_service(
+        self, monkeypatch, tmp_path, endpoint
+    ):
+        """
+        GIVEN a deployed service with LangSmith tracing on and an endpoint that is not the EU one
+        WHEN Settings is constructed
+        THEN validation fails, naming assistant_langsmith_endpoint
+        """
+        # GIVEN
+        self._configure_deployed_assistant(monkeypatch, tmp_path, profile="dev", railway_name="dev")
+        monkeypatch.setenv("ASSISTANT_LANGSMITH_ENABLED", "true")
+        monkeypatch.setenv("ASSISTANT_LANGSMITH_API_KEY", "lsv2_test")  # pragma: allowlist secret
+        monkeypatch.setenv("ASSISTANT_LANGSMITH_ENDPOINT", endpoint)
 
         # WHEN/THEN
-        with pytest.raises(ValidationError, match="assistant_langsmith_enabled must be false"):
+        with pytest.raises(ValidationError, match="assistant_langsmith_endpoint must be the EU"):
             Settings()
+
+    @pytest.mark.parametrize("project", ["", "   "])
+    def test_rejects_langsmith_tracing_without_a_project_on_a_deployed_service(
+        self, monkeypatch, tmp_path, project
+    ):
+        """
+        GIVEN a deployed service with LangSmith tracing on and an empty or blank project
+        WHEN Settings is constructed
+        THEN validation fails, naming assistant_langsmith_project
+        """
+        # GIVEN
+        self._configure_deployed_assistant(monkeypatch, tmp_path, profile="dev", railway_name="dev")
+        monkeypatch.setenv("ASSISTANT_LANGSMITH_ENABLED", "true")
+        monkeypatch.setenv("ASSISTANT_LANGSMITH_API_KEY", "lsv2_test")  # pragma: allowlist secret
+        monkeypatch.setenv("ASSISTANT_LANGSMITH_PROJECT", project)
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="assistant_langsmith_project must be set"):
+            Settings()
+
+    @pytest.mark.parametrize("switch", _LANGSMITH_LIBRARY_SWITCHES)
+    @pytest.mark.parametrize("tracing_enabled", ["true", "false"])
+    def test_rejects_a_langsmith_library_switch_on_a_deployed_service(
+        self, monkeypatch, tmp_path, switch, tracing_enabled
+    ):
+        """
+        GIVEN a deployed service where a LangSmith library switch is true, with the
+            assistant's own tracing setting on or off
+        WHEN Settings is constructed
+        THEN validation fails and points to ASSISTANT_LANGSMITH_ENABLED, since the library
+            would trace for any call, bypassing that setting
+        """
+        # GIVEN
+        self._configure_deployed_assistant(monkeypatch, tmp_path, profile="dev", railway_name="dev")
+        monkeypatch.setenv("ASSISTANT_LANGSMITH_ENABLED", tracing_enabled)
+        monkeypatch.setenv("ASSISTANT_LANGSMITH_API_KEY", "lsv2_test")  # pragma: allowlist secret
+        monkeypatch.setenv(switch, "true")
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="use ASSISTANT_LANGSMITH_ENABLED instead"):
+            Settings()
+
+    @pytest.mark.parametrize("value", ["false", "", "0"])
+    def test_allows_a_langsmith_library_switch_that_is_not_true_on_a_deployed_service(
+        self, monkeypatch, tmp_path, value
+    ):
+        """
+        GIVEN a deployed service where a LangSmith library switch is false, empty or 0
+        WHEN Settings is constructed
+        THEN validation passes, since the library does not read it as on
+        """
+        # GIVEN
+        self._configure_deployed_assistant(monkeypatch, tmp_path, profile="dev", railway_name="dev")
+        monkeypatch.setenv("LANGSMITH_TRACING", value)
+
+        # WHEN/THEN
+        assert Settings().langsmith_library_tracing == value
+
+    def test_allows_a_langsmith_library_switch_on_a_laptop(self, monkeypatch, tmp_path):
+        """
+        GIVEN the dev profile with no Railway marker, the assistant on and LANGSMITH_TRACING true
+        WHEN Settings is constructed
+        THEN validation passes, since the tracing scope overrides the switch
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("RAILWAY_ENVIRONMENT_NAME", raising=False)
+        monkeypatch.setenv("APP_ENV", "dev")
+        monkeypatch.setenv("SECRET_KEY", "irrelevant-for-dev")
+        monkeypatch.setenv("ASSISTANT_ENABLED", "true")
+        monkeypatch.setenv("LANGSMITH_TRACING", "true")
+
+        # WHEN
+        settings = Settings()
+
+        # THEN
+        assert settings.langsmith_library_tracing == "true"
 
     @pytest.mark.parametrize(
         ("profile", "railway_name", "testing"),
@@ -2177,6 +2298,28 @@ class TestAssistantSettings:
         # THEN
         assert settings.assistant_langsmith_enabled is False
         assert settings.assistant_langsmith_api_key is None
+
+    def test_the_langsmith_api_key_is_not_shown_in_the_settings_representation(
+        self, monkeypatch, tmp_path
+    ):
+        """
+        GIVEN Settings with a LangSmith key
+        WHEN it is turned into text
+        THEN the key appears in neither repr nor str
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        key = "lsv2_visible_if_leaked"  # pragma: allowlist secret
+        settings = Settings(
+            secret_key="test-secret-key",
+            assistant_langsmith_enabled=True,
+            assistant_langsmith_api_key=key,
+        )
+
+        # WHEN/THEN
+        assert key not in repr(settings)
+        assert key not in str(settings)
+        assert settings.assistant_langsmith_api_key.get_secret_value() == key
 
     @pytest.mark.parametrize("api_key", [None, "", "   "])
     def test_rejects_langsmith_tracing_without_an_api_key(self, api_key, monkeypatch, tmp_path):

@@ -8,7 +8,14 @@ from importlib.metadata import PackageNotFoundError, version
 from typing import Annotated, Any, Literal
 from urllib.parse import urlparse
 
-from pydantic import BeforeValidator, Field, SecretStr, field_validator, model_validator
+from pydantic import (
+    AliasChoices,
+    BeforeValidator,
+    Field,
+    SecretStr,
+    field_validator,
+    model_validator,
+)
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import URL, make_url
 from sqlalchemy.exc import ArgumentError
@@ -109,6 +116,9 @@ _ASSISTANT_PROVIDER_ROLES = (
 # names are dev, test and prod, but before 2026-09-12 they were production and staging, and a
 # renamed or preview environment (pr-123) must be refused rather than allowed.
 _ASSISTANT_RAILWAY_ENVIRONMENTS = frozenset({"dev", "test"})
+
+# The one LangSmith endpoint a deployed service may send traces to: the EU region.
+_LANGSMITH_EU_ENDPOINT = "https://eu.api.smith.langchain.com"
 
 # sslmode values under which libpq refuses to fall back to a connection in clear text.
 _TLS_REQUIRING_SSLMODES = frozenset({"require", "verify-ca", "verify-full"})
@@ -394,14 +404,28 @@ class Settings(BaseSettings):
     # so its version is part of corpus_version. A relative path resolves from the
     # repository root. None means no captions file, and a "captions" build then fails.
     assistant_captions_file: str | None = None
-    # LangSmith tracing of the assistant, switched on by hand for local work. With it on,
-    # the full text of questions, tool replies and answers goes to the endpoint below, so
-    # it needs a key (_validate_assistant_langsmith), defaults to the EU endpoint and is
-    # refused on a deployed service (_validate_assistant_deploy).
+    # LangSmith tracing of the assistant, switched on by assistant_langsmith_enabled alone. With
+    # it on, the full text of questions, tool replies and answers goes to the endpoint below,
+    # so it needs a key (_validate_assistant_langsmith). It defaults to the EU endpoint, and
+    # a deployed service may use only that one (_validate_assistant_deploy).
     assistant_langsmith_enabled: bool = False
-    assistant_langsmith_api_key: str | None = None
-    assistant_langsmith_endpoint: str = "https://eu.api.smith.langchain.com"
+    assistant_langsmith_api_key: SecretStr | None = None
+    assistant_langsmith_endpoint: str = _LANGSMITH_EU_ENDPOINT
     assistant_langsmith_project: str = "become-assistant-local"
+    # The LangSmith library's own tracing switches, read only so that a deployed service can
+    # refuse them: the library honours them for any traced call, bypassing
+    # assistant_langsmith_enabled. The order is the library's own, so the first one set here
+    # is the one it acts on. A string, because the library takes only "true" as on and a
+    # stray value must not stop the service from starting.
+    langsmith_library_tracing: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "LANGSMITH_TRACING_V2",
+            "LANGCHAIN_TRACING_V2",
+            "LANGSMITH_TRACING",
+            "LANGCHAIN_TRACING",
+        ),
+    )
 
     def __init__(self, **kwargs: Any) -> None:
         """Load ``.env`` then ``.env.<APP_ENV>`` and inject the resolved profile.
@@ -504,9 +528,11 @@ class Settings(BaseSettings):
         name is checked against an allowlist, so an unknown or renamed environment is
         refused too. A deployed service has no llama-server to reach, so every model role
         there must be api; a laptop and a CI runner keep local roles. LangSmith tracing
-        is refused on a deployed service too: it sends the text of questions, tool
-        replies and answers, which is project data read as the signed-in user, to a
-        third-party endpoint. The corpus database must be its own: a non-empty
+        sends the text of questions, tool replies and answers, which is project data read
+        as the signed-in user, to a third-party endpoint, so a deployed service may trace
+        only to the EU endpoint, into a named project, and only through
+        assistant_langsmith_enabled: the library's own switches (``LANGSMITH_TRACING`` and
+        its variants) are refused there. The corpus database must be its own: a non-empty
         assistant_vector_db_url, a ``postgresql+psycopg`` URL that names one host and a
         database, carries no host, hostaddr, port, dbname or service query override,
         names neither database_url nor migration_database_url, and has a single sslmode
@@ -526,8 +552,9 @@ class Settings(BaseSettings):
         :return: The validated settings instance.
         :raises ValueError: If assistant_enabled is true in the prod profile or on a
             Railway environment outside the allowlist, or on a deployed service while a
-            model role is still local, assistant_langsmith_enabled is true,
-            assistant_vector_db_url is empty, not a ``postgresql+psycopg`` URL, without a
+            model role is still local, assistant_langsmith_enabled is true with an
+            endpoint other than the EU one or a blank project, a library tracing switch is
+            true, assistant_vector_db_url is empty, not a ``postgresql+psycopg`` URL, without a
             database or a single host, carrying a host, hostaddr, port, dbname or service
             override, naming the same database as database_url or migration_database_url,
             or without a single sslmode of require, verify-ca or verify-full.
@@ -555,13 +582,34 @@ class Settings(BaseSettings):
                     f"{', '.join(local_roles)} must be api on a deployed service; a local "
                     "model server is not reachable there"
                 )
-            if self.assistant_langsmith_enabled:
-                raise ValueError(
-                    "assistant_langsmith_enabled must be false on a deployed service; "
-                    "tracing sends project data to LangSmith"
-                )
+            self._validate_assistant_langsmith_deploy()
             self._validate_assistant_corpus_database()
         return self
+
+    def _validate_assistant_langsmith_deploy(self) -> None:
+        """Hold LangSmith tracing on a deployed service to the EU endpoint and one switch.
+
+        Messages name the field and never carry a key.
+
+        :raises ValueError: If a library tracing switch is true, or tracing is on with an
+            endpoint other than the EU one or a blank project.
+        """
+        if self.langsmith_library_tracing.strip().lower() == "true":
+            raise ValueError(
+                "LANGSMITH_TRACING and its LANGCHAIN_ variants must not be true on a "
+                "deployed service; use ASSISTANT_LANGSMITH_ENABLED instead"
+            )
+        if not self.assistant_langsmith_enabled:
+            return
+        endpoint = self.assistant_langsmith_endpoint.strip().rstrip("/").lower()
+        if endpoint != _LANGSMITH_EU_ENDPOINT:
+            raise ValueError(
+                "assistant_langsmith_endpoint must be the EU endpoint on a deployed service"
+            )
+        if not self.assistant_langsmith_project.strip():
+            raise ValueError(
+                "assistant_langsmith_project must be set when tracing is on on a deployed service"
+            )
 
     def _validate_assistant_corpus_database(self) -> None:
         """Require a separate, TLS-protected corpus database on a deployed service.
@@ -670,10 +718,8 @@ class Settings(BaseSettings):
         :raises ValueError: If assistant_langsmith_enabled is true and
             assistant_langsmith_api_key is missing or blank.
         """
-        if (
-            self.assistant_langsmith_enabled
-            and not (self.assistant_langsmith_api_key or "").strip()
-        ):
+        key = self.assistant_langsmith_api_key
+        if self.assistant_langsmith_enabled and not (key.get_secret_value() if key else "").strip():
             raise ValueError(
                 "assistant_langsmith_api_key must be set when assistant_langsmith_enabled is true"
             )
