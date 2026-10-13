@@ -520,9 +520,10 @@ is `true` in the `prod` profile, or on a Railway environment whose name is not `
 profile and the name are checked independently. On any deploy the validator also requires the
 three model roles to be `api`, since a local model server is not reachable there. Tracing sends
 the text of questions, tool replies and answers to LangSmith, so with `assistant_langsmith_enabled`
-on, a deployed service must use the EU endpoint and a non-blank project, and the LangSmith
-library's own switches (`LANGSMITH_TRACING` and its `LANGCHAIN_` variants) are refused there:
-`assistant_langsmith_enabled` is the only way to turn tracing on. The key, https and loopback
+on, a deployed service must use the EU endpoint and a named project other than the local default,
+and the LangSmith library's own switches (`LANGSMITH_TRACING` and its `LANGCHAIN_` variants) and
+its `RUNS_ENDPOINTS` lists are refused there: `assistant_langsmith_enabled` is the only way to
+turn tracing on. The key, https and loopback
 checks stay in `_validate_assistant_providers`.
 The production refusal, the hosted-roles rule and the tracing rules also fire when
 `RAILWAY_ENVIRONMENT_NAME` is set, so a Railway process that carries `TESTING=1` and slips past

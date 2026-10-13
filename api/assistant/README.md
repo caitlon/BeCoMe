@@ -8,8 +8,9 @@ all three model roles to be `api`.
 On the dev and test services every model role runs hosted: `ASSISTANT_ANSWER_PROVIDER`,
 `ASSISTANT_LLM_PROVIDER` and `ASSISTANT_EMBEDDING_PROVIDER` are `api`, each base URL is the OVH
 endpoint, and `ASSISTANT_API_KEY_OVH` holds the key. LangSmith tracing is allowed there
-only to the EU endpoint, into a named project, and through `ASSISTANT_LANGSMITH_ENABLED` alone:
-`LANGSMITH_TRACING` and its `LANGCHAIN_` variants are refused on a deployed service. A
+only to the EU endpoint, into a named project other than the local default, and through
+`ASSISTANT_LANGSMITH_ENABLED` alone: `LANGSMITH_TRACING` and its `LANGCHAIN_` variants, and
+`LANGSMITH_RUNS_ENDPOINTS` and `LANGCHAIN_RUNS_ENDPOINTS`, are refused on a deployed service. A
 deployed service needs an image built with the `assistant` extra and a corpus database reachable
 through `ASSISTANT_VECTOR_DB_URL`. `env/.env.dev.example` and `env/.env.test.example` list the
 variables.
@@ -113,7 +114,8 @@ variables.
    `ASSISTANT_RATE_LIMIT_PER_HOUR=0`. Tracing is off unless `--trace` is given and
    `ASSISTANT_LANGSMITH_ENABLED` is on; it sends the question and answer text to LangSmith.
    In the running service, with the setting on, one chat turn is one trace: an `assistant_turn`
-   run holding the query translation, the document search and the answer calls.
+   run holding the query translation, the document search and the answer calls. In the agent
+   mode the search shows as the tool call instead.
 
    `--stream` asks `POST /api/v1/assistant/chat/stream` instead of `/chat` and reads its events,
    so the rows carry a first-token time, except in the agent and hybrid modes, which yield the
