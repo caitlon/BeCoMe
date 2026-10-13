@@ -131,11 +131,11 @@ class TestMakeEmbeddings:
         # THEN
         assert embeddings.request_timeout == settings.assistant_llm_timeout_seconds
 
-    def test_sends_at_most_64_texts_per_request(self):
+    def test_sends_at_most_16_texts_per_request(self):
         """
         GIVEN default Settings
         WHEN make_embeddings builds a client
-        THEN its chunk_size is 64, so llama-server answers one small batch instead
+        THEN its chunk_size is 16, so llama-server answers one small batch instead
              of the whole corpus, keeping each request's timeout bound small
         """
         # GIVEN
@@ -145,7 +145,7 @@ class TestMakeEmbeddings:
         embeddings = make_embeddings(settings)
 
         # THEN
-        assert embeddings.chunk_size == 64
+        assert embeddings.chunk_size == 16
 
 
 _API_KEY = "ovh-test-key"  # pragma: allowlist secret
