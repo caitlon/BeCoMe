@@ -23,6 +23,7 @@ from api.assistant.deps import (
 from api.assistant.errors import AssistantUnavailableError, AssistantUpstreamError
 from api.assistant.exception_handlers import UNAVAILABLE_DETAIL
 from api.assistant.sse import format_event
+from api.auth.dependencies import CurrentUser
 from api.config import Settings, get_settings
 from api.middleware.rate_limit import LIMIT_ASSISTANT_CHAT, limiter
 from api.schemas.assistant import AssistantChatResponse, AssistantConfigResponse
@@ -33,6 +34,7 @@ logger = logging.getLogger(__name__)
 
 @router.get("/config", summary="Get the assistant's active configuration")
 def get_assistant_config(
+    _current_user: CurrentUser,
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> AssistantConfigResponse:
     """Return which model, mode, and collection currently serve the assistant.
@@ -40,8 +42,11 @@ def get_assistant_config(
     The model is the one that writes chat answers, not the query-transform model.
 
     Reachable only when this router is registered, which happens only when
-    settings.assistant_enabled is true.
+    settings.assistant_enabled is true. It needs a session, like the chat: an anonymous
+    request is answered 401.
 
+    :param _current_user: The signed-in user; the route reads nothing from it, it only
+        refuses a request that has no session.
     :param settings: Application settings.
     :return: The assistant's active configuration.
     """
