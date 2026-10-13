@@ -692,14 +692,15 @@ class TestBuildFailures:
         GIVEN a retriever that failed to build because the database was down
         WHEN the database is back and the retriever is requested again, without clearing
              any cache
-        THEN it is built, so one outage does not outlive the database's recovery
+        THEN it is built on a fresh engine, and the failed attempt's engine was closed
         """
         # GIVEN
         settings = _settings()
+        first, second = _engine(), _engine()
         with (
             patch.object(deps, "get_settings", return_value=settings),
             patch.object(deps, "get_query_model", return_value=MagicMock()),
-            patch.object(deps, "make_engine", return_value=_engine()),
+            patch.object(deps, "make_engine", side_effect=[first, second]),
             patch.object(deps, "make_embeddings"),
             patch.object(
                 deps, "open_store", side_effect=[ConnectionRefusedError("down"), MagicMock()]
@@ -714,6 +715,51 @@ class TestBuildFailures:
 
         # THEN
         assert retriever is not None
+        first.close.assert_awaited_once()
+        second.close.assert_not_awaited()
+
+    def test_a_failure_after_the_store_opened_still_closes_the_engine(self):
+        """
+        GIVEN a store that opened, and a retriever that fails to build after it
+        WHEN the retriever is requested
+        THEN the engine is closed and the error goes on, unchanged
+        """
+        # GIVEN
+        engine = _engine()
+        with (
+            patch.object(deps, "get_settings", return_value=_settings()),
+            patch.object(deps, "get_query_model", return_value=MagicMock()),
+            patch.object(deps, "make_engine", return_value=engine),
+            patch.object(deps, "make_embeddings"),
+            patch.object(deps, "open_store", return_value=MagicMock()),
+            patch.object(deps, "DocsRetriever", side_effect=RuntimeError("bad config")),
+            # WHEN/THEN
+            pytest.raises(RuntimeError, match="bad config"),
+        ):
+            deps.get_docs_retriever()
+
+        engine.close.assert_awaited_once()
+
+    def test_a_failing_close_does_not_replace_the_original_error(self):
+        """
+        GIVEN a database that is down and an engine whose close fails too
+        WHEN the retriever is requested
+        THEN the outage is what is reported, not the failure to close
+        """
+        # GIVEN
+        engine = _engine()
+        engine.close.side_effect = RuntimeError("close failed")
+        with (
+            patch.object(deps, "get_settings", return_value=_settings()),
+            patch.object(deps, "make_engine", return_value=engine),
+            patch.object(deps, "make_embeddings"),
+            patch.object(deps, "open_store", side_effect=ConnectionRefusedError("down")),
+            # WHEN/THEN
+            pytest.raises(AssistantUnavailableError),
+        ):
+            deps.get_docs_retriever()
+
+        engine.close.assert_awaited_once()
 
 
 def _mini_app() -> tuple[FastAPI, list[Any]]:

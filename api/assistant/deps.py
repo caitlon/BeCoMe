@@ -12,6 +12,7 @@ one user's token to another user's turn.
 """
 
 import asyncio
+import contextlib
 import logging
 from collections.abc import AsyncIterator, Iterator
 from contextlib import contextmanager
@@ -109,7 +110,7 @@ def get_docs_retriever() -> DocsRetriever:
     Opening the store reaches the vector database, so the first request of a process can
     meet a database that is down, or a collection that is missing: that, and a missing
     ``ASSISTANT_VECTOR_DB_URL``, are ``AssistantUnavailableError``. A missing URL is logged
-    by setting name only. A store that fails to open closes its engine first.
+    by setting name only. A build that fails closes its engine first.
 
     :return: A retriever over the configured collection.
     :raises AssistantUnavailableError: If the vector database is down, the collection cannot be
@@ -129,22 +130,24 @@ def get_docs_retriever() -> DocsRetriever:
         )
         try:
             store = open_store(engine, settings.assistant_collection, make_embeddings(settings))
+            reranker = (
+                LlamaServerReranker(
+                    settings.assistant_rerank_base_url,
+                    settings.assistant_rerank_model,
+                    settings.assistant_llm_timeout_seconds,
+                )
+                if config.rerank
+                else None
+            )
+            llm = get_query_model() if config.query_transform != "none" else None
+            return DocsRetriever(store=store, config=config, reranker=reranker, llm=llm)
         except Exception:
             # A failed build is not cached, so every request would build another pool:
-            # release this one before the error goes on.
-            asyncio.run(engine.close())
+            # release this one before the error goes on, and let a failing close not
+            # replace that error.
+            with contextlib.suppress(Exception):
+                asyncio.run(engine.close())
             raise
-        reranker = (
-            LlamaServerReranker(
-                settings.assistant_rerank_base_url,
-                settings.assistant_rerank_model,
-                settings.assistant_llm_timeout_seconds,
-            )
-            if config.rerank
-            else None
-        )
-        llm = get_query_model() if config.query_transform != "none" else None
-        return DocsRetriever(store=store, config=config, reranker=reranker, llm=llm)
 
 
 def clear_caches() -> None:
