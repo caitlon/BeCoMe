@@ -22,6 +22,7 @@ variables.
     - [Streaming](#streaming)
     - [Limits](#limits)
 - [Private corpus layer](#private-corpus-layer)
+- [Read-only role for a deployed corpus database](#read-only-role-for-a-deployed-corpus-database)
 - [Chunk captions](#chunk-captions)
     - [Refreshing captions after a corpus or chunker change](#refreshing-captions-after-a-corpus-or-chunker-change)
 - [Running the pgvector-backed tests locally](#running-the-pgvector-backed-tests-locally)
@@ -346,6 +347,45 @@ Every build records `git describe` of this repository and of the corpus reposito
 ```bash
 docker exec become-assistant-db psql -U assistant -d assistant -c "SELECT name, corpus_version, app_version, chunk_count FROM assistant_collections"
 ```
+
+## Read-only role for a deployed corpus database
+
+On a deployed service the backend reads the corpus as a role that can only select. Serving
+issues no writes and no DDL: `open_store` reads the table's column list and every search is a
+`SELECT`. The owner role does the writing, in `scripts/assistant/ingest.py`, which creates the
+`vector` extension, the collection tables and the `assistant_collections` registry.
+
+Create the role once, as the database owner. `<owner>` is the role that runs the ingest, and
+`<database>` the corpus database:
+
+```sql
+CREATE ROLE corpus_reader LOGIN PASSWORD '<generated password>';
+GRANT CONNECT ON DATABASE <database> TO corpus_reader;
+GRANT USAGE ON SCHEMA public TO corpus_reader;
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO corpus_reader;
+ALTER DEFAULT PRIVILEGES FOR ROLE <owner> IN SCHEMA public GRANT SELECT ON TABLES TO corpus_reader;
+```
+
+The default privileges matter: every rebuild writes a new staging table and swaps it in under
+the live name, so the live table is always a fresh one, and a plain `GRANT ... ON ALL TABLES`
+covers only the tables that exist when it runs.
+
+The backend's `ASSISTANT_VECTOR_DB_URL` is then
+`postgresql+psycopg://corpus_reader:<password>@<private host>:5432/<database>?sslmode=require`.
+`Settings` refuses a deployed service whose URL is empty, names the application database, or
+lacks `sslmode=require` (or `verify-ca`, `verify-full`).
+
+Ingest runs from a developer machine, as the owner, through a temporary TCP proxy on the
+database service. Remove the proxy afterwards.
+
+```bash
+ASSISTANT_VECTOR_DB_URL='postgresql+psycopg://<owner>:<password>@<proxy host>:<proxy port>/<database>?sslmode=require' \
+  uv run python scripts/assistant/ingest.py --name docs_markdown_headers_500_o10_captions_bge_m3 \
+  --strategy markdown_headers --size 500 --overlap-pct 10 --context captions
+```
+
+The private corpus layer goes in with the same command once `ASSISTANT_PRIVATE_CORPUS_MANIFEST`
+and `ASSISTANT_PRIVATE_CORPUS_DIRS` are set as described above.
 
 ## Chunk captions
 

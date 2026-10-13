@@ -17,6 +17,7 @@ The backend runs under one of three profiles, chosen by the `APP_ENV` variable: 
 - [Development workflow](#development-workflow)
 - [Railway deployment](#railway-deployment)
 - [Database schema and access](#database-schema-and-access)
+    - [Assistant corpus database](#assistant-corpus-database)
 - [Photo storage](#photo-storage)
 - [Email delivery](#email-delivery)
 - [Current status](#current-status)
@@ -160,6 +161,14 @@ In `frontend/Dockerfile`, declare an `ARG` and an `ENV` for every `VITE_*` varia
 The application connects through a **least-privilege role**, `become_app`. It reads and writes the application tables but cannot create, alter, or drop objects, is not a superuser, and cannot bypass row-level security. Each backend therefore carries two database URLs: `DATABASE_URL` points at `become_app` for the running app, while `MIGRATION_DATABASE_URL` points at the privileged role that Alembic uses for DDL. `api/db/engine.py` hardens the connection: it requires TLS on deployed databases (a laptop run on a loopback or socket database uses `prefer`), tags each connection with an `application_name`, and sets per-session statement and idle-in-transaction timeouts so one query cannot monopolize the database. The schema also carries domain `CHECK` constraints (fuzzy-number ordering, positive expert counts, scale bounds) so the database rejects invalid rows on its own.
 
 On production and staging each Postgres instance is reachable only over Railway's internal network: the public TCP proxies are gone, so the internet cannot reach those databases. A proxy can be recreated briefly when a laptop needs direct access for a migration or a dump.
+
+### Assistant corpus database
+
+The assistant retrieves from a pgvector database that is separate from the application's. On the Railway `dev` environment it is its own service, built from `docker/assistant-db/Dockerfile`: Railway's PostgreSQL image, which keeps the self-signed TLS of the application database, plus the pgvector package. It is reachable over the private network only, and prod has no such service because the assistant is refused there.
+
+The backend reads the corpus as a read-only role, through `ASSISTANT_VECTOR_DB_URL` with `sslmode=require`. The grants are in [`api/assistant/README.md`](../api/assistant/README.md#read-only-role-for-a-deployed-corpus-database). Ingest runs from a developer machine, as the database owner, through a temporary TCP proxy on the service that is removed once the run ends.
+
+A deployed service with the assistant enabled refuses to start unless `ASSISTANT_VECTOR_DB_URL` is set, names a different database than `DATABASE_URL` and `MIGRATION_DATABASE_URL` (compared by host, port and database name), and carries `sslmode=require`, `verify-ca` or `verify-full`. A laptop and a CI runner are not held to this.
 
 ## Photo storage
 
