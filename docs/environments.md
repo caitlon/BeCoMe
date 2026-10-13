@@ -154,7 +154,7 @@ In `frontend/Dockerfile`, declare an `ARG` and an `ENV` for every `VITE_*` varia
 
 `VITE_ASSISTANT_ENABLED` is read only as the exact string `true`. Unset or empty, the assistant code is left out of the bundle. Prod leaves it unset, as it does the backend's `ASSISTANT_ENABLED`. The API also accepts `1`, `yes`, `on` and the other pydantic spellings, the SPA does not, so set `true` on both services.
 
-The assistant's model ids default to the local llama-server ids in `api/config.py`, which the hosted provider does not serve. The startup guard checks the providers, base URLs and key of a deployed service, not these ids, so a variable left unset passes startup and fails on the first question. Set each one explicitly on `dev` and `test`:
+The assistant's model ids default to the local llama-server ids in `api/config.py`, which the hosted provider does not serve. The startup guard checks the providers, base URLs and key of a deployed service, not these ids, so a variable left unset passes startup and fails on the first question (for `ASSISTANT_LLM_MODEL`, the first question that is not in English, since only the default `translate_en` query transform uses it). Set each one explicitly on `dev` and `test`:
 
 - `ASSISTANT_ANSWER_LLM_MODEL`: the model that writes chat answers, `Qwen3.5-9B` on OVHcloud.
 - `ASSISTANT_LLM_MODEL`: the query model, `Qwen3.5-9B` on OVHcloud.

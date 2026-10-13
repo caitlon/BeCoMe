@@ -234,9 +234,9 @@ caller cannot see does depends on the mode. In `workflow` and `hybrid` the proje
 `GET /api/v1/projects/{id}` answers it. In `agent` mode nothing is read ahead: the request is
 answered `200`, and a tool asked for such a project tells the model `not_found:` and nothing
 else, so the answer says it found nothing. A failing model server, embedding server, vector
-database or application answers `503` with a fixed message. On the first request after a start,
-that covers a vector database that is down, a URL that is not set, and a collection that is
-missing or that the role cannot read. A spent message budget answers `429`.
+database or application answers `503` with a fixed message. On any request until the retriever
+has been built once, that covers a vector database that is down, a URL that is not set, and a
+collection that is missing or that the role cannot read. A spent message budget answers `429`.
 
 ### Modes
 
@@ -385,7 +385,8 @@ database service. Remove the proxy afterwards.
 Ingest embeds the corpus through the embedding settings, which default to the local
 llama-server on `127.0.0.1:8082`. Point them at the provider for this run, so the corpus is
 embedded by the same hosted model that embeds the questions. The registry row records the
-embedding model id. `ASSISTANT_API_KEY_OVH` has to be set as well, in `.env` or the shell.
+embedding model id. `ASSISTANT_API_KEY_OVH` has to be set as well, in `.env` or the shell, and
+so does `ASSISTANT_CAPTIONS_FILE`, because `--context captions` stops without it.
 
 ```bash
 ASSISTANT_EMBEDDING_PROVIDER=api \
@@ -401,8 +402,10 @@ and `ASSISTANT_PRIVATE_CORPUS_DIRS` are set as described above.
 
 Restart the backend after a reload. The retriever is built once per process, and it builds
 its BM25 index from the collection's documents on the first search that needs one (`hybrid`,
-the default mode, and `bm25`). A process that is already running keeps ranking with the old
-corpus.
+the default mode, and `bm25`). Ingest swaps the table under the same name, so dense search in a
+running process sees the new corpus at once. Only the BM25 index keeps the old chunks until
+the restart, and in `hybrid` mode the fused ranking then mixes new vectors with the old BM25
+index.
 
 ## Chunk captions
 
