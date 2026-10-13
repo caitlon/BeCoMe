@@ -307,13 +307,15 @@ class TestAssistantRouterGating:
         self, monkeypatch, tmp_path
     ):
         """
-        GIVEN the dev profile with the assistant switched on
+        GIVEN the dev profile with the assistant switched on and a signed-in user
         WHEN the app is built and its config endpoint is requested
         THEN it answers 200 with the answer model, mode, and collection
         """
         from fastapi.testclient import TestClient
 
+        from api.auth.dependencies import get_current_user
         from api.config import get_settings
+        from api.db.models import User
         from api.main import create_app
 
         # GIVEN
@@ -324,7 +326,11 @@ class TestAssistantRouterGating:
         monkeypatch.delenv("RAILWAY_ENVIRONMENT_NAME", raising=False)
         get_settings.cache_clear()
         try:
-            client = TestClient(create_app())
+            app = create_app()
+            app.dependency_overrides[get_current_user] = lambda: User(
+                email="user@example.com", hashed_password="x", first_name="Test", last_name="User"
+            )
+            client = TestClient(app)
 
             # WHEN
             response = client.get("/api/v1/assistant/config")
