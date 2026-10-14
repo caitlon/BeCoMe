@@ -50,6 +50,11 @@ def _hide(text: str, roster: TurnRoster) -> str:
     return mask_participants(mask_opinion_rows(text, roster), roster)
 
 
+def _words(text: str) -> list[str]:
+    """Split a line of single-word forms."""
+    return text.split()
+
+
 def _forms(
     names: tuple[object, ...], template: str, forms: list[str], expected: str = "{}"
 ) -> list[Any]:
@@ -75,22 +80,9 @@ _ROWS = [
     *_forms(
         _NOVAK,
         "Co říká {}?",
-        [
-            "Novák",
-            "Nováka",
-            "Novákovi",
-            "Novákem",
-            "Novákovým",
-            "Novákové",
-            "Novákův",
-            "Novákovo",
-            "Novákovu",
-            "Novákovy",
-            "Novákovými",
-            "Novak",
-            "Novakovi",
-            "NOVÁK",
-        ],
+        _words(
+            "Novák Nováka Novákovi Novákem Novákovým Novákové Novákův Novákovo Novákovu Novákovy Novákovými Novak Novakovi NOVÁK"
+        ),
         "Co říká Expert 1?",
     ),
     *_forms(
@@ -192,6 +184,35 @@ _ROWS = [
     (("Zed \\n Smith",), "one\\ntwo", "one\\ntwo"),
     ((("Alice Moore", "-"), ("Bob Green", "()")), "a - b (c)", "a - b (c)"),
     (("Alice Moore", "Expert Kowalski"), "Expert 1 and Expert Kowalski", "Expert 1 and Expert 2"),
+    # a name that loses its e and softens a consonant (Zbynek -> Zbynka), and a very short one
+    *_forms(("Zbyněk",), "Ptal se {}.", ["Zbyněk", "Zbyňka", "Zbyňkovi"], "Ptal se Expert 1."),
+    (("Xu Ming",), "Ask Xu now, not Xuan", "Ask Expert 1 now, not Xuan"),
+    # two participants who share a surname: the surname alone is the first one's
+    (
+        ("Jan Novák", "Petr Novák"),
+        "Novák; Jan Novák; Petr Novák; Petr",
+        "Expert 1; Expert 1; Expert 2; Expert 2",
+    ),
+    # positions: very short ones only as written, longer ones in any case and inflected
+    (
+        (("Alice Moore", "IT"), ("Bob Green", "HR"), ("Carol White", "PR")),
+        "IT, HR and PR, but it, hra and pro",
+        "[position of Expert 1], [position of Expert 2] and [position of Expert 3], "
+        "but it, hra and pro",
+    ),
+    ((("Alice Moore", "C#"),), "She writes C# code", "She writes [position of Expert 1] code"),
+    *_forms(
+        (("Alice Moore", "ředitel odboru"),),
+        "Ptal se {}.",
+        ["ředitel odboru", "ředitele odboru", "ředitelem odboru"],
+        "Ptal se [position of Expert 1].",
+    ),
+    ((("Alice Moore", ""),), "Alice Moore said so", "Expert 1 said so"),
+    (
+        (("Alice Moore", "Hydrologist"), ("Alice Moore", "Dam Safety Officer")),
+        "Hydrologist and dam safety officer",
+        "[position of Expert 1] and [position of Expert 1]",
+    ),
     # positions: any case, whole phrase only, a shared one is not attributed
     (
         (("Alice Moore", "Dam Safety Officer at Lipno"),),
@@ -277,43 +298,6 @@ def test_a_pattern_that_cannot_be_built_raises_instead_of_returning_the_text():
         pytest.raises(re.error),
     ):
         mask_participants("Alice Moore", roster)
-
-
-def test_a_surname_two_participants_share_belongs_to_the_first_of_them():
-    """
-    GIVEN a roster that met Jan Novak and then Petr Novak
-    WHEN a text holds the surname alone, and each full name
-    THEN the surname alone is the first participant's, and each full name is its own
-    """
-    roster = _roster("Jan Novák", "Petr Novák")
-
-    assert mask_participants("Novák; Jan Novák; Petr Novák; Petr", roster) == (
-        "Expert 1; Expert 1; Expert 2; Expert 2"
-    )
-
-
-def test_an_expert_without_a_position_is_masked_and_hides_no_word():
-    """
-    GIVEN an expert whose position is blank
-    WHEN a text holds the name
-    THEN the name is masked and no position placeholder appears
-    """
-    roster = _roster(("Alice Moore", ""))
-
-    assert mask_participants("Alice Moore said so", roster) == "Expert 1 said so"
-
-
-def test_an_expert_with_two_positions_has_both_masked_under_one_label():
-    """
-    GIVEN the same expert met twice with different positions
-    WHEN a text holds each position
-    THEN both become that expert's placeholder
-    """
-    roster = _roster(("Alice Moore", "Hydrologist"), ("Alice Moore", "Dam Safety Officer"))
-
-    assert mask_participants("Hydrologist and dam safety officer", roster) == (
-        "[position of Expert 1] and [position of Expert 1]"
-    )
 
 
 def test_a_roster_past_its_cap_still_masks_the_rows_but_not_the_name_elsewhere():
