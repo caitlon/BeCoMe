@@ -50,11 +50,6 @@ def _hide(text: str, roster: TurnRoster) -> str:
     return mask_participants(mask_opinion_rows(text, roster), roster)
 
 
-def _words(text: str) -> list[str]:
-    """Split a line of single-word forms."""
-    return text.split()
-
-
 def _forms(
     names: tuple[object, ...], template: str, forms: list[str], expected: str = "{}"
 ) -> list[Any]:
@@ -75,14 +70,16 @@ _FULLWIDTH = (
     chr(0xFF2E) + chr(0xFF4F) + chr(0xFF56) + "á" + chr(0xFF4B)
 )  # the name Novak in full-width letters
 _NOVAK = ("Jan Novák",)
+_NOVAK_FORMS = (  # noqa: SIM905
+    "Novák Nováka Novákovi Novákem Novákovým Novákové Novákův Novákovo Novákovu Novákovy "
+    "Novákovými Novak Novakovi NOVÁK"
+).split()
 _ROWS = [
     # Czech cases of a masculine surname, with the possessives, and without diacritics
     *_forms(
         _NOVAK,
         "Co říká {}?",
-        _words(
-            "Novák Nováka Novákovi Novákem Novákovým Novákové Novákův Novákovo Novákovu Novákovy Novákovými Novak Novakovi NOVÁK"
-        ),
+        _NOVAK_FORMS,
         "Co říká Expert 1?",
     ),
     *_forms(
@@ -112,19 +109,11 @@ _ROWS = [
         "S Expert 1",
     ),
     # a name that loses its e before an ending
-    *[
-        pytest.param((name,), f"Ptal se {form}.", "Ptal se Expert 1.", id=form)
-        for name, form in [
-            ("Marek", "Marka"),
-            ("Marek", "Markovi"),
-            ("Marek", "Markem"),
-            ("Marek", "Marek"),
-            ("Pavel", "Pavla"),
-            ("Pavel", "Pavlovi"),
-            ("Němec", "Němce"),
-            ("Němec", "Němcem"),
-        ]
-    ],
+    *_forms(("Marek",), "S {}", ["Marka", "Markovi", "Markem", "Marek"], "S Expert 1"),
+    *_forms(("Pavel",), "S {}", ["Pavla", "Pavlovi"], "S Expert 1"),
+    *_forms(("Němec",), "S {}", ["Němce", "Němcem"], "S Expert 1"),
+    # a roster nobody joined changes nothing
+    ((), "Novák said hello", "Novák said hello"),
     # the whole name, its parts, another order, other dashes
     (("Eva Svobodová",), "Řekni to Evě Svobodové.", "Řekni to Expert 1."),
     (
@@ -186,21 +175,42 @@ _ROWS = [
     (("Alice Moore", "Expert Kowalski"), "Expert 1 and Expert Kowalski", "Expert 1 and Expert 2"),
     # a name that loses its e and softens a consonant (Zbynek -> Zbynka), and a very short one
     *_forms(("Zbyněk",), "Ptal se {}.", ["Zbyněk", "Zbyňka", "Zbyňkovi"], "Ptal se Expert 1."),
-    (("Xu Ming",), "Ask Xu now, not Xuan", "Ask Expert 1 now, not Xuan"),
+    (("Xu Ming",), "Xa, Xu, Xuan", "Xa, Expert 1, Xuan"),
     # two participants who share a surname: the surname alone is the first one's
     (
         ("Jan Novák", "Petr Novák"),
         "Novák; Jan Novák; Petr Novák; Petr",
         "Expert 1; Expert 1; Expert 2; Expert 2",
     ),
-    # positions: very short ones only as written, longer ones in any case and inflected
+    # acronyms only as written, edges included; words and long positions in any case
     (
         (("Alice Moore", "IT"), ("Bob Green", "HR"), ("Carol White", "PR")),
-        "IT, HR and PR, but it, hra and pro",
+        "IT, HR and PR, but it, hra, pro, PRO and ITs",
         "[position of Expert 1], [position of Expert 2] and [position of Expert 3], "
-        "but it, hra and pro",
+        "but it, hra, pro, PRO and ITs",
     ),
-    ((("Alice Moore", "C#"),), "She writes C# code", "She writes [position of Expert 1] code"),
+    (
+        (("Alice Moore", "C#"), ("Bob Green", ".NET")),
+        "C#, (C#), C#istka, C#10, ASP.NET, .NET",
+        "[position of Expert 1], ([position of Expert 1]), C#istka, C#10, ASP.NET, "
+        "[position of Expert 2]",
+    ),
+    (
+        (("Alice Moore", "IT"), ("Bob Green", "it")),
+        "A is IT, B is it",
+        "A is [position of Expert 1], B is [position of Expert 2]",
+    ),
+    (
+        (("Alice Moore", "LEAD"), ("Bob Green", "CTO")),
+        "the lead said, CTO and cto",
+        "the [position of Expert 1] said, [position of Expert 2] and cto",
+    ),
+    (
+        (("Alice Moore", "Šéf"),),
+        "Ptal se šéfa a šéfem",
+        "Ptal se [position of Expert 1] a [position of Expert 1]",
+    ),
+    ((("Alice Moore", "n"), ("Bob Green", "5")), "line\\n- x, 5 experts", "line\\n- x, 5 experts"),
     *_forms(
         (("Alice Moore", "ředitel odboru"),),
         "Ptal se {}.",
@@ -260,15 +270,6 @@ def test_the_same_name_keeps_its_label_and_a_new_one_gets_the_next():
     roster.add([_opinion("Alice"), _opinion("Carol")])
 
     assert mask_participants("Alice Bob Carol", roster) == "Expert 1 Expert 2 Expert 3"
-
-
-def test_an_empty_roster_changes_nothing():
-    """
-    GIVEN a roster nobody joined
-    WHEN a text is masked
-    THEN it comes back as it was
-    """
-    assert mask_participants("Novák said hello", TurnRoster()) == "Novák said hello"
 
 
 def test_an_expert_added_after_the_pattern_was_built_is_masked():

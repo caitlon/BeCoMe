@@ -15,11 +15,12 @@ more, is found in any case of its first letter, so "co řekl jan novák" is mask
 word keeps the case it was written in, so ``Will`` is found and the verb ``will`` is not. A
 word is found only as a whole, so ``Eva`` is not found in ``evaluation``. A position is found
 in any case, as a whole phrase only, never word by word, so ``Officer`` stays in ordinary
-text when the position is ``Dam Safety Officer``. Typos, diminutives and the forms that
-change a word's stem (Kupka, Kupce) are not found.
+text when the position is ``Dam Safety Officer``. A position of fewer than four word characters
+with no lower-case letter (IT, HR, C#) is found only as written, and one of a single character
+(n, 5) is not searched for. Typos, diminutives and the forms that change a word's stem
+(Kupka, Kupce) are not found.
 
-A position of fewer than four letters or digits (IT, HR, C#) is found only as written. A roster
-registers at most 100 participants. Past that an expert is still masked wherever a
+A roster registers at most 100 participants. Past that an expert is still masked wherever a
 block shows the name in a row, but the name is not searched for anywhere else in the text.
 """
 
@@ -121,16 +122,21 @@ _WORD_START = r"(?<!\w)"
 _WORD_EDGES = re.compile(r"(\W*)(.*?)(\W*)\Z", re.DOTALL)
 # Whitespace, the hyphen and the other dashes that a double surname may join its parts with.
 _NAME_SEPARATOR = re.compile(r"[\s\-\u2010-\u2015\u2212]+")
-# A part of a name, or a word of a position, is searched for only with this many letters or
-# digits. A shorter one is a symbol or an escape such as the backslash and n of a line break,
-# and replacing it would tear a text apart.
+# A part of a name is searched for only with this many letters or digits, and a position of
+# four or more word characters only if one of its words has this many. A shorter part is a
+# symbol or an escape such as the backslash and n of a line break, and replacing it would tear
+# a text apart.
 _MIN_NAME_PART = 2
 # A word of a name this long is found in any case of its first letter. A shorter one, which
 # may be an ordinary word (Will, Eva), keeps the case it was written in.
 _MIN_LOOSE_CASE = 5
-# A position with fewer word characters than this (IT, HR, C#) is matched only as written,
-# case and all, with no ending: in any case it would rewrite the words it, hra and pro.
+# An acronym is a position with fewer word characters than this and no lower-case letter (IT,
+# HR, CTO, C#). It is matched only as written, with no ending: in any case it would rewrite the
+# words it, hra and pro. A short position with lower-case letters (Sef, Boss) is a word, and
+# is matched in any case with endings. A position of fewer than _MIN_POSITION characters
+# (n, 5) is not searched for, as it would tear escapes and numbers out of a text.
 _MIN_LOOSE_POSITION = 4
+_MIN_POSITION = 2
 # The most participants a roster registers, whether fetched or met as an unknown row. The
 # pattern grows with them: 100 experts take about half a second to build, 300 take 14 seconds.
 _MAX_REGISTERED = 100
@@ -276,11 +282,19 @@ def _phrase(words: Sequence[str], separator: str, *, exact_first: bool) -> str:
     return start + body + end
 
 
+def _is_acronym(position: str) -> bool:
+    """Whether a position is short and has no lower-case letter, so it is matched as written."""
+    short = len(re.findall(r"\w", position)) < _MIN_LOOSE_POSITION
+    return short and not any(char.islower() for char in position)
+
+
 def _as_written(words: Sequence[str]) -> str:
-    """Write a pattern for words found exactly as written, case and ending included."""
-    start = _WORD_START if _bounded(words[0][0]) else ""
-    end = r"(?!\w)" if _bounded(words[-1][-1]) else ""
-    return start + r"\s+".join(map(re.escape, words)) + end
+    """Write a pattern for words found exactly as written, case and ending included.
+
+    A word character may touch neither end, whatever the first and last characters are, so
+    ``C#`` is not found in ``C#10`` and ``.NET`` is not found in ``ASP.NET``.
+    """
+    return _WORD_START + r"\s+".join(map(re.escape, words)) + r"(?!\w)"
 
 
 def _letters_and_digits(word: str) -> int:
@@ -364,10 +378,9 @@ class TurnRoster:
                     " ".join(opinion.position.split()),
                 ):
                     position = _comparable(position)
-                    if position:
-                        _, holders = self._positions.setdefault(
-                            position.casefold(), (position, set())
-                        )
+                    if len(position) >= _MIN_POSITION:
+                        key = position if _is_acronym(position) else position.casefold()
+                        _, holders = self._positions.setdefault(key, (position, set()))
                         holders.add(participant.number)
             self._matcher = None
 
@@ -423,9 +436,8 @@ class TurnRoster:
                         others.setdefault(regex, (len(part), label))
         for position, numbers in self._positions.values():
             words = position.split()
-            word_chars = len(re.findall(r"\w", position))
-            if word_chars < _MIN_LOOSE_POSITION:
-                if not word_chars:
+            if _is_acronym(position):
+                if not re.search(r"\w", position):
                     continue
                 regex = _as_written(words)
             elif any(_letters_and_digits(word) >= _MIN_NAME_PART for word in words):
