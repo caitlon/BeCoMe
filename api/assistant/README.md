@@ -116,7 +116,8 @@ variables.
    the expert names in opinion blocks replaced by `Expert 1`, `Expert 2` and so on first.
    In the running service, with the setting on, one chat turn is one trace: an `assistant_turn`
    run holding the query translation, the document search and the answer calls. In the agent
-   mode the search shows as the tool call instead.
+   mode the search shows as the tool call instead. The trace reaches LangSmith only when the
+   turn ends.
 
    `--stream` asks `POST /api/v1/assistant/chat/stream` instead of `/chat` and reads its events,
    so the rows carry a first-token time, except in the agent and hybrid modes, which yield the

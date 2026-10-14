@@ -3,6 +3,7 @@
 import json
 import threading
 import uuid
+from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 import langsmith as ls
@@ -474,101 +475,52 @@ class TestHeldTurn:
         names = {json.loads(body).get("name") for body in client.bodies}
         assert {"assistant_turn", "child"} <= names
 
-    def test_a_call_of_a_trace_no_turn_owns_is_dropped(self, built):
-        """
-        GIVEN a run made outside any turn
-        WHEN it is created
-        THEN nothing is sent: the client sends no call it cannot tie to a turn's roster
-        """
-        tracing._shared_client(_enabled_settings())
-        (client,) = built
-
-        client.create_run(
-            name="outside",
-            inputs={"q": "Alice Novak"},
-            run_type="chain",
-            id=uuid.uuid4(),
-            trace_id=uuid.uuid4(),
-            dotted_order="20260101T000000000000Z" + str(uuid.uuid4()),
-        )
-
-        assert client.bodies == []
-
-    def test_a_call_with_no_trace_id_is_dropped(self, built):
+    @pytest.mark.parametrize("ids", [{}, {"trace_id": uuid.uuid4()}], ids=["no id", "no turn"])
+    def test_a_call_that_belongs_to_no_turn_is_dropped(self, built, ids):
         """
         GIVEN a client that holds a turn
-        WHEN a call arrives with neither a trace id nor a dotted order
+        WHEN a call arrives with no trace id, or with the id of a trace no turn owns
         THEN it is dropped, and the turn's own runs are not affected
         """
         run = tracing.start_turn(_enabled_settings(), "q", TurnRoster())
         (client,) = built
 
-        client.update_run(run.id, outputs={"x": "Alice Novak"})
+        client.update_run(run.id, outputs={"x": "Alice Novak"}, **ids)
         tracing.end_turn(run, outputs={"answer": "a"})
 
         assert "Alice" not in "\n".join(client.bodies)
         assert json.loads(client.bodies[0])["name"] == "assistant_turn"
 
-    def test_a_trace_id_in_another_spelling_finds_the_held_turn(self, built):
+    def test_a_trace_id_in_another_spelling_finds_the_held_turn_and_the_call_is_copied(self, built):
         """
         GIVEN a held turn
-        WHEN a call names its trace in upper case, as text, and another has only a dotted order
-        THEN both are held with the turn, and both are masked when it ends
+        WHEN a call names its trace in upper case, as text, and its caller changes the inputs
+            after the call
+        THEN the call is held with the turn, and what is sent is masked and is the inputs as
+            they were when the call was made
         """
         roster = TurnRoster()
         roster.add([_opinion("Alice Novak")])
         run = tracing.start_turn(_enabled_settings(), "q", roster)
         (client,) = built
-        child = uuid.uuid4()
-        order = f"{run.dotted_order}.20260101T000000000000Z{child}"
+        inputs = {"q": "Alice Novak"}
 
         client.create_run(
             name="spelled",
-            inputs={"q": "Alice Novak"},
-            run_type="chain",
-            id=child,
-            trace_id=str(run.trace_id).upper(),
-            dotted_order=order,
-        )
-        client.create_run(
-            name="ordered",
-            inputs={"q": "Alice Novak"},
+            inputs=inputs,
             run_type="chain",
             id=uuid.uuid4(),
-            dotted_order=order,
+            trace_id=str(run.trace_id).upper(),
         )
+        inputs["q"] = "changed after the call"
         assert client.bodies == []
         tracing.end_turn(run, outputs={"answer": "a"})
 
         payload = "\n".join(client.bodies)
         assert "spelled" in payload
-        assert "ordered" in payload
+        assert "Expert 1" in payload
         assert "Alice" not in payload
-
-    def test_a_run_that_ends_after_its_turn_is_masked_and_sent(self, built):
-        """
-        GIVEN a turn that has ended and sent its trace
-        WHEN an update for one of its runs arrives afterwards
-        THEN it is sent at once, masked with the turn's roster
-        """
-        roster = TurnRoster()
-        roster.add([_opinion("Alice Novak")])
-        run = tracing.start_turn(_enabled_settings(), "q", roster)
-        tracing.end_turn(run, outputs={"answer": "a"})
-        (client,) = built
-        sent = len(client.bodies)
-
-        client.update_run(
-            run.id,
-            trace_id=run.trace_id,
-            dotted_order=run.dotted_order,
-            outputs={"late": "Alice Novak was cut off"},
-        )
-
-        late = "\n".join(client.bodies[sent:])
-        assert "late" in late
-        assert "Alice" not in late
-        assert "Expert 1 was cut off" in late
+        assert "changed after" not in payload
 
     def test_a_turn_is_sent_once(self, built):
         """
@@ -728,6 +680,54 @@ class TestReleaseWorker:
         ]
         assert threading.current_thread().name not in client.request_threads
 
+    def test_a_late_call_from_another_thread_cannot_overtake_the_flush(self, built):
+        """
+        GIVEN a turn that is ending, and a thread that makes a late call at the moment the
+            flush is handed to the worker
+        WHEN the turn ends
+        THEN the late call is sent after every held call
+        """
+        run = tracing.start_turn(_enabled_settings(), "q", TurnRoster())
+        (client,) = built
+        late = threading.Thread(
+            target=client.update_run,
+            args=(run.id,),
+            kwargs={"trace_id": run.trace_id, "outputs": {"late": "x"}},
+        )
+        real_submit = client._submit
+
+        def racing(job, *args):
+            if getattr(job, "__name__", "") == "_flush":
+                late.start()
+                late.join(0.3)  # the late call gets its chance to reach the worker first
+            return real_submit(job, *args)
+
+        client._submit = racing
+        tracing.end_turn(run, outputs={"answer": "a"})
+        late.join()
+
+        outputs = [json.loads(body).get("outputs") for body in client.bodies]
+        assert outputs[-2:] == [{"answer": "a"}, {"late": "x"}]
+
+    def test_a_released_roster_does_not_keep_its_pattern(self, built):
+        """
+        GIVEN a turn that has ended and sent its runs
+        WHEN a late call arrives
+        THEN the call is masked, and the roster holds no built pattern before or after
+        """
+        roster = TurnRoster()
+        roster.add([_opinion("Alice Novak")])
+        run = tracing.start_turn(_enabled_settings(), "q", roster)
+        (client,) = built
+        tracing.end_turn(run)
+        client.wait_idle(10)
+        assert roster._matcher is None
+
+        client.update_run(run.id, trace_id=run.trace_id, outputs={"late": "Alice Novak"})
+
+        assert "Expert 1" in "\n".join(client.bodies)
+        assert roster._matcher is None
+
     def test_a_call_whose_turn_left_the_released_list_is_dropped(self, built):
         """
         GIVEN a bound of one remembered turn and two turns that ended
@@ -787,63 +787,68 @@ class TestReleaseWorker:
         assert record.__dict__["reason"] == "ValueError"
         assert "BOOM" not in record.getMessage() + str(record.__dict__)
 
-    def test_the_shape_mask_covers_the_fields_the_librarys_anonymizer_skips(self):
+    @pytest.mark.parametrize(
+        "field",
+        [
+            *("name", "inputs", "outputs", "error", "extra"),
+            *("events", "tags", "serialized", "attachments"),
+        ],
+    )
+    def test_every_masked_field_hides_a_name_and_a_strangers_row(self, field):
         """
-        GIVEN a call whose serialized, extra and events fields hold an opinions block of
-            experts the roster never met
-        WHEN it is masked
-        THEN no name is left in any of them
-        """
-        block = render_opinions([_opinion("Alice Novak")])
-        op = tracing._Op(
-            "create",
-            {
-                "serialized": {"repr": block},
-                "extra": {"runtime": {"note": block}},
-                "events": [{"name": "x", "message": block}],
-            },
-        )
-
-        masked = tracing._masked(op, TurnRoster())
-
-        assert "Alice" not in json.dumps(masked.kwargs)
-        assert "Expert 1" in json.dumps(masked.kwargs)
-
-    def test_a_participant_named_like_the_block_layout_cannot_hide_a_strangers_row(self):
-        """
-        GIVEN a roster whose one expert is named lower, and a call whose outputs hold a block
-            with that expert and with another the roster never met
+        GIVEN a roster that met Alice, and a call that holds, in one field, her name and an
+            opinions block of an expert the roster never met (the library's anonymizer reads
+            only some of these fields)
         WHEN the call is masked
-        THEN the stranger's name is gone from the block
+        THEN neither name is left in that field
         """
         roster = TurnRoster()
-        roster.add([_opinion("lower")])
-        block = render_opinions([_opinion("lower"), _opinion("Stranger Unknown")])
+        roster.add([_opinion("Alice Novak")])
+        text = "Alice Novak\n" + render_opinions([_opinion("Stranger Unknown")])
+        wrapped = {
+            "name": text,
+            "error": text,
+            "tags": [text],
+            "events": [{"message": text}],
+        }.get(field, {"note": text})
 
-        masked = tracing._masked(tracing._Op("update", {"outputs": {"text": block}}), roster)
+        masked = tracing._masked(tracing._Op("create", {field: wrapped}), roster)
 
-        text = json.dumps(masked.kwargs)
-        assert "Stranger" not in text
-        assert "Unknown" not in text
+        assert "Alice" not in json.dumps(masked.kwargs)
+        assert "Stranger" not in json.dumps(masked.kwargs)
 
-    def test_a_strangers_row_does_not_take_the_label_of_an_expert_the_roster_knows(self):
+    def test_a_strangers_row_does_not_take_a_label_the_roster_gave_or_break_the_layout(self):
         """
-        GIVEN a roster that met Bob and Alice, and a call whose outputs hold a block of
-            Alice and a stranger, and the stranger's name again outside the block
+        GIVEN a roster that met an expert named lower, then Alice, and a call whose outputs
+            hold a block of lower, Alice and a stranger, and the stranger's name again after it
         WHEN the call is masked
-        THEN Alice keeps Expert 2, the stranger gets Expert 3 in the block and outside it
+        THEN the rows keep their labels, the stranger gets the next free one in the block
+            and outside it, and the layout word in the name does not hide the stranger's row
         """
         alice = _opinion("Alice Novak")
         roster = TurnRoster()
-        roster.add([_opinion("Bob Green"), alice])
-        text = render_opinions([alice, _opinion("Stranger Unknown")]) + "\nStranger spoke"
+        roster.add([_opinion("lower"), alice])
+        rows = [_opinion("lower"), alice, _opinion("Stranger Unknown")]
+        text = render_opinions(rows) + "\nStranger spoke"
 
         masked = tracing._masked(tracing._Op("update", {"outputs": {"text": text}}), roster)
 
         out = masked.kwargs["outputs"]["text"]
-        assert "- Expert 2: lower=37.00" in out
-        assert "- Expert 3: lower=37.00" in out
+        for number in (1, 2, 3):
+            assert f"- Expert {number}: " in out
         assert out.endswith("\nExpert 3 spoke")
+
+    def test_a_date_is_written_in_iso_form(self):
+        """
+        GIVEN an event whose time is a datetime
+        WHEN the call is masked
+        THEN the time reads as LangSmith writes it, with a T between date and time
+        """
+        when = datetime(2026, 10, 14, 22, 24, 14, tzinfo=UTC)
+
+        masked = tracing._masked(tracing._Op("update", {"events": [{"time": when}]}), TurnRoster())
+
+        assert masked.kwargs["events"] == [{"time": "2026-10-14T22:24:14+00:00"}]
 
     def test_a_message_object_in_a_run_is_masked_like_text(self):
         """
