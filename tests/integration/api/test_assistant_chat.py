@@ -1489,7 +1489,7 @@ class TestTracing:
         constructed.assert_not_called()
 
 
-class _RecordingClient(ls.Client):
+class _RecordingClient(tracing.MaskingClient):
     """A LangSmith client that keeps the runs it is given instead of sending them."""
 
     def __init__(self) -> None:
@@ -1607,26 +1607,33 @@ class TestTracingOneTracePerTurn:
         assert recording.updated == []
 
 
-class _CapturingClient(ls.Client):
+class _CapturingClient(tracing.MaskingClient):
     """A real LangSmith client, anonymizer and serialization included, that sends nothing.
 
     Each request body the client would have sent is kept as text. The session is closed
     to the network, so a request that slipped past ``request_with_retries`` would fail
     rather than leave the machine.
 
+    The client sends on a worker thread, so ``bodies`` waits for the worker to go idle first.
+
     :ivar bodies: The body of every request the client made, as text.
     """
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(auto_batch_tracing=False, **kwargs)
-        self.bodies: list[str] = []
+        self._bodies: list[str] = []
         self.session.mount("http://", _NoNetworkAdapter())
         self.session.mount("https://", _NoNetworkAdapter())
+
+    @property
+    def bodies(self) -> list[str]:
+        self.wait_idle(10)
+        return self._bodies
 
     def request_with_retries(self, method: Any, pathname: str, **kwargs: Any) -> requests.Response:
         data = (kwargs.get("request_kwargs") or {}).get("data")
         if data is not None:
-            self.bodies.append(data.decode() if isinstance(data, bytes) else str(data))
+            self._bodies.append(data.decode() if isinstance(data, bytes) else str(data))
         return requests.Response()
 
 
@@ -1651,7 +1658,7 @@ class TestTracesCarryNoMemberData:
             built.append(_CapturingClient(**kwargs))
             return built[-1]
 
-        with patch.object(tracing.ls, "Client", build):
+        with patch.object(tracing, "_new_client", build):
             yield built
 
     @pytest.mark.parametrize("endpoint", [CHAT, STREAM])

@@ -1493,6 +1493,8 @@ class _FakeRun:
         self.outputs: dict[str, str] | None = None
         self.error: str | None = None
         self.patched = 0
+        self.trace_id = "fake-trace"
+        self.client = None
 
     def end(self, *, outputs: dict[str, str] | None = None, error: str | None = None) -> None:
         self.end_time = datetime.now(UTC)

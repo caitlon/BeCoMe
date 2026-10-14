@@ -33,6 +33,7 @@ from api.assistant.agent.generation import (
     Generated,
     user_message,
 )
+from api.assistant.agent.masking import TurnRoster
 from api.assistant.agent.prompt import (
     FORMULA_NUMBERS,
     PINNED_NUMBERS,
@@ -165,7 +166,7 @@ class AssistantService:
             for turn in kept
         ]
         deadline_at = started + self._settings.assistant_turn_timeout_seconds
-        trace = start_turn(self._settings, request.message)
+        trace = start_turn(self._settings, request.message, TurnRoster())
         try:
             with tracing_scope(self._settings, parent=trace):
                 try:
