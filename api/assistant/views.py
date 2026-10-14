@@ -67,12 +67,14 @@ class ResultView(BaseModel):
 class OpinionView(BaseModel):
     """One expert's opinion, with the expert named but never identified.
 
-    The expert's position is not a field: the assistant never sees it.
+    The position is a field so that the turn's roster can hide it in traces. It is not
+    written into any block the model reads.
     """
 
     model_config = ConfigDict(extra="ignore", frozen=True)
 
     expert_name: str
+    position: str
     lower_bound: float
     peak: float
     upper_bound: float

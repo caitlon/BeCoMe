@@ -18,6 +18,7 @@ from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 from api.assistant.agent import service as service_module
 from api.assistant.agent.checks import find_ungrounded_numbers, strip_citations
 from api.assistant.agent.context import AssistantContext, SourceRegistry
+from api.assistant.agent.masking import mask_participants
 from api.assistant.agent.prompt import (
     FORMULA_NUMBERS,
     PINNED_NUMBERS,
@@ -113,6 +114,7 @@ def _result() -> ResultView:
 def _opinion() -> OpinionView:
     return OpinionView(
         expert_name="Jana Novakova",
+        position="Hydrologist",
         lower_bound=37.0,
         peak=42.0,
         upper_bound=47.0,
@@ -1621,6 +1623,99 @@ class TestTurnRun:
 
         assert run.error == "AssistantUnavailableError"
         assert run.patched == 1
+
+
+@pytest.mark.asyncio
+class TestRoster:
+    """The turn's roster learns the experts the model reads about, and, when traced, the rest."""
+
+    async def test_the_opinions_fetched_ahead_are_registered(self):
+        """
+        GIVEN a workflow turn on a project with opinions, tracing off
+        WHEN the turn is answered
+        THEN the roster knows the expert, under the label the block gave
+        """
+        ctx = _ctx(project_id=PROJECT_ID, result=_result(), opinions=[_opinion()])
+
+        await AssistantService(_settings(), _model(_say())).answer(_request(), ctx)
+
+        assert mask_participants("Jana Novakova", ctx.roster) == "Expert 1"
+
+    @pytest.mark.parametrize("mode", ["hybrid", "agent"])
+    async def test_a_traced_turn_fetches_the_experts_for_the_roster_alone(self, run, mode):
+        """
+        GIVEN a traced hybrid or agent turn on a project with opinions
+        WHEN it is answered
+        THEN the opinions were fetched once, the roster knows the expert, and the model was
+            shown no opinions block and no name
+        """
+        model = _model(_say())
+        ctx = _ctx(project_id=PROJECT_ID, result=_result(), opinions=[_opinion()])
+
+        await AssistantService(_settings(mode), model).answer(_request(), ctx)
+
+        ctx.client.get_opinions.assert_awaited_once_with(PROJECT_ID)
+        assert mask_participants("Jana Novakova", ctx.roster) == "Expert 1"
+        shown = "\n".join(str(message.content) for message in model.seen[0])
+        assert "Novakova" not in shown
+        assert "Number of opinions" not in shown
+        assert "Number of opinions" not in "".join(ctx.tool_outputs)
+
+    @pytest.mark.parametrize("mode", ["hybrid", "agent"])
+    async def test_an_untraced_turn_fetches_nothing_extra(self, mode):
+        """
+        GIVEN a hybrid or agent turn on a project, tracing off
+        WHEN it is answered
+        THEN the opinions are not fetched
+        """
+        ctx = _ctx(project_id=PROJECT_ID, result=_result(), opinions=[_opinion()])
+
+        await AssistantService(_settings(mode), _model(_say())).answer(_request(), ctx)
+
+        ctx.client.get_opinions.assert_not_awaited()
+
+    async def test_a_traced_turn_without_a_project_fetches_nothing(self, run):
+        """
+        GIVEN a traced agent turn that names no project
+        WHEN it is answered
+        THEN no opinions are fetched and the turn answers
+        """
+        ctx = _ctx()
+
+        response = await AssistantService(_settings("agent"), _model(_say("Fine."))).answer(
+            _request(), ctx
+        )
+
+        assert response.answer == "Fine."
+        ctx.client.get_opinions.assert_not_awaited()
+
+    @pytest.mark.parametrize(
+        "failure",
+        [
+            AssistantNotFoundError("gone"),
+            AssistantUpstreamError("bad"),
+            httpx.ConnectError("refused"),
+        ],
+    )
+    async def test_a_failing_fetch_for_the_roster_changes_nothing(self, run, failure):
+        """
+        GIVEN a traced agent turn whose roster fetch fails
+        WHEN it is answered
+        THEN the turn answers as it would have, and the failure is logged without text
+        """
+        ctx = _ctx(project_id=PROJECT_ID, result=_result())
+        ctx.client.get_opinions.side_effect = failure
+
+        with captured_log_records(SERVICE_LOGGER) as records:
+            response = await AssistantService(_settings("agent"), _model(_say("Fine."))).answer(
+                _request(), ctx
+            )
+
+        assert response.answer == "Fine."
+        (record,) = [
+            r for r in records if r.__dict__.get("event") == "assistant_roster_unavailable"
+        ]
+        assert record.__dict__["reason"] == type(failure).__name__
 
 
 async def _until_response(items):

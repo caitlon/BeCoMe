@@ -1,8 +1,9 @@
 """Per-request context threaded through the agent, and the registry of cited sources."""
 
 import unicodedata
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
+from api.assistant.agent.masking import TurnRoster
 from api.assistant.client import UserApiClient
 from api.assistant.rag.retrieval import DocsRetriever, RetrievedChunk
 from api.schemas.assistant import SourceRef
@@ -125,6 +126,8 @@ class AssistantContext:
         grounding for :func:`~api.assistant.agent.checks.find_ungrounded_numbers`.
     :ivar current_project_id: The project the user is viewing, if any.
     :ivar locale: The UI locale the request carried (``en`` or ``cs``).
+    :ivar roster: The experts of every opinions list this turn fetched, with their labels.
+        The trace of the turn is masked with it.
     """
 
     client: UserApiClient
@@ -133,3 +136,4 @@ class AssistantContext:
     tool_outputs: list[str]
     current_project_id: str | None
     locale: str
+    roster: TurnRoster = field(default_factory=TurnRoster)

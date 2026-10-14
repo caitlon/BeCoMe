@@ -1644,6 +1644,35 @@ class _NoNetworkAdapter(HTTPAdapter):
         raise requests.ConnectionError("the test allows no network traffic")
 
 
+# What the tests of the trace mask put in the model's way: a member named in the question,
+# another in the history in other cases, and both in the scripted answer, which also quotes
+# a position. Every string below must be gone from the trace; the stems cover the declined
+# forms the texts use.
+_SECOND_FIRST_NAME = "Bohumila"
+_SECOND_LAST_NAME = "Kratochvilova"
+_OWNER_POSITION_IN_TRACE = "Hydrologist at Povodi Labe"
+_SECOND_POSITION = "Dam Safety Officer at Lipno"
+_TRACE_QUESTION = "Co \u0159\u00edk\u00e1 Zwiebelstein?"
+_TRACE_HISTORY = [
+    {"role": "user", "content": "Ptal jsem se na Bohumilu Kratochvilovou."},
+    {"role": "assistant", "content": "Bohumilou Kratochvilovou jsem se neptal. Ottokar ano."},
+]
+_TRACE_ANSWER = (
+    "Zwiebelsteinovi to vychazi jinak nez Bohumile Kratochvilove, ktera je Dam Safety Officer "
+    "at Lipno."
+)
+_TRACE_SECRETS = [
+    OWNER_FIRST_NAME,
+    OWNER_LAST_NAME,
+    _SECOND_FIRST_NAME[:-1],
+    _SECOND_LAST_NAME[:-1],
+    "Hydrologist",
+    "Povodi",
+    "Dam Safety",
+    "Lipno",
+]
+
+
 class TestTracesCarryNoMemberData:
     """What reaches LangSmith holds no expert name and no position, whichever mode answers."""
 
@@ -1661,41 +1690,58 @@ class TestTracesCarryNoMemberData:
         with patch.object(tracing, "_new_client", build):
             yield built
 
+    @staticmethod
+    def _two_members(client, configure, mode: str) -> dict[str, Any]:
+        configure(ASSISTANT_MODE=mode)
+        owner = _owner_project(client, position=_OWNER_POSITION_IN_TRACE)
+        _add_member(
+            client,
+            owner,
+            "second-expert@example.com",
+            _SECOND_FIRST_NAME,
+            _SECOND_LAST_NAME,
+            _SECOND_POSITION,
+        )
+        return owner
+
+    @staticmethod
+    def _model(mode: str, project_id: str, *, call_tool: bool) -> ScriptedToolCallingModel:
+        """A model that answers the scripted text, after reading the opinions in the tool modes."""
+        answer = AIMessage(content=_TRACE_ANSWER)
+        if mode == "workflow" or not call_tool:
+            return ScriptedToolCallingModel(responses=[answer])
+        return ScriptedToolCallingModel(
+            responses=[_tool_call("get_project_opinions", project_id), answer]
+        )
+
+    @staticmethod
+    def _runs(traced: _CapturingClient) -> list[dict[str, Any]]:
+        return [json.loads(body) for body in traced.bodies]
+
     @pytest.mark.parametrize("endpoint", [CHAT, STREAM])
     @pytest.mark.parametrize("mode", _ALL_MODES)
     def test_the_model_sees_names_and_the_trace_sees_neither_names_nor_positions(
         self, assistant_settings, client, configure, clients, mode, endpoint
     ):
         """
-        GIVEN a project with two members who each submitted an opinion, with distinctive
-            names and positions, and tracing on to a client that keeps what it would send
-        WHEN the owner asks about it through the real route in each mode: with the opinions
-            fetched ahead in the workflow mode, through the tool in the hybrid and agent modes
-        THEN the model was shown both members' names and no position, and everything the
-            client would have sent to LangSmith holds no name and no position, but holds
-            the question, the placeholders Expert 1 and Expert 2 and the numbers
+        GIVEN a project with two members with distinctive names and positions, and tracing on
+            to a client that keeps what it would send; a question that names one member, a
+            history that names the other in other cases, and a model that answers naming both
+            in other cases and quoting a position
+        WHEN the owner asks through the real route in each mode: with the opinions fetched
+            ahead in the workflow mode, through the tool in the hybrid and agent modes
+        THEN the model was shown both names and no position, and nothing the client would have
+            sent to LangSmith holds a name or a position in any of the forms used, while the
+            question, the history and the answer carry the labels of the opinions block and the
+            numbers are there
         """
         # GIVEN
-        configure(ASSISTANT_MODE=mode)
-        owner = _owner_project(client, position="Hydrologist at Povodi Labe")
-        _add_member(
-            client,
-            owner,
-            "second-expert@example.com",
-            "Bohumila",
-            "Kratochvilova",
-            "Dam Safety Officer at Lipno",
-        )
-        names = [OWNER_FIRST_NAME, OWNER_LAST_NAME, "Bohumila", "Kratochvilova"]
-        positions = ["Hydrologist", "Povodi Labe", "Dam Safety", "Lipno"]
-        question = "Which expert is furthest from the rest?"
-        if mode == "workflow":
-            model: ScriptedToolCallingModel | ToolEchoingModel = _scripted("Two experts.")
-            body = {"message": question, "project_id": owner["id"]}
-        else:
-            model = ToolEchoingModel(first_call=_tool_call("get_project_opinions", owner["id"]))
-            body = {"message": question}
+        owner = self._two_members(client, configure, mode)
+        model = self._model(mode, owner["id"], call_tool=True)
         _use_model(client, model)
+        body: dict[str, Any] = {"message": _TRACE_QUESTION, "history": _TRACE_HISTORY}
+        if mode == "workflow":
+            body["project_id"] = owner["id"]
 
         # WHEN
         response = client.post(endpoint, json=body, headers=auth_header(owner["token"]))
@@ -1703,32 +1749,101 @@ class TestTracesCarryNoMemberData:
         # THEN
         assert response.status_code == 200
         shown = _shown(model)
-        for name in names:
+        for name in (OWNER_FIRST_NAME, OWNER_LAST_NAME, _SECOND_FIRST_NAME, _SECOND_LAST_NAME):
             assert name in shown
-        for position in positions:
+        for position in (_OWNER_POSITION_IN_TRACE, _SECOND_POSITION):
             assert position not in shown
         (traced,) = clients
         payload = "\n".join(traced.bodies)
-        # Every kind of run went through the anonymizing client, not only the root run.
-        runs = [json.loads(body) for body in traced.bodies]
+        for secret in _TRACE_SECRETS:
+            assert secret not in payload
+        owner_label = re.search(rf"- (Expert \d): lower={OWNER_LOWER:.2f}", payload)
+        assert owner_label is not None
+        other_label = "Expert 2" if owner_label[1] == "Expert 1" else "Expert 1"
+        runs = self._runs(traced)
+        # Every kind of run went through the client, and the root run, posted before any
+        # opinion was fetched in the tool modes, already carries the label.
         created = {(run["name"], run["run_type"]) for run in runs if "name" in run}
         assert ("assistant_turn", "chain") in created
         assert any(run_type == "llm" for _, run_type in created)
-        llm_inputs = [
-            json.dumps(run["inputs"])
-            for run in runs
-            if run.get("run_type") == "llm" and "inputs" in run
-        ]
-        assert any("Expert 1" in text for text in llm_inputs)
         if mode != "workflow":
             assert ("get_project_opinions", "tool") in created
-        assert "assistant_turn" in payload
-        assert question in payload
+        root = next(run for run in runs if run.get("name") == "assistant_turn")
+        assert root["inputs"] == {"question": f"Co \u0159\u00edk\u00e1 {owner_label[1]}?"}
+        llm_inputs = "\n".join(
+            json.dumps(run["inputs"], ensure_ascii=False)
+            for run in runs
+            if run.get("run_type") == "llm" and "inputs" in run
+        )
+        assert f"{other_label} jsem se neptal. {owner_label[1]} ano." in llm_inputs
+        answers = [
+            run["outputs"]["answer"]
+            for run in runs
+            if run.get("outputs", {}).get("answer") is not None
+        ]
+        assert answers == [
+            f"{owner_label[1]} to vychazi jinak nez {other_label}, ktera je "
+            f"[position of {other_label}]."
+        ]
+        assert f"{OWNER_PEAK:.2f}" in payload
+
+    @pytest.mark.parametrize("mode", ["hybrid", "agent"])
+    def test_a_traced_turn_that_never_reads_the_opinions_still_masks_the_members(
+        self, assistant_settings, client, configure, clients, mode
+    ):
+        """
+        GIVEN a traced hybrid or agent turn on a project with two members, and a model that
+            answers naming them without calling the opinions tool
+        WHEN the owner asks
+        THEN the model was shown no opinions block, and the trace holds no name either: the
+            roster was fetched for the mask alone
+        """
+        # GIVEN
+        owner = self._two_members(client, configure, mode)
+        model = self._model(mode, owner["id"], call_tool=False)
+        _use_model(client, model)
+        body = {"message": _TRACE_QUESTION, "history": _TRACE_HISTORY, "project_id": owner["id"]}
+
+        # WHEN
+        response = client.post(CHAT, json=body, headers=auth_header(owner["token"]))
+
+        # THEN
+        assert response.status_code == 200
+        assert "Number of opinions" not in _shown(model)
+        (traced,) = clients
+        payload = "\n".join(traced.bodies)
+        for secret in _TRACE_SECRETS:
+            assert secret not in payload
         assert "Expert 1" in payload
         assert "Expert 2" in payload
-        assert f"{OWNER_PEAK:.2f}" in payload
-        for secret in [*names, *positions]:
-            assert secret not in payload
+
+    @pytest.mark.parametrize("endpoint", [CHAT, STREAM])
+    @pytest.mark.parametrize("mode", _ALL_MODES)
+    def test_a_turn_with_no_current_project_still_sends_its_trace(
+        self, assistant_settings, client, configure, clients, mode, endpoint
+    ):
+        """
+        GIVEN tracing on and a question that names no project, so no opinions are fetched
+        WHEN it is answered in each mode
+        THEN the answer is 200 and the whole trace is sent, with the question as it was
+        """
+        # GIVEN
+        configure(ASSISTANT_MODE=mode)
+        token = register_and_login(client, f"no-project-{mode}@example.com")
+        _use_model(client, _scripted("Just an answer."))
+
+        # WHEN
+        response = client.post(
+            endpoint, json={"message": "What is BeCoMe?"}, headers=auth_header(token)
+        )
+
+        # THEN
+        assert response.status_code == 200
+        (traced,) = clients
+        runs = self._runs(traced)
+        root = next(run for run in runs if run.get("name") == "assistant_turn")
+        assert root["inputs"] == {"question": "What is BeCoMe?"}
+        assert any(run.get("outputs", {}).get("answer") == "Just an answer." for run in runs)
 
 
 class TestRetrieverWiring:

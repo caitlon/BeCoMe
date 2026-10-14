@@ -15,6 +15,7 @@ from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 
 from api.assistant.agent import tools
 from api.assistant.agent.context import AssistantContext, SourceRegistry
+from api.assistant.agent.masking import mask_participants
 from api.assistant.agent.prompt import render_context_block
 from api.assistant.agent.tools import (
     ASSISTANT_TOOLS,
@@ -104,6 +105,7 @@ def _result() -> ResultView:
 def _opinion(name: str = "Jana Novakova") -> OpinionView:
     return OpinionView(
         expert_name=name,
+        position="Hydrologist",
         lower_bound=37.0,
         peak=42.0,
         upper_bound=47.0,
@@ -773,6 +775,20 @@ class TestGetProjectOpinions:
         assert "- Jana Novakova: lower=37.00" in result
         assert "peak=42.00" in result
         assert ctx.tool_outputs == [result]
+
+    async def test_registers_the_experts_in_the_turns_roster(self):
+        """
+        GIVEN a client that returns two opinions
+        WHEN the tool runs
+        THEN the turn's roster knows both experts, labelled in the order of the block
+        """
+        client = AsyncMock(spec=UserApiClient)
+        client.get_opinions.return_value = [_opinion("Jana Novakova"), _opinion("Karel Dvorak")]
+        ctx = _ctx(client)
+
+        await get_project_opinions.ainvoke({"project_id": PROJECT_ID, "runtime": _runtime(ctx)})
+
+        assert mask_participants("Karel Dvorak and Jana", ctx.roster) == "Expert 2 and Expert 1"
 
     async def test_says_no_result_when_there_are_no_opinions(self):
         """

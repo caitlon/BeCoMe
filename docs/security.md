@@ -519,9 +519,22 @@ is `true` in the `prod` profile, or on a Railway environment whose name is not `
 (compared stripped and case-insensitively, so an unknown or renamed environment is refused). The
 profile and the name are checked independently. On any deploy the validator also requires the
 three model roles to be `api`, since a local model server is not reachable there. The model is
-never shown an expert's position. Tracing sends the text of questions, tool replies and answers
-to LangSmith, with the expert names in opinion blocks replaced by `Expert 1`, `Expert 2` and so
-on before they leave the process. With `assistant_langsmith_enabled`
+never shown an expert's position. Tracing sends the text of questions, history, tool replies and
+answers to LangSmith. The names and positions of the turn's participants, the experts of every
+opinions list the turn fetched, are replaced before anything leaves the process: a name by
+`Expert 1`, `Expert 2` and so on, the same labels the opinions block carries, and a position by
+`[position of Expert 1]`. The mask covers the question, the history, the opinions block, the model's
+calls, the tool replies, the answer, the errors and the run metadata, and it recognises a Czech
+name in its cases and without diacritics. A turn's runs are held in memory and sent when the turn
+ends, because the participants are known only once their opinions are fetched, so a trace appears
+in LangSmith after the answer and a process that dies mid-turn loses that trace. The client masks
+and sends them on a worker thread, and drops, with a log record that carries only the exception
+class, any call it cannot tie to a turn or cannot mask. It misses typos,
+diminutives, forms that change the stem (Kupka, Kupce), a name inside an e-mail address (the
+part too short to be searched for stays), and a name in the history that belongs to
+a project the turn did not fetch, unless the name sits in an opinions block, which is masked by
+its shape. A roster holds at most 100 experts: the rows of the rest are masked all the same, but
+their names are not searched for outside the rows. With `assistant_langsmith_enabled`
 on, a deployed service must use the EU endpoint and a named project other than the local default,
 and the LangSmith library's own switches (`LANGSMITH_TRACING` and its `LANGCHAIN_` variants) and
 its `RUNS_ENDPOINTS` lists are refused there: `assistant_langsmith_enabled` is the only way to

@@ -64,14 +64,8 @@ def _settings(**overrides) -> Settings:
     return Settings(**base)
 
 
-class _Opinion(OpinionView):
-    """An opinion that carries the position the roster reads."""
-
-    position: str
-
-
-def _opinion(name: str) -> _Opinion:
-    return _Opinion(
+def _opinion(name: str) -> OpinionView:
+    return OpinionView(
         expert_name=name,
         position="Hydrologist",
         lower_bound=37.0,
