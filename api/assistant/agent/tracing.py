@@ -36,6 +36,7 @@ cannot be masked, is dropped and never sent as it is. What this costs and leaves
 """
 
 import contextlib
+import functools
 import json
 import logging
 import threading
@@ -81,9 +82,6 @@ _MASKED_FIELDS = (
     *("events", "tags", "serialized", "attachments"),
 )
 
-# Whether a call with no trace id has been logged at WARNING yet, once per process.
-_warned_no_trace_id = False
-
 # The one client of the process. It batches traces on a background thread, so building
 # one per turn would start a thread per turn and lose the batching.
 _client: "MaskingClient | None" = None
@@ -123,6 +121,15 @@ def _trace_key(trace_id: Any) -> str | None:
         return str(uuid.UUID(str(trace_id)))
     except ValueError:
         return None
+
+
+@functools.cache
+def _warn_no_trace_id() -> None:
+    """Log, once per process, that a call arrived with no trace id."""
+    logger.warning(
+        "LangSmith call without a trace id dropped; the others are logged at DEBUG",
+        extra={"event": "assistant_trace_no_trace_id", "reason": "no_trace_id"},
+    )
 
 
 def _plain(value: Any) -> Any:
@@ -240,6 +247,13 @@ class MaskingClient(ls.Client):
             if held is None or key is None:
                 return
             self._remember(key, held.roster)
+            if held.roster.incomplete:
+                # A name may be missing from the roster: drop the trace, do not send it.
+                logger.info(
+                    "LangSmith trace dropped",
+                    extra={"event": "assistant_trace_dropped", "reason": "roster_incomplete"},
+                )
+                return
             # Under the lock, so that no late call reaches the worker before this flush.
             self._submit(self._flush, held)
 
@@ -301,7 +315,7 @@ class MaskingClient(ls.Client):
             if held is not None:
                 held.ops.append(_Op(op.kind, ls.utils.deepish_copy(op.kwargs)))
                 return
-            if roster is not None:
+            if roster is not None and not roster.incomplete:
                 kept = _Op(op.kind, ls.utils.deepish_copy(op.kwargs))
                 self._submit(self._send_late, kept, roster)
                 return
@@ -309,20 +323,13 @@ class MaskingClient(ls.Client):
 
     @staticmethod
     def _log_dropped(key: str | None) -> None:
-        """Log a call dropped for want of a turn: a call with no trace id once, at WARNING.
+        """Log a call dropped for want of a turn.
 
-        A library that stopped sending the trace id would otherwise drop every update in
-        silence. A call of an unknown or long-evicted trace is expected now and then, so it is
-        logged at DEBUG.
+        The first call with no trace id is logged at WARNING, so that a library that stopped
+        sending it cannot drop every update in silence. Every call is logged at DEBUG.
         """
-        global _warned_no_trace_id
-        if key is None and not _warned_no_trace_id:
-            _warned_no_trace_id = True
-            logger.warning(
-                "LangSmith call without a trace id dropped; later ones are not logged",
-                extra={"event": "assistant_trace_no_trace_id", "reason": "no_trace_id"},
-            )
-            return
+        if key is None:
+            _warn_no_trace_id()
         logger.debug(
             "LangSmith call dropped",
             extra={"event": "assistant_trace_dropped", "reason": "unknown_trace"},

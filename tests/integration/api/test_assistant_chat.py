@@ -1787,6 +1787,28 @@ class TestTracesCarryNoMemberData:
         ]
         assert f"{OWNER_PEAK:.2f}" in payload
 
+    @pytest.mark.parametrize(
+        ("mode", "failing"), [("agent", "get_opinions"), ("workflow", "get_project")]
+    )
+    def test_a_turn_whose_experts_could_not_be_read_sends_no_trace(
+        self, assistant_settings, client, configure, clients, mode, failing
+    ):
+        """
+        GIVEN a traced turn on a project, in which the roster fetch (agent mode) or the
+            project read (workflow mode) fails
+        WHEN the owner asks
+        THEN nothing is sent to LangSmith
+        """
+        owner = self._two_members(client, configure, mode)
+        _use_model(client, _scripted("Fine."))
+        body = {"message": "Who took part?", "project_id": owner["id"]}
+
+        with patch.object(UserApiClient, failing, side_effect=AssistantUpstreamError("bad")):
+            client.post(CHAT, json=body, headers=auth_header(owner["token"]))
+
+        (traced,) = clients
+        assert traced.bodies == []
+
     @pytest.mark.parametrize("mode", ["hybrid", "agent"])
     def test_a_traced_turn_that_never_reads_the_opinions_still_masks_the_members(
         self, assistant_settings, client, configure, clients, mode

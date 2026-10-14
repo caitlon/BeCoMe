@@ -18,9 +18,9 @@ in any case, as a whole phrase only, never word by word, so ``Officer`` stays in
 text when the position is ``Dam Safety Officer``. A position of fewer than four word characters
 with no lower-case letter (IT, HR, C#) is found only as written, and one of a single character
 (n, 5) is not searched for. Typos, diminutives and the forms that change a word's stem
-(Kupka, Kupce) are not found. A name inside an e-mail address is found only as far as its parts
-are searched for, so ``jana.novakova@example.com`` keeps ``jana``; the address is not masked as a
-whole.
+(Kupka, Kupce) are not found. A name inside an e-mail address is found word by word, and a word of fewer than five letters is
+found only with the capital it was stored with, so ``jana.novakova@example.com`` becomes
+``jana.Expert 1@example.com``; the address is not masked as a whole.
 
 A roster registers at most 100 participants. Past that an expert is still masked wherever a
 block shows the name in a row, but the name is not searched for anywhere else in the text.
@@ -172,11 +172,7 @@ def _is_word_char(char: str) -> bool:
 
 
 def _split_edges(word: str) -> tuple[str, str, str]:
-    """Split a word into the non-word characters at its start, its core and those at its end.
-
-    :param word: The word.
-    :return: The three parts; the core is empty when the word has no word character.
-    """
+    """Split a word into its leading non-word characters, its core and its trailing ones."""
     start = 0
     while start < len(word) and not _is_word_char(word[start]):
         start += 1
@@ -326,11 +322,10 @@ def _as_written(words: Sequence[str]) -> str:
 def _position_regex(position: str) -> str | None:
     """Write the pattern that finds a position, or None when it is not searched for.
 
-    :param position: The position, cleaned.
-    :return: An acronym is found as written. A word, or a phrase with a word of two
-        characters or more, is found in any case and with Czech endings. A short one with
-        lower-case letters and a symbol (c#, c++) is found as written. One with a backslash
-        is not searched for, so that a position such as ``\\n`` cannot tear an escape.
+    An acronym is found as written. A word, or a phrase with a word of two characters or
+    more, is found in any case with Czech endings. A short one with lower-case letters and a
+    symbol (c#, c++) is found as written, unless it holds a backslash, so ``\\n`` cannot tear
+    an escape.
     """
     words = position.split()
     has_word_char = re.search(r"\w", position) is not None
@@ -355,10 +350,9 @@ def _row_head(head: str) -> str:
 class _Alt:
     """What one alternative of the pattern puts in place of what it finds.
 
-    :ivar length: The length of what it looks for, longest first when the pattern is built.
+    :ivar length: Of what it looks for; the longest alternative goes first.
     :ivar replacement: The label or placeholder.
-    :ivar exact: Whether it is an acronym found only as written, listed before a pattern in
-        any case when both look for the same length of text.
+    :ivar exact: Whether it is an acronym; of two of one length, it goes first.
     """
 
     length: int
@@ -405,6 +399,8 @@ class TurnRoster:
         self._lock = threading.Lock()
         self._by_name: dict[str, _Participant] = {}
         self._count = 0
+        # True until the opinions of the project the turn is about are read into the roster.
+        self.incomplete = False
         # A position to the position as written and the participants holding it. An acronym is
         # keyed by its exact spelling, any other position case folded.
         self._positions: dict[str, tuple[str, set[int]]] = {}
@@ -427,10 +423,7 @@ class TurnRoster:
             self._matcher = None
 
     def _participant_of(self, opinion: Expert) -> _Participant | None:
-        """Find or register the opinion's expert; the caller holds the lock.
-
-        :return: The participant, or None for a blank name or a roster that is full.
-        """
+        """Find or register the opinion's expert, or None; the caller holds the lock."""
         name = _comparable(clean_text(opinion.expert_name, _MATCH_LIMIT))
         if not name:
             return None
@@ -537,11 +530,9 @@ def _name_alts(participant: _Participant) -> dict[str, _Alt]:
 
 
 def _assemble(heads: dict[str, _Alt], alts: dict[str, _Alt]) -> _Matcher:
-    """Join the alternatives into one pattern, the longest first.
+    """Join the row heads, then the names and positions, into one pattern, longest first.
 
-    :param heads: The row heads, which go first.
-    :param alts: Names and positions. Of two of the same length an acronym goes first, so the
-        label of a tie does not depend on the order the experts were met in.
+    An acronym goes first of two of one length, so a tie does not depend on who was met first.
     """
     row_heads = sorted(heads.items(), key=lambda item: -item[1].length)
     ordered = sorted(alts.items(), key=lambda item: (-item[1].length, not item[1].exact))

@@ -495,13 +495,13 @@ class TestHeldTurn:
         assert "Alice" not in "\n".join(client.bodies)
         assert json.loads(client.bodies[0])["name"] == "assistant_turn"
 
-    def test_a_call_with_no_trace_id_is_logged_once_at_warning(self, built, monkeypatch):
+    def test_a_call_with_no_trace_id_is_logged_once_at_warning(self, built):
         """
         GIVEN a client that holds a turn, and no such warning yet in this process
         WHEN two calls arrive with no trace id and one with the id of an unknown trace
         THEN one WARNING says so, and the unknown trace is logged below it
         """
-        monkeypatch.setattr(tracing, "_warned_no_trace_id", False)
+        tracing._warn_no_trace_id.cache_clear()
         run = tracing.start_turn(_enabled_settings(), "q", TurnRoster())
 
         with captured_log_records("api.assistant.agent.tracing") as records:
@@ -511,6 +511,32 @@ class TestHeldTurn:
 
         warnings = [r for r in records if r.levelno >= logging.WARNING]
         assert [r.__dict__.get("event") for r in warnings] == ["assistant_trace_no_trace_id"]
+
+    def test_a_turn_whose_roster_cannot_be_complete_is_dropped_with_one_info_record(self, built):
+        """
+        GIVEN a turn whose roster is incomplete, with a child run
+        WHEN it ends, and a late call for one of its runs arrives
+        THEN nothing is sent, and one INFO record names the event and the reason
+        """
+        settings = _enabled_settings()
+        roster = TurnRoster()
+        roster.incomplete = True
+        run = tracing.start_turn(settings, "q", roster)
+        (client,) = built
+        with tracing.tracing_scope(settings, parent=run), ls.trace("child", inputs={}):
+            pass
+
+        with captured_log_records("api.assistant.agent.tracing") as records:
+            tracing.end_turn(run, outputs={"answer": "a"})
+            client.update_run(run.id, trace_id=run.trace_id, outputs={"late": "x"})
+            client.wait_idle(10)
+
+        assert client.bodies == []
+        (info,) = [r for r in records if r.levelno == logging.INFO]
+        assert (info.__dict__["event"], info.__dict__["reason"]) == (
+            "assistant_trace_dropped",
+            "roster_incomplete",
+        )
 
     def test_a_name_met_only_in_a_later_run_is_masked_in_the_earlier_ones(self, built):
         """
@@ -828,11 +854,7 @@ class TestReleaseWorker:
         assert "BOOM" not in record.getMessage() + str(record.__dict__)
 
     def test_the_masked_fields_are_these_nine(self):
-        """
-        GIVEN the fields of a run that the client masks
-        WHEN they are listed
-        THEN they are the nine below, so that dropping one is a failure of its own
-        """
+        """The client masks these nine fields, so that dropping one fails a test of its own."""
         assert set(tracing._MASKED_FIELDS) == {
             *("name", "inputs", "outputs", "error", "extra"),
             *("events", "tags", "serialized", "attachments"),

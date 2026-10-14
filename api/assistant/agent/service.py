@@ -65,6 +65,9 @@ logger = logging.getLogger(__name__)
 # are left room by capping it.
 _HISTORY_CHAR_BUDGET = 6000
 
+# The most seconds the fetch of the opinions for the trace mask may take (hybrid, agent).
+_ROSTER_FETCH_SECONDS = 5.0
+
 
 def _kept_history(history: list[ChatTurn], max_turns: int) -> list[ChatTurn]:
     """Choose the part of the client's history the model is sent.
@@ -166,13 +169,16 @@ class AssistantService:
         ]
         deadline_at = started + self._settings.assistant_turn_timeout_seconds
         trace = start_turn(self._settings, request.message, ctx.roster)
+        if trace is not None and ctx.current_project_id is not None:
+            # Complete once the current project's opinions are read into it (see below).
+            ctx.roster.incomplete = True
         try:
             with tracing_scope(self._settings, parent=trace):
                 try:
                     async with asyncio.timeout_at(deadline_at) as deadline:
                         parts = [] if mode == "agent" else await self._fetch(request, ctx)
                         if trace is not None and mode != "workflow":
-                            await self._register_participants(ctx)
+                            await self._register_participants(ctx, deadline_at)
                         if mode != "workflow" and ctx.current_project_id is not None:
                             parts.append(f"Current project id: {ctx.current_project_id}")
                         messages.append(HumanMessage(content=user_message(parts, request.message)))
@@ -383,20 +389,27 @@ class AssistantService:
         return AssistantUnavailableError("the model gave an empty answer")
 
     @staticmethod
-    async def _register_participants(ctx: AssistantContext) -> None:
+    async def _register_participants(ctx: AssistantContext, deadline_at: float) -> None:
         """Fetch the current project's opinions for the trace mask alone.
 
         The modes with tools do not fetch the opinions ahead, but a question or an answer
         can name an expert the model never reads about, and the trace of the turn is masked
-        with the experts the turn has met. Nothing fetched here reaches the model. A failure
-        is ignored: it changes neither the turn's answer nor its errors.
+        with the experts the turn has met. Nothing fetched here reaches the model. The fetch
+        has a bound of its own, :data:`_ROSTER_FETCH_SECONDS`, capped by the turn's deadline. A
+        failure or timeout changes neither the answer nor the errors of the turn, but leaves
+        the roster incomplete, so the turn's trace is dropped.
 
         :param ctx: The turn's context; its roster is filled.
+        :param deadline_at: The event loop's clock when the turn runs out of time.
         """
         if ctx.current_project_id is None:
             return
+        bound = min(asyncio.get_running_loop().time() + _ROSTER_FETCH_SECONDS, deadline_at)
         try:
-            ctx.roster.add(await ctx.client.get_opinions(ctx.current_project_id))
+            async with asyncio.timeout_at(bound):
+                opinions = await ctx.client.get_opinions(ctx.current_project_id)
+            ctx.roster.add(opinions)
+            ctx.roster.incomplete = False
         except Exception as exc:
             logger.debug(
                 "Assistant roster could not be fetched",
@@ -435,6 +448,8 @@ class AssistantService:
             if result is not None:
                 project_blocks.append(render_context_block([], result))
             ctx.roster.add(opinions)
+            if self._settings.assistant_mode == "workflow":
+                ctx.roster.incomplete = False
             if opinions:
                 project_blocks.append(render_opinions(opinions))
             ctx.tool_outputs.extend(project_blocks)
