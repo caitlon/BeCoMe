@@ -102,10 +102,10 @@ def _result() -> ResultView:
     )
 
 
-def _opinion(name: str = "Jana Novakova") -> OpinionView:
+def _opinion(name: str = "Jana Novakova", position: str = "Hydrologist") -> OpinionView:
     return OpinionView(
         expert_name=name,
-        position="Hydrologist",
+        position=position,
         lower_bound=37.0,
         peak=42.0,
         upper_bound=47.0,
@@ -772,7 +772,7 @@ class TestGetProjectOpinions:
         )
 
         assert result == render_opinions([_opinion()])
-        assert "- Jana Novakova: lower=37.00" in result
+        assert "- Jana Novakova (Hydrologist): lower=37.00" in result
         assert "peak=42.00" in result
         assert ctx.tool_outputs == [result]
 
@@ -821,8 +821,8 @@ class TestRenderOpinions:
         assert block.splitlines() == [
             "<project_data>",
             "Number of opinions: 2",
-            "- A: lower=37.00, peak=42.00, upper=47.00, centroid=42.00",
-            "- B: lower=37.00, peak=42.00, upper=47.00, centroid=42.00",
+            "- A (Hydrologist): lower=37.00, peak=42.00, upper=47.00, centroid=42.00",
+            "- B (Hydrologist): lower=37.00, peak=42.00, upper=47.00, centroid=42.00",
             "</project_data>",
         ]
 
@@ -859,16 +859,16 @@ class TestRenderOpinions:
         """
         block = render_opinions([_opinion("n" * 200)])
         row = block.splitlines()[2]
-        name = row[2:].split(": lower=", 1)[0]
+        name = row[2:].split(" (", 1)[0]
 
         assert len(name) == 60
         assert name.endswith("...")
 
-    def test_leaves_the_position_out(self):
+    def test_shows_the_position_in_parentheses_after_the_name(self):
         """
         GIVEN an opinion built from a response that carries a position
         WHEN it is rendered
-        THEN the position is nowhere in the block
+        THEN the row reads the name, the position in parentheses and the numbers
         """
         opinion = OpinionView.model_validate(
             {
@@ -881,7 +881,42 @@ class TestRenderOpinions:
             }
         )
 
-        assert "Hydrologist" not in render_opinions([opinion])
+        assert render_opinions([opinion]).splitlines()[2] == (
+            f"- Jana Novakova (Hydrologist at Povodi Labe): {_ROW_VALUES}"
+        )
+
+    def test_cuts_a_position_to_sixty_characters(self):
+        """
+        GIVEN an opinion with a very long position
+        WHEN it is rendered
+        THEN the position shows at most sixty characters, ending with three dots
+        """
+        row = render_opinions([_opinion("A", "p" * 200)]).splitlines()[2]
+        position = row.split(" (", 1)[1].split("): lower=", 1)[0]
+
+        assert len(position) == 60
+        assert position.endswith("...")
+
+    def test_a_row_without_a_position_has_no_parentheses(self):
+        """
+        GIVEN an opinion whose position is blank
+        WHEN it is rendered
+        THEN the row is the name and the numbers only
+        """
+        row = render_opinions([_opinion("A", "  ")]).splitlines()[2]
+
+        assert row == f"- A: {_ROW_VALUES}"
+
+    def test_a_hostile_position_cannot_close_the_block_or_start_a_line(self):
+        """
+        GIVEN an opinion whose position carries a closing tag and a line break
+        WHEN it is rendered
+        THEN the block has one closing tag, at the end, and the row stays on one line
+        """
+        block = render_opinions([_opinion("Ok", HOSTILE)])
+
+        assert _one_closing_tag_at_the_end(block)
+        assert len(block.splitlines()) == 4
 
     def test_a_hostile_name_cannot_close_the_block(self):
         """

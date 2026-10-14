@@ -760,9 +760,8 @@ class TestWhatTheModelIsShown:
         GIVEN a project with two members, each with an opinion
         WHEN the owner asks about it in each mode: with the project fetched ahead in the
             workflow mode, through a tool call in the hybrid and agent modes
-        THEN the model was shown the project and the experts' names (the control), and
-            nothing that identifies an account: no email, no user id, no token, and no
-            position
+        THEN the model was shown the project and the experts' names and positions (the
+            control), and nothing that identifies an account: no email, no user id, no token
         """
         # GIVEN
         configure(ASSISTANT_MODE=mode)
@@ -798,8 +797,8 @@ class TestWhatTheModelIsShown:
         shown = _shown(model)
         assert OWNER_FIRST_NAME in shown
         assert "Second Expert" in shown
-        assert OWNER_POSITION not in shown
-        assert "Second Opinion Holder" not in shown
+        assert OWNER_POSITION in shown
+        assert "Second Opinion Holder" in shown
         for identifier in identifiers:
             assert identifier not in shown
             assert identifier not in response.text
@@ -1730,7 +1729,7 @@ class TestTracesCarryNoMemberData:
             in other cases and quoting a position
         WHEN the owner asks through the real route in each mode: with the opinions fetched
             ahead in the workflow mode, through the tool in the hybrid and agent modes
-        THEN the model was shown both names and no position, and nothing the client would have
+        THEN the model was shown both names and both positions, and nothing the client would have
             sent to LangSmith holds a name or a position in any of the forms used, while the
             question, the history and the answer carry the labels of the opinions block and the
             numbers are there
@@ -1752,7 +1751,7 @@ class TestTracesCarryNoMemberData:
         for name in (OWNER_FIRST_NAME, OWNER_LAST_NAME, _SECOND_FIRST_NAME, _SECOND_LAST_NAME):
             assert name in shown
         for position in (_OWNER_POSITION_IN_TRACE, _SECOND_POSITION):
-            assert position not in shown
+            assert position in shown
         (traced,) = clients
         payload = "\n".join(traced.bodies)
         for secret in _TRACE_SECRETS:

@@ -355,7 +355,7 @@ is called (the model never sees them). That fetch is cut off after five seconds,
 or timeout does not change the turn but drops its trace (see below). Each expert gets
 a label, `Expert 1`, `Expert 2` and so on, in order of first appearance. In the trace, a row of
 the opinions block reads `- Expert 1: lower=...`, the label standing where the model read the
-name. In every other string of the trace:
+name and the position. In every other string of the trace:
 
 - a name is replaced by the expert's label, as the whole name and as each of its words, in the
   Czech cases a word takes (Nováková, Novákové, Novákovou) and without diacritics (Novak). The

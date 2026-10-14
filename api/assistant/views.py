@@ -67,8 +67,8 @@ class ResultView(BaseModel):
 class OpinionView(BaseModel):
     """One expert's opinion, with the expert named but never identified.
 
-    The position is a field so that the turn's roster can hide it in traces. It is not
-    written into any block the model reads.
+    The position is shown to the model next to the name, and the turn's roster hides both
+    in traces.
     """
 
     model_config = ConfigDict(extra="ignore", frozen=True)
