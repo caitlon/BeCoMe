@@ -2,10 +2,10 @@
 
 When tracing is on, the text of questions, history, tool replies and answers goes to the
 configured LangSmith endpoint, but not the names and positions of the turn's participants.
-Those are replaced with ``Expert 1``, ``Expert 2`` and ``[position of Expert 1]`` before
-anything leaves the process. Every run of the turn is masked with the turn's roster (see
-:class:`~api.assistant.agent.masking.TurnRoster`), whatever the turn has registered by the
-time it ends. ``assistant_langsmith_enabled`` is the
+Those are the experts of every opinions list the turn fetched or read in a block, and they are
+replaced with ``Expert 1``, ``Expert 2`` and ``[position of Expert 1]`` before anything leaves
+the process (see :class:`~api.assistant.agent.masking.TurnRoster`). Every run of the turn is
+masked with the roster as it stands when the turn ends. ``assistant_langsmith_enabled`` is the
 only switch, in every environment, and a deployed service may use only the EU endpoint
 (Settings refuses the rest). With it off, which is the default, nothing is traced and
 nothing leaves the machine, whatever the LangSmith library's own environment variables say.
@@ -15,13 +15,12 @@ each phase (prepare, then generation) hangs its runs under it until :func:`end_t
 
 The participants are known only once the turn has fetched their opinions, which in agent
 mode happens after the question and the first model call have started. So the shared client
-holds every run of a turn in memory and, when the turn ends, masks and sends them on a worker
-thread of its own, each masked with the roster the turn gathered, so the masking runs on a
-worker thread, not on the event loop. Two layers apply: the roster
-mask, then the opinions-block mask by shape (see
-:func:`~api.assistant.agent.tools.mask_opinion_names`), which also runs in the client's
-anonymizer. A call that cannot be tied to a turn, or that cannot be masked, is dropped and
-never sent as it is. What this costs and leaves open:
+holds every run of a turn in memory and, when the turn ends, reads the opinions blocks of all
+of them into the roster, then masks and sends the runs in order. That work runs on a worker
+thread of the client, not on the event loop. Two layers apply: the roster mask, then the
+opinions-block mask by shape (see :func:`~api.assistant.agent.tools.mask_opinion_names`),
+which also runs in the client's anonymizer. A call that cannot be tied to a turn, or that
+cannot be masked, is dropped and never sent as it is. What this costs and leaves open:
 
 - A trace appears in LangSmith only after the turn ends. A process that dies mid-turn loses
   that trace, and so does :func:`shutdown_tracing` for a turn still running.
@@ -36,6 +35,7 @@ never sent as it is. What this costs and leaves open:
   masked as well.
 """
 
+import contextlib
 import json
 import logging
 import threading
@@ -81,6 +81,9 @@ _MASKED_FIELDS = (
     *("events", "tags", "serialized", "attachments"),
 )
 
+# Whether a call with no trace id has been logged at WARNING yet, once per process.
+_warned_no_trace_id = False
+
 # The one client of the process. It batches traces on a background thread, so building
 # one per turn would start a thread per turn and lose the batching.
 _client: "MaskingClient | None" = None
@@ -123,7 +126,10 @@ def _trace_key(trace_id: Any) -> str | None:
 
 
 def _plain(value: Any) -> Any:
-    """Turn an object a run holds into JSON data: dates in ISO form, messages dumped, else ``str``."""
+    """Turn an object a run holds into JSON data.
+
+    Dates are written in ISO form, messages are dumped, anything else is written with ``str``.
+    """
     if isinstance(value, date):
         return value.isoformat()
     dump = getattr(value, "model_dump", None)
@@ -146,21 +152,31 @@ def _mask_text(text: str, roster: TurnRoster) -> str:
     return mask_participants(mask_opinion_rows(text, roster), roster)
 
 
-def _mask_payload(value: Any, roster: TurnRoster) -> Any:
-    """Mask the participants in every string of a value, whatever it is nested in.
+def _map_strings(value: Any, change: Callable[[str], str]) -> Any:
+    """Apply a function to every string of a value, whatever it is nested in.
 
     The value is first turned into plain JSON data, so that a message object in a run's
-    outputs is read as text too, and then each string is masked (see :func:`_mask_text`).
+    outputs is read as text too.
 
     :param value: A part of a run.
-    :param roster: The turn's participants.
-    :return: A masked copy.
+    :param change: What to do with a string.
+    :return: A copy with each string replaced by the function's result.
     """
-    anonymizer = create_anonymizer(
-        CallableNodeProcessor(lambda text: _mask_text(text, roster)),
-        max_depth=_MASK_MAX_DEPTH,
-    )
+    anonymizer = create_anonymizer(CallableNodeProcessor(change), max_depth=_MASK_MAX_DEPTH)
     return anonymizer(json.loads(json.dumps(value, default=_plain)))
+
+
+def _note_experts(text: str, roster: TurnRoster) -> str:
+    """Add the experts of the opinions blocks in a string to the roster; change nothing."""
+    mask_opinion_rows(text, roster)
+    return text
+
+
+def _read_blocks(op: _Op, roster: TurnRoster) -> None:
+    """Add the experts of every opinions block in a call to the roster, and nothing else."""
+    for name in _MASKED_FIELDS:
+        if op.kwargs.get(name):
+            _map_strings(op.kwargs[name], lambda text: _note_experts(text, roster))
 
 
 def _masked(op: _Op, roster: TurnRoster) -> _Op:
@@ -173,7 +189,7 @@ def _masked(op: _Op, roster: TurnRoster) -> _Op:
     kwargs = dict(op.kwargs)
     for name in _MASKED_FIELDS:
         if kwargs.get(name):
-            kwargs[name] = _mask_payload(kwargs[name], roster)
+            kwargs[name] = _map_strings(kwargs[name], lambda text: _mask_text(text, roster))
     return _Op(op.kind, kwargs)
 
 
@@ -209,7 +225,6 @@ class MaskingClient(ls.Client):
             self._held[str(key)] = _Held(roster)
             while len(self._held) > _MAX_HELD_TRACES:
                 dropped_id, dropped = self._held.popitem(last=False)
-                dropped.roster.drop_matcher()
                 self._remember(dropped_id, dropped.roster)
 
     def release(self, trace_id: str) -> None:
@@ -290,13 +305,39 @@ class MaskingClient(ls.Client):
                 kept = _Op(op.kind, ls.utils.deepish_copy(op.kwargs))
                 self._submit(self._send_late, kept, roster)
                 return
+        self._log_dropped(key)
+
+    @staticmethod
+    def _log_dropped(key: str | None) -> None:
+        """Log a call dropped for want of a turn: a call with no trace id once, at WARNING.
+
+        A library that stopped sending the trace id would otherwise drop every update in
+        silence. A call of an unknown or long-evicted trace is expected now and then, so it is
+        logged at DEBUG.
+        """
+        global _warned_no_trace_id
+        if key is None and not _warned_no_trace_id:
+            _warned_no_trace_id = True
+            logger.warning(
+                "LangSmith call without a trace id dropped; later ones are not logged",
+                extra={"event": "assistant_trace_no_trace_id", "reason": "no_trace_id"},
+            )
+            return
         logger.debug(
             "LangSmith call dropped",
             extra={"event": "assistant_trace_dropped", "reason": "unknown_trace"},
         )
 
     def _flush(self, held: _Held) -> None:
-        """Mask and send the calls of a turn that ended, in order; runs on the worker."""
+        """Mask and send the calls of a turn that ended, in order; runs on the worker.
+
+        The opinions blocks of all the calls are read into the roster first, so that a name
+        met only in a later run is masked in an earlier one, the question in the root run
+        included. A call that cannot be read here is dropped by the second pass.
+        """
+        for op in held.ops:
+            with contextlib.suppress(Exception):
+                _read_blocks(op, held.roster)
         for op in held.ops:
             self._send_masked(op, held.roster)
         held.roster.drop_matcher()

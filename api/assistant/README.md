@@ -113,7 +113,7 @@ variables.
    rig where the limiter is off. The hourly cap is not paced: a long run still needs
    `ASSISTANT_RATE_LIMIT_PER_HOUR=0`. Tracing is off unless `--trace` is given and
    `ASSISTANT_LANGSMITH_ENABLED` is on; it sends the question and answer text to LangSmith, with
-   the turn's participants hidden first (see [Tracing](#tracing)).
+   the names and positions of the project's experts replaced first (see [Tracing](#tracing)).
    In the running service, with the setting on, one chat turn is one trace: an `assistant_turn`
    run holding the query translation, the document search and the answer calls. In the agent
    mode the search shows as the tool call instead. The trace reaches LangSmith only when the

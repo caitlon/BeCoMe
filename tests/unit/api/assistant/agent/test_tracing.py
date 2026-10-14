@@ -1,6 +1,7 @@
 """Tests for the LangSmith tracing scope, a no-op unless explicitly enabled."""
 
 import json
+import logging
 import threading
 import uuid
 from datetime import UTC, datetime
@@ -469,21 +470,66 @@ class TestHeldTurn:
         names = {json.loads(body).get("name") for body in client.bodies}
         assert {"assistant_turn", "child"} <= names
 
-    @pytest.mark.parametrize("ids", [{}, {"trace_id": uuid.uuid4()}], ids=["no id", "no turn"])
+    @pytest.mark.parametrize(
+        "ids",
+        [
+            lambda run: {},
+            lambda run: {"trace_id": uuid.uuid4()},
+            lambda run: {"dotted_order": run.dotted_order},
+        ],
+        ids=["no id", "no turn", "dotted order only"],
+    )
     def test_a_call_that_belongs_to_no_turn_is_dropped(self, built, ids):
         """
         GIVEN a client that holds a turn
-        WHEN a call arrives with no trace id, or with the id of a trace no turn owns
+        WHEN a call arrives with no trace id (a dotted order does not stand in for one), or
+            with the id of a trace no turn owns
         THEN it is dropped, and the turn's own runs are not affected
         """
         run = tracing.start_turn(_enabled_settings(), "q", TurnRoster())
         (client,) = built
 
-        client.update_run(run.id, outputs={"x": "Alice Novak"}, **ids)
+        client.update_run(run.id, outputs={"x": "Alice Novak"}, **ids(run))
         tracing.end_turn(run, outputs={"answer": "a"})
 
         assert "Alice" not in "\n".join(client.bodies)
         assert json.loads(client.bodies[0])["name"] == "assistant_turn"
+
+    def test_a_call_with_no_trace_id_is_logged_once_at_warning(self, built, monkeypatch):
+        """
+        GIVEN a client that holds a turn, and no such warning yet in this process
+        WHEN two calls arrive with no trace id and one with the id of an unknown trace
+        THEN one WARNING says so, and the unknown trace is logged below it
+        """
+        monkeypatch.setattr(tracing, "_warned_no_trace_id", False)
+        run = tracing.start_turn(_enabled_settings(), "q", TurnRoster())
+
+        with captured_log_records("api.assistant.agent.tracing") as records:
+            for ids in ({}, {}, {"trace_id": uuid.uuid4()}):
+                built[0].update_run(run.id, **ids)
+            tracing.end_turn(run)
+
+        warnings = [r for r in records if r.levelno >= logging.WARNING]
+        assert [r.__dict__.get("event") for r in warnings] == ["assistant_trace_no_trace_id"]
+
+    def test_a_name_met_only_in_a_later_run_is_masked_in_the_earlier_ones(self, built):
+        """
+        GIVEN a turn whose question names a stranger, whom only a later run's opinions block
+            introduces to the roster
+        WHEN the turn ends
+        THEN the question, in the root run, is masked too
+        """
+        settings = _enabled_settings()
+        run = tracing.start_turn(settings, "What does Stranger Unknown think?", TurnRoster())
+        block = render_opinions([_opinion("Stranger Unknown")])
+        with tracing.tracing_scope(settings, parent=run), ls.trace("child", inputs={}) as span:
+            span.end(outputs={"block": block})
+
+        tracing.end_turn(run, outputs={"answer": "a"})
+
+        question = json.loads(built[0].bodies[0])["inputs"]["question"]
+        assert "Expert 1" in question
+        assert "Stranger" not in "\n".join(built[0].bodies)
 
     def test_a_trace_id_in_another_spelling_finds_the_held_turn_and_the_call_is_copied(self, built):
         """
@@ -781,13 +827,18 @@ class TestReleaseWorker:
         assert record.__dict__["reason"] == "ValueError"
         assert "BOOM" not in record.getMessage() + str(record.__dict__)
 
-    @pytest.mark.parametrize(
-        "field",
-        [
+    def test_the_masked_fields_are_these_nine(self):
+        """
+        GIVEN the fields of a run that the client masks
+        WHEN they are listed
+        THEN they are the nine below, so that dropping one is a failure of its own
+        """
+        assert set(tracing._MASKED_FIELDS) == {
             *("name", "inputs", "outputs", "error", "extra"),
             *("events", "tags", "serialized", "attachments"),
-        ],
-    )
+        }
+
+    @pytest.mark.parametrize("field", tracing._MASKED_FIELDS)
     def test_every_masked_field_hides_a_name_and_a_strangers_row(self, field):
         """
         GIVEN a roster that met Alice, and a call that holds, in one field, her name and an
