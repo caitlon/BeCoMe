@@ -12,14 +12,8 @@ from api.assistant.agent.tools import mask_opinion_names, mask_opinion_rows, ren
 from api.assistant.views import OpinionView
 
 
-class _Opinion(OpinionView):
-    """An opinion that carries the position the roster reads."""
-
-    position: str
-
-
-def _opinion(name: str, position: str = "Hydrologist") -> _Opinion:
-    return _Opinion(
+def _opinion(name: str, position: str = "Hydrologist") -> OpinionView:
+    return OpinionView(
         expert_name=name,
         position=position,
         lower_bound=37.0,
@@ -29,13 +23,13 @@ def _opinion(name: str, position: str = "Hydrologist") -> _Opinion:
     )
 
 
-def _roster(*specs: _Opinion | str | tuple[str, str]) -> TurnRoster:
+def _roster(*specs: OpinionView | str | tuple[str, str]) -> TurnRoster:
     """Build a roster from opinions, names, or (name, position) pairs."""
     roster = TurnRoster()
     roster.add(
         [
             spec
-            if isinstance(spec, _Opinion)
+            if isinstance(spec, OpinionView)
             else _opinion(spec)
             if isinstance(spec, str)
             else _opinion(*spec)
@@ -211,6 +205,22 @@ _ROWS = [
         "Ptal se [position of Expert 1] a [position of Expert 1]",
     ),
     ((("Alice Moore", "n"), ("Bob Green", "5")), "line\\n- x, 5 experts", "line\\n- x, 5 experts"),
+    # a Chinese position inside a sentence; lower-case symbol positions; a backslash one is left
+    ((("Alice Moore", "社長"),), "彼は社長です", "彼は[position of Expert 1]です"),
+    (
+        (("Alice Moore", "c#"), ("Bob Green", "c++"), ("Carol White", "f#")),
+        "c#, c++ and f#, but C# and c#x",
+        "[position of Expert 1], [position of Expert 2] and [position of Expert 3], but C# and c#x",
+    ),
+    ((("Alice Moore", "\\n"),), "line\\n- x and \\n", "line\\n- x and \\n"),
+    # of two spellings that tie, the acronym wins whichever expert was met first
+    (
+        (("Bob Green", "it"), ("Alice Moore", "IT")),
+        "IT and it",
+        "[position of Expert 2] and [position of Expert 1]",
+    ),
+    # a known gap: an address keeps the part of the name that is too short to be searched for
+    (("Jana Nováková",), "jana.novakova@example.com", "jana.Expert 1@example.com"),
     *_forms(
         (("Alice Moore", "ředitel odboru"),),
         "Ptal se {}.",
@@ -441,3 +451,17 @@ class TestBlockRows:
         assert "Chair" not in masked
         assert "Bob" not in masked
         assert masked.count("lower=37.00") == 2
+
+
+@pytest.mark.parametrize(
+    "word", ["", "a", "_a_", "(C#)", "...", "--x--", "a b", "\n.x\n", "社長!", "ř_"]
+)
+def test_the_edges_of_a_word_split_as_a_regular_expression_would_split_them(word):
+    """
+    GIVEN words with and without punctuation, underscores and non-ASCII letters at the ends
+    WHEN they are split into leading symbols, core and trailing symbols
+    THEN the parts are those of the regular expression the split replaced
+    """
+    expected = re.fullmatch(r"(\W*)(.*?)(\W*)", word, re.DOTALL)
+    assert expected is not None
+    assert masking._split_edges(word) == expected.groups()

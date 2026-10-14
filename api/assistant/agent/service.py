@@ -33,7 +33,6 @@ from api.assistant.agent.generation import (
     Generated,
     user_message,
 )
-from api.assistant.agent.masking import TurnRoster
 from api.assistant.agent.prompt import (
     FORMULA_NUMBERS,
     PINNED_NUMBERS,
@@ -166,12 +165,14 @@ class AssistantService:
             for turn in kept
         ]
         deadline_at = started + self._settings.assistant_turn_timeout_seconds
-        trace = start_turn(self._settings, request.message, TurnRoster())
+        trace = start_turn(self._settings, request.message, ctx.roster)
         try:
             with tracing_scope(self._settings, parent=trace):
                 try:
                     async with asyncio.timeout_at(deadline_at) as deadline:
                         parts = [] if mode == "agent" else await self._fetch(request, ctx)
+                        if trace is not None and mode != "workflow":
+                            await self._register_participants(ctx)
                         if mode != "workflow" and ctx.current_project_id is not None:
                             parts.append(f"Current project id: {ctx.current_project_id}")
                         messages.append(HumanMessage(content=user_message(parts, request.message)))
@@ -381,6 +382,27 @@ class AssistantService:
         )
         return AssistantUnavailableError("the model gave an empty answer")
 
+    @staticmethod
+    async def _register_participants(ctx: AssistantContext) -> None:
+        """Fetch the current project's opinions for the trace mask alone.
+
+        The modes with tools do not fetch the opinions ahead, but a question or an answer
+        can name an expert the model never reads about, and the trace of the turn is masked
+        with the experts the turn has met. Nothing fetched here reaches the model. A failure
+        is ignored: it changes neither the turn's answer nor its errors.
+
+        :param ctx: The turn's context; its roster is filled.
+        """
+        if ctx.current_project_id is None:
+            return
+        try:
+            ctx.roster.add(await ctx.client.get_opinions(ctx.current_project_id))
+        except Exception as exc:
+            logger.debug(
+                "Assistant roster could not be fetched",
+                extra={"event": "assistant_roster_unavailable", "reason": type(exc).__name__},
+            )
+
     async def _fetch(self, request: AssistantChatRequest, ctx: AssistantContext) -> list[str]:
         """Fetch what the model is shown ahead of the question, in workflow and hybrid modes.
 
@@ -412,6 +434,7 @@ class AssistantService:
             project_blocks.append(render_project(project))
             if result is not None:
                 project_blocks.append(render_context_block([], result))
+            ctx.roster.add(opinions)
             if opinions:
                 project_blocks.append(render_opinions(opinions))
             ctx.tool_outputs.extend(project_blocks)

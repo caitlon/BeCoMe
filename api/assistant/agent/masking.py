@@ -18,7 +18,9 @@ in any case, as a whole phrase only, never word by word, so ``Officer`` stays in
 text when the position is ``Dam Safety Officer``. A position of fewer than four word characters
 with no lower-case letter (IT, HR, C#) is found only as written, and one of a single character
 (n, 5) is not searched for. Typos, diminutives and the forms that change a word's stem
-(Kupka, Kupce) are not found.
+(Kupka, Kupce) are not found. A name inside an e-mail address is found only as far as its parts
+are searched for, so ``jana.novakova@example.com`` keeps ``jana``; the address is not masked as a
+whole.
 
 A roster registers at most 100 participants. Past that an expert is still masked wherever a
 block shows the name in a row, but the name is not searched for anywhere else in the text.
@@ -119,7 +121,6 @@ _DROPS_E = frozenset(("ek", "ec", "el", "ěk"))
 _MIN_DECLINED = 3
 
 _WORD_START = r"(?<!\w)"
-_WORD_EDGES = re.compile(r"(\W*)(.*?)(\W*)\Z", re.DOTALL)
 # Whitespace, the hyphen and the other dashes that a double surname may join its parts with.
 _NAME_SEPARATOR = re.compile(r"[\s\-\u2010-\u2015\u2212]+")
 # A part of a name is searched for only with this many letters or digits, and a position of
@@ -163,6 +164,26 @@ def _comparable(text: str) -> str:
     if text.isascii():
         return text
     return unicodedata.normalize("NFKC", text).translate(_FOLDED)
+
+
+def _is_word_char(char: str) -> bool:
+    """Whether the character is one that ``\\w`` matches."""
+    return char.isalnum() or char == "_"
+
+
+def _split_edges(word: str) -> tuple[str, str, str]:
+    """Split a word into the non-word characters at its start, its core and those at its end.
+
+    :param word: The word.
+    :return: The three parts; the core is empty when the word has no word character.
+    """
+    start = 0
+    while start < len(word) and not _is_word_char(word[start]):
+        start += 1
+    end = len(word)
+    while end > start and not _is_word_char(word[end - 1]):
+        end -= 1
+    return word[:start], word[start:end], word[end:]
 
 
 def _bounded(char: str) -> bool:
@@ -258,10 +279,7 @@ def _word(word: str, *, exact_first: bool) -> str:
         is always matched ignoring the case of its first letter.
     :return: The pattern.
     """
-    lead: str
-    core: str
-    tail: str
-    lead, core, tail = _WORD_EDGES.findall(word)[0]
+    lead, core, tail = _split_edges(word)
     exact = exact_first and core[:1].isupper() and len(core) < _MIN_LOOSE_CASE
     body = _inflected(core, head_exact=exact) if core else ""
     return re.escape(lead) + body + re.escape(tail)
@@ -288,23 +306,64 @@ def _is_acronym(position: str) -> bool:
     return short and not any(char.islower() for char in position)
 
 
+def _edge(char: str, bound: str) -> str:
+    """Write the bound at one end of a pattern: none after a letter of a script without word
+    spaces (a Chinese position is found inside a sentence), the given one otherwise.
+    """
+    return "" if char.isalpha() and not _bounded(char) else bound
+
+
 def _as_written(words: Sequence[str]) -> str:
     """Write a pattern for words found exactly as written, case and ending included.
 
-    A word character may touch neither end, whatever the first and last characters are, so
-    ``C#`` is not found in ``C#10`` and ``.NET`` is not found in ``ASP.NET``.
+    A word character may touch neither end, unless the end is a letter of a script without
+    word spaces, so ``C#`` is not found in ``C#10`` and ``.NET`` is not found in ``ASP.NET``.
     """
-    return _WORD_START + r"\s+".join(map(re.escape, words)) + r"(?!\w)"
+    start, end = _edge(words[0][0], _WORD_START), _edge(words[-1][-1], r"(?!\w)")
+    return start + r"\s+".join(map(re.escape, words)) + end
+
+
+def _position_regex(position: str) -> str | None:
+    """Write the pattern that finds a position, or None when it is not searched for.
+
+    :param position: The position, cleaned.
+    :return: An acronym is found as written. A word, or a phrase with a word of two
+        characters or more, is found in any case and with Czech endings. A short one with
+        lower-case letters and a symbol (c#, c++) is found as written. One with a backslash
+        is not searched for, so that a position such as ``\\n`` cannot tear an escape.
+    """
+    words = position.split()
+    has_word_char = re.search(r"\w", position) is not None
+    if _is_acronym(position):
+        return _as_written(words) if has_word_char else None
+    if any(_letters_and_digits(word) >= _MIN_NAME_PART for word in words):
+        return _phrase(words, r"\s+", exact_first=False)
+    return _as_written(words) if has_word_char and "\\" not in position else None
 
 
 def _letters_and_digits(word: str) -> int:
     """Count the characters of a word that are not punctuation at its ends."""
-    return len(_WORD_EDGES.findall(word)[0][1])
+    return len(_split_edges(word)[1])
 
 
 def _row_head(head: str) -> str:
     """Write a pattern for an opinion row's head, found only where a row has it."""
     return f"(?<={re.escape(ROW_MARK)}){re.escape(head)}(?={re.escape(ROW_HEAD_END)})"
+
+
+@dataclass(frozen=True)
+class _Alt:
+    """What one alternative of the pattern puts in place of what it finds.
+
+    :ivar length: The length of what it looks for, longest first when the pattern is built.
+    :ivar replacement: The label or placeholder.
+    :ivar exact: Whether it is an acronym found only as written, listed before a pattern in
+        any case when both look for the same length of text.
+    """
+
+    length: int
+    replacement: str
+    exact: bool = False
 
 
 @dataclass(frozen=True)
@@ -346,7 +405,8 @@ class TurnRoster:
         self._lock = threading.Lock()
         self._by_name: dict[str, _Participant] = {}
         self._count = 0
-        # A position, case folded, to the position as written and the participants holding it.
+        # A position to the position as written and the participants holding it. An acronym is
+        # keyed by its exact spelling, any other position case folded.
         self._positions: dict[str, tuple[str, set[int]]] = {}
         self._matcher: _Matcher | None = None
 
@@ -361,28 +421,40 @@ class TurnRoster:
         """
         with self._lock:
             for opinion in opinions:
-                name = _comparable(clean_text(opinion.expert_name, _MATCH_LIMIT))
-                if not name:
-                    continue
-                participant = self._by_name.get(name)
-                if participant is None:
-                    if len(self._by_name) >= _MAX_REGISTERED:
-                        continue
-                    self._count += 1
-                    participant = _Participant(self._count)
-                    self._by_name[name] = participant
-                participant.names.update((name, _comparable(" ".join(opinion.expert_name.split()))))
-                participant.heads.add(_comparable(opinion_head(opinion)))
-                for position in (
-                    clean_text(opinion.position, _MATCH_LIMIT),
-                    " ".join(opinion.position.split()),
-                ):
-                    position = _comparable(position)
-                    if len(position) >= _MIN_POSITION:
-                        key = position if _is_acronym(position) else position.casefold()
-                        _, holders = self._positions.setdefault(key, (position, set()))
-                        holders.add(participant.number)
+                participant = self._participant_of(opinion)
+                if participant is not None:
+                    self._remember(participant, opinion)
             self._matcher = None
+
+    def _participant_of(self, opinion: Expert) -> _Participant | None:
+        """Find or register the opinion's expert; the caller holds the lock.
+
+        :return: The participant, or None for a blank name or a roster that is full.
+        """
+        name = _comparable(clean_text(opinion.expert_name, _MATCH_LIMIT))
+        if not name:
+            return None
+        participant = self._by_name.get(name)
+        if participant is None:
+            if len(self._by_name) >= _MAX_REGISTERED:
+                return None
+            self._count += 1
+            participant = self._by_name[name] = _Participant(self._count)
+        participant.names.update((name, _comparable(" ".join(opinion.expert_name.split()))))
+        return participant
+
+    def _remember(self, participant: _Participant, opinion: Expert) -> None:
+        """Record the opinion's row head and position for its expert; the caller holds the lock."""
+        participant.heads.add(_comparable(opinion_head(opinion)))
+        for position in (
+            clean_text(opinion.position, _MATCH_LIMIT),
+            " ".join(opinion.position.split()),
+        ):
+            position = _comparable(position)
+            if len(position) >= _MIN_POSITION:
+                key = position if _is_acronym(position) else position.casefold()
+                _, holders = self._positions.setdefault(key, (position, set()))
+                holders.add(participant.number)
 
     def label_for(self, head: str) -> str:
         """Give the label of a row head, registering it as a new participant if it is unknown.
@@ -422,55 +494,71 @@ class TurnRoster:
 
     def _build(self) -> _Matcher:
         """Build the pattern; the caller holds the lock."""
-        heads: dict[str, tuple[int, str]] = {}
-        others: dict[str, tuple[int, str]] = {}
+        heads: dict[str, _Alt] = {}
+        alts: dict[str, _Alt] = {}
         for participant in self._by_name.values():
             label = expert_label(participant.number)
             for head in participant.heads:
-                heads.setdefault(_row_head(head), (len(head), label))
-            for name in participant.names:
-                parts = [p for p in _NAME_SEPARATOR.split(name) if p]
-                # The whole name is searched for even when its parts are too short to be
-                # searched for alone (J K), so such a name is not left as it is.
-                if len(parts) > 1 and sum(map(_letters_and_digits, parts)) >= _MIN_NAME_PART:
-                    phrase = _phrase(parts, _NAME_SEPARATOR.pattern, exact_first=False)
-                    others.setdefault(phrase, (len(name), label))
-                for part in parts:
-                    if _letters_and_digits(part) >= _MIN_NAME_PART:
-                        regex = _phrase([part], "", exact_first=True)
-                        others.setdefault(regex, (len(part), label))
+                heads.setdefault(_row_head(head), _Alt(len(head), label))
+            for regex, alt in _name_alts(participant).items():
+                alts.setdefault(regex, alt)
+        for regex, alt in self._position_alts().items():
+            alts.setdefault(regex, alt)
+        return _assemble(heads, alts)
+
+    def _position_alts(self) -> dict[str, _Alt]:
+        """Write the alternatives for the positions; the caller holds the lock."""
+        found: dict[str, _Alt] = {}
         for position, numbers in self._positions.values():
-            words = position.split()
-            if _is_acronym(position):
-                if not re.search(r"\w", position):
-                    continue
-                regex = _as_written(words)
-            elif any(_letters_and_digits(word) >= _MIN_NAME_PART for word in words):
-                regex = _phrase(words, r"\s+", exact_first=False)
-            else:
+            regex = _position_regex(position)
+            if regex is None:
                 continue
             only = next(iter(numbers)) if len(numbers) == 1 else None
             replacement = "[position]" if only is None else f"[position of {expert_label(only)}]"
-            others.setdefault(regex, (len(position), replacement))
-        row_heads = sorted(heads.items(), key=lambda item: -item[1][0])
-        ordered = sorted(others.items(), key=lambda item: -item[1][0])
-        # Nearly every alternative begins by checking for the start of a word. Checked once
-        # for all of them, the engine skips the middle of a word without trying each.
-        at_word_start = [
-            (r.removeprefix(_WORD_START), v) for r, v in ordered if r.startswith(_WORD_START)
-        ]
-        elsewhere = [(r, v) for r, v in ordered if not r.startswith(_WORD_START)]
-        # The row heads stay in the pattern for a row outside a block, which the shape mask
-        # does not read.
-        pieces = [f"({_PLACEHOLDER})", *(f"({regex})" for regex, _ in row_heads)]
-        if at_word_start:
-            pieces.append(_WORD_START + "(?:" + "|".join(f"({r})" for r, _ in at_word_start) + ")")
-        pieces.extend(f"({regex})" for regex, _ in elsewhere)
-        replacements = (
-            None,
-            *(value for _, (_, value) in [*row_heads, *at_word_start, *elsewhere]),
-        )
-        return _Matcher(re.compile("|".join(pieces)), replacements)
+            found.setdefault(regex, _Alt(len(position), replacement, _is_acronym(position)))
+        return found
+
+
+def _name_alts(participant: _Participant) -> dict[str, _Alt]:
+    """Write the alternatives that find a participant's name: the whole and each part."""
+    label = expert_label(participant.number)
+    found: dict[str, _Alt] = {}
+    for name in participant.names:
+        parts = [p for p in _NAME_SEPARATOR.split(name) if p]
+        # The whole name is searched for even when its parts are too short to be searched for
+        # alone (J K), so such a name is not left as it is.
+        if len(parts) > 1 and sum(map(_letters_and_digits, parts)) >= _MIN_NAME_PART:
+            phrase = _phrase(parts, _NAME_SEPARATOR.pattern, exact_first=False)
+            found.setdefault(phrase, _Alt(len(name), label))
+        for part in parts:
+            if _letters_and_digits(part) >= _MIN_NAME_PART:
+                found.setdefault(_phrase([part], "", exact_first=True), _Alt(len(part), label))
+    return found
+
+
+def _assemble(heads: dict[str, _Alt], alts: dict[str, _Alt]) -> _Matcher:
+    """Join the alternatives into one pattern, the longest first.
+
+    :param heads: The row heads, which go first.
+    :param alts: Names and positions. Of two of the same length an acronym goes first, so the
+        label of a tie does not depend on the order the experts were met in.
+    """
+    row_heads = sorted(heads.items(), key=lambda item: -item[1].length)
+    ordered = sorted(alts.items(), key=lambda item: (-item[1].length, not item[1].exact))
+    # Nearly every alternative begins by checking for the start of a word. Checked once for
+    # all of them, the engine skips the middle of a word without trying each.
+    at_word_start = [
+        (r.removeprefix(_WORD_START), a) for r, a in ordered if r.startswith(_WORD_START)
+    ]
+    elsewhere = [(r, a) for r, a in ordered if not r.startswith(_WORD_START)]
+    # The row heads stay in the pattern for a row outside a block, which the shape mask does
+    # not read.
+    pieces = [f"({_PLACEHOLDER})", *(f"({regex})" for regex, _ in row_heads)]
+    if at_word_start:
+        pieces.append(_WORD_START + "(?:" + "|".join(f"({r})" for r, _ in at_word_start) + ")")
+    pieces.extend(f"({regex})" for regex, _ in elsewhere)
+    replacements = (None, *(a.replacement for _, a in [*row_heads, *at_word_start, *elsewhere]))
+    return _Matcher(re.compile("|".join(pieces)), replacements)
 
 
 def mask_participants(text: str, roster: TurnRoster) -> str:

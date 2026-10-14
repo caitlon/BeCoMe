@@ -204,14 +204,13 @@ _REAL_LINE_BREAK = re.compile(r"(\n)")
 _ESCAPED_LINE_BREAK = re.compile(r"(\\\\|\\n)")
 
 
-def _mask_lines(text: str, line_break: re.Pattern[str], roster: TurnRoster | None) -> str:
-    """Mask the opinions blocks of a text whose lines end with the given break.
+def _split_lines(text: str, line_break: re.Pattern[str]) -> tuple[list[str], list[str]]:
+    """Cut a text into lines and keep the breaks between them.
 
     :param text: The text; the break is the pattern's one capturing group.
     :param line_break: The pattern that finds a line break, a doubled backslash included
         as a token that is not one.
-    :param roster: The turn's participants, or None to number the rows of each block.
-    :return: The text with each block's names replaced, every break as it was.
+    :return: The lines, and the break that follows each of them but the last.
     """
     lines = [""]
     breaks: list[str] = []
@@ -221,20 +220,42 @@ def _mask_lines(text: str, line_break: re.Pattern[str], roster: TurnRoster | Non
         else:
             breaks.append(piece)
             lines.append("")
+    return lines, breaks
+
+
+def _label_rows(lines: list[str], roster: TurnRoster | None) -> None:
+    """Replace the name of every row of an opinions block in the lines, in place.
+
+    :param lines: The lines of a text.
+    :param roster: The turn's participants, or None to number the rows of each block.
+    """
     row_number = 0
     in_block = False
     for index, line in enumerate(lines):
         if _OPINION_COUNT_LINE.fullmatch(line):
             in_block, row_number = True, 0
-        elif in_block and (row := _OPINION_ROW.fullmatch(line)):
-            row_number += 1
-            if not EXPERT_LABEL.fullmatch(row["name"]):
-                label = (
-                    expert_label(row_number) if roster is None else roster.label_for(row["name"])
-                )
-                lines[index] = ROW_MARK + label + line[row.end("name") :]
-        else:
+            continue
+        row = _OPINION_ROW.fullmatch(line) if in_block else None
+        if row is None:
             in_block = False
+            continue
+        row_number += 1
+        if not EXPERT_LABEL.fullmatch(row["name"]):
+            label = expert_label(row_number) if roster is None else roster.label_for(row["name"])
+            lines[index] = ROW_MARK + label + line[row.end("name") :]
+
+
+def _mask_lines(text: str, line_break: re.Pattern[str], roster: TurnRoster | None) -> str:
+    """Mask the opinions blocks of a text whose lines end with the given break.
+
+    :param text: The text; the break is the pattern's one capturing group.
+    :param line_break: The pattern that finds a line break, a doubled backslash included
+        as a token that is not one.
+    :param roster: The turn's participants, or None to number the rows of each block.
+    :return: The text with each block's names replaced, every break as it was.
+    """
+    lines, breaks = _split_lines(text, line_break)
+    _label_rows(lines, roster)
     joined = [lines[0]]
     for line_break_text, line in zip(breaks, lines[1:], strict=True):
         joined += [line_break_text, line]
@@ -409,6 +430,7 @@ async def get_project_opinions(project_id: str, runtime: ToolRuntime[AssistantCo
         return _reply(ctx, _NOT_FOUND)
     except _BACKEND_FAILURES as exc:
         return _reply(ctx, _unavailable("get_project_opinions", exc))
+    ctx.roster.add(opinions)
     if not opinions:
         return _reply(ctx, _NO_OPINIONS)
     return _reply(ctx, render_opinions(opinions))
