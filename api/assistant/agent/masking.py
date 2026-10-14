@@ -405,6 +405,11 @@ class TurnRoster:
                 self._matcher = None
             return expert_label(self._count)
 
+    def drop_matcher(self) -> None:
+        """Forget the built pattern, which is large; the next use of the roster builds it again."""
+        with self._lock:
+            self._matcher = None
+
     def matcher(self) -> "_Matcher | None":
         """Return the pattern for the participants registered so far.
 

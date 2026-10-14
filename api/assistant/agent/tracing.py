@@ -3,8 +3,9 @@
 When tracing is on, the text of questions, history, tool replies and answers goes to the
 configured LangSmith endpoint, but not the names and positions of the turn's participants.
 Those are replaced with ``Expert 1``, ``Expert 2`` and ``[position of Expert 1]`` before
-anything leaves the process, in every field of every run of the turn (see
-:class:`~api.assistant.agent.masking.TurnRoster`). ``assistant_langsmith_enabled`` is the
+anything leaves the process. Every run of the turn is masked with the turn's roster (see
+:class:`~api.assistant.agent.masking.TurnRoster`), whatever the turn has registered by the
+time it ends. ``assistant_langsmith_enabled`` is the
 only switch, in every environment, and a deployed service may use only the EU endpoint
 (Settings refuses the rest). With it off, which is the default, nothing is traced and
 nothing leaves the machine, whatever the LangSmith library's own environment variables say.
@@ -15,8 +16,8 @@ each phase (prepare, then generation) hangs its runs under it until :func:`end_t
 The participants are known only once the turn has fetched their opinions, which in agent
 mode happens after the question and the first model call have started. So the shared client
 holds every run of a turn in memory and, when the turn ends, masks and sends them on a worker
-thread of its own, each masked with the roster the turn gathered, so that building the
-pattern and reading every string never stalls the event loop. Two layers apply: the roster
+thread of its own, each masked with the roster the turn gathered, so the masking runs on a
+worker thread, not on the event loop. Two layers apply: the roster
 mask, then the opinions-block mask by shape (see
 :func:`~api.assistant.agent.tools.mask_opinion_names`), which also runs in the client's
 anonymizer. A call that cannot be tied to a turn, or that cannot be masked, is dropped and
@@ -44,6 +45,7 @@ from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor, wait
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from datetime import date
 from typing import Any
 
 import langsmith as ls
@@ -72,8 +74,12 @@ _MAX_HELD_TRACES = 256
 _MAX_RELEASED_TRACES = 256
 
 # The parts of a run that carry text. The library drops the text of streamed tokens itself.
-# ``serialized`` is the configuration of a model, and may repeat what it was given.
-_MASKED_FIELDS = ("name", "inputs", "outputs", "error", "extra", "events", "tags", "serialized")
+# ``serialized`` is the configuration of a model, and may repeat what it was given. The
+# assistant attaches nothing; an attachment that did appear would be read as text.
+_MASKED_FIELDS = (
+    *("name", "inputs", "outputs", "error", "extra"),
+    *("events", "tags", "serialized", "attachments"),
+)
 
 # The one client of the process. It batches traces on a background thread, so building
 # one per turn would start a thread per turn and lose the batching.
@@ -116,24 +122,10 @@ def _trace_key(trace_id: Any) -> str | None:
         return None
 
 
-def _call_trace(kwargs: dict[str, Any]) -> str | None:
-    """Find the trace a call belongs to.
-
-    The trace id is taken from the call, or, when the call has none, from the first
-    segment of its dotted order, which is the root run's timestamp followed by its id.
-
-    :param kwargs: The call's arguments.
-    :return: The trace's key, or None when the call names no trace.
-    """
-    key = _trace_key(kwargs.get("trace_id"))
-    order = kwargs.get("dotted_order")
-    if key is None and isinstance(order, str):
-        key = _trace_key(order.split(".", 1)[0][-36:])
-    return key
-
-
 def _plain(value: Any) -> Any:
-    """Turn an object a run holds into JSON data, for the ``default`` of ``json.dumps``."""
+    """Turn an object a run holds into JSON data: dates in ISO form, messages dumped, else ``str``."""
+    if isinstance(value, date):
+        return value.isoformat()
     dump = getattr(value, "model_dump", None)
     return dump(mode="json") if callable(dump) else str(value)
 
@@ -217,6 +209,7 @@ class MaskingClient(ls.Client):
             self._held[str(key)] = _Held(roster)
             while len(self._held) > _MAX_HELD_TRACES:
                 dropped_id, dropped = self._held.popitem(last=False)
+                dropped.roster.drop_matcher()
                 self._remember(dropped_id, dropped.roster)
 
     def release(self, trace_id: str) -> None:
@@ -232,7 +225,8 @@ class MaskingClient(ls.Client):
             if held is None or key is None:
                 return
             self._remember(key, held.roster)
-        self._submit(self._flush, held)
+            # Under the lock, so that no late call reaches the worker before this flush.
+            self._submit(self._flush, held)
 
     def wait_idle(self, timeout: float) -> bool:
         """Wait until every job handed to the worker so far has run.
@@ -285,25 +279,32 @@ class MaskingClient(ls.Client):
         A call whose trace is neither held nor remembered is dropped, whatever the reason:
         it names no trace, names a malformed one, or names one of a turn long past.
         """
-        key = _call_trace(op.kwargs)
+        key = _trace_key(op.kwargs.get("trace_id"))
         with self._hold_lock:
             held = self._held.get(key) if key else None
+            roster = self._released.get(key) if key else None
             if held is not None:
                 held.ops.append(_Op(op.kind, ls.utils.deepish_copy(op.kwargs)))
                 return
-            roster = self._released.get(key) if key else None
-        if roster is None:
-            logger.debug(
-                "LangSmith call dropped",
-                extra={"event": "assistant_trace_dropped", "reason": "unknown_trace"},
-            )
-            return
-        self._submit(self._send_masked, _Op(op.kind, ls.utils.deepish_copy(op.kwargs)), roster)
+            if roster is not None:
+                kept = _Op(op.kind, ls.utils.deepish_copy(op.kwargs))
+                self._submit(self._send_late, kept, roster)
+                return
+        logger.debug(
+            "LangSmith call dropped",
+            extra={"event": "assistant_trace_dropped", "reason": "unknown_trace"},
+        )
 
     def _flush(self, held: _Held) -> None:
         """Mask and send the calls of a turn that ended, in order; runs on the worker."""
         for op in held.ops:
             self._send_masked(op, held.roster)
+        held.roster.drop_matcher()
+
+    def _send_late(self, op: _Op, roster: TurnRoster) -> None:
+        """Mask and send a call that came after its turn, keeping no pattern in its roster."""
+        self._send_masked(op, roster)
+        roster.drop_matcher()
 
     def _send_masked(self, op: _Op, roster: TurnRoster) -> None:
         """Mask a call and send it. A call that cannot be masked is dropped, with a log record
