@@ -30,6 +30,13 @@ from langchain.tools import ToolRuntime, tool
 from langchain_core.tools import BaseTool
 
 from api.assistant.agent.context import AssistantContext
+from api.assistant.agent.masking import (
+    EXPERT_LABEL,
+    ROW_HEAD_END,
+    ROW_MARK,
+    expert_label,
+    opinion_head,
+)
 from api.assistant.agent.prompt import (
     LABEL_LIMIT,
     clean_text,
@@ -82,9 +89,8 @@ _GET_PROJECT_OPINIONS_DESCRIPTION = (
 )
 
 # Limits on the free text a reply carries, in characters. Fifty opinion rows must stay
-# small in a 16k-token window, so an expert's name is the tightest.
+# small in a 16k-token window, so an expert's name (see ``EXPERT_LIMIT``) is the tightest.
 _NAME_LIMIT = 120
-_EXPERT_LIMIT = 60
 _DESCRIPTION_LIMIT = 1000
 _UNIT_LIMIT = 20
 _ID_LIMIT = 40
@@ -159,7 +165,10 @@ _OPINION_COUNT_LINE = re.compile(_OPINION_COUNT_PREFIX + r"\d+")
 # line, so the split between name and tail is unique and a name that itself contains the
 # tail is masked whole.
 _OPINION_ROW = re.compile(
-    "- (?P<name>.*): " + _OPINION_VALUES_TEMPLATE.format(*[r"-?\d+\.\d{2}"] * 4)
+    re.escape(ROW_MARK)
+    + "(?P<name>.*)"
+    + re.escape(ROW_HEAD_END)
+    + _OPINION_VALUES_TEMPLATE.format(*[r"-?\d+\.\d{2}"] * 4)
 )
 
 
@@ -174,14 +183,13 @@ def render_opinions(opinions: Sequence[OpinionView]) -> str:
     """
     lines = [f"{_OPINION_COUNT_PREFIX}{len(opinions)}"]
     for opinion in opinions[:_MAX_OPINIONS]:
-        name = clean_text(opinion.expert_name, _EXPERT_LIMIT)
         values = _OPINION_VALUES_TEMPLATE.format(
             format_number(opinion.lower_bound),
             format_number(opinion.peak),
             format_number(opinion.upper_bound),
             format_number(opinion.centroid),
         )
-        lines.append(f"- {name}: {values}")
+        lines.append(f"{ROW_MARK}{opinion_head(opinion)}{ROW_HEAD_END}{values}")
     if len(opinions) > _MAX_OPINIONS:
         lines.append(f"... and {len(opinions) - _MAX_OPINIONS} more opinions")
     return _block(lines)
@@ -218,7 +226,8 @@ def _mask_lines(text: str, line_break: re.Pattern[str]) -> str:
             in_block, row_number = True, 0
         elif in_block and (row := _OPINION_ROW.fullmatch(line)):
             row_number += 1
-            lines[index] = f"- Expert {row_number}:" + line[row.end("name") + 1 :]
+            if not EXPERT_LABEL.fullmatch(row["name"]):
+                lines[index] = ROW_MARK + expert_label(row_number) + line[row.end("name") :]
         else:
             in_block = False
     joined = [lines[0]]
@@ -233,7 +242,9 @@ def mask_opinion_names(text: str) -> str:
     A block is found by its shape alone, the count line :func:`render_opinions` writes and
     the rows that follow it, so no list of names is needed. Every row is masked, the
     asker's own included, because the block does not say which row is theirs. The numbers
-    stay. A row-shaped line that is not directly under a count line is left as it is. A
+    stay. A row whose name is already ``Expert N``, put there by the turn's roster (see
+    :func:`~api.assistant.agent.masking.mask_participants`), is left as it is, so that this
+    mask never renumbers the roster's labels. A row-shaped line that is not directly under a count line is left as it is. A
     block is found whether its lines end with a newline or with the two characters
     backslash and ``n``, as in ``repr(exc)``; the text is read once for each form, so a name
     that holds a typed backslash and ``n`` cannot cut its row in two.
