@@ -35,8 +35,10 @@ from typing import Protocol
 
 from api.assistant.agent.prompt import clean_text
 
-# The longest an expert's name is in a data block, in characters.
+# The longest an expert's name and the longest position are in a data block, in characters.
+# Fifty rows must stay small in a 16k-token window, so a position is cut as tight as a name.
 EXPERT_LIMIT = 60
+POSITION_LIMIT = 60
 # A name or a position is matched whole, so it is cleaned but never cut for matching.
 _MATCH_LIMIT = 10_000
 
@@ -85,16 +87,18 @@ def expert_name(opinion: Named) -> str:
     return clean_text(opinion.expert_name, EXPERT_LIMIT)
 
 
-def opinion_head(opinion: Named) -> str:
+def opinion_head(opinion: Expert) -> str:
     """Write what stands between ``- `` and ``: `` in an opinion row.
 
     The renderer and the roster both call this, so the row a block holds and the row the
     roster looks for cannot drift apart.
 
     :param opinion: The opinion.
-    :return: The row's head.
+    :return: The expert's name and, in parentheses, the position when there is one; each
+        cleaned and cut to its limit.
     """
-    return expert_name(opinion)
+    position = clean_text(opinion.position, POSITION_LIMIT)
+    return f"{expert_name(opinion)} ({position})" if position else expert_name(opinion)
 
 
 # Letters that differ only by a diacritic count as one when a name is matched, so that a

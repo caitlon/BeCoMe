@@ -14,8 +14,8 @@ three fixed prefixes.
 No reply carries the text of an exception. Text written by users (project names,
 descriptions, expert names) goes through
 :func:`~api.assistant.agent.prompt.clean_text` before it enters a reply, so it cannot
-close a ``<project_data>`` block or start a line of its own. An expert's position is never
-put in a reply at all.
+close a ``<project_data>`` block or start a line of its own. That includes an expert's
+position, which an opinions row shows after the name.
 
 The functions that write a data block (``render_project``, ``render_project_list``,
 ``render_opinions``) are public: the chat service calls the same ones for what it
@@ -177,7 +177,8 @@ def render_opinions(opinions: Sequence[OpinionView]) -> str:
     """Render a project's expert opinions as a data block.
 
     The block has a count line, then at most 50 opinions, then ``... and N more
-    opinions`` when there are more. An opinion's position is left out.
+    opinions`` when there are more. A row is the expert's name, the position in parentheses
+    when there is one, and the four numbers.
 
     :param opinions: The project's opinions.
     :return: The block.

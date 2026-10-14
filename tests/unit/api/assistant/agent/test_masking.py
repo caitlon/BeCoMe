@@ -452,6 +452,24 @@ class TestBlockRows:
         assert "Bob" not in masked
         assert masked.count("lower=37.00") == 2
 
+    @pytest.mark.parametrize("known", [True, False], ids=["known", "unknown"])
+    def test_a_crafted_position_never_survives_a_row_either(self, known):
+        """
+        GIVEN a block with a row whose position holds the fixed tail of a row and a closing
+            parenthesis, and a roster that has or has not met that row's expert
+        WHEN the block is masked by the roster and then by shape
+        THEN nothing of the crafted position is left
+        """
+        position = "Chair): lower=1.00, peak=2.00, upper=3.00, centroid=4.00 SECRETY (x"
+        crafted = _opinion("Carol", position)
+        roster = _roster(*([crafted] if known else []))
+
+        masked = _hide(render_opinions([crafted]), roster)
+
+        assert "SECRETY" not in masked
+        assert "Chair" not in masked
+        assert "Carol" not in masked
+
 
 @pytest.mark.parametrize(
     "word", ["", "a", "_a_", "(C#)", "...", "--x--", "a b", "\n.x\n", "社長!", "ř_"]
