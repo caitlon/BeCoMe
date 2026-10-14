@@ -1629,17 +1629,18 @@ class TestTurnRun:
 class TestRoster:
     """The turn's roster learns the experts the model reads about, and, when traced, the rest."""
 
-    async def test_the_opinions_fetched_ahead_are_registered(self):
+    async def test_the_opinions_fetched_ahead_are_registered(self, run):
         """
-        GIVEN a workflow turn on a project with opinions, tracing off
+        GIVEN a traced workflow turn on a project with opinions
         WHEN the turn is answered
-        THEN the roster knows the expert, under the label the block gave
+        THEN the roster knows the expert, under the label the block gave, and is complete
         """
         ctx = _ctx(project_id=PROJECT_ID, result=_result(), opinions=[_opinion()])
 
         await AssistantService(_settings(), _model(_say())).answer(_request(), ctx)
 
         assert mask_participants("Jana Novakova", ctx.roster) == "Expert 1"
+        assert not ctx.roster.incomplete
 
     @pytest.mark.parametrize("mode", ["hybrid", "agent"])
     async def test_a_traced_turn_fetches_the_experts_for_the_roster_alone(self, run, mode):
@@ -1656,6 +1657,7 @@ class TestRoster:
 
         ctx.client.get_opinions.assert_awaited_once_with(PROJECT_ID)
         assert mask_participants("Jana Novakova", ctx.roster) == "Expert 1"
+        assert not ctx.roster.incomplete
         shown = "\n".join(str(message.content) for message in model.seen[0])
         assert "Novakova" not in shown
         assert "Number of opinions" not in shown
@@ -1712,10 +1714,49 @@ class TestRoster:
             )
 
         assert response.answer == "Fine."
+        assert ctx.roster.incomplete
         (record,) = [
             r for r in records if r.__dict__.get("event") == "assistant_roster_unavailable"
         ]
         assert record.__dict__["reason"] == type(failure).__name__
+
+    async def test_a_slow_roster_fetch_is_cut_off_and_the_turn_still_answers(
+        self, run, monkeypatch
+    ):
+        """
+        GIVEN a traced agent turn whose roster fetch hangs
+        WHEN the turn is answered
+        THEN the fetch is cut off, the turn answers, and the roster is incomplete
+        """
+        monkeypatch.setattr(service_module, "_ROSTER_FETCH_SECONDS", 0.05)
+        ctx = _ctx(project_id=PROJECT_ID, result=_result())
+
+        async def hang(project_id):
+            await asyncio.sleep(30)
+
+        ctx.client.get_opinions.side_effect = hang
+        service = AssistantService(_settings("agent"), _model(_say("Fine.")))
+
+        response = await service.answer(_request(), ctx)
+
+        assert response.answer == "Fine."
+        assert ctx.roster.incomplete
+
+    async def test_a_workflow_fetch_that_fails_before_the_opinions_leaves_the_roster_incomplete(
+        self, run
+    ):
+        """
+        GIVEN a traced workflow turn whose project cannot be read
+        WHEN it is prepared
+        THEN it fails as before, and the roster is incomplete
+        """
+        ctx = _ctx(project_id=PROJECT_ID, result=_result())
+        ctx.client.get_project.side_effect = AssistantNotFoundError("gone")
+
+        with pytest.raises(ProjectNotFoundError):
+            await AssistantService(_settings(), _model(_say())).prepare(_request(), ctx)
+
+        assert ctx.roster.incomplete
 
 
 async def _until_response(items):

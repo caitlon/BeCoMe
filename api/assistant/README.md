@@ -24,6 +24,7 @@ variables.
     - [Modes](#modes)
     - [Streaming](#streaming)
     - [Limits](#limits)
+    - [Tracing](#tracing)
 - [Private corpus layer](#private-corpus-layer)
 - [Read-only role for a deployed corpus database](#read-only-role-for-a-deployed-corpus-database)
 - [Chunk captions](#chunk-captions)
@@ -350,14 +351,16 @@ replies, the answer, the errors and the run metadata, with the turn's participan
 The participants are the experts of every opinions list the turn fetched: the list `workflow`
 mode reads ahead, the one the opinions tool returns, and, in `hybrid` and `agent` mode when the
 request names a project, the project's opinions fetched for this purpose alone, before the model
-is called (the model never sees them, and a failure of that fetch is ignored). Each expert gets
+is called (the model never sees them). That fetch is cut off after five seconds, and a failure
+or timeout does not change the turn but drops its trace (see below). Each expert gets
 a label, `Expert 1`, `Expert 2` and so on, in order of first appearance. In the trace, a row of
 the opinions block reads `- Expert 1: lower=...`, the label standing where the model read the
 name. In every other string of the trace:
 
 - a name is replaced by the expert's label, as the whole name and as each of its words, in the
   Czech cases a word takes (Nováková, Novákové, Novákovou) and without diacritics (Novak). The
-  first letter keeps the case it was written in, and a word is replaced only as a whole word, so
+  whole name and any word of five letters or more match in any case of the first letter; a
+  shorter word keeps the case it was written in. A word is replaced only as a whole word, so
   `Eva` is replaced and `evaluation`, `Evropa` and the verb `will` for an expert named `Will`
   are not;
 - a position is replaced as a whole phrase, never word by word, by `[position of Expert 1]`, or
@@ -368,18 +371,24 @@ question and the first model call start before any opinions are fetched. A worke
 tracing client masks and sends them, so the work does not hold up other requests. A trace
 appears in LangSmith only after the answer, a process that dies mid-turn loses that trace, and
 so does shutdown for a turn still running; shutdown first finishes the traces already handed to
-the worker. A call that belongs to no known turn, or that cannot be masked, is dropped and
-logged with the exception class only, never sent as it is. A second layer masks any opinions
-block by its shape, whoever its rows name.
+the worker. A call that belongs to no known turn is dropped and logged with
+`reason=unknown_trace` (a call with no trace id is also logged once at WARNING); a call that
+cannot be masked is dropped and logged with the exception class only. Neither is ever sent as
+it is. A second layer masks any opinions block by its shape, whoever its rows name.
 
-What the mask misses: typos, diminutives, and forms that change the stem (Kupka, Kupce); a name inside
-an e-mail address, of which the part too short to be searched for stays; a name in
-the history that belongs to a project the turn did not fetch, unless it sits in an opinions block;
-and, in a project of more than 100 experts, the names of the rest outside an opinions block (their
-rows are still masked).
-A run that ends after its turn, for example when the client disconnects, is masked with the
-roster the turn had and sent behind that turn's runs; past the last 256 turns it is dropped.
-Names are matched in composed Unicode form, whole, as written and as cleaned.
+If the turn is about a project and its experts could not be read into the roster (the fetch
+failed or timed out, or in `workflow` mode the project read failed), the trace could miss a
+name, so it is dropped whole, with one INFO record (`event=assistant_trace_dropped`,
+`reason=roster_incomplete`), and so are late calls. A turn that names no project is sent.
+
+What the mask misses: typos, diminutives, and forms that change the stem (Kupka, Kupce); a name
+inside an e-mail address, where a lower-case word of fewer than five letters stays (a name stored
+as `Jana` is matched only with its capital, so `jana.novakova@example.com` becomes
+`jana.Expert 1@example.com`); a name in the history that belongs to a project the turn did not
+fetch, unless it sits in an opinions block; and, in a project of more than 100 experts, the names
+of the rest outside an opinions block (their rows are still masked). A run that ends after its
+turn, for example when the client disconnects, is masked with the roster the turn had and sent
+behind that turn's runs; past the last 256 turns it is dropped.
 
 ## Private corpus layer
 
