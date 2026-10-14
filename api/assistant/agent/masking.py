@@ -18,7 +18,8 @@ in any case, as a whole phrase only, never word by word, so ``Officer`` stays in
 text when the position is ``Dam Safety Officer``. Typos, diminutives and the forms that
 change a word's stem (Kupka, Kupce) are not found.
 
-A roster registers at most 100 participants. Past that an expert is still masked wherever a
+A position of fewer than four letters or digits (IT, HR, C#) is found only as written. A roster
+registers at most 100 participants. Past that an expert is still masked wherever a
 block shows the name in a row, but the name is not searched for anywhere else in the text.
 """
 
@@ -127,6 +128,9 @@ _MIN_NAME_PART = 2
 # A word of a name this long is found in any case of its first letter. A shorter one, which
 # may be an ordinary word (Will, Eva), keeps the case it was written in.
 _MIN_LOOSE_CASE = 5
+# A position with fewer word characters than this (IT, HR, C#) is matched only as written,
+# case and all, with no ending: in any case it would rewrite the words it, hra and pro.
+_MIN_LOOSE_POSITION = 4
 # The most participants a roster registers, whether fetched or met as an unknown row. The
 # pattern grows with them: 100 experts take about half a second to build, 300 take 14 seconds.
 _MAX_REGISTERED = 100
@@ -272,6 +276,13 @@ def _phrase(words: Sequence[str], separator: str, *, exact_first: bool) -> str:
     return start + body + end
 
 
+def _as_written(words: Sequence[str]) -> str:
+    """Write a pattern for words found exactly as written, case and ending included."""
+    start = _WORD_START if _bounded(words[0][0]) else ""
+    end = r"(?!\w)" if _bounded(words[-1][-1]) else ""
+    return start + r"\s+".join(map(re.escape, words)) + end
+
+
 def _letters_and_digits(word: str) -> int:
     """Count the characters of a word that are not punctuation at its ends."""
     return len(_WORD_EDGES.findall(word)[0][1])
@@ -412,9 +423,15 @@ class TurnRoster:
                         others.setdefault(regex, (len(part), label))
         for position, numbers in self._positions.values():
             words = position.split()
-            if not any(_letters_and_digits(word) >= _MIN_NAME_PART for word in words):
+            word_chars = len(re.findall(r"\w", position))
+            if word_chars < _MIN_LOOSE_POSITION:
+                if not word_chars:
+                    continue
+                regex = _as_written(words)
+            elif any(_letters_and_digits(word) >= _MIN_NAME_PART for word in words):
+                regex = _phrase(words, r"\s+", exact_first=False)
+            else:
                 continue
-            regex = _phrase(words, r"\s+", exact_first=False)
             only = next(iter(numbers)) if len(numbers) == 1 else None
             replacement = "[position]" if only is None else f"[position of {expert_label(only)}]"
             others.setdefault(regex, (len(position), replacement))
@@ -426,6 +443,8 @@ class TurnRoster:
             (r.removeprefix(_WORD_START), v) for r, v in ordered if r.startswith(_WORD_START)
         ]
         elsewhere = [(r, v) for r, v in ordered if not r.startswith(_WORD_START)]
+        # The row heads stay in the pattern for a row outside a block, which the shape mask
+        # does not read.
         pieces = [f"({_PLACEHOLDER})", *(f"({regex})" for regex, _ in row_heads)]
         if at_word_start:
             pieces.append(_WORD_START + "(?:" + "|".join(f"({r})" for r, _ in at_word_start) + ")")

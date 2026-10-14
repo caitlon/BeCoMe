@@ -247,9 +247,10 @@ def mask_opinion_rows(text: str, roster: TurnRoster | None = None) -> str:
     A block is found by its shape alone, the count line :func:`render_opinions` writes and
     the rows that follow it, so no list of names is needed. Every row is masked, the
     asker's own included, because the block does not say which row is theirs. The numbers
-    stay. A row whose name is already ``Expert N``, put there by the turn's roster (see
-    :func:`~api.assistant.agent.masking.mask_participants`), is left as it is, so that this
-    mask never renumbers the roster's labels. A row-shaped line that is not directly under
+    stay. A row whose name is already ``Expert N`` is left as it is, so that this mask never
+    renumbers a label given earlier. With a roster this mask runs before
+    :func:`~api.assistant.agent.masking.mask_participants`, and gives a known expert's row
+    the roster's label itself. A row-shaped line that is not directly under
     a count line is left as it is. A block is found whether its lines end with a newline or
     with the two characters backslash and ``n``, as in ``repr(exc)``; the text is read once
     for each form, so a name that holds a typed backslash and ``n`` cannot cut its row in two.
