@@ -17,6 +17,9 @@ word is found only as a whole, so ``Eva`` is not found in ``evaluation``. A posi
 in any case, as a whole phrase only, never word by word, so ``Officer`` stays in ordinary
 text when the position is ``Dam Safety Officer``. Typos, diminutives and the forms that
 change a word's stem (Kupka, Kupce) are not found.
+
+A roster registers at most 100 participants. Past that an expert is still masked wherever a
+block shows the name in a row, but the name is not searched for anywhere else in the text.
 """
 
 import re
@@ -96,24 +99,26 @@ _ACCENT_GROUPS = ("aá", "cč", "dď", "eéě", "ií", "nň", "oó", "rř", "sš
 _GROUP_OF = {char: group for group in _ACCENT_GROUPS for char in group}
 
 _VOWELS = frozenset("aeěiíouyýáéůúó")
-# What a Czech word takes after its stem: one or two letters for the singular cases, longer for
-# the plural, and for the possessives of a surname: Novák takes -ův, -ova, -ovo, -ovu, -ovy,
-# -ovi, -ové, -ovou, -ovým and -ovými. A feminine -ová surname takes the plain cases.
+# What a Czech word takes after its stem. One or two letters for the singular cases and longer
+# ones for the plural, for the possessive forms of a surname built with -ov- and the -uv form
+# (u with a ring), and for the adjective declensions: the hard one (-y, as in Novotny) and the
+# soft one (-i with an acute accent, as in Krejci or Jiri). A feminine surname in -ova takes
+# the plain cases. The words themselves are in the table of test_masking.py.
 # fmt: off
 _ENDINGS = frozenset([
     "a", "e", "ě", "i", "í", "o", "u", "y", "ý", "á", "é", "ou", "em", "ovi", "ům", "ách", "ech",
     "ích", "ami", "ové", "ových", "ovým", "ého", "ému", "ém", "ým", "ými", "ovou", "ová", "ího",
-    "ímu", "ův", "ovo", "ovu", "ovy", "ovými",
+    "ímu", "ův", "ovo", "ovu", "ovy", "ovými", "ím", "ých", "ími",
 ])
 # fmt: on
-# A word that ends so loses the e before an ending: Marek, Marka; Pavel, Pavla; Němec, Němce.
+# A word that ends so loses the e before an ending: Marek takes Marka, Pavel takes Pavla.
 _DROPS_E = frozenset(("ek", "ec", "el", "ěk"))
 # Dropping a final vowel from a shorter word leaves too little to match on (Li, Xu).
 _MIN_DECLINED = 3
 
 _WORD_START = r"(?<!\w)"
 _WORD_EDGES = re.compile(r"(\W*)(.*?)(\W*)\Z", re.DOTALL)
-# Whitespace, the hyphen and the other dashes that a surname such as Nováková-Svobodová may use.
+# Whitespace, the hyphen and the other dashes that a double surname may join its parts with.
 _NAME_SEPARATOR = re.compile(r"[\s\-\u2010-\u2015\u2212]+")
 # A part of a name, or a word of a position, is searched for only with this many letters or
 # digits. A shorter one is a symbol or an escape such as the backslash and n of a line break,
@@ -122,9 +127,9 @@ _MIN_NAME_PART = 2
 # A word of a name this long is found in any case of its first letter. A shorter one, which
 # may be an ordinary word (Will, Eva), keeps the case it was written in.
 _MIN_LOOSE_CASE = 5
-# Unknown rows the shape mask meets are added to the roster up to this many participants, so
-# that a block someone else built cannot make the pattern grow without bound.
-_MAX_REGISTERED = 300
+# The most participants a roster registers, whether fetched or met as an unknown row. The
+# pattern grows with them: 100 experts take about half a second to build, 300 take 14 seconds.
+_MAX_REGISTERED = 100
 # A label or a position placeholder already in a text. It is passed over, so that a participant
 # named Expert, or Position, cannot rewrite the labels an earlier step put there.
 _PLACEHOLDER = r"(?<!\w)Expert \d+(?!\w)|\[position(?: of Expert \d+)?\]"
@@ -283,15 +288,10 @@ class _Matcher:
 
     :ivar pattern: One group per alternative, in the order of ``replacements``.
     :ivar replacements: The text that replaces what each alternative found; None keeps it.
-    :ivar rows: One group per known row head, in the order of ``row_labels``; None while no
-        row head is known.
-    :ivar row_labels: The label of each row head.
     """
 
     pattern: re.Pattern[str]
     replacements: tuple[str | None, ...]
-    rows: re.Pattern[str] | None
-    row_labels: tuple[str, ...]
 
 
 @dataclass
@@ -341,6 +341,8 @@ class TurnRoster:
                     continue
                 participant = self._by_name.get(name)
                 if participant is None:
+                    if len(self._by_name) >= _MAX_REGISTERED:
+                        continue
                     self._count += 1
                     participant = _Participant(self._count)
                     self._by_name[name] = participant
@@ -432,28 +434,7 @@ class TurnRoster:
             None,
             *(value for _, (_, value) in [*row_heads, *at_word_start, *elsewhere]),
         )
-        rows = re.compile("|".join(f"({regex})" for regex, _ in row_heads)) if row_heads else None
-        row_labels = tuple(label for _, (_, label) in row_heads)
-        return _Matcher(re.compile("|".join(pieces)), replacements, rows, row_labels)
-
-
-def label_known_rows(text: str, roster: TurnRoster) -> str:
-    """Give the rows of opinions blocks that the roster knows their labels, and nothing else.
-
-    A name that is also a word of the block's own layout, such as ``lower`` or ``Number``,
-    would be replaced in the layout too, and the block would no longer be one. So the rows go
-    first, then the mask by shape for the rows the roster does not know, then the rest (see
-    :func:`mask_participants`).
-
-    :param text: Any text.
-    :param roster: The turn's participants.
-    :return: The text with each known row's head replaced by the participant's label.
-    """
-    matcher = roster.matcher()
-    if matcher is None or matcher.rows is None or not text:
-        return text
-    rows, labels = matcher.rows, matcher.row_labels
-    return rows.sub(lambda match: labels[(match.lastindex or 1) - 1], _comparable(text))
+        return _Matcher(re.compile("|".join(pieces)), replacements)
 
 
 def mask_participants(text: str, roster: TurnRoster) -> str:

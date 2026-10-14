@@ -6,7 +6,8 @@ from unittest.mock import patch
 
 import pytest
 
-from api.assistant.agent.masking import TurnRoster, label_known_rows, mask_participants
+from api.assistant.agent import masking
+from api.assistant.agent.masking import TurnRoster, mask_participants
 from api.assistant.agent.tools import mask_opinion_names, mask_opinion_rows, render_opinions
 from api.assistant.views import OpinionView
 
@@ -45,8 +46,8 @@ def _roster(*specs: _Opinion | str | tuple[str, str]) -> TurnRoster:
 
 
 def _hide(text: str, roster: TurnRoster) -> str:
-    """Mask a text the way a trace does: known rows, the other rows by shape, then names."""
-    return mask_participants(mask_opinion_rows(label_known_rows(text, roster), roster), roster)
+    """Mask a text the way a trace does: the rows of opinions blocks, then names."""
+    return mask_participants(mask_opinion_rows(text, roster), roster)
 
 
 def _forms(
@@ -65,7 +66,9 @@ _EN_DASH = chr(0x2013)
 _ZWSP = chr(0x200B)  # zero-width space
 _SHY = chr(0x00AD)  # soft hyphen
 _ACUTE = chr(0x0301)  # combining acute accent
-_FULLWIDTH = chr(0xFF2E) + chr(0xFF4F) + chr(0xFF56) + "á" + chr(0xFF4B)  # Novák in full-width
+_FULLWIDTH = (
+    chr(0xFF2E) + chr(0xFF4F) + chr(0xFF56) + "á" + chr(0xFF4B)
+)  # the name Novak in full-width letters
 _NOVAK = ("Jan Novák",)
 _ROWS = [
     # Czech cases of a masculine surname, with the possessives, and without diacritics
@@ -101,6 +104,20 @@ _ROWS = [
         "Dej to {}",
         ["Eva", "Evy", "Evě", "Evou", "Evu", "Eve"],
         "Dej to Expert 1",
+    ),
+    # the adjective declensions: soft (Krejci, Jiri) and hard (Novotny)
+    *_forms(("Jiří Svoboda",), "S {}", ["Jiří", "Jiřího", "Jiřímu", "Jiřím"], "S Expert 1"),
+    *_forms(
+        ("Petr Krejčí",),
+        "S {}",
+        ["Krejčí", "Krejčího", "Krejčímu", "Krejčím", "Krejčích", "Krejčími"],
+        "S Expert 1",
+    ),
+    *_forms(
+        ("Novotný",),
+        "S {}",
+        ["Novotný", "Novotného", "Novotnému", "Novotným", "Novotní", "Novotných", "Novotnými"],
+        "S Expert 1",
     ),
     # a name that loses its e before an ending
     *[
@@ -255,11 +272,67 @@ def test_a_pattern_that_cannot_be_built_raises_instead_of_returning_the_text():
     """
     roster = _roster("Alice Moore")
 
-    with patch.object(TurnRoster, "_build", side_effect=re.error("too big")):
-        with pytest.raises(re.error):
-            mask_participants("Alice Moore", roster)
-        with pytest.raises(re.error):
-            label_known_rows("- Alice Moore: lower=1.00", roster)
+    with (
+        patch.object(TurnRoster, "_build", side_effect=re.error("too big")),
+        pytest.raises(re.error),
+    ):
+        mask_participants("Alice Moore", roster)
+
+
+def test_a_surname_two_participants_share_belongs_to_the_first_of_them():
+    """
+    GIVEN a roster that met Jan Novak and then Petr Novak
+    WHEN a text holds the surname alone, and each full name
+    THEN the surname alone is the first participant's, and each full name is its own
+    """
+    roster = _roster("Jan Novák", "Petr Novák")
+
+    assert mask_participants("Novák; Jan Novák; Petr Novák; Petr", roster) == (
+        "Expert 1; Expert 1; Expert 2; Expert 2"
+    )
+
+
+def test_an_expert_without_a_position_is_masked_and_hides_no_word():
+    """
+    GIVEN an expert whose position is blank
+    WHEN a text holds the name
+    THEN the name is masked and no position placeholder appears
+    """
+    roster = _roster(("Alice Moore", ""))
+
+    assert mask_participants("Alice Moore said so", roster) == "Expert 1 said so"
+
+
+def test_an_expert_with_two_positions_has_both_masked_under_one_label():
+    """
+    GIVEN the same expert met twice with different positions
+    WHEN a text holds each position
+    THEN both become that expert's placeholder
+    """
+    roster = _roster(("Alice Moore", "Hydrologist"), ("Alice Moore", "Dam Safety Officer"))
+
+    assert mask_participants("Hydrologist and dam safety officer", roster) == (
+        "[position of Expert 1] and [position of Expert 1]"
+    )
+
+
+def test_a_roster_past_its_cap_still_masks_the_rows_but_not_the_name_elsewhere():
+    """
+    GIVEN a roster capped at two participants that is offered three experts, and a block of
+        the three followed by the third one's name
+    WHEN the text is masked
+    THEN the third expert's row is masked under a label of its own, the name after the block
+        is left, and the first two are masked everywhere
+    """
+    experts = [_opinion(name) for name in ("Alice Moore", "Bob Green", "Carol White")]
+    with patch.object(masking, "_MAX_REGISTERED", 2):
+        roster = _roster(*experts)
+        masked = _hide(render_opinions(experts) + "\nAlice Bob Carol", roster)
+
+    assert masked.count("lower=37.00") == 3
+    assert "- Expert 3: lower=37.00" in masked
+    assert "White" not in masked
+    assert masked.endswith("\nExpert 1 Expert 2 Carol")
 
 
 class TestBlockRows:
@@ -311,6 +384,22 @@ class TestBlockRows:
         assert "- Expert 3: lower=37.00" in masked
         assert masked.endswith("\nExpert 3 spoke")
         assert "Stranger" not in masked
+
+    def test_a_name_longer_than_a_block_shows_has_one_label_in_the_row_and_elsewhere(self):
+        """
+        GIVEN an expert whose name is longer than the block shows, so the row holds a cut head
+        WHEN a block and a later mention of the whole name are masked
+        THEN the row and the mention carry the same label
+        """
+        long_name = "Bartholomew Alexander Montgomery Featherstonehaugh-Smythe Svobodová"
+        expert = _opinion(long_name)
+        assert len(long_name) > masking.EXPERT_LIMIT
+
+        masked = _hide(render_opinions([expert]) + "\nAsk Svobodové", _roster(expert))
+
+        assert "- Expert 1: lower=37.00" in masked
+        assert masked.endswith("\nAsk Expert 1")
+        assert "Svobodov" not in masked
 
     def test_the_shape_mask_leaves_a_labelled_row_as_it_is(self):
         """
