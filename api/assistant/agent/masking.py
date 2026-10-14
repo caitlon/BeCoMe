@@ -10,12 +10,13 @@ is who.
 
 The match is built to over-mask rather than to miss. A name is found as the whole name and
 as each of its words, in the Czech cases a word takes (Nováková, Novákové, Novákovou),
-with or without diacritics (Novak). The first letter of a name must have the case it was
-written in, so ``Will`` is found and the verb ``will`` is not, and a word is found only as
-a whole, so ``Eva`` is not found in ``evaluation``. A position is found as a whole phrase
-only, never word by word, so ``Officer`` stays in ordinary text when the position is
-``Dam Safety Officer``. Typos, diminutives and the forms that change a word's stem
-(Kupka, Kupce) are not found.
+with or without diacritics (Novak). The whole name, and any word of it of five letters or
+more, is found in any case of its first letter, so "co řekl jan novák" is masked. A shorter
+word keeps the case it was written in, so ``Will`` is found and the verb ``will`` is not. A
+word is found only as a whole, so ``Eva`` is not found in ``evaluation``. A position is found
+in any case, as a whole phrase only, never word by word, so ``Officer`` stays in ordinary
+text when the position is ``Dam Safety Officer``. Typos, diminutives and the forms that
+change a word's stem (Kupka, Kupce) are not found.
 """
 
 import re
@@ -95,13 +96,14 @@ _ACCENT_GROUPS = ("aá", "cč", "dď", "eéě", "ií", "nň", "oó", "rř", "sš
 _GROUP_OF = {char: group for group in _ACCENT_GROUPS for char in group}
 
 _VOWELS = frozenset("aeěiíouyýáéůúó")
-# What a Czech word takes after its stem: one or two letters for the singular cases, longer
-# for the plural and for the possessive forms of a surname (Novák, Novákovi, Novákové).
+# What a Czech word takes after its stem: one or two letters for the singular cases, longer for
+# the plural, and for the possessives of a surname: Novák takes -ův, -ova, -ovo, -ovu, -ovy,
+# -ovi, -ové, -ovou, -ovým and -ovými. A feminine -ová surname takes the plain cases.
 # fmt: off
 _ENDINGS = frozenset([
     "a", "e", "ě", "i", "í", "o", "u", "y", "ý", "á", "é", "ou", "em", "ovi", "ům", "ách", "ech",
     "ích", "ami", "ové", "ových", "ovým", "ého", "ému", "ém", "ým", "ými", "ovou", "ová", "ího",
-    "ímu",
+    "ímu", "ův", "ovo", "ovu", "ovy", "ovými",
 ])
 # fmt: on
 # A word that ends so loses the e before an ending: Marek, Marka; Pavel, Pavla; Němec, Němce.
@@ -117,25 +119,35 @@ _NAME_SEPARATOR = re.compile(r"[\s\-\u2010-\u2015\u2212]+")
 # digits. A shorter one is a symbol or an escape such as the backslash and n of a line break,
 # and replacing it would tear a text apart.
 _MIN_NAME_PART = 2
+# A word of a name this long is found in any case of its first letter. A shorter one, which
+# may be an ordinary word (Will, Eva), keeps the case it was written in.
+_MIN_LOOSE_CASE = 5
+# Unknown rows the shape mask meets are added to the roster up to this many participants, so
+# that a block someone else built cannot make the pattern grow without bound.
+_MAX_REGISTERED = 300
 # A label or a position placeholder already in a text. It is passed over, so that a participant
 # named Expert, or Position, cannot rewrite the labels an earlier step put there.
 _PLACEHOLDER = r"(?<!\w)Expert \d+(?!\w)|\[position(?: of Expert \d+)?\]"
 
 
-# Characters that print nothing and that copy-pasting from a document leaves inside names.
-_INVISIBLE = {ord(char): None for char in "\u00ad\u200b\u200c\u200d\u2060\ufeff"}
+# Characters that print nothing and that copy-pasting from a document leaves inside names, and
+# the curly apostrophes (U+2019, U+02BC) that stand for the plain one.
+_FOLDED: dict[int, str | None] = {
+    **dict.fromkeys(map(ord, "\u00ad\u200b\u200c\u200d\u2060\ufeff")),
+    **dict.fromkeys(map(ord, "\u2019\u02bc"), "'"),
+}
 
 
 def _comparable(text: str) -> str:
     """Write a text in the form names are compared in.
 
     Composed and combining accents become one character (``á``), full-width and other
-    compatibility forms become plain letters, and invisible characters are dropped, so a name
-    matches however it was typed or pasted.
+    compatibility forms become plain letters, invisible characters are dropped and typographic
+    apostrophes become the plain one, so a name matches however it was typed or pasted.
     """
     if text.isascii():
         return text
-    return unicodedata.normalize("NFKC", text).translate(_INVISIBLE)
+    return unicodedata.normalize("NFKC", text).translate(_FOLDED)
 
 
 def _bounded(char: str) -> bool:
@@ -226,15 +238,17 @@ def _word(word: str, *, exact_first: bool) -> str:
     """Write a pattern for one word, punctuation at its ends kept as it is.
 
     :param word: The word.
-    :param exact_first: Whether a capital first letter must be found as a capital. A word
-        written in lower case is always matched ignoring case.
+    :param exact_first: Whether a capital first letter of a short word must be found as a
+        capital (see :data:`_MIN_LOOSE_CASE`). A word written in lower case, and a long word,
+        is always matched ignoring the case of its first letter.
     :return: The pattern.
     """
     lead: str
     core: str
     tail: str
     lead, core, tail = _WORD_EDGES.findall(word)[0]
-    body = _inflected(core, head_exact=exact_first and core[0].isupper()) if core else ""
+    exact = exact_first and core[:1].isupper() and len(core) < _MIN_LOOSE_CASE
+    body = _inflected(core, head_exact=exact) if core else ""
     return re.escape(lead) + body + re.escape(tail)
 
 
@@ -243,8 +257,8 @@ def _phrase(words: Sequence[str], separator: str, *, exact_first: bool) -> str:
 
     :param words: The words, none empty.
     :param separator: The pattern that stands between two words.
-    :param exact_first: Whether a capital first letter of a word must be found as a capital;
-        otherwise the whole phrase is matched ignoring case.
+    :param exact_first: Whether a capital first letter of a short word must be found as a
+        capital; otherwise the whole phrase is matched ignoring case.
     :return: The pattern.
     """
     body = separator.join(_word(word, exact_first=exact_first) for word in words)
@@ -306,6 +320,7 @@ class TurnRoster:
         """Start with no participants."""
         self._lock = threading.Lock()
         self._by_name: dict[str, _Participant] = {}
+        self._count = 0
         # A position, case folded, to the position as written and the participants holding it.
         self._positions: dict[str, tuple[str, set[int]]] = {}
         self._matcher: _Matcher | None = None
@@ -326,7 +341,8 @@ class TurnRoster:
                     continue
                 participant = self._by_name.get(name)
                 if participant is None:
-                    participant = _Participant(len(self._by_name) + 1)
+                    self._count += 1
+                    participant = _Participant(self._count)
                     self._by_name[name] = participant
                 participant.names.update((name, _comparable(" ".join(opinion.expert_name.split()))))
                 participant.heads.add(_comparable(opinion_head(opinion)))
@@ -341,6 +357,27 @@ class TurnRoster:
                         )
                         holders.add(participant.number)
             self._matcher = None
+
+    def label_for(self, head: str) -> str:
+        """Give the label of a row head, registering it as a new participant if it is unknown.
+
+        The shape mask meets rows of experts the roster never fetched. Numbering them from 1
+        would reuse the labels of the experts it did, so they get the next free ones, and the
+        name is searched for in the rest of the trace under that label.
+
+        :param head: What stands between ``- `` and ``: `` in an opinion row.
+        :return: The label.
+        """
+        text = _comparable(head)
+        with self._lock:
+            for participant in self._by_name.values():
+                if text in participant.heads or text in participant.names:
+                    return expert_label(participant.number)
+            self._count += 1
+            if text and len(self._by_name) < _MAX_REGISTERED:
+                self._by_name[text] = _Participant(self._count, {text}, {text})
+                self._matcher = None
+            return expert_label(self._count)
 
     def matcher(self) -> "_Matcher | None":
         """Return the pattern for the participants registered so far.
@@ -365,7 +402,7 @@ class TurnRoster:
                 # The whole name is searched for even when its parts are too short to be
                 # searched for alone (J K), so such a name is not left as it is.
                 if len(parts) > 1 and sum(map(_letters_and_digits, parts)) >= _MIN_NAME_PART:
-                    phrase = _phrase(parts, _NAME_SEPARATOR.pattern, exact_first=True)
+                    phrase = _phrase(parts, _NAME_SEPARATOR.pattern, exact_first=False)
                     others.setdefault(phrase, (len(name), label))
                 for part in parts:
                     if _letters_and_digits(part) >= _MIN_NAME_PART:
@@ -375,10 +412,7 @@ class TurnRoster:
             words = position.split()
             if not any(_letters_and_digits(word) >= _MIN_NAME_PART for word in words):
                 continue
-            if len(words) == 1:
-                regex = _phrase(words, "", exact_first=True)
-            else:
-                regex = _phrase(words, r"\s+", exact_first=False)
+            regex = _phrase(words, r"\s+", exact_first=False)
             only = next(iter(numbers)) if len(numbers) == 1 else None
             replacement = "[position]" if only is None else f"[position of {expert_label(only)}]"
             others.setdefault(regex, (len(position), replacement))
@@ -413,8 +447,7 @@ def label_known_rows(text: str, roster: TurnRoster) -> str:
 
     :param text: Any text.
     :param roster: The turn's participants.
-    :return: The text with each known row's head replaced by the participant's label, which
-        also drops the position from the row.
+    :return: The text with each known row's head replaced by the participant's label.
     """
     matcher = roster.matcher()
     if matcher is None or matcher.rows is None or not text:
@@ -428,8 +461,7 @@ def mask_participants(text: str, roster: TurnRoster) -> str:
 
     The text is read once and what is put in is never read again, and a label or a position
     placeholder that is already in the text is passed over, so a label cannot be mistaken for
-    a name. An opinion row whose head the roster knows becomes
-    ``- Expert N: <values>``, the position dropped from it.
+    a name. An opinion row whose head the roster knows becomes ``- Expert N: <values>``.
 
     :param text: Any text. It is read in the form names are compared in (see
         :func:`_comparable`), so a name typed with a combining accent, in full-width letters

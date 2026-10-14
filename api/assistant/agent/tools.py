@@ -34,6 +34,7 @@ from api.assistant.agent.masking import (
     EXPERT_LABEL,
     ROW_HEAD_END,
     ROW_MARK,
+    TurnRoster,
     expert_label,
     opinion_head,
 )
@@ -203,12 +204,13 @@ _REAL_LINE_BREAK = re.compile(r"(\n)")
 _ESCAPED_LINE_BREAK = re.compile(r"(\\\\|\\n)")
 
 
-def _mask_lines(text: str, line_break: re.Pattern[str]) -> str:
+def _mask_lines(text: str, line_break: re.Pattern[str], roster: TurnRoster | None) -> str:
     """Mask the opinions blocks of a text whose lines end with the given break.
 
     :param text: The text; the break is the pattern's one capturing group.
     :param line_break: The pattern that finds a line break, a doubled backslash included
         as a token that is not one.
+    :param roster: The turn's participants, or None to number the rows of each block.
     :return: The text with each block's names replaced, every break as it was.
     """
     lines = [""]
@@ -227,7 +229,10 @@ def _mask_lines(text: str, line_break: re.Pattern[str]) -> str:
         elif in_block and (row := _OPINION_ROW.fullmatch(line)):
             row_number += 1
             if not EXPERT_LABEL.fullmatch(row["name"]):
-                lines[index] = ROW_MARK + expert_label(row_number) + line[row.end("name") :]
+                label = (
+                    expert_label(row_number) if roster is None else roster.label_for(row["name"])
+                )
+                lines[index] = ROW_MARK + label + line[row.end("name") :]
         else:
             in_block = False
     joined = [lines[0]]
@@ -236,25 +241,40 @@ def _mask_lines(text: str, line_break: re.Pattern[str]) -> str:
     return "".join(joined)
 
 
-def mask_opinion_names(text: str) -> str:
-    """Replace the expert names in every opinions block of a text with ``Expert 1``, ``Expert 2``.
+def mask_opinion_rows(text: str, roster: TurnRoster | None = None) -> str:
+    """Replace the expert names in every opinions block of a text with ``Expert N`` labels.
 
     A block is found by its shape alone, the count line :func:`render_opinions` writes and
     the rows that follow it, so no list of names is needed. Every row is masked, the
     asker's own included, because the block does not say which row is theirs. The numbers
     stay. A row whose name is already ``Expert N``, put there by the turn's roster (see
     :func:`~api.assistant.agent.masking.mask_participants`), is left as it is, so that this
-    mask never renumbers the roster's labels. A row-shaped line that is not directly under a count line is left as it is. A
-    block is found whether its lines end with a newline or with the two characters
-    backslash and ``n``, as in ``repr(exc)``; the text is read once for each form, so a name
-    that holds a typed backslash and ``n`` cannot cut its row in two.
+    mask never renumbers the roster's labels. A row-shaped line that is not directly under
+    a count line is left as it is. A block is found whether its lines end with a newline or
+    with the two characters backslash and ``n``, as in ``repr(exc)``; the text is read once
+    for each form, so a name that holds a typed backslash and ``n`` cannot cut its row in two.
+
+    :param text: Any text; one that holds no opinions block comes back unchanged.
+    :param roster: The turn's participants. With it, a row of an expert the roster has not
+        met is added to it and takes the next free label, so it never shares a label with
+        an expert the roster knows; without it, rows are numbered from 1 within the block.
+    :return: The text with each block's names replaced.
+    """
+    if _OPINION_COUNT_PREFIX not in text:
+        return text
+    return _mask_lines(_mask_lines(text, _REAL_LINE_BREAK, roster), _ESCAPED_LINE_BREAK, roster)
+
+
+def mask_opinion_names(text: str) -> str:
+    """Replace the expert names in every opinions block of a text, numbering rows from 1.
+
+    This is :func:`mask_opinion_rows` without a roster, the one-argument form the LangSmith
+    client's anonymizer calls.
 
     :param text: Any text; one that holds no opinions block comes back unchanged.
     :return: The text with each block's names replaced, numbered from 1 within the block.
     """
-    if _OPINION_COUNT_PREFIX not in text:
-        return text
-    return _mask_lines(_mask_lines(text, _REAL_LINE_BREAK), _ESCAPED_LINE_BREAK)
+    return mask_opinion_rows(text)
 
 
 def _reply(ctx: AssistantContext, text: str) -> str:
