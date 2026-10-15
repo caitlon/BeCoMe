@@ -522,9 +522,11 @@ three model roles to be `api`, since a local model server is not reachable there
 shown each expert's name and position in the opinions block. Tracing sends the text of
 questions, history, tool replies and answers to LangSmith, but the names and positions of the
 turn's participants are replaced before anything leaves the process, and a trace is dropped
-rather than sent unmasked when the roster cannot be complete. What is covered and what is missed
-is in [`api/assistant/README.md`](../api/assistant/README.md#tracing). With
-`assistant_langsmith_enabled`
+rather than sent unmasked when the roster of the turn's project cannot be read. The mask misses
+typos, diminutives, forms that change a word's stem and names inside e-mail addresses, and the
+drop does not cover a project of more than 100 experts, nor a turn with no current project whose
+text names another project's experts. The full list is in
+[`api/assistant/README.md`](../api/assistant/README.md#tracing). With `assistant_langsmith_enabled`
 on, a deployed service must use the EU endpoint and a named project other than the local default,
 and the LangSmith library's own switches (`LANGSMITH_TRACING` and its `LANGCHAIN_` variants) and
 its `RUNS_ENDPOINTS` lists are refused there: `assistant_langsmith_enabled` is the only way to

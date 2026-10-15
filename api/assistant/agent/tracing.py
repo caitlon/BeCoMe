@@ -319,10 +319,10 @@ class MaskingClient(ls.Client):
                 kept = _Op(op.kind, ls.utils.deepish_copy(op.kwargs))
                 self._submit(self._send_late, kept, roster)
                 return
-        self._log_dropped(key)
+        self._log_dropped(key, "unknown_trace" if roster is None else "roster_incomplete")
 
     @staticmethod
-    def _log_dropped(key: str | None) -> None:
+    def _log_dropped(key: str | None, reason: str) -> None:
         """Log a call dropped for want of a turn.
 
         The first call with no trace id is logged at WARNING, so that a library that stopped
@@ -332,7 +332,7 @@ class MaskingClient(ls.Client):
             _warn_no_trace_id()
         logger.debug(
             "LangSmith call dropped",
-            extra={"event": "assistant_trace_dropped", "reason": "unknown_trace"},
+            extra={"event": "assistant_trace_dropped", "reason": reason},
         )
 
     def _flush(self, held: _Held) -> None:

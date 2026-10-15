@@ -377,9 +377,10 @@ cannot be masked is dropped and logged with the exception class only. Neither is
 it is. A second layer masks any opinions block by its shape, whoever its rows name.
 
 If the turn is about a project and its experts could not be read into the roster (the fetch
-failed or timed out, or in `workflow` mode the project read failed), the trace could miss a
-name, so it is dropped whole, with one INFO record (`event=assistant_trace_dropped`,
-`reason=roster_incomplete`), and so are late calls. A turn that names no project is sent.
+failed or timed out, in `workflow` mode the project read failed, or in `hybrid` mode any fetch
+ahead failed, the document search included), the trace could miss a name, so it is dropped
+whole, with one INFO record (`event=assistant_trace_dropped`, `reason=roster_incomplete`), and so
+are late calls. A turn that names no project is sent.
 
 What the mask misses: typos, diminutives, and forms that change the stem (Kupka, Kupce); a name
 inside an e-mail address, where a lower-case word of fewer than five letters stays (a name stored

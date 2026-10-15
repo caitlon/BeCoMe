@@ -18,9 +18,10 @@ in any case, as a whole phrase only, never word by word, so ``Officer`` stays in
 text when the position is ``Dam Safety Officer``. A position of fewer than four word characters
 with no lower-case letter (IT, HR, C#) is found only as written, and one of a single character
 (n, 5) is not searched for. Typos, diminutives and the forms that change a word's stem
-(Kupka, Kupce) are not found. A name inside an e-mail address is found word by word, and a word of fewer than five letters is
-found only with the capital it was stored with, so ``jana.novakova@example.com`` becomes
-``jana.Expert 1@example.com``; the address is not masked as a whole.
+(Kupka, Kupce) are not found. A name inside an e-mail address is found word by word, and a word
+of fewer than five letters is found only with the capital it was stored with, so
+``jana.novakova@example.com`` becomes ``jana.Expert 1@example.com``; the address is not masked
+as a whole.
 
 A roster registers at most 100 participants. Past that an expert is still masked wherever a
 block shows the name in a row, but the name is not searched for anywhere else in the text.
@@ -46,6 +47,9 @@ _MATCH_LIMIT = 10_000
 # the renderer and the roster find the same rows.
 ROW_MARK = "- "
 ROW_HEAD_END = ": "
+# What stands around the position in a row head, written once for the same reason.
+POSITION_OPEN = " ("
+POSITION_CLOSE = ")"
 
 
 class Named(Protocol):
@@ -98,7 +102,25 @@ def opinion_head(opinion: Expert) -> str:
         cleaned and cut to its limit.
     """
     position = clean_text(opinion.position, POSITION_LIMIT)
-    return f"{expert_name(opinion)} ({position})" if position else expert_name(opinion)
+    if not position:
+        return expert_name(opinion)
+    return f"{expert_name(opinion)}{POSITION_OPEN}{position}{POSITION_CLOSE}"
+
+
+def split_head(head: str) -> tuple[str, str]:
+    """Split a row head into the name and the position, as :func:`opinion_head` wrote them.
+
+    The split is at the last opening bracket before the closing one, so a name with brackets
+    of its own keeps them.
+
+    :param head: What stands between ``- `` and ``: `` in an opinion row.
+    :return: The name and the position; the position is empty when the head has none.
+    """
+    if head.endswith(POSITION_CLOSE):
+        cut = head.rfind(POSITION_OPEN, 0, len(head) - len(POSITION_CLOSE))
+        if cut > 0:
+            return head[:cut], head[cut + len(POSITION_OPEN) : -len(POSITION_CLOSE)]
+    return head, ""
 
 
 # Letters that differ only by a diacritic count as one when a name is matched, so that a
@@ -396,6 +418,9 @@ class TurnRoster:
     A turn fetches opinions in a few places (ahead of the model, in a tool, for the roster
     alone), on the event loop and on executor threads, so every method takes the lock.
     The same name keeps its label whichever list it turns up in.
+
+    :ivar incomplete: True while the turn is about a project whose opinions have not been read
+        into the roster, so a name may be missing from it.
     """
 
     def __init__(self) -> None:
@@ -447,18 +472,24 @@ class TurnRoster:
             clean_text(opinion.position, _MATCH_LIMIT),
             " ".join(opinion.position.split()),
         ):
-            position = _comparable(position)
-            if len(position) >= _MIN_POSITION:
-                key = position if _is_acronym(position) else position.casefold()
-                _, holders = self._positions.setdefault(key, (position, set()))
-                holders.add(participant.number)
+            self._note_position(participant, position)
+
+    def _note_position(self, participant: _Participant, position: str) -> None:
+        """Record that a participant holds a position; the caller holds the lock."""
+        position = _comparable(position)
+        if len(position) >= _MIN_POSITION:
+            key = position if _is_acronym(position) else position.casefold()
+            _, holders = self._positions.setdefault(key, (position, set()))
+            holders.add(participant.number)
 
     def label_for(self, head: str) -> str:
         """Give the label of a row head, registering it as a new participant if it is unknown.
 
         The shape mask meets rows of experts the roster never fetched. Numbering them from 1
-        would reuse the labels of the experts it did, so they get the next free ones, and the
-        name is searched for in the rest of the trace under that label.
+        would reuse the labels of the experts it did, so they get the next free ones. The head
+        is split into a name and a position (see :func:`split_head`), and each is searched for
+        in the rest of the trace under that label. A name the roster knows keeps its label,
+        whatever position the row gives it.
 
         :param head: What stands between ``- `` and ``: `` in an opinion row.
         :return: The label.
@@ -468,11 +499,17 @@ class TurnRoster:
             for participant in self._by_name.values():
                 if text in participant.heads or text in participant.names:
                     return expert_label(participant.number)
-            self._count += 1
-            if text and len(self._by_name) < _MAX_REGISTERED:
-                self._by_name[text] = _Participant(self._count, {text}, {text})
-                self._matcher = None
-            return expert_label(self._count)
+            name, position = split_head(text)
+            owner = self._by_name.get(name)
+            if owner is None:
+                self._count += 1
+                if not name or len(self._by_name) >= _MAX_REGISTERED:
+                    return expert_label(self._count)
+                owner = self._by_name[name] = _Participant(self._count, {name})
+            owner.heads.add(text)
+            self._note_position(owner, position)
+            self._matcher = None
+            return expert_label(owner.number)
 
     def drop_matcher(self) -> None:
         """Forget the built pattern, which is large; the next use of the roster builds it again."""
