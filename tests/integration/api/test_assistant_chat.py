@@ -1658,7 +1658,7 @@ _TRACE_HISTORY = [
 ]
 _TRACE_ANSWER = (
     "Zwiebelsteinovi to vychazi jinak nez Bohumile Kratochvilove, ktera je Dam Safety Officer "
-    "at Lipno."
+    "at Lipna."
 )
 _TRACE_SECRETS = [
     OWNER_FIRST_NAME,
@@ -1668,7 +1668,7 @@ _TRACE_SECRETS = [
     "Hydrologist",
     "Povodi",
     "Dam Safety",
-    "Lipno",
+    "Lipn",
 ]
 
 
@@ -1750,8 +1750,11 @@ class TestTracesCarryNoMemberData:
         shown = _shown(model)
         for name in (OWNER_FIRST_NAME, OWNER_LAST_NAME, _SECOND_FIRST_NAME, _SECOND_LAST_NAME):
             assert name in shown
-        for position in (_OWNER_POSITION_IN_TRACE, _SECOND_POSITION):
-            assert position in shown
+        for first, last, position in (
+            (OWNER_FIRST_NAME, OWNER_LAST_NAME, _OWNER_POSITION_IN_TRACE),
+            (_SECOND_FIRST_NAME, _SECOND_LAST_NAME, _SECOND_POSITION),
+        ):
+            assert f"- {first} {last} ({position}): lower=" in shown
         (traced,) = clients
         payload = "\n".join(traced.bodies)
         for secret in _TRACE_SECRETS:

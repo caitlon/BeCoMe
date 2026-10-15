@@ -516,7 +516,8 @@ class TestHeldTurn:
         """
         GIVEN a turn whose roster is incomplete, with a child run
         WHEN it ends, and a late call for one of its runs arrives
-        THEN nothing is sent, and one INFO record names the event and the reason
+        THEN nothing is sent, one INFO record names the event and the reason, and the late
+            call is logged at DEBUG with the same reason
         """
         settings = _enabled_settings()
         roster = TurnRoster()
@@ -537,6 +538,8 @@ class TestHeldTurn:
             "assistant_trace_dropped",
             "roster_incomplete",
         )
+        (late,) = [r for r in records if r.levelno == logging.DEBUG]
+        assert late.__dict__["reason"] == "roster_incomplete"
 
     def test_a_name_met_only_in_a_later_run_is_masked_in_the_earlier_ones(self, built):
         """
@@ -554,7 +557,7 @@ class TestHeldTurn:
         tracing.end_turn(run, outputs={"answer": "a"})
 
         question = json.loads(built[0].bodies[0])["inputs"]["question"]
-        assert "Expert 1" in question
+        assert question == "What does Expert 1 think?"
         assert "Stranger" not in "\n".join(built[0].bodies)
 
     def test_a_trace_id_in_another_spelling_finds_the_held_turn_and_the_call_is_copied(self, built):
@@ -854,7 +857,11 @@ class TestReleaseWorker:
         assert "BOOM" not in record.getMessage() + str(record.__dict__)
 
     def test_the_masked_fields_are_these_nine(self):
-        """The client masks these nine fields, so that dropping one fails a test of its own."""
+        """
+        GIVEN the fields of a run that the client masks
+        WHEN they are listed
+        THEN they are these nine, so that dropping one fails a test of its own
+        """
         assert set(tracing._MASKED_FIELDS) == {
             *("name", "inputs", "outputs", "error", "extra"),
             *("events", "tags", "serialized", "attachments"),

@@ -396,6 +396,49 @@ class TestBlockRows:
         assert masked.endswith("\nAsk Expert 1")
         assert "Svobodov" not in masked
 
+    def test_an_unknown_row_with_a_position_registers_the_name_and_the_position(self):
+        """
+        GIVEN a block row of a stranger with a position, and the name and the position again
+            outside the block
+        WHEN the text is masked with the roster
+        THEN the name is masked under the stranger's label and the position is a placeholder
+            of that label, and no label is doubled
+        """
+        stranger = _opinion("Stranger Unknown", "Dam Safety Officer")
+        text = render_opinions([stranger]) + "\nStranger Unknown, a dam safety officer, spoke"
+
+        masked = _hide(text, _roster("Bob Green"))
+
+        assert "- Expert 2: lower=37.00" in masked
+        assert masked.endswith("\nExpert 2, a [position of Expert 2], spoke")
+
+    def test_a_name_with_brackets_is_split_from_its_position_at_the_last_one(self):
+        """
+        GIVEN a stranger whose name has brackets, and a known expert met again with another
+            position in a row
+        WHEN the rows are masked with the roster
+        THEN the stranger's name and position register apart, and the known expert keeps the
+            label of the name whatever position the row gives
+        """
+        assert masking.split_head("Karel (Karlos) Dvorak (Chair)") == (
+            "Karel (Karlos) Dvorak",
+            "Chair",
+        )
+        assert masking.split_head("Plain Name") == ("Plain Name", "")
+        known = _opinion("Jan Novák", "Hydrologist")
+        crafted = _opinion("Karel (Karlos) Dvorak", "Chair")
+        text = render_opinions([_opinion("Jan Novák", "Lawyer"), crafted])
+        text += "\nDvorak asked the chair, then Novák said it was a lawyer"
+
+        masked = _hide(text, _roster(known))
+
+        assert "- Expert 1: lower=37.00" in masked
+        assert "- Expert 2: lower=37.00" in masked
+        assert masked.endswith(
+            "\nExpert 2 asked the [position of Expert 2], then Expert 1 said "
+            "it was a [position of Expert 1]"
+        )
+
     def test_the_shape_mask_leaves_a_labelled_row_as_it_is(self):
         """
         GIVEN a block whose rows already read Expert 2 and Expert 1, in that order
