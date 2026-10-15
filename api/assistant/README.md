@@ -383,8 +383,8 @@ whole, with one INFO record (`event=assistant_trace_dropped`, `reason=roster_inc
 calls of the turn are dropped too, logged at DEBUG. A turn that names no project is sent.
 
 What the mask misses: typos, diminutives, and forms that change the stem (Kupka, Kupce); a
-position the model translates or paraphrases; a name
-inside an e-mail address, where a lower-case word of fewer than five letters stays (a name stored
+position the model translates or paraphrases; a name inside an e-mail address, where a
+lower-case word of fewer than five letters stays (a name stored
 as `Jana` is matched only with its capital, so `jana.novakova@example.com` becomes
 `jana.Expert 1@example.com`); a name in the history that belongs to a project the turn did not
 fetch, unless it sits in an opinions block; and, in a project of more than 100 experts, the names

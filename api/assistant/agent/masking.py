@@ -23,7 +23,8 @@ of fewer than five letters is found only with the capital it was stored with, so
 ``jana.novakova@example.com`` becomes ``jana.Expert 1@example.com``; the address is not masked
 as a whole.
 
-A roster registers at most 100 participants. Past that an expert is still masked wherever a
+A name or a position that a block shows cut with dots is also found in that cut form, with and
+without the dots, as a whole phrase. A roster registers at most 100 participants. Past that an expert is still masked wherever a
 block shows the name in a row, but the name is not searched for anywhere else in the text.
 """
 
@@ -93,11 +94,17 @@ def opinion_head(opinion: Expert) -> str:
     return f"{name}{POSITION_OPEN}{position}{POSITION_CLOSE}" if position else name
 
 
+def _looks_cut(text: str, limit: int) -> bool:
+    """Whether a name or position out of a block looks cut to the limit, with dots at its end."""
+    return text.endswith("...") and len(text) > limit // 2
+
+
 def split_head(head: str) -> tuple[str, str]:
     """Split a row head into the name and the position, as :func:`opinion_head` wrote them.
 
-    The split is at the first opening bracket, because a name cannot hold one (a name is
-    letters, spaces, hyphens and apostrophes) while a position can: ``Chairman (deputy)``.
+    The split is at the first opening bracket, because a name cannot hold one while a position
+    can: ``Chairman (deputy)``. That relies on ``validate_name_format`` in ``api/schemas/auth.py``
+    keeping brackets out of names (letters, spaces, hyphens and apostrophes only).
 
     :param head: What stands between ``- `` and ``: `` in an opinion row.
     :return: The name and the position; the position is empty when the head has none.
@@ -389,12 +396,17 @@ class _Participant:
     """One expert of the turn.
 
     :ivar number: The label's number.
-    :ivar names: The expert's name, cleaned and as written, whole.
+    :ivar names: The expert's name, cleaned and as written, whole; each is searched for whole
+        and word by word.
+    :ivar cuts: The name as a block shows it cut with dots, and without the dots, when it was
+        cut; each is searched for as a whole phrase only, so a word cut off at the end of a
+        long name (``The``) is not searched for alone.
     :ivar heads: Every row head an opinion of this expert has been rendered with.
     """
 
     number: int
     names: set[str] = field(default_factory=set)
+    cuts: set[str] = field(default_factory=set)
     heads: set[str] = field(default_factory=set)
 
 
@@ -448,23 +460,28 @@ class TurnRoster:
                 return None
             self._count += 1
             participant = self._by_name[name] = _Participant(self._count)
+        participant.names.update((name, _comparable(" ".join(opinion.expert_name.split()))))
         cut = _comparable(clean_text(opinion.expert_name, EXPERT_LIMIT))
-        # A block shows a long name cut with dots, and a model may quote it so, or without them.
-        participant.names.update(
-            (name, _comparable(" ".join(opinion.expert_name.split())), cut, cut.removesuffix("..."))
-        )
+        if cut != name:  # a block shows a long name cut with dots; a model may quote it so
+            participant.cuts.update((cut, cut.removesuffix("...")))
         return participant
+
+    def _find(self, name: str) -> _Participant | None:
+        """Find a participant by a name, whole or cut; the caller holds the lock."""
+        found = self._by_name.get(name)
+        if found is None:
+            found = next((p for p in self._by_name.values() if name in p.cuts), None)
+        return found
 
     def _remember(self, participant: _Participant, opinion: Expert) -> None:
         """Record the opinion's row head and position for its expert; the caller holds the lock."""
         participant.heads.add(_comparable(opinion_head(opinion)))
+        full = clean_text(opinion.position, _MATCH_LIMIT)
         cut = clean_text(opinion.position, POSITION_LIMIT)  # as a block shows a long one
-        for position in (
-            clean_text(opinion.position, _MATCH_LIMIT),
-            " ".join(opinion.position.split()),
-            cut,
-            cut.removesuffix("..."),
-        ):
+        forms = [full, " ".join(opinion.position.split())]
+        if cut != full:
+            forms += [cut, cut.removesuffix("...")]
+        for position in forms:
             self._note_position(participant, position)
 
     def _note_position(self, participant: _Participant, position: str) -> None:
@@ -493,14 +510,20 @@ class TurnRoster:
                 if text in participant.heads or text in participant.names:
                     return expert_label(participant.number)
             name, position = split_head(text)
-            owner = self._by_name.get(name)
+            owner = self._find(name)
             if owner is None:
                 self._count += 1
                 if not name or len(self._by_name) >= _MAX_REGISTERED:
                     return expert_label(self._count)
-                owner = self._by_name[name] = _Participant(self._count, {name})
+                owner = self._by_name[name] = _Participant(self._count)
+                if _looks_cut(name, EXPERT_LIMIT):
+                    owner.cuts.update((name, name.removesuffix("...")))
+                else:
+                    owner.names.add(name)
             owner.heads.add(text)
             self._note_position(owner, position)
+            if _looks_cut(position, POSITION_LIMIT):
+                self._note_position(owner, position.removesuffix("..."))
             self._matcher = None
             return expert_label(owner.number)
 
@@ -560,6 +583,11 @@ def _name_alts(participant: _Participant) -> dict[str, _Alt]:
         for part in parts:
             if _letters_and_digits(part) >= _MIN_NAME_PART:
                 found.setdefault(_phrase([part], "", exact_first=True), _Alt(len(part), label))
+    for cut in participant.cuts:
+        parts = [p for p in _NAME_SEPARATOR.split(cut) if p]
+        if sum(map(_letters_and_digits, parts)) >= _MIN_NAME_PART:
+            phrase = _phrase(parts, _NAME_SEPARATOR.pattern, exact_first=False)
+            found.setdefault(phrase, _Alt(len(cut), label))
     return found
 
 
