@@ -379,10 +379,11 @@ it is. A second layer masks any opinions block by its shape, whoever its rows na
 If the turn is about a project and its experts could not be read into the roster (the fetch
 failed or timed out, in `workflow` mode the project read failed, or in `hybrid` mode any fetch
 ahead failed, the document search included), the trace could miss a name, so it is dropped
-whole, with one INFO record (`event=assistant_trace_dropped`, `reason=roster_incomplete`), and so
-are late calls. A turn that names no project is sent.
+whole, with one INFO record (`event=assistant_trace_dropped`, `reason=roster_incomplete`), and late
+calls of the turn are dropped too, logged at DEBUG. A turn that names no project is sent.
 
-What the mask misses: typos, diminutives, and forms that change the stem (Kupka, Kupce); a name
+What the mask misses: typos, diminutives, and forms that change the stem (Kupka, Kupce); a
+position the model translates or paraphrases; a name
 inside an e-mail address, where a lower-case word of fewer than five letters stays (a name stored
 as `Jana` is matched only with its capital, so `jana.novakova@example.com` becomes
 `jana.Expert 1@example.com`); a name in the history that belongs to a project the turn did not
