@@ -194,7 +194,7 @@ test.describe('documentation screenshots', () => {
   // drops the recommendation sentence before it leaves the API; and no component reads
   // `likert_value` or `likert_decision`, so the verdict is never rendered even when it is
   // computed. This test's final assertion looks for the position in words and would time
-  // out on the third of those. Tracked as BCM-67. Unskip when all three are done, not one.
+  // out on the third of those. Unskip when all three are done, not one.
   test.fixme('a Likert project reports a verdict', async ({ page }) => {
     await registerUser(page, `docs-lk-${uniqueId()}@test.com`, 'Alex', 'Novak');
     await dismissToasts(page);
