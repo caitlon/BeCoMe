@@ -8,6 +8,7 @@ import pytest
 
 from api.assistant.agent import masking
 from api.assistant.agent.masking import TurnRoster, mask_participants
+from api.assistant.agent.prompt import clean_text
 from api.assistant.agent.tools import mask_opinion_names, mask_opinion_rows, render_opinions
 from api.assistant.views import OpinionView
 
@@ -64,6 +65,12 @@ _FULLWIDTH = (
     chr(0xFF2E) + chr(0xFF4F) + chr(0xFF56) + "á" + chr(0xFF4B)
 )  # the name Novak in full-width letters
 _NOVAK = ("Jan Novák",)
+_LONG_NAME = "Bartholomew Alexander Montgomery Featherstonehaugh-Smythe Svobodová"
+_LONG_POSITION = (
+    "Senior Dam Safety Officer responsible for the Lipno cascade and the Orlik reservoir"
+)
+_CUT_NAME = clean_text(_LONG_NAME, masking.EXPERT_LIMIT)
+_CUT_POSITION = clean_text(_LONG_POSITION, masking.POSITION_LIMIT)
 _NOVAK_FORMS = (  # noqa: SIM905
     "Novák Nováka Novákovi Novákem Novákovým Novákové Novákův Novákovo Novákovu Novákovy "
     "Novákovými Novak Novakovi NOVÁK"
@@ -154,6 +161,17 @@ _ROWS = [
         ("Bartholomew Alexander Montgomery Featherstonehaugh-Smythe Svobodová",),
         "Ask Svobodové and Bartholomew",
         "Ask Expert 1 and Expert 1",
+    ),
+    # a name and a position a block shows cut with dots, quoted so and without the dots
+    (
+        (_LONG_NAME,),
+        f"Ask {_CUT_NAME} and {_CUT_NAME.removesuffix('...')}",
+        "Ask Expert 1 and Expert 1",
+    ),
+    (
+        ((_LONG_NAME, _LONG_POSITION),),
+        f"{_CUT_POSITION} and {_CUT_POSITION.removesuffix('...')}",
+        "[position of Expert 1] and [position of Expert 1]",
     ),
     (("王伟",), "请问王伟说", "请问Expert 1说"),
     # names and positions made of symbols or of short parts
@@ -412,23 +430,23 @@ class TestBlockRows:
         assert "- Expert 2: lower=37.00" in masked
         assert masked.endswith("\nExpert 2, a [position of Expert 2], spoke")
 
-    def test_a_name_with_brackets_is_split_from_its_position_at_the_last_one(self):
+    def test_a_position_with_brackets_is_split_from_its_name_at_the_first_one(self):
         """
-        GIVEN a stranger whose name has brackets, and a known expert met again with another
-            position in a row
+        GIVEN a stranger whose position has brackets of its own, and a known expert met again
+            with another position in a row
         WHEN the rows are masked with the roster
-        THEN the stranger's name and position register apart, and the known expert keeps the
-            label of the name whatever position the row gives
+        THEN the stranger's name and whole position register apart, and the known expert keeps
+            the label of the name whatever position the row gives
         """
-        assert masking.split_head("Karel (Karlos) Dvorak (Chair)") == (
-            "Karel (Karlos) Dvorak",
-            "Chair",
+        assert masking.split_head("Karel Dvorak (Chairman (deputy))") == (
+            "Karel Dvorak",
+            "Chairman (deputy)",
         )
         assert masking.split_head("Plain Name") == ("Plain Name", "")
         known = _opinion("Jan Novák", "Hydrologist")
-        crafted = _opinion("Karel (Karlos) Dvorak", "Chair")
+        crafted = _opinion("Karel Dvorak", "Chairman (deputy)")
         text = render_opinions([_opinion("Jan Novák", "Lawyer"), crafted])
-        text += "\nDvorak asked the chair, then Novák said it was a lawyer"
+        text += "\nDvorak asked the chairman (deputy), then Novák said it was a lawyer"
 
         masked = _hide(text, _roster(known))
 

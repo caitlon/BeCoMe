@@ -163,11 +163,11 @@ _OPINION_COUNT_PREFIX = "Number of opinions: "
 _OPINION_VALUES_TEMPLATE = "lower={}, peak={}, upper={}, centroid={}"
 _OPINION_COUNT_LINE = re.compile(_OPINION_COUNT_PREFIX + r"\d+")
 # The pattern is applied with ``fullmatch`` and the fixed tail is anchored at the end of the
-# line, so the split between name and tail is unique and a name that itself contains the
-# tail is masked whole.
+# line, so the split between head (name and position) and tail is unique and a head that
+# itself contains the tail is masked whole.
 _OPINION_ROW = re.compile(
     re.escape(ROW_MARK)
-    + "(?P<name>.*)"
+    + "(?P<head>.*)"
     + re.escape(ROW_HEAD_END)
     + _OPINION_VALUES_TEMPLATE.format(*[r"-?\d+\.\d{2}"] * 4)
 )
@@ -241,9 +241,9 @@ def _label_rows(lines: list[str], roster: TurnRoster | None) -> None:
             in_block = False
             continue
         row_number += 1
-        if not EXPERT_LABEL.fullmatch(row["name"]):
-            label = expert_label(row_number) if roster is None else roster.label_for(row["name"])
-            lines[index] = ROW_MARK + label + line[row.end("name") :]
+        if not EXPERT_LABEL.fullmatch(row["head"]):
+            label = expert_label(row_number) if roster is None else roster.label_for(row["head"])
+            lines[index] = ROW_MARK + label + line[row.end("head") :]
 
 
 def _mask_lines(text: str, line_break: re.Pattern[str], roster: TurnRoster | None) -> str:

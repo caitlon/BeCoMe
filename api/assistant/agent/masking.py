@@ -52,17 +52,13 @@ POSITION_OPEN = " ("
 POSITION_CLOSE = ")"
 
 
-class Named(Protocol):
-    """What a row's head is made of: an expert's name."""
+class Expert(Protocol):
+    """What the roster reads of an opinion: the expert's name and position."""
 
     @property
     def expert_name(self) -> str:
         """The expert's name as the API gave it."""
         ...
-
-
-class Expert(Named, Protocol):
-    """What the roster reads of an opinion: the expert's name and position."""
 
     @property
     def position(self) -> str:
@@ -82,15 +78,6 @@ def expert_label(number: int) -> str:
     return f"Expert {number}"
 
 
-def expert_name(opinion: Named) -> str:
-    """Write an expert's name as an opinions block shows it.
-
-    :param opinion: The opinion.
-    :return: The name, cleaned and cut to :data:`EXPERT_LIMIT`.
-    """
-    return clean_text(opinion.expert_name, EXPERT_LIMIT)
-
-
 def opinion_head(opinion: Expert) -> str:
     """Write what stands between ``- `` and ``: `` in an opinion row.
 
@@ -101,23 +88,22 @@ def opinion_head(opinion: Expert) -> str:
     :return: The expert's name and, in parentheses, the position when there is one; each
         cleaned and cut to its limit.
     """
+    name = clean_text(opinion.expert_name, EXPERT_LIMIT)
     position = clean_text(opinion.position, POSITION_LIMIT)
-    if not position:
-        return expert_name(opinion)
-    return f"{expert_name(opinion)}{POSITION_OPEN}{position}{POSITION_CLOSE}"
+    return f"{name}{POSITION_OPEN}{position}{POSITION_CLOSE}" if position else name
 
 
 def split_head(head: str) -> tuple[str, str]:
     """Split a row head into the name and the position, as :func:`opinion_head` wrote them.
 
-    The split is at the last opening bracket before the closing one, so a name with brackets
-    of its own keeps them.
+    The split is at the first opening bracket, because a name cannot hold one (a name is
+    letters, spaces, hyphens and apostrophes) while a position can: ``Chairman (deputy)``.
 
     :param head: What stands between ``- `` and ``: `` in an opinion row.
     :return: The name and the position; the position is empty when the head has none.
     """
     if head.endswith(POSITION_CLOSE):
-        cut = head.rfind(POSITION_OPEN, 0, len(head) - len(POSITION_CLOSE))
+        cut = head.find(POSITION_OPEN, 0, len(head) - len(POSITION_CLOSE))
         if cut > 0:
             return head[:cut], head[cut + len(POSITION_OPEN) : -len(POSITION_CLOSE)]
     return head, ""
@@ -462,15 +448,22 @@ class TurnRoster:
                 return None
             self._count += 1
             participant = self._by_name[name] = _Participant(self._count)
-        participant.names.update((name, _comparable(" ".join(opinion.expert_name.split()))))
+        cut = _comparable(clean_text(opinion.expert_name, EXPERT_LIMIT))
+        # A block shows a long name cut with dots, and a model may quote it so, or without them.
+        participant.names.update(
+            (name, _comparable(" ".join(opinion.expert_name.split())), cut, cut.removesuffix("..."))
+        )
         return participant
 
     def _remember(self, participant: _Participant, opinion: Expert) -> None:
         """Record the opinion's row head and position for its expert; the caller holds the lock."""
         participant.heads.add(_comparable(opinion_head(opinion)))
+        cut = clean_text(opinion.position, POSITION_LIMIT)  # as a block shows a long one
         for position in (
             clean_text(opinion.position, _MATCH_LIMIT),
             " ".join(opinion.position.split()),
+            cut,
+            cut.removesuffix("..."),
         ):
             self._note_position(participant, position)
 
