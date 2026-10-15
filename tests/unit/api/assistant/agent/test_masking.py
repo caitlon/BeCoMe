@@ -70,6 +70,8 @@ _LONG_POSITION = (
     "Senior Dam Safety Officer responsible for the Lipno cascade and the Orlik reservoir"
 )
 _CUT_NAME = clean_text(_LONG_NAME, masking.EXPERT_LIMIT)
+_JO_NAME = "Bartholomew Alexander Montgomery Featherstonehaugh Jo Theodorakis"  # cut at "Jo The..."
+_CUT_JO = clean_text(_JO_NAME, masking.EXPERT_LIMIT)
 _CUT_POSITION = clean_text(_LONG_POSITION, masking.POSITION_LIMIT)
 _NOVAK_FORMS = (  # noqa: SIM905
     "Novák Nováka Novákovi Novákem Novákovým Novákové Novákův Novákovo Novákovu Novákovy "
@@ -167,6 +169,15 @@ _ROWS = [
         (_LONG_NAME,),
         f"Ask {_CUT_NAME} and {_CUT_NAME.removesuffix('...')}",
         "Ask Expert 1 and Expert 1",
+    ),
+    # the word a cut name ends in is not searched for alone, the cut name is, whole
+    ((_JO_NAME,), "The dam was built", "The dam was built"),
+    ((_JO_NAME,), f"Ask {_CUT_JO} and {_CUT_JO.removesuffix('...')}", "Ask Expert 1 and Expert 1"),
+    # a position that is stored with dots is not a cut one, so its stem is left alone
+    (
+        (("Alice Moore", "Manager..."),),
+        "Manager said Manager...",
+        "Manager said [position of Expert 1]",
     ),
     (
         ((_LONG_NAME, _LONG_POSITION),),
@@ -429,6 +440,34 @@ class TestBlockRows:
 
         assert "- Expert 2: lower=37.00" in masked
         assert masked.endswith("\nExpert 2, a [position of Expert 2], spoke")
+
+    def test_a_strangers_cut_position_is_masked_without_the_dots_too(self):
+        """
+        GIVEN a block row of a stranger whose long position the block shows cut with dots, and
+            the position quoted without the dots after the block
+        WHEN the text is masked with the roster
+        THEN the quoted position is masked under the stranger's label
+        """
+        stranger = _opinion("Stranger Unknown", _LONG_POSITION)
+        text = render_opinions([stranger]) + f"\nHe is {_CUT_POSITION.removesuffix('...')}"
+
+        masked = _hide(text, _roster("Bob Green"))
+
+        assert masked.endswith("\nHe is [position of Expert 2]")
+
+    def test_an_expert_with_a_long_name_met_again_with_another_position_keeps_the_label(self):
+        """
+        GIVEN an expert with a name that a block shows cut, known to the roster
+        WHEN a row gives the cut name and another position
+        THEN the row keeps the expert's label, and no new label is given
+        """
+        expert = _opinion(_LONG_NAME, "Chair")
+        again = _opinion(_LONG_NAME, "Lawyer")
+
+        masked = _hide(render_opinions([again]), _roster(expert))
+
+        assert "- Expert 1: lower=37.00" in masked
+        assert "Expert 2" not in masked
 
     def test_a_position_with_brackets_is_split_from_its_name_at_the_first_one(self):
         """

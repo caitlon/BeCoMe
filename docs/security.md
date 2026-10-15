@@ -523,7 +523,8 @@ shown each expert's name and position in the opinions block. Tracing sends the t
 questions, history, tool replies and answers to LangSmith, but the names and positions of the
 turn's participants are replaced before anything leaves the process, and a trace is dropped
 rather than sent unmasked when the roster of the turn's project cannot be read. The mask misses
-typos, diminutives, forms that change a word's stem and names inside e-mail addresses, and the
+typos, diminutives, forms that change a word's stem, a position the model translates or
+paraphrases and names inside e-mail addresses, and the
 drop does not cover a project of more than 100 experts, nor a turn with no current project whose
 text names another project's experts. The full list is in
 [`api/assistant/README.md`](../api/assistant/README.md#tracing). With `assistant_langsmith_enabled`
