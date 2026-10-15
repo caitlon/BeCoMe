@@ -24,8 +24,9 @@ of fewer than five letters is found only with the capital it was stored with, so
 as a whole.
 
 A name or a position that a block shows cut with dots is also found in that cut form, with and
-without the dots, as a whole phrase. A roster registers at most 100 participants. Past that an expert is still masked wherever a
-block shows the name in a row, but the name is not searched for anywhere else in the text.
+without the dots, as a whole phrase. A roster registers at most 100 participants. Past that an
+expert is still masked wherever a block shows the name in a row, but the name is not searched for
+anywhere else in the text.
 """
 
 import re
@@ -454,14 +455,15 @@ class TurnRoster:
         name = _comparable(clean_text(opinion.expert_name, _MATCH_LIMIT))
         if not name:
             return None
-        participant = self._by_name.get(name)
+        cut = _comparable(clean_text(opinion.expert_name, EXPERT_LIMIT))
+        # An expert first met as a stranger's row has the cut name, so look for that too.
+        participant = self._by_name.get(name) or (self._find(cut) if cut != name else None)
         if participant is None:
             if len(self._by_name) >= _MAX_REGISTERED:
                 return None
             self._count += 1
             participant = self._by_name[name] = _Participant(self._count)
         participant.names.update((name, _comparable(" ".join(opinion.expert_name.split()))))
-        cut = _comparable(clean_text(opinion.expert_name, EXPERT_LIMIT))
         if cut != name:  # a block shows a long name cut with dots; a model may quote it so
             participant.cuts.update((cut, cut.removesuffix("...")))
         return participant
@@ -517,7 +519,12 @@ class TurnRoster:
                     return expert_label(self._count)
                 owner = self._by_name[name] = _Participant(self._count)
                 if _looks_cut(name, EXPERT_LIMIT):
-                    owner.cuts.update((name, name.removesuffix("...")))
+                    dotless = name.removesuffix("...")
+                    owner.cuts.update((name, dotless))
+                    # Only the last word can be cut mid-word, so the words before it are whole.
+                    breaks = list(_NAME_SEPARATOR.finditer(dotless))
+                    if breaks:
+                        owner.names.add(dotless[: breaks[-1].start()])
                 else:
                     owner.names.add(name)
             owner.heads.add(text)

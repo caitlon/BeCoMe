@@ -173,6 +173,7 @@ _ROWS = [
     # the word a cut name ends in is not searched for alone, the cut name is, whole
     ((_JO_NAME,), "The dam was built", "The dam was built"),
     ((_JO_NAME,), f"Ask {_CUT_JO} and {_CUT_JO.removesuffix('...')}", "Ask Expert 1 and Expert 1"),
+    ((("Will",)), "he will go", "he will go"),  # one word cannot be cut, so it has no cut form
     # a position that is stored with dots is not a cut one, so its stem is left alone
     (
         (("Alice Moore", "Manager..."),),
@@ -454,6 +455,54 @@ class TestBlockRows:
         masked = _hide(text, _roster("Bob Green"))
 
         assert masked.endswith("\nHe is [position of Expert 2]")
+
+    def test_the_words_of_a_strangers_cut_name_are_masked_on_their_own(self):
+        """
+        GIVEN a block row of a stranger whose long name the block shows cut mid-word, and a
+            text with the words before the cut, the cut name quoted without its dots, and an
+            ordinary sentence that begins with the cut word
+        WHEN the text is masked with the roster
+        THEN every whole word, the whole prefix and the quoted cut name are masked under the
+            stranger's label, and the sentence is left alone
+        """
+        text = render_opinions([_opinion(_JO_NAME, "Chair")]) + (
+            "\nBartholomew Alexander Montgomery Featherstonehaugh Jo is here; Alexander agrees."
+            f" Quoted: {_CUT_JO.removesuffix('...')} end. The dam was built"
+        )
+
+        masked = _hide(text, _roster("Bob Green"))
+
+        assert masked.endswith(
+            "\nExpert 2 is here; Expert 2 agrees. Quoted: Expert 2 end. The dam was built"
+        )
+
+    def test_a_short_name_or_position_that_ends_in_dots_is_not_a_cut_one(self):
+        """
+        GIVEN a block row of a stranger whose short name and position end in dots
+        WHEN the text is masked with the roster
+        THEN the words without the dots are left alone: they were not cut
+        """
+        text = render_opinions([_opinion("Will...", "Manager...")])
+        text += "\nhe will go; the Manager said"
+
+        masked = _hide(text, _roster("Bob Green"))
+
+        assert masked.endswith("\nhe will go; the Manager said")
+
+    def test_an_expert_first_met_as_a_cut_row_keeps_the_label_when_added_whole(self):
+        """
+        GIVEN a stranger met as a row with a long name cut with dots
+        WHEN the same expert is added to the roster with the whole name
+        THEN the whole name has the label the row got, and no second label is given
+        """
+        roster = TurnRoster()
+        assert roster.label_for(_CUT_NAME) == "Expert 1"
+
+        roster.add([_opinion(_LONG_NAME)])
+
+        assert mask_participants(_LONG_NAME, roster) == "Expert 1"
+        assert roster.label_for(_CUT_NAME) == "Expert 1"
+        assert roster.label_for("Someone Else") == "Expert 2"
 
     def test_an_expert_with_a_long_name_met_again_with_another_position_keeps_the_label(self):
         """
