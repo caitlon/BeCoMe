@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from api.auth.dependencies import CurrentUser
 from api.auth.logging import hash_email
-from api.dependencies import ProjectAdmin, ProjectMember, get_invitation_service
+from api.dependencies import ProjectAdmin, get_invitation_service
 from api.exceptions import (
     AlreadyInvitedError,
     ExampleProjectInvitationError,
@@ -119,13 +119,13 @@ def invite_by_email(
 )
 def list_project_invitations(
     project_id: UUID,
-    project: ProjectMember,
+    project: ProjectAdmin,
     invitation_service: Annotated[InvitationService, Depends(get_invitation_service)],
     pagination: Annotated[PaginationParams, Depends()],
 ) -> list[ProjectInvitationResponse]:
-    """Get pending invitations for a project. Accessible to project members.
+    """Get pending invitations for a project. Accessible to the project admin only.
 
-    :param project: Project (verified member access)
+    :param project: Project (verified admin access)
     :param invitation_service: Invitation service
     :param pagination: Bounded limit/offset (capped at MAX_PAGE_SIZE)
     :return: List of pending invitations with invitee details

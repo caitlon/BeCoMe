@@ -636,8 +636,8 @@ class TestListProjectInvitations:
         assert response.status_code == 200
         assert response.json() == []
 
-    def test_accessible_by_project_member(self, client):
-        """Expert (non-admin) members can access project invitations."""
+    def test_not_accessible_by_expert_member(self, client):
+        """Expert (non-admin) members get 403 and no invitee details."""
         # GIVEN
         admin_token = register_and_login(client, "admin@example.com")
         expert_token = register_and_login(client, "expert@example.com")
@@ -669,8 +669,8 @@ class TestListProjectInvitations:
         )
 
         # THEN
-        assert response.status_code == 200
-        assert len(response.json()) == 1
+        assert response.status_code == 403
+        assert "invitee@example.com" not in response.text
 
     def test_not_accessible_by_non_member(self, client):
         """Non-members cannot access project invitations."""
