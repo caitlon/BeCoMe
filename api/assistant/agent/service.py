@@ -65,7 +65,7 @@ logger = logging.getLogger(__name__)
 # are left room by capping it.
 _HISTORY_CHAR_BUDGET = 6000
 
-# The most seconds the fetch of the opinions for the trace mask may take (hybrid, agent).
+# The most seconds the fetch of the opinions for the trace mask may take, in every mode.
 _ROSTER_FETCH_SECONDS = 5.0
 
 

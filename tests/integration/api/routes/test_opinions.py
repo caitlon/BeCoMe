@@ -157,6 +157,31 @@ class TestListOpinionsForAssistant:
         # THEN
         assert sorted(emails) == ["a@example.com", "b@example.com", "owner@example.com"]
 
+    def test_two_objectors_see_only_their_own_rows(self, client):
+        """Each objector gets their own row and not the other's; a bystander gets neither."""
+        # GIVEN
+        owner = register_and_login(client, "owner@example.com")
+        project_id = create_project(client, owner)["id"]
+        first = _join_project(client, owner, project_id, "a@example.com")
+        second = _join_project(client, owner, project_id, "c@example.com")
+        for token, peak in ((owner, 50.0), (first, 60.0), (second, 70.0)):
+            submit_opinion(client, token, project_id, peak - 10.0, peak, peak + 10.0)
+        for token in (first, second):
+            client.put(
+                "/api/v1/users/me", json={"assistant_objection": True}, headers=auth_header(token)
+            )
+
+        # WHEN
+        query = "?for_assistant=true"
+        first_view = self._emails(client, first, project_id, query)
+        second_view = self._emails(client, second, project_id, query)
+        owner_view = self._emails(client, owner, project_id, query)
+
+        # THEN
+        assert sorted(first_view) == ["a@example.com", "owner@example.com"]
+        assert sorted(second_view) == ["c@example.com", "owner@example.com"]
+        assert owner_view == ["owner@example.com"]
+
     @pytest.mark.parametrize("query", ["", "?for_assistant=false"])
     def test_the_plain_listing_is_unchanged(self, client, query):
         """Without the parameter every opinion is listed and no flag is exposed."""

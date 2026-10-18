@@ -261,8 +261,10 @@ collection that is missing or that the role cannot read. A spent message budget 
 
 Whatever the mode, the model reads the opinions through `GET .../opinions?for_assistant=true`
 (`UserApiClient.get_opinions`), which omits members who objected to the assistant (GDPR Art. 21,
-`users.assistant_objection`) except the caller. The result block still counts them, and the system
-prompt says the list can be shorter than the number of experts. Only the trace mask reads the
+`users.assistant_objection`) except the caller. The result block still counts them and includes their values in the aggregates, so in a project of
+two or three experts a lone objector's values could be backed out from the aggregates and the
+visible rows; only the system prompt rule forbids the model to compute them. The prompt says the
+list can be shorter than the number of experts. Only the trace mask reads the
 complete list (`get_opinions(..., full=True)`).
 
 In every mode the system prompt is the same constant. The code ends the turn's user message
