@@ -520,12 +520,11 @@ is `true` in the `prod` profile, or on a Railway environment whose name is not `
 profile and the name are checked independently. On any deploy the validator also requires the
 three model roles to be `api`, since a local model server is not reachable there. The model is
 shown each expert's name and position in the opinions block, except for members who objected to
-the assistant (`users.assistant_objection`, set through `PUT /api/v1/users/me`; the profile screen follows
-separately): their rows are left out for everyone but themselves. The result block still includes
-their values in the aggregates (mean, median, best compromise, number of experts), so in a project
-of two or three experts a lone objector's values could be backed out from the aggregates and the
-visible rows; only the prompt rule forbids the model to compute them, and the missing row shows
-other members who objected. Tracing sends the text of
+the assistant (`users.assistant_objection`, set through `PUT /api/v1/users/me`): their rows are
+left out for everyone but themselves. The result block still includes their values in the
+aggregates (mean, median, best compromise, number of experts), so with a single objector their
+values follow from the aggregates and the visible rows; the prompt forbids the model to compute
+them. The missing row also shows other members who objected. Tracing sends the text of
 questions, history, tool replies and answers to LangSmith, but the names and positions of the
 turn's participants are replaced before anything leaves the process, and a trace is dropped
 rather than sent unmasked when the roster of the turn's project cannot be read. The mask misses
