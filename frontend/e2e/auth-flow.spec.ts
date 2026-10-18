@@ -66,16 +66,23 @@ test.describe('Authentication Flows', () => {
     await page.getByRole('menuitem', { name: 'Sign Out' }).click();
     await expect(page).toHaveURL('/');
 
+    // GuestRoute renders the page while auth is loading, so wait for the session probe to settle.
+    const loginProbed = page.waitForResponse((r) => r.url().includes('/api/v1/auth/refresh'));
     await page.goto('/login');
+    await loginProbed;
     await expect(
       page.getByRole('heading', { name: /Welcome Back/i, level: 1 })
     ).toBeVisible();
     await expect(navigation).not.toContainText('Guest Route');
 
+    // Same wait as above: the probe must settle before the page is judged.
+    const registerProbed = page.waitForResponse((r) => r.url().includes('/api/v1/auth/refresh'));
     await page.goto('/register');
+    await registerProbed;
     await expect(page).toHaveURL('/register');
     await expect(
       page.getByRole('heading', { name: /Create Account/i, level: 1 })
     ).toBeVisible();
+    await expect(navigation).not.toContainText('Guest Route');
   });
 });
