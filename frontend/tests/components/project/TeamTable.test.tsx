@@ -293,4 +293,18 @@ describe('TeamTable - E-mail column', () => {
     expect(screen.queryByText('john@example.com')).not.toBeInTheDocument();
     expect(screen.queryByText('jane@example.com')).not.toBeInTheDocument();
   });
+
+  it('hides the invitee address and its cell from a non-admin', () => {
+    render(
+      <TeamTable {...baseProps} isAdmin={false} members={members} pendingInvitations={invitations} />,
+    );
+
+    expect(screen.queryByText('sophie@example.com')).not.toBeInTheDocument();
+    const rows = screen.getAllByRole('row').slice(1);
+    expect(rows).toHaveLength(members.length + invitations.length);
+    const invitationRow = rows[rows.length - 1];
+    expect(invitationRow.querySelectorAll('td')).toHaveLength(
+      rows[0].querySelectorAll('td').length,
+    );
+  });
 });
