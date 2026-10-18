@@ -346,7 +346,7 @@ class TestMachineReadableErrorCodes:
         assert json.loads(response.body) == {
             "detail": (
                 "Existing opinions fall outside the new scale. "
-                "Widen the range or remove those opinions first."
+                "Widen the range, or ask the experts to change their opinions first."
             ),
             "code": SCALE_EXCLUDES_OPINIONS_CODE,
         }

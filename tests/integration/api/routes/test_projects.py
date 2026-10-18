@@ -6,7 +6,7 @@ from uuid import UUID
 import pytest
 
 from api.data.example_project import EXAMPLE_EXPERTS
-from api.db.models import MemberRole, ProjectMember
+from api.db.models import MemberRole, Project, ProjectMember
 from api.services.project_membership_service import ProjectMembershipService
 from tests.integration.api.conftest import (
     app_session,
@@ -878,3 +878,46 @@ class TestUpdateProjectScaleWithOpinions:
         assert response.status_code == 200
         assert response.json()["scale_min"] == -50.0
         assert response.json()["scale_max"] == 200.0
+
+    def test_opinions_of_another_project_do_not_block_the_change(self, client):
+        """Only the edited project's own opinions are checked against its new scale."""
+        # GIVEN project B holding an opinion 40/60/80 and project A with none
+        token = register_and_login(client)
+        project_a = create_project(client, token, name="A")["id"]
+        project_b = create_project(client, token, name="B")["id"]
+        submit_opinion(client, token, project_b, 40.0, 60.0, 80.0)
+
+        # WHEN the admin narrows project A's scale below that opinion's upper bound
+        response = client.patch(
+            f"/api/v1/projects/{project_a}",
+            json={"scale_max": 50.0},
+            headers=auth_header(token),
+        )
+
+        # THEN the change is applied
+        assert response.status_code == 200
+        assert response.json()["scale_max"] == 50.0
+
+    def test_echoing_an_unchanged_scale_with_a_rename_is_accepted(self, client):
+        """A project already holding out-of-range opinions still accepts an unchanged scale."""
+        # GIVEN a project whose stored scale 0..70 sits below an existing 40/60/80 opinion
+        token = register_and_login(client)
+        project = create_project(client, token, name="Original")
+        project_id = project["id"]
+        submit_opinion(client, token, project_id, 40.0, 60.0, 80.0)
+        with app_session(client) as session:
+            row = session.get(Project, UUID(project_id))
+            row.scale_max = 70.0
+            session.add(row)
+            session.commit()
+
+        # WHEN the admin renames it and sends the same scale back
+        response = client.patch(
+            f"/api/v1/projects/{project_id}",
+            json={"name": "Renamed", "scale_min": 0.0, "scale_max": 70.0},
+            headers=auth_header(token),
+        )
+
+        # THEN the request is accepted and the name is updated
+        assert response.status_code == 200
+        assert response.json()["name"] == "Renamed"

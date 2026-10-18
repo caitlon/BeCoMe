@@ -155,7 +155,7 @@ EXCEPTION_MAP: dict[type[BeCoMeAPIError], tuple[int, str | None]] = {
     ScaleExcludesOpinionsError: (
         status.HTTP_409_CONFLICT,
         "Existing opinions fall outside the new scale. "
-        "Widen the range or remove those opinions first.",
+        "Widen the range, or ask the experts to change their opinions first.",
     ),
     UserExistsError: (status.HTTP_409_CONFLICT, "Email already registered"),
     UserAlreadyMemberError: (

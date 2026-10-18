@@ -212,7 +212,7 @@ class TestProjectServiceUpdateProject:
         )
         mock_session = MagicMock()
         mock_session.get.return_value = project
-        mock_session.exec.return_value.one.return_value = 0
+        mock_session.exec.return_value.first.return_value = None
         service = ProjectService(mock_session)
         data = ProjectUpdate(scale_min=10)  # Valid: 10 < 100
 
@@ -236,7 +236,7 @@ class TestProjectServiceUpdateProject:
         )
         mock_session = MagicMock()
         mock_session.get.return_value = project
-        mock_session.exec.return_value.one.return_value = 0
+        mock_session.exec.return_value.first.return_value = None
         service = ProjectService(mock_session)
         data = ProjectUpdate(scale_max=200)  # Valid: 0 < 200
 
@@ -260,12 +260,12 @@ class TestProjectServiceUpdateProject:
         )
         mock_session = MagicMock()
         mock_session.get.return_value = project
-        mock_session.exec.return_value.one.return_value = 1
+        mock_session.exec.return_value.first.return_value = uuid4()
         service = ProjectService(mock_session)
         data = ProjectUpdate(name="Renamed", scale_max=50)
 
         # WHEN/THEN
-        with pytest.raises(ScaleExcludesOpinionsError, match="1 opinion"):
+        with pytest.raises(ScaleExcludesOpinionsError, match=r"outside the scale 0\.\.50\.0"):
             service.update_project(project_id, data)
         assert project.name == "Original"
         assert project.scale_max == 100

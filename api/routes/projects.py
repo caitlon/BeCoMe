@@ -136,7 +136,13 @@ def get_project(
     )
 
 
-@router.patch("/{project_id}", summary="Update project")
+@router.patch(
+    "/{project_id}",
+    summary="Update project",
+    responses={
+        409: {"description": "The new scale would leave existing opinions outside the range"},
+    },
+)
 def update_project(
     project_id: UUID,
     project: ProjectAdmin,
@@ -145,7 +151,8 @@ def update_project(
 ) -> ProjectResponse:
     """Update project. Only admin can update.
 
-    ScaleRangeError is handled by centralized exception middleware.
+    ScaleRangeError and ScaleExcludesOpinionsError are handled by centralized
+    exception middleware.
 
     :param project: Project (verified admin)
     :param request: Fields to update
