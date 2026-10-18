@@ -9,6 +9,7 @@ import {
   createProjectWithRole,
   createOpinion,
   createMember,
+  createProjectInvitation,
   createCalculationResult,
 } from '@tests/factories/project';
 
@@ -391,6 +392,31 @@ describe('ProjectDetail - Pending Invitations Fetch', () => {
     await waitFor(() => {
       expect(mockApi.getProjectInvitations).toHaveBeenCalledWith('project-1');
     });
+  });
+
+  it('shows the pending invitations to the project admin', async () => {
+    mockApi.getProjectInvitations.mockResolvedValue([
+      createProjectInvitation({ invitee_email: 'waiting@example.com' }),
+    ]);
+
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('waiting@example.com').length).toBeGreaterThan(0);
+    });
+  });
+
+  it('does not request the invitation list for an expert', async () => {
+    const project = createProjectWithRole({ id: 'project-1', name: 'Test Project', role: 'expert' });
+    mockApi.getProject.mockResolvedValue(project);
+
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Test Project')).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(mockApi.getProjectInvitations).not.toHaveBeenCalled();
   });
 });
 
