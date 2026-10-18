@@ -1,5 +1,7 @@
 """Integration tests for opinion management endpoints."""
 
+import pytest
+
 from tests.integration.api.conftest import (
     auth_header,
     create_project,
@@ -92,6 +94,99 @@ class TestListOpinions:
 
         # THEN
         assert response.status_code == 404
+
+
+def _join_project(client, owner_token, project_id, email):
+    """Register an expert, invite them, accept, and return their token."""
+    token = register_and_login(client, email)
+    client.post(
+        f"/api/v1/projects/{project_id}/invite",
+        json={"email": email},
+        headers=auth_header(owner_token),
+    )
+    invitation = client.get("/api/v1/invitations", headers=auth_header(token)).json()[0]
+    client.post(f"/api/v1/invitations/{invitation['id']}/accept", headers=auth_header(token))
+    return token
+
+
+class TestListOpinionsForAssistant:
+    """The for_assistant view leaves out opinions of users who objected."""
+
+    @staticmethod
+    def _project_with_an_objector(client):
+        """Owner and expert B did not object, expert A did; all three hold an opinion."""
+        owner = register_and_login(client, "owner@example.com")
+        project = create_project(client, owner)
+        project_id = project["id"]
+        objector = _join_project(client, owner, project_id, "a@example.com")
+        other = _join_project(client, owner, project_id, "b@example.com")
+        for token, peak in ((owner, 50.0), (objector, 60.0), (other, 70.0)):
+            submit_opinion(client, token, project_id, peak - 10.0, peak, peak + 10.0)
+        client.put(
+            "/api/v1/users/me", json={"assistant_objection": True}, headers=auth_header(objector)
+        )
+        return project_id, owner, objector, other
+
+    @staticmethod
+    def _emails(client, token, project_id, query=""):
+        response = client.get(
+            f"/api/v1/projects/{project_id}/opinions{query}", headers=auth_header(token)
+        )
+        assert response.status_code == 200
+        return [row["user_email"] for row in response.json()]
+
+    def test_other_members_do_not_get_the_objectors_row(self, client):
+        """A member asking for the assistant view gets no row for the objector."""
+        # GIVEN
+        project_id, owner, _objector, other = self._project_with_an_objector(client)
+
+        # WHEN / THEN
+        for token in (owner, other):
+            emails = self._emails(client, token, project_id, "?for_assistant=true")
+            assert "a@example.com" not in emails
+            assert len(emails) == 2
+
+    def test_the_objector_still_gets_their_own_row(self, client):
+        """The objector's own assistant view is complete."""
+        # GIVEN
+        project_id, _owner, objector, _other = self._project_with_an_objector(client)
+
+        # WHEN
+        emails = self._emails(client, objector, project_id, "?for_assistant=true")
+
+        # THEN
+        assert sorted(emails) == ["a@example.com", "b@example.com", "owner@example.com"]
+
+    @pytest.mark.parametrize("query", ["", "?for_assistant=false"])
+    def test_the_plain_listing_is_unchanged(self, client, query):
+        """Without the parameter every opinion is listed and no flag is exposed."""
+        # GIVEN
+        project_id, owner, _objector, _other = self._project_with_an_objector(client)
+
+        # WHEN
+        response = client.get(
+            f"/api/v1/projects/{project_id}/opinions{query}", headers=auth_header(owner)
+        )
+
+        # THEN
+        rows = response.json()
+        assert len(rows) == 3
+        assert all("assistant_objection" not in row for row in rows)
+
+    def test_pages_of_the_filtered_view_stay_full_and_consistent(self, client):
+        """The filter is applied before limit and offset, so no page comes back short."""
+        # GIVEN: the objector's row sits in the middle of the creation order
+        project_id, owner, _objector, _other = self._project_with_an_objector(client)
+
+        # WHEN
+        first = self._emails(client, owner, project_id, "?for_assistant=true&limit=1&offset=0")
+        second = self._emails(client, owner, project_id, "?for_assistant=true&limit=1&offset=1")
+        third = self._emails(client, owner, project_id, "?for_assistant=true&limit=1&offset=2")
+
+        # THEN
+        assert first + second == self._emails(client, owner, project_id, "?for_assistant=true")
+        assert len(first) == len(second) == 1
+        assert third == []
 
 
 class TestSubmitOpinion:

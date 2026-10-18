@@ -41,18 +41,33 @@ router = APIRouter(prefix="/api/v1/projects", tags=["opinions"])
 def list_opinions(
     project_id: UUID,
     project: ProjectMember,
+    current_user: CurrentUser,
     opinion_service: Annotated[OpinionService, Depends(get_opinion_service)],
     pagination: Annotated[PaginationParams, Depends()],
+    for_assistant: Annotated[
+        bool,
+        Query(
+            description=(
+                "Return what the assistant may show the caller: opinions of users who "
+                "objected to the assistant are left out, except the caller's own."
+            )
+        ),
+    ] = False,
 ) -> list[OpinionResponse]:
     """Get opinions for a project. Only members can access.
 
     :param project: Project (verified membership)
+    :param current_user: Authenticated caller (whose own row is never hidden)
     :param opinion_service: Opinion service
     :param pagination: Bounded limit/offset (capped at MAX_PAGE_SIZE)
+    :param for_assistant: Apply the assistant view described above
     :return: List of opinions with user details
     """
     opinions = opinion_service.get_opinions_for_project(
-        project.id, limit=pagination.limit, offset=pagination.offset
+        project.id,
+        limit=pagination.limit,
+        offset=pagination.offset,
+        assistant_viewer_id=current_user.id if for_assistant else None,
     )
     logger.debug(
         "Opinions listed",
