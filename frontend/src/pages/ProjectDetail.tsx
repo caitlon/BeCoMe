@@ -108,7 +108,8 @@ const ProjectDetail = () => {
     queryKey: queryKeys.projectInvitations(projectId),
     queryFn: () =>
       api.getProjectInvitations(projectId).catch((error: unknown) => {
-        // Experts may not list invitations; treat forbidden as "none".
+        // The role can change after the project was read (e.g. ownership
+        // transferred); a forbidden response then means "none".
         if (error instanceof HttpError && error.status === 403) {
           return [] as ProjectInvitation[];
         }
