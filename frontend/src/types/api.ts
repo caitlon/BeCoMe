@@ -37,7 +37,7 @@ export interface FuzzyNumber {
 export interface Opinion {
   id: string;
   user_id: string;
-  user_email: string;
+  user_email: string | null;
   user_first_name: string;
   user_last_name: string | null;
   position: string;
@@ -79,7 +79,7 @@ export interface Invitation {
 
 export interface Member {
   user_id: string;
-  email: string;
+  email: string | null;
   first_name: string;
   last_name: string | null;
   photo_url: string | null;

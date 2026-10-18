@@ -545,6 +545,43 @@ class TestListMembers:
         assert len(second.json()) == 1
         assert first.json()[0]["user_id"] != second.json()[0]["user_id"]
 
+    @staticmethod
+    def _emails_by_user(client, token, project_id):
+        response = client.get(f"/api/v1/projects/{project_id}/members", headers=auth_header(token))
+        assert response.status_code == 200
+        rows = response.json()
+        assert len(rows) == 2
+        assert all("email" in row for row in rows)
+        return {row["user_id"]: row["email"] for row in rows}
+
+    def test_list_members_admin_sees_every_email(self, client):
+        """The project admin gets the address of every member."""
+        # GIVEN
+        owner = register_and_login(client, "owner@example.com")
+        project = create_project(client, owner)
+        _expert, expert_id = _add_expert(client, owner, project["id"], "expert@example.com")
+
+        # WHEN
+        emails = self._emails_by_user(client, owner, project["id"])
+
+        # THEN
+        assert sorted(emails.values()) == ["expert@example.com", "owner@example.com"]
+        assert expert_id in emails
+
+    def test_list_members_expert_sees_only_their_own_email(self, client):
+        """An expert gets null for the other members and their own address on their row."""
+        # GIVEN
+        owner = register_and_login(client, "owner@example.com")
+        project = create_project(client, owner)
+        expert, expert_id = _add_expert(client, owner, project["id"], "expert@example.com")
+
+        # WHEN
+        emails = self._emails_by_user(client, expert, project["id"])
+
+        # THEN
+        assert emails.pop(expert_id) == "expert@example.com"
+        assert list(emails.values()) == [None]
+
 
 class TestRemoveMember:
     """Tests for DELETE /api/v1/projects/{id}/members/{user_id}."""

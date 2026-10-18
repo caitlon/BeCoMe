@@ -718,7 +718,7 @@ When an admin removes a member from a project, `remove_member`
 (`api/services/project_membership_service.py`) deletes the membership and that member's
 opinion in one transaction, and the route recalculates the project result afterwards
 (`api/routes/projects.py`). Otherwise the row would outlive the membership: it carries the
-person's name, email, and stated position, it reaches every remaining member and every
+person's name, stated position, and (for the admin) email, it reaches every remaining member and every
 export, and `RequireProjectAccess` would no longer let the person concerned withdraw it
 themselves.
 

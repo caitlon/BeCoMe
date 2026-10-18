@@ -250,6 +250,8 @@ returns `422`. Erasure also removes the profile photo blob from object storage.
 | POST | `/api/v1/projects/{id}/invite` | Invite user |
 | GET | `/api/v1/projects/{id}/invitations` | List the project's pending invitations (project admin only) |
 
+The members list (`email`) and the opinions list (`user_email`) return an address only to the project admin and on the caller's own row; every other row has `null` in that field.
+
 ### Opinions
 
 | Method | Endpoint | Description |
