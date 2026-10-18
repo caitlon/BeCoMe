@@ -656,11 +656,12 @@ class TestListProjectInvitations:
         )
 
         # Create a new pending invitation
-        client.post(
+        pending_resp = client.post(
             f"/api/v1/projects/{project['id']}/invite",
             json={"email": "invitee@example.com"},
             headers=auth_header(admin_token),
         )
+        assert pending_resp.status_code == 201
 
         # WHEN: expert accesses invitations
         response = client.get(

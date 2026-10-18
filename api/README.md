@@ -248,7 +248,7 @@ returns `422`. Erasure also removes the profile photo blob from object storage.
 | DELETE | `/api/v1/projects/{id}/members/{user_id}` | Remove member (discards their opinion and recalculates) |
 | POST | `/api/v1/projects/{id}/transfer-ownership` | Transfer ownership to another member |
 | POST | `/api/v1/projects/{id}/invite` | Invite user |
-| GET | `/api/v1/projects/{id}/invitations` | List the project's pending invitations |
+| GET | `/api/v1/projects/{id}/invitations` | List the project's pending invitations (project admin only) |
 
 ### Opinions
 
