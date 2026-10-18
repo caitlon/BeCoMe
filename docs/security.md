@@ -519,7 +519,9 @@ is `true` in the `prod` profile, or on a Railway environment whose name is not `
 (compared stripped and case-insensitively, so an unknown or renamed environment is refused). The
 profile and the name are checked independently. On any deploy the validator also requires the
 three model roles to be `api`, since a local model server is not reachable there. The model is
-shown each expert's name and position in the opinions block. Tracing sends the text of
+shown each expert's name and position in the opinions block, except for members who objected to
+the assistant (`users.assistant_objection`, set in the profile): their rows are left out for
+everyone but themselves. Tracing sends the text of
 questions, history, tool replies and answers to LangSmith, but the names and positions of the
 turn's participants are replaced before anything leaves the process, and a trace is dropped
 rather than sent unmasked when the roster of the turn's project cannot be read. The mask misses

@@ -200,7 +200,7 @@ widened with a `Domain` instead, and for what this does not cover.
 |--------|----------|-------------|
 | GET | `/api/v1/users/me` | Get profile |
 | GET | `/api/v1/users/me/export` | Export all personal data as JSON (GDPR Art. 20) |
-| PUT | `/api/v1/users/me` | Update profile |
+| PUT | `/api/v1/users/me` | Update profile: names and `assistant_objection` (GDPR Art. 21, see Opinions) |
 | PUT | `/api/v1/users/me/password` | Change password |
 | POST | `/api/v1/users/me/photo` | Upload photo (JPEG/PNG/GIF/WebP, max 5 MB and 4096x4096 px) |
 | DELETE | `/api/v1/users/me/photo` | Delete photo |
@@ -257,6 +257,11 @@ returns `422`. Erasure also removes the profile photo blob from object storage.
 | GET | `/api/v1/projects/{id}/opinions` | List opinions |
 | POST | `/api/v1/projects/{id}/opinions` | Submit opinion |
 | DELETE | `/api/v1/projects/{id}/opinions` | Delete own opinion |
+
+`GET /api/v1/projects/{id}/opinions?for_assistant=true` is the list the assistant reads: it
+leaves out opinions of users whose profile has `assistant_objection` set, except the caller's
+own, and applies the filter before `limit` and `offset`. Without the parameter the list is
+complete and carries no objection flag. The flag is also part of the GDPR export's `profile`.
 
 ### Invitations
 

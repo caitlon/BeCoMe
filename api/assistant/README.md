@@ -259,6 +259,12 @@ collection that is missing or that the role cannot read. A spent message budget 
 - `agent`: nothing is fetched ahead; the model calls the tools, at most
   `ASSISTANT_MAX_TOOL_CALLS` times.
 
+Whatever the mode, the model reads the opinions through `GET .../opinions?for_assistant=true`
+(`UserApiClient.get_opinions`), which omits members who objected to the assistant (GDPR Art. 21,
+`users.assistant_objection`) except the caller. The result block still counts them, and the system
+prompt says the list can be shorter than the number of experts. Only the trace mask reads the
+complete list (`get_opinions(..., full=True)`).
+
 In every mode the system prompt is the same constant. The code ends the turn's user message
 with `Answer in Czech.` or `Answer in English.` only when the question is recognisably Czech
 or English (`question_language` in `api/assistant/rag/retrieval.py`). A question in another
@@ -349,10 +355,11 @@ question, the history, the documents found, the opinions block, every model call
 replies, the answer, the errors and the run metadata, with the turn's participants hidden.
 
 The participants are the experts of every opinions list the turn fetched: the list `workflow`
-mode reads ahead, the one the opinions tool returns, and, in `hybrid` and `agent` mode when the
-request names a project, the project's opinions fetched for this purpose alone, before the model
-is called (the model never sees them). That fetch is cut off after five seconds, and a failure
-or timeout does not change the turn but drops its trace (see below). Each expert gets
+mode reads ahead, the one the opinions tool returns, and, in every mode when the request names a
+project, the project's complete opinions fetched for this purpose alone, before the model is
+called. The complete list includes members who objected to the assistant, so a name the asker
+types is masked too; the model never sees it. That fetch is cut off after five seconds, and a
+failure or timeout does not change the turn but drops its trace (see below). Each expert gets
 a label, `Expert 1`, `Expert 2` and so on, in order of first appearance. In the trace, a row of
 the opinions block reads `- Expert 1: lower=...`, the label standing where the model read the
 name and the position. In every other string of the trace:
