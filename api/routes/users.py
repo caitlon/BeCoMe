@@ -155,6 +155,7 @@ def update_current_user(
         user=current_user,
         first_name=request.first_name,
         last_name=request.last_name,
+        assistant_objection=request.assistant_objection,
     )
     # Field names only. The values are the user's own name, which the record does not
     # need to say that the profile changed.
@@ -168,6 +169,7 @@ def update_current_user(
                 for name, value in (
                     ("first_name", request.first_name),
                     ("last_name", request.last_name),
+                    ("assistant_objection", request.assistant_objection),
                 )
                 if value is not None
             ],

@@ -152,6 +152,7 @@ class TestDataExportServiceBuildExport:
         # THEN
         assert export.export_metadata.format_version == EXPORT_FORMAT_VERSION
         assert export.profile.email == "alice@example.com"
+        assert export.profile.assistant_objection is False
 
         assert len(export.owned_projects) == 1
         assert export.owned_projects[0].name == "Budget 2026"

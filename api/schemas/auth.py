@@ -124,6 +124,7 @@ class UserResponse(BaseModel):
     first_name: str
     last_name: str
     photo_url: str | None = None
+    assistant_objection: bool
 
     @classmethod
     def from_user(cls, user: "User") -> "UserResponse":
@@ -138,6 +139,7 @@ class UserResponse(BaseModel):
             first_name=user.first_name,
             last_name=user.last_name,
             photo_url=build_photo_url(user.id, user.photo_url),
+            assistant_objection=user.assistant_objection,
         )
 
 
@@ -148,6 +150,7 @@ class UpdateUserRequest(BaseModel):
 
     first_name: str | None = Field(None, max_length=100)
     last_name: str | None = Field(None, max_length=100)
+    assistant_objection: bool | None = None
 
     @field_validator("first_name")
     @classmethod

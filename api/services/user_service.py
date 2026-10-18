@@ -123,18 +123,22 @@ class UserService(BaseService):
         user: User,
         first_name: str | None = None,
         last_name: str | None = None,
+        assistant_objection: bool | None = None,
     ) -> User:
         """Update user profile fields.
 
         :param user: User to update
         :param first_name: New first name (optional)
         :param last_name: New last name (optional)
+        :param assistant_objection: New objection flag; ``False`` clears it (optional)
         :return: Updated User instance
         """
         if first_name is not None:
             user.first_name = first_name
         if last_name is not None:
             user.last_name = last_name
+        if assistant_objection is not None:
+            user.assistant_objection = assistant_objection
 
         saved = self._save_and_refresh(user)
         self._invalidate_cache(saved.id)

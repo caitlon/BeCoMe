@@ -10,7 +10,9 @@ from api.db.models import User
 from api.services.user_cache import CachedUserData
 
 
-def _sample_user(email_verified_at: datetime | None = None) -> User:
+def _sample_user(
+    email_verified_at: datetime | None = None, assistant_objection: bool = False
+) -> User:
     return User(
         id=uuid4(),
         email="alice@example.com",
@@ -20,6 +22,7 @@ def _sample_user(email_verified_at: datetime | None = None) -> User:
         photo_url="key/photo.jpg",
         created_at=datetime(2026, 1, 1, tzinfo=UTC),
         email_verified_at=email_verified_at,
+        assistant_objection=assistant_objection,
     )
 
 
@@ -53,6 +56,19 @@ def test_cached_user_data_roundtrip_preserves_email_verified_at_when_none():
     restored = CachedUserData.from_json(data.to_json())
     assert restored == data
     assert restored.email_verified_at is None
+
+
+def test_assistant_objection_survives_the_cache_roundtrip_and_to_user():
+    """The objection flag is part of the snapshot, so a cached request still sees it."""
+    # GIVEN
+    user = _sample_user(assistant_objection=True)
+
+    # WHEN
+    data = CachedUserData.from_json(CachedUserData.from_user(user).to_json())
+
+    # THEN
+    assert data.assistant_objection is True
+    assert data.to_user().assistant_objection is True
 
 
 def test_from_json_missing_email_verified_at_key_raises_value_error():

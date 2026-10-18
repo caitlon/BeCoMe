@@ -53,6 +53,7 @@ class ExportProfile(BaseModel):
     # When the account holder proved control of the address, or null if they never
     # did. Personal data about them under Article 15, so the export carries it.
     email_verified_at: datetime | None = None
+    assistant_objection: bool
 
     @classmethod
     def from_user(cls, user: "User") -> "ExportProfile":
@@ -69,6 +70,7 @@ class ExportProfile(BaseModel):
             photo_url=build_photo_url(user.id, user.photo_url),
             created_at=user.created_at,
             email_verified_at=user.email_verified_at,
+            assistant_objection=user.assistant_objection,
         )
 
 
