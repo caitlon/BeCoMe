@@ -103,6 +103,10 @@ class ScaleRangeError(ValidationError):
     """Raised when scale_min >= scale_max."""
 
 
+class ScaleExcludesOpinionsError(BeCoMeAPIError):
+    """Raised when a scale change would leave existing opinions outside the new range."""
+
+
 # Password-reset exceptions
 class InvalidResetTokenError(ValidationError):
     """Raised when a password reset token is unknown or already used."""

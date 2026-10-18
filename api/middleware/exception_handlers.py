@@ -30,6 +30,7 @@ from api.exceptions import (
     OpinionNotFoundError,
     ProjectNotFoundError,
     ResetTokenExpiredError,
+    ScaleExcludesOpinionsError,
     ScaleRangeError,
     TurnstileVerificationError,
     UnresolvableEmailDomainError,
@@ -77,6 +78,12 @@ TURNSTILE_REFUSED_DETAIL = "Could not confirm you are human. Reload the page and
 # for the SPA without conceding anything to a caller: it cannot say whether a token was
 # presented, which part of the check failed, or whether an account exists.
 TURNSTILE_REFUSED_CODE = "turnstile_refused"
+
+# The machine-readable half of the 409 a scale change gets when an existing opinion would
+# fall outside the new range. PATCH /projects/{id} has no other 409, but a client acting on
+# this one (offer to widen the range, point at the opinions) should not have to match the
+# English sentence to tell it apart.
+SCALE_EXCLUDES_OPINIONS_CODE = "scale_excludes_opinions"
 
 # Exception to HTTP status code and message mapping
 # Following OCP: extend by adding entries, not modifying handlers
@@ -145,6 +152,11 @@ EXCEPTION_MAP: dict[type[BeCoMeAPIError], tuple[int, str | None]] = {
         "Cannot delete your account while you are the admin of one or more projects. "
         "Transfer ownership or delete those projects first.",
     ),
+    ScaleExcludesOpinionsError: (
+        status.HTTP_409_CONFLICT,
+        "Existing opinions fall outside the new scale. "
+        "Widen the range or remove those opinions first.",
+    ),
     UserExistsError: (status.HTTP_409_CONFLICT, "Email already registered"),
     UserAlreadyMemberError: (
         status.HTTP_409_CONFLICT,
@@ -179,6 +191,7 @@ EXCEPTION_MAP: dict[type[BeCoMeAPIError], tuple[int, str | None]] = {
 # mistake for one of these - the omission is loud rather than silent.
 ERROR_CODES: dict[type[BeCoMeAPIError], str] = {
     TurnstileVerificationError: TURNSTILE_REFUSED_CODE,
+    ScaleExcludesOpinionsError: SCALE_EXCLUDES_OPINIONS_CODE,
 }
 
 # Default mappings for base exception classes

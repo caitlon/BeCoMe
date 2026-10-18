@@ -242,7 +242,7 @@ returns `422`. Erasure also removes the profile photo blob from object storage.
 | GET | `/api/v1/projects` | List user's projects |
 | POST | `/api/v1/projects` | Create project |
 | GET | `/api/v1/projects/{id}` | Get project details |
-| PATCH | `/api/v1/projects/{id}` | Update project (partial; every field except `description` is non-nullable, so an explicit null is a 422) |
+| PATCH | `/api/v1/projects/{id}` | Update project (partial; every field except `description` is non-nullable, so an explicit null is a 422; a scale change that would leave an existing opinion outside the new range is a 409 with code `scale_excludes_opinions`) |
 | DELETE | `/api/v1/projects/{id}` | Delete project |
 | GET | `/api/v1/projects/{id}/members` | List members |
 | DELETE | `/api/v1/projects/{id}/members/{user_id}` | Remove member (discards their opinion and recalculates) |

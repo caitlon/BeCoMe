@@ -5,8 +5,13 @@ from uuid import UUID
 
 from sqlmodel import func, select
 
-from api.db.models import MemberRole, Project, ProjectMember, User
-from api.exceptions import MemberNotFoundError, ProjectNotFoundError, ScaleRangeError
+from api.db.models import ExpertOpinion, MemberRole, Project, ProjectMember, User
+from api.exceptions import (
+    MemberNotFoundError,
+    ProjectNotFoundError,
+    ScaleExcludesOpinionsError,
+    ScaleRangeError,
+)
 from api.schemas.project import ProjectCreate, ProjectUpdate
 from api.services.base import BaseService
 
@@ -72,6 +77,8 @@ class ProjectService(BaseService):
         :return: Updated Project
         :raises ProjectNotFoundError: If project doesn't exist
         :raises ScaleRangeError: If scale range becomes invalid
+        :raises ScaleExcludesOpinionsError: If an existing opinion would fall outside the
+            new scale range
         """
         project = self.get_project(project_id)
         if not project:
@@ -85,6 +92,20 @@ class ProjectService(BaseService):
             if new_min >= new_max:
                 msg = f"scale_min ({new_min}) must be less than scale_max ({new_max})"
                 raise ScaleRangeError(msg)
+
+            # The DB keeps lower_bound <= peak <= upper_bound, so the outer bounds decide.
+            # Inclusive, as OpinionService.validate_values_in_range.
+            outside = self._session.exec(
+                select(func.count())
+                .select_from(ExpertOpinion)
+                .where(
+                    ExpertOpinion.project_id == project_id,
+                    (ExpertOpinion.lower_bound < new_min) | (ExpertOpinion.upper_bound > new_max),
+                )
+            ).one()
+            if outside > 0:
+                msg = f"{outside} opinion(s) fall outside the scale {new_min}..{new_max}"
+                raise ScaleExcludesOpinionsError(msg)
 
         if "name" in update_data:
             project.name = update_data["name"]
