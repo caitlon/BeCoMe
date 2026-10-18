@@ -804,6 +804,140 @@ class TestWhatTheModelIsShown:
             assert identifier not in response.text
 
 
+# A member who objects to the assistant reading their opinion for the others: a name,
+# a position and values that exist nowhere else in these tests.
+_OBJECTOR_FIRST_NAME = "Hidegarda"
+_OBJECTOR_LAST_NAME = "Verschwiegen"
+_OBJECTOR_POSITION = "Quiet Marmot Warden"
+_OBJECTOR_VALUES = (11.11, 22.22, 33.33)
+_BYSTANDER_FIRST_NAME = "Wilibald"
+_BYSTANDER_LAST_NAME = "Offenherz"
+
+
+def _object_to_the_assistant(client, email: str) -> None:
+    """Sign in as an existing account and switch its assistant objection on."""
+    login = client.post(
+        "/api/v1/auth/login", data={"username": email, "password": DEFAULT_TEST_PASSWORD}
+    )
+    token = login.json()["access_token"]
+    client.cookies.clear()
+    response = client.put(
+        "/api/v1/users/me", json={"assistant_objection": True}, headers=auth_header(token)
+    )
+    assert response.status_code == 200
+
+
+def _project_with_an_objector(client) -> dict[str, Any]:
+    """The owner's project plus an objector and a bystander, each holding an opinion.
+
+    :return: The owner's dict, extended with the tokens of both members.
+    """
+    owner = _owner_project(client)
+    objector_email = "objector@example.com"
+    objector_token = _add_member(
+        client,
+        owner,
+        objector_email,
+        _OBJECTOR_FIRST_NAME,
+        _OBJECTOR_LAST_NAME,
+        _OBJECTOR_POSITION,
+    )
+    lower, peak, upper = _OBJECTOR_VALUES
+    submit_opinion(client, objector_token, owner["id"], lower, peak, upper, _OBJECTOR_POSITION)
+    bystander_token = _add_member(
+        client,
+        owner,
+        "bystander@example.com",
+        _BYSTANDER_FIRST_NAME,
+        _BYSTANDER_LAST_NAME,
+        "Open Hearted Clerk",
+    )
+    _object_to_the_assistant(client, objector_email)
+    return {**owner, "objector_token": objector_token, "bystander_token": bystander_token}
+
+
+class TestObjectionHidesTheOpinion:
+    """A member who objected is absent from the others' assistant turns, and only there."""
+
+    @staticmethod
+    def _ask(client, mode: str, endpoint: str, project: dict[str, Any], token: str):
+        """Ask about the project through the real route; return the model and the response."""
+        if mode == "workflow":
+            model: ScriptedToolCallingModel | ToolEchoingModel = _scripted("Three experts.")
+        else:
+            calls = [
+                {
+                    "name": name,
+                    "args": {"project_id": project["id"]},
+                    "id": f"call_{name}",
+                    "type": "tool_call",
+                }
+                for name in ("get_project_result", "get_project_opinions")
+            ]
+            model = ToolEchoingModel(first_call=AIMessage(content="", tool_calls=calls))
+        _use_model(client, model)
+        response = client.post(
+            endpoint,
+            json={"message": "Who took part?", "project_id": project["id"]},
+            headers=auth_header(token),
+        )
+        assert response.status_code == 200
+        return model, response
+
+    @pytest.mark.parametrize("endpoint", [CHAT, STREAM])
+    @pytest.mark.parametrize("mode", _ALL_MODES)
+    @pytest.mark.parametrize("asker", ["token", "bystander_token"])
+    def test_other_members_assistant_shows_nothing_of_the_objector(
+        self, assistant_settings, client, configure, mode, endpoint, asker
+    ):
+        """
+        GIVEN a project of three experts, one of whom objected to the assistant
+        WHEN another member asks in each mode, over both routes
+        THEN the model was shown the other experts and the result, which still counts
+            three experts, and no name, position or value of the objector
+        """
+        # GIVEN
+        configure(ASSISTANT_MODE=mode)
+        project = _project_with_an_objector(client)
+
+        # WHEN
+        model, _ = self._ask(client, mode, endpoint, project, project[asker])
+
+        # THEN
+        shown = _shown(model)
+        assert "Number of experts: 3" in shown
+        for visible in (_BYSTANDER_LAST_NAME, "Open Hearted Clerk", OWNER_LAST_NAME):
+            assert visible in shown
+        for hidden in (_OBJECTOR_FIRST_NAME, _OBJECTOR_LAST_NAME, _OBJECTOR_POSITION):
+            assert hidden not in shown
+        for value in _OBJECTOR_VALUES:
+            assert f"{value:.2f}" not in shown
+
+    @pytest.mark.parametrize("endpoint", [CHAT, STREAM])
+    @pytest.mark.parametrize("mode", _ALL_MODES)
+    def test_the_objectors_own_assistant_shows_their_row(
+        self, assistant_settings, client, configure, mode, endpoint
+    ):
+        """
+        GIVEN the same project
+        WHEN the objector asks
+        THEN the model was shown their own name, position and values, next to the others
+        """
+        # GIVEN
+        configure(ASSISTANT_MODE=mode)
+        project = _project_with_an_objector(client)
+
+        # WHEN
+        model, _ = self._ask(client, mode, endpoint, project, project["objector_token"])
+
+        # THEN
+        shown = _shown(model)
+        assert f"- {_OBJECTOR_FIRST_NAME} {_OBJECTOR_LAST_NAME} ({_OBJECTOR_POSITION})" in shown
+        assert f"{_OBJECTOR_VALUES[1]:.2f}" in shown
+        assert OWNER_LAST_NAME in shown
+        assert _BYSTANDER_LAST_NAME in shown
+
+
 class _DownRetriever:
     """A retriever whose search fails with the given error, by default a refused connection."""
 
@@ -1840,6 +1974,43 @@ class TestTracesCarryNoMemberData:
             assert secret not in payload
         assert "Expert 1" in payload
         assert "Expert 2" in payload
+
+    @pytest.mark.parametrize("endpoint", [CHAT, STREAM])
+    @pytest.mark.parametrize("mode", _ALL_MODES)
+    def test_an_objectors_name_typed_by_the_asker_is_still_masked(
+        self, assistant_settings, client, configure, clients, mode, endpoint
+    ):
+        """
+        GIVEN a traced turn on a project whose third member objected to the assistant, and a
+            question that names that member
+        WHEN another member asks in each mode, over both routes
+        THEN the model was shown nothing of the objector, and the trace holds neither their
+            name nor their position: the roster was filled from the complete list, which
+            never reached the model
+        """
+        # GIVEN
+        configure(ASSISTANT_MODE=mode)
+        project = _project_with_an_objector(client)
+        model = _scripted("Fine.")
+        _use_model(client, model)
+        body = {
+            "message": f"Co rika {_OBJECTOR_FIRST_NAME} {_OBJECTOR_LAST_NAME}?",
+            "project_id": project["id"],
+        }
+
+        # WHEN
+        response = client.post(endpoint, json=body, headers=auth_header(project["token"]))
+
+        # THEN
+        assert response.status_code == 200
+        shown = _shown(model)
+        assert _OBJECTOR_LAST_NAME not in shown.replace(body["message"], "")
+        (traced,) = clients
+        payload = "\n".join(traced.bodies)
+        for secret in (_OBJECTOR_FIRST_NAME, _OBJECTOR_LAST_NAME, _OBJECTOR_POSITION):
+            assert secret not in payload
+        root = next(run for run in self._runs(traced) if run.get("name") == "assistant_turn")
+        assert re.fullmatch(r"Co rika Expert \d\?", root["inputs"]["question"])
 
     @pytest.mark.parametrize("endpoint", [CHAT, STREAM])
     @pytest.mark.parametrize("mode", _ALL_MODES)

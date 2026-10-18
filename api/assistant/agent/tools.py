@@ -86,6 +86,7 @@ _GET_PROJECT_RESULT_DESCRIPTION = (
 )
 _GET_PROJECT_OPINIONS_DESCRIPTION = (
     "Get the individual expert opinions of one of the user's projects, at most 50. "
+    "Participants who asked not to share their opinion with the assistant are not listed. "
     "Argument project_id: the project's id, from the project list or the current project."
 )
 

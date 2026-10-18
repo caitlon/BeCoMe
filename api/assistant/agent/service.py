@@ -177,7 +177,7 @@ class AssistantService:
                 try:
                     async with asyncio.timeout_at(deadline_at) as deadline:
                         parts = [] if mode == "agent" else await self._fetch(request, ctx)
-                        if trace is not None and mode != "workflow":
+                        if trace is not None:
                             await self._register_participants(ctx, deadline_at)
                         if mode != "workflow" and ctx.current_project_id is not None:
                             parts.append(f"Current project id: {ctx.current_project_id}")
@@ -392,9 +392,11 @@ class AssistantService:
     async def _register_participants(ctx: AssistantContext, deadline_at: float) -> None:
         """Fetch the current project's opinions for the trace mask alone.
 
-        The modes with tools do not fetch the opinions ahead, but a question or an answer
-        can name an expert the model never reads about, and the trace of the turn is masked
-        with the experts the turn has met. Nothing fetched here reaches the model. The fetch
+        A question or an answer can name an expert the model never reads about: one the modes
+        with tools did not fetch, or one who objected to the assistant and so is left out of
+        what the model is shown. The trace of the turn is masked with the experts the turn has
+        met, so this reads the complete list, objectors included. Nothing fetched here reaches
+        the model, and a workflow turn that cannot read it loses its trace. The fetch
         has a bound of its own, :data:`_ROSTER_FETCH_SECONDS`, capped by the turn's deadline. A
         failure or timeout changes neither the answer nor the errors of the turn, but leaves
         the roster incomplete, so the turn's trace is dropped.
@@ -407,7 +409,7 @@ class AssistantService:
         bound = min(asyncio.get_running_loop().time() + _ROSTER_FETCH_SECONDS, deadline_at)
         try:
             async with asyncio.timeout_at(bound):
-                opinions = await ctx.client.get_opinions(ctx.current_project_id)
+                opinions = await ctx.client.get_opinions(ctx.current_project_id, full=True)
             ctx.roster.add(opinions)
             ctx.roster.incomplete = False
         except Exception as exc:
@@ -448,8 +450,6 @@ class AssistantService:
             if result is not None:
                 project_blocks.append(render_context_block([], result))
             ctx.roster.add(opinions)
-            if self._settings.assistant_mode == "workflow":
-                ctx.roster.incomplete = False
             if opinions:
                 project_blocks.append(render_opinions(opinions))
             ctx.tool_outputs.extend(project_blocks)

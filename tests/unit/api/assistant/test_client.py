@@ -154,6 +154,35 @@ class TestPagination:
         assert asked == [(MAX_PAGE_SIZE, 0), (MAX_PAGE_SIZE, MAX_PAGE_SIZE)]
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(("kwargs", "expected"), [({}, True), ({"full": True}, False)])
+    async def test_get_opinions_asks_for_the_assistant_view_unless_full(self, kwargs, expected):
+        """
+        GIVEN a stand-in opinions endpoint that records the for_assistant parameter
+        WHEN get_opinions is called by default, and again with full=True
+        THEN the default asks for the assistant view on every page and full=True does not
+        """
+        # GIVEN
+        rows = [_opinion_row(n) for n in range(MAX_PAGE_SIZE + 1)]
+        asked: list[bool] = []
+        app = FastAPI()
+
+        @app.get("/api/v1/projects/{project_id}/opinions")
+        def list_opinions(
+            project_id: str, limit: int, offset: int, for_assistant: bool = False
+        ) -> list[dict[str, Any]]:
+            asked.append(for_assistant)
+            return rows[offset : offset + limit]
+
+        api_client = UserApiClient(app=app, access_token="t", client_ip="127.0.0.1")
+
+        # WHEN
+        await api_client.get_opinions(str(uuid4()), **kwargs)
+        await api_client.aclose()
+
+        # THEN
+        assert asked == [expected, expected]
+
+    @pytest.mark.asyncio
     async def test_list_projects_stops_at_an_empty_page(self):
         """
         GIVEN exactly one full page of projects

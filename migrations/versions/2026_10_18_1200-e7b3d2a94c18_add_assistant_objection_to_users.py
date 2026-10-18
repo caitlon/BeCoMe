@@ -27,9 +27,7 @@ def upgrade() -> None:
     """
     op.add_column(
         "users",
-        sa.Column(
-            "assistant_objection", sa.Boolean(), nullable=False, server_default=sa.false()
-        ),
+        sa.Column("assistant_objection", sa.Boolean(), nullable=False, server_default=sa.false()),
     )
 
 
