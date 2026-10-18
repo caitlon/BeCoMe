@@ -420,6 +420,46 @@ describe('ProjectDetail - Pending Invitations Fetch', () => {
   });
 });
 
+describe('ProjectDetail - Invitations after losing the admin role', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    defaultSetup();
+  });
+
+  it('hides cached pending invitations once the project reports the expert role', async () => {
+    const user = userEvent.setup();
+    const members = [
+      createMember({ user_id: 'user-1', first_name: 'John', last_name: 'Doe', role: 'admin' }),
+      createMember({ user_id: 'user-2', first_name: 'Jane', last_name: 'Smith', role: 'expert' }),
+    ];
+    mockApi.getMembers.mockResolvedValue(members);
+    mockApi.getProjectInvitations.mockResolvedValue([
+      createProjectInvitation({ invitee_email: 'waiting@example.com' }),
+    ]);
+    mockApi.transferOwnership.mockResolvedValue(createProject({ id: 'project-1' }));
+
+    render(<ProjectDetail />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('waiting@example.com').length).toBeGreaterThan(0);
+    });
+
+    // The transfer refetches the project, which now reports the expert role.
+    mockApi.getProject.mockResolvedValue(
+      createProjectWithRole({ id: 'project-1', name: 'Test Project', role: 'expert' }),
+    );
+    const transferButtons = await screen.findAllByRole('button', {
+      name: /make jane smith the owner/i,
+    });
+    await user.click(transferButtons[0]);
+    await user.click(await screen.findByRole('button', { name: 'Transfer ownership' }));
+
+    await waitFor(() => {
+      expect(screen.queryByText('waiting@example.com')).not.toBeInTheDocument();
+    });
+  });
+});
+
 describe('ProjectDetail - Member Profile Dialog', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -455,8 +495,8 @@ describe('ProjectDetail - Invitations 403 handling', () => {
     vi.clearAllMocks();
   });
 
-  it('renders page normally when invitations endpoint returns 403', async () => {
-    const project = createProjectWithRole({ id: 'project-1', name: 'Test Project', role: 'expert' });
+  it('renders page normally when a stale admin role gets 403 from the invitations endpoint', async () => {
+    const project = createProjectWithRole({ id: 'project-1', name: 'Test Project', role: 'admin' });
     mockApi.getProject.mockResolvedValue(project);
     mockApi.getOpinions.mockResolvedValue([]);
     mockApi.getResult.mockResolvedValue(null);
@@ -468,6 +508,9 @@ describe('ProjectDetail - Invitations 403 handling', () => {
     await waitFor(() => {
       expect(screen.getByText('Test Project')).toBeInTheDocument();
     });
+    expect(mockApi.getProjectInvitations).toHaveBeenCalledWith('project-1');
+    expect(mockToast).not.toHaveBeenCalled();
+    expect(mockNavigate).not.toHaveBeenCalled();
   });
 
   it('shows error toast and navigates away on non-403 invitation error', async () => {
