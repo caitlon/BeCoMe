@@ -173,7 +173,7 @@ describe('Login', () => {
     });
 
     await waitFor(() => {
-      expect(mockNavigate).toHaveBeenCalledWith('/projects');
+      expect(mockNavigate).toHaveBeenCalledWith('/projects', { replace: true });
     });
 
     expect(mockToast).toHaveBeenCalledWith(

@@ -32,7 +32,9 @@ export function useAuthSubmit(messages: AuthSubmitMessages) {
         title: messages.successTitle,
         description: messages.successDescription,
       });
-      navigate("/projects");
+      // GuestRoute already replaces /login with /projects, and a push here would
+      // stack a second entry. Replacing keeps one, and Back never reopens the form.
+      navigate("/projects", { replace: true });
     } catch (error) {
       // onError lets a caller claim an error it already rendered its own state
       // for (e.g. an unverified-account 403), so the generic toast below does
