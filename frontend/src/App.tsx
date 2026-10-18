@@ -6,6 +6,7 @@ import { MotionConfig } from "framer-motion";
 import { BrowserRouter, Routes, Route } from "react-router";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
+import { GuestRoute } from "@/components/auth/GuestRoute";
 import { RouteAnnouncer } from "@/components/RouteAnnouncer";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { PageLoader } from "@/components/PageLoader";
@@ -52,8 +53,16 @@ const App = () => (
                       <Route path="/privacy" element={<Privacy />} />
                       <Route path="/case-studies" element={<CaseStudies />} />
                       <Route path="/case-study/:id" element={<CaseStudy />} />
-                      <Route path="/login" element={<Login />} />
-                      <Route path="/register" element={<Register />} />
+                      <Route path="/login" element={
+                        <GuestRoute>
+                          <Login />
+                        </GuestRoute>
+                      } />
+                      <Route path="/register" element={
+                        <GuestRoute>
+                          <Register />
+                        </GuestRoute>
+                      } />
                       <Route path="/forgot-password" element={<ForgotPassword />} />
                       <Route path="/reset-password" element={<ResetPassword />} />
                       <Route path="/verify-email" element={<VerifyEmail />} />

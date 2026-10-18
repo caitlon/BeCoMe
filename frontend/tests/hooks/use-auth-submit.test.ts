@@ -81,7 +81,7 @@ describe('useAuthSubmit', () => {
       title: 'Success',
       description: 'You are logged in',
     });
-    expect(mockNavigate).toHaveBeenCalledWith('/projects');
+    expect(mockNavigate).toHaveBeenCalledWith('/projects', { replace: true });
   });
 
   it('shows error toast with error.message on failure', async () => {
