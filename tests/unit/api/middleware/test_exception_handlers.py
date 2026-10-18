@@ -12,12 +12,14 @@ from api.exceptions import (
     InvalidCredentialsError,
     NotFoundError,
     ProjectNotFoundError,
+    ScaleExcludesOpinionsError,
     TurnstileVerificationError,
     UnresolvableEmailDomainError,
     ValidationError,
     ValuesOutOfRangeError,
 )
 from api.middleware.exception_handlers import (
+    SCALE_EXCLUDES_OPINIONS_CODE,
     TURNSTILE_REFUSED_CODE,
     _get_status_and_detail,
     become_api_error_handler,
@@ -325,6 +327,29 @@ class TestMachineReadableErrorCodes:
         # THEN
         assert response.status_code == status.HTTP_403_FORBIDDEN
         assert json.loads(response.body)["code"] == TURNSTILE_REFUSED_CODE
+
+    def test_a_scale_change_that_excludes_opinions_is_a_409_with_a_code(self):
+        """
+        GIVEN a scale change that would leave an opinion outside the new range
+        WHEN the handler builds the response
+        THEN it answers 409 with the fixed detail and the scale code, never the message
+        """
+        # GIVEN
+        request = MagicMock()
+        exc = ScaleExcludesOpinionsError("2 opinion(s) fall outside the scale 40.0..80.0")
+
+        # WHEN
+        response = become_api_error_handler(request, exc)
+
+        # THEN
+        assert response.status_code == status.HTTP_409_CONFLICT
+        assert json.loads(response.body) == {
+            "detail": (
+                "Existing opinions fall outside the new scale. "
+                "Widen the range or remove those opinions first."
+            ),
+            "code": SCALE_EXCLUDES_OPINIONS_CODE,
+        }
 
     def test_an_unverified_account_carries_no_code(self):
         """

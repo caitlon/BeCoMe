@@ -786,3 +786,95 @@ class TestTransferOwnership:
 
         # THEN
         assert response.status_code == 204
+
+
+class TestUpdateProjectScaleWithOpinions:
+    """A scale change on PATCH /api/v1/projects/{id} must keep every opinion inside it."""
+
+    @pytest.mark.parametrize(
+        "change",
+        [{"scale_max": 50.0}, {"scale_min": 50.0}, {"scale_min": 41.0, "scale_max": 79.0}],
+        ids=["max-below-upper-bound", "min-above-lower-bound", "both-ends-inside-the-opinion"],
+    )
+    def test_narrowing_past_an_opinion_is_refused(self, client, change):
+        """A new scale that would leave an opinion outside it answers 409 and changes nothing."""
+        # GIVEN a project on 0..100 with one opinion spanning 40..80
+        token = register_and_login(client)
+        project_id = create_project(client, token)["id"]
+        submit_opinion(client, token, project_id, 40.0, 60.0, 80.0)
+
+        # WHEN the admin narrows the scale past that opinion
+        response = client.patch(
+            f"/api/v1/projects/{project_id}",
+            json=change,
+            headers=auth_header(token),
+        )
+
+        # THEN the change is refused and the stored scale is unchanged
+        assert response.status_code == 409
+        assert response.json()["code"] == "scale_excludes_opinions"
+        project = client.get(f"/api/v1/projects/{project_id}", headers=auth_header(token)).json()
+        assert project["scale_min"] == 0.0
+        assert project["scale_max"] == 100.0
+
+    def test_a_refused_request_applies_none_of_its_fields(self, client):
+        """A refused scale change that also renames the project leaves the name alone."""
+        # GIVEN a project with one opinion reaching 80
+        token = register_and_login(client)
+        project_id = create_project(client, token, name="Original")["id"]
+        submit_opinion(client, token, project_id, 40.0, 60.0, 80.0)
+
+        # WHEN the admin renames it and narrows the scale past the opinion in one request
+        response = client.patch(
+            f"/api/v1/projects/{project_id}",
+            json={"name": "Renamed", "scale_max": 50.0},
+            headers=auth_header(token),
+        )
+
+        # THEN the request is refused and the name is unchanged
+        assert response.status_code == 409
+        project = client.get(f"/api/v1/projects/{project_id}", headers=auth_header(token)).json()
+        assert project["name"] == "Original"
+
+    def test_narrowing_onto_the_opinion_bounds_keeps_the_result(self, client):
+        """A scale that still contains every opinion, bounds included, is accepted."""
+        # GIVEN a project on 0..100 with one opinion 40/60/80 and its calculated result
+        token = register_and_login(client)
+        project_id = create_project(client, token)["id"]
+        submit_opinion(client, token, project_id, 40.0, 60.0, 80.0)
+        result_url = f"/api/v1/projects/{project_id}/result"
+        before = client.get(result_url, headers=auth_header(token)).json()
+
+        # WHEN the admin narrows the scale to exactly 40..80
+        response = client.patch(
+            f"/api/v1/projects/{project_id}",
+            json={"scale_min": 40.0, "scale_max": 80.0},
+            headers=auth_header(token),
+        )
+
+        # THEN the scale is updated and the aggregation numbers are the same as before
+        assert response.status_code == 200
+        assert response.json()["scale_min"] == 40.0
+        assert response.json()["scale_max"] == 80.0
+        after = client.get(result_url, headers=auth_header(token)).json()
+        for field in ("best_compromise", "arithmetic_mean", "median"):
+            assert after[field] == before[field]
+
+    def test_widening_with_opinions_is_accepted(self, client):
+        """Widening the scale never excludes an opinion."""
+        # GIVEN a project on 0..100 with one opinion
+        token = register_and_login(client)
+        project_id = create_project(client, token)["id"]
+        submit_opinion(client, token, project_id, 40.0, 60.0, 80.0)
+
+        # WHEN the admin widens the scale to -50..200
+        response = client.patch(
+            f"/api/v1/projects/{project_id}",
+            json={"scale_min": -50.0, "scale_max": 200.0},
+            headers=auth_header(token),
+        )
+
+        # THEN the change is applied
+        assert response.status_code == 200
+        assert response.json()["scale_min"] == -50.0
+        assert response.json()["scale_max"] == 200.0
