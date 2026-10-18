@@ -101,6 +101,9 @@ const ProjectDetail = () => {
     queryFn: () => api.getMembers(projectId),
     enabled: !!id,
   });
+  // The invitation list is admin-only on the API; the role is unknown until the
+  // project resolves, so the query stays disabled until then.
+  const isAdmin = projectQuery.data?.role === "admin";
   const invitationsQuery = useQuery({
     queryKey: queryKeys.projectInvitations(projectId),
     queryFn: () =>
@@ -111,20 +114,20 @@ const ProjectDetail = () => {
         }
         throw error;
       }),
-    enabled: !!id,
+    enabled: !!id && isAdmin,
   });
 
   const project = projectQuery.data ?? null;
   const opinions = opinionsQuery.data ?? [];
   const result = resultQuery.data ?? null;
   const members = membersQuery.data ?? [];
-  const pendingInvitations = invitationsQuery.data ?? [];
+  const pendingInvitations = isAdmin ? (invitationsQuery.data ?? []) : [];
   const isLoading =
     projectQuery.isPending ||
     opinionsQuery.isPending ||
     resultQuery.isPending ||
     membersQuery.isPending ||
-    invitationsQuery.isPending;
+    (isAdmin && invitationsQuery.isPending);
   // isLoadingError only: a failed background refetch keeps cached data on
   // screen and must not eject the user from the page.
   const hasLoadError =
@@ -150,7 +153,6 @@ const ProjectDetail = () => {
   const myOpinion = opinions.find((o) => o.user_id === user?.id);
   const opinionForm = useOpinionForm(project, myOpinion);
   const otherOpinions = opinions.filter((o) => o.user_id !== user?.id);
-  const isAdmin = project?.role === "admin";
   const profileOpinion = profileMember
     ? opinions.find((o) => o.user_id === profileMember.user_id) ?? null
     : null;
