@@ -89,11 +89,11 @@ class UserApiClient:
             cookies=CookieJar(policy=DefaultCookiePolicy(allowed_domains=[])),
         )
 
-    async def _get_json(self, path: str, params: dict[str, int] | None = None) -> Any:
+    async def _get_json(self, path: str, params: dict[str, int | bool] | None = None) -> Any:
         """Issue the one kind of request this client ever sends and decode its body.
 
         :param path: API path to read, e.g. "/api/v1/projects".
-        :param params: Query parameters, used only for pagination.
+        :param params: Query parameters, used for pagination and the opinions view.
         :return: The decoded JSON body.
         :raises AssistantNotFoundError: On a 404 response.
         :raises AssistantUpstreamError: On any other non-2xx response, or a 2xx whose
@@ -110,7 +110,7 @@ class UserApiClient:
             pass
         raise AssistantUpstreamError(f"{path} returned a body that is not JSON")
 
-    async def _get_all(self, path: str) -> list[Any]:
+    async def _get_all(self, path: str, extra_params: dict[str, bool] | None = None) -> list[Any]:
         """Read every page of a paginated list endpoint.
 
         The list endpoints return at most MAX_PAGE_SIZE items per request, so one
@@ -118,13 +118,14 @@ class UserApiClient:
         last one.
 
         :param path: API path of a list endpoint that takes limit and offset.
+        :param extra_params: Query parameters sent with every page, next to the paging ones.
         :return: The items of every page, in the order the API returns them.
         :raises AssistantUpstreamError: If a page is not a list, or the list runs past
             _MAX_PAGES full pages.
         """
         items: list[Any] = []
         for _ in range(_MAX_PAGES):
-            params = {"limit": MAX_PAGE_SIZE, "offset": len(items)}
+            params = {**(extra_params or {}), "limit": MAX_PAGE_SIZE, "offset": len(items)}
             page = await self._get_json(path, params=params)
             if not isinstance(page, list):
                 raise AssistantUpstreamError(f"{path} returned a page that is not a list")
@@ -169,10 +170,15 @@ class UserApiClient:
         body = await self._get_json(f"/api/v1/projects/{_canonical_project_id(project_id)}/result")
         return _validate(ResultView, body) if body is not None else None
 
-    async def get_opinions(self, project_id: str) -> list[OpinionView]:
-        """List a project's expert opinions.
+    async def get_opinions(self, project_id: str, *, full: bool = False) -> list[OpinionView]:
+        """List a project's expert opinions, as the assistant may show them to the caller.
+
+        Opinions of members who objected to the assistant are left out, except the
+        caller's own. ``full=True`` lifts that and exists only for the trace mask, which
+        has to know every name; what it returns must never reach the model.
 
         :param project_id: Project UUID, as a string.
+        :param full: Read the complete list, objectors included.
         :return: One OpinionView per submitted opinion, across every page.
         :raises AssistantNotFoundError: If project_id is not a valid UUID, or the
             caller cannot see this project.
@@ -180,7 +186,8 @@ class UserApiClient:
             that is not JSON or fails the schema, or the list runs past _MAX_PAGES full pages.
         """
         path = f"/api/v1/projects/{_canonical_project_id(project_id)}/opinions"
-        return [_validate(OpinionView, item) for item in await self._get_all(path)]
+        extra = {} if full else {"for_assistant": True}
+        return [_validate(OpinionView, item) for item in await self._get_all(path, extra)]
 
     async def aclose(self) -> None:
         """Close the underlying HTTP client."""

@@ -1642,6 +1642,64 @@ class TestRoster:
         assert mask_participants("Jana Novakova", ctx.roster) == "Expert 1"
         assert not ctx.roster.incomplete
 
+    async def test_a_traced_workflow_turn_masks_an_objector_the_model_never_reads_about(self, run):
+        """
+        GIVEN a traced workflow turn on a project where one expert objected, so the assistant
+            view omits them and the complete list holds them
+        WHEN it is answered
+        THEN the model was shown only the assistant view, the roster also knows the
+            objector's name, and the roster is complete
+        """
+        visible, objector = (
+            _opinion(),
+            _opinion().model_copy(update={"expert_name": "Karel Skryty"}),
+        )
+        ctx = _ctx(project_id=PROJECT_ID, result=_result())
+
+        async def opinions(project_id, *, full=False):
+            return [visible, objector] if full else [visible]
+
+        ctx.client.get_opinions.side_effect = opinions
+        model = _model(_say())
+
+        await AssistantService(_settings(), model).answer(_request(), ctx)
+
+        assert [call.kwargs for call in ctx.client.get_opinions.await_args_list] == [
+            {},
+            {"full": True},
+        ]
+        shown = "\n".join(str(message.content) for message in model.seen[0])
+        assert "Novakova" in shown
+        assert "Skryty" not in shown
+        assert "Skryty" not in "".join(ctx.tool_outputs)
+        assert mask_participants("Karel Skryty", ctx.roster).startswith("Expert")
+        assert not ctx.roster.incomplete
+
+    async def test_a_traced_workflow_turn_whose_complete_list_fails_leaves_the_roster_incomplete(
+        self, run
+    ):
+        """
+        GIVEN a traced workflow turn whose roster fetch fails after the model's view was read
+        WHEN it is answered
+        THEN the turn answers as it would have, and the roster is incomplete so the trace is
+            dropped: the names the model did not read about may be missing from it
+        """
+        ctx = _ctx(project_id=PROJECT_ID, result=_result(), opinions=[_opinion()])
+
+        async def opinions(project_id, *, full=False):
+            if full:
+                raise AssistantUpstreamError("bad")
+            return [_opinion()]
+
+        ctx.client.get_opinions.side_effect = opinions
+
+        response = await AssistantService(_settings(), _model(_say("Fine."))).answer(
+            _request(), ctx
+        )
+
+        assert response.answer == "Fine."
+        assert ctx.roster.incomplete
+
     @pytest.mark.parametrize("mode", ["hybrid", "agent"])
     async def test_a_traced_turn_fetches_the_experts_for_the_roster_alone(self, run, mode):
         """
@@ -1655,7 +1713,7 @@ class TestRoster:
 
         await AssistantService(_settings(mode), model).answer(_request(), ctx)
 
-        ctx.client.get_opinions.assert_awaited_once_with(PROJECT_ID)
+        ctx.client.get_opinions.assert_awaited_once_with(PROJECT_ID, full=True)
         assert mask_participants("Jana Novakova", ctx.roster) == "Expert 1"
         assert not ctx.roster.incomplete
         shown = "\n".join(str(message.content) for message in model.seen[0])
@@ -1731,7 +1789,7 @@ class TestRoster:
         monkeypatch.setattr(service_module, "_ROSTER_FETCH_SECONDS", 0.05)
         ctx = _ctx(project_id=PROJECT_ID, result=_result())
 
-        async def hang(project_id):
+        async def hang(project_id, full=False):
             await asyncio.sleep(30)
 
         ctx.client.get_opinions.side_effect = hang

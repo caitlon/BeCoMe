@@ -87,7 +87,9 @@ class TestAssistantObjection:
         """A name edit does not reset the objection."""
         # GIVEN
         token = register_and_login(client, "keep-objection@example.com")
-        client.put("/api/v1/users/me", json={"assistant_objection": True}, headers=auth_header(token))
+        client.put(
+            "/api/v1/users/me", json={"assistant_objection": True}, headers=auth_header(token)
+        )
 
         # WHEN
         response = client.put(
@@ -110,7 +112,7 @@ class TestAssistantObjection:
         )
 
         # THEN
-        assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
 
 class TestDeleteAccount:
@@ -340,7 +342,7 @@ class TestDeleteAccountDispositions:
         )
 
         # THEN the disposition is rejected as invalid
-        assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
     def test_transfer_to_demo_account_rejected(self, client):
         """A transfer naming a demo account as the erasure disposition is rejected.
@@ -382,7 +384,7 @@ class TestDeleteAccountDispositions:
         )
 
         # THEN the disposition is rejected as invalid
-        assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
 
 class TestChangePasswordRevokesSessions:

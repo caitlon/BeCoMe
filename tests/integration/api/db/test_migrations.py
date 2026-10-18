@@ -820,6 +820,10 @@ class TestClearStaleLikertVerdictsMigration:
 class TestAssistantObjectionMigration:
     """The migration adding users.assistant_objection."""
 
+    # Pinned to the revision ids, so a later migration cannot change what is tested.
+    BEFORE = "d5c1a7e93b02"  # pragma: allowlist secret
+    REVISION = "e7b3d2a94c18"  # pragma: allowlist secret
+
     def test_upgrade_defaults_existing_users_to_no_objection_and_downgrade_drops_it(
         self, migration_pg, monkeypatch
     ):
@@ -831,7 +835,7 @@ class TestAssistantObjectionMigration:
         engine = create_engine(url)
 
         try:
-            command.upgrade(config, "d5c1a7e93b02")
+            command.upgrade(config, self.BEFORE)
             with engine.begin() as conn:
                 conn.execute(
                     text(
@@ -843,7 +847,7 @@ class TestAssistantObjectionMigration:
                 )
 
             # WHEN
-            command.upgrade(config, "e7b3d2a94c18")
+            command.upgrade(config, self.REVISION)
 
             # THEN: the existing row reads False and the column refuses NULL
             with engine.connect() as conn:
@@ -852,12 +856,14 @@ class TestAssistantObjectionMigration:
                 ).scalar()
             assert value is False
             column = next(
-                c for c in inspect(engine).get_columns("users") if c["name"] == "assistant_objection"
+                c
+                for c in inspect(engine).get_columns("users")
+                if c["name"] == "assistant_objection"
             )
             assert column["nullable"] is False
 
             # WHEN: rolled back
-            command.downgrade(config, "d5c1a7e93b02")
+            command.downgrade(config, self.BEFORE)
 
             # THEN
             assert "assistant_objection" not in {
