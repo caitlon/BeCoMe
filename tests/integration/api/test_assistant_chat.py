@@ -932,6 +932,52 @@ class TestObjectionHidesTheOpinion:
         assert OWNER_LAST_NAME in shown
         assert _BYSTANDER_LAST_NAME in shown
 
+    @pytest.mark.parametrize("mode", ["hybrid", "agent"])
+    def test_a_tool_call_finds_nothing_when_the_only_opinion_is_the_objectors(
+        self, assistant_settings, client, configure, mode
+    ):
+        """
+        GIVEN a project whose only opinion belongs to a member who objected
+        WHEN another member's model calls the opinions tool
+        THEN the tool reply says there are no opinions to show, and the objector's name and
+            position were not shown
+        """
+        # GIVEN
+        configure(ASSISTANT_MODE=mode)
+        owner = _owner_project(client)
+        _object_to_the_assistant(client, owner["email"])
+        register_verified(client, "reader@example.com", first_name="Reader", last_name="Quiet")
+        login = client.post(
+            "/api/v1/auth/login",
+            data={"username": "reader@example.com", "password": DEFAULT_TEST_PASSWORD},
+        )
+        token = login.json()["access_token"]
+        client.cookies.clear()
+        invitation = client.post(
+            f"/api/v1/projects/{owner['id']}/invite",
+            json={"email": "reader@example.com"},
+            headers=auth_header(owner["token"]),
+        )
+        client.post(
+            f"/api/v1/invitations/{invitation.json()['id']}/accept", headers=auth_header(token)
+        )
+        model = ToolEchoingModel(first_call=_tool_call("get_project_opinions", owner["id"]))
+        _use_model(client, model)
+
+        # WHEN
+        response = client.post(
+            CHAT,
+            json={"message": "Who took part?", "project_id": owner["id"]},
+            headers=auth_header(token),
+        )
+
+        # THEN
+        assert response.status_code == 200
+        shown = _shown(model)
+        assert "there are no opinions to show for this project" in shown
+        assert OWNER_LAST_NAME not in shown
+        assert OWNER_POSITION not in shown
+
 
 class _DownRetriever:
     """A retriever whose search fails with the given error, by default a refused connection."""

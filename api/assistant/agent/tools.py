@@ -60,7 +60,10 @@ UNAVAILABLE_REPLY = (
 # The four empty cases share one prefix and each says what is missing, so the model can
 # tell the user which thing it is.
 _NO_RESULT_YET = "no_result: no result has been calculated for this project yet"
-_NO_OPINIONS = "no_result: no opinions have been submitted to this project yet"
+_NO_OPINIONS = (
+    "no_result: there are no opinions to show for this project (none submitted yet, "
+    "or the participants asked not to share theirs with the assistant)"
+)
 _NO_PASSAGES = "no_result: no matching passages in the documentation"
 _NO_PROJECTS = "no_result: the user is not a member of any project"
 

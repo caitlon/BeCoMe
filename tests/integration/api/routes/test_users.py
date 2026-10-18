@@ -99,6 +99,23 @@ class TestAssistantObjection:
         # THEN
         assert response.json()["assistant_objection"] is True
 
+    def test_put_with_a_null_flag_keeps_it(self, client):
+        """An explicit null is not a clear: the objection stays set."""
+        # GIVEN
+        token = register_and_login(client, "null-objection@example.com")
+        client.put(
+            "/api/v1/users/me", json={"assistant_objection": True}, headers=auth_header(token)
+        )
+
+        # WHEN
+        response = client.put(
+            "/api/v1/users/me", json={"assistant_objection": None}, headers=auth_header(token)
+        )
+
+        # THEN
+        assert response.status_code == status.HTTP_200_OK
+        assert response.json()["assistant_objection"] is True
+
     def test_unknown_fields_are_still_rejected(self, client):
         """The request keeps extra=forbid next to the new field."""
         # GIVEN
