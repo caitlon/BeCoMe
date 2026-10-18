@@ -200,7 +200,7 @@ def accept_invitation(
     """
     membership = invitation_service.accept_invitation(invitation_id, current_user.id)
 
-    return MemberResponse.from_model(membership, current_user)
+    return MemberResponse.from_model(membership, current_user, show_email=True)
 
 
 @router.post(

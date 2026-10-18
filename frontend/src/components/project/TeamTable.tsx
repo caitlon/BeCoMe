@@ -48,7 +48,7 @@ export const TeamTable = ({
           <TableHeader>
             <TableRow>
               <TableHead>{t("team.name")}</TableHead>
-              <TableHead>{t("team.email")}</TableHead>
+              {isAdmin && <TableHead>{t("team.email")}</TableHead>}
               <TableHead>{t("team.role")}</TableHead>
               <TableHead>{t("team.joined")}</TableHead>
               {isAdmin && (
@@ -93,9 +93,11 @@ export const TeamTable = ({
                       </button>
                     </div>
                   </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {member.email}
-                  </TableCell>
+                  {isAdmin && (
+                    <TableCell className="text-muted-foreground">
+                      {member.email}
+                    </TableCell>
+                  )}
                   <TableCell>
                     <Badge
                       variant={member.role === "admin" ? "default" : "secondary"}
@@ -159,9 +161,11 @@ export const TeamTable = ({
                       </span>
                     </div>
                   </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {inv.invitee_email}
-                  </TableCell>
+                  {isAdmin && (
+                    <TableCell className="text-muted-foreground">
+                      {inv.invitee_email}
+                    </TableCell>
+                  )}
                   <TableCell>
                     <Badge variant="outline">
                       {t("roles.invited")}

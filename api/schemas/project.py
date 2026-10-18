@@ -165,7 +165,7 @@ class MemberResponse(BaseModel):
     """Project member details."""
 
     user_id: str
-    email: str
+    email: str | None
     first_name: str
     last_name: str | None = None
     photo_url: str | None = None
@@ -173,16 +173,19 @@ class MemberResponse(BaseModel):
     joined_at: datetime
 
     @classmethod
-    def from_model(cls, member: "ProjectMember", user: "User") -> "MemberResponse":
+    def from_model(
+        cls, member: "ProjectMember", user: "User", *, show_email: bool
+    ) -> "MemberResponse":
         """Create response from database models.
 
         :param member: ProjectMember database model
         :param user: User database model
-        :return: MemberResponse instance
+        :param show_email: Whether the viewer may see the address (project admin or the member)
+        :return: MemberResponse instance, with ``email`` null when hidden
         """
         return cls(
             user_id=str(user.id),
-            email=user.email,
+            email=user.email if show_email else None,
             first_name=user.first_name,
             last_name=user.last_name,
             photo_url=build_photo_url(user.id, user.photo_url),

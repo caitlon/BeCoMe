@@ -15,6 +15,7 @@ from api.dependencies import (
     ProjectMember,
     get_calculation_service,
     get_opinion_service,
+    get_project_membership_service,
     get_result_export_service,
 )
 from api.middleware.rate_limit import LIMIT_STANDARD, LIMIT_WRITE, limiter
@@ -28,6 +29,7 @@ from api.services.export.result_export_service import ResultExportService
 from api.services.export.theme import ReportTheme
 from api.services.likert_verdict import derive_verdict
 from api.services.opinion_service import OpinionService
+from api.services.project_membership_service import ProjectMembershipService
 
 # Only refusals and reads live here. The upsert, delete, recalculation, and export
 # events already come from opinion_service, calculation_service, and
@@ -43,6 +45,9 @@ def list_opinions(
     project: ProjectMember,
     current_user: CurrentUser,
     opinion_service: Annotated[OpinionService, Depends(get_opinion_service)],
+    membership_service: Annotated[
+        ProjectMembershipService, Depends(get_project_membership_service)
+    ],
     pagination: Annotated[PaginationParams, Depends()],
     for_assistant: Annotated[
         bool,
@@ -56,9 +61,13 @@ def list_opinions(
 ) -> list[OpinionResponse]:
     """Get opinions for a project. Only members can access.
 
+    E-mail addresses are returned only to the project admin and on the caller's own row;
+    every other row carries ``user_email: null``.
+
     :param project: Project (verified membership)
     :param current_user: Authenticated caller (whose own row is never hidden)
     :param opinion_service: Opinion service
+    :param membership_service: Membership service (decides whether the caller is the admin)
     :param pagination: Bounded limit/offset (capped at MAX_PAGE_SIZE)
     :param for_assistant: Apply the assistant view described above
     :return: List of opinions with user details
@@ -77,7 +86,15 @@ def list_opinions(
             "row_count": len(opinions),
         },
     )
-    return [OpinionResponse.from_model(item.opinion, item.user) for item in opinions]
+    viewer_is_admin = membership_service.is_admin(project.id, current_user.id)
+    return [
+        OpinionResponse.from_model(
+            item.opinion,
+            item.user,
+            show_email=viewer_is_admin or item.user.id == current_user.id,
+        )
+        for item in opinions
+    ]
 
 
 @router.post(
@@ -122,7 +139,7 @@ def submit_opinion(
 
     calculation_service.recalculate(project.id)
 
-    return OpinionResponse.from_model(result.opinion, current_user)
+    return OpinionResponse.from_model(result.opinion, current_user, show_email=True)
 
 
 @router.delete(

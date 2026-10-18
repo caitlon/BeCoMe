@@ -143,7 +143,7 @@ class TestOpinionResponseFromModel:
         )
 
         # WHEN
-        response = OpinionResponse.from_model(opinion, user)
+        response = OpinionResponse.from_model(opinion, user, show_email=True)
 
         # THEN
         assert response.id == str(opinion_id)
@@ -157,6 +157,38 @@ class TestOpinionResponseFromModel:
         assert response.upper_bound == 15.0
         assert response.created_at == created_at
         assert response.updated_at == updated_at
+
+    def test_hides_email_when_not_shown(self):
+        """
+        GIVEN ExpertOpinion and User models
+        WHEN from_model is called with show_email False
+        THEN user_email is None and the rest of the row is unchanged
+        """
+        # GIVEN
+        user = User(
+            id=uuid4(),
+            email="expert@example.com",
+            hashed_password="hash",
+            first_name="Jane",
+        )
+        opinion = ExpertOpinion(
+            id=uuid4(),
+            project_id=uuid4(),
+            user_id=user.id,
+            position="Analyst",
+            lower_bound=5.0,
+            peak=10.0,
+            upper_bound=15.0,
+        )
+
+        # WHEN
+        response = OpinionResponse.from_model(opinion, user, show_email=False)
+
+        # THEN
+        assert response.user_email is None
+        assert response.model_dump()["user_email"] is None
+        assert response.user_first_name == "Jane"
+        assert response.position == "Analyst"
 
     def test_centroid_calculated_correctly(self):
         """
@@ -183,7 +215,7 @@ class TestOpinionResponseFromModel:
         expected_centroid = (0.0 + 6.0 + 12.0) / 3
 
         # WHEN
-        response = OpinionResponse.from_model(opinion, user)
+        response = OpinionResponse.from_model(opinion, user, show_email=True)
 
         # THEN
         assert response.centroid == expected_centroid
@@ -213,7 +245,7 @@ class TestOpinionResponseFromModel:
         )
 
         # WHEN
-        response = OpinionResponse.from_model(opinion, user)
+        response = OpinionResponse.from_model(opinion, user, show_email=True)
 
         # THEN
         assert response.user_last_name is None
