@@ -34,6 +34,85 @@ def _add_expert(client, owner_token, project_id, email):
     return expert_token, accept.json()["user_id"]
 
 
+class TestAssistantObjection:
+    """The profile switch that keeps a user's opinions from other members' assistant."""
+
+    def test_flag_defaults_to_false_on_both_profile_endpoints(self, client):
+        """A fresh account has not objected."""
+        # GIVEN
+        token = register_and_login(client, "fresh-objection@example.com")
+
+        # WHEN
+        users_me = client.get("/api/v1/users/me", headers=auth_header(token))
+        auth_me = client.get("/api/v1/auth/me", headers=auth_header(token))
+
+        # THEN
+        assert users_me.json()["assistant_objection"] is False
+        assert auth_me.json()["assistant_objection"] is False
+
+    def test_put_sets_and_clears_the_flag(self, client):
+        """PUT /users/me writes the flag, and the next reads show it, cached or not."""
+        # GIVEN: a warm profile cache
+        token = register_and_login(client, "toggle-objection@example.com")
+        client.get("/api/v1/users/me", headers=auth_header(token))
+
+        # WHEN: set
+        put = client.put(
+            "/api/v1/users/me", json={"assistant_objection": True}, headers=auth_header(token)
+        )
+
+        # THEN
+        assert put.status_code == status.HTTP_200_OK
+        assert put.json()["assistant_objection"] is True
+        assert client.get("/api/v1/users/me", headers=auth_header(token)).json()[
+            "assistant_objection"
+        ]
+        assert client.get("/api/v1/auth/me", headers=auth_header(token)).json()[
+            "assistant_objection"
+        ]
+
+        # WHEN: cleared
+        cleared = client.put(
+            "/api/v1/users/me", json={"assistant_objection": False}, headers=auth_header(token)
+        )
+
+        # THEN
+        assert cleared.json()["assistant_objection"] is False
+        assert (
+            client.get("/api/v1/users/me", headers=auth_header(token)).json()["assistant_objection"]
+            is False
+        )
+
+    def test_put_without_the_field_keeps_it(self, client):
+        """A name edit does not reset the objection."""
+        # GIVEN
+        token = register_and_login(client, "keep-objection@example.com")
+        client.put("/api/v1/users/me", json={"assistant_objection": True}, headers=auth_header(token))
+
+        # WHEN
+        response = client.put(
+            "/api/v1/users/me", json={"first_name": "Renamed"}, headers=auth_header(token)
+        )
+
+        # THEN
+        assert response.json()["assistant_objection"] is True
+
+    def test_unknown_fields_are_still_rejected(self, client):
+        """The request keeps extra=forbid next to the new field."""
+        # GIVEN
+        token = register_and_login(client, "extra-objection@example.com")
+
+        # WHEN
+        response = client.put(
+            "/api/v1/users/me",
+            json={"assistant_objection": True, "is_demo": True},
+            headers=auth_header(token),
+        )
+
+        # THEN
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+
+
 class TestDeleteAccount:
     """Tests for DELETE /api/v1/users/me endpoint."""
 

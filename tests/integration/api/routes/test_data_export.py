@@ -30,6 +30,22 @@ class TestDataExport:
         assert "created_at" in data["profile"]
         assert data["export_metadata"]["format_version"]
 
+    def test_export_carries_the_assistant_objection_flag(self, client):
+        """The profile section reports whether the user objected to the assistant."""
+        # GIVEN
+        token = register_and_login(client, "objector-export@example.com")
+        client.put(
+            "/api/v1/users/me",
+            json={"assistant_objection": True},
+            headers=auth_header(token),
+        )
+
+        # WHEN
+        response = client.get(_EXPORT_URL, headers=auth_header(token))
+
+        # THEN
+        assert response.json()["profile"]["assistant_objection"] is True
+
     def test_export_includes_owned_project_and_opinion(self, client):
         """Owned projects and submitted opinions appear in the export."""
         # GIVEN: a user who owns a project and submitted an opinion

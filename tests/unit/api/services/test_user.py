@@ -434,6 +434,41 @@ class TestUserServiceUpdateUser:
         assert result.first_name == "Original"
         assert result.last_name == "Name"
 
+    def test_sets_and_clears_assistant_objection(self):
+        """The objection flag is written both ways and False is not treated as unset."""
+        # GIVEN
+        user = User(
+            id=uuid4(),
+            email="update@example.com",
+            hashed_password="xxx",
+            first_name="Original",
+            last_name="Name",
+        )
+        service = UserService(MagicMock())
+
+        # WHEN / THEN
+        assert service.update_user(user, assistant_objection=True).assistant_objection is True
+        assert service.update_user(user, assistant_objection=False).assistant_objection is False
+
+    def test_leaves_assistant_objection_when_not_given(self):
+        """An update that does not mention the flag keeps its value."""
+        # GIVEN
+        user = User(
+            id=uuid4(),
+            email="update@example.com",
+            hashed_password="xxx",
+            first_name="Original",
+            last_name="Name",
+            assistant_objection=True,
+        )
+        service = UserService(MagicMock())
+
+        # WHEN
+        result = service.update_user(user, first_name="Changed")
+
+        # THEN
+        assert result.assistant_objection is True
+
 
 class TestUserServiceChangePassword:
     """Tests for UserService.change_password method."""

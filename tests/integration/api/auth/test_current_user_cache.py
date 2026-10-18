@@ -22,6 +22,7 @@ async def test_cache_hit_skips_the_database(monkeypatch):
         photo_url=None,
         created_at=datetime.now(UTC),
         email_verified_at=None,
+        assistant_objection=False,
     )
     get_user_cache.cache_clear()
     get_user_cache().set(cached, ttl_seconds=60)
@@ -79,6 +80,7 @@ async def test_cache_id_mismatch_falls_through_to_the_database(monkeypatch):
         photo_url=None,
         created_at=datetime.now(UTC),
         email_verified_at=None,
+        assistant_objection=False,
     )
 
     monkeypatch.setattr(deps, "decode_access_token", lambda token, store: token_user_id)
