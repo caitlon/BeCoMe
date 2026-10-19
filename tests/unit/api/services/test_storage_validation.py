@@ -2,6 +2,7 @@
 
 from io import BytesIO
 
+import pytest
 from PIL import Image
 
 from api.services.storage import validation
@@ -76,6 +77,33 @@ class TestValidateImageContent:
         """A RIFF container that is not WebP fails validation."""
         content = b"RIFF\x00\x00\x00\x00WAVE" + b"\x00" * 100
         assert not validation.validate_image_content(content, "image/webp")
+
+
+class TestValidateImageReadable:
+    """Tests for the header-parses check that runs before the dimension budget."""
+
+    def test_accepts_a_real_image(self):
+        """A real PNG whose header parses is readable."""
+        assert validation.validate_image_readable(_png(8, 8))
+
+    def test_rejects_garbage_behind_a_png_signature(self):
+        """Bytes that only start like a PNG are unreadable."""
+        assert not validation.validate_image_readable(b"\x89PNG\r\n\x1a\n" + b"garbage" * 10)
+
+    def test_rejects_empty_content(self):
+        """Empty content is unreadable rather than raising."""
+        assert not validation.validate_image_readable(b"")
+
+    def test_accepts_a_decompression_bomb_header(self, monkeypatch):
+        """A header that parses is readable even when Pillow refuses the canvas.
+
+        The size is the dimension check's business, so the two causes stay apart.
+        """
+        monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 100)
+        bomb = _png(5000, 5000)
+        with pytest.raises(Image.DecompressionBombError):
+            Image.open(BytesIO(bomb))
+        assert validation.validate_image_readable(bomb)
 
 
 class TestValidateImageDimensions:

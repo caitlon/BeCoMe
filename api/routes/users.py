@@ -26,6 +26,7 @@ from api.exceptions import (
     PhotoDimensionsTooLargeError,
     PhotoTooLargeError,
     PhotoTypeNotAllowedError,
+    PhotoUnreadableError,
 )
 from api.middleware.rate_limit import (
     LIMIT_PHOTO,
@@ -367,6 +368,12 @@ async def upload_photo(
     if not validation.validate_image_content(content, content_type):
         _photo_upload_rejected("content_mismatch", current_user.id, content_type=content_type)
         raise PhotoContentMismatchError("File content does not match declared type")
+
+    # A file can carry the right signature and still be corrupt. Telling that apart from an
+    # oversized canvas keeps the dimensions refusal from naming the wrong cause.
+    if not validation.validate_image_readable(content):
+        _photo_upload_rejected("unreadable", current_user.id, content_type=content_type)
+        raise PhotoUnreadableError("Image header could not be parsed")
 
     # The byte cap above says nothing about the pixel canvas: a small, highly
     # compressible file can declare a gigapixel image whose decode would exhaust memory.
