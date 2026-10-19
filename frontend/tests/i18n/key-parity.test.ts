@@ -20,10 +20,39 @@ function collectKeys(obj: Record<string, unknown>, prefix = ''): string[] {
   return keys.sort();
 }
 
+const PLURAL_SUFFIX = /^(.+)_(zero|one|two|few|many|other)$/;
+
+// A key is part of a plural group only when its base also has an `_other` form, so an
+// ordinary key that merely ends in `_one` is left alone. Returns each group's base path
+// with the suffixes found for it.
+function pluralGroups(keys: string[]): Map<string, string[]> {
+  const bases = new Set(
+    keys.map((k) => k.match(PLURAL_SUFFIX)).filter((m) => m?.[2] === 'other').map((m) => m![1]),
+  );
+  const groups = new Map<string, string[]>();
+  for (const key of keys) {
+    const match = key.match(PLURAL_SUFFIX);
+    if (match && bases.has(match[1])) {
+      groups.set(match[1], [...(groups.get(match[1]) ?? []), match[2]]);
+    }
+  }
+  return groups;
+}
+
+// English has two plural forms and Czech four, so a plural group counts as one key.
+function foldPlurals(keys: string[]): string[] {
+  const groups = pluralGroups(keys);
+  const folded = keys.map((key) => {
+    const match = key.match(PLURAL_SUFFIX);
+    return match && groups.has(match[1]) ? match[1] : key;
+  });
+  return [...new Set(folded)].sort();
+}
+
 describe('i18n key parity (EN ↔ CS)', () => {
   it.each(namespaces)('%s: EN and CS have identical keys', (ns) => {
-    const enKeys = collectKeys(resources.en[ns] as Record<string, unknown>);
-    const csKeys = collectKeys(resources.cs[ns] as Record<string, unknown>);
+    const enKeys = foldPlurals(collectKeys(resources.en[ns] as Record<string, unknown>));
+    const csKeys = foldPlurals(collectKeys(resources.cs[ns] as Record<string, unknown>));
 
     const missingInCs = enKeys.filter((k) => !csKeys.includes(k));
     const missingInEn = csKeys.filter((k) => !enKeys.includes(k));
@@ -37,5 +66,19 @@ describe('i18n key parity (EN ↔ CS)', () => {
     const csNs = Object.keys(resources.cs).sort();
 
     expect(enNs).toEqual(csNs);
+  });
+
+  describe.each(['en', 'cs'] as const)('plural forms (%s)', (lang) => {
+    const categories = new Intl.PluralRules(lang).resolvedOptions().pluralCategories.sort();
+
+    it.each(namespaces)('%s: every plural group has exactly the CLDR categories', (ns) => {
+      const groups = pluralGroups(collectKeys(resources[lang][ns] as Record<string, unknown>));
+      const wrong = [...groups].filter(([, found]) => found.sort().join() !== categories.join());
+
+      expect(
+        wrong.map(([base, found]) => `${base}: ${found.sort().join(', ')}`),
+        `Plural groups in ${lang}/${ns} that do not match ${categories.join(', ')}`,
+      ).toEqual([]);
+    });
   });
 });
