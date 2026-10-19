@@ -480,9 +480,10 @@ rather than a default nobody notices.
 
 Request DTOs are Pydantic models with `extra="forbid"` (`api/schemas/`), so an unexpected
 field draws a `422` rather than passing as a silently ignored parameter. String fields carry
-length caps, free-text names go through HTML sanitization, and list endpoints clamp their
-page size (`MAX_PAGE_SIZE = 100`, `api/pagination.py`) so a single request cannot ask the
-database for an unbounded result set. The GDPR export is the one deliberate exception to the
+length caps, free-text names go through HTML sanitization, numeric fields that feed the
+calculation (fuzzy bounds, the project scale) refuse `NaN` and infinity, and list endpoints
+clamp their page size (`MAX_PAGE_SIZE = 100`, `api/pagination.py`) so a single request cannot
+ask the database for an unbounded result set. The GDPR export is the one deliberate exception to the
 list caps, since Article 20 requires the full dataset. `api/README.md` records the
 exemption, and the route itself carries no note.
 
