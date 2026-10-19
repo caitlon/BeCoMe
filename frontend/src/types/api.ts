@@ -6,6 +6,7 @@ export interface User {
   first_name: string;
   last_name: string | null;
   photo_url: string | null;
+  assistant_objection: boolean;
   created_at: string;
 }
 
@@ -139,6 +140,7 @@ export interface RegisterInput {
 export interface UpdateUserInput {
   first_name?: string;
   last_name?: string;
+  assistant_objection?: boolean;
 }
 
 export interface ChangePasswordInput {

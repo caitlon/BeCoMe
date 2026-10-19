@@ -97,6 +97,7 @@ const authenticatedAuth = {
     first_name: 'Test',
     last_name: null,
     photo_url: null,
+    assistant_objection: false,
     created_at: '2024-01-01T00:00:00Z',
   },
   login: vi.fn(),

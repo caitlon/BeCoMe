@@ -15,6 +15,14 @@
     "update": "Update Password",
     "updating": "Updating..."
   },
+  "assistantPrivacy": {
+    "title": "Assistant Privacy",
+    "label": "Hide my opinions from other members' assistant",
+    "description": "When this is on, the assistant does not show your opinions to other project members who ask it. It still shows them to you. Project results, such as the mean and the number of experts, are calculated as before.",
+    "enabledToast": "Your opinions are now hidden from other members' assistant",
+    "disabledToast": "Other members' assistant can show your opinions again",
+    "failed": "Could not save the assistant setting"
+  },
   "dataExport": {
     "title": "Download Your Data",
     "description": "Export all your personal data (profile, projects, opinions, and invitations) in a machine-readable JSON file.",
