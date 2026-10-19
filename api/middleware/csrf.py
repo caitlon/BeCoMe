@@ -30,6 +30,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 from api.auth.cookies import CSRF_HEADER, expected_csrf_token
+from api.middleware.exception_handlers import CSRF_INVALID_CODE
 from api.utils.client_ip import get_client_ip
 
 logger = logging.getLogger("api.security")
@@ -100,5 +101,5 @@ class CSRFMiddleware(BaseHTTPMiddleware):
         )
         return JSONResponse(
             status_code=status.HTTP_403_FORBIDDEN,
-            content={"detail": "CSRF token missing or invalid"},
+            content={"detail": "CSRF token missing or invalid", "code": CSRF_INVALID_CODE},
         )

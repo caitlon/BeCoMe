@@ -57,6 +57,13 @@ export const PHOTO_UNREADABLE_CODE = 'photo_unreadable';
 /** The uploaded photo has more pixels than the API accepts. */
 export const PHOTO_DIMENSIONS_TOO_LARGE_CODE = 'photo_dimensions_too_large';
 
+/**
+ * The API refused a mutation because the CSRF token it carried is missing or does
+ * not belong to the current session. Usually another tab signed in again, so this
+ * tab still holds the token of the session that tab replaced.
+ */
+export const CSRF_INVALID_CODE = 'csrf_invalid';
+
 /** A fetch() call itself failed: offline, DNS failure, CORS, aborted, etc. */
 export class NetworkError extends Error {
   readonly kind = 'network' as const;

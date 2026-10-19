@@ -921,6 +921,7 @@ class TestCookieAuth:
         resp = cookie_client.post("/api/v1/auth/logout")
 
         assert resp.status_code == 403
+        assert resp.json()["code"] == "csrf_invalid"
 
     def test_cookie_mutation_with_wrong_csrf_header_is_rejected(self, cookie_client):
         """A cookie-authenticated mutation with a mismatched CSRF token is rejected with 403."""
@@ -929,6 +930,7 @@ class TestCookieAuth:
         resp = cookie_client.post("/api/v1/auth/logout", headers={"X-CSRF-Token": "wrong"})
 
         assert resp.status_code == 403
+        assert resp.json()["code"] == "csrf_invalid"
 
     def test_cookie_mutation_with_high_byte_csrf_header_is_rejected(self, cookie_client):
         """A CSRF header carrying bytes above ASCII is rejected with 403, not a 500.
