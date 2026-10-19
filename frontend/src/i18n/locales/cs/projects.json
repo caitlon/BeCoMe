@@ -41,7 +41,10 @@
       "title": "Žádné čekající pozvánky",
       "description": "Když vás někdo pozve do projektu, objeví se zde."
     },
-    "pending": "Máte {{count}} čekající pozvánku/y",
+    "pending_one": "Máte {{count}} čekající pozvánku",
+    "pending_few": "Máte {{count}} čekající pozvánky",
+    "pending_many": "Máte {{count}} čekající pozvánky",
+    "pending_other": "Máte {{count}} čekajících pozvánek",
     "invitedBy": "Pozval(a)",
     "invitedDate": "Pozváno"
   },
@@ -87,7 +90,10 @@
     "opinions": "Názory",
     "results": "Výsledky",
     "team": "Tým",
-    "teamMembers": "Tým ({{count}} členů)",
+    "teamMembers_one": "Tým ({{count}} člen)",
+    "teamMembers_few": "Tým ({{count}} členové)",
+    "teamMembers_many": "Tým ({{count}} člena)",
+    "teamMembers_other": "Tým ({{count}} členů)",
     "noResults": "Výsledky se zobrazí po odeslání názorů experty.",
     "resultsError": "Výsledky se nepodařilo zobrazit. Zkuste stránku znovu načíst.",
     "bestCompromise": "Nejlepší kompromis",

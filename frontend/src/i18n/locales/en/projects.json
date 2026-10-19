@@ -41,7 +41,8 @@
       "title": "No pending invitations",
       "description": "When someone invites you to a project, it will appear here."
     },
-    "pending": "You have {{count}} pending invitation(s)",
+    "pending_one": "You have {{count}} pending invitation",
+    "pending_other": "You have {{count}} pending invitations",
     "invitedBy": "Invited by",
     "invitedDate": "Invited"
   },
@@ -87,7 +88,8 @@
     "opinions": "Opinions",
     "results": "Results",
     "team": "Team",
-    "teamMembers": "Team ({{count}} members)",
+    "teamMembers_one": "Team ({{count}} member)",
+    "teamMembers_other": "Team ({{count}} members)",
     "noResults": "Results will appear once experts submit their opinions.",
     "resultsError": "Results could not be displayed. Try reloading the page.",
     "bestCompromise": "Best Compromise",

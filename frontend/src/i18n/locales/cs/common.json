@@ -110,10 +110,16 @@
     "meanLine": "Průměr (Γ)",
     "medianLine": "Medián (Ω)",
     "compromiseLine": "Nejlepší kompromis (ΓΩMean)",
-    "srSummary": "{{count}} expertů, centroidy od {{min}} do {{max}}. Průměr: {{mean}}, Medián: {{median}}, Nejlepší kompromis: {{compromise}}."
+    "srSummary_one": "{{count}} expert, centroidy od {{min}} do {{max}}. Průměr: {{mean}}, Medián: {{median}}, Nejlepší kompromis: {{compromise}}.",
+    "srSummary_few": "{{count}} experti, centroidy od {{min}} do {{max}}. Průměr: {{mean}}, Medián: {{median}}, Nejlepší kompromis: {{compromise}}.",
+    "srSummary_many": "{{count}} experta, centroidy od {{min}} do {{max}}. Průměr: {{mean}}, Medián: {{median}}, Nejlepší kompromis: {{compromise}}.",
+    "srSummary_other": "{{count}} expertů, centroidy od {{min}} do {{max}}. Průměr: {{mean}}, Medián: {{median}}, Nejlepší kompromis: {{compromise}}."
   },
   "landscapeChart": {
-    "srSummary": "{{count}} expertních názorů rozprostřených od {{min}} do {{max}}; nejlepší kompromis leží na hodnotě {{compromise}}.",
+    "srSummary_one": "{{count}} expertní názor rozprostřený od {{min}} do {{max}}; nejlepší kompromis leží na hodnotě {{compromise}}.",
+    "srSummary_few": "{{count}} expertní názory rozprostřené od {{min}} do {{max}}; nejlepší kompromis leží na hodnotě {{compromise}}.",
+    "srSummary_many": "{{count}} expertního názoru rozprostřeného od {{min}} do {{max}}; nejlepší kompromis leží na hodnotě {{compromise}}.",
+    "srSummary_other": "{{count}} expertních názorů rozprostřených od {{min}} do {{max}}; nejlepší kompromis leží na hodnotě {{compromise}}.",
     "srSummaryEmpty": "Zatím žádné expertní názory; nejlepší kompromis leží na hodnotě {{compromise}}."
   },
   "pageTitle": {
