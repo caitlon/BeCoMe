@@ -109,6 +109,21 @@ class TestProjectCreate:
                 scale_max=50.0,
             )
 
+    @pytest.mark.parametrize("field", ["scale_min", "scale_max"])
+    @pytest.mark.parametrize("literal", ["NaN", "Infinity", "-Infinity"])
+    def test_non_finite_scale_rejected(self, field, literal):
+        """
+        GIVEN a JSON body with a non-finite number for a scale bound
+        WHEN ProjectCreate is validated
+        THEN ValidationError is raised
+        """
+        # GIVEN
+        body = f'{{"name": "Project", "{field}": {literal}}}'
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match=field):
+            ProjectCreate.model_validate_json(body)
+
 
 class TestProjectUpdate:
     """Tests for ProjectUpdate schema."""
@@ -166,6 +181,21 @@ class TestProjectUpdate:
         assert update.scale_min is None
         assert update.scale_max is None
         assert update.scale_unit is None
+
+    @pytest.mark.parametrize("field", ["scale_min", "scale_max"])
+    @pytest.mark.parametrize("literal", ["NaN", "Infinity", "-Infinity"])
+    def test_non_finite_scale_rejected(self, field, literal):
+        """
+        GIVEN a JSON body with a non-finite number for a scale bound
+        WHEN ProjectUpdate is validated
+        THEN ValidationError is raised
+        """
+        # GIVEN
+        body = f'{{"{field}": {literal}}}'
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match=field):
+            ProjectUpdate.model_validate_json(body)
 
 
 class TestProjectResponseFromModel:

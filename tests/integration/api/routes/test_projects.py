@@ -112,6 +112,23 @@ class TestCreateProject:
         # THEN
         assert response.status_code == 422
 
+    @pytest.mark.parametrize("literal", ["NaN", "Infinity", "-Infinity"])
+    def test_create_project_non_finite_scale_fails(self, client, literal):
+        """Project creation fails when a scale bound is NaN or infinite on the wire."""
+        # GIVEN
+        token = register_and_login(client)
+        body = f'{{"name": "Non-finite", "scale_min": {literal}, "scale_max": 100}}'
+
+        # WHEN
+        response = client.post(
+            "/api/v1/projects",
+            content=body,
+            headers={**auth_header(token), "Content-Type": "application/json"},
+        )
+
+        # THEN
+        assert response.status_code == 422
+
     def test_create_project_without_auth(self, client):
         """Project creation fails without authentication."""
         # WHEN
@@ -354,6 +371,29 @@ class TestUpdateProject:
             f"/api/v1/projects/{project_id}",
             json={"scale_min": 200},
             headers=auth_header(token),
+        )
+
+        # THEN
+        assert response.status_code == 422
+
+    @pytest.mark.parametrize("field", ["scale_min", "scale_max"])
+    @pytest.mark.parametrize("literal", ["NaN", "Infinity", "-Infinity"])
+    def test_update_project_non_finite_scale_fails(self, client, field, literal):
+        """Update fails when a scale bound is NaN or infinite on the wire."""
+        # GIVEN
+        token = register_and_login(client)
+        create_resp = client.post(
+            "/api/v1/projects",
+            json={"name": "Test", "scale_min": 0, "scale_max": 100},
+            headers=auth_header(token),
+        )
+        project_id = create_resp.json()["id"]
+
+        # WHEN
+        response = client.patch(
+            f"/api/v1/projects/{project_id}",
+            content=f'{{"{field}": {literal}}}',
+            headers={**auth_header(token), "Content-Type": "application/json"},
         )
 
         # THEN
