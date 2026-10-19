@@ -323,7 +323,7 @@ class TestPhotoUpload:
         assert response.json() == {
             "detail": (
                 "Image dimensions are too large. Maximum is 8192 pixels per side "
-                "and about 16.7 megapixels in total"
+                "and about 16.8 megapixels in total"
             ),
             "code": "photo_dimensions_too_large",
         }
