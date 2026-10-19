@@ -1,11 +1,17 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen } from '@testing-library/react';
 import { render, unauthenticatedAuthMock } from '@tests/utils';
 import { Footer } from '@/components/layout/Footer';
+import * as AuthContext from '@/contexts/AuthContext';
+import { createUser } from '@tests/factories/user';
 
-vi.mock('@/contexts/AuthContext', () => unauthenticatedAuthMock);
+vi.mock('@/contexts/AuthContext', () => ({ useAuth: vi.fn() }));
 
 describe('Footer', () => {
+  beforeEach(() => {
+    vi.mocked(AuthContext.useAuth).mockImplementation(unauthenticatedAuthMock.useAuth);
+  });
+
   it('renders brand link to /', () => {
     render(<Footer />);
 
@@ -44,5 +50,18 @@ describe('Footer', () => {
 
     const year = new Date().getFullYear().toString();
     expect(screen.getByText(new RegExp(`© ${year}`))).toBeInTheDocument();
+  });
+
+  it('offers the way to the projects, not sign-in, to a signed-in user', () => {
+    vi.mocked(AuthContext.useAuth).mockReturnValue({
+      ...unauthenticatedAuthMock.useAuth(),
+      status: 'authenticated',
+      isAuthenticated: true,
+      user: createUser({ id: '1' }),
+    });
+    render(<Footer />);
+
+    expect(screen.getByRole('link', { name: /go to projects/i })).toHaveAttribute('href', '/projects');
+    expect(screen.queryByRole('link', { name: /sign in/i })).not.toBeInTheDocument();
   });
 });
