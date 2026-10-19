@@ -7,7 +7,6 @@ requires only adding a new entry to EXCEPTION_MAP, not modifying route handlers.
 
 import logging
 import math
-from typing import Any
 
 from fastapi import FastAPI, Request, status
 from fastapi.encoders import jsonable_encoder
@@ -397,19 +396,9 @@ def revocation_store_unavailable_handler(request: Request, exc: Exception) -> JS
     )
 
 
-def _stringify_non_finite(value: Any) -> Any:
-    """Replace every non-finite float, at any depth, with its string form.
-
-    :param value: A JSON-ready value (dict, list, scalar)
-    :return: The same structure with ``nan``, ``inf`` and ``-inf`` turned into strings
-    """
-    if isinstance(value, float) and not math.isfinite(value):
-        return str(value)
-    if isinstance(value, dict):
-        return {key: _stringify_non_finite(item) for key, item in value.items()}
-    if isinstance(value, list):
-        return [_stringify_non_finite(item) for item in value]
-    return value
+def _finite_or_str(value: float) -> float | str:
+    """Return a finite float unchanged and the string form of ``nan``, ``inf`` or ``-inf``."""
+    return value if math.isfinite(value) else str(value)
 
 
 def request_validation_error_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
@@ -423,8 +412,8 @@ def request_validation_error_handler(request: Request, exc: RequestValidationErr
     :return: 422 JSON response with ``{"detail": [...]}``, non-finite inputs as strings
     """
     return JSONResponse(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        content={"detail": _stringify_non_finite(jsonable_encoder(exc.errors()))},
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+        content={"detail": jsonable_encoder(exc.errors(), custom_encoder={float: _finite_or_str})},
     )
 
 

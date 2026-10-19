@@ -662,7 +662,7 @@ class TestRequestValidationErrorHandler:
         response = request_validation_error_handler(MagicMock(), exc)
 
         # THEN
-        assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
         assert json.loads(response.body)["detail"][0]["input"] == expected
 
     def test_nested_non_finite_input_is_stringified(self):
@@ -678,7 +678,7 @@ class TestRequestValidationErrorHandler:
         response = request_validation_error_handler(MagicMock(), exc)
 
         # THEN
-        assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
         assert json.loads(response.body)["detail"][0]["input"] == {
             "peak": "nan",
             "bounds": [1.5, "inf", ["-inf"]],

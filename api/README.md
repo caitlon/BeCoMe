@@ -54,7 +54,7 @@ api/
 │   ├── body_size.py        # Request body size limit (413)
 │   ├── security_headers.py # Security response headers
 │   ├── request_logging.py  # Request/response logging + X-Request-ID
-│   └── exception_handlers.py  # Centralized errors + catch-all 500
+│   └── exception_handlers.py  # Centralized errors, request-validation 422, catch-all 500
 ├── routes/             # HTTP endpoints
 │   ├── auth.py             # /api/v1/auth/*
 │   ├── users.py            # /api/v1/users/*
