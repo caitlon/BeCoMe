@@ -15,6 +15,14 @@
     "update": "Aktualizovat heslo",
     "updating": "Aktualizace..."
   },
+  "assistantPrivacy": {
+    "title": "Soukromí v asistentovi",
+    "label": "Skrýt moje názory před asistentem ostatních členů",
+    "description": "Když je to zapnuté, asistent neukáže vaše názory ostatním členům projektu, kteří se ho na ně zeptají. Vám je ukazuje dál. Výsledky projektu, třeba průměr a počet expertů, se počítají jako dřív.",
+    "enabledToast": "Vaše názory jsou teď před asistentem ostatních členů skryté",
+    "disabledToast": "Asistent ostatních členů může vaše názory zase ukazovat",
+    "failed": "Nastavení asistenta se nepodařilo uložit"
+  },
   "dataExport": {
     "title": "Stáhnout vaše data",
     "description": "Exportujte všechna svá osobní data (profil, projekty, názory a pozvánky) do strojově čitelného souboru JSON.",
