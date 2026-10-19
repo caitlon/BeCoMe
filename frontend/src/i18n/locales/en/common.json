@@ -160,7 +160,7 @@
     "photoContentMismatch": "The file's content does not match its type. Save it again as JPEG or PNG.",
     "photoUnreadable": "The image could not be read. Save it again as JPEG or PNG.",
     "photoDimensionsTooLarge": "The image is too large. Each side can be at most 8192 pixels and the whole image about 16 megapixels (for example 4096 × 4096).",
-    "sessionChanged": "You signed in again in another tab. Reload the page to continue.",
+    "sessionChanged": "Your session has changed, for example after signing in again in another tab. Reload the page to continue.",
     "retry": "Try again",
     "logoutFailedTitle": "Sign-out failed",
     "logoutFailed": "Sign-out did not go through. Your session may still be active. Please try again."

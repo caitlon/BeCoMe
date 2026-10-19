@@ -164,7 +164,7 @@
     "photoContentMismatch": "Obsah souboru neodpovídá jeho typu. Uložte ho znovu jako JPEG nebo PNG.",
     "photoUnreadable": "Obrázek se nepodařilo přečíst. Uložte ho znovu jako JPEG nebo PNG.",
     "photoDimensionsTooLarge": "Obrázek je příliš velký. Každá strana smí mít nejvýš 8192 pixelů a celý obrázek zhruba 16 megapixelů (například 4096 × 4096).",
-    "sessionChanged": "V jiné záložce jste se znovu přihlásili. Obnovte stránku a pokračujte.",
+    "sessionChanged": "Vaše přihlášení se změnilo, například po novém přihlášení v jiné záložce. Obnovte stránku a pokračujte.",
     "retry": "Zkusit znovu",
     "logoutFailedTitle": "Odhlášení selhalo",
     "logoutFailed": "Odhlášení neproběhlo. Relace může být stále aktivní. Zkuste to prosím znovu."
