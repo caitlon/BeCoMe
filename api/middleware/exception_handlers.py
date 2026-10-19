@@ -6,8 +6,12 @@ requires only adding a new entry to EXCEPTION_MAP, not modifying route handlers.
 """
 
 import logging
+import math
+from typing import Any
 
 from fastapi import FastAPI, Request, status
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from api.auth.logging import log_login_failure, log_password_change_failure
@@ -393,6 +397,37 @@ def revocation_store_unavailable_handler(request: Request, exc: Exception) -> JS
     )
 
 
+def _stringify_non_finite(value: Any) -> Any:
+    """Replace every non-finite float, at any depth, with its string form.
+
+    :param value: A JSON-ready value (dict, list, scalar)
+    :return: The same structure with ``nan``, ``inf`` and ``-inf`` turned into strings
+    """
+    if isinstance(value, float) and not math.isfinite(value):
+        return str(value)
+    if isinstance(value, dict):
+        return {key: _stringify_non_finite(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_stringify_non_finite(item) for item in value]
+    return value
+
+
+def request_validation_error_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+    """Return 422 for a failed request validation, in FastAPI's default body shape.
+
+    ``JSONResponse`` cannot render a non-finite float, and Pydantic echoes the rejected
+    input back in the error, so the default handler turned a rejected NaN into a 500.
+
+    :param request: FastAPI request
+    :param exc: The request validation error
+    :return: 422 JSON response with ``{"detail": [...]}``, non-finite inputs as strings
+    """
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={"detail": _stringify_non_finite(jsonable_encoder(exc.errors()))},
+    )
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     """Register all exception handlers with the FastAPI app.
 
@@ -401,5 +436,6 @@ def register_exception_handlers(app: FastAPI) -> None:
     :param app: FastAPI application instance
     """
     app.add_exception_handler(BeCoMeAPIError, become_api_error_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(RequestValidationError, request_validation_error_handler)  # type: ignore[arg-type]
     app.add_exception_handler(RevocationStoreError, revocation_store_unavailable_handler)
     app.add_exception_handler(Exception, unhandled_exception_handler)

@@ -20,8 +20,8 @@ class ProjectCreate(BaseModel):
 
     name: str = Field(..., min_length=1, max_length=255, description="Project name")
     description: str | None = Field(None, max_length=2000, description="Project description")
-    scale_min: float = Field(default=0.0, description="Minimum scale value")
-    scale_max: float = Field(default=100.0, description="Maximum scale value")
+    scale_min: float = Field(default=0.0, allow_inf_nan=False, description="Minimum scale value")
+    scale_max: float = Field(default=100.0, allow_inf_nan=False, description="Maximum scale value")
     scale_unit: str = Field(
         default="", max_length=50, description="Scale unit (e.g., '%', 'points')"
     )
@@ -62,8 +62,8 @@ class ProjectUpdate(BaseModel):
 
     name: str | None = Field(None, min_length=1, max_length=255)
     description: str | None = Field(None, max_length=2000)
-    scale_min: float | None = None
-    scale_max: float | None = None
+    scale_min: float | None = Field(None, allow_inf_nan=False)
+    scale_max: float | None = Field(None, allow_inf_nan=False)
     scale_unit: str | None = Field(None, max_length=50)
 
     @model_validator(mode="before")
