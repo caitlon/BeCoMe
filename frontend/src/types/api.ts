@@ -60,6 +60,7 @@ export interface CalculationResult {
   agreement_level: 'high' | 'moderate' | 'low';
   likert_value: number | null;
   likert_decision: string | null;
+  likert_recommendation: string | null;
   calculated_at: string;
 }
 

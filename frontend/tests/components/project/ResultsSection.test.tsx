@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen } from '@testing-library/react';
+import { act, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { render, framerMotionMock } from '@tests/utils';
+import i18n from '@/i18n';
 import { ResultsSection } from '@/components/project';
 import {
   createProjectWithRole,
@@ -28,6 +29,84 @@ describe('ResultsSection - Empty State', () => {
     render(<ResultsSection result={null} project={project} showIndividual={false} setShowIndividual={vi.fn()} opinions={[]} />);
 
     expect(screen.getByText(/results will appear once experts submit/i)).toBeInTheDocument();
+  });
+});
+
+describe('ResultsSection - Likert verdict', () => {
+  const renderResult = (overrides: Parameters<typeof createCalculationResult>[0]) => {
+    const { project, opinions } = setup();
+    render(
+      <ResultsSection
+        result={createCalculationResult(overrides)}
+        project={project}
+        showIndividual={false}
+        setShowIndividual={vi.fn()}
+        opinions={opinions}
+      />
+    );
+  };
+
+  it('shows the localized decision and recommendation for a Likert result', () => {
+    // The server strings are deliberately different from the localized ones: the
+    // page must key its text on the number, not echo the API's English.
+    renderResult({
+      likert_value: 75,
+      likert_decision: 'server decision text',
+      likert_recommendation: 'server recommendation text',
+    });
+
+    expect(screen.getByRole('heading', { name: 'Agreement verdict' })).toBeInTheDocument();
+    expect(screen.getByText('Rather agree')).toBeInTheDocument();
+    expect(
+      screen.getByText('Policy is recommended with minor adjustments')
+    ).toBeInTheDocument();
+    expect(screen.queryByText('server decision text')).not.toBeInTheDocument();
+  });
+
+  it.each([
+    [0, 'Strongly disagree', 'Policy is not recommended and should be rejected'],
+    [25, 'Rather disagree', 'Policy needs significant revision before consideration'],
+    [50, 'Neutral', 'Policy requires further analysis and stakeholder input'],
+    [100, 'Strongly agree', 'Policy is strongly recommended for implementation'],
+  ])('maps value %i to its own decision and recommendation', (value, decision, recommendation) => {
+    renderResult({ likert_value: value, likert_decision: 'x', likert_recommendation: 'y' });
+
+    expect(screen.getByText(decision)).toBeInTheDocument();
+    expect(screen.getByText(recommendation)).toBeInTheDocument();
+  });
+
+  it('shows the verdict in Czech when the interface language is Czech', async () => {
+    await act(async () => {
+      await i18n.changeLanguage('cs');
+    });
+
+    try {
+      renderResult({ likert_value: 75, likert_decision: 'x', likert_recommendation: 'y' });
+
+      expect(screen.getByText('Spíše souhlasím')).toBeInTheDocument();
+      expect(screen.getByText('Politika se doporučuje s drobnými úpravami')).toBeInTheDocument();
+    } finally {
+      await act(async () => {
+        await i18n.changeLanguage('en');
+      });
+    }
+  });
+
+  it('falls back to the API strings when the value is not one of the five', () => {
+    renderResult({
+      likert_value: 40,
+      likert_decision: 'Unknown (40)',
+      likert_recommendation: 'No recommendation available for value 40',
+    });
+
+    expect(screen.getByText('Unknown (40)')).toBeInTheDocument();
+    expect(screen.getByText('No recommendation available for value 40')).toBeInTheDocument();
+  });
+
+  it('renders no verdict block when the result is not a Likert one', () => {
+    renderResult({ likert_value: null, likert_decision: null, likert_recommendation: null });
+
+    expect(screen.queryByRole('heading', { name: 'Agreement verdict' })).not.toBeInTheDocument();
   });
 });
 

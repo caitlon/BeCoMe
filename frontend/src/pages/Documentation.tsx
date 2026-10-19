@@ -229,6 +229,9 @@ const Documentation = () => {
                       <p className="text-sm font-mono bg-muted px-3 py-2 rounded">
                         {t("expertOpinions.likert.example")}
                       </p>
+                      <p className="text-sm text-muted-foreground">
+                        {t("expertOpinions.likert.verdict")}
+                      </p>
                     </CardContent>
                   </Card>
                 </div>

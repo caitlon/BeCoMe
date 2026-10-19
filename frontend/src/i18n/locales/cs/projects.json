@@ -103,6 +103,23 @@
       "moderate": "Střední",
       "low": "Nízká"
     },
+    "likertVerdict": {
+      "title": "Verdikt shody",
+      "decision": {
+        "0": "Rozhodně nesouhlasím",
+        "25": "Spíše nesouhlasím",
+        "50": "Neutrální",
+        "75": "Spíše souhlasím",
+        "100": "Rozhodně souhlasím"
+      },
+      "recommendation": {
+        "0": "Politika se nedoporučuje a měla by být zamítnuta",
+        "25": "Politika vyžaduje před dalším posouzením zásadní přepracování",
+        "50": "Politika vyžaduje další analýzu a zapojení zainteresovaných stran",
+        "75": "Politika se doporučuje s drobnými úpravami",
+        "100": "Politika se důrazně doporučuje k realizaci"
+      }
+    },
     "yourOpinion": "Váš názor",
     "position": "Pozice",
     "positionPlaceholder": "např. Vedoucí oddělení",
@@ -185,7 +202,6 @@
       "nameRequired": "Název je povinný",
       "nameMaxLength": "Název může mít maximálně 255 znaků",
       "descriptionMaxLength": "Popis může mít maximálně 1000 znaků",
-      "unitRequired": "Jednotka je povinná",
       "unitMaxLength": "Jednotka může mít maximálně 50 znaků",
       "maxGreaterMin": "Maximum musí být větší než minimum"
     }
