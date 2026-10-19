@@ -1,10 +1,13 @@
 """Tests for exception handlers."""
 
+import asyncio
 import json
 from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi import FastAPI, status
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
 
 from api.exceptions import (
     AlreadyInvitedError,
@@ -37,6 +40,7 @@ from api.middleware.exception_handlers import (
     _get_status_and_detail,
     become_api_error_handler,
     register_exception_handlers,
+    request_validation_error_handler,
     unhandled_exception_handler,
 )
 
@@ -623,6 +627,94 @@ class TestExceptionLogging:
         assert extra["request_id"] == "rid-1"
         assert extra["path"] == "/projects/123"
         assert extra["exception_type"] == "ProjectNotFoundError"
+
+
+class TestRequestValidationErrorHandler:
+    """Tests for the request validation error handler."""
+
+    @staticmethod
+    def _error(input_value, loc=("body", "scale_min")):
+        return RequestValidationError(
+            [
+                {
+                    "type": "finite_number",
+                    "loc": loc,
+                    "msg": "Input should be finite",
+                    "input": input_value,
+                }
+            ]
+        )
+
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [(float("nan"), "nan"), (float("inf"), "inf"), (float("-inf"), "-inf")],
+    )
+    def test_top_level_non_finite_input_is_stringified(self, value, expected):
+        """
+        GIVEN a validation error whose rejected input is a non-finite float
+        WHEN request_validation_error_handler runs
+        THEN it returns 422 with the input as a string instead of failing to render
+        """
+        # GIVEN
+        exc = self._error(value)
+
+        # WHEN
+        response = request_validation_error_handler(MagicMock(), exc)
+
+        # THEN
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+        assert json.loads(response.body)["detail"][0]["input"] == expected
+
+    def test_nested_non_finite_input_is_stringified(self):
+        """
+        GIVEN a validation error whose rejected input holds non-finite floats at depth
+        WHEN request_validation_error_handler runs
+        THEN every one of them is stringified and finite values are untouched
+        """
+        # GIVEN
+        exc = self._error({"peak": float("nan"), "bounds": [1.5, float("inf"), [float("-inf")]]})
+
+        # WHEN
+        response = request_validation_error_handler(MagicMock(), exc)
+
+        # THEN
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+        assert json.loads(response.body)["detail"][0]["input"] == {
+            "peak": "nan",
+            "bounds": [1.5, "inf", ["-inf"]],
+        }
+
+    def test_ordinary_error_body_matches_fastapi_default(self):
+        """
+        GIVEN an ordinary validation error with no non-finite value
+        WHEN request_validation_error_handler runs
+        THEN its body equals what FastAPI's default handler produces
+        """
+        # GIVEN
+        exc = self._error("abc", loc=("body", "name"))
+
+        # WHEN
+        response = request_validation_error_handler(MagicMock(), exc)
+
+        # THEN
+        default = asyncio.run(request_validation_exception_handler(MagicMock(), exc))
+        assert response.status_code == default.status_code
+        assert json.loads(response.body) == json.loads(default.body)
+
+    def test_register_adds_validation_handler(self):
+        """
+        GIVEN a FastAPI app
+        WHEN register_exception_handlers runs
+        THEN request_validation_error_handler is registered for RequestValidationError
+        """
+        # GIVEN
+        app = FastAPI()
+
+        # WHEN
+        register_exception_handlers(app)
+
+        # THEN
+        assert app.exception_handlers[RequestValidationError] == request_validation_error_handler
 
 
 class TestUnhandledExceptionHandler:
