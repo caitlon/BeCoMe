@@ -129,6 +129,7 @@
     "updateOpinion": "Aktualizovat názor",
     "deleteOpinion": "Smazat můj názor",
     "hintPositionRequired": "Vyplňte pozici pro uložení",
+    "hintPositionTooLong": "Pozice může mít nejvýše {{max}} znaků",
     "hintFieldsRequired": "Vyplňte všechna pole odhadu",
     "hintNoChanges": "Žádné změny k uložení",
     "otherOpinions": "Ostatní názory",
