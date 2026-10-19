@@ -26,7 +26,6 @@ import {
   buildEmailSchema,
   buildPasswordSchema,
   getPasswordRequirements,
-  visibleEmailError,
 } from "@/lib/validation";
 
 type RegisterFormData = {
@@ -107,7 +106,7 @@ const Register = () => {
     register,
     handleSubmit,
     control,
-    formState: { errors, isValid, isSubmitted },
+    formState: { errors, isValid },
   } = useForm<RegisterFormData>({
     resolver: zodResolver(registerSchema),
     mode: "onTouched",
@@ -178,7 +177,9 @@ const Register = () => {
             type="email"
             autoComplete="email"
             placeholder={t("register.emailPlaceholder")}
-            error={visibleEmailError(errors.email, isSubmitted)}
+            // Shown on blur like the other required fields: submit stays disabled
+            // until the form is valid, so a submit-time message could never appear.
+            error={errors.email}
             {...register("email")}
           />
           <ValidationChecklist

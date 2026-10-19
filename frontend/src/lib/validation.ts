@@ -63,11 +63,11 @@ export const buildPasswordSchema = (t: (key: string) => string): z.ZodType<strin
 
 const EMAIL_FORMAT = z.email();
 
-// An empty string would otherwise fail the format check and read as "invalid".
-// Skipping the format check for it leaves only the required issue, which the
-// native .min() gives the standard too_small code. The check is skipped rather
-// than the schema aborted because an aborted field would also stop a form-level
-// refinement (Register's password match) from running while the email is empty.
+// The format check is skipped for "", so an empty value carries only the
+// required issue, which the native .min() gives the standard too_small code
+// that visibleEmailError keys on. The check is skipped rather than the schema
+// aborted because an aborted field would also stop a form-level refinement
+// (Register's password match) from running while the email is empty.
 export const buildEmailSchema = (
   t: (key: string) => string,
   invalidKey = "validation.emailInvalid",
@@ -83,8 +83,10 @@ export const buildEmailSchema = (
 
 /**
  * Hides the empty-field error until the form has been submitted, so leaving an
- * untouched email field does not scold the user. The empty case is recognised by
- * its zod code, not its message, because the message is translated.
+ * untouched email field does not scold the user. For forms whose submit button
+ * is enabled while the form is invalid; Register does not use it. The empty case
+ * is recognised by its zod code, not its message, because the message is
+ * translated.
  */
 export const visibleEmailError = (
   error: FieldError | undefined,
