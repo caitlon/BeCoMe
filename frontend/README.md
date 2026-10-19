@@ -164,7 +164,8 @@ below it, and a long signed-in name is truncated.
 
 The assistant panel is behind the build flag `VITE_ASSISTANT_ENABLED`. It is off by default,
 and a default build carries no assistant code, strings, i18n keys or endpoint paths. The
-panel and its triggers are lazy chunks that exist only when the flag is set.
+panel, its triggers and the privacy card on the profile page are lazy chunks that exist only
+when the flag is set.
 Build with the flag to include it:
 ```bash
 VITE_ASSISTANT_ENABLED=true npm run build
