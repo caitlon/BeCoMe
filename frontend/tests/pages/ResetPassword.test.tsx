@@ -150,10 +150,15 @@ describe('ResetPassword', () => {
 
   // The server drops every session of the user on a reset, but the client still
   // reads as signed in; /login would bounce it to /projects until the first 401.
-  it('re-probes the session before it navigates to login', async () => {
+  it('waits for the session re-probe before it navigates to login', async () => {
     const user = userEvent.setup();
+    let finishProbe!: () => void;
     mockResetPassword.mockResolvedValueOnce(undefined);
-    mockRefreshUser.mockResolvedValueOnce(undefined);
+    mockRefreshUser.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        finishProbe = resolve;
+      })
+    );
     render(<ResetPassword />);
 
     await user.type(getPasswordInput(), 'BrandNewPass456!');
@@ -161,11 +166,14 @@ describe('ResetPassword', () => {
     await waitFor(() => expect(getSubmitButton()).not.toBeDisabled());
     await user.click(getSubmitButton());
 
+    await waitFor(() => expect(mockRefreshUser).toHaveBeenCalledTimes(1));
+    // Let any navigation that does not wait for the probe happen first.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(mockNavigate).not.toHaveBeenCalled();
+
+    finishProbe();
+
     await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/login'));
-    expect(mockRefreshUser).toHaveBeenCalledTimes(1);
-    expect(mockRefreshUser.mock.invocationCallOrder[0]).toBeLessThan(
-      mockNavigate.mock.invocationCallOrder[0]
-    );
   });
 
   it('shows an error toast when the reset fails', async () => {

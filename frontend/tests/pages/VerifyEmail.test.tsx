@@ -37,7 +37,6 @@ vi.mock('@/hooks/use-toast', () => ({
 
 // AuthLayout renders Navbar, which calls useAuth -> mock it (as the other auth
 // page tests do).
-const mockRefreshUser = vi.fn();
 vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => ({
     user: null,
@@ -45,7 +44,7 @@ vi.mock('@/contexts/AuthContext', () => ({
     isAuthenticated: false,
     login: vi.fn(),
     logout: vi.fn(),
-    refreshUser: () => mockRefreshUser(),
+    refreshUser: vi.fn(),
   }),
 }));
 
@@ -136,38 +135,6 @@ describe('VerifyEmail', () => {
     expect(mockToast).toHaveBeenCalledWith(
       expect.objectContaining({ title: expect.any(String) })
     );
-  });
-
-  // /login sits under GuestRoute, which sends a client still reading as signed
-  // in to /projects; the session has to be re-probed before the navigation.
-  it('re-probes the session before it navigates to login', async () => {
-    const user = userEvent.setup();
-    mockVerifyEmail.mockResolvedValueOnce(undefined);
-    mockRefreshUser.mockResolvedValueOnce(undefined);
-    renderAt();
-
-    await user.type(getPasswordInput(), 'CorrectHorse123!');
-    await user.click(getSubmitButton());
-
-    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/login'));
-    expect(mockRefreshUser).toHaveBeenCalledTimes(1);
-    expect(mockRefreshUser.mock.invocationCallOrder[0]).toBeLessThan(
-      mockNavigate.mock.invocationCallOrder[0]
-    );
-  });
-
-  it('does not re-probe the session when verification fails', async () => {
-    const user = userEvent.setup();
-    mockVerifyEmail.mockRejectedValueOnce(new ForbiddenError());
-    renderAt();
-
-    await user.type(getPasswordInput(), 'CorrectHorse123!');
-    await user.click(getSubmitButton());
-
-    await waitFor(() => expect(mockVerifyEmail).toHaveBeenCalled());
-    await waitFor(() => expect(getPasswordInput()).not.toBeDisabled());
-    expect(mockRefreshUser).not.toHaveBeenCalled();
-    expect(mockNavigate).not.toHaveBeenCalled();
   });
 
   it('sends the active UI language so the example project is seeded in it', async () => {

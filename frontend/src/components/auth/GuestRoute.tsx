@@ -9,7 +9,8 @@ interface GuestRouteProps {
 // accepted only if parsing it the way a browser does stays on this origin:
 // "//host", "/\host" and a "/" followed by a tab or newline (which the URL
 // parser strips) all resolve to another origin there, and pushing such a URL
-// to the history throws.
+// to the history throws. Dot segments are normalized by the same parse, so
+// "/.//host" ends as a "//host" path on this origin, which react-router refuses.
 function returnTarget(from: unknown): string | null {
   if (typeof from !== "object" || from === null) return null;
   const { pathname, search, hash } = from as Record<string, unknown>;
@@ -23,7 +24,7 @@ function returnTarget(from: unknown): string | null {
     // "//host:99999" and the like do not parse at all.
     return null;
   }
-  if (url.origin !== globalThis.location.origin) return null;
+  if (url.origin !== globalThis.location.origin || url.pathname.startsWith("//")) return null;
   return url.pathname + url.search + url.hash;
 }
 

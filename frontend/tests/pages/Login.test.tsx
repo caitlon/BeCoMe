@@ -196,7 +196,7 @@ describe('Login', () => {
     });
   });
 
-  it('calls login and navigates to /projects on success', async () => {
+  it('calls login on success and leaves the redirect to GuestRoute', async () => {
     const user = userEvent.setup();
     mockLogin.mockResolvedValueOnce(undefined);
 
@@ -214,8 +214,9 @@ describe('Login', () => {
     });
 
     await waitFor(() => {
-      expect(mockNavigate).toHaveBeenCalledWith('/projects', { replace: true });
+      expect(mockToast).toHaveBeenCalled();
     });
+    expect(mockNavigate).not.toHaveBeenCalled();
 
     expect(mockToast).toHaveBeenCalledWith(
       expect.objectContaining({

@@ -142,6 +142,8 @@ describe('GuestRoute', () => {
       ['a newline that browsers strip before parsing', { pathname: '/\n/evil.example' }],
       ['an absolute URL', { pathname: 'https://evil.example' }],
       ['a URL that does not parse', { pathname: '//evil.example:99999' }],
+      ['a dot segment that normalizes to a protocol-relative path', { pathname: '/.//evil.example' }],
+      ['a parent segment that normalizes to a protocol-relative path', { pathname: '/projects/..//evil.example' }],
       ['a relative path', { pathname: 'projects/42' }],
       ['an empty path', { pathname: '' }],
       ['a pathname that is not a string', { pathname: 42 }],
