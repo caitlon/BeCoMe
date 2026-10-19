@@ -43,6 +43,14 @@ describe('CreateProjectModal', () => {
     expect(screen.getByPlaceholderText('Max')).toBeInTheDocument();
   });
 
+  it('shows a hint that an empty unit makes an agreement project', () => {
+    render(<CreateProjectModal {...defaultProps} />);
+
+    const hint = screen.getByText(/leave the unit empty on a 0 to 100 scale/i);
+    expect(hint).toBeInTheDocument();
+    expect(getUnitInput()).toHaveAttribute('aria-describedby', expect.stringContaining(hint.id));
+  });
+
   it('has default scale values', () => {
     render(<CreateProjectModal {...defaultProps} />);
 

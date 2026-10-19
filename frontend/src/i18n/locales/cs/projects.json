@@ -192,6 +192,7 @@
     "scaleMinPlaceholder": "Min",
     "scaleMaxPlaceholder": "Max",
     "scaleUnitPlaceholder": "např. Kč, %",
+    "scaleUnitHint": "Ponecháte-li jednotku prázdnou na škále 0 až 100, vznikne projekt souhlasu (Likert).",
     "cancel": "Zrušit",
     "create": "Vytvořit projekt",
     "creating": "Vytváření...",

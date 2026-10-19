@@ -47,9 +47,10 @@ mean "I do not want to think about the range". A false certainty carries more we
 earned.
 
 **An agreement answer** is what the method offers for "should we" questions instead of "how much"
-ones, on a scale of 0 to 100 with no unit. It is described under
-[reading the result](reading-the-result.md), and it is not usable yet: the create form will not
-make such a project. Everything above applies to the quantities you can actually ask about today.
+ones, on a scale of 0 to 100 with no unit. Enter triangles on that scale as above: 0 is strongly
+disagree and 100 is strongly agree, and `(60, 75, 90)` is "rather agree, with some doubt". The
+result screen turns the compromise into a position in words and a recommendation, described under
+[reading an agreement result](reading-the-result.md#reading-an-agreement-result).
 
 ## When the result appears
 

@@ -20,8 +20,6 @@ import { cn } from "@/lib/utils";
 import { TriangleVisualization } from "./TriangleVisualization";
 import { OpinionLandscape } from "./OpinionLandscape";
 
-const LIKERT_POSITIONS = [0, 25, 50, 75, 100];
-
 export interface ResultsSectionProps {
   result: CalculationResult | null;
   project: ProjectWithRole;
@@ -80,17 +78,6 @@ export const ResultsSection = ({
     },
   }[agreementLevel];
 
-  // The five positions are translated here by their number, so the page follows the
-  // interface language. The server's English text is only the fallback for a value
-  // that is not one of the five.
-  const likertKnown = result.likert_value !== null && LIKERT_POSITIONS.includes(result.likert_value);
-  const likertDecision = likertKnown
-    ? t(`detail.likertVerdict.decision.${result.likert_value}`)
-    : result.likert_decision;
-  const likertRecommendation = likertKnown
-    ? t(`detail.likertVerdict.recommendation.${result.likert_value}`)
-    : result.likert_recommendation;
-
   return (
     <div className="space-y-6">
       {/* Best Compromise */}
@@ -147,10 +134,14 @@ export const ResultsSection = ({
               <h3 id={likertHeadingId} className="text-xs text-muted-foreground uppercase">
                 {t("detail.likertVerdict.title")}
               </h3>
-              <p className="mt-1 text-lg font-medium">{likertDecision}</p>
-              {likertRecommendation && (
-                <p className="mt-1 text-sm text-muted-foreground">{likertRecommendation}</p>
-              )}
+              {/* The interpreter returns only 0, 25, 50, 75 or 100, so the position is translated
+                  by its number and the page follows the interface language. */}
+              <p className="mt-1 text-lg font-medium">
+                {t(`detail.likertVerdict.decision.${result.likert_value}`)}
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {t(`detail.likertVerdict.recommendation.${result.likert_value}`)}
+              </p>
             </section>
           )}
         </CardContent>

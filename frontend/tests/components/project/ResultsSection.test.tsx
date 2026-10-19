@@ -92,17 +92,6 @@ describe('ResultsSection - Likert verdict', () => {
     }
   });
 
-  it('falls back to the API strings when the value is not one of the five', () => {
-    renderResult({
-      likert_value: 40,
-      likert_decision: 'Unknown (40)',
-      likert_recommendation: 'No recommendation available for value 40',
-    });
-
-    expect(screen.getByText('Unknown (40)')).toBeInTheDocument();
-    expect(screen.getByText('No recommendation available for value 40')).toBeInTheDocument();
-  });
-
   it('renders no verdict block when the result is not a Likert one', () => {
     renderResult({ likert_value: null, likert_decision: null, likert_recommendation: null });
 

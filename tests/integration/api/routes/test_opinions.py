@@ -724,6 +724,7 @@ class TestGetResult:
         # THEN the recommendation sits next to the value and the decision
         data = response.json()
         assert data["likert_value"] == 75
+        assert data["likert_decision"] == "Rather agree"
         assert data["likert_recommendation"] == "Policy is recommended with minor adjustments"
 
     def test_skips_the_likert_recommendation_when_a_unit_is_set(self, client):
@@ -746,6 +747,8 @@ class TestGetResult:
 
         # THEN the field is present and null
         data = response.json()
+        assert data["likert_value"] is None
+        assert data["likert_decision"] is None
         assert "likert_recommendation" in data
         assert data["likert_recommendation"] is None
 
