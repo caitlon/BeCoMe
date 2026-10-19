@@ -48,7 +48,7 @@ describe('CreateProjectModal', () => {
 
     const hint = screen.getByText(/leave the unit empty on a 0 to 100 scale/i);
     expect(hint).toBeInTheDocument();
-    expect(getUnitInput()).toHaveAttribute('aria-describedby', expect.stringContaining(hint.id));
+    expect(getUnitInput()).toHaveAccessibleDescription(/leave the unit empty on a 0 to 100 scale/i);
   });
 
   it('has default scale values', () => {
