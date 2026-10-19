@@ -9,7 +9,6 @@ import { PasswordInput, SubmitButton } from "@/components/forms";
 import { AuthLayout } from "@/components/layout/AuthLayout";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/lib/api";
 import { describeError } from "@/lib/errorMessages";
 import { ForbiddenError, HttpError, isRateLimited } from "@/lib/errors";
@@ -34,7 +33,6 @@ const VerifyEmail = () => {
   const [searchParams] = useSearchParams();
   const token = searchParams.get("token");
   const navigate = useNavigate();
-  const { refreshUser } = useAuth();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [failure, setFailure] = useState<VerifyFailure | null>(null);
@@ -74,9 +72,6 @@ const VerifyEmail = () => {
         title: t("verifyEmail.successTitle"),
         description: t("verifyEmail.successMessage"),
       });
-      // /login is a guest route and would bounce a client that still reads as
-      // signed in; re-probe the session first.
-      await refreshUser();
       navigate("/login");
     } catch (error) {
       if (error instanceof ForbiddenError) {

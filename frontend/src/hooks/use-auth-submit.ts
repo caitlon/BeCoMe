@@ -1,5 +1,4 @@
 import { useRef, useState } from "react";
-import { useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
 
 import { useToast } from "@/hooks/use-toast";
@@ -13,7 +12,6 @@ interface AuthSubmitMessages {
 }
 
 export function useAuthSubmit(messages: AuthSubmitMessages) {
-  const navigate = useNavigate();
   const { toast } = useToast();
   const { t: tCommon } = useTranslation();
   const [isLoading, setIsLoading] = useState(false);
@@ -32,9 +30,9 @@ export function useAuthSubmit(messages: AuthSubmitMessages) {
         title: messages.successTitle,
         description: messages.successDescription,
       });
-      // GuestRoute already replaces /login with /projects, and a push here would
-      // stack a second entry. Replacing keeps one, and Back never reopens the form.
-      navigate("/projects", { replace: true });
+      // No redirect here: login() flips the session to authenticated, and
+      // GuestRoute then replaces /login with the page the visitor came from (or
+      // /projects), so Back never reopens the form.
     } catch (error) {
       // onError lets a caller claim an error it already rendered its own state
       // for (e.g. an unverified-account 403), so the generic toast below does
