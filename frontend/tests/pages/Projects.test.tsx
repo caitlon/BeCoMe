@@ -441,20 +441,26 @@ describe('Projects', () => {
       });
     });
 
-    it('refetches the invitations after a failed accept so a stale card goes away', async () => {
-      mockApi.getInvitations.mockResolvedValue([createInvitation({ id: 'inv-stale' })]);
-      mockApi.acceptInvitation.mockRejectedValue(
-        new HttpError('Invitation not found', 404, 'invitation_not_found')
-      );
+    it.each([
+      ['accept', /accept/i, 'acceptInvitation'],
+      ['decline', /decline/i, 'declineInvitation'],
+    ] as const)(
+      'refetches the invitations after a failed %s',
+      async (_action, buttonName, apiMethod) => {
+        mockApi.getInvitations.mockResolvedValue([createInvitation({ id: 'inv-stale' })]);
+        mockApi[apiMethod].mockRejectedValue(
+          new HttpError('Invitation not found', 404, 'invitation_not_found')
+        );
 
-      await openInvitationsTab();
-      const callsBefore = mockApi.getInvitations.mock.calls.length;
-      await screen.getByRole('button', { name: /accept/i }).click();
+        await openInvitationsTab();
+        const callsBefore = mockApi.getInvitations.mock.calls.length;
+        await screen.getByRole('button', { name: buttonName }).click();
 
-      await waitFor(() => {
-        expect(mockApi.getInvitations.mock.calls.length).toBeGreaterThan(callsBefore);
-      });
-    });
+        await waitFor(() => {
+          expect(mockApi.getInvitations.mock.calls.length).toBeGreaterThan(callsBefore);
+        });
+      }
+    );
 
     it('shows the Czech text, not the English API detail, when the invitation is gone', async () => {
       mockApi.getInvitations.mockResolvedValue([createInvitation({ id: 'inv-gone' })]);
