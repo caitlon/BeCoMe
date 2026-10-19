@@ -90,7 +90,7 @@ SCALE_EXCLUDES_OPINIONS_CODE = "scale_excludes_opinions"
 # wrong. It is a 400 and not a 401 because on an authenticated request a 401 means "no
 # session": the SPA refreshes the token, retries, and signs the user out. The session here
 # is fine, so the answer carries a code the form can show beside the field instead.
-CURRENT_PASSWORD_INCORRECT_CODE = "current_password_incorrect"  # noqa: S105
+CURRENT_PASSWORD_INCORRECT_CODE = "current_password_incorrect"  # noqa: S105  # pragma: allowlist secret
 
 # Exception to HTTP status code and message mapping
 # Following OCP: extend by adding entries, not modifying handlers
