@@ -40,6 +40,14 @@ class InvalidCredentialsError(BeCoMeAPIError):
         self.reason = reason
 
 
+class CurrentPasswordIncorrectError(BeCoMeAPIError):
+    """Raised when a password change is given a wrong current password.
+
+    Separate from :class:`InvalidCredentialsError` because the caller is signed in: the
+    answer must not be a 401, which the SPA reads as a lost session.
+    """
+
+
 class LoginThrottledError(BeCoMeAPIError):
     """Raised when an account is temporarily locked after too many failed logins."""
 

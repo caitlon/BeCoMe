@@ -193,8 +193,8 @@ def change_password(
 ) -> None:
     """Change the authenticated user's password.
 
-    InvalidCredentialsError is handled by centralized exception middleware.
-    Rate limited to prevent password guessing attacks. Every token issued before
+    CurrentPasswordIncorrectError is handled by centralized exception middleware, which
+    answers 400 with the code ``current_password_incorrect``. Rate limited to prevent password guessing attacks. Every token issued before
     the change is invalidated (M1).
 
     :param request: FastAPI request (for rate limiting)
