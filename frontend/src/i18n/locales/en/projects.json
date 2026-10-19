@@ -129,6 +129,7 @@
     "updateOpinion": "Update Opinion",
     "deleteOpinion": "Delete my opinion",
     "hintPositionRequired": "Enter your position to save",
+    "hintPositionTooLong": "Position must be at most {{max}} characters",
     "hintFieldsRequired": "Fill in all estimate fields",
     "hintNoChanges": "No changes to save",
     "otherOpinions": "Other Opinions",
