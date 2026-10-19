@@ -309,6 +309,16 @@ describe('Projects', () => {
       });
     });
 
+    it('shows the expert count on the invitation card', async () => {
+      mockApi.getInvitations.mockResolvedValue([createInvitation({ current_experts_count: 3 })]);
+
+      await openInvitationsTab();
+
+      await waitFor(() => {
+        expect(screen.getByText('3 experts')).toBeInTheDocument();
+      });
+    });
+
     it('renders the invited date through the shared formatDate helper', async () => {
       mockApi.getInvitations.mockResolvedValue([
         createInvitation({ invited_at: '2024-03-15T12:00:00Z' }),
