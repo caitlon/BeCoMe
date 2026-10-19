@@ -136,6 +136,26 @@ describe('ResultExportMenu', () => {
     }
   });
 
+  it('transliterates accented letters in the file name instead of dropping them', async () => {
+    const user = userEvent.setup();
+    const project = createProjectWithRole({
+      id: 'project-1',
+      name: 'Protipovodňová opatření \u2013 Opava 2027',
+    });
+    mockApi.exportProjectResult.mockResolvedValue(new Blob(['csv'], { type: 'text/csv' }));
+
+    render(<ResultExportMenu project={project} />);
+
+    await user.click(screen.getByRole('button', { name: /export/i }));
+    const csvItem = await screen.findByRole('menuitem', { name: /csv data/i });
+    await user.click(csvItem);
+
+    expect(mockDownloadBlob).toHaveBeenCalledWith(
+      expect.any(Blob),
+      'protipovodnova-opatreni-opava-2027-results.csv'
+    );
+  });
+
   it('falls back to a generic filename when the project name has no alphanumeric characters', async () => {
     const user = userEvent.setup();
     const project = createProjectWithRole({ id: 'project-1', name: '!!!' });

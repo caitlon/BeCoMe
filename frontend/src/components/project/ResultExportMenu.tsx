@@ -37,6 +37,8 @@ export const ResultExportMenu = ({ project }: ResultExportMenuProps) => {
       const blob = await api.exportProjectResult(project.id, format, lang, resolvedTheme);
       const slug =
         project.name
+          .normalize("NFKD")
+          .replace(/[\u0300-\u036f]/g, "")
           .toLowerCase()
           .replace(/[^a-z0-9]+/g, "-")
           .replace(/^-|-$/g, "") || "project";
