@@ -1,3 +1,4 @@
+import type { FieldError } from "react-hook-form";
 import { z } from "zod";
 
 import { Requirement } from "@/components/forms";
@@ -59,3 +60,33 @@ export const buildPasswordSchema = (t: (key: string) => string): z.ZodType<strin
       .min(PASSWORD_MIN_LENGTH, t(MIN_LENGTH_KEY))
       .max(PASSWORD_MAX_LENGTH, t("validation.passwordMaxLength"))
   );
+
+const EMAIL_FORMAT = z.email();
+
+// An empty string would otherwise fail the format check and read as "invalid".
+// Skipping the format check for it leaves only the required issue, which the
+// native .min() gives the standard too_small code. The check is skipped rather
+// than the schema aborted because an aborted field would also stop a form-level
+// refinement (Register's password match) from running while the email is empty.
+export const buildEmailSchema = (
+  t: (key: string) => string,
+  invalidKey = "validation.emailInvalid",
+  requiredKey = "validation.emailRequired"
+): z.ZodString =>
+  z
+    .string()
+    .min(1, t(requiredKey))
+    .refine((value) => EMAIL_FORMAT.safeParse(value).success, {
+      error: t(invalidKey),
+      when: (payload) => payload.value !== "",
+    });
+
+/**
+ * Hides the empty-field error until the form has been submitted, so leaving an
+ * untouched email field does not scold the user. The empty case is recognised by
+ * its zod code, not its message, because the message is translated.
+ */
+export const visibleEmailError = (
+  error: FieldError | undefined,
+  isSubmitted: boolean
+): FieldError | undefined => (!isSubmitted && error?.type === "too_small" ? undefined : error);

@@ -223,7 +223,8 @@
     "errorTitle": "Pozvání selhalo",
     "errorMessage": "Nepodařilo se vytvořit pozvánku",
     "validation": {
-      "emailInvalid": "Neplatná e-mailová adresa"
+      "emailInvalid": "Neplatná e-mailová adresa",
+      "emailRequired": "E-mail je povinný"
     }
   }
 }

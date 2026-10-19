@@ -223,7 +223,8 @@
     "errorTitle": "Invitation failed",
     "errorMessage": "Failed to create the invitation",
     "validation": {
-      "emailInvalid": "Invalid email address"
+      "emailInvalid": "Invalid email address",
+      "emailRequired": "Email is required"
     }
   }
 }

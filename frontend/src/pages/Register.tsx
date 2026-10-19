@@ -22,7 +22,12 @@ import { toSupportedLanguage } from "@/i18n";
 import { api } from "@/lib/api";
 import { describeError } from "@/lib/errorMessages";
 import { isTurnstileRequired } from "@/lib/turnstile";
-import { buildPasswordSchema, getPasswordRequirements } from "@/lib/validation";
+import {
+  buildEmailSchema,
+  buildPasswordSchema,
+  getPasswordRequirements,
+  visibleEmailError,
+} from "@/lib/validation";
 
 type RegisterFormData = {
   email: string;
@@ -73,8 +78,7 @@ const Register = () => {
     () =>
       z
         .object({
-          email: z
-            .email(t("validation.emailInvalid"))
+          email: buildEmailSchema(t)
             .max(255, t("validation.emailMaxLength"))
             .refine((val) => /^[\x20-\x7E]*$/.test(val), {
               error: t("validation.emailAsciiOnly"),
@@ -103,7 +107,7 @@ const Register = () => {
     register,
     handleSubmit,
     control,
-    formState: { errors, isValid },
+    formState: { errors, isValid, isSubmitted },
   } = useForm<RegisterFormData>({
     resolver: zodResolver(registerSchema),
     mode: "onTouched",
@@ -174,7 +178,7 @@ const Register = () => {
             type="email"
             autoComplete="email"
             placeholder={t("register.emailPlaceholder")}
-            error={errors.email}
+            error={visibleEmailError(errors.email, isSubmitted)}
             {...register("email")}
           />
           <ValidationChecklist

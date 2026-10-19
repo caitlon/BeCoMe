@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { render } from '@tests/utils';
 import i18n from '@/i18n';
@@ -44,6 +44,31 @@ describe('InviteExpertModal', () => {
     render(<InviteExpertModal {...defaultProps} />);
 
     expect(getEmailInput()).toBeInTheDocument();
+  });
+
+  it('shows no email error when the empty field is left before any submit attempt', async () => {
+    const user = userEvent.setup();
+    render(<InviteExpertModal {...defaultProps} />);
+
+    await user.click(getEmailInput());
+    await user.tab();
+    await act(async () => {});
+
+    expect(screen.queryByText(/invalid.*email/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/email.*required/i)).not.toBeInTheDocument();
+    expect(getEmailInput()).not.toHaveAttribute('aria-invalid', 'true');
+  });
+
+  it('asks for the email when the form is submitted with it empty', async () => {
+    const user = userEvent.setup();
+    render(<InviteExpertModal {...defaultProps} />);
+
+    await user.click(getSubmitButton());
+
+    expect(await screen.findByText('Email is required')).toBeInTheDocument();
+    expect(screen.queryByText(/invalid.*email/i)).not.toBeInTheDocument();
+    expect(getEmailInput()).toHaveAttribute('aria-invalid', 'true');
+    expect(mockInviteExpert).not.toHaveBeenCalled();
   });
 
   it('shows validation error for invalid email', async () => {
