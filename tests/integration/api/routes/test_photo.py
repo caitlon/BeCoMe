@@ -321,7 +321,10 @@ class TestPhotoUpload:
         # THEN
         assert response.status_code == 400
         assert response.json() == {
-            "detail": "Image dimensions are too large. Maximum is 4096x4096 pixels",
+            "detail": (
+                "Image dimensions are too large. Maximum is 8192 pixels per side "
+                "and about 16.7 megapixels in total"
+            ),
             "code": "photo_dimensions_too_large",
         }
         mock_storage.upload.assert_not_called()

@@ -518,7 +518,8 @@ class TestInvitationAndPhotoErrorCodes:
             (
                 PhotoDimensionsTooLargeError("canvas over the limit"),
                 status.HTTP_400_BAD_REQUEST,
-                "Image dimensions are too large. Maximum is 4096x4096 pixels",
+                "Image dimensions are too large. Maximum is 8192 pixels per side "
+                "and about 16.7 megapixels in total",
                 "photo_dimensions_too_large",
             ),
             (

@@ -26,7 +26,8 @@ MAX_FILE_SIZE_BYTES: Final = 5 * 1024 * 1024  # 5 MB
 # Pixel budget for an avatar. The byte cap above does not bound this: image formats
 # compress uniform areas so well that a few hundred KB can describe tens of gigapixels,
 # which is a decompression bomb, and the memory is spent the moment anything decodes it.
-# 4096x4096 is far more than an avatar ever needs while accepting real camera photos.
+# About 16.7 megapixels in total (the area of 4096x4096) and no side over 8192 is far more
+# than an avatar ever needs while accepting real camera photos.
 MAX_IMAGE_PIXELS: Final = 4096 * 4096
 MAX_IMAGE_DIMENSION: Final = 8192
 

@@ -429,10 +429,11 @@ memory.
 
 A photo upload passes three independent checks (`api/services/storage/validation.py`): the
 declared content type must be one of four image types, the leading magic bytes must match
-that declaration, and the pixel canvas must fit the avatar budget (4096x4096, no side over
-8192). The last one exists because bytes and pixels are not the same limit: image formats
-compress uniform areas so well that a 35 KB PNG can declare a 25-megapixel canvas, which
-costs tens to hundreds of megabytes the moment anything decodes it, depending on the mode.
+that declaration, and the pixel canvas must fit the avatar budget (about 16.7 megapixels,
+the area of 4096x4096, and no side over 8192). The last one exists because bytes and pixels
+are not the same limit: image formats compress uniform areas so well that a 35 KB PNG can
+declare a 25-megapixel canvas, which costs tens to hundreds of megabytes the moment anything
+decodes it, depending on the mode.
 The validator parses only the header, so rejecting such a file costs nothing.
 
 Rate limiting bounds how fast one caller can drive an endpoint. It does nothing about a
