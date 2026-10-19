@@ -88,6 +88,14 @@ describe('Profile', () => {
     expect(screen.getByText('john@example.com')).toBeInTheDocument();
   });
 
+  it('does not show the assistant privacy card in a build without the assistant', () => {
+    render(<Profile />);
+
+    expect(screen.getByText('Edit Profile')).toBeInTheDocument();
+    expect(screen.queryByText('Assistant Privacy')).not.toBeInTheDocument();
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+  });
+
   it('renders user initials in avatar', () => {
     render(<Profile />);
 

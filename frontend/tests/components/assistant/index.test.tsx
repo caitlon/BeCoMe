@@ -16,6 +16,13 @@ vi.mock('@/components/assistant/triggers', () => ({
   },
 }));
 
+vi.mock('@/components/assistant/AssistantPrivacyCard', () => ({
+  AssistantPrivacyCard: () => {
+    if (triggers.throws) throw new Error('chunk failed');
+    return <p>privacy card</p>;
+  },
+}));
+
 describe('components/assistant build gate', () => {
   beforeEach(() => {
     triggers.throws = false;
@@ -134,18 +141,50 @@ describe('components/assistant build gate', () => {
     });
   });
 
+  describe('AssistantProfileSlot', () => {
+    it('renders nothing when disabled', async () => {
+      vi.stubEnv('VITE_ASSISTANT_ENABLED', '');
+
+      const { AssistantProfileSlot } = await import('@/components/assistant');
+      const { container } = render(<AssistantProfileSlot />);
+
+      expect(container).toBeEmptyDOMElement();
+    });
+
+    it('renders nothing for any value other than the literal string "true"', async () => {
+      vi.stubEnv('VITE_ASSISTANT_ENABLED', 'TRUE');
+
+      const { AssistantProfileSlot } = await import('@/components/assistant');
+      const { container } = render(<AssistantProfileSlot />);
+
+      expect(container).toBeEmptyDOMElement();
+    });
+
+    it('mounts the lazy privacy card inside a Suspense boundary when enabled', async () => {
+      vi.stubEnv('VITE_ASSISTANT_ENABLED', 'true');
+
+      const { AssistantProfileSlot } = await import('@/components/assistant');
+      render(<AssistantProfileSlot />);
+
+      expect(await screen.findByText('privacy card')).toBeInTheDocument();
+    });
+  });
+
   describe('a slot whose chunk fails', () => {
     it('renders nothing and leaves the page around it alone', async () => {
       vi.stubEnv('VITE_ASSISTANT_ENABLED', 'true');
       triggers.throws = true;
       const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
-      const { AssistantHeaderSlot, AssistantResultSlot } = await import('@/components/assistant');
+      const { AssistantHeaderSlot, AssistantResultSlot, AssistantProfileSlot } = await import(
+        '@/components/assistant'
+      );
 
       render(
         <>
           <p>page content</p>
           <AssistantHeaderSlot />
           <AssistantResultSlot projectId="p1" />
+          <AssistantProfileSlot />
         </>
       );
       await act(async () => {

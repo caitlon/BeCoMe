@@ -22,6 +22,12 @@ interface AuthContextType {
   ) => Promise<void>;
   readonly logout: () => Promise<void>;
   readonly refreshUser: () => Promise<void>;
+  /**
+   * Replaces the signed-in user with a fresh copy the caller already holds (the
+   * response of a write), without refreshUser's status flip to 'loading', which
+   * makes ProtectedRoute swap the whole page for a loader and remount it.
+   */
+  readonly setCurrentUser: (user: User) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -146,6 +152,8 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
     }
   }, [queryClient]);
 
+  const setCurrentUser = useCallback((next: User) => setUser(next), []);
+
   const value = useMemo(() => ({
     user,
     status,
@@ -155,7 +163,8 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
     login,
     logout,
     refreshUser,
-  }), [user, status, login, logout, refreshUser]);
+    setCurrentUser,
+  }), [user, status, login, logout, refreshUser, setCurrentUser]);
 
   return (
     <AuthContext.Provider value={value}>

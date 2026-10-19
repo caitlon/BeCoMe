@@ -160,6 +160,29 @@ describe('AuthContext', () => {
     expect(result.current.status).toBe('authenticated')
   })
 
+  it('setCurrentUser replaces the user without a request or a status change', async () => {
+    const mockUser = createUser({ id: '1', assistant_objection: false })
+    vi.mocked(api.getCurrentUser).mockResolvedValue(mockUser)
+
+    const { result } = renderHook(() => useAuth(), {
+      wrapper: AuthTestProviders,
+    })
+
+    await waitFor(() => {
+      expect(result.current.status).toBe('authenticated')
+    })
+    vi.mocked(api.getCurrentUser).mockClear()
+
+    const updated = { ...mockUser, assistant_objection: true }
+    act(() => {
+      result.current.setCurrentUser(updated)
+    })
+
+    expect(result.current.user).toEqual(updated)
+    expect(result.current.status).toBe('authenticated')
+    expect(api.getCurrentUser).not.toHaveBeenCalled()
+  })
+
   it('login calls api.login and refreshes user', async () => {
     const mockUser = createUser({ id: '1', email: 'test@example.com', first_name: 'Test' })
     vi.mocked(api.login).mockResolvedValue({ access_token: 'new-token', token_type: 'bearer' })

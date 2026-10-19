@@ -30,6 +30,7 @@ export interface MockAuthContextValue {
   login: ReturnType<typeof import('vitest').vi.fn>;
   logout: ReturnType<typeof import('vitest').vi.fn>;
   refreshUser: ReturnType<typeof import('vitest').vi.fn>;
+  setCurrentUser: ReturnType<typeof import('vitest').vi.fn>;
 }
 
 /**
@@ -156,6 +157,7 @@ export const unauthenticatedAuthMock = {
     login: () => Promise.resolve(),
     logout: () => Promise.resolve(),
     refreshUser: () => Promise.resolve(),
+    setCurrentUser: () => {},
   }),
 };
 

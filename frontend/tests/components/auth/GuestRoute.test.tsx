@@ -21,6 +21,7 @@ const session = (status: SessionStatus) => ({
   login: vi.fn(),
   logout: vi.fn(),
   refreshUser: vi.fn(),
+  setCurrentUser: vi.fn(),
 })
 
 function renderAtLogin(status: SessionStatus) {

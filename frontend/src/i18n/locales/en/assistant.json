@@ -3,6 +3,14 @@
     "header": "Assistant",
     "result": "Explain this result"
   },
+  "privacy": {
+    "title": "Assistant Privacy",
+    "label": "Hide my opinions from other members' assistant",
+    "description": "When this is on, the assistant does not show your opinions to other project members who ask it. It still shows them to you. Project results, such as the mean and the number of experts, are calculated as before.",
+    "enabledToast": "Your opinions are now hidden from other members' assistant",
+    "disabledToast": "Other members' assistant can show your opinions again",
+    "failed": "Could not save the assistant setting"
+  },
   "panel": {
     "title": "Assistant",
     "scopeProject": "Project “{{name}}”",
