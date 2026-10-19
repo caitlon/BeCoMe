@@ -172,7 +172,7 @@ describe('AssistantPrivacyCard', () => {
     });
   });
 
-  it('ignores a second toggle while the first save is pending and keeps focus on the control', async () => {
+  it('ignores a toggle while a save is pending, keeps focus, and accepts one after it settles', async () => {
     const user = userEvent.setup();
     let resolveSave: (value: User) => void = () => {};
     mockUpdateCurrentUser.mockImplementationOnce(
@@ -187,6 +187,7 @@ describe('AssistantPrivacyCard', () => {
     await waitFor(() => {
       expect(checkbox).toHaveAttribute('aria-busy', 'true');
     });
+    expect(checkbox).toBeEnabled();
     await user.click(checkbox);
     await user.keyboard(' ');
     expect(mockUpdateCurrentUser).toHaveBeenCalledTimes(1);
@@ -199,5 +200,18 @@ describe('AssistantPrivacyCard', () => {
     });
     expect(checkbox).toBeChecked();
     expect(checkbox).toHaveFocus();
+
+    // Once the first save has settled, the guard is released and a new toggle goes through.
+    mockUpdateCurrentUser.mockResolvedValueOnce(createUser({ assistant_objection: false }));
+    await user.keyboard(' ');
+
+    await waitFor(() => {
+      expect(mockUpdateCurrentUser).toHaveBeenCalledTimes(2);
+    });
+    expect(mockUpdateCurrentUser).toHaveBeenLastCalledWith({ assistant_objection: false });
+    await waitFor(() => {
+      expect(checkbox).not.toBeChecked();
+    });
+    expect(checkbox).toHaveAttribute('aria-busy', 'false');
   });
 });
