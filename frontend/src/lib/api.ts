@@ -210,8 +210,10 @@ class ApiClient {
         credentials: 'include',
         headers: { 'X-Request-ID': crypto.randomUUID() },
       });
-      // A refresh rotates the CSRF token, so the retry that follows must send the
-      // new one; the value this replaces is already dead on the server.
+      // A refresh keeps the session id, so the token normally comes back unchanged.
+      // Capturing it is still right: it is harmless, and it covers the legacy path
+      // where a refresh token from before sessions existed starts a new session and
+      // so a new token, which the retry that follows has to send.
       this.captureCsrfToken(res);
       if (!res.ok) {
         throw await toHttpError(res);

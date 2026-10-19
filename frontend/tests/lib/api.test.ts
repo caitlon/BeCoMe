@@ -161,8 +161,9 @@ describe('ApiClient', () => {
       expect((options.headers as Record<string, string>)['X-CSRF-Token']).toBe('header-value');
     });
 
-    it('sends the rotated token on the retry after a silent refresh', async () => {
-      // A refresh mints a new CSRF cookie, so the retry has to carry the new value
+    it('sends the refresh response token on the retry after a silent refresh', async () => {
+      // A refresh normally returns the same token, but one that starts a new session
+      // (a legacy refresh token) returns a new one, and the retry has to carry it
       // or it trades a 401 for a 403.
       mockFetch
         .mockResolvedValueOnce({
