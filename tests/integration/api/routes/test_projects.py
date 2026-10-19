@@ -112,12 +112,17 @@ class TestCreateProject:
         # THEN
         assert response.status_code == 422
 
+    @pytest.mark.parametrize("field", ["scale_min", "scale_max"])
     @pytest.mark.parametrize("literal", ["NaN", "Infinity", "-Infinity"])
-    def test_create_project_non_finite_scale_fails(self, client, literal):
+    def test_create_project_non_finite_scale_fails(self, client, field, literal):
         """Project creation fails when a scale bound is NaN or infinite on the wire."""
         # GIVEN
         token = register_and_login(client)
-        body = f'{{"name": "Non-finite", "scale_min": {literal}, "scale_max": 100}}'
+        bounds = {"scale_min": "0", "scale_max": "100", field: literal}
+        body = (
+            f'{{"name": "Non-finite", "scale_min": {bounds["scale_min"]}, '
+            f'"scale_max": {bounds["scale_max"]}}}'
+        )
 
         # WHEN
         response = client.post(
@@ -128,6 +133,10 @@ class TestCreateProject:
 
         # THEN
         assert response.status_code == 422
+        assert any(
+            error["type"] == "finite_number" and error["loc"][-1] == field
+            for error in response.json()["detail"]
+        )
 
     def test_create_project_without_auth(self, client):
         """Project creation fails without authentication."""
@@ -398,6 +407,10 @@ class TestUpdateProject:
 
         # THEN
         assert response.status_code == 422
+        assert any(
+            error["type"] == "finite_number" and error["loc"][-1] == field
+            for error in response.json()["detail"]
+        )
 
     @pytest.mark.parametrize("field", ["name", "scale_min", "scale_max", "scale_unit"])
     def test_update_project_rejects_explicit_null(self, client, field):

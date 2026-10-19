@@ -121,8 +121,12 @@ class TestProjectCreate:
         body = f'{{"name": "Project", "{field}": {literal}}}'
 
         # WHEN/THEN
-        with pytest.raises(ValidationError, match=field):
+        with pytest.raises(ValidationError) as exc_info:
             ProjectCreate.model_validate_json(body)
+        assert any(
+            error["type"] == "finite_number" and error["loc"] == (field,)
+            for error in exc_info.value.errors()
+        )
 
 
 class TestProjectUpdate:
@@ -194,8 +198,12 @@ class TestProjectUpdate:
         body = f'{{"{field}": {literal}}}'
 
         # WHEN/THEN
-        with pytest.raises(ValidationError, match=field):
+        with pytest.raises(ValidationError) as exc_info:
             ProjectUpdate.model_validate_json(body)
+        assert any(
+            error["type"] == "finite_number" and error["loc"] == (field,)
+            for error in exc_info.value.errors()
+        )
 
 
 class TestProjectResponseFromModel:
