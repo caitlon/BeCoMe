@@ -53,8 +53,9 @@ class TestPasswordChangeErrors:
             headers=auth_headers(token),
         )
 
-        # THEN: rejected with 400 or 401
-        assert response.status_code in (400, 401)
+        # THEN: rejected with 400 and the current-password code
+        assert response.status_code == 400
+        assert response.json()["code"] == "current_password_incorrect"
 
 
 @pytest.mark.e2e

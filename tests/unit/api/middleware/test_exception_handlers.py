@@ -7,6 +7,7 @@ from fastapi import FastAPI, status
 
 from api.exceptions import (
     BeCoMeAPIError,
+    CurrentPasswordIncorrectError,
     DisposableEmailDomainError,
     EmailNotVerifiedError,
     InvalidCredentialsError,
@@ -19,6 +20,7 @@ from api.exceptions import (
     ValuesOutOfRangeError,
 )
 from api.middleware.exception_handlers import (
+    CURRENT_PASSWORD_INCORRECT_CODE,
     SCALE_EXCLUDES_OPINIONS_CODE,
     TURNSTILE_REFUSED_CODE,
     _get_status_and_detail,
@@ -279,15 +281,15 @@ class TestBecomeApiErrorHandler:
             # THEN
             mock_log.assert_not_called()
 
-    def test_invalid_current_password_logs_password_change_failure(self):
+    def test_wrong_current_password_logs_password_change_failure(self):
         """
-        GIVEN an InvalidCredentialsError flagged as a wrong current password
+        GIVEN a wrong current password on a password change
         WHEN become_api_error_handler is called
         THEN it logs a password-change failure, not a login failure
         """
         # GIVEN
         request = MagicMock()
-        exc = InvalidCredentialsError(reason="invalid_current_password")
+        exc = CurrentPasswordIncorrectError("Current password is incorrect")
 
         with (
             patch("api.middleware.exception_handlers.log_password_change_failure") as mock_pcf,
@@ -299,6 +301,26 @@ class TestBecomeApiErrorHandler:
             # THEN
             mock_pcf.assert_called_once_with(request)
             mock_lf.assert_not_called()
+
+    def test_invalid_credentials_does_not_log_password_change_failure(self):
+        """
+        GIVEN a failed login
+        WHEN become_api_error_handler is called
+        THEN no password-change failure is logged
+        """
+        # GIVEN
+        request = MagicMock()
+        exc = InvalidCredentialsError(email="test@example.com", reason="invalid_password")
+
+        with (
+            patch("api.middleware.exception_handlers.log_password_change_failure") as mock_pcf,
+            patch("api.middleware.exception_handlers.log_login_failure"),
+        ):
+            # WHEN
+            become_api_error_handler(request, exc)
+
+            # THEN
+            mock_pcf.assert_not_called()
 
 
 class TestMachineReadableErrorCodes:
@@ -350,6 +372,30 @@ class TestMachineReadableErrorCodes:
             ),
             "code": SCALE_EXCLUDES_OPINIONS_CODE,
         }
+
+    def test_a_wrong_current_password_is_a_400_with_a_code_and_no_challenge(self):
+        """
+        GIVEN a password change with a wrong current password
+        WHEN the handler builds the response
+        THEN it answers 400 with the code and no WWW-Authenticate header
+
+        A 401 on an authenticated request reads as "no session" to the SPA, which would
+        refresh, retry and sign the user out over a typo.
+        """
+        # GIVEN
+        request = MagicMock()
+        exc = CurrentPasswordIncorrectError("Current password is incorrect")
+
+        # WHEN
+        response = become_api_error_handler(request, exc)
+
+        # THEN
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert json.loads(response.body) == {
+            "detail": "Current password is incorrect",
+            "code": CURRENT_PASSWORD_INCORRECT_CODE,
+        }
+        assert "www-authenticate" not in response.headers
 
     def test_an_unverified_account_carries_no_code(self):
         """

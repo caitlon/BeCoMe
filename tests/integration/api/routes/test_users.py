@@ -455,3 +455,48 @@ class TestChangePasswordRevokesSessions:
             data={"username": "storefault@example.com", "password": DEFAULT_TEST_PASSWORD},
         )
         assert login.status_code == status.HTTP_200_OK
+
+
+class TestChangePasswordWithWrongCurrentPassword:
+    """A mistyped current password is a 400 the session survives, never a 401."""
+
+    def test_wrong_current_password_is_a_400_with_a_code(self, client):
+        """The refusal is a 400 with its own code and no bearer challenge."""
+        # GIVEN a logged-in user
+        token = register_and_login(client, "wrongcurrent@example.com")
+
+        # WHEN the current password is mistyped
+        resp = client.put(
+            "/api/v1/users/me/password",
+            headers=auth_header(token),
+            json={"current_password": "NotThePassword1!", "new_password": "NewSecurePass456!"},
+        )
+
+        # THEN it is a 400 the SPA can tell apart, with no WWW-Authenticate challenge
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST
+        assert resp.json() == {
+            "detail": "Current password is incorrect",
+            "code": "current_password_incorrect",
+        }
+        assert "www-authenticate" not in resp.headers
+
+    def test_session_and_password_survive_a_wrong_current_password(self, client):
+        """The refusal revokes nothing and changes nothing."""
+        # GIVEN a logged-in user who mistypes the current password
+        token = register_and_login(client, "keepsession@example.com")
+        client.put(
+            "/api/v1/users/me/password",
+            headers=auth_header(token),
+            json={"current_password": "NotThePassword1!", "new_password": "NewSecurePass456!"},
+        )
+
+        # WHEN the same token is used again
+        me = client.get("/api/v1/users/me", headers=auth_header(token))
+
+        # THEN the session still works and the old password still signs in
+        assert me.status_code == status.HTTP_200_OK
+        login = client.post(
+            "/api/v1/auth/login",
+            data={"username": "keepsession@example.com", "password": DEFAULT_TEST_PASSWORD},
+        )
+        assert login.status_code == status.HTTP_200_OK

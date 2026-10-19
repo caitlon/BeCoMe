@@ -201,7 +201,7 @@ widened with a `Domain` instead, and for what this does not cover.
 | GET | `/api/v1/users/me` | Get profile |
 | GET | `/api/v1/users/me/export` | Export all personal data as JSON (GDPR Art. 20) |
 | PUT | `/api/v1/users/me` | Update profile: names and `assistant_objection` (GDPR Art. 21, see Opinions) |
-| PUT | `/api/v1/users/me/password` | Change password |
+| PUT | `/api/v1/users/me/password` | Change password; a wrong `current_password` is a 400 with code `current_password_incorrect`, never a 401, which clients read as a lost session. A successful change signs out every session, this one included |
 | POST | `/api/v1/users/me/photo` | Upload photo (JPEG/PNG/GIF/WebP, max 5 MB and 4096x4096 px) |
 | DELETE | `/api/v1/users/me/photo` | Delete photo |
 | GET | `/api/v1/users/{id}/photo` | Serve a profile photo from the private bucket (public) |

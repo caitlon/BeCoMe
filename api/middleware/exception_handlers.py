@@ -15,6 +15,7 @@ from api.auth.revocation_store import RevocationStoreError
 from api.exceptions import (
     AccountHasOwnedProjectsError,
     BeCoMeAPIError,
+    CurrentPasswordIncorrectError,
     DisposableEmailDomainError,
     EmailNotVerifiedError,
     ExampleProjectInvitationError,
@@ -85,6 +86,12 @@ TURNSTILE_REFUSED_CODE = "turnstile_refused"
 # English sentence to tell it apart.
 SCALE_EXCLUDES_OPINIONS_CODE = "scale_excludes_opinions"
 
+# The machine-readable half of the 400 a password change gets when the current password is
+# wrong. It is a 400 and not a 401 because on an authenticated request a 401 means "no
+# session": the SPA refreshes the token, retries, and signs the user out. The session here
+# is fine, so the answer carries a code the form can show beside the field instead.
+CURRENT_PASSWORD_INCORRECT_CODE = "current_password_incorrect"  # noqa: S105
+
 # Exception to HTTP status code and message mapping
 # Following OCP: extend by adding entries, not modifying handlers
 # None as detail means: use exception message
@@ -128,6 +135,10 @@ EXCEPTION_MAP: dict[type[BeCoMeAPIError], tuple[int, str | None]] = {
     UnresolvableEmailDomainError: (
         status.HTTP_400_BAD_REQUEST,
         "We could not find that domain. Check for a typo.",
+    ),
+    CurrentPasswordIncorrectError: (
+        status.HTTP_400_BAD_REQUEST,
+        "Current password is incorrect",
     ),
     # 401 Unauthorized
     InvalidCredentialsError: (
@@ -192,6 +203,7 @@ EXCEPTION_MAP: dict[type[BeCoMeAPIError], tuple[int, str | None]] = {
 ERROR_CODES: dict[type[BeCoMeAPIError], str] = {
     TurnstileVerificationError: TURNSTILE_REFUSED_CODE,
     ScaleExcludesOpinionsError: SCALE_EXCLUDES_OPINIONS_CODE,
+    CurrentPasswordIncorrectError: CURRENT_PASSWORD_INCORRECT_CODE,
 }
 
 # Default mappings for base exception classes
@@ -253,12 +265,12 @@ def become_api_error_handler(request: Request, exc: BeCoMeAPIError) -> JSONRespo
     headers = None
     if isinstance(exc, InvalidCredentialsError):
         headers = {"WWW-Authenticate": "Bearer"}
+        if exc.email:
+            log_login_failure(exc.email, exc.reason, request)
+    elif isinstance(exc, CurrentPasswordIncorrectError):
         # A wrong current password is a distinct security event from a failed
         # login, so it does not pollute brute-force alerting on login_failure.
-        if exc.reason == "invalid_current_password":
-            log_password_change_failure(request)
-        elif exc.email:
-            log_login_failure(exc.email, exc.reason, request)
+        log_password_change_failure(request)
 
     content: dict[str, str] = {"detail": detail}
     code = ERROR_CODES.get(type(exc))

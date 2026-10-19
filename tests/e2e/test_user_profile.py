@@ -89,5 +89,9 @@ class TestChangePassword:
             headers=auth_headers(token),
         )
 
-        # THEN: rejected
-        assert response.status_code in (400, 401)
+        # THEN: a 400 with its own code, so the session is not treated as expired
+        assert response.status_code == 400
+        assert response.json() == {
+            "detail": "Current password is incorrect",
+            "code": "current_password_incorrect",
+        }
