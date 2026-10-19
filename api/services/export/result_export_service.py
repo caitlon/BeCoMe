@@ -133,7 +133,7 @@ class ResultExportService(BaseService):
         """Turn a project name into an ASCII, filename-safe slug.
 
         Accented letters keep their base letter (an e with a caron becomes e);
-        letters with no ASCII base are dropped.
+        letters with no ASCII base become separators, like punctuation.
         """
         base = "".join(
             ch for ch in unicodedata.normalize("NFKD", name) if not unicodedata.combining(ch)
