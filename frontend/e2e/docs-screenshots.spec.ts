@@ -233,6 +233,8 @@ test.describe('documentation screenshots', () => {
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible();
     await dialog.getByPlaceholder('Enter project name').fill('Budget allocation 2027');
+    // The scale getting-started.md gives for this unit, so the picture matches its text.
+    await dialog.getByLabel('Maximum').fill('200');
     await dialog.getByLabel('Unit').fill('CZK billions');
     await settled(page);
     await page.screenshot({ path: `${IMG}/new-project.png` });
