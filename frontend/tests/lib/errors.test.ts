@@ -14,7 +14,9 @@ import {
   isServiceUnavailable,
   isRetryable,
   isTurnstileRefusal,
+  isCurrentPasswordIncorrect,
   TURNSTILE_REFUSED_CODE,
+  CURRENT_PASSWORD_INCORRECT_CODE,
 } from '@/lib/errors';
 import { toHttpError, safeFetch } from '@/lib/api';
 
@@ -356,5 +358,24 @@ describe('isTurnstileRefusal', () => {
     expect(isTurnstileRefusal(new NetworkError())).toBe(false);
     expect(isTurnstileRefusal('turnstile_refused')).toBe(false);
     expect(isTurnstileRefusal(undefined)).toBe(false);
+  });
+});
+
+describe('isCurrentPasswordIncorrect', () => {
+  it('recognises the 400 a password change answers a wrong current password with', () => {
+    expect(
+      isCurrentPasswordIncorrect(new HttpError('wrong', 400, CURRENT_PASSWORD_INCORRECT_CODE))
+    ).toBe(true);
+  });
+
+  it('rejects a 400 with no code or another code', () => {
+    expect(isCurrentPasswordIncorrect(new HttpError('bad', 400))).toBe(false);
+    expect(isCurrentPasswordIncorrect(new HttpError('bad', 400, 'something_else'))).toBe(false);
+  });
+
+  it('rejects values that are not HTTP errors at all', () => {
+    expect(isCurrentPasswordIncorrect(new NetworkError())).toBe(false);
+    expect(isCurrentPasswordIncorrect('current_password_incorrect')).toBe(false);
+    expect(isCurrentPasswordIncorrect(undefined)).toBe(false);
   });
 });
