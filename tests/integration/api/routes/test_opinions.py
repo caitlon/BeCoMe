@@ -708,6 +708,47 @@ class TestGetResult:
         assert data["likert_value"] is not None
         assert data["likert_decision"] is not None
 
+    def test_includes_the_likert_recommendation_for_standard_scale(self, client):
+        """The result carries the interpreter's action sentence for the Likert point."""
+        # GIVEN a 0-100 project without a unit and a compromise that rounds to 75
+        token = register_and_login(client)
+        project = create_project(client, token)
+        submit_opinion(client, token, project["id"], 70.0, 80.0, 90.0)
+
+        # WHEN the result is read
+        response = client.get(
+            f"/api/v1/projects/{project['id']}/result",
+            headers=auth_header(token),
+        )
+
+        # THEN the recommendation sits next to the value and the decision
+        data = response.json()
+        assert data["likert_value"] == 75
+        assert data["likert_recommendation"] == "Policy is recommended with minor adjustments"
+
+    def test_skips_the_likert_recommendation_when_a_unit_is_set(self, client):
+        """A 0-100 scale that names a unit measures a quantity, so no recommendation."""
+        # GIVEN a 0-100 project measured in percent
+        token = register_and_login(client)
+        project_resp = client.post(
+            "/api/v1/projects",
+            json={"name": "Percent Scale", "scale_unit": "%"},
+            headers=auth_header(token),
+        )
+        project = project_resp.json()
+        submit_opinion(client, token, project["id"], 70.0, 80.0, 90.0)
+
+        # WHEN the result is read
+        response = client.get(
+            f"/api/v1/projects/{project['id']}/result",
+            headers=auth_header(token),
+        )
+
+        # THEN the field is present and null
+        data = response.json()
+        assert "likert_recommendation" in data
+        assert data["likert_recommendation"] is None
+
     def test_includes_the_agreement_level(self, client):
         """The result carries its agreement reading, so every reader shows the same one.
 
