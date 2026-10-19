@@ -25,6 +25,7 @@ const PLURAL_SUFFIX = /^(.+)_(zero|one|two|few|many|other)$/;
 // Any key that ends in a plural suffix belongs to a group, so a group that lost its `_other`
 // form still shows up and fails the category check. Returns each group's base path with the
 // suffixes found for it.
+// A plain key that ends in a plural suffix is treated as a group too, so rename it.
 function pluralGroups(keys: string[]): Map<string, string[]> {
   const groups = new Map<string, string[]>();
   for (const key of keys) {
