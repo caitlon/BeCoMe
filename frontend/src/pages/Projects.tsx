@@ -256,13 +256,22 @@ const Projects = () => {
                                       setSelectedProject(project);
                                       setInviteModalOpen(true);
                                     }}
-                                    className={project.is_example ? "flex-col items-start gap-0.5" : undefined}
+                                    className={
+                                      project.is_example
+                                        ? "flex-col items-start gap-0.5 data-[disabled]:opacity-100"
+                                        : undefined
+                                    }
                                   >
-                                    {t("dropdown.inviteExpert")}
-                                    {project.is_example && (
-                                      <span className="max-w-56 text-xs text-muted-foreground">
-                                        {t("detail.inviteDisabledOnExample")}
-                                      </span>
+                                    {project.is_example ? (
+                                      <>
+                                        {/* Only the label fades: faded, the reason below would be unreadable. */}
+                                        <span className="opacity-50">{t("dropdown.inviteExpert")}</span>
+                                        <span className="max-w-56 text-xs text-muted-foreground">
+                                          {t("detail.inviteDisabledOnExample")}
+                                        </span>
+                                      </>
+                                    ) : (
+                                      t("dropdown.inviteExpert")
                                     )}
                                   </DropdownMenuItem>
                                   <DropdownMenuSeparator />
