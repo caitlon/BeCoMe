@@ -3,6 +3,7 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { render } from '@tests/utils';
 import ResetPassword from '@/pages/ResetPassword';
+import { HttpError, NetworkError, RateLimitError, ServerError } from '@/lib/errors';
 
 // Mock the API client (the page calls api.resetPassword directly)
 const mockResetPassword = vi.fn();
@@ -160,6 +161,73 @@ describe('ResetPassword', () => {
       expect(mockToast).toHaveBeenCalledWith(
         expect.objectContaining({ variant: 'destructive' })
       );
+    });
+  });
+
+  describe('when the reset is refused', () => {
+    const INVALID_TOKEN = 'This reset link is invalid or has expired.';
+    const UNAVAILABLE = 'The service is temporarily unavailable. Please try again in a moment.';
+
+    const submitWith = async (error: unknown) => {
+      const user = userEvent.setup();
+      mockResetPassword.mockRejectedValueOnce(error);
+      render(<ResetPassword />);
+
+      await user.type(getPasswordInput(), 'BrandNewPass456!');
+      await user.type(getConfirmInput(), 'BrandNewPass456!');
+      await waitFor(() => expect(getSubmitButton()).not.toBeDisabled());
+      await user.click(getSubmitButton());
+
+      await waitFor(() => expect(mockToast).toHaveBeenCalled());
+    };
+
+    it.each([
+      ['a network failure', new NetworkError()],
+      ['a 5xx response', new ServerError('Service Unavailable', 503)],
+    ])('says the service is unavailable, not that the link is bad, on %s', async (_label, error) => {
+      await submitWith(error);
+
+      expect(mockToast).toHaveBeenCalledWith({
+        title: 'Reset failed',
+        description: UNAVAILABLE,
+        variant: 'destructive',
+      });
+      expect(mockToast).not.toHaveBeenCalledWith(
+        expect.objectContaining({ description: INVALID_TOKEN })
+      );
+    });
+
+    it('says to wait, with the delay, on a 429 that carries one', async () => {
+      await submitWith(new RateLimitError('Too many requests', 30));
+
+      expect(mockToast).toHaveBeenCalledWith({
+        title: 'Reset failed',
+        description: 'Too many attempts. Please try again in 30s.',
+        variant: 'destructive',
+      });
+      expect(mockToast).not.toHaveBeenCalledWith(
+        expect.objectContaining({ description: INVALID_TOKEN })
+      );
+    });
+
+    it('says to wait, without a delay, on a 429 that carries none', async () => {
+      await submitWith(new RateLimitError());
+
+      expect(mockToast).toHaveBeenCalledWith({
+        title: 'Reset failed',
+        description: 'Too many attempts. Please wait a moment and try again.',
+        variant: 'destructive',
+      });
+    });
+
+    it('keeps the invalid-link message for the API 400 on a bad, expired or used token', async () => {
+      await submitWith(new HttpError('Invalid or expired reset token', 400));
+
+      expect(mockToast).toHaveBeenCalledWith({
+        title: 'Reset failed',
+        description: INVALID_TOKEN,
+        variant: 'destructive',
+      });
     });
   });
 });

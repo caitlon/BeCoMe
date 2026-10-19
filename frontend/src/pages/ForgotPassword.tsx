@@ -17,7 +17,7 @@ import { useToast } from "@/hooks/use-toast";
 import { toSupportedLanguage } from "@/i18n";
 import { api } from "@/lib/api";
 import { describeError } from "@/lib/errorMessages";
-import { isTurnstileRefusal } from "@/lib/errors";
+import { isRateLimited, isTurnstileRefusal } from "@/lib/errors";
 import { isTurnstileRequired } from "@/lib/turnstile";
 
 type ForgotPasswordFormData = {
@@ -64,12 +64,14 @@ const ForgotPassword = () => {
       );
       setSubmitted(true);
     } catch (error) {
-      // A refused bot check is the one failure this screen must not hide. It is
-      // decided before the address is ever looked at, so saying it out loud reveals
-      // nothing about whether an account exists — while the confirmation panel would
-      // claim a link is on its way when nothing was sent, and unmount the widget, so
-      // the user could not even earn a fresh challenge to retry with.
-      if (isTurnstileRefusal(error)) {
+      // A refused bot check and a 429 are the failures this screen must not hide.
+      // Both are decided before the address is ever looked at (the bot check, then
+      // the per-IP limiter), so saying them out loud reveals nothing about whether an
+      // account exists — while the confirmation panel would claim a link is on its
+      // way when nothing was sent, and unmount the widget, so the user could not even
+      // earn a fresh challenge to retry with. The bot check runs before the limiter,
+      // so after a 429 its token may already be spent too.
+      if (isTurnstileRefusal(error) || isRateLimited(error)) {
         turnstileRef.current?.reset();
         setTurnstileToken(null);
         toast({
@@ -81,6 +83,9 @@ const ForgotPassword = () => {
       }
       // Everything else is swallowed on purpose: the screen must look identical
       // whether or not the address exists, mirroring the backend's 202-always answer.
+      // That includes a 5xx or a dropped connection, since the registered-address
+      // branch does writes the unknown-address one skips, so a server fault can be
+      // specific to real accounts.
       setSubmitted(true);
     } finally {
       setIsLoading(false);
