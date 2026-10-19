@@ -68,7 +68,7 @@ def validate_image_readable(content: bytes) -> bool:
             width, height = image.size
     except Image.DecompressionBombError:
         return True
-    except (UnidentifiedImageError, OSError, ValueError):
+    except (OSError, ValueError):  # UnidentifiedImageError is an OSError
         return False
 
     return width >= 1 and height >= 1
