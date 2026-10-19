@@ -318,6 +318,37 @@ describe('ApiClient', () => {
     });
   });
 
+  describe('Wrong current password on a password change', () => {
+    afterEach(() => {
+      api.setOnSessionExpired(null);
+    });
+
+    it('rejects with the coded HttpError and leaves the session alone', async () => {
+      const onSessionExpired = vi.fn();
+      api.setOnSessionExpired(onSessionExpired);
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        json: () =>
+          Promise.resolve({
+            detail: 'Current password is incorrect',
+            code: 'current_password_incorrect',
+          }),
+      });
+
+      const { HttpError } = await import('@/lib/errors');
+      const error = await api
+        .changePassword({ current_password: 'wrong', new_password: 'new' })
+        .catch((err: unknown) => err);
+
+      // A 400 is not a lost session: no silent refresh, no sign-out.
+      expect(error).toBeInstanceOf(HttpError);
+      expect(error).toMatchObject({ status: 400, code: 'current_password_incorrect' });
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(onSessionExpired).not.toHaveBeenCalled();
+    });
+  });
+
   describe('Silent refresh and retry on 401 (AUD-032)', () => {
     afterEach(() => {
       api.setOnSessionExpired(null);

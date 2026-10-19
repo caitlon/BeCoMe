@@ -21,6 +21,12 @@
  */
 export const TURNSTILE_REFUSED_CODE = 'turnstile_refused';
 
+/**
+ * The code the API sends when a password change is given a wrong current password.
+ * It rides on a 400, not a 401, so the request is not mistaken for a lost session.
+ */
+export const CURRENT_PASSWORD_INCORRECT_CODE = 'current_password_incorrect';
+
 /** A fetch() call itself failed: offline, DNS failure, CORS, aborted, etc. */
 export class NetworkError extends Error {
   readonly kind = 'network' as const;
@@ -125,6 +131,10 @@ export const isServerError = (error: unknown): error is ServerError =>
  */
 export const isTurnstileRefusal = (error: unknown): boolean =>
   error instanceof HttpError && error.code === TURNSTILE_REFUSED_CODE;
+
+/** The current password typed into the change-password form was wrong. */
+export const isCurrentPasswordIncorrect = (error: unknown): boolean =>
+  error instanceof HttpError && error.code === CURRENT_PASSWORD_INCORRECT_CODE;
 
 /** A network hiccup or a 5xx: the service itself is the problem, not the request. */
 export const isServiceUnavailable = (error: unknown): boolean =>

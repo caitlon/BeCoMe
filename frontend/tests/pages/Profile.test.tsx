@@ -5,6 +5,7 @@ import { render, framerMotionMock } from '@tests/utils';
 import i18n from '@/i18n';
 import Profile from '@/pages/Profile';
 import { createUser } from '@tests/factories/user';
+import { HttpError } from '@/lib/errors';
 
 // Mock useNavigate
 const mockNavigate = vi.fn();
@@ -644,6 +645,50 @@ describe('Profile - Password Change Success/Error', () => {
       expect((screen.getByLabelText('New Password') as HTMLInputElement).value).toBe('');
       expect((screen.getByLabelText('Confirm New Password') as HTMLInputElement).value).toBe('');
     });
+  });
+
+  it('explains the sign-out and re-checks the session after a successful change', async () => {
+    const user = userEvent.setup();
+    mockApi.changePassword.mockResolvedValueOnce({});
+
+    render(<Profile />);
+
+    await user.type(screen.getByLabelText('Current Password'), 'OldPassword1!@#');
+    await user.type(screen.getByLabelText('New Password'), 'NewPassword1!@#');
+    await user.type(screen.getByLabelText('Confirm New Password'), 'NewPassword1!@#');
+
+    await user.click(screen.getByRole('button', { name: 'Update Password' }));
+
+    // The change revokes every session, this one included, so the toast says so and
+    // the session probe sends the user to sign in without a "Session expired" toast.
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith({
+        title: 'Password updated',
+        description: expect.stringContaining('signed out'),
+      });
+    });
+    expect(mockRefreshUser).toHaveBeenCalledTimes(1);
+    expect(mockLogout).not.toHaveBeenCalled();
+  });
+
+  it('shows a wrong current password under its field, without a toast or a sign-out', async () => {
+    const user = userEvent.setup();
+    mockApi.changePassword.mockRejectedValueOnce(
+      new HttpError('Current password is incorrect', 400, 'current_password_incorrect')
+    );
+
+    render(<Profile />);
+
+    await user.type(screen.getByLabelText('Current Password'), 'OldPassword1!@#');
+    await user.type(screen.getByLabelText('New Password'), 'NewPassword1!@#');
+    await user.type(screen.getByLabelText('Confirm New Password'), 'NewPassword1!@#');
+
+    await user.click(screen.getByRole('button', { name: 'Update Password' }));
+
+    expect(await screen.findByText('Current password is incorrect')).toBeInTheDocument();
+    expect(mockToast).not.toHaveBeenCalled();
+    expect(mockRefreshUser).not.toHaveBeenCalled();
+    expect(mockLogout).not.toHaveBeenCalled();
   });
 
   it('shows error toast when password change API fails with Error', async () => {
