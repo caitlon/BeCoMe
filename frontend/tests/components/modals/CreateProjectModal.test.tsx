@@ -64,18 +64,27 @@ describe('CreateProjectModal', () => {
     });
   });
 
-  it('requires unit field to be filled', async () => {
+  // An empty unit on a 0-100 scale is what makes a project a Likert agreement project,
+  // so the form must let it through and send the empty string as it is.
+  it('creates a project with an empty unit and shows no unit error', async () => {
     const user = userEvent.setup();
+    mockCreateProject.mockResolvedValueOnce({ id: '1', name: 'Agreement' });
     render(<CreateProjectModal {...defaultProps} />);
 
-    // Fill name but leave unit empty
-    await user.type(getNameInput(), 'Test Project');
+    await user.type(getNameInput(), 'Agreement');
     await user.click(getSubmitButton());
 
-    // API should not be called without unit
     await waitFor(() => {
-      expect(mockCreateProject).not.toHaveBeenCalled();
+      expect(mockCreateProject).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'Agreement',
+          scale_min: 0,
+          scale_max: 100,
+          scale_unit: '',
+        })
+      );
     });
+    expect(screen.queryByText(/unit is required/i)).not.toBeInTheDocument();
   });
 
   it('shows validation error when max is not greater than min', async () => {

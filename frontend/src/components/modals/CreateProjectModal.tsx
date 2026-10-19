@@ -60,7 +60,6 @@ export function CreateProjectModal({
           scale_max: z.coerce.number(),
           scale_unit: z
             .string()
-            .min(1, t("create.validation.unitRequired"))
             .max(50, t("create.validation.unitMaxLength")),
         })
         .refine((data) => data.scale_max > data.scale_min, {

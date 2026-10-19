@@ -51,7 +51,8 @@
         "ratherAgree": "Rather agree = 75",
         "stronglyAgree": "Strongly agree = 100"
       },
-      "example": "Example: If you \"Rather agree\", you might enter (60, 75, 90) to express your position with some uncertainty."
+      "example": "Example: If you \"Rather agree\", you might enter (60, 75, 90) to express your position with some uncertainty.",
+      "verdict": "A project on the 0 to 100 scale with no unit also shows this verdict, as a decision and a recommendation, on its result screen."
     }
   },
   "results": {

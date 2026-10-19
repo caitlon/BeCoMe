@@ -20,6 +20,8 @@ import { cn } from "@/lib/utils";
 import { TriangleVisualization } from "./TriangleVisualization";
 import { OpinionLandscape } from "./OpinionLandscape";
 
+const LIKERT_POSITIONS = [0, 25, 50, 75, 100];
+
 export interface ResultsSectionProps {
   result: CalculationResult | null;
   project: ProjectWithRole;
@@ -38,6 +40,7 @@ export const ResultsSection = ({
   const { t } = useTranslation("projects");
   const { t: tFuzzy } = useTranslation();
   const showIndividualId = useId();
+  const likertHeadingId = useId();
 
   if (!result || opinions.length === 0) {
     return (
@@ -76,6 +79,17 @@ export const ResultsSection = ({
       progress: "[&>div]:bg-error",
     },
   }[agreementLevel];
+
+  // The five positions are translated here by their number, so the page follows the
+  // interface language. The server's English text is only the fallback for a value
+  // that is not one of the five.
+  const likertKnown = result.likert_value !== null && LIKERT_POSITIONS.includes(result.likert_value);
+  const likertDecision = likertKnown
+    ? t(`detail.likertVerdict.decision.${result.likert_value}`)
+    : result.likert_decision;
+  const likertRecommendation = likertKnown
+    ? t(`detail.likertVerdict.recommendation.${result.likert_value}`)
+    : result.likert_recommendation;
 
   return (
     <div className="space-y-6">
@@ -128,6 +142,17 @@ export const ResultsSection = ({
               </div>
             </div>
           </div>
+          {result.likert_value !== null && (
+            <section aria-labelledby={likertHeadingId} className="border-t mt-4 pt-4 text-center">
+              <h3 id={likertHeadingId} className="text-xs text-muted-foreground uppercase">
+                {t("detail.likertVerdict.title")}
+              </h3>
+              <p className="mt-1 text-lg font-medium">{likertDecision}</p>
+              {likertRecommendation && (
+                <p className="mt-1 text-sm text-muted-foreground">{likertRecommendation}</p>
+              )}
+            </section>
+          )}
         </CardContent>
       </Card>
 

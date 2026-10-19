@@ -103,6 +103,23 @@
       "moderate": "Moderate",
       "low": "Low"
     },
+    "likertVerdict": {
+      "title": "Agreement verdict",
+      "decision": {
+        "0": "Strongly disagree",
+        "25": "Rather disagree",
+        "50": "Neutral",
+        "75": "Rather agree",
+        "100": "Strongly agree"
+      },
+      "recommendation": {
+        "0": "Policy is not recommended and should be rejected",
+        "25": "Policy needs significant revision before consideration",
+        "50": "Policy requires further analysis and stakeholder input",
+        "75": "Policy is recommended with minor adjustments",
+        "100": "Policy is strongly recommended for implementation"
+      }
+    },
     "yourOpinion": "Your Opinion",
     "position": "Position",
     "positionPlaceholder": "e.g., Head of Department",
@@ -185,7 +202,6 @@
       "nameRequired": "Name is required",
       "nameMaxLength": "Name must be at most 255 characters",
       "descriptionMaxLength": "Description must be at most 1000 characters",
-      "unitRequired": "Unit is required",
       "unitMaxLength": "Unit must be at most 50 characters",
       "maxGreaterMin": "Max must be greater than min"
     }

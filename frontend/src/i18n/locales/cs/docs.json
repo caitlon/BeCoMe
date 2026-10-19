@@ -51,7 +51,8 @@
         "ratherAgree": "Spíše souhlasím = 75",
         "stronglyAgree": "Rozhodně souhlasím = 100"
       },
-      "example": "Příklad: Pokud \"Spíše souhlasíte\", můžete zadat (60, 75, 90) pro vyjádření své pozice s určitou nejistotou."
+      "example": "Příklad: Pokud \"Spíše souhlasíte\", můžete zadat (60, 75, 90) pro vyjádření své pozice s určitou nejistotou.",
+      "verdict": "Projekt se škálou 0 až 100 bez jednotky zobrazí tento verdikt, tedy rozhodnutí a doporučení, také na obrazovce s výsledky."
     }
   },
   "results": {
