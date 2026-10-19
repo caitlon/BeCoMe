@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { render, framerMotionMock } from '@tests/utils';
 import { Navbar } from '@/components/layout/Navbar';
 import { useToast } from '@/hooks/use-toast';
-import { CSRF_INVALID_CODE, ForbiddenError } from '@/lib/errors';
+import { CSRF_INVALID_CODE, ForbiddenError, TURNSTILE_REFUSED_CODE } from '@/lib/errors';
 
 // Use vi.hoisted for mock variables
 const { mockUser, mockLogout, mockPathname } = vi.hoisted(() => ({
@@ -412,6 +412,26 @@ describe('Navbar - Logout Outcome', () => {
         title: 'Sign-out failed',
         description:
           'Your session has changed, for example after signing in again in another tab. Reload the page to continue.',
+        variant: 'destructive',
+      });
+    });
+    expect(window.location.href).toBe('');
+  });
+
+  it('keeps the try-again message for an API refusal with any other code', async () => {
+    mockLogout.mockRejectedValueOnce(new ForbiddenError('Forbidden', TURNSTILE_REFUSED_CODE));
+    const user = userEvent.setup();
+    const { result } = renderHook(() => useToast());
+
+    render(<Navbar />);
+    await user.click(screen.getByText('John Doe'));
+    await user.click(screen.getByRole('menuitem', { name: /log out|sign out/i }));
+
+    await waitFor(() => {
+      expect(result.current.toasts[0]).toMatchObject({
+        title: 'Sign-out failed',
+        description:
+          'Sign-out did not go through. Your session may still be active. Please try again.',
         variant: 'destructive',
       });
     });
