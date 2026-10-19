@@ -491,7 +491,7 @@ class TestProjectQueryLogging:
 
 
 class TestRouteRefusalLogging:
-    """Route-level refusals are raised as HTTPException, so they log here or nowhere."""
+    """Route-level refusals are logged by the route, since the handler records only the type."""
 
     def test_invitation_rejection_tags_the_address(self):
         """

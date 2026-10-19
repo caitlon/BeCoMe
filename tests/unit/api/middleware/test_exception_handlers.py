@@ -3,19 +3,29 @@
 import json
 from unittest.mock import MagicMock, patch
 
+import pytest
 from fastapi import FastAPI, status
 
 from api.exceptions import (
+    AlreadyInvitedError,
     BeCoMeAPIError,
     CurrentPasswordIncorrectError,
     DisposableEmailDomainError,
     EmailNotVerifiedError,
+    ExampleProjectInvitationError,
     InvalidCredentialsError,
+    InvitationNotFoundError,
     NotFoundError,
+    PhotoContentMismatchError,
+    PhotoDimensionsTooLargeError,
+    PhotoTooLargeError,
+    PhotoTypeNotAllowedError,
     ProjectNotFoundError,
     ScaleExcludesOpinionsError,
     TurnstileVerificationError,
     UnresolvableEmailDomainError,
+    UserAlreadyMemberError,
+    UserNotFoundForInvitationError,
     ValidationError,
     ValuesOutOfRangeError,
 )
@@ -440,6 +450,124 @@ class TestMachineReadableErrorCodes:
 
         # THEN
         assert json.loads(absent.body) == json.loads(rejected.body)
+
+
+class TestInvitationAndPhotoErrorCodes:
+    """Each invitation and photo-upload refusal answers with its own stable code.
+
+    The SPA translates these by code, so a code names exactly one (status, detail) pair
+    and the sentence stays as it was for any client still matching on it.
+    """
+
+    @pytest.mark.parametrize(
+        ("exc", "expected_status", "detail", "code"),
+        [
+            (
+                UserNotFoundForInvitationError("No user found with email x@example.com"),
+                status.HTTP_404_NOT_FOUND,
+                "No user found with this email",
+                "invitee_not_found",
+            ),
+            (
+                AlreadyInvitedError("User already has a pending invitation"),
+                status.HTTP_409_CONFLICT,
+                "User already has a pending invitation",
+                "already_invited",
+            ),
+            (
+                UserAlreadyMemberError("User is already a member of this project"),
+                status.HTTP_409_CONFLICT,
+                "You are already a member of this project",
+                "already_member",
+            ),
+            (
+                ExampleProjectInvitationError("The example project cannot take invitations"),
+                status.HTTP_409_CONFLICT,
+                "The example project cannot take invitations",
+                "example_project_not_invitable",
+            ),
+            (
+                InvitationNotFoundError("Invitation not found"),
+                status.HTTP_404_NOT_FOUND,
+                "Invitation not found",
+                "invitation_not_found",
+            ),
+            (
+                PhotoTypeNotAllowedError("content type refused"),
+                status.HTTP_400_BAD_REQUEST,
+                "Invalid file type. Allowed: JPEG, PNG, GIF, WebP",
+                "photo_type_not_allowed",
+            ),
+            (
+                PhotoTooLargeError("file over the limit"),
+                status.HTTP_400_BAD_REQUEST,
+                "File too large. Maximum size is 5 MB",
+                "photo_too_large",
+            ),
+            (
+                PhotoContentMismatchError("magic bytes disagree"),
+                status.HTTP_400_BAD_REQUEST,
+                "File content does not match declared type",
+                "photo_content_mismatch",
+            ),
+            (
+                PhotoDimensionsTooLargeError("canvas over the limit"),
+                status.HTTP_400_BAD_REQUEST,
+                "Image dimensions are too large. Maximum is 4096x4096 pixels",
+                "photo_dimensions_too_large",
+            ),
+        ],
+    )
+    def test_refusal_answers_with_its_status_detail_and_code(
+        self, exc, expected_status, detail, code
+    ):
+        """
+        GIVEN an invitation or photo-upload refusal
+        WHEN the handler builds the response
+        THEN the body is exactly the fixed detail plus the refusal's own code
+        """
+        # GIVEN
+        request = MagicMock()
+
+        # WHEN
+        response = become_api_error_handler(request, exc)
+
+        # THEN
+        assert response.status_code == expected_status
+        assert json.loads(response.body) == {"detail": detail, "code": code}
+
+    def test_an_unknown_invitee_response_does_not_echo_the_address(self):
+        """
+        GIVEN the service message for an unknown invitee, which names the address
+        WHEN the handler builds the response
+        THEN the address appears nowhere in the body
+
+        Without a mapped detail the handler would fall back to the exception message.
+        """
+        # GIVEN
+        request = MagicMock()
+        exc = UserNotFoundForInvitationError("No user found with email stranger@example.com")
+
+        # WHEN
+        response = become_api_error_handler(request, exc)
+
+        # THEN
+        assert b"stranger@example.com" not in response.body
+
+    def test_a_pending_invitation_is_a_409_not_the_unmapped_422(self):
+        """
+        GIVEN AlreadyInvitedError, a ValidationError subclass
+        WHEN its status is looked up
+        THEN it is 409, not the 422 an unmapped ValidationError would get
+        """
+        # GIVEN
+        exc = AlreadyInvitedError("User already has a pending invitation")
+
+        # WHEN
+        status_code, _ = _get_status_and_detail(exc)
+
+        # THEN
+        assert status_code == status.HTTP_409_CONFLICT
 
 
 class TestRegisterExceptionHandlers:

@@ -2,7 +2,7 @@
 
 import uuid
 from io import BytesIO
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -210,6 +210,97 @@ class TestPhotoUpload:
         # THEN
         assert response.status_code == 400
         assert "too large" in response.json()["detail"]
+
+    def test_a_refused_type_has_a_code_and_is_logged(self, client_with_mock_storage):
+        """A content type outside the allowed set answers with its own code."""
+        # GIVEN
+        client, mock_storage = client_with_mock_storage
+        token = register_and_login(client, "photo@example.com")
+
+        # WHEN
+        with patch("api.routes.users.logger") as mock_logger:
+            response = client.post(
+                "/api/v1/users/me/photo",
+                headers=auth_header(token),
+                files={"file": ("doc.pdf", b"PDF content", "application/pdf")},
+            )
+
+        # THEN
+        assert response.status_code == 400
+        assert response.json() == {
+            "detail": "Invalid file type. Allowed: JPEG, PNG, GIF, WebP",
+            "code": "photo_type_not_allowed",
+        }
+        assert mock_logger.warning.call_args.kwargs["extra"]["reason"] == "content_type"
+        mock_storage.upload.assert_not_called()
+
+    def test_an_oversized_file_has_a_code_and_is_logged(self, client_with_mock_storage):
+        """A file over the byte cap answers with its own code."""
+        # GIVEN
+        client, mock_storage = client_with_mock_storage
+        token = register_and_login(client, "photo@example.com")
+        large_file = VALID_JPEG_BYTES[:11] + b"\x00" * (6 * 1024 * 1024)
+
+        # WHEN
+        with patch("api.routes.users.logger") as mock_logger:
+            response = client.post(
+                "/api/v1/users/me/photo",
+                headers=auth_header(token),
+                files={"file": ("large.jpg", large_file, "image/jpeg")},
+            )
+
+        # THEN
+        assert response.status_code == 400
+        assert response.json() == {
+            "detail": "File too large. Maximum size is 5 MB",
+            "code": "photo_too_large",
+        }
+        assert mock_logger.warning.call_args.kwargs["extra"]["reason"] == "too_large"
+        mock_storage.upload.assert_not_called()
+
+    def test_a_content_mismatch_has_a_code_and_is_logged(self, client_with_mock_storage):
+        """Bytes that are not the declared type answer with their own code."""
+        # GIVEN
+        client, mock_storage = client_with_mock_storage
+        token = register_and_login(client, "photo@example.com")
+
+        # WHEN
+        with patch("api.routes.users.logger") as mock_logger:
+            response = client.post(
+                "/api/v1/users/me/photo",
+                headers=auth_header(token),
+                files={"file": ("fake.jpg", INVALID_FILE_BYTES, "image/jpeg")},
+            )
+
+        # THEN
+        assert response.status_code == 400
+        assert response.json() == {
+            "detail": "File content does not match declared type",
+            "code": "photo_content_mismatch",
+        }
+        assert mock_logger.warning.call_args.kwargs["extra"]["reason"] == "content_mismatch"
+        mock_storage.upload.assert_not_called()
+
+    def test_an_oversized_canvas_has_a_code(self, client_with_mock_storage):
+        """A small file declaring a huge canvas answers with its own code."""
+        # GIVEN
+        client, mock_storage = client_with_mock_storage
+        token = register_and_login(client, "bomb@example.com")
+
+        # WHEN
+        response = client.post(
+            "/api/v1/users/me/photo",
+            headers=auth_header(token),
+            files={"file": ("huge.png", _image_bytes(5000, 5000, "PNG"), "image/png")},
+        )
+
+        # THEN
+        assert response.status_code == 400
+        assert response.json() == {
+            "detail": "Image dimensions are too large. Maximum is 4096x4096 pixels",
+            "code": "photo_dimensions_too_large",
+        }
+        mock_storage.upload.assert_not_called()
 
     def test_upload_photo_storage_unavailable(self, client_without_storage):
         """Upload when storage is not configured returns 503."""

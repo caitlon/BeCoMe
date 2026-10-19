@@ -202,7 +202,7 @@ widened with a `Domain` instead, and for what this does not cover.
 | GET | `/api/v1/users/me/export` | Export all personal data as JSON (GDPR Art. 20) |
 | PUT | `/api/v1/users/me` | Update profile: names and `assistant_objection` (GDPR Art. 21, see Opinions) |
 | PUT | `/api/v1/users/me/password` | Change password; a wrong `current_password` is a 400 with code `current_password_incorrect`, never a 401, which clients read as a lost session. A successful change signs out every session, this one included |
-| POST | `/api/v1/users/me/photo` | Upload photo (JPEG/PNG/GIF/WebP, max 5 MB and 4096x4096 px) |
+| POST | `/api/v1/users/me/photo` | Upload photo (JPEG/PNG/GIF/WebP, max 5 MB and 4096x4096 px); a refused file is a 400 with code `photo_type_not_allowed`, `photo_too_large`, `photo_content_mismatch` or `photo_dimensions_too_large` |
 | DELETE | `/api/v1/users/me/photo` | Delete photo |
 | GET | `/api/v1/users/{id}/photo` | Serve a profile photo from the private bucket (public) |
 | DELETE | `/api/v1/users/me` | Delete account, handling each owned project (GDPR Art. 17) |
@@ -247,7 +247,7 @@ returns `422`. Erasure also removes the profile photo blob from object storage.
 | GET | `/api/v1/projects/{id}/members` | List members |
 | DELETE | `/api/v1/projects/{id}/members/{user_id}` | Remove member (discards their opinion and recalculates) |
 | POST | `/api/v1/projects/{id}/transfer-ownership` | Transfer ownership to another member |
-| POST | `/api/v1/projects/{id}/invite` | Invite user |
+| POST | `/api/v1/projects/{id}/invite` | Invite user; refusals carry a code: 404 `invitee_not_found`, 409 `already_invited`, `already_member` or `example_project_not_invitable` |
 | GET | `/api/v1/projects/{id}/invitations` | List the project's pending invitations (project admin only) |
 
 The members list (`email`) and the opinions list (`user_email`) return an address only to the project admin and on the caller's own row; every other row has `null` in that field.
@@ -270,8 +270,8 @@ complete and carries no objection flag. The flag is also part of the GDPR export
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/api/v1/invitations` | List pending invitations |
-| POST | `/api/v1/invitations/{id}/accept` | Accept invitation |
-| POST | `/api/v1/invitations/{id}/decline` | Decline invitation |
+| POST | `/api/v1/invitations/{id}/accept` | Accept invitation; 404 `invitation_not_found` (missing and not yours look the same), 409 `already_member` or `example_project_not_invitable` |
+| POST | `/api/v1/invitations/{id}/decline` | Decline invitation; 404 `invitation_not_found` (missing and not yours look the same) |
 
 An invitation is not emailed. The invitee finds it in their list of pending invitations.
 

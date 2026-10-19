@@ -164,3 +164,21 @@ class UnresolvableEmailDomainError(ValidationError):
 # all, one Cloudflare rejected, or one minted for another form or another site.
 class TurnstileVerificationError(BeCoMeAPIError):
     """Raised when a request carries no Turnstile token, or none Cloudflare vouches for."""
+
+
+# Profile-photo upload refusals (api/routes/users.py). Each one is a distinct 400 with
+# its own code, so the SPA can say which check refused the file.
+class PhotoTypeNotAllowedError(BeCoMeAPIError):
+    """Raised when an uploaded photo's declared content type is not an allowed image type."""
+
+
+class PhotoTooLargeError(BeCoMeAPIError):
+    """Raised when an uploaded photo is larger than the byte limit."""
+
+
+class PhotoContentMismatchError(BeCoMeAPIError):
+    """Raised when an uploaded photo's bytes are not the image type it declared."""
+
+
+class PhotoDimensionsTooLargeError(BeCoMeAPIError):
+    """Raised when an uploaded photo declares a pixel canvas over the limit."""

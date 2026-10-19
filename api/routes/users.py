@@ -19,7 +19,14 @@ from api.dependencies import (
     get_storage_service,
     get_user_service,
 )
-from api.exceptions import AccountHasOwnedProjectsError, InvalidProjectDispositionError
+from api.exceptions import (
+    AccountHasOwnedProjectsError,
+    InvalidProjectDispositionError,
+    PhotoContentMismatchError,
+    PhotoDimensionsTooLargeError,
+    PhotoTooLargeError,
+    PhotoTypeNotAllowedError,
+)
 from api.middleware.rate_limit import (
     LIMIT_PHOTO,
     LIMIT_PWD_RESET,
@@ -52,7 +59,7 @@ from api.utils.upload import UploadTooLarge, read_within_limit
 # Password change, account deletion, and the GDPR export are logged by
 # api/auth/logging.py; the storage layer logs its own s3_* events and the dimension
 # rejection. What is left for this router is the profile write and the photo refusals,
-# which are raised as HTTPException and so never reach the app's exception handlers.
+# which it logs itself before raising, since the exception handler records only the type.
 logger = logging.getLogger("api.route.users")
 
 router = APIRouter(prefix="/api/v1/users", tags=["users"])
@@ -345,10 +352,7 @@ async def upload_photo(
     content_type = file.content_type
     if content_type is None or content_type not in validation.ALLOWED_CONTENT_TYPES:
         _photo_upload_rejected("content_type", current_user.id, content_type=content_type)
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid file type. Allowed: JPEG, PNG, GIF, WebP",
-        )
+        raise PhotoTypeNotAllowedError(f"Content type {content_type} is not allowed")
 
     # Read the upload in bounded chunks so an over-large file never fully buffers.
     try:
@@ -357,26 +361,17 @@ async def upload_photo(
         _photo_upload_rejected(
             "too_large", current_user.id, limit_bytes=validation.MAX_FILE_SIZE_BYTES
         )
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="File too large. Maximum size is 5 MB",
-        ) from None
+        raise PhotoTooLargeError("File exceeds the size limit") from None
 
     # Validate actual file content matches claimed type (magic bytes check)
     if not validation.validate_image_content(content, content_type):
         _photo_upload_rejected("content_mismatch", current_user.id, content_type=content_type)
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="File content does not match declared type",
-        )
+        raise PhotoContentMismatchError("File content does not match declared type")
 
     # The byte cap above says nothing about the pixel canvas: a small, highly
     # compressible file can declare a gigapixel image whose decode would exhaust memory.
     if not validation.validate_image_dimensions(content):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Image dimensions are too large. Maximum is 4096x4096 pixels",
-        )
+        raise PhotoDimensionsTooLargeError("Image dimensions exceed the limit")
 
     # Delete the previous photo if any (ignore errors so the upload can proceed)
     if current_user.photo_url:
