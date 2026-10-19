@@ -76,6 +76,8 @@ result screen shows an **Agreement verdict** block with the position in words, s
 agree", and one recommendation sentence for it. The four figures and the chart are the same as in
 any other project.
 
+![The result card of an agreement project: a best compromise of 75.00 and, under it, the verdict "Rather agree" with its recommendation](img/project-likert-verdict.png)
+
 A blank unit on a 0 to 100 scale is what switches this on. If the quantity you ask about is
 measured from 0 to 100, give it a unit such as `%`, and the verdict does not appear.
 
