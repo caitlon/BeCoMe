@@ -224,6 +224,7 @@ def get_result(
         num_experts=result.num_experts,
         likert_value=verdict.value if verdict else None,
         likert_decision=verdict.decision if verdict else None,
+        likert_recommendation=verdict.recommendation if verdict else None,
         calculated_at=result.calculated_at,
     )
 
