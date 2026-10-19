@@ -601,7 +601,7 @@ class ApiClient {
 
   async updateProject(id: string, data: UpdateProjectInput): Promise<Project> {
     return this.request<Project>(`/projects/${id}`, {
-      method: 'PUT',
+      method: 'PATCH',
       body: JSON.stringify(data),
     });
   }

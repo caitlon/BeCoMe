@@ -1132,7 +1132,7 @@ describe('ApiClient', () => {
       expect(result).toEqual(newProject);
     });
 
-    it('updateProject sends PUT to /projects/:id', async () => {
+    it('updateProject sends PATCH to /projects/:id', async () => {
       const updated = { id: '1', name: 'Updated Project' };
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -1145,7 +1145,7 @@ describe('ApiClient', () => {
       expect(mockFetch).toHaveBeenCalledWith(
         expect.stringContaining('/projects/1'),
         expect.objectContaining({
-          method: 'PUT',
+          method: 'PATCH',
           body: JSON.stringify({ name: 'Updated Project' }),
         })
       );
