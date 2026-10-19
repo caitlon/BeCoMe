@@ -251,12 +251,19 @@ const Projects = () => {
                               {project.role === 'admin' && (
                                 <>
                                   <DropdownMenuItem
-                                    onClick={() => {
+                                    disabled={project.is_example}
+                                    onSelect={() => {
                                       setSelectedProject(project);
                                       setInviteModalOpen(true);
                                     }}
+                                    className={project.is_example ? "flex-col items-start gap-0.5" : undefined}
                                   >
                                     {t("dropdown.inviteExpert")}
+                                    {project.is_example && (
+                                      <span className="max-w-56 text-xs text-muted-foreground">
+                                        {t("detail.inviteDisabledOnExample")}
+                                      </span>
+                                    )}
                                   </DropdownMenuItem>
                                   <DropdownMenuSeparator />
                                   <DropdownMenuItem
