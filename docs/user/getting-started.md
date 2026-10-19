@@ -35,12 +35,13 @@ possibly be, and every opinion has to fit inside it.
 
 ![The new project dialog, with the name, description and scale fields](img/new-project.png)
 
-!!! warning "The agreement mode is not usable yet"
+!!! note "Leave the unit blank for an agreement question"
 
-    The method has a second mode for "should we" questions, on a scale of 0 to 100 with no unit.
-    The dialog above requires a unit, so you cannot create a project like that here at all. One
-    made another way would still show nothing, because the interface never displays the verdict.
-    [Reading the result](reading-the-result.md) says where it stands.
+    The method has a second mode for "should we" questions. To use it, set the scale to 0 to 100
+    and leave the unit blank. The result then also shows the group's position in words, and a
+    recommendation. A quantity measured from 0 to 100 must carry its unit, such as `%`, or the
+    project is read as an agreement question. [Reading an agreement
+    result](reading-the-result.md#reading-an-agreement-result) shows what you get.
 
 ## Invite the experts
 

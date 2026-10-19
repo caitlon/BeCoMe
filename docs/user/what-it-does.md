@@ -42,8 +42,8 @@ adopt. Any question where "about forty, but it depends" is a more honest answer 
 
 It fits badly when there is a right answer someone could look up, when one person's judgment
 should win outright, or when the question is a choice between options rather than a quantity. For
-agreement questions the method has a mode of its own, which the application does not offer yet:
-[running a decision](running-a-decision.md) says what works today.
+agreement questions the method has a mode of its own, which reads the result as a position from
+strongly disagree to strongly agree: [running a decision](running-a-decision.md) says how to use it.
 
 ## Where it comes from
 

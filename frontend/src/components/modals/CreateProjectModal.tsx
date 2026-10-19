@@ -194,11 +194,18 @@ export function CreateProjectModal({
                   {...register("scale_unit")}
                   className={cn(errors.scale_unit && "border-destructive")}
                   aria-invalid={!!errors.scale_unit}
-                  aria-describedby={errors.scale_unit ? `${scaleId}-unit-error` : undefined}
+                  aria-describedby={
+                    errors.scale_unit
+                      ? `${scaleId}-unit-error ${scaleId}-unit-hint`
+                      : `${scaleId}-unit-hint`
+                  }
                 />
                 <span className="text-xs text-muted-foreground mt-1 block" aria-hidden="true">
                   {t("create.scaleUnit")}
                 </span>
+                <p id={`${scaleId}-unit-hint`} className="text-xs text-muted-foreground mt-1">
+                  {t("create.scaleUnitHint")}
+                </p>
                 {errors.scale_unit && (
                   <p id={`${scaleId}-unit-error`} className="text-xs text-destructive mt-1">
                     {errors.scale_unit.message}

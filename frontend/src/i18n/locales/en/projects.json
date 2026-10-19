@@ -192,6 +192,7 @@
     "scaleMinPlaceholder": "Min",
     "scaleMaxPlaceholder": "Max",
     "scaleUnitPlaceholder": "e.g., CZK, %",
+    "scaleUnitHint": "Leave the unit empty on a 0 to 100 scale to make this an agreement (Likert) project.",
     "cancel": "Cancel",
     "create": "Create Project",
     "creating": "Creating...",
