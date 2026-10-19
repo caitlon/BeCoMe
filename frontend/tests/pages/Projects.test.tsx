@@ -562,12 +562,16 @@ describe('Projects', () => {
 
   describe('Dropdown Menu', () => {
     /** Render a project with given role, wait for load, and open its dropdown. */
-    async function openProjectDropdown(role: 'admin' | 'expert' = 'admin') {
+    async function openProjectDropdown(
+      role: 'admin' | 'expert' = 'admin',
+      isExample = false
+    ) {
       const user = userEvent.setup();
       const project = createProjectWithRole({
         id: 'proj-dd',
         name: 'Dropdown Project',
         role,
+        is_example: isExample,
       });
       mockApi.getProjects.mockResolvedValue([project]);
 
@@ -630,6 +634,29 @@ describe('Projects', () => {
         expect(screen.getByRole('dialog')).toBeInTheDocument();
         expect(screen.getByText(/invite an expert to/i)).toBeInTheDocument();
       });
+    });
+
+    it('disables Invite Expert on the example project and says why', async () => {
+      const user = await openProjectDropdown('admin', true);
+
+      const inviteItem = screen.getByRole('menuitem', { name: /invite expert/i });
+      expect(inviteItem).toHaveAttribute('aria-disabled', 'true');
+      expect(inviteItem).toHaveTextContent(/example project already has its thirteen experts/i);
+
+      await user.click(inviteItem);
+
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(screen.getByRole('menuitem', { name: /delete project/i })).not.toHaveAttribute(
+        'aria-disabled'
+      );
+    });
+
+    it('keeps Invite Expert enabled on a regular admin project', async () => {
+      await openProjectDropdown('admin');
+
+      const inviteItem = screen.getByRole('menuitem', { name: /invite expert/i });
+      expect(inviteItem).not.toHaveAttribute('aria-disabled');
+      expect(inviteItem).not.toHaveTextContent(/example project/i);
     });
 
     it('clicking Delete opens DeleteConfirmModal', async () => {
