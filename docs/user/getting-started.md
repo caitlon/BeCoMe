@@ -33,7 +33,7 @@ minimum, the maximum, and the unit: `0` to `100` with unit `%`, or `0` to `200` 
 `CZK billions`. The scale is not a guess at the answer. It is the boundary of what an answer could
 possibly be, and every opinion has to fit inside it.
 
-![The new project dialog, with the name, description and scale fields](img/new-project.png)
+![The new project dialog, with the name, description and scale fields, and the hint under the unit](img/new-project.png)
 
 !!! note "Leave the unit blank for an agreement question"
 
