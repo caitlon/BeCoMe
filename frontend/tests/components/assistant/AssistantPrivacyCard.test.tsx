@@ -144,7 +144,7 @@ describe('AssistantPrivacyCard', () => {
 
   it('shows the server message when the refusal carries one', async () => {
     const user = userEvent.setup();
-    mockUpdateCurrentUser.mockRejectedValueOnce(new HttpError('Too slow', 500));
+    mockUpdateCurrentUser.mockRejectedValueOnce(new HttpError('Too slow', 409));
     renderCard(createUser());
 
     await user.click(screen.getByRole('checkbox', { name: LABEL }));
@@ -172,22 +172,32 @@ describe('AssistantPrivacyCard', () => {
     });
   });
 
-  it('disables the control while the request is pending', async () => {
+  it('ignores a second toggle while the first save is pending and keeps focus on the control', async () => {
     const user = userEvent.setup();
     let resolveSave: (value: User) => void = () => {};
     mockUpdateCurrentUser.mockImplementationOnce(
       () => new Promise<User>((resolve) => { resolveSave = resolve; })
     );
     renderCard(createUser());
+    const checkbox = screen.getByRole('checkbox', { name: LABEL });
 
-    await user.click(screen.getByRole('checkbox', { name: LABEL }));
+    checkbox.focus();
+    await user.keyboard(' ');
 
     await waitFor(() => {
-      expect(screen.getByRole('checkbox', { name: LABEL })).toBeDisabled();
+      expect(checkbox).toHaveAttribute('aria-busy', 'true');
     });
+    await user.click(checkbox);
+    await user.keyboard(' ');
+    expect(mockUpdateCurrentUser).toHaveBeenCalledTimes(1);
+    expect(checkbox).toHaveFocus();
+    expect(checkbox).not.toBeChecked();
+
     resolveSave(createUser({ assistant_objection: true }));
     await waitFor(() => {
-      expect(screen.getByRole('checkbox', { name: LABEL })).toBeEnabled();
+      expect(checkbox).toHaveAttribute('aria-busy', 'false');
     });
+    expect(checkbox).toBeChecked();
+    expect(checkbox).toHaveFocus();
   });
 });

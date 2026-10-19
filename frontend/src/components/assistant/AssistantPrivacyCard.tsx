@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -25,10 +25,17 @@ export function AssistantPrivacyCard() {
   const { toast } = useToast();
   const id = useId();
   const [isSaving, setIsSaving] = useState(false);
+  // Read synchronously, so a second event in the same tick is ignored too.
+  const savingRef = useRef(false);
 
   if (!user) return null;
 
+  // The control is not disabled while saving: a disabled button drops focus to
+  // <body>, which strands a keyboard user. It is controlled by the saved value,
+  // so a click during a save changes nothing on screen and is ignored here.
   const handleToggle = async (next: boolean) => {
+    if (savingRef.current) return;
+    savingRef.current = true;
     setIsSaving(true);
     try {
       // The response is the updated user: hand it to the context directly.
@@ -46,6 +53,7 @@ export function AssistantPrivacyCard() {
         variant: "destructive",
       });
     } finally {
+      savingRef.current = false;
       setIsSaving(false);
     }
   };
@@ -62,7 +70,7 @@ export function AssistantPrivacyCard() {
             className="mt-0.5"
             checked={user.assistant_objection}
             onCheckedChange={(checked) => handleToggle(checked === true)}
-            disabled={isSaving}
+            aria-busy={isSaving}
             aria-describedby={`${id}-description`}
           />
           <Label htmlFor={id} className="cursor-pointer leading-snug">

@@ -8,9 +8,9 @@ import { AssistantUIProvider, useAssistantUI } from "@/contexts/AssistantUIConte
  * statically replaces `import.meta.env.VITE_ASSISTANT_ENABLED` with a
  * literal at build time, so when it is not exactly "true" every branch below
  * is unreachable and `vite build`'s dead-code elimination drops the dynamic
- * `import()` calls together with it -- neither the AssistantRoot chunk nor
- * the triggers chunk (buttons, assistant.json content, every
- * /api/v1/assistant/* path) reaches `dist/`. That only holds for
+ * `import()` calls together with it -- none of the AssistantRoot chunk, the
+ * triggers chunk (buttons, assistant.json content, every /api/v1/assistant/*
+ * path) and the profile privacy card chunk reaches `dist/`. That only holds for
  * `vite build`; `vite dev` serves unbundled ESM and never tree-shakes. The
  * real check is a production build plus a grep of `dist/assets` for the
  * chunk names.

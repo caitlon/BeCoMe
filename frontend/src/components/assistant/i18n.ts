@@ -5,11 +5,11 @@ import csAssistant from "@/i18n/locales/cs/assistant.json";
 /**
  * Registers the assistant namespace at runtime, outside the static `resources`
  * map in i18n/index.ts, so a build without the feature carries none of its
- * copy. Both of the feature's lazy chunks (AssistantRoot.tsx for the panel,
- * triggers.tsx for the buttons) import this module; in a build they share one
- * i18n chunk that is evaluated once. The `hasResourceBundle` guards make a
- * repeat call a no-op, which is what tests, which import the module many
- * times, need. The cost is in dev HMR: an edited assistant.json is not
+ * copy. All of the feature's lazy chunks (AssistantRoot.tsx for the panel,
+ * triggers.tsx for the buttons, AssistantPrivacyCard.tsx for the profile card)
+ * import this module; in a build they share one i18n chunk that is evaluated
+ * once. The `hasResourceBundle` guards make a repeat call a no-op, which is
+ * what tests, which import the module many times, need. The cost is in dev HMR: an edited assistant.json is not
  * re-applied until a full reload.
  */
 export function registerAssistantI18n(): void {

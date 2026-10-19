@@ -152,8 +152,6 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
     }
   }, [queryClient]);
 
-  const setCurrentUser = useCallback((next: User) => setUser(next), []);
-
   const value = useMemo(() => ({
     user,
     status,
@@ -163,8 +161,8 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
     login,
     logout,
     refreshUser,
-    setCurrentUser,
-  }), [user, status, login, logout, refreshUser, setCurrentUser]);
+    setCurrentUser: setUser,
+  }), [user, status, login, logout, refreshUser]);
 
   return (
     <AuthContext.Provider value={value}>
