@@ -28,7 +28,8 @@
   "card": {
     "noDescription": "No description",
     "scale": "Scale",
-    "experts": "experts",
+    "expertCount_one": "{{count}} expert",
+    "expertCount_other": "{{count}} experts",
     "exampleBadge": "Example"
   },
   "roles": {

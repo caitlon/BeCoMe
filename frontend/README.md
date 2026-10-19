@@ -117,6 +117,12 @@ The interface is in English (`en`) and Czech (`cs`). The strings live in
 Both locales must carry the same keys. `tests/i18n/key-parity.test.ts` compares the key set of
 every namespace, and the set of namespaces itself.
 
+A string that depends on a count uses i18next plural suffixes: `key_one`, `key_other` and so on,
+called with `t("key", { count })`. English carries `_one` and `_other`, Czech `_one`, `_few`,
+`_many` and `_other`, which are the categories `Intl.PluralRules` reports for each language. The
+parity test folds the suffixes into one key before it compares the locales, and checks that every
+group has exactly the categories of its language.
+
 The language is taken from `localStorage` under the key `become-language`, then from the
 browser's language list, and falls back to English. A choice made with the language switcher
 is stored under the same key. Only `en` and `cs` are supported, and a regional tag such as
