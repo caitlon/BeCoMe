@@ -19,6 +19,7 @@ import { api } from "@/lib/api";
 import { describeError } from "@/lib/errorMessages";
 import { isRateLimited, isTurnstileRefusal } from "@/lib/errors";
 import { isTurnstileRequired } from "@/lib/turnstile";
+import { buildEmailSchema, visibleEmailError } from "@/lib/validation";
 
 type ForgotPasswordFormData = {
   email: string;
@@ -40,7 +41,7 @@ const ForgotPassword = () => {
   const schema = useMemo(
     () =>
       z.object({
-        email: z.email(t("validation.emailInvalid")),
+        email: buildEmailSchema(t),
       }),
     [t]
   );
@@ -48,7 +49,7 @@ const ForgotPassword = () => {
   const {
     register,
     handleSubmit,
-    formState: { errors },
+    formState: { errors, isSubmitted },
   } = useForm<ForgotPasswordFormData>({
     resolver: zodResolver(schema),
     mode: "onTouched",
@@ -119,7 +120,7 @@ const ForgotPassword = () => {
           type="email"
           autoComplete="email"
           placeholder={t("forgotPassword.emailPlaceholder")}
-          error={errors.email}
+          error={visibleEmailError(errors.email, isSubmitted)}
           {...register("email")}
         />
 

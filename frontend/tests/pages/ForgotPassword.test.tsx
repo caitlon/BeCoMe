@@ -91,6 +91,31 @@ describe('ForgotPassword', () => {
     expect(getEmailInput()).toHaveAttribute('autocomplete', 'email');
   });
 
+  it('shows no email error when the empty field is left before any submit attempt', async () => {
+    const user = userEvent.setup();
+    render(<ForgotPassword />);
+
+    await user.click(getEmailInput());
+    await user.tab();
+    await act(async () => {});
+
+    expect(screen.queryByText(/invalid.*email/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/email.*required/i)).not.toBeInTheDocument();
+    expect(getEmailInput()).not.toHaveAttribute('aria-invalid', 'true');
+  });
+
+  it('asks for the email when the form is submitted with it empty', async () => {
+    const user = userEvent.setup();
+    render(<ForgotPassword />);
+
+    await user.click(getSubmitButton());
+
+    expect(await screen.findByText('Email is required')).toBeInTheDocument();
+    expect(screen.queryByText(/invalid.*email/i)).not.toBeInTheDocument();
+    expect(getEmailInput()).toHaveAttribute('aria-invalid', 'true');
+    expect(mockForgotPassword).not.toHaveBeenCalled();
+  });
+
   it('shows a validation error for an invalid email', async () => {
     const user = userEvent.setup();
     render(<ForgotPassword />);

@@ -15,6 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { FormField, SubmitButton } from "@/components/forms";
 import { api } from "@/lib/api";
+import { buildEmailSchema, visibleEmailError } from "@/lib/validation";
 import { useToast } from "@/hooks/use-toast";
 
 type InviteFormData = {
@@ -43,7 +44,11 @@ export function InviteExpertModal({
   const inviteSchema = useMemo(
     () =>
       z.object({
-        email: z.email(t("invite.validation.emailInvalid")),
+        email: buildEmailSchema(
+          t,
+          "invite.validation.emailInvalid",
+          "invite.validation.emailRequired"
+        ),
       }),
     [t]
   );
@@ -52,7 +57,7 @@ export function InviteExpertModal({
     register,
     handleSubmit,
     reset,
-    formState: { errors },
+    formState: { errors, isSubmitted },
   } = useForm<InviteFormData>({
     resolver: zodResolver(inviteSchema),
     mode: "onTouched",
@@ -142,7 +147,7 @@ export function InviteExpertModal({
             label={`${t("invite.email")} *`}
             type="email"
             placeholder={t("invite.emailPlaceholder")}
-            error={errors.email}
+            error={visibleEmailError(errors.email, isSubmitted)}
             {...register("email")}
           />
 
