@@ -22,6 +22,7 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/lib/api";
 import { isCurrentPasswordIncorrect } from "@/lib/errors";
+import { describeError } from "@/lib/errorMessages";
 import { downloadJson } from "@/lib/download";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
@@ -149,7 +150,7 @@ const Profile = () => {
     } catch (error) {
       toast({
         title: t("toast.error"),
-        description: error instanceof Error ? error.message : t("toast.photoFailed"),
+        description: describeError(error, tCommon, t("toast.photoFailed")),
         variant: "destructive",
       });
     } finally {
@@ -191,7 +192,7 @@ const Profile = () => {
       toast({
         title: t("toast.error"),
         description:
-          error instanceof Error ? error.message : t("toast.updateFailed"),
+          describeError(error, tCommon, t("toast.updateFailed")),
         variant: "destructive",
       });
     } finally {
@@ -225,7 +226,7 @@ const Profile = () => {
       toast({
         title: t("toast.error"),
         description:
-          error instanceof Error ? error.message : t("toast.passwordFailed"),
+          describeError(error, tCommon, t("toast.passwordFailed")),
         variant: "destructive",
       });
     } finally {
@@ -244,7 +245,7 @@ const Profile = () => {
       toast({
         title: t("toast.error"),
         description:
-          error instanceof Error ? error.message : t("dataExport.error"),
+          describeError(error, tCommon, t("dataExport.error")),
         variant: "destructive",
       });
     } finally {

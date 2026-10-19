@@ -45,6 +45,7 @@ import {
   useOpinionForm,
 } from "@/components/project";
 import { api, HttpError } from "@/lib/api";
+import { describeError } from "@/lib/errorMessages";
 import { queryKeys } from "@/lib/queryKeys";
 import { Member, ProjectInvitation } from "@/types/api";
 import { useAuth } from "@/contexts/AuthContext";
@@ -176,7 +177,7 @@ const ProjectDetail = () => {
     onError: (error) => {
       toast({
         title: t("toast.error"),
-        description: error instanceof Error ? error.message : t("toast.saveFailed"),
+        description: describeError(error, tCommon, t("toast.saveFailed")),
         variant: "destructive",
       });
     },

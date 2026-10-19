@@ -15,6 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { FormField, SubmitButton } from "@/components/forms";
 import { api } from "@/lib/api";
+import { describeError } from "@/lib/errorMessages";
 import { buildEmailSchema, visibleEmailError } from "@/lib/validation";
 import { useToast } from "@/hooks/use-toast";
 
@@ -36,6 +37,7 @@ export function InviteExpertModal({
   projectName,
 }: InviteExpertModalProps) {
   const { t } = useTranslation("projects");
+  const { t: tCommon } = useTranslation();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
@@ -84,7 +86,7 @@ export function InviteExpertModal({
       toast({
         title: t("invite.errorTitle"),
         description:
-          error instanceof Error ? error.message : t("invite.errorMessage"),
+          describeError(error, tCommon, t("invite.errorMessage")),
         variant: "destructive",
       });
     } finally {

@@ -26,6 +26,7 @@ import { api } from "@/lib/api";
 import { queryKeys } from "@/lib/queryKeys";
 import { ProjectWithRole } from "@/types/api";
 import { isUnauthorized } from "@/lib/errors";
+import { describeError } from "@/lib/errorMessages";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { formatDate } from "@/lib/formatDate";
@@ -99,7 +100,7 @@ const Projects = () => {
       if (isUnauthorized(error)) return;
       toast({
         title: t("toast.error"),
-        description: error instanceof Error ? error.message : t("toast.acceptFailed"),
+        description: describeError(error, tCommon, t("toast.acceptFailed")),
         variant: "destructive",
       });
     },
@@ -115,7 +116,7 @@ const Projects = () => {
       if (isUnauthorized(error)) return;
       toast({
         title: t("toast.error"),
-        description: error instanceof Error ? error.message : t("toast.declineFailed"),
+        description: describeError(error, tCommon, t("toast.declineFailed")),
         variant: "destructive",
       });
     },
@@ -133,7 +134,7 @@ const Projects = () => {
       if (isUnauthorized(error)) return;
       toast({
         title: t("toast.error"),
-        description: error instanceof Error ? error.message : t("toast.deleteFailed"),
+        description: describeError(error, tCommon, t("toast.deleteFailed")),
         variant: "destructive",
       });
     },

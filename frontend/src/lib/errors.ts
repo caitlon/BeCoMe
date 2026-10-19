@@ -27,6 +27,36 @@ export const TURNSTILE_REFUSED_CODE = 'turnstile_refused';
  */
 export const CURRENT_PASSWORD_INCORRECT_CODE = 'current_password_incorrect'; // pragma: allowlist secret
 
+/** The invitation names an email that no account uses. */
+export const INVITEE_NOT_FOUND_CODE = 'invitee_not_found';
+
+/** The invitee already has a pending invitation to this project. */
+export const ALREADY_INVITED_CODE = 'already_invited';
+
+/** The invitee is already a member of this project. */
+export const ALREADY_MEMBER_CODE = 'already_member';
+
+/** The shared example project does not take invitations. */
+export const EXAMPLE_PROJECT_NOT_INVITABLE_CODE = 'example_project_not_invitable';
+
+/** The invitation being accepted or declined no longer exists. */
+export const INVITATION_NOT_FOUND_CODE = 'invitation_not_found';
+
+/** The uploaded photo is not a JPEG, PNG, GIF or WebP file. */
+export const PHOTO_TYPE_NOT_ALLOWED_CODE = 'photo_type_not_allowed';
+
+/** The uploaded photo is over the size limit. */
+export const PHOTO_TOO_LARGE_CODE = 'photo_too_large';
+
+/** The uploaded photo's content does not match the type it declared. */
+export const PHOTO_CONTENT_MISMATCH_CODE = 'photo_content_mismatch';
+
+/** The uploaded photo could not be decoded as an image. */
+export const PHOTO_UNREADABLE_CODE = 'photo_unreadable';
+
+/** The uploaded photo has more pixels than the API accepts. */
+export const PHOTO_DIMENSIONS_TOO_LARGE_CODE = 'photo_dimensions_too_large';
+
 /** A fetch() call itself failed: offline, DNS failure, CORS, aborted, etc. */
 export class NetworkError extends Error {
   readonly kind = 'network' as const;
