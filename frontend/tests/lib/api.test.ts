@@ -773,6 +773,22 @@ describe('ApiClient', () => {
 
       await expect(api.logout()).rejects.toThrow('CSRF token missing or invalid');
     });
+
+    it('keeps the csrf_invalid code on a refused request', async () => {
+      // The SPA translates this refusal by code; the English detail is for logs.
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 403,
+        json: () =>
+          Promise.resolve({ detail: 'CSRF token missing or invalid', code: 'csrf_invalid' }),
+      });
+
+      const { ForbiddenError } = await import('@/lib/errors');
+      const error = await api.logout().catch((err: unknown) => err);
+
+      expect(error).toBeInstanceOf(ForbiddenError);
+      expect(error).toMatchObject({ status: 403, code: 'csrf_invalid' });
+    });
   });
 
   // These four endpoints are the only ones a Turnstile widget guards

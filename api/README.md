@@ -171,7 +171,8 @@ for why each branch behaves as it does.
 `/api/v1/auth`) plus a readable `csrf_token` cookie. The response body carries the same tokens,
 so programmatic clients can keep using the `Authorization: Bearer` header.
 A cookie-authenticated mutating request (POST/PUT/PATCH/DELETE) must send that value back
-in an `X-CSRF-Token` header. Bearer-header requests are exempt. `/auth/refresh` reads the
+in an `X-CSRF-Token` header; a missing or wrong value is a 403 with code `csrf_invalid`.
+Bearer-header requests are exempt. `/auth/refresh` reads the
 refresh token from the cookie or the body, and logout revokes the session and clears the
 cookies.
 

@@ -13,6 +13,7 @@ import {
   PHOTO_CONTENT_MISMATCH_CODE,
   PHOTO_UNREADABLE_CODE,
   PHOTO_DIMENSIONS_TOO_LARGE_CODE,
+  CSRF_INVALID_CODE,
 } from '@/lib/errors';
 
 /**
@@ -31,6 +32,7 @@ const REFUSAL_MESSAGE_KEYS: Record<string, string> = {
   [PHOTO_CONTENT_MISMATCH_CODE]: 'errors.photoContentMismatch',
   [PHOTO_UNREADABLE_CODE]: 'errors.photoUnreadable',
   [PHOTO_DIMENSIONS_TOO_LARGE_CODE]: 'errors.photoDimensionsTooLarge',
+  [CSRF_INVALID_CODE]: 'errors.sessionChanged',
 };
 
 /**

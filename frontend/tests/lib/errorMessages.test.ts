@@ -8,6 +8,7 @@ import {
   ForbiddenError,
   HttpError,
   TURNSTILE_REFUSED_CODE,
+  CSRF_INVALID_CODE,
   INVITEE_NOT_FOUND_CODE,
   ALREADY_INVITED_CODE,
   ALREADY_MEMBER_CODE,
@@ -88,6 +89,7 @@ describe('describeError', () => {
     [PHOTO_CONTENT_MISMATCH_CODE, 400, 'errors.photoContentMismatch'],
     [PHOTO_UNREADABLE_CODE, 400, 'errors.photoUnreadable'],
     [PHOTO_DIMENSIONS_TOO_LARGE_CODE, 400, 'errors.photoDimensionsTooLarge'],
+    [CSRF_INVALID_CODE, 403, 'errors.sessionChanged'],
   ])('maps the %s code (status %s) to the %s key, not the server sentence', (code, status, key) => {
     expect(
       describeError(new HttpError('English server detail', status, code), t, 'fallback')
@@ -106,6 +108,7 @@ describe('describeError', () => {
       PHOTO_CONTENT_MISMATCH_CODE,
       PHOTO_UNREADABLE_CODE,
       PHOTO_DIMENSIONS_TOO_LARGE_CODE,
+      CSRF_INVALID_CODE,
     ]).toEqual([
       'invitee_not_found',
       'already_invited',
@@ -117,6 +120,7 @@ describe('describeError', () => {
       'photo_content_mismatch',
       'photo_unreadable',
       'photo_dimensions_too_large',
+      'csrf_invalid',
     ]);
   });
 

@@ -314,6 +314,12 @@ check skips bearer-token clients, which carry no session cookie, and every path 
 is exempt by default. A stale cookie left by a revoked session can never block a fresh
 login. Logout stays CSRF-protected.
 
+A refused request gets a 403 with `detail` "CSRF token missing or invalid" and the stable
+code `csrf_invalid`, the same for both failure reasons. The SPA branches on the code to ask
+for a page reload. The usual cause is a sign-in in another tab: the first tab still holds the
+token of the session it replaced. The client does not retry on its own, since the other tab may
+have signed in as a different user.
+
 Reading the `sid` deliberately skips expiry, revocation, and the per-user cutoff
 (`session_id_from_access_token`). It still verifies the signature, but the rest is the
 authentication layer's job, and checking it here would put three Redis round trips in front

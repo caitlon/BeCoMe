@@ -121,6 +121,13 @@ PHOTO_CONTENT_MISMATCH_CODE = "photo_content_mismatch"
 PHOTO_UNREADABLE_CODE = "photo_unreadable"
 PHOTO_DIMENSIONS_TOO_LARGE_CODE = "photo_dimensions_too_large"
 
+# The machine-readable half of the 403 the CSRF middleware sends. That answer is built in the
+# middleware, outside these handlers, so it takes the code from here and does not go through
+# ERROR_CODES. One value for both refusals (header absent, header wrong), as they share a body.
+# The SPA shows a "reload the page" message for it: the usual cause is a sign-in in another
+# tab, after which this tab still holds the token of the old session.
+CSRF_INVALID_CODE = "csrf_invalid"
+
 # Exception to HTTP status code and message mapping
 # Following OCP: extend by adding entries, not modifying handlers
 # None as detail means: use exception message
