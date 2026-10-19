@@ -1,7 +1,8 @@
 import { render, screen, waitFor } from '@tests/utils'
-import { MemoryRouter, Routes, Route, RouterProvider, createMemoryRouter } from 'react-router'
+import { MemoryRouter, Routes, Route, RouterProvider, createMemoryRouter, useLocation } from 'react-router'
 import { describe, it, expect, vi } from 'vitest'
 import { GuestRoute } from '@/components/auth/GuestRoute'
+import { ProtectedRoute } from '@/components/auth/ProtectedRoute'
 import * as AuthContext from '@/contexts/AuthContext'
 import { createUser } from '@tests/factories/user'
 
@@ -87,5 +88,108 @@ describe('GuestRoute', () => {
       expect(router.state.location.pathname).toBe('/projects')
       expect(router.state.historyAction).toBe('REPLACE')
     })
+  })
+
+  describe('returning to the page the visitor came from', () => {
+    function LocationProbe() {
+      const { pathname, search, hash } = useLocation()
+      return <div>{`at ${pathname}${search}${hash}`}</div>
+    }
+
+    function renderLoginWithFrom(from: unknown) {
+      vi.mocked(AuthContext.useAuth).mockReturnValue(session('authenticated'))
+
+      render(
+        <MemoryRouter initialEntries={[{ pathname: '/login', state: { from } }]}>
+          <Routes>
+            <Route
+              path="/login"
+              element={
+                <GuestRoute>
+                  <div>Login Form</div>
+                </GuestRoute>
+              }
+            />
+            <Route path="*" element={<LocationProbe />} />
+          </Routes>
+        </MemoryRouter>,
+        { wrapper: ({ children }) => children }
+      )
+    }
+
+    it('lands on the internal page, with its query and hash', () => {
+      renderLoginWithFrom({ pathname: '/projects/42', search: '?tab=results', hash: '#x' })
+
+      expect(screen.getByText('at /projects/42?tab=results#x')).toBeInTheDocument()
+    })
+
+    it('drops a search and a hash that are not strings', () => {
+      renderLoginWithFrom({ pathname: '/projects/42', search: { a: 1 }, hash: 7 })
+
+      expect(screen.getByText('at /projects/42')).toBeInTheDocument()
+    })
+
+    it('goes to the projects page when no page was remembered', () => {
+      renderLoginWithFrom(undefined)
+
+      expect(screen.getByText('at /projects')).toBeInTheDocument()
+    })
+
+    it.each([
+      ['a protocol-relative URL', { pathname: '//evil.example' }],
+      ['a backslash after the slash', { pathname: '/\\evil.example' }],
+      ['a tab that browsers strip before parsing', { pathname: '/\t/evil.example' }],
+      ['a newline that browsers strip before parsing', { pathname: '/\n/evil.example' }],
+      ['an absolute URL', { pathname: 'https://evil.example' }],
+      ['a URL that does not parse', { pathname: '//evil.example:99999' }],
+      ['a relative path', { pathname: 'projects/42' }],
+      ['an empty path', { pathname: '' }],
+      ['a pathname that is not a string', { pathname: 42 }],
+      ['a missing pathname', {}],
+      ['a plain string', '/projects/42'],
+      ['null', null],
+    ])('goes to the projects page for %s', (_label, from) => {
+      renderLoginWithFrom(from)
+
+      expect(screen.getByText('at /projects')).toBeInTheDocument()
+    })
+  })
+
+  it('sends a visitor back to the protected page after signing in', () => {
+    let current = session('unauthenticated')
+    vi.mocked(AuthContext.useAuth).mockImplementation(() => current)
+
+    const tree = () => (
+      <MemoryRouter initialEntries={['/projects/42']}>
+        <Routes>
+          <Route
+            path="/projects/:id"
+            element={
+              <ProtectedRoute>
+                <div>Project Page</div>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/login"
+            element={
+              <GuestRoute>
+                <div>Login Form</div>
+              </GuestRoute>
+            }
+          />
+          <Route path="/projects" element={<div>Projects Page</div>} />
+        </Routes>
+      </MemoryRouter>
+    )
+
+    const { rerender } = render(tree(), { wrapper: ({ children }) => children })
+    expect(screen.getByText('Login Form')).toBeInTheDocument()
+
+    current = session('authenticated')
+    rerender(tree())
+
+    expect(screen.getByText('Project Page')).toBeInTheDocument()
+    expect(screen.queryByText('Projects Page')).not.toBeInTheDocument()
   })
 })
