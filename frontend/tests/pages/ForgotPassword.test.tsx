@@ -1,3 +1,4 @@
+import { forwardRef, useImperativeHandle } from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -29,20 +30,19 @@ vi.mock('@/lib/api', () => ({
 
 // A real TurnstileField needs Cloudflare's script, which never loads in this suite.
 // The Turnstile-specific describe block below swaps in a fake that mints a token on
-// click. It takes no ref, so the tests cannot see the widget being reset after a
-// refused bot check or a 429; they check that the form stays and the button locks.
+// click and exposes reset() the same way the real widget does, as a spy, so the tests
+// can see the widget being reset after a refused bot check or a 429.
+const mockTurnstileReset = vi.fn();
 vi.mock('@/components/forms', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/components/forms')>();
   const { isTurnstileRequired } = await import('@/lib/turnstile');
   return {
     ...actual,
-    TurnstileField: function TurnstileFieldMock({
-      action,
-      onToken,
-    }: {
-      action: string;
-      onToken: (token: string | null) => void;
-    }) {
+    TurnstileField: forwardRef<
+      { reset: () => void },
+      { action: string; onToken: (token: string | null) => void }
+    >(function TurnstileFieldMock({ action, onToken }, ref) {
+      useImperativeHandle(ref, () => ({ reset: mockTurnstileReset }));
       // Mirrors the real widget's own contract (renders nothing without a
       // sitekey), so every test that does not opt into Turnstile sees exactly
       // what it saw before this mock existed.
@@ -54,7 +54,7 @@ vi.mock('@/components/forms', async (importOriginal) => {
           {`mint ${action} token`}
         </button>
       );
-    },
+    }),
   };
 });
 
@@ -301,6 +301,7 @@ describe('ForgotPassword', () => {
       await user.click(submitButton);
 
       await waitFor(() => expect(mockForgotPassword).toHaveBeenCalled());
+      await waitFor(() => expect(mockTurnstileReset).toHaveBeenCalled());
 
       // Nothing was sent, so the confirmation panel would be a lie — and it would
       // unmount the widget, leaving the user with no way to earn a fresh challenge.
@@ -327,7 +328,8 @@ describe('ForgotPassword', () => {
       await waitFor(() => expect(mockForgotPassword).toHaveBeenCalled());
 
       // The bot check runs before the limiter, so its token is already spent: the
-      // submit button locks until the widget mints a fresh one.
+      // widget is reset and the submit button locks until it mints a fresh one.
+      await waitFor(() => expect(mockTurnstileReset).toHaveBeenCalled());
       await waitFor(() => expect(getSubmitButton()).toBeDisabled());
       expect(screen.queryByText(/reset link is on its way/i)).not.toBeInTheDocument();
       expect(
