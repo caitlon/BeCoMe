@@ -452,7 +452,7 @@ describe('Profile - Photo Upload', () => {
         expect(mockToast).toHaveBeenCalledWith(
           expect.objectContaining({
             description:
-              'Obrázek má příliš mnoho pixelů. Zmenšete ho zhruba na 16 megapixelů (například 4096 × 4096) a zkuste to znovu.',
+              'Obrázek je příliš velký. Každá strana smí mít nejvýš 8192 pixelů a celý obrázek zhruba 16 megapixelů (například 4096 × 4096).',
             variant: 'destructive',
           })
         );
