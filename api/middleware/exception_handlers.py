@@ -99,9 +99,9 @@ SCALE_EXCLUDES_OPINIONS_CODE = "scale_excludes_opinions"
 # is fine, so the answer carries a code the form can show beside the field instead.
 CURRENT_PASSWORD_INCORRECT_CODE = "current_password_incorrect"  # noqa: S105  # pragma: allowlist secret
 
-# The machine-readable halves of the invitation refusals. so the SPA can translate them by
-# code, and the English sentence can be reworded without breaking a screen. One code per exception, and
-# each exception has exactly one status and sentence.
+# The machine-readable halves of the invitation refusals, so the SPA can translate them by
+# code and the English sentence can be reworded without breaking a screen. One code per
+# exception, and each exception has exactly one status and sentence.
 INVITEE_NOT_FOUND_CODE = "invitee_not_found"
 ALREADY_INVITED_CODE = "already_invited"
 ALREADY_MEMBER_CODE = "already_member"
