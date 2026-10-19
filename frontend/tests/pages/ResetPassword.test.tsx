@@ -32,6 +32,7 @@ vi.mock('@/hooks/use-toast', () => ({
 }));
 
 // AuthLayout renders Navbar, which calls useAuth -> mock it (as Login/Register tests do)
+const mockRefreshUser = vi.fn();
 vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => ({
     user: null,
@@ -39,7 +40,7 @@ vi.mock('@/contexts/AuthContext', () => ({
     isAuthenticated: false,
     login: vi.fn(),
     logout: vi.fn(),
-    refreshUser: vi.fn(),
+    refreshUser: () => mockRefreshUser(),
   }),
 }));
 
@@ -147,6 +148,26 @@ describe('ResetPassword', () => {
     });
   });
 
+  // The server drops every session of the user on a reset, but the client still
+  // reads as signed in; /login would bounce it to /projects until the first 401.
+  it('re-probes the session before it navigates to login', async () => {
+    const user = userEvent.setup();
+    mockResetPassword.mockResolvedValueOnce(undefined);
+    mockRefreshUser.mockResolvedValueOnce(undefined);
+    render(<ResetPassword />);
+
+    await user.type(getPasswordInput(), 'BrandNewPass456!');
+    await user.type(getConfirmInput(), 'BrandNewPass456!');
+    await waitFor(() => expect(getSubmitButton()).not.toBeDisabled());
+    await user.click(getSubmitButton());
+
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/login'));
+    expect(mockRefreshUser).toHaveBeenCalledTimes(1);
+    expect(mockRefreshUser.mock.invocationCallOrder[0]).toBeLessThan(
+      mockNavigate.mock.invocationCallOrder[0]
+    );
+  });
+
   it('shows an error toast when the reset fails', async () => {
     const user = userEvent.setup();
     mockResetPassword.mockRejectedValueOnce(new Error('Invalid or expired reset token'));
@@ -162,6 +183,8 @@ describe('ResetPassword', () => {
         expect.objectContaining({ variant: 'destructive' })
       );
     });
+    expect(mockRefreshUser).not.toHaveBeenCalled();
+    expect(mockNavigate).not.toHaveBeenCalled();
   });
 
   describe('when the reset is refused', () => {
