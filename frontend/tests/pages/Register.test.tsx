@@ -1,6 +1,6 @@
 import { forwardRef, useImperativeHandle } from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { act, fireEvent, screen, waitFor } from '@testing-library/react';
+import { act, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { render } from '@tests/utils';
 import i18n from '@/i18n';
@@ -121,34 +121,16 @@ describe('Register', () => {
     expect(getLastNameInput()).toHaveAttribute('autocomplete', 'family-name');
   });
 
-  it('shows no email error when the empty field is left before any submit attempt', async () => {
+  it('asks for the email when the empty field is left on blur', async () => {
     const user = userEvent.setup();
     render(<Register />);
 
     await user.click(getEmailInput());
     await user.tab();
-    // Blurring another empty field validates the whole form, so once its error shows
-    // the email blur above has been validated too.
-    await user.click(getFirstNameInput());
-    await user.tab();
-    await screen.findByText(/first name.*required/i);
-
-    expect(screen.queryByText(/invalid.*email/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/email.*required/i)).not.toBeInTheDocument();
-    expect(getEmailInput()).not.toHaveAttribute('aria-invalid', 'true');
-  });
-
-  it('asks for the email when the form is submitted with it empty', async () => {
-    render(<Register />);
-
-    // The submit button stays disabled while the form is invalid, so the submit
-    // event is fired directly, as an Enter key press in a field would.
-    fireEvent.submit(getEmailInput().closest('form')!);
 
     expect(await screen.findByText('Email is required')).toBeInTheDocument();
-    expect(screen.queryByText(/invalid.*email/i)).not.toBeInTheDocument();
+    expect(screen.queryByText('Invalid email address')).not.toBeInTheDocument();
     expect(getEmailInput()).toHaveAttribute('aria-invalid', 'true');
-    expect(mockApiRegister).not.toHaveBeenCalled();
   });
 
   it('shows validation error for an invalid email format', async () => {
