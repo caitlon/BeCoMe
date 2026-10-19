@@ -28,7 +28,10 @@
   "card": {
     "noDescription": "Bez popisu",
     "scale": "Škála",
-    "experts": "expertů",
+    "expertCount_one": "{{count}} expert",
+    "expertCount_few": "{{count}} experti",
+    "expertCount_many": "{{count}} experta",
+    "expertCount_other": "{{count}} expertů",
     "exampleBadge": "Ukázka"
   },
   "roles": {

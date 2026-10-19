@@ -285,7 +285,7 @@ const Projects = () => {
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2 text-sm text-muted-foreground">
                             <Users className="h-4 w-4" />
-                            <span>{project.member_count} {t("card.experts")}</span>
+                            <span>{t("card.expertCount", { count: project.member_count })}</span>
                           </div>
                           <div className="flex items-center gap-2">
                             {project.is_example && (
@@ -372,7 +372,7 @@ const Projects = () => {
                               </span>
                               <span className="flex items-center gap-1">
                                 <Users className="h-3 w-3" />
-                                {invitation.current_experts_count} {t("card.experts")}
+                                {t("card.expertCount", { count: invitation.current_experts_count })}
                               </span>
                               <span>
                                 {t("invitations.invitedDate")}: {formatDate(invitation.invited_at, i18n.language)}

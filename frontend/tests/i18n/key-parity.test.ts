@@ -22,17 +22,14 @@ function collectKeys(obj: Record<string, unknown>, prefix = ''): string[] {
 
 const PLURAL_SUFFIX = /^(.+)_(zero|one|two|few|many|other)$/;
 
-// A key is part of a plural group only when its base also has an `_other` form, so an
-// ordinary key that merely ends in `_one` is left alone. Returns each group's base path
-// with the suffixes found for it.
+// Any key that ends in a plural suffix belongs to a group, so a group that lost its `_other`
+// form still shows up and fails the category check. Returns each group's base path with the
+// suffixes found for it.
 function pluralGroups(keys: string[]): Map<string, string[]> {
-  const bases = new Set(
-    keys.map((k) => k.match(PLURAL_SUFFIX)).filter((m) => m?.[2] === 'other').map((m) => m![1]),
-  );
   const groups = new Map<string, string[]>();
   for (const key of keys) {
     const match = key.match(PLURAL_SUFFIX);
-    if (match && bases.has(match[1])) {
+    if (match) {
       groups.set(match[1], [...(groups.get(match[1]) ?? []), match[2]]);
     }
   }
@@ -41,11 +38,7 @@ function pluralGroups(keys: string[]): Map<string, string[]> {
 
 // English has two plural forms and Czech four, so a plural group counts as one key.
 function foldPlurals(keys: string[]): string[] {
-  const groups = pluralGroups(keys);
-  const folded = keys.map((key) => {
-    const match = key.match(PLURAL_SUFFIX);
-    return match && groups.has(match[1]) ? match[1] : key;
-  });
+  const folded = keys.map((key) => key.match(PLURAL_SUFFIX)?.[1] ?? key);
   return [...new Set(folded)].sort();
 }
 
@@ -61,6 +54,14 @@ describe('i18n key parity (EN ↔ CS)', () => {
     expect(missingInEn, `Keys in CS but missing in EN [${ns}]`).toEqual([]);
   });
 
+  it.each(namespaces)('%s: EN and CS have the same plural groups', (ns) => {
+    const enBases = [...pluralGroups(collectKeys(resources.en[ns] as Record<string, unknown>)).keys()].sort();
+    const csBases = [...pluralGroups(collectKeys(resources.cs[ns] as Record<string, unknown>)).keys()].sort();
+
+    expect(enBases.filter((k) => !csBases.includes(k)), `Plural groups only in EN [${ns}]`).toEqual([]);
+    expect(csBases.filter((k) => !enBases.includes(k)), `Plural groups only in CS [${ns}]`).toEqual([]);
+  });
+
   it('EN and CS have the same set of namespaces', () => {
     const enNs = Object.keys(resources.en).sort();
     const csNs = Object.keys(resources.cs).sort();
@@ -70,6 +71,13 @@ describe('i18n key parity (EN ↔ CS)', () => {
 
   describe.each(['en', 'cs'] as const)('plural forms (%s)', (lang) => {
     const categories = new Intl.PluralRules(lang).resolvedOptions().pluralCategories.sort();
+
+    it.each(namespaces)('%s: no plural group shares its name with a plain key', (ns) => {
+      const keys = collectKeys(resources[lang][ns] as Record<string, unknown>);
+      const clashes = [...pluralGroups(keys).keys()].filter((base) => keys.includes(base));
+
+      expect(clashes, `Keys in ${lang}/${ns} that exist both plain and as a plural group`).toEqual([]);
+    });
 
     it.each(namespaces)('%s: every plural group has exactly the CLDR categories', (ns) => {
       const groups = pluralGroups(collectKeys(resources[lang][ns] as Record<string, unknown>));

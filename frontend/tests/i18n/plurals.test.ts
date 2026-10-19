@@ -36,6 +36,31 @@ const cs: Case[] = [
     ns: 'common', key: 'landscapeChart.srSummary', count: 5, extra: chart,
     expected: '5 expertních názorů rozprostřených od 1 do 9; nejlepší kompromis leží na hodnotě 5.',
   },
+  { ns: 'projects', key: 'invitations.pending', count: 0, expected: 'Máte 0 čekajících pozvánek' },
+  { ns: 'projects', key: 'invitations.pending', count: 4, expected: 'Máte 4 čekající pozvánky' },
+  { ns: 'projects', key: 'detail.teamMembers', count: 0, expected: 'Tým (0 členů)' },
+  { ns: 'projects', key: 'detail.teamMembers', count: 4, expected: 'Tým (4 členové)' },
+  {
+    ns: 'common', key: 'centroidChart.srSummary', count: 0, extra: chart,
+    expected: '0 expertů, centroidy od 1 do 9. Průměr: 4, Medián: 5, Nejlepší kompromis: 5.',
+  },
+  {
+    ns: 'common', key: 'centroidChart.srSummary', count: 4, extra: chart,
+    expected: '4 experti, centroidy od 1 do 9. Průměr: 4, Medián: 5, Nejlepší kompromis: 5.',
+  },
+  {
+    ns: 'common', key: 'landscapeChart.srSummary', count: 0, extra: chart,
+    expected: '0 expertních názorů rozprostřených od 1 do 9; nejlepší kompromis leží na hodnotě 5.',
+  },
+  {
+    ns: 'common', key: 'landscapeChart.srSummary', count: 4, extra: chart,
+    expected: '4 expertní názory rozprostřené od 1 do 9; nejlepší kompromis leží na hodnotě 5.',
+  },
+  { ns: 'projects', key: 'card.expertCount', count: 0, expected: '0 expertů' },
+  { ns: 'projects', key: 'card.expertCount', count: 1, expected: '1 expert' },
+  { ns: 'projects', key: 'card.expertCount', count: 2, expected: '2 experti' },
+  { ns: 'projects', key: 'card.expertCount', count: 4, expected: '4 experti' },
+  { ns: 'projects', key: 'card.expertCount', count: 5, expected: '5 expertů' },
 ];
 
 const en: Case[] = [
@@ -59,6 +84,8 @@ const en: Case[] = [
     ns: 'common', key: 'landscapeChart.srSummary', count: 2, extra: chart,
     expected: '2 expert opinions spread from 1 to 9; the best compromise sits at 5.',
   },
+  { ns: 'projects', key: 'card.expertCount', count: 1, expected: '1 expert' },
+  { ns: 'projects', key: 'card.expertCount', count: 2, expected: '2 experts' },
 ];
 
 describe('plural forms of counted UI strings', () => {
