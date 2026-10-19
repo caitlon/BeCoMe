@@ -3,6 +3,7 @@ import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { render } from '@tests/utils';
 import i18n from '@/i18n';
+import { HttpError } from '@/lib/errors';
 import { CreateProjectModal } from '@/components/modals/CreateProjectModal';
 
 // Mock api
@@ -243,6 +244,23 @@ describe('CreateProjectModal', () => {
         expect.objectContaining({
           variant: 'destructive',
         })
+      );
+    });
+  });
+
+  it('shows the error message of an HTTP failure as the toast description', async () => {
+    const user = userEvent.setup();
+    mockCreateProject.mockRejectedValueOnce(new HttpError('boom', 400));
+
+    render(<CreateProjectModal {...defaultProps} />);
+
+    await user.type(getNameInput(), 'New Project');
+    await user.type(getUnitInput(), '%');
+    await user.click(getSubmitButton());
+
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({ description: 'boom', variant: 'destructive' })
       );
     });
   });

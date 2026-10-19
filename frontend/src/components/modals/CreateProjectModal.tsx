@@ -105,9 +105,7 @@ export function CreateProjectModal({
     } catch (error) {
       toast({
         title: t("create.errorTitle"),
-        description:
-          /* v8 ignore next */
-          describeError(error, tCommon, t("toast.createFailed")),
+        description: describeError(error, tCommon, t("toast.createFailed")),
         variant: "destructive",
       });
     } finally {

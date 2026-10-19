@@ -85,8 +85,7 @@ export function InviteExpertModal({
     } catch (error) {
       toast({
         title: t("invite.errorTitle"),
-        description:
-          describeError(error, tCommon, t("invite.errorMessage")),
+        description: describeError(error, tCommon, t("invite.errorMessage")),
         variant: "destructive",
       });
     } finally {

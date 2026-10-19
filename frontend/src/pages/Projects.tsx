@@ -103,6 +103,7 @@ const Projects = () => {
         description: describeError(error, tCommon, t("toast.acceptFailed")),
         variant: "destructive",
       });
+      invalidateLists();
     },
   });
 
@@ -119,6 +120,7 @@ const Projects = () => {
         description: describeError(error, tCommon, t("toast.declineFailed")),
         variant: "destructive",
       });
+      invalidateLists();
     },
   });
 

@@ -78,20 +78,20 @@ describe('describeError', () => {
   });
 
   it.each([
-    [INVITEE_NOT_FOUND_CODE, 'errors.inviteeNotFound'],
-    [ALREADY_INVITED_CODE, 'errors.alreadyInvited'],
-    [ALREADY_MEMBER_CODE, 'errors.alreadyMember'],
-    [EXAMPLE_PROJECT_NOT_INVITABLE_CODE, 'errors.exampleProjectNotInvitable'],
-    [INVITATION_NOT_FOUND_CODE, 'errors.invitationNotFound'],
-    [PHOTO_TYPE_NOT_ALLOWED_CODE, 'errors.photoTypeNotAllowed'],
-    [PHOTO_TOO_LARGE_CODE, 'errors.photoTooLarge'],
-    [PHOTO_CONTENT_MISMATCH_CODE, 'errors.photoContentMismatch'],
-    [PHOTO_UNREADABLE_CODE, 'errors.photoUnreadable'],
-    [PHOTO_DIMENSIONS_TOO_LARGE_CODE, 'errors.photoDimensionsTooLarge'],
-  ])('maps the %s code to the %s key, not the server sentence', (code, key) => {
-    expect(describeError(new HttpError('English server detail', 400, code), t, 'fallback')).toBe(
-      key
-    );
+    [INVITEE_NOT_FOUND_CODE, 404, 'errors.inviteeNotFound'],
+    [ALREADY_INVITED_CODE, 409, 'errors.alreadyInvited'],
+    [ALREADY_MEMBER_CODE, 409, 'errors.alreadyMember'],
+    [EXAMPLE_PROJECT_NOT_INVITABLE_CODE, 409, 'errors.exampleProjectNotInvitable'],
+    [INVITATION_NOT_FOUND_CODE, 404, 'errors.invitationNotFound'],
+    [PHOTO_TYPE_NOT_ALLOWED_CODE, 400, 'errors.photoTypeNotAllowed'],
+    [PHOTO_TOO_LARGE_CODE, 400, 'errors.photoTooLarge'],
+    [PHOTO_CONTENT_MISMATCH_CODE, 400, 'errors.photoContentMismatch'],
+    [PHOTO_UNREADABLE_CODE, 400, 'errors.photoUnreadable'],
+    [PHOTO_DIMENSIONS_TOO_LARGE_CODE, 400, 'errors.photoDimensionsTooLarge'],
+  ])('maps the %s code (status %s) to the %s key, not the server sentence', (code, status, key) => {
+    expect(
+      describeError(new HttpError('English server detail', status, code), t, 'fallback')
+    ).toBe(key);
   });
 
   it('keeps the wire value of each refusal code in step with the API', () => {

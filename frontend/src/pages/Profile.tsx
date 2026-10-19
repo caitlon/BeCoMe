@@ -191,8 +191,7 @@ const Profile = () => {
     } catch (error) {
       toast({
         title: t("toast.error"),
-        description:
-          describeError(error, tCommon, t("toast.updateFailed")),
+        description: describeError(error, tCommon, t("toast.updateFailed")),
         variant: "destructive",
       });
     } finally {
@@ -225,8 +224,7 @@ const Profile = () => {
       }
       toast({
         title: t("toast.error"),
-        description:
-          describeError(error, tCommon, t("toast.passwordFailed")),
+        description: describeError(error, tCommon, t("toast.passwordFailed")),
         variant: "destructive",
       });
     } finally {
@@ -244,8 +242,7 @@ const Profile = () => {
     } catch (error) {
       toast({
         title: t("toast.error"),
-        description:
-          describeError(error, tCommon, t("dataExport.error")),
+        description: describeError(error, tCommon, t("dataExport.error")),
         variant: "destructive",
       });
     } finally {
