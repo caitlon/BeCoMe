@@ -84,6 +84,7 @@ const unauthenticatedAuth = {
   login: vi.fn(),
   logout: vi.fn(),
   refreshUser: vi.fn(),
+  setCurrentUser: vi.fn(),
 };
 
 const authenticatedAuth = {
@@ -103,6 +104,7 @@ const authenticatedAuth = {
   login: vi.fn(),
   logout: vi.fn(),
   refreshUser: vi.fn(),
+  setCurrentUser: vi.fn(),
 };
 
 describe('App - public routes', () => {

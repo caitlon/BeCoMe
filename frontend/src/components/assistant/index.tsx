@@ -84,6 +84,22 @@ export function AssistantResultSlot({ projectId }: AssistantResultSlotProps) {
   );
 }
 
+const LazyProfileCard: LazyExoticComponent<ComponentType> | null = enabled
+  ? lazy(() => import("./AssistantPrivacyCard").then((m) => ({ default: m.AssistantPrivacyCard })))
+  : null;
+
+/** Same reasoning as AssistantHeaderSlot, for Profile.tsx: the privacy card and its copy. */
+export function AssistantProfileSlot() {
+  if (!LazyProfileCard) return null;
+  return (
+    <ErrorBoundary fallback={null}>
+      <Suspense fallback={null}>
+        <LazyProfileCard />
+      </Suspense>
+    </ErrorBoundary>
+  );
+}
+
 function useProjectScope(projectId: string | undefined): void {
   const { setPageProjectId } = useAssistantUI();
 

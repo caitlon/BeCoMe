@@ -9,11 +9,10 @@ import { Loader2, AlertTriangle, Camera, Trash2, Download } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { PageSpinner } from "@/components/PageSpinner";
 import { PageShell } from "@/components/layout/PageShell";
+import { AssistantProfileSlot } from "@/components/assistant";
 import { DeleteAccountDialog } from "@/components/modals/DeleteAccountDialog";
 import {
   FormField,
@@ -32,10 +31,6 @@ import { buildPasswordSchema, getPasswordRequirements } from "@/lib/validation";
 
 const NAME_REGEX = /^[\p{L}\s'-]+$/u;
 
-// Same build-time switch as components/assistant: when it is not exactly "true" the
-// card below is unreachable and the bundler drops it.
-const assistantEnabled = import.meta.env.VITE_ASSISTANT_ENABLED === "true";
-
 interface ProfileFormData {
   firstName: string;
   lastName: string;
@@ -52,8 +47,6 @@ const Profile = () => {
   const { t: tCommon } = useTranslation();
   const { t: tAuth } = useTranslation("auth");
   const { user, refreshUser, logout } = useAuth();
-  const assistantObjectionId = useId();
-  const assistantObjectionDescriptionId = useId();
   useDocumentTitle(tCommon("pageTitle.profile"));
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -120,9 +113,6 @@ const Profile = () => {
   const passwordRequirements = getPasswordRequirements(newPassword, tAuth);
   const passwordChecklistId = useId();
   const passwordChecklistShown = !!newPassword && !passwordRequirements.every((req) => req.met);
-
-  // Assistant privacy
-  const [isSavingObjection, setIsSavingObjection] = useState(false);
 
   // Delete account
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -207,27 +197,6 @@ const Profile = () => {
       });
     } finally {
       setIsSavingProfile(false);
-    }
-  };
-
-  const handleToggleObjection = async (next: boolean) => {
-    setIsSavingObjection(true);
-    try {
-      await api.updateCurrentUser({ assistant_objection: next });
-      await refreshUser();
-      toast({
-        title: next
-          ? t("assistantPrivacy.enabledToast")
-          : t("assistantPrivacy.disabledToast"),
-      });
-    } catch (error) {
-      toast({
-        title: t("toast.error"),
-        description: describeError(error, tCommon, t("assistantPrivacy.failed")),
-        variant: "destructive",
-      });
-    } finally {
-      setIsSavingObjection(false);
     }
   };
 
@@ -450,35 +419,8 @@ const Profile = () => {
             </CardContent>
           </Card>
 
-          {/* Assistant privacy */}
-          {assistantEnabled && (
-            <Card>
-              <CardHeader>
-                <CardTitle>{t("assistantPrivacy.title")}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-start gap-2">
-                  <Checkbox
-                    id={assistantObjectionId}
-                    className="mt-0.5"
-                    checked={user.assistant_objection}
-                    onCheckedChange={(checked) => handleToggleObjection(checked === true)}
-                    disabled={isSavingObjection}
-                    aria-describedby={assistantObjectionDescriptionId}
-                  />
-                  <Label htmlFor={assistantObjectionId} className="cursor-pointer leading-snug">
-                    {t("assistantPrivacy.label")}
-                  </Label>
-                </div>
-                <p
-                  id={assistantObjectionDescriptionId}
-                  className="text-sm text-muted-foreground mt-2"
-                >
-                  {t("assistantPrivacy.description")}
-                </p>
-              </CardContent>
-            </Card>
-          )}
+          {/* Assistant privacy (a lazy slot: empty in a build without the assistant) */}
+          <AssistantProfileSlot />
 
           {/* Data Export (GDPR Article 20) */}
           <Card>

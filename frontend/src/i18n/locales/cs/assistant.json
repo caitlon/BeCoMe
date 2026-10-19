@@ -3,6 +3,14 @@
     "header": "Asistent",
     "result": "Vysvětlit výsledek"
   },
+  "privacy": {
+    "title": "Soukromí v asistentovi",
+    "label": "Skrýt moje názory před asistentem ostatních členů",
+    "description": "Když je to zapnuté, asistent neukáže vaše názory ostatním členům projektu, kteří se ho na ně zeptají. Vám je ukazuje dál. Výsledky projektu, třeba průměr a počet expertů, se počítají jako dřív.",
+    "enabledToast": "Vaše názory jsou teď před asistentem ostatních členů skryté",
+    "disabledToast": "Asistent ostatních členů může vaše názory zase ukazovat",
+    "failed": "Nastavení asistenta se nepodařilo uložit"
+  },
   "panel": {
     "title": "Asistent",
     "scopeProject": "Projekt „{{name}}“",
