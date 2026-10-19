@@ -10,6 +10,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { api } from "@/lib/api";
+import { describeError } from "@/lib/errorMessages";
 import { downloadBlob } from "@/lib/download";
 import { ProjectWithRole } from "@/types/api";
 import { useToast } from "@/hooks/use-toast";
@@ -22,6 +23,7 @@ export interface ResultExportMenuProps {
 /** Result export (PDF / CSV) dropdown, rendered in the project header. */
 export const ResultExportMenu = ({ project }: ResultExportMenuProps) => {
   const { t, i18n } = useTranslation("projects");
+  const { t: tCommon } = useTranslation();
   const { resolvedTheme } = useTheme();
   const { toast } = useToast();
   const [exporting, setExporting] = useState<"pdf" | "csv" | null>(null);
@@ -43,7 +45,7 @@ export const ResultExportMenu = ({ project }: ResultExportMenuProps) => {
     } catch (error) {
       toast({
         title: t("toast.error"),
-        description: error instanceof Error ? error.message : t("resultExport.error"),
+        description: describeError(error, tCommon, t("resultExport.error")),
         variant: "destructive",
       });
     } finally {

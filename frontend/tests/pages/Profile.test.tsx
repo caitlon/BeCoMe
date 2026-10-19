@@ -433,6 +433,37 @@ describe('Profile - Photo Upload', () => {
     });
   });
 
+  it('shows the Czech text, not the English API detail, when the image has too many pixels', async () => {
+    const user = userEvent.setup();
+    mockApi.uploadPhoto.mockRejectedValueOnce(
+      new HttpError('Image dimensions too large', 400, 'photo_dimensions_too_large')
+    );
+
+    render(<Profile />);
+    const fileInput = screen.getByLabelText('Profile photo') as HTMLInputElement;
+    await act(async () => {
+      await i18n.changeLanguage('cs');
+    });
+
+    try {
+      await user.upload(fileInput, new File(['data'], 'pic.png', { type: 'image/png' }));
+
+      await waitFor(() => {
+        expect(mockToast).toHaveBeenCalledWith(
+          expect.objectContaining({
+            description:
+              'Obrázek má příliš mnoho pixelů. Zmenšete ho zhruba na 16 megapixelů (například 4096 × 4096) a zkuste to znovu.',
+            variant: 'destructive',
+          })
+        );
+      });
+    } finally {
+      await act(async () => {
+        await i18n.changeLanguage('en');
+      });
+    }
+  });
+
   it('shows fallback error toast when upload throws non-Error', async () => {
     const user = userEvent.setup();
     mockApi.uploadPhoto.mockRejectedValueOnce('unknown');

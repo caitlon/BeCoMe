@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { FormField, FormTextarea, SubmitButton } from "@/components/forms";
 import { api } from "@/lib/api";
+import { describeError } from "@/lib/errorMessages";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
@@ -39,6 +40,7 @@ export function CreateProjectModal({
   onSuccess,
 }: CreateProjectModalProps) {
   const { t } = useTranslation("projects");
+  const { t: tCommon } = useTranslation();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const submittingRef = useRef(false);
@@ -105,7 +107,7 @@ export function CreateProjectModal({
         title: t("create.errorTitle"),
         description:
           /* v8 ignore next */
-          error instanceof Error ? error.message : t("toast.createFailed"),
+          describeError(error, tCommon, t("toast.createFailed")),
         variant: "destructive",
       });
     } finally {

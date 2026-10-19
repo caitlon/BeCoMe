@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { render } from '@tests/utils';
+import i18n from '@/i18n';
+import { HttpError } from '@/lib/errors';
 import Projects from '@/pages/Projects';
 import { createProjectWithRole, createInvitation } from '@tests/factories/project';
 
@@ -437,6 +439,30 @@ describe('Projects', () => {
           expect.objectContaining({ variant: 'destructive' })
         );
       });
+    });
+
+    it('shows the Czech text, not the English API detail, when the invitation is gone', async () => {
+      mockApi.getInvitations.mockResolvedValue([createInvitation({ id: 'inv-gone' })]);
+      mockApi.acceptInvitation.mockRejectedValue(
+        new HttpError('Invitation not found', 404, 'invitation_not_found')
+      );
+
+      await openInvitationsTab();
+      await i18n.changeLanguage('cs');
+      try {
+        await screen.getByRole('button', { name: 'Přijmout pozvánku' }).click();
+
+        await waitFor(() => {
+          expect(mockToast).toHaveBeenCalledWith(
+            expect.objectContaining({
+              description: 'Tato pozvánka už neexistuje. Obnovte stránku.',
+              variant: 'destructive',
+            })
+          );
+        });
+      } finally {
+        await i18n.changeLanguage('en');
+      }
     });
 
     it('shows error toast when decline invitation fails', async () => {
