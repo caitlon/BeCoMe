@@ -67,7 +67,10 @@ test.describe.serial('Profile Page Flow', () => {
     await page.getByPlaceholder('you@example.com').fill(testEmail);
     await page.getByPlaceholder('Enter your password').fill(NEW_PASSWORD);
     await page.getByRole('button', { name: /sign in/i }).click();
-    await expect(page).toHaveURL('/projects', { timeout: 15000 });
+    // The revoked session sent this page to /login with /profile as the page to return to.
+    // goto() on the same URL reloads, and Chromium and WebKit keep that history state, so
+    // signing in lands on /profile there and on /projects in Firefox.
+    await expect(page).toHaveURL(/\/(projects|profile)$/, { timeout: 15000 });
 
     await page.goto('/profile');
 
