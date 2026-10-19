@@ -14,6 +14,7 @@ from api.auth.logging import log_login_failure, log_password_change_failure
 from api.auth.revocation_store import RevocationStoreError
 from api.exceptions import (
     AccountHasOwnedProjectsError,
+    AlreadyInvitedError,
     BeCoMeAPIError,
     CurrentPasswordIncorrectError,
     DisposableEmailDomainError,
@@ -29,6 +30,10 @@ from api.exceptions import (
     MemberNotFoundError,
     NotFoundError,
     OpinionNotFoundError,
+    PhotoContentMismatchError,
+    PhotoDimensionsTooLargeError,
+    PhotoTooLargeError,
+    PhotoTypeNotAllowedError,
     ProjectNotFoundError,
     ResetTokenExpiredError,
     ScaleExcludesOpinionsError,
@@ -37,6 +42,7 @@ from api.exceptions import (
     UnresolvableEmailDomainError,
     UserAlreadyMemberError,
     UserExistsError,
+    UserNotFoundForInvitationError,
     ValidationError,
     ValuesOutOfRangeError,
     VerificationPasswordMismatchError,
@@ -92,6 +98,24 @@ SCALE_EXCLUDES_OPINIONS_CODE = "scale_excludes_opinions"
 # is fine, so the answer carries a code the form can show beside the field instead.
 CURRENT_PASSWORD_INCORRECT_CODE = "current_password_incorrect"  # noqa: S105  # pragma: allowlist secret
 
+# The machine-readable halves of the invitation refusals. The SPA translates them by code, so
+# the English sentence can be reworded without breaking a screen. One code per exception, and
+# each exception has exactly one status and sentence.
+INVITEE_NOT_FOUND_CODE = "invitee_not_found"
+ALREADY_INVITED_CODE = "already_invited"
+ALREADY_MEMBER_CODE = "already_member"
+EXAMPLE_PROJECT_NOT_INVITABLE_CODE = "example_project_not_invitable"
+# One code for a missing invitation and for one that belongs to someone else: they share a
+# body, so a code that told them apart would reopen the question that body closes.
+INVITATION_NOT_FOUND_CODE = "invitation_not_found"
+
+# The machine-readable halves of the four 400s a profile photo upload can get, one per check
+# that refuses the file, so the form can say what to change.
+PHOTO_TYPE_NOT_ALLOWED_CODE = "photo_type_not_allowed"
+PHOTO_TOO_LARGE_CODE = "photo_too_large"
+PHOTO_CONTENT_MISMATCH_CODE = "photo_content_mismatch"
+PHOTO_DIMENSIONS_TOO_LARGE_CODE = "photo_dimensions_too_large"
+
 # Exception to HTTP status code and message mapping
 # Following OCP: extend by adding entries, not modifying handlers
 # None as detail means: use exception message
@@ -107,6 +131,9 @@ EXCEPTION_MAP: dict[type[BeCoMeAPIError], tuple[int, str | None]] = {
         "You have not submitted an opinion for this project",
     ),
     InvitationNotFoundError: (status.HTTP_404_NOT_FOUND, "Invitation not found"),
+    # Fixed copy on purpose: the exception message names the address that was invited, and
+    # the response must not repeat it.
+    UserNotFoundForInvitationError: (status.HTTP_404_NOT_FOUND, "No user found with this email"),
     # 400 Bad Request
     InvitationExpiredError: (status.HTTP_400_BAD_REQUEST, "Invitation has expired"),
     InvitationAlreadyUsedError: (
@@ -139,6 +166,20 @@ EXCEPTION_MAP: dict[type[BeCoMeAPIError], tuple[int, str | None]] = {
     CurrentPasswordIncorrectError: (
         status.HTTP_400_BAD_REQUEST,
         "Current password is incorrect",
+    ),
+    # Profile-photo upload refusals (POST /users/me/photo).
+    PhotoTypeNotAllowedError: (
+        status.HTTP_400_BAD_REQUEST,
+        "Invalid file type. Allowed: JPEG, PNG, GIF, WebP",
+    ),
+    PhotoTooLargeError: (status.HTTP_400_BAD_REQUEST, "File too large. Maximum size is 5 MB"),
+    PhotoContentMismatchError: (
+        status.HTTP_400_BAD_REQUEST,
+        "File content does not match declared type",
+    ),
+    PhotoDimensionsTooLargeError: (
+        status.HTTP_400_BAD_REQUEST,
+        "Image dimensions are too large. Maximum is 4096x4096 pixels",
     ),
     # 401 Unauthorized
     InvalidCredentialsError: (
@@ -173,8 +214,9 @@ EXCEPTION_MAP: dict[type[BeCoMeAPIError], tuple[int, str | None]] = {
         status.HTTP_409_CONFLICT,
         "You are already a member of this project",
     ),
-    # The invite route catches this itself so it can log the rejection; the entry here is
-    # what covers the accept route, which has no reason to log and no try/except.
+    AlreadyInvitedError: (status.HTTP_409_CONFLICT, "User already has a pending invitation"),
+    # The invite route catches this to log the rejection and re-raises it, so the invite and
+    # accept routes answer through this one entry.
     ExampleProjectInvitationError: (
         status.HTTP_409_CONFLICT,
         "The example project cannot take invitations",
@@ -204,6 +246,15 @@ ERROR_CODES: dict[type[BeCoMeAPIError], str] = {
     TurnstileVerificationError: TURNSTILE_REFUSED_CODE,
     ScaleExcludesOpinionsError: SCALE_EXCLUDES_OPINIONS_CODE,
     CurrentPasswordIncorrectError: CURRENT_PASSWORD_INCORRECT_CODE,
+    UserNotFoundForInvitationError: INVITEE_NOT_FOUND_CODE,
+    AlreadyInvitedError: ALREADY_INVITED_CODE,
+    UserAlreadyMemberError: ALREADY_MEMBER_CODE,
+    ExampleProjectInvitationError: EXAMPLE_PROJECT_NOT_INVITABLE_CODE,
+    InvitationNotFoundError: INVITATION_NOT_FOUND_CODE,
+    PhotoTypeNotAllowedError: PHOTO_TYPE_NOT_ALLOWED_CODE,
+    PhotoTooLargeError: PHOTO_TOO_LARGE_CODE,
+    PhotoContentMismatchError: PHOTO_CONTENT_MISMATCH_CODE,
+    PhotoDimensionsTooLargeError: PHOTO_DIMENSIONS_TOO_LARGE_CODE,
 }
 
 # Default mappings for base exception classes
