@@ -20,6 +20,7 @@ from api.exceptions import (
     PhotoDimensionsTooLargeError,
     PhotoTooLargeError,
     PhotoTypeNotAllowedError,
+    PhotoUnreadableError,
     ProjectNotFoundError,
     ScaleExcludesOpinionsError,
     TurnstileVerificationError,
@@ -455,7 +456,7 @@ class TestMachineReadableErrorCodes:
 class TestInvitationAndPhotoErrorCodes:
     """Each invitation and photo-upload refusal answers with its own stable code.
 
-    The SPA translates these by code, so a code names exactly one (status, detail) pair
+    So the SPA can translate these by code, a code names exactly one (status, detail) pair
     and the sentence stays as it was for any client still matching on it.
     """
 
@@ -515,6 +516,12 @@ class TestInvitationAndPhotoErrorCodes:
                 status.HTTP_400_BAD_REQUEST,
                 "Image dimensions are too large. Maximum is 4096x4096 pixels",
                 "photo_dimensions_too_large",
+            ),
+            (
+                PhotoUnreadableError("header does not parse"),
+                status.HTTP_400_BAD_REQUEST,
+                "The image could not be read. Try saving it again as JPEG or PNG.",
+                "photo_unreadable",
             ),
         ],
     )

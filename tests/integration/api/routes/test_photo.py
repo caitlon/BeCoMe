@@ -281,6 +281,30 @@ class TestPhotoUpload:
         assert mock_logger.warning.call_args.kwargs["extra"]["reason"] == "content_mismatch"
         mock_storage.upload.assert_not_called()
 
+    def test_a_corrupt_image_has_its_own_code_and_is_logged(self, client_with_mock_storage):
+        """A file with a PNG signature that no decoder can read is not a size problem."""
+        # GIVEN
+        client, mock_storage = client_with_mock_storage
+        token = register_and_login(client, "photo@example.com")
+        corrupt = b"\x89PNG\r\n\x1a\n" + b"garbage" * 10
+
+        # WHEN
+        with patch("api.routes.users.logger") as mock_logger:
+            response = client.post(
+                "/api/v1/users/me/photo",
+                headers=auth_header(token),
+                files={"file": ("broken.png", corrupt, "image/png")},
+            )
+
+        # THEN
+        assert response.status_code == 400
+        assert response.json() == {
+            "detail": "The image could not be read. Try saving it again as JPEG or PNG.",
+            "code": "photo_unreadable",
+        }
+        assert mock_logger.warning.call_args.kwargs["extra"]["reason"] == "unreadable"
+        mock_storage.upload.assert_not_called()
+
     def test_an_oversized_canvas_has_a_code(self, client_with_mock_storage):
         """A small file declaring a huge canvas answers with its own code."""
         # GIVEN

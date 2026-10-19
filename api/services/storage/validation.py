@@ -49,6 +49,31 @@ def extension_for(content_type: str) -> str:
     return CONTENT_TYPE_TO_EXTENSION.get(content_type, "jpg")
 
 
+def validate_image_readable(content: bytes) -> bool:
+    """Check that an image's header parses, whatever size it declares.
+
+    Run before :func:`validate_image_dimensions` so a corrupt file and an oversized one
+    are told apart: that function answers False for both. Only the header is parsed, as
+    there, and the declared size is not judged here.
+
+    Pillow's :class:`~PIL.Image.DecompressionBombError` counts as readable: it fires
+    from ``open`` only after the header has parsed, and the size check then refuses the
+    canvas on its own terms.
+
+    :param content: Raw file bytes.
+    :return: True when the header parses with a width and height of at least 1.
+    """
+    try:
+        with Image.open(BytesIO(content)) as image:
+            width, height = image.size
+    except Image.DecompressionBombError:
+        return True
+    except (UnidentifiedImageError, OSError, ValueError):
+        return False
+
+    return width >= 1 and height >= 1
+
+
 def validate_image_dimensions(content: bytes) -> bool:
     """Check that an image's pixel dimensions stay within the avatar budget.
 

@@ -5,7 +5,7 @@ from uuid import UUID
 
 from sqlmodel import select
 
-from api.db.models import Invitation, Project, ProjectMember
+from api.db.models import Invitation, MemberRole, Project, ProjectMember
 from tests.integration.api.conftest import auth_header, create_project, register_and_login
 
 
@@ -834,6 +834,37 @@ class TestInvitationErrorCodes:
         # THEN
         assert response.status_code == 409
         assert response.json()["code"] == "example_project_not_invitable"
+
+    def test_accepting_as_an_existing_member_has_the_member_code(self, client, session):
+        """Accepting when the user already belongs to the project answers 409 with its code."""
+        # GIVEN: an invitation that is still pending after the invitee became a member
+        admin_token = register_and_login(client, "admin@example.com")
+        invitee_token = register_and_login(client, "invitee@example.com")
+        created = create_project(client, admin_token)
+        invitation_id = client.post(
+            f"/api/v1/projects/{created['id']}/invite",
+            json={"email": "invitee@example.com"},
+            headers=auth_header(admin_token),
+        ).json()["id"]
+        invitee_id = client.get("/api/v1/users/me", headers=auth_header(invitee_token)).json()["id"]
+        session.add(
+            ProjectMember(
+                project_id=UUID(created["id"]), user_id=UUID(invitee_id), role=MemberRole.EXPERT
+            )
+        )
+        session.commit()
+
+        # WHEN
+        response = client.post(
+            f"/api/v1/invitations/{invitation_id}/accept", headers=auth_header(invitee_token)
+        )
+
+        # THEN
+        assert response.status_code == 409
+        assert response.json() == {
+            "detail": "You are already a member of this project",
+            "code": "already_member",
+        }
 
     def test_missing_and_someone_elses_invitation_give_identical_bodies(self, client):
         """Accept and decline cannot tell a missing invitation from one that is not yours."""

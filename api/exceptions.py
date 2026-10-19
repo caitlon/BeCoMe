@@ -180,5 +180,9 @@ class PhotoContentMismatchError(BeCoMeAPIError):
     """Raised when an uploaded photo's bytes are not the image type it declared."""
 
 
+class PhotoUnreadableError(BeCoMeAPIError):
+    """Raised when an uploaded photo has the right signature but its header does not parse."""
+
+
 class PhotoDimensionsTooLargeError(BeCoMeAPIError):
-    """Raised when an uploaded photo declares a pixel canvas over the limit."""
+    """Raised when an uploaded photo's header parses and declares a canvas over the limit."""

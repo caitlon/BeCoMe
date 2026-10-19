@@ -34,6 +34,7 @@ from api.exceptions import (
     PhotoDimensionsTooLargeError,
     PhotoTooLargeError,
     PhotoTypeNotAllowedError,
+    PhotoUnreadableError,
     ProjectNotFoundError,
     ResetTokenExpiredError,
     ScaleExcludesOpinionsError,
@@ -98,8 +99,8 @@ SCALE_EXCLUDES_OPINIONS_CODE = "scale_excludes_opinions"
 # is fine, so the answer carries a code the form can show beside the field instead.
 CURRENT_PASSWORD_INCORRECT_CODE = "current_password_incorrect"  # noqa: S105  # pragma: allowlist secret
 
-# The machine-readable halves of the invitation refusals. The SPA translates them by code, so
-# the English sentence can be reworded without breaking a screen. One code per exception, and
+# The machine-readable halves of the invitation refusals. so the SPA can translate them by
+# code, and the English sentence can be reworded without breaking a screen. One code per exception, and
 # each exception has exactly one status and sentence.
 INVITEE_NOT_FOUND_CODE = "invitee_not_found"
 ALREADY_INVITED_CODE = "already_invited"
@@ -109,11 +110,12 @@ EXAMPLE_PROJECT_NOT_INVITABLE_CODE = "example_project_not_invitable"
 # body, so a code that told them apart would reopen the question that body closes.
 INVITATION_NOT_FOUND_CODE = "invitation_not_found"
 
-# The machine-readable halves of the four 400s a profile photo upload can get, one per check
+# The machine-readable halves of the five 400s a profile photo upload can get, one per check
 # that refuses the file, so the form can say what to change.
 PHOTO_TYPE_NOT_ALLOWED_CODE = "photo_type_not_allowed"
 PHOTO_TOO_LARGE_CODE = "photo_too_large"
 PHOTO_CONTENT_MISMATCH_CODE = "photo_content_mismatch"
+PHOTO_UNREADABLE_CODE = "photo_unreadable"
 PHOTO_DIMENSIONS_TOO_LARGE_CODE = "photo_dimensions_too_large"
 
 # Exception to HTTP status code and message mapping
@@ -176,6 +178,10 @@ EXCEPTION_MAP: dict[type[BeCoMeAPIError], tuple[int, str | None]] = {
     PhotoContentMismatchError: (
         status.HTTP_400_BAD_REQUEST,
         "File content does not match declared type",
+    ),
+    PhotoUnreadableError: (
+        status.HTTP_400_BAD_REQUEST,
+        "The image could not be read. Try saving it again as JPEG or PNG.",
     ),
     PhotoDimensionsTooLargeError: (
         status.HTTP_400_BAD_REQUEST,
@@ -254,6 +260,7 @@ ERROR_CODES: dict[type[BeCoMeAPIError], str] = {
     PhotoTypeNotAllowedError: PHOTO_TYPE_NOT_ALLOWED_CODE,
     PhotoTooLargeError: PHOTO_TOO_LARGE_CODE,
     PhotoContentMismatchError: PHOTO_CONTENT_MISMATCH_CODE,
+    PhotoUnreadableError: PHOTO_UNREADABLE_CODE,
     PhotoDimensionsTooLargeError: PHOTO_DIMENSIONS_TOO_LARGE_CODE,
 }
 

@@ -190,6 +190,8 @@ def accept_invitation(
     :param invitation_service: Invitation service
     :return: Created membership details
     :raises InvitationNotFoundError: If the invitation does not exist or is not for this user
+    :raises ExampleProjectInvitationError: If the invitation is into the seeded example
+    :raises UserAlreadyMemberError: If the user is already a member of the project
     """
     membership = invitation_service.accept_invitation(invitation_id, current_user.id)
 
