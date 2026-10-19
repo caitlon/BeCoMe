@@ -338,7 +338,7 @@ describe('ApiClient', () => {
 
       const { HttpError } = await import('@/lib/errors');
       const error = await api
-        .changePassword({ current_password: 'wrong', new_password: 'new' })
+        .changePassword({ current_password: 'wrong', new_password: 'new' }) // pragma: allowlist secret
         .catch((err: unknown) => err);
 
       // A 400 is not a lost session: no silent refresh, no sign-out.

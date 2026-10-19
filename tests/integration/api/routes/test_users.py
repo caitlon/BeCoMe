@@ -469,7 +469,10 @@ class TestChangePasswordWithWrongCurrentPassword:
         resp = client.put(
             "/api/v1/users/me/password",
             headers=auth_header(token),
-            json={"current_password": "NotThePassword1!", "new_password": "NewSecurePass456!"},
+            json={
+                "current_password": "NotThePassword1!",  # pragma: allowlist secret
+                "new_password": "NewSecurePass456!",
+            },
         )
 
         # THEN it is a 400 the SPA can tell apart, with no WWW-Authenticate challenge
@@ -487,7 +490,10 @@ class TestChangePasswordWithWrongCurrentPassword:
         client.put(
             "/api/v1/users/me/password",
             headers=auth_header(token),
-            json={"current_password": "NotThePassword1!", "new_password": "NewSecurePass456!"},
+            json={
+                "current_password": "NotThePassword1!",  # pragma: allowlist secret
+                "new_password": "NewSecurePass456!",
+            },
         )
 
         # WHEN the same token is used again

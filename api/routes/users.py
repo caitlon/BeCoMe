@@ -194,8 +194,8 @@ def change_password(
     """Change the authenticated user's password.
 
     CurrentPasswordIncorrectError is handled by centralized exception middleware, which
-    answers 400 with the code ``current_password_incorrect``. Rate limited to prevent password guessing attacks. Every token issued before
-    the change is invalidated (M1).
+    answers 400 with the code ``current_password_incorrect``. Rate limited to prevent
+    password guessing attacks. Every token issued before the change is invalidated (M1).
 
     :param request: FastAPI request (for rate limiting)
     :param current_user: User from JWT token

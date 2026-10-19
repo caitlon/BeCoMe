@@ -25,7 +25,7 @@ export const TURNSTILE_REFUSED_CODE = 'turnstile_refused';
  * The code the API sends when a password change is given a wrong current password.
  * It rides on a 400, not a 401, so the request is not mistaken for a lost session.
  */
-export const CURRENT_PASSWORD_INCORRECT_CODE = 'current_password_incorrect';
+export const CURRENT_PASSWORD_INCORRECT_CODE = 'current_password_incorrect'; // pragma: allowlist secret
 
 /** A fetch() call itself failed: offline, DNS failure, CORS, aborted, etc. */
 export class NetworkError extends Error {
