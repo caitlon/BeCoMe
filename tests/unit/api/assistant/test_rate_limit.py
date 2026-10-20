@@ -146,10 +146,10 @@ class TestInMemoryAssistantThrottle:
 
         # WHEN
         with patch.object(rate_limit.time, "monotonic", return_value=600.0):
-            open_window = throttle.remaining(user_id)
+            open_window = throttle.remaining(rate_limit._digest(user_id))
         with patch.object(rate_limit.time, "monotonic", return_value=3600.0):
-            closed = throttle.remaining(user_id)
-        unknown = throttle.remaining(uuid4())
+            closed = throttle.remaining(rate_limit._digest(user_id))
+        unknown = throttle.remaining(rate_limit._digest(uuid4()))
 
         # THEN
         assert open_window == 3000
@@ -224,6 +224,54 @@ class TestInMemoryAssistantThrottle:
         allowed = [outcome for chunk in results for outcome in chunk]
         assert len(allowed) == threads_count * hits_each
         assert allowed.count(True) == budget
+
+    def test_a_fixed_key_is_counted_apart_from_users(self):
+        """
+        GIVEN a budget of two and a user who has spent both of their messages
+        WHEN the global key is hit
+        THEN it has a budget of its own, and its refusal reports its own window
+        """
+        # GIVEN
+        throttle = InMemoryAssistantThrottle(max_per_hour=2, window_seconds=3600)
+        user_id = uuid4()
+        with patch.object(rate_limit.time, "monotonic", return_value=0.0):
+            throttle.hit(user_id)
+            throttle.hit(user_id)
+
+            # WHEN
+            outcomes = [throttle.hit_key(rate_limit.GLOBAL_KEY) for _ in range(3)]
+        with patch.object(rate_limit.time, "monotonic", return_value=600.0):
+            seconds = throttle.retry_after_key(rate_limit.GLOBAL_KEY)
+            window = throttle.remaining(rate_limit.GLOBAL_KEY)
+
+        # THEN
+        assert outcomes == [True, True, False]
+        assert seconds == 3000
+        assert window == 3000
+
+    def test_a_user_hit_is_a_hit_under_the_users_digest(self):
+        """
+        GIVEN a budget of one and a user who has spent it through hit
+        WHEN the same digest is hit as a key
+        THEN it is refused, so the user methods and the key methods count together
+        """
+        # GIVEN
+        throttle = InMemoryAssistantThrottle(max_per_hour=1)
+        user_id = uuid4()
+        throttle.hit(user_id)
+
+        # WHEN/THEN
+        assert throttle.hit_key(rate_limit._digest(user_id)) is False
+
+    def test_zero_means_no_limit_for_a_key_too(self):
+        """
+        GIVEN a budget of zero
+        WHEN the global key is hit repeatedly
+        THEN every hit is allowed
+        """
+        throttle = InMemoryAssistantThrottle(max_per_hour=0)
+
+        assert [throttle.hit_key(rate_limit.GLOBAL_KEY) for _ in range(5)] == [True] * 5
 
 
 def _key(fake: fakeredis.FakeStrictRedis) -> bytes:
@@ -573,16 +621,93 @@ class TestRedisAssistantThrottle:
             assert digest not in str(record.__dict__)
             assert digest not in record.getMessage()
 
+    def test_the_global_key_is_the_prefix_and_all_and_counts_apart_from_users(self):
+        """
+        GIVEN a budget of one
+        WHEN the global key is hit twice
+        THEN the one stored key is assistant:chat:all, the second hit is refused, and a
+             user's own counter is untouched
+        """
+        # GIVEN
+        fake = fakeredis.FakeStrictRedis()
+        throttle = RedisAssistantThrottle(fake, max_per_hour=1)
+
+        # WHEN
+        outcomes = [throttle.hit_key(rate_limit.GLOBAL_KEY) for _ in range(2)]
+        user_id = uuid4()
+        user_allowed = throttle.hit(user_id)
+
+        # THEN
+        assert outcomes == [True, False]
+        assert user_allowed is True
+        assert set(fake.keys("*")) == {
+            b"assistant:chat:all",
+            f"assistant:chat:{rate_limit._digest(user_id)}".encode(),
+        }
+
+    def test_retry_after_key_is_the_ttl_of_the_global_key(self):
+        """
+        GIVEN a spent global counter with 100 seconds left
+        WHEN retry_after_key is asked for it
+        THEN it is that TTL
+        """
+        # GIVEN
+        fake = fakeredis.FakeStrictRedis()
+        throttle = RedisAssistantThrottle(fake, max_per_hour=1, window_seconds=3600)
+        throttle.hit_key(rate_limit.GLOBAL_KEY)
+        throttle.hit_key(rate_limit.GLOBAL_KEY)
+        fake.expire(b"assistant:chat:all", 100)
+
+        # WHEN/THEN
+        assert throttle.retry_after_key(rate_limit.GLOBAL_KEY) == 100
+
+    def test_the_global_key_is_counted_per_process_when_the_store_is_down(self):
+        """
+        GIVEN a store that is down, a budget of one and 600 seconds into the window
+        WHEN the global key is hit twice and its refusal asks how long to wait
+        THEN the second hit is refused by the process-local count, and the wait is the
+             fallback's remaining window
+        """
+        # GIVEN
+        client = MagicMock()
+        client.pipeline.return_value.execute.side_effect = redis.RedisError("down")
+        client.ttl.side_effect = redis.RedisError("down")
+        throttle = RedisAssistantThrottle(client, max_per_hour=1, window_seconds=3600)
+
+        # WHEN
+        with patch.object(rate_limit.time, "monotonic", return_value=0.0):
+            outcomes = [throttle.hit_key(rate_limit.GLOBAL_KEY) for _ in range(2)]
+        with patch.object(rate_limit.time, "monotonic", return_value=600.0):
+            seconds = throttle.retry_after_key(rate_limit.GLOBAL_KEY)
+
+        # THEN
+        assert outcomes == [True, False]
+        assert seconds == 3000
+
+    def test_zero_means_no_limit_for_a_key_and_never_touches_redis(self):
+        """
+        GIVEN a budget of zero and a client that fails on any call
+        WHEN the global key is hit
+        THEN it is allowed and the client is never used
+        """
+        client = MagicMock()
+        throttle = RedisAssistantThrottle(client, max_per_hour=0)
+
+        assert throttle.hit_key(rate_limit.GLOBAL_KEY) is True
+        assert client.mock_calls == []
+
 
 class TestGetAssistantThrottle:
     """The factory selects the Redis backend only when configured."""
 
     @pytest.fixture(autouse=True)
     def _fresh_cache(self):
-        """Keep the process-wide cache from leaking between tests."""
+        """Keep the process-wide caches from leaking between tests."""
         rate_limit.get_assistant_throttle.cache_clear()
+        rate_limit.get_assistant_global_throttle.cache_clear()
         yield
         rate_limit.get_assistant_throttle.cache_clear()
+        rate_limit.get_assistant_global_throttle.cache_clear()
 
     def test_uses_redis_when_configured(self):
         """
@@ -621,3 +746,37 @@ class TestGetAssistantThrottle:
 
         # THEN
         assert isinstance(throttle, InMemoryAssistantThrottle)
+
+    def test_the_global_throttle_takes_its_own_budget_and_backend(self):
+        """
+        GIVEN per-user and global budgets that differ, with and without a redis_url
+        WHEN the global throttle is built
+        THEN it carries the global budget, on Redis when configured and in memory otherwise
+        """
+        # GIVEN
+        with_redis = SimpleNamespace(
+            redis_url="redis://cache:6379/0",
+            assistant_rate_limit_per_hour=60,
+            assistant_global_turns_per_hour=7,
+        )
+        without = SimpleNamespace(
+            redis_url="", assistant_rate_limit_per_hour=60, assistant_global_turns_per_hour=7
+        )
+
+        # WHEN
+        with (
+            patch.object(rate_limit, "get_settings", return_value=with_redis),
+            patch.object(rate_limit.redis, "from_url", return_value=MagicMock()),
+        ):
+            hosted = rate_limit.get_assistant_global_throttle()
+        rate_limit.get_assistant_global_throttle.cache_clear()
+        with patch.object(rate_limit, "get_settings", return_value=without):
+            local = rate_limit.get_assistant_global_throttle()
+            again = rate_limit.get_assistant_global_throttle()
+
+        # THEN
+        assert isinstance(hosted, RedisAssistantThrottle)
+        assert hosted._max == 7
+        assert isinstance(local, InMemoryAssistantThrottle)
+        assert local._max == 7
+        assert again is local

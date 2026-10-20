@@ -73,11 +73,13 @@ def assistant_rate_limited_handler(
 
 
 def assistant_busy_handler(request: Request, exc: AssistantBusyError) -> JSONResponse:
-    """Answer 503 with ``Retry-After`` when the process is answering its limit of turns.
+    """Answer 503 with ``Retry-After`` when a turn is refused for load.
 
     The body is the same fixed text as for an unreachable model server. The record is the
     only one a refusal writes: a WARNING, not an ERROR, since a full assistant is load and not
-    a fault, and it names the limit that refused (``process`` or ``user``) and no user.
+    a fault, and it names the limit that refused (``process``, ``user`` or ``global``) and no
+    user. The global ceiling has an event of its own, ``assistant_global_cap_reached``, since
+    it is an hourly spend and not a count of turns running.
 
     :param request: FastAPI request.
     :param exc: The raised error.
@@ -87,7 +89,11 @@ def assistant_busy_handler(request: Request, exc: AssistantBusyError) -> JSONRes
     _log(
         request,
         exc,
-        event="assistant_concurrency_cap_reached",
+        event=(
+            "assistant_global_cap_reached"
+            if exc.reason == "global"
+            else "assistant_concurrency_cap_reached"
+        ),
         status_code=status_code,
         level=logging.WARNING,
         reason=exc.reason,

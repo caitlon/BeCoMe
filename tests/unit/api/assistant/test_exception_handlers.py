@@ -122,15 +122,22 @@ class TestAssistantExceptionHandlers:
         assert response.status_code == 503
         assert response.headers["Retry-After"] == "1234"
 
-    @pytest.mark.parametrize("reason", ["process", "user"])
+    @pytest.mark.parametrize(
+        ("reason", "event"),
+        [
+            ("process", "assistant_concurrency_cap_reached"),
+            ("user", "assistant_concurrency_cap_reached"),
+            ("global", "assistant_global_cap_reached"),
+        ],
+    )
     def test_a_refused_turn_is_logged_once_at_warning_with_the_limit_that_refused(
-        self, caplog, reason
+        self, caplog, reason, event
     ):
         """
-        GIVEN a busy error refused by one of the two limits
+        GIVEN a busy error refused by one of the three limits
         WHEN its handler runs
         THEN exactly one record is written, a WARNING since a full assistant is load and not a
-             fault, naming that limit and no user
+             fault, with the event of that limit, naming it and no user
         """
         # GIVEN
         caplog.set_level(logging.DEBUG, logger="api.assistant")
@@ -141,7 +148,7 @@ class TestAssistantExceptionHandlers:
 
         # THEN
         assert [(r.levelno, r.event, r.reason) for r in caplog.records] == [
-            (logging.WARNING, "assistant_concurrency_cap_reached", reason)
+            (logging.WARNING, event, reason)
         ]
         assert not hasattr(caplog.records[0], "user_id")
 

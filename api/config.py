@@ -389,6 +389,9 @@ class Settings(BaseSettings):
     # Chat messages per user per fixed hour; 0 turns the limit off, on a laptop only: a
     # deployed service refuses 0.
     assistant_rate_limit_per_hour: int = Field(default=60, ge=0)
+    # Chat messages per fixed hour across all users together; 0 turns the ceiling off, on a
+    # laptop only: a deployed service refuses 0.
+    assistant_global_turns_per_hour: int = Field(default=600, ge=0)
     # The most chat turns one process answers at once, and above zero: a turn that finds no
     # free slot is refused with a 503 instead of waiting. A streamed answer holds its slot
     # until the stream ends.
@@ -540,7 +543,8 @@ class Settings(BaseSettings):
         name is checked against an allowlist, so an unknown or renamed environment is
         refused too. A deployed service has no llama-server to reach, so every model role
         there must be api; a laptop and a CI runner keep local roles. A zero message limit
-        switches that cap off, so a deployed service may not set it to zero. LangSmith tracing
+        switches that cap off, so a deployed service may set neither the per-user nor the
+        global limit to zero. LangSmith tracing
         sends the text of questions, tool replies and answers, which is project data read
         as the signed-in user, to a third-party endpoint, so a deployed service may trace
         only to the EU endpoint, into a named project other than the local default, and only
@@ -566,9 +570,9 @@ class Settings(BaseSettings):
         :return: The validated settings instance.
         :raises ValueError: If assistant_enabled is true in the prod profile or on a
             Railway environment outside the allowlist, or on a deployed service while
-            assistant_rate_limit_per_hour is 0, a model role is still local,
-            assistant_langsmith_enabled is true with an endpoint other than the EU one or a
-            blank or local-default project, a library tracing switch is on, a
+            assistant_rate_limit_per_hour or assistant_global_turns_per_hour is 0, a model
+            role is still local, assistant_langsmith_enabled is true with an endpoint other
+            than the EU one or a blank or local-default project, a library tracing switch is on, a
             ``RUNS_ENDPOINTS`` list is set, assistant_vector_db_url is empty, not a
             ``postgresql+psycopg`` URL, without a database or a single host, carrying a
             host, hostaddr, port, dbname or service override, naming the same database as
@@ -588,11 +592,12 @@ class Settings(BaseSettings):
                 f"here, Railway environment {self.railway_environment_name!r})"
             )
         if self.is_deploy or on_railway:
-            if self.assistant_rate_limit_per_hour == 0:
-                raise ValueError(
-                    "assistant_rate_limit_per_hour must be above zero on a deployed service; "
-                    "0 switches the limit off"
-                )
+            for limit_name in ("assistant_rate_limit_per_hour", "assistant_global_turns_per_hour"):
+                if getattr(self, limit_name) == 0:
+                    raise ValueError(
+                        f"{limit_name} must be above zero on a deployed service; 0 switches "
+                        "the limit off"
+                    )
             local_roles = [
                 provider_name
                 for provider_name, _ in _ASSISTANT_PROVIDER_ROLES

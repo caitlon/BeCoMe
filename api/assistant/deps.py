@@ -42,7 +42,12 @@ from api.assistant.rag.models import (
 )
 from api.assistant.rag.retrieval import DocsRetriever, RetrievalConfig
 from api.assistant.rag.store import make_engine, open_store
-from api.assistant.rate_limit import AssistantThrottle, get_assistant_throttle
+from api.assistant.rate_limit import (
+    GLOBAL_KEY,
+    AssistantThrottle,
+    get_assistant_global_throttle,
+    get_assistant_throttle,
+)
 from api.assistant.upstream import UNAVAILABLE_ERRORS
 from api.auth.dependencies import AccessToken, CurrentUser
 from api.config import Settings, get_settings
@@ -253,28 +258,44 @@ def get_assistant_service(
 
 AssistantServiceDep = Annotated[AssistantService, Depends(get_assistant_service)]
 AssistantThrottleDep = Annotated[AssistantThrottle, Depends(get_assistant_throttle)]
+AssistantGlobalThrottleDep = Annotated[AssistantThrottle, Depends(get_assistant_global_throttle)]
 TurnSlotsDep = Annotated[TurnSlots, Depends(get_turn_slots)]
 DocsRetrieverDep = Annotated[DocsRetriever, Depends(get_docs_retriever)]
 
 
-async def enforce_message_limit(current_user: CurrentUser, throttle: AssistantThrottleDep) -> None:
-    """Spend one message of the caller's hourly budget, before anything else is built.
+async def enforce_message_limit(
+    current_user: CurrentUser,
+    throttle: AssistantThrottleDep,
+    global_throttle: AssistantGlobalThrottleDep,
+) -> None:
+    """Spend one message of the caller's hourly budget and of the global ceiling.
 
-    Listed right after :func:`hold_turn_slot` among the route's dependencies, so a process
-    that is full refuses first and spends no message, and a spent budget answers before the
-    API client, the retriever's store or any model is touched. ``hit`` is synchronous
-    and may talk to Redis, so it runs in a worker thread, as does ``retry_after``, which is
-    asked only after a refusal.
+    Listed right after :func:`hold_turn_slot` among the route's dependencies, so a 503 for a
+    full process spends neither, and a refusal answers before the API client, the retriever's
+    store or any model is touched. The user's own budget comes before the ceiling, so an
+    account with a spent budget cannot drain the shared one. ``hit`` is synchronous and may
+    talk to Redis, so it runs in a worker thread, as do ``retry_after`` and the ceiling's
+    calls, which are asked only after a refusal.
 
     :param current_user: The authenticated caller.
-    :param throttle: The hourly message cap.
+    :param throttle: The per-user hourly message cap.
+    :param global_throttle: The hourly ceiling on all users together.
     :raises AssistantRateLimitedError: When this hour's budget is already spent; it carries
         the seconds until the window closes.
+    :raises AssistantBusyError: When the global ceiling is already reached; it carries the
+        seconds until its window closes and the reason ``"global"``.
     """
     if not await run_in_threadpool(throttle.hit, current_user.id):
         retry_after = await run_in_threadpool(throttle.retry_after, current_user.id)
         raise AssistantRateLimitedError(
             "the hourly assistant message budget is spent", retry_after=retry_after
+        )
+    if not await run_in_threadpool(global_throttle.hit_key, GLOBAL_KEY):
+        retry_after = await run_in_threadpool(global_throttle.retry_after_key, GLOBAL_KEY)
+        raise AssistantBusyError(
+            "the global hourly assistant message ceiling is reached",
+            retry_after=retry_after,
+            reason="global",
         )
 
 

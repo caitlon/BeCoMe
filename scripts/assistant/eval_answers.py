@@ -18,10 +18,11 @@ service.
 
 Needs ``ASSISTANT_ENABLED=true`` and the model servers the settings point at; the runner
 starts none. The database must hold the fixtures' user and projects. Set
-``ASSISTANT_RATE_LIMIT_PER_HOUR=0`` for a long run. ``LIMIT_ASSISTANT_CHAT`` (per address,
-per minute) is met by pacing: the runner starts at most one question fewer per 60 s than that
-limit allows, and the wait is not part of ``latency_s``. ``--no-pacing`` turns it off, for a rig
-where the limiter is off.
+``ASSISTANT_RATE_LIMIT_PER_HOUR=0`` and ``ASSISTANT_GLOBAL_TURNS_PER_HOUR=0`` for a long run:
+the pacing below sends about 1140 questions an hour, past the global default of 600.
+``LIMIT_ASSISTANT_CHAT`` (per address, per minute) is met by pacing: the runner starts at most
+one question fewer per 60 s than that limit allows, and the wait is not part of ``latency_s``.
+``--no-pacing`` turns it off, for a rig where the limiter is off.
 
 The output holds answers and source titles; logs carry counts and timings only.
 """

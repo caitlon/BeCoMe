@@ -28,7 +28,7 @@ from api.assistant import deps
 from api.assistant.agent import tracing
 from api.assistant.agent.prompt import SYSTEM_PROMPT
 from api.assistant.rag.retrieval import RetrievedChunk
-from api.assistant.rate_limit import get_assistant_throttle
+from api.assistant.rate_limit import get_assistant_global_throttle, get_assistant_throttle
 from api.config import get_settings
 from tests.integration.api.conftest import create_project, register_and_login, stored_accounts
 from tests.shared.assistant_fakes import (
@@ -54,6 +54,7 @@ GOOD_ROW = json.dumps({"id": "q0", "arm": "cli", "status": "ok"})
 _ENV = {
     "ASSISTANT_MODE": "workflow",
     "ASSISTANT_RATE_LIMIT_PER_HOUR": "0",
+    "ASSISTANT_GLOBAL_TURNS_PER_HOUR": "0",
     "ASSISTANT_RETRIEVAL_K": "3",
     "ASSISTANT_LANGSMITH_ENABLED": "false",
     "ASSISTANT_ANSWER_LLM_MODEL": "test-answer-model",
@@ -86,6 +87,7 @@ def _reset() -> None:
     get_settings.cache_clear()
     deps.clear_caches()
     get_assistant_throttle.cache_clear()
+    get_assistant_global_throttle.cache_clear()
 
 
 @pytest.fixture(autouse=True)

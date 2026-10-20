@@ -111,8 +111,9 @@ variables.
    start. The route's per-address limit (`LIMIT_ASSISTANT_CHAT`, `<n>/minute`) is handled by
    pacing: the runner starts at most `n - 1` questions in any 60 s and prints the figure on
    stderr at the start; the wait is not part of `latency_s`. `--no-pacing` turns it off, for a
-   rig where the limiter is off. The hourly cap is not paced: a long run still needs
-   `ASSISTANT_RATE_LIMIT_PER_HOUR=0`. Tracing is off unless `--trace` is given and
+   rig where the limiter is off. The hourly caps are not paced: a long run still needs
+   `ASSISTANT_RATE_LIMIT_PER_HOUR=0` and, since the pacing sends about 1140 questions an hour,
+   `ASSISTANT_GLOBAL_TURNS_PER_HOUR=0` as well. Tracing is off unless `--trace` is given and
    `ASSISTANT_LANGSMITH_ENABLED` is on; it sends the question and answer text to LangSmith, with
    the names and positions of the project's experts replaced first (see [Tracing](#tracing)).
    In the running service, with the setting on, one chat turn is one trace: an `assistant_turn`
@@ -337,6 +338,14 @@ start of the model call, so it leaves out retrieval, and in the `hybrid` and `ag
   spends one. A Redis error does not lift it: each process then counts in its own memory with the same budget, and the record
   `assistant_throttle_unavailable` is logged at ERROR. Set it to `0` to switch it off, for a
   measurement run that sends many questions from one account; a deployed service refuses `0`.
+- **Global ceiling.** `ASSISTANT_GLOBAL_TURNS_PER_HOUR` messages across all users together in a
+  fixed hour (default 600), counted under the Redis key `assistant:chat:all` when `REDIS_URL` is
+  set and in memory otherwise, with the same per-process fallback as the message limit. It is
+  spent after the user's own budget, so an account whose budget is spent cannot drain it. A
+  turn over the ceiling is `503`, the same body as an unreachable model server, with
+  `Retry-After` set to the seconds until the window closes; the record
+  `assistant_global_cap_reached` carries `reason: global` and no user. Set it to `0` to switch it
+  off on a laptop; a deployed service refuses `0`.
 - **Concurrent turns.** `ASSISTANT_MAX_CONCURRENT_TURNS` (default 8, above zero) is the most
   turns one process answers at once, and one user may run at most two of them, so a single account
   cannot take every slot. A turn that finds no free slot is refused at once, not queued, with `503`,
