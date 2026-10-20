@@ -1,8 +1,8 @@
 """Per-user hourly cap on assistant chat messages.
 
 Modeled on ``api/auth/login_throttle.py``: Redis-backed when a store is configured,
-keyed on a hash of the identifier so no raw id sits in the store, and open when Redis
-errors. Unlike the login throttle this is a plain fixed-window counter, not a lockout:
+keyed on a hash of the identifier so no raw id sits in the store, and counted per process
+when Redis errors. Unlike the login throttle this is a plain fixed-window counter, not a lockout:
 the window opens with a user's first message and closes an hour later however many
 messages follow, because a later message never moves the expiry.
 
@@ -12,12 +12,14 @@ a lost connection between two separate calls could otherwise leave a counter wit
 expiry, and that user would stay locked out for good.
 
 A limit of zero switches the cap off; both backends then allow everything without
-touching their store.
+touching their store. A deployed service refuses a zero limit at startup
+(``Settings._validate_assistant_deploy``), so that is for a laptop only.
 
-Failing open on a Redis error is deliberate. The assistant never runs in
-production (``Settings._validate_assistant_deploy`` refuses to start it there), and
-deployed profiles refuse to start without Redis anyway, so a store outage here costs the
-dev and test services an unenforced cap, not a public endpoint its protection.
+A Redis error does not open the cap. The Redis backend owns an in-memory throttle with the
+same budget and window and counts there for as long as the store is down, so each process
+enforces the cap on its own: with several processes the real ceiling is their number times
+the budget, which is still a bound, where an open cap is none. That count restarts with the
+process and is lost when Redis comes back; the window of the shared counter is unaffected.
 
 A refused message also learns how long the refusal lasts: ``retry_after`` reports the
 seconds until the user's window closes, for the ``Retry-After`` header of the 429. A Redis
@@ -61,14 +63,14 @@ def _digest(user_id: UUID) -> str:
 def _log_store_unavailable(exc: redis.RedisError) -> None:
     """Record a throttle store that could not be reached.
 
-    ERROR, not WARNING, for the reason the login throttle's own record is: the message
-    this happens during still goes through, so nothing else marks the outage, and a
-    lower level would let the cap stay silently off for as long as Redis is down.
+    ERROR, not WARNING, for the reason the login throttle's own record is: nothing else
+    marks the outage, and a lower level would let the cap stay on its weaker per-process
+    count for as long as Redis is down without anyone seeing it.
 
     :param exc: The Redis error that caused the fallback.
     """
     logger.error(
-        "Assistant throttle store unavailable, hourly cap not enforced",
+        "Assistant throttle store unavailable, hourly cap counted per process",
         extra={"event": "assistant_throttle_unavailable"},
         exc_info=exc,
     )
@@ -138,7 +140,7 @@ class InMemoryAssistantThrottle:
 
 
 class RedisAssistantThrottle:
-    """Redis-backed throttle shared across processes; fails open on a store outage.
+    """Redis-backed throttle shared across processes; counts per process on a store outage.
 
     :param client: Redis client for the shared store.
     :param max_per_hour: Messages allowed per user within one window; 0 means no limit.
@@ -151,12 +153,15 @@ class RedisAssistantThrottle:
         self._client = client
         self._max = max_per_hour
         self._window = window_seconds
+        # Counts in place of the store while it is down: same budget, this process only.
+        self._fallback = InMemoryAssistantThrottle(max_per_hour, window_seconds)
 
     def hit(self, user_id: UUID) -> bool:
         """Count one message and report whether the user is within budget.
 
         :param user_id: The user sending the message.
-        :return: True when this message is allowed, False when the budget is spent.
+        :return: True when this message is allowed, False when the budget is spent. While
+            the store is down, the answer comes from this process's own count.
         """
         if self._max == 0:
             return True
@@ -168,7 +173,7 @@ class RedisAssistantThrottle:
             results = pipe.execute()
         except redis.RedisError as e:
             _log_store_unavailable(e)
-            return True
+            return self._fallback.hit(user_id)
         return int(results[1]) <= self._max
 
     def retry_after(self, user_id: UUID) -> int:

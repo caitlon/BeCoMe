@@ -332,8 +332,10 @@ start of the model call, so it leaves out retrieval, and in the `hybrid` and `ag
 - **Message limit.** `ASSISTANT_RATE_LIMIT_PER_HOUR` messages per user in a fixed hour
   (default 60), counted in Redis when `REDIS_URL` is set and in memory otherwise. It is spent
   first, before the API client, the retriever or any model is built, so a message it refuses
-  costs no model call; a message with an invalid body still spends one. Set it to `0` to switch
-  it off, for a measurement run that sends many questions from one account.
+  costs no model call; a message with an invalid body still spends one. A Redis error does not
+  lift it: each process then counts in its own memory with the same budget, and the record
+  `assistant_throttle_unavailable` is logged at ERROR. Set it to `0` to switch it off, for a
+  measurement run that sends many questions from one account; a deployed service refuses `0`.
 - **Message length.** `ASSISTANT_MAX_MESSAGE_CHARS` (default 4000, which is also the ceiling of
   the request schema) can only lower the length of a message. A longer one is answered `422`
   like any other invalid request, before the API client is built, before the retriever is built

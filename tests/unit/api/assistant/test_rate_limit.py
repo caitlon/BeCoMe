@@ -407,31 +407,65 @@ class TestRedisAssistantThrottle:
         assert outcomes == [True] * 5
         assert client.mock_calls == []
 
-    def test_fails_open_and_logs_when_the_store_is_unavailable(self, caplog):
+    def test_counts_per_process_and_logs_when_the_store_is_unavailable(self, caplog):
         """
-        GIVEN a store whose transaction raises a Redis error
-        WHEN a user hits the throttle
-        THEN the message is allowed and an ERROR record names the event
+        GIVEN a store whose transaction raises a Redis error and a budget of two
+        WHEN one user sends three messages
+        THEN the process-local count still refuses the third, and each failed hit writes
+             an ERROR record that says the cap is counted per process
         """
         # GIVEN
         client = MagicMock()
         client.pipeline.return_value.execute.side_effect = redis.RedisError("down")
-        throttle = RedisAssistantThrottle(client, max_per_hour=1)
+        throttle = RedisAssistantThrottle(client, max_per_hour=2)
         user_id = uuid4()
 
         # WHEN
         with caplog.at_level(logging.ERROR, logger="api.security"):
-            allowed = throttle.hit(user_id)
+            outcomes = [throttle.hit(user_id) for _ in range(3)]
 
         # THEN
-        assert allowed is True
+        assert outcomes == [True, True, False]
         records = [
             r
             for r in caplog.records
             if getattr(r, "event", None) == "assistant_throttle_unavailable"
         ]
-        assert len(records) == 1
-        assert records[0].levelno == logging.ERROR
+        assert len(records) == 3
+        assert all(r.levelno == logging.ERROR for r in records)
+        assert all("per process" in r.getMessage() for r in records)
+
+    def test_the_fallback_counts_users_apart(self):
+        """
+        GIVEN a store that is down and a budget of one
+        WHEN two users each send one message
+        THEN both are allowed, and each is refused on a second one
+        """
+        # GIVEN
+        client = MagicMock()
+        client.pipeline.return_value.execute.side_effect = redis.RedisError("down")
+        throttle = RedisAssistantThrottle(client, max_per_hour=1)
+        first, second = uuid4(), uuid4()
+
+        # WHEN
+        outcomes = [throttle.hit(first), throttle.hit(second), throttle.hit(first)]
+
+        # THEN
+        assert outcomes == [True, True, False]
+
+    def test_zero_means_no_limit_even_when_the_store_is_down(self):
+        """
+        GIVEN a budget of zero and a store that raises on every call
+        WHEN a user hits the throttle repeatedly
+        THEN every hit is allowed
+        """
+        # GIVEN
+        client = MagicMock()
+        client.pipeline.side_effect = redis.RedisError("down")
+        throttle = RedisAssistantThrottle(client, max_per_hour=0)
+
+        # WHEN/THEN
+        assert all(throttle.hit(uuid4()) for _ in range(5))
 
     def test_the_failure_record_never_carries_the_user_or_its_digest(self, caplog):
         """
