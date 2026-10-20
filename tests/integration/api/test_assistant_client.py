@@ -264,7 +264,8 @@ class TestRateLimitKey:
         """
         GIVEN a service with a Cloudflare origin secret and a client built for 203.0.113.7
         WHEN the client reads through the real app
-        THEN get_client_ip resolves the inner request to 203.0.113.7, not to
+        THEN only X-Origin-Verify is sent (no CF-Connecting-IP), and get_client_ip
+            resolves the inner request to 203.0.113.7 from the transport peer, not to
             "unverified-origin", which would put every user in one bucket
         """
         # GIVEN
@@ -278,9 +279,7 @@ class TestRateLimitKey:
 
         # THEN
         assert recorder.client_ips == ["203.0.113.7"]
-        assert recorder.origin_headers == [
-            {"x-origin-verify": origin_secret, "cf-connecting-ip": "203.0.113.7"}
-        ]
+        assert recorder.origin_headers == [{"x-origin-verify": origin_secret}]
 
     @pytest.mark.asyncio
     async def test_an_unverified_outer_key_stays_unverified(self, client, origin_secret):
@@ -302,7 +301,7 @@ class TestRateLimitKey:
         assert recorder.client_ips == ["unverified-origin"]
 
     @pytest.mark.asyncio
-    async def test_without_an_origin_secret_no_origin_header_is_sent(self, client):
+    async def test_without_an_origin_secret_no_origin_header_is_sent(self, client, monkeypatch):
         """
         GIVEN no Cloudflare origin secret, as on a laptop or in CI
         WHEN the client reads through the real app
@@ -310,6 +309,8 @@ class TestRateLimitKey:
             ASGI peer address the client carries
         """
         # GIVEN
+        monkeypatch.setenv("CLOUDFLARE_ORIGIN_SECRET", "")
+        get_settings.cache_clear()
         token = register_and_login(client, "alice@example.com")
         recorder = _RecordingASGIApp(client.app)
         api_client = UserApiClient(app=recorder, access_token=token, client_ip="203.0.113.7")
@@ -317,6 +318,7 @@ class TestRateLimitKey:
         # WHEN
         await api_client.list_projects()
         await api_client.aclose()
+        get_settings.cache_clear()
 
         # THEN
         assert recorder.origin_headers == [{}]
@@ -354,3 +356,30 @@ class TestTokenNeverLogged:
         for record in records:
             assert token not in record.getMessage()
             assert all(token not in str(value) for value in record.__dict__.values())
+
+    @pytest.mark.asyncio
+    async def test_origin_secret_does_not_appear_in_any_log_record(self, client, origin_secret):
+        """
+        GIVEN a configured origin secret sent as X-Origin-Verify on every inner request
+        WHEN every api.* log record emitted during a list and a read is captured
+        THEN records were emitted, and the secret appears in none of them: not in the
+            message, args, extra fields or exception text
+        """
+        # GIVEN
+        token = register_and_login(client, "alice@example.com")
+        project = create_project(client, token, name="Alice's project")
+        api_client = UserApiClient(app=client.app, access_token=token, client_ip="127.0.0.1")
+
+        # WHEN
+        with captured_log_records("api") as records:
+            await api_client.list_projects()
+            await api_client.get_project(project["id"])
+        await api_client.aclose()
+
+        # THEN
+        assert records
+        for record in records:
+            assert origin_secret not in record.getMessage()
+            assert origin_secret not in str(record.args)
+            assert origin_secret not in (record.exc_text or "")
+            assert all(origin_secret not in str(value) for value in record.__dict__.values())
