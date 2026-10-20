@@ -580,6 +580,23 @@ class TestEvalSettings:
         assert settings.assistant_langsmith_enabled is False
         assert settings.assistant_mode == "hybrid"
 
+    def test_the_sources_are_shown_whatever_the_environment_says(self, monkeypatch):
+        """
+        GIVEN settings with the answer sources switched off
+        WHEN the runner builds the settings it runs under
+        THEN the sources are shown, so the runner reads the answer as the model wrote it
+        """
+        # GIVEN
+        monkeypatch.setenv("ASSISTANT_SHOW_SOURCES", "false")
+        _reset()
+        assert get_settings().assistant_show_sources is False
+
+        # WHEN
+        settings = ea._eval_settings(get_settings(), "workflow", False)
+
+        # THEN
+        assert settings.assistant_show_sources is True
+
     def test_trace_keeps_the_environments_tracing_setting(self, monkeypatch):
         """
         GIVEN settings with LangSmith tracing switched on by the environment

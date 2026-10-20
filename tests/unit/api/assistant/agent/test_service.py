@@ -1921,19 +1921,46 @@ class TestShowSourcesSetting:
         assert "".join(pieces) == response.answer == "It is the midpoint."
         assert response.sources == []
 
-    async def test_stream_with_the_setting_off_releases_a_held_tail_at_the_end(self):
+    @pytest.mark.parametrize(
+        ("chunks", "answer"),
+        [
+            (["It is the midpoint [", "see"], "It is the midpoint [see"),
+            (["It is [1"], "It is [1"),
+        ],
+    )
+    async def test_stream_with_the_setting_off_releases_a_held_tail_at_the_end(
+        self, chunks: list[str], answer: str
+    ):
         """
-        GIVEN the setting off and an answer that ends in a citation
+        GIVEN the setting off and an answer whose last part is held back while the stream
+              runs, because a bracket never closes
         WHEN the turn is streamed
-        THEN the pieces still join to the cleaned answer
+        THEN the tail is released once the answer is complete, and the pieces join to the
+             answer of the response
         """
-        model = _model(_say("It is the midpoint [1]"))
-        model.stream_chunks = ["It is the midpoint ", "[1]"]
+        model = _model(_say(answer))
+        model.stream_chunks = chunks
         service = AssistantService(_settings(assistant_show_sources=False), model)
 
         pieces, response = await _drain(service, _request(), _ctx(chunks=[_chunk()]))
 
-        assert "".join(pieces) == response.answer == "It is the midpoint"
+        assert len(pieces) == 2
+        assert "".join(pieces) == response.answer == answer
+
+    async def test_stream_with_the_setting_off_keeps_a_number_bracket_that_is_not_a_source(self):
+        """
+        GIVEN the setting off, one registered source and an answer with a fuzzy number and a
+              citation
+        WHEN the turn is streamed
+        THEN the fuzzy number stays and the citation goes, in the pieces and in the response
+        """
+        model = _model(_say("The number [6, 8, 11] is cited [1]."))
+        model.stream_chunks = ["The number [6, ", "8, 11] is cited [", "1]."]
+        service = AssistantService(_settings(assistant_show_sources=False), model)
+
+        pieces, response = await _drain(service, _request(), _ctx(chunks=[_chunk()]))
+
+        assert "".join(pieces) == response.answer == "The number [6, 8, 11] is cited."
 
     async def test_the_agent_mode_still_yields_only_the_response_with_the_setting_off(self):
         """
