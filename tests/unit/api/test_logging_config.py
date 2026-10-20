@@ -139,6 +139,24 @@ class TestJsonLogFormatter:
         assert parsed["request_id"] == "abc-123"
         assert parsed["event"] == "login_failure"
 
+    def test_keeps_a_list_of_dicts_as_nested_json(self):
+        """
+        GIVEN a record whose extra field is a list of dicts, as the assistant turn's sources are
+        WHEN JsonLogFormatter formats it
+        THEN the field is a JSON array of objects, not a string
+        """
+        # GIVEN
+        formatter = JsonLogFormatter()
+        record = _make_record(msg="turn answered")
+        entries = [{"n": 1, "title": "Method", "cited": True}, {"n": 2, "title": "Other"}]
+        record.sources = entries
+
+        # WHEN
+        parsed = json.loads(formatter.format(record))
+
+        # THEN
+        assert parsed["sources"] == entries
+
     def test_includes_timestamp(self):
         """
         GIVEN a basic log record

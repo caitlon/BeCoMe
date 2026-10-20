@@ -69,6 +69,7 @@ def _settings(mode: str = "workflow", **overrides: Any) -> Settings:
         "assistant_max_history_turns": 10,
         "assistant_turn_timeout_seconds": 30.0,
         "assistant_answer_llm_model": "test-answer-model",
+        "assistant_show_sources": True,
     }
     return Settings(**{**fields, **overrides})
 
@@ -1823,3 +1824,129 @@ async def _until_response(items):
         yield item
         if isinstance(item, AssistantChatResponse):
             return
+
+
+@pytest.mark.asyncio
+class TestShowSourcesSetting:
+    """assistant_show_sources decides what of the sources the client gets; the log always has them."""
+
+    async def test_answer_with_the_setting_off_sends_no_sources_or_markers(self):
+        """
+        GIVEN the setting off and an answer that cites the one passage found
+        WHEN the turn is answered
+        THEN the response has no sources, no marker and no link target, and its citation
+             check reads valid
+        """
+        service = AssistantService(
+            _settings(assistant_show_sources=False),
+            _model(_say("It is the midpoint [1](https://example.org/a) [7].")),
+        )
+
+        response = await service.answer(_request(), _ctx(chunks=[_chunk()]))
+
+        assert response.answer == "It is the midpoint."
+        assert response.sources == []
+        assert response.checks.citations_valid is True
+
+    async def test_answer_with_the_setting_on_keeps_sources_and_markers(self):
+        """
+        GIVEN the setting on
+        WHEN a cited answer is given
+        THEN the answer keeps its marker and the response lists the passage
+        """
+        service = AssistantService(_settings(), _model(_say("It is the midpoint [1].")))
+
+        response = await service.answer(_request(), _ctx(chunks=[_chunk()]))
+
+        assert response.answer == "It is the midpoint [1]."
+        assert [ref.n for ref in response.sources] == [1]
+
+    @pytest.mark.parametrize("show_sources", [True, False])
+    async def test_the_turn_record_lists_the_sources_with_what_was_cited(self, show_sources: bool):
+        """
+        GIVEN two passages, of which the answer cites the second, under either setting
+        WHEN the turn is answered
+        THEN the record lists both with their number, title, section, layer and whether
+             each was cited, and holds neither their words nor their address
+        """
+        chunks = [_chunk("First words."), _chunk("Second words.")]
+        chunks[1] = RetrievedChunk(**{**chunks[1].__dict__, "title": "Other", "url": "https://x.y"})
+        service = AssistantService(
+            _settings(assistant_show_sources=show_sources), _model(_say("See [2]."))
+        )
+
+        with captured_log_records(SERVICE_LOGGER) as records:
+            await service.answer(_request(), _ctx(chunks=chunks))
+
+        (record,) = [r for r in records if getattr(r, "event", "") == "assistant_turn"]
+        assert record.sources == [
+            {"n": 1, "title": "Method", "section": "Step 3", "layer": "public", "cited": False},
+            {"n": 2, "title": "Other", "section": "Step 3", "layer": "public", "cited": True},
+        ]
+        assert record.source_count == 2
+        assert "Second words." not in str(record.__dict__)
+        assert "https://x.y" not in str(record.__dict__)
+
+    async def test_the_record_keeps_the_real_citation_check_when_the_setting_is_off(self):
+        """
+        GIVEN the setting off and an answer citing a source that was never given
+        WHEN the turn is answered
+        THEN the response reads valid and the record says the citations were not
+        """
+        service = AssistantService(
+            _settings(assistant_show_sources=False), _model(_say("It is the midpoint [4]."))
+        )
+
+        with captured_log_records(SERVICE_LOGGER) as records:
+            response = await service.answer(_request(), _ctx(chunks=[_chunk()]))
+
+        (record,) = [r for r in records if getattr(r, "event", "") == "assistant_turn"]
+        assert response.checks.citations_valid is True
+        assert record.citations_valid is False
+
+    async def test_stream_with_the_setting_off_sends_no_marker_in_any_piece(self):
+        """
+        GIVEN the setting off and a stream that splits a citation across its pieces
+        WHEN the turn is streamed
+        THEN the pieces hold no marker and join to the answer of the response, which has no
+             sources
+        """
+        model = _model(_say("It is the midpoint [1](https://example.org/a)."))
+        model.stream_chunks = ["It is the midpoint [", "1", "](https://example.org/a)", "."]
+        service = AssistantService(_settings(assistant_show_sources=False), model)
+
+        pieces, response = await _drain(service, _request(), _ctx(chunks=[_chunk()]))
+
+        assert pieces == ["It is the midpoint", "."]
+        assert "".join(pieces) == response.answer == "It is the midpoint."
+        assert response.sources == []
+
+    async def test_stream_with_the_setting_off_releases_a_held_tail_at_the_end(self):
+        """
+        GIVEN the setting off and an answer that ends in a citation
+        WHEN the turn is streamed
+        THEN the pieces still join to the cleaned answer
+        """
+        model = _model(_say("It is the midpoint [1]"))
+        model.stream_chunks = ["It is the midpoint ", "[1]"]
+        service = AssistantService(_settings(assistant_show_sources=False), model)
+
+        pieces, response = await _drain(service, _request(), _ctx(chunks=[_chunk()]))
+
+        assert "".join(pieces) == response.answer == "It is the midpoint"
+
+    async def test_the_agent_mode_still_yields_only_the_response_with_the_setting_off(self):
+        """
+        GIVEN the agent mode and the setting off
+        WHEN the turn is streamed
+        THEN no piece is yielded and the response answer has no marker
+        """
+        service = AssistantService(
+            _settings("agent", assistant_show_sources=False),
+            _model(_say("It is the midpoint [1].")),
+        )
+
+        pieces, response = await _drain(service, _request(), _ctx(chunks=[_chunk()]))
+
+        assert pieces == []
+        assert response.answer == "It is the midpoint."

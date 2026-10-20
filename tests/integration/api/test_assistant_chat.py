@@ -83,6 +83,7 @@ _BASE_ENV = {
     "ASSISTANT_RATE_LIMIT_PER_HOUR": "0",
     "ASSISTANT_GLOBAL_TURNS_PER_HOUR": "0",
     "ASSISTANT_RETRIEVAL_K": "3",
+    "ASSISTANT_SHOW_SOURCES": "true",
     "ASSISTANT_LANGSMITH_ENABLED": "false",
     "ASSISTANT_ANSWER_LLM_MODEL": "test-answer-model",
     "ASSISTANT_ANSWER_LLM_BASE_URL": _CLOSED_PORT_URL,
@@ -2692,3 +2693,129 @@ class TestStreamRoute:
         assert response.status_code == 200
         (record,) = [r for r in records if getattr(r, "event", "") == "assistant_turn"]
         assert record.request_id == "stream-abc123"
+
+
+_SOURCE_TITLE = "Aurora Method Handbook"
+_SOURCE_SECTION = "Chapter Seven"
+_SOURCE_EXCERPT = "The compromise is the midpoint of the zebra median."
+_SOURCE_URL = "https://example.org/handbook/method"
+
+
+def _use_hidden_source_retriever(client) -> None:
+    """Install a retriever holding one passage whose title, excerpt and url are distinctive."""
+    from api.assistant.rag.retrieval import RetrievedChunk
+
+    chunk = RetrievedChunk(
+        text=f"Caption.\n\n{_SOURCE_EXCERPT}",
+        title=_SOURCE_TITLE,
+        section=_SOURCE_SECTION,
+        url=_SOURCE_URL,
+        layer="public",
+        score=0.9,
+        chunk_text=_SOURCE_EXCERPT,
+    )
+    client.app.dependency_overrides[deps.get_docs_retriever] = lambda: StaticDocsRetriever([chunk])
+
+
+def _assert_nothing_of_the_source_in(body: str) -> None:
+    for fragment in (_SOURCE_TITLE, _SOURCE_SECTION, _SOURCE_EXCERPT, _SOURCE_URL):
+        assert fragment not in body
+
+
+def _turn_record_sources(records: list[logging.LogRecord]) -> list[dict[str, Any]]:
+    (record,) = [r for r in records if getattr(r, "event", "") == "assistant_turn"]
+    return record.sources
+
+
+class TestAnswerSourcesSetting:
+    """ASSISTANT_SHOW_SOURCES decides whether the client is sent the sources of an answer."""
+
+    def test_the_chat_response_has_no_sources_or_markers_when_the_setting_is_off(
+        self, assistant_settings, client, configure
+    ):
+        """
+        GIVEN the setting off and a model that cites the one passage it was shown
+        WHEN the question is posted to /chat
+        THEN the sources are an empty list, the answer holds no marker, the body holds
+            nothing of the passage, the citation check reads as valid, and the turn record
+            lists the passage with its title, section, layer and whether it was cited
+        """
+        # GIVEN
+        configure(ASSISTANT_SHOW_SOURCES="false")
+        token = register_and_login(client, "hide-chat@example.com")
+        _use_hidden_source_retriever(client)
+        _use_model(client, _scripted("The midpoint [1](https://example.org/a)."))
+
+        # WHEN
+        with captured_log_records("api.assistant.agent.service") as records:
+            response = client.post(CHAT, json={"message": "hi"}, headers=auth_header(token))
+
+        # THEN
+        assert response.status_code == 200
+        body = response.json()
+        assert body["sources"] == []
+        assert body["answer"] == "The midpoint."
+        assert body["checks"]["citations_valid"] is True
+        _assert_nothing_of_the_source_in(response.text)
+        assert _turn_record_sources(records) == [
+            {
+                "n": 1,
+                "title": _SOURCE_TITLE,
+                "section": _SOURCE_SECTION,
+                "layer": "public",
+                "cited": True,
+            }
+        ]
+
+    def test_the_stream_sends_no_sources_or_markers_when_the_setting_is_off(
+        self, assistant_settings, client, configure
+    ):
+        """
+        GIVEN the setting off and a model whose stream splits a citation across its pieces
+        WHEN the question is posted to /chat/stream
+        THEN no token event holds a marker, the token texts join to the answer of the done
+            event, the done sources are empty, the body holds nothing of the passage, and the
+            turn record lists the passage
+        """
+        # GIVEN
+        configure(ASSISTANT_SHOW_SOURCES="false")
+        token = register_and_login(client, "hide-stream@example.com")
+        _use_hidden_source_retriever(client)
+        model = _scripted("The midpoint [1](https://example.org/a).")
+        model.stream_chunks = ["The midpoint [", "1", "](https://example.org/a)", "."]
+        _use_model(client, model)
+
+        # WHEN
+        with captured_log_records("api.assistant.agent.service") as records:
+            response = client.post(STREAM, json={"message": "hi"}, headers=auth_header(token))
+
+        # THEN
+        assert response.status_code == 200
+        events = _events(response.text)
+        assert events[-1][0] == "done"
+        texts = [payload["text"] for name, payload in events if name == "token"]
+        assert not re.search(r"\[\s*\d", "".join(texts))
+        assert "".join(texts) == events[-1][1]["answer"] == "The midpoint."
+        assert events[-1][1]["sources"] == []
+        _assert_nothing_of_the_source_in(response.text)
+        assert [entry["title"] for entry in _turn_record_sources(records)] == [_SOURCE_TITLE]
+
+    def test_the_markers_and_sources_arrive_unchanged_when_the_setting_is_on(
+        self, assistant_settings, client
+    ):
+        """
+        GIVEN the setting on, as the suite's base environment has it
+        WHEN a cited answer is requested from /chat
+        THEN the answer keeps its marker and the response lists the passage as a source
+        """
+        # GIVEN
+        token = register_and_login(client, "show-chat@example.com")
+        _use_hidden_source_retriever(client)
+        _use_model(client, _scripted("The midpoint [1]."))
+
+        # WHEN
+        response = client.post(CHAT, json={"message": "hi"}, headers=auth_header(token))
+
+        # THEN
+        assert response.json()["answer"] == "The midpoint [1]."
+        assert [source["title"] for source in response.json()["sources"]] == [_SOURCE_TITLE]

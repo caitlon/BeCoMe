@@ -237,6 +237,14 @@ documentation `sources` it may cite as `[n]`, the `tools_used`, the grounding `c
 token `usage` of the turn. Each source carries a `snippet`, the first words of the passage in
 plain text, at most 240 characters.
 
+`ASSISTANT_SHOW_SOURCES` (off by default; `true` on the dev and test services) decides whether the
+client is sent the sources. While it is off, `sources` is an empty list, the answer text has no
+`[n]` marker and no link target after one, the blanks before each marker are dropped with it, and
+`checks.citations_valid` is always true, in `/chat` and in every event of `/chat/stream`. The
+stream holds a piece back while a marker may still be forming in it, so a marker is never
+sent in part. The checks still run on the text the model wrote, and the system prompt is the same
+in both states. With the setting on, the response is as described above.
+
 The assistant reads project data through the application's own API, with the caller's own
 access token, so it sees exactly the projects the caller is a member of. Those internal reads
 count against the caller's own rate-limit bucket: when `CLOUDFLARE_ORIGIN_SECRET` is set, the
@@ -294,7 +302,10 @@ the one reply in `workflow`, every reply of the tool loop and the extra call aft
 hit its limit in the other modes. It leaves out the query translation, which runs in the
 retriever with the small chat model. `complete` is false when a reply reported no usage; its
 tokens are then missing from the sums, though it still counts in `llm_calls`. The four numbers
-are also on the `assistant_turn` log record.
+are also on the `assistant_turn` log record, and so is `sources`, whatever `ASSISTANT_SHOW_SOURCES`
+says: one entry per source the turn registered, with its number `n`, `title`, `section`, `layer`
+and `cited`, whether the answer the model wrote cites that number. The entry holds no excerpt, no
+address and no file path.
 
 The `timing` field holds `ttft_ms`, the milliseconds from the start of the answer model's call to
 its first piece of answer text, and `total_ms`, the whole turn with retrieval included. `ttft_ms`

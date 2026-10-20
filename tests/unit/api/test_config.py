@@ -1241,6 +1241,38 @@ class TestAssistantSettings:
         # THEN
         assert settings.assistant_enabled is False
 
+    def test_assistant_sources_are_hidden_by_default(self, monkeypatch, tmp_path):
+        """
+        GIVEN Settings without an explicit override and no .env file in reach
+        WHEN constructed
+        THEN assistant_show_sources defaults to False
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("ASSISTANT_SHOW_SOURCES", raising=False)
+
+        # WHEN
+        settings = Settings(secret_key="test-secret-key")
+
+        # THEN
+        assert settings.assistant_show_sources is False
+
+    def test_assistant_sources_are_shown_when_the_variable_says_true(self, monkeypatch, tmp_path):
+        """
+        GIVEN ASSISTANT_SHOW_SOURCES=true in the environment
+        WHEN Settings is constructed
+        THEN assistant_show_sources is True
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("ASSISTANT_SHOW_SOURCES", "true")
+
+        # WHEN
+        settings = Settings(secret_key="test-secret-key")
+
+        # THEN
+        assert settings.assistant_show_sources is True
+
     def test_local_dev_allows_the_assistant_switched_on(self, monkeypatch, tmp_path):
         """
         GIVEN the dev profile with no Railway marker (a laptop)
