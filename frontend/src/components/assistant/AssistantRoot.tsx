@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useAuth, registerSignOutListener } from "@/contexts/AuthContext";
 import { useAssistantUI } from "@/contexts/AssistantUIContext";
 import { useAssistantConfig } from "./useAssistantConfig";
@@ -36,16 +36,28 @@ export default function AssistantRoot() {
     [setAvailable, closeAssistant]
   );
 
-  // One listener for both, so a later user in the same tab never sees these answers.
-  useEffect(
-    () =>
-      registerSignOutListener(() => {
-        clearAssistantHistory();
-        closeAssistant();
-        forgetProject();
-      }),
-    [closeAssistant, forgetProject]
-  );
+  // One reset for sign-out and for a switch between two users, so a later user in the same tab
+  // never sees these answers.
+  const resetForUser = useCallback(() => {
+    clearAssistantHistory();
+    closeAssistant();
+    forgetProject();
+  }, [closeAssistant, forgetProject]);
+
+  useEffect(() => registerSignOutListener(resetForUser), [resetForUser]);
+
+  // The sign-out listener does not fire when another tab swaps the session and this tab re-reads
+  // it (refreshUser), so a change from one user id to another resets here. The first sign-in and a
+  // re-read of the same user change nothing.
+  const previousUserId = useRef<string | null>(null);
+  const userId = user?.id ?? null;
+  useEffect(() => {
+    if (userId === null) return;
+    if (previousUserId.current !== null && previousUserId.current !== userId) {
+      resetForUser();
+    }
+    previousUserId.current = userId;
+  }, [userId, resetForUser]);
 
   // `available` implies a signed-in user; the check is for the type, which cannot know it.
   if (!available || !user) {
@@ -54,6 +66,7 @@ export default function AssistantRoot() {
 
   return (
     <AssistantPanel
+      key={user.id}
       open={isOpen}
       onOpenChange={(open) => {
         if (!open) closeAssistant();
