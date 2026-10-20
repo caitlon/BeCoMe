@@ -403,12 +403,13 @@ own limit. On top of that, routes carry tighter limits by risk:
 | Photo | `120/minute` | The public avatar proxy, which a page loads once per member |
 | Assistant chat | `20/minute` | The assistant's chat route, which exists only when `ASSISTANT_ENABLED` is on: on a developer's machine and on the dev and test services, never in production |
 | Assistant messages | `60/hour` per user | The same route, as a fixed one-hour window per account (`ASSISTANT_RATE_LIMIT_PER_HOUR`, `0` switches it off on a laptop). A spent budget answers `429` |
-| Assistant global ceiling | `600/hour` for all users | The same route, as one fixed one-hour window counted under the Redis key `assistant:chat:all` (`ASSISTANT_GLOBAL_TURNS_PER_HOUR`, `0` switches it off on a laptop). It is spent after the user's own budget, so an account with a spent budget cannot drain it. A reached ceiling answers `503` with `Retry-After` set to the seconds until the window closes and the same body as an unreachable model server |
+| Assistant global ceiling | `600/hour` for all users | The same route, as one fixed one-hour window counted under the Redis key `assistant:chat:all` (`ASSISTANT_GLOBAL_TURNS_PER_HOUR`, `0` switches it off on a laptop). It is spent after the user's own budget, so an account with a spent budget cannot drain it; a turn the ceiling refuses has therefore already spent one of that user's own hourly messages. A reached ceiling answers `503` with `Retry-After` set to the seconds until the window closes and the same body as an unreachable model server |
 | Assistant concurrent turns | `8` per process, `2` per user | The same route, as a count of turns running at once (`ASSISTANT_MAX_CONCURRENT_TURNS`); a streamed answer holds its slot until the stream ends. A full process, or a user already running two turns, answers `503` with `Retry-After: 5` and the same body as an unreachable model server, instead of queueing, and spends no message of the hourly budget, since the slot is taken first |
 
 Only those routes carry a decorator. Everything else is bounded by the two global ceilings
-alone, which is the point of having them. The two assistant caps that count per account or per
-process, the hourly messages and the concurrent turns, are applied through dependencies. The
+alone, which is the point of having them. The three assistant caps (the hourly messages per
+account, the global hourly ceiling counted for everyone, and the concurrent turns per process) are
+applied through dependencies. The
 `hold_turn_slot` dependency runs first, so a request refused for a full process spends no message
 of the hourly budget, and the `enforce_message_limit` dependency follows, before the `20/minute`
 per-IP limit runs, so a request that limit refuses has already spent one hourly message.
@@ -525,37 +526,35 @@ laptop and a CI runner carry no such marker, so the invariants guard staging wit
 breaking the local suite. The app serves the interactive API docs (`/docs`) only outside
 production.
 
-The assistant, which runs its models locally by default or at a hosted provider per role,
-has a check of its own, separate from the nine invariants.
-`assistant_enabled` defaults to `false`, and `_validate_assistant_deploy` refuses to start when it
-is `true` in the `prod` profile, or on a Railway environment whose name is not `dev` or `test`
-(compared stripped and case-insensitively, so an unknown or renamed environment is refused). The
-profile and the name are checked independently. On any deploy the validator also requires the
-three model roles to be `api`, since a local model server is not reachable there, and refuses
-`ASSISTANT_RATE_LIMIT_PER_HOUR` or `ASSISTANT_GLOBAL_TURNS_PER_HOUR` at `0`, which would switch
-the cap off. The model is shown each expert's name and position in the opinions block, except for members who objected to
-the assistant (`users.assistant_objection`, set through `PUT /api/v1/users/me`): their rows are
-left out for everyone but themselves. The result block still includes their values in the
-aggregates (mean, median, best compromise, number of experts), so with a single objector their
-values follow from the aggregates and the visible rows; the prompt forbids the model to compute
-them. The missing row also shows other members who objected. Tracing sends the text of
-questions, history, tool replies and answers to LangSmith, but the names and positions of the
-turn's participants are replaced before anything leaves the process, and a trace is dropped
-rather than sent unmasked when the roster of the turn's project cannot be read. The mask misses
-typos, diminutives, forms that change a word's stem, a position the model translates or
-paraphrases and names inside e-mail addresses, and the
-drop does not cover a project of more than 100 experts, nor a turn with no current project whose
-text names another project's experts. The full list is in
+The assistant, which runs its models locally by default or at a hosted provider per role, has a
+check of its own, separate from the nine invariants. `assistant_enabled` defaults to `false`, and
+`_validate_assistant_deploy` refuses to start when it is `true` in the `prod` profile, or on a
+Railway environment whose name is not `dev` or `test` (compared stripped and case-insensitively, so
+an unknown or renamed environment is refused). The profile and the name are checked independently.
+On any deploy the validator also requires the three model roles to be `api`, since a local model
+server is not reachable there, and refuses `ASSISTANT_RATE_LIMIT_PER_HOUR` or
+`ASSISTANT_GLOBAL_TURNS_PER_HOUR` at `0`, which would switch the cap off. The model is shown each
+expert's name and position in the opinions block, except for members who objected to the assistant
+(`users.assistant_objection`, set through `PUT /api/v1/users/me`): their rows are left out for
+everyone but themselves. The result block still includes their values in the aggregates (mean,
+median, best compromise, number of experts), so with a single objector their values follow from the
+aggregates and the visible rows; the prompt forbids the model to compute them. The missing row also
+shows other members who objected. Tracing sends the text of questions, history, tool replies and
+answers to LangSmith, but the names and positions of the turn's participants are replaced before
+anything leaves the process, and a trace is dropped rather than sent unmasked when the roster of the
+turn's project cannot be read. The mask misses typos, diminutives, forms that change a word's stem,
+a position the model translates or paraphrases and names inside e-mail addresses, and the drop does
+not cover a project of more than 100 experts, nor a turn with no current project whose text names
+another project's experts. The full list is in
 [`api/assistant/README.md`](../api/assistant/README.md#tracing). With `assistant_langsmith_enabled`
 on, a deployed service must use the EU endpoint and a named project other than the local default,
-and the LangSmith library's own switches (`LANGSMITH_TRACING` and its `LANGCHAIN_` variants) and
-its `RUNS_ENDPOINTS` lists are refused there: `assistant_langsmith_enabled` is the only way to
-turn tracing on. The key, https and loopback
-checks stay in `_validate_assistant_providers`.
-The production refusal, the hosted-roles rule and the tracing rules also fire when
+and the LangSmith library's own switches (`LANGSMITH_TRACING` and its `LANGCHAIN_` variants) and its
+`RUNS_ENDPOINTS` lists are refused there: `assistant_langsmith_enabled` is the only way to turn
+tracing on. The key, https and loopback checks stay in `_validate_assistant_providers`. The
+production refusal, the hosted-roles rule and the tracing rules also fire when
 `RAILWAY_ENVIRONMENT_NAME` is set, so a Railway process that carries `TESTING=1` and slips past
-`is_deploy` is still held to them. The assistant router is registered only when the setting is
-on, so a service that leaves it off answers 404 for the whole `/api/v1/assistant` prefix.
+`is_deploy` is still held to them. The assistant router is registered only when the setting is on,
+so a service that leaves it off answers 404 for the whole `/api/v1/assistant` prefix.
 
 ## Network and edge
 

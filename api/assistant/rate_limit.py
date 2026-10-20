@@ -105,7 +105,8 @@ class InMemoryAssistantThrottle:
 
     Safe to call from a thread pool: one lock guards the table.
 
-    :param max_per_hour: Messages allowed per user within one window; 0 means no limit.
+    :param max_per_hour: Messages allowed per key (one user, or everyone for the global ceiling)
+        within one window; 0 means no limit.
     :param window_seconds: Length of the window, in seconds.
     """
 
@@ -184,7 +185,8 @@ class RedisAssistantThrottle:
     """Redis-backed throttle shared across processes; counts per process on a store outage.
 
     :param client: Redis client for the shared store.
-    :param max_per_hour: Messages allowed per user within one window; 0 means no limit.
+    :param max_per_hour: Messages allowed per key (one user, or everyone for the global ceiling)
+        within one window; 0 means no limit.
     :param window_seconds: Length of the window, in seconds.
     """
 
