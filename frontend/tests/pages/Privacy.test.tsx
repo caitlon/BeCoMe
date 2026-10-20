@@ -28,6 +28,7 @@ describe('Privacy', () => {
       'Cookies',
       'Who else handles it',
       'How long',
+      'The assistant',
       'On what basis',
       'Your rights, and how to use them',
       'If something is wrong',
@@ -85,7 +86,7 @@ describe('Privacy', () => {
     render(<Privacy />);
 
     expect(screen.getByText(/Article 6\(1\)\(b\) of the GDPR/)).toBeInTheDocument();
-    expect(screen.getByText(/Article 6\(1\)\(f\)/)).toBeInTheDocument();
+    expect(screen.getByText(/legitimate interest under Article 6\(1\)\(f\)/)).toBeInTheDocument();
   });
 
   it('discloses the security logs and the IP addresses in them', () => {
@@ -164,12 +165,16 @@ describe.each([
     verify: '24 hours', logs: 'three days', sentry: 'by Sentry for 30 days',
     noEmailChange: 'email address cannot be changed in the app',
     transfer: 'Chapter V',
+    assistantModel: 'OVHcloud AI Endpoints', assistantTraces: 'LangSmith',
+    assistantRetention: 'deleted after 14 days',
   }],
   ['cs', csPrivacy, {
     accessToken: '15 minut', refresh: '7 dní', reset: '60 minut',
     verify: '24 hodin', logs: 'tři dny', sentry: 'uchovává Sentry 30 dní',
     noEmailChange: 'E-mailovou adresu v aplikaci změnit nelze',
     transfer: 'kapitoly V',
+    assistantModel: 'OVHcloud AI Endpoints', assistantTraces: 'LangSmith',
+    assistantRetention: 'po 14 dnech se mažou',
   }],
 ] as const)('privacy notice facts, %s', (_lang, bundle, expected) => {
   const prose = JSON.stringify(bundle);

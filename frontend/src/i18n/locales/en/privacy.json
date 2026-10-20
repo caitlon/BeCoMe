@@ -2,7 +2,7 @@
   "meta": {
     "title": "Privacy",
     "subtitle": "What this service stores about you, why, and how to take it back.",
-    "updated": "Last updated 30 September 2026"
+    "updated": "Last updated 20 October 2026"
   },
   "controller": {
     "heading": "Who is responsible",
@@ -57,6 +57,20 @@
       "A sign-in session lasts 15 minutes and renews itself as you use it. Seven days of inactivity ends it. There is no fixed maximum for a session in continuous use."
     ],
     "outro": "The account itself is kept until you delete it. Log records are kept for three days and then discarded. Crash reports, session records and traces are kept by Sentry for 30 days."
+  },
+  "assistant": {
+    "heading": "The assistant",
+    "intro": "The assistant answers questions about the method and about your projects. It works only when you open it and send a question. This is what happens to the question:",
+    "items": [
+      "Sent to the model: your question, up to the last 20 messages of the conversation, a few excerpts from the BeCoMe documentation and published papers, and the data of the project open in the panel: its name, description, scale and result, and the opinions in it with each member's first name, last name, position and values. That covers every member of the project, not only you. Your email address, account ID and photo are never sent.",
+      "The model runs on OVHcloud AI Endpoints in the European Union (Gravelines, France). OVHcloud does not store questions or answers and does not use them to train models.",
+      "To find and fix mistakes, each question and answer is recorded as a trace in LangSmith, run by LangChain, Inc. The traces are stored in the European Union (the Netherlands) and deleted after 14 days. LangChain is a US company and may access them from the United States; the EU standard contractual clauses in its data processing agreement cover that transfer, and you can ask for a copy at the address above. Before a trace is sent, the names and positions of project members are replaced with labels such as “Expert 1”. This works for names written as they appear in the project; a typo or a nickname in a question can pass through unchanged.",
+      "The conversation is kept only in your browser tab. It is deleted when you close the tab or sign out, and the service does not save it on its servers.",
+      "Your own questions and opinions are sent to provide the service you asked for (Article 6(1)(b)). The other members' opinions and the traces rest on legitimate interest (Article 6(1)(f)): the members' interest in understanding the result they share, and the controller's interest in correct answers from the assistant.",
+      "You can object. In your profile, turn on “Hide my opinions from other members' assistant”. From then on, other members' assistant does not see your opinions at all: no name, no position, no values. Your own assistant still shows them to you. The project result, such as the mean and the number of experts, is calculated as before and still includes your opinion. If no one else in the project has objected, your values can be worked out from the result and the other opinions; the assistant is told not to do that calculation. Other members may also notice that one opinion is missing.",
+      "Do not type sensitive data into the assistant, such as health information or other people's contact details."
+    ],
+    "outro": "A trace carries no email address, account ID or IP address, so it cannot be found by your name on request. All traces are deleted after 14 days regardless."
   },
   "rights": {
     "heading": "Your rights, and how to use them",

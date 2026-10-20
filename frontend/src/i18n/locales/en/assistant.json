@@ -15,7 +15,7 @@
     "title": "Assistant",
     "scopeProject": "Project “{{name}}”",
     "scopeGeneral": "Method and app",
-    "seesOnly": "Sees only what you see in this project.",
+    "seesOnly": "Sees only what you see in this project. Your questions go to an AI model in the EU.",
     "clear": "Clear conversation",
     "clearConfirm": "Clear the conversation? This cannot be undone.",
     "clearYes": "Clear",
