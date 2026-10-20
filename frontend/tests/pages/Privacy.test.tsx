@@ -4,6 +4,8 @@ import { render, framerMotionMock, unauthenticatedAuthMock } from '@tests/utils'
 import Privacy from '@/pages/Privacy';
 import enPrivacy from '@/i18n/locales/en/privacy.json';
 import csPrivacy from '@/i18n/locales/cs/privacy.json';
+import enAssistant from '@/i18n/locales/en/assistant.json';
+import csAssistant from '@/i18n/locales/cs/assistant.json';
 
 vi.mock('@/contexts/AuthContext', () => unauthenticatedAuthMock);
 vi.mock('framer-motion', () => framerMotionMock);
@@ -160,33 +162,39 @@ describe('Privacy', () => {
  * for: it turns a change of plan into a change the notice has to acknowledge.
  */
 describe.each([
-  ['en', enPrivacy, {
+  ['en', enPrivacy, enAssistant, {
     accessToken: '15 minutes', refresh: '7 days', reset: '60 minutes',
     verify: '24 hours', logs: 'three days', sentry: 'by Sentry for 30 days',
     noEmailChange: 'email address cannot be changed in the app',
     transfer: 'Chapter V',
     assistantModel: 'OVHcloud AI Endpoints', assistantTraces: 'LangSmith',
     assistantRetention: 'deleted after 14 days',
+    historyCap: 'last 20 messages',
   }],
-  ['cs', csPrivacy, {
+  ['cs', csPrivacy, csAssistant, {
     accessToken: '15 minut', refresh: '7 dní', reset: '60 minut',
     verify: '24 hodin', logs: 'tři dny', sentry: 'uchovává Sentry 30 dní',
     noEmailChange: 'E-mailovou adresu v aplikaci změnit nelze',
     transfer: 'kapitoly V',
     assistantModel: 'OVHcloud AI Endpoints', assistantTraces: 'LangSmith',
     assistantRetention: 'po 14 dnech se mažou',
+    historyCap: '20 posledních zpráv',
   }],
-] as const)('privacy notice facts, %s', (_lang, bundle, expected) => {
+] as const)('privacy notice facts, %s', (_lang, bundle, assistantBundle, expected) => {
   const prose = JSON.stringify(bundle);
 
   it.each(Object.entries(expected))('states %s', (_name, phrase) => {
     expect(prose).toContain(phrase);
   });
 
-  it('names all five processors', () => {
-    for (const name of ['Railway', 'Cloudflare', 'Resend', 'Sentry', 'Better Stack']) {
+  it('names all seven processors', () => {
+    for (const name of ['Railway', 'Cloudflare', 'Resend', 'Sentry', 'Better Stack', 'OVHcloud', 'LangChain']) {
       expect(prose).toContain(name);
     }
+  });
+
+  it('repeats the profile-switch label in the assistant section', () => {
+    expect(JSON.stringify(bundle.assistant.items)).toContain(assistantBundle.privacy.label);
   });
 
   it('names the three cookies', () => {
