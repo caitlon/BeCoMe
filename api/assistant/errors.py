@@ -28,18 +28,19 @@ class AssistantUnavailableError(AssistantError):
 
 
 class AssistantBusyError(AssistantError):
-    """Raised when this process is already answering its limit of concurrent turns.
+    """Raised when a turn is refused for load: no free slot, or the global hourly ceiling.
 
     The cause is load, not the caller: it is answered 503, never 429.
 
     :param message: Description for the log; never shown to the caller.
     :param retry_after: Whole seconds the caller should wait, sent as ``Retry-After``.
     :param reason: The limit that refused the turn: ``"process"`` for the whole process,
-        ``"user"`` for this caller's own share. It goes into the one log record.
+        ``"user"`` for this caller's own share of its slots, ``"global"`` for the hourly
+        ceiling on all users together. It goes into the one log record.
     """
 
     def __init__(
-        self, message: str, *, retry_after: int, reason: Literal["process", "user"]
+        self, message: str, *, retry_after: int, reason: Literal["process", "user", "global"]
     ) -> None:
         super().__init__(message)
         self.retry_after = retry_after

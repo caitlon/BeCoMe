@@ -403,6 +403,7 @@ own limit. On top of that, routes carry tighter limits by risk:
 | Photo | `120/minute` | The public avatar proxy, which a page loads once per member |
 | Assistant chat | `20/minute` | The assistant's chat route, which exists only when `ASSISTANT_ENABLED` is on: on a developer's machine and on the dev and test services, never in production |
 | Assistant messages | `60/hour` per user | The same route, as a fixed one-hour window per account (`ASSISTANT_RATE_LIMIT_PER_HOUR`, `0` switches it off on a laptop). A spent budget answers `429` |
+| Assistant global ceiling | `600/hour` for all users | The same route, as one fixed one-hour window counted under the Redis key `assistant:chat:all` (`ASSISTANT_GLOBAL_TURNS_PER_HOUR`, `0` switches it off on a laptop). It is spent after the user's own budget, so an account with a spent budget cannot drain it. A reached ceiling answers `503` with `Retry-After` set to the seconds until the window closes and the same body as an unreachable model server |
 | Assistant concurrent turns | `8` per process, `2` per user | The same route, as a count of turns running at once (`ASSISTANT_MAX_CONCURRENT_TURNS`); a streamed answer holds its slot until the stream ends. A full process, or a user already running two turns, answers `503` with `Retry-After: 5` and the same body as an unreachable model server, instead of queueing, and spends no message of the hourly budget, since the slot is taken first |
 
 Only those routes carry a decorator. Everything else is bounded by the two global ceilings
@@ -412,8 +413,8 @@ process, the hourly messages and the concurrent turns, are applied through depen
 of the hourly budget, and the `enforce_message_limit` dependency follows, before the `20/minute`
 per-IP limit runs, so a request that limit refuses has already spent one hourly message.
 `api/assistant/rate_limit.py` keeps the hourly counter in Redis when `REDIS_URL` is set and in
-memory otherwise. A deployed service refuses to start with the hourly limit at `0`, so the cap
-cannot be switched off there.
+memory otherwise. A deployed service refuses to start with the per-user or the global hourly limit
+at `0`, so neither cap can be switched off there.
 
 The slowapi limits and the hourly assistant cap answer `429` with a `Retry-After` header in whole
 seconds: the time left in the limit's window, or until that user's hourly window closes.
@@ -531,8 +532,8 @@ is `true` in the `prod` profile, or on a Railway environment whose name is not `
 (compared stripped and case-insensitively, so an unknown or renamed environment is refused). The
 profile and the name are checked independently. On any deploy the validator also requires the
 three model roles to be `api`, since a local model server is not reachable there, and refuses
-`ASSISTANT_RATE_LIMIT_PER_HOUR` at `0`, which would switch the cap off. The model is
-shown each expert's name and position in the opinions block, except for members who objected to
+`ASSISTANT_RATE_LIMIT_PER_HOUR` or `ASSISTANT_GLOBAL_TURNS_PER_HOUR` at `0`, which would switch
+the cap off. The model is shown each expert's name and position in the opinions block, except for members who objected to
 the assistant (`users.assistant_objection`, set through `PUT /api/v1/users/me`): their rows are
 left out for everyone but themselves. The result block still includes their values in the
 aggregates (mean, median, best compromise, number of experts), so with a single objector their

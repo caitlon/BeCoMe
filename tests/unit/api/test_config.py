@@ -1296,6 +1296,7 @@ class TestAssistantSettings:
         monkeypatch.setenv("ASSISTANT_API_KEY_OVH", _FAKE_KEY)
         monkeypatch.setenv("ASSISTANT_VECTOR_DB_URL", _VECTOR_URL)
         monkeypatch.setenv("ASSISTANT_RATE_LIMIT_PER_HOUR", "60")
+        monkeypatch.setenv("ASSISTANT_GLOBAL_TURNS_PER_HOUR", "600")
         for name in [*_LANGSMITH_LIBRARY_SWITCHES, *_LANGSMITH_RUNS_ENDPOINTS]:
             monkeypatch.delenv(name, raising=False)
         for provider, url in _PROVIDER_ROLES:
@@ -2089,12 +2090,15 @@ class TestAssistantSettings:
         ("profile", "railway_name", "testing"),
         [("dev", "dev", False), ("test", "test", False), ("dev", "dev", True)],
     )
+    @pytest.mark.parametrize(
+        "setting", ["assistant_rate_limit_per_hour", "assistant_global_turns_per_hour"]
+    )
     def test_rejects_a_zero_message_limit_on_a_deployed_service(
-        self, monkeypatch, tmp_path, profile, railway_name, testing
+        self, monkeypatch, tmp_path, profile, railway_name, testing, setting
     ):
         """
         GIVEN a deployed dev or test service, TESTING=1 included, with the assistant on and
-            the per-user message limit set to zero, which would mean no limit
+            the per-user or the global message limit set to zero, which would mean no limit
         WHEN Settings is constructed
         THEN validation fails naming that setting
         """
@@ -2102,10 +2106,10 @@ class TestAssistantSettings:
         self._configure_deployed_assistant(
             monkeypatch, tmp_path, profile=profile, railway_name=railway_name, testing=testing
         )
-        monkeypatch.setenv("ASSISTANT_RATE_LIMIT_PER_HOUR", "0")
+        monkeypatch.setenv(setting.upper(), "0")
 
         # WHEN/THEN
-        with pytest.raises(ValidationError, match="assistant_rate_limit_per_hour"):
+        with pytest.raises(ValidationError, match=setting):
             Settings()
 
     def test_allows_a_zero_message_limit_with_the_assistant_off_or_on_a_laptop(
@@ -2121,11 +2125,13 @@ class TestAssistantSettings:
         self._configure_deployed_assistant(monkeypatch, tmp_path, profile="dev", railway_name="dev")
         monkeypatch.setenv("ASSISTANT_ENABLED", "false")
         monkeypatch.setenv("ASSISTANT_RATE_LIMIT_PER_HOUR", "0")
+        monkeypatch.setenv("ASSISTANT_GLOBAL_TURNS_PER_HOUR", "0")
 
         # WHEN/THEN
         settings = Settings()
         assert settings.assistant_enabled is False
         assert settings.assistant_rate_limit_per_hour == 0
+        assert settings.assistant_global_turns_per_hour == 0
 
         # GIVEN a laptop with the assistant on
         monkeypatch.delenv("RAILWAY_ENVIRONMENT_NAME", raising=False)
@@ -2137,6 +2143,7 @@ class TestAssistantSettings:
         settings = Settings()
         assert settings.assistant_enabled is True
         assert settings.assistant_rate_limit_per_hour == 0
+        assert settings.assistant_global_turns_per_hour == 0
 
     def test_prod_with_the_assistant_off_is_unaffected(self, monkeypatch, tmp_path):
         """
@@ -2274,6 +2281,24 @@ class TestAssistantSettings:
         assert Settings(secret_key="test-secret-key", assistant_rate_limit_per_hour=0)
         with pytest.raises(ValidationError, match="assistant_rate_limit_per_hour"):
             Settings(secret_key="test-secret-key", assistant_rate_limit_per_hour=-1)
+
+    def test_global_ceiling_defaults_to_600_accepts_zero_and_rejects_a_negative_value(
+        self, monkeypatch, tmp_path
+    ):
+        """
+        GIVEN Settings without an override for the global hourly ceiling, one set to zero,
+            which means no ceiling, and one below it
+        WHEN Settings is constructed
+        THEN the default is 600, zero is accepted and the negative value is refused
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+
+        # WHEN/THEN
+        assert Settings(secret_key="test-secret-key").assistant_global_turns_per_hour == 600
+        assert Settings(secret_key="test-secret-key", assistant_global_turns_per_hour=0)
+        with pytest.raises(ValidationError, match="assistant_global_turns_per_hour"):
+            Settings(secret_key="test-secret-key", assistant_global_turns_per_hour=-1)
 
     def test_concurrent_turns_default_to_eight_and_must_be_above_zero(self, monkeypatch, tmp_path):
         """

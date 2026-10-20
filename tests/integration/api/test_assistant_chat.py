@@ -34,7 +34,7 @@ from api.assistant import deps
 from api.assistant.agent import tracing
 from api.assistant.client import UserApiClient
 from api.assistant.errors import AssistantUpstreamError
-from api.assistant.rate_limit import get_assistant_throttle
+from api.assistant.rate_limit import get_assistant_global_throttle, get_assistant_throttle
 from api.auth.cookies import CSRF_COOKIE
 from api.config import get_settings
 from api.db.session import get_session
@@ -81,6 +81,7 @@ _BASE_ENV = {
     "ASSISTANT_MAX_MESSAGE_CHARS": "4000",
     "ASSISTANT_TURN_TIMEOUT_SECONDS": "30",
     "ASSISTANT_RATE_LIMIT_PER_HOUR": "0",
+    "ASSISTANT_GLOBAL_TURNS_PER_HOUR": "0",
     "ASSISTANT_RETRIEVAL_K": "3",
     "ASSISTANT_LANGSMITH_ENABLED": "false",
     "ASSISTANT_ANSWER_LLM_MODEL": "test-answer-model",
@@ -106,6 +107,7 @@ def _reset_assistant_state() -> None:
     get_settings.cache_clear()
     deps.clear_caches()
     get_assistant_throttle.cache_clear()
+    get_assistant_global_throttle.cache_clear()
     tracing.shutdown_tracing()
     ls.utils.get_env_var.cache_clear()
 
@@ -1330,6 +1332,33 @@ class TestMessageLimit:
 
         # THEN
         assert response.status_code == 200
+
+    @pytest.mark.parametrize("endpoint", [CHAT, STREAM])
+    def test_a_reached_global_ceiling_refuses_another_user_with_503_and_retry_after(
+        self, assistant_settings, client, configure, endpoint
+    ):
+        """
+        GIVEN a global ceiling of one message per hour, spent by one user
+        WHEN a second user, with a budget of their own, sends their first message
+        THEN it is 503 with the fixed unavailable body and a Retry-After within the hour,
+            not 429, and the turn slot was given back
+        """
+        # GIVEN
+        configure(ASSISTANT_GLOBAL_TURNS_PER_HOUR="1", ASSISTANT_RATE_LIMIT_PER_HOUR="5")
+        first_token = register_and_login(client, "ceiling-first@example.com")
+        second_token = register_and_login(client, "ceiling-second@example.com")
+        _use_model(client, _scripted("one", "two"))
+        first = client.post(endpoint, json={"message": "one"}, headers=auth_header(first_token))
+        assert first.status_code == 200
+
+        # WHEN
+        refused = client.post(endpoint, json={"message": "two"}, headers=auth_header(second_token))
+
+        # THEN
+        assert refused.status_code == 503
+        assert refused.json() == {"detail": "The assistant is temporarily unavailable"}
+        assert 1 <= int(refused.headers["Retry-After"]) <= 3600
+        assert deps.get_turn_slots().holders == {}
 
     def test_a_spent_budget_builds_no_client_and_asks_no_model(
         self, assistant_settings, client, configure, monkeypatch

@@ -1,4 +1,4 @@
-"""Per-user hourly cap on assistant chat messages.
+"""Hourly caps on assistant chat messages: one per user and one across all users.
 
 Modeled on ``api/auth/login_throttle.py``: Redis-backed when a store is configured,
 keyed on a hash of the identifier so no raw id sits in the store, and counted per process
@@ -11,6 +11,12 @@ a counter is created with its TTL in the same step that first increments it. A c
 a lost connection between two separate calls could otherwise leave a counter with no
 expiry, and that user would stay locked out for good.
 
+The global ceiling is the same counter under one fixed key, :data:`GLOBAL_KEY`, with its own
+budget, so it bounds what all users together can spend in an hour. Both backends count any key:
+``hit`` and ``retry_after`` are the per-user forms and pass the user's digest to ``hit_key`` and
+``retry_after_key``, so the fallback, the zero limit and the remaining window apply to the global
+key as well. Its Redis key is ``assistant:chat:all``, which no user digest can equal.
+
 A limit of zero switches the cap off; both backends then allow everything without
 touching their store. A deployed service refuses a zero limit at startup
 (``Settings._validate_assistant_deploy``), so that is for a laptop only.
@@ -22,9 +28,9 @@ the budget, which is still a bound, where an open cap is none. That count restar
 process and is lost when Redis comes back; the window of the shared counter is unaffected.
 
 A refused message also learns how long the refusal lasts: ``retry_after`` reports the
-seconds until the user's window closes, for the ``Retry-After`` header of the 429. When the
+seconds until the window closes, for the ``Retry-After`` header of the refusal. When the
 store cannot be read, it answers with this process's own remaining window if it holds one
-for the user, otherwise the full window, the longest the wait can be; a window left from an
+for the key, otherwise the full window, the longest the wait can be; a window left from an
 earlier outage can understate the wait, which only makes the client retry early.
 
 The Redis key holds an unkeyed digest of the user id. Never log it: anyone holding the
@@ -49,6 +55,9 @@ logger = logging.getLogger("api.security")
 WINDOW_SECONDS = 60 * 60
 
 KEY_PREFIX = "assistant:chat"
+
+# The one key every message is also counted under, for the global ceiling.
+GLOBAL_KEY = "all"
 
 
 def _digest(user_id: UUID) -> str:
@@ -80,11 +89,15 @@ def _log_store_unavailable(exc: redis.RedisError) -> None:
 
 @runtime_checkable
 class AssistantThrottle(Protocol):
-    """Backend counting how many assistant messages a user has sent this hour."""
+    """Backend counting how many assistant messages a user, or one fixed key, has sent this hour."""
 
     def hit(self, user_id: UUID) -> bool: ...
 
     def retry_after(self, user_id: UUID) -> int: ...
+
+    def hit_key(self, key: str) -> bool: ...
+
+    def retry_after_key(self, key: str) -> int: ...
 
 
 class InMemoryAssistantThrottle:
@@ -110,10 +123,19 @@ class InMemoryAssistantThrottle:
         :return: True when this message is allowed, False when this window's budget
             is already spent.
         """
+        return self.hit_key(_digest(user_id))
+
+    def hit_key(self, key: str) -> bool:
+        """Record one message under a key and report whether it is still within budget.
+
+        :param key: What the message is counted under: a user's digest, or
+            :data:`GLOBAL_KEY`.
+        :return: True when this message is allowed, False when this window's budget
+            is already spent.
+        """
         if self._max == 0:
             return True
         now = time.monotonic()
-        key = _digest(user_id)
         with self._lock:
             # Drop every window that has closed, so the table holds only users active
             # within the last hour rather than every user the process has ever seen.
@@ -127,16 +149,16 @@ class InMemoryAssistantThrottle:
             self._counts[key] = (count, opened)
         return count <= self._max
 
-    def remaining(self, user_id: UUID) -> int | None:
-        """Report how long until the user's open window closes.
+    def remaining(self, key: str) -> int | None:
+        """Report how long until a key's open window closes.
 
-        :param user_id: The user to look up.
-        :return: Whole seconds until the window closes, at least 1, or None when the user
+        :param key: The key to look up.
+        :return: Whole seconds until the window closes, at least 1, or None when the key
             has no open window.
         """
         now = time.monotonic()
         with self._lock:
-            entry = self._counts.get(_digest(user_id))
+            entry = self._counts.get(key)
         if entry is None or now - entry[1] >= self._window:
             return None
         return max(1, math.ceil(self._window - (now - entry[1])))
@@ -147,7 +169,15 @@ class InMemoryAssistantThrottle:
         :param user_id: The user whose message was refused.
         :return: Whole seconds until the window closes, at least 1.
         """
-        return self.remaining(user_id) or 1
+        return self.retry_after_key(_digest(user_id))
+
+    def retry_after_key(self, key: str) -> int:
+        """Report how long until a key's window closes; call it after a refusal.
+
+        :param key: The key whose message was refused.
+        :return: Whole seconds until the window closes, at least 1.
+        """
+        return self.remaining(key) or 1
 
 
 class RedisAssistantThrottle:
@@ -174,17 +204,27 @@ class RedisAssistantThrottle:
         :return: True when this message is allowed, False when the budget is spent. While
             the store is down, the answer comes from this process's own count.
         """
+        return self.hit_key(_digest(user_id))
+
+    def hit_key(self, key: str) -> bool:
+        """Count one message under a key and report whether it is within budget.
+
+        :param key: What the message is counted under: a user's digest, or
+            :data:`GLOBAL_KEY`.
+        :return: True when this message is allowed, False when the budget is spent. While
+            the store is down, the answer comes from this process's own count.
+        """
         if self._max == 0:
             return True
-        key = f"{KEY_PREFIX}:{_digest(user_id)}"
+        redis_key = f"{KEY_PREFIX}:{key}"
         try:
             pipe = self._client.pipeline(transaction=True)
-            pipe.set(key, 0, ex=self._window, nx=True)
-            pipe.incr(key)
+            pipe.set(redis_key, 0, ex=self._window, nx=True)
+            pipe.incr(redis_key)
             results = pipe.execute()
         except redis.RedisError as e:
             _log_store_unavailable(e)
-            return self._fallback.hit(user_id)
+            return self._fallback.hit_key(key)
         return int(results[1]) <= self._max
 
     def retry_after(self, user_id: UUID) -> int:
@@ -193,20 +233,30 @@ class RedisAssistantThrottle:
         A key that is gone means the window closed just now, so the wait is one second.
         A key with no expiry cannot be told apart from a fresh window, so it gets the
         full window. An unreachable store gets the process-local window when this process
-        holds one for the user, and the full window otherwise.
+        holds one for the key, and the full window otherwise.
 
         :param user_id: The user whose message was refused.
         :return: Whole seconds until the window closes, at least 1.
         """
+        return self.retry_after_key(_digest(user_id))
+
+    def retry_after_key(self, key: str) -> int:
+        """Report how long until a key's window closes; call it after a refusal.
+
+        The same answers as :meth:`retry_after`, for a key that is not a user.
+
+        :param key: The key whose message was refused.
+        :return: Whole seconds until the window closes, at least 1.
+        """
         try:
-            ttl = int(self._client.ttl(f"{KEY_PREFIX}:{_digest(user_id)}"))
+            ttl = int(self._client.ttl(f"{KEY_PREFIX}:{key}"))
         except redis.RedisError as e:
             logger.warning(
                 "Assistant throttle store unavailable, retry time not known",
                 extra={"event": "assistant_throttle_retry_unavailable"},
                 exc_info=e,
             )
-            remaining = self._fallback.remaining(user_id)
+            remaining = self._fallback.remaining(key)
             return self._window if remaining is None else remaining
         if ttl == -2:
             return 1
@@ -215,14 +265,34 @@ class RedisAssistantThrottle:
         return max(1, ttl)
 
 
-@lru_cache
-def get_assistant_throttle() -> AssistantThrottle:
-    """Return the process-wide assistant throttle, Redis-backed when configured.
+def _build_throttle(max_per_hour: int) -> AssistantThrottle:
+    """Build a throttle with the given budget, Redis-backed when a store is configured.
 
+    :param max_per_hour: Messages allowed within one window; 0 means no limit.
     :return: The throttle backend.
     """
     settings = get_settings()
     if settings.redis_url:
         client = redis.from_url(settings.redis_url, socket_connect_timeout=2, socket_timeout=2)
-        return RedisAssistantThrottle(client, max_per_hour=settings.assistant_rate_limit_per_hour)
-    return InMemoryAssistantThrottle(max_per_hour=settings.assistant_rate_limit_per_hour)
+        return RedisAssistantThrottle(client, max_per_hour=max_per_hour)
+    return InMemoryAssistantThrottle(max_per_hour=max_per_hour)
+
+
+@lru_cache
+def get_assistant_throttle() -> AssistantThrottle:
+    """Return the process-wide per-user assistant throttle, Redis-backed when configured.
+
+    :return: The throttle backend.
+    """
+    return _build_throttle(get_settings().assistant_rate_limit_per_hour)
+
+
+@lru_cache
+def get_assistant_global_throttle() -> AssistantThrottle:
+    """Return the process-wide throttle for all users together, Redis-backed when configured.
+
+    Hit it under :data:`GLOBAL_KEY`; its budget is ``assistant_global_turns_per_hour``.
+
+    :return: The throttle backend.
+    """
+    return _build_throttle(get_settings().assistant_global_turns_per_hour)

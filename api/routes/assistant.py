@@ -78,11 +78,12 @@ async def chat(
     The turn slot is taken first, as a dependency of the route: a process already answering
     its limit of turns, or a user already running two, is refused with ``503`` and
     ``Retry-After`` instead of queueing, and spends no message. The message limit follows: it
-    spends one message of the caller's hourly budget before the API client, the retriever or
-    any model is built, and a refusal gives the slot back. The service turns a dependency
-    outage or a turn that outlives its deadline into ``AssistantUnavailableError``, and a
-    project the caller cannot see into ``ProjectNotFoundError``; both are answered by
-    handlers registered next to this router.
+    spends one message of the caller's hourly budget, then one of the global hourly ceiling
+    on all users together, before the API client, the retriever or any model is built, and a
+    refusal gives the slot back. A reached ceiling is ``503`` with ``Retry-After``, not
+    ``429``. The service turns a dependency outage or a turn that outlives its deadline into
+    ``AssistantUnavailableError``, and a project the caller cannot see into
+    ``ProjectNotFoundError``; both are answered by handlers registered next to this router.
 
     :param request: The incoming request, read by the per-address rate limit.
     :param turn: The validated chat request and the context built for it, whose API client
@@ -108,8 +109,9 @@ async def chat_stream(
     """Answer one chat turn as a stream of server-sent events.
 
     Retrieval runs before the response opens, so a project the caller cannot see, a
-    dependency outage before the model is called, a full turn cap, the message limit and the
-    per-address limit are answered as plain HTTP errors, exactly as ``/chat`` answers them.
+    dependency outage before the model is called, a full turn cap, the message limit, the
+    global ceiling and the per-address limit are answered as plain HTTP errors, exactly as
+    ``/chat`` answers them.
     The turn slot is held until the stream ends. Once the stream is open the status is
     already 200: a failure of the model call is sent as an ``error`` event with the code and
     text the handlers would have used (any other exception is sent as code 500), and the

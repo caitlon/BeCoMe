@@ -24,6 +24,7 @@ from api.assistant.errors import (
 )
 from api.assistant.rag.retrieval import RetrievalConfig
 from api.assistant.rag.store import CollectionUnavailableError
+from api.assistant.rate_limit import GLOBAL_KEY
 from api.config import Settings
 from api.exceptions import ValidationError
 from api.schemas.assistant import AssistantChatRequest
@@ -334,8 +335,15 @@ class TestGetAssistantService:
         assert service is service_cls.return_value
 
 
+def _open_ceiling() -> MagicMock:
+    """Return a global throttle that allows every message."""
+    ceiling = MagicMock()
+    ceiling.hit_key.return_value = True
+    return ceiling
+
+
 class TestEnforceMessageLimit:
-    """The hourly cap is spent through the throttle, off the event loop."""
+    """The hourly caps are spent through the throttles, off the event loop."""
 
     @pytest.mark.asyncio
     async def test_a_message_within_budget_passes(self):
@@ -350,7 +358,7 @@ class TestEnforceMessageLimit:
         user = MagicMock(id=uuid4())
 
         # WHEN
-        await deps.enforce_message_limit(user, throttle)
+        await deps.enforce_message_limit(user, throttle, _open_ceiling())
 
         # THEN
         throttle.hit.assert_called_once_with(user.id)
@@ -370,7 +378,7 @@ class TestEnforceMessageLimit:
 
         # WHEN/THEN
         with pytest.raises(AssistantRateLimitedError) as caught:
-            await deps.enforce_message_limit(user, throttle)
+            await deps.enforce_message_limit(user, throttle, _open_ceiling())
         assert caught.value.retry_after == 1234
         throttle.retry_after.assert_called_once_with(user.id)
 
@@ -391,7 +399,7 @@ class TestEnforceMessageLimit:
                 return True
 
         # WHEN
-        await deps.enforce_message_limit(MagicMock(id=uuid4()), _Throttle())
+        await deps.enforce_message_limit(MagicMock(id=uuid4()), _Throttle(), _open_ceiling())
 
         # THEN
         assert threads
@@ -417,11 +425,101 @@ class TestEnforceMessageLimit:
 
         # WHEN
         with pytest.raises(AssistantRateLimitedError):
-            await deps.enforce_message_limit(MagicMock(id=uuid4()), _Throttle())
+            await deps.enforce_message_limit(MagicMock(id=uuid4()), _Throttle(), _open_ceiling())
 
         # THEN
         assert threads
         assert threads[0] != threading.get_ident()
+
+    @pytest.mark.asyncio
+    async def test_the_global_ceiling_is_spent_under_its_own_key_after_the_users_budget(self):
+        """
+        GIVEN a user within budget and a global throttle that allows the message
+        WHEN the limit dependency runs
+        THEN the user's budget was hit once and the ceiling once, under the global key
+        """
+        # GIVEN
+        throttle = MagicMock()
+        throttle.hit.return_value = True
+        ceiling = _open_ceiling()
+        user = MagicMock(id=uuid4())
+
+        # WHEN
+        await deps.enforce_message_limit(user, throttle, ceiling)
+
+        # THEN
+        throttle.hit.assert_called_once_with(user.id)
+        ceiling.hit_key.assert_called_once_with(GLOBAL_KEY)
+
+    @pytest.mark.asyncio
+    async def test_a_spent_user_budget_leaves_the_global_ceiling_untouched(self):
+        """
+        GIVEN a user whose own budget is spent
+        WHEN the limit dependency runs
+        THEN the 429 is raised and the global ceiling was never hit, so an account with a
+             spent budget cannot drain the shared one
+        """
+        # GIVEN
+        throttle = MagicMock()
+        throttle.hit.return_value = False
+        throttle.retry_after.return_value = 60
+        ceiling = _open_ceiling()
+
+        # WHEN/THEN
+        with pytest.raises(AssistantRateLimitedError):
+            await deps.enforce_message_limit(MagicMock(id=uuid4()), throttle, ceiling)
+        assert ceiling.mock_calls == []
+
+    @pytest.mark.asyncio
+    async def test_a_reached_ceiling_raises_busy_with_the_seconds_until_its_window_closes(self):
+        """
+        GIVEN a user within budget and a global ceiling that is reached
+        WHEN the limit dependency runs
+        THEN AssistantBusyError is raised for the global reason, carrying the seconds the
+             ceiling reports under the global key
+        """
+        # GIVEN
+        throttle = MagicMock()
+        throttle.hit.return_value = True
+        ceiling = MagicMock()
+        ceiling.hit_key.return_value = False
+        ceiling.retry_after_key.return_value = 1800
+
+        # WHEN/THEN
+        with pytest.raises(AssistantBusyError) as caught:
+            await deps.enforce_message_limit(MagicMock(id=uuid4()), throttle, ceiling)
+        assert caught.value.reason == "global"
+        assert caught.value.retry_after == 1800
+        ceiling.retry_after_key.assert_called_once_with(GLOBAL_KEY)
+
+    @pytest.mark.asyncio
+    async def test_the_ceiling_runs_in_a_worker_thread(self):
+        """
+        GIVEN a refusing global throttle that records the threads it is called on
+        WHEN the limit dependency runs on the event loop
+        THEN hit_key and retry_after_key both ran on another thread
+        """
+        # GIVEN
+        threads: list[int] = []
+
+        class _Ceiling:
+            def hit_key(self, key: str) -> bool:
+                threads.append(threading.get_ident())
+                return False
+
+            def retry_after_key(self, key: str) -> int:
+                threads.append(threading.get_ident())
+                return 5
+
+        # WHEN
+        with pytest.raises(AssistantBusyError):
+            await deps.enforce_message_limit(
+                MagicMock(id=uuid4()), MagicMock(hit=MagicMock(return_value=True)), _Ceiling()
+            )
+
+        # THEN
+        assert len(threads) == 2
+        assert threading.get_ident() not in threads
 
 
 class TestTurnSlots:
