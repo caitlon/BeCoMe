@@ -1339,12 +1339,13 @@ class TestMessageLimit:
     ):
         """
         GIVEN a global ceiling of one message per hour, spent by one user
-        WHEN a second user, with a budget of their own, sends their first message
+        WHEN a second user, with a budget of one message, sends their first message
         THEN it is 503 with the fixed unavailable body and a Retry-After within the hour,
-            not 429, and the turn slot was given back
+            not 429, the turn slot was given back, and that user's own message was spent
+            all the same (their next turn, past a fresh ceiling, is 429)
         """
         # GIVEN
-        configure(ASSISTANT_GLOBAL_TURNS_PER_HOUR="1", ASSISTANT_RATE_LIMIT_PER_HOUR="5")
+        configure(ASSISTANT_GLOBAL_TURNS_PER_HOUR="1", ASSISTANT_RATE_LIMIT_PER_HOUR="1")
         first_token = register_and_login(client, "ceiling-first@example.com")
         second_token = register_and_login(client, "ceiling-second@example.com")
         _use_model(client, _scripted("one", "two"))
@@ -1359,6 +1360,9 @@ class TestMessageLimit:
         assert refused.json() == {"detail": "The assistant is temporarily unavailable"}
         assert 1 <= int(refused.headers["Retry-After"]) <= 3600
         assert deps.get_turn_slots().holders == {}
+        get_assistant_global_throttle.cache_clear()
+        again = client.post(endpoint, json={"message": "three"}, headers=auth_header(second_token))
+        assert again.status_code == 429
 
     def test_a_spent_budget_builds_no_client_and_asks_no_model(
         self, assistant_settings, client, configure, monkeypatch

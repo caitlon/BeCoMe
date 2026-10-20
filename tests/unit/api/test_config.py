@@ -2296,7 +2296,12 @@ class TestAssistantSettings:
 
         # WHEN/THEN
         assert Settings(secret_key="test-secret-key").assistant_global_turns_per_hour == 600
-        assert Settings(secret_key="test-secret-key", assistant_global_turns_per_hour=0)
+        assert (
+            Settings(
+                secret_key="test-secret-key", assistant_global_turns_per_hour=0
+            ).assistant_global_turns_per_hour
+            == 0
+        )
         with pytest.raises(ValidationError, match="assistant_global_turns_per_hour"):
             Settings(secret_key="test-secret-key", assistant_global_turns_per_hour=-1)
 
