@@ -342,10 +342,10 @@ def _provenance_problem(rows: list[dict[str, Any]], meta: dict[str, Any]) -> str
 def _eval_settings(settings: Settings, mode: str, trace: bool) -> Settings:
     """Copy the settings with the requested mode, the sources shown, and tracing off unless traced.
 
-    The runner measures the answer as the model wrote it, with its ``[n]`` markers and its
-    sources, so it shows them whatever the environment says. Tracing sends the full text of
-    questions and answers to a remote service, so the runner leaves it off, whatever the
-    environment says, unless ``trace`` is set; then the environment's setting stands.
+    The runner measures the answer as the model wrote it, markers and sources included, so it
+    shows them whatever the environment says. Tracing sends the full text of questions and
+    answers to a remote service, so it is off, whatever the environment says, unless ``trace``
+    is set; then the environment's setting stands.
 
     :param settings: The application settings.
     :param mode: ``workflow``, ``hybrid`` or ``agent``.
