@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useAuth, registerSignOutListener } from "@/contexts/AuthContext";
 import { useAssistantUI } from "@/contexts/AssistantUIContext";
 import { useAssistantConfig } from "./useAssistantConfig";
@@ -47,20 +47,24 @@ export default function AssistantRoot() {
   useEffect(() => registerSignOutListener(resetForUser), [resetForUser]);
 
   // The sign-out listener does not fire when another tab swaps the session and this tab re-reads
-  // it (refreshUser), so a change from one user id to another resets here. The first sign-in and a
-  // re-read of the same user change nothing.
-  const previousUserId = useRef<string | null>(null);
+  // it (refreshUser), so a change from one user id to another resets here. The panel is rendered
+  // only for the user this effect has caught up with: the reset and the new user's panel then land
+  // in one render, so that panel starts closed, without the old project, under the bumped history
+  // epoch. The first sign-in and a re-read of the same user reset nothing. A sign-out in between
+  // (A, then nobody, then B) sets this back to null, because the sign-out listener has already
+  // reset everything and B must not wipe what it stored since.
+  const [panelUserId, setPanelUserId] = useState<string | null>(null);
   const userId = user?.id ?? null;
   useEffect(() => {
-    if (userId === null) return;
-    if (previousUserId.current !== null && previousUserId.current !== userId) {
+    if (panelUserId !== null && userId !== null && panelUserId !== userId) {
       resetForUser();
     }
-    previousUserId.current = userId;
-  }, [userId, resetForUser]);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- must land with resetForUser's updates
+    setPanelUserId(userId);
+  }, [userId, panelUserId, resetForUser]);
 
   // `available` implies a signed-in user; the check is for the type, which cannot know it.
-  if (!available || !user) {
+  if (!available || !user || panelUserId !== user.id) {
     return null;
   }
 
