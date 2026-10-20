@@ -58,7 +58,7 @@
       "An email verification link is valid for 24 hours.",
       "A sign-in session lasts 15 minutes and renews itself as you use it. Seven days of inactivity ends it. There is no fixed maximum for a session in continuous use."
     ],
-    "outro": "The account itself is kept until you delete it. Log records are kept for three days and then discarded. Crash reports, session records and traces are kept by Sentry for 30 days."
+    "outro": "The account itself is kept until you delete it. Log records are kept for three days and then discarded. Crash reports, session records and performance traces are kept by Sentry for 30 days. Assistant traces are kept by LangSmith for 14 days."
   },
   "assistant": {
     "heading": "The assistant",

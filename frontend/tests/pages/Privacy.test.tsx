@@ -170,6 +170,7 @@ describe.each([
     assistantModel: 'OVHcloud AI Endpoints', assistantTraces: 'LangSmith',
     assistantRetention: 'deleted after 14 days',
     historyCap: 'last 20 messages',
+    langsmith: 'by LangSmith for 14 days',
   }],
   ['cs', csPrivacy, csAssistant, {
     accessToken: '15 minut', refresh: '7 dní', reset: '60 minut',
@@ -179,8 +180,9 @@ describe.each([
     assistantModel: 'OVHcloud AI Endpoints', assistantTraces: 'LangSmith',
     assistantRetention: 'po 14 dnech se mažou',
     historyCap: '20 posledních zpráv',
+    langsmith: 'uchovává LangSmith 14 dní',
   }],
-] as const)('privacy notice facts, %s', (_lang, bundle, assistantBundle, expected) => {
+] as const)('privacy notice facts, %s', (lang, bundle, assistantBundle, expected) => {
   const prose = JSON.stringify(bundle);
 
   it.each(Object.entries(expected))('states %s', (_name, phrase) => {
@@ -188,13 +190,16 @@ describe.each([
   });
 
   it('names all seven processors', () => {
+    const processors = JSON.stringify(bundle.processors.items);
     for (const name of ['Railway', 'Cloudflare', 'Resend', 'Sentry', 'Better Stack', 'OVHcloud', 'LangChain']) {
-      expect(prose).toContain(name);
+      expect(processors).toContain(name);
     }
   });
 
   it('repeats the profile-switch label in the assistant section', () => {
-    expect(JSON.stringify(bundle.assistant.items)).toContain(assistantBundle.privacy.label);
+    const label = assistantBundle.privacy.label;
+    const quoted = lang === 'en' ? `“${label}”` : `„${label}“`;
+    expect(JSON.stringify(bundle.assistant.items)).toContain(quoted);
   });
 
   it('names the three cookies', () => {
