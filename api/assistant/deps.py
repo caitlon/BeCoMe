@@ -6,9 +6,9 @@ code that loads when ``settings.assistant_enabled`` is true.
 
 What lives for the whole process is cached here: the two chat models, the
 documentation retriever, which owns a BM25 index and the vector store's engine, and the
-table of turn slots. :func:`clear_caches` drops all of them at once. What belongs to one request is not
-cached: the API client carries the caller's own access token, and sharing it would hand
-one user's token to another user's turn.
+table of turn slots. :func:`clear_caches` drops all of them at once. What belongs to one
+request is not cached: the API client carries the caller's own access token, and sharing it
+would hand one user's token to another user's turn.
 """
 
 import asyncio
@@ -165,6 +165,9 @@ def get_docs_retriever() -> DocsRetriever:
 class TurnSlots:
     """Count the turns a process is answering, in all and per user, without ever waiting.
 
+    The routes call it from the event loop, so the lock is not needed there; it is kept as
+    cheap safety in case a worker thread ever calls it.
+
     :param max_total: The most turns the process answers at once.
     :param max_per_user: The most turns one user has running at once.
     :ivar max_total: The most turns the process answers at once.
@@ -198,14 +201,19 @@ class TurnSlots:
     def release(self, user_id: UUID) -> None:
         """Give back a slot this user took with :meth:`acquire`.
 
+        A user who holds no slot changes nothing: the count is left as it was.
+
         :param user_id: The user whose turn is done.
         """
         with self._lock:
+            held = self.holders.get(user_id)
+            if held is None:
+                return
             self._total -= 1
-            if self.holders[user_id] == 1:
+            if held == 1:
                 del self.holders[user_id]
             else:
-                self.holders[user_id] -= 1
+                self.holders[user_id] = held - 1
 
 
 @lru_cache
@@ -252,7 +260,8 @@ DocsRetrieverDep = Annotated[DocsRetriever, Depends(get_docs_retriever)]
 async def enforce_message_limit(current_user: CurrentUser, throttle: AssistantThrottleDep) -> None:
     """Spend one message of the caller's hourly budget, before anything else is built.
 
-    Listed first among the route's dependencies, so a spent budget answers before the
+    Listed right after :func:`hold_turn_slot` among the route's dependencies, so a process
+    that is full refuses first and spends no message, and a spent budget answers before the
     API client, the retriever's store or any model is touched. ``hit`` is synchronous
     and may talk to Redis, so it runs in a worker thread, as does ``retry_after``, which is
     asked only after a refusal.
@@ -272,27 +281,27 @@ async def enforce_message_limit(current_user: CurrentUser, throttle: AssistantTh
 async def hold_turn_slot(current_user: CurrentUser, slots: TurnSlotsDep) -> AsyncIterator[None]:
     """Hold one of the process's turn slots until the response is done, or refuse at once.
 
-    Listed right after :func:`enforce_message_limit` on both chat routes. A slot is taken
-    without waiting, since a queue of requests behind a slow model server would only hold
-    workers: a turn is refused when the process is answering its limit of turns, or when this
-    user already has :data:`MAX_TURNS_PER_USER` running. The code after ``yield`` runs once the
-    response has been sent, so a streamed answer holds its slot for the whole stream. The slot
-    is given back whether the turn answered or failed, and only when this call took it. The
-    record names the limit and no user.
+    Listed first on both chat routes, ahead of :func:`enforce_message_limit`: a turn refused
+    for want of a slot spends no message of the hourly budget, and a turn the budget refuses
+    gives its slot back when the dependency exits. A slot is taken without waiting, since a
+    queue of requests behind a slow model server would only hold workers: a turn is refused
+    when the process is answering its limit of turns, or when this user already has
+    :data:`MAX_TURNS_PER_USER` running. The code after ``yield`` runs once the response has
+    been sent, so a streamed answer holds its slot for the whole stream. The slot is given
+    back whether the turn answered or failed, and only when this call took it. It
+    writes no record: the handler of :class:`AssistantBusyError` writes the one.
 
     :param current_user: The authenticated caller.
     :param slots: The process-wide table from :func:`get_turn_slots`.
     :raises AssistantBusyError: If no slot is free for this turn; it carries
-        :data:`TURN_SLOT_RETRY_SECONDS`.
+        :data:`TURN_SLOT_RETRY_SECONDS` and the limit that refused.
     """
     refused_by = slots.acquire(current_user.id)
     if refused_by is not None:
-        logger.warning(
-            "Assistant concurrent turn cap reached",
-            extra={"event": "assistant_concurrency_cap_reached", "reason": refused_by},
-        )
         raise AssistantBusyError(
-            "no assistant turn slot is free", retry_after=TURN_SLOT_RETRY_SECONDS
+            "no assistant turn slot is free",
+            retry_after=TURN_SLOT_RETRY_SECONDS,
+            reason=refused_by,
         )
     try:
         yield

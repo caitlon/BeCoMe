@@ -24,7 +24,9 @@ logger = logging.getLogger(__name__)
 UNAVAILABLE_DETAIL = "The assistant is temporarily unavailable"
 
 
-def _log(request: Request, exc: Exception, *, event: str, status_code: int, level: int) -> None:
+def _log(
+    request: Request, exc: Exception, *, event: str, status_code: int, level: int, **fields: str
+) -> None:
     """Record a chat error with ids only, never the message text.
 
     :param request: The request that failed.
@@ -32,6 +34,7 @@ def _log(request: Request, exc: Exception, *, event: str, status_code: int, leve
     :param event: Machine-readable event name for the record.
     :param status_code: Status the handler answers with.
     :param level: Logging level for the record.
+    :param fields: Further fields for the record, such as a ``reason``.
     """
     logger.log(
         level,
@@ -44,6 +47,7 @@ def _log(request: Request, exc: Exception, *, event: str, status_code: int, leve
             "status_code": status_code,
             "path": request.url.path,
             "exception_type": type(exc).__name__,
+            **fields,
         },
     )
 
@@ -71,15 +75,23 @@ def assistant_rate_limited_handler(
 def assistant_busy_handler(request: Request, exc: AssistantBusyError) -> JSONResponse:
     """Answer 503 with ``Retry-After`` when the process is answering its limit of turns.
 
-    The body is the same fixed text as for an unreachable model server. The record is a
-    WARNING, not an ERROR, since a full assistant is load and not a fault.
+    The body is the same fixed text as for an unreachable model server. The record is the
+    only one a refusal writes: a WARNING, not an ERROR, since a full assistant is load and not
+    a fault, and it names the limit that refused (``process`` or ``user``) and no user.
 
     :param request: FastAPI request.
     :param exc: The raised error.
     :return: A 503 JSON response with a ``Retry-After`` header.
     """
     status_code = status.HTTP_503_SERVICE_UNAVAILABLE
-    _log(request, exc, event="assistant_busy", status_code=status_code, level=logging.WARNING)
+    _log(
+        request,
+        exc,
+        event="assistant_concurrency_cap_reached",
+        status_code=status_code,
+        level=logging.WARNING,
+        reason=exc.reason,
+    )
     return JSONResponse(
         status_code=status_code,
         content={"detail": UNAVAILABLE_DETAIL},

@@ -318,9 +318,10 @@ what `/chat` returns. `error` ends the stream in place of `done`.
 
 Everything before the model is called is a plain HTTP error, as on `/chat`: retrieval runs before
 the response opens, so a project the caller cannot see is `404`, an outage of the vector database
-or the API, or a project API that answers something unusable, is `503`, and a spent budget is
-`429`. After that the status is already 200, so every failure arrives as an `error` event, with or
-without a token before it: a model that is down, an empty or cut-off answer, a turn that outlives
+or the API, or a project API that answers something unusable, is `503`, a process already
+answering its limit of turns is `503` with `Retry-After`, and a spent budget is `429`. After that
+the status is already 200, so every failure arrives as an `error` event, with or without a token
+before it: a model that is down, an empty or cut-off answer, a turn that outlives
 its deadline (all `503`; the upstream-error branch is only defensive, since the tools catch an
 unusable project API), and any other exception (`500`, `Internal server error`, logged as
 `assistant_stream_failed` with the exception type and where it was raised, `file:line`). In the `hybrid`
@@ -331,17 +332,19 @@ start of the model call, so it leaves out retrieval, and in the `hybrid` and `ag
 
 - **Message limit.** `ASSISTANT_RATE_LIMIT_PER_HOUR` messages per user in a fixed hour
   (default 60), counted in Redis when `REDIS_URL` is set and in memory otherwise. It is spent
-  first, before the API client, the retriever or any model is built, so a message it refuses
-  costs no model call; a message with an invalid body still spends one. A Redis error does not
-  lift it: each process then counts in its own memory with the same budget, and the record
+  right after the turn slot is taken, before the API client, the retriever or any model is
+  built, so a message it refuses costs no model call; a message with an invalid body still
+  spends one. A Redis error does not lift it: each process then counts in its own memory with the same budget, and the record
   `assistant_throttle_unavailable` is logged at ERROR. Set it to `0` to switch it off, for a
   measurement run that sends many questions from one account; a deployed service refuses `0`.
 - **Concurrent turns.** `ASSISTANT_MAX_CONCURRENT_TURNS` (default 8, above zero) is the most
   turns one process answers at once, and one user may run at most two of them, so a single account
   cannot take every slot. A turn that finds no free slot is refused at once, not queued, with `503`,
   the same body as an unreachable model server and `Retry-After: 5`; the record
-  `assistant_concurrency_cap_reached` names the limit (`process` or `user`) and no user. The slot is
-  taken right after the message limit and given back when the response is done, so a streamed answer
+  `assistant_concurrency_cap_reached` names the limit (`process` or `user`) and no user, and a
+  refusal writes just that one. The slot is taken before the message limit, so a turn refused for
+  a full process spends no message of the hourly budget, and a message the budget refuses gives
+  its slot back at once. The slot is given back when the response is done, so a streamed answer
   holds it until the stream ends. The count is per process: with several processes the ceiling is
   the setting times their number.
 - **Message length.** `ASSISTANT_MAX_MESSAGE_CHARS` (default 4000, which is also the ceiling of

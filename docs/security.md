@@ -403,13 +403,15 @@ own limit. On top of that, routes carry tighter limits by risk:
 | Photo | `120/minute` | The public avatar proxy, which a page loads once per member |
 | Assistant chat | `20/minute` | The assistant's chat route, which exists only when `ASSISTANT_ENABLED` is on: on a developer's machine and on the dev and test services, never in production |
 | Assistant messages | `60/hour` per user | The same route, as a fixed one-hour window per account (`ASSISTANT_RATE_LIMIT_PER_HOUR`, `0` switches it off on a laptop). A spent budget answers `429` |
-| Assistant concurrent turns | `8` per process, `2` per user | The same route, as a count of turns running at once (`ASSISTANT_MAX_CONCURRENT_TURNS`); a streamed answer holds its slot until the stream ends. A full process, or a user already running two turns, answers `503` with `Retry-After: 5` and the same body as an unreachable model server, instead of queueing |
+| Assistant concurrent turns | `8` per process, `2` per user | The same route, as a count of turns running at once (`ASSISTANT_MAX_CONCURRENT_TURNS`); a streamed answer holds its slot until the stream ends. A full process, or a user already running two turns, answers `503` with `Retry-After: 5` and the same body as an unreachable model server, instead of queueing, and spends no message of the hourly budget, since the slot is taken first |
 
 Only those routes carry a decorator. Everything else is bounded by the two global ceilings
-alone, which is the point of having them. The hourly assistant cap is the only row of this table
-applied through a dependency. The `enforce_message_limit` dependency applies it before the
-`20/minute` per-IP limit runs, so a request that limit refuses has already spent one hourly
-message. `api/assistant/rate_limit.py` keeps the counter in Redis when `REDIS_URL` is set and in
+alone, which is the point of having them. The two assistant caps that count per account or per
+process, the hourly messages and the concurrent turns, are applied through dependencies. The
+`hold_turn_slot` dependency runs first, so a request refused for a full process spends no message
+of the hourly budget, and the `enforce_message_limit` dependency follows, before the `20/minute`
+per-IP limit runs, so a request that limit refuses has already spent one hourly message.
+`api/assistant/rate_limit.py` keeps the hourly counter in Redis when `REDIS_URL` is set and in
 memory otherwise. A deployed service refuses to start with the hourly limit at `0`, so the cap
 cannot be switched off there.
 

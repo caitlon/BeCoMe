@@ -525,6 +525,26 @@ class TestTurnSlots:
         # THEN
         assert slots.holders == {}
 
+    def test_releasing_a_slot_never_taken_changes_nothing(self):
+        """
+        GIVEN a table of two slots with one held by another user
+        WHEN a user who holds none releases
+        THEN nothing is raised, no entry appears, and the process still has exactly one slot
+             free, so the total was not corrupted
+        """
+        # GIVEN
+        slots = deps.TurnSlots(max_total=2, max_per_user=2)
+        holder = uuid4()
+        slots.acquire(holder)
+
+        # WHEN
+        slots.release(uuid4())
+
+        # THEN
+        assert slots.holders == {holder: 1}
+        assert slots.acquire(uuid4()) is None
+        assert slots.acquire(uuid4()) == "process"
+
     def test_it_is_sized_from_settings_and_rebuilt_after_clear_caches(self):
         """
         GIVEN a cap of three turns in the settings
@@ -595,12 +615,14 @@ class TestHoldTurnSlot:
         assert slots.acquire(uuid4()) is None
 
     @pytest.mark.asyncio
-    async def test_a_full_process_is_refused_with_the_wait_and_a_record_without_ids(self, records):
+    async def test_a_full_process_is_refused_with_the_wait_and_the_reason_and_no_record(
+        self, records
+    ):
         """
         GIVEN a table of one slot that another user holds
         WHEN the dependency runs
-        THEN AssistantBusyError carries the retry wait, the holder's slot is untouched, and one
-             WARNING names the process cap and no user
+        THEN AssistantBusyError carries the retry wait and the process reason, the holder's slot
+             is untouched, and the dependency writes no record: the handler writes the one
         """
         # GIVEN
         slots = deps.TurnSlots(max_total=1, max_per_user=1)
@@ -615,15 +637,12 @@ class TestHoldTurnSlot:
 
         # THEN
         assert caught.value.retry_after == deps.TURN_SLOT_RETRY_SECONDS == 5
+        assert caught.value.reason == "process"
         assert slots.holders == {holder: 1}
-        assert [(r.levelno, r.event, r.reason) for r in records] == [
-            (logging.WARNING, "assistant_concurrency_cap_reached", "process")
-        ]
-        assert str(user.id) not in records[0].getMessage()
-        assert not hasattr(records[0], "user_id")
+        assert records == []
 
     @pytest.mark.asyncio
-    async def test_a_user_at_their_share_is_refused_while_the_process_has_room(self, records):
+    async def test_a_user_at_their_share_is_refused_while_the_process_has_room(self):
         """
         GIVEN a table of ten slots and a user already holding their two
         WHEN the dependency runs for that user, and then for another
@@ -636,12 +655,12 @@ class TestHoldTurnSlot:
         slots.acquire(greedy.id)
 
         # WHEN/THEN
-        with pytest.raises(AssistantBusyError):
+        with pytest.raises(AssistantBusyError) as caught:
             async with asynccontextmanager(deps.hold_turn_slot)(greedy, slots):
                 pytest.fail("a refused turn must not run")
         async with asynccontextmanager(deps.hold_turn_slot)(MagicMock(id=uuid4()), slots):
             pass
-        assert [r.reason for r in records] == ["user"]
+        assert caught.value.reason == "user"
 
 
 class _FakeClient:

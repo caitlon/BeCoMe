@@ -65,7 +65,7 @@ def get_assistant_config(
 @router.post(
     "/chat",
     summary="Ask the assistant about the method or a project",
-    dependencies=[Depends(enforce_message_limit), Depends(hold_turn_slot)],
+    dependencies=[Depends(hold_turn_slot), Depends(enforce_message_limit)],
 )
 @limiter.limit(LIMIT_ASSISTANT_CHAT)
 async def chat(
@@ -75,14 +75,14 @@ async def chat(
 ) -> AssistantChatResponse:
     """Answer one chat turn as the signed-in user.
 
-    The message limit runs first, as a dependency of the route: it authenticates the
-    caller and spends one message of their hourly budget before the API client, the
-    retriever or any model is built. The turn slot follows: a process already answering its
-    limit of turns, or a user already running two, is refused with ``503`` and ``Retry-After``
-    instead of queueing. The service turns a dependency outage or a turn that
-    outlives its deadline into ``AssistantUnavailableError``, and a project the caller
-    cannot see into ``ProjectNotFoundError``; both are answered by handlers registered
-    next to this router.
+    The turn slot is taken first, as a dependency of the route: a process already answering
+    its limit of turns, or a user already running two, is refused with ``503`` and
+    ``Retry-After`` instead of queueing, and spends no message. The message limit follows: it
+    spends one message of the caller's hourly budget before the API client, the retriever or
+    any model is built, and a refusal gives the slot back. The service turns a dependency
+    outage or a turn that outlives its deadline into ``AssistantUnavailableError``, and a
+    project the caller cannot see into ``ProjectNotFoundError``; both are answered by
+    handlers registered next to this router.
 
     :param request: The incoming request, read by the per-address rate limit.
     :param turn: The validated chat request and the context built for it, whose API client
@@ -97,7 +97,7 @@ async def chat(
 @router.post(
     "/chat/stream",
     summary="Ask the assistant and read the answer as it is written",
-    dependencies=[Depends(enforce_message_limit), Depends(hold_turn_slot)],
+    dependencies=[Depends(hold_turn_slot), Depends(enforce_message_limit)],
 )
 @limiter.limit(LIMIT_ASSISTANT_CHAT)
 async def chat_stream(
@@ -108,13 +108,13 @@ async def chat_stream(
     """Answer one chat turn as a stream of server-sent events.
 
     Retrieval runs before the response opens, so a project the caller cannot see, a
-    dependency outage before the model is called, the message limit, a full turn cap and the
+    dependency outage before the model is called, a full turn cap, the message limit and the
     per-address limit are answered as plain HTTP errors, exactly as ``/chat`` answers them.
-    The turn slot is held until the stream ends. Once the stream is open the status is already 200: a failure of the model call is sent as an
-    ``error`` event with the code and text the handlers would have used (any other
-    exception is sent as code 500), and the stream ends. The events are ``token``
-    (``{"text": ...}``) for each piece of the answer, then ``done`` with the body ``/chat``
-    returns, or ``error`` (``{"code", "detail"}``).
+    The turn slot is held until the stream ends. Once the stream is open the status is
+    already 200: a failure of the model call is sent as an ``error`` event with the code and
+    text the handlers would have used (any other exception is sent as code 500), and the
+    stream ends. The events are ``token`` (``{"text": ...}``) for each piece of the answer,
+    then ``done`` with the body ``/chat`` returns, or ``error`` (``{"code", "detail"}``).
 
     :param request: The incoming request, read by the per-address rate limit.
     :param turn: The validated chat request and the context built for it.
