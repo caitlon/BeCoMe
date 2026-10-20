@@ -238,8 +238,11 @@ token `usage` of the turn. Each source carries a `snippet`, the first words of t
 plain text, at most 240 characters.
 
 The assistant reads project data through the application's own API, with the caller's own
-access token, so it sees exactly the projects the caller is a member of. What a project the
-caller cannot see does depends on the mode. In `workflow` and `hybrid` the project named by
+access token, so it sees exactly the projects the caller is a member of. Those internal reads
+count against the caller's own rate-limit bucket: when `CLOUDFLARE_ORIGIN_SECRET` is set, the
+client sends `X-Origin-Verify` and `CF-Connecting-IP` with the caller's key on each of them. The
+headers never leave the process.
+What a project the caller cannot see does depends on the mode. In `workflow` and `hybrid` the project named by
 `project_id` is read ahead of the model, so the request is answered `404` exactly as
 `GET /api/v1/projects/{id}` answers it. In `agent` mode nothing is read ahead: the request is
 answered `200`, and a tool asked for such a project tells the model `not_found:` and nothing

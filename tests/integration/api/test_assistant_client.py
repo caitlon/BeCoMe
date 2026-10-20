@@ -1,15 +1,18 @@
 """Integration tests for UserApiClient, exercised through the real app."""
 
 import pytest
+from starlette.requests import Request
 
 from api.assistant.client import UserApiClient
 from api.assistant.errors import AssistantNotFoundError, AssistantUpstreamError
+from api.config import get_settings
+from api.utils.client_ip import get_client_ip
 from tests.integration.api.conftest import create_project, register_and_login, submit_opinion
 from tests.shared.helpers import captured_log_records
 
 
 class _RecordingASGIApp:
-    """Wraps an ASGI app and records each request's method and client address.
+    """Wraps an ASGI app and records each request's method, client address and rate-limit key.
 
     Stands in for a transport-interception library: the client only ever receives
     an app, so wrapping the app itself is the cheapest way to observe what actually
@@ -20,10 +23,18 @@ class _RecordingASGIApp:
         self._app = app
         self.methods: list[str] = []
         self.client_hosts: list[str | None] = []
+        self.client_ips: list[str] = []
+        self.origin_headers: list[dict[str, str]] = []
 
     async def __call__(self, scope, receive, send):
         if scope["type"] == "http":
             self.methods.append(scope["method"])
+            # What the rate limiter keys on, resolved the way the app resolves it.
+            self.client_ips.append(get_client_ip(Request(scope)))
+            names = {b"x-origin-verify", b"cf-connecting-ip"}
+            self.origin_headers.append(
+                {k.decode(): v.decode() for k, v in scope["headers"] if k in names}
+            )
             client = scope.get("client")
             self.client_hosts.append(client[0] if client else None)
         await self._app(scope, receive, send)
@@ -228,6 +239,88 @@ class TestTransportDiscipline:
 
         # THEN
         assert recorder.client_hosts == ["203.0.113.7"]
+
+
+_ORIGIN_SECRET = "fake-origin-secret-for-tests"  # pragma: allowlist secret
+
+
+@pytest.fixture
+def origin_secret(monkeypatch):
+    """Configure a Cloudflare origin secret, as every deployed service has one."""
+    monkeypatch.setenv("CLOUDFLARE_ORIGIN_SECRET", _ORIGIN_SECRET)
+    get_settings.cache_clear()
+    yield _ORIGIN_SECRET
+    monkeypatch.setenv("CLOUDFLARE_ORIGIN_SECRET", "")
+    get_settings.cache_clear()
+
+
+class TestRateLimitKey:
+    """The inner call is keyed on the caller's own IP, behind Cloudflare or not."""
+
+    @pytest.mark.asyncio
+    async def test_with_an_origin_secret_the_inner_key_is_the_callers_ip(
+        self, client, origin_secret
+    ):
+        """
+        GIVEN a service with a Cloudflare origin secret and a client built for 203.0.113.7
+        WHEN the client reads through the real app
+        THEN get_client_ip resolves the inner request to 203.0.113.7, not to
+            "unverified-origin", which would put every user in one bucket
+        """
+        # GIVEN
+        token = register_and_login(client, "alice@example.com")
+        recorder = _RecordingASGIApp(client.app)
+        api_client = UserApiClient(app=recorder, access_token=token, client_ip="203.0.113.7")
+
+        # WHEN
+        await api_client.list_projects()
+        await api_client.aclose()
+
+        # THEN
+        assert recorder.client_ips == ["203.0.113.7"]
+        assert recorder.origin_headers == [
+            {"x-origin-verify": origin_secret, "cf-connecting-ip": "203.0.113.7"}
+        ]
+
+    @pytest.mark.asyncio
+    async def test_an_unverified_outer_key_stays_unverified(self, client, origin_secret):
+        """
+        GIVEN a client built with the key of an outer request that was itself unverified
+        WHEN the client reads through the real app
+        THEN the inner request resolves to that same "unverified-origin" key
+        """
+        # GIVEN
+        token = register_and_login(client, "alice@example.com")
+        recorder = _RecordingASGIApp(client.app)
+        api_client = UserApiClient(app=recorder, access_token=token, client_ip="unverified-origin")
+
+        # WHEN
+        await api_client.list_projects()
+        await api_client.aclose()
+
+        # THEN
+        assert recorder.client_ips == ["unverified-origin"]
+
+    @pytest.mark.asyncio
+    async def test_without_an_origin_secret_no_origin_header_is_sent(self, client):
+        """
+        GIVEN no Cloudflare origin secret, as on a laptop or in CI
+        WHEN the client reads through the real app
+        THEN neither X-Origin-Verify nor CF-Connecting-IP is sent, and the key is the
+            ASGI peer address the client carries
+        """
+        # GIVEN
+        token = register_and_login(client, "alice@example.com")
+        recorder = _RecordingASGIApp(client.app)
+        api_client = UserApiClient(app=recorder, access_token=token, client_ip="203.0.113.7")
+
+        # WHEN
+        await api_client.list_projects()
+        await api_client.aclose()
+
+        # THEN
+        assert recorder.origin_headers == [{}]
+        assert recorder.client_ips == ["203.0.113.7"]
 
 
 class TestTokenNeverLogged:

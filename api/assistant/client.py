@@ -3,7 +3,10 @@
 Every call goes through the real API over an in-process ASGI transport, carrying
 the caller's own access token and IP, so project access is governed by the same
 RequireProjectAccess dependency the browser UI goes through. The client issues GET
-requests only: it has no method that could write anything.
+requests only: it has no method that could write anything. Where a Cloudflare origin
+secret is configured, each request also carries the origin-verify header and the caller's
+IP, so the inner rate-limit key resolves to the caller's own; those headers never leave
+the process, and the secret is never logged.
 """
 
 from http.cookiejar import CookieJar, DefaultCookiePolicy
@@ -16,6 +19,7 @@ from starlette.types import ASGIApp
 
 from api.assistant.errors import AssistantNotFoundError, AssistantUpstreamError
 from api.assistant.views import OpinionView, ProjectBrief, ProjectView, ResultView
+from api.config import get_settings
 from api.pagination import MAX_PAGE_SIZE
 
 # A loopback host: the request never leaves this process, so plain http exposes nothing.
@@ -79,10 +83,19 @@ class UserApiClient:
 
     def __init__(self, app: ASGIApp, access_token: str, client_ip: str) -> None:
         transport = httpx.ASGITransport(app=app, client=(client_ip, 0))
+        headers = {"Authorization": f"Bearer {access_token}"}
+        # get_client_ip trusts CF-Connecting-IP only behind a matching X-Origin-Verify
+        # and otherwise keys every request under one constant, which would put all
+        # users' internal reads into one bucket. Without a secret (local, CI) the ASGI
+        # peer above already carries the IP.
+        origin_secret = get_settings().cloudflare_origin_secret
+        if origin_secret:
+            headers["X-Origin-Verify"] = origin_secret
+            headers["CF-Connecting-IP"] = client_ip
         self._http = httpx.AsyncClient(
             transport=transport,
             base_url=_INTERNAL_BASE_URL,
-            headers={"Authorization": f"Bearer {access_token}"},
+            headers=headers,
             # A jar that stores nothing. The API reads a session cookie before the
             # Authorization header, so a cookie kept from one response would outrank
             # the token this client was built with.
