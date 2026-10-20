@@ -1,6 +1,7 @@
 """Tests for removing citations from an answer, whole and piece by piece."""
 
 import random
+import time
 
 import pytest
 
@@ -28,6 +29,7 @@ _ANSWERS = [
     "Tabs\t[1]\tand nbsp\u00a0[2]\u00a0here.",
     "No citations here at all, only 5 experts and 11.54.",
     "Nested [[1]2] and [1[2]] and [[1]1] and [ [1] 2] here.",
+    "A list:\n  [1] indented item\n\t[2]\ttabbed item\n  [3]\n[1]  x",
     "A fuzzy number [6, 8, 11], a scale [1, 5], [0, 1] and a pair [1, 2] [7].",
     "Mixed [ \u30101\u3011 2] and \u3010 [1] 2\u3011 and [1](\u30102\u3011) here.",
     "",
@@ -45,6 +47,8 @@ class TestRemoveCitations:
             ("see [1](https://x/y) now", "see now"),
             ("[1] Start", "Start"),
             ("first\n[1] second", "first\nsecond"),
+            ("a\n  [1] b", "a\n  b"),
+            ("a\n  [1]\n[2]  c", "a\n  \nc"),
             ("a [1-3] b [1, 2] c [source 2] d", "a b c d"),
             ("\u30101\u3011 x \u30102, 3\u3011", "x"),
             ("Result [1] (5 experts)", "Result (5 experts)"),
@@ -263,37 +267,50 @@ class TestCitationStreamFilter:
 
         assert stream.feed(text) == text
 
-    def test_it_reports_whether_a_piece_was_fed(self):
-        """
-        GIVEN a new filter
-        WHEN a piece is fed
-        THEN it was not started before and is after
-        """
-        stream = CitationStreamFilter(SOURCES)
-        before = stream.started
-
-        stream.feed("Text")
-
-        assert (before, stream.started) == (False, True)
-
     @pytest.mark.parametrize(
         "pieces",
-        [["[1] "] * 400, [" [", "1", "]"] * 300, ["[ "] * 300 + ["1] "] * 300],
+        [
+            ["[1] "] * 400,
+            [" [", "1", "]"] * 300,
+            ["[ "] * 300 + ["1] "] * 300,
+            ["["] * 2000 + ["]"] * 2000,
+            ["a ["] * 2000 + ["]"] * 2000,
+            ["["] * 2000 + [chr(0x3011)] * 2000 + ["]"] * 2000,
+            ["[ " + "x" * 10] * 500 + ["]"] * 500,
+        ],
     )
     def test_the_work_grows_with_the_text_not_with_the_square_of_it(self, monkeypatch, pieces):
         """
-        GIVEN hundreds of pieces, each a citation or part of one
+        GIVEN hundreds of pieces, each a citation or part of one, or a deep nest of brackets
+              that stay in the text
         WHEN they are fed through the filter
-        THEN each closing bracket is read once, where scanning the whole text again after each
-             piece would read the earlier ones over and over
+        THEN the text handed to the citation reader adds up to no more than twice the text, as
+             it would not if every closing bracket read all that is nested in it
         """
-        reads: list[str] = []
+        text = "".join(pieces)
+        handed: list[int] = []
         real = checks._cited_numbers
-        monkeypatch.setattr(checks, "_cited_numbers", lambda c: reads.append(c) or real(c))
+        monkeypatch.setattr(checks, "_cited_numbers", lambda c: handed.append(len(c)) or real(c))
         stream = CitationStreamFilter(SOURCES)
 
         joined = "".join(stream.feed(piece) for piece in pieces) + stream.finish()
-        streamed_reads = len(reads)
+        streamed = sum(handed)
 
-        assert joined == remove_citations("".join(pieces), SOURCES)
-        assert streamed_reads == "".join(pieces).count("]")
+        assert joined == remove_citations(text, SOURCES)
+        assert streamed <= 2 * len(text)
+
+    def test_a_long_run_of_blanks_arriving_in_pieces_costs_no_more_than_its_length(self):
+        """
+        GIVEN thousands of pieces of blanks, which are all held back until text follows
+        WHEN they are fed through the filter
+        THEN it finishes in a small fraction of the time a rescan of the run per piece takes
+             (seconds), and the blanks are let out once the text arrives
+        """
+        stream = CitationStreamFilter(SOURCES)
+        started = time.perf_counter()
+
+        shown = [stream.feed(" " * 16) for _ in range(4000)]
+        shown.append(stream.feed("end"))
+
+        assert time.perf_counter() - started < 1.0
+        assert "".join(shown) == " " * 64000 + "end"

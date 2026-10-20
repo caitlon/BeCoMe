@@ -245,7 +245,9 @@ and in every event of `/chat/stream`. A bracket with one number (`[7]`, `[source
 removed, even when no such source exists. A bracket with several numbers or a range (`[1, 2]`,
 `[1-3]`) is removed only when each number in it is a source of the turn, so a fuzzy number such
 as `[6, 8, 11]` or a scale such as `[0, 1]` stays. A bracket inside a bracket is taken first, so
-`[[1]2]` goes whole. The stream holds a piece back while a marker may still be forming in it,
+`[[1]2]` goes whole. Removal reads citations as the citation check does, so a form that check
+does not recognise, such as the full-width dagger form `【1†source】`, stays in the text. The
+stream holds a piece back while a marker may still be forming in it,
 and a bracket that never closes holds the rest of the answer until the end, so a marker is never
 sent in part. The checks still run on the text the model wrote, and the system prompt is the same
 in both states. With the setting on, the response is as described above.
