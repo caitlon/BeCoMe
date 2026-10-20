@@ -131,6 +131,31 @@ class TestInMemoryAssistantThrottle:
         assert closed == 1
         assert unknown == 1
 
+    def test_remaining_reports_the_open_window_and_none_otherwise(self):
+        """
+        GIVEN a user counted at t=0 and another never seen
+        WHEN remaining is asked at t=600 and again at t=3600
+        THEN it is the seconds left while the window is open, and None for the unknown
+             user and once the window has closed
+        """
+        # GIVEN
+        throttle = InMemoryAssistantThrottle(max_per_hour=1, window_seconds=3600)
+        user_id = uuid4()
+        with patch.object(rate_limit.time, "monotonic", return_value=0.0):
+            throttle.hit(user_id)
+
+        # WHEN
+        with patch.object(rate_limit.time, "monotonic", return_value=600.0):
+            open_window = throttle.remaining(user_id)
+        with patch.object(rate_limit.time, "monotonic", return_value=3600.0):
+            closed = throttle.remaining(user_id)
+        unknown = throttle.remaining(uuid4())
+
+        # THEN
+        assert open_window == 3000
+        assert closed is None
+        assert unknown is None
+
     def test_expired_windows_are_dropped(self):
         """
         GIVEN many users whose windows have all expired
@@ -364,11 +389,13 @@ class TestRedisAssistantThrottle:
         # THEN
         assert seconds == 3600
 
-    def test_retry_after_is_the_full_window_and_logs_when_the_store_is_unavailable(self, caplog):
+    def test_retry_after_is_the_full_window_and_logs_without_a_fallback_entry(self, caplog):
         """
-        GIVEN a store whose TTL lookup raises a Redis error
+        GIVEN a store whose TTL lookup raises a Redis error and a user the process has
+            never counted, so there is no fallback entry
         WHEN retry_after is asked
-        THEN it is the full window, and a record names the event without the digest
+        THEN it is the full window, since one second would understate it, and a record
+             names the event without the digest
         """
         # GIVEN
         client = MagicMock()
@@ -501,19 +528,24 @@ class TestRedisAssistantThrottle:
         # THEN
         assert seconds == 3000
 
-    def test_retry_after_is_the_full_window_without_a_fallback_entry(self):
+    def test_retry_after_is_the_full_window_once_the_fallback_window_has_closed(self):
         """
-        GIVEN a store that is down and a user the process has never counted
-        WHEN the user asks how long to wait
-        THEN the answer is the full window, since one second would understate it
+        GIVEN a store that is down and a user counted at t=0
+        WHEN retry_after is asked at t=7200, past the one-hour window
+        THEN the closed fallback entry is ignored and the answer is the full window
         """
         # GIVEN
         client = MagicMock()
+        client.pipeline.return_value.execute.side_effect = redis.RedisError("down")
         client.ttl.side_effect = redis.RedisError("down")
         throttle = RedisAssistantThrottle(client, max_per_hour=1, window_seconds=3600)
+        user_id = uuid4()
+        with patch.object(rate_limit.time, "monotonic", return_value=0.0):
+            throttle.hit(user_id)
 
         # WHEN
-        seconds = throttle.retry_after(uuid4())
+        with patch.object(rate_limit.time, "monotonic", return_value=7200.0):
+            seconds = throttle.retry_after(user_id)
 
         # THEN
         assert seconds == 3600
