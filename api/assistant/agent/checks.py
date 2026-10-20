@@ -133,10 +133,19 @@ def check_citations(answer: str, valid_numbers: set[int]) -> bool:
     :return: True when every cited number is in ``valid_numbers``; an answer with no
         citation passes, and a citation of ``0`` never does.
     """
+    return cited_numbers(answer) <= valid_numbers
+
+
+def cited_numbers(answer: str) -> set[int]:
+    """List the source numbers an answer cites, read as :func:`check_citations` reads them.
+
+    :param answer: The model's final answer text.
+    :return: Every number named by a citation in the answer, ranges expanded.
+    """
     cited: set[int] = set()
     for _start, _end, numbers in _citation_spans(answer):
         cited |= numbers
-    return cited <= valid_numbers
+    return cited
 
 
 @dataclass(frozen=True)
@@ -358,6 +367,116 @@ def _replace_citations(text: str, filler: str) -> str:
         position = link.end() if link else end
     pieces.append(text[position:])
     return "".join(pieces)
+
+
+# Spaces and tabs, not line breaks: what is dropped along with a citation.
+_BLANKS = " \t\u00a0\u202f"
+# The part of a link target that has been written so far, at the end of a text.
+_OPEN_TARGET = re.compile(r"\([^()\[\]\s]*")
+
+
+def remove_citations(text: str) -> str:
+    """Remove citation-like brackets, with the link target and the blanks around them.
+
+    The brackets are those :func:`check_citations` reads. Each goes together with the spaces
+    and tabs before it, so that ``The midpoint [1].`` reads ``The midpoint.``, and with a
+    markdown link target right after it. A citation that opens a line also takes the blanks
+    after it. A bracket that is not a citation, such as ``[11.54, 14.19]``, stays. Unlike
+    :func:`strip_citations`, which leaves a space in its place, this returns text meant to be
+    shown.
+
+    :param text: The text to clean.
+    :return: The text without its citations.
+    """
+    out = ""
+    position = 0
+    for start, end, _numbers in _citation_spans(text):
+        if start < position:
+            continue
+        out = (out + text[position:start]).rstrip(_BLANKS)
+        link = _LINK_AFTER.match(text, end)
+        position = link.end() if link else end
+        if not out or out[-1] in "\r\n":
+            while position < len(text) and text[position] in _BLANKS:
+                position += 1
+    return out + text[position:]
+
+
+def _unsettled_start(text: str) -> int | None:
+    """Find where the end of a text may still turn into a citation.
+
+    That is an opening bracket nothing has closed yet, or a citation that ends the text or
+    is followed only by the beginning of a link target, which more text may complete.
+
+    :param text: The text so far.
+    :return: The index the unsettled part starts at, or None when the whole text is settled.
+    """
+    starts = [
+        index
+        for opener, closer in (("[", "]"), ("\u3010", "\u3011"))
+        if (index := text.rfind(opener)) > text.rfind(closer)
+    ]
+    if starts:
+        return min(starts)
+    spans = _citation_spans(text)
+    if spans:
+        start, end, _numbers = spans[-1]
+        rest = text[end:]
+        if rest == "" or _OPEN_TARGET.fullmatch(rest):
+            return start
+    return None
+
+
+class CitationStreamFilter:
+    """Turns the pieces of an answer, as they arrive, into pieces without citations.
+
+    A piece is held back while a citation may still be taking shape in it: an opening bracket
+    with no closing one, a citation at the end of the text, a link target not yet closed, and
+    the blanks at the end, which a citation after them would take. Everything let out is final,
+    so the pieces joined are exactly :func:`remove_citations` of the whole text.
+    """
+
+    def __init__(self) -> None:
+        """Start with no text read and none let out."""
+        self._raw = ""
+        self._emitted = 0
+
+    @property
+    def started(self) -> bool:
+        """Whether any piece has been fed."""
+        return bool(self._raw)
+
+    def feed(self, piece: str) -> str:
+        """Take the next piece of the answer.
+
+        :param piece: The raw text that arrived.
+        :return: The text that can now be shown, empty while it is held back.
+        """
+        self._raw += piece
+        text = self._raw
+        while True:
+            start = _unsettled_start(text)
+            if start is not None:
+                text = text[:start]
+            stripped = text.rstrip(_BLANKS)
+            if start is None and stripped == text:
+                break
+            text = stripped
+        return self._take(remove_citations(text))
+
+    def finish(self, final_text: str) -> str:
+        """Release what is still held back, once the whole answer is known.
+
+        :param final_text: The complete answer the pieces add up to.
+        :return: The rest of the answer without citations.
+        """
+        return self._take(remove_citations(final_text))
+
+    def _take(self, shown: str) -> str:
+        """Return the part of ``shown`` not let out yet, and count it as let out."""
+        delta = shown[self._emitted :]
+        self._emitted = len(shown)
+        return delta
 
 
 def _drop_ordinals(text: str) -> str:
