@@ -2123,7 +2123,9 @@ class TestAssistantSettings:
         monkeypatch.setenv("ASSISTANT_RATE_LIMIT_PER_HOUR", "0")
 
         # WHEN/THEN
-        assert Settings().assistant_enabled is False
+        settings = Settings()
+        assert settings.assistant_enabled is False
+        assert settings.assistant_rate_limit_per_hour == 0
 
         # GIVEN a laptop with the assistant on
         monkeypatch.delenv("RAILWAY_ENVIRONMENT_NAME", raising=False)
@@ -2132,7 +2134,9 @@ class TestAssistantSettings:
         monkeypatch.setenv("ASSISTANT_ENABLED", "true")
 
         # WHEN/THEN
-        assert Settings().assistant_enabled is True
+        settings = Settings()
+        assert settings.assistant_enabled is True
+        assert settings.assistant_rate_limit_per_hour == 0
 
     def test_prod_with_the_assistant_off_is_unaffected(self, monkeypatch, tmp_path):
         """

@@ -22,8 +22,10 @@ the budget, which is still a bound, where an open cap is none. That count restar
 process and is lost when Redis comes back; the window of the shared counter is unaffected.
 
 A refused message also learns how long the refusal lasts: ``retry_after`` reports the
-seconds until the user's window closes, for the ``Retry-After`` header of the 429. A Redis
-error there answers with the full window, the longest the wait can be.
+seconds until the user's window closes, for the ``Retry-After`` header of the 429. When the
+store cannot be read, it answers with this process's own remaining window if it holds one
+for the user, otherwise the full window, the longest the wait can be; a window left from an
+earlier outage can understate the wait, which only makes the client retry early.
 
 The Redis key holds an unkeyed digest of the user id. Never log it: anyone holding the
 logs could hash a known id and confirm it appears.
