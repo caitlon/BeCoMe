@@ -426,8 +426,11 @@ The limiter keys on the real client IP, and the rule is not hop-based. `get_clie
 (`api/utils/client_ip.py`) reads `CF-Connecting-IP` only when the request carries the
 `X-Origin-Verify` header matching `CLOUDFLARE_ORIGIN_SECRET`. Anything else, including a
 deployed service with no secret configured, keys under one constant. It never reads
-`X-Forwarded-For`, so a client cannot spoof its way around the per-IP limits. Rate limiting
-fails **open**: `swallow_errors` and an in-memory fallback keep a Redis outage from refusing
+`X-Forwarded-For`, so a client cannot spoof its way around the per-IP limits. The assistant's
+in-process API client (`UserApiClient`) runs through the same limiter, so when the secret is set
+it sends `X-Origin-Verify` and `CF-Connecting-IP` with the caller's key; the headers never leave
+the process. Rate limiting fails
+**open**: `swallow_errors` and an in-memory fallback keep a Redis outage from refusing
 traffic, at the cost of the shared counters. See "Accepted risks" for the reasoning. A
 request body over the configured ceiling gets a `413` before anything buffers it, and the
 API streams profile-photo uploads under a size cap rather than reading them whole into
