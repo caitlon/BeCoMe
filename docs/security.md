@@ -403,6 +403,7 @@ own limit. On top of that, routes carry tighter limits by risk:
 | Photo | `120/minute` | The public avatar proxy, which a page loads once per member |
 | Assistant chat | `20/minute` | The assistant's chat route, which exists only when `ASSISTANT_ENABLED` is on: on a developer's machine and on the dev and test services, never in production |
 | Assistant messages | `60/hour` per user | The same route, as a fixed one-hour window per account (`ASSISTANT_RATE_LIMIT_PER_HOUR`, `0` switches it off on a laptop). A spent budget answers `429` |
+| Assistant concurrent turns | `8` per process, `2` per user | The same route, as a count of turns running at once (`ASSISTANT_MAX_CONCURRENT_TURNS`); a streamed answer holds its slot until the stream ends. A full process, or a user already running two turns, answers `503` with `Retry-After: 5` and the same body as an unreachable model server, instead of queueing |
 
 Only those routes carry a decorator. Everything else is bounded by the two global ceilings
 alone, which is the point of having them. The hourly assistant cap is the only row of this table

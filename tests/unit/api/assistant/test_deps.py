@@ -17,7 +17,11 @@ from sqlalchemy.exc import OperationalError
 
 from api.assistant import deps
 from api.assistant.agent.context import AssistantContext
-from api.assistant.errors import AssistantRateLimitedError, AssistantUnavailableError
+from api.assistant.errors import (
+    AssistantBusyError,
+    AssistantRateLimitedError,
+    AssistantUnavailableError,
+)
 from api.assistant.rag.retrieval import RetrievalConfig
 from api.assistant.rag.store import CollectionUnavailableError
 from api.config import Settings
@@ -418,6 +422,226 @@ class TestEnforceMessageLimit:
         # THEN
         assert threads
         assert threads[0] != threading.get_ident()
+
+
+class TestTurnSlots:
+    """The slot table counts turns in the process and per user, and never waits."""
+
+    def test_turns_within_both_caps_are_admitted(self):
+        """
+        GIVEN a table of three slots with two allowed per user
+        WHEN two users take a slot each
+        THEN both are admitted
+        """
+        # GIVEN
+        slots = deps.TurnSlots(max_total=3, max_per_user=2)
+
+        # WHEN/THEN
+        assert slots.acquire(uuid4()) is None
+        assert slots.acquire(uuid4()) is None
+
+    def test_a_full_process_refuses_whoever_asks(self):
+        """
+        GIVEN a table of two slots, both taken by different users
+        WHEN a third user asks
+        THEN the refusal names the process cap
+        """
+        # GIVEN
+        slots = deps.TurnSlots(max_total=2, max_per_user=2)
+        slots.acquire(uuid4())
+        slots.acquire(uuid4())
+
+        # WHEN/THEN
+        assert slots.acquire(uuid4()) == "process"
+
+    def test_one_user_cannot_hold_more_than_their_share_while_others_get_in(self):
+        """
+        GIVEN a table of four slots with two allowed per user, and one user holding two
+        WHEN that user asks again, then another user asks
+        THEN the first is refused with the user cap and the second is admitted
+        """
+        # GIVEN
+        slots = deps.TurnSlots(max_total=4, max_per_user=2)
+        greedy = uuid4()
+        slots.acquire(greedy)
+        slots.acquire(greedy)
+
+        # WHEN/THEN
+        assert slots.acquire(greedy) == "user"
+        assert slots.acquire(uuid4()) is None
+
+    def test_a_refusal_takes_nothing(self):
+        """
+        GIVEN a table of one slot that is taken
+        WHEN a refused turn asks and the holder then releases
+        THEN the slot is free again, so the refusal had not counted
+        """
+        # GIVEN
+        slots = deps.TurnSlots(max_total=1, max_per_user=1)
+        holder = uuid4()
+        slots.acquire(holder)
+        assert slots.acquire(uuid4()) == "process"
+
+        # WHEN
+        slots.release(holder)
+
+        # THEN
+        assert slots.acquire(uuid4()) is None
+
+    def test_release_frees_the_process_slot_and_the_users_share(self):
+        """
+        GIVEN a user who reached their cap of one
+        WHEN they release and ask again
+        THEN they are admitted
+        """
+        # GIVEN
+        slots = deps.TurnSlots(max_total=5, max_per_user=1)
+        user = uuid4()
+        slots.acquire(user)
+        assert slots.acquire(user) == "user"
+
+        # WHEN
+        slots.release(user)
+
+        # THEN
+        assert slots.acquire(user) is None
+
+    def test_a_users_entry_is_dropped_when_it_reaches_zero(self):
+        """
+        GIVEN two users holding one slot each
+        WHEN both release
+        THEN the table keeps no entry for either, so it does not grow with the users it has seen
+        """
+        # GIVEN
+        slots = deps.TurnSlots(max_total=5, max_per_user=2)
+        first, second = uuid4(), uuid4()
+        slots.acquire(first)
+        slots.acquire(second)
+
+        # WHEN
+        slots.release(first)
+        slots.release(second)
+
+        # THEN
+        assert slots.holders == {}
+
+    def test_it_is_sized_from_settings_and_rebuilt_after_clear_caches(self):
+        """
+        GIVEN a cap of three turns in the settings
+        WHEN the cached table is asked for twice, and again after clear_caches
+        THEN the first two are the same object sized from the settings, and the third is new
+        """
+        # GIVEN
+        settings = _settings(assistant_max_concurrent_turns=3)
+        with patch.object(deps, "get_settings", return_value=settings):
+            # WHEN
+            first = deps.get_turn_slots()
+            second = deps.get_turn_slots()
+            deps.clear_caches()
+            third = deps.get_turn_slots()
+
+        # THEN
+        assert first is second
+        assert first.max_total == 3
+        assert first.max_per_user == deps.MAX_TURNS_PER_USER
+        assert third is not first
+
+
+class TestHoldTurnSlot:
+    """The dependency holds a slot for the turn and refuses at once when none is free."""
+
+    @pytest.fixture
+    def records(self):
+        with captured_log_records("api.assistant.deps") as captured:
+            yield captured
+
+    @pytest.mark.asyncio
+    async def test_the_slot_is_held_inside_and_released_after_a_normal_exit(self):
+        """
+        GIVEN a table of one slot
+        WHEN the dependency runs and the response completes
+        THEN the slot was taken while it ran, and is free after
+        """
+        # GIVEN
+        slots = deps.TurnSlots(max_total=1, max_per_user=1)
+        user = MagicMock(id=uuid4())
+
+        # WHEN
+        async with asynccontextmanager(deps.hold_turn_slot)(user, slots):
+            held = slots.acquire(uuid4())
+
+        # THEN
+        assert held == "process"
+        assert slots.acquire(uuid4()) is None
+
+    @pytest.mark.asyncio
+    async def test_the_slot_is_released_when_the_turn_raises(self):
+        """
+        GIVEN a table of one slot
+        WHEN the turn raises inside the dependency
+        THEN the error goes on and the slot is free again
+        """
+        # GIVEN
+        slots = deps.TurnSlots(max_total=1, max_per_user=1)
+        user = MagicMock(id=uuid4())
+
+        # WHEN
+        with pytest.raises(RuntimeError, match="turn failed"):
+            async with asynccontextmanager(deps.hold_turn_slot)(user, slots):
+                raise RuntimeError("turn failed")
+
+        # THEN
+        assert slots.holders == {}
+        assert slots.acquire(uuid4()) is None
+
+    @pytest.mark.asyncio
+    async def test_a_full_process_is_refused_with_the_wait_and_a_record_without_ids(self, records):
+        """
+        GIVEN a table of one slot that another user holds
+        WHEN the dependency runs
+        THEN AssistantBusyError carries the retry wait, the holder's slot is untouched, and one
+             WARNING names the process cap and no user
+        """
+        # GIVEN
+        slots = deps.TurnSlots(max_total=1, max_per_user=1)
+        holder = uuid4()
+        slots.acquire(holder)
+        user = MagicMock(id=uuid4())
+
+        # WHEN
+        with pytest.raises(AssistantBusyError) as caught:
+            async with asynccontextmanager(deps.hold_turn_slot)(user, slots):
+                pytest.fail("a refused turn must not run")
+
+        # THEN
+        assert caught.value.retry_after == deps.TURN_SLOT_RETRY_SECONDS == 5
+        assert slots.holders == {holder: 1}
+        assert [(r.levelno, r.event, r.reason) for r in records] == [
+            (logging.WARNING, "assistant_concurrency_cap_reached", "process")
+        ]
+        assert str(user.id) not in records[0].getMessage()
+        assert not hasattr(records[0], "user_id")
+
+    @pytest.mark.asyncio
+    async def test_a_user_at_their_share_is_refused_while_the_process_has_room(self, records):
+        """
+        GIVEN a table of ten slots and a user already holding their two
+        WHEN the dependency runs for that user, and then for another
+        THEN the first is refused with the user reason, and the second runs
+        """
+        # GIVEN
+        slots = deps.TurnSlots(max_total=10, max_per_user=2)
+        greedy = MagicMock(id=uuid4())
+        slots.acquire(greedy.id)
+        slots.acquire(greedy.id)
+
+        # WHEN/THEN
+        with pytest.raises(AssistantBusyError):
+            async with asynccontextmanager(deps.hold_turn_slot)(greedy, slots):
+                pytest.fail("a refused turn must not run")
+        async with asynccontextmanager(deps.hold_turn_slot)(MagicMock(id=uuid4()), slots):
+            pass
+        assert [r.reason for r in records] == ["user"]
 
 
 class _FakeClient:

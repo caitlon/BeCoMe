@@ -4,9 +4,9 @@ Kept out of ``api/dependencies.py`` on purpose: that module loads in every deplo
 process, and nothing there may import langchain or openai. This one is imported only by
 code that loads when ``settings.assistant_enabled`` is true.
 
-What lives for the whole process is cached here: the two chat models and the
-documentation retriever, which owns a BM25 index and the vector store's engine.
-:func:`clear_caches` drops all of them at once. What belongs to one request is not
+What lives for the whole process is cached here: the two chat models, the
+documentation retriever, which owns a BM25 index and the vector store's engine, and the
+table of turn slots. :func:`clear_caches` drops all of them at once. What belongs to one request is not
 cached: the API client carries the caller's own access token, and sharing it would hand
 one user's token to another user's turn.
 """
@@ -14,11 +14,13 @@ one user's token to another user's turn.
 import asyncio
 import contextlib
 import logging
+import threading
 from collections.abc import AsyncIterator, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Annotated
+from typing import Annotated, Literal
+from uuid import UUID
 
 from fastapi import Depends, Request
 from fastapi.concurrency import run_in_threadpool
@@ -27,7 +29,11 @@ from langchain_core.language_models import BaseChatModel
 from api.assistant.agent.context import AssistantContext, SourceRegistry
 from api.assistant.agent.service import AssistantService
 from api.assistant.client import UserApiClient
-from api.assistant.errors import AssistantRateLimitedError, AssistantUnavailableError
+from api.assistant.errors import (
+    AssistantBusyError,
+    AssistantRateLimitedError,
+    AssistantUnavailableError,
+)
 from api.assistant.rag.models import (
     LlamaServerReranker,
     make_answer_model,
@@ -48,6 +54,12 @@ logger = logging.getLogger(__name__)
 
 # The cap on one statement of the retriever's searches, in milliseconds (see make_engine).
 _STATEMENT_TIMEOUT_MS = 30000
+
+# The most turns one user may have running at once, so one account cannot hold every slot.
+MAX_TURNS_PER_USER = 2
+
+# What a turn refused for want of a free slot is told to wait, in seconds.
+TURN_SLOT_RETRY_SECONDS = 5
 
 
 @contextmanager
@@ -150,15 +162,72 @@ def get_docs_retriever() -> DocsRetriever:
             raise
 
 
+class TurnSlots:
+    """Count the turns a process is answering, in all and per user, without ever waiting.
+
+    :param max_total: The most turns the process answers at once.
+    :param max_per_user: The most turns one user has running at once.
+    :ivar max_total: The most turns the process answers at once.
+    :ivar max_per_user: The most turns one user has running at once.
+    :ivar holders: Turns running now, by user id; a user with none has no entry.
+    """
+
+    def __init__(self, max_total: int, max_per_user: int) -> None:
+        self.max_total = max_total
+        self.max_per_user = max_per_user
+        self.holders: dict[UUID, int] = {}
+        self._total = 0
+        self._lock = threading.Lock()
+
+    def acquire(self, user_id: UUID) -> Literal["process", "user"] | None:
+        """Take a slot for this user if both limits leave room.
+
+        :param user_id: The user whose turn asks.
+        :return: ``None`` when the slot was taken, else the limit that refused it: the
+            process-wide one is named first when both are reached.
+        """
+        with self._lock:
+            if self._total >= self.max_total:
+                return "process"
+            if self.holders.get(user_id, 0) >= self.max_per_user:
+                return "user"
+            self._total += 1
+            self.holders[user_id] = self.holders.get(user_id, 0) + 1
+            return None
+
+    def release(self, user_id: UUID) -> None:
+        """Give back a slot this user took with :meth:`acquire`.
+
+        :param user_id: The user whose turn is done.
+        """
+        with self._lock:
+            self._total -= 1
+            if self.holders[user_id] == 1:
+                del self.holders[user_id]
+            else:
+                self.holders[user_id] -= 1
+
+
+@lru_cache
+def get_turn_slots() -> TurnSlots:
+    """Return the process-wide table of turn slots, sized from settings when first built.
+
+    :return: A table allowing ``assistant_max_concurrent_turns`` turns at once, and
+        :data:`MAX_TURNS_PER_USER` for one user.
+    """
+    return TurnSlots(get_settings().assistant_max_concurrent_turns, MAX_TURNS_PER_USER)
+
+
 def clear_caches() -> None:
     """Drop every process-wide object this module keeps, so the next call builds anew.
 
-    For tests and for a run that changes the settings; the models and the retriever
-    read them once, when they are built.
+    For tests and for a run that changes the settings; the models, the retriever and the
+    turn slots read them once, when they are built.
     """
     get_answer_model.cache_clear()
     get_query_model.cache_clear()
     get_docs_retriever.cache_clear()
+    get_turn_slots.cache_clear()
 
 
 def get_assistant_service(
@@ -176,6 +245,7 @@ def get_assistant_service(
 
 AssistantServiceDep = Annotated[AssistantService, Depends(get_assistant_service)]
 AssistantThrottleDep = Annotated[AssistantThrottle, Depends(get_assistant_throttle)]
+TurnSlotsDep = Annotated[TurnSlots, Depends(get_turn_slots)]
 DocsRetrieverDep = Annotated[DocsRetriever, Depends(get_docs_retriever)]
 
 
@@ -197,6 +267,37 @@ async def enforce_message_limit(current_user: CurrentUser, throttle: AssistantTh
         raise AssistantRateLimitedError(
             "the hourly assistant message budget is spent", retry_after=retry_after
         )
+
+
+async def hold_turn_slot(current_user: CurrentUser, slots: TurnSlotsDep) -> AsyncIterator[None]:
+    """Hold one of the process's turn slots until the response is done, or refuse at once.
+
+    Listed right after :func:`enforce_message_limit` on both chat routes. A slot is taken
+    without waiting, since a queue of requests behind a slow model server would only hold
+    workers: a turn is refused when the process is answering its limit of turns, or when this
+    user already has :data:`MAX_TURNS_PER_USER` running. The code after ``yield`` runs once the
+    response has been sent, so a streamed answer holds its slot for the whole stream. The slot
+    is given back whether the turn answered or failed, and only when this call took it. The
+    record names the limit and no user.
+
+    :param current_user: The authenticated caller.
+    :param slots: The process-wide table from :func:`get_turn_slots`.
+    :raises AssistantBusyError: If no slot is free for this turn; it carries
+        :data:`TURN_SLOT_RETRY_SECONDS`.
+    """
+    refused_by = slots.acquire(current_user.id)
+    if refused_by is not None:
+        logger.warning(
+            "Assistant concurrent turn cap reached",
+            extra={"event": "assistant_concurrency_cap_reached", "reason": refused_by},
+        )
+        raise AssistantBusyError(
+            "no assistant turn slot is free", retry_after=TURN_SLOT_RETRY_SECONDS
+        )
+    try:
+        yield
+    finally:
+        slots.release(current_user.id)
 
 
 @dataclass(frozen=True)

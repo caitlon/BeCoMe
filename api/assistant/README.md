@@ -336,6 +336,14 @@ start of the model call, so it leaves out retrieval, and in the `hybrid` and `ag
   lift it: each process then counts in its own memory with the same budget, and the record
   `assistant_throttle_unavailable` is logged at ERROR. Set it to `0` to switch it off, for a
   measurement run that sends many questions from one account; a deployed service refuses `0`.
+- **Concurrent turns.** `ASSISTANT_MAX_CONCURRENT_TURNS` (default 8, above zero) is the most
+  turns one process answers at once, and one user may run at most two of them, so a single account
+  cannot take every slot. A turn that finds no free slot is refused at once, not queued, with `503`,
+  the same body as an unreachable model server and `Retry-After: 5`; the record
+  `assistant_concurrency_cap_reached` names the limit (`process` or `user`) and no user. The slot is
+  taken right after the message limit and given back when the response is done, so a streamed answer
+  holds it until the stream ends. The count is per process: with several processes the ceiling is
+  the setting times their number.
 - **Message length.** `ASSISTANT_MAX_MESSAGE_CHARS` (default 4000, which is also the ceiling of
   the request schema) can only lower the length of a message. A longer one is answered `422`
   like any other invalid request, before the API client is built, before the retriever is built

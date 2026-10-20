@@ -25,6 +25,20 @@ class AssistantUnavailableError(AssistantError):
     """Raised when the local LLM, embedding, or rerank server cannot be reached."""
 
 
+class AssistantBusyError(AssistantError):
+    """Raised when this process is already answering its limit of concurrent turns.
+
+    The cause is load, not the caller: it is answered 503, never 429.
+
+    :param message: Description for the log; never shown to the caller.
+    :param retry_after: Whole seconds the caller should wait, sent as ``Retry-After``.
+    """
+
+    def __init__(self, message: str, *, retry_after: int) -> None:
+        super().__init__(message)
+        self.retry_after = retry_after
+
+
 class AssistantRateLimitedError(AssistantError):
     """Raised when a user has spent their per-hour assistant message budget.
 

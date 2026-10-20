@@ -117,11 +117,13 @@ def create_test_app() -> FastAPI:
     if settings.assistant_enabled:
         from api.assistant.deps import get_docs_retriever
         from api.assistant.errors import (
+            AssistantBusyError,
             AssistantRateLimitedError,
             AssistantUnavailableError,
             AssistantUpstreamError,
         )
         from api.assistant.exception_handlers import (
+            assistant_busy_handler,
             assistant_rate_limited_handler,
             assistant_unavailable_handler,
             assistant_upstream_handler,
@@ -130,6 +132,7 @@ def create_test_app() -> FastAPI:
         from tests.shared.assistant_fakes import StaticDocsRetriever
 
         app.include_router(assistant.router)
+        app.add_exception_handler(AssistantBusyError, assistant_busy_handler)  # type: ignore[arg-type]
         app.add_exception_handler(AssistantRateLimitedError, assistant_rate_limited_handler)  # type: ignore[arg-type]
         app.add_exception_handler(AssistantUnavailableError, assistant_unavailable_handler)  # type: ignore[arg-type]
         app.add_exception_handler(AssistantUpstreamError, assistant_upstream_handler)  # type: ignore[arg-type]

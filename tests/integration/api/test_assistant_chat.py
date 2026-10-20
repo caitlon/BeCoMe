@@ -12,10 +12,11 @@ import json
 import logging
 import re
 import threading
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
 from contextlib import ExitStack, contextmanager
 from typing import Any
 from unittest.mock import MagicMock, patch
+from uuid import uuid4
 
 import httpx
 import langsmith as ls
@@ -24,6 +25,8 @@ import requests
 from fastapi import HTTPException, Request
 from fastapi.testclient import TestClient
 from langchain_core.messages import AIMessage
+from langchain_core.outputs import ChatGenerationChunk
+from pydantic import Field
 from requests.adapters import HTTPAdapter
 from sqlalchemy.exc import OperationalError
 
@@ -1435,6 +1438,126 @@ class TestMessageLimit:
 
         # THEN
         assert statuses == [200] * allowed + [429]
+
+
+class _SlotProbingModel(ScriptedToolCallingModel):
+    """A scripted model that records whether a turn slot was free while it was streaming.
+
+    :ivar probes: One entry per streamed call: True when a slot was free at that moment.
+    """
+
+    probes: list[bool] = Field(default_factory=list)
+
+    async def _astream(self, *args: Any, **kwargs: Any) -> AsyncIterator[ChatGenerationChunk]:
+        slots = deps.get_turn_slots()
+        stranger = uuid4()
+        free = slots.acquire(stranger) is None
+        if free:
+            slots.release(stranger)
+        self.probes.append(free)
+        async for chunk in super()._astream(*args, **kwargs):
+            yield chunk
+
+
+class TestConcurrentTurnCap:
+    """A process answers a bounded number of turns at once; a streamed one holds its slot."""
+
+    @pytest.mark.parametrize("endpoint", [CHAT, STREAM])
+    def test_a_full_process_refuses_with_503_and_admits_again_once_a_slot_frees(
+        self, assistant_settings, client, configure, endpoint
+    ):
+        """
+        GIVEN a cap of one concurrent turn, with that slot held by another user's turn
+        WHEN a message is sent, then the slot is released and a message is sent again
+        THEN the first is a 503 with the fixed detail and Retry-After: 5, and the second is
+            answered, on both routes
+        """
+        # GIVEN
+        configure(ASSISTANT_MAX_CONCURRENT_TURNS="1")
+        token = register_and_login(client, "slots-full@example.com")
+        _use_model(client, _scripted("ok"))
+        slots = deps.get_turn_slots()
+        holder = uuid4()
+        assert slots.acquire(holder) is None
+
+        # WHEN
+        refused = client.post(endpoint, json={"message": "one"}, headers=auth_header(token))
+        slots.release(holder)
+        admitted = client.post(endpoint, json={"message": "two"}, headers=auth_header(token))
+
+        # THEN
+        assert refused.status_code == 503
+        assert refused.json() == UNAVAILABLE_BODY
+        assert refused.headers["Retry-After"] == "5"
+        assert admitted.status_code == 200
+
+    def test_a_stream_holds_its_slot_until_the_stream_ends(
+        self, assistant_settings, client, configure
+    ):
+        """
+        GIVEN a cap of one concurrent turn and a model that checks for a free slot while it
+            streams
+        WHEN one turn is streamed to the end
+        THEN no slot was free while the stream was open, and none is held once it is complete
+        """
+        # GIVEN
+        configure(ASSISTANT_MAX_CONCURRENT_TURNS="1")
+        token = register_and_login(client, "slots-stream@example.com")
+        model = _SlotProbingModel(responses=[AIMessage(content="a streamed answer")])
+        _use_model(client, model)
+
+        # WHEN
+        response = client.post(STREAM, json={"message": "hi"}, headers=auth_header(token))
+
+        # THEN
+        assert response.status_code == 200
+        assert model.probes == [False]
+        assert deps.get_turn_slots().holders == {}
+
+    @pytest.mark.parametrize("endpoint", [CHAT, STREAM])
+    def test_a_request_the_schema_rejects_does_not_leak_its_slot(
+        self, assistant_settings, client, configure, endpoint
+    ):
+        """
+        GIVEN a cap of one concurrent turn
+        WHEN a message with an invalid body is sent, and then a valid one
+        THEN the invalid one is 422 and the valid one is answered, so the slot came back
+        """
+        # GIVEN
+        configure(ASSISTANT_MAX_CONCURRENT_TURNS="1")
+        token = register_and_login(client, "slots-invalid@example.com")
+        _use_model(client, _scripted("ok"))
+
+        # WHEN
+        invalid = client.post(endpoint, json={"message": ""}, headers=auth_header(token))
+        valid = client.post(endpoint, json={"message": "hi"}, headers=auth_header(token))
+
+        # THEN
+        assert invalid.status_code == 422
+        assert valid.status_code == 200
+
+    def test_a_stream_that_fails_gives_its_slot_back(self, assistant_settings, client, configure):
+        """
+        GIVEN a cap of one concurrent turn and a model that fails at once while streaming
+        WHEN a turn is streamed, and another message is sent
+        THEN the second reaches the model too, instead of being refused for want of a slot
+        """
+        # GIVEN
+        configure(ASSISTANT_MAX_CONCURRENT_TURNS="1")
+        token = register_and_login(client, "slots-failed@example.com")
+        failing = ScriptedToolCallingModel(
+            responses=[AIMessage(content="never")] * 2, fail_after_chunks=0
+        )
+        _use_model(client, failing)
+
+        # WHEN
+        client.post(STREAM, json={"message": "one"}, headers=auth_header(token))
+        second = client.post(STREAM, json={"message": "two"}, headers=auth_header(token))
+
+        # THEN
+        assert second.status_code == 200
+        assert len(failing.seen) == 2
+        assert deps.get_turn_slots().holders == {}
 
 
 class TestPerAddressRefusalSpendsTheBudget:
