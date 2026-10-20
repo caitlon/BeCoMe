@@ -386,7 +386,8 @@ class Settings(BaseSettings):
     # a test keeps them equal.
     assistant_max_history_turns: int = Field(default=10, gt=0, le=10)
     assistant_max_message_chars: int = Field(default=4000, gt=0, le=4000)
-    # Chat messages per user per fixed hour; 0 turns the limit off.
+    # Chat messages per user per fixed hour; 0 turns the limit off, on a laptop only: a
+    # deployed service refuses 0.
     assistant_rate_limit_per_hour: int = Field(default=60, ge=0)
     assistant_llm_timeout_seconds: float = 120.0
     # The longest one chat turn may take, fetching and generation together. When it runs
@@ -534,7 +535,8 @@ class Settings(BaseSettings):
         on Railway ``dev`` and APP_ENV=dev on Railway ``prod`` are both refused. The Railway
         name is checked against an allowlist, so an unknown or renamed environment is
         refused too. A deployed service has no llama-server to reach, so every model role
-        there must be api; a laptop and a CI runner keep local roles. LangSmith tracing
+        there must be api; a laptop and a CI runner keep local roles. A zero message limit
+        switches that cap off, so a deployed service may not set it to zero. LangSmith tracing
         sends the text of questions, tool replies and answers, which is project data read
         as the signed-in user, to a third-party endpoint, so a deployed service may trace
         only to the EU endpoint, into a named project other than the local default, and only
@@ -559,8 +561,8 @@ class Settings(BaseSettings):
 
         :return: The validated settings instance.
         :raises ValueError: If assistant_enabled is true in the prod profile or on a
-            Railway environment outside the allowlist, or on a deployed service while a
-            model role is still local, assistant_langsmith_enabled is true with an
+            Railway environment outside the allowlist, or on a deployed service while
+            assistant_rate_limit_per_hour is 0, a model role is still local, assistant_langsmith_enabled is true with an
             endpoint other than the EU one or a blank or local-default project, a library
             tracing switch is on, a ``RUNS_ENDPOINTS`` list is set, assistant_vector_db_url is
             empty, not a ``postgresql+psycopg`` URL, without a database or a single host,
@@ -581,6 +583,11 @@ class Settings(BaseSettings):
                 f"here, Railway environment {self.railway_environment_name!r})"
             )
         if self.is_deploy or on_railway:
+            if self.assistant_rate_limit_per_hour == 0:
+                raise ValueError(
+                    "assistant_rate_limit_per_hour must be above zero on a deployed service; "
+                    "0 switches the limit off"
+                )
             local_roles = [
                 provider_name
                 for provider_name, _ in _ASSISTANT_PROVIDER_ROLES

@@ -1295,6 +1295,7 @@ class TestAssistantSettings:
         monkeypatch.setenv("ASSISTANT_ENABLED", "true")
         monkeypatch.setenv("ASSISTANT_API_KEY_OVH", _FAKE_KEY)
         monkeypatch.setenv("ASSISTANT_VECTOR_DB_URL", _VECTOR_URL)
+        monkeypatch.setenv("ASSISTANT_RATE_LIMIT_PER_HOUR", "60")
         for name in [*_LANGSMITH_LIBRARY_SWITCHES, *_LANGSMITH_RUNS_ENDPOINTS]:
             monkeypatch.delenv(name, raising=False)
         for provider, url in _PROVIDER_ROLES:
@@ -2080,6 +2081,55 @@ class TestAssistantSettings:
         self._configure_deployed_assistant(
             monkeypatch, tmp_path, profile="dev", railway_name="dev", testing=True
         )
+
+        # WHEN/THEN
+        assert Settings().assistant_enabled is True
+
+    @pytest.mark.parametrize(
+        ("profile", "railway_name", "testing"),
+        [("dev", "dev", False), ("test", "test", False), ("dev", "dev", True)],
+    )
+    def test_rejects_a_zero_message_limit_on_a_deployed_service(
+        self, monkeypatch, tmp_path, profile, railway_name, testing
+    ):
+        """
+        GIVEN a deployed dev or test service, TESTING=1 included, with the assistant on and
+            the per-user message limit set to zero, which would mean no limit
+        WHEN Settings is constructed
+        THEN validation fails naming that setting
+        """
+        # GIVEN
+        self._configure_deployed_assistant(
+            monkeypatch, tmp_path, profile=profile, railway_name=railway_name, testing=testing
+        )
+        monkeypatch.setenv("ASSISTANT_RATE_LIMIT_PER_HOUR", "0")
+
+        # WHEN/THEN
+        with pytest.raises(ValidationError, match="assistant_rate_limit_per_hour"):
+            Settings()
+
+    def test_allows_a_zero_message_limit_with_the_assistant_off_or_on_a_laptop(
+        self, monkeypatch, tmp_path
+    ):
+        """
+        GIVEN a message limit of zero, once on a deployed service with the assistant off and
+            once on a laptop with the assistant on
+        WHEN Settings is constructed
+        THEN validation passes both times, since only a deployed assistant is held to it
+        """
+        # GIVEN a deployed service with the assistant off
+        self._configure_deployed_assistant(monkeypatch, tmp_path, profile="dev", railway_name="dev")
+        monkeypatch.setenv("ASSISTANT_ENABLED", "false")
+        monkeypatch.setenv("ASSISTANT_RATE_LIMIT_PER_HOUR", "0")
+
+        # WHEN/THEN
+        assert Settings().assistant_enabled is False
+
+        # GIVEN a laptop with the assistant on
+        monkeypatch.delenv("RAILWAY_ENVIRONMENT_NAME", raising=False)
+        monkeypatch.setenv("APP_ENV", "dev")
+        monkeypatch.setenv("SECRET_KEY", "irrelevant-for-dev")
+        monkeypatch.setenv("ASSISTANT_ENABLED", "true")
 
         # WHEN/THEN
         assert Settings().assistant_enabled is True

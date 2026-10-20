@@ -402,14 +402,15 @@ own limit. On top of that, routes carry tighter limits by risk:
 | Standard | `60/minute` | GDPR export, standalone calculate, result export |
 | Photo | `120/minute` | The public avatar proxy, which a page loads once per member |
 | Assistant chat | `20/minute` | The assistant's chat route, which exists only when `ASSISTANT_ENABLED` is on: on a developer's machine and on the dev and test services, never in production |
-| Assistant messages | `60/hour` per user | The same route, as a fixed one-hour window per account (`ASSISTANT_RATE_LIMIT_PER_HOUR`, `0` switches it off). A spent budget answers `429` |
+| Assistant messages | `60/hour` per user | The same route, as a fixed one-hour window per account (`ASSISTANT_RATE_LIMIT_PER_HOUR`, `0` switches it off on a laptop). A spent budget answers `429` |
 
 Only those routes carry a decorator. Everything else is bounded by the two global ceilings
 alone, which is the point of having them. The hourly assistant cap is the only row of this table
 applied through a dependency. The `enforce_message_limit` dependency applies it before the
 `20/minute` per-IP limit runs, so a request that limit refuses has already spent one hourly
 message. `api/assistant/rate_limit.py` keeps the counter in Redis when `REDIS_URL` is set and in
-memory otherwise.
+memory otherwise. A deployed service refuses to start with the hourly limit at `0`, so the cap
+cannot be switched off there.
 
 The slowapi limits and the hourly assistant cap answer `429` with a `Retry-After` header in whole
 seconds: the time left in the limit's window, or until that user's hourly window closes.
@@ -526,7 +527,8 @@ has a check of its own, separate from the nine invariants.
 is `true` in the `prod` profile, or on a Railway environment whose name is not `dev` or `test`
 (compared stripped and case-insensitively, so an unknown or renamed environment is refused). The
 profile and the name are checked independently. On any deploy the validator also requires the
-three model roles to be `api`, since a local model server is not reachable there. The model is
+three model roles to be `api`, since a local model server is not reachable there, and refuses
+`ASSISTANT_RATE_LIMIT_PER_HOUR` at `0`, which would switch the cap off. The model is
 shown each expert's name and position in the opinions block, except for members who objected to
 the assistant (`users.assistant_objection`, set through `PUT /api/v1/users/me`): their rows are
 left out for everyone but themselves. The result block still includes their values in the
@@ -642,9 +644,11 @@ WARNING these records were a breadcrumb on some later event, which meant the bru
 lockout could stay off for the length of an outage with nothing raised anywhere, since the
 request it happened during returns normally, so there is no other symptom to notice. The
 accepted risk is unchanged. What changed is that it now announces itself. The assistant's
-hourly cap fails open the same way, and logs `assistant_throttle_unavailable` at ERROR. The
-assistant cannot run in production, so the production alert rule below is not expected to fire
-for it; on the dev and test services the record is for whoever reads their log.
+hourly cap does not fail open. On a Redis error each process counts in its own memory with the
+same budget, so a store outage leaves a cap per process, not none, and the record
+`assistant_throttle_unavailable` goes out at ERROR. The assistant cannot run in production, so the
+production alert rule below is not expected to fire for it; on the dev and test services the
+record is for whoever reads their log.
 
 The level alone is not the whole alert, because the project's only other rule fires on
 *high priority* issues and Sentry does not necessarily rank a logged error that high. A
