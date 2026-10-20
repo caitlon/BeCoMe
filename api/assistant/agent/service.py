@@ -23,7 +23,14 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
 from langsmith.run_trees import RunTree
 
-from api.assistant.agent.checks import check_citations, find_ungrounded_numbers, strip_citations
+from api.assistant.agent.checks import (
+    CitationStreamFilter,
+    check_citations,
+    cited_numbers,
+    find_ungrounded_numbers,
+    remove_citations,
+    strip_citations,
+)
 from api.assistant.agent.context import AssistantContext
 from api.assistant.agent.generation import (
     AgentGenerator,
@@ -257,6 +264,7 @@ class AssistantService:
         ttft_ms: int | None = None
         generated: Generated | None = None
         empty_reason = "empty"
+        citation_filter = None if self._settings.assistant_show_sources else CitationStreamFilter()
         items = self._generator.stream(turn.messages, turn.ctx, turn.request.message)
         with ending_turn(turn.trace):
             try:
@@ -282,13 +290,23 @@ class AssistantService:
                         elif item:
                             if ttft_ms is None:
                                 ttft_ms = round((loop.time() - model_started) * 1000)
-                            yield item
+                            shown = citation_filter.feed(item) if citation_filter else item
+                            if shown:
+                                yield shown
             except UNAVAILABLE_ERRORS as exc:
                 raise self._unavailable(exc, mode) from None
             finally:
                 await items.aclose()
             if generated is None or not generated.text:
                 raise self._empty_answer(mode, empty_reason)
+            # The modes that yield no text pieces have nothing to release: their one answer
+            # travels in the response.
+            if (
+                citation_filter
+                and citation_filter.started
+                and (rest := citation_filter.finish(generated.text))
+            ):
+                yield rest
             response = self._finish(turn, generated, ttft_ms=ttft_ms, streamed=True)
             # Closed before the yield: the consumer may stop reading once it holds the
             # response, and the turn has succeeded by then.
@@ -308,6 +326,7 @@ class AssistantService:
         """
         ctx, text, usage = turn.ctx, generated.text, generated.usage
         sources = ctx.sources.refs()
+        cited = cited_numbers(text)
         citations_valid = check_citations(text, {source.n for source in sources})
         ungrounded = find_ungrounded_numbers(
             text,
@@ -330,6 +349,16 @@ class AssistantService:
                 "tool_names": generated.tools_used,
                 "tool_call_count": len(generated.tools_used),
                 "source_count": len(sources),
+                "sources": [
+                    {
+                        "n": number,
+                        "title": chunk.title,
+                        "section": chunk.section,
+                        "layer": chunk.layer,
+                        "cited": number in cited,
+                    }
+                    for number, chunk in ctx.sources.numbered()
+                ],
                 "citations_valid": citations_valid,
                 "numbers_grounded": not ungrounded,
                 "ungrounded_number_count": len(ungrounded),
@@ -343,6 +372,10 @@ class AssistantService:
                 "streamed": streamed,
             },
         )
+        if not self._settings.assistant_show_sources:
+            # The client sees no citation, so a warning about one would mean nothing to it;
+            # the turn record above keeps the real value.
+            text, sources, citations_valid = remove_citations(text), [], True
         return AssistantChatResponse(
             answer=text,
             sources=sources,

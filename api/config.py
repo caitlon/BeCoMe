@@ -340,6 +340,12 @@ class Settings(BaseSettings):
     # api.main.create_app), so a service that leaves it off answers 404 for the whole
     # prefix.
     assistant_enabled: bool = False
+    # Whether a chat answer reaches the client with its sources, excerpts and [n] markers.
+    # Off by default: the client then gets an empty sources list and an answer without
+    # markers, in /chat and in every event of /chat/stream. Switched on by an environment
+    # variable on the dev and test services only. The assistant_turn log record lists the
+    # sources a turn used either way.
+    assistant_show_sources: bool = False
     # The model for query transforms and index building: small and fast, so search stays
     # quick. The model that writes chat answers is the assistant_answer_llm_* pair below.
     assistant_llm_base_url: str = "http://127.0.0.1:8081/v1"
