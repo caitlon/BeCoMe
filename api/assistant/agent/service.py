@@ -306,9 +306,9 @@ class AssistantService:
                 await items.aclose()
             if generated is None or not generated.text:
                 raise self._empty_answer(mode, empty_reason)
-            # The modes that yield no text pieces have nothing to release: their one answer
-            # travels in the response.
-            if citation_filter and citation_filter.started and (rest := citation_filter.finish()):
+            # A mode that yields no text pieces fed the filter nothing, so it releases nothing:
+            # that answer travels in the response.
+            if citation_filter and (rest := citation_filter.finish()):
                 yield rest
             response = self._finish(turn, generated, ttft_ms=ttft_ms, streamed=True)
             # Closed before the yield: the consumer may stop reading once it holds the
