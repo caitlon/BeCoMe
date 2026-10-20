@@ -7,11 +7,13 @@ from unittest.mock import MagicMock
 import pytest
 
 from api.assistant.errors import (
+    AssistantBusyError,
     AssistantRateLimitedError,
     AssistantUnavailableError,
     AssistantUpstreamError,
 )
 from api.assistant.exception_handlers import (
+    assistant_busy_handler,
     assistant_rate_limited_handler,
     assistant_unavailable_handler,
     assistant_upstream_handler,
@@ -42,6 +44,13 @@ class TestAssistantExceptionHandlers:
                 "assistant_rate_limited",
             ),
             (
+                assistant_busy_handler,
+                AssistantBusyError(_PRIVATE_TEXT, retry_after=5),
+                503,
+                "The assistant is temporarily unavailable",
+                "assistant_busy",
+            ),
+            (
                 assistant_unavailable_handler,
                 AssistantUnavailableError(_PRIVATE_TEXT),
                 503,
@@ -56,7 +65,7 @@ class TestAssistantExceptionHandlers:
                 "assistant_upstream_error",
             ),
         ],
-        ids=["rate_limited", "unavailable", "upstream"],
+        ids=["rate_limited", "busy", "unavailable", "upstream"],
     )
     def test_answers_with_the_status_and_detail_body(
         self, caplog, handler, exc, status_code, detail, event
@@ -96,6 +105,25 @@ class TestAssistantExceptionHandlers:
         # THEN
         assert response.status_code == 429
         assert response.headers["Retry-After"] == "1234"
+
+    def test_the_busy_answer_carries_retry_after_and_is_logged_at_warning(self, caplog):
+        """
+        GIVEN a busy error holding 1234 seconds
+        WHEN its handler runs
+        THEN the 503 has a Retry-After header of that many seconds, and the record is a
+             WARNING, since a full assistant is load and not a fault
+        """
+        # GIVEN
+        caplog.set_level(logging.DEBUG, logger="api.assistant")
+        exc = AssistantBusyError(_PRIVATE_TEXT, retry_after=1234)
+
+        # WHEN
+        response = assistant_busy_handler(_request(), exc)
+
+        # THEN
+        assert response.status_code == 503
+        assert response.headers["Retry-After"] == "1234"
+        assert [r.levelno for r in caplog.records] == [logging.WARNING]
 
     def test_the_upstream_failure_is_logged_at_error(self, caplog):
         """

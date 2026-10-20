@@ -389,6 +389,10 @@ class Settings(BaseSettings):
     # Chat messages per user per fixed hour; 0 turns the limit off, on a laptop only: a
     # deployed service refuses 0.
     assistant_rate_limit_per_hour: int = Field(default=60, ge=0)
+    # The most chat turns one process answers at once, and above zero: a turn that finds no
+    # free slot is refused with a 503 instead of waiting. A streamed answer holds its slot
+    # until the stream ends.
+    assistant_max_concurrent_turns: int = Field(default=8, gt=0)
     assistant_llm_timeout_seconds: float = 120.0
     # The longest one chat turn may take, fetching and generation together. When it runs
     # out, the call in flight is cancelled with the turn and the turn answers

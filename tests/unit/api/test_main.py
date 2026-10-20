@@ -448,6 +448,7 @@ class TestAssistantExceptionHandlerGating:
         # THEN
         registered = {exc.__name__ for exc in app.exception_handlers if isinstance(exc, type)}
         assert not registered & {
+            "AssistantBusyError",
             "AssistantRateLimitedError",
             "AssistantUnavailableError",
             "AssistantUpstreamError",
@@ -461,6 +462,7 @@ class TestAssistantExceptionHandlerGating:
                 429,
                 "Too many assistant messages. Please try again later.",
             ),
+            ("AssistantBusyError", 503, "The assistant is temporarily unavailable"),
             ("AssistantUnavailableError", 503, "The assistant is temporarily unavailable"),
             ("AssistantUpstreamError", 503, "The assistant is temporarily unavailable"),
         ],
@@ -481,7 +483,8 @@ class TestAssistantExceptionHandlerGating:
         app = self._build_app(monkeypatch, tmp_path, enabled=True)
         error = getattr(errors, error_name)
 
-        extra = {"retry_after": 5} if error is errors.AssistantRateLimitedError else {}
+        waits = error_name in {"AssistantRateLimitedError", "AssistantBusyError"}
+        extra = {"retry_after": 5} if waits else {}
 
         def boom() -> None:
             raise error("internal detail that must not leak", **extra)
@@ -496,7 +499,7 @@ class TestAssistantExceptionHandlerGating:
         assert response.status_code == status_code
         assert "internal detail" not in response.text
         assert response.json() == {"detail": detail}
-        assert response.headers.get("Retry-After") == ("5" if status_code == 429 else None)
+        assert response.headers.get("Retry-After") == ("5" if waits else None)
 
 
 _ASSISTANT_LIBRARIES = (

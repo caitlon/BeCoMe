@@ -13,6 +13,7 @@ from fastapi import Request, status
 from fastapi.responses import JSONResponse
 
 from api.assistant.errors import (
+    AssistantBusyError,
     AssistantRateLimitedError,
     AssistantUnavailableError,
     AssistantUpstreamError,
@@ -63,6 +64,25 @@ def assistant_rate_limited_handler(
     return JSONResponse(
         status_code=status_code,
         content={"detail": "Too many assistant messages. Please try again later."},
+        headers={"Retry-After": str(exc.retry_after)},
+    )
+
+
+def assistant_busy_handler(request: Request, exc: AssistantBusyError) -> JSONResponse:
+    """Answer 503 with ``Retry-After`` when the process is answering its limit of turns.
+
+    The body is the same fixed text as for an unreachable model server. The record is a
+    WARNING, not an ERROR, since a full assistant is load and not a fault.
+
+    :param request: FastAPI request.
+    :param exc: The raised error.
+    :return: A 503 JSON response with a ``Retry-After`` header.
+    """
+    status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    _log(request, exc, event="assistant_busy", status_code=status_code, level=logging.WARNING)
+    return JSONResponse(
+        status_code=status_code,
+        content={"detail": UNAVAILABLE_DETAIL},
         headers={"Retry-After": str(exc.retry_after)},
     )
 

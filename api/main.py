@@ -199,11 +199,13 @@ def create_app() -> FastAPI:
     # Railway environment other than dev and test, with assistant_enabled set.
     if settings.assistant_enabled:
         from api.assistant.errors import (
+            AssistantBusyError,
             AssistantRateLimitedError,
             AssistantUnavailableError,
             AssistantUpstreamError,
         )
         from api.assistant.exception_handlers import (
+            assistant_busy_handler,
             assistant_rate_limited_handler,
             assistant_unavailable_handler,
             assistant_upstream_handler,
@@ -214,6 +216,7 @@ def create_app() -> FastAPI:
         # Registered here, not in EXCEPTION_MAP, so a deployed process never imports
         # the assistant package to build its error table. A specific class outranks
         # the BeCoMeAPIError handler, so these answer before the generic one.
+        app.add_exception_handler(AssistantBusyError, assistant_busy_handler)  # type: ignore[arg-type]
         app.add_exception_handler(AssistantRateLimitedError, assistant_rate_limited_handler)  # type: ignore[arg-type]
         app.add_exception_handler(AssistantUnavailableError, assistant_unavailable_handler)  # type: ignore[arg-type]
         app.add_exception_handler(AssistantUpstreamError, assistant_upstream_handler)  # type: ignore[arg-type]

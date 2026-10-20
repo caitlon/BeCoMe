@@ -2275,6 +2275,20 @@ class TestAssistantSettings:
         with pytest.raises(ValidationError, match="assistant_rate_limit_per_hour"):
             Settings(secret_key="test-secret-key", assistant_rate_limit_per_hour=-1)
 
+    def test_concurrent_turns_default_to_eight_and_must_be_above_zero(self, monkeypatch, tmp_path):
+        """
+        GIVEN Settings without an override for the concurrent turn cap, and one set to zero
+        WHEN Settings is constructed
+        THEN the default is 8 and zero is refused, naming the field
+        """
+        # GIVEN
+        monkeypatch.chdir(tmp_path)
+
+        # WHEN/THEN
+        assert Settings(secret_key="test-secret-key").assistant_max_concurrent_turns == 8
+        with pytest.raises(ValidationError, match="assistant_max_concurrent_turns"):
+            Settings(secret_key="test-secret-key", assistant_max_concurrent_turns=0)
+
     def test_mode_defaults_to_workflow_and_the_others_stay_selectable(self, monkeypatch, tmp_path):
         """
         GIVEN Settings without an override for the mode and no .env file in reach
