@@ -340,18 +340,19 @@ def _provenance_problem(rows: list[dict[str, Any]], meta: dict[str, Any]) -> str
 
 
 def _eval_settings(settings: Settings, mode: str, trace: bool) -> Settings:
-    """Copy the settings with the requested mode, and with LangSmith tracing off unless traced.
+    """Copy the settings with the requested mode, the sources shown, and tracing off unless traced.
 
-    Tracing sends the full text of questions and answers to a remote service, so the runner
-    leaves it off, whatever the environment says, unless ``trace`` is set; then the
-    environment's setting stands.
+    The runner measures the answer as the model wrote it, with its ``[n]`` markers and its
+    sources, so it shows them whatever the environment says. Tracing sends the full text of
+    questions and answers to a remote service, so the runner leaves it off, whatever the
+    environment says, unless ``trace`` is set; then the environment's setting stands.
 
     :param settings: The application settings.
     :param mode: ``workflow``, ``hybrid`` or ``agent``.
     :param trace: Keep the environment's tracing setting instead of switching it off.
     :return: The settings the service runs under.
     """
-    update: dict[str, Any] = {"assistant_mode": mode}
+    update: dict[str, Any] = {"assistant_mode": mode, "assistant_show_sources": True}
     if not trace:
         update["assistant_langsmith_enabled"] = False
     return settings.model_copy(update=update)

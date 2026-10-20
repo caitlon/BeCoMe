@@ -237,11 +237,16 @@ documentation `sources` it may cite as `[n]`, the `tools_used`, the grounding `c
 token `usage` of the turn. Each source carries a `snippet`, the first words of the passage in
 plain text, at most 240 characters.
 
-`ASSISTANT_SHOW_SOURCES` (off by default; `true` on the dev and test services) decides whether the
-client is sent the sources. While it is off, `sources` is an empty list, the answer text has no
-`[n]` marker and no link target after one, the blanks before each marker are dropped with it, and
-`checks.citations_valid` is always true, in `/chat` and in every event of `/chat/stream`. The
-stream holds a piece back while a marker may still be forming in it, so a marker is never
+`ASSISTANT_SHOW_SOURCES` (off by default; meant to be enabled on dev and test through an
+environment variable) decides whether the client is sent the sources. While it is off, `sources`
+is an empty list, the answer text has no `[n]` marker and no link target after one, the blanks
+before each marker are dropped with it, and `checks.citations_valid` is always true, in `/chat`
+and in every event of `/chat/stream`. A bracket with one number (`[7]`, `[source 2]`) is always
+removed, even when no such source exists. A bracket with several numbers or a range (`[1, 2]`,
+`[1-3]`) is removed only when each number in it is a source of the turn, so a fuzzy number such
+as `[6, 8, 11]` or a scale such as `[0, 1]` stays. A bracket inside a bracket is taken first, so
+`[[1]2]` goes whole. The stream holds a piece back while a marker may still be forming in it,
+and a bracket that never closes holds the rest of the answer until the end, so a marker is never
 sent in part. The checks still run on the text the model wrote, and the system prompt is the same
 in both states. With the setting on, the response is as described above.
 
@@ -323,14 +328,15 @@ event: token
 data: {"text":"It is the midpoint "}
 
 event: done
-data: {"answer":"It is the midpoint [1].","sources":[],"tools_used":[],"checks":{...},"usage":{...},"timing":{"ttft_ms":412,"total_ms":2310}}
+data: {"answer":"It is the midpoint [1].","sources":[{...}],"tools_used":[],"checks":{...},"usage":{...},"timing":{"ttft_ms":412,"total_ms":2310}}
 
 event: error
 data: {"code":503,"detail":"The assistant is temporarily unavailable"}
 ```
 
 `token` carries a piece of the answer and the pieces join to the answer in `done`, whose body is
-what `/chat` returns. `error` ends the stream in place of `done`.
+what `/chat` returns. `error` ends the stream in place of `done`. The events above are those of
+`ASSISTANT_SHOW_SOURCES` on; with it off the answer has no `[1]` and `sources` is `[]`.
 
 Everything before the model is called is a plain HTTP error, as on `/chat`: retrieval runs before
 the response opens, so a project the caller cannot see is `404`, an outage of the vector database

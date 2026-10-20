@@ -264,7 +264,14 @@ class AssistantService:
         ttft_ms: int | None = None
         generated: Generated | None = None
         empty_reason = "empty"
-        citation_filter = None if self._settings.assistant_show_sources else CitationStreamFilter()
+        # Only the workflow mode streams text, and it registers every source before the
+        # model is called (see prepare): the other modes register sources while they run,
+        # but yield no text, so their answer is cleaned in _finish against the full registry.
+        citation_filter = (
+            None
+            if self._settings.assistant_show_sources
+            else CitationStreamFilter({number for number, _chunk in turn.ctx.sources.numbered()})
+        )
         items = self._generator.stream(turn.messages, turn.ctx, turn.request.message)
         with ending_turn(turn.trace):
             try:
@@ -301,11 +308,7 @@ class AssistantService:
                 raise self._empty_answer(mode, empty_reason)
             # The modes that yield no text pieces have nothing to release: their one answer
             # travels in the response.
-            if (
-                citation_filter
-                and citation_filter.started
-                and (rest := citation_filter.finish(generated.text))
-            ):
+            if citation_filter and citation_filter.started and (rest := citation_filter.finish()):
                 yield rest
             response = self._finish(turn, generated, ttft_ms=ttft_ms, streamed=True)
             # Closed before the yield: the consumer may stop reading once it holds the
@@ -327,7 +330,8 @@ class AssistantService:
         ctx, text, usage = turn.ctx, generated.text, generated.usage
         sources = ctx.sources.refs()
         cited = cited_numbers(text)
-        citations_valid = check_citations(text, {source.n for source in sources})
+        source_numbers = {source.n for source in sources}
+        citations_valid = check_citations(text, source_numbers)
         ungrounded = find_ungrounded_numbers(
             text,
             [
@@ -375,7 +379,7 @@ class AssistantService:
         if not self._settings.assistant_show_sources:
             # The client sees no citation, so a warning about one would mean nothing to it;
             # the turn record above keeps the real value.
-            text, sources, citations_valid = remove_citations(text), [], True
+            text, sources, citations_valid = remove_citations(text, source_numbers), [], True
         return AssistantChatResponse(
             answer=text,
             sources=sources,

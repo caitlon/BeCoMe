@@ -622,7 +622,10 @@ repeated attempts on one account. Rotating the fallback re-tags every later reco
 
 The rule for any new log record: identifiers, keyed tags, and counts, never the values
 themselves. Allowed are `user_id`, `project_id`, `invitation_id`, `jti`, `sid`, `ip`,
-`status_code`, `duration_ms`, `row_count`, and the `reason` for refusing a request. Never
+`status_code`, `duration_ms`, `row_count`, and the `reason` for refusing a request. The
+assistant's `assistant_turn` record also lists the sources a turn used, by number, title,
+section heading and layer; it never holds a source's excerpt, address or file path, or the
+question. Never
 logged, at any level: passwords and password hashes, raw JWTs, the CSRF cookie or header
 value, the email API key or bucket credentials, the `Authorization` header, any request or
 response body, raw email addresses, activation or reset tokens and the URLs carrying them,

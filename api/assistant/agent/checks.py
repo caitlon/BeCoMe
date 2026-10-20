@@ -5,7 +5,8 @@ assistant, so an offline evaluation script can use them as they are.
 """
 
 import re
-from collections.abc import Callable, Iterable
+from collections import deque
+from collections.abc import Callable, Collection, Iterable
 from dataclasses import dataclass
 from decimal import ROUND_DOWN, ROUND_HALF_UP, Context, Decimal
 
@@ -371,80 +372,64 @@ def _replace_citations(text: str, filler: str) -> str:
 
 # Spaces and tabs, not line breaks: what is dropped along with a citation.
 _BLANKS = " \t\u00a0\u202f"
-# The part of a link target that has been written so far, at the end of a text.
-_OPEN_TARGET = re.compile(r"\([^()\[\]\s]*")
+_OPENERS = {"]": "[", "\u3011": "\u3010"}
+# What a link target is read in: not yet started, waiting for its parenthesis, inside it.
+_NO_LINK, _LINK_AHEAD, _LINK_OPEN = range(3)
 
 
-def remove_citations(text: str) -> str:
+def remove_citations(text: str, source_numbers: Collection[int]) -> str:
     """Remove citation-like brackets, with the link target and the blanks around them.
 
-    The brackets are those :func:`check_citations` reads. Each goes together with the spaces
-    and tabs before it, so that ``The midpoint [1].`` reads ``The midpoint.``, and with a
-    markdown link target right after it. A citation that opens a line also takes the blanks
-    after it. A bracket that is not a citation, such as ``[11.54, 14.19]``, stays. Unlike
-    :func:`strip_citations`, which leaves a space in its place, this returns text meant to be
-    shown.
+    A bracket with one number (``[7]``, ``[source 2]``, ``\u30103\u3011``) is a citation and
+    always goes, even when no such source exists. A bracket with several numbers or a range
+    (``[1, 2]``, ``[1-3]``) goes only when every number in it is one of ``source_numbers``,
+    so that ``[0, 1]``, ``[1, 5]`` and the fuzzy number ``[6, 8, 11]`` stay. Brackets are
+    taken innermost first, so ``[[1]2]`` goes whole. Each citation goes together with the
+    spaces and tabs before it, so that ``The midpoint [1].`` reads ``The midpoint.``, and
+    with a markdown link target right after it. A citation that opens a line also takes the
+    blanks after it. A bracket that is not a citation, such as ``[11.54, 14.19]``, stays.
+    Unlike :func:`strip_citations`, which leaves a space in its place, this returns text
+    meant to be shown. The result has no citation left, so removing again changes nothing.
 
     :param text: The text to clean.
+    :param source_numbers: The source numbers handed out this turn, one-based.
     :return: The text without its citations.
     """
-    out = ""
-    position = 0
-    for start, end, _numbers in _citation_spans(text):
-        if start < position:
-            continue
-        out = (out + text[position:start]).rstrip(_BLANKS)
-        link = _LINK_AFTER.match(text, end)
-        position = link.end() if link else end
-        if not out or out[-1] in "\r\n":
-            while position < len(text) and text[position] in _BLANKS:
-                position += 1
-    return out + text[position:]
-
-
-def _unsettled_start(text: str) -> int | None:
-    """Find where the end of a text may still turn into a citation.
-
-    That is an opening bracket nothing has closed yet, or a citation that ends the text or
-    is followed only by the beginning of a link target, which more text may complete.
-
-    :param text: The text so far.
-    :return: The index the unsettled part starts at, or None when the whole text is settled.
-    """
-    starts = [
-        index
-        for opener, closer in (("[", "]"), ("\u3010", "\u3011"))
-        if (index := text.rfind(opener)) > text.rfind(closer)
-    ]
-    if starts:
-        return min(starts)
-    spans = _citation_spans(text)
-    if spans:
-        start, end, _numbers = spans[-1]
-        rest = text[end:]
-        if rest == "" or _OPEN_TARGET.fullmatch(rest):
-            return start
-    return None
+    remover = CitationStreamFilter(source_numbers)
+    return remover.feed(text) + remover.finish()
 
 
 class CitationStreamFilter:
-    """Turns the pieces of an answer, as they arrive, into pieces without citations.
+    """Removes citations from an answer as its pieces arrive, by the rule of
+    :func:`remove_citations`.
 
-    A piece is held back while a citation may still be taking shape in it: an opening bracket
-    with no closing one, a citation at the end of the text, a link target not yet closed, and
-    the blanks at the end, which a citation after them would take. Everything let out is final,
-    so the pieces joined are exactly :func:`remove_citations` of the whole text.
+    The text is read one character at a time and the reading carries over from one piece to
+    the next, so the pieces let out joined are exactly ``remove_citations`` of the whole
+    text, however it was cut. Text is held back while a later character may still take it
+    away: from a bracket nothing has closed yet, the spaces at the end, which a citation
+    after them would take, and a link target that has not closed. A bracket that never
+    closes holds the rest of the answer until :meth:`finish`.
     """
 
-    def __init__(self) -> None:
-        """Start with no text read and none let out."""
-        self._raw = ""
-        self._emitted = 0
+    def __init__(self, source_numbers: Collection[int]) -> None:
+        """Start with no text read and none let out.
+
+        :param source_numbers: The source numbers handed out this turn, one-based.
+        """
+        self._source_numbers = frozenset(source_numbers)
+        self._out: list[str] = []  # What is kept and not yet let out.
+        self._base = 0  # How many characters were let out.
+        self._last = ""  # The last one of them.
+        self._open: dict[str, list[int]] = {"[": [], "\u3010": []}  # Unclosed, by position.
+        self._link = _NO_LINK
+        self._target: list[str] = []  # What follows the parenthesis of a link target.
+        self._skip_blanks = False
+        self._started = False
 
     @property
     def started(self) -> bool:
-        """Whether any piece has been fed."""
-        return bool(self._raw)
+        """Whether any text has been fed."""
+        return self._started
 
     def feed(self, piece: str) -> str:
         """Take the next piece of the answer.
@@ -452,31 +437,90 @@ class CitationStreamFilter:
         :param piece: The raw text that arrived.
         :return: The text that can now be shown, empty while it is held back.
         """
-        self._raw += piece
-        text = self._raw
-        while True:
-            start = _unsettled_start(text)
-            if start is not None:
-                text = text[:start]
-            stripped = text.rstrip(_BLANKS)
-            if start is None and stripped == text:
-                break
-            text = stripped
-        return self._take(remove_citations(text))
+        self._started = self._started or bool(piece)
+        self._read(deque(piece))
+        limit = len(self._out)
+        opened = [positions[0] for positions in self._open.values() if positions]
+        if opened:
+            limit = min(opened) - self._base
+        while limit > 0 and self._out[limit - 1] in _BLANKS:
+            limit -= 1
+        return self._take(limit)
 
-    def finish(self, final_text: str) -> str:
-        """Release what is still held back, once the whole answer is known.
+    def finish(self) -> str:
+        """Release what is still held back, once the whole answer has been fed.
 
-        :param final_text: The complete answer the pieces add up to.
         :return: The rest of the answer without citations.
         """
-        return self._take(remove_citations(final_text))
+        pending: deque[str] = deque()
+        while True:
+            if self._link == _LINK_OPEN:
+                pending.extend(["(", *self._target])
+            self._link = _NO_LINK
+            if not pending:
+                break
+            self._read(pending)
+        return self._take(len(self._out))
 
-    def _take(self, shown: str) -> str:
-        """Return the part of ``shown`` not let out yet, and count it as let out."""
-        delta = shown[self._emitted :]
-        self._emitted = len(shown)
-        return delta
+    def _take(self, count: int) -> str:
+        """Let out the first ``count`` kept characters."""
+        text = "".join(self._out[:count])
+        if text:
+            self._last = text[-1]
+        del self._out[:count]
+        self._base += count
+        return text
+
+    def _read(self, queue: deque[str]) -> None:
+        """Read characters until the queue is empty; a failed link target is queued again."""
+        while queue:
+            char = queue.popleft()
+            if self._link == _LINK_AHEAD:
+                self._link = _NO_LINK
+                if char == "(":
+                    self._link, self._target = _LINK_OPEN, []
+                    continue
+            elif self._link == _LINK_OPEN:
+                if char == ")":
+                    self._link = _NO_LINK
+                elif char in "()[]" or char.isspace():
+                    # Not a link target after all: read it again as ordinary text.
+                    self._link = _NO_LINK
+                    queue.extendleft(reversed(["(", *self._target, char]))
+                else:
+                    self._target.append(char)
+                continue
+            if self._skip_blanks:
+                if char in _BLANKS:
+                    continue
+                self._skip_blanks = False
+            if char in self._open:
+                self._open[char].append(self._base + len(self._out))
+                self._out.append(char)
+            elif char in _OPENERS:
+                self._close(char)
+            else:
+                self._out.append(char)
+
+    def _close(self, closer: str) -> None:
+        """Close the innermost open bracket of the closer's kind, dropping it if a citation."""
+        positions = self._open[_OPENERS[closer]]
+        if not positions:
+            self._out.append(closer)
+            return
+        start = positions.pop()
+        for others in self._open.values():
+            while others and others[-1] > start:
+                others.pop()
+        numbers = _cited_numbers("".join(self._out[start - self._base + 1 :]))
+        if numbers is None or not (len(numbers) == 1 or numbers <= self._source_numbers):
+            self._out.append(closer)
+            return
+        del self._out[start - self._base :]
+        while self._out and self._out[-1] in _BLANKS:
+            self._out.pop()
+        self._skip_blanks = (self._out[-1] if self._out else self._last) in ("", "\n", "\r")
+        self._link = _LINK_AHEAD
 
 
 def _drop_ordinals(text: str) -> str:
