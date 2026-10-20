@@ -125,18 +125,27 @@ class InMemoryAssistantThrottle:
             self._counts[key] = (count, opened)
         return count <= self._max
 
+    def remaining(self, user_id: UUID) -> int | None:
+        """Report how long until the user's open window closes.
+
+        :param user_id: The user to look up.
+        :return: Whole seconds until the window closes, at least 1, or None when the user
+            has no open window.
+        """
+        now = time.monotonic()
+        with self._lock:
+            entry = self._counts.get(_digest(user_id))
+        if entry is None or now - entry[1] >= self._window:
+            return None
+        return max(1, math.ceil(self._window - (now - entry[1])))
+
     def retry_after(self, user_id: UUID) -> int:
         """Report how long until the user's window closes; call it after a refusal.
 
         :param user_id: The user whose message was refused.
         :return: Whole seconds until the window closes, at least 1.
         """
-        now = time.monotonic()
-        with self._lock:
-            entry = self._counts.get(_digest(user_id))
-        if entry is None:
-            return 1
-        return max(1, math.ceil(self._window - (now - entry[1])))
+        return self.remaining(user_id) or 1
 
 
 class RedisAssistantThrottle:
@@ -181,7 +190,8 @@ class RedisAssistantThrottle:
 
         A key that is gone means the window closed just now, so the wait is one second.
         A key with no expiry cannot be told apart from a fresh window, so it gets the
-        full window; so does an unreachable store.
+        full window. An unreachable store gets the process-local window when this process
+        holds one for the user, and the full window otherwise.
 
         :param user_id: The user whose message was refused.
         :return: Whole seconds until the window closes, at least 1.
@@ -194,7 +204,8 @@ class RedisAssistantThrottle:
                 extra={"event": "assistant_throttle_retry_unavailable"},
                 exc_info=e,
             )
-            return self._window
+            remaining = self._fallback.remaining(user_id)
+            return self._window if remaining is None else remaining
         if ttl == -2:
             return 1
         if ttl == -1:

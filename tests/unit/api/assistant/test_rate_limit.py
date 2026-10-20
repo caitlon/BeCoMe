@@ -208,7 +208,7 @@ def _key(fake: fakeredis.FakeStrictRedis) -> bytes:
 
 
 class TestRedisAssistantThrottle:
-    """The Redis throttle shares the cap across processes and fails open."""
+    """The Redis throttle shares the cap across processes, or counts per process when it is down."""
 
     def test_allows_up_to_the_limit_then_blocks(self):
         """
@@ -438,8 +438,8 @@ class TestRedisAssistantThrottle:
     def test_the_fallback_counts_users_apart(self):
         """
         GIVEN a store that is down and a budget of one
-        WHEN two users each send one message
-        THEN both are allowed, and each is refused on a second one
+        WHEN two users each send two messages, interleaved
+        THEN each user's first message is allowed and each user's second is refused
         """
         # GIVEN
         client = MagicMock()
@@ -448,24 +448,75 @@ class TestRedisAssistantThrottle:
         first, second = uuid4(), uuid4()
 
         # WHEN
-        outcomes = [throttle.hit(first), throttle.hit(second), throttle.hit(first)]
+        outcomes = [
+            throttle.hit(first),
+            throttle.hit(second),
+            throttle.hit(first),
+            throttle.hit(second),
+        ]
 
         # THEN
-        assert outcomes == [True, True, False]
+        assert outcomes == [True, True, False, False]
 
     def test_zero_means_no_limit_even_when_the_store_is_down(self):
         """
         GIVEN a budget of zero and a store that raises on every call
-        WHEN a user hits the throttle repeatedly
-        THEN every hit is allowed
+        WHEN one user hits the throttle repeatedly
+        THEN every hit is allowed and the store is never touched, because the zero
+             limit returns before any call to it
         """
         # GIVEN
         client = MagicMock()
         client.pipeline.side_effect = redis.RedisError("down")
         throttle = RedisAssistantThrottle(client, max_per_hour=0)
+        user_id = uuid4()
 
-        # WHEN/THEN
-        assert all(throttle.hit(uuid4()) for _ in range(5))
+        # WHEN
+        outcomes = [throttle.hit(user_id) for _ in range(5)]
+
+        # THEN
+        assert outcomes == [True] * 5
+        client.pipeline.assert_not_called()
+
+    def test_retry_after_uses_the_fallback_window_when_the_store_is_down(self):
+        """
+        GIVEN a store that is down and a user refused by the process-local count
+        WHEN 600 seconds into the window the user asks how long to wait
+        THEN the answer is the fallback's remaining time, not the full window
+        """
+        # GIVEN
+        client = MagicMock()
+        client.pipeline.return_value.execute.side_effect = redis.RedisError("down")
+        client.ttl.side_effect = redis.RedisError("down")
+        throttle = RedisAssistantThrottle(client, max_per_hour=1, window_seconds=3600)
+        user_id = uuid4()
+        with patch.object(rate_limit.time, "monotonic", return_value=0.0):
+            throttle.hit(user_id)
+            assert throttle.hit(user_id) is False
+
+        # WHEN
+        with patch.object(rate_limit.time, "monotonic", return_value=600.0):
+            seconds = throttle.retry_after(user_id)
+
+        # THEN
+        assert seconds == 3000
+
+    def test_retry_after_is_the_full_window_without_a_fallback_entry(self):
+        """
+        GIVEN a store that is down and a user the process has never counted
+        WHEN the user asks how long to wait
+        THEN the answer is the full window, since one second would understate it
+        """
+        # GIVEN
+        client = MagicMock()
+        client.ttl.side_effect = redis.RedisError("down")
+        throttle = RedisAssistantThrottle(client, max_per_hour=1, window_seconds=3600)
+
+        # WHEN
+        seconds = throttle.retry_after(uuid4())
+
+        # THEN
+        assert seconds == 3600
 
     def test_the_failure_record_never_carries_the_user_or_its_digest(self, caplog):
         """
