@@ -562,13 +562,14 @@ class Settings(BaseSettings):
         :return: The validated settings instance.
         :raises ValueError: If assistant_enabled is true in the prod profile or on a
             Railway environment outside the allowlist, or on a deployed service while
-            assistant_rate_limit_per_hour is 0, a model role is still local, assistant_langsmith_enabled is true with an
-            endpoint other than the EU one or a blank or local-default project, a library
-            tracing switch is on, a ``RUNS_ENDPOINTS`` list is set, assistant_vector_db_url is
-            empty, not a ``postgresql+psycopg`` URL, without a database or a single host,
-            carrying a host, hostaddr, port, dbname or service override, naming the same
-            database as database_url or migration_database_url, or without a single sslmode
-            of require, verify-ca or verify-full.
+            assistant_rate_limit_per_hour is 0, a model role is still local,
+            assistant_langsmith_enabled is true with an endpoint other than the EU one or a
+            blank or local-default project, a library tracing switch is on, a
+            ``RUNS_ENDPOINTS`` list is set, assistant_vector_db_url is empty, not a
+            ``postgresql+psycopg`` URL, without a database or a single host, carrying a
+            host, hostaddr, port, dbname or service override, naming the same database as
+            database_url or migration_database_url, or without a single sslmode of require,
+            verify-ca or verify-full.
         """
         if not self.assistant_enabled:
             return self
