@@ -264,14 +264,7 @@ class AssistantService:
         ttft_ms: int | None = None
         generated: Generated | None = None
         empty_reason = "empty"
-        # Only the workflow mode streams text, and it registers every source before the
-        # model is called (see prepare): the other modes register sources while they run,
-        # but yield no text, so their answer is cleaned in _finish against the full registry.
-        citation_filter = (
-            None
-            if self._settings.assistant_show_sources
-            else CitationStreamFilter({number for number, _chunk in turn.ctx.sources.numbered()})
-        )
+        citation_filter = self._citation_filter(turn)
         items = self._generator.stream(turn.messages, turn.ctx, turn.request.message)
         with ending_turn(turn.trace):
             try:
@@ -281,12 +274,7 @@ class AssistantService:
                         # yield: a timeout that fired while the consumer held a piece would
                         # cancel the consumer instead of this generator.
                         try:
-                            async with asyncio.timeout_at(turn.deadline_at) as deadline:
-                                item = await anext(items, None)
-                        except TimeoutError:
-                            if not deadline.expired():
-                                raise
-                            raise self._timed_out(mode, turn.started) from None
+                            item = await self._next_item(items, turn, mode)
                         except CutOffAnswerError:
                             empty_reason = "cut_off"
                             break
@@ -295,19 +283,15 @@ class AssistantService:
                         if isinstance(item, Generated):
                             generated = item
                         elif item:
-                            if ttft_ms is None:
-                                ttft_ms = round((loop.time() - model_started) * 1000)
-                            shown = citation_filter.feed(item) if citation_filter else item
-                            if shown:
+                            ttft_ms = self._first_token_ms(ttft_ms, loop, model_started)
+                            if shown := self._shown(citation_filter, item):
                                 yield shown
             except UNAVAILABLE_ERRORS as exc:
                 raise self._unavailable(exc, mode) from None
             finally:
                 await items.aclose()
-            if generated is None or not generated.text:
-                raise self._empty_answer(mode, empty_reason)
-            # A mode that yields no text pieces fed the filter nothing, so it releases nothing:
-            # that answer travels in the response.
+            generated = self._complete(generated, mode, empty_reason)
+            # A mode that yields no text fed the filter nothing, so it releases nothing here.
             if citation_filter and (rest := citation_filter.finish()):
                 yield rest
             response = self._finish(turn, generated, ttft_ms=ttft_ms, streamed=True)
@@ -315,6 +299,40 @@ class AssistantService:
             # response, and the turn has succeeded by then.
             end_turn(turn.trace, outputs={"answer": response.answer})
             yield response
+
+    def _citation_filter(self, turn: TurnDraft) -> CitationStreamFilter | None:
+        """Build the filter for the streamed text (only the workflow mode has any), if needed."""
+        if self._settings.assistant_show_sources:
+            return None
+        return CitationStreamFilter({number for number, _chunk in turn.ctx.sources.numbered()})
+
+    async def _next_item(
+        self, items: AsyncGenerator[str | Generated], turn: TurnDraft, mode: str
+    ) -> str | Generated | None:
+        """Wait for the generator's next item within the turn's deadline; None ends the stream."""
+        try:
+            async with asyncio.timeout_at(turn.deadline_at) as deadline:
+                return await anext(items, None)
+        except TimeoutError:
+            if not deadline.expired():
+                raise
+            raise self._timed_out(mode, turn.started) from None
+
+    @staticmethod
+    def _first_token_ms(known: int | None, loop: asyncio.AbstractEventLoop, started: float) -> int:
+        """Return the time to first token, measured now unless it is known already."""
+        return known if known is not None else round((loop.time() - started) * 1000)
+
+    @staticmethod
+    def _shown(citation_filter: CitationStreamFilter | None, piece: str) -> str:
+        """Return the part of a piece that can be shown, which the filter may hold back."""
+        return citation_filter.feed(piece) if citation_filter else piece
+
+    def _complete(self, generated: Generated | None, mode: str, empty_reason: str) -> Generated:
+        """Return what the generator produced, or refuse a missing or empty answer."""
+        if generated is None or not generated.text:
+            raise self._empty_answer(mode, empty_reason)
+        return generated
 
     def _finish(
         self, turn: TurnDraft, generated: Generated, *, ttft_ms: int | None, streamed: bool

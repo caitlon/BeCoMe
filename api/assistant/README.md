@@ -251,8 +251,7 @@ citation check does, so a form that check does not recognise, such as the full-w
 form `【1†source】`, stays in the text. The stream holds a piece back while a marker may still
 be forming in it, and a bracket that never closes holds the rest of the answer until the end,
 so a marker is never sent in part. The checks still run on the text the model wrote, and the
-system prompt is the same in both states. With the setting on, the response is as
-described above.
+system prompt is the same in both states.
 
 The assistant reads project data through the application's own API, with the caller's own
 access token, so it sees exactly the projects the caller is a member of. Those internal reads
@@ -312,9 +311,8 @@ hit its limit in the other modes. It leaves out the query translation, which run
 retriever with the small chat model. `complete` is false when a reply reported no usage; its
 tokens are then missing from the sums, though it still counts in `llm_calls`. The four numbers
 are also on the `assistant_turn` log record, and so is `sources`, whatever `ASSISTANT_SHOW_SOURCES`
-says: one entry per source the turn registered, with its number `n`, `title`, `section`, `layer`
-and `cited`, whether the answer the model wrote cites that number. The entry holds no excerpt, no
-address and no file path.
+says: one entry per source the turn registered, with `n`, `title`, `section`, `layer` and
+`cited` (whether the answer the model wrote cites it), and no excerpt, address or file path.
 
 The `timing` field holds `ttft_ms`, the milliseconds from the start of the answer model's call to
 its first piece of answer text, and `total_ms`, the whole turn with retrieval included. `ttft_ms`

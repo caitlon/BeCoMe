@@ -389,9 +389,9 @@ def remove_citations(text: str, source_numbers: Collection[int]) -> str:
     ``[6, 8, 11]`` stay. Brackets are taken innermost first, so ``[[1]2]`` goes whole. Each
     citation goes together with the spaces and tabs before it and with a markdown link target
     right after it, so that ``The midpoint [1].`` reads ``The midpoint.``. A citation that
-    opens a line keeps the indent before it instead, and takes the blanks after it. A bracket that is not a citation, such as ``[11.54, 14.19]``, stays.
-    Unlike :func:`strip_citations`, which leaves a space in its place, this returns text
-    meant to be shown. The result has no citation left, so removing again changes nothing.
+    opens a line keeps the indent before it instead, and takes the blanks after it. A bracket
+    that is not a citation, such as ``[11.54, 14.19]``, stays. Unlike :func:`strip_citations`,
+    which leaves a space, this returns text meant to be shown, with no citation left.
 
     :param text: The text to clean.
     :param source_numbers: The source numbers handed out this turn, one-based.
@@ -405,13 +405,12 @@ class CitationStreamFilter:
     """Removes citations from an answer as its pieces arrive, by the rule of
     :func:`remove_citations`.
 
-    The text is read one character at a time and the reading carries over from one piece to
-    the next, so the pieces let out joined are exactly ``remove_citations`` of the whole
-    text, however it was cut. Text is held back while a later character may still take it
-    away: from a bracket nothing has closed yet, the spaces at the end, which a citation
-    after them would take, and a link target that has not closed. A bracket that never
-    closes holds the rest of the answer until :meth:`finish`. Each character is read a
-    bounded number of times, so the work grows with the length of the text.
+    The reading carries over from one piece to the next, so the pieces let out joined are
+    exactly ``remove_citations`` of the whole text, however it was cut, in time that grows
+    with its length. Text is held back while a later character may still take it away: from
+    a bracket nothing has closed yet, the spaces at the end, which a citation after them
+    would take, and a link target that has not closed. A bracket that never closes holds the
+    rest of the answer until :meth:`finish`.
     """
 
     def __init__(self, source_numbers: Collection[int]) -> None:
@@ -425,7 +424,7 @@ class CitationStreamFilter:
         self._last = ""  # The last one of them.
         self._text_end = 0  # Just past the last kept character that is not a blank.
         self._kept_at = -1  # Where the last closing bracket that stayed in the text is.
-        # The unclosed brackets of each kind, by position and with the text end before each.
+        # Unclosed brackets of each kind: position, and the text end before it.
         self._open: dict[str, list[tuple[int, int]]] = {"[": [], "\u3010": []}
         self._link = _NO_LINK
         self._target: list[str] = []  # What follows the parenthesis of a link target.
@@ -486,17 +485,21 @@ class CitationStreamFilter:
                 else:
                     self._target.append(char)
                 continue
-            if self._skip_blanks:
-                if char in _BLANKS:
-                    continue
-                self._skip_blanks = False
-            if char in self._open:
-                self._open[char].append((self._base + len(self._out), self._text_end))
-                self._append(char)
-            elif char in _OPENERS:
-                self._close(char)
-            else:
-                self._append(char)
+            self._place(char)
+
+    def _place(self, char: str) -> None:
+        """Keep a character, or open or close a bracket; blanks after a removed citation go."""
+        if self._skip_blanks:
+            if char in _BLANKS:
+                return
+            self._skip_blanks = False
+        if char in self._open:
+            self._open[char].append((self._base + len(self._out), self._text_end))
+            self._append(char)
+        elif char in _OPENERS:
+            self._close(char)
+        else:
+            self._append(char)
 
     def _append(self, char: str) -> None:
         """Keep a character."""
@@ -519,11 +522,7 @@ class CitationStreamFilter:
         )
 
     def _close(self, closer: str) -> None:
-        """Close the innermost open bracket of the closer's kind, dropping it if a citation.
-
-        A citation is dropped with the blanks before it, unless it opens a line: then the
-        blanks before it stay as the line's indent and the blanks after it go.
-        """
+        """Close the innermost open bracket of the closer's kind, dropping it if a citation."""
         stack = self._open[_OPENERS[closer]]
         if not stack:
             self._keep(closer)
