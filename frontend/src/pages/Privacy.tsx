@@ -18,7 +18,7 @@ import { fadeInUp } from "@/lib/motion";
  * false, neither of which the call site can see. `i18n.exists()` is the documented way to
  * ask. Requiring all three parts avoids the question.
  */
-const LIST_SECTIONS = ["collected", "cookies", "processors", "retention"] as const;
+const LIST_SECTIONS = ["collected", "cookies", "processors", "retention", "assistant"] as const;
 
 /**
  * i18next returns the key itself when a lookup misses, so `returnObjects` hands back a string

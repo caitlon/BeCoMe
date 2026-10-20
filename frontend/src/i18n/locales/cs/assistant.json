@@ -15,7 +15,7 @@
     "title": "Asistent",
     "scopeProject": "Projekt „{{name}}“",
     "scopeGeneral": "Metoda a aplikace",
-    "seesOnly": "Vidí jen to, co v projektu vidíte vy.",
+    "seesOnly": "Vidí jen to, co v projektu vidíte vy. Otázky odcházejí k modelu AI v EU.",
     "clear": "Vymazat konverzaci",
     "clearConfirm": "Vymazat konverzaci? Nelze vrátit zpět.",
     "clearYes": "Vymazat",

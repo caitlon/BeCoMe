@@ -161,7 +161,7 @@ describe('AssistantPanel', () => {
     renderPanel();
 
     expect(screen.getByText('Ask about the method or the app')).toBeInTheDocument();
-    expect(screen.getByText('Sees only what you see in this project.')).toBeInTheDocument();
+    expect(screen.getByText('Sees only what you see in this project. Your questions go to an AI model in the EU.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'What is a fuzzy opinion?' })).toBeInTheDocument();
     expect(screen.getByText('The assistant can be wrong. Check the result page.')).toBeInTheDocument();
   });
