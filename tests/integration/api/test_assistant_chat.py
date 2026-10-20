@@ -1443,20 +1443,27 @@ class TestMessageLimit:
 class _SlotProbingModel(ScriptedToolCallingModel):
     """A scripted model that records whether a turn slot was free while it was streaming.
 
-    :ivar probes: One entry per streamed call: True when a slot was free at that moment.
+    It looks once before its first piece and again after every piece it has yielded, so the
+    slot is probed in the middle of the stream and not only at its start.
+
+    :ivar probes: One entry per look: True when a slot was free at that moment.
     """
 
     probes: list[bool] = Field(default_factory=list)
 
-    async def _astream(self, *args: Any, **kwargs: Any) -> AsyncIterator[ChatGenerationChunk]:
+    def _probe(self) -> None:
         slots = deps.get_turn_slots()
         stranger = uuid4()
         free = slots.acquire(stranger) is None
         if free:
             slots.release(stranger)
         self.probes.append(free)
+
+    async def _astream(self, *args: Any, **kwargs: Any) -> AsyncIterator[ChatGenerationChunk]:
+        self._probe()
         async for chunk in super()._astream(*args, **kwargs):
             yield chunk
+            self._probe()
 
 
 class TestConcurrentTurnCap:
@@ -1498,7 +1505,8 @@ class TestConcurrentTurnCap:
         GIVEN a cap of one concurrent turn and a model that checks for a free slot while it
             streams
         WHEN one turn is streamed to the end
-        THEN no slot was free while the stream was open, and none is held once it is complete
+        THEN no slot was free before the first piece or between the pieces, and none is held
+            once the stream is complete
         """
         # GIVEN
         configure(ASSISTANT_MAX_CONCURRENT_TURNS="1")
@@ -1511,8 +1519,64 @@ class TestConcurrentTurnCap:
 
         # THEN
         assert response.status_code == 200
-        assert model.probes == [False]
+        assert len(model.probes) > 2
+        assert not any(model.probes)
         assert deps.get_turn_slots().holders == {}
+
+    @pytest.mark.parametrize("endpoint", [CHAT, STREAM])
+    def test_a_refusal_for_a_full_process_spends_no_message(
+        self, assistant_settings, client, configure, endpoint
+    ):
+        """
+        GIVEN a cap of one concurrent turn held by another user's turn, and a budget of one
+            message per hour
+        WHEN a user is refused for the full process, the slot is released, and the same user
+            sends again
+        THEN the first is 503 and the second is answered, not 429: the slot is taken before the
+            budget is spent, so the refusal cost the user nothing
+        """
+        # GIVEN
+        configure(ASSISTANT_MAX_CONCURRENT_TURNS="1", ASSISTANT_RATE_LIMIT_PER_HOUR="1")
+        token = register_and_login(client, "slots-then-budget@example.com")
+        _use_model(client, _scripted("ok"))
+        slots = deps.get_turn_slots()
+        holder = uuid4()
+        assert slots.acquire(holder) is None
+
+        # WHEN
+        refused = client.post(endpoint, json={"message": "one"}, headers=auth_header(token))
+        slots.release(holder)
+        admitted = client.post(endpoint, json={"message": "two"}, headers=auth_header(token))
+
+        # THEN
+        assert refused.status_code == 503
+        assert admitted.status_code == 200
+
+    @pytest.mark.parametrize("endpoint", [CHAT, STREAM])
+    def test_a_spent_budget_still_answers_429_and_leaks_no_slot(
+        self, assistant_settings, client, configure, endpoint
+    ):
+        """
+        GIVEN a cap of one concurrent turn and a budget of one message, already spent
+        WHEN the user sends another
+        THEN the answer is 429, and the slot taken for it was given back: the table is empty
+            and a stranger can take the one slot
+        """
+        # GIVEN
+        configure(ASSISTANT_MAX_CONCURRENT_TURNS="1", ASSISTANT_RATE_LIMIT_PER_HOUR="1")
+        token = register_and_login(client, "budget-then-slot@example.com")
+        _use_model(client, _scripted("first"))
+        first = client.post(endpoint, json={"message": "one"}, headers=auth_header(token))
+        assert first.status_code == 200
+
+        # WHEN
+        refused = client.post(endpoint, json={"message": "two"}, headers=auth_header(token))
+
+        # THEN
+        assert refused.status_code == 429
+        slots = deps.get_turn_slots()
+        assert slots.holders == {}
+        assert slots.acquire(uuid4()) is None
 
     @pytest.mark.parametrize("endpoint", [CHAT, STREAM])
     def test_a_request_the_schema_rejects_does_not_leak_its_slot(

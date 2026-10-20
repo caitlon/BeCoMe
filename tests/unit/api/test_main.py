@@ -484,7 +484,9 @@ class TestAssistantExceptionHandlerGating:
         error = getattr(errors, error_name)
 
         waits = error_name in {"AssistantRateLimitedError", "AssistantBusyError"}
-        extra = {"retry_after": 5} if waits else {}
+        extra: dict[str, object] = {"retry_after": 5} if waits else {}
+        if error_name == "AssistantBusyError":
+            extra["reason"] = "process"
 
         def boom() -> None:
             raise error("internal detail that must not leak", **extra)

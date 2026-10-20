@@ -45,10 +45,10 @@ class TestAssistantExceptionHandlers:
             ),
             (
                 assistant_busy_handler,
-                AssistantBusyError(_PRIVATE_TEXT, retry_after=5),
+                AssistantBusyError(_PRIVATE_TEXT, retry_after=5, reason="process"),
                 503,
                 "The assistant is temporarily unavailable",
-                "assistant_busy",
+                "assistant_concurrency_cap_reached",
             ),
             (
                 assistant_unavailable_handler,
@@ -106,16 +106,14 @@ class TestAssistantExceptionHandlers:
         assert response.status_code == 429
         assert response.headers["Retry-After"] == "1234"
 
-    def test_the_busy_answer_carries_retry_after_and_is_logged_at_warning(self, caplog):
+    def test_the_busy_answer_carries_retry_after(self):
         """
         GIVEN a busy error holding 1234 seconds
         WHEN its handler runs
-        THEN the 503 has a Retry-After header of that many seconds, and the record is a
-             WARNING, since a full assistant is load and not a fault
+        THEN the 503 has a Retry-After header of that many seconds
         """
         # GIVEN
-        caplog.set_level(logging.DEBUG, logger="api.assistant")
-        exc = AssistantBusyError(_PRIVATE_TEXT, retry_after=1234)
+        exc = AssistantBusyError(_PRIVATE_TEXT, retry_after=1234, reason="user")
 
         # WHEN
         response = assistant_busy_handler(_request(), exc)
@@ -123,7 +121,29 @@ class TestAssistantExceptionHandlers:
         # THEN
         assert response.status_code == 503
         assert response.headers["Retry-After"] == "1234"
-        assert [r.levelno for r in caplog.records] == [logging.WARNING]
+
+    @pytest.mark.parametrize("reason", ["process", "user"])
+    def test_a_refused_turn_is_logged_once_at_warning_with_the_limit_that_refused(
+        self, caplog, reason
+    ):
+        """
+        GIVEN a busy error refused by one of the two limits
+        WHEN its handler runs
+        THEN exactly one record is written, a WARNING since a full assistant is load and not a
+             fault, naming that limit and no user
+        """
+        # GIVEN
+        caplog.set_level(logging.DEBUG, logger="api.assistant")
+        exc = AssistantBusyError(_PRIVATE_TEXT, retry_after=5, reason=reason)
+
+        # WHEN
+        assistant_busy_handler(_request(), exc)
+
+        # THEN
+        assert [(r.levelno, r.event, r.reason) for r in caplog.records] == [
+            (logging.WARNING, "assistant_concurrency_cap_reached", reason)
+        ]
+        assert not hasattr(caplog.records[0], "user_id")
 
     def test_the_upstream_failure_is_logged_at_error(self, caplog):
         """
