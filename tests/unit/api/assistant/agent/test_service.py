@@ -1885,6 +1885,7 @@ class TestShowSourcesSetting:
         ]
         assert record.source_count == 2
         assert "Second words." not in str(record.__dict__)
+        assert QUESTION not in str(record.__dict__)
         assert "https://x.y" not in str(record.__dict__)
 
     async def test_the_record_keeps_the_real_citation_check_when_the_setting_is_off(self):
@@ -1909,10 +1910,11 @@ class TestShowSourcesSetting:
         GIVEN the setting off and a stream that splits a citation across its pieces
         WHEN the turn is streamed
         THEN the pieces hold no marker and join to the answer of the response, which has no
-             sources
+             sources and reads its citations as valid, though it cited a source that was never
+             given
         """
-        model = _model(_say("It is the midpoint [1](https://example.org/a)."))
-        model.stream_chunks = ["It is the midpoint [", "1", "](https://example.org/a)", "."]
+        model = _model(_say("It is the midpoint [9](https://example.org/a)."))
+        model.stream_chunks = ["It is the midpoint [", "9", "](https://example.org/a)", "."]
         service = AssistantService(_settings(assistant_show_sources=False), model)
 
         pieces, response = await _drain(service, _request(), _ctx(chunks=[_chunk()]))
@@ -1920,6 +1922,7 @@ class TestShowSourcesSetting:
         assert pieces == ["It is the midpoint", "."]
         assert "".join(pieces) == response.answer == "It is the midpoint."
         assert response.sources == []
+        assert response.checks.citations_valid is True
 
     @pytest.mark.parametrize(
         ("chunks", "answer"),

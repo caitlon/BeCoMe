@@ -239,18 +239,20 @@ plain text, at most 240 characters.
 
 `ASSISTANT_SHOW_SOURCES` (off by default; meant to be enabled on dev and test through an
 environment variable) decides whether the client is sent the sources. While it is off, `sources`
-is an empty list, the answer text has no `[n]` marker and no link target after one, the blanks
-before each marker are dropped with it, and `checks.citations_valid` is always true, in `/chat`
-and in every event of `/chat/stream`. A bracket with one number (`[7]`, `[source 2]`) is always
-removed, even when no such source exists. A bracket with several numbers or a range (`[1, 2]`,
-`[1-3]`) is removed only when each number in it is a source of the turn, so a fuzzy number such
-as `[6, 8, 11]` or a scale such as `[0, 1]` stays. A bracket inside a bracket is taken first, so
-`[[1]2]` goes whole. Removal reads citations as the citation check does, so a form that check
-does not recognise, such as the full-width dagger form `【1†source】`, stays in the text. The
-stream holds a piece back while a marker may still be forming in it,
-and a bracket that never closes holds the rest of the answer until the end, so a marker is never
-sent in part. The checks still run on the text the model wrote, and the system prompt is the same
-in both states. With the setting on, the response is as described above.
+is an empty list, the answer text has no `[n]` marker and no link target after one, and
+`checks.citations_valid` is always true, in `/chat` and in every event of `/chat/stream`. The
+blanks before a marker go with it, except that a marker opening a line keeps the indent before
+it and drops the blanks after it. A bracket that writes one number (`[7]`, `[source 2]`) is
+always removed, even when no such source exists. A bracket that writes several numbers or a
+range (`[1, 2]`, `[1-3]`) is removed only when each number in it is a source of the turn, so a
+fuzzy number such as `[6, 8, 11]` or `[5, 5, 5]`, or a scale such as `[0, 1]`, stays. A bracket
+inside a bracket is taken first, so `[[1]2]` goes whole. Removal reads citations as the
+citation check does, so a form that check does not recognise, such as the full-width dagger
+form `【1†source】`, stays in the text. The stream holds a piece back while a marker may still
+be forming in it, and a bracket that never closes holds the rest of the answer until the end,
+so a marker is never sent in part. The checks still run on the text the model wrote, and the
+system prompt is the same in both states. With the setting on, the response is as
+described above.
 
 The assistant reads project data through the application's own API, with the caller's own
 access token, so it sees exactly the projects the caller is a member of. Those internal reads
