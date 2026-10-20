@@ -46,6 +46,8 @@ _CITATION_CONTENT = re.compile(
     rf"\s*{_CITATION_ITEM}(?:[,;\s\-\u2013]+{_CITATION_ITEM})*\s*", re.IGNORECASE
 )
 _LABEL_WORD = re.compile(_LABEL, re.IGNORECASE)
+# A bracket's content when it writes exactly one number: one item, no separator, no range.
+_SINGLE_CITATION_ITEM = re.compile(rf"\s*{_CITATION_ITEM}\s*", re.IGNORECASE)
 _CITED_RANGE = re.compile(r"(\d{1,3})(?:\s*[-\u2013]\s*(\d{1,3}))?")
 
 # What is dropped from an answer before its numbers are scanned. A link's target stops
@@ -380,14 +382,14 @@ _NO_LINK, _LINK_AHEAD, _LINK_OPEN = range(3)
 def remove_citations(text: str, source_numbers: Collection[int]) -> str:
     """Remove citation-like brackets, with the link target and the blanks around them.
 
-    A bracket with one number (``[7]``, ``[source 2]``, ``\u30103\u3011``) is a citation and
-    always goes, even when no such source exists. A bracket with several numbers or a range
-    (``[1, 2]``, ``[1-3]``) goes only when every number in it is one of ``source_numbers``,
-    so that ``[0, 1]``, ``[1, 5]`` and the fuzzy number ``[6, 8, 11]`` stay. Brackets are
-    taken innermost first, so ``[[1]2]`` goes whole. Each citation goes together with the
-    spaces and tabs before it, so that ``The midpoint [1].`` reads ``The midpoint.``, and
-    with a markdown link target right after it. A citation that opens a line also takes the
-    blanks after it. A bracket that is not a citation, such as ``[11.54, 14.19]``, stays.
+    A bracket that writes one number (``[7]``, ``[source 2]``, ``\u30103\u3011``) is a
+    citation and always goes, even when no such source exists. A bracket that writes several
+    numbers or a range (``[1, 2]``, ``[1-3]``) goes only when every number in it is one of
+    ``source_numbers``, so that ``[0, 1]``, ``[1, 5]``, ``[5, 5, 5]`` and the fuzzy number
+    ``[6, 8, 11]`` stay. Brackets are taken innermost first, so ``[[1]2]`` goes whole. Each
+    citation goes together with the spaces and tabs before it and with a markdown link target
+    right after it, so that ``The midpoint [1].`` reads ``The midpoint.``. A citation that
+    opens a line keeps the indent before it instead, and takes the blanks after it. A bracket that is not a citation, such as ``[11.54, 14.19]``, stays.
     Unlike :func:`strip_citations`, which leaves a space in its place, this returns text
     meant to be shown. The result has no citation left, so removing again changes nothing.
 
@@ -507,6 +509,15 @@ class CitationStreamFilter:
         self._kept_at = self._base + len(self._out)
         self._append(closer)
 
+    def _is_removable(self, content: str) -> bool:
+        """Tell whether the text inside a bracket is a citation that has to go."""
+        numbers = _cited_numbers(content)
+        if numbers is None:
+            return False
+        return (
+            numbers <= self._source_numbers or _SINGLE_CITATION_ITEM.fullmatch(content) is not None
+        )
+
     def _close(self, closer: str) -> None:
         """Close the innermost open bracket of the closer's kind, dropping it if a citation.
 
@@ -523,12 +534,8 @@ class CitationStreamFilter:
                 others.pop()
         # A closing bracket that stayed is in the way of every bracket around it, so those are
         # not read again: a citation holds digits, labels and separators, never a bracket.
-        numbers = (
-            None
-            if self._kept_at > start
-            else _cited_numbers("".join(self._out[start - self._base + 1 :]))
-        )
-        if numbers is None or not (len(numbers) == 1 or numbers <= self._source_numbers):
+        content = "".join(self._out[start - self._base + 1 :]) if self._kept_at < start else None
+        if content is None or not self._is_removable(content):
             self._keep(closer)
             return
         previous = self._out[before - self._base - 1] if before > self._base else self._last

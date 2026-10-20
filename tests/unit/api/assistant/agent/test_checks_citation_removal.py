@@ -30,6 +30,7 @@ _ANSWERS = [
     "No citations here at all, only 5 experts and 11.54.",
     "Nested [[1]2] and [1[2]] and [[1]1] and [ [1] 2] here.",
     "A list:\n  [1] indented item\n\t[2]\ttabbed item\n  [3]\n[1]  x",
+    "Crisp [5, 5, 5], [0, 0, 0] and [0, 0] stay; [1, 1], [2] and [7] go.",
     "A fuzzy number [6, 8, 11], a scale [1, 5], [0, 1] and a pair [1, 2] [7].",
     "Mixed [ \u30101\u3011 2] and \u3010 [1] 2\u3011 and [1](\u30102\u3011) here.",
     "",
@@ -48,6 +49,8 @@ class TestRemoveCitations:
             ("[1] Start", "Start"),
             ("first\n[1] second", "first\nsecond"),
             ("a\n  [1] b", "a\n  b"),
+            ("  [1] b", "  b"),
+            ("[1, 1] and [2] and [7]", "and and"),
             ("a\n  [1]\n[2]  c", "a\n  \nc"),
             ("a [1-3] b [1, 2] c [source 2] d", "a b c d"),
             ("\u30101\u3011 x \u30102, 3\u3011", "x"),
@@ -88,6 +91,7 @@ class TestRemoveCitations:
             "The fuzzy number [6, 8, 11] is triangular.",
             "The scale is [0, 100].",
             "A pair [1, 5] stays.",
+            "A crisp number [5, 5, 5] or [0, 0, 0] or [0, 0] stays.",
         ],
     )
     def test_keeps_numbers_in_brackets_that_are_not_all_sources(self, text: str):

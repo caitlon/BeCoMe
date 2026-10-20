@@ -2774,15 +2774,16 @@ class TestAnswerSourcesSetting:
         GIVEN the setting off and a model whose stream splits a citation across its pieces
         WHEN the question is posted to /chat/stream
         THEN no token event holds a marker, the token texts join to the answer of the done
-            event, the done sources are empty, the body holds nothing of the passage, and the
-            turn record lists the passage
+            event, the done sources are empty and its citation check is valid though the
+            marker named a source that was never given, the body holds nothing of the passage,
+            and the turn record lists the passage
         """
         # GIVEN
         configure(ASSISTANT_SHOW_SOURCES="false")
         token = register_and_login(client, "hide-stream@example.com")
         _use_hidden_source_retriever(client)
-        model = _scripted("The midpoint [1](https://example.org/a).")
-        model.stream_chunks = ["The midpoint [", "1", "](https://example.org/a)", "."]
+        model = _scripted("The midpoint [9](https://example.org/a).")
+        model.stream_chunks = ["The midpoint [", "9", "](https://example.org/a)", "."]
         _use_model(client, model)
 
         # WHEN
@@ -2797,6 +2798,7 @@ class TestAnswerSourcesSetting:
         assert not re.search(r"\[\s*\d", "".join(texts))
         assert "".join(texts) == events[-1][1]["answer"] == "The midpoint."
         assert events[-1][1]["sources"] == []
+        assert events[-1][1]["checks"]["citations_valid"] is True
         _assert_nothing_of_the_source_in(response.text)
         assert [entry["title"] for entry in _turn_record_sources(records)] == [_SOURCE_TITLE]
 
