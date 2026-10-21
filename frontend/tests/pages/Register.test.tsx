@@ -111,6 +111,17 @@ describe('Register', () => {
     expect(getSubmitButton()).toBeInTheDocument();
   });
 
+  it('links the terms and the privacy notice under the submit button, with no consent checkbox', () => {
+    render(<Register />);
+
+    expect(screen.getByRole('link', { name: 'Terms' })).toHaveAttribute('href', '/terms');
+    expect(screen.getByRole('link', { name: 'Privacy notice' })).toHaveAttribute(
+      'href',
+      '/privacy'
+    );
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+  });
+
   it('sets autocomplete attributes so password managers fill the right field', () => {
     render(<Register />);
 

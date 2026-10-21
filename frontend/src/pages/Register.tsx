@@ -3,7 +3,7 @@ import { Link } from "react-router";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { useTranslation } from "react-i18next";
+import { Trans, useTranslation } from "react-i18next";
 
 import {
   FormField,
@@ -242,6 +242,19 @@ const Register = () => {
         >
           {t("register.createAccount")}
         </SubmitButton>
+
+        <p className="text-center text-sm text-muted-foreground">
+          <Trans
+            t={t}
+            i18nKey="register.legalNotice"
+            components={{
+              terms: <Link to="/terms" className="underline underline-offset-4 hover:text-foreground" />,
+              privacy: (
+                <Link to="/privacy" className="underline underline-offset-4 hover:text-foreground" />
+              ),
+            }}
+          />
+        </p>
       </form>
 
       <p className="text-center text-sm text-muted-foreground mt-6">
