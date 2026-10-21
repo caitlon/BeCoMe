@@ -688,7 +688,10 @@ class TestMain:
         (tmp_path / "q.jsonl").write_text(json.dumps({"id": "q1", "question": "Plum?"}))
 
         # WHEN
-        with patch.object(ea, "create_app", return_value=client.app):
+        with (
+            patch.object(ea, "git_version", return_value="code-1"),
+            patch.object(ea, "create_app", return_value=client.app),
+        ):
             code = ea.main(_argv(tmp_path))
 
         # THEN
@@ -700,7 +703,7 @@ class TestMain:
         assert "Plum" not in shown
         assert "Secret-free" not in shown
         assert "app_version and corpus_version are null" in captured.err
-        assert _rows(tmp_path / "out.jsonl")[0]["code_version"] == ea.git_version(ea.REPO_ROOT)
+        assert _rows(tmp_path / "out.jsonl")[0]["code_version"] == "code-1"
 
     def test_main_exits_2_on_a_missing_file_or_a_switched_off_assistant(
         self, client, tmp_path, capsys
@@ -876,15 +879,18 @@ class TestFailureHandling:
 
         # WHEN
         client.app.dependency_overrides[deps.get_docs_retriever] = _RaisingRetriever
-        with patch.object(ea, "create_app", return_value=client.app):
-            stopped = ea.main(_argv(tmp_path))
+        with (
+            patch.object(ea, "git_version", return_value="code-1"),
+            patch.object(ea, "create_app", return_value=client.app),
+        ):
+            stopped = ea.main(_argv(tmp_path, "workflow", "--no-pacing"))
             message = capsys.readouterr().err
             rows_after_stop = len(_rows(output))
             client.app.dependency_overrides[deps.get_docs_retriever] = lambda: working
-            second = ea.main(_argv(tmp_path))
+            second = ea.main(_argv(tmp_path, "workflow", "--no-pacing"))
             asked_by_second = len(model.seen)
             second_out = capsys.readouterr().out
-            third = ea.main(_argv(tmp_path, "workflow", "--retry-failed"))
+            third = ea.main(_argv(tmp_path, "workflow", "--retry-failed", "--no-pacing"))
             third_out = capsys.readouterr().out
 
         # THEN
