@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import {
   BookOpen,
@@ -13,23 +13,22 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { HeroSection } from "@/components/layout/HeroSection";
 import { PageShell } from "@/components/layout/PageShell";
 import { SidebarNav, type SidebarNavItem } from "@/components/layout/SidebarNav";
-import {
-  assistantEnabled,
-  AssistantDocsNavLabelSlot,
-  AssistantDocsSectionSlot,
-} from "@/components/assistant";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { useAssistantGuide } from "@/components/assistant";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { useScrollSpy } from "@/hooks/useScrollSpy";
 
 const baseSectionIds = ["getting-started", "expert-opinions", "results", "visualization", "glossary"] as const;
-// The assistant section is rendered by a lazy slot, so its id is tracked only in a build that has one.
-const sectionIds: readonly string[] = assistantEnabled ? [...baseSectionIds, "assistant"] : baseSectionIds;
+const sectionIdsWithAssistant: readonly string[] = [...baseSectionIds, "assistant"];
 
 const Documentation = () => {
   const { t } = useTranslation("docs");
   const { t: tCommon } = useTranslation();
   useDocumentTitle(tCommon("pageTitle.documentation"));
 
+  // The assistant's entry, id and section all wait for the guide module, so none shows without the others.
+  const guide = useAssistantGuide();
+  const sectionIds = useMemo(() => (guide ? sectionIdsWithAssistant : baseSectionIds), [guide]);
   const { activeId, scrollToSection } = useScrollSpy(sectionIds, "getting-started");
 
   useEffect(() => {
@@ -41,9 +40,7 @@ const Documentation = () => {
     { id: "expert-opinions", label: t("expertOpinions.title"), icon: Users },
     { id: "results", label: t("results.title"), icon: Calculator },
     { id: "visualization", label: t("visualization.title"), icon: BarChart3 },
-    ...(assistantEnabled
-      ? [{ id: "assistant", label: <AssistantDocsNavLabelSlot />, icon: Sparkles }]
-      : []),
+    ...(guide ? [{ id: "assistant", label: <guide.AssistantDocsNavLabel />, icon: Sparkles }] : []),
     { id: "glossary", label: t("glossary.title"), icon: FileText },
   ];
 
@@ -357,7 +354,11 @@ const Documentation = () => {
                 </Card>
               </section>
 
-              <AssistantDocsSectionSlot />
+              {guide && (
+                <ErrorBoundary fallback={null}>
+                  <guide.AssistantDocsSection />
+                </ErrorBoundary>
+              )}
 
               {/* Glossary */}
               <section id="glossary" className="mb-12">

@@ -1,6 +1,8 @@
-import { lazy, Suspense, useEffect, type ComponentType, type LazyExoticComponent, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useState, type ComponentType, type LazyExoticComponent, type ReactNode } from "react";
+import * as Sentry from "@sentry/react";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AssistantUIProvider, useAssistantUI } from "@/contexts/AssistantUIContext";
+import { logger } from "@/lib/logger";
 
 /**
  * Build-time kill switch for the whole assistant feature,
@@ -22,15 +24,6 @@ import { AssistantUIProvider, useAssistantUI } from "@/contexts/AssistantUIConte
  * build takes the disabled branch below.
  */
 const enabled = import.meta.env.VITE_ASSISTANT_ENABLED === "true";
-
-/**
- * The same answer as a plain boolean, for the few pages that must decide
- * something about their own structure (a table-of-contents entry, a section id
- * to track) before a lazy slot has rendered. It carries no copy: the strings
- * stay in the slots' chunk.
- */
-// eslint-disable-next-line react-refresh/only-export-components -- a constant gated by the same build flag as the exports below
-export const assistantEnabled: boolean = enabled;
 
 // eslint-disable-next-line react-refresh/only-export-components -- null is the disabled-build state
 export const AssistantEntry: LazyExoticComponent<ComponentType> | null = enabled
@@ -109,37 +102,50 @@ export function AssistantProfileSlot() {
   );
 }
 
-const LazyDocsSection: LazyExoticComponent<ComponentType> | null = enabled
-  ? lazy(() => import("./AssistantGuide").then((m) => ({ default: m.AssistantDocsSection })))
-  : null;
+/** The module behind the documentation section and the guide's other parts, as the hook below hands it out. */
+export type AssistantGuideModule = typeof import("./AssistantGuide");
 
-/** Same reasoning as AssistantHeaderSlot, for Documentation.tsx: the assistant section and its copy. */
-export function AssistantDocsSectionSlot() {
-  if (!LazyDocsSection) return null;
-  return (
-    <ErrorBoundary fallback={null}>
-      <Suspense fallback={null}>
-        <LazyDocsSection />
-      </Suspense>
-    </ErrorBoundary>
-  );
+let guideLoad: Promise<AssistantGuideModule> | null = null;
+
+function useGuide(): AssistantGuideModule | null {
+  const [guide, setGuide] = useState<AssistantGuideModule | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    guideLoad ??= import("./AssistantGuide");
+    guideLoad.then(
+      (loaded) => {
+        if (active) setGuide(loaded);
+      },
+      (error: unknown) => {
+        // A stale hashed chunk after a deploy lands here. The guide simply stays
+        // absent, so a page that waits on it never shows half of it.
+        if (!active) return;
+        logger.error("Assistant guide failed to load", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        Sentry.captureException(error);
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  return guide;
 }
 
-const LazyDocsNavLabel: LazyExoticComponent<ComponentType> | null = enabled
-  ? lazy(() => import("./AssistantGuide").then((m) => ({ default: m.AssistantDocsNavLabel })))
-  : null;
-
-/** The label of the documentation page's table-of-contents entry, so that its text comes from the same lazy chunk. */
-export function AssistantDocsNavLabelSlot() {
-  if (!LazyDocsNavLabel) return null;
-  return (
-    <ErrorBoundary fallback={null}>
-      <Suspense fallback={null}>
-        <LazyDocsNavLabel />
-      </Suspense>
-    </ErrorBoundary>
-  );
-}
+/**
+ * The assistant's guide copy and its components, loaded from their own chunk,
+ * or `null` while that loads, if it fails, and always in a build without the
+ * flag. A caller adds everything the guide contributes to its page (a
+ * table-of-contents entry, a section, a tour step) only when this is not
+ * `null`, so the page never shows a part whose other half is missing. Chosen at
+ * module load like everything above: a build without the flag gets a constant
+ * `null` and the `import()` is dropped.
+ */
+// eslint-disable-next-line react-refresh/only-export-components -- a hook gated by the same build flag as the exports above
+export const useAssistantGuide: () => AssistantGuideModule | null = enabled ? useGuide : () => null;
 
 function useProjectScope(projectId: string | undefined): void {
   const { setPageProjectId } = useAssistantUI();
