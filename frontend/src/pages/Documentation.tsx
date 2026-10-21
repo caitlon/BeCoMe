@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   BookOpen,
@@ -19,7 +19,14 @@ import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { useScrollSpy } from "@/hooks/useScrollSpy";
 
 const baseSectionIds = ["getting-started", "expert-opinions", "results", "visualization", "glossary"] as const;
-const sectionIdsWithAssistant: readonly string[] = [...baseSectionIds, "assistant"];
+const sectionIdsWithAssistant: readonly string[] = [
+  "getting-started",
+  "expert-opinions",
+  "results",
+  "visualization",
+  "assistant",
+  "glossary",
+];
 
 const Documentation = () => {
   const { t } = useTranslation("docs");
@@ -27,7 +34,11 @@ const Documentation = () => {
   useDocumentTitle(tCommon("pageTitle.documentation"));
 
   // The assistant's entry, id and section all wait for the guide module, so none shows without the others.
-  const guide = useAssistantGuide();
+  const loadedGuide = useAssistantGuide();
+  // A render error in the guide's section or label drops the entry and the id with it.
+  const [guideFailed, setGuideFailed] = useState(false);
+  const guide = guideFailed ? null : loadedGuide;
+  const dropGuide = () => setGuideFailed(true);
   const sectionIds = useMemo(() => (guide ? sectionIdsWithAssistant : baseSectionIds), [guide]);
   const { activeId, scrollToSection } = useScrollSpy(sectionIds, "getting-started");
 
@@ -35,12 +46,26 @@ const Documentation = () => {
     globalThis.scrollTo(0, 0);
   }, []);
 
+  const assistantItem: SidebarNavItem[] = guide
+    ? [
+        {
+          id: "assistant",
+          label: (
+            <ErrorBoundary fallback={null} onError={dropGuide}>
+              <guide.AssistantDocsNavLabel />
+            </ErrorBoundary>
+          ),
+          icon: Sparkles,
+        },
+      ]
+    : [];
+
   const tocItems: SidebarNavItem[] = [
     { id: "getting-started", label: t("gettingStarted.title"), icon: BookOpen },
     { id: "expert-opinions", label: t("expertOpinions.title"), icon: Users },
     { id: "results", label: t("results.title"), icon: Calculator },
     { id: "visualization", label: t("visualization.title"), icon: BarChart3 },
-    ...(guide ? [{ id: "assistant", label: <guide.AssistantDocsNavLabel />, icon: Sparkles }] : []),
+    ...assistantItem,
     { id: "glossary", label: t("glossary.title"), icon: FileText },
   ];
 
@@ -355,7 +380,7 @@ const Documentation = () => {
               </section>
 
               {guide && (
-                <ErrorBoundary fallback={null}>
+                <ErrorBoundary fallback={null} onError={dropGuide}>
                   <guide.AssistantDocsSection />
                 </ErrorBoundary>
               )}

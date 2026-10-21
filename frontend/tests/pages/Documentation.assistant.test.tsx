@@ -8,7 +8,7 @@ vi.mock('framer-motion', () => framerMotionMock);
 
 // Counts how often the guide module is evaluated, and can make that import fail
 // the way a stale hashed chunk does after a deploy.
-const guide = vi.hoisted(() => ({ loads: 0, fails: false }));
+const guide = vi.hoisted(() => ({ loads: 0, fails: false, sectionThrows: false }));
 
 describe('Documentation assistant section', () => {
   beforeEach(() => {
@@ -17,11 +17,19 @@ describe('Documentation assistant section', () => {
     vi.resetModules();
     guide.loads = 0;
     guide.fails = false;
+    guide.sectionThrows = false;
     // Registered per test, not hoisted: a hoisted factory runs once per file.
     vi.doMock('@/components/assistant/AssistantGuide', async (importOriginal) => {
       guide.loads += 1;
       if (guide.fails) throw new Error('chunk failed');
-      return importOriginal();
+      const original = await importOriginal<typeof import('@/components/assistant/AssistantGuide')>();
+      if (!guide.sectionThrows) return original;
+      return {
+        ...original,
+        AssistantDocsSection: () => {
+          throw new Error('section failed');
+        },
+      };
     });
   });
 
@@ -97,6 +105,23 @@ describe('Documentation assistant section', () => {
       expect(container.querySelector('#assistant')).not.toBeInTheDocument();
       expect(container.querySelectorAll('section[id]')).toHaveLength(5);
       expect(guide.loads).toBe(1);
+      consoleError.mockRestore();
+    });
+
+    it('drops the TOC entry together with a section that throws while rendering', async () => {
+      vi.stubEnv('VITE_ASSISTANT_ENABLED', 'true');
+      guide.sectionThrows = true;
+      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      const { container } = await renderDocumentation();
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      });
+
+      const buttons = tocButtons();
+      expect(buttons).toHaveLength(5);
+      for (const button of buttons) expect(button).toHaveAccessibleName();
+      expect(container.querySelector('#assistant')).not.toBeInTheDocument();
       consoleError.mockRestore();
     });
 
