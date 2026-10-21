@@ -226,6 +226,51 @@ class _TracedModel(ScriptedToolCallingModel):
         return super()._generate(*args, **kwargs)
 
 
+class _Clock:
+    """A clock offset that moves only when a test moves it."""
+
+    def __init__(self) -> None:
+        self.offset = 0.0
+
+
+class _ClockedLoop:
+    """The running event loop, but with a clock that runs ahead by the test's offset."""
+
+    def __init__(self, loop: asyncio.AbstractEventLoop, clock: _Clock) -> None:
+        self._loop = loop
+        self._clock = clock
+
+    def time(self) -> float:
+        return self._loop.time() + self._clock.offset
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._loop, name)
+
+
+class _ClockedAsyncio:
+    """Stands in for the asyncio module inside the service, so that its loop has that clock."""
+
+    def __init__(self, clock: _Clock) -> None:
+        self._clock = clock
+
+    def get_running_loop(self) -> _ClockedLoop:
+        return _ClockedLoop(asyncio.get_running_loop(), self._clock)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(asyncio, name)
+
+
+class _SteppedModel(ScriptedToolCallingModel):
+    """A model that moves a clock on by a second before it hands over each piece."""
+
+    clock: Any = None
+
+    async def _astream(self, *args: Any, **kwargs: Any):
+        async for chunk in super()._astream(*args, **kwargs):
+            self.clock.offset += 1.0
+            yield chunk
+
+
 @pytest.mark.asyncio
 class TestWorkflowMode:
     """Workflow mode fetches ahead of the model and makes one call with no tools."""
@@ -972,6 +1017,27 @@ class TestStream:
         assert (record.event, record.mode) == ("assistant_turn_timeout", "workflow")
         assert isinstance(record.duration_ms, int)
 
+    async def test_a_timeout_that_is_not_the_deadline_is_not_reported_as_one_when_streamed(self):
+        """
+        GIVEN a model whose stream raises a TimeoutError of its own, well inside the deadline
+        WHEN the turn is streamed
+        THEN that TimeoutError reaches the caller and no timeout is logged
+        """
+        model = ScriptedToolCallingModel(
+            responses=[_say("Late.")], fail_after_chunks=0, failure=TimeoutError("inner")
+        )
+        service = AssistantService(_settings(), model)
+        turn = await service.prepare(_request(), _ctx())
+
+        with (
+            captured_log_records(SERVICE_LOGGER) as records,
+            pytest.raises(TimeoutError, match="inner"),
+        ):
+            async for _ in service.stream(turn):
+                pass
+
+        assert records == []
+
     async def test_prepare_is_unavailable_when_the_retriever_is_down(self):
         """
         GIVEN a retriever whose search fails with a connection error
@@ -1014,6 +1080,41 @@ class TestStream:
         assert response.timing.ttft_ms is not None
         assert response.timing.ttft_ms < 100
         assert response.timing.total_ms >= 150
+
+    @pytest.mark.parametrize(
+        ("show_sources", "chunks"),
+        [
+            (True, ["It", " is", " here", "."]),
+            (False, ["It", " is", " here", "."]),
+            (False, ["[1", "]", " It", " is", " here", "."]),
+            (False, ["[", "1", "]", " It", " is", " here", "."]),
+        ],
+    )
+    async def test_ttft_is_taken_at_the_first_piece_the_model_sends(
+        self, monkeypatch, show_sources: bool, chunks: list[str]
+    ):
+        """
+        GIVEN a model that sends one piece per second of a clock the test moves, and a
+              citation filter that holds the first pieces back when the setting is off
+        WHEN the turn is streamed
+        THEN the time to first token is that of the first piece the model sent, whether or
+             not the filter let it out, and the pieces after it do not change it
+        """
+        clock = _Clock()
+        model = _SteppedModel(responses=[_say("".join(chunks))], clock=clock)
+        model.stream_chunks = chunks
+        service = AssistantService(_settings(assistant_show_sources=show_sources), model)
+        turn = await service.prepare(_request(), _ctx(chunks=[_chunk()]))
+        monkeypatch.setattr(service_module, "asyncio", _ClockedAsyncio(clock))
+        response = None
+
+        async for item in service.stream(turn):
+            if isinstance(item, AssistantChatResponse):
+                response = item
+
+        assert response is not None
+        assert response.timing.ttft_ms is not None
+        assert 1000 <= response.timing.ttft_ms < 1500
 
 
 @pytest.mark.asyncio

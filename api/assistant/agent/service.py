@@ -301,7 +301,13 @@ class AssistantService:
             yield response
 
     def _citation_filter(self, turn: TurnDraft) -> CitationStreamFilter | None:
-        """Build the filter for the streamed text (only the workflow mode has any), if needed."""
+        """Build the filter for the streamed text (only the workflow mode has any), if needed.
+
+        The filter is built from the registry before the model is called because the workflow
+        mode registers every source in :meth:`prepare`. The other modes register sources while
+        they run but yield no text, so their answer is cleaned in :meth:`_finish` against the
+        full registry.
+        """
         if self._settings.assistant_show_sources:
             return None
         return CitationStreamFilter({number for number, _chunk in turn.ctx.sources.numbered()})

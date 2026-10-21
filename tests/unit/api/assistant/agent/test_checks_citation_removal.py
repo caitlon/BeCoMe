@@ -246,6 +246,31 @@ class TestCitationStreamFilter:
         assert shown == ["The midpoint", "", "", "."]
         assert stream.finish() == ""
 
+    @pytest.mark.parametrize(
+        ("answer", "expected"),
+        [
+            ("[1] The midpoint is here.", "The midpoint is here."),
+            ("[1]   The midpoint is here.", "The midpoint is here."),
+            ("Intro.\n[1] The midpoint is here.", "Intro.\nThe midpoint is here."),
+            ("  [1] The midpoint is here.", "  The midpoint is here."),
+        ],
+    )
+    def test_the_words_after_a_citation_that_opens_a_line_keep_their_spaces(
+        self, answer: str, expected: str
+    ):
+        """
+        GIVEN a citation at the start of a line followed by several words
+        WHEN the answer is fed in one piece, and again one character at a time
+        THEN the blanks right after the citation go and the spaces between the words stay
+        """
+        one_shot = CitationStreamFilter(SOURCES)
+        by_character = CitationStreamFilter(SOURCES)
+
+        assert one_shot.feed(answer) + one_shot.finish() == expected
+        assert "".join(by_character.feed(char) for char in answer) + by_character.finish() == (
+            expected
+        )
+
     def test_an_outer_bracket_holds_what_follows_until_it_is_closed(self):
         """
         GIVEN a bracket that opens, holds a citation and is not closed yet
