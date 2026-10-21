@@ -114,11 +114,15 @@ describe('Register', () => {
   it('links the terms and the privacy notice under the submit button, with no consent checkbox', () => {
     render(<Register />);
 
-    expect(screen.getByRole('link', { name: 'Terms' })).toHaveAttribute('href', '/terms');
-    expect(screen.getByRole('link', { name: 'Privacy notice' })).toHaveAttribute(
-      'href',
-      '/privacy'
-    );
+    const terms = screen.getByRole('link', { name: /^Terms/ });
+    const privacy = screen.getByRole('link', { name: /^Privacy notice/ });
+
+    expect(terms).toHaveAttribute('href', '/terms');
+    expect(privacy).toHaveAttribute('href', '/privacy');
+    for (const link of [terms, privacy]) {
+      expect(link).toHaveAttribute('target', '_blank');
+      expect(link.getAttribute('rel')).toContain('noopener');
+    }
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
   });
 

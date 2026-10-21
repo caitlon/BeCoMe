@@ -248,10 +248,23 @@ const Register = () => {
             t={t}
             i18nKey="register.legalNotice"
             components={{
-              terms: <Link to="/terms" className="underline underline-offset-4 hover:text-foreground" />,
-              privacy: (
-                <Link to="/privacy" className="underline underline-offset-4 hover:text-foreground" />
+              terms: (
+                <Link
+                  to="/terms"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline underline-offset-4 hover:text-foreground"
+                />
               ),
+              privacy: (
+                <Link
+                  to="/privacy"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline underline-offset-4 hover:text-foreground"
+                />
+              ),
+              sr: <span className="sr-only" />,
             }}
           />
         </p>
