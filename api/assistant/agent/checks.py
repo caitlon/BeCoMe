@@ -391,7 +391,8 @@ def remove_citations(text: str, source_numbers: Collection[int]) -> str:
     right after it, so that ``The midpoint [1].`` reads ``The midpoint.``. A citation that
     opens a line keeps the indent before it instead, and takes the blanks after it. A bracket
     that is not a citation, such as ``[11.54, 14.19]``, stays. Unlike :func:`strip_citations`,
-    which leaves a space, this returns text meant to be shown, with no citation left.
+    which leaves a space, this returns text meant to be shown. The result has no citation
+    left, so removing again changes nothing.
 
     :param text: The text to clean.
     :param source_numbers: The source numbers handed out this turn, one-based.
@@ -410,7 +411,8 @@ class CitationStreamFilter:
     with its length. Text is held back while a later character may still take it away: from
     a bracket nothing has closed yet, the spaces at the end, which a citation after them
     would take, and a link target that has not closed. A bracket that never closes holds the
-    rest of the answer until :meth:`finish`.
+    rest of the answer until :meth:`finish`. Each character is read a bounded number of
+    times, so the work grows with the length of the text.
     """
 
     def __init__(self, source_numbers: Collection[int]) -> None:
