@@ -1,0 +1,49 @@
+{
+  "meta": {
+    "title": "Terms of use",
+    "subtitle": "The rules for using BeCoMe, in plain words.",
+    "updated": "Last updated 21 October 2026"
+  },
+  "operator": {
+    "heading": "Who runs this service",
+    "body": "BeCoMe is operated by Ekaterina Kuzmina. The service is free of charge. By creating an account you accept these terms. Write to the address below with any question.",
+    "email": "caiton@pm.me"
+  },
+  "results": {
+    "heading": "What a result means",
+    "body": "BeCoMe combines the opinions your experts enter into one compromise value. That value helps you decide. It is not advice, whether financial, legal, medical or of any other kind. It is only as good as the opinions behind it. You and your team make the decision and are responsible for it."
+  },
+  "assistant": {
+    "heading": "The assistant is an AI",
+    "body": "The assistant is an artificial intelligence system, a language model, not a person. It writes its answers automatically, and they can be wrong, incomplete or out of date even when they sound sure. Check anything important against the result page and the documentation, and do not decide on an answer alone. The Privacy notice describes what it receives."
+  },
+  "rules": {
+    "heading": "Rules of use",
+    "intro": "When you use the service, you agree:",
+    "items": [
+      "to use it only for lawful purposes;",
+      "to enter only data you have the right to share, and to invite only people who know they are being invited;",
+      "not to enter sensitive data, such as health information or other people's contact details;",
+      "to keep your password to yourself and to use one account per person;",
+      "not to break, overload or work around the service's protection: the rate limits, the bot check, or access to projects you are not a member of;",
+      "not to create accounts or send requests in bulk with scripts."
+    ]
+  },
+  "account": {
+    "heading": "Your account and your content",
+    "body": "What you enter stays yours. You allow the service to store and process it only as far as it needs to in order to run. You can delete your account at any time in your profile. An account that breaks these rules can be suspended or deleted. The service may change its features or stop. Before it stops, you will have time to download your data."
+  },
+  "warranty": {
+    "heading": "No guarantees",
+    "body": "The service is free and provided as it is. Nobody promises that it will always be available, free of errors or fit for your purpose. To the extent Czech law allows, the operator is not liable for losses caused by using a result or an assistant answer. Liability that the law does not allow to be excluded remains, for example for harm caused intentionally or through gross negligence."
+  },
+  "law": {
+    "heading": "Which law applies",
+    "body": "These terms are governed by Czech law, and disputes go to the Czech courts. If you are a consumer in another EU country, you keep the protections that its law gives you. If these terms change, the new version is published here with a new date. If you do not accept it, you can delete your account."
+  },
+  "privacy": {
+    "heading": "Your data",
+    "body": "How the service handles personal data, including what the assistant sends to the AI model, is described in the Privacy notice.",
+    "link": "Read the Privacy notice"
+  }
+}

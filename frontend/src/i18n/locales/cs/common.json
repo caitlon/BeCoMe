@@ -48,7 +48,8 @@
     "vrana": "Prof. Ing. Ivan Vrana, DrSc.",
     "tyrychtr": "doc. Ing. Jan Tyrychtr, Ph.D.",
     "pelikan": "doc. Ing. Martin Pelikán, Ph.D.",
-    "privacy": "Ochrana údajů"
+    "privacy": "Ochrana údajů",
+    "terms": "Podmínky užívání"
   },
   "common": {
     "loading": "Načítání..."
@@ -140,7 +141,8 @@
     "faq": "Časté dotazy",
     "caseStudies": "Případové studie",
     "notFound": "Stránka nenalezena",
-    "privacy": "Ochrana osobních údajů"
+    "privacy": "Ochrana osobních údajů",
+    "terms": "Podmínky užívání"
   },
   "errorBoundary": {
     "title": "Něco se pokazilo",

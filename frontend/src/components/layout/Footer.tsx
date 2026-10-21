@@ -154,6 +154,14 @@ export function Footer() {
                   {t("footer.privacy")}
                 </Link>
               </li>
+              <li>
+                <Link
+                  to="/terms"
+                  className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {t("footer.terms")}
+                </Link>
+              </li>
             </ul>
           </div>
         </div>

@@ -151,7 +151,7 @@ The three calls that send a localised email, `register`, `resendVerification` an
   `src/components/ui/toast.tsx`). The language switcher's accessible name comes from the
   `switchToLanguage` key, for example "EN, switch to Čeština".
 - **Audit.** `e2e/wcag-audit.spec.ts` runs axe-core with the WCAG 2.0 and 2.1 A and AA tags. It
-  covers the landing, about, docs, FAQ, privacy, case studies, case study, login, register and
+  covers the landing, about, docs, FAQ, privacy, terms, case studies, case study, login, register and
   404 pages, the landing and login pages in the dark theme, and the projects, onboarding and
   profile pages of a signed-in user.
 
