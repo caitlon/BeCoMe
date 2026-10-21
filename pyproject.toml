@@ -74,7 +74,7 @@ api = [
     "boto3==1.43.104",
     "slowapi==0.1.10",
     "bleach==6.4.0",
-    "pillow==12.3.0",
+    "pillow==13.0.0",
     "sentry-sdk[fastapi]==2.71.0",
     "logtail-python==0.5.1",
     "reportlab==5.0.1",
