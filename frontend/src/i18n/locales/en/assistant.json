@@ -93,7 +93,7 @@
       "intro": "The assistant answers questions about the BeCoMe method and about your projects. It is an artificial intelligence system, a language model, not a person, and its answers can be wrong. Check anything important on the result page and in this documentation.",
       "where": {
         "title": "Where to find it",
-        "body": "Sign in and click <b>Assistant</b> in the top bar. On a project's result page, <b>Explain this result</b> opens the assistant with that project already selected."
+        "body": "Sign in and click the assistant button <icon/> in the top bar. On a project's result page, <b>Explain this result</b> opens the assistant with that project already selected."
       },
       "answers": {
         "title": "What it can answer",

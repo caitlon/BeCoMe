@@ -121,6 +121,18 @@ describe('Documentation assistant section', () => {
       expect(screen.getByRole('link', { name: 'Privacy notice' })).toHaveAttribute('href', '/privacy');
     });
 
+    it('points to the header button with its icon instead of a label', async () => {
+      vi.stubEnv('VITE_ASSISTANT_ENABLED', 'true');
+
+      await renderDocumentation();
+      await screen.findByRole('heading', { level: 2, name: 'Assistant' });
+
+      const where = screen.getByText(/Sign in and click the assistant button/);
+      expect(where.textContent).toBe("Sign in and click the assistant button  in the top bar. On a project's result page, Explain this result opens the assistant with that project already selected.");
+      expect(where.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
+      expect(within(where).getByText('Explain this result').tagName).toBe('STRONG');
+    });
+
     it('speaks Czech when the language is Czech', async () => {
       vi.stubEnv('VITE_ASSISTANT_ENABLED', 'true');
       const { default: i18n } = await import('@/i18n');
@@ -131,6 +143,9 @@ describe('Documentation assistant section', () => {
       expect(await screen.findByRole('heading', { level: 2, name: 'Asistent' })).toBeInTheDocument();
       expect(screen.getByText('Za hodinu můžete poslat nejvýše 60 zpráv. Po dosažení limitu vám asistent řekne, kolik minut počkat.')).toBeInTheDocument();
       expect(screen.getByRole('link', { name: 'Zásady ochrany osobních údajů' })).toHaveAttribute('href', '/privacy');
+      const where = screen.getByText(/klikněte na tlačítko asistenta/);
+      expect(where.querySelector('svg')).toBeInTheDocument();
+      expect(within(where).getByText('Vysvětlit výsledek').tagName).toBe('STRONG');
       await i18n.changeLanguage('en');
     });
   });
